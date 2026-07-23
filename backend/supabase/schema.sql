@@ -389,8 +389,8 @@ create index idx_usage_snapshots_recorded_at on public.usage_snapshots(recorded_
 create table public.provider_quotas (
   user_id uuid not null references public.profiles(id) on delete cascade,
   provider text not null,
-  remaining integer not null default 0,
-  quota integer,
+  remaining bigint not null default 0,
+  quota bigint,
   plan_type text,
   reset_time timestamptz,
   tiers jsonb not null default '[]'::jsonb,
@@ -401,6 +401,114 @@ alter table public.provider_quotas enable row level security;
 
 create policy "Users can manage own quotas"
   on public.provider_quotas for all using (auth.uid() = user_id);
+
+-- ── Provider Accounts (v0.70: multiple accounts per provider) ──
+-- Credentials remain local. These tables contain only user labels, plan
+-- evidence, normalized quota state, and collection provenance.
+create table public.provider_accounts (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  id uuid not null,
+  provider text not null
+    check (char_length(provider) between 1 and 64),
+  display_label text
+    check (display_label is null or char_length(display_label) <= 120),
+  plan_type text
+    check (plan_type is null or char_length(plan_type) <= 120),
+  plan_source text not null default 'unknown'
+    check (plan_source in (
+      'providerAPI', 'accountMetadata', 'localCredential',
+      'webFallback', 'userConfirmed', 'unknown'
+    )),
+  plan_confidence text not null default 'unavailable'
+    check (plan_confidence in ('high', 'medium', 'low', 'unavailable')),
+  plan_observed_at timestamptz,
+  status text not null default 'active'
+    check (status in ('active', 'disabled')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, id),
+  unique (user_id, id, provider)
+);
+alter table public.provider_accounts enable row level security;
+
+create policy "Users can read own provider accounts"
+  on public.provider_accounts for select
+  using ((select auth.uid()) = user_id);
+
+create table public.provider_account_quotas (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider_account_id uuid not null,
+  provider text not null
+    check (char_length(provider) between 1 and 64),
+  remaining bigint
+    check (remaining is null or remaining >= 0),
+  quota bigint
+    check (quota is null or quota >= 0),
+  reset_time timestamptz,
+  tiers jsonb not null default '[]'::jsonb
+    check (jsonb_typeof(tiers) = 'array'),
+  observed_at timestamptz not null,
+  source_device_id uuid references public.devices(id) on delete set null,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider_account_id),
+  foreign key (user_id, provider_account_id, provider)
+    references public.provider_accounts(user_id, id, provider)
+    on delete cascade
+);
+alter table public.provider_account_quotas enable row level security;
+
+create policy "Users can read own provider account quotas"
+  on public.provider_account_quotas for select
+  using ((select auth.uid()) = user_id);
+
+create index idx_provider_accounts_user_provider
+  on public.provider_accounts(user_id, provider);
+create index idx_provider_accounts_updated_at
+  on public.provider_accounts(updated_at);
+create index idx_provider_account_quotas_user_provider
+  on public.provider_account_quotas(user_id, provider);
+create index idx_provider_account_quotas_updated_at
+  on public.provider_account_quotas(updated_at);
+create index idx_provider_account_quotas_source_device
+  on public.provider_account_quotas(source_device_id)
+  where source_device_id is not null;
+
+revoke all on public.provider_accounts
+  from public, anon, authenticated;
+revoke all on public.provider_account_quotas
+  from public, anon, authenticated;
+grant select on public.provider_accounts, public.provider_account_quotas
+  to authenticated;
+grant select, insert, update, delete
+  on public.provider_accounts, public.provider_account_quotas
+  to service_role;
+
+-- Defense in depth for privileged writes: source-device provenance must still
+-- belong to the account owner even when a trusted server role writes directly.
+create or replace function public._validate_provider_account_quota_device()
+returns trigger as $$
+begin
+  if new.source_device_id is not null
+     and not exists (
+       select 1
+       from public.devices d
+       where d.id = new.source_device_id
+         and d.user_id = new.user_id
+     ) then
+    raise exception 'Source device does not belong to provider account owner';
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public._validate_provider_account_quota_device()
+  from public, anon, authenticated;
+
+create trigger validate_provider_account_quota_device
+  before insert or update of user_id, source_device_id
+  on public.provider_account_quotas
+  for each row execute function public._validate_provider_account_quota_device();
 
 -- ── Views for dashboard aggregations ──
 

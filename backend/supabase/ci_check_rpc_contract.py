@@ -16,6 +16,8 @@ What it catches (hard failures, exit 1)
 3. An edge function URL (`/functions/v1/<name>`) is referenced from the
    client but the corresponding directory under `backend/supabase/functions/`
    is missing.
+4. A v0.70 provider-account function differs between the upgrade migration
+   and its canonical fresh-install definition.
 
 Soft signals (info/warn only, never fail)
 -----------------------------------------
@@ -67,6 +69,7 @@ HELPER_RPCS = {
     "register_helper",
     "helper_heartbeat",
     "helper_sync",
+    "helper_sync_provider_account_quotas",
     "ingest_commits",
     "get_track_git_activity",
     # Remote Agent Sessions / Remote Approvals (v0.26).
@@ -99,8 +102,13 @@ INTERNAL_RPCS = {
     "_cleanup_expired_data_internal",
     "_cleanup_retention_data_internal",
     "_cleanup_remote_retention_internal",
+    "_lock_provider_account_owner_before_delete",
     "_recompute_yield_scores_for_user_internal",
     "_recompute_yield_scores_for_days_internal",
+    "_refresh_provider_quota_after_account_delete",
+    "_refresh_provider_quota_projection",
+    "_upsert_provider_account_quotas_for_user",
+    "_validate_provider_account_quota_device",
     "recompute_yield_scores_for_user",
     "handle_new_user",
     "handle_new_profile",
@@ -251,6 +259,65 @@ def collect_sql_definitions() -> dict[str, SqlFunction]:
                 line=line_no,
             )
     return funcs
+
+
+V070_MIRRORED_FUNCTIONS = {
+    "_validate_provider_account_quota_device": "schema.sql",
+    "_refresh_provider_quota_projection": "app_rpc.sql",
+    "_lock_provider_account_owner_before_delete": "app_rpc.sql",
+    "_refresh_provider_quota_after_account_delete": "app_rpc.sql",
+    "_upsert_provider_account_quotas_for_user": "app_rpc.sql",
+    "upsert_provider_account_quotas": "app_rpc.sql",
+    "provider_account_summary": "app_rpc.sql",
+    "helper_sync_provider_account_quotas": "helper_rpc.sql",
+}
+
+
+def _normalized_function_block(path: pathlib.Path, name: str) -> str | None:
+    """Return one function's CREATE block with insignificant whitespace folded.
+
+    This is intentionally narrow rather than a general SQL parser. It covers
+    the PL/pgSQL shape used by the v0.70 migration and canonical SQL files.
+    """
+    text = path.read_text(encoding="utf-8")
+    matches = [
+        match for match in SQL_FUNC_RE.finditer(text)
+        if match.group(1).lower() == name
+    ]
+    if not matches:
+        return None
+
+    start = matches[-1].start()
+    end_match = re.search(
+        r"\$\$\s+language\s+plpgsql\b.*?;",
+        text[matches[-1].end():],
+        re.IGNORECASE | re.DOTALL,
+    )
+    if end_match is None:
+        return None
+    end = matches[-1].end() + end_match.end()
+    return re.sub(r"\s+", " ", text[start:end].strip())
+
+
+def collect_v070_mirror_failures() -> list[str]:
+    """Ensure upgrade and fresh-install paths install identical functions."""
+    migration = ROOT / "migrate_v0.70_provider_accounts.sql"
+    failures: list[str] = []
+    for name, canonical_name in V070_MIRRORED_FUNCTIONS.items():
+        canonical = ROOT / canonical_name
+        migration_block = _normalized_function_block(migration, name)
+        canonical_block = _normalized_function_block(canonical, name)
+        if migration_block is None or canonical_block is None:
+            failures.append(
+                f"V0.70 MIRROR MISSING: public.{name} must exist in both "
+                f"{migration.name} and {canonical.name}"
+            )
+        elif migration_block != canonical_block:
+            failures.append(
+                f"V0.70 MIRROR DRIFT: public.{name} differs between "
+                f"{migration.name} and {canonical.name}"
+            )
+    return failures
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -575,6 +642,7 @@ def main() -> int:
 
     failures: list[str] = []
     notes: list[str] = []
+    failures.extend(collect_v070_mirror_failures())
 
     # Check 1 + 2: every call site references a defined RPC and only sends
     # declared parameters.

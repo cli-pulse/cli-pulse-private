@@ -107,6 +107,43 @@ begin
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
 
+-- v0.70: account-scoped quota sync remains a sibling RPC so the legacy
+-- helper_sync signature and old clients stay byte-for-byte compatible.
+create or replace function public.helper_sync_provider_account_quotas(
+  p_device_id uuid,
+  p_helper_secret text,
+  p_rows jsonb default '[]'::jsonb
+)
+returns jsonb as $$
+declare
+  v_user_id uuid;
+begin
+  select user_id into v_user_id
+  from public.devices
+  where id = p_device_id
+    and helper_secret = encode(
+      extensions.digest(p_helper_secret, 'sha256'),
+      'hex'
+    );
+
+  if v_user_id is null then
+    raise exception 'Device not found or unauthorized';
+  end if;
+
+  return public._upsert_provider_account_quotas_for_user(
+    v_user_id, p_rows, p_device_id
+  );
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.helper_sync_provider_account_quotas(
+  uuid, text, jsonb
+) from public;
+grant execute on function public.helper_sync_provider_account_quotas(
+  uuid, text, jsonb
+) to anon, authenticated, service_role;
+
 -- Helper heartbeat — requires device secret
 -- v0.60: optional p_provider_plan_status carries the per-provider managed-session
 -- plan map ({"codex":"off_plan",...}); defaults NULL so pre-v0.60 callers that omit
