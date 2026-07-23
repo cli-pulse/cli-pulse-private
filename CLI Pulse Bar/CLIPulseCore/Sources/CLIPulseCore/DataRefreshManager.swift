@@ -54,6 +54,7 @@ internal final class DataRefreshManager {
     struct RefreshPayload {
         let dashboard: DashboardSummary
         let providers: [ProviderUsage]
+        let providerAccounts: [ProviderAccountUsage]
         let sessions: [SessionRecord]
         let devices: [DeviceRecord]
         let alerts: [AlertRecord]
@@ -217,7 +218,9 @@ internal final class DataRefreshManager {
             // so both main app collectors and helper can use them
             CredentialBridge.syncCredentialsToAppGroup()
 
-            var localResults = await runCollectors(providerConfigs: context.providerConfigs)
+            let accountResults = await runCollectors(providerConfigs: context.providerConfigs)
+            let providerAccounts = Self.accountUsages(from: accountResults)
+            var localResults = Self.providerCompatibilityResults(from: accountResults)
 
             // Supplement with helper's collector results from app group
             let helperResults = Self.readHelperCollectorResults()
@@ -286,6 +289,7 @@ internal final class DataRefreshManager {
             let costAdjustedProviders = Self.applyCostScan(to: resolvedProviders, scan: scanResult)
             #else
             let costAdjustedProviders = providerData
+            let providerAccounts: [ProviderAccountUsage] = []
             let supplementedProviders: Set<String> = []
             let scanResult: CostUsageScanResult? = nil
             #endif
@@ -452,6 +456,7 @@ internal final class DataRefreshManager {
                 RefreshPayload(
                     dashboard: adjustedDashboard,
                     providers: costAdjustedProviders,
+                    providerAccounts: providerAccounts,
                     sessions: mergedSessions,
                     devices: deviceData,
                     alerts: augmentedAlerts,
@@ -577,7 +582,9 @@ internal final class DataRefreshManager {
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
 
-        let collectorResults = await runCollectors(providerConfigs: context.providerConfigs)
+        let accountResults = await runCollectors(providerConfigs: context.providerConfigs)
+        let collectorResults = Self.providerCompatibilityResults(from: accountResults)
+        let providerAccounts = Self.accountUsages(from: accountResults)
         let scanResult = await Task.detached { LocalScanner.shared.scan() }.value
 
         // Scan local JSONL logs for precise token counts and costs.
@@ -726,6 +733,7 @@ internal final class DataRefreshManager {
             RefreshPayload(
                 dashboard: dashboard,
                 providers: providers,
+                providerAccounts: providerAccounts,
                 sessions: synthesizedSessions,
                 devices: devices,
                 alerts: alerts,
@@ -740,25 +748,57 @@ internal final class DataRefreshManager {
         callbacks.setLoading(false)
     }
 
-    func runCollectors(providerConfigs: [ProviderConfig]) async -> [CollectorResult] {
-        // Only providers that are enabled AND have a registered collector.
-        let runnable = providerConfigs.filter(\.isEnabled).filter {
-            CollectorRegistry.collector(for: $0.kind, config: $0) != nil
+    func runCollectors(providerConfigs: [ProviderConfig]) async -> [AccountScopedCollectorResult] {
+        await Self.runCollectors(
+            providerConfigs: providerConfigs,
+            collectorResolver: { config in
+                CollectorRegistry.collector(for: config.kind, config: config)
+            }
+        )
+    }
+
+    /// Testable scheduler seam: production passes the registry resolver while
+    /// focused tests pass a recording collector. The returned rows retain the
+    /// exact account config used for each run.
+    nonisolated static func runCollectors(
+        providerConfigs: [ProviderConfig],
+        collectorResolver: @escaping @Sendable (ProviderConfig) -> (any ProviderCollector)?
+    ) async -> [AccountScopedCollectorResult] {
+        // Resolve once so availability checks and collection use the same
+        // collector instance even when runs complete out of order.
+        let runnable = providerConfigs.compactMap { config -> ProviderCollectorInvocation? in
+            guard config.isEnabled, let collector = collectorResolver(config) else { return nil }
+            return ProviderCollectorInvocation(config: config, collector: collector)
         }
         // Bounded fan-out: at most `maxConcurrentCollectors` collectors run at
         // once instead of spawning all ~48 every refresh (thundering herd).
-        return await mapWithConcurrencyLimit(runnable, maxConcurrent: maxConcurrentCollectors) { config in
-            await Self.runOneCollector(config: config)
+        return await mapWithConcurrencyLimit(runnable, maxConcurrent: maxConcurrentCollectors) { invocation in
+            await Self.runOneCollector(
+                config: invocation.config,
+                collector: invocation.collector
+            )
         }
     }
 
     /// Runs a single collector, logging (and swallowing) any failure. Off-actor
     /// so the bounded task group can run it concurrently. Error-log appends go
     /// through `CollectorErrorLog` so concurrent failures can't corrupt the file.
-    nonisolated static func runOneCollector(config: ProviderConfig) async -> CollectorResult? {
+    nonisolated static func runOneCollector(config: ProviderConfig) async -> AccountScopedCollectorResult? {
         guard let collector = CollectorRegistry.collector(for: config.kind, config: config) else { return nil }
+        return await runOneCollector(config: config, collector: collector)
+    }
+
+    nonisolated static func runOneCollector(
+        config: ProviderConfig,
+        collector: any ProviderCollector
+    ) async -> AccountScopedCollectorResult? {
         do {
-            return try await collector.collect(config: config)
+            let result = try await collector.collect(config: config)
+            return AccountScopedCollectorResult(
+                accountID: config.accountID,
+                config: config,
+                result: result
+            )
         } catch {
             let message = "[Collector] \(config.kind.rawValue) failed: \(error.localizedDescription)"
             if !shouldSilenceCollectorError(kind: config.kind, error: error) {
@@ -767,6 +807,106 @@ internal final class DataRefreshManager {
             await CollectorErrorLog.shared.append(message)
             return nil
         }
+    }
+
+    /// Converts collector rows into account quota rows. Repeated observations
+    /// replace only the matching UUID; two accounts of the same provider stay
+    /// distinct. Configuration order is retained for deterministic UI output.
+    nonisolated static func accountUsages(
+        from results: [AccountScopedCollectorResult],
+        observedAt: Date = Date()
+    ) -> [ProviderAccountUsage] {
+        var latestByAccountID: [UUID: AccountScopedCollectorResult] = [:]
+        for scoped in results
+        where scoped.result.dataKind == .quota || scoped.result.dataKind == .credits {
+            latestByAccountID[scoped.accountID] = scoped
+        }
+
+        let observedAtString = sharedISO8601Formatter.string(from: observedAt)
+        return latestByAccountID.values
+            .sorted(by: accountResultComesBefore)
+            .map { scoped in
+                let usage = scoped.result.usage
+                let override = scoped.config.planOverride?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let detected = usage.plan_type?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let planValue = (override?.isEmpty == false) ? override :
+                    ((detected?.isEmpty == false) ? detected : nil)
+                let evidence: ProviderPlanEvidence
+                if override?.isEmpty == false {
+                    evidence = ProviderPlanEvidence(
+                        rawValue: override,
+                        displayValue: override,
+                        source: .userConfirmed,
+                        confidence: .high,
+                        observedAt: observedAt
+                    )
+                } else if detected?.isEmpty == false {
+                    // Existing CollectorResult does not expose whether its
+                    // plan_type came from an API, local metadata, or web
+                    // fallback. Keep the evidence honest until collectors
+                    // gain explicit provenance.
+                    evidence = ProviderPlanEvidence(
+                        rawValue: detected,
+                        displayValue: detected,
+                        source: .unknown,
+                        confidence: .low,
+                        observedAt: observedAt
+                    )
+                } else {
+                    evidence = ProviderPlanEvidence(
+                        rawValue: planValue,
+                        displayValue: planValue,
+                        source: .unknown,
+                        confidence: .unavailable,
+                        observedAt: nil
+                    )
+                }
+
+                return ProviderAccountUsage(
+                    id: scoped.accountID,
+                    provider: scoped.config.kind,
+                    accountLabel: scoped.config.accountLabel,
+                    planEvidence: evidence,
+                    quota: usage.quota,
+                    remaining: usage.remaining,
+                    tiers: usage.tiers,
+                    resetTime: usage.reset_time,
+                    observedAt: observedAtString,
+                    sourceDeviceID: nil,
+                    statusText: usage.status_text
+                )
+            }
+    }
+
+    /// Produces one deterministic legacy/provider-level row per ProviderKind.
+    /// The first configured account (lowest sortOrder, then UUID) is the
+    /// compatibility projection; account-level state remains lossless.
+    nonisolated static func providerCompatibilityResults(
+        from results: [AccountScopedCollectorResult]
+    ) -> [CollectorResult] {
+        var firstByProvider: [ProviderKind: AccountScopedCollectorResult] = [:]
+        for scoped in results.sorted(by: accountResultComesBefore)
+        where firstByProvider[scoped.config.kind] == nil {
+            firstByProvider[scoped.config.kind] = scoped
+        }
+        return firstByProvider.values
+            .sorted(by: accountResultComesBefore)
+            .map(\.result)
+    }
+
+    nonisolated private static func accountResultComesBefore(
+        _ lhs: AccountScopedCollectorResult,
+        _ rhs: AccountScopedCollectorResult
+    ) -> Bool {
+        if lhs.config.sortOrder != rhs.config.sortOrder {
+            return lhs.config.sortOrder < rhs.config.sortOrder
+        }
+        if lhs.config.kind.rawValue != rhs.config.kind.rawValue {
+            return lhs.config.kind.rawValue < rhs.config.kind.rawValue
+        }
+        return lhs.accountID.uuidString < rhs.accountID.uuidString
     }
 
     /// Read collector results written by the helper daemon to app group UserDefaults.
@@ -1876,6 +2016,7 @@ extension AppState {
     func applyRefreshPayload(_ payload: DataRefreshManager.RefreshPayload) {
         dashboard = payload.dashboard
         providers = payload.providers
+        providerAccounts = payload.providerAccounts
         sessions = payload.sessions
         devices = payload.devices
         alerts = payload.alerts

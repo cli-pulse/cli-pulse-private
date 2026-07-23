@@ -23,6 +23,27 @@ public struct CollectorResult: Sendable {
     }
 }
 
+/// A collector result tied to the exact configured provider account that
+/// produced it. Collectors remain provider-focused; the scheduler attaches
+/// account identity so the 50+ collector implementations do not need to
+/// duplicate multi-account plumbing.
+public struct AccountScopedCollectorResult: Sendable {
+    public let accountID: UUID
+    public let config: ProviderConfig
+    public let result: CollectorResult
+
+    public init(accountID: UUID, config: ProviderConfig, result: CollectorResult) {
+        self.accountID = accountID
+        self.config = config
+        self.result = result
+    }
+}
+
+struct ProviderCollectorInvocation: Sendable {
+    let config: ProviderConfig
+    let collector: any ProviderCollector
+}
+
 /// Protocol for provider-native local data collectors.
 ///
 /// Each collector fetches real usage/quota/credit data from a single provider
