@@ -76,11 +76,19 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
 
     // MARK: - Keychain secret helpers
 
-    private static func keychainKey(_ kind: ProviderKind, _ suffix: String) -> String {
+    private static func legacyKeychainKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
 
-    /// Access group for per-provider secrets. On macOS the items live in the
+    private static func accountKeychainKey(_ accountID: UUID, _ suffix: String) -> String {
+        "cli_pulse_provider_account_\(accountID.uuidString)_\(suffix)"
+    }
+
+    private static func migrationMarkerKey(_ accountID: UUID, _ suffix: String) -> String {
+        "\(accountKeychainKey(accountID, suffix))_legacy_migrated"
+    }
+
+    /// Access group for per-account secrets. On macOS the items live in the
     /// shared app-group keychain so the LoginItem helper reads them prompt-free
     /// (see `KeychainHelper.migrateToSharedGroup`). On iOS/watchOS there is no
     /// cross-process helper reading these items, so we keep `nil` (no group) —
@@ -96,34 +104,89 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
 
     /// Save this config's secrets to Keychain. Call after mutating apiKey / manualCookieHeader.
     public func saveSecrets() {
-        let group = Self.secretsAccessGroup
-        let apiKeyKey = Self.keychainKey(kind, "apiKey")
-        if let key = apiKey, !key.isEmpty {
-            KeychainHelper.save(key: apiKeyKey, value: key, accessGroup: group)
-        } else {
-            KeychainHelper.delete(key: apiKeyKey, accessGroup: group)
-        }
+        saveSecrets(using: KeychainProviderSecretStore())
+    }
 
-        let cookieKey = Self.keychainKey(kind, "cookie")
-        if let cookie = manualCookieHeader, !cookie.isEmpty {
-            KeychainHelper.save(key: cookieKey, value: cookie, accessGroup: group)
-        } else {
-            KeychainHelper.delete(key: cookieKey, accessGroup: group)
-        }
+    func saveSecrets(using store: any ProviderSecretStoring) {
+        persistSecret(apiKey, suffix: "apiKey", using: store)
+        persistSecret(manualCookieHeader, suffix: "cookie", using: store)
     }
 
     /// Load secrets from Keychain into the in-memory fields.
     public mutating func loadSecrets() {
-        let group = Self.secretsAccessGroup
-        apiKey = KeychainHelper.load(key: Self.keychainKey(kind, "apiKey"), accessGroup: group)
-        manualCookieHeader = KeychainHelper.load(key: Self.keychainKey(kind, "cookie"), accessGroup: group)
+        loadSecrets(using: KeychainProviderSecretStore())
     }
 
-    /// Remove all Keychain entries for this provider.
+    mutating func loadSecrets(using store: any ProviderSecretStoring) {
+        apiKey = loadSecret(suffix: "apiKey", using: store)
+        manualCookieHeader = loadSecret(suffix: "cookie", using: store)
+    }
+
+    /// Remove all Keychain entries for this account.
     public func deleteSecrets() {
+        deleteSecrets(using: KeychainProviderSecretStore())
+    }
+
+    func deleteSecrets(using store: any ProviderSecretStoring) {
+        persistSecret(nil, suffix: "apiKey", using: store)
+        persistSecret(nil, suffix: "cookie", using: store)
+    }
+
+    private func persistSecret(
+        _ value: String?,
+        suffix: String,
+        using store: any ProviderSecretStoring
+    ) {
         let group = Self.secretsAccessGroup
-        KeychainHelper.delete(key: Self.keychainKey(kind, "apiKey"), accessGroup: group)
-        KeychainHelper.delete(key: Self.keychainKey(kind, "cookie"), accessGroup: group)
+        let accountKey = Self.accountKeychainKey(accountID, suffix)
+        let markerKey = Self.migrationMarkerKey(accountID, suffix)
+
+        if let value, !value.isEmpty {
+            store.save(key: accountKey, value: value, accessGroup: group)
+            guard store.load(key: accountKey, accessGroup: group) == value else {
+                return
+            }
+        } else {
+            store.delete(key: accountKey, accessGroup: group)
+            guard store.load(key: accountKey, accessGroup: group) == nil else {
+                return
+            }
+        }
+
+        store.save(key: markerKey, value: "1", accessGroup: group)
+    }
+
+    private func loadSecret(
+        suffix: String,
+        using store: any ProviderSecretStoring
+    ) -> String? {
+        let group = Self.secretsAccessGroup
+        let accountKey = Self.accountKeychainKey(accountID, suffix)
+        let markerKey = Self.migrationMarkerKey(accountID, suffix)
+
+        if let accountValue = store.load(key: accountKey, accessGroup: group) {
+            store.save(key: markerKey, value: "1", accessGroup: group)
+            return accountValue.isEmpty ? nil : accountValue
+        }
+
+        if store.load(key: markerKey, accessGroup: group) == "1" {
+            return nil
+        }
+
+        let legacyKey = Self.legacyKeychainKey(kind, suffix)
+        guard
+            let legacyValue = store.load(key: legacyKey, accessGroup: group),
+            !legacyValue.isEmpty
+        else {
+            return nil
+        }
+
+        store.save(key: accountKey, value: legacyValue, accessGroup: group)
+        guard store.load(key: accountKey, accessGroup: group) == legacyValue else {
+            return legacyValue
+        }
+        store.save(key: markerKey, value: "1", accessGroup: group)
+        return legacyValue
     }
 }
 

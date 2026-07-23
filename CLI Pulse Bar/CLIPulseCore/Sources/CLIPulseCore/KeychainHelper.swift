@@ -1,6 +1,26 @@
 import Foundation
 import Security
 
+protocol ProviderSecretStoring {
+    func save(key: String, value: String, accessGroup: String?)
+    func load(key: String, accessGroup: String?) -> String?
+    func delete(key: String, accessGroup: String?)
+}
+
+struct KeychainProviderSecretStore: ProviderSecretStoring {
+    func save(key: String, value: String, accessGroup: String?) {
+        KeychainHelper.save(key: key, value: value, accessGroup: accessGroup)
+    }
+
+    func load(key: String, accessGroup: String?) -> String? {
+        KeychainHelper.load(key: key, accessGroup: accessGroup)
+    }
+
+    func delete(key: String, accessGroup: String?) {
+        KeychainHelper.delete(key: key, accessGroup: accessGroup)
+    }
+}
+
 public enum KeychainHelper {
     private static let service = "com.clipulse.app"
 
