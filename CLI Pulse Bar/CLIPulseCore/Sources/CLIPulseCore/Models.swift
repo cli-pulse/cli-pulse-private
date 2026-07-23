@@ -559,7 +559,7 @@ public enum TierRole: String, Codable, Sendable {
     case credits       // Extra usage / credits
 }
 
-public struct TierDTO: Codable, Sendable {
+public struct TierDTO: Codable, Equatable, Sendable {
     public let name: String
     @SaturatingInt public var quota: Int
     @SaturatingInt public var remaining: Int

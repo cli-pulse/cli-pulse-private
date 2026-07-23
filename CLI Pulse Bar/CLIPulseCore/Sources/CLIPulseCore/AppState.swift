@@ -73,6 +73,11 @@ public final class AppState: ObservableObject {
         set { providerState.providers = newValue }
     }
 
+    public var providerAccounts: [ProviderAccountUsage] {
+        get { providerState.providerAccounts }
+        set { providerState.providerAccounts = newValue }
+    }
+
     // v1.10 P2-3 slice 4: extracted into a child AlertState ObservableObject.
     // `alerts` and `suppressedAlertIDs` now live on `alertState`; AppState
     // exposes them as computed forwarders so existing mutators (AuthManager
@@ -1302,7 +1307,11 @@ public final class AppState: ObservableObject {
     }
 
     private func loadProviderConfigs() {
-        guard let data = UserDefaults.standard.data(forKey: "cli_pulse_provider_configs") else { return }
+        guard let data = UserDefaults.standard.data(
+            forKey: ProviderAccountMigration.configsKey
+        ) else {
+            return
+        }
 
         if !UserDefaults.standard.bool(forKey: Self.secretsMigratedKey) {
             migrateLegacySecrets(from: data)
@@ -1315,12 +1324,36 @@ public final class AppState: ObservableObject {
         // hydrate would return nil for existing users.
         migrateProviderSecretsToSharedGroup()
 
-        if let configs = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
-            providerConfigs = configs
-            let existingKinds = Set(configs.map(\.kind))
-            for kind in ProviderKind.allCases where !existingKinds.contains(kind) {
-                providerConfigs.append(ProviderConfig(kind: kind, isEnabled: true, sortOrder: providerConfigs.count))
+        do {
+            guard let migration = try ProviderAccountMigration.migrateIfNeeded(
+                defaults: .standard
+            ) else {
+                return
             }
+            providerConfigs = migration.configs
+        } catch {
+            lastError = "Provider configuration migration failed. Existing data was preserved."
+            return
+        }
+
+        let existingKinds = Set(providerConfigs.map(\.kind))
+        for kind in ProviderKind.allCases where !existingKinds.contains(kind) {
+            providerConfigs.append(ProviderConfig(
+                kind: kind,
+                isEnabled: true,
+                sortOrder: providerConfigs.count
+            ))
+        }
+
+        if let migratedData = try? JSONEncoder().encode(providerConfigs) {
+            UserDefaults.standard.set(
+                migratedData,
+                forKey: ProviderAccountMigration.configsKey
+            )
+            UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+                migratedData,
+                forKey: HelperIPC.providerConfigsKey
+            )
         }
 
         for index in providerConfigs.indices {

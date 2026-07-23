@@ -6,12 +6,14 @@ import SwiftUI
 /// Non-sensitive fields that persist in UserDefaults.
 /// Secrets (apiKey, manualCookieHeader) are stored/loaded separately via Keychain.
 public struct ProviderConfig: Codable, Identifiable, Sendable {
+    public let accountID: UUID
     public let kind: ProviderKind
     public var isEnabled: Bool
     public var sortOrder: Int
     public var sourceMode: SourceType
     public var cookieSource: CookieSource?
     public var accountLabel: String?
+    public var planOverride: String?
     /// v1.23.0 G3 (CodexBar parity, dark/opt-in): when true, the Gemini
     /// collector may fall back to the vendored `GeminiStatusProbe`
     /// (Gemini-CLI-package OAuth path) *only* when its own
@@ -25,16 +27,17 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     public var apiKey: String?
     public var manualCookieHeader: String?
 
-    public var id: String { kind.rawValue }
+    public var id: UUID { accountID }
 
     // Only encode non-sensitive fields to UserDefaults
     private enum CodingKeys: String, CodingKey {
-        case kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel
+        case accountID, kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel, planOverride
         case geminiCliProbeFallback
     }
 
     public init(
         kind: ProviderKind,
+        accountID: UUID = UUID(),
         isEnabled: Bool = true,
         sortOrder: Int = 0,
         sourceMode: SourceType = .auto,
@@ -42,8 +45,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         cookieSource: CookieSource? = nil,
         manualCookieHeader: String? = nil,
         accountLabel: String? = nil,
+        planOverride: String? = nil,
         geminiCliProbeFallback: Bool? = nil
     ) {
+        self.accountID = accountID
         self.kind = kind
         self.isEnabled = isEnabled
         self.sortOrder = sortOrder
@@ -52,6 +57,7 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         self.cookieSource = cookieSource
         self.manualCookieHeader = manualCookieHeader
         self.accountLabel = accountLabel
+        self.planOverride = planOverride
         self.geminiCliProbeFallback = geminiCliProbeFallback
     }
 

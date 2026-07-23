@@ -3,12 +3,19 @@ import XCTest
 
 final class ProviderConfigModelTests: XCTestCase {
 
-    // MARK: - Legacy ProviderConfig identity
+    // MARK: - ProviderConfig identity
 
-    func testLegacyProviderConfigIdentityUsesProviderKind() {
-        let config = ProviderConfig(kind: .claude, accountLabel: "Work")
+    func testProviderConfigIdentityUsesStableAccountID() throws {
+        let accountID = try XCTUnwrap(
+            UUID(uuidString: "55555555-5555-4555-8555-555555555555")
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            accountLabel: "Work"
+        )
 
-        XCTAssertEqual(config.id, ProviderKind.claude.rawValue)
+        XCTAssertEqual(config.id, accountID)
     }
 
     // MARK: - TokenFormatter.format

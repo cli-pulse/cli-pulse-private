@@ -20,6 +20,7 @@ import Combine
 @MainActor
 public final class ProviderState: ObservableObject {
     @Published public var providers: [ProviderUsage] = []
+    @Published public var providerAccounts: [ProviderAccountUsage] = []
     @Published public var providerConfigs: [ProviderConfig] = ProviderConfig.defaults()
     @Published public var providerDetails: [ProviderDetail] = []
     @Published public var costSummary: CostSummary = CostSummary()
