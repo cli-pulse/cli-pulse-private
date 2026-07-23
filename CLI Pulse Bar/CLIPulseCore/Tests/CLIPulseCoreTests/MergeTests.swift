@@ -81,6 +81,32 @@ final class MergeTests: XCTestCase {
         XCTAssertEqual(accounts.count, 1)
         XCTAssertEqual(accounts.first?.id, accountID)
         XCTAssertEqual(accounts.first?.remaining, 25)
+        XCTAssertEqual(
+            DataRefreshManager.providerCompatibilityResults(from: scoped)
+                .first?.usage.remaining,
+            25,
+            "The latest helper observation must replace the main-app observation for the same account"
+        )
+    }
+
+    func testCollectorSourceCombinationIncludesHelperAccountAndProjection() throws {
+        let mainID = try XCTUnwrap(UUID(uuidString: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"))
+        let helperID = try XCTUnwrap(UUID(uuidString: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"))
+        let main = makeScopedResult(accountID: mainID, sortOrder: 0, remaining: 80)
+        let helper = makeScopedResult(accountID: helperID, sortOrder: 1, remaining: 30)
+        let helperSnapshot = HelperCollectorSnapshot(
+            accountResults: [helper],
+            providerResults: [helper.result]
+        )
+
+        let combined = DataRefreshManager.combineCollectorSources(
+            mainAccountResults: [main],
+            helperSnapshot: helperSnapshot
+        )
+
+        XCTAssertEqual(Set(combined.accountResults.map(\.accountID)), Set([mainID, helperID]))
+        XCTAssertEqual(combined.providerResults.count, 2)
+        XCTAssertEqual(combined.providerResults.last?.usage.remaining, 30)
     }
 
     func testCloudWithQuotaButNoTiersGetsOverriddenByRicherLocal() {

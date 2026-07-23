@@ -218,13 +218,17 @@ internal final class DataRefreshManager {
             // so both main app collectors and helper can use them
             CredentialBridge.syncCredentialsToAppGroup()
 
-            let accountResults = await runCollectors(providerConfigs: context.providerConfigs)
+            let mainAccountResults = await runCollectors(providerConfigs: context.providerConfigs)
+            let helperSnapshot = Self.readHelperCollectorSnapshot(
+                providerConfigs: context.providerConfigs
+            )
+            let collectorSources = Self.combineCollectorSources(
+                mainAccountResults: mainAccountResults,
+                helperSnapshot: helperSnapshot
+            )
+            let accountResults = collectorSources.accountResults
+            let localResults = collectorSources.providerResults
             let providerAccounts = Self.accountUsages(from: accountResults)
-            var localResults = Self.providerCompatibilityResults(from: accountResults)
-
-            // Supplement with helper's collector results from app group
-            let helperResults = Self.readHelperCollectorResults()
-            localResults.append(contentsOf: helperResults)
 
             // NOTE: intentionally do NOT dedup localResults here. The in-order
             // merge inside `mergeCloudWithLocal` preserves metadata via
@@ -582,8 +586,16 @@ internal final class DataRefreshManager {
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
 
-        let accountResults = await runCollectors(providerConfigs: context.providerConfigs)
-        let collectorResults = Self.providerCompatibilityResults(from: accountResults)
+        let mainAccountResults = await runCollectors(providerConfigs: context.providerConfigs)
+        let helperSnapshot = Self.readHelperCollectorSnapshot(
+            providerConfigs: context.providerConfigs
+        )
+        let collectorSources = Self.combineCollectorSources(
+            mainAccountResults: mainAccountResults,
+            helperSnapshot: helperSnapshot
+        )
+        let accountResults = collectorSources.accountResults
+        let collectorResults = collectorSources.providerResults
         let providerAccounts = Self.accountUsages(from: accountResults)
         let scanResult = await Task.detached { LocalScanner.shared.scan() }.value
 
@@ -797,7 +809,8 @@ internal final class DataRefreshManager {
             return AccountScopedCollectorResult(
                 accountID: config.accountID,
                 config: config,
-                result: result
+                result: result,
+                observedAt: Date()
             )
         } catch {
             let message = "[Collector] \(config.kind.rawValue) failed: \(error.localizedDescription)"
@@ -816,17 +829,14 @@ internal final class DataRefreshManager {
         from results: [AccountScopedCollectorResult],
         observedAt: Date = Date()
     ) -> [ProviderAccountUsage] {
-        var latestByAccountID: [UUID: AccountScopedCollectorResult] = [:]
-        for scoped in results
-        where scoped.result.dataKind == .quota || scoped.result.dataKind == .credits {
-            latestByAccountID[scoped.accountID] = scoped
-        }
-
-        let observedAtString = sharedISO8601Formatter.string(from: observedAt)
-        return latestByAccountID.values
-            .sorted(by: accountResultComesBefore)
+        return latestAccountResults(
+            results.filter {
+                $0.result.dataKind == .quota || $0.result.dataKind == .credits
+            }
+        )
             .map { scoped in
                 let usage = scoped.result.usage
+                let resultObservedAt = scoped.observedAt ?? observedAt
                 let override = scoped.config.planOverride?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let detected = usage.plan_type?
@@ -840,7 +850,7 @@ internal final class DataRefreshManager {
                         displayValue: override,
                         source: .userConfirmed,
                         confidence: .high,
-                        observedAt: observedAt
+                        observedAt: resultObservedAt
                     )
                 } else if detected?.isEmpty == false {
                     // Existing CollectorResult does not expose whether its
@@ -852,7 +862,7 @@ internal final class DataRefreshManager {
                         displayValue: detected,
                         source: .unknown,
                         confidence: .low,
-                        observedAt: observedAt
+                        observedAt: resultObservedAt
                     )
                 } else {
                     evidence = ProviderPlanEvidence(
@@ -873,7 +883,7 @@ internal final class DataRefreshManager {
                     remaining: usage.remaining,
                     tiers: usage.tiers,
                     resetTime: usage.reset_time,
-                    observedAt: observedAtString,
+                    observedAt: sharedISO8601Formatter.string(from: resultObservedAt),
                     sourceDeviceID: nil,
                     statusText: usage.status_text
                 )
@@ -887,13 +897,38 @@ internal final class DataRefreshManager {
         from results: [AccountScopedCollectorResult]
     ) -> [CollectorResult] {
         var firstByProvider: [ProviderKind: AccountScopedCollectorResult] = [:]
-        for scoped in results.sorted(by: accountResultComesBefore)
+        for scoped in latestAccountResults(results)
         where firstByProvider[scoped.config.kind] == nil {
             firstByProvider[scoped.config.kind] = scoped
         }
         return firstByProvider.values
             .sorted(by: accountResultComesBefore)
             .map(\.result)
+    }
+
+    /// Shared cloud/local bridge. Provider rows intentionally keep the
+    /// main-app projection followed by helper rows so the existing in-order
+    /// merge can preserve metadata and let the fresher helper quota win.
+    nonisolated static func combineCollectorSources(
+        mainAccountResults: [AccountScopedCollectorResult],
+        helperSnapshot: HelperCollectorSnapshot
+    ) -> HelperCollectorSnapshot {
+        HelperCollectorSnapshot(
+            accountResults: mainAccountResults + helperSnapshot.accountResults,
+            providerResults:
+                providerCompatibilityResults(from: mainAccountResults)
+                + helperSnapshot.providerResults
+        )
+    }
+
+    nonisolated private static func latestAccountResults(
+        _ results: [AccountScopedCollectorResult]
+    ) -> [AccountScopedCollectorResult] {
+        var latestByAccountID: [UUID: AccountScopedCollectorResult] = [:]
+        for scoped in results {
+            latestByAccountID[scoped.accountID] = scoped
+        }
+        return latestByAccountID.values.sorted(by: accountResultComesBefore)
     }
 
     nonisolated private static func accountResultComesBefore(
@@ -909,78 +944,198 @@ internal final class DataRefreshManager {
         return lhs.accountID.uuidString < rhs.accountID.uuidString
     }
 
-    /// Read collector results written by the helper daemon to app group UserDefaults.
-    /// These results come from collectors that need real file system access (Codex, Gemini, etc.)
-    /// which the sandboxed main app cannot do directly.
+    /// Compatibility wrapper retained for existing callers/tests that only
+    /// consume the provider-level projection.
     nonisolated static func readHelperCollectorResults() -> [CollectorResult] {
-        guard let data = HelperIPC.readCollectorResults(),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return []
+        readHelperCollectorSnapshot(providerConfigs: []).providerResults
+    }
+
+    /// Read collector results written by the helper daemon to app-group
+    /// storage, preserving v2 account rows while retaining a provider-level
+    /// projection for existing merge and cloud-sync paths.
+    nonisolated static func readHelperCollectorSnapshot(
+        providerConfigs: [ProviderConfig],
+        now: Date = Date()
+    ) -> HelperCollectorSnapshot {
+        guard let data = HelperIPC.readCollectorResults() else { return .empty }
+        return parseHelperCollectorResults(data, providerConfigs: providerConfigs, now: now)
+    }
+
+    nonisolated static func parseHelperCollectorResults(
+        _ data: Data,
+        providerConfigs: [ProviderConfig],
+        now: Date = Date()
+    ) -> HelperCollectorSnapshot {
+        guard let decoded = try? HelperIPC.decodeCollectorResults(data, now: now) else {
+            return .empty
         }
 
-        // Reject stale data older than 5 minutes
-        if let timestampStr = json["timestamp"] as? String,
-           let timestamp = sharedISO8601Formatter.date(from: timestampStr) {
-            if Date().timeIntervalSince(timestamp) > 300 {
-                return [] // Data too old, skip
+        switch decoded {
+        case let .v1(envelope):
+            let envelopeObservedAt = envelope.timestamp.flatMap {
+                sharedISO8601Formatter.date(from: $0)
             }
-        }
+            let providerResults: [CollectorResult] = envelope.providers.keys.sorted().compactMap {
+                providerName -> CollectorResult? in
+                if !providerConfigs.isEmpty {
+                    guard let kind = ProviderKind(rawValue: providerName),
+                          providerConfigs.contains(where: {
+                              $0.kind == kind && $0.isEnabled
+                          })
+                    else { return nil }
+                }
+                guard let payload = envelope.providers[providerName] else { return nil }
+                return collectorResult(
+                    provider: providerName,
+                    payload: payload,
+                    dataKind: .quota,
+                    legacyDefaults: true
+                )
+            }
+            let accountResults = providerResults.compactMap { result -> AccountScopedCollectorResult? in
+                guard let kind = ProviderKind(rawValue: result.usage.provider),
+                      let config = providerConfigs
+                        .filter({ $0.kind == kind && $0.isEnabled })
+                        .sorted(by: providerConfigComesBefore)
+                        .first
+                else { return nil }
+                return AccountScopedCollectorResult(
+                    accountID: config.accountID,
+                    config: config,
+                    result: result,
+                    observedAt: envelopeObservedAt
+                )
+            }
+            return HelperCollectorSnapshot(
+                accountResults: accountResults,
+                providerResults: providerResults
+            )
 
-        // New format: { "timestamp": "...", "providers": { ... } }
-        // Old format (no wrapper): { "Codex": { ... }, "Gemini": { ... } }
-        let providers = (json["providers"] as? [String: Any]) ?? json
+        case let .v2(envelope):
+            let envelopeObservedAt = sharedISO8601Formatter.date(from: envelope.timestamp)
+            let accountResults = envelope.accounts.enumerated().compactMap {
+                index,
+                account -> AccountScopedCollectorResult? in
+                guard let kind = ProviderKind(rawValue: account.provider) else { return nil }
 
-        var results: [CollectorResult] = []
-        for (providerName, value) in providers {
-            guard providerName != "timestamp" else { continue }
-            guard let tierData = value as? [String: Any] else { continue }
-            let quota = tierData["quota"] as? Int ?? 100
-            let remaining = tierData["remaining"] as? Int ?? 100
-            let todayUsage = tierData["today_usage"] as? Int ?? 0
-            let weekUsage = tierData["week_usage"] as? Int ?? 0
-            let statusText = tierData["status_text"] as? String
-            let planType = tierData["plan_type"] as? String
-            let resetTime = tierData["reset_time"] as? String
+                let config: ProviderConfig
+                if let existing = providerConfigs.first(where: { $0.accountID == account.accountID }) {
+                    guard existing.kind == kind, existing.isEnabled else { return nil }
+                    config = existing
+                } else {
+                    guard providerConfigs.isEmpty else { return nil }
+                    config = ProviderConfig(
+                        kind: kind,
+                        accountID: account.accountID,
+                        sortOrder: index,
+                        accountLabel: account.accountLabel
+                    )
+                }
 
-            var tiers: [TierDTO] = []
-            if let tiersArr = tierData["tiers"] as? [[String: Any]] {
-                for t in tiersArr {
-                    tiers.append(TierDTO(
-                        name: t["name"] as? String ?? "",
-                        quota: t["quota"] as? Int ?? 100,
-                        remaining: t["remaining"] as? Int ?? 0,
-                        reset_time: t["reset_time"] as? String
-                    ))
+                return AccountScopedCollectorResult(
+                    accountID: account.accountID,
+                    config: config,
+                    result: collectorResult(
+                        provider: kind.rawValue,
+                        payload: account.usage,
+                        dataKind: collectorDataKind(account.dataKind),
+                        legacyDefaults: false
+                    ),
+                    observedAt: envelopeObservedAt
+                )
+            }
+
+            var providerResults = providerCompatibilityResults(from: accountResults)
+            if providerConfigs.isEmpty, let providers = envelope.providers {
+                var projectedNames = Set(providerResults.map(\.usage.provider))
+                for providerName in providers.keys.sorted()
+                where !projectedNames.contains(providerName) {
+                    guard let payload = providers[providerName] else { continue }
+                    providerResults.append(
+                        collectorResult(
+                            provider: providerName,
+                            payload: payload,
+                            dataKind: .quota,
+                            legacyDefaults: false
+                        )
+                    )
+                    projectedNames.insert(providerName)
                 }
             }
+            return HelperCollectorSnapshot(
+                accountResults: accountResults,
+                providerResults: providerResults
+            )
+        }
+    }
 
-            // v1.9.4: always carry a minimal ProviderMetadata on helper-
-            // bridged results. Previously this was nil and a later dedup
-            // step could silently drop the main-app-set metadata that the
-            // Providers card relies on (`supports_quota` drives the
-            // "I/O tokens" display branch). Helper only emits `.quota` kind,
-            // so `supports_quota: true` is safe.
-            let meta = ProviderMetadata(
-                display_name: providerName,
+    nonisolated private static func collectorResult(
+        provider: String,
+        payload: HelperIPC.CollectorUsagePayload,
+        dataKind: CollectorDataKind,
+        legacyDefaults: Bool
+    ) -> CollectorResult {
+        let quota = legacyDefaults ? (payload.quota ?? 100) : payload.quota
+        let remaining = legacyDefaults ? (payload.remaining ?? 100) : payload.remaining
+        let metadata: ProviderMetadata?
+        if let payloadMetadata = payload.metadata {
+            metadata = payloadMetadata.providerMetadata
+        } else if legacyDefaults {
+            metadata = ProviderMetadata(
+                display_name: provider,
                 category: "cloud",
                 supports_exact_cost: false,
                 supports_quota: true
             )
-            let usage = ProviderUsage(
-                provider: providerName,
-                today_usage: todayUsage, week_usage: weekUsage,
-                estimated_cost_today: 0, estimated_cost_week: 0,
-                cost_status_today: "Unavailable", cost_status_week: "Unavailable",
-                quota: quota, remaining: remaining,
-                plan_type: planType, reset_time: resetTime,
-                tiers: tiers,
-                status_text: statusText ?? "\(100 - remaining)% used",
-                trend: [], recent_sessions: [], recent_errors: [],
-                metadata: meta
-            )
-            results.append(CollectorResult(usage: usage, dataKind: .quota))
+        } else {
+            metadata = nil
         }
-        return results
+        let statusText: String
+        if let explicit = payload.statusText {
+            statusText = explicit
+        } else if let remaining {
+            statusText = "\(100 - remaining)% used"
+        } else {
+            statusText = ""
+        }
+        let usage = ProviderUsage(
+            provider: provider,
+            today_usage: payload.todayUsage ?? 0,
+            week_usage: payload.weekUsage ?? 0,
+            estimated_cost_today: 0,
+            estimated_cost_week: 0,
+            cost_status_today: "Unavailable",
+            cost_status_week: "Unavailable",
+            quota: quota,
+            remaining: remaining,
+            plan_type: payload.planType,
+            reset_time: payload.resetTime,
+            tiers: payload.tiers ?? [],
+            status_text: statusText,
+            trend: [],
+            recent_sessions: [],
+            recent_errors: [],
+            metadata: metadata
+        )
+        return CollectorResult(usage: usage, dataKind: dataKind)
+    }
+
+    nonisolated private static func collectorDataKind(
+        _ kind: HelperIPC.CollectorDataKind
+    ) -> CollectorDataKind {
+        switch kind {
+        case .quota: return .quota
+        case .credits: return .credits
+        case .statusOnly: return .statusOnly
+        }
+    }
+
+    nonisolated private static func providerConfigComesBefore(
+        _ lhs: ProviderConfig,
+        _ rhs: ProviderConfig
+    ) -> Bool {
+        if lhs.sortOrder != rhs.sortOrder { return lhs.sortOrder < rhs.sortOrder }
+        return lhs.accountID.uuidString < rhs.accountID.uuidString
     }
 
     /// v1.9.4: returns true when the cost scan came back empty AND the

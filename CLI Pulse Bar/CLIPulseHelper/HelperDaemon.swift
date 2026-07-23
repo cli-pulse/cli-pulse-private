@@ -127,10 +127,11 @@ final class HelperDaemon {
         )
 
         // Step 4: Provider quotas via collectors
-        let providerTiers = await collectProviderQuotas()
+        let providerCollection = await collectProviderQuotas()
+        let providerTiers = legacyProviderTiers(from: providerCollection.providers)
 
         // Step 4.5: Write collector results to app group for main app
-        writeCollectorResultsToAppGroup(providerTiers)
+        writeCollectorResultsToAppGroup(providerCollection)
         HelperIPC.postSyncNotification()
 
         guard let config = HelperConfig.load() else {
@@ -212,41 +213,49 @@ final class HelperDaemon {
 
     // MARK: - Provider Quota Collection
 
-    /// Run the same collectors the main app uses, producing tier data for Supabase.
-    private func collectProviderQuotas() async -> [String: Any] {
-        var result: [String: Any] = [:]
+    private struct ProviderQuotaCollection {
+        let accounts: [HelperIPC.CollectorAccountPayload]
+        let providers: [String: HelperIPC.CollectorUsagePayload]
+    }
+
+    /// Run the same collectors the main app uses once per enabled account.
+    /// The provider dictionary remains a deterministic compatibility
+    /// projection for the existing helper_sync RPC and old main apps.
+    private func collectProviderQuotas() async -> ProviderQuotaCollection {
+        var accountResults: [HelperIPC.CollectorAccountPayload] = []
+        var providerProjection: [String: HelperIPC.CollectorUsagePayload] = [:]
 
         // Read provider configs from shared app group (written by main app)
         var configs: [ProviderConfig] = ProviderConfig.defaults()
+        var hasPersistentAccountIDs = false
         if let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
            let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
            let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
             configs = saved
+            hasPersistentAccountIDs = true
             // Hydrate secrets from Keychain
             for i in configs.indices {
                 configs[i].loadSecrets()
             }
         }
 
-        logger.info("Running \(CollectorRegistry.collectors.count) registered collectors")
-        for collector in CollectorRegistry.collectors {
-            let providerName = collector.kind.rawValue
-            // Run collector for any enabled provider (not just active sessions)
-            // so quota data is available even when no session is running.
-
-            let config = configs.first(where: { $0.kind == collector.kind }) ?? ProviderConfig(kind: collector.kind)
-            // Respect the user's enabled-set. The tier-migration auto-disables
-            // extra providers for free users, and users can also disable
-            // providers manually. Before this filter, the helper would still
-            // collect quota for all 26 kinds and push them to Supabase, which
-            // defeats the migration's intent and wastes network + battery.
-            // (v1.10.4 free-tier fix, 2026-04-23.)
-            if !config.isEnabled {
-                logger.debug("Skipping \(providerName): disabled in user config")
-                continue
+        let runnableConfigs = configs
+            .filter(\.isEnabled)
+            .sorted {
+                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
+                if $0.kind.rawValue != $1.kind.rawValue {
+                    return $0.kind.rawValue < $1.kind.rawValue
+                }
+                return $0.accountID.uuidString < $1.accountID.uuidString
             }
-            let available = collector.isAvailable(config: config)
-            if !available {
+
+        logger.info("Running collectors for \(runnableConfigs.count) enabled account configs")
+        for config in runnableConfigs {
+            let providerName = config.kind.rawValue
+            guard let collector = CollectorRegistry.collector(
+                for: config.kind,
+                config: config
+            ) else {
                 logger.debug("Skipping \(providerName): isAvailable=false")
                 continue
             }
@@ -254,51 +263,105 @@ final class HelperDaemon {
             do {
                 let collectorResult = try await collector.collect(config: config)
                 let usage = collectorResult.usage
+                let payload = HelperIPC.CollectorUsagePayload(
+                    quota: usage.quota,
+                    remaining: usage.remaining,
+                    todayUsage: usage.today_usage,
+                    weekUsage: usage.week_usage,
+                    statusText: usage.status_text,
+                    planType: usage.plan_type,
+                    resetTime: usage.reset_time,
+                    tiers: usage.tiers,
+                    metadata: usage.metadata.map(HelperIPC.CollectorMetadataPayload.init)
+                )
 
-                var tierData: [String: Any] = [
-                    "quota": usage.quota ?? 100,
-                    "remaining": usage.remaining ?? 100,
-                    "today_usage": usage.today_usage,
-                    "week_usage": usage.week_usage,
-                    "status_text": usage.status_text,
-                ]
-                if let planType = usage.plan_type { tierData["plan_type"] = planType }
-                if let resetTime = usage.reset_time { tierData["reset_time"] = resetTime }
-
-                let tiers: [[String: Any]] = usage.tiers.map { tier in
-                    var d: [String: Any] = [
-                        "name": tier.name,
-                        "quota": tier.quota,
-                        "remaining": tier.remaining,
-                    ]
-                    if let rt = tier.reset_time { d["reset_time"] = rt }
-                    return d
+                // Lowest sortOrder wins the provider compatibility projection.
+                if providerProjection[providerName] == nil {
+                    providerProjection[providerName] = payload
                 }
-                tierData["tiers"] = tiers
 
-                result[providerName] = tierData
+                // Never publish an ephemeral UUID made by ProviderConfig.defaults().
+                // Account rows start only after the main app has written migrated,
+                // stable ProviderConfig values into the app group.
+                if hasPersistentAccountIDs {
+                    accountResults.append(
+                        HelperIPC.CollectorAccountPayload(
+                            accountID: config.accountID,
+                            provider: providerName,
+                            accountLabel: config.accountLabel,
+                            dataKind: helperDataKind(collectorResult.dataKind),
+                            usage: payload
+                        )
+                    )
+                }
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
             }
         }
 
-        return result
+        return ProviderQuotaCollection(
+            accounts: accountResults,
+            providers: providerProjection
+        )
     }
 
     // MARK: - App Group Collector Sharing
 
-    private func writeCollectorResultsToAppGroup(_ providerTiers: [String: Any]) {
-        // Wrap with timestamp so main app can reject stale data
-        let payload: [String: Any] = [
-            "timestamp": sharedISO8601Formatter.string(from: Date()),
-            "providers": providerTiers,
-        ]
-        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+    private func writeCollectorResultsToAppGroup(_ collection: ProviderQuotaCollection) {
+        let envelope = HelperIPC.CollectorResultsEnvelopeV2(
+            timestamp: sharedISO8601Formatter.string(from: Date()),
+            accounts: collection.accounts,
+            providers: collection.providers
+        )
+        do {
+            let data = try HelperIPC.encodeCollectorResultsV2(envelope)
             HelperIPC.writeCollectorResults(data)
-            logger.debug("Wrote \(providerTiers.count) collector results to app group")
-        } else {
-            logger.error("Failed to encode collector results for app group write")
+            logger.debug(
+                "Wrote \(collection.accounts.count) account results and \(collection.providers.count) provider projections to app group"
+            )
+        } catch {
+            logger.error(
+                "Failed to encode collector results for app group write: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func helperDataKind(
+        _ kind: CollectorDataKind
+    ) -> HelperIPC.CollectorDataKind {
+        switch kind {
+        case .quota: return .quota
+        case .credits: return .credits
+        case .statusOnly: return .statusOnly
+        }
+    }
+
+    private func legacyProviderTiers(
+        from providers: [String: HelperIPC.CollectorUsagePayload]
+    ) -> [String: Any] {
+        providers.mapValues { payload in
+            var tierData: [String: Any] = [
+                "quota": payload.quota ?? 100,
+                "remaining": payload.remaining ?? 100,
+                "today_usage": payload.todayUsage ?? 0,
+                "week_usage": payload.weekUsage ?? 0,
+                "status_text": payload.statusText ?? "",
+            ]
+            if let planType = payload.planType { tierData["plan_type"] = planType }
+            if let resetTime = payload.resetTime { tierData["reset_time"] = resetTime }
+            tierData["tiers"] = (payload.tiers ?? []).map { tier in
+                var value: [String: Any] = [
+                    "name": tier.name,
+                    "quota": tier.quota,
+                    "remaining": tier.remaining,
+                ]
+                if let resetTime = tier.reset_time {
+                    value["reset_time"] = resetTime
+                }
+                return value
+            }
+            return tierData
         }
     }
 

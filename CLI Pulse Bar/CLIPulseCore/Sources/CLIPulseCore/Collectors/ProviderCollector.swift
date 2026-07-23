@@ -31,12 +31,26 @@ public struct AccountScopedCollectorResult: Sendable {
     public let accountID: UUID
     public let config: ProviderConfig
     public let result: CollectorResult
+    public let observedAt: Date?
 
-    public init(accountID: UUID, config: ProviderConfig, result: CollectorResult) {
+    public init(
+        accountID: UUID,
+        config: ProviderConfig,
+        result: CollectorResult,
+        observedAt: Date? = nil
+    ) {
         self.accountID = accountID
         self.config = config
         self.result = result
+        self.observedAt = observedAt
     }
+}
+
+struct HelperCollectorSnapshot: Sendable {
+    let accountResults: [AccountScopedCollectorResult]
+    let providerResults: [CollectorResult]
+
+    static let empty = HelperCollectorSnapshot(accountResults: [], providerResults: [])
 }
 
 struct ProviderCollectorInvocation: Sendable {
