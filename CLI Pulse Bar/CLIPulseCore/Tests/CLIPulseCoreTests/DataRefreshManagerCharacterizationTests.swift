@@ -191,6 +191,22 @@ final class DataRefreshManagerCharacterizationTests: XCTestCase {
         XCTAssertEqual(supp, ["A", "B"])
     }
 
+    func testDedupedByProviderKeepsLastDuplicateProvider() {
+        let first = CollectorResult(
+            usage: makeProvider("Claude", quota: 100, remaining: 90),
+            dataKind: .quota
+        )
+        let last = CollectorResult(
+            usage: makeProvider("Claude", quota: 100, remaining: 20),
+            dataKind: .quota
+        )
+
+        let deduped = DataRefreshManager.dedupedByProvider([first, last])
+
+        XCTAssertEqual(deduped.count, 1)
+        XCTAssertEqual(deduped.first?.usage.remaining, 20)
+    }
+
     func testMergeLocalTodayUsageReplacesWhenGreaterThanZero() {
         let cloud = [makeProvider("Cursor", today: 10, week: 50)]
         let local = [CollectorResult(

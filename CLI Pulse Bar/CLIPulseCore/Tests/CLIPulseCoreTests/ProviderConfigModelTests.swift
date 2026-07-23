@@ -3,6 +3,14 @@ import XCTest
 
 final class ProviderConfigModelTests: XCTestCase {
 
+    // MARK: - Legacy ProviderConfig identity
+
+    func testLegacyProviderConfigIdentityUsesProviderKind() {
+        let config = ProviderConfig(kind: .claude, accountLabel: "Work")
+
+        XCTAssertEqual(config.id, ProviderKind.claude.rawValue)
+    }
+
     // MARK: - TokenFormatter.format
 
     func testTokenFormatterSmallNumbers() {
