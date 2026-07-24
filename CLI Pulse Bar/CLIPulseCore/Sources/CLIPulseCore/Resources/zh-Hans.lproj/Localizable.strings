@@ -505,6 +505,11 @@
 "providers.most_constrained" = "最紧张账户";
 "providers.remaining_percent" = "剩余 %d%%";
 "providers.source_label" = "来源：%@";
+"providers.source_provider_api" = "服务商 API";
+"providers.source_account_metadata" = "账户元数据";
+"providers.source_local_credential" = "Mac 本地凭据";
+"providers.source_web_fallback" = "网页回退";
+"providers.source_user_confirmed" = "用户确认";
 "providers.key_set" = "已设置密钥";
 "providers.limited_free" = "免费方案受限";
 "providers.disabled_badge" = "已禁用";

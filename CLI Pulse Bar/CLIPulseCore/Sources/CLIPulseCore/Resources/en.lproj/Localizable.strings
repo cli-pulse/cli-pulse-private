@@ -657,6 +657,11 @@
 "providers.most_constrained" = "Most constrained";
 "providers.remaining_percent" = "%d%% remaining";
 "providers.source_label" = "Source: %@";
+"providers.source_provider_api" = "Provider API";
+"providers.source_account_metadata" = "Account metadata";
+"providers.source_local_credential" = "Mac credential";
+"providers.source_web_fallback" = "Web fallback";
+"providers.source_user_confirmed" = "Confirmed by user";
 "providers.key_set" = "Key set";
 "providers.limited_free" = "Limited by free plan";
 "providers.disabled_badge" = "DISABLED";

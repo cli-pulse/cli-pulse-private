@@ -505,6 +505,11 @@
 "providers.most_constrained" = "最緊張帳戶";
 "providers.remaining_percent" = "剩餘 %d%%";
 "providers.source_label" = "來源：%@";
+"providers.source_provider_api" = "供應商 API";
+"providers.source_account_metadata" = "帳戶中繼資料";
+"providers.source_local_credential" = "Mac 本機憑證";
+"providers.source_web_fallback" = "網頁備援";
+"providers.source_user_confirmed" = "使用者確認";
 "providers.key_set" = "已設定金鑰";
 "providers.limited_free" = "免費方案受限";
 "providers.disabled_badge" = "已禁用";

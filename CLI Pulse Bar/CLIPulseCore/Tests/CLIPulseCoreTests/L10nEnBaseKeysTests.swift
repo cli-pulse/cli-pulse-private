@@ -103,4 +103,32 @@ final class L10nEnBaseKeysTests: XCTestCase {
             )
         }
     }
+
+    func test_providerAccountSourceCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            let source = L10n.providers.planSource(.providerAPI)
+            let sourceLabel = L10n.providers.sourceLabel(source)
+            let quotaUnavailable =
+                L10n.providers.quotaDataUnavailable
+
+            XCTAssertFalse(
+                source.hasPrefix("providers."),
+                "\(locale) is missing provider-plan source copy"
+            )
+            XCTAssertFalse(
+                sourceLabel.hasPrefix("providers."),
+                "\(locale) is missing the source label"
+            )
+            XCTAssertTrue(
+                sourceLabel.contains(source),
+                "\(locale) source label lost its placeholder"
+            )
+            XCTAssertFalse(
+                quotaUnavailable.hasPrefix("providers."),
+                "\(locale) is missing quota-unavailable copy"
+            )
+        }
+    }
 }

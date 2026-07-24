@@ -333,6 +333,22 @@ public enum L10n {
         public static var mostConstrained: String { tr("providers.most_constrained") }
         public static func remainingPercent(_ percent: Int) -> String { tr("providers.remaining_percent", percent) }
         public static func sourceLabel(_ source: String) -> String { tr("providers.source_label", source) }
+        public static func planSource(_ source: PlanEvidenceSource) -> String {
+            switch source {
+            case .providerAPI:
+                return tr("providers.source_provider_api")
+            case .accountMetadata:
+                return tr("providers.source_account_metadata")
+            case .localCredential:
+                return tr("providers.source_local_credential")
+            case .webFallback:
+                return tr("providers.source_web_fallback")
+            case .userConfirmed:
+                return tr("providers.source_user_confirmed")
+            case .unknown:
+                return L10n.status.unknown
+            }
+        }
         public static var keySet: String { tr("providers.key_set") }
         public static var limitedFree: String { tr("providers.limited_free") }
         public static var disabledBadge: String { tr("providers.disabled_badge") }

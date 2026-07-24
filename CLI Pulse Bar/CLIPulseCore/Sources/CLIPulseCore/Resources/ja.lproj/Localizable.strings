@@ -505,6 +505,11 @@
 "providers.most_constrained" = "残量が最少";
 "providers.remaining_percent" = "残り %d%%";
 "providers.source_label" = "ソース: %@";
+"providers.source_provider_api" = "プロバイダー API";
+"providers.source_account_metadata" = "アカウントメタデータ";
+"providers.source_local_credential" = "Mac のローカル認証情報";
+"providers.source_web_fallback" = "Web フォールバック";
+"providers.source_user_confirmed" = "ユーザー確認済み";
 "providers.key_set" = "キー設定済み";
 "providers.limited_free" = "無料プランで制限中";
 "providers.disabled_badge" = "無効";

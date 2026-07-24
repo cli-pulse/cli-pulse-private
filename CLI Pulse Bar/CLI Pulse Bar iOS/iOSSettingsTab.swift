@@ -12,7 +12,6 @@ struct iOSSettingsTab: View {
     @EnvironmentObject var authState: AuthState
     /// v1.10 P2-3 slice 5: observe ProviderState directly.
     @EnvironmentObject var providerState: ProviderState
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var showDeleteConfirmation = false
     // iter10 hotfix: surface delete-account failures. Previously the
     // confirm-alert called `state.deleteAccount()` and ignored the
@@ -24,7 +23,11 @@ struct iOSSettingsTab: View {
     @State private var rcDiagNotifAuthorized: Bool? = nil
     @State private var showRemoteControlConsent = false
 
-    private var isIPad: Bool { horizontalSizeClass == .regular }
+    private var providerAccountGroups: [ProviderAccountGroup] {
+        ProviderAccountPresentation.groups(
+            providerState.providerAccounts
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -195,35 +198,77 @@ struct iOSSettingsTab: View {
                         // no menu bar) — intentionally not surfaced here.
                     }
 
-                    // Provider Management - inline grid
+                    // Provider accounts are read-only on mobile. Credentials
+                    // are connected and retained only by the Mac app.
                     Section {
-                        let columns: [GridItem] = isIPad
-                            ? [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
-                            : [GridItem(.flexible()), GridItem(.flexible())]
+                        if providerAccountGroups.isEmpty {
+                            Label(
+                                L10n.onboarding.iosWaitingDesc,
+                                systemImage: "desktopcomputer"
+                            )
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                        } else {
+                            ForEach(providerAccountGroups) { group in
+                                HStack(spacing: 10) {
+                                    Image(
+                                        systemName:
+                                            group.provider.iconName
+                                    )
+                                    .foregroundStyle(
+                                        PulseTheme.providerColor(
+                                            group.provider.rawValue
+                                        )
+                                    )
+                                    .frame(width: 28)
 
-                        LazyVGrid(columns: columns, spacing: 10) {
-                            ForEach(providerState.providerConfigs) { config in
-                                providerToggleCell(config)
-                            }
-                        }
-                        .padding(.vertical, 4)
-
-                        NavigationLink {
-                            ProviderManagementView()
-                                .environmentObject(state)
-                                .environmentObject(providerState)
-                        } label: {
-                            HStack {
-                                Text(L10n.settings.reorderProviders)
-                                Spacer()
-                                let enabled = providerState.providerConfigs.filter(\.isEnabled).count
-                                Text("\(enabled)/\(providerState.providerConfigs.count)")
+                                    Text(group.provider.rawValue)
+                                    Spacer()
+                                    Text(
+                                        L10n.providers.accountsCount(
+                                            group.accounts.count
+                                        )
+                                    )
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            NavigationLink {
+                                ProviderManagementView()
+                                    .environmentObject(
+                                        providerState
+                                    )
+                            } label: {
+                                HStack {
+                                    Text(
+                                        L10n.settings
+                                            .manageProviders
+                                    )
+                                    Spacer()
+                                    Text(
+                                        L10n.providers.accountsCount(
+                                            providerState
+                                                .providerAccounts
+                                                .count
+                                        )
+                                    )
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     } header: {
                         Text(L10n.settings.providers)
+                    } footer: {
+                        Text(
+                            L10n.onboardingWizard
+                                .privacyKeysDetail
+                        )
                     }
 
                     // Notifications
@@ -536,88 +581,98 @@ struct iOSSettingsTab: View {
         }
     }
 
-    private func providerToggleCell(_ config: ProviderConfig) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: config.kind.iconName)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(config.isEnabled
-                    ? PulseTheme.providerColor(config.kind.rawValue)
-                    : .gray
-                )
-                .frame(width: 36, height: 36)
-                .background(
-                    (config.isEnabled
-                        ? PulseTheme.providerColor(config.kind.rawValue)
-                        : Color.gray
-                    ).opacity(0.12)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-
-            Text(config.kind.rawValue)
-                .font(.caption2)
-                .lineLimit(1)
-                .foregroundStyle(config.isEnabled ? .primary : .secondary)
-
-            Toggle("", isOn: Binding(
-                get: { config.isEnabled },
-                set: { _ in state.toggleProvider(config.kind) }
-            ))
-            .labelsHidden()
-            .scaleEffect(0.8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
-    }
 }
 
 // MARK: - Provider Management View
 
 struct ProviderManagementView: View {
-    @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
+
+    private var groups: [ProviderAccountGroup] {
+        ProviderAccountPresentation.groups(
+            providerState.providerAccounts
+        )
+    }
 
     var body: some View {
         List {
-            Section {
-                ForEach(providerState.providerConfigs) { config in
-                    HStack(spacing: 12) {
-                        Image(systemName: config.kind.iconName)
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(PulseTheme.providerColor(config.kind.rawValue))
-                            .frame(width: 28)
-
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(config.kind.rawValue)
-                                .font(.body)
-                            if let usage = providerState.providers.first(where: { $0.provider == config.kind.rawValue }) {
-                                Text(L10n.detail.usageToday(CostFormatter.formatUsage(usage.today_usage)))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text(L10n.common.noData)
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
+            if groups.isEmpty {
+                Section {
+                    Label(
+                        L10n.onboarding.iosWaitingDesc,
+                        systemImage: "desktopcomputer"
+                    )
+                    .foregroundStyle(.secondary)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                }
+            } else {
+                ForEach(groups) { group in
+                    Section {
+                        ForEach(
+                            Array(group.accounts.enumerated()),
+                            id: \.element.id
+                        ) { index, account in
+                            iOSProviderAccountRow(
+                                account: account,
+                                fallbackLabel:
+                                    group.accounts.count == 1
+                                        ? L10n.providers
+                                            .defaultAccount
+                                        : L10n.providers
+                                            .accountNumber(
+                                                index + 1
+                                            )
+                            )
+                            .listRowInsets(
+                                EdgeInsets(
+                                    top: 6,
+                                    leading: 8,
+                                    bottom: 6,
+                                    trailing: 8
+                                )
+                            )
+                            .listRowBackground(Color.clear)
                         }
-
-                        Spacer()
-
-                        Toggle("", isOn: Binding(
-                            get: { config.isEnabled },
-                            set: { _ in state.toggleProvider(config.kind) }
-                        ))
-                        .labelsHidden()
+                    } header: {
+                        Label(
+                            group.provider.rawValue,
+                            systemImage:
+                                group.provider.iconName
+                        )
+                    } footer: {
+                        if let freshest =
+                            ProviderAccountPresentation
+                                .latestFreshnessTimestamp(
+                                    in: group.accounts
+                                ) {
+                            Text(
+                                L10n.dashboard.updated(
+                                    RelativeTime.format(
+                                        freshest
+                                    )
+                                )
+                            )
+                        }
                     }
                 }
-                .onMove { from, to in
-                    state.moveProvider(from: from, to: to)
-                }
-            } header: {
-                Text(L10n.settings.reorderHint)
             }
         }
         .navigationTitle(L10n.settings.manageProviders)
-        .environment(\.editMode, .constant(.active))
+        .safeAreaInset(edge: .bottom) {
+            Label(
+                L10n.onboardingWizard.privacyKeysDetail,
+                systemImage: "lock.shield"
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(.thinMaterial)
+        }
     }
 }
 
