@@ -1,16 +1,47 @@
 import Foundation
 
+/// Account-aware quota value used by watch glance surfaces. It carries the
+/// provider aggregate for identity/cost plus the exact account-derived quota
+/// pressure, so Rings and provider cards cannot select different accounts.
+public struct WatchProviderQuotaSnapshot:
+    Identifiable,
+    Sendable
+{
+    public let provider: ProviderUsage
+    public let accountID: UUID?
+    public let remainingFraction: Double
+    public let isStale: Bool
+
+    public var id: String { provider.id }
+    public var usagePercent: Double { 1 - remainingFraction }
+    public var remainingPercent: Int {
+        Int(remainingFraction * 100)
+    }
+
+    public init(
+        provider: ProviderUsage,
+        accountID: UUID?,
+        remainingFraction: Double,
+        isStale: Bool
+    ) {
+        self.provider = provider
+        self.accountID = accountID
+        self.remainingFraction =
+            remainingFraction.clamped(to: 0...1)
+        self.isStale = isStale
+    }
+}
+
 /// Pure quota-window math for the watchOS redesign's Quota rings page and
 /// Pulse-home glance. Lives in CLIPulseCore so it is exercised by
 /// `swift test` (the watch app target cannot be built or run locally —
 /// CI is the only compile path), keeping the app-target SwiftUI thin.
 ///
-/// **Single source of truth (review R4).** The ring's *fill* is always
-/// `ProviderUsage.usagePercent` — the exact property the watch-face
-/// complication reads. This type never re-derives that percentage; it
-/// only wraps the surrounding window-used / remaining helpers and the
-/// colour-threshold tiers so the rings, the legacy gauges, and the
-/// complication can never disagree.
+/// **Single source of truth (review R4).** Legacy rows derive from
+/// `ProviderUsage`; v2 rows derive from the exact most-constrained enabled
+/// account selected by `ProviderAccountPresentation`. The resulting snapshot
+/// is shared by Rings, cards, and detail views so those surfaces cannot choose
+/// different accounts.
 ///
 /// **Window math (review R6).** "Used" is window consumption
 /// (`quota - remaining`), NOT `today_usage` — `today_usage` is 0 when
@@ -71,6 +102,116 @@ public enum WatchRingMath {
     /// Remaining percent `0...100` for a quota/remaining pair (bar label).
     public static func remainingPercentInt(quota: Int, remaining: Int) -> Int {
         Int(remainingFraction(quota: quota, remaining: remaining) * 100)
+    }
+
+    // MARK: - Account-aware quota snapshots
+
+    public static func quotaSnapshot(
+        for provider: ProviderUsage,
+        accounts: [ProviderAccountUsage],
+        now: Date = Date()
+    ) -> WatchProviderQuotaSnapshot? {
+        let providerAccounts: [ProviderAccountUsage]
+        if let kind = ProviderKind(rawValue: provider.provider) {
+            providerAccounts =
+                ProviderAccountPresentation.enabledAccounts(
+                    accounts
+                )
+                .filter { $0.provider == kind }
+        } else {
+            providerAccounts = []
+        }
+
+        if !providerAccounts.isEmpty {
+            guard
+                let account = ProviderAccountPresentation
+                    .mostConstrainedEnabledAccount(
+                        in: providerAccounts
+                    ),
+                let fraction = ProviderState.remainingFraction(
+                    for: account
+                )
+            else {
+                return nil
+            }
+            return WatchProviderQuotaSnapshot(
+                provider: provider,
+                accountID: account.id,
+                remainingFraction: fraction,
+                isStale:
+                    ProviderAccountPresentation.isStale(
+                        account,
+                        now: now
+                    )
+            )
+        }
+
+        guard provider.quota != nil else { return nil }
+        return WatchProviderQuotaSnapshot(
+            provider: provider,
+            accountID: nil,
+            remainingFraction: remainingFraction(
+                usagePercent: weeklyUsagePercent(provider)
+            ),
+            isStale: false
+        )
+    }
+
+    /// Canonical provider pressure order for every watch quota surface.
+    /// Fresh snapshots come before stale last-known values, then least
+    /// remaining headroom first. Activity and provider name only break ties.
+    public static func orderedQuotaSnapshots(
+        _ providers: [ProviderUsage],
+        accounts: [ProviderAccountUsage],
+        now: Date = Date()
+    ) -> [WatchProviderQuotaSnapshot] {
+        providers.compactMap { provider in
+            quotaSnapshot(
+                for: provider,
+                accounts: accounts,
+                now: now
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.isStale != rhs.isStale {
+                return !lhs.isStale
+            }
+            if lhs.remainingFraction
+                != rhs.remainingFraction {
+                return lhs.remainingFraction
+                    < rhs.remainingFraction
+            }
+            if lhs.provider.today_usage
+                != rhs.provider.today_usage {
+                return lhs.provider.today_usage
+                    > rhs.provider.today_usage
+            }
+            if lhs.provider.estimated_cost_today
+                != rhs.provider.estimated_cost_today {
+                return lhs.provider.estimated_cost_today
+                    > rhs.provider.estimated_cost_today
+            }
+            return lhs.provider.provider
+                < rhs.provider.provider
+        }
+    }
+
+    /// Only fresh snapshots earn an activity ring. Stale values remain
+    /// available in provider/account cards as explicitly labelled last-known
+    /// data, but never drive the live glance or urgency ordering.
+    public static func liveRingSnapshots(
+        _ providers: [ProviderUsage],
+        accounts: [ProviderAccountUsage],
+        now: Date = Date(),
+        limit: Int = 3
+    ) -> [WatchProviderQuotaSnapshot] {
+        let fresh = orderedQuotaSnapshots(
+            providers,
+            accounts: accounts,
+            now: now
+        )
+        .filter { !$0.isStale }
+        return Array(fresh.prefix(max(0, limit)))
     }
 
     // MARK: - Threshold tiers

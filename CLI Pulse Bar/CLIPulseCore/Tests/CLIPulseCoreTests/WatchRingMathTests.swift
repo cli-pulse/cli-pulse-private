@@ -196,6 +196,261 @@ final class WatchRingMathTests: XCTestCase {
         XCTAssertEqual(WatchRingMath.weeklyUsagePercent(p), 0.62, accuracy: 1e-9)
     }
 
+    // MARK: - Account presentation for watchOS
+
+    func test_enabledAccountGroupsFilterDisabledAndSortStably() {
+        let groups = ProviderAccountPresentation.enabledGroups([
+            makeAccount(
+                provider: .claude,
+                label: "Work",
+                remaining: 10
+            ),
+            makeAccount(
+                provider: .codex,
+                label: "Personal",
+                remaining: 60
+            ),
+            makeAccount(
+                provider: .claude,
+                label: "Archived",
+                remaining: 1,
+                statusText: "Disabled"
+            ),
+            makeAccount(
+                provider: .claude,
+                label: "Personal",
+                remaining: 40
+            ),
+        ])
+
+        XCTAssertEqual(groups.map(\.provider), [.codex, .claude])
+        XCTAssertEqual(
+            groups[1].accounts.compactMap(\.accountLabel),
+            ["Personal", "Work"]
+        )
+    }
+
+    func test_mostConstrainedEnabledAccountUsesLowestRemainingWindow() {
+        let disabled = makeAccount(
+            provider: .claude,
+            label: "Disabled",
+            remaining: 1,
+            statusText: "Disabled"
+        )
+        let work = makeAccount(
+            provider: .claude,
+            label: "Work",
+            remaining: 35
+        )
+        let personal = makeAccount(
+            provider: .claude,
+            label: "Personal",
+            remaining: 70,
+            tiers: [
+                TierDTO(
+                    name: "Weekly",
+                    quota: 100,
+                    remaining: 20,
+                    role: .secondary
+                ),
+            ]
+        )
+
+        XCTAssertEqual(
+            ProviderAccountPresentation
+                .mostConstrainedEnabledAccount(
+                    in: [disabled, work, personal]
+                )?
+                .accountLabel,
+            "Personal"
+        )
+    }
+
+    func test_accountFreshnessFailsClosedAfterFiveMinutes() throws {
+        let now = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T12:00:00Z")
+        )
+        let fresh = makeAccount(
+            provider: .codex,
+            label: "Fresh",
+            remaining: 50,
+            observedAt: "2026-07-24T11:55:00Z"
+        )
+        let stale = makeAccount(
+            provider: .codex,
+            label: "Stale",
+            remaining: 50,
+            observedAt: "2026-07-24T11:54:59Z"
+        )
+        let unknown = makeAccount(
+            provider: .codex,
+            label: "Unknown",
+            remaining: 50,
+            observedAt: nil
+        )
+
+        XCTAssertFalse(
+            ProviderAccountPresentation.isStale(
+                fresh,
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            ProviderAccountPresentation.isStale(
+                stale,
+                now: now
+            )
+        )
+        XCTAssertTrue(
+            ProviderAccountPresentation.isStale(
+                unknown,
+                now: now
+            )
+        )
+    }
+
+    func test_visibleProviderNamesDoNotReviveDisabledV2Accounts() {
+        let disabled = makeAccount(
+            provider: .claude,
+            label: "Archived",
+            remaining: 10,
+            statusText: "Disabled"
+        )
+
+        XCTAssertEqual(
+            ProviderAccountPresentation.visibleProviderNames(
+                accounts: [disabled],
+                legacyProviderNames: ["Claude"],
+                usesLegacyFallback: false
+            ),
+            []
+        )
+        XCTAssertEqual(
+            ProviderAccountPresentation.visibleProviderNames(
+                accounts: [disabled],
+                legacyProviderNames: ["Claude"],
+                usesLegacyFallback: true
+            ),
+            ["Claude"]
+        )
+    }
+
+    func test_accountAwareQuotaSnapshotMatchesMostConstrainedCard() throws {
+        let now = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T12:00:00Z")
+        )
+        let provider = makeProvider(
+            "Claude",
+            quota: 100,
+            remaining: 90
+        )
+        let work = makeAccount(
+            provider: .claude,
+            label: "Work",
+            remaining: 60,
+            observedAt: "2026-07-24T11:59:00Z"
+        )
+        let personal = makeAccount(
+            provider: .claude,
+            label: "Personal",
+            remaining: 70,
+            observedAt: "2026-07-24T11:59:00Z",
+            tiers: [
+                TierDTO(
+                    name: "Weekly",
+                    quota: 100,
+                    remaining: 20,
+                    role: .secondary
+                ),
+            ]
+        )
+
+        let snapshot = try XCTUnwrap(
+            WatchRingMath.quotaSnapshot(
+                for: provider,
+                accounts: [work, personal],
+                now: now
+            )
+        )
+
+        XCTAssertEqual(
+            snapshot.remainingFraction,
+            0.2,
+            accuracy: 1e-9
+        )
+        XCTAssertFalse(snapshot.isStale)
+        XCTAssertEqual(
+            snapshot.accountID,
+            personal.id
+        )
+    }
+
+    func test_liveRingSnapshotsExcludeStaleAccounts() throws {
+        let now = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T12:00:00Z")
+        )
+        let providers = [
+            makeProvider(
+                "Codex",
+                quota: 100,
+                remaining: 40,
+                usage: 100
+            ),
+            makeProvider(
+                "Gemini",
+                quota: 100,
+                remaining: 80,
+                usage: 1_000
+            ),
+            makeProvider(
+                "Claude",
+                quota: 100,
+                remaining: 10,
+                usage: 200
+            ),
+        ]
+        let accounts = [
+            makeAccount(
+                provider: .codex,
+                label: "Fresh",
+                remaining: 40,
+                observedAt: "2026-07-24T11:59:00Z"
+            ),
+            makeAccount(
+                provider: .gemini,
+                label: "Fresh",
+                remaining: 80,
+                observedAt: "2026-07-24T11:59:00Z"
+            ),
+            makeAccount(
+                provider: .claude,
+                label: "Stale",
+                remaining: 10,
+                observedAt: "2026-07-24T11:54:00Z"
+            ),
+        ]
+
+        let rings = WatchRingMath.liveRingSnapshots(
+            providers,
+            accounts: accounts,
+            now: now
+        )
+        let ordered = WatchRingMath.orderedQuotaSnapshots(
+            providers,
+            accounts: accounts,
+            now: now
+        )
+
+        XCTAssertEqual(
+            rings.map(\.provider.provider),
+            ["Codex", "Gemini"]
+        )
+        XCTAssertEqual(
+            ordered.map(\.provider.provider),
+            ["Codex", "Gemini", "Claude"]
+        )
+    }
+
     // MARK: - Helpers
 
     private func makeProvider(_ name: String, quota: Int?, remaining: Int?,
@@ -216,6 +471,35 @@ final class WatchRingMathTests: XCTestCase {
             trend: [],
             recent_sessions: [],
             recent_errors: []
+        )
+    }
+
+    private func makeAccount(
+        provider: ProviderKind,
+        label: String,
+        remaining: Int,
+        statusText: String = "Operational",
+        observedAt: String? = "2026-07-24T12:00:00Z",
+        tiers: [TierDTO] = []
+    ) -> ProviderAccountUsage {
+        ProviderAccountUsage(
+            id: UUID(),
+            provider: provider,
+            accountLabel: label,
+            planEvidence: ProviderPlanEvidence(
+                rawValue: "pro",
+                displayValue: "Pro",
+                source: .providerAPI,
+                confidence: .high,
+                observedAt: nil
+            ),
+            quota: 100,
+            remaining: remaining,
+            tiers: tiers,
+            resetTime: nil,
+            observedAt: observedAt,
+            sourceDeviceID: nil,
+            statusText: statusText
         )
     }
 }

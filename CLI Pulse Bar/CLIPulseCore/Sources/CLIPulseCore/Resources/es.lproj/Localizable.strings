@@ -496,6 +496,9 @@
 "watch.live" = "En vivo";
 "watch.percent_left" = "%d%% restante";
 "watch.tokens_used" = "%@ tokens";
+"watch.connect_agents_on_mac" = "Conecta primero un agente de código en tu Mac.";
+"watch.stale_updated" = "Obsoleto · actualizado %@";
+"watch.tightest_account" = "Más limitado: %@";
 "watch.unread" = "Sin leer";
 
 /* Watch base namespace backfill (P5) — es previously fell back to en for these. */

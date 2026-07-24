@@ -15,6 +15,9 @@ public final class WatchAppState: ObservableObject {
     // MARK: - Data
     @Published var dashboard: DashboardSummary?
     @Published var providers: [ProviderUsage] = []
+    /// Credential-free account snapshots read from the v2 cloud summary.
+    /// Provider credentials remain on the Mac and are structurally absent.
+    @Published var providerAccounts: [ProviderAccountUsage] = []
     @Published var sessions: [SessionRecord] = []
     @Published var alerts: [AlertRecord] = []
     // v1.41 Mobile Machine: trimmed, read-only device-health summaries (≤4).
@@ -28,6 +31,8 @@ public final class WatchAppState: ObservableObject {
     @Published var lastError: String?
     @Published var lastRefresh: Date?
     @Published var serverOnline = false
+    @Published var providerDataLoaded = false
+    @Published var usesLegacyProviderSummary = true
 
     // MARK: - Auth Flow
     @Published var otpSent = false
@@ -176,16 +181,48 @@ public final class WatchAppState: ObservableObject {
         userEmail = ""
         dashboard = nil
         providers = []
+        providerAccounts = []
         sessions = []
         alerts = []
         devices = []
+        providerDataLoaded = false
+        usesLegacyProviderSummary = true
         refreshTickCount = 0
     }
 
     // MARK: - Provider Helpers
 
-    var enabledProviderNames: [String] {
-        providers.map { $0.provider }
+    var enabledProviderNames: Set<String> {
+        ProviderAccountPresentation.visibleProviderNames(
+            accounts: providerAccounts,
+            legacyProviderNames:
+                providers.map(\.provider),
+            usesLegacyFallback:
+                usesLegacyProviderSummary
+        )
+    }
+
+    var enabledProviderAccounts: [ProviderAccountUsage] {
+        ProviderAccountPresentation.enabledAccounts(
+            providerAccounts
+        )
+    }
+
+    var providerAccountGroups: [ProviderAccountGroup] {
+        ProviderAccountPresentation.enabledGroups(
+            providerAccounts
+        )
+    }
+
+    func accounts(
+        for providerName: String
+    ) -> [ProviderAccountUsage] {
+        guard let provider = ProviderKind(rawValue: providerName) else {
+            return []
+        }
+        return providerAccountGroups.first {
+            $0.provider == provider
+        }?.accounts ?? []
     }
 
     // MARK: - Alert Actions
@@ -227,12 +264,18 @@ public final class WatchAppState: ObservableObject {
         refreshTickCount &+= 1
         do {
             async let dashTask = api.dashboard()
-            async let provTask = api.providers()
+            async let providerSummaryTask =
+                api.providerAccountSummary()
             async let sessTask = api.sessions()
             async let alertTask = api.alerts()
 
             dashboard = try await dashTask
-            providers = try await provTask
+            let providerSummary = try await providerSummaryTask
+            providers = providerSummary.providers
+            providerAccounts = providerSummary.providerAccounts
+            usesLegacyProviderSummary =
+                providerSummary.usedLegacyFallback
+            providerDataLoaded = true
             sessions = try await sessTask
             alerts = try await alertTask
             serverOnline = true
@@ -311,6 +354,9 @@ public final class WatchAppState: ObservableObject {
         }
         if !sessionManager.lastReceivedProviders.isEmpty, overwrite || providers.isEmpty {
             providers = sessionManager.lastReceivedProviders
+            providerAccounts = []
+            usesLegacyProviderSummary = true
+            providerDataLoaded = true
         }
         if !sessionManager.lastReceivedSessions.isEmpty, overwrite || sessions.isEmpty {
             sessions = sessionManager.lastReceivedSessions

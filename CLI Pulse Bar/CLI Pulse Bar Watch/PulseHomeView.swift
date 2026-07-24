@@ -22,10 +22,15 @@ struct PulseHomeView: View {
         state.providers.filter { state.enabledProviderNames.contains($0.provider) }
     }
 
-    /// The most-active provider (most tokens used today) — drives the
-    /// home "main provider quota" teaser.
-    private var mainProvider: ProviderUsage? {
-        WatchRingMath.mostActive(visibleProviders)
+    /// Uses the same pressure order as Rings and provider cards.
+    private var mainQuotaSnapshot:
+        WatchProviderQuotaSnapshot?
+    {
+        WatchRingMath.orderedQuotaSnapshots(
+            visibleProviders,
+            accounts: state.enabledProviderAccounts
+        )
+        .first
     }
 
     private var weekCost: Double {
@@ -39,6 +44,12 @@ struct PulseHomeView: View {
             LazyVStack(spacing: 10) {
                 header
                 PulseWaveform(activityLevel: activity)
+
+                if state.providerDataLoaded,
+                   visibleProviders.isEmpty,
+                   state.enabledProviderAccounts.isEmpty {
+                    providerSetupCard
+                }
 
                 if let dash = state.dashboard {
                     hero(dash)
@@ -93,6 +104,29 @@ struct PulseHomeView: View {
         }
     }
 
+    private var providerSetupCard: some View {
+        WatchCard {
+            VStack(spacing: 5) {
+                Image(systemName: "laptopcomputer")
+                    .font(.title3)
+                    .foregroundStyle(PulseTheme.accent)
+                    .accessibilityHidden(true)
+                Text(L10n.providers.noData)
+                    .font(.caption.weight(.semibold))
+                Text(L10n.watch.connectAgentsOnMac)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
     // MARK: - Hero
 
     @ViewBuilder
@@ -142,11 +176,28 @@ struct PulseHomeView: View {
 
     @ViewBuilder
     private func tightestQuota() -> some View {
-        if let p = mainProvider {
-            let color = WatchTheme.tierColor(
-                WatchRingMath.tier(usagePercent: WatchRingMath.weeklyUsagePercent(p)),
-                base: PulseTheme.providerColor(p.provider)
-            )
+        if let quotaSnapshot = mainQuotaSnapshot {
+            let p = quotaSnapshot.provider
+            let accounts = state.accounts(for: p.provider)
+            let constrainedAccount =
+                accounts.first {
+                    $0.id == quotaSnapshot.accountID
+                }
+                ?? ProviderAccountPresentation
+                    .mostConstrainedEnabledAccount(in: accounts)
+            let color: Color =
+                quotaSnapshot.isStale
+                    ? .gray
+                    : WatchTheme.tierColor(
+                        WatchRingMath.tier(
+                            usagePercent:
+                                quotaSnapshot.usagePercent
+                        ),
+                        base:
+                            PulseTheme.providerColor(
+                                p.provider
+                            )
+                    )
             Button {
                 selectedTab = .quota
             } label: {
@@ -156,16 +207,48 @@ struct PulseHomeView: View {
                         Circle()
                             .fill(PulseTheme.providerColor(p.provider))
                             .frame(width: 8, height: 8)
-                        Text(p.provider)
+                        Text(
+                            accounts.count > 1
+                                ? "\(p.provider) · "
+                                    + L10n.providers.accountsCount(
+                                        accounts.count
+                                    )
+                                : p.provider
+                        )
                             .font(.caption.weight(.medium))
                             .lineLimit(1)
+                            .minimumScaleFactor(0.75)
                         Spacer(minLength: 4)
-                        Text(L10n.watch.percentLeft(WatchRingMath.weeklyRemainingPercentInt(p)))
+                        Text(
+                            L10n.watch.percentLeft(
+                                quotaSnapshot.remainingPercent
+                            )
+                        )
                             .font(WatchTheme.monoNumber(size: 12))
                             .foregroundStyle(color)
                         Image(systemName: "chevron.right")
                             .font(.system(size: 10))
                             .foregroundStyle(.tertiary)
+                    }
+                    if accounts.count > 1,
+                       let constrainedAccount {
+                        Text(
+                            L10n.watch.tightestAccount(
+                                watchAccountLabel(
+                                    constrainedAccount,
+                                    in: accounts
+                                )
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                    if let freshnessAccount =
+                        constrainedAccount ?? accounts.first {
+                        WatchAccountFreshnessLabel(
+                            account: freshnessAccount
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

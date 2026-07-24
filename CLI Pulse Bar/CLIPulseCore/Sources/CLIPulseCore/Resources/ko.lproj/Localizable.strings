@@ -496,6 +496,9 @@
 "watch.live" = "라이브";
 "watch.percent_left" = "%d%% 남음";
 "watch.tokens_used" = "%@ 토큰";
+"watch.connect_agents_on_mac" = "먼저 Mac에서 코딩 에이전트를 연결하세요.";
+"watch.stale_updated" = "오래된 데이터 · %@ 업데이트";
+"watch.tightest_account" = "잔여량 최소: %@";
 "watch.unread" = "안 읽음";
 
 /* Watch base namespace backfill (P5) — ko previously fell back to en for these. */

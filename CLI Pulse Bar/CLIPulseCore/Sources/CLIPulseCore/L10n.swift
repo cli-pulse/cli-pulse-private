@@ -1258,6 +1258,9 @@ public enum L10n {
         // Quota countdown tier bars (5h / Weekly)
         public static func percentLeft(_ pct: Int) -> String { tr("watch.percent_left", pct) }
         public static func tokensUsed(_ value: String) -> String { tr("watch.tokens_used", value) }
+        public static var connectAgentsOnMac: String { tr("watch.connect_agents_on_mac") }
+        public static func staleUpdated(_ value: String) -> String { tr("watch.stale_updated", value) }
+        public static func tightestAccount(_ value: String) -> String { tr("watch.tightest_account", value) }
         // Alert card VoiceOver value
         public static var unread: String { tr("watch.unread") }
     }

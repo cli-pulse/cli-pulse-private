@@ -749,6 +749,9 @@
 "watch.live" = "实时";
 "watch.percent_left" = "剩余 %d%%";
 "watch.tokens_used" = "%@ tokens";
+"watch.connect_agents_on_mac" = "请先在 Mac 上连接 Coding Agent。";
+"watch.stale_updated" = "数据已过期 · 更新于 %@";
+"watch.tightest_account" = "额度最紧张：%@";
 "watch.unread" = "未读";
 "widget.alerts_summary" = "%d 条告警 • CLI Pulse";
 "widget.percent_left" = "%@ 剩余 %d%%";

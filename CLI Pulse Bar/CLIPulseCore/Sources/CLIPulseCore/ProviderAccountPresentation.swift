@@ -23,6 +23,10 @@ public struct ProviderAccountGroup:
 }
 
 public enum ProviderAccountPresentation {
+    /// Two normal 120-second refresh cycles plus one minute of tolerance.
+    /// Compact clients must stop implying real-time quota after this window.
+    public static let staleAfter: TimeInterval = 5 * 60
+
     /// Groups cloud/local account snapshots by provider using the product's
     /// canonical provider order. Named accounts sort first; unnamed accounts
     /// use their stable UUID as the deterministic fallback.
@@ -68,6 +72,50 @@ public enum ProviderAccountPresentation {
         }
     }
 
+    /// Cloud summaries can include disabled rows for management surfaces.
+    /// Read-only glance clients show active rows only.
+    public static func enabledAccounts(
+        _ accounts: [ProviderAccountUsage]
+    ) -> [ProviderAccountUsage] {
+        accounts.filter { account in
+            account.statusText
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare("disabled")
+                != .orderedSame
+        }
+    }
+
+    public static func enabledGroups(
+        _ accounts: [ProviderAccountUsage]
+    ) -> [ProviderAccountGroup] {
+        groups(enabledAccounts(accounts))
+    }
+
+    /// Legacy summaries have no account rows, so their provider names remain
+    /// visible. Once v2 is active, visibility is derived only from enabled
+    /// account groups; an all-disabled provider must not be revived by its
+    /// aggregate compatibility row.
+    public static func visibleProviderNames(
+        accounts: [ProviderAccountUsage],
+        legacyProviderNames: [String],
+        usesLegacyFallback: Bool
+    ) -> Set<String> {
+        if usesLegacyFallback {
+            return Set(legacyProviderNames)
+        }
+        return Set(
+            enabledGroups(accounts).map(\.provider.rawValue)
+        )
+    }
+
+    public static func mostConstrainedEnabledAccount(
+        in accounts: [ProviderAccountUsage]
+    ) -> ProviderAccountUsage? {
+        ProviderState.mostConstrainedAccount(
+            in: enabledAccounts(accounts)
+        )
+    }
+
     /// Quota freshness is the primary timestamp shown to mobile clients.
     /// Plan evidence is a useful fallback for older partial rows.
     public static func freshnessTimestamp(
@@ -94,6 +142,22 @@ public enum ProviderAccountPresentation {
         }
         .max { $0.date < $1.date }
         return newest?.timestamp ?? timestamps.first
+    }
+
+    /// Missing or malformed observation time is stale by definition: a
+    /// compact client cannot honestly present that snapshot as current.
+    public static func isStale(
+        _ account: ProviderAccountUsage,
+        now: Date = Date(),
+        staleAfter interval: TimeInterval = staleAfter
+    ) -> Bool {
+        guard
+            let timestamp = freshnessTimestamp(for: account),
+            let observedAt = sharedISO8601Parse(timestamp)
+        else {
+            return true
+        }
+        return now.timeIntervalSince(observedAt) > max(0, interval)
     }
 
     private static func accountComesBefore(

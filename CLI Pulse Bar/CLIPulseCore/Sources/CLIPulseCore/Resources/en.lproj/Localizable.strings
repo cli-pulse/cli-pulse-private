@@ -747,6 +747,9 @@
 "watch.live" = "Live";
 "watch.percent_left" = "%d%% left";
 "watch.tokens_used" = "%@ tokens";
+"watch.connect_agents_on_mac" = "Connect a Coding Agent on your Mac first.";
+"watch.stale_updated" = "Stale · updated %@";
+"watch.tightest_account" = "Tightest: %@";
 "watch.unread" = "Unread";
 "widget.alerts_summary" = "%d alerts • CLI Pulse";
 "widget.percent_left" = "%@ %d%% left";

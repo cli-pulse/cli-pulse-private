@@ -131,4 +131,35 @@ final class L10nEnBaseKeysTests: XCTestCase {
             )
         }
     }
+
+    func test_watchAccountFreshnessCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            let connect = L10n.watch.connectAgentsOnMac
+            let stale = L10n.watch.staleUpdated("5m")
+            let tightest = L10n.watch.tightestAccount("Work")
+
+            XCTAssertFalse(
+                connect.hasPrefix("watch."),
+                "\(locale) is missing the Mac setup guidance"
+            )
+            XCTAssertFalse(
+                stale.hasPrefix("watch."),
+                "\(locale) is missing stale-data copy"
+            )
+            XCTAssertTrue(
+                stale.contains("5m"),
+                "\(locale) stale copy lost its timestamp"
+            )
+            XCTAssertFalse(
+                tightest.hasPrefix("watch."),
+                "\(locale) is missing tightest-account copy"
+            )
+            XCTAssertTrue(
+                tightest.contains("Work"),
+                "\(locale) tightest-account copy lost its label"
+            )
+        }
+    }
 }
