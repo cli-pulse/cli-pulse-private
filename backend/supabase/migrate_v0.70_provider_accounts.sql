@@ -283,6 +283,10 @@ declare
   v_account_id uuid;
   v_provider text;
   v_existing_provider text;
+  v_existing_plan_observed_at timestamptz;
+  v_existing_quota_observed_at timestamptz;
+  v_quota_is_fresh boolean;
+  v_plan_is_fresh boolean;
   v_label text;
   v_plan_type text;
   v_plan_source text;
@@ -564,10 +568,16 @@ begin
     end if;
 
     v_existing_provider := null;
-    select provider into v_existing_provider
+    v_existing_plan_observed_at := null;
+    v_existing_quota_observed_at := null;
+    select provider, plan_observed_at
+      into v_existing_provider, v_existing_plan_observed_at
     from public.provider_accounts
     where user_id = p_user_id and id = v_account_id
     for update;
+    select observed_at into v_existing_quota_observed_at
+    from public.provider_account_quotas
+    where user_id = p_user_id and provider_account_id = v_account_id;
     if v_existing_provider is not null
        and v_existing_provider <> v_provider then
       raise exception 'Provider account does not match existing provider';
@@ -579,7 +589,18 @@ begin
       v_stored_account_count := v_stored_account_count + 1;
     end if;
 
-    insert into public.provider_accounts (
+    v_quota_is_fresh :=
+      v_existing_provider is null
+      or v_existing_quota_observed_at is null
+      or v_observed_at >= v_existing_quota_observed_at;
+    v_plan_is_fresh :=
+      v_plan_observed_at is not null
+      and (
+        v_existing_plan_observed_at is null
+        or v_plan_observed_at >= v_existing_plan_observed_at
+      );
+
+    insert into public.provider_accounts as current_account (
       user_id, id, provider, display_label, plan_type,
       plan_source, plan_confidence, plan_observed_at, status, updated_at
     ) values (
@@ -587,15 +608,34 @@ begin
       v_plan_source, v_plan_confidence, v_plan_observed_at, v_status, now()
     )
     on conflict (user_id, id) do update set
-      display_label = excluded.display_label,
-      plan_type = excluded.plan_type,
-      plan_source = excluded.plan_source,
-      plan_confidence = excluded.plan_confidence,
-      plan_observed_at = excluded.plan_observed_at,
-      status = excluded.status,
-      updated_at = now();
+      display_label = case
+        when v_quota_is_fresh then excluded.display_label
+        else current_account.display_label
+      end,
+      plan_type = case
+        when v_plan_is_fresh then excluded.plan_type
+        else current_account.plan_type
+      end,
+      plan_source = case
+        when v_plan_is_fresh then excluded.plan_source
+        else current_account.plan_source
+      end,
+      plan_confidence = case
+        when v_plan_is_fresh then excluded.plan_confidence
+        else current_account.plan_confidence
+      end,
+      plan_observed_at = case
+        when v_plan_is_fresh then excluded.plan_observed_at
+        else current_account.plan_observed_at
+      end,
+      status = case
+        when v_quota_is_fresh then excluded.status
+        else current_account.status
+      end,
+      updated_at = now()
+    where v_quota_is_fresh or v_plan_is_fresh;
 
-    insert into public.provider_account_quotas (
+    insert into public.provider_account_quotas as current_quota (
       user_id, provider_account_id, provider, remaining, quota,
       reset_time, tiers, observed_at, source_device_id, updated_at
     ) values (
@@ -611,7 +651,8 @@ begin
       tiers = excluded.tiers,
       observed_at = excluded.observed_at,
       source_device_id = excluded.source_device_id,
-      updated_at = now();
+      updated_at = now()
+    where excluded.observed_at >= current_quota.observed_at;
 
     if not (v_provider = any(v_touched_providers)) then
       v_touched_providers := array_append(v_touched_providers, v_provider);

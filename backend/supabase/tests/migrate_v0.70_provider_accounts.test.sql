@@ -29,6 +29,7 @@ begin;
 \set accountHelper '''47000000-7000-4700-8700-700000000004'''
 \set accountB '''57000000-7000-4700-8700-700000000005'''
 \set accountBig '''67000000-7000-4700-8700-700000000006'''
+\set accountClock '''77000000-7000-4700-8700-700000000007'''
 
 insert into auth.users (id, email) values
   (:userA, 'owner@example.test'),
@@ -183,6 +184,176 @@ begin
   if v_remaining <> 3000000000 or v_quota <> 4000000000 then
     raise exception 'FAIL[bigint compat]: expected 3000000000/4000000000, got %/%',
       v_remaining, v_quota;
+  end if;
+end $$;
+
+-- Out-of-order completion must be monotonic. Once a newer account snapshot
+-- lands, a delayed older request cannot roll back quota freshness or metadata.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA1,
+    'provider', 'Claude',
+    'account_label', 'Fresh label',
+    'plan_type', 'Fresh plan',
+    'plan_source', 'providerAPI',
+    'plan_confidence', 'high',
+    'plan_observed_at', '2026-07-24T02:59:00Z',
+    'remaining', 10,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T03:00:00Z'
+  )
+));
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA1,
+    'provider', 'Claude',
+    'account_label', 'Stale label',
+    'plan_type', 'Stale plan',
+    'plan_source', 'unknown',
+    'plan_confidence', 'low',
+    'plan_observed_at', '2026-07-24T01:59:00Z',
+    'remaining', 90,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T02:00:00Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_label text;
+  v_plan text;
+  v_remaining bigint;
+  v_observed_at timestamptz;
+begin
+  select display_label, plan_type into v_label, v_plan
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '17000000-7000-4700-8700-700000000001';
+  select remaining, observed_at into v_remaining, v_observed_at
+  from public.provider_account_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider_account_id = '17000000-7000-4700-8700-700000000001';
+
+  if v_label is distinct from 'Fresh label'
+     or v_plan is distinct from 'Fresh plan'
+     or v_remaining is distinct from 10
+     or v_observed_at is distinct from
+       '2026-07-24T03:00:00Z'::timestamptz then
+    raise exception
+      'FAIL[monotonic freshness]: label=% plan=% remaining=% observed=%',
+      v_label, v_plan, v_remaining, v_observed_at;
+  end if;
+end $$;
+
+-- Quota freshness and plan evidence are independent clocks. A newer quota
+-- snapshot without fresh plan evidence may update label/status/quota but must
+-- preserve the existing plan. Conversely, an older quota snapshot carrying
+-- newer plan evidence must update only the plan fields.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountClock,
+    'provider', 'ClockTest',
+    'account_label', 'Clock baseline',
+    'plan_type', 'Plan baseline',
+    'plan_source', 'providerAPI',
+    'plan_confidence', 'medium',
+    'plan_observed_at', '2026-07-24T02:59:00Z',
+    'remaining', 10,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T03:00:00Z'
+  )
+));
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountClock,
+    'provider', 'ClockTest',
+    'account_label', 'Quota-new label',
+    'plan_type', 'Unclocked plan must not win',
+    'plan_source', 'unknown',
+    'plan_confidence', 'low',
+    'remaining', 5,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T04:00:00Z'
+  )
+));
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountClock,
+    'provider', 'ClockTest',
+    'account_label', 'Quota-old label must not win',
+    'plan_type', 'Plan-new independent',
+    'plan_source', 'userConfirmed',
+    'plan_confidence', 'high',
+    'plan_observed_at', '2026-07-24T05:00:00Z',
+    'remaining', 95,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T02:30:00Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_label text;
+  v_plan text;
+  v_plan_source text;
+  v_plan_confidence text;
+  v_plan_observed_at timestamptz;
+  v_remaining bigint;
+  v_observed_at timestamptz;
+begin
+  select
+    display_label,
+    plan_type,
+    plan_source,
+    plan_confidence,
+    plan_observed_at
+  into
+    v_label,
+    v_plan,
+    v_plan_source,
+    v_plan_confidence,
+    v_plan_observed_at
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '77000000-7000-4700-8700-700000000007';
+
+  select remaining, observed_at into v_remaining, v_observed_at
+  from public.provider_account_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider_account_id = '77000000-7000-4700-8700-700000000007';
+
+  if v_label is distinct from 'Quota-new label'
+     or v_plan is distinct from 'Plan-new independent'
+     or v_plan_source is distinct from 'userConfirmed'
+     or v_plan_confidence is distinct from 'high'
+     or v_plan_observed_at is distinct from
+       '2026-07-24T05:00:00Z'::timestamptz
+     or v_remaining is distinct from 5
+     or v_observed_at is distinct from
+       '2026-07-24T04:00:00Z'::timestamptz then
+    raise exception
+      'FAIL[independent clocks]: label=% plan=% source=% confidence=% plan_observed=% remaining=% quota_observed=%',
+      v_label, v_plan, v_plan_source, v_plan_confidence,
+      v_plan_observed_at, v_remaining, v_observed_at;
   end if;
 end $$;
 
@@ -668,9 +839,9 @@ begin
   from public.provider_quotas
   where user_id = 'a7000000-7000-4700-8700-700000000001'
     and provider = 'Claude';
-  if v_remaining is distinct from 80 or v_plan is distinct from 'Max 20x' then
+  if v_remaining is distinct from 10 or v_plan is distinct from 'Fresh plan' then
     raise exception
-      'FAIL[delete projection]: expected 80/Max 20x, got %/%',
+      'FAIL[delete projection]: expected 10/Fresh plan, got %/%',
       v_remaining, v_plan;
   end if;
 end $$;

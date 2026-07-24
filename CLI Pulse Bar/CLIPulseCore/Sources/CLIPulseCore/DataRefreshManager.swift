@@ -82,7 +82,99 @@ internal final class DataRefreshManager {
         let setNeedsFolderAccess: (Bool) async -> Void
     }
 
+    #if os(macOS)
+    /// Narrow runtime seam for the local collector/sync portion of a refresh.
+    /// Production uses the live implementation below; focused refresh tests
+    /// inject metadata-only results so they never touch Keychain, bookmarks,
+    /// process enumeration, user files, or the network beyond their URL stub.
+    struct LocalRefreshRuntime: Sendable {
+        let prepareCredentials: @MainActor @Sendable () -> Void
+        let collectAccounts:
+            @Sendable ([ProviderConfig]) async
+                -> [AccountScopedCollectorResult]
+        let readHelperSnapshot:
+            @Sendable ([ProviderConfig]) -> HelperCollectorSnapshot
+        let scanLocal: @Sendable () async -> LocalScanResult
+        let scanCostUsage: @Sendable () async -> CostUsageScanResult
+        let needsFolderAccessNudge:
+            @MainActor @Sendable (_ scanIsEmpty: Bool) -> Bool
+        let syncLegacyQuotas:
+            @Sendable (
+                _ results: [CollectorResult],
+                _ authorizationLease: APIAuthorizationLease
+            ) async -> Void
+        let syncDailyUsage:
+            @Sendable (
+                _ scanResult: CostUsageScanResult,
+                _ authorizationLease: APIAuthorizationLease
+            ) async -> Void
+        let syncAccountQuotas:
+            @Sendable (
+                _ accounts: [ProviderAccountUsage],
+                _ authorizationLease: APIAuthorizationLease
+            ) async -> Void
+
+        static func live(api: APIClient) -> LocalRefreshRuntime {
+            LocalRefreshRuntime(
+                prepareCredentials: {
+                    CredentialBridge.syncCredentialsToAppGroup()
+                },
+                collectAccounts: { configs in
+                    await DataRefreshManager.runCollectors(
+                        providerConfigs: configs,
+                        collectorResolver: { config in
+                            CollectorRegistry.collector(
+                                for: config.kind,
+                                config: config
+                            )
+                        }
+                    )
+                },
+                readHelperSnapshot: { configs in
+                    DataRefreshManager.readHelperCollectorSnapshot(
+                        providerConfigs: configs
+                    )
+                },
+                scanLocal: {
+                    await Task.detached {
+                        LocalScanner.shared.scan()
+                    }.value
+                },
+                scanCostUsage: {
+                    await CostUsageScanner.scanAsync()
+                },
+                needsFolderAccessNudge: { scanIsEmpty in
+                    DataRefreshManager.needsFolderAccessNudge(
+                        scanIsEmpty: scanIsEmpty
+                    )
+                },
+                syncLegacyQuotas: { results, lease in
+                    await api.syncProviderQuotas(
+                        results,
+                        authorizationLease: lease
+                    )
+                },
+                syncDailyUsage: { scanResult, lease in
+                    await api.syncDailyUsage(
+                        scanResult,
+                        authorizationLease: lease
+                    )
+                },
+                syncAccountQuotas: { accounts, lease in
+                    await api.syncProviderAccountQuotas(
+                        accounts,
+                        authorizationLease: lease
+                    )
+                }
+            )
+        }
+    }
+    #endif
+
     private let api: APIClient
+    #if os(macOS)
+    private let localRuntime: LocalRefreshRuntime
+    #endif
     private var refreshTimer: Timer?
     private var refreshTask: Task<Void, Never>?
 
@@ -135,9 +227,19 @@ internal final class DataRefreshManager {
     private var helperSyncObserver: NSObjectProtocol?
     #endif
 
+    #if os(macOS)
+    init(
+        api: APIClient,
+        localRuntime: LocalRefreshRuntime? = nil
+    ) {
+        self.api = api
+        self.localRuntime = localRuntime ?? .live(api: api)
+    }
+    #else
     init(api: APIClient) {
         self.api = api
     }
+    #endif
 
     func refreshAll(context: Context, callbacks: Callbacks) async {
         // iter17 (2026-04-29): routing is now centralised in
@@ -187,6 +289,7 @@ internal final class DataRefreshManager {
         guard !context.isLoading else { return }
         callbacks.setLoading(true)
         callbacks.setLastError(nil)
+        var didFinishLoading = false
 
         do {
             callbacks.setServerOnline(try await api.health())
@@ -202,25 +305,41 @@ internal final class DataRefreshManager {
             return
         }
 
+        guard let authorizationLease = await api.authorizationLease() else {
+            callbacks.setLoading(false)
+            return
+        }
+
         do {
             async let dashboard = api.dashboard()
-            async let providers = api.providers()
+            async let providerSummary = api.providerAccountSummary()
             async let sessions = api.sessions()
             async let devices = api.devices()
             async let alerts = api.alerts()
 
-            let (dashboardData, providerData, sessionData, deviceData, alertData) = try await (
-                dashboard, providers, sessions, devices, alerts
+            let (
+                dashboardData,
+                providerSummaryData,
+                sessionData,
+                deviceData,
+                alertData
+            ) = try await (
+                dashboard, providerSummary, sessions, devices, alerts
             )
+            let providerData = providerSummaryData.providers
+            let cloudProviderAccounts =
+                providerSummaryData.providerAccounts
 
             #if os(macOS)
             // Sync credentials from bookmarked directories to app group
             // so both main app collectors and helper can use them
-            CredentialBridge.syncCredentialsToAppGroup()
+            localRuntime.prepareCredentials()
 
-            let mainAccountResults = await runCollectors(providerConfigs: context.providerConfigs)
-            let helperSnapshot = Self.readHelperCollectorSnapshot(
-                providerConfigs: context.providerConfigs
+            let mainAccountResults = await localRuntime.collectAccounts(
+                context.providerConfigs
+            )
+            let helperSnapshot = localRuntime.readHelperSnapshot(
+                context.providerConfigs
             )
             let collectorSources = Self.combineCollectorSources(
                 mainAccountResults: mainAccountResults,
@@ -228,7 +347,13 @@ internal final class DataRefreshManager {
             )
             let accountResults = collectorSources.accountResults
             let localResults = collectorSources.providerResults
-            let providerAccounts = Self.accountUsages(from: accountResults)
+            let localProviderAccounts = Self.accountUsages(
+                from: accountResults
+            )
+            let providerAccounts = Self.mergeProviderAccounts(
+                cloud: cloudProviderAccounts,
+                local: localProviderAccounts
+            )
 
             // NOTE: intentionally do NOT dedup localResults here. The in-order
             // merge inside `mergeCloudWithLocal` preserves metadata via
@@ -247,25 +372,17 @@ internal final class DataRefreshManager {
                 local: localResults
             )
 
-            // Push locally-collected quotas to Supabase so other devices see fresh data
-            if !localResults.isEmpty {
-                Task { await api.syncProviderQuotas(localResults) }
-            }
-
             // Scan local JSONL logs for precise token counts and costs.
             // v1.9.4: uses the sandbox-aware entry point so bookmarks are
             // resolved on the main actor before the enumerator runs.
-            let costScanData = await CostUsageScanner.scanAsync()
+            let costScanData = await localRuntime.scanCostUsage()
             let scanResult: CostUsageScanResult? = costScanData.entries.isEmpty ? nil : costScanData
             // Surface the "grant folder access" banner when a scan came back
             // empty AND at least one core scan root still lacks a bookmark.
-            let needsAccess = Self.needsFolderAccessNudge(scanIsEmpty: scanResult == nil)
+            let needsAccess = localRuntime.needsFolderAccessNudge(
+                scanResult == nil
+            )
             await callbacks.setNeedsFolderAccess(needsAccess)
-
-            // Sync completed days to Supabase (non-blocking, best-effort)
-            if let scanResult {
-                Task { await self.api.syncDailyUsage(scanResult) }
-            }
 
             // v1.40 PR-4: fold the scan into the durable ≥1-year usage archive
             // (Application Support), and kick the one-time 365-day backfill —
@@ -293,7 +410,7 @@ internal final class DataRefreshManager {
             let costAdjustedProviders = Self.applyCostScan(to: resolvedProviders, scan: scanResult)
             #else
             let costAdjustedProviders = providerData
-            let providerAccounts: [ProviderAccountUsage] = []
+            let providerAccounts = cloudProviderAccounts
             let supplementedProviders: Set<String> = []
             let scanResult: CostUsageScanResult? = nil
             #endif
@@ -359,31 +476,6 @@ internal final class DataRefreshManager {
                 }
                 return true
             }
-            if context.notificationsEnabled {
-                for alert in newAlerts {
-                    callbacks.sendNotification(alert)
-                }
-            }
-            updatePreviousAlertIDs(Set(augmentedAlerts.map(\.id)))
-            // Persist the suppression keys that are still ACTIVE in this cycle's
-            // feed. Intentionally exclude resolved alerts — a resolved row can
-            // linger in the feed for weeks (see `alerts` retention), and if we
-            // kept its key we'd suppress a fresh alert that happens to share the
-            // same suppression_key (e.g. same project re-exceeding budget). Keys
-            // drop from the set when a group stops appearing OR all its alerts
-            // get resolved, so a legit re-occurrence fires a notification again.
-            updatePreviousSuppressionKeys(
-                Set(augmentedAlerts
-                    .filter { !$0.is_resolved }
-                    .compactMap { $0.suppression_key }
-                    .filter { !$0.isEmpty })
-            )
-
-            // Evaluate budget alerts server-side (non-blocking, best-effort)
-            Task {
-                _ = try? await api.evaluateBudgetAlerts()
-            }
-
             // iter22 + iter23: drop stale/artifact cloud rows and
             // merge fresh local JSONL synthesized sessions so paired
             // macOS users see Codex/Claude activity even on the
@@ -456,6 +548,69 @@ internal final class DataRefreshManager {
                 )
             }()
 
+            // Every awaited read/collector callback above can yield while the
+            // user signs out or switches accounts. Authentication still being
+            // non-nil is insufficient: it may now belong to a different user.
+            // Revalidate the exact lease that authorized this refresh before
+            // any notification, persisted alert-dedupe state, or UI payload is
+            // committed.
+            guard
+                !Task.isCancelled,
+                callbacks.isAuthenticated(),
+                await api.isAuthorizationLeaseCurrent(authorizationLease)
+            else {
+                callbacks.setLoading(false)
+                return
+            }
+
+            if context.notificationsEnabled {
+                for alert in newAlerts {
+                    callbacks.sendNotification(alert)
+                }
+            }
+            updatePreviousAlertIDs(Set(augmentedAlerts.map(\.id)))
+            // Persist the suppression keys that are still ACTIVE in this
+            // cycle's feed. Resolved alerts are intentionally excluded so a
+            // legitimate later recurrence can notify again.
+            updatePreviousSuppressionKeys(
+                Set(augmentedAlerts
+                    .filter { !$0.is_resolved }
+                    .compactMap { $0.suppression_key }
+                    .filter { !$0.isEmpty })
+            )
+
+            // Evaluate budget alerts server-side as a structured best-effort
+            // child. UI/loading still finish first, but the refresh cannot
+            // leave a late user-scoped request running after its lifecycle.
+            async let budgetAlertEvaluation: Void = {
+                _ = try? await api.evaluateBudgetAlerts(
+                    authorizationLease: authorizationLease
+                )
+            }()
+
+            #if os(macOS)
+            // Quota writes remain structured children and lease-bound, but
+            // they are best-effort: payload visibility and loading completion
+            // must not wait for a slow Supabase write.
+            async let legacyProviderSync: Void =
+                localRuntime.syncLegacyQuotas(
+                    localResults,
+                    authorizationLease
+                )
+            async let providerAccountSync: Void =
+                localRuntime.syncAccountQuotas(
+                    localProviderAccounts,
+                    authorizationLease
+                )
+            async let dailyUsageSync: Void = {
+                guard let scanResult else { return }
+                await localRuntime.syncDailyUsage(
+                    scanResult,
+                    authorizationLease
+                )
+            }()
+            #endif
+
             callbacks.applyPayload(
                 RefreshPayload(
                     dashboard: adjustedDashboard,
@@ -472,13 +627,39 @@ internal final class DataRefreshManager {
                 )
             )
             callbacks.afterRefresh()
+            callbacks.setLoading(false)
+            didFinishLoading = true
+
+            #if os(macOS)
+            _ = await (
+                legacyProviderSync,
+                providerAccountSync,
+                dailyUsageSync,
+                budgetAlertEvaluation
+            )
+            #else
+            _ = await budgetAlertEvaluation
+            #endif
         } catch let error as APIError where error == .tokenExpired {
+            guard
+                !Task.isCancelled,
+                callbacks.isAuthenticated(),
+                await api.consumeTokenExpiry(for: authorizationLease)
+            else {
+                if !didFinishLoading {
+                    callbacks.setLoading(false)
+                    didFinishLoading = true
+                }
+                return
+            }
             callbacks.handleTokenExpired(error.localizedDescription)
         } catch {
             callbacks.setLastError(error.localizedDescription)
         }
 
-        callbacks.setLoading(false)
+        if !didFinishLoading {
+            callbacks.setLoading(false)
+        }
     }
 
     func startRefreshLoop(interval: Int, onRefreshRequested: @escaping @MainActor () async -> Void) {
@@ -585,10 +766,19 @@ internal final class DataRefreshManager {
         callbacks.setLoading(true)
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
+        let authorizationLease = context.isAuthenticated
+            ? await api.authorizationLease()
+            : nil
+        if context.isAuthenticated, authorizationLease == nil {
+            callbacks.setLoading(false)
+            return
+        }
 
-        let mainAccountResults = await runCollectors(providerConfigs: context.providerConfigs)
-        let helperSnapshot = Self.readHelperCollectorSnapshot(
-            providerConfigs: context.providerConfigs
+        let mainAccountResults = await localRuntime.collectAccounts(
+            context.providerConfigs
+        )
+        let helperSnapshot = localRuntime.readHelperSnapshot(
+            context.providerConfigs
         )
         let collectorSources = Self.combineCollectorSources(
             mainAccountResults: mainAccountResults,
@@ -597,13 +787,15 @@ internal final class DataRefreshManager {
         let accountResults = collectorSources.accountResults
         let collectorResults = collectorSources.providerResults
         let providerAccounts = Self.accountUsages(from: accountResults)
-        let scanResult = await Task.detached { LocalScanner.shared.scan() }.value
+        let scanResult = await localRuntime.scanLocal()
 
         // Scan local JSONL logs for precise token counts and costs.
         // v1.9.4: sandbox-aware (resolves bookmarks on main actor first).
-        let costScanData = await CostUsageScanner.scanAsync()
+        let costScanData = await localRuntime.scanCostUsage()
         let costScanResult: CostUsageScanResult? = costScanData.entries.isEmpty ? nil : costScanData
-        let needsAccess = Self.needsFolderAccessNudge(scanIsEmpty: costScanResult == nil)
+        let needsAccess = localRuntime.needsFolderAccessNudge(
+            costScanResult == nil
+        )
         await callbacks.setNeedsFolderAccess(needsAccess)
 
         // v1.40 PR-4: populate the durable usage archive for local-mode users
@@ -644,24 +836,6 @@ internal final class DataRefreshManager {
         // tab is empty or populated — printed every refresh tick so
         // manual reproduction is debuggable without code changes.
         refreshLogger.info("refreshLocal sessions: live=\(scanResult.sessions.count) candidates=\(costScanData.activeSessionCandidates.count) resolved=\(resolvedSessions.count) final=\(synthesizedSessions.count)")
-
-        // iter17 (2026-04-29): the cloud sync tasks below need a valid
-        // Supabase session — without one, every POST /rest/v1/... 401s
-        // and the resulting `lastError` ("HTTP 401: ...") would surface
-        // to the user as a noisy red banner on every refresh tick. Gate
-        // both Tasks on the authenticated callback so unauthenticated
-        // local-mode users never hit the cloud. Authenticated unpaired
-        // users still upload as before.
-        if callbacks.isAuthenticated() {
-            // Sync completed days to Supabase (non-blocking, best-effort)
-            if let costScanResult {
-                Task { await self.api.syncDailyUsage(costScanResult) }
-            }
-            // Push locally-collected quotas to Supabase (even in unpaired/local mode)
-            if !collectorResults.isEmpty {
-                Task { await api.syncProviderQuotas(collectorResults) }
-            }
-        }
 
         // iter17: previously bailed here when unauthenticated. Now we
         // proceed to apply the local payload as long as the caller
@@ -735,29 +909,80 @@ internal final class DataRefreshManager {
             alert_summary: AlertSummaryDTO(critical: 0, warning: 0, info: 0)
         )
 
+        guard !Task.isCancelled else {
+            callbacks.setLoading(false)
+            return
+        }
+        if context.isAuthenticated {
+            guard
+                callbacks.isAuthenticated(),
+                let authorizationLease,
+                await api.isAuthorizationLeaseCurrent(authorizationLease)
+            else {
+                callbacks.setLoading(false)
+                return
+            }
+        } else {
+            guard context.isLocalMode else {
+                callbacks.setLoading(false)
+                return
+            }
+        }
+
+        let payload = RefreshPayload(
+            dashboard: dashboard,
+            providers: providers,
+            providerAccounts: providerAccounts,
+            sessions: synthesizedSessions,
+            devices: devices,
+            alerts: alerts,
+            locallySupplementedProviders: [],
+            tierLimitWarning: nil,
+            lastRefresh: Date(),
+            isLocalMode: true,
+            costUsageScanResult: costScanResult
+        )
+
         // v1.10.1 P2 fix (Gemini-caught): persist the IDs of alerts that are
         // actually in this local-mode refresh, NOT an empty set. Previously
         // this reset the dedupe cache, so a brief local-mode detour would
         // wipe UserDefaults and make the NEXT cloud refresh re-fire every
         // unresolved alert on cold launch or mode switch.
-        updatePreviousAlertIDs(Set(alerts.map(\.id)))
-        callbacks.applyPayload(
-            RefreshPayload(
-                dashboard: dashboard,
-                providers: providers,
-                providerAccounts: providerAccounts,
-                sessions: synthesizedSessions,
-                devices: devices,
-                alerts: alerts,
-                locallySupplementedProviders: [],
-                tierLimitWarning: nil,
-                lastRefresh: Date(),
-                isLocalMode: true,
-                costUsageScanResult: costScanResult
-            )
-        )
-        callbacks.afterRefresh()
-        callbacks.setLoading(false)
+        let runtime = localRuntime
+        await withTaskGroup(of: Void.self) { group in
+            if let authorizationLease {
+                // Authenticated local-mode refreshes may upload, but payload
+                // visibility and loading completion stay independent of those
+                // best-effort writes.
+                if let costScanResult {
+                    group.addTask {
+                        await runtime.syncDailyUsage(
+                            costScanResult,
+                            authorizationLease
+                        )
+                    }
+                }
+                group.addTask {
+                    await runtime.syncLegacyQuotas(
+                        collectorResults,
+                        authorizationLease
+                    )
+                }
+                group.addTask {
+                    await runtime.syncAccountQuotas(
+                        providerAccounts,
+                        authorizationLease
+                    )
+                }
+            }
+
+            updatePreviousAlertIDs(Set(alerts.map(\.id)))
+            callbacks.applyPayload(payload)
+            callbacks.afterRefresh()
+            callbacks.setLoading(false)
+            // Leaving the structured group waits for optional writes only
+            // after every user-visible refresh side effect has completed.
+        }
     }
 
     func runCollectors(providerConfigs: [ProviderConfig]) async -> [AccountScopedCollectorResult] {
@@ -888,6 +1113,106 @@ internal final class DataRefreshManager {
                     statusText: usage.status_text
                 )
             }
+    }
+
+    /// Merge account snapshots by stable UUID. Cloud rows retain accounts that
+    /// are not configured on this Mac; a fresh local observation replaces only
+    /// its matching account. Provider-level costs never enter this collection.
+    nonisolated static func mergeProviderAccounts(
+        cloud: [ProviderAccountUsage],
+        local: [ProviderAccountUsage]
+    ) -> [ProviderAccountUsage] {
+        var byID: [UUID: ProviderAccountUsage] = [:]
+        for account in cloud {
+            byID[account.id] = account
+        }
+        for account in local {
+            if let existing = byID[account.id] {
+                byID[account.id] = mergedProviderAccount(
+                    existing: existing,
+                    candidate: account
+                )
+            } else {
+                byID[account.id] = account
+            }
+        }
+        return byID.values.sorted { lhs, rhs in
+            if lhs.provider.rawValue != rhs.provider.rawValue {
+                return lhs.provider.rawValue < rhs.provider.rawValue
+            }
+            let lhsLabel = lhs.accountLabel ?? ""
+            let rhsLabel = rhs.accountLabel ?? ""
+            if lhsLabel != rhsLabel {
+                return lhsLabel.localizedCaseInsensitiveCompare(rhsLabel)
+                    == .orderedAscending
+            }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+
+    /// Quota/status and plan evidence have independent observation clocks.
+    /// Selecting a whole row by quota freshness would either erase a newer
+    /// cloud plan with an unobserved local plan or discard a newer local plan
+    /// merely because its quota sample is older.
+    private nonisolated static func mergedProviderAccount(
+        existing: ProviderAccountUsage,
+        candidate: ProviderAccountUsage
+    ) -> ProviderAccountUsage {
+        let quotaWinner = accountSnapshot(
+            candidate,
+            isAtLeastAsFreshAs: existing
+        ) ? candidate : existing
+        let planWinner = planEvidence(
+            candidate.planEvidence,
+            isAtLeastAsFreshAs: existing.planEvidence
+        ) ? candidate.planEvidence : existing.planEvidence
+
+        return ProviderAccountUsage(
+            id: quotaWinner.id,
+            provider: quotaWinner.provider,
+            accountLabel: quotaWinner.accountLabel,
+            planEvidence: planWinner,
+            quota: quotaWinner.quota,
+            remaining: quotaWinner.remaining,
+            tiers: quotaWinner.tiers,
+            resetTime: quotaWinner.resetTime,
+            observedAt: quotaWinner.observedAt,
+            sourceDeviceID: quotaWinner.sourceDeviceID,
+            statusText: quotaWinner.statusText
+        )
+    }
+
+    private nonisolated static func planEvidence(
+        _ candidate: ProviderPlanEvidence,
+        isAtLeastAsFreshAs existing: ProviderPlanEvidence
+    ) -> Bool {
+        guard let candidateDate = candidate.observedAt else {
+            return false
+        }
+        guard let existingDate = existing.observedAt else {
+            return true
+        }
+        return candidateDate >= existingDate
+    }
+
+    private nonisolated static func accountSnapshot(
+        _ candidate: ProviderAccountUsage,
+        isAtLeastAsFreshAs existing: ProviderAccountUsage
+    ) -> Bool {
+        let candidateDate = candidate.observedAt.flatMap(sharedISO8601Parse)
+        let existingDate = existing.observedAt.flatMap(sharedISO8601Parse)
+        switch (candidateDate, existingDate) {
+        case let (candidate?, existing?):
+            return candidate >= existing
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        case (nil, nil):
+            // With no comparable freshness evidence, preserve the historical
+            // local-wins behavior for a just-collected local observation.
+            return true
+        }
     }
 
     /// Produces one deterministic legacy/provider-level row per ProviderKind.
