@@ -3,6 +3,27 @@ import XCTest
 @testable import CLIPulseCore
 
 final class ClaudeCollectorTests: XCTestCase {
+    private var originalOwnerDefaults: UserDefaults!
+    private var ownerDefaults: UserDefaults!
+    private var ownerSuiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        ownerSuiteName = "ClaudeCollectorTests-\(UUID().uuidString)"
+        ownerDefaults = UserDefaults(suiteName: ownerSuiteName)
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        ProviderSharedCredentialOwner.defaults = ownerDefaults
+    }
+
+    override func tearDown() {
+        ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        ownerDefaults = nil
+        ownerSuiteName = nil
+        originalOwnerDefaults = nil
+        super.tearDown()
+    }
 
     // MARK: - OAuth API parsing
 

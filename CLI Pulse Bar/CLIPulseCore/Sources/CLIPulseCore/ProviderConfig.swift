@@ -14,6 +14,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     public var cookieSource: CookieSource?
     public var accountLabel: String?
     public var planOverride: String?
+    /// When true, this account must use only its account-scoped credentials.
+    /// Machine-global CLI/helper/environment credentials remain available to
+    /// legacy configs where the field is absent.
+    public var sharedCredentialFallbackDisabled: Bool?
     /// v1.23.0 G3 (CodexBar parity, dark/opt-in): when true, the Gemini
     /// collector may fall back to the vendored `GeminiStatusProbe`
     /// (Gemini-CLI-package OAuth path) *only* when its own
@@ -32,6 +36,7 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     // Only encode non-sensitive fields to UserDefaults
     private enum CodingKeys: String, CodingKey {
         case accountID, kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel, planOverride
+        case sharedCredentialFallbackDisabled
         case geminiCliProbeFallback
     }
 
@@ -46,6 +51,7 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         manualCookieHeader: String? = nil,
         accountLabel: String? = nil,
         planOverride: String? = nil,
+        sharedCredentialFallbackDisabled: Bool? = nil,
         geminiCliProbeFallback: Bool? = nil
     ) {
         self.accountID = accountID
@@ -58,6 +64,8 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         self.manualCookieHeader = manualCookieHeader
         self.accountLabel = accountLabel
         self.planOverride = planOverride
+        self.sharedCredentialFallbackDisabled =
+            sharedCredentialFallbackDisabled
         self.geminiCliProbeFallback = geminiCliProbeFallback
     }
 

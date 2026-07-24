@@ -934,7 +934,10 @@ public final class AppState: ObservableObject {
 
     public func toggleProvider(_ kind: ProviderKind) {
         guard let idx = providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
-        setProviderEnabled(kind, isEnabled: !providerConfigs[idx].isEnabled)
+        setProviderAccountEnabled(
+            providerConfigs[idx].accountID,
+            isEnabled: !providerConfigs[idx].isEnabled
+        )
     }
 
     /// Explicitly set a provider's enabled flag. v1.9.3: the Toggle binding
@@ -942,11 +945,36 @@ public final class AppState: ObservableObject {
     /// (not a blind flip) is applied even under rapid-tap / SwiftUI reconciliation.
     public func setProviderEnabled(_ kind: ProviderKind, isEnabled: Bool) {
         guard let idx = providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
-        if providerConfigs[idx].isEnabled == isEnabled { return }
+        setProviderAccountEnabled(
+            providerConfigs[idx].accountID,
+            isEnabled: isEnabled
+        )
+    }
+
+    /// Enable or disable one stable provider account. Subscription limits are
+    /// provider-kind limits: enabling a second account for an already-enabled
+    /// provider does not consume another provider slot.
+    public func setProviderAccountEnabled(
+        _ accountID: UUID,
+        isEnabled: Bool
+    ) {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return
+        }
+        if config.isEnabled == isEnabled { return }
         if isEnabled {
             let maxProviders = subscriptionManager.maxProviders
-            if maxProviders >= 0 {
-                let currentEnabled = providerConfigs.filter(\.isEnabled).count
+            let kindAlreadyEnabled = providerConfigs.contains {
+                $0.kind == config.kind
+                    && $0.isEnabled
+                    && $0.accountID != accountID
+            }
+            if maxProviders >= 0 && !kindAlreadyEnabled {
+                let currentEnabled = Set(
+                    providerConfigs.filter(\.isEnabled).map(\.kind)
+                ).count
                 if currentEnabled >= maxProviders {
                     // Same "CLI Pulse" disambiguation as the periodic
                     // tier-limit banner — see DataRefreshManager
@@ -961,12 +989,100 @@ public final class AppState: ObservableObject {
                 }
             }
         }
-        providerConfigs[idx].isEnabled = isEnabled
-        saveProviderConfigs()
+        guard providerState.setProviderAccountEnabled(
+            accountID,
+            isEnabled: isEnabled
+        ) else {
+            return
+        }
+        saveProviderConfigMetadata()
         // v1.9.3: rebuild provider details synchronously so the SwiftUI
         // Toggle bound to `detail.config.isEnabled` flips in the same frame
         // instead of waiting for the next data refresh cycle.
         buildProviderDetails()
+    }
+
+    @discardableResult
+    public func addProviderAccount(
+        kind: ProviderKind,
+        accountID: UUID = UUID()
+    ) -> UUID {
+        let createdID = providerState.addProviderAccount(
+            kind: kind,
+            accountID: accountID
+        )
+        buildProviderDetails()
+        return createdID
+    }
+
+    public func commitProviderAccountDraft(
+        _ accountID: UUID
+    ) {
+        _ = providerState.commitProviderAccountDraft(accountID)
+        saveProviderConfigMetadata()
+        buildProviderDetails()
+    }
+
+    public func cancelProviderAccountDraft(
+        _ accountID: UUID
+    ) {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return
+        }
+        guard providerState.cancelProviderAccountDraft(
+            accountID
+        ) else {
+            return
+        }
+        config.deleteSecrets()
+        #if os(macOS)
+        if config.kind == .gemini {
+            GeminiOAuthManager.shared.clearTokens(
+                accountID: accountID
+            )
+        }
+        #endif
+        ProviderSharedCredentialOwner.release(
+            kind: config.kind,
+            accountID: accountID
+        )
+        saveProviderConfigMetadata()
+        buildProviderDetails()
+    }
+
+    /// Delete exactly one local CLIPulse account configuration and its
+    /// account-scoped Keychain entries. This does not cancel or modify the
+    /// external provider subscription.
+    @discardableResult
+    public func removeProviderAccount(
+        _ accountID: UUID
+    ) -> Bool {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+
+        config.deleteSecrets()
+        #if os(macOS)
+        if config.kind == .gemini {
+            GeminiOAuthManager.shared.clearTokens(
+                accountID: accountID
+            )
+        }
+        #endif
+        ProviderSharedCredentialOwner.release(
+            kind: config.kind,
+            accountID: accountID
+        )
+        guard providerState.removeProviderAccount(accountID) != nil else {
+            return false
+        }
+        saveProviderConfigMetadata()
+        buildProviderDetails()
+        return true
     }
 
     /// Auto-disables extra providers when a free-tier user has more enabled
@@ -1043,50 +1159,51 @@ public final class AppState: ObservableObject {
         // ones first.
         let enabledConfigs = providerConfigs.filter(\.isEnabled)
 
-        // Rank the enabled configs.
+        // Rank distinct provider kinds. Multiple accounts for one provider
+        // consume one plan slot and must rise/fall together during migration.
         let usageByKind: [String: ProviderUsage] = Dictionary(
             uniqueKeysWithValues: providers.map { ($0.provider, $0) }
         )
         let fallbackOrder: [ProviderKind] = Array(ProviderKind.allCases.prefix(maxProviders))
 
-        func rank(_ config: ProviderConfig) -> Int {
-            if let u = usageByKind[config.kind.rawValue],
+        func rank(_ kind: ProviderKind) -> Int {
+            if let u = usageByKind[kind.rawValue],
                u.today_usage > 0 || u.week_usage > 0 {
                 return 0  // tier 1 — recent usage
             }
-            if config.hasCredentials {
+            if enabledConfigs.contains(where: { $0.kind == kind && $0.hasCredentials }) {
                 return 1  // tier 2 — configured credentials
             }
-            if fallbackOrder.contains(config.kind) {
+            if fallbackOrder.contains(kind) {
                 return 2  // tier 3 — default-trio fallback
             }
             return 3  // no signal
         }
 
-        // Sort enabled configs by rank asc, then by (within same rank) usage
+        // Sort enabled provider kinds by rank asc, then by usage
         // desc, then by `ProviderKind.allCases` index asc for a deterministic
         // tiebreak.
         let kindIndex: [ProviderKind: Int] = Dictionary(
             uniqueKeysWithValues: ProviderKind.allCases.enumerated().map { ($0.element, $0.offset) }
         )
-        let ranked = enabledConfigs.sorted { a, b in
+        let rankedKinds = Set(enabledConfigs.map(\.kind)).sorted { a, b in
             let ra = rank(a); let rb = rank(b)
             if ra != rb { return ra < rb }
-            let ua = usageByKind[a.kind.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
-            let ub = usageByKind[b.kind.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
+            let ua = usageByKind[a.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
+            let ub = usageByKind[b.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
             if ua != ub { return ua > ub }
-            return (kindIndex[a.kind] ?? .max) < (kindIndex[b.kind] ?? .max)
+            return (kindIndex[a] ?? .max) < (kindIndex[b] ?? .max)
         }
 
-        let keptKinds = Set(ranked.prefix(maxProviders).map(\.kind))
-        var disabledByMigration: [ProviderKind] = []
+        let keptKinds = Set(rankedKinds.prefix(maxProviders))
+        var disabledByMigration = Set<ProviderKind>()
         // iter9 hotfix: also track which of the disabled kinds were
         // *actually* in active use (had usage or credentials) so we can
         // report only the user-visible impact in the banner. Disabling 20
         // default-but-untouched toggles alongside the 3 actively-used ones
         // is implementation detail; the user's mental model says "you
         // disabled 3 things I was using", not "you disabled 23 toggles".
-        var disabledActiveByMigration: [ProviderKind] = []
+        var disabledActiveByMigration = Set<ProviderKind>()
         let activeKinds = Self.activeKindsForMigrationBanner(
             providers: providers,
             providerConfigs: providerConfigs
@@ -1095,9 +1212,9 @@ public final class AppState: ObservableObject {
             if !keptKinds.contains(providerConfigs[i].kind) {
                 let kind = providerConfigs[i].kind
                 providerConfigs[i].isEnabled = false
-                disabledByMigration.append(kind)
+                disabledByMigration.insert(kind)
                 if activeKinds.contains(kind) {
-                    disabledActiveByMigration.append(kind)
+                    disabledActiveByMigration.insert(kind)
                 }
             }
         }
@@ -1113,7 +1230,7 @@ public final class AppState: ObservableObject {
         let mergedRaw = Set(existingRaw).union(disabledByMigration.map(\.rawValue))
         UserDefaults.standard.set(Array(mergedRaw), forKey: disabledByTierKey)
 
-        saveProviderConfigs()
+        saveProviderConfigMetadata()
         buildProviderDetails()
 
         // iter9 hotfix: banner reflects the actively-used provider count
@@ -1205,7 +1322,7 @@ public final class AppState: ObservableObject {
         for index in providerConfigs.indices {
             providerConfigs[index].sortOrder = index
         }
-        saveProviderConfigs()
+        saveProviderConfigMetadata()
         // Rebuild so re-ordered providers reflect immediately in the UI.
         buildProviderDetails()
     }
@@ -1220,6 +1337,7 @@ public final class AppState: ObservableObject {
     /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
     /// for enable/order/label changes that must never mutate Keychain state.
     public func saveProviderConfigMetadata() {
+        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
         _ = ProviderConfigMetadataStore().save(providerConfigs)
     }
 
@@ -1246,7 +1364,28 @@ public final class AppState: ObservableObject {
         isLocalMode: Bool,
         locallySupplementedProviders: Set<String>
     ) -> [ProviderDetail] {
-        configs.sorted(by: { $0.sortOrder < $1.sortOrder }).compactMap { config in
+        let sortedConfigs = configs.sorted {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
+            }
+            return $0.accountID.uuidString < $1.accountID.uuidString
+        }
+        var seenKinds: Set<ProviderKind> = []
+
+        return sortedConfigs.compactMap { seedConfig in
+            guard seenKinds.insert(seedConfig.kind).inserted else {
+                return nil
+            }
+            let accountConfigs = sortedConfigs.filter {
+                $0.kind == seedConfig.kind
+            }
+            var config =
+                accountConfigs.first(where: \.isEnabled)
+                ?? seedConfig
+            config.isEnabled = accountConfigs.contains(where: \.isEnabled)
+            if accountConfigs.count > 1 {
+                config.accountLabel = nil
+            }
             guard let usage = providers.first(where: { $0.provider == config.kind.rawValue }) else { return nil }
 
             // Tier rendering rule (v1.9.3):
@@ -1339,15 +1478,6 @@ public final class AppState: ObservableObject {
             return
         }
 
-        let existingKinds = Set(providerConfigs.map(\.kind))
-        for kind in ProviderKind.allCases where !existingKinds.contains(kind) {
-            providerConfigs.append(ProviderConfig(
-                kind: kind,
-                isEnabled: true,
-                sortOrder: providerConfigs.count
-            ))
-        }
-
         if let migratedData = try? JSONEncoder().encode(providerConfigs) {
             UserDefaults.standard.set(
                 migratedData,
@@ -1362,6 +1492,7 @@ public final class AppState: ObservableObject {
         for index in providerConfigs.indices {
             providerConfigs[index].loadSecrets()
         }
+        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }
 
     private func migrateLegacySecrets(from data: Data) {

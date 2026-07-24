@@ -766,3 +766,27 @@
 "pet.form_huff" = "흥돌아선냥";
 "pet.form_ouch" = "아야아파냥";
 "pet.form_flop" = "털썩늘어진냥";
+
+/* v2 공급자별 계정 */
+"providers.account_configuration" = "에이전트 계정";
+"providers.accounts_count_one" = "계정 %d개";
+"providers.accounts_count" = "계정 %d개";
+"providers.no_accounts_configured" = "이 공급자에 설정된 CLIPulse 계정이 없습니다.";
+"providers.add_account" = "계정 추가";
+"providers.default_account" = "기본 계정";
+"providers.account_number" = "계정 %d";
+"providers.plan_unconfirmed" = "요금제 미확인";
+"providers.connected" = "연결됨";
+"providers.needs_reconnect" = "다시 연결 필요";
+"providers.monitor_account" = "%@ 모니터링";
+"providers.edit_account" = "%@ 편집";
+"providers.remove_account" = "계정 제거";
+"providers.remove_named_account" = "%@ 제거";
+"providers.remove_account_title" = "%@ · %@ 계정을 제거할까요?";
+"providers.remove_account_message" = "CLIPulse 설정과 이 계정에 연결된 로컬 Secret만 제거합니다. 공급자 구독은 취소되거나 변경되지 않습니다.";
+"providers.provider_level_cost" = "토큰 및 비용 합계는 공급자 단위이며 한 번만 표시됩니다.";
+"providers.most_constrained" = "잔여량이 가장 적음";
+"providers.remaining_percent" = "%d%% 남음";
+"provider_config.manual_plan" = "수동 요금제 라벨";
+"provider_config.manual_plan_placeholder" = "예: Max 20x, Pro";
+"provider_config.manual_plan_hint" = "표시용 대체 정보일 뿐이며 수집된 할당량이나 비용을 변경하지 않습니다.";

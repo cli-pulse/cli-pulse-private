@@ -62,4 +62,45 @@ final class L10nEnBaseKeysTests: XCTestCase {
             "Step 3 of 6: Your Coding Agents"
         )
     }
+
+    func test_providerAccountManagementCopyResolvesInEnBase() {
+        XCTAssertEqual(L10n.providers.accountsCount(1), "1 account")
+        XCTAssertEqual(L10n.providers.accountsCount(2), "2 accounts")
+        XCTAssertEqual(
+            L10n.providers.removeAccountTitle("Claude", "Work"),
+            "Remove Claude · Work?"
+        )
+        XCTAssertFalse(
+            L10n.providers.removeAccountMessage.hasPrefix("providers.")
+        )
+    }
+
+    func test_providerAccountDestructiveCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+            let title = L10n.providers.removeAccountTitle(
+                "Claude",
+                "Work"
+            )
+            let message = L10n.providers.removeAccountMessage
+            let manualPlan = L10n.providerConfig.manualPlan
+
+            XCTAssertFalse(
+                title.hasPrefix("providers."),
+                "\(locale) is missing the account removal title"
+            )
+            XCTAssertTrue(
+                title.contains("Claude") && title.contains("Work"),
+                "\(locale) removal title lost its provider/account placeholders"
+            )
+            XCTAssertFalse(
+                message.hasPrefix("providers."),
+                "\(locale) is missing the destructive account removal message"
+            )
+            XCTAssertFalse(
+                manualPlan.hasPrefix("provider_config."),
+                "\(locale) is missing manual-plan copy"
+            )
+        }
+    }
 }

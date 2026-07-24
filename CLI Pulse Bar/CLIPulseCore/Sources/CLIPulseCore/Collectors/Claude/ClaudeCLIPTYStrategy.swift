@@ -27,10 +27,24 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
     static let throttle = ClaudePTYProbeThrottle()
 
     public func isAvailable(config: ProviderConfig) -> Bool {
-        Self.findClaudeBinary() != nil
+        config.sharedCredentialFallbackDisabled != true
+            && ProviderSharedCredentialOwner.claim(
+                kind: .claude,
+                accountID: config.accountID
+            )
+            && Self.findClaudeBinary() != nil
     }
 
     public func fetch(config: ProviderConfig) async throws -> ClaudeSnapshot {
+        guard
+            config.sharedCredentialFallbackDisabled != true,
+            ProviderSharedCredentialOwner.claim(
+                kind: .claude,
+                accountID: config.accountID
+            )
+        else {
+            throw ClaudeStrategyError.noToken
+        }
         switch await Self.throttle.decide() {
         case .useCached(let snapshot):
             logger.debug("cli-pty: reusing cached snapshot within TTL, skipping PTY spawn")

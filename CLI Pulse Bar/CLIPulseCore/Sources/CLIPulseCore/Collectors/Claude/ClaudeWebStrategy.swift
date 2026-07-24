@@ -24,17 +24,35 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
     private static let baseURL = "https://claude.ai/api"
 
     public func isAvailable(config: ProviderConfig) -> Bool {
-        // Check helper snapshot first (no network needed)
-        if Self.readHelperSnapshot() != nil { return true }
         // Manual cookie header from settings
         if let cookie = config.manualCookieHeader, !cookie.isEmpty { return true }
+        guard
+            config.sharedCredentialFallbackDisabled != true,
+            ProviderSharedCredentialOwner.claim(
+                kind: .claude,
+                accountID: config.accountID
+            )
+        else {
+            return false
+        }
+        // Helper data is machine-global and belongs to one compatibility
+        // account only.
+        if Self.readHelperSnapshot() != nil { return true }
         // Helper-written session key file
         return Self.findSessionKeyFromFile() != nil
     }
 
     public func fetch(config: ProviderConfig) async throws -> ClaudeSnapshot {
-        // Fast path: if helper has written a complete snapshot, use it directly
-        if let helperSnapshot = Self.readHelperSnapshot() {
+        let hasManualCookie = !(config.manualCookieHeader?.isEmpty ?? true)
+        // Fast path: the helper snapshot is global. Never let it override an
+        // account's explicit cookie, and never expose it to sibling accounts.
+        if !hasManualCookie,
+           config.sharedCredentialFallbackDisabled != true,
+           ProviderSharedCredentialOwner.claim(
+               kind: .claude,
+               accountID: config.accountID
+           ),
+           let helperSnapshot = Self.readHelperSnapshot() {
             return helperSnapshot
         }
 
@@ -74,7 +92,12 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
                 rateLimitTier: account?.rateLimitTier ?? usage.planType,
                 weeklyReset: usage.weeklyResetISO
             )
-            if !recoveredAccount.isEmpty {
+            if !recoveredAccount.isEmpty,
+               config.sharedCredentialFallbackDisabled != true,
+               ProviderSharedCredentialOwner.isOwner(
+                   kind: .claude,
+                   accountID: config.accountID
+               ) {
                 try? ClaudeHelperContract.writeAccountInfo(recoveredAccount)
             }
             let keysHint = usage.topLevelKeysForDiagnostics ?? "<unknown>"
@@ -109,10 +132,18 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
             if let key = Self.extractSessionKey(from: cookie) { return key }
             // If the whole string looks like a bare session key, use it directly
             if cookie.count > 20 && !cookie.contains("=") { return cookie }
+            throw ClaudeStrategyError.noSessionKey
         }
 
         // 2. Helper-written session key file
-        if let key = Self.findSessionKeyFromFile() { return key }
+        if config.sharedCredentialFallbackDisabled != true,
+           ProviderSharedCredentialOwner.claim(
+               kind: .claude,
+               accountID: config.accountID
+           ),
+           let key = Self.findSessionKeyFromFile() {
+            return key
+        }
 
         throw ClaudeStrategyError.noSessionKey
     }

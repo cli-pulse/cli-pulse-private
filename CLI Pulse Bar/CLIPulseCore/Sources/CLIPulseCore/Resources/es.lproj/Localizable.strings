@@ -766,3 +766,27 @@
 "pet.form_huff" = "Hmph Ofendido";
 "pet.form_ouch" = "Ay Dolor";
 "pet.form_flop" = "Desplome Dramático";
+
+/* v2 cuentas por proveedor */
+"providers.account_configuration" = "Cuentas de agentes";
+"providers.accounts_count_one" = "%d cuenta";
+"providers.accounts_count" = "%d cuentas";
+"providers.no_accounts_configured" = "No hay ninguna cuenta de CLIPulse configurada para este proveedor.";
+"providers.add_account" = "Añadir cuenta";
+"providers.default_account" = "Cuenta predeterminada";
+"providers.account_number" = "Cuenta %d";
+"providers.plan_unconfirmed" = "Plan sin confirmar";
+"providers.connected" = "Conectada";
+"providers.needs_reconnect" = "Necesita reconexión";
+"providers.monitor_account" = "Supervisar %@";
+"providers.edit_account" = "Editar %@";
+"providers.remove_account" = "Eliminar cuenta";
+"providers.remove_named_account" = "Eliminar %@";
+"providers.remove_account_title" = "¿Eliminar %@ · %@?";
+"providers.remove_account_message" = "Solo se eliminarán la configuración de CLIPulse y los secretos locales asociados a esta cuenta. Tu suscripción con el proveedor no se cancelará ni se modificará.";
+"providers.provider_level_cost" = "Los totales de tokens y costes pertenecen al proveedor y se muestran una sola vez.";
+"providers.most_constrained" = "Cuenta más limitada";
+"providers.remaining_percent" = "%d%% restante";
+"provider_config.manual_plan" = "Etiqueta manual del plan";
+"provider_config.manual_plan_placeholder" = "p. ej., Max 20x, Pro";
+"provider_config.manual_plan_hint" = "Solo sirve como alternativa visual. No cambia la cuota ni los costes recopilados.";

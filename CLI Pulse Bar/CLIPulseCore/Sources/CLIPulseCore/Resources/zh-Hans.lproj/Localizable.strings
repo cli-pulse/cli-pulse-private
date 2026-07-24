@@ -485,6 +485,25 @@
 
 /* ── 服务商补充 (i18n sweep) ── */
 "providers.configure_hint" = "为每个服务商配置数据来源、凭据和显示方式。";
+"providers.account_configuration" = "Agent 账户";
+"providers.accounts_count_one" = "%d 个账户";
+"providers.accounts_count" = "%d 个账户";
+"providers.no_accounts_configured" = "尚未为此服务商配置 CLIPulse 账户。";
+"providers.add_account" = "添加账户";
+"providers.default_account" = "默认账户";
+"providers.account_number" = "账户 %d";
+"providers.plan_unconfirmed" = "套餐未确认";
+"providers.connected" = "已连接";
+"providers.needs_reconnect" = "需要重新连接";
+"providers.monitor_account" = "监控 %@";
+"providers.edit_account" = "编辑 %@";
+"providers.remove_account" = "移除账户";
+"providers.remove_named_account" = "移除 %@";
+"providers.remove_account_title" = "移除 %@ · %@？";
+"providers.remove_account_message" = "只会移除 CLIPulse 配置和此账户在本机的独立 Secret，不会取消或更改服务商订阅。";
+"providers.provider_level_cost" = "Token 与成本为服务商级数据，只显示一次。";
+"providers.most_constrained" = "最紧张账户";
+"providers.remaining_percent" = "剩余 %d%%";
 "providers.source_label" = "来源：%@";
 "providers.key_set" = "已设置密钥";
 "providers.limited_free" = "免费方案受限";
@@ -497,6 +516,9 @@
 "provider_config.data_source" = "数据来源";
 "provider_config.account_label" = "账号标签";
 "provider_config.account_placeholder" = "例如：team-A、dev-box";
+"provider_config.manual_plan" = "手动套餐标签";
+"provider_config.manual_plan_placeholder" = "例如：Max 20x、Pro";
+"provider_config.manual_plan_hint" = "仅作为显示兜底，不会改变实际采集到的额度或成本数据。";
 "provider_config.api_key" = "API 密钥";
 "provider_config.show_key" = "显示密钥";
 "provider_config.hide_key" = "隐藏密钥";

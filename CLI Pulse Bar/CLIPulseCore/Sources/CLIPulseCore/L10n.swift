@@ -308,6 +308,30 @@ public enum L10n {
         public static var quota: String { tr("providers.quota") }
         public static var status: String { tr("providers.status") }
         public static var configureHint: String { tr("providers.configure_hint") }
+        public static var accountConfiguration: String { tr("providers.account_configuration") }
+        public static func accountsCount(_ count: Int) -> String {
+            count == 1
+                ? tr("providers.accounts_count_one", count)
+                : tr("providers.accounts_count", count)
+        }
+        public static var noAccountsConfigured: String { tr("providers.no_accounts_configured") }
+        public static var addAccount: String { tr("providers.add_account") }
+        public static var defaultAccount: String { tr("providers.default_account") }
+        public static func accountNumber(_ number: Int) -> String { tr("providers.account_number", number) }
+        public static var planUnconfirmed: String { tr("providers.plan_unconfirmed") }
+        public static var connected: String { tr("providers.connected") }
+        public static var needsReconnect: String { tr("providers.needs_reconnect") }
+        public static func monitorAccount(_ label: String) -> String { tr("providers.monitor_account", label) }
+        public static func editAccount(_ label: String) -> String { tr("providers.edit_account", label) }
+        public static var removeAccount: String { tr("providers.remove_account") }
+        public static func removeNamedAccount(_ label: String) -> String { tr("providers.remove_named_account", label) }
+        public static func removeAccountTitle(_ provider: String, _ label: String) -> String {
+            tr("providers.remove_account_title", provider, label)
+        }
+        public static var removeAccountMessage: String { tr("providers.remove_account_message") }
+        public static var providerLevelCost: String { tr("providers.provider_level_cost") }
+        public static var mostConstrained: String { tr("providers.most_constrained") }
+        public static func remainingPercent(_ percent: Int) -> String { tr("providers.remaining_percent", percent) }
         public static func sourceLabel(_ source: String) -> String { tr("providers.source_label", source) }
         public static var keySet: String { tr("providers.key_set") }
         public static var limitedFree: String { tr("providers.limited_free") }
@@ -946,6 +970,9 @@ public enum L10n {
         public static var dataSource: String { tr("provider_config.data_source") }
         public static var accountLabel: String { tr("provider_config.account_label") }
         public static var accountPlaceholder: String { tr("provider_config.account_placeholder") }
+        public static var manualPlan: String { tr("provider_config.manual_plan") }
+        public static var manualPlanPlaceholder: String { tr("provider_config.manual_plan_placeholder") }
+        public static var manualPlanHint: String { tr("provider_config.manual_plan_hint") }
         public static var apiKey: String { tr("provider_config.api_key") }
         public static var showKey: String { tr("provider_config.show_key") }
         public static var hideKey: String { tr("provider_config.hide_key") }

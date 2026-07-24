@@ -78,6 +78,14 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     static let keyAccessToken  = "gemini.oauth.access_token"
     static let keyRefreshToken = "gemini.oauth.refresh_token"
     static let keyExpiry       = "gemini.oauth.expiry"
+    private static let keyLegacyOwner = "gemini.oauth.legacy_owner"
+
+    static func accountKey(
+        _ base: String,
+        accountID: UUID
+    ) -> String {
+        "\(base).account.\(accountID.uuidString)"
+    }
 
     // ── Shared file for Python helper ────────────────────────────────
     private static var sharedDir: String {
@@ -100,10 +108,22 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     /// Whether CLI Pulse has its own Gemini OAuth tokens in Keychain.
     public var isConnected: Bool { loadTokens() != nil }
 
+    public func isConnected(
+        accountID: UUID,
+        allowLegacyFallback: Bool = true
+    ) -> Bool {
+        loadTokens(
+            accountID: accountID,
+            allowLegacyFallback: allowLegacyFallback
+        ) != nil
+    }
+
     /// Start the full OAuth2 authorization flow (opens browser sheet).
     /// Must be called on the main actor.
     @MainActor
-    public func authorize() async throws -> (accessToken: String, refreshToken: String) {
+    public func authorize(
+        accountID: UUID? = nil
+    ) async throws -> (accessToken: String, refreshToken: String) {
         guard Self.clientID != "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com" else {
             throw GeminiOAuthError.clientNotConfigured
         }
@@ -168,16 +188,31 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         let tokens = try await exchangeCode(code, codeVerifier: verifier)
 
         // Require a refresh token on initial connect
+        let keys = Self.tokenKeys(accountID: accountID)
         let rt = tokens.refresh.isEmpty
-            ? KeychainHelper.load(key: Self.keyRefreshToken, accessGroup: Self.accessGroup) ?? ""
+            ? KeychainHelper.load(
+                key: keys.refresh,
+                accessGroup: Self.accessGroup
+            ) ?? ""
             : tokens.refresh
-        storeTokens(access: tokens.access, refresh: rt, expiresIn: tokens.expiresIn)
+        storeTokens(
+            access: tokens.access,
+            refresh: rt,
+            expiresIn: tokens.expiresIn,
+            accountID: accountID
+        )
         return (tokens.access, rt)
     }
 
     /// Refresh the stored access token using the refresh token.
-    public func refreshAccessToken() async throws -> String {
-        guard let rt = KeychainHelper.load(key: Self.keyRefreshToken, accessGroup: Self.accessGroup),
+    public func refreshAccessToken(
+        accountID: UUID? = nil
+    ) async throws -> String {
+        let keys = Self.tokenKeys(accountID: accountID)
+        guard let rt = KeychainHelper.load(
+            key: keys.refresh,
+            accessGroup: Self.accessGroup
+        ),
               !rt.isEmpty else {
             throw GeminiOAuthError.noRefreshToken
         }
@@ -199,7 +234,7 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         guard (200...299).contains(status) else {
             // Clear tokens on permanent auth errors so isConnected reflects reality
             if (400...401).contains(status) {
-                clearTokens()
+                clearTokens(accountID: accountID)
             }
             throw GeminiOAuthError.tokenRefreshFailed(status)
         }
@@ -211,17 +246,66 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         let expiresIn = (json["expires_in"] as? NSNumber)?.doubleValue ?? 3600
         let newRT = json["refresh_token"] as? String ?? rt
 
-        storeTokens(access: at, refresh: newRT, expiresIn: expiresIn)
+        storeTokens(
+            access: at,
+            refresh: newRT,
+            expiresIn: expiresIn,
+            accountID: accountID
+        )
         return at
     }
 
     /// Load current tokens from Keychain. Returns nil if not present.
-    public func loadTokens() -> GeminiStoredTokens? {
-        guard let at = KeychainHelper.load(key: Self.keyAccessToken, accessGroup: Self.accessGroup),
+    public func loadTokens(
+        accountID: UUID? = nil,
+        allowLegacyFallback: Bool = true
+    ) -> GeminiStoredTokens? {
+        let keys = Self.tokenKeys(accountID: accountID)
+        if let stored = loadTokens(keys: keys) {
+            return stored
+        }
+
+        // One-time compatibility migration: the old release had a single
+        // provider-global Gemini slot. Only the designated legacy owner may
+        // copy it into an account slot; sibling accounts must stay empty.
+        guard
+            let accountID,
+            allowLegacyFallback,
+            let legacy = loadTokens(keys: Self.tokenKeys(accountID: nil)),
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: accountID
+            )
+        else {
+            return nil
+        }
+        copyTokens(legacy, to: keys)
+        KeychainHelper.save(
+            key: Self.accountKey(
+                Self.keyLegacyOwner,
+                accountID: accountID
+            ),
+            value: "1",
+            accessGroup: Self.accessGroup
+        )
+        return legacy
+    }
+
+    private func loadTokens(keys: TokenKeys) -> GeminiStoredTokens? {
+        guard let at = KeychainHelper.load(
+            key: keys.access,
+            accessGroup: Self.accessGroup
+        ),
               !at.isEmpty else { return nil }
-        let rt = KeychainHelper.load(key: Self.keyRefreshToken, accessGroup: Self.accessGroup)
+        let rt = KeychainHelper.load(
+            key: keys.refresh,
+            accessGroup: Self.accessGroup
+        )
         var expiry: Date?
-        if let s = KeychainHelper.load(key: Self.keyExpiry, accessGroup: Self.accessGroup),
+        if let s = KeychainHelper.load(
+            key: keys.expiry,
+            accessGroup: Self.accessGroup
+        ),
            let ts = Double(s) {
             expiry = Date(timeIntervalSince1970: ts)
         }
@@ -229,11 +313,50 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     }
 
     /// Remove all stored tokens (Keychain + shared file).
-    public func clearTokens() {
-        KeychainHelper.delete(key: Self.keyAccessToken,  accessGroup: Self.accessGroup)
-        KeychainHelper.delete(key: Self.keyRefreshToken, accessGroup: Self.accessGroup)
-        KeychainHelper.delete(key: Self.keyExpiry,       accessGroup: Self.accessGroup)
-        try? FileManager.default.removeItem(atPath: Self.sharedTokenFilePath)
+    public func clearTokens(accountID: UUID? = nil) {
+        let keys = Self.tokenKeys(accountID: accountID)
+        deleteTokens(keys: keys)
+
+        guard let accountID else {
+            try? FileManager.default.removeItem(
+                atPath: Self.sharedTokenFilePath
+            )
+            return
+        }
+
+        let legacyOwnerKey = Self.accountKey(
+            Self.keyLegacyOwner,
+            accountID: accountID
+        )
+        let inheritedLegacy =
+            KeychainHelper.load(
+                key: legacyOwnerKey,
+                accessGroup: Self.accessGroup
+            ) == "1"
+        KeychainHelper.delete(
+            key: legacyOwnerKey,
+            accessGroup: Self.accessGroup
+        )
+
+        if ProviderSharedCredentialOwner.isOwner(
+            kind: .gemini,
+            accountID: accountID
+        ) {
+            if inheritedLegacy {
+                // Only an account that actually inherited the pre-account
+                // slot may delete it. A newly connected account must never
+                // erase unrelated legacy/helper credentials merely because
+                // it happens to be the current compatibility owner.
+                deleteTokens(keys: Self.tokenKeys(accountID: nil))
+                try? FileManager.default.removeItem(
+                    atPath: Self.sharedTokenFilePath
+                )
+            }
+            ProviderSharedCredentialOwner.release(
+                kind: .gemini,
+                accountID: accountID
+            )
+        }
     }
 
     // MARK: - Private helpers
@@ -242,6 +365,27 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         let access: String
         let refresh: String
         let expiresIn: TimeInterval
+    }
+
+    private struct TokenKeys {
+        let access: String
+        let refresh: String
+        let expiry: String
+    }
+
+    private static func tokenKeys(accountID: UUID?) -> TokenKeys {
+        guard let accountID else {
+            return TokenKeys(
+                access: keyAccessToken,
+                refresh: keyRefreshToken,
+                expiry: keyExpiry
+            )
+        }
+        return TokenKeys(
+            access: accountKey(keyAccessToken, accountID: accountID),
+            refresh: accountKey(keyRefreshToken, accountID: accountID),
+            expiry: accountKey(keyExpiry, accountID: accountID)
+        )
     }
 
     private func exchangeCode(_ code: String, codeVerifier: String) async throws -> TokenBundle {
@@ -276,21 +420,49 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         )
     }
 
-    private func storeTokens(access: String, refresh: String, expiresIn: TimeInterval) {
+    private func storeTokens(
+        access: String,
+        refresh: String,
+        expiresIn: TimeInterval,
+        accountID: UUID?
+    ) {
         let group = Self.accessGroup
-        KeychainHelper.save(key: Self.keyAccessToken,  value: access,  accessGroup: group)
+        let keys = Self.tokenKeys(accountID: accountID)
+        KeychainHelper.save(
+            key: keys.access,
+            value: access,
+            accessGroup: group
+        )
         if !refresh.isEmpty {
-            KeychainHelper.save(key: Self.keyRefreshToken, value: refresh, accessGroup: group)
+            KeychainHelper.save(
+                key: keys.refresh,
+                value: refresh,
+                accessGroup: group
+            )
         }
         let exp = String(Date().addingTimeInterval(expiresIn).timeIntervalSince1970)
-        KeychainHelper.save(key: Self.keyExpiry, value: exp, accessGroup: group)
+        KeychainHelper.save(
+            key: keys.expiry,
+            value: exp,
+            accessGroup: group
+        )
 
-        persistSharedFile(access: access, expiresIn: expiresIn)
+        if accountID == nil {
+            persistSharedFile(
+                access: access,
+                expiresIn: expiresIn,
+                path: Self.sharedTokenFilePath
+            )
+        }
     }
 
     /// Write access_token + client_id to a JSON file the Python helper can read.
     /// Refresh token is NOT written here — it stays in Keychain only.
-    private func persistSharedFile(access: String, expiresIn: TimeInterval) {
+    private func persistSharedFile(
+        access: String,
+        expiresIn: TimeInterval,
+        path: String
+    ) {
         try? FileManager.default.createDirectory(atPath: Self.sharedDir,
                                                   withIntermediateDirectories: true)
         let expMs = Int64((Date().timeIntervalSince1970 + expiresIn) * 1000)
@@ -300,9 +472,50 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
             "client_id":     Self.clientID,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: dict, options: .prettyPrinted) else { return }
-        let url = URL(fileURLWithPath: Self.sharedTokenFilePath)
+        let url = URL(fileURLWithPath: path)
         try? data.write(to: url, options: .atomic)
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    private func copyTokens(
+        _ tokens: GeminiStoredTokens,
+        to keys: TokenKeys
+    ) {
+        let group = Self.accessGroup
+        KeychainHelper.save(
+            key: keys.access,
+            value: tokens.accessToken,
+            accessGroup: group
+        )
+        if let refresh = tokens.refreshToken, !refresh.isEmpty {
+            KeychainHelper.save(
+                key: keys.refresh,
+                value: refresh,
+                accessGroup: group
+            )
+        }
+        if let expiry = tokens.expiry {
+            KeychainHelper.save(
+                key: keys.expiry,
+                value: String(expiry.timeIntervalSince1970),
+                accessGroup: group
+            )
+        }
+    }
+
+    private func deleteTokens(keys: TokenKeys) {
+        KeychainHelper.delete(
+            key: keys.access,
+            accessGroup: Self.accessGroup
+        )
+        KeychainHelper.delete(
+            key: keys.refresh,
+            accessGroup: Self.accessGroup
+        )
+        KeychainHelper.delete(
+            key: keys.expiry,
+            accessGroup: Self.accessGroup
+        )
     }
 
     // MARK: - PKCE

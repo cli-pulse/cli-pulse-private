@@ -443,6 +443,9 @@
 "provider_config.data_source" = "Data source";
 "provider_config.account_label" = "Account label";
 "provider_config.account_placeholder" = "e.g. team-A, dev-box";
+"provider_config.manual_plan" = "Manual plan label";
+"provider_config.manual_plan_placeholder" = "e.g. Max 20x, Pro";
+"provider_config.manual_plan_hint" = "Display-only fallback. It never changes collected quota or cost data.";
 "provider_config.api_key" = "API key";
 "provider_config.show_key" = "Show key";
 "provider_config.hide_key" = "Hide key";
@@ -634,6 +637,25 @@
 
 /* ── Provider settings + Providers tab additions ── */
 "providers.configure_hint" = "Configure data source, credentials, and display for each provider.";
+"providers.account_configuration" = "Agent Accounts";
+"providers.accounts_count_one" = "%d account";
+"providers.accounts_count" = "%d accounts";
+"providers.no_accounts_configured" = "No CLIPulse account configured for this provider.";
+"providers.add_account" = "Add account";
+"providers.default_account" = "Default account";
+"providers.account_number" = "Account %d";
+"providers.plan_unconfirmed" = "Plan not confirmed";
+"providers.connected" = "Connected";
+"providers.needs_reconnect" = "Needs reconnect";
+"providers.monitor_account" = "Monitor %@";
+"providers.edit_account" = "Edit %@";
+"providers.remove_account" = "Remove account";
+"providers.remove_named_account" = "Remove %@";
+"providers.remove_account_title" = "Remove %@ · %@?";
+"providers.remove_account_message" = "This removes only the CLIPulse configuration and local account-scoped secrets. It does not cancel or change your provider subscription.";
+"providers.provider_level_cost" = "Token and cost totals are provider-level and shown once.";
+"providers.most_constrained" = "Most constrained";
+"providers.remaining_percent" = "%d%% remaining";
 "providers.source_label" = "Source: %@";
 "providers.key_set" = "Key set";
 "providers.limited_free" = "Limited by free plan";

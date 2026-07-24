@@ -3,6 +3,29 @@ import XCTest
 @testable import CLIPulseCore
 
 final class AccountScopedCollectorTests: XCTestCase {
+    private var originalOwnerDefaults: UserDefaults!
+    private var ownerDefaults: UserDefaults!
+    private var ownerSuiteName: String!
+
+    override func setUp() {
+        super.setUp()
+        originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        ownerSuiteName =
+            "AccountScopedCollectorTests-\(UUID().uuidString)"
+        ownerDefaults = UserDefaults(suiteName: ownerSuiteName)
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        ProviderSharedCredentialOwner.defaults = ownerDefaults
+    }
+
+    override func tearDown() {
+        ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        ownerDefaults = nil
+        ownerSuiteName = nil
+        originalOwnerDefaults = nil
+        super.tearDown()
+    }
+
     private actor Recorder {
         private var accountIDs: [UUID] = []
 

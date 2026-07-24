@@ -273,7 +273,13 @@ public enum ClaudeCredentials {
     ///   (the Settings "Connect Claude Code" button) so a cooldown armed by a
     ///   background 401 never blocks an explicit reconnect/re-auth. Background
     ///   refreshers leave it `false`.
-    public static func readKeychainCredentials(bypassCooldown: Bool = false) -> Creds? {
+    /// - Parameter cacheResult: pass `false` when importing into one account's
+    ///   staged editor state. This avoids creating a provider-global cache when
+    ///   the user may still cancel the account draft.
+    public static func readKeychainCredentials(
+        bypassCooldown: Bool = false,
+        cacheResult: Bool = true
+    ) -> Creds? {
         // 1. Try the app's own keychain cache (never triggers a prompt)
         if let cached = KeychainHelper.load(key: keychainCacheKey),
            let data = cached.data(using: .utf8),
@@ -311,7 +317,8 @@ public enum ClaudeCredentials {
 
         // 3. Cache in the app's own keychain so the prompt never recurs, and
         //    clear any cooldown — a successful read means we're back to normal.
-        if let jsonStr = String(data: data, encoding: .utf8) {
+        if cacheResult,
+           let jsonStr = String(data: data, encoding: .utf8) {
             KeychainHelper.save(key: keychainCacheKey, value: jsonStr)
         }
         clearKeychainReadCooldown()
@@ -390,27 +397,97 @@ public enum ClaudeCredentials {
 
     private static let keychainCacheKey = "claude-code-creds-cache"
 
-    /// Resolve an OAuth token from all available sources.
-    public static func resolveToken(config: ProviderConfig) -> (token: String, tier: String?) {
+    enum TokenSource: Equatable {
+        case accountConfig
+        case sharedEnvironment
+        case sharedCredentialsFile
+        case sharedKeychain
+        case none
+    }
+
+    struct ResolvedToken {
+        let token: String
+        let tier: String?
+        let source: TokenSource
+    }
+
+    static func resolveTokenDetails(
+        config: ProviderConfig
+    ) -> ResolvedToken {
+        // Explicitly connected tokens are copied into this account's
+        // ProviderConfig Keychain slot. They always win over machine-global
+        // compatibility sources.
+        if let configKey = config.apiKey,
+           configKey.hasPrefix("sk-ant-oat") {
+            return ResolvedToken(
+                token: configKey,
+                tier: nil,
+                source: .accountConfig
+            )
+        }
+
+        if config.sharedCredentialFallbackDisabled == true {
+            return ResolvedToken(
+                token: "",
+                tier: nil,
+                source: .none
+            )
+        }
+
+        // Environment variables, ~/.claude, and the Claude Code keychain item
+        // identify one machine-global login. Only one local account may use
+        // those sources, otherwise duplicate configs report the same quota.
+        guard ProviderSharedCredentialOwner.claim(
+            kind: .claude,
+            accountID: config.accountID
+        ) else {
+            return ResolvedToken(
+                token: "",
+                tier: nil,
+                source: .none
+            )
+        }
+
         // Check environment variables: app-specific first, then Claude Code's own
         for envKey in ["CODEXBAR_CLAUDE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"] {
             if let envToken = ProcessInfo.processInfo.environment[envKey],
                !envToken.isEmpty, envToken.hasPrefix("sk-ant-oat") {
-                return (envToken, nil)
+                return ResolvedToken(
+                    token: envToken,
+                    tier: nil,
+                    source: .sharedEnvironment
+                )
             }
         }
-        if let configKey = config.apiKey, configKey.hasPrefix("sk-ant-oat") {
-            return (configKey, nil)
-        }
         if let fileCreds = readCredentialsFile() {
-            return (fileCreds.accessToken, fileCreds.rateLimitTier)
+            return ResolvedToken(
+                token: fileCreds.accessToken,
+                tier: fileCreds.rateLimitTier,
+                source: .sharedCredentialsFile
+            )
         }
         if !PrivacySettings.shared.skipClaudeKeychain,
            let keychainCreds = readKeychainCredentials()
         {
-            return (keychainCreds.accessToken, keychainCreds.rateLimitTier)
+            return ResolvedToken(
+                token: keychainCreds.accessToken,
+                tier: keychainCreds.rateLimitTier,
+                source: .sharedKeychain
+            )
         }
-        return ("", nil)
+        return ResolvedToken(
+            token: "",
+            tier: nil,
+            source: .none
+        )
+    }
+
+    /// Resolve an OAuth token from all available sources.
+    public static func resolveToken(
+        config: ProviderConfig
+    ) -> (token: String, tier: String?) {
+        let resolved = resolveTokenDetails(config: config)
+        return (resolved.token, resolved.tier)
     }
 
     /// Strip ANSI escape codes from text.

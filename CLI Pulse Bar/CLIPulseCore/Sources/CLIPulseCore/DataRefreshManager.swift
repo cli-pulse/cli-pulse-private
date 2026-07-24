@@ -1001,6 +1001,10 @@ internal final class DataRefreshManager {
         providerConfigs: [ProviderConfig],
         collectorResolver: @escaping @Sendable (ProviderConfig) -> (any ProviderCollector)?
     ) async -> [AccountScopedCollectorResult] {
+        // Global CLI/helper compatibility sources do not carry a CLIPulse
+        // account ID. Assign them once before concurrent collector fan-out so
+        // two configs never race to report the same external account twice.
+        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
         // Resolve once so availability checks and collection use the same
         // collector instance even when runs complete out of order.
         let runnable = providerConfigs.compactMap { config -> ProviderCollectorInvocation? in

@@ -22,20 +22,42 @@ import Foundation
 /// debugging.
 actor GeminiRefreshBackoff {
     static let shared = GeminiRefreshBackoff()
-    private var lastFailureAt: [GeminiCollector.TokenSource: Date] = [:]
+    private struct Key: Hashable {
+        let source: GeminiCollector.TokenSource
+        let accountID: UUID
+    }
+
+    private var lastFailureAt: [Key: Date] = [:]
     private let backoffWindow: TimeInterval = 900  // 15 minutes
 
-    func shouldSuppressFailure(source: GeminiCollector.TokenSource) -> Bool {
-        guard let last = lastFailureAt[source] else { return false }
+    func shouldSuppressFailure(
+        source: GeminiCollector.TokenSource,
+        accountID: UUID
+    ) -> Bool {
+        guard let last = lastFailureAt[
+            Key(source: source, accountID: accountID)
+        ] else {
+            return false
+        }
         return Date().timeIntervalSince(last) < backoffWindow
     }
 
-    func recordFailure(source: GeminiCollector.TokenSource) {
-        lastFailureAt[source] = Date()
+    func recordFailure(
+        source: GeminiCollector.TokenSource,
+        accountID: UUID
+    ) {
+        lastFailureAt[
+            Key(source: source, accountID: accountID)
+        ] = Date()
     }
 
-    func recordSuccess(source: GeminiCollector.TokenSource) {
-        lastFailureAt.removeValue(forKey: source)
+    func recordSuccess(
+        source: GeminiCollector.TokenSource,
+        accountID: UUID
+    ) {
+        lastFailureAt.removeValue(
+            forKey: Key(source: source, accountID: accountID)
+        )
     }
 }
 
@@ -72,12 +94,12 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.gemini
 
     public func isAvailable(config: ProviderConfig) -> Bool {
-        let creds = readCredentials()
+        let creds = readCredentials(config: config)
         return creds?.accessToken != nil
     }
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
-        guard let initial = readCredentials(),
+        guard let initial = readCredentials(config: config),
               (initial.accessToken != nil || initial.refreshToken != nil) else {
             // v1.23.0 G3: dark/opt-in CLI-probe fallback for the
             // no-credentials gap. Returns nil instantly (probe never
@@ -92,7 +114,12 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         // picked, then the remaining file sources (gemini-cli, Antigravity).
         // Any of them maps to the same account/project/quota, so the first
         // that yields a live token wins.
-        guard let creds = await resolveUsableToken(initial: initial),
+        guard let creds = await resolveUsableToken(
+            initial: initial,
+            accountID: config.accountID,
+            allowSharedFallback:
+                config.sharedCredentialFallbackDisabled != true
+        ),
               let token = creds.accessToken else {
             // v1.23.0 G3: try the dark/opt-in CLI-probe fallback BEFORE
             // recording a failure — a probe rescue is not a failure.
@@ -103,9 +130,16 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             // window are silently suppressed (CollectorError.silentBackoff
             // → "skip this tick, no log").
             let primary = initial.source
-            let suppressed = await GeminiRefreshBackoff.shared.shouldSuppressFailure(source: primary)
+            let suppressed = await GeminiRefreshBackoff.shared
+                .shouldSuppressFailure(
+                    source: primary,
+                    accountID: config.accountID
+                )
             if !suppressed {
-                await GeminiRefreshBackoff.shared.recordFailure(source: primary)
+                await GeminiRefreshBackoff.shared.recordFailure(
+                    source: primary,
+                    accountID: config.accountID
+                )
                 throw CollectorError.missingCredentials("Gemini: token expired — reconnect via CLI Pulse OAuth")
             } else {
                 throw CollectorError.silentBackoff("Gemini: token expired (silenced for 15min after first error)")
@@ -115,9 +149,15 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         // when a fallback rescued the tick, so a later total outage emits its
         // error on the first occurrence instead of being silently suppressed by
         // a stale primary-source backoff entry.
-        await GeminiRefreshBackoff.shared.recordSuccess(source: creds.source)
+        await GeminiRefreshBackoff.shared.recordSuccess(
+            source: creds.source,
+            accountID: config.accountID
+        )
         if creds.source != initial.source {
-            await GeminiRefreshBackoff.shared.recordSuccess(source: initial.source)
+            await GeminiRefreshBackoff.shared.recordSuccess(
+                source: initial.source,
+                accountID: config.accountID
+            )
         }
 
         // Fetch tier info for plan detection + cloudaicompanion project discovery.
@@ -134,7 +174,11 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     /// file-based sources — gemini-cli, then Antigravity. Returns nil only
     /// when no source can produce a live token. Refreshed file/Antigravity
     /// tokens are persisted back so later ticks short-circuit the refresh.
-    private func resolveUsableToken(initial: GeminiCreds) async -> GeminiCreds? {
+    private func resolveUsableToken(
+        initial: GeminiCreds,
+        accountID: UUID,
+        allowSharedFallback: Bool
+    ) async -> GeminiCreds? {
         var candidates: [GeminiCreds] = [initial]
         // Preserve the historical keychain→gemini-cli-file fallback. We
         // deliberately do NOT cross-fall-back into the Antigravity token from a
@@ -142,7 +186,13 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         // user's sole Gemini login (i.e. the initial source readCredentials
         // picked), so CLI Pulse never silently reaches into — or rewrites —
         // agy's token file for a user who configured a different Gemini auth.
-        if initial.source != .file, let f = readFileCredentials(),
+        if initial.source != .file,
+           allowSharedFallback,
+           ProviderSharedCredentialOwner.isOwner(
+               kind: .gemini,
+               accountID: accountID
+           ),
+           let f = readFileCredentials(),
            (f.accessToken != nil || f.refreshToken != nil) {
             candidates.append(f)
         }
@@ -151,7 +201,10 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             // A refresh that returns an access token is a success regardless of
             // expiry bookkeeping — `isExpired` is how we got here, and a missing
             // `expires_in` must not cause us to throw away a live token.
-            if let refreshed = try? await refreshToken(creds: creds),
+            if let refreshed = try? await refreshToken(
+                creds: creds,
+                accountID: accountID
+            ),
                refreshed.accessToken != nil {
                 persistCredentials(refreshed)
                 return refreshed
@@ -181,9 +234,13 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         (realUserHome() as NSString).appendingPathComponent(".gemini/oauth_creds.json")
     }
 
-    func readCredentials() -> GeminiCreds? {
+    func readCredentials(config: ProviderConfig) -> GeminiCreds? {
         // Priority 1: Keychain tokens (CLI Pulse's own OAuth flow)
-        if let stored = GeminiOAuthManager.shared.loadTokens() {
+        if let stored = GeminiOAuthManager.shared.loadTokens(
+            accountID: config.accountID,
+            allowLegacyFallback:
+                config.sharedCredentialFallbackDisabled != true
+        ) {
             return GeminiCreds(
                 accessToken: stored.accessToken,
                 refreshToken: stored.refreshToken,
@@ -193,13 +250,29 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         }
 
         // Priority 2: Gemini CLI's credential file (compatibility fallback)
-        if let file = readFileCredentials(), file.accessToken != nil {
+        if config.sharedCredentialFallbackDisabled != true,
+           let file = readFileCredentials(),
+           file.accessToken != nil,
+           ProviderSharedCredentialOwner.claim(
+               kind: .gemini,
+               accountID: config.accountID
+           ) {
             return file
         }
 
         // Priority 3: Antigravity (`agy`) consumer token — same Google
         // account / cloudaicompanion project / quota, different login surface.
-        return readAntigravityCredentials()
+        guard
+            config.sharedCredentialFallbackDisabled != true,
+            let antigravity = readAntigravityCredentials(),
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: config.accountID
+            )
+        else {
+            return nil
+        }
+        return antigravity
     }
 
     /// Read credentials from `~/.gemini/oauth_creds.json` only.
@@ -316,15 +389,21 @@ public struct GeminiCollector: ProviderCollector, Sendable {
 
     // MARK: - Token refresh
 
-    private func refreshToken(creds: GeminiCreds) async throws -> GeminiCreds {
+    private func refreshToken(
+        creds: GeminiCreds,
+        accountID: UUID
+    ) async throws -> GeminiCreds {
         switch creds.source {
         case .keychain:
             // Refresh via CLI Pulse's own OAuth client (PKCE, no secret needed)
-            let newToken = try await GeminiOAuthManager.shared.refreshAccessToken()
+            let newToken = try await GeminiOAuthManager.shared
+                .refreshAccessToken(accountID: accountID)
             var updated = creds
             updated.accessToken = newToken
             // Reload expiry from Keychain after refresh
-            if let stored = GeminiOAuthManager.shared.loadTokens() {
+            if let stored = GeminiOAuthManager.shared.loadTokens(
+                accountID: accountID
+            ) {
                 updated.expiryDate = stored.expiry
             }
             return updated
@@ -605,7 +684,16 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     /// token gaps — never on transient network errors of the primary
     /// path (so we don't double-hit Google or mask outages).
     private func probeFallbackResult(config: ProviderConfig) async -> CollectorResult? {
-        guard config.geminiCliProbeFallback == true else { return nil }
+        guard
+            config.geminiCliProbeFallback == true,
+            config.sharedCredentialFallbackDisabled != true,
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: config.accountID
+            )
+        else {
+            return nil
+        }
         do {
             let probe = GeminiStatusProbe(homeDirectory: realUserHome())
             let snapshot = try await probe.fetch()

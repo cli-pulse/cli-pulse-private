@@ -485,6 +485,25 @@
 
 /* ── プロバイダー追加 (i18n sweep) ── */
 "providers.configure_hint" = "各プロバイダーのデータソース、認証情報、表示を設定します。";
+"providers.account_configuration" = "エージェントアカウント";
+"providers.accounts_count_one" = "%d アカウント";
+"providers.accounts_count" = "%d アカウント";
+"providers.no_accounts_configured" = "このプロバイダーの CLIPulse アカウントは未設定です。";
+"providers.add_account" = "アカウントを追加";
+"providers.default_account" = "デフォルトアカウント";
+"providers.account_number" = "アカウント %d";
+"providers.plan_unconfirmed" = "プラン未確認";
+"providers.connected" = "接続済み";
+"providers.needs_reconnect" = "再接続が必要";
+"providers.monitor_account" = "%@ を監視";
+"providers.edit_account" = "%@ を編集";
+"providers.remove_account" = "アカウントを削除";
+"providers.remove_named_account" = "%@ を削除";
+"providers.remove_account_title" = "%@ · %@ を削除しますか？";
+"providers.remove_account_message" = "CLIPulse の設定と、このアカウントに紐づくローカルの Secret だけを削除します。プロバイダーのサブスクリプションは解約も変更もされません。";
+"providers.provider_level_cost" = "トークン数とコストの合計はプロバイダー単位で、一度だけ表示されます。";
+"providers.most_constrained" = "残量が最少";
+"providers.remaining_percent" = "残り %d%%";
 "providers.source_label" = "ソース: %@";
 "providers.key_set" = "キー設定済み";
 "providers.limited_free" = "無料プランで制限中";
@@ -497,6 +516,9 @@
 "provider_config.data_source" = "データソース";
 "provider_config.account_label" = "アカウントラベル";
 "provider_config.account_placeholder" = "例: team-A、dev-box";
+"provider_config.manual_plan" = "手動プランラベル";
+"provider_config.manual_plan_placeholder" = "例: Max 20x、Pro";
+"provider_config.manual_plan_hint" = "表示用の代替情報のみです。取得したクォータやコストは変更しません。";
 "provider_config.api_key" = "APIキー";
 "provider_config.show_key" = "キーを表示";
 "provider_config.hide_key" = "キーを非表示";

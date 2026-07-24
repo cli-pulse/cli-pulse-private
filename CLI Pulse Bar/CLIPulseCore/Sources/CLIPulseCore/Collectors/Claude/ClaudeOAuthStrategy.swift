@@ -28,13 +28,18 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
     }
 
     public func isAvailable(config: ProviderConfig) -> Bool {
-        let (token, _) = ClaudeCredentials.resolveToken(config: config)
-        return !token.isEmpty
+        !ClaudeCredentials.resolveTokenDetails(
+            config: config
+        ).token.isEmpty
     }
 
     public func fetch(config: ProviderConfig) async throws -> ClaudeSnapshot {
-        let (token, tier) = ClaudeCredentials.resolveToken(config: config)
-        guard !token.isEmpty else { throw ClaudeStrategyError.noToken }
+        let resolved = ClaudeCredentials.resolveTokenDetails(config: config)
+        guard !resolved.token.isEmpty else {
+            throw ClaudeStrategyError.noToken
+        }
+        let token = resolved.token
+        let tier = resolved.tier
 
         // Pre-emptive backoff check. If we 429'd this token recently,
         // skip the network round-trip entirely and let the resolver
@@ -65,12 +70,14 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
                     ClaudeAccountInfo(accountEmail: nil, rateLimitTier: tier, weeklyReset: nil)
                 )
             }
-            ClaudeCredentials.clearCachedKeychainCredentials()
-            // v1.30.x: arm the cross-app keychain-read cooldown so a token that
-            // keeps 401ing can't re-trigger the macOS keychain dialog on every
-            // ~3-4 min refresh. Only here (auth failure) — NOT on a user
-            // Disconnect; a user-initiated Connect bypasses the cooldown.
-            ClaudeCredentials.installKeychainReadCooldown()
+            if resolved.source == .sharedKeychain {
+                ClaudeCredentials.clearCachedKeychainCredentials()
+                // v1.30.x: arm the cross-app keychain-read cooldown so a token
+                // that keeps 401ing cannot re-trigger the macOS keychain dialog
+                // every refresh. Account-scoped config tokens never mutate
+                // another account's shared compatibility cache.
+                ClaudeCredentials.installKeychainReadCooldown()
+            }
             throw ClaudeStrategyError.httpError(status: status, provider: "Claude")
         } catch ClaudeStrategyError.httpError(let status, _) where status == 429 {
             // Genuine rate-limit response. Record the failure so the
