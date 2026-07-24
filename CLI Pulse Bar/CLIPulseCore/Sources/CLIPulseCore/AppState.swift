@@ -63,7 +63,7 @@ public final class AppState: ObservableObject {
 
     // v1.10 P2-3 slice 5: extracted into a child ProviderState ObservableObject.
     // `providers`, `providerConfigs`, `providerDetails`, `costSummary`, and
-    // `editingProviderKind` live on `providerState`; AppState exposes them as
+    // `editingProviderAccountID` live on `providerState`; AppState exposes them as
     // computed forwarders so setProviderEnabled/toggleProvider/DemoDataProvider/
     // DataRefreshManager-payload-assign compile unchanged.
     public let providerState = ProviderState()
@@ -111,10 +111,10 @@ public final class AppState: ObservableObject {
     @Published public var lastRefresh: Date?
     @Published public var serverOnline = false
     @Published public var isLocalMode = false
-    /// v1.10 P2-3 slice 5: forwarder to `providerState.editingProviderKind`.
-    public var editingProviderKind: ProviderKind? {
-        get { providerState.editingProviderKind }
-        set { providerState.editingProviderKind = newValue }
+    /// Stable account targeted by the standalone provider editor.
+    public var editingProviderAccountID: UUID? {
+        get { providerState.editingProviderAccountID }
+        set { providerState.editingProviderAccountID = newValue }
     }
 
     // MARK: - Provider Management
@@ -1211,13 +1211,16 @@ public final class AppState: ObservableObject {
     }
 
     public func saveProviderConfigs() {
-        if let data = try? JSONEncoder().encode(providerConfigs) {
-            UserDefaults.standard.set(data, forKey: "cli_pulse_provider_configs")
-            UserDefaults(suiteName: HelperIPC.suiteName)?.set(data, forKey: HelperIPC.providerConfigsKey)
-        }
+        saveProviderConfigMetadata()
         for config in providerConfigs {
             config.saveSecrets()
         }
+    }
+
+    /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
+    /// for enable/order/label changes that must never mutate Keychain state.
+    public func saveProviderConfigMetadata() {
+        _ = ProviderConfigMetadataStore().save(providerConfigs)
     }
 
     public func buildProviderDetails() {

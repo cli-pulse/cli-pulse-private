@@ -3,6 +3,64 @@ import XCTest
 @testable import CLIPulseCore
 
 final class AgentSetupStateTests: XCTestCase {
+    func testNewUserNavigationOrderIsOwnedByStateMachine() {
+        var state = AgentSetupState(
+            storedState: AgentSetupStoredState(
+                legacyCompleted: false,
+                onboardingVersion: nil,
+                progress: nil,
+                upgradePromptDismissed: false
+            ),
+            featureFlags: .init(
+                newUsersV2: true,
+                existingUsersV2: true
+            )
+        )
+
+        XCTAssertEqual(state.route, .v2Onboarding(.welcome))
+        XCTAssertFalse(state.canMoveBackward)
+
+        state.advance()
+        XCTAssertEqual(state.route, .v2Onboarding(.privacy))
+        XCTAssertTrue(state.canMoveBackward)
+
+        state.advance()
+        XCTAssertEqual(state.route, .v2Onboarding(.discovery))
+        state.advance()
+        XCTAssertEqual(state.route, .v2Onboarding(.review))
+        state.advance()
+        XCTAssertEqual(state.route, .v2Onboarding(.connection))
+        state.advance()
+        XCTAssertEqual(state.route, .v2Onboarding(.syncMode))
+
+        state.moveBackward()
+        XCTAssertEqual(state.route, .v2Onboarding(.connection))
+        state.moveBackward()
+        XCTAssertEqual(state.route, .v2Onboarding(.review))
+    }
+
+    func testExistingUserUpgradeCannotMoveBeforeDiscovery() {
+        var state = AgentSetupState(
+            storedState: AgentSetupStoredState(
+                legacyCompleted: true,
+                onboardingVersion: nil,
+                progress: nil,
+                upgradePromptDismissed: false
+            ),
+            featureFlags: .init(
+                newUsersV2: true,
+                existingUsersV2: true
+            )
+        )
+
+        state.acceptExistingUserUpgrade()
+
+        XCTAssertEqual(state.route, .v2Onboarding(.discovery))
+        XCTAssertFalse(state.canMoveBackward)
+        state.moveBackward()
+        XCTAssertEqual(state.route, .v2Onboarding(.discovery))
+    }
+
     func testInterruptedV2SetupRestoresStepAndSelections() throws {
         let defaults = makeDefaults()
         defer { remove(defaults) }

@@ -7,6 +7,7 @@ import AuthenticationServices
 /// Editor for per-provider settings (source mode, credentials, account label).
 /// Presented in its own Window scene on macOS; dismissed via `@Environment(\.dismiss)`.
 struct ProviderConfigEditor: View {
+    let accountID: UUID
     let kind: ProviderKind
     @ObservedObject var state: AppState
     @Environment(\.dismiss) private var dismiss
@@ -319,7 +320,11 @@ struct ProviderConfigEditor: View {
     }
 
     private func loadFromConfig() {
-        guard let idx = state.providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
+        guard let idx = state.providerConfigs.firstIndex(
+            where: { $0.accountID == accountID }
+        ) else {
+            return
+        }
         let config = state.providerConfigs[idx]
         sourceMode = config.sourceMode
         apiKey = config.apiKey ?? ""
@@ -610,6 +615,7 @@ struct ProviderConfigEditor: View {
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let probeConfig = ProviderConfig(
             kind: kind,
+            accountID: accountID,
             isEnabled: true,
             sourceMode: sourceMode,
             apiKey: trimmedKey.isEmpty ? nil : trimmedKey,
@@ -649,7 +655,11 @@ struct ProviderConfigEditor: View {
     #endif
 
     private func save() {
-        guard let idx = state.providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
+        guard let idx = state.providerConfigs.firstIndex(
+            where: { $0.accountID == accountID }
+        ) else {
+            return
+        }
         state.providerConfigs[idx].sourceMode = sourceMode
         state.providerConfigs[idx].accountLabel = accountLabel.isEmpty ? nil : accountLabel
         state.providerConfigs[idx].cookieSource = cookieSource
@@ -664,6 +674,7 @@ struct ProviderConfigEditor: View {
         state.providerConfigs[idx].geminiCliProbeFallback =
             (kind == .gemini && geminiCliProbeFallback) ? true : nil
         #endif
-        state.saveProviderConfigs()
+        state.saveProviderConfigMetadata()
+        state.providerConfigs[idx].saveSecrets()
     }
 }

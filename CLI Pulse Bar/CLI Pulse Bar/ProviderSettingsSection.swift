@@ -74,7 +74,7 @@ struct ProviderSettingsSection: View {
             }
             Spacer()
             Button {
-                providerState.editingProviderKind = config.kind
+                providerState.editingProviderAccountID = config.accountID
                 NSApp.activate(ignoringOtherApps: true)
                 openWindow(id: "provider-config")
             } label: {

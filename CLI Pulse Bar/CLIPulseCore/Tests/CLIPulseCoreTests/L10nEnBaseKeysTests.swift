@@ -51,4 +51,15 @@ final class L10nEnBaseKeysTests: XCTestCase {
     func test_enOverrideResolvesAKnownKey() {
         XCTAssertEqual(L10n.providerConfig.capabilities, "Capabilities")
     }
+
+    func test_onboardingStepProgressHasLocalizedSemanticCopy() {
+        XCTAssertEqual(
+            L10n.onboardingWizard.stepProgress(
+                current: 3,
+                total: 6,
+                name: "Your Coding Agents"
+            ),
+            "Step 3 of 6: Your Coding Agents"
+        )
+    }
 }

@@ -33,6 +33,8 @@
 		A10050 /* RemoteApprovalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10050 /* RemoteApprovalsSheet.swift */; };
 		A10051 /* LocalModeGuideCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10051 /* LocalModeGuideCard.swift */; };
 		A10052 /* WelcomeModeChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10052 /* WelcomeModeChoice.swift */; };
+		A10100 /* AgentDiscoveryStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10100 /* AgentDiscoveryStepView.swift */; };
+		A10101 /* ProviderAccountSetupCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10101 /* ProviderAccountSetupCard.swift */; };
 		A10060 /* cli_pulse_helper in Embed Helper Binary */ = {isa = PBXBuildFile; fileRef = B10060 /* cli_pulse_helper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		A10062 /* yyh.CLI-Pulse.helper.agent.plist in Embed Helper LaunchAgent */ = {isa = PBXBuildFile; fileRef = B10062 /* yyh.CLI-Pulse.helper.agent.plist */; };
 		A10099 /* YieldScoreCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10099 /* YieldScoreCard.swift */; };
@@ -213,6 +215,8 @@
 		B10050 /* RemoteApprovalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteApprovalsSheet.swift; sourceTree = "<group>"; };
 		B10051 /* LocalModeGuideCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModeGuideCard.swift; sourceTree = "<group>"; };
 		B10052 /* WelcomeModeChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeModeChoice.swift; sourceTree = "<group>"; };
+		B10100 /* AgentDiscoveryStepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDiscoveryStepView.swift; sourceTree = "<group>"; };
+		B10101 /* ProviderAccountSetupCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountSetupCard.swift; sourceTree = "<group>"; };
 		B10060 /* cli_pulse_helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = ../HelperSwift/.build/release/cli_pulse_helper; sourceTree = SOURCE_ROOT; };
 		B10062 /* yyh.CLI-Pulse.helper.agent.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "yyh.CLI-Pulse.helper.agent.plist"; sourceTree = "<group>"; };
 		B10099 /* YieldScoreCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YieldScoreCard.swift; sourceTree = "<group>"; };
@@ -345,6 +349,8 @@
 				B10006 /* MenuBarView.swift */,
 				B30024 /* TeamView.swift */,
 				B30022 /* OnboardingWizardView.swift */,
+				B10100 /* AgentDiscoveryStepView.swift */,
+				B10101 /* ProviderAccountSetupCard.swift */,
 				B10007 /* OverviewTab.swift */,
 				B10099 /* YieldScoreCard.swift */,
 				B10008 /* ProvidersTab.swift */,
@@ -702,6 +708,8 @@
 				A10006 /* MenuBarView.swift in Sources */,
 				A30024 /* TeamView.swift in Sources */,
 				A30022 /* OnboardingWizardView.swift in Sources */,
+				A10100 /* AgentDiscoveryStepView.swift in Sources */,
+				A10101 /* ProviderAccountSetupCard.swift in Sources */,
 				A10007 /* OverviewTab.swift in Sources */,
 				A10099 /* YieldScoreCard.swift in Sources */,
 				A10008 /* ProvidersTab.swift in Sources */,

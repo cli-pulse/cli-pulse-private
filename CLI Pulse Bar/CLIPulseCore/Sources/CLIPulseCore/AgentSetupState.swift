@@ -135,6 +135,14 @@ public struct AgentSetupState: Equatable, Sendable {
         storedState
     }
 
+    /// Whether the current flow has a valid preceding step. The floor differs
+    /// by origin: new users may return from discovery to privacy, while an
+    /// existing-user upgrade or explicit rerun starts at discovery and must
+    /// never reveal the new-user-only welcome/privacy pages.
+    public var canMoveBackward: Bool {
+        previousStep != nil
+    }
+
     public var route: AgentSetupRoute {
         // A downgraded client must never reinterpret or overwrite progress
         // created by a newer state-machine version.
@@ -230,6 +238,37 @@ public struct AgentSetupState: Equatable, Sendable {
         storedState.upgradePromptDismissed = true
     }
 
+    /// Move through the canonical onboarding order. Views intentionally call
+    /// this instead of duplicating step transitions in button actions.
+    public mutating func advance() {
+        guard ensureProgress(), let current = validProgress?.step else {
+            return
+        }
+
+        switch current {
+        case .welcome:
+            move(to: .privacy)
+        case .privacy:
+            move(to: .discovery)
+        case .discovery:
+            move(to: .review)
+        case .review:
+            move(to: .connection)
+        case .connection:
+            move(to: .syncMode)
+        case .syncMode:
+            complete()
+        case .completed:
+            break
+        }
+    }
+
+    /// Move to the canonical preceding step, respecting the flow's origin.
+    public mutating func moveBackward() {
+        guard let previousStep else { return }
+        move(to: previousStep)
+    }
+
     public mutating func move(to step: AgentSetupStep) {
         if step == .completed {
             complete()
@@ -270,6 +309,35 @@ public struct AgentSetupState: Equatable, Sendable {
             return nil
         }
         return progress
+    }
+
+    private var previousStep: AgentSetupStep? {
+        guard
+            !mustPreserveStoredProgress,
+            let progress = validProgress
+        else {
+            return nil
+        }
+
+        switch progress.step {
+        case .welcome:
+            return nil
+        case .privacy:
+            return .welcome
+        case .discovery:
+            let isNewUserFlow =
+                progress.origin == .newUser
+                || (progress.origin == nil && !storedState.legacyCompleted)
+            return isNewUserFlow ? .privacy : nil
+        case .review:
+            return .discovery
+        case .connection:
+            return .review
+        case .syncMode:
+            return .connection
+        case .completed:
+            return .syncMode
+        }
     }
 
     private var mustPreserveStoredProgress: Bool {

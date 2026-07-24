@@ -999,12 +999,75 @@ public enum L10n {
         public static var helperHint: String { tr("onboarding_wizard.helper_hint") }
         public static var done: String { tr("onboarding_wizard.done") }
         public static var close: String { tr("onboarding_wizard.close") }
+        public static func stepProgress(
+            current: Int,
+            total: Int,
+            name: String
+        ) -> String {
+            tr(
+                "onboarding_wizard.step_progress",
+                current,
+                total,
+                name
+            )
+        }
         public static var privacyKeysTitle: String { tr("onboarding_wizard.privacy_keys_title") }
         public static var privacyKeysDetail: String { tr("onboarding_wizard.privacy_keys_detail") }
         public static var privacyLogsTitle: String { tr("onboarding_wizard.privacy_logs_title") }
         public static var privacyLogsDetail: String { tr("onboarding_wizard.privacy_logs_detail") }
         public static var privacyMetricsTitle: String { tr("onboarding_wizard.privacy_metrics_title") }
         public static var privacyMetricsDetail: String { tr("onboarding_wizard.privacy_metrics_detail") }
+        public static var findAgents: String { tr("onboarding_wizard.find_agents") }
+        public static var setUpLater: String { tr("onboarding_wizard.set_up_later") }
+        public static var privacyDirectTitle: String { tr("onboarding_wizard.privacy_direct_title") }
+        public static var privacyDirectDetail: String { tr("onboarding_wizard.privacy_direct_detail") }
+        public static var privacyRawTitle: String { tr("onboarding_wizard.privacy_raw_title") }
+        public static var privacyRawDetail: String { tr("onboarding_wizard.privacy_raw_detail") }
+        public static var discoveryTitle: String { tr("onboarding_wizard.discovery_title") }
+        public static var discoverySubtitle: String { tr("onboarding_wizard.discovery_subtitle") }
+        public static var scanning: String { tr("onboarding_wizard.scanning") }
+        public static var scanAgain: String { tr("onboarding_wizard.scan_again") }
+        public static var noAgentsTitle: String { tr("onboarding_wizard.no_agents_title") }
+        public static var noAgentsBody: String { tr("onboarding_wizard.no_agents_body") }
+        public static func undetectedProviders(_ count: Int) -> String { tr("onboarding_wizard.undetected_providers", count) }
+        public static var reviewTitle: String { tr("onboarding_wizard.review_title") }
+        public static var reviewSubtitle: String { tr("onboarding_wizard.review_subtitle") }
+        public static var noAccountsSelected: String { tr("onboarding_wizard.no_accounts_selected") }
+        public static var connectionTitle: String { tr("onboarding_wizard.connection_title") }
+        public static var connectionSubtitle: String { tr("onboarding_wizard.connection_subtitle") }
+        public static var connectionOptional: String { tr("onboarding_wizard.connection_optional") }
+        public static var openAccountSettings: String { tr("onboarding_wizard.open_account_settings") }
+        public static var modeTitle: String { tr("onboarding_wizard.mode_title") }
+        public static var modeSubtitle: String { tr("onboarding_wizard.mode_subtitle") }
+        public static var syncModeTitle: String { tr("onboarding_wizard.sync_mode_title") }
+        public static var syncModeBody: String { tr("onboarding_wizard.sync_mode_body") }
+        public static var localOnlyTitle: String { tr("onboarding_wizard.local_only_title") }
+        public static var localOnlyBody: String { tr("onboarding_wizard.local_only_body") }
+        public static var signedInReady: String { tr("onboarding_wizard.signed_in_ready") }
+        public static var signInForSync: String { tr("onboarding_wizard.sign_in_for_sync") }
+        public static var finishTitle: String { tr("onboarding_wizard.finish_title") }
+        public static var finishBody: String { tr("onboarding_wizard.finish_body") }
+        public static var finishLocalBody: String { tr("onboarding_wizard.finish_local_body") }
+        public static var finishSyncBody: String { tr("onboarding_wizard.finish_sync_body") }
+        public static var planUnconfirmed: String { tr("onboarding_wizard.plan_unconfirmed") }
+        public static var defaultAccount: String { tr("onboarding_wizard.default_account") }
+        public static var enableMonitoring: String { tr("onboarding_wizard.enable_monitoring") }
+        public static var monitoringEnabled: String { tr("onboarding_wizard.monitoring_enabled") }
+        public static var monitoringDisabled: String { tr("onboarding_wizard.monitoring_disabled") }
+        public static var connect: String { tr("onboarding_wizard.connect") }
+        public static var statusDetected: String { tr("onboarding_wizard.status_detected") }
+        public static var statusConnected: String { tr("onboarding_wizard.status_connected") }
+        public static var statusActionRequired: String { tr("onboarding_wizard.status_action_required") }
+        public static var statusNotFound: String { tr("onboarding_wizard.status_not_found") }
+        public static var signalCLI: String { tr("onboarding_wizard.signal_cli") }
+        public static var signalConfig: String { tr("onboarding_wizard.signal_config") }
+        public static var signalBookmark: String { tr("onboarding_wizard.signal_bookmark") }
+        public static var signalExisting: String { tr("onboarding_wizard.signal_existing") }
+        public static var signalConnected: String { tr("onboarding_wizard.signal_connected") }
+        public static var upgradeTitle: String { tr("onboarding_wizard.upgrade_title") }
+        public static var upgradeBody: String { tr("onboarding_wizard.upgrade_body") }
+        public static var checkAccounts: String { tr("onboarding_wizard.check_accounts") }
+        public static var later: String { tr("onboarding_wizard.later") }
     }
 
     // MARK: - Advanced Settings

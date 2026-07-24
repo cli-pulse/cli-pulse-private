@@ -24,9 +24,10 @@ public final class ProviderState: ObservableObject {
     @Published public var providerConfigs: [ProviderConfig] = ProviderConfig.defaults()
     @Published public var providerDetails: [ProviderDetail] = []
     @Published public var costSummary: CostSummary = CostSummary()
-    /// Which provider the standalone "Provider Settings" window is editing, if any.
-    /// Read by the Window scene in `CLIPulseBarApp`; written by Settings → gear buttons.
-    @Published public var editingProviderKind: ProviderKind?
+    /// Stable account targeted by the standalone "Provider Settings" window.
+    /// Provider kind is not unique once one agent can have multiple accounts,
+    /// so every caller must route the account UUID end to end.
+    @Published public var editingProviderAccountID: UUID?
 
     public init() {}
 
@@ -37,5 +38,12 @@ public final class ProviderState: ObservableObject {
     /// P2-3 slice 5 extraction).
     public var enabledProviderNames: Set<String> {
         Set(providerConfigs.filter(\.isEnabled).map(\.kind.rawValue))
+    }
+
+    public var editingProviderConfig: ProviderConfig? {
+        guard let editingProviderAccountID else { return nil }
+        return providerConfigs.first {
+            $0.accountID == editingProviderAccountID
+        }
     }
 }

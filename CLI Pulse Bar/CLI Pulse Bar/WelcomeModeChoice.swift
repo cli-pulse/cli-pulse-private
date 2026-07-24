@@ -1,6 +1,65 @@
 import SwiftUI
 import CLIPulseCore
 
+/// Non-blocking upgrade surface for users who already completed onboarding V1.
+/// Accepting begins V2 at passive discovery; dismissing never changes their
+/// existing provider accounts or interrupts the current dashboard.
+struct AgentSetupUpgradeCard: View {
+    let onCheckAccounts: () -> Void
+    let onLater: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.2.badge.gearshape.fill")
+                .font(.title3)
+                .foregroundStyle(PulseTheme.accent)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(L10n.onboardingWizard.upgradeTitle)
+                    .font(.headline)
+                Text(L10n.onboardingWizard.upgradeBody)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    Button(
+                        L10n.onboardingWizard.checkAccounts,
+                        action: onCheckAccounts
+                    )
+                    .buttonStyle(.borderedProminent)
+                    .tint(PulseTheme.accent)
+                    .controlSize(.small)
+
+                    Button(
+                        L10n.onboardingWizard.later,
+                        action: onLater
+                    )
+                    .buttonStyle(.plain)
+                    .controlSize(.small)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: 11)
+                .fill(PulseTheme.accent.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 11)
+                .stroke(
+                    PulseTheme.accent.opacity(0.22),
+                    lineWidth: 1
+                )
+        )
+        .accessibilityElement(children: .contain)
+    }
+}
+
 /// Mode-choice card shown on the macOS Overview tab when the user is
 /// neither authenticated nor in explicit local mode. Two large
 /// tap-targets:

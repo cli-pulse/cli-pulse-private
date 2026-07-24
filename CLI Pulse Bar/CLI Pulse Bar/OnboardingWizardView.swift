@@ -1,9 +1,1074 @@
 import SwiftUI
 import CLIPulseCore
 
+private enum AgentSetupMode {
+    case sync
+    case local
+}
+
+/// Account-first onboarding V2. Routing and resumable progress live in
+/// `AgentSetupState`; this view only renders the current state and dispatches
+/// explicit user actions.
+struct OnboardingWizardView: View {
+    @EnvironmentObject private var state: AppState
+    @EnvironmentObject private var authState: AuthState
+    @EnvironmentObject private var providerState: ProviderState
+    @Environment(\.openWindow) private var openWindow
+
+    @Binding var setupState: AgentSetupState
+    let onStateChange: (AgentSetupState) -> Void
+    let onClose: () -> Void
+    let onFinished: () -> Void
+
+    @State private var candidates: [ProviderDiscoveryCandidate] = []
+    @State private var isScanning = false
+    @State private var selectedMode: AgentSetupMode?
+    @State private var showingCompletion = false
+    @State private var email = ""
+    @State private var otpCode = ""
+    @State private var password = ""
+    @State private var usePasswordLogin = false
+
+    private static let seededConfigsKey =
+        "cli_pulse_agent_setup_seeded_provider_configs_v2"
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                stepIndicator
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+
+                Group {
+                    if showingCompletion {
+                        completionStep
+                    } else {
+                        stepContent
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 14)
+                .animation(
+                    .easeInOut(duration: 0.2),
+                    value: currentStep
+                )
+            }
+
+            Button {
+                clearCredentialBuffers()
+                onClose()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .help(L10n.onboardingWizard.close)
+            .accessibilityLabel(L10n.onboardingWizard.close)
+            .padding(.top, 5)
+            .padding(.trailing, 7)
+        }
+        .onAppear {
+            if currentStep == .discovery {
+                performDiscovery()
+            }
+        }
+        .onChange(of: currentStep) { step in
+            if step == .discovery {
+                performDiscovery()
+            }
+            if step != .syncMode {
+                showingCompletion = false
+            }
+        }
+        .onChange(of: authState.isAuthenticated) { isAuthenticated in
+            guard isAuthenticated else { return }
+            clearCredentialBuffers()
+            if currentStep == .syncMode {
+                selectedMode = .sync
+            }
+        }
+        .onDisappear {
+            clearCredentialBuffers()
+        }
+    }
+
+    @ViewBuilder
+    private var stepContent: some View {
+        switch currentStep {
+        case .welcome:
+            welcomeStep
+        case .privacy:
+            privacyStep
+        case .discovery:
+            discoveryStep
+        case .review:
+            reviewStep
+        case .connection:
+            connectionStep
+        case .syncMode:
+            modeStep
+        case .completed:
+            completionStep
+        }
+    }
+
+    private var currentStep: AgentSetupStep {
+        if case let .v2Onboarding(step) = setupState.route {
+            return step
+        }
+        return setupState.progress?.step ?? .welcome
+    }
+
+    private var flowSteps: [AgentSetupStep] {
+        switch setupState.progress?.origin {
+        case .existingUserUpgrade, .explicitRerun:
+            return [
+                .discovery,
+                .review,
+                .connection,
+                .syncMode,
+            ]
+        case .newUser, .none:
+            return [
+                .welcome,
+                .privacy,
+                .discovery,
+                .review,
+                .connection,
+                .syncMode,
+            ]
+        }
+    }
+
+    private var stepIndicator: some View {
+        HStack(spacing: 6) {
+            ForEach(Array(flowSteps.enumerated()), id: \.element) {
+                index, step in
+                Capsule()
+                    .fill(
+                        step == currentStep
+                            ? PulseTheme.accent
+                            : index < currentStepIndex
+                                ? PulseTheme.accent.opacity(0.55)
+                                : Color.secondary.opacity(0.18)
+                    )
+                    .frame(
+                        width: step == currentStep ? 20 : 7,
+                        height: 7
+                    )
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            L10n.onboardingWizard.stepProgress(
+                current: currentStepIndex + 1,
+                total: flowSteps.count,
+                name: currentStepAccessibilityName
+            )
+        )
+    }
+
+    private var currentStepIndex: Int {
+        flowSteps.firstIndex(of: currentStep)
+            ?? max(flowSteps.count - 1, 0)
+    }
+
+    private var currentStepAccessibilityName: String {
+        switch currentStep {
+        case .welcome:
+            return L10n.onboardingWizard.welcomeTitle
+        case .privacy:
+            return L10n.onboardingWizard.privacyTitle
+        case .discovery:
+            return L10n.onboardingWizard.discoveryTitle
+        case .review:
+            return L10n.onboardingWizard.reviewTitle
+        case .connection:
+            return L10n.onboardingWizard.connectionTitle
+        case .syncMode:
+            return L10n.onboardingWizard.modeTitle
+        case .completed:
+            return L10n.onboardingWizard.finishTitle
+        }
+    }
+
+    // MARK: - Welcome
+
+    private var welcomeStep: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            Image(systemName: "waveform.path.ecg")
+                .font(.system(size: 42))
+                .foregroundStyle(PulseTheme.accent)
+                .accessibilityHidden(true)
+
+            Text(L10n.onboardingWizard.welcomeTitle)
+                .font(.title2.weight(.semibold))
+
+            Text(L10n.onboardingWizard.welcomeSubtitle)
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 9) {
+                setupValue(
+                    icon: "gauge.with.dots.needle.67percent",
+                    text: L10n.welcomeChoice.subtitle
+                )
+                setupValue(
+                    icon: "person.2.badge.gearshape",
+                    text: L10n.onboardingWizard.upgradeBody
+                )
+                setupValue(
+                    icon: "lock.shield",
+                    text: L10n.onboardingWizard.privacyKeysTitle
+                )
+            }
+            .padding(.horizontal, 16)
+
+            Spacer()
+
+            VStack(spacing: 8) {
+                Button {
+                    mutateSetupState { $0.advance() }
+                } label: {
+                    Text(L10n.onboardingWizard.findAgents)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PulseTheme.accent)
+                .controlSize(.large)
+                .keyboardShortcut(.defaultAction)
+
+                Button(L10n.onboardingWizard.setUpLater) {
+                    onClose()
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: - Privacy
+
+    private var privacyStep: some View {
+        VStack(spacing: 12) {
+            stepHeader(
+                title: L10n.onboardingWizard.privacyTitle,
+                subtitle: L10n.onboardingWizard.privacyBody
+            )
+
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    privacyCard(
+                        icon: "key.fill",
+                        color: .green,
+                        title: L10n.onboardingWizard.privacyKeysTitle,
+                        detail: L10n.onboardingWizard.privacyKeysDetail
+                    )
+                    privacyCard(
+                        icon: "arrow.left.arrow.right.circle.fill",
+                        color: .blue,
+                        title: L10n.onboardingWizard.privacyDirectTitle,
+                        detail: L10n.onboardingWizard.privacyDirectDetail
+                    )
+                    privacyCard(
+                        icon: "doc.text.magnifyingglass",
+                        color: .green,
+                        title: L10n.onboardingWizard.privacyRawTitle,
+                        detail: L10n.onboardingWizard.privacyRawDetail
+                    )
+                    privacyCard(
+                        icon: "icloud.and.arrow.up.fill",
+                        color: .blue,
+                        title: L10n.onboardingWizard.privacyMetricsTitle,
+                        detail: L10n.onboardingWizard.privacyMetricsDetail
+                    )
+                }
+            }
+
+            navigationBar {
+                mutateSetupState { $0.advance() }
+            }
+        }
+    }
+
+    // MARK: - Discovery
+
+    private var discoveryStep: some View {
+        VStack(spacing: 12) {
+            AgentDiscoveryStepView(
+                options: accountOptions,
+                selectedAccountIDs:
+                    setupState.progress?.selectedAccountIDs ?? [],
+                undetectedProviderCount: candidates.filter {
+                    $0.status == .notFound
+                }.count,
+                isScanning: isScanning,
+                onToggle: toggleAccount,
+                onConnect: openAccountSettings,
+                onRescan: performDiscovery
+            )
+
+            navigationBar {
+                persistSeededProviderMetadataIfNeeded()
+                mutateSetupState { $0.advance() }
+            }
+        }
+    }
+
+    // MARK: - Review
+
+    private var reviewStep: some View {
+        VStack(spacing: 12) {
+            stepHeader(
+                title: L10n.onboardingWizard.reviewTitle,
+                subtitle: L10n.onboardingWizard.reviewSubtitle
+            )
+
+            if selectedOptions.isEmpty {
+                ContentUnavailableView(
+                    L10n.onboardingWizard.noAccountsSelected,
+                    systemImage: "checklist.unchecked"
+                )
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(selectedOptions) { option in
+                            ProviderAccountSetupCard(
+                                option: option,
+                                isSelected: true,
+                                isReadOnly: true
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
+
+            navigationBar {
+                persistSeededProviderMetadataIfNeeded()
+                mutateSetupState { $0.advance() }
+            }
+        }
+    }
+
+    // MARK: - Connection
+
+    private var connectionStep: some View {
+        VStack(spacing: 12) {
+            stepHeader(
+                title: L10n.onboardingWizard.connectionTitle,
+                subtitle: L10n.onboardingWizard.connectionSubtitle
+            )
+
+            if selectedOptions.isEmpty {
+                ContentUnavailableView(
+                    L10n.onboardingWizard.noAccountsSelected,
+                    systemImage: "person.crop.circle.badge.questionmark"
+                )
+                .frame(maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 10) {
+                        ForEach(selectedOptions) { option in
+                            VStack(spacing: 8) {
+                                ProviderAccountSetupCard(
+                                    option: option,
+                                    isSelected: true,
+                                    isReadOnly: true
+                                )
+
+                                if option.status != .connected {
+                                    Button {
+                                        openAccountSettings(option.id)
+                                    } label: {
+                                        Label(
+                                            L10n.onboardingWizard
+                                                .openAccountSettings,
+                                            systemImage:
+                                                "rectangle.portrait.and.arrow.right"
+                                        )
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+
+                Text(L10n.onboardingWizard.connectionOptional)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            navigationBar {
+                mutateSetupState { $0.advance() }
+            }
+        }
+    }
+
+    // MARK: - Mode
+
+    private var modeStep: some View {
+        VStack(spacing: 12) {
+            stepHeader(
+                title: L10n.onboardingWizard.modeTitle,
+                subtitle: L10n.onboardingWizard.modeSubtitle
+            )
+
+            VStack(spacing: 10) {
+                modeOption(
+                    mode: .sync,
+                    icon: "icloud.and.arrow.up.fill",
+                    color: .blue,
+                    title: L10n.onboardingWizard.syncModeTitle,
+                    body: L10n.onboardingWizard.syncModeBody
+                )
+                modeOption(
+                    mode: .local,
+                    icon: "desktopcomputer",
+                    color: .green,
+                    title: L10n.onboardingWizard.localOnlyTitle,
+                    body: L10n.onboardingWizard.localOnlyBody
+                )
+            }
+
+            if selectedMode == .sync {
+                if authState.isAuthenticated {
+                    Label(
+                        L10n.onboardingWizard.signedInReady,
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.green)
+                    .padding(.vertical, 8)
+                } else {
+                    syncSignInForm
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            navigationBar(
+                primaryDisabled:
+                    selectedMode == nil
+                    || (selectedMode == .sync
+                        && !authState.isAuthenticated)
+            ) {
+                showingCompletion = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var syncSignInForm: some View {
+        VStack(spacing: 8) {
+            Text(L10n.onboardingWizard.signInForSync)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if state.otpSent {
+                Text(L10n.onboardingWizard.codeSentTo(state.otpEmail))
+                    .font(.caption)
+                    .foregroundStyle(.green)
+
+                TextField(
+                    L10n.auth.codePlaceholder,
+                    text: $otpCode
+                )
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(verifyOTP)
+
+                Button(L10n.onboardingWizard.verify, action: verifyOTP)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        otpCode.trimmingCharacters(
+                            in: .whitespacesAndNewlines
+                        ).isEmpty
+                    )
+
+                Button(L10n.onboardingWizard.backToEmail) {
+                    otpCode = ""
+                    state.resetOTP()
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+            } else if usePasswordLogin {
+                TextField(
+                    L10n.login.emailPlaceholder,
+                    text: $email
+                )
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(signInWithPassword)
+
+                SecureField(
+                    L10n.auth.passwordPlaceholder,
+                    text: $password
+                )
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(signInWithPassword)
+
+                Button(
+                    L10n.auth.passwordSignIn,
+                    action: signInWithPassword
+                )
+                .buttonStyle(.borderedProminent)
+                .disabled(
+                    !validEmail
+                    || password.isEmpty
+                    || state.isLoading
+                )
+
+                Button(L10n.auth.useEmailCode) {
+                    password = ""
+                    usePasswordLogin = false
+                    state.lastError = nil
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+            } else {
+                TextField(
+                    L10n.login.emailPlaceholder,
+                    text: $email
+                )
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(sendCode)
+
+                Button(L10n.auth.sendCode, action: sendCode)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!validEmail || state.isLoading)
+
+                Button(L10n.auth.usePassword) {
+                    usePasswordLogin = true
+                    state.lastError = nil
+                }
+                .buttonStyle(.plain)
+                .font(.caption)
+            }
+
+            if let error = state.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+            }
+
+            if state.isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.secondary.opacity(0.06))
+        )
+    }
+
+    // MARK: - Completion
+
+    private var completionStep: some View {
+        VStack(spacing: 12) {
+            stepHeader(
+                title: L10n.onboardingWizard.finishTitle,
+                subtitle: L10n.onboardingWizard.finishBody
+            )
+
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 34))
+                .foregroundStyle(.green)
+                .accessibilityHidden(true)
+
+            if !selectedOptions.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(selectedOptions) { option in
+                            ProviderAccountSetupCard(
+                                option: option,
+                                isSelected: true,
+                                isReadOnly: true
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            } else {
+                Text(L10n.onboardingWizard.noAccountsSelected)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxHeight: .infinity)
+            }
+
+            Text(
+                selectedMode == .sync
+                    ? L10n.onboardingWizard.finishSyncBody
+                    : L10n.onboardingWizard.finishLocalBody
+            )
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+
+            HStack(spacing: 12) {
+                Button(L10n.onboardingWizard.back) {
+                    showingCompletion = false
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    finishSetup()
+                } label: {
+                    Text(L10n.onboardingWizard.done)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PulseTheme.accent)
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+    }
+
+    // MARK: - Account assembly and persistence
+
+    private var accountOptions: [AgentSetupAccountOption] {
+        candidates.flatMap {
+            candidate -> [AgentSetupAccountOption] in
+            let accountIDs: [UUID]
+            if candidate.accountIDs.isEmpty {
+                guard candidate.status != .notFound,
+                      let fallbackID = providerState.providerConfigs
+                        .first(where: { $0.kind == candidate.kind })?
+                        .accountID
+                else {
+                    return []
+                }
+                accountIDs = [fallbackID]
+            } else {
+                accountIDs = candidate.accountIDs
+            }
+
+            return accountIDs.map { accountID in
+                let config = providerState.providerConfigs.first {
+                    $0.accountID == accountID
+                }
+                let usage = providerState.providerAccounts.first {
+                    $0.id == accountID
+                }
+                let status: ProviderDiscoveryStatus
+                if config?.hasCredentials == true || usage != nil {
+                    status = .connected
+                } else if candidate.accountIDs.contains(accountID) {
+                    status = .actionRequired
+                } else {
+                    status = candidate.status
+                }
+
+                return AgentSetupAccountOption(
+                    id: accountID,
+                    provider: candidate.kind,
+                    accountLabel:
+                        usage?.accountLabel
+                        ?? config?.accountLabel
+                        ?? L10n.onboardingWizard.defaultAccount,
+                    planLabel:
+                        usage?.planEvidence.displayValue
+                        ?? config?.planOverride,
+                    status: status,
+                    signals: candidate.signals
+                )
+            }
+        }
+    }
+
+    private var selectedOptions: [AgentSetupAccountOption] {
+        let selectedIDs =
+            setupState.progress?.selectedAccountIDs ?? []
+        return accountOptions.filter { selectedIDs.contains($0.id) }
+    }
+
+    private func performDiscovery() {
+        guard !isScanning else { return }
+        isScanning = true
+
+        Task { @MainActor in
+            await Task.yield()
+            let defaults = UserDefaults.standard
+            let isSeeded = defaults.bool(
+                forKey: Self.seededConfigsKey
+            )
+            let persistedData = defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+            let selectedIDs =
+                setupState.progress?.selectedAccountIDs ?? []
+            let visibleConfigs: [ProviderConfig]
+            if persistedData == nil {
+                visibleConfigs = []
+            } else if isSeeded {
+                visibleConfigs = providerState.providerConfigs.filter {
+                    selectedIDs.contains($0.accountID)
+                }
+            } else {
+                visibleConfigs = providerState.providerConfigs
+            }
+
+            let metadata = visibleConfigs.map(
+                ProviderDiscoveryAccountMetadata.init(config:)
+            )
+            let connectedIDs = Set(
+                providerState.providerConfigs
+                    .filter(\.hasCredentials)
+                    .map(\.accountID)
+            ).union(
+                providerState.providerAccounts.map(\.id)
+            )
+            let bookmarkIDs: Set<String> = Set(
+                BookmarkManager.knownDirectories.compactMap { directory in
+                    guard
+                        ["codex", "claude", "gemini"]
+                            .contains(directory.id),
+                        BookmarkManager.shared.hasAccess(
+                            to: directory.expandedPath
+                        )
+                    else {
+                        return nil
+                    }
+                    return directory.id
+                }
+            )
+
+            candidates = ProviderDiscoveryService().discover(
+                context: ProviderDiscoveryContext(
+                    accounts: metadata,
+                    connectedAccountIDs: connectedIDs,
+                    authorizedBookmarkIDs: bookmarkIDs
+                )
+            )
+            isScanning = false
+        }
+    }
+
+    private func toggleAccount(_ accountID: UUID) {
+        mutateSetupState { state in
+            if state.progress?.selectedAccountIDs.contains(accountID)
+                == true {
+                state.deselectAccount(accountID)
+            } else {
+                state.selectAccount(accountID)
+            }
+        }
+        persistSeededProviderMetadataIfNeeded()
+    }
+
+    private func persistSeededProviderMetadataIfNeeded() {
+        guard setupState.progress?.origin == .newUser else { return }
+        let defaults = UserDefaults.standard
+        let alreadySeeded = defaults.bool(
+            forKey: Self.seededConfigsKey
+        )
+        let hasExistingData = defaults.data(
+            forKey: ProviderAccountMigration.configsKey
+        ) != nil
+        guard alreadySeeded || !hasExistingData else { return }
+
+        let selectedIDs =
+            setupState.progress?.selectedAccountIDs ?? []
+        var selectedConfigs = providerState.providerConfigs.filter {
+            selectedIDs.contains($0.accountID)
+        }
+        for index in selectedConfigs.indices {
+            selectedConfigs[index].isEnabled = false
+        }
+
+        if selectedConfigs.isEmpty {
+            defaults.removeObject(
+                forKey: ProviderAccountMigration.configsKey
+            )
+            defaults.removeObject(
+                forKey: ProviderAccountMigration.schemaVersionKey
+            )
+        } else if let data = try? JSONEncoder().encode(selectedConfigs) {
+            defaults.set(
+                data,
+                forKey: ProviderAccountMigration.configsKey
+            )
+            defaults.set(
+                ProviderAccountMigration.currentSchemaVersion,
+                forKey: ProviderAccountMigration.schemaVersionKey
+            )
+        }
+        defaults.set(true, forKey: Self.seededConfigsKey)
+    }
+
+    private func applySelectedAccounts() {
+        let selectedIDs =
+            setupState.progress?.selectedAccountIDs ?? []
+        let candidateIDs = Set(accountOptions.map(\.id))
+        let isNewUserFlow =
+            setupState.progress?.origin == .newUser
+
+        var configs = providerState.providerConfigs
+        for index in configs.indices {
+            if isNewUserFlow {
+                configs[index].isEnabled =
+                    selectedIDs.contains(configs[index].accountID)
+            } else if candidateIDs.contains(configs[index].accountID) {
+                configs[index].isEnabled =
+                    selectedIDs.contains(configs[index].accountID)
+            }
+        }
+        providerState.providerConfigs = configs
+        state.saveProviderConfigMetadata()
+        UserDefaults.standard.removeObject(
+            forKey: Self.seededConfigsKey
+        )
+    }
+
+    private func openAccountSettings(_ accountID: UUID) {
+        guard accountOptions.contains(
+            where: { $0.id == accountID }
+        ) else {
+            return
+        }
+        providerState.editingProviderAccountID = accountID
+        openWindow(id: "provider-config")
+    }
+
+    // MARK: - Actions and reusable chrome
+
+    private func mutateSetupState(
+        _ mutation: (inout AgentSetupState) -> Void
+    ) {
+        var updated = setupState
+        mutation(&updated)
+        setupState = updated
+        onStateChange(updated)
+    }
+
+    private func finishSetup() {
+        applySelectedAccounts()
+
+        if selectedMode == .local {
+            state.continueWithoutAccount()
+        } else {
+            state.isLocalMode = false
+        }
+
+        mutateSetupState {
+            $0.complete()
+        }
+        clearCredentialBuffers()
+        onFinished()
+    }
+
+    private var validEmail: Bool {
+        !email.isEmpty && email.contains("@")
+    }
+
+    private func sendCode() {
+        guard validEmail, !state.isLoading else { return }
+        Task { await state.sendOTP(email: email) }
+    }
+
+    private func signInWithPassword() {
+        guard
+            validEmail,
+            !password.isEmpty,
+            !state.isLoading
+        else {
+            return
+        }
+        Task {
+            await state.signInWithPassword(
+                email: email,
+                password: password
+            )
+        }
+    }
+
+    private func verifyOTP() {
+        let code = otpCode.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !code.isEmpty else { return }
+        Task { await state.verifyOTP(code: code) }
+    }
+
+    private func clearCredentialBuffers() {
+        password = ""
+        otpCode = ""
+        usePasswordLogin = false
+    }
+
+    private func setupValue(
+        icon: String,
+        text: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 9) {
+            Image(systemName: icon)
+                .foregroundStyle(PulseTheme.accent)
+                .frame(width: 20)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func stepHeader(
+        title: String,
+        subtitle: String
+    ) -> some View {
+        VStack(spacing: 5) {
+            Text(title)
+                .font(.title3.weight(.semibold))
+            Text(subtitle)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func privacyCard(
+        icon: String,
+        color: Color,
+        title: String,
+        detail: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(color)
+                .frame(width: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.headline)
+                Text(detail)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(11)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.secondary.opacity(0.06))
+        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private func modeOption(
+        mode: AgentSetupMode,
+        icon: String,
+        color: Color,
+        title: String,
+        body: String
+    ) -> some View {
+        Button {
+            selectedMode = mode
+        } label: {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: icon)
+                    .font(.title3)
+                    .foregroundStyle(color)
+                    .frame(width: 26)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text(body)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Image(
+                    systemName:
+                        selectedMode == mode
+                            ? "checkmark.circle.fill"
+                            : "circle"
+                )
+                .foregroundStyle(
+                    selectedMode == mode
+                        ? PulseTheme.accent
+                        : .secondary
+                )
+            }
+            .padding(11)
+            .background(
+                RoundedRectangle(cornerRadius: 11)
+                    .fill(color.opacity(0.07))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 11)
+                    .stroke(
+                        selectedMode == mode
+                            ? color.opacity(0.65)
+                            : color.opacity(0.18),
+                        lineWidth: selectedMode == mode ? 1.5 : 1
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(
+            selectedMode == mode ? .isSelected : []
+        )
+    }
+
+    private func navigationBar(
+        primaryDisabled: Bool = false,
+        onPrimary: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 12) {
+            if setupState.canMoveBackward {
+                Button(L10n.onboardingWizard.back) {
+                    mutateSetupState { $0.moveBackward() }
+                }
+                .buttonStyle(.bordered)
+            } else {
+                Button(L10n.onboardingWizard.back) {
+                    onClose()
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Button {
+                onPrimary()
+            } label: {
+                Text(L10n.onboardingWizard.continue)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(PulseTheme.accent)
+            .disabled(primaryDisabled)
+            .keyboardShortcut(.defaultAction)
+        }
+    }
+}
+
 /// Multi-step onboarding wizard shown to new macOS users before authentication.
 /// Steps: Welcome → Features → Privacy (v1.9.4) → Sign In → Pair Device (optional)
-struct OnboardingWizardView: View {
+struct LegacyOnboardingWizardView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
     @AppStorage("cli_pulse_onboarding_completed") private var onboardingCompleted = false
