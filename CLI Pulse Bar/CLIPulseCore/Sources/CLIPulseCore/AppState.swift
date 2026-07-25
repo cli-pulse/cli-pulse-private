@@ -856,20 +856,12 @@ public final class AppState: ObservableObject {
             await self.permissionMigrationChecker.runOnLaunch()
         }
 
-        // v1.44 observability (migrate_v0.70): tell the backend which APP
-        // version this device runs.
-        //
-        // Reported from the MAIN APP, deliberately not from the LoginItem sync
-        // daemon: after an in-place update macOS does NOT restart the LoginItem,
-        // so it can still be the OLD binary — which either reports a stale
-        // version or, for any build predating this feature, never reports at
-        // all (dual review codex+agy). The app the user just launched is
-        // guaranteed to be the new version. Gated on (device, version) so it
-        // costs one RPC per upgrade, not one per launch. Best-effort.
-        Task { [weak self] in
-            guard let self else { return }
-            await self.reportAppVersionIfNeeded()
-        }
+        // NOTE: the app-version report (migrate_v0.70) is NOT kicked off here.
+        // It needs an authenticated `userId` for the cross-account guard, and
+        // that is only set once session restore completes — a launch-block Task
+        // races it and would silently never report. It is invoked from
+        // `completeAuthenticatedSignIn` instead (the single documented home for
+        // post-auth ordering), which covers sign-in and restore alike.
 
         #if DEVID_BUILD
         // v1.41: start the remote machine-control executor. It stays idle (no UDS
@@ -898,7 +890,9 @@ public final class AppState: ObservableObject {
     /// The last-reported key is persisted, so this is one RPC per upgrade
     /// rather than one per launch. Entirely best-effort — a failure here must
     /// never affect app startup.
-    private func reportAppVersionIfNeeded() async {
+    /// Internal (not `private`): invoked from `completeAuthenticatedSignIn` in
+    /// AuthManager.swift, a different file in this module.
+    func reportAppVersionIfNeeded() async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
         let appVersion = HelperAPIClient.currentAppVersionString
         let defaults = UserDefaults.standard

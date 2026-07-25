@@ -263,6 +263,20 @@ extension AppState {
         migrateProviderLimitsIfNeeded()
         startRefreshLoop()
         await refreshAll()
+        #if os(macOS)
+        // v1.44 observability (migrate_v0.70): report this app's version for
+        // the paired device. Hooked HERE, not on the launch block, because
+        // `userId` is only populated by `applyAuthenticatedState` above — a
+        // launch-time call races session restore, reads an empty userId, and
+        // the cross-account guard then correctly refuses, so it would never
+        // report at all. This is the documented single home for post-auth
+        // ordering, and it covers both fresh sign-in and session restore.
+        //
+        // DETACHED, not awaited: the RPC has a 30s timeout, and awaiting it
+        // here would let a network stall hold sign-in / session restore in a
+        // loading state for a purely diagnostic write (codex review).
+        Task { [weak self] in await self?.reportAppVersionIfNeeded() }
+        #endif
     }
 
     /// Build an OAuth URL for a given provider (PKCE flow).
@@ -369,6 +383,16 @@ extension AppState {
                 pairingInfo = nil
                 startRefreshLoop()
                 await refreshAll()
+                #if os(macOS)
+                // v1.44 observability (migrate_v0.70): a device that just
+                // paired has a brand-new row whose `app_version` is null.
+                // Both pairing paths converge here, so reporting from this
+                // point means a first-time pair / re-pair populates it now
+                // instead of waiting for the next authenticated launch
+                // (codex review). Detached + self-gating: never delays the
+                // pairing UI, and a no-op if this pair was already reported.
+                Task { [weak self] in await self?.reportAppVersionIfNeeded() }
+                #endif
             } else {
                 pairingError = L10n.onboarding.helperNotConnectedYet
             }
