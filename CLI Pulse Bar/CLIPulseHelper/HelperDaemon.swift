@@ -12,6 +12,10 @@ final class HelperDaemon {
     private let queue = DispatchQueue(label: "com.clipulse.helper.daemon", qos: .utility)
     private let apiClient = HelperAPIClient()
     private var isRunning = false
+    /// v1.44 observability (migrate_v0.70): report the app version once per
+    /// daemon launch, not every sync cycle. Only set on success, so a transient
+    /// failure retries on the next cycle.
+    private var didReportAppVersion = false
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
     private var suspendCount = 0
@@ -186,6 +190,21 @@ final class HelperDaemon {
                 activeSessionCount: scanResult.activeSessionCount,
                 providerPlanStatus: providerPlanStatus
             )
+
+            // v1.44 observability (migrate_v0.70): tell the backend which APP
+            // version this device runs. `devices.helper_version` can't answer
+            // that — it's a hardcoded "1.0.0" for every app-paired device AND
+            // doubles as the remote-command capability gate. Once per launch,
+            // and strictly best-effort: a failure here must never break the
+            // heartbeat/sync path that follows.
+            if !didReportAppVersion {
+                do {
+                    try await apiClient.reportAppVersion(config: config)
+                    didReportAppVersion = true
+                } catch {
+                    logger.debug("app-version report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
+                }
+            }
 
             // Sync
             let result = try await apiClient.sync(
