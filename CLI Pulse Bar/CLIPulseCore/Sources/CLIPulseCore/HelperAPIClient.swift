@@ -23,16 +23,98 @@ public actor HelperAPIClient {
         self.anonKey = SupabaseConstants.anonKey
     }
 
+    // MARK: - Version reporting (observability only)
+
+    /// The `helper_version` an APP-paired device registers with.
+    ///
+    /// ⚠️ Intentionally below the remote-command capability floor (1.15.0). The
+    /// app's pairing flow registers devices that may have NO command-capable
+    /// helper at all (the MAS build ships none — the Swift LaunchAgent helper is
+    /// stripped from App Store archives), so registering anything ≥ 1.15.0 here
+    /// would make `Device.helperVersionAtLeast(1,15,0)` advertise remote
+    /// Codex/Gemini starts that can never execute — they hang pending forever.
+    /// A separately-installed helper (`.pkg` Python / bundled Swift) reports its
+    /// own real version through its own registration path and is unaffected.
+    ///
+    /// Use `currentAppVersionString` + `reportAppVersion` for "what version is
+    /// this device running" — that is what the observability field is for.
+    public static let appPairedHelperVersion = "1.0.0"
+
+    /// This app's version, e.g. `"1.43.0 (96)"`.
+    ///
+    /// Reported to `devices.app_version` via `reportAppVersion` — an
+    /// OBSERVABILITY-ONLY field (migrate_v0.70). It exists because
+    /// `devices.helper_version` cannot serve that purpose: 62 of ~68 production
+    /// Macs report `"1.0.0"` there (the `registerHelper` default below, which no
+    /// caller overrides), and that column ALSO doubles as the remote-command
+    /// capability gate (`Device.helperVersionAtLeast(1,15,0)`), so it cannot be
+    /// made truthful without falsely advertising remote-command support on MAS
+    /// builds — which ship no command-capable helper. Hence a separate field.
+    public static var currentAppVersionString: String {
+        let info = Bundle.main.infoDictionary
+        let short = (info?["CFBundleShortVersionString"] as? String) ?? "0.0.0"
+        let build = (info?["CFBundleVersion"] as? String) ?? "0"
+        return "\(short) (\(build))"   // well inside the RPC's 32-char clamp
+    }
+
+    /// Identity of an app-version report: which device, running which version.
+    /// A caller remembers the last key it successfully reported and re-reports
+    /// whenever it changes — see `shouldReportAppVersion`.
+    public static func appVersionReportKey(deviceId: String, appVersion: String) -> String {
+        "\(deviceId)|\(appVersion)"
+    }
+
+    /// Whether the app version still needs reporting for this device.
+    ///
+    /// Deliberately NOT a "did I report yet" flag. The reporting daemon is
+    /// long-lived and re-reads its pairing config every cycle, so a user who
+    /// re-pairs (or pairs a second device) swaps `deviceId` underneath the
+    /// process — with a plain flag that brand-new device row would never
+    /// receive a version at all. Keying on (device, version) makes a re-pair
+    /// and a version change both self-heal on the next cycle.
+    public static func shouldReportAppVersion(
+        lastReportedKey: String?,
+        deviceId: String,
+        appVersion: String = HelperAPIClient.currentAppVersionString
+    ) -> Bool {
+        lastReportedKey != appVersionReportKey(deviceId: deviceId, appVersion: appVersion)
+    }
+
+    /// Report this app's version for fleet observability (migrate_v0.70).
+    ///
+    /// Deliberately a separate RPC from `heartbeat`: that one is the critical
+    /// metrics-ingest path for every device, and this is a diagnostic nicety.
+    /// Callers should treat it as best-effort — never let it break a sync.
+    public func reportAppVersion(
+        config: HelperConfig,
+        appVersion: String = HelperAPIClient.currentAppVersionString
+    ) async throws {
+        let _: [String: Any] = try await rpc("helper_report_app_version", params: [
+            "p_device_id": config.deviceId,
+            "p_helper_secret": config.helperSecret,
+            "p_app_version": appVersion,
+        ])
+    }
+
     // MARK: - RPCs (matching backend/supabase/helper_rpc.sql)
 
     /// Register a helper device via pairing code.
     /// Returns: { device_id, user_id, helper_secret }
+    ///
+    /// ⚠️ `helperVersion` writes `devices.helper_version`, which is NOT just
+    /// observability — the client gates remote Codex/Gemini session starts on
+    /// it (`Device.helperVersionAtLeast(1,15,0)`). The `"1.0.0"` default below
+    /// looks like a bug and is partly one (see `currentAppVersionString`), but
+    /// it is what makes App Store devices — which ship no command-capable
+    /// helper — correctly FAIL that gate. Do NOT "fix" it to the real version
+    /// without splitting capability out of this column first, or MAS users get
+    /// remote-start UI whose commands hang pending forever.
     public func registerHelper(
         pairingCode: String,
         deviceName: String,
         deviceType: String = "macOS",
         system: String = "",
-        helperVersion: String = "1.0.0"
+        helperVersion: String = HelperAPIClient.appPairedHelperVersion
     ) async throws -> HelperConfig {
         let result: [String: Any] = try await rpc("register_helper", params: [
             "p_pairing_code": pairingCode,

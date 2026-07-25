@@ -187,6 +187,13 @@ final class HelperDaemon {
                 providerPlanStatus: providerPlanStatus
             )
 
+            // NOTE: the app-version report (migrate_v0.70) deliberately does
+            // NOT happen here. macOS does not restart this LoginItem after an
+            // in-place app update, so this process can still be the OLD binary
+            // — it would report a stale version, or (for any build predating
+            // the feature) never report at all. `AppState` reports it from the
+            // main app instead, which is guaranteed to be the new version.
+
             // Sync
             let result = try await apiClient.sync(
                 config: config,

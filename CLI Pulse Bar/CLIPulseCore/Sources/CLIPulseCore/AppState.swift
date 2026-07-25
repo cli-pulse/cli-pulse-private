@@ -856,6 +856,13 @@ public final class AppState: ObservableObject {
             await self.permissionMigrationChecker.runOnLaunch()
         }
 
+        // NOTE: the app-version report (migrate_v0.70) is NOT kicked off here.
+        // It needs an authenticated `userId` for the cross-account guard, and
+        // that is only set once session restore completes — a launch-block Task
+        // races it and would silently never report. It is invoked from
+        // `completeAuthenticatedSignIn` instead (the single documented home for
+        // post-auth ordering), which covers sign-in and restore alike.
+
         #if DEVID_BUILD
         // v1.41: start the remote machine-control executor. It stays idle (no UDS
         // traffic) until the `remoteMachineControlEnabled` opt-in AND the fan
@@ -867,6 +874,47 @@ public final class AppState: ObservableObject {
         #endif
         #endif
     }
+
+    #if os(macOS)
+    /// Report this app's version to `devices.app_version` (migrate_v0.70) when
+    /// it isn't already what the backend has for this device.
+    ///
+    /// Why this exists: `devices.helper_version` cannot answer "what version is
+    /// this device running" — it is a hardcoded placeholder for every
+    /// app-paired device AND doubles as the remote-command capability gate, so
+    /// it cannot be made truthful without falsely advertising remote-command
+    /// support on App Store builds. See `HelperAPIClient.appPairedHelperVersion`.
+    ///
+    /// Uses `loadIfMatches` rather than `load`: a config left behind by a
+    /// different account must never have its device row written by this user.
+    /// The last-reported key is persisted, so this is one RPC per upgrade
+    /// rather than one per launch. Entirely best-effort — a failure here must
+    /// never affect app startup.
+    /// Internal (not `private`): invoked from `completeAuthenticatedSignIn` in
+    /// AuthManager.swift, a different file in this module.
+    func reportAppVersionIfNeeded() async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+        let appVersion = HelperAPIClient.currentAppVersionString
+        let defaults = UserDefaults.standard
+        let lastKey = defaults.string(forKey: Self.lastReportedAppVersionKeyDefaultsKey)
+        guard HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: lastKey, deviceId: config.deviceId, appVersion: appVersion
+        ) else { return }
+        do {
+            try await HelperAPIClient().reportAppVersion(config: config, appVersion: appVersion)
+            defaults.set(
+                HelperAPIClient.appVersionReportKey(deviceId: config.deviceId, appVersion: appVersion),
+                forKey: Self.lastReportedAppVersionKeyDefaultsKey
+            )
+        } catch {
+            // Retried on the next launch — never surfaced to the user.
+        }
+    }
+
+    /// UserDefaults key holding the last successfully-reported
+    /// `deviceId|appVersion` pair (see `reportAppVersionIfNeeded`).
+    static let lastReportedAppVersionKeyDefaultsKey = "cli_pulse_last_reported_app_version_key"
+    #endif
 
     // MARK: - Menu Bar
 
