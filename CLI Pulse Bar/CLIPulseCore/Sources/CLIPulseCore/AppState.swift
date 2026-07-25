@@ -856,6 +856,21 @@ public final class AppState: ObservableObject {
             await self.permissionMigrationChecker.runOnLaunch()
         }
 
+        // v1.44 observability (migrate_v0.70): tell the backend which APP
+        // version this device runs.
+        //
+        // Reported from the MAIN APP, deliberately not from the LoginItem sync
+        // daemon: after an in-place update macOS does NOT restart the LoginItem,
+        // so it can still be the OLD binary — which either reports a stale
+        // version or, for any build predating this feature, never reports at
+        // all (dual review codex+agy). The app the user just launched is
+        // guaranteed to be the new version. Gated on (device, version) so it
+        // costs one RPC per upgrade, not one per launch. Best-effort.
+        Task { [weak self] in
+            guard let self else { return }
+            await self.reportAppVersionIfNeeded()
+        }
+
         #if DEVID_BUILD
         // v1.41: start the remote machine-control executor. It stays idle (no UDS
         // traffic) until the `remoteMachineControlEnabled` opt-in AND the fan
@@ -867,6 +882,45 @@ public final class AppState: ObservableObject {
         #endif
         #endif
     }
+
+    #if os(macOS)
+    /// Report this app's version to `devices.app_version` (migrate_v0.70) when
+    /// it isn't already what the backend has for this device.
+    ///
+    /// Why this exists: `devices.helper_version` cannot answer "what version is
+    /// this device running" — it is a hardcoded placeholder for every
+    /// app-paired device AND doubles as the remote-command capability gate, so
+    /// it cannot be made truthful without falsely advertising remote-command
+    /// support on App Store builds. See `HelperAPIClient.appPairedHelperVersion`.
+    ///
+    /// Uses `loadIfMatches` rather than `load`: a config left behind by a
+    /// different account must never have its device row written by this user.
+    /// The last-reported key is persisted, so this is one RPC per upgrade
+    /// rather than one per launch. Entirely best-effort — a failure here must
+    /// never affect app startup.
+    private func reportAppVersionIfNeeded() async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+        let appVersion = HelperAPIClient.currentAppVersionString
+        let defaults = UserDefaults.standard
+        let lastKey = defaults.string(forKey: Self.lastReportedAppVersionKeyDefaultsKey)
+        guard HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: lastKey, deviceId: config.deviceId, appVersion: appVersion
+        ) else { return }
+        do {
+            try await HelperAPIClient().reportAppVersion(config: config, appVersion: appVersion)
+            defaults.set(
+                HelperAPIClient.appVersionReportKey(deviceId: config.deviceId, appVersion: appVersion),
+                forKey: Self.lastReportedAppVersionKeyDefaultsKey
+            )
+        } catch {
+            // Retried on the next launch — never surfaced to the user.
+        }
+    }
+
+    /// UserDefaults key holding the last successfully-reported
+    /// `deviceId|appVersion` pair (see `reportAppVersionIfNeeded`).
+    static let lastReportedAppVersionKeyDefaultsKey = "cli_pulse_last_reported_app_version_key"
+    #endif
 
     // MARK: - Menu Bar
 

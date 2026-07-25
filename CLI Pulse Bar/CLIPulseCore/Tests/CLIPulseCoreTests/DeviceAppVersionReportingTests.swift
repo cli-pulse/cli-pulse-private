@@ -40,6 +40,39 @@ final class DeviceAppVersionReportingTests: XCTestCase {
         )
     }
 
+    // MARK: - Re-report gating (agy review: a plain "did I report" flag is wrong)
+
+    func test_shouldReport_whenNothingReportedYet() {
+        XCTAssertTrue(HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: nil, deviceId: "dev-A", appVersion: "1.43.0 (96)"))
+    }
+
+    func test_shouldNotReport_whenSameDeviceAndVersionAlreadyReported() {
+        let key = HelperAPIClient.appVersionReportKey(deviceId: "dev-A", appVersion: "1.43.0 (96)")
+        XCTAssertFalse(HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: key, deviceId: "dev-A", appVersion: "1.43.0 (96)"),
+            "steady state must cost zero extra RPCs")
+    }
+
+    /// THE regression this gating exists for. The reporting daemon is
+    /// long-lived and re-reads its pairing config every cycle. If the user
+    /// re-pairs (or pairs a second device), `deviceId` changes underneath the
+    /// process — a plain "did I report yet" boolean would leave that brand-new
+    /// device row with a null version forever.
+    func test_shouldReport_afterRepairingToADifferentDevice() {
+        let key = HelperAPIClient.appVersionReportKey(deviceId: "dev-A", appVersion: "1.43.0 (96)")
+        XCTAssertTrue(HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: key, deviceId: "dev-B", appVersion: "1.43.0 (96)"),
+            "a re-paired device must get its own version report")
+    }
+
+    func test_shouldReport_afterTheAppVersionChanges() {
+        let key = HelperAPIClient.appVersionReportKey(deviceId: "dev-A", appVersion: "1.43.0 (96)")
+        XCTAssertTrue(HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: key, deviceId: "dev-A", appVersion: "1.44.0 (97)"),
+            "an upgraded app must refresh the reported version")
+    }
+
     // MARK: - The deliberately-preserved capability trap
 
     /// REGRESSION PIN. `helper_version` is overloaded: besides observability it

@@ -57,6 +57,29 @@ public actor HelperAPIClient {
         return "\(short) (\(build))"   // well inside the RPC's 32-char clamp
     }
 
+    /// Identity of an app-version report: which device, running which version.
+    /// A caller remembers the last key it successfully reported and re-reports
+    /// whenever it changes — see `shouldReportAppVersion`.
+    public static func appVersionReportKey(deviceId: String, appVersion: String) -> String {
+        "\(deviceId)|\(appVersion)"
+    }
+
+    /// Whether the app version still needs reporting for this device.
+    ///
+    /// Deliberately NOT a "did I report yet" flag. The reporting daemon is
+    /// long-lived and re-reads its pairing config every cycle, so a user who
+    /// re-pairs (or pairs a second device) swaps `deviceId` underneath the
+    /// process — with a plain flag that brand-new device row would never
+    /// receive a version at all. Keying on (device, version) makes a re-pair
+    /// and a version change both self-heal on the next cycle.
+    public static func shouldReportAppVersion(
+        lastReportedKey: String?,
+        deviceId: String,
+        appVersion: String = HelperAPIClient.currentAppVersionString
+    ) -> Bool {
+        lastReportedKey != appVersionReportKey(deviceId: deviceId, appVersion: appVersion)
+    }
+
     /// Report this app's version for fleet observability (migrate_v0.70).
     ///
     /// Deliberately a separate RPC from `heartbeat`: that one is the critical
