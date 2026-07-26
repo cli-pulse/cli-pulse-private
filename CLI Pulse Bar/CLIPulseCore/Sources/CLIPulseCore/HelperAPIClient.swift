@@ -96,6 +96,64 @@ public actor HelperAPIClient {
         ])
     }
 
+    /// Classify what a SUCCESSFUL collector run actually produced, for the
+    /// `collector_status` diagnostic (migrate_v0.71).
+    ///
+    /// Returns `"ok"` when the collector produced usable usage data, `"empty"`
+    /// when it completed without throwing but produced nothing — which is what
+    /// the silent-zero class looks like (an inactive sandbox bookmark, an
+    /// expired OAuth keychain entry, a drifted API response whose fields all
+    /// decode to nil). Distinguishing those two is the entire point of the
+    /// field, so this predicate is the load-bearing part of the feature.
+    ///
+    /// `status_text` is deliberately NOT consulted. It is a non-optional display
+    /// string that every collector always fills with literal text — including,
+    /// fatally, on its no-data paths ("Claude quota unavailable — Connect in
+    /// Settings", "Poe balance unavailable"). Testing it made the predicate a
+    /// tautology, so `empty` became dead code and the exact devices this feature
+    /// exists to find reported `ok` (independent adversarial review, P1).
+    ///
+    /// Lives here rather than in the daemon so it is unit-testable: the daemon
+    /// is in the app target, out of reach of this package's test suite — which
+    /// is precisely how the tautology slipped through.
+    public static func classifyCollectorOutcome(
+        tiersCount: Int,
+        quota: Int?,
+        remaining: Int?,
+        todayUsage: Int,
+        weekUsage: Int
+    ) -> String {
+        let producedData = tiersCount > 0
+            || quota != nil
+            || remaining != nil
+            || todayUsage > 0
+            || weekUsage > 0
+        return producedData ? "ok" : "empty"
+    }
+
+    /// Report the last collector run's per-provider outcome (migrate_v0.71).
+    ///
+    /// Answers the question the backend previously could not: when a device is
+    /// alive but delivers no usage data, is that because the provider isn't
+    /// installed, because the user disabled it, or because the collector RAN and
+    /// FAILED (expired auth, parse break, or an inactive sandbox bookmark —
+    /// the silent-zero class fixed in 1.30.1)?
+    ///
+    /// Reported by the sync daemon, since only it runs the collectors. Shares
+    /// the v0.70 RPC — each field is coalesced independently server-side, so
+    /// omitting `p_app_version` here leaves the app-reported version untouched.
+    /// Best-effort, exactly like `reportAppVersion`.
+    public func reportCollectorStatus(
+        config: HelperConfig,
+        status: [String: String]
+    ) async throws {
+        let _: [String: Any] = try await rpc("helper_report_app_version", params: [
+            "p_device_id": config.deviceId,
+            "p_helper_secret": config.helperSecret,
+            "p_collector_status": status,
+        ])
+    }
+
     // MARK: - RPCs (matching backend/supabase/helper_rpc.sql)
 
     /// Register a helper device via pairing code.
@@ -273,6 +331,24 @@ public enum HelperAPIError: LocalizedError {
     case httpError(status: Int, function: String, body: String)
     case parseFailed(String)
     case pairingRejected(code: String, message: String)
+
+    /// A coarse, PII-free discriminator for diagnostics.
+    ///
+    /// `String(describing: type(of: error))` collapses every case here to
+    /// "HelperAPIError", which makes an expired pairing code indistinguishable
+    /// from a network rejection in the field (codex review). This keeps the
+    /// case — plus the HTTP status or the server's own rejection CODE, both of
+    /// which are enumerated values — while deliberately dropping every
+    /// free-text payload (`body`, `message`, URLs) that could carry user data.
+    public var diagnosticCode: String {
+        switch self {
+        case .notConfigured: return "not_configured"
+        case .invalidURL: return "invalid_url"
+        case .httpError(let status, _, _): return "http_\(status)"
+        case .parseFailed: return "parse_failed"
+        case .pairingRejected(let code, _): return "rejected_\(code)"
+        }
+    }
 
     public var errorDescription: String? {
         switch self {

@@ -12,6 +12,32 @@ final class HelperDaemon {
     private let queue = DispatchQueue(label: "com.clipulse.helper.daemon", qos: .utility)
     private let apiClient = HelperAPIClient()
     private var isRunning = false
+    /// v1.44 observability (migrate_v0.71): the last collector-outcome map sent
+    /// to the backend, and the device it was sent FOR, so an unchanged outcome
+    /// costs no RPC. Set only on success, so a transient failure retries on the
+    /// next cycle.
+    ///
+    /// The deviceId is part of the key on purpose: this daemon is long-lived and
+    /// re-reads `HelperConfig` every cycle, so a re-pair or account switch swaps
+    /// the device underneath us. Keyed on the map alone, an unchanged outcome
+    /// would mean the NEW device row never receives a status at all (codex
+    /// review — the same trap the app-version report already had to fix).
+    private var lastReportedCollectorStatus: (deviceId: String, status: [String: String])?
+    /// The previous cycle's computed outcome map, used to require an outcome to
+    /// hold for TWO consecutive cycles before it is reported.
+    ///
+    /// Why: `didWake` fires an immediate collect, and the ~49 collectors run
+    /// serially doing network I/O. On wake the network is often not up yet, so
+    /// the providers early in registry order (Claude/Codex/Gemini — the
+    /// highest-value ones) throw while later ones succeed as connectivity
+    /// returns. Reporting that sweep would overwrite the device's authoritative
+    /// diagnostic with a wake artifact — and since the row carries no timestamp,
+    /// triage cannot tell it from the persistent auth-expired fault this field
+    /// exists to find. It self-corrects next cycle, unless the user shuts the lid
+    /// first. Confirming twice also stops a single flaky endpoint from flipping
+    /// the whole-map comparison every cycle, which would defeat the
+    /// no-RPC-in-steady-state property. (Independent adversarial review.)
+    private var pendingCollectorStatus: [String: String]?
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
     private var suspendCount = 0
@@ -127,7 +153,7 @@ final class HelperDaemon {
         )
 
         // Step 4: Provider quotas via collectors
-        let providerTiers = await collectProviderQuotas()
+        let (providerTiers, collectorStatus) = await collectProviderQuotas()
 
         // Step 4.5: Write collector results to app group for main app
         writeCollectorResultsToAppGroup(providerTiers)
@@ -193,6 +219,27 @@ final class HelperDaemon {
             // — it would report a stale version, or (for any build predating
             // the feature) never report at all. `AppState` reports it from the
             // main app instead, which is guaranteed to be the new version.
+            //
+            // Collector status (migrate_v0.71) DOES belong here: this daemon is
+            // the process that actually runs the collectors, so it is the only
+            // thing that knows why a provider produced nothing. Re-reported only
+            // when the outcome map CHANGES, so a steady state costs no RPCs.
+            // Best-effort — never break the sync that follows.
+            // Confirm-twice (see `pendingCollectorStatus`): only an outcome that
+            // held across two consecutive cycles is worth writing as this
+            // device's diagnostic.
+            let heldTwice = (pendingCollectorStatus == collectorStatus)
+            pendingCollectorStatus = collectorStatus
+            if heldTwice,
+               lastReportedCollectorStatus?.deviceId != config.deviceId
+                || lastReportedCollectorStatus?.status != collectorStatus {
+                do {
+                    try await apiClient.reportCollectorStatus(config: config, status: collectorStatus)
+                    lastReportedCollectorStatus = (deviceId: config.deviceId, status: collectorStatus)
+                } catch {
+                    logger.debug("collector-status report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
+                }
+            }
 
             // Sync
             let result = try await apiClient.sync(
@@ -220,8 +267,28 @@ final class HelperDaemon {
     // MARK: - Provider Quota Collection
 
     /// Run the same collectors the main app uses, producing tier data for Supabase.
-    private func collectProviderQuotas() async -> [String: Any] {
+    /// Runs every enabled provider collector.
+    ///
+    /// Also returns a per-provider outcome map for backend diagnostics
+    /// (migrate_v0.71). The outcomes already existed as control flow — they were
+    /// just logged locally, so a device that delivers no usage data looked
+    /// identical from the backend whether its providers were missing, disabled,
+    /// or actively failing.
+    ///
+    /// What lands in the map, and why NOT everything: `ProviderConfig.defaults()`
+    /// enables EVERY registered `ProviderKind`, so a stock install runs ~50
+    /// collectors of which the user realistically has two or three actually
+    /// installed. Emitting all of them would blow the RPC's per-row entry cap and
+    /// silently drop whichever providers sort last — the payload would look
+    /// complete while hiding real failures (codex review). So the map carries
+    /// only providers that genuinely exist on this machine (`ok` / `empty` /
+    /// `error`), plus a single `_counts` key so the totals — including how many
+    /// were skipped as disabled or absent — are never lost.
+    private func collectProviderQuotas() async -> (tiers: [String: Any], status: [String: String]) {
         var result: [String: Any] = [:]
+        var status: [String: String] = [:]
+        var disabledCount = 0
+        var unavailableCount = 0
 
         // Read provider configs from shared app group (written by main app)
         var configs: [ProviderConfig] = ProviderConfig.defaults()
@@ -250,11 +317,17 @@ final class HelperDaemon {
             // (v1.10.4 free-tier fix, 2026-04-23.)
             if !config.isEnabled {
                 logger.debug("Skipping \(providerName): disabled in user config")
+                disabledCount += 1
                 continue
             }
             let available = collector.isAvailable(config: config)
             if !available {
                 logger.debug("Skipping \(providerName): isAvailable=false")
+                // Enabled but nothing to read — CLI not installed, or no
+                // credentials on this machine. Counted, not listed: with every
+                // ProviderKind enabled by default this is the overwhelming
+                // majority (~47 of ~50) and would swamp the row.
+                unavailableCount += 1
                 continue
             }
 
@@ -285,12 +358,30 @@ final class HelperDaemon {
 
                 result[providerName] = tierData
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
+                // ok vs empty — the load-bearing distinction for this whole
+                // diagnostic. Lives in CLIPulseCore so it is unit-testable; see
+                // `classifyCollectorOutcome` for why `status_text` must not be
+                // part of the test (it is always populated, even on the exact
+                // no-data paths we are hunting).
+                status[providerName] = HelperAPIClient.classifyCollectorOutcome(
+                    tiersCount: usage.tiers.count,
+                    quota: usage.quota,
+                    remaining: usage.remaining,
+                    todayUsage: usage.today_usage,
+                    weekUsage: usage.week_usage
+                )
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
+                status[providerName] = "error"
             }
         }
 
-        return result
+        // Totals for the providers deliberately left out of the map above, so a
+        // reader can tell "3 real providers, 47 not installed" from "3 real
+        // providers, 47 switched off by the user".
+        status["_counts"] = "d=\(disabledCount) u=\(unavailableCount) p=\(status.count)"
+
+        return (tiers: result, status: status)
     }
 
     // MARK: - App Group Collector Sharing
