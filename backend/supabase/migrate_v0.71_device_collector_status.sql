@@ -87,8 +87,16 @@ begin
     v_clean := left(v_clean, 32);
   end if;
 
-  -- Collector status: bounded exactly like the v0.66 machine_controls fold —
-  -- object only, payload cap, key-length cap, entry cap, value cap.
+  -- Collector status: bounded like the v0.66 machine_controls fold — object
+  -- only, payload cap, key-length cap, entry cap, value cap.
+  --
+  -- The entry cap is 64, not v0.66's 16/32: `ProviderConfig.defaults()` enables
+  -- EVERY registered ProviderKind (~50 and growing), so a tighter cap would
+  -- silently drop whichever providers sort last and make the row look complete
+  -- while hiding real failures. The client already sends only the providers that
+  -- actually exist on the machine plus a `_counts` summary, so 64 is pure
+  -- headroom rather than the expected size — but the server must not be the
+  -- thing that loses data (codex review).
   if p_collector_status is not null
      and jsonb_typeof(p_collector_status) = 'object'
      and pg_column_size(p_collector_status) <= 4096 then
@@ -98,7 +106,7 @@ begin
       from jsonb_each_text(p_collector_status)
       where char_length(key) <= 32
       order by key
-      limit 32
+      limit 64
     ) s;
   end if;
 

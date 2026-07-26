@@ -229,10 +229,22 @@ struct PairingSection: View {
             // message is scrubbed by `beforeSend`, and the error type is what
             // actually distinguishes "wrong/expired code" from "network down"
             // from "RPC rejected".
+            // `HelperAPIError.diagnosticCode` rather than `type(of:)`: the latter
+            // collapses every case to "HelperAPIError", leaving an expired code
+            // indistinguishable from a network rejection (codex review). Non-
+            // HelperAPIError falls back to NSError domain+code, still enumerated
+            // values — no free text, no pairing code, no user content.
+            let code: String
+            if let apiError = error as? HelperAPIError {
+                code = apiError.diagnosticCode
+            } else {
+                let ns = error as NSError
+                code = "\(ns.domain)#\(ns.code)"
+            }
             SentryLogger.captureWarning(
                 "native helper pairing failed",
                 category: "pairing",
-                data: ["error_type": String(describing: type(of: error))]
+                data: ["error_code": code]
             )
         }
         pairingInProgress = false

@@ -297,6 +297,24 @@ public enum HelperAPIError: LocalizedError {
     case parseFailed(String)
     case pairingRejected(code: String, message: String)
 
+    /// A coarse, PII-free discriminator for diagnostics.
+    ///
+    /// `String(describing: type(of: error))` collapses every case here to
+    /// "HelperAPIError", which makes an expired pairing code indistinguishable
+    /// from a network rejection in the field (codex review). This keeps the
+    /// case — plus the HTTP status or the server's own rejection CODE, both of
+    /// which are enumerated values — while deliberately dropping every
+    /// free-text payload (`body`, `message`, URLs) that could carry user data.
+    public var diagnosticCode: String {
+        switch self {
+        case .notConfigured: return "not_configured"
+        case .invalidURL: return "invalid_url"
+        case .httpError(let status, _, _): return "http_\(status)"
+        case .parseFailed: return "parse_failed"
+        case .pairingRejected(let code, _): return "rejected_\(code)"
+        }
+    }
+
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return "HelperAPIClient is not configured — SUPABASE_ANON_KEY is missing or empty"
