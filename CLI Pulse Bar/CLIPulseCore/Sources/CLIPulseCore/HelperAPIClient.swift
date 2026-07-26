@@ -96,6 +96,29 @@ public actor HelperAPIClient {
         ])
     }
 
+    /// Report the last collector run's per-provider outcome (migrate_v0.71).
+    ///
+    /// Answers the question the backend previously could not: when a device is
+    /// alive but delivers no usage data, is that because the provider isn't
+    /// installed, because the user disabled it, or because the collector RAN and
+    /// FAILED (expired auth, parse break, or an inactive sandbox bookmark —
+    /// the silent-zero class fixed in 1.30.1)?
+    ///
+    /// Reported by the sync daemon, since only it runs the collectors. Shares
+    /// the v0.70 RPC — each field is coalesced independently server-side, so
+    /// omitting `p_app_version` here leaves the app-reported version untouched.
+    /// Best-effort, exactly like `reportAppVersion`.
+    public func reportCollectorStatus(
+        config: HelperConfig,
+        status: [String: String]
+    ) async throws {
+        let _: [String: Any] = try await rpc("helper_report_app_version", params: [
+            "p_device_id": config.deviceId,
+            "p_helper_secret": config.helperSecret,
+            "p_collector_status": status,
+        ])
+    }
+
     // MARK: - RPCs (matching backend/supabase/helper_rpc.sql)
 
     /// Register a helper device via pairing code.

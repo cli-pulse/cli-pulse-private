@@ -12,6 +12,12 @@ final class HelperDaemon {
     private let queue = DispatchQueue(label: "com.clipulse.helper.daemon", qos: .utility)
     private let apiClient = HelperAPIClient()
     private var isRunning = false
+    /// v1.44 observability (migrate_v0.71): the last collector-outcome map sent
+    /// to the backend, so an unchanged outcome costs no RPC. Set only on
+    /// success, so a transient failure retries on the next cycle. Deliberately
+    /// keyed on the whole map rather than a "did I report" flag — the outcome is
+    /// exactly the thing that changes when a device breaks or recovers.
+    private var lastReportedCollectorStatus: [String: String]?
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
     private var suspendCount = 0
@@ -127,7 +133,7 @@ final class HelperDaemon {
         )
 
         // Step 4: Provider quotas via collectors
-        let providerTiers = await collectProviderQuotas()
+        let (providerTiers, collectorStatus) = await collectProviderQuotas()
 
         // Step 4.5: Write collector results to app group for main app
         writeCollectorResultsToAppGroup(providerTiers)
@@ -193,6 +199,20 @@ final class HelperDaemon {
             // — it would report a stale version, or (for any build predating
             // the feature) never report at all. `AppState` reports it from the
             // main app instead, which is guaranteed to be the new version.
+            //
+            // Collector status (migrate_v0.71) DOES belong here: this daemon is
+            // the process that actually runs the collectors, so it is the only
+            // thing that knows why a provider produced nothing. Re-reported only
+            // when the outcome map CHANGES, so a steady state costs no RPCs.
+            // Best-effort — never break the sync that follows.
+            if collectorStatus != lastReportedCollectorStatus {
+                do {
+                    try await apiClient.reportCollectorStatus(config: config, status: collectorStatus)
+                    lastReportedCollectorStatus = collectorStatus
+                } catch {
+                    logger.debug("collector-status report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
+                }
+            }
 
             // Sync
             let result = try await apiClient.sync(
@@ -220,8 +240,19 @@ final class HelperDaemon {
     // MARK: - Provider Quota Collection
 
     /// Run the same collectors the main app uses, producing tier data for Supabase.
-    private func collectProviderQuotas() async -> [String: Any] {
+    /// Runs every enabled provider collector.
+    ///
+    /// Also returns a per-provider outcome map for backend diagnostics
+    /// (migrate_v0.71). The four outcomes below already existed as control flow
+    /// — they were just logged locally, so a device that delivers no usage data
+    /// looked identical from the backend whether its providers were missing,
+    /// disabled, or actively failing. `disabled` providers are omitted from the
+    /// map: they're the user's choice, not a fault, and omitting them keeps the
+    /// payload well inside the RPC's 32-entry bound even with 50+ collectors
+    /// registered.
+    private func collectProviderQuotas() async -> (tiers: [String: Any], status: [String: String]) {
         var result: [String: Any] = [:]
+        var status: [String: String] = [:]
 
         // Read provider configs from shared app group (written by main app)
         var configs: [ProviderConfig] = ProviderConfig.defaults()
@@ -255,6 +286,9 @@ final class HelperDaemon {
             let available = collector.isAvailable(config: config)
             if !available {
                 logger.debug("Skipping \(providerName): isAvailable=false")
+                // Enabled by the user but nothing to read — CLI not installed,
+                // or no credentials/config on this machine.
+                status[providerName] = "unavailable"
                 continue
             }
 
@@ -285,12 +319,18 @@ final class HelperDaemon {
 
                 result[providerName] = tierData
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
+                // `empty` is the interesting one: the collector ran clean but
+                // found no tiers, which is what an inactive sandbox bookmark
+                // looks like (fileExists false → silent zero, the 1.30.1 class)
+                // as opposed to a genuine "user hasn't used it today".
+                status[providerName] = usage.tiers.isEmpty ? "empty" : "ok"
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
+                status[providerName] = "error"
             }
         }
 
-        return result
+        return (tiers: result, status: status)
     }
 
     // MARK: - App Group Collector Sharing
