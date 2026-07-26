@@ -358,22 +358,18 @@ final class HelperDaemon {
 
                 result[providerName] = tierData
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
-                // `empty` is the interesting outcome: the collector ran clean but
-                // produced NOTHING usable, which is what an inactive sandbox
-                // bookmark looks like (fileExists false → silent zero, the 1.30.1
-                // class) rather than a genuine "nothing used today".
-                //
-                // Deliberately NOT `tiers.isEmpty`: plenty of collectors are
-                // `.credits` or `.statusOnly` and never return tiers even when
-                // working perfectly (Ollama is the obvious one), so keying on
-                // tiers alone would brand healthy providers as silent-zero and
-                // poison the very diagnostic this exists for (codex review).
-                // Treat ANY of quota / remaining / tiers / status_text as data.
-                let producedData = !usage.tiers.isEmpty
-                    || usage.quota != nil
-                    || usage.remaining != nil
-                    || !usage.status_text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                status[providerName] = producedData ? "ok" : "empty"
+                // ok vs empty — the load-bearing distinction for this whole
+                // diagnostic. Lives in CLIPulseCore so it is unit-testable; see
+                // `classifyCollectorOutcome` for why `status_text` must not be
+                // part of the test (it is always populated, even on the exact
+                // no-data paths we are hunting).
+                status[providerName] = HelperAPIClient.classifyCollectorOutcome(
+                    tiersCount: usage.tiers.count,
+                    quota: usage.quota,
+                    remaining: usage.remaining,
+                    todayUsage: usage.today_usage,
+                    weekUsage: usage.week_usage
+                )
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
                 status[providerName] = "error"

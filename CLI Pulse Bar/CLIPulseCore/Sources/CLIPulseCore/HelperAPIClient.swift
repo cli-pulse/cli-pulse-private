@@ -96,6 +96,41 @@ public actor HelperAPIClient {
         ])
     }
 
+    /// Classify what a SUCCESSFUL collector run actually produced, for the
+    /// `collector_status` diagnostic (migrate_v0.71).
+    ///
+    /// Returns `"ok"` when the collector produced usable usage data, `"empty"`
+    /// when it completed without throwing but produced nothing — which is what
+    /// the silent-zero class looks like (an inactive sandbox bookmark, an
+    /// expired OAuth keychain entry, a drifted API response whose fields all
+    /// decode to nil). Distinguishing those two is the entire point of the
+    /// field, so this predicate is the load-bearing part of the feature.
+    ///
+    /// `status_text` is deliberately NOT consulted. It is a non-optional display
+    /// string that every collector always fills with literal text — including,
+    /// fatally, on its no-data paths ("Claude quota unavailable — Connect in
+    /// Settings", "Poe balance unavailable"). Testing it made the predicate a
+    /// tautology, so `empty` became dead code and the exact devices this feature
+    /// exists to find reported `ok` (independent adversarial review, P1).
+    ///
+    /// Lives here rather than in the daemon so it is unit-testable: the daemon
+    /// is in the app target, out of reach of this package's test suite — which
+    /// is precisely how the tautology slipped through.
+    public static func classifyCollectorOutcome(
+        tiersCount: Int,
+        quota: Int?,
+        remaining: Int?,
+        todayUsage: Int,
+        weekUsage: Int
+    ) -> String {
+        let producedData = tiersCount > 0
+            || quota != nil
+            || remaining != nil
+            || todayUsage > 0
+            || weekUsage > 0
+        return producedData ? "ok" : "empty"
+    }
+
     /// Report the last collector run's per-provider outcome (migrate_v0.71).
     ///
     /// Answers the question the backend previously could not: when a device is

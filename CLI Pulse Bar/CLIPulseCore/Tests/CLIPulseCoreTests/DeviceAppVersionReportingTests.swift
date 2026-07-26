@@ -73,6 +73,48 @@ final class DeviceAppVersionReportingTests: XCTestCase {
             "an upgraded app must refresh the reported version")
     }
 
+    // MARK: - Collector outcome classification (migrate_v0.71)
+
+    /// THE regression this predicate exists for. An earlier cut ORed in
+    /// `!status_text.isEmpty`, but `status_text` is a non-optional display
+    /// string every collector always fills — including on its no-data paths.
+    /// That made the predicate a tautology: `empty` became unreachable and the
+    /// exact silent-zero devices the feature was built to find reported `ok`.
+    ///
+    /// Reproduces the real shape from `ClaudeResultBuilder`: signed in, but the
+    /// bookmark/keychain isn't active, so quota/remaining are nil and tiers are
+    /// empty while status_text still reads "Claude quota unavailable — …".
+    func test_classify_silentZeroIsEmpty_evenThoughStatusTextIsPresent() {
+        XCTAssertEqual(
+            HelperAPIClient.classifyCollectorOutcome(
+                tiersCount: 0, quota: nil, remaining: nil, todayUsage: 0, weekUsage: 0
+            ),
+            "empty",
+            "a collector that produced no usable data must classify as empty — this is the silent-zero signal"
+        )
+    }
+
+    func test_classify_realDataIsOk() {
+        // Tiers present (the common Claude/Codex shape).
+        XCTAssertEqual(HelperAPIClient.classifyCollectorOutcome(
+            tiersCount: 3, quota: nil, remaining: nil, todayUsage: 0, weekUsage: 0), "ok")
+        // Credits-style collector: no tiers, but a real balance.
+        XCTAssertEqual(HelperAPIClient.classifyCollectorOutcome(
+            tiersCount: 0, quota: 100, remaining: 42, todayUsage: 0, weekUsage: 0), "ok")
+        // Usage-only: no quota concept at all, but the user did use it.
+        XCTAssertEqual(HelperAPIClient.classifyCollectorOutcome(
+            tiersCount: 0, quota: nil, remaining: nil, todayUsage: 17, weekUsage: 0), "ok")
+        XCTAssertEqual(HelperAPIClient.classifyCollectorOutcome(
+            tiersCount: 0, quota: nil, remaining: nil, todayUsage: 0, weekUsage: 5), "ok")
+    }
+
+    /// A zero-remaining quota is still DATA — the user is simply exhausted.
+    /// `remaining: 0` must not be mistaken for "collected nothing".
+    func test_classify_exhaustedQuotaIsOkNotEmpty() {
+        XCTAssertEqual(HelperAPIClient.classifyCollectorOutcome(
+            tiersCount: 0, quota: 100, remaining: 0, todayUsage: 0, weekUsage: 0), "ok")
+    }
+
     // MARK: - The deliberately-preserved capability trap
 
     /// REGRESSION PIN. `helper_version` is overloaded: besides observability it

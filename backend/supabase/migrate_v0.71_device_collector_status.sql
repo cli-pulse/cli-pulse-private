@@ -23,10 +23,14 @@
 --
 -- SHAPE
 -- -----
--- `collector_status` is a small { provider -> outcome } map, e.g.
---   {"claude":"ok","codex":"unavailable","gemini":"error"}
+-- `collector_status` is a small map covering only the providers that actually
+-- exist on the machine, plus a counts summary, e.g.
+--   {"claude":"ok","codex":"error","_counts":"d=0 u=47 p=2"}
 -- Outcomes are short opaque tokens; no usage numbers, no paths, no credentials —
 -- nothing that isn't already implied by the provider list the device syncs.
+-- Providers that are disabled or absent are counted rather than listed: a stock
+-- install enables EVERY registered ProviderKind (~50), so listing them would
+-- crowd out the handful of real failures this field exists to surface.
 -- Bounded exactly like the v0.66 `machine_controls` fold (key length, entry
 -- count, payload size) so a misbehaving client can't bloat the row.
 --
@@ -48,10 +52,14 @@ alter table public.devices
   add column if not exists collector_status jsonb;
 
 comment on column public.devices.collector_status is
-  'Observability only: { provider -> outcome } from the last collector run '
-  '("ok" | "empty" | "unavailable" | "error"), so a device that delivers no '
-  'usage data can be told apart from one whose providers are simply not '
-  'installed or disabled. Never used for capability decisions.';
+  'Observability only. { provider -> "ok" | "empty" | "error" } for the '
+  'providers that actually exist on the machine, from the last collector run, '
+  'plus a "_counts" key ("d=<disabled> u=<unavailable> p=<listed>"). Providers '
+  'the user disabled, or that are simply not installed, are COUNTED rather than '
+  'listed — a stock install enables ~50 collectors and listing them all would '
+  'crowd out the real failures. "empty" means the collector completed without '
+  'error but produced no usable data (the silent-zero class). Never used for '
+  'capability decisions.';
 
 drop function if exists public.helper_report_app_version(uuid, text, text);
 
