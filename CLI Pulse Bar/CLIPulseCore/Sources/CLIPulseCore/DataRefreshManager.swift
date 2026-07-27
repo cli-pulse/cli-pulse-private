@@ -2720,6 +2720,10 @@ extension AppState {
                 // at most one write per hour per device — and none at all for
                 // unpaired or local-mode users.
                 Task { [weak self] in await self?.reportCollectorStatusIfNeeded(outcomes) }
+                // v1.44 W5: synchronous — registering a login item is local and
+                // instant, and the notice must appear on the same tick the
+                // numbers do, not a beat later.
+                self.enableLaunchAtLoginAtFirstValueIfNeeded(outcomes)
                 #endif
             }
         )

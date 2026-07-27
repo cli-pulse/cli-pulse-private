@@ -416,6 +416,13 @@ enum LaunchAtLogin {
 
     @available(macOS 13.0, *)
     static func toggle() {
+        // v1.44 W5: record that the user made this call themselves, in EITHER
+        // direction. `FirstValueLaunchAtLogin` checks this and never fires
+        // again once set — so the automatic first-value enable can't
+        // resurrect a login item somebody deliberately switched off. Written
+        // before the attempt, not after: the user's intent is expressed by the
+        // click, whether or not `SMAppService` happens to accept it.
+        UserDefaults.standard.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
         do {
             if isEnabled {
                 try SMAppService.mainApp.unregister()

@@ -1071,3 +1071,9 @@
 "collector_status.auth_failed" = "Authentication failed";
 "collector_status.auth_failed_hint" = "Reconnect %@ — its saved credential was rejected.";
 "collector_status.failed_other_hint" = "This one is on us — the check couldn't be completed. An update will fix it.";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "Starting at login";
+"launch_at_login_notice.body" = "CLI Pulse now opens when you log in, so your usage stays current without you thinking about it.";
+"launch_at_login_notice.undo" = "Undo";
+"launch_at_login_notice.keep" = "Got it";

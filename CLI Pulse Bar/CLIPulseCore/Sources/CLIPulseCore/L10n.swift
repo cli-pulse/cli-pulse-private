@@ -290,6 +290,16 @@ public enum L10n {
 
     // MARK: - Providers
 
+    /// v1.44 W5: the notice shown once, after the app enables its own login
+    /// item at first value. Undo must be one tap — a silent registration is
+    /// the version of this feature that deserves to be rejected.
+    public enum launchAtLoginNotice {
+        public static var title: String { tr("launch_at_login_notice.title") }
+        public static var body: String { tr("launch_at_login_notice.body") }
+        public static var undo: String { tr("launch_at_login_notice.undo") }
+        public static var keep: String { tr("launch_at_login_notice.keep") }
+    }
+
     /// v1.44 W3: per-provider collector outcome labels + one concrete next
     /// step each. Kept in its own namespace rather than folded into
     /// `providers` because these are status vocabulary, reused by the Overview

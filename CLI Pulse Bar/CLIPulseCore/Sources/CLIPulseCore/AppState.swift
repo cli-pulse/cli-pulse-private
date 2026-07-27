@@ -5,6 +5,11 @@ import Combine
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
+#if os(macOS)
+// v1.44 W5: login-item registration at first value. macOS-only — SMAppService
+// does not exist on iOS/watchOS.
+import ServiceManagement
+#endif
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -183,6 +188,11 @@ public final class AppState: ObservableObject {
     /// nor we could tell them apart. Empty until the first pass completes,
     /// and permanently empty off macOS (nothing else runs collectors).
     @Published public var collectorOutcomes: [ProviderKind: CollectorOutcome] = [:]
+
+    /// v1.44 W5: set when the app auto-enabled its login item at first value,
+    /// so Overview can show the "we did this, undo?" notice exactly once.
+    /// Cleared when the user dismisses or undoes it.
+    @Published public var showLaunchAtLoginNotice = false
 
     /// Single-flight guard for the detached collector-status upload. Not
     /// `@Published` — it is scheduling state, not something a view renders.
@@ -924,6 +934,45 @@ public final class AppState: ObservableObject {
     /// no device row and no secret. That gap is real and deliberate: closing
     /// it needs an installation-UUID RPC and a privacy story, both of which
     /// are Owner decisions. The local UI does not depend on this upload.
+    /// v1.44 W5: register the login item the first time we actually show the
+    /// user numbers, and tell them we did.
+    ///
+    /// Deliberately driven off the same outcome map as the provider rows, so
+    /// "first value" has one definition across the app. See
+    /// `FirstValueLaunchAtLogin` for why this waits for value instead of firing
+    /// at launch, and why the user's own toggle always wins.
+    func enableLaunchAtLoginAtFirstValueIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) {
+        let defaults = UserDefaults.standard
+        let decision = FirstValueLaunchAtLogin.decide(
+            producedValue: FirstValueLaunchAtLogin.producedValue(outcomes),
+            alreadyEnabled: SMAppService.mainApp.status == .enabled,
+            alreadyAutoEnabled: defaults.bool(forKey: FirstValueLaunchAtLogin.didAutoEnableKey),
+            userTouchedToggle: defaults.bool(forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        )
+        guard decision == .enableAndNotify else { return }
+        do {
+            try SMAppService.mainApp.register()
+            // Record BEFORE showing the notice, and only on success: a failed
+            // registration must be retried on a later pass rather than
+            // announcing something that did not happen.
+            defaults.set(true, forKey: FirstValueLaunchAtLogin.didAutoEnableKey)
+            showLaunchAtLoginNotice = true
+        } catch {
+            // No notice, no marker — try again next time. Registration can fail
+            // legitimately (a user-level login-item restriction), and claiming
+            // success there would be a lie the user can see through in
+            // System Settings.
+        }
+    }
+
+    /// The undo half of the W5 notice. Also records that the user has made an
+    /// explicit choice, so the automatic path never fires again.
+    public func undoLaunchAtLogin() {
+        try? SMAppService.mainApp.unregister()
+        UserDefaults.standard.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        showLaunchAtLoginNotice = false
+    }
+
     func reportCollectorStatusIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
 

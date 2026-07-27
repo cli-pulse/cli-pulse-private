@@ -1073,3 +1073,9 @@
 "collector_status.auth_failed" = "认证失败";
 "collector_status.auth_failed_hint" = "重新连接 %@ —— 保存的凭据被拒绝了。";
 "collector_status.failed_other_hint" = "这是我们的问题 —— 这次检查没能完成,后续更新会修复。";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "已设为开机启动";
+"launch_at_login_notice.body" = "CLI Pulse 现在会随登录自动打开,你不用惦记它,用量也一直是新的。";
+"launch_at_login_notice.undo" = "撤销";
+"launch_at_login_notice.keep" = "知道了";

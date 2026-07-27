@@ -796,3 +796,9 @@
 "collector_status.auth_failed" = "Error de autenticación";
 "collector_status.auth_failed_hint" = "Vuelve a conectar %@: su credencial guardada fue rechazada.";
 "collector_status.failed_other_hint" = "Esto es cosa nuestra: la comprobación no pudo completarse. Una actualización lo arreglará.";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "Se abrirá al iniciar sesión";
+"launch_at_login_notice.body" = "CLI Pulse ahora se abre al iniciar sesión, así tu uso se mantiene al día sin que tengas que pensarlo.";
+"launch_at_login_notice.undo" = "Deshacer";
+"launch_at_login_notice.keep" = "Entendido";

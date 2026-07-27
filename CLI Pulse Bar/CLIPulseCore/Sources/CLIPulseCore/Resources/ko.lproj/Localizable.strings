@@ -796,3 +796,9 @@
 "collector_status.auth_failed" = "인증 실패";
 "collector_status.auth_failed_hint" = "%@을(를) 다시 연결하세요. 저장된 자격 증명이 거부되었습니다.";
 "collector_status.failed_other_hint" = "저희 문제입니다. 검사를 완료하지 못했습니다. 업데이트로 해결됩니다.";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "로그인 시 시작";
+"launch_at_login_notice.body" = "이제 CLI Pulse가 로그인할 때 자동으로 열립니다. 신경 쓰지 않아도 사용량이 최신으로 유지됩니다.";
+"launch_at_login_notice.undo" = "실행 취소";
+"launch_at_login_notice.keep" = "확인";

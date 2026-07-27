@@ -1073,3 +1073,9 @@
 "collector_status.auth_failed" = "驗證失敗";
 "collector_status.auth_failed_hint" = "重新連接 %@ —— 已儲存的憑證遭到拒絕。";
 "collector_status.failed_other_hint" = "這是我們的問題 —— 這次檢查沒能完成,後續更新會修正。";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "已設為開機啟動";
+"launch_at_login_notice.body" = "CLI Pulse 現在會隨登入自動開啟,你不用惦記它,用量也一直是新的。";
+"launch_at_login_notice.undo" = "復原";
+"launch_at_login_notice.keep" = "知道了";
