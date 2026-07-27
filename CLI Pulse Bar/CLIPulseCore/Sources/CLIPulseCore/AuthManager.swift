@@ -504,7 +504,16 @@ extension AppState {
     /// targets to keep the shared localization bundle honest, but
     /// the call sites are macOS-gated in SettingsTab.
     #if os(macOS)
-    public func continueWithoutAccount() {
+    public func continueWithoutAccount(defaults: UserDefaults = .standard) {
+        // v1.44 W1 step 5: remember the choice. `isLocalMode` is a plain
+        // `@Published` with no backing store, so before this the mode
+        // survived exactly one launch: on the next cold start
+        // `restoreSession()` finds no token, takes `.unavailable`, and
+        // (pre-W1) set `selectedTab = .settings` — while the wizard stays
+        // suppressed by `cli_pulse_onboarding_completed`. A user who chose
+        // local mode therefore got a working app once and a signed-out
+        // shell every launch after. See `resolveColdLaunchLanding`.
+        defaults.set(true, forKey: Self.localModeEnabledKey)
         isLocalMode = true
         serverOnline = true
         selectedTab = .overview
@@ -514,6 +523,32 @@ extension AppState {
         Task { await refreshAll() }
     }
     #endif
+
+    /// v1.44 W1: persisted marker for "the user chose to use CLI Pulse
+    /// without an account". Read on cold launch by `resolveColdLaunchLanding`.
+    public static let localModeEnabledKey = "cli_pulse_local_mode_enabled"
+
+    /// Where a cold launch lands when no session could be restored.
+    public enum ColdLaunchLanding: Equatable {
+        /// Re-enter local mode: the user previously opted out of an account.
+        case localMode
+        /// Show the Sign-In form (fresh install, or a prior explicit sign-out).
+        case signIn
+    }
+
+    /// Pure decision for the `.unavailable` restore branch, extracted so it is
+    /// reachable from CLIPulseCore's tests — `AppState.restoreSession()` itself
+    /// needs Keychain and a live refresh loop.
+    ///
+    /// Deliberately keyed on the local-mode marker alone and NOT on
+    /// `cli_pulse_onboarding_completed`: that flag is also set by users who
+    /// completed the wizard by signing in and later signed out, and those users
+    /// want the Sign-In form, not a silent drop into local mode.
+    public static func resolveColdLaunchLanding(
+        localModePreviouslyChosen: Bool
+    ) -> ColdLaunchLanding {
+        localModePreviouslyChosen ? .localMode : .signIn
+    }
 
     public func restoreSession() async {
         switch await authManager.restoreSession(
@@ -549,7 +584,27 @@ extension AppState {
             // full reset clears have been populated yet, so the only
             // observable change a fresh user needs is the tab
             // selection.
+            //
+            // v1.44 W1: iter19's reasoning holds only for users who have
+            // never opted out of an account. A local-mode user reaches this
+            // exact branch on EVERY launch — they have no token by design —
+            // so the unconditional `.settings` landing silently undid their
+            // choice and left the app in a signed-out shell with no data
+            // and no running refresh loop. Restore the mode instead.
+            #if os(macOS)
+            switch Self.resolveColdLaunchLanding(
+                localModePreviouslyChosen: UserDefaults.standard.bool(
+                    forKey: Self.localModeEnabledKey
+                )
+            ) {
+            case .localMode:
+                continueWithoutAccount()
+            case .signIn:
+                selectedTab = .settings
+            }
+            #else
             selectedTab = .settings
+            #endif
         case .failed:
             applySignedOutState()
         }
@@ -586,6 +641,14 @@ extension AppState {
         isPaired = session.isPaired
         isAuthenticated = true
         serverOnline = true
+        // v1.44 W1: signing in is a later explicit choice that supersedes
+        // "continue without an account", so retire the marker and the live
+        // flag together. Without this, a signed-in user who later loses the
+        // Keychain entry would silently land in local mode instead of the
+        // Sign-In form. Invariant: the marker is true iff the user's most
+        // recent explicit choice was to go without an account.
+        isLocalMode = false
+        UserDefaults.standard.removeObject(forKey: Self.localModeEnabledKey)
 
         // iter8 hotfix: replay any APNs push token the iOS app cached
         // before sign-in completed. APNs delivers the token once per
@@ -613,6 +676,10 @@ extension AppState {
         isAuthenticated = false
         isPaired = false
         isLocalMode = false
+        // v1.44 W1: clear the persisted marker alongside the live flag, or an
+        // explicit sign-out would bounce straight back into local mode on the
+        // next launch. Signing out is a request for the Sign-In form.
+        UserDefaults.standard.removeObject(forKey: Self.localModeEnabledKey)
         serverOnline = false
         userId = ""
         userName = ""
