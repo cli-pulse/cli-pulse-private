@@ -847,17 +847,45 @@ internal final class DataRefreshManager {
     /// sandbox hasn't been granted access to the scan roots — i.e. the user
     /// should be nudged to click "Grant access" in Settings. Called on the
     /// main actor because `BookmarkManager` is `@MainActor`-isolated.
+    ///
+    /// `missingRoots` is injected as a closure rather than called directly so
+    /// tests are deterministic. `CostUsageScanner.missingScanRoots()` resolves
+    /// through `BookmarkManager`, which reads the SHARED app-group suite
+    /// (`group.yyh.CLI-Pulse`) — so a test that let it run for real would be
+    /// asserting against whatever bookmarks the developer's own installed copy
+    /// of CLI Pulse happens to hold. That passes on an unsandboxed DEVID
+    /// machine (never stores bookmarks) and fails on one where MAS has been
+    /// granted access. Kept lazy so the cheap guards below still short-circuit.
     #if os(macOS)
     @MainActor
-    static func needsFolderAccessNudge(scanIsEmpty: Bool) -> Bool {
+    static func needsFolderAccessNudge(
+        scanIsEmpty: Bool,
+        isSandboxed: Bool = MASSandboxGate.isSandboxed,
+        missingRoots: @MainActor () -> [String] = { CostUsageScanner.missingScanRoots() }
+    ) -> Bool {
         guard scanIsEmpty else { return false }
+        // v1.44 W1: bookmarks are an App Sandbox mechanism. An unsandboxed
+        // Developer ID build reads `~/.codex` and `~/.claude` directly and
+        // never stores one, so `missingScanRoots()` reports every root as
+        // "missing" there — truthfully, but the conclusion does not follow.
+        // Pre-W1 this was masked: the banner was gated on `isAuthenticated`
+        // on Overview and nobody landed there without an account. W1 makes
+        // that the default path, so without this guard a DEVID user who has
+        // simply never run Claude or Codex is told their access is blocked
+        // and asked to hand over their home folder. That trades an empty
+        // first screen for a misleading one — strictly worse than the
+        // problem W1 set out to fix.
+        //
+        // The honest signal for that user is "no CLI usage yet", which the
+        // empty state already says. Separating detection from readiness
+        // properly is W3's job; this guard just stops us from lying.
+        guard isSandboxed else { return false }
         // If at least one core scan root is missing a bookmark, surface the
         // banner. We check the two Claude variants and the two Codex roots;
         // nudge the user if ANY key root is unbookmarked (they only need one
         // to start getting data, but the banner drives them to Settings
         // where all four are listed).
-        let missing = CostUsageScanner.missingScanRoots()
-        return !missing.isEmpty
+        return !missingRoots().isEmpty
     }
     #endif
 

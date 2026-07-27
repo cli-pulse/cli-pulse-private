@@ -49,7 +49,16 @@ struct OverviewTab: View {
                 // a prominent one-tap "grant folder access" banner so their real
                 // token counts/costs can be read (the LocalModeGuideCard above
                 // only covers the unauthenticated local-mode case).
-                if state.isAuthenticated && state.needsScannerFolderAccess {
+                //
+                // v1.44 W1: the `isAuthenticated &&` half of that gate is gone.
+                // It encoded the pre-W1 assumption that nobody reaches Overview
+                // without an account; W1 makes the unauthenticated first launch
+                // the DEFAULT path, and a sandboxed MAS user there needs this
+                // banner most — it is the one control that turns their empty
+                // screen into data. `ProvidersTab.swift:72` already rendered it
+                // ungated, so this also settles a real inconsistency between two
+                // tabs reading the same `needsScannerFolderAccess` flag.
+                if state.needsScannerFolderAccess {
                     ScannerFolderAccessBanner()
                         .environmentObject(state)
                 }

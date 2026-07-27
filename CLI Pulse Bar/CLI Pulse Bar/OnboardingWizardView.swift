@@ -69,15 +69,25 @@ struct OnboardingWizardView: View {
             // attention away from the step's primary CTA, but the
             // tap-target is wide enough (28×28) to hit reliably.
             //
-            // iter16 (2026-04-29): on dismiss, also pivot the
-            // selectedTab to `.settings` so the user lands on the
-            // Sign-In form (mirrors the post-sign-out landing fixed
-            // in `AuthManager.applySignedOutState`). Without this, a
-            // wizard-skip without prior sign-in would land on the
-            // default `.overview` and the user would see an empty
-            // "No Data Yet" view as their first impression.
+            // v1.44 W1: dismissing the wizard now ENTERS LOCAL MODE and
+            // lands on Overview with real numbers.
+            //
+            // iter16 (2026-04-29) routed this to `.settings` instead, and
+            // its reasoning was right about the symptom — "the user would
+            // see an empty 'No Data Yet' view as their first impression" —
+            // but the cure was to route them AWAY from the product. That
+            // choice is the measured shape of the funnel: 187 signups →
+            // 67 devices, a 64% loss at exactly the step where we ask for
+            // an account before showing anything.
+            //
+            // The empty-Overview problem was never that Overview is empty;
+            // it is that nothing had turned local mode ON, so the refresh
+            // loop never started. `continueWithoutAccount()` does all of
+            // it (local mode + `.overview` + start loop + refresh now), so
+            // the honest fix is one call. Sign-in stays reachable from
+            // Settings → Connection.
             Button {
-                state.selectedTab = .settings
+                state.continueWithoutAccount()
                 onboardingCompleted = true
             } label: {
                 Image(systemName: "xmark")
@@ -320,15 +330,23 @@ struct OnboardingWizardView: View {
             // had no way out of the wizard short of force-quitting.
             //
             // Adding a "Skip for now" sibling here lets the user proceed
-            // to the menu-bar shell unauthenticated. The Mac app's local
-            // mode (`refreshLocal`) handles unauthenticated collectors,
-            // so this is a graceful exit, not a broken state.
+            // to the menu-bar shell unauthenticated.
+            //
+            // v1.44 W1: that hotfix's closing claim — "the Mac app's local
+            // mode (`refreshLocal`) handles unauthenticated collectors, so
+            // this is a graceful exit" — described a mode nothing had
+            // switched on. Setting `onboardingCompleted` alone leaves
+            // `isLocalMode == false` and no refresh loop running, so the
+            // exit landed on a permanently empty Overview. It was a
+            // less-obvious version of the same trap it set out to fix.
+            // `continueWithoutAccount()` actually enters that mode.
             HStack(spacing: 12) {
                 Button(L10n.onboardingWizard.back) { step = 2 }
                     .buttonStyle(.bordered)
                     .disabled(state.isLoading)
 
                 Button(L10n.onboardingWizard.skip) {
+                    state.continueWithoutAccount()
                     onboardingCompleted = true
                 }
                 .buttonStyle(.bordered)
