@@ -1043,3 +1043,39 @@
 "pet.form_huff" = "ぷんぷんそっぽ猫";
 "pet.form_ouch" = "いてっ痛い猫";
 "pet.form_flop" = "ばたんぐったり猫";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "正常";
+"collector_status.off" = "オフ";
+"collector_status.no_quota_source" = "クォータ情報なし";
+"collector_status.no_quota_source_hint" = "コストとセッションは記録されます。このツールには読み取れるクォータ API がありません。";
+"collector_status.not_installed" = "未インストール";
+"collector_status.not_installed_hint" = "%@ をインストールすると、使用量が自動的にここに表示されます。";
+"collector_status.not_signed_in" = "未サインイン";
+"collector_status.not_signed_in_hint" = "%@ のアプリまたは CLI でサインインしてください。ここでキーを入力する必要はありません。";
+"collector_status.not_set_up" = "未設定";
+"collector_status.not_set_up_hint" = "設定を開いてこのプロバイダを接続してください。";
+"collector_status.no_data" = "データが空でした";
+"collector_status.no_data_hint" = "チェックは実行されましたが、結果は空でした。一度使うと解決することが多いです。";
+"collector_status.access_blocked" = "アクセスがブロックされています";
+"collector_status.access_blocked_hint" = "設定でフォルダへのアクセスを許可してください。";
+"collector_status.unreachable" = "接続できません";
+"collector_status.unreachable_hint" = "ネットワーク接続を確認してください。";
+"collector_status.cannot_read" = "応答を解析できません";
+"collector_status.cannot_read_hint" = "これは私たちの問題です。提供元が形式を変更しました。アップデートで修正します。";
+"collector_status.failed" = "チェックに失敗";
+"collector_status.failed_hint" = "プロバイダがエラーを返しました。通常は自然に解消します。";
+"collector_status.not_running" = "実行されていません";
+"collector_status.not_running_hint" = "%@ を起動すると、使用量がここに表示されます。";
+"collector_status.needs_key" = "API キーが必要";
+"collector_status.needs_key_hint" = "設定で %@ の API トークンを入力してください。このサービスには読み取れるサインイン状態がありません。";
+"collector_status.auth_failed" = "認証に失敗";
+"collector_status.auth_failed_hint" = "%@ を再接続してください。保存された認証情報が拒否されました。";
+"collector_status.failed_other_hint" = "これは私たちの問題です。チェックを完了できませんでした。アップデートで修正します。";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "ログイン時に起動します";
+"launch_at_login_notice.body" = "CLI Pulse はログイン時に自動で開きます。意識しなくても使用量が最新に保たれます。";
+"launch_at_login_notice.undo" = "元に戻す";
+"launch_at_login_notice.keep" = "OK";

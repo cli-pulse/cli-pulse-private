@@ -42,6 +42,13 @@ public struct CursorCollector: ProviderCollector, Sendable {
         return Self.autoImportEligible(config.cookieSource)
     }
 
+    /// v1.44 W3: both arms of `isAvailable` are credential questions (a manual
+    /// cookie / env var, or eligibility to import one from the browser), so a
+    /// false is always "we have no session for you", never "Cursor is absent".
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        isAvailable(config: config) ? .ready : .notReady(.missingCredentials)
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         // Mirror the default-ON gate at resolution time: CookieResolver only
         // attempts the browser importer when `cookieSource == .automatic`, so

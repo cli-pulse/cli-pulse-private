@@ -5,6 +5,11 @@ import Combine
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
+#if os(macOS)
+// v1.44 W5: login-item registration at first value. macOS-only — SMAppService
+// does not exist on iOS/watchOS.
+import ServiceManagement
+#endif
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -173,6 +178,25 @@ public final class AppState: ObservableObject {
     /// Drives a one-shot banner in Providers tab nudging the user to grant
     /// access via `FolderAccessView`.
     @Published public var needsScannerFolderAccess: Bool = false
+
+    /// v1.44 W3: what happened to each provider on the last collector pass.
+    ///
+    /// Populated for EVERY configured provider, not just the ones that
+    /// produced data — that is the point. Before this, a provider the user had
+    /// disabled, one we have no collector for, one missing credentials and one
+    /// whose collector threw were all equally invisible, so neither the user
+    /// nor we could tell them apart. Empty until the first pass completes,
+    /// and permanently empty off macOS (nothing else runs collectors).
+    @Published public var collectorOutcomes: [ProviderKind: CollectorOutcome] = [:]
+
+    /// v1.44 W5: set when the app auto-enabled its login item at first value,
+    /// so Overview can show the "we did this, undo?" notice exactly once.
+    /// Cleared when the user dismisses or undoes it.
+    @Published public var showLaunchAtLoginNotice = false
+
+    /// Single-flight guard for the detached collector-status upload. Not
+    /// `@Published` — it is scheduling state, not something a view renders.
+    var isReportingCollectorStatus = false
 
     /// v1.9.4: total token count for a provider, sourced from the JSONL scan
     /// result. Convention matches codexbar for parity:
@@ -892,6 +916,121 @@ public final class AppState: ObservableObject {
     /// never affect app startup.
     /// Internal (not `private`): invoked from `completeAuthenticatedSignIn` in
     /// AuthManager.swift, a different file in this module.
+    /// v1.44 W3: upload the per-provider outcome map for a paired device.
+    ///
+    /// This is what makes `devices.collector_status` non-dead. The v0.71
+    /// column has been written by nothing: only `HelperDaemon` reported it,
+    /// and 63 of 70 Macs report `helper_version = "1.0.0"` — the constant the
+    /// *app* passes when it registers the device — meaning they never had a
+    /// daemon to do the reporting. Those are exactly the devices whose silence
+    /// we were trying to explain.
+    ///
+    /// Uses the same `HelperConfig` secret the app already authenticates
+    /// `reportAppVersion` with, so this needs no new credential path and no
+    /// schema change; `helper_report_app_version` has accepted
+    /// `p_collector_status` since v0.71 and coalesces each field independently.
+    ///
+    /// Anonymous local-mode users are NOT covered — with no pairing there is
+    /// no device row and no secret. That gap is real and deliberate: closing
+    /// it needs an installation-UUID RPC and a privacy story, both of which
+    /// are Owner decisions. The local UI does not depend on this upload.
+    /// v1.44 W5: register the login item the first time we actually show the
+    /// user numbers, and tell them we did.
+    ///
+    /// Deliberately driven off the same outcome map as the provider rows, so
+    /// "first value" has one definition across the app. See
+    /// `FirstValueLaunchAtLogin` for why this waits for value instead of firing
+    /// at launch, and why the user's own toggle always wins.
+    func enableLaunchAtLoginAtFirstValueIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) {
+        let defaults = UserDefaults.standard
+        let decision = FirstValueLaunchAtLogin.decide(
+            producedValue: FirstValueLaunchAtLogin.producedValue(outcomes),
+            alreadyEnabled: SMAppService.mainApp.status == .enabled,
+            alreadyAutoEnabled: defaults.bool(forKey: FirstValueLaunchAtLogin.didAutoEnableKey),
+            userTouchedToggle: defaults.bool(forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        )
+        guard decision == .enableAndNotify else { return }
+        do {
+            try SMAppService.mainApp.register()
+            // Record BEFORE showing the notice, and only on success: a failed
+            // registration must be retried on a later pass rather than
+            // announcing something that did not happen.
+            defaults.set(true, forKey: FirstValueLaunchAtLogin.didAutoEnableKey)
+            showLaunchAtLoginNotice = true
+        } catch {
+            // No notice, no marker — try again next time. Registration can fail
+            // legitimately (a user-level login-item restriction), and claiming
+            // success there would be a lie the user can see through in
+            // System Settings.
+        }
+    }
+
+    /// The undo half of the W5 notice. Also records that the user has made an
+    /// explicit choice, so the automatic path never fires again.
+    public func undoLaunchAtLogin() {
+        try? SMAppService.mainApp.unregister()
+        UserDefaults.standard.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        showLaunchAtLoginNotice = false
+    }
+
+    func reportCollectorStatusIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+
+        // Single-flight. The caller fires this detached from the refresh path,
+        // and the RPC can outlive the refresh that started it — so a slow pass
+        // A and a later pass B can be in flight together. Both would read the
+        // same pre-A cache (defeating the throttle), and if A lands last it
+        // overwrites B's newer reading in BOTH the backend and the cache. That
+        // leaves the fleet showing `ok` for a provider that has since been
+        // disabled or has broken, until some later pass happens to repair it —
+        // or forever, if the app is closed first.
+        //
+        // The check-and-set below has no `await` between them and AppState is
+        // @MainActor, so no second pass can interleave: dropping the overlap is
+        // safe because the next refresh re-evaluates from current state anyway.
+        guard !isReportingCollectorStatus else { return }
+
+        var map: [String: String] = [:]
+        for (kind, outcome) in outcomes {
+            map[kind.rawValue] = outcome.telemetryToken
+        }
+        let defaults = UserDefaults.standard
+        // Device-scoped, mirroring `appVersionReportKey`. Global keys would let
+        // account A's cached map suppress the FIRST report from newly-paired
+        // device B when their maps happen to match, leaving B's row null for up
+        // to an hour — which is indistinguishable from the silence this whole
+        // feature exists to explain.
+        let mapKey = Self.collectorStatusKey(deviceId: config.deviceId)
+        let atKey = Self.collectorStatusAtKey(deviceId: config.deviceId)
+        let last = defaults.dictionary(forKey: mapKey) as? [String: String]
+        let lastAt = defaults.object(forKey: atKey) as? Date
+        guard CollectorRunner.shouldReportTelemetry(
+            current: map, lastReported: last, lastReportedAt: lastAt, now: Date()
+        ) else { return }
+
+        isReportingCollectorStatus = true
+        defer { isReportingCollectorStatus = false }
+        do {
+            try await HelperAPIClient().reportCollectorStatus(config: config, status: map)
+            defaults.set(map, forKey: mapKey)
+            defaults.set(Date(), forKey: atKey)
+        } catch {
+            // Retried on the next pass — never surfaced to the user.
+        }
+    }
+
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_\(deviceId)"
+    }
+
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusAtKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_at_\(deviceId)"
+    }
+
     func reportAppVersionIfNeeded() async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
         let appVersion = HelperAPIClient.currentAppVersionString

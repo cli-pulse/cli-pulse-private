@@ -43,6 +43,15 @@ struct OverviewTab: View {
                         .environmentObject(state)
                 }
 
+                // v1.44 W5: shown once, right after the app registers its own
+                // login item at first value. The registration is silent
+                // without this card, and a background app making itself
+                // permanent without saying so is the version of the feature
+                // that deserves to be rejected — by App Review and by the user.
+                if state.showLaunchAtLoginNotice {
+                    launchAtLoginNotice
+                }
+
                 // v1.28: a SIGNED-IN user whose local usage scan is blocked by
                 // the App Store sandbox (no folder-access bookmark) previously
                 // got no prompt at all — they just saw a near-zero cost. Surface
@@ -251,6 +260,42 @@ struct OverviewTab: View {
     }
 
     // MARK: - Metrics Grid
+
+    /// v1.44 W5 notice. Two buttons, both terminal: "Got it" dismisses and
+    /// leaves the login item, "Undo" removes it and records that the user has
+    /// made an explicit choice, so the automatic path never fires again.
+    private var launchAtLoginNotice: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "power")
+                .foregroundStyle(PulseTheme.accent)
+                .font(.system(size: 14))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.launchAtLoginNotice.title)
+                    .font(.system(size: 11, weight: .semibold))
+                Text(L10n.launchAtLoginNotice.body)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button(L10n.launchAtLoginNotice.keep) {
+                        state.showLaunchAtLoginNotice = false
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    Button(L10n.launchAtLoginNotice.undo) {
+                        state.undoLaunchAtLogin()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(.top, 2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .background(PulseTheme.accent.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 
     private func metricsGrid(_ dash: DashboardSummary) -> some View {
         LazyVGrid(columns: [
