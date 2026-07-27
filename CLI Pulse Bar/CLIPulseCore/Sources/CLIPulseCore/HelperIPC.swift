@@ -27,6 +27,11 @@ public enum HelperIPC {
     /// Provider configs (array of ProviderConfig, written by main app for helper to read)
     public static let providerConfigsKey = "helper_provider_configs"
 
+    /// Mirrors ProviderAccountFeatureFlags.writeDefaultsKey into the shared
+    /// suite so the Login Item helper observes the same staged v2 rollout.
+    public static let providerAccountsWriteV2Key =
+        "provider_accounts_v2_write"
+
     /// Sync interval in seconds (Int, written by main app, read by helper)
     public static let syncIntervalKey = "helper_sync_interval"
 
@@ -143,6 +148,7 @@ public enum HelperIPC {
         public let accountID: UUID
         public let provider: String
         public let accountLabel: String?
+        public let planOverride: String?
         public let dataKind: CollectorDataKind
         public let usage: CollectorUsagePayload
 
@@ -150,6 +156,7 @@ public enum HelperIPC {
             case accountID = "account_id"
             case provider
             case accountLabel = "account_label"
+            case planOverride = "plan_override"
             case dataKind = "data_kind"
             case usage
         }
@@ -158,12 +165,14 @@ public enum HelperIPC {
             accountID: UUID,
             provider: String,
             accountLabel: String?,
+            planOverride: String? = nil,
             dataKind: CollectorDataKind,
             usage: CollectorUsagePayload
         ) {
             self.accountID = accountID
             self.provider = provider
             self.accountLabel = accountLabel
+            self.planOverride = planOverride
             self.dataKind = dataKind
             self.usage = usage
         }

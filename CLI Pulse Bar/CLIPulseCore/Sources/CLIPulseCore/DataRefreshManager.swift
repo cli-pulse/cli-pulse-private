@@ -19,6 +19,7 @@ internal final class DataRefreshManager {
         let isPaired: Bool
         let isLoading: Bool
         let notificationsEnabled: Bool
+        let authenticatedUserID: String
         let providerConfigs: [ProviderConfig]
         /// Snapshot of `state.providers` from the END of the previous refresh
         /// cycle. Used by `activeProviderCount` to compute the plan-limit
@@ -305,7 +306,11 @@ internal final class DataRefreshManager {
             return
         }
 
-        guard let authorizationLease = await api.authorizationLease() else {
+        guard
+            let authorizationLease = await api.authorizationLease(
+                expectedUserID: context.authenticatedUserID
+            )
+        else {
             callbacks.setLoading(false)
             return
         }
@@ -350,6 +355,24 @@ internal final class DataRefreshManager {
             let localProviderAccounts = Self.accountUsages(
                 from: accountResults
             )
+            let cloudOwnedAccountResults =
+                Self.cloudOwnedAccountResults(
+                    from: accountResults,
+                    providerConfigs: context.providerConfigs,
+                    authenticatedUserID:
+                        context.authenticatedUserID
+                )
+            let cloudOwnedAccountIDs = Set(
+                cloudOwnedAccountResults.map(\.accountID)
+            )
+            let cloudOwnedLocalProviderAccounts =
+                localProviderAccounts.filter {
+                    cloudOwnedAccountIDs.contains($0.id)
+                }
+            let cloudOwnedLocalResults =
+                Self.providerCompatibilityResults(
+                    from: cloudOwnedAccountResults
+                )
             let providerAccounts = Self.mergeProviderAccounts(
                 cloud: cloudProviderAccounts,
                 local: localProviderAccounts
@@ -589,19 +612,22 @@ internal final class DataRefreshManager {
             }()
 
             #if os(macOS)
-            // Quota writes remain structured children and lease-bound, but
+            // Quota writes remain a structured child and lease-bound, but
             // they are best-effort: payload visibility and loading completion
-            // must not wait for a slow Supabase write.
-            async let legacyProviderSync: Void =
-                localRuntime.syncLegacyQuotas(
-                    localResults,
+            // must not wait for a slow Supabase write. The account-aware write
+            // must run last because it recomputes the legacy compatibility row
+            // from every active account; a later legacy write would overwrite
+            // that deterministic projection.
+            async let providerQuotaSync: Void = {
+                await localRuntime.syncLegacyQuotas(
+                    cloudOwnedLocalResults,
                     authorizationLease
                 )
-            async let providerAccountSync: Void =
-                localRuntime.syncAccountQuotas(
-                    localProviderAccounts,
+                await localRuntime.syncAccountQuotas(
+                    cloudOwnedLocalProviderAccounts,
                     authorizationLease
                 )
+            }()
             async let dailyUsageSync: Void = {
                 guard let scanResult else { return }
                 await localRuntime.syncDailyUsage(
@@ -632,8 +658,7 @@ internal final class DataRefreshManager {
 
             #if os(macOS)
             _ = await (
-                legacyProviderSync,
-                providerAccountSync,
+                providerQuotaSync,
                 dailyUsageSync,
                 budgetAlertEvaluation
             )
@@ -767,7 +792,9 @@ internal final class DataRefreshManager {
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
         let authorizationLease = context.isAuthenticated
-            ? await api.authorizationLease()
+            ? await api.authorizationLease(
+                expectedUserID: context.authenticatedUserID
+            )
             : nil
         if context.isAuthenticated, authorizationLease == nil {
             callbacks.setLoading(false)
@@ -787,6 +814,23 @@ internal final class DataRefreshManager {
         let accountResults = collectorSources.accountResults
         let collectorResults = collectorSources.providerResults
         let providerAccounts = Self.accountUsages(from: accountResults)
+        let cloudOwnedAccountResults =
+            Self.cloudOwnedAccountResults(
+                from: accountResults,
+                providerConfigs: context.providerConfigs,
+                authenticatedUserID: context.authenticatedUserID
+            )
+        let cloudOwnedAccountIDs = Set(
+            cloudOwnedAccountResults.map(\.accountID)
+        )
+        let cloudOwnedProviderAccounts =
+            providerAccounts.filter {
+                cloudOwnedAccountIDs.contains($0.id)
+            }
+        let cloudOwnedCollectorResults =
+            Self.providerCompatibilityResults(
+                from: cloudOwnedAccountResults
+            )
         let scanResult = await localRuntime.scanLocal()
 
         // Scan local JSONL logs for precise token counts and costs.
@@ -963,14 +1007,14 @@ internal final class DataRefreshManager {
                     }
                 }
                 group.addTask {
+                    // Preserve the same last-writer contract as the paired
+                    // refresh: v2 owns the final legacy projection.
                     await runtime.syncLegacyQuotas(
-                        collectorResults,
+                        cloudOwnedCollectorResults,
                         authorizationLease
                     )
-                }
-                group.addTask {
                     await runtime.syncAccountQuotas(
-                        providerAccounts,
+                        cloudOwnedProviderAccounts,
                         authorizationLease
                     )
                 }
@@ -1235,6 +1279,25 @@ internal final class DataRefreshManager {
             .map(\.result)
     }
 
+    /// Restricts every cloud quota write—v2 and the legacy dual-write—to
+    /// provider accounts explicitly owned by the current CLIPulse user.
+    /// Rebuilding the legacy projection from this filtered account set avoids
+    /// leaking another local user's first same-provider account.
+    nonisolated static func cloudOwnedAccountResults(
+        from results: [AccountScopedCollectorResult],
+        providerConfigs: [ProviderConfig],
+        authenticatedUserID: String
+    ) -> [AccountScopedCollectorResult] {
+        let ownedAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: providerConfigs,
+                ownedBy: authenticatedUserID
+            )
+        return results.filter {
+            ownedAccountIDs.contains($0.accountID)
+        }
+    }
+
     /// Shared cloud/local bridge. Provider rows intentionally keep the
     /// main-app projection followed by helper rows so the existing in-order
     /// merge can preserve metadata and let the fresher helper quota win.
@@ -1357,7 +1420,8 @@ internal final class DataRefreshManager {
                         kind: kind,
                         accountID: account.accountID,
                         sortOrder: index,
-                        accountLabel: account.accountLabel
+                        accountLabel: account.accountLabel,
+                        planOverride: account.planOverride
                     )
                 }
 
@@ -1882,6 +1946,18 @@ internal final class DataRefreshManager {
 extension AppState {
     public func refreshAll() async {
         await dataRefreshManager.refreshAll(context: refreshContext(), callbacks: refreshCallbacks())
+        #if os(macOS)
+        // Reconcile user-controlled account lifecycle after the visible
+        // refresh. These writes are credential-free, lease-bound, and
+        // best-effort; failed deletes remain in the durable per-user outbox.
+        if isAuthenticated, !userId.isEmpty {
+            let expectedUserID = userId
+            await syncCurrentProviderAccountStatuses()
+            await flushPendingProviderAccountDeletions(
+                for: expectedUserID
+            )
+        }
+        #endif
         // Let platform bridges (notably iOS's PhoneSessionManager) forward the
         // freshly-loaded snapshot to the Apple Watch via WCSession. No userInfo
         // — observers pull the current @Published values from AppState.
@@ -3234,6 +3310,7 @@ extension AppState {
             isPaired: isPaired,
             isLoading: isLoading,
             notificationsEnabled: notificationsEnabled,
+            authenticatedUserID: userId,
             providerConfigs: providerConfigs,
             providers: providers,
             maxDevices: subscriptionManager.maxDevices,

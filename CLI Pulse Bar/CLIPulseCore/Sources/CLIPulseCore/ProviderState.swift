@@ -65,7 +65,8 @@ public final class ProviderState: ObservableObject {
     @discardableResult
     public func addProviderAccount(
         kind: ProviderKind,
-        accountID: UUID = UUID()
+        accountID: UUID = UUID(),
+        syncOwnerUserID: String? = nil
     ) -> UUID {
         guard !providerConfigs.contains(where: {
             $0.accountID == accountID
@@ -80,7 +81,8 @@ public final class ProviderState: ObservableObject {
                 kind: kind,
                 accountID: accountID,
                 isEnabled: false,
-                sortOrder: nextSortOrder
+                sortOrder: nextSortOrder,
+                syncOwnerUserID: syncOwnerUserID
             )
         )
         draftProviderAccountIDs.insert(accountID)

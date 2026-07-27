@@ -6,6 +6,8 @@ import CLIPulseCore
 struct SettingsTab: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
+    let canRerunAgentSetup: Bool
+    let onRerunAgentSetup: () -> Void
     @State private var email = ""
     @State private var otpCode = ""
     @State private var password = ""
@@ -39,6 +41,10 @@ struct SettingsTab: View {
                 Text(L10n.settings.title)
                     .font(.system(size: 14, weight: .bold))
 
+                if canRerunAgentSetup {
+                    agentSetupRerunCard
+                }
+
                 if authState.isAuthenticated {
                     authenticatedSection
                 } else {
@@ -47,6 +53,43 @@ struct SettingsTab: View {
             }
             .padding(12)
         }
+    }
+
+    private var agentSetupRerunCard: some View {
+        Button(action: onRerunAgentSetup) {
+            HStack(spacing: 7) {
+                Image(systemName: "arrow.clockwise.circle")
+                    .font(.system(size: 11))
+                    .foregroundStyle(PulseTheme.accent)
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.providers.rerunAgentSetup)
+                        .font(.system(
+                            size: 10,
+                            weight: .semibold
+                        ))
+                    Text(L10n.providers.rerunAgentSetupHint)
+                        .font(.system(size: 8))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer(minLength: 4)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(8)
+            .contentShape(Rectangle())
+            .background(PulseTheme.cardBackground.opacity(0.3))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(L10n.providers.rerunAgentSetupHint)
     }
 
     // MARK: - Login

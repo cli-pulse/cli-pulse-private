@@ -21,8 +21,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     /// auth somehow.
     private var pendingAuthPayload: [String: Any]?
     private var pendingContext: [String: Any]?
-    private var pendingLogout = false
+    private var pendingLogoutPayload: [String: Any]?
+    private var activeIdentity: WatchSessionIdentity?
     private let pendingLock = NSLock()
+    private static let epochKey =
+        "cli_pulse_phone_watch_session_epoch"
 
     private override init() {
         super.init()
@@ -33,7 +36,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         // event on cold launch.
         NotificationCenter.default.addObserver(self, selector: #selector(handleDidAuthenticate(_:)),
                                                 name: .cliPulseDidAuthenticate, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(handleDidSignOut),
+        NotificationCenter.default.addObserver(self, selector: #selector(handleDidSignOut(_:)),
                                                 name: .cliPulseDidSignOut, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleDidRefresh(_:)),
                                                 name: .cliPulseDidRefresh, object: nil)
@@ -50,17 +53,26 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
     @objc private func handleDidAuthenticate(_ notification: Notification) {
         guard let info = notification.userInfo,
-              let token = info["access_token"] as? String, !token.isEmpty else { return }
+              let token = info["access_token"] as? String,
+              !token.isEmpty,
+              let userID = info["user_id"] as? String,
+              !userID.isEmpty
+        else {
+            return
+        }
         sendAuthToWatch(
             accessToken: token,
             refreshToken: info["refresh_token"] as? String,
+            userID: userID,
             email: info["email"] as? String ?? "",
             name: info["name"] as? String ?? ""
         )
     }
 
-    @objc private func handleDidSignOut() {
-        sendLogoutToWatch()
+    @objc private func handleDidSignOut(_ notification: Notification) {
+        sendLogoutToWatch(
+            userID: notification.userInfo?["user_id"] as? String
+        )
     }
 
     @objc private func handleDidRefresh(_ notification: Notification) {
@@ -71,6 +83,7 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         guard let state = (notification.object as? AppState) ?? appState else { return }
         Task { @MainActor in
             self.sendDashboardToWatch(
+                userID: state.userId,
                 dashboard: state.dashboard,
                 providers: state.providers,
                 sessions: state.sessions,
@@ -84,39 +97,109 @@ final class PhoneSessionManager: NSObject, ObservableObject {
 
     /// Transfer auth tokens to the watch after successful login.
     /// Uses `transferUserInfo` for guaranteed delivery (queued, survives app exit).
-    func sendAuthToWatch(accessToken: String, refreshToken: String?, email: String, name: String) {
+    func sendAuthToWatch(
+        accessToken: String,
+        refreshToken: String?,
+        userID: String,
+        email: String,
+        name: String
+    ) {
+        guard WCSession.isSupported() else { return }
+        pendingLock.lock()
+        guard let identity = nextIdentityLocked(
+            userID: userID
+        ) else {
+            pendingLock.unlock()
+            return
+        }
+        activeIdentity = identity
         var payload: [String: Any] = [
             "cli_pulse_auth": true,
             "access_token": accessToken,
+            "user_id": identity.userID,
+            "session_epoch": String(identity.epoch),
             "email": email,
             "name": name,
         ]
         if let rt = refreshToken {
             payload["refresh_token"] = rt
         }
-
-        guard WCSession.isSupported() else { return }
-        if WCSession.default.activationState == .activated, WCSession.default.isPaired {
+        let canSend =
+            WCSession.default.activationState == .activated
+            && WCSession.default.isPaired
+        if canSend {
+            pendingAuthPayload = nil
+            pendingLogoutPayload = nil
+            pendingContext = nil
+            pendingLock.unlock()
             WCSession.default.transferUserInfo(payload)
         } else {
             // Queue until activation completes so we don't drop the first
             // auth event on cold launch.
-            pendingLock.lock()
             pendingAuthPayload = payload
-            pendingLogout = false
+            pendingLogoutPayload = nil
+            pendingContext = nil
             pendingLock.unlock()
         }
     }
 
     /// Send logout signal to watch.
-    func sendLogoutToWatch() {
+    func sendLogoutToWatch(userID: String? = nil) {
         guard WCSession.isSupported() else { return }
-        if WCSession.default.activationState == .activated, WCSession.default.isPaired {
-            WCSession.default.transferUserInfo(["cli_pulse_logout": true])
-        } else {
-            pendingLock.lock()
+        pendingLock.lock()
+        let requestedUserID =
+            userID?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+        if let current = activeIdentity,
+           let requestedUserID,
+           !current.matches(
+               authenticatedUserID: requestedUserID,
+               remoteEpoch: current.epoch
+           ) {
+            // A delayed logout for a prior phone account must not clear a
+            // newer active bridge identity.
+            pendingLock.unlock()
+            return
+        }
+        let owner = activeIdentity?.userID ?? requestedUserID ?? ""
+        guard let logoutIdentity = nextIdentityLocked(
+            userID: owner
+        ) else {
             pendingAuthPayload = nil
-            pendingLogout = true
+            pendingContext = nil
+            pendingLogoutPayload = nil
+            activeIdentity = nil
+            pendingLock.unlock()
+            return
+        }
+        activeIdentity = nil
+        let payload: [String: Any] = [
+            "cli_pulse_logout": true,
+            "user_id": logoutIdentity.userID,
+            "session_epoch": String(logoutIdentity.epoch),
+        ]
+        let tombstone: [String: Any] = [
+            "cli_pulse_context": true,
+            "cli_pulse_logged_out": true,
+            "user_id": logoutIdentity.userID,
+            "session_epoch": String(logoutIdentity.epoch),
+        ]
+        pendingAuthPayload = nil
+        pendingContext = nil
+        let canSend =
+            WCSession.default.activationState == .activated
+            && WCSession.default.isPaired
+        if canSend {
+            pendingLogoutPayload = nil
+            pendingLock.unlock()
+            WCSession.default.transferUserInfo(payload)
+            try? WCSession.default.updateApplicationContext(
+                tombstone
+            )
+        } else {
+            pendingLogoutPayload = payload
+            pendingContext = tombstone
             pendingLock.unlock()
         }
     }
@@ -124,37 +207,62 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     // MARK: - Send Dashboard Data
 
     /// Update application context with fresh dashboard data.
-    func sendDashboardToWatch(dashboard: DashboardSummary?, providers: [ProviderUsage],
+    func sendDashboardToWatch(userID: String,
+                               dashboard: DashboardSummary?, providers: [ProviderUsage],
                                sessions: [SessionRecord], alerts: [AlertRecord],
                                devices: [DeviceRecord] = []) {
+        pendingLock.lock()
+        guard
+            let identity = activeIdentity,
+            identity.matches(
+                authenticatedUserID: userID,
+                remoteEpoch: identity.epoch
+            )
+        else {
+            pendingLock.unlock()
+            return
+        }
+        pendingLock.unlock()
+
         let encoder = JSONEncoder()
-        var context: [String: Any] = [:]
+        var context: [String: Any] = [
+            "cli_pulse_context": true,
+            "user_id": identity.userID,
+            "session_epoch": String(identity.epoch),
+            "dashboard_present": dashboard != nil,
+        ]
 
         if let dash = dashboard, let data = try? encoder.encode(dash) {
             context["dashboard"] = data
         }
-        if !providers.isEmpty, let data = try? encoder.encode(providers) {
+        if let data = try? encoder.encode(providers) {
             context["providers"] = data
         }
-        if !sessions.isEmpty, let data = try? encoder.encode(sessions) {
+        if let data = try? encoder.encode(sessions) {
             context["sessions"] = data
         }
-        if !alerts.isEmpty, let data = try? encoder.encode(alerts) {
+        if let data = try? encoder.encode(alerts) {
             context["alerts"] = data
         }
         // v1.41 Mobile Machine: trimmed, ≤4 device-health summaries (keeps the
         // WC context small; no control-plane fields cross to the read-only watch).
         let deviceSummaries = WatchDeviceTrim.summaries(from: devices)
-        if !deviceSummaries.isEmpty, let data = try? encoder.encode(deviceSummaries) {
+        if let data = try? encoder.encode(deviceSummaries) {
             context["devices"] = data
         }
 
-        guard !context.isEmpty, WCSession.isSupported() else { return }
-        if WCSession.default.activationState == .activated, WCSession.default.isPaired {
+        guard WCSession.isSupported() else { return }
+        pendingLock.lock()
+        guard activeIdentity == identity else {
+            pendingLock.unlock()
+            return
+        }
+        if WCSession.default.activationState == .activated,
+           WCSession.default.isPaired {
+            pendingLock.unlock()
             try? WCSession.default.updateApplicationContext(context)
         } else {
             // Hold the most recent snapshot and replay on activation.
-            pendingLock.lock()
             pendingContext = context
             pendingLock.unlock()
         }
@@ -166,23 +274,58 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         pendingLock.lock()
         let auth = pendingAuthPayload
         let ctx = pendingContext
-        let logout = pendingLogout
+        let logout = pendingLogoutPayload
         pendingAuthPayload = nil
         pendingContext = nil
-        pendingLogout = false
+        pendingLogoutPayload = nil
         pendingLock.unlock()
 
         guard WCSession.default.activationState == .activated,
               WCSession.default.isPaired else { return }
 
-        if logout {
-            WCSession.default.transferUserInfo(["cli_pulse_logout": true])
+        if let logout {
+            WCSession.default.transferUserInfo(logout)
         } else if let auth {
             WCSession.default.transferUserInfo(auth)
         }
         if let ctx {
             try? WCSession.default.updateApplicationContext(ctx)
         }
+    }
+
+    /// Returns a process- and relaunch-monotonic epoch while `pendingLock` is
+    /// held. Wall-clock milliseconds keep the value moving forward after a
+    /// reinstall/restore; the persisted increment handles repeated events in
+    /// the same millisecond and local clock rollback.
+    private func nextIdentityLocked(
+        userID: String
+    ) -> WatchSessionIdentity? {
+        let normalized = userID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !normalized.isEmpty else { return nil }
+
+        let defaults = UserDefaults.standard
+        let previous = UInt64(
+            defaults.string(forKey: Self.epochKey) ?? ""
+        ) ?? 0
+        guard previous < UInt64.max else { return nil }
+
+        let milliseconds = Date().timeIntervalSince1970 * 1_000
+        let clockEpoch: UInt64
+        if milliseconds.isFinite,
+           milliseconds > 0,
+           milliseconds < Double(UInt64.max) {
+            clockEpoch = UInt64(milliseconds)
+        } else {
+            clockEpoch = 1
+        }
+        let epoch = max(previous + 1, clockEpoch)
+        defaults.set(String(epoch), forKey: Self.epochKey)
+        return WatchSessionIdentity(
+            userID: normalized,
+            epoch: epoch
+        )
     }
 }
 

@@ -75,6 +75,23 @@ final class L10nEnBaseKeysTests: XCTestCase {
         )
     }
 
+    func test_agentSetupRerunCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            XCTAssertFalse(
+                L10n.providers.rerunAgentSetup
+                    .hasPrefix("providers."),
+                "\(locale) is missing the Agent setup rerun title"
+            )
+            XCTAssertFalse(
+                L10n.providers.rerunAgentSetupHint
+                    .hasPrefix("providers."),
+                "\(locale) is missing the Agent setup rerun hint"
+            )
+        }
+    }
+
     func test_providerAccountDestructiveCopyResolvesInEverySupportedLocale() {
         for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
             LocaleOverrideStore.shared.set(locale)

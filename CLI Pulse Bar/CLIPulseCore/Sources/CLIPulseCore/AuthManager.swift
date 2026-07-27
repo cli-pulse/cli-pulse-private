@@ -98,7 +98,9 @@ public final class AuthManager {
 
     public func signOut(currentAccessToken: String) async {
         // Attempt server-side token revocation
-        await api.signOutServer()
+        await api.signOutServer(
+            expectedAccessToken: currentAccessToken
+        )
         // Only clear tokens if they haven't been replaced by a new sign-in
         let storedToken = KeychainHelper.load(key: AppState.tokenKeychainKey)
         if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true {
@@ -392,12 +394,17 @@ extension AppState {
         unregisterPushTokenOnLogout()
         // Capture current token so async logout only clears the right session
         let currentToken = storedToken
+        let currentUserID = userId
         Task { await authManager.signOut(currentAccessToken: currentToken) }
         // Clear local state immediately — don't block on network
         isDemoMode = false
         applySignedOutState()
         // Notify iOS companion to forward logout to watch
-        NotificationCenter.default.post(name: .cliPulseDidSignOut, object: nil)
+        NotificationCenter.default.post(
+            name: .cliPulseDidSignOut,
+            object: nil,
+            userInfo: ["user_id": currentUserID]
+        )
     }
 
     /// Delete the user's account. Returns `true` on confirmed server-side
@@ -563,6 +570,18 @@ extension AppState {
         isAuthenticated = true
         serverOnline = true
 
+        // Legacy/local-only configs have no cloud owner. The first
+        // authenticated CLIPulse user claims them exactly once; a later login
+        // cannot silently redirect their account labels or quotas.
+        var ownedConfigs = providerConfigs
+        if ProviderAccountSyncOwnership.bindUnowned(
+            configs: &ownedConfigs,
+            to: session.userId
+        ) {
+            providerConfigs = ownedConfigs
+            saveProviderConfigMetadata()
+        }
+
         // iter8 hotfix: replay any APNs push token the iOS app cached
         // before sign-in completed. APNs delivers the token once per
         // launch via didRegister; if the user signed in AFTER that
@@ -578,6 +597,7 @@ extension AppState {
             userInfo: [
                 "access_token": storedToken,
                 "refresh_token": storedRefreshToken,
+                "user_id": session.userId,
                 "email": session.userEmail,
                 "name": session.userName,
             ]
@@ -595,6 +615,7 @@ extension AppState {
         userEmail = ""
         dashboard = nil
         providers = []
+        providerAccounts = []
         sessions = []
         devices = []
         alerts = []

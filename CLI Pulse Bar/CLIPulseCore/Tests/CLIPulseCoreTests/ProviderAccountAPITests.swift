@@ -13,6 +13,252 @@ final class ProviderAccountAPITests: XCTestCase {
         super.tearDown()
     }
 
+    func testOlderExternalAuthTransitionCannotReplaceNewerSession() async {
+        let api = makeAPI(
+            flags: .init(readV2: true, writeV2: true)
+        )
+
+        let beganA = await api.beginExternalAuthorizationTransition(
+            generation: 1
+        )
+        let installedA = await api.installExternalAuthenticatedSession(
+            accessToken: "token-a",
+            refreshToken: "refresh-a",
+            userID: "user-a",
+            transitionGeneration: 1
+        )
+        let beganB = await api.beginExternalAuthorizationTransition(
+            generation: 2
+        )
+        let installedB = await api.installExternalAuthenticatedSession(
+            accessToken: "token-b",
+            refreshToken: "refresh-b",
+            userID: "user-b",
+            transitionGeneration: 2
+        )
+
+        let installedLateA =
+            await api.installExternalAuthenticatedSession(
+                accessToken: "late-token-a",
+                refreshToken: "late-refresh-a",
+                userID: "user-a",
+                transitionGeneration: 1
+            )
+        XCTAssertTrue(beganA)
+        XCTAssertTrue(installedA)
+        XCTAssertTrue(beganB)
+        XCTAssertTrue(installedB)
+        XCTAssertFalse(
+            installedLateA
+        )
+        let currentToken = await api.getToken()
+        let currentUserID = await api.userId
+        XCTAssertEqual(currentToken, "token-b")
+        XCTAssertEqual(currentUserID, "user-b")
+    }
+
+    func testAuthorizationLeaseRequiresExpectedUser() async {
+        let api = makeAPI(
+            flags: .init(readV2: true, writeV2: true)
+        )
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 1
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "token-a",
+            refreshToken: "refresh-a",
+            userID: "user-a",
+            transitionGeneration: 1
+        )
+
+        let matching = await api.authorizationLease(
+            expectedUserID: "user-a"
+        )
+        let mismatched = await api.authorizationLease(
+            expectedUserID: "user-b"
+        )
+
+        XCTAssertNotNil(matching)
+        XCTAssertNil(
+            mismatched,
+            "an account-A mutation must not acquire an account-B lease"
+        )
+    }
+
+    func testStaleSignOutRevokesOldTokenWithoutClearingNewSession() async {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/auth/v1/logout")
+            XCTAssertEqual(
+                request.value(
+                    forHTTPHeaderField: "Authorization"
+                ),
+                "Bearer token-a"
+            )
+            return .json("{}")
+        }
+        let api = makeAPI(
+            flags: .init(readV2: true, writeV2: true)
+        )
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 1
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "token-a",
+            refreshToken: "refresh-a",
+            userID: "user-a",
+            transitionGeneration: 1
+        )
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 2
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "token-b",
+            refreshToken: "refresh-b",
+            userID: "user-b",
+            transitionGeneration: 2
+        )
+
+        await api.signOutServer(
+            expectedAccessToken: "token-a"
+        )
+
+        let currentToken = await api.getToken()
+        let currentUserID = await api.userId
+        XCTAssertEqual(currentToken, "token-b")
+        XCTAssertEqual(currentUserID, "user-b")
+    }
+
+    func testStatusWritesCommitInInvocationOrder() async throws {
+        let recorder = ProviderAccountStatusDeliveryRecorder()
+        let firstRequestStarted = expectation(
+            description: "disabled status request started"
+        )
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/set_provider_account_statuses"
+            )
+            let body = try XCTUnwrap(request.httpBody)
+            let object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: body)
+                    as? [String: Any]
+            )
+            let rows = try XCTUnwrap(
+                object["p_rows"] as? [[String: Any]]
+            )
+            let status = try XCTUnwrap(
+                rows.first?["status"] as? String
+            )
+            if status == "disabled" {
+                firstRequestStarted.fulfill()
+            }
+            return .json(
+                #"{"accounts_updated":1}"#,
+                delay: status == "disabled" ? 0.15 : 0,
+                onDeliver: {
+                    recorder.append(status)
+                }
+            )
+        }
+
+        let api = makeAPI(
+            flags: .init(readV2: true, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+        let accountID = Self.accountUsage.id
+
+        let disable = Task {
+            await api.syncProviderAccountStatuses(
+                [
+                    ProviderAccountStatusUpdate(
+                        accountID: accountID,
+                        isEnabled: false
+                    ),
+                ],
+                authorizationLease: lease
+            )
+        }
+        await fulfillment(of: [firstRequestStarted], timeout: 2)
+        let enable = Task {
+            await api.syncProviderAccountStatuses(
+                [
+                    ProviderAccountStatusUpdate(
+                        accountID: accountID,
+                        isEnabled: true
+                    ),
+                ],
+                authorizationLease: lease
+            )
+        }
+
+        let disableResult = await disable.value
+        let enableResult = await enable.value
+
+        XCTAssertTrue(disableResult)
+        XCTAssertTrue(enableResult)
+        XCTAssertEqual(
+            recorder.values,
+            ["disabled", "active"],
+            "the final cloud status must match the latest user action"
+        )
+    }
+
+    func testOlderLogicalStatusMutationIsRejectedWhenTasksArriveReversed()
+        async throws
+    {
+        let recorder = ProviderAccountStatusDeliveryRecorder()
+        ProviderAccountAPIStubProtocol.handler = { request in
+            let body = try XCTUnwrap(request.httpBody)
+            let object = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: body)
+                    as? [String: Any]
+            )
+            let rows = try XCTUnwrap(
+                object["p_rows"] as? [[String: Any]]
+            )
+            let status = try XCTUnwrap(
+                rows.first?["status"] as? String
+            )
+            recorder.append(status)
+            return .json(#"{"accounts_updated":1}"#)
+        }
+
+        let api = makeAPI(
+            flags: .init(readV2: true, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+        let accountID = Self.accountUsage.id
+
+        let newest = await api.syncProviderAccountStatuses(
+            [
+                ProviderAccountStatusUpdate(
+                    accountID: accountID,
+                    isEnabled: true
+                ),
+            ],
+            mutationRevision: 2,
+            authorizationLease: lease
+        )
+        let delayedOlder = await api.syncProviderAccountStatuses(
+            [
+                ProviderAccountStatusUpdate(
+                    accountID: accountID,
+                    isEnabled: false
+                ),
+            ],
+            mutationRevision: 1,
+            authorizationLease: lease
+        )
+
+        XCTAssertTrue(newest)
+        XCTAssertFalse(delayedOlder)
+        XCTAssertEqual(
+            recorder.values,
+            ["active"],
+            "task scheduling must not let an older user action win"
+        )
+    }
+
     func testV2SummaryDecodesTwoAccountsWithoutDuplicatingProviderCost() async throws {
         ProviderAccountAPIStubProtocol.handler = { request in
             XCTAssertEqual(request.url?.path, "/rest/v1/rpc/provider_account_summary")
@@ -395,7 +641,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 "account_id", "provider", "account_label",
                 "plan_type", "plan_source", "plan_confidence",
-                "plan_observed_at", "status", "remaining", "quota",
+                "plan_observed_at", "remaining", "quota",
                 "reset_time", "tiers", "observed_at", "source_device_id",
             ]
         )
@@ -413,6 +659,412 @@ final class ProviderAccountAPITests: XCTestCase {
         }
     }
 
+    func testV2WriteOmitsExternalIdentifiersFromPlanEvidence()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/upsert_provider_account_quotas"
+            )
+            return .json(#"{"accounts_synced":1}"#)
+        }
+        let email = "vertex-user@example.com"
+        let resourceHost = "customer-resource.openai.azure.com"
+        let account = ProviderAccountUsage(
+            id: Self.accountUsage.id,
+            provider: .vertexAI,
+            accountLabel: "Personal",
+            planEvidence: ProviderPlanEvidence(
+                rawValue: email,
+                displayValue: resourceHost,
+                source: .accountMetadata,
+                confidence: .high,
+                observedAt: sharedISO8601Parse(
+                    "2026-07-24T02:59:00Z"
+                )
+            ),
+            quota: 100,
+            remaining: 60,
+            tiers: [],
+            resetTime: nil,
+            observedAt: "2026-07-24T03:00:00Z",
+            sourceDeviceID: nil,
+            statusText: "40% used"
+        )
+
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+        await api.syncProviderAccountQuotas(
+            [account],
+            authorizationLease: lease
+        )
+
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let rows = try XCTUnwrap(
+            root["p_rows"] as? [[String: Any]]
+        )
+        let row = try XCTUnwrap(rows.first)
+
+        XCTAssertNil(row["plan_type"])
+        XCTAssertNil(row["plan_observed_at"])
+        XCTAssertEqual(row["plan_source"] as? String, "unknown")
+        XCTAssertEqual(
+            row["plan_confidence"] as? String,
+            "unavailable"
+        )
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self).contains(email)
+        )
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self)
+                .contains(resourceHost)
+        )
+    }
+
+    func testV2WriteOmitsCloudTextBeyondServerLimit()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/upsert_provider_account_quotas"
+            )
+            return .json(#"{"accounts_synced":1}"#)
+        }
+        let oversized = String(repeating: "x", count: 121)
+        let oversizedTierName =
+            String(repeating: "t", count: 121)
+        let tiers =
+            [
+                TierDTO(
+                    name: oversizedTierName,
+                    quota: 100,
+                    remaining: 50
+                ),
+            ]
+            + (0..<25).map {
+                TierDTO(
+                    name: "Window \($0)",
+                    quota: 100,
+                    remaining: 50,
+                    reset_time:
+                        $0 == 0 ? "not-a-timestamp" : nil
+                )
+            }
+        let account = ProviderAccountUsage(
+            id: Self.accountUsage.id,
+            provider: .claude,
+            accountLabel: oversized,
+            planEvidence: ProviderPlanEvidence(
+                rawValue: oversized,
+                displayValue: oversized,
+                source: .userConfirmed,
+                confidence: .high,
+                observedAt: sharedISO8601Parse(
+                    "2026-07-24T02:59:00Z"
+                )
+            ),
+            quota: -100,
+            remaining: -60,
+            tiers: tiers,
+            resetTime: "not-a-timestamp",
+            observedAt: "2026-07-24T03:00:00Z",
+            sourceDeviceID: nil,
+            statusText: "40% used"
+        )
+
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+        await api.syncProviderAccountQuotas(
+            [account],
+            authorizationLease: lease
+        )
+
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let rows = try XCTUnwrap(
+            root["p_rows"] as? [[String: Any]]
+        )
+        let row = try XCTUnwrap(rows.first)
+
+        XCTAssertNil(row["account_label"])
+        XCTAssertNil(row["plan_type"])
+        XCTAssertNil(row["plan_observed_at"])
+        XCTAssertEqual(row["plan_source"] as? String, "unknown")
+        XCTAssertEqual(
+            row["plan_confidence"] as? String,
+            "unavailable"
+        )
+        XCTAssertNil(row["remaining"])
+        XCTAssertNil(row["quota"])
+        XCTAssertNil(row["reset_time"])
+        let uploadedTiers = try XCTUnwrap(
+            row["tiers"] as? [[String: Any]]
+        )
+        XCTAssertEqual(uploadedTiers.count, 24)
+        XCTAssertNil(uploadedTiers.first?["reset_time"])
+        XCTAssertEqual(
+            uploadedTiers.last?["name"] as? String,
+            "Window 23"
+        )
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self)
+                .contains(oversized)
+        )
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self)
+                .contains(oversizedTierName)
+        )
+    }
+
+    func testV2WriteSkipsInvalidObservationWithoutDroppingValidSibling()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/upsert_provider_account_quotas"
+            )
+            return .json(#"{"accounts_synced":1}"#)
+        }
+        let invalid = ProviderAccountUsage(
+            id: UUID(
+                uuidString:
+                    "55555555-5555-4555-8555-555555555555"
+            )!,
+            provider: .claude,
+            accountLabel: "Invalid",
+            planEvidence: ProviderPlanEvidence(
+                rawValue: nil,
+                displayValue: nil,
+                source: .unknown,
+                confidence: .unavailable,
+                observedAt: nil
+            ),
+            quota: 100,
+            remaining: 50,
+            tiers: [],
+            resetTime: nil,
+            observedAt: "not-a-timestamp",
+            sourceDeviceID: nil,
+            statusText: ""
+        )
+
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+        await api.syncProviderAccountQuotas(
+            [invalid, Self.accountUsage],
+            authorizationLease: lease
+        )
+
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let rows = try XCTUnwrap(
+            root["p_rows"] as? [[String: Any]]
+        )
+
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(
+            rows.first?["account_id"] as? String,
+            Self.accountUsage.id.uuidString.lowercased()
+        )
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self)
+                .contains("not-a-timestamp")
+        )
+    }
+
+    func testLegacyQuotaWriteOmitsEmailShapedPlanType() async throws {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/provider_quotas"
+            )
+            return .json("[]")
+        }
+        let email = "vertex-user@example.com"
+        let usage = ProviderUsage(
+            provider: ProviderKind.vertexAI.rawValue,
+            today_usage: 40,
+            week_usage: 40,
+            estimated_cost_today: 0,
+            estimated_cost_week: 0,
+            cost_status_today: "Unavailable",
+            cost_status_week: "Unavailable",
+            quota: 100,
+            remaining: 60,
+            plan_type: email,
+            status_text: "40% used",
+            trend: [],
+            recent_sessions: [],
+            recent_errors: []
+        )
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 1
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "clipulse-access-token",
+            refreshToken: "clipulse-refresh-token",
+            userID: "99999999-9999-4999-8999-999999999999",
+            transitionGeneration: 1
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+
+        await api.syncProviderQuotas(
+            [CollectorResult(usage: usage, dataKind: .quota)],
+            authorizationLease: lease
+        )
+
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let rows = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [[String: Any]]
+        )
+        let row = try XCTUnwrap(rows.first)
+
+        XCTAssertTrue(row["plan_type"] is NSNull)
+        XCTAssertFalse(
+            String(decoding: body, as: UTF8.self).contains(email)
+        )
+    }
+
+    func testStatusWriteUsesDedicatedCredentialFreeRPC() async throws {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/set_provider_account_statuses"
+            )
+            return .json(#"{"accounts_updated":1}"#)
+        }
+
+        let api = makeAPI(flags: .init(readV2: false, writeV2: true))
+        let lease = try await requireAuthorizationLease(for: api)
+        let synced = await api.syncProviderAccountStatuses(
+            [
+                ProviderAccountStatusUpdate(
+                    accountID: Self.accountUsage.id,
+                    isEnabled: false
+                ),
+            ],
+            authorizationLease: lease
+        )
+
+        XCTAssertTrue(synced)
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let object = try JSONSerialization.jsonObject(with: body)
+        let root = try XCTUnwrap(object as? [String: Any])
+        let rows = try XCTUnwrap(root["p_rows"] as? [[String: Any]])
+        XCTAssertEqual(rows.count, 1)
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(
+            row["account_id"] as? String,
+            "33333333-3333-4333-8333-333333333333"
+        )
+        XCTAssertEqual(row["status"] as? String, "disabled")
+        XCTAssertEqual(Set(row.keys), ["account_id", "status"])
+        XCTAssertTrue(
+            Self.recursiveKeys(in: object).allSatisfy {
+                !$0.lowercased().contains("token")
+                    && !$0.lowercased().contains("cookie")
+                    && !$0.lowercased().contains("secret")
+            }
+        )
+    }
+
+    func testDeleteWriteTargetsOneAccountThroughDedicatedRPC()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/delete_provider_account"
+            )
+            return .json(
+                #"{"accounts_deleted":1,"tombstones_persisted":1}"#
+            )
+        }
+
+        let api = makeAPI(flags: .init(readV2: false, writeV2: true))
+        let lease = try await requireAuthorizationLease(for: api)
+        let deleted = await api.deleteProviderAccount(
+            Self.accountUsage.id,
+            authorizationLease: lease
+        )
+
+        XCTAssertTrue(deleted)
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let object = try JSONSerialization.jsonObject(with: body)
+        let root = try XCTUnwrap(object as? [String: Any])
+        XCTAssertEqual(
+            root["p_account_id"] as? String,
+            "33333333-3333-4333-8333-333333333333"
+        )
+        XCTAssertEqual(Set(root.keys), ["p_account_id"])
+    }
+
+    func testDeleteRequiresServerTombstoneAcknowledgement() async throws {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/delete_provider_account"
+            )
+            return .json(
+                #"{"accounts_deleted":1,"tombstones_persisted":0}"#
+            )
+        }
+
+        let api = makeAPI(flags: .init(readV2: false, writeV2: true))
+        let lease = try await requireAuthorizationLease(for: api)
+
+        let deleted = await api.deleteProviderAccount(
+            Self.accountUsage.id,
+            authorizationLease: lease
+        )
+
+        XCTAssertFalse(
+            deleted,
+            "the local outbox may clear only after the server persisted a tombstone"
+        )
+    }
+
     func testWriteFlagOffMakesNoV2Request() async throws {
         ProviderAccountAPIStubProtocol.handler = { request in
             XCTFail("write-disabled API must not send \(request)")
@@ -425,7 +1077,22 @@ final class ProviderAccountAPITests: XCTestCase {
             [Self.accountUsage],
             authorizationLease: lease
         )
+        let statusSynced = await api.syncProviderAccountStatuses(
+            [
+                ProviderAccountStatusUpdate(
+                    accountID: Self.accountUsage.id,
+                    isEnabled: false
+                ),
+            ],
+            authorizationLease: lease
+        )
+        let deleted = await api.deleteProviderAccount(
+            Self.accountUsage.id,
+            authorizationLease: lease
+        )
 
+        XCTAssertFalse(statusSynced)
+        XCTAssertFalse(deleted)
         XCTAssertTrue(
             ProviderAccountAPIStubProtocol.recordedRequests().isEmpty
         )
@@ -522,6 +1189,19 @@ final class ProviderAccountAPITests: XCTestCase {
         _ = try? await api.evaluateBudgetAlerts(
             authorizationLease: lease
         )
+        let statusSynced = await api.syncProviderAccountStatuses(
+            [
+                ProviderAccountStatusUpdate(
+                    accountID: Self.accountUsage.id,
+                    isEnabled: false
+                ),
+            ],
+            authorizationLease: lease
+        )
+        let deleted = await api.deleteProviderAccount(
+            Self.accountUsage.id,
+            authorizationLease: lease
+        )
         await api.syncDailyUsage(
             CostUsageScanResult(entries: [
                 .init(
@@ -537,6 +1217,8 @@ final class ProviderAccountAPITests: XCTestCase {
             authorizationLease: lease
         )
 
+        XCTAssertFalse(statusSynced)
+        XCTAssertFalse(deleted)
         XCTAssertTrue(
             ProviderAccountAPIStubProtocol.recordedRequests().isEmpty
         )
@@ -778,7 +1460,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         async throws
     {
         installCloudRefreshHandler(includeAlert: true)
-        let api = makeAPI()
+        let api = await makeAPI()
         let manager = DataRefreshManager(
             api: api,
             localRuntime: .testRuntime()
@@ -823,11 +1505,121 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         XCTAssertEqual(afterRefreshCount, 0)
     }
 
+    func testAccountSwitchDuringHealthCannotAcquireNewUsersLease()
+        async throws
+    {
+        let healthStarted = expectation(
+            description: "user A refresh reached health request"
+        )
+        installCloudRefreshHandler(
+            includeAlert: true,
+            healthDelay: 0.25,
+            onHealthRequest: {
+                healthStarted.fulfill()
+            }
+        )
+        let api = await makeAPI()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .testRuntime()
+        )
+        var payloads: [DataRefreshManager.RefreshPayload] = []
+        var notifications: [AlertRecord] = []
+        var afterRefreshCount = 0
+
+        let refresh = Task { @MainActor in
+            await manager.refreshAll(
+                context: makeContext(notificationsEnabled: true),
+                callbacks: makeCallbacks(
+                    applyPayload: { payloads.append($0) },
+                    sendNotification: { notifications.append($0) },
+                    afterRefresh: { afterRefreshCount += 1 }
+                )
+            )
+        }
+
+        await fulfillment(of: [healthStarted], timeout: 3)
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 2
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "user-b-access",
+            refreshToken: "user-b-refresh",
+            userID: "user-b",
+            transitionGeneration: 2
+        )
+        await refresh.value
+
+        XCTAssertEqual(
+            ProviderAccountAPIStubProtocol.requestPaths(),
+            ["/auth/v1/health"],
+            "a user-A refresh must not continue with user B's authorization"
+        )
+        XCTAssertTrue(payloads.isEmpty)
+        XCTAssertTrue(notifications.isEmpty)
+        XCTAssertEqual(afterRefreshCount, 0)
+    }
+
+    func testAuthenticatedLocalRefreshCannotUseDifferentUsersLease()
+        async throws
+    {
+        let api = await makeAPI()
+        let collectorGate = ProviderAccountCollectorGate()
+        let writeOrder = ProviderAccountWriteOrderRecorder()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .testRuntime(
+                collectorGate: collectorGate,
+                writeOrderRecorder: writeOrder
+            )
+        )
+        var payloads: [DataRefreshManager.RefreshPayload] = []
+        var afterRefreshCount = 0
+
+        let refresh = Task { @MainActor in
+            await manager.refreshAll(
+                context: makeContext(
+                    notificationsEnabled: false,
+                    isPaired: false
+                ),
+                callbacks: makeCallbacks(
+                    applyPayload: { payloads.append($0) },
+                    afterRefresh: { afterRefreshCount += 1 }
+                )
+            )
+        }
+
+        await collectorGate.waitUntilEntered()
+        _ = await api.beginExternalAuthorizationTransition(
+            generation: 2
+        )
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "user-b-access",
+            refreshToken: nil,
+            userID: "user-b",
+            transitionGeneration: 2
+        )
+        await collectorGate.open()
+        await refresh.value
+
+        XCTAssertTrue(payloads.isEmpty)
+        XCTAssertEqual(afterRefreshCount, 0)
+        let completedWrites = await writeOrder.values
+        XCTAssertTrue(
+            completedWrites.isEmpty,
+            "a stale local refresh must not upload quotas for either user"
+        )
+        XCTAssertTrue(
+            ProviderAccountAPIStubProtocol.recordedRequests()
+                .isEmpty
+        )
+    }
+
     func testProviderWritesDoNotDelayPayloadOrLoadingCompletion()
         async throws
     {
         installCloudRefreshHandler(includeAlert: false)
-        let api = makeAPI()
+        let api = await makeAPI()
         let syncGate = ProviderAccountAsyncGate()
         let manager = DataRefreshManager(
             api: api,
@@ -867,7 +1659,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
     func testAuthenticatedLocalProviderWritesDoNotDelayPayload()
         async throws
     {
-        let api = makeAPI()
+        let api = await makeAPI()
         let syncGate = ProviderAccountAsyncGate()
         let manager = DataRefreshManager(
             api: api,
@@ -904,6 +1696,35 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         await refresh.value
     }
 
+    func testV2ProjectionCommitsAfterLegacyCompatibilityWrite()
+        async throws
+    {
+        installCloudRefreshHandler(includeAlert: false)
+        let api = await makeAPI()
+        let writeOrder = ProviderAccountWriteOrderRecorder()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .testRuntime(
+                writeOrderRecorder: writeOrder
+            )
+        )
+
+        await manager.refreshAll(
+            context: makeContext(notificationsEnabled: false),
+            callbacks: makeCallbacks(
+                applyPayload: { _ in },
+                afterRefresh: {}
+            )
+        )
+
+        let completedWrites = await writeOrder.values
+        XCTAssertEqual(
+            completedWrites,
+            ["legacy", "account"],
+            "v2 must be the last compatibility projection writer"
+        )
+    }
+
     func testStaleTokenExpiredResponseCannotSignOutNewSession()
         async throws
     {
@@ -935,7 +1756,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             }
         }
 
-        let api = makeAPI()
+        let api = await makeAPI()
         let manager = DataRefreshManager(
             api: api,
             localRuntime: .testRuntime()
@@ -995,7 +1816,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             }
         }
 
-        let api = makeAPI()
+        let api = await makeAPI()
         await api.updateRefreshToken("user-a-refresh")
         let manager = DataRefreshManager(
             api: api,
@@ -1019,16 +1840,27 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         )
     }
 
-    private func makeAPI() -> APIClient {
+    private func makeAPI() async -> APIClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ProviderAccountAPIStubProtocol.self]
-        return APIClient(
-            token: "user-a-access",
+        let api = APIClient(
             supabaseURL: "https://provider-account.test",
             supabaseAnonKey: "anon",
             session: URLSession(configuration: config),
             providerAccountFlags: .init(readV2: true, writeV2: true)
         )
+        let began = await api.beginExternalAuthorizationTransition(
+            generation: 1
+        )
+        let installed = await api.installExternalAuthenticatedSession(
+            accessToken: "user-a-access",
+            refreshToken: nil,
+            userID: "user-a",
+            transitionGeneration: 1
+        )
+        XCTAssertTrue(began)
+        XCTAssertTrue(installed)
+        return api
     }
 
     private func makeContext(
@@ -1041,6 +1873,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             isPaired: isPaired,
             isLoading: false,
             notificationsEnabled: notificationsEnabled,
+            authenticatedUserID: "user-a",
             providerConfigs: [],
             providers: [],
             maxDevices: 100,
@@ -1073,11 +1906,16 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         )
     }
 
-    private func installCloudRefreshHandler(includeAlert: Bool) {
+    private func installCloudRefreshHandler(
+        includeAlert: Bool,
+        healthDelay: TimeInterval = 0,
+        onHealthRequest: (() -> Void)? = nil
+    ) {
         ProviderAccountAPIStubProtocol.handler = { request in
             switch request.url?.path {
             case "/auth/v1/health":
-                return .json("{}")
+                onHealthRequest?()
+                return .json("{}", delay: healthDelay)
             case "/rest/v1/rpc/dashboard_summary":
                 return .json("{}")
             case "/rest/v1/rpc/provider_account_summary":
@@ -1160,13 +1998,68 @@ private actor ProviderAccountAsyncGate {
     }
 }
 
+private actor ProviderAccountCollectorGate {
+    private var entered = false
+    private var isOpen = false
+    private var entryWaiters:
+        [CheckedContinuation<Void, Never>] = []
+    private var releaseWaiters:
+        [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        entered = true
+        let pendingEntryWaiters = entryWaiters
+        entryWaiters.removeAll()
+        for continuation in pendingEntryWaiters {
+            continuation.resume()
+        }
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            releaseWaiters.append(continuation)
+        }
+    }
+
+    func waitUntilEntered() async {
+        guard !entered else { return }
+        await withCheckedContinuation { continuation in
+            entryWaiters.append(continuation)
+        }
+    }
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let pendingReleaseWaiters = releaseWaiters
+        releaseWaiters.removeAll()
+        for continuation in pendingReleaseWaiters {
+            continuation.resume()
+        }
+    }
+}
+
+private actor ProviderAccountWriteOrderRecorder {
+    private(set) var values: [String] = []
+
+    func append(_ value: String) {
+        values.append(value)
+    }
+}
+
 private extension DataRefreshManager.LocalRefreshRuntime {
     static func testRuntime(
-        syncGate: ProviderAccountAsyncGate? = nil
+        syncGate: ProviderAccountAsyncGate? = nil,
+        collectorGate: ProviderAccountCollectorGate? = nil,
+        writeOrderRecorder:
+            ProviderAccountWriteOrderRecorder? = nil
     ) -> Self {
         Self(
             prepareCredentials: {},
-            collectAccounts: { _ in [] },
+            collectAccounts: { _ in
+                if let collectorGate {
+                    await collectorGate.wait()
+                }
+                return []
+            },
             readHelperSnapshot: { _ in .empty },
             scanLocal: {
                 LocalScanResult(
@@ -1181,12 +2074,21 @@ private extension DataRefreshManager.LocalRefreshRuntime {
             needsFolderAccessNudge: { _ in false },
             syncLegacyQuotas: { _, _ in
                 if let syncGate { await syncGate.wait() }
+                if let writeOrderRecorder {
+                    try? await Task.sleep(
+                        nanoseconds: 50_000_000
+                    )
+                    await writeOrderRecorder.append("legacy")
+                }
             },
             syncDailyUsage: { _, _ in
                 if let syncGate { await syncGate.wait() }
             },
             syncAccountQuotas: { _, _ in
                 if let syncGate { await syncGate.wait() }
+                if let writeOrderRecorder {
+                    await writeOrderRecorder.append("account")
+                }
             }
         )
     }
@@ -1199,17 +2101,20 @@ private final class ProviderAccountAPIStubProtocol: URLProtocol {
         let headers: [String: String]
         let body: Data
         let delay: TimeInterval
+        let onDeliver: (@Sendable () -> Void)?
 
         static func json(
             _ text: String,
             status: Int = 200,
-            delay: TimeInterval = 0
+            delay: TimeInterval = 0,
+            onDeliver: (@Sendable () -> Void)? = nil
         ) -> StubResponse {
             StubResponse(
                 status: status,
                 headers: ["Content-Type": "application/json"],
                 body: Data(text.utf8),
-                delay: delay
+                delay: delay,
+                onDeliver: onDeliver
             )
         }
     }
@@ -1261,6 +2166,7 @@ private final class ProviderAccountAPIStubProtocol: URLProtocol {
             )!
             let deliver = { [weak self] in
                 guard let self, let client = self.client else { return }
+                stub.onDeliver?()
                 client.urlProtocol(
                     self,
                     didReceive: response,
@@ -1306,5 +2212,24 @@ private final class ProviderAccountAPIStubProtocol: URLProtocol {
         copy.httpBodyStream = nil
         copy.httpBody = data
         return copy
+    }
+}
+
+private final class ProviderAccountStatusDeliveryRecorder:
+    @unchecked Sendable
+{
+    private let lock = NSLock()
+    private var storage: [String] = []
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ value: String) {
+        lock.lock()
+        storage.append(value)
+        lock.unlock()
     }
 }

@@ -33,14 +33,24 @@ final class ProviderConfigMetadataStoreTests: XCTestCase {
             apiKey: "must-not-persist",
             manualCookieHeader: "must-not-persist",
             accountLabel: "Work",
-            planOverride: "Max"
+            planOverride: "Max",
+            syncOwnerUserID: "user-a"
         )
         let store = ProviderConfigMetadataStore(
             defaults: appDefaults,
             helperDefaults: helperDefaults
         )
+        appDefaults.set(
+            true,
+            forKey: ProviderAccountFeatureFlags.writeDefaultsKey
+        )
 
         XCTAssertTrue(store.save([config]))
+        XCTAssertTrue(
+            helperDefaults.bool(
+                forKey: HelperIPC.providerAccountsWriteV2Key
+            )
+        )
 
         let persistedLocations = [
             (
@@ -63,6 +73,10 @@ final class ProviderConfigMetadataStoreTests: XCTestCase {
             XCTAssertEqual(decoded.map(\.accountID), [accountID])
             XCTAssertEqual(decoded.first?.accountLabel, "Work")
             XCTAssertEqual(decoded.first?.planOverride, "Max")
+            XCTAssertEqual(
+                decoded.first?.syncOwnerUserID,
+                "user-a"
+            )
             XCTAssertFalse(try XCTUnwrap(decoded.first).isEnabled)
             XCTAssertNil(decoded.first?.apiKey)
             XCTAssertNil(decoded.first?.manualCookieHeader)

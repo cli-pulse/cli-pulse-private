@@ -212,6 +212,25 @@ struct MenuBarView: View {
         )
     }
 
+    private var agentSettingsTab: some View {
+        SettingsTab(
+            canRerunAgentSetup: agentSetupState.canBeginRerun,
+            onRerunAgentSetup: beginAgentSetupRerun
+        )
+    }
+
+    private func beginAgentSetupRerun() {
+        var updated = agentSetupState
+        guard updated.canBeginRerun else { return }
+
+        updated.beginRerun()
+        guard case .v2Onboarding = updated.route else { return }
+
+        agentSetupState = updated
+        agentSetupStore.save(updated)
+        agentSetupDismissedForSession = false
+    }
+
     private var notConnectedView: some View {
         VStack(spacing: 0) {
             if shouldShowAgentSetupUpgrade {
@@ -257,7 +276,8 @@ struct MenuBarView: View {
                             case .swarm:       SwarmTab()
                             case .alerts:      AlertsTab()
                             case .pet:         PetTab()
-                            case .settings:    SettingsTab()
+                            case .settings:
+                                agentSettingsTab
                             }
                         }
                         .environmentObject(state)
@@ -266,7 +286,7 @@ struct MenuBarView: View {
                 } else {
                     VStack(spacing: 0) {
                         tabBar
-                        SettingsTab()
+                        agentSettingsTab
                             .environmentObject(state)
                             .frame(maxHeight: .infinity)
                     }
@@ -401,7 +421,7 @@ struct MenuBarView: View {
                 case .pet:
                     PetTab()
                 case .settings:
-                    SettingsTab()
+                    agentSettingsTab
                 }
             }
             .environmentObject(state)

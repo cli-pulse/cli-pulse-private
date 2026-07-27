@@ -776,6 +776,8 @@
 "providers.accounts_count" = "%d cuentas";
 "providers.no_accounts_configured" = "No hay ninguna cuenta de CLIPulse configurada para este proveedor.";
 "providers.add_account" = "Añadir cuenta";
+"providers.rerun_agent_setup" = "Volver a configurar los agentes";
+"providers.rerun_agent_setup_hint" = "Revisa los agentes detectados y las cuentas supervisadas. Las credenciales guardadas solo cambian si las editas.";
 "providers.default_account" = "Cuenta predeterminada";
 "providers.account_number" = "Cuenta %d";
 "providers.plan_unconfirmed" = "Plan sin confirmar";

@@ -347,6 +347,63 @@ final class AgentSetupStateTests: XCTestCase {
         XCTAssertEqual(state.progress?.selectedAccountIDs, [accountID])
     }
 
+    func testCompletedV2NewUserCanRerunWhileLegacyUpgradeFlagIsOff() {
+        var state = AgentSetupState(
+            storedState: AgentSetupStoredState(
+                legacyCompleted: true,
+                onboardingVersion: AgentSetupState.currentVersion,
+                progress: AgentSetupProgress(
+                    version: AgentSetupState.currentVersion,
+                    step: .completed,
+                    selectedAccountIDs: [],
+                    completedAt: Date(
+                        timeIntervalSince1970: 100
+                    ),
+                    origin: .newUser
+                ),
+                upgradePromptDismissed: true
+            ),
+            featureFlags: .init(
+                newUsersV2: true,
+                existingUsersV2: false
+            )
+        )
+
+        XCTAssertTrue(state.canBeginRerun)
+        state.beginRerun()
+
+        XCTAssertEqual(
+            state.route,
+            .v2Onboarding(.discovery)
+        )
+        XCTAssertEqual(
+            state.progress?.origin,
+            .explicitRerun
+        )
+    }
+
+    func testLegacyUserCannotBypassDisabledUpgradeThroughRerun() {
+        var state = AgentSetupState(
+            storedState: AgentSetupStoredState(
+                legacyCompleted: true,
+                onboardingVersion: nil,
+                progress: nil,
+                upgradePromptDismissed: true
+            ),
+            featureFlags: .init(
+                newUsersV2: true,
+                existingUsersV2: false
+            )
+        )
+        let original = state.persistenceSnapshot
+
+        XCTAssertFalse(state.canBeginRerun)
+        state.beginRerun()
+
+        XCTAssertEqual(state.persistenceSnapshot, original)
+        XCTAssertEqual(state.route, .mainApp)
+    }
+
     func testResetProgressDoesNotTouchProviderAccountsOrLegacyState()
         throws
     {

@@ -316,6 +316,8 @@ public enum L10n {
         }
         public static var noAccountsConfigured: String { tr("providers.no_accounts_configured") }
         public static var addAccount: String { tr("providers.add_account") }
+        public static var rerunAgentSetup: String { tr("providers.rerun_agent_setup") }
+        public static var rerunAgentSetupHint: String { tr("providers.rerun_agent_setup_hint") }
         public static var defaultAccount: String { tr("providers.default_account") }
         public static func accountNumber(_ number: Int) -> String { tr("providers.account_number", number) }
         public static var planUnconfirmed: String { tr("providers.plan_unconfirmed") }

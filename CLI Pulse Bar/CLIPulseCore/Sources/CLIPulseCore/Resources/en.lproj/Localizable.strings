@@ -642,6 +642,8 @@
 "providers.accounts_count" = "%d accounts";
 "providers.no_accounts_configured" = "No CLIPulse account configured for this provider.";
 "providers.add_account" = "Add account";
+"providers.rerun_agent_setup" = "Run Agent Setup Again";
+"providers.rerun_agent_setup_hint" = "Review detected agents and monitored accounts. Saved credentials change only when you edit them.";
 "providers.default_account" = "Default account";
 "providers.account_number" = "Account %d";
 "providers.plan_unconfirmed" = "Plan not confirmed";

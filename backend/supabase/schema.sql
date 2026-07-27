@@ -435,6 +435,25 @@ create policy "Users can read own provider accounts"
   on public.provider_accounts for select
   using ((select auth.uid()) = user_id);
 
+-- Internal lifecycle authority. Unlike provider_accounts, this row survives a
+-- user deletion of one provider account so delayed app/helper snapshots cannot
+-- recreate it. Clients mutate it only through authenticated RPCs.
+create table public.provider_account_lifecycle (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider_account_id uuid not null,
+  provider text
+    check (
+      provider is null
+      or char_length(provider) between 1 and 64
+    ),
+  status text not null
+    check (status in ('active', 'disabled', 'deleted')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider_account_id)
+);
+alter table public.provider_account_lifecycle enable row level security;
+
 create table public.provider_account_quotas (
   user_id uuid not null references public.profiles(id) on delete cascade,
   provider_account_id uuid not null,
@@ -465,6 +484,8 @@ create index idx_provider_accounts_user_provider
   on public.provider_accounts(user_id, provider);
 create index idx_provider_accounts_updated_at
   on public.provider_accounts(updated_at);
+create index idx_provider_account_lifecycle_updated_at
+  on public.provider_account_lifecycle(updated_at);
 create index idx_provider_account_quotas_user_provider
   on public.provider_account_quotas(user_id, provider);
 create index idx_provider_account_quotas_updated_at
@@ -475,12 +496,16 @@ create index idx_provider_account_quotas_source_device
 
 revoke all on public.provider_accounts
   from public, anon, authenticated;
+revoke all on public.provider_account_lifecycle
+  from public, anon, authenticated;
 revoke all on public.provider_account_quotas
   from public, anon, authenticated;
 grant select on public.provider_accounts, public.provider_account_quotas
   to authenticated;
 grant select, insert, update, delete
-  on public.provider_accounts, public.provider_account_quotas
+  on public.provider_accounts,
+     public.provider_account_lifecycle,
+     public.provider_account_quotas
   to service_role;
 
 -- Defense in depth for privileged writes: source-device provenance must still

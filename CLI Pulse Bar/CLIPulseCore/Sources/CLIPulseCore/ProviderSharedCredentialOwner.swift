@@ -23,7 +23,11 @@ enum ProviderSharedCredentialOwner {
         lock.withLock {
             for kind in supportedKinds {
                 let eligible = configs
-                    .filter { $0.kind == kind && $0.isEnabled }
+                    .filter {
+                        $0.kind == kind
+                            && $0.isEnabled
+                            && $0.sharedCredentialFallbackDisabled != true
+                    }
                     .sorted {
                         if $0.sortOrder != $1.sortOrder {
                             return $0.sortOrder < $1.sortOrder
@@ -76,6 +80,23 @@ enum ProviderSharedCredentialOwner {
         guard supportedKinds.contains(kind) else { return false }
         return lock.withLock {
             storedOwner(forKey: ownerKey(for: kind)) == accountID
+        }
+    }
+
+    /// Read-only eligibility check for UI previews. It deliberately does not
+    /// claim an unowned shared source; opening and cancelling an editor must
+    /// not change credential ownership.
+    static func canUse(
+        kind: ProviderKind,
+        accountID: UUID
+    ) -> Bool {
+        guard supportedKinds.contains(kind) else { return false }
+        return lock.withLock {
+            let raw = defaults.string(
+                forKey: ownerKey(for: kind)
+            )
+            guard let raw else { return true }
+            return UUID(uuidString: raw) == accountID
         }
     }
 

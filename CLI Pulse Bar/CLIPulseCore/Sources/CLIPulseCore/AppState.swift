@@ -781,6 +781,10 @@ public final class AppState: ObservableObject {
     /// pre-existing provider secrets into the shared app-group keychain so the
     /// LoginItem helper stops firing the recurring consent prompt.
     private static let keychainGroupMigratedKey = "cli_pulse_keychain_group_migrated"
+    /// Main-actor logical ordering for status mutations. The revision travels
+    /// with each unstructured sync Task so Task scheduling cannot reverse two
+    /// rapid user toggles.
+    private var providerAccountStatusMutationRevision: UInt64 = 0
 
     public init() {
         self.api = APIClient()
@@ -788,6 +792,14 @@ public final class AppState: ObservableObject {
         self.dataRefreshManager = DataRefreshManager(api: api)
         subscriptionManager.apiClient = api
         loadProviderConfigs()
+        #if os(macOS)
+        UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+            UserDefaults.standard.bool(
+                forKey: ProviderAccountFeatureFlags.writeDefaultsKey
+            ),
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        )
+        #endif
         loadSuppressedAlertIDs()
         applyAdaptiveRefreshDefaultIfFreshInstall()
         // v1.40 PR-7: sync the display currency + refresh FX rates (cached 24h).
@@ -1000,6 +1012,13 @@ public final class AppState: ObservableObject {
         // Toggle bound to `detail.config.isEnabled` flips in the same frame
         // instead of waiting for the next data refresh cycle.
         buildProviderDetails()
+        let mutationRevision =
+            nextProviderAccountStatusMutationRevision()
+        syncProviderAccountStatus(
+            accountID,
+            isEnabled: isEnabled,
+            mutationRevision: mutationRevision
+        )
     }
 
     @discardableResult
@@ -1009,7 +1028,9 @@ public final class AppState: ObservableObject {
     ) -> UUID {
         let createdID = providerState.addProviderAccount(
             kind: kind,
-            accountID: accountID
+            accountID: accountID,
+            syncOwnerUserID:
+                isAuthenticated ? userId : nil
         )
         buildProviderDetails()
         return createdID
@@ -1064,6 +1085,10 @@ public final class AppState: ObservableObject {
         }) else {
             return false
         }
+        let deletionOwnerID =
+            ProviderAccountSyncOwnership.ownerForDeletion(
+                config
+            )
 
         config.deleteSecrets()
         #if os(macOS)
@@ -1082,7 +1107,174 @@ public final class AppState: ObservableObject {
         }
         saveProviderConfigMetadata()
         buildProviderDetails()
+        if let deletionOwnerID {
+            ProviderAccountDeletionOutbox.shared.enqueue(
+                userID: deletionOwnerID,
+                accountID: accountID
+            )
+            Task { [weak self] in
+                await self?.flushPendingProviderAccountDeletions(
+                    for: deletionOwnerID
+                )
+            }
+        }
         return true
+    }
+
+    private func syncProviderAccountStatus(
+        _ accountID: UUID,
+        isEnabled: Bool,
+        mutationRevision: UInt64
+    ) {
+        guard isAuthenticated, !userId.isEmpty else { return }
+        let expectedUserID = userId
+        let ownedAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: providerConfigs,
+                ownedBy: expectedUserID
+            )
+        guard ownedAccountIDs.contains(accountID) else {
+            return
+        }
+        Task { [weak self] in
+            guard
+                let self,
+                self.isAuthenticated,
+                self.userId == expectedUserID
+            else {
+                return
+            }
+            let lease = await self.api.authorizationLease(
+                expectedUserID: expectedUserID
+            )
+            guard
+                self.isAuthenticated,
+                self.userId == expectedUserID,
+                let lease
+            else {
+                return
+            }
+            _ = await self.api.syncProviderAccountStatuses(
+                [
+                    ProviderAccountStatusUpdate(
+                        accountID: accountID,
+                        isEnabled: isEnabled
+                    ),
+                ],
+                mutationRevision: mutationRevision,
+                authorizationLease: lease
+            )
+        }
+    }
+
+    private func nextProviderAccountStatusMutationRevision()
+        -> UInt64
+    {
+        providerAccountStatusMutationRevision &+= 1
+        return providerAccountStatusMutationRevision
+    }
+
+    /// Retry durable deletes for only the currently authenticated owner.
+    /// Keeping the owner check outside and the API lease inside the loop
+    /// prevents queued user-A mutations from crossing an account switch.
+    func flushPendingProviderAccountDeletions(
+        for expectedUserID: String
+    ) async {
+        guard
+            isAuthenticated,
+            userId == expectedUserID
+        else {
+            return
+        }
+        let lease = await api.authorizationLease(
+            expectedUserID: expectedUserID
+        )
+        guard
+            isAuthenticated,
+            userId == expectedUserID,
+            let lease
+        else {
+            return
+        }
+        let pending = ProviderAccountDeletionOutbox.shared
+            .pendingAccountIDs(for: expectedUserID)
+            .prefix(10)
+        for accountID in pending {
+            guard
+                isAuthenticated,
+                userId == expectedUserID
+            else {
+                return
+            }
+            let deleted = await api.deleteProviderAccount(
+                accountID,
+                authorizationLease: lease
+            )
+            guard deleted else {
+                // A missing RPC, disabled feature flag, or transient network
+                // failure should leave every remaining tombstone for a later
+                // refresh instead of hammering the endpoint.
+                return
+            }
+            ProviderAccountDeletionOutbox.shared.markCompleted(
+                userID: expectedUserID,
+                accountID: accountID
+            )
+        }
+    }
+
+    /// Periodic reconciliation makes a failed immediate toggle eventually
+    /// consistent. The server updates existing account rows only, so legacy
+    /// default configs cannot create phantom cloud accounts.
+    func syncCurrentProviderAccountStatuses() async {
+        guard
+            isAuthenticated,
+            !userId.isEmpty
+        else {
+            return
+        }
+        let mutationRevision =
+            nextProviderAccountStatusMutationRevision()
+        let expectedUserID = userId
+        let lease = await api.authorizationLease(
+            expectedUserID: expectedUserID
+        )
+        guard
+            isAuthenticated,
+            userId == expectedUserID,
+            let lease
+        else {
+            return
+        }
+        let ownedAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: providerConfigs,
+                ownedBy: expectedUserID
+            )
+        let updates: [ProviderAccountStatusUpdate] =
+            providerConfigs.compactMap { config
+                -> ProviderAccountStatusUpdate? in
+            guard ownedAccountIDs.contains(
+                config.accountID
+            ) else {
+                return nil
+            }
+            return ProviderAccountStatusUpdate(
+                accountID: config.accountID,
+                isEnabled: config.isEnabled
+            )
+        }
+        guard
+            isAuthenticated,
+            userId == expectedUserID
+        else {
+            return
+        }
+        _ = await api.syncProviderAccountStatuses(
+            updates,
+            mutationRevision: mutationRevision,
+            authorizationLease: lease
+        )
     }
 
     /// Auto-disables extra providers when a free-tier user has more enabled

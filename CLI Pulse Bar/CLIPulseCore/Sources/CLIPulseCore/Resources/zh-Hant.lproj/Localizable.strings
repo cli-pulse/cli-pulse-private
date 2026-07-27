@@ -490,6 +490,8 @@
 "providers.accounts_count" = "%d 個帳戶";
 "providers.no_accounts_configured" = "尚未為此服務商配置 CLIPulse 帳戶。";
 "providers.add_account" = "新增帳戶";
+"providers.rerun_agent_setup" = "重新執行 Agent 設定";
+"providers.rerun_agent_setup_hint" = "重新檢視偵測到的 Agent 與監控帳戶；只有在你主動編輯時，才會變更已儲存的憑證。";
 "providers.default_account" = "預設帳戶";
 "providers.account_number" = "帳戶 %d";
 "providers.plan_unconfirmed" = "方案未確認";

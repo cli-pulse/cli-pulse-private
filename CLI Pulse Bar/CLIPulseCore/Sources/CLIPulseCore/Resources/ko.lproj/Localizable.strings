@@ -776,6 +776,8 @@
 "providers.accounts_count" = "계정 %d개";
 "providers.no_accounts_configured" = "이 공급자에 설정된 CLIPulse 계정이 없습니다.";
 "providers.add_account" = "계정 추가";
+"providers.rerun_agent_setup" = "Agent 설정 다시 실행";
+"providers.rerun_agent_setup_hint" = "감지된 Agent와 모니터링 계정을 검토합니다. 저장된 자격 증명은 직접 편집할 때만 변경됩니다.";
 "providers.default_account" = "기본 계정";
 "providers.account_number" = "계정 %d";
 "providers.plan_unconfirmed" = "요금제 미확인";

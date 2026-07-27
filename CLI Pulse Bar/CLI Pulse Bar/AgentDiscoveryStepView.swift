@@ -27,21 +27,26 @@ struct AgentDiscoveryStepView: View {
                     .controlSize(.small)
                     .frame(maxHeight: .infinity)
             } else if options.isEmpty {
-                ContentUnavailableView {
-                    Label(
-                        L10n.onboardingWizard.noAgentsTitle,
-                        systemImage: "terminal"
-                    )
-                } description: {
+                VStack(spacing: 9) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    Text(L10n.onboardingWizard.noAgentsTitle)
+                        .font(.headline)
                     Text(L10n.onboardingWizard.noAgentsBody)
-                } actions: {
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                     Button(
                         L10n.onboardingWizard.scanAgain,
                         action: onRescan
                     )
                     .buttonStyle(.bordered)
                 }
-                .frame(maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .contain)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {

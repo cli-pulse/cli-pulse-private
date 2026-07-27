@@ -26,6 +26,16 @@ public struct ProviderAccountFeatureFlags: Equatable, Sendable {
     }
 }
 
+public struct ProviderAccountStatusUpdate: Equatable, Sendable {
+    public let accountID: UUID
+    public let isEnabled: Bool
+
+    public init(accountID: UUID, isEnabled: Bool) {
+        self.accountID = accountID
+        self.isEnabled = isEnabled
+    }
+}
+
 public struct ProviderAccountSummaryResult: Sendable {
     public let providers: [ProviderUsage]
     public let providerAccounts: [ProviderAccountUsage]
@@ -71,7 +81,15 @@ public actor APIClient {
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
     private var providerAccountFlags: ProviderAccountFeatureFlags
+    /// Serializes user-controlled status writes so an older, slower request
+    /// cannot land after a newer toggle and overwrite the final cloud state.
+    private var providerAccountStatusWriteTail: Task<Bool, Never>?
+    /// Logical order assigned synchronously by AppState. Unstructured Tasks
+    /// may reach this actor out of creation order, so network invocation order
+    /// alone is not sufficient to preserve the user's latest toggle.
+    private var highestProviderAccountStatusRevision: UInt64 = 0
     private var authorizationGeneration: UInt64 = 0
+    private var externalAuthorizationTransitionGeneration: UInt64 = 0
     /// The exact lease whose refresh token was rejected and compare-cleared.
     /// Kept only until DataRefreshManager consumes the expiry or a different
     /// authorization session supersedes it.
@@ -158,8 +176,18 @@ public actor APIClient {
         return refreshToken
     }
 
-    public func authorizationLease() -> APIAuthorizationLease? {
+    public func authorizationLease(
+        expectedUserID: String? = nil
+    ) -> APIAuthorizationLease? {
         guard accessToken != nil else { return nil }
+        if let expectedUserID {
+            guard
+                !expectedUserID.isEmpty,
+                userId == expectedUserID
+            else {
+                return nil
+            }
+        }
         return APIAuthorizationLease(
             generation: authorizationGeneration,
             userID: userId
@@ -207,6 +235,52 @@ public actor APIClient {
         _ flags: ProviderAccountFeatureFlags
     ) {
         providerAccountFlags = flags
+    }
+
+    /// Begin a newest-wins externally coordinated auth transition (used by
+    /// watchOS). A later generation permanently invalidates installs from
+    /// earlier OTP/restore/phone-auth tasks.
+    @discardableResult
+    public func beginExternalAuthorizationTransition(
+        generation: UInt64
+    ) -> Bool {
+        guard generation > externalAuthorizationTransitionGeneration else {
+            return false
+        }
+        externalAuthorizationTransitionGeneration = generation
+        if accessToken != nil || refreshToken != nil || userId != nil {
+            authorizationGeneration &+= 1
+        }
+        pendingExpiredAuthorizationLease = nil
+        accessToken = nil
+        refreshToken = nil
+        userId = nil
+        return true
+    }
+
+    /// Atomically install an externally authenticated session only when its
+    /// transition is still current.
+    @discardableResult
+    public func installExternalAuthenticatedSession(
+        accessToken: String,
+        refreshToken: String?,
+        userID: String,
+        transitionGeneration: UInt64
+    ) -> Bool {
+        guard
+            transitionGeneration
+                == externalAuthorizationTransitionGeneration,
+            !accessToken.isEmpty,
+            !userID.isEmpty
+        else {
+            return false
+        }
+        installAuthenticatedSession(
+            accessToken: accessToken,
+            userID: userID
+        )
+        self.refreshToken = refreshToken
+        return true
     }
 
     private func installAuthenticatedSession(
@@ -325,16 +399,24 @@ public actor APIClient {
 
     // MARK: - Sign Out (server-side token revocation)
 
-    public func signOutServer() async {
-        // Capture token before clearing to avoid race with new sign-in
-        let tokenToRevoke = accessToken
-        if accessToken != nil || refreshToken != nil || userId != nil {
-            authorizationGeneration &+= 1
+    public func signOutServer(
+        expectedAccessToken: String? = nil
+    ) async {
+        // Always revoke the captured/expected old token, but clear actor state
+        // only if it still represents that same session. A delayed logout
+        // must never clear a newer account installed while its Task waited.
+        let tokenToRevoke = expectedAccessToken ?? accessToken
+        if expectedAccessToken == nil
+            || accessToken == expectedAccessToken
+        {
+            if accessToken != nil || refreshToken != nil || userId != nil {
+                authorizationGeneration &+= 1
+            }
+            pendingExpiredAuthorizationLease = nil
+            self.accessToken = nil
+            self.refreshToken = nil
+            self.userId = nil
         }
-        pendingExpiredAuthorizationLease = nil
-        self.accessToken = nil
-        self.refreshToken = nil
-        self.userId = nil
 
         guard let tokenToRevoke, let url = URL(string: "\(supabaseURL)/auth/v1/logout") else { return }
         var request = URLRequest(url: url)
@@ -527,13 +609,34 @@ public actor APIClient {
         let plan_source: String
         let plan_confidence: String
         let plan_observed_at: String?
-        let status: String
         let remaining: Int?
         let quota: Int?
         let reset_time: String?
         let tiers: [TierDTO]
         let observed_at: String
         let source_device_id: String?
+    }
+
+    private struct ProviderAccountStatusParams: Encodable {
+        let p_rows: [ProviderAccountStatusRow]
+    }
+
+    private struct ProviderAccountStatusRow: Encodable {
+        let account_id: String
+        let status: String
+    }
+
+    private struct ProviderAccountStatusResponse: Decodable {
+        let accounts_updated: Int
+    }
+
+    private struct ProviderAccountDeleteParams: Encodable {
+        let p_account_id: String
+    }
+
+    private struct ProviderAccountDeleteResponse: Decodable {
+        let accounts_deleted: Int
+        let tombstones_persisted: Int
     }
 
     private struct ProviderAccountSyncResponse: Decodable {
@@ -2237,6 +2340,116 @@ public actor APIClient {
 
     // MARK: - Provider Quota Sync
 
+    /// Persist user-controlled account enablement separately from quota
+    /// observations. Keeping this out of the quota upsert prevents an older
+    /// in-flight collector result from reactivating an account the user just
+    /// disabled.
+    @discardableResult
+    public func syncProviderAccountStatuses(
+        _ updates: [ProviderAccountStatusUpdate],
+        mutationRevision: UInt64? = nil,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        if let mutationRevision {
+            guard
+                mutationRevision
+                    >= highestProviderAccountStatusRevision
+            else {
+                return false
+            }
+            highestProviderAccountStatusRevision = mutationRevision
+        }
+        let previousWrite = providerAccountStatusWriteTail
+        let write = Task { [weak self] in
+            _ = await previousWrite?.value
+            guard let self else { return false }
+            return await self.performProviderAccountStatusSync(
+                updates,
+                authorizationLease: authorizationLease
+            )
+        }
+        providerAccountStatusWriteTail = write
+        return await write.value
+    }
+
+    private func performProviderAccountStatusSync(
+        _ updates: [ProviderAccountStatusUpdate],
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard providerAccountFlags.writeV2 else { return false }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[syncProviderAccountStatuses] cancelled after authorization changed"
+            )
+            return false
+        }
+
+        var latestByAccountID: [UUID: Bool] = [:]
+        for update in updates {
+            latestByAccountID[update.accountID] = update.isEnabled
+        }
+        let rows = latestByAccountID
+            .sorted { $0.key.uuidString < $1.key.uuidString }
+            .map {
+                ProviderAccountStatusRow(
+                    account_id: $0.key.uuidString.lowercased(),
+                    status: $0.value ? "active" : "disabled"
+                )
+            }
+        guard !rows.isEmpty else { return true }
+
+        do {
+            let _: ProviderAccountStatusResponse = try await rpc(
+                "set_provider_account_statuses",
+                params: ProviderAccountStatusParams(p_rows: rows),
+                authorizationLease: authorizationLease
+            )
+            return true
+        } catch {
+            apiLogger.warning(
+                "[syncProviderAccountStatuses] failed; response details omitted"
+            )
+            return false
+        }
+    }
+
+    /// Delete one exact account row owned by the authenticated user. The
+    /// server wrapper derives ownership from auth.uid(); a UUID from another
+    /// user is an idempotent no-op.
+    @discardableResult
+    public func deleteProviderAccount(
+        _ accountID: UUID,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard providerAccountFlags.writeV2 else { return false }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[deleteProviderAccount] cancelled after authorization changed"
+            )
+            return false
+        }
+
+        do {
+            let response: ProviderAccountDeleteResponse = try await rpc(
+                "delete_provider_account",
+                params: ProviderAccountDeleteParams(
+                    p_account_id: accountID.uuidString.lowercased()
+                ),
+                authorizationLease: authorizationLease
+            )
+            return response.tombstones_persisted == 1
+        } catch {
+            apiLogger.warning(
+                "[deleteProviderAccount] failed; response details omitted"
+            )
+            return false
+        }
+    }
+
     #if os(macOS)
     /// Push account-scoped quota snapshots through the v2 RPC. Provider
     /// credentials are structurally absent from `ProviderAccountUsage`; this
@@ -2257,28 +2470,61 @@ public actor APIClient {
         }
 
         let rows: [ProviderAccountUpsertRow] = accounts.compactMap { account in
-            guard let observedAt = account.observedAt else {
+            guard
+                let rawObservedAt = account.observedAt,
+                let observedAt = ProviderAccountCloudPrivacy.reviewedTimestamp(rawObservedAt)
+            else {
                 apiLogger.warning(
-                    "[syncProviderAccountQuotas] skipped \(account.provider.rawValue, privacy: .public)/\(account.id.uuidString, privacy: .private) without observed_at"
+                    "[syncProviderAccountQuotas] skipped \(account.provider.rawValue, privacy: .public)/\(account.id.uuidString, privacy: .private) without a valid observed_at"
                 )
                 return nil
             }
+            let reviewedPlanType =
+                ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.planEvidence.rawValue
+                )
+                ?? ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.planEvidence.displayValue
+                )
+            let hasReviewedPlan = reviewedPlanType != nil
             return ProviderAccountUpsertRow(
                 account_id: account.id.uuidString.lowercased(),
                 provider: account.provider.rawValue,
-                account_label: account.accountLabel,
-                plan_type: account.planEvidence.rawValue
-                    ?? account.planEvidence.displayValue,
-                plan_source: account.planEvidence.source.rawValue,
-                plan_confidence: account.planEvidence.confidence.rawValue,
-                plan_observed_at: account.planEvidence.observedAt.map {
-                    sharedISO8601Formatter.string(from: $0)
-                },
-                status: "active",
-                remaining: account.remaining,
-                quota: account.quota,
-                reset_time: account.resetTime,
-                tiers: account.tiers,
+                account_label:
+                    ProviderAccountCloudPrivacy
+                        .reviewedAccountLabel(
+                            account.accountLabel
+                        ),
+                plan_type: reviewedPlanType,
+                plan_source: hasReviewedPlan
+                    ? account.planEvidence.source.rawValue
+                    : PlanEvidenceSource.unknown.rawValue,
+                plan_confidence: hasReviewedPlan
+                    ? account.planEvidence.confidence.rawValue
+                    : DetectionConfidence.unavailable.rawValue,
+                plan_observed_at: hasReviewedPlan
+                    ? account.planEvidence.observedAt.map {
+                        sharedISO8601Formatter.string(from: $0)
+                    }
+                    : nil,
+                remaining:
+                    ProviderAccountCloudPrivacy
+                        .reviewedNonNegativeValue(
+                            account.remaining
+                        ),
+                quota:
+                    ProviderAccountCloudPrivacy
+                        .reviewedNonNegativeValue(
+                            account.quota
+                        ),
+                reset_time:
+                    ProviderAccountCloudPrivacy
+                        .reviewedTimestamp(
+                            account.resetTime
+                        ),
+                tiers:
+                    ProviderAccountCloudPrivacy
+                        .reviewedTiers(account.tiers),
                 observed_at: observedAt,
                 source_device_id: account.sourceDeviceID?
                     .uuidString.lowercased()
@@ -2294,7 +2540,7 @@ public actor APIClient {
             )
         } catch {
             apiLogger.warning(
-                "[syncProviderAccountQuotas] error: \(error.localizedDescription, privacy: .public)"
+                "[syncProviderAccountQuotas] failed; response details omitted"
             )
         }
     }
@@ -2363,7 +2609,10 @@ public actor APIClient {
                 "provider": u.provider,
                 "remaining": u.remaining ?? 0,
                 "quota": u.quota as Any? ?? NSNull(),
-                "plan_type": u.plan_type as Any? ?? NSNull(),
+                "plan_type":
+                    ProviderAccountCloudPrivacy.reviewedPlanType(
+                        u.plan_type
+                    ) as Any? ?? NSNull(),
                 "reset_time": u.reset_time as Any? ?? NSNull(),
                 "tiers": tiersArr,
                 "updated_at": sharedISO8601Formatter.string(from: Date()),

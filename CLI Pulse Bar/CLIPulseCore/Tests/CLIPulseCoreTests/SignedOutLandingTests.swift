@@ -84,6 +84,41 @@ final class SignedOutLandingTests: XCTestCase {
         XCTAssertNil(state.dashboard, "dashboard must clear")
     }
 
+    func testApplySignedOutStateClearsAccountScopedQuotaCache() {
+        let state = AppState()
+        state.providerAccounts = [
+            ProviderAccountUsage(
+                id: UUID(
+                    uuidString:
+                        "11111111-1111-4111-8111-111111111111"
+                )!,
+                provider: .claude,
+                accountLabel: "Previous user",
+                planEvidence: ProviderPlanEvidence(
+                    rawValue: "max",
+                    displayValue: "Max",
+                    source: .userConfirmed,
+                    confidence: .high,
+                    observedAt: nil
+                ),
+                quota: 100,
+                remaining: 5,
+                tiers: [],
+                resetTime: nil,
+                observedAt: "2026-07-24T08:00:00Z",
+                sourceDeviceID: nil,
+                statusText: "Operational"
+            ),
+        ]
+
+        state.applySignedOutState()
+
+        XCTAssertTrue(
+            state.providerAccounts.isEmpty,
+            "an account switch must not expose the previous user's quota rows"
+        )
+    }
+
     /// iter17 contract: a sign-out from local mode must clear
     /// `isLocalMode`. Otherwise re-opening the popover after sign-out
     /// would still route to the connected shell (because MenuBarView

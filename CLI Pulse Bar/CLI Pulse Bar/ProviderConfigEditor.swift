@@ -20,7 +20,8 @@ struct ProviderConfigEditor: View {
     @State private var planOverride: String = ""
     @State private var didFinishEditing = false
     #if os(macOS)
-    @State private var isGeminiConnected: Bool = false
+    @State private var geminiCredentialDraft =
+        GeminiCredentialDraft(isConnected: false)
     @State private var isConnecting: Bool = false
     @State private var geminiError: String?
     @State private var showAPIKey: Bool = false
@@ -329,6 +330,9 @@ struct ProviderConfigEditor: View {
                 .buttonStyle(.borderedProminent)
                 .tint(PulseTheme.accent)
                 .controlSize(.small)
+                #if os(macOS)
+                .disabled(isConnecting)
+                #endif
             }
         }
         .padding(16)
@@ -383,10 +387,14 @@ struct ProviderConfigEditor: View {
             cookieSource = .automatic
         }
         if kind == .gemini {
-            isGeminiConnected = GeminiOAuthManager.shared.isConnected(
-                accountID: accountID,
-                allowLegacyFallback:
-                    !sharedCredentialFallbackDisabled
+            geminiCredentialDraft = GeminiCredentialDraft(
+                isConnected:
+                    GeminiOAuthManager.shared
+                        .isConnectedWithoutMigration(
+                            accountID: accountID,
+                            allowLegacyFallback:
+                                !sharedCredentialFallbackDisabled
+                        )
             )
             geminiCliProbeFallback = config.geminiCliProbeFallback ?? false
         }
@@ -406,7 +414,7 @@ struct ProviderConfigEditor: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            if isGeminiConnected {
+            if geminiCredentialDraft.isConnected {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -416,11 +424,8 @@ struct ProviderConfigEditor: View {
                         .foregroundStyle(.green)
                     Spacer()
                     Button(L10n.providerConfig.disconnect) {
-                        GeminiOAuthManager.shared.clearTokens(
-                            accountID: accountID
-                        )
+                        geminiCredentialDraft.stageDisconnect()
                         sharedCredentialFallbackDisabled = true
-                        isGeminiConnected = false
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
@@ -433,11 +438,15 @@ struct ProviderConfigEditor: View {
                     Task { @MainActor in
                         defer { isConnecting = false }
                         do {
-                            _ = try await GeminiOAuthManager.shared.authorize(
-                                accountID: accountID
+                            let authorization =
+                                try await GeminiOAuthManager.shared
+                                    .authorizeForEditing(
+                                        accountID: accountID
+                                    )
+                            geminiCredentialDraft.stageAuthorization(
+                                authorization
                             )
                             sharedCredentialFallbackDisabled = true
-                            isGeminiConnected = true
                         } catch is CancellationError {
                             // User cancelled — ignore
                         } catch let e as ASWebAuthenticationSessionError
@@ -669,6 +678,24 @@ struct ProviderConfigEditor: View {
 
     @MainActor
     private func runTest() async {
+        if kind == .gemini {
+            switch geminiCredentialDraft
+                .connectionTestDisposition {
+            case .authorizationReadyToSave:
+                testState = .success(
+                    "OAuth authorization ready to save"
+                )
+                return
+            case .stagedForRemoval:
+                testState = .failure(
+                    "Connection is staged for removal"
+                )
+                return
+            case .usePersistedCredentials:
+                break
+            }
+        }
+
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let probeConfig = ProviderConfig(
             kind: kind,
@@ -679,7 +706,16 @@ struct ProviderConfigEditor: View {
             cookieSource: cookieSource,
             manualCookieHeader: manualCookieHeader.isEmpty ? nil : manualCookieHeader,
             accountLabel: accountLabel.isEmpty ? nil : accountLabel,
-            planOverride: planOverride.isEmpty ? nil : planOverride
+            planOverride: planOverride.isEmpty ? nil : planOverride,
+            sharedCredentialFallbackDisabled:
+                ((kind == .claude || kind == .gemini)
+                    && sharedCredentialFallbackDisabled)
+                ? true
+                : nil,
+            geminiCliProbeFallback:
+                (kind == .gemini && geminiCliProbeFallback)
+                ? true
+                : nil
         )
 
         guard let collector = CollectorRegistry.collector(for: kind, config: probeConfig) else {
@@ -738,6 +774,11 @@ struct ProviderConfigEditor: View {
         // keeps the iOS/watch build green (Gemini G3-R1 CRITICAL).
         state.providerConfigs[idx].geminiCliProbeFallback =
             (kind == .gemini && geminiCliProbeFallback) ? true : nil
+        if kind == .gemini {
+            geminiCredentialDraft.commit(
+                accountID: accountID
+            )
+        }
         #endif
         state.commitProviderAccountDraft(accountID)
         state.providerConfigs[idx].saveSecrets()

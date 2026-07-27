@@ -490,6 +490,8 @@
 "providers.accounts_count" = "%d アカウント";
 "providers.no_accounts_configured" = "このプロバイダーの CLIPulse アカウントは未設定です。";
 "providers.add_account" = "アカウントを追加";
+"providers.rerun_agent_setup" = "Agent 設定を再実行";
+"providers.rerun_agent_setup_hint" = "検出された Agent と監視中のアカウントを確認します。保存済みの認証情報は、編集した場合にのみ変更されます。";
 "providers.default_account" = "デフォルトアカウント";
 "providers.account_number" = "アカウント %d";
 "providers.plan_unconfirmed" = "プラン未確認";

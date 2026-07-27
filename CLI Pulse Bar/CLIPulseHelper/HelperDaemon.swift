@@ -37,6 +37,12 @@ final class HelperDaemon {
         return stored >= 60 ? stored : 120
     }
 
+    private var providerAccountsWriteV2Enabled: Bool {
+        UserDefaults(suiteName: HelperIPC.suiteName)?.bool(
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        ) ?? false
+    }
+
     func start() {
         guard !isRunning else { return }
         isRunning = true
@@ -128,7 +134,6 @@ final class HelperDaemon {
 
         // Step 4: Provider quotas via collectors
         let providerCollection = await collectProviderQuotas()
-        let providerTiers = legacyProviderTiers(from: providerCollection.providers)
 
         // Step 4.5: Write collector results to app group for main app
         writeCollectorResultsToAppGroup(providerCollection)
@@ -148,13 +153,16 @@ final class HelperDaemon {
         // not shipped to Supabase. When no config suite is readable (very
         // first launch before main app has written), pass sessions through
         // unfiltered rather than losing data silently.
-        let enabledProviderNames: Set<String>? = {
+        let savedProviderConfigs: [ProviderConfig]? = {
             guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
                   let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
                   let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
             else { return nil }
-            return Set(saved.filter(\.isEnabled).map(\.kind.rawValue))
+            return saved
         }()
+        let enabledProviderNames = savedProviderConfigs.map {
+            Set($0.filter(\.isEnabled).map(\.kind.rawValue))
+        }
         let filteredSessions: [SessionRecord] = {
             guard let enabled = enabledProviderNames else { return scanResult.sessions }
             return scanResult.sessions.filter { enabled.contains($0.provider) }
@@ -163,6 +171,20 @@ final class HelperDaemon {
             logger.info("Filtered \(scanResult.sessions.count - filteredSessions.count) sessions from disabled providers")
         }
         let sessionDicts = filteredSessions.map { sessionToDict($0) }
+        let syncableAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: savedProviderConfigs ?? [],
+                ownedBy: config.userId
+            )
+        let syncableAccounts =
+            providerCollection.accounts.filter {
+                syncableAccountIDs.contains($0.accountID)
+            }
+        let providerTiers = HelperAPIClient.legacyProviderTiers(
+            from: providerCollection.accounts,
+            configs: savedProviderConfigs ?? [],
+            ownedBy: config.userId
+        )
         let providerRemaining: [String: Int] = providerTiers.compactMapValues { dict in
             (dict as? [String: Any])?["remaining"] as? Int
         }
@@ -198,6 +220,34 @@ final class HelperDaemon {
             )
             logger.info("Synced \(result.sessionsSynced) sessions, \(result.alertsSynced) alerts")
 
+            // Run after the legacy helper_sync write so the account-aware
+            // compatibility projection wins when v2 is enabled. Failure-soft:
+            // an older backend missing the staged RPC must not break legacy
+            // sessions, alerts, heartbeat, or provider-level quotas.
+            if providerAccountsWriteV2Enabled,
+               !syncableAccounts.isEmpty {
+                do {
+                    let synced = try await apiClient
+                        .syncProviderAccountQuotas(
+                            config: config,
+                            accounts: syncableAccounts,
+                            observedAt: providerCollection.observedAt
+                        )
+                    logger.info(
+                        "Synced \(synced) provider account quotas"
+                    )
+                } catch {
+                    logger.warning(
+                        "Provider account v2 sync failed; response details omitted and legacy sync remains active"
+                    )
+                }
+            } else if providerAccountsWriteV2Enabled,
+                      !providerCollection.accounts.isEmpty {
+                logger.warning(
+                    "Provider account v2 sync paused: no local accounts are owned by the paired CLIPulse user"
+                )
+            }
+
             // Update status
             HelperIPC.writeStatus(HelperIPC.Status(
                 state: .running, lastSync: Date(), helperVersion: "1.0.0"
@@ -216,6 +266,7 @@ final class HelperDaemon {
     private struct ProviderQuotaCollection {
         let accounts: [HelperIPC.CollectorAccountPayload]
         let providers: [String: HelperIPC.CollectorUsagePayload]
+        let observedAt: Date
     }
 
     /// Run the same collectors the main app uses once per enabled account.
@@ -289,6 +340,7 @@ final class HelperDaemon {
                             accountID: config.accountID,
                             provider: providerName,
                             accountLabel: config.accountLabel,
+                            planOverride: config.planOverride,
                             dataKind: helperDataKind(collectorResult.dataKind),
                             usage: payload
                         )
@@ -302,7 +354,8 @@ final class HelperDaemon {
 
         return ProviderQuotaCollection(
             accounts: accountResults,
-            providers: providerProjection
+            providers: providerProjection,
+            observedAt: Date()
         )
     }
 
@@ -310,7 +363,9 @@ final class HelperDaemon {
 
     private func writeCollectorResultsToAppGroup(_ collection: ProviderQuotaCollection) {
         let envelope = HelperIPC.CollectorResultsEnvelopeV2(
-            timestamp: sharedISO8601Formatter.string(from: Date()),
+            timestamp: sharedISO8601Formatter.string(
+                from: collection.observedAt
+            ),
             accounts: collection.accounts,
             providers: collection.providers
         )
@@ -334,34 +389,6 @@ final class HelperDaemon {
         case .quota: return .quota
         case .credits: return .credits
         case .statusOnly: return .statusOnly
-        }
-    }
-
-    private func legacyProviderTiers(
-        from providers: [String: HelperIPC.CollectorUsagePayload]
-    ) -> [String: Any] {
-        providers.mapValues { payload in
-            var tierData: [String: Any] = [
-                "quota": payload.quota ?? 100,
-                "remaining": payload.remaining ?? 100,
-                "today_usage": payload.todayUsage ?? 0,
-                "week_usage": payload.weekUsage ?? 0,
-                "status_text": payload.statusText ?? "",
-            ]
-            if let planType = payload.planType { tierData["plan_type"] = planType }
-            if let resetTime = payload.resetTime { tierData["reset_time"] = resetTime }
-            tierData["tiers"] = (payload.tiers ?? []).map { tier in
-                var value: [String: Any] = [
-                    "name": tier.name,
-                    "quota": tier.quota,
-                    "remaining": tier.remaining,
-                ]
-                if let resetTime = tier.reset_time {
-                    value["reset_time"] = resetTime
-                }
-                return value
-            }
-            return tierData
         }
     }
 

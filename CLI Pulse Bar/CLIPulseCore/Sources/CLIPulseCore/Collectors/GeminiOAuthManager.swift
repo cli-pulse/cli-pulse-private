@@ -48,6 +48,87 @@ public struct GeminiStoredTokens: Sendable {
     }
 }
 
+/// OAuth result held only in the provider editor until the user presses Save.
+/// Keeping this value in memory makes Cancel a true rollback boundary.
+public struct GeminiAuthorizationTokens: Sendable {
+    public let accessToken: String
+    public let refreshToken: String
+    public let expiry: Date
+
+    public init(
+        accessToken: String,
+        refreshToken: String,
+        expiry: Date
+    ) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.expiry = expiry
+    }
+}
+
+public enum GeminiCredentialMutation: Equatable, Sendable {
+    case unchanged
+    case connect
+    case disconnect
+}
+
+public enum GeminiConnectionTestDisposition:
+    Equatable,
+    Sendable
+{
+    case usePersistedCredentials
+    case authorizationReadyToSave
+    case stagedForRemoval
+}
+
+/// Pure editor state. Connect and Disconnect alter only this draft; `commit`
+/// is invoked by the Save action and is the sole Keychain mutation boundary.
+public struct GeminiCredentialDraft: Sendable {
+    public private(set) var isConnected: Bool
+    public private(set) var pendingMutation:
+        GeminiCredentialMutation = .unchanged
+
+    private let originallyConnected: Bool
+    private var pendingAuthorization: GeminiAuthorizationTokens?
+
+    public init(isConnected: Bool) {
+        self.isConnected = isConnected
+        self.originallyConnected = isConnected
+    }
+
+    public mutating func stageAuthorization(
+        _ authorization: GeminiAuthorizationTokens
+    ) {
+        pendingAuthorization = authorization
+        pendingMutation = .connect
+        isConnected = true
+    }
+
+    public mutating func stageDisconnect() {
+        pendingAuthorization = nil
+        pendingMutation =
+            originallyConnected ? .disconnect : .unchanged
+        isConnected = false
+    }
+
+    /// Test Connection must respect the same Save/Cancel transaction as the
+    /// editor. A staged authorization has already exchanged a valid OAuth
+    /// code but is not yet in Keychain; a staged disconnect must never probe
+    /// the old persisted token and report a misleading success.
+    public var connectionTestDisposition:
+        GeminiConnectionTestDisposition
+    {
+        switch pendingMutation {
+        case .unchanged:
+            return .usePersistedCredentials
+        case .connect:
+            return .authorizationReadyToSave
+        case .disconnect:
+            return .stagedForRemoval
+        }
+    }
+}
+
 // MARK: - Manager
 
 /// Manages CLI Pulse's own Google OAuth2 flow for Gemini quota access.
@@ -118,12 +199,57 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
         ) != nil
     }
 
+    /// Read-only connection check for transactional editors. Unlike
+    /// `loadTokens`, this does not claim a legacy owner or copy credentials
+    /// into an account-scoped Keychain slot merely because a window opened.
+    public func isConnectedWithoutMigration(
+        accountID: UUID,
+        allowLegacyFallback: Bool = true
+    ) -> Bool {
+        if loadTokens(
+            keys: Self.tokenKeys(accountID: accountID)
+        ) != nil {
+            return true
+        }
+        guard
+            allowLegacyFallback,
+            loadTokens(
+                keys: Self.tokenKeys(accountID: nil)
+            ) != nil
+        else {
+            return false
+        }
+        return ProviderSharedCredentialOwner.canUse(
+            kind: .gemini,
+            accountID: accountID
+        )
+    }
+
     /// Start the full OAuth2 authorization flow (opens browser sheet).
-    /// Must be called on the main actor.
+    /// Compatibility API for callers that explicitly want immediate commit.
     @MainActor
     public func authorize(
         accountID: UUID? = nil
     ) async throws -> (accessToken: String, refreshToken: String) {
+        let authorization = try await authorizeForEditing(
+            accountID: accountID
+        )
+        commitAuthorization(
+            authorization,
+            accountID: accountID
+        )
+        return (
+            authorization.accessToken,
+            authorization.refreshToken
+        )
+    }
+
+    /// Run OAuth without touching Keychain. ProviderConfigEditor keeps the
+    /// returned secret-bearing value in memory and commits it only on Save.
+    @MainActor
+    public func authorizeForEditing(
+        accountID: UUID? = nil
+    ) async throws -> GeminiAuthorizationTokens {
         guard Self.clientID != "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com" else {
             throw GeminiOAuthError.clientNotConfigured
         }
@@ -195,13 +321,26 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
                 accessGroup: Self.accessGroup
             ) ?? ""
             : tokens.refresh
+        return GeminiAuthorizationTokens(
+            accessToken: tokens.access,
+            refreshToken: rt,
+            expiry: Date().addingTimeInterval(tokens.expiresIn)
+        )
+    }
+
+    public func commitAuthorization(
+        _ authorization: GeminiAuthorizationTokens,
+        accountID: UUID? = nil
+    ) {
         storeTokens(
-            access: tokens.access,
-            refresh: rt,
-            expiresIn: tokens.expiresIn,
+            access: authorization.accessToken,
+            refresh: authorization.refreshToken,
+            expiresIn: max(
+                0,
+                authorization.expiry.timeIntervalSinceNow
+            ),
             accountID: accountID
         )
-        return (tokens.access, rt)
     }
 
     /// Refresh the stored access token using the refresh token.
@@ -551,6 +690,26 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
             let ev = v.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? v
             return "\(ek)=\(ev)"
         }.joined(separator: "&")
+    }
+}
+
+public extension GeminiCredentialDraft {
+    func commit(
+        using manager: GeminiOAuthManager = .shared,
+        accountID: UUID
+    ) {
+        switch pendingMutation {
+        case .unchanged:
+            return
+        case .connect:
+            guard let pendingAuthorization else { return }
+            manager.commitAuthorization(
+                pendingAuthorization,
+                accountID: accountID
+            )
+        case .disconnect:
+            manager.clearTokens(accountID: accountID)
+        }
     }
 }
 

@@ -335,11 +335,10 @@ struct OnboardingWizardView: View {
             )
 
             if selectedOptions.isEmpty {
-                ContentUnavailableView(
-                    L10n.onboardingWizard.noAccountsSelected,
-                    systemImage: "checklist.unchecked"
+                emptyState(
+                    icon: "checklist.unchecked",
+                    title: L10n.onboardingWizard.noAccountsSelected
                 )
-                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
@@ -372,11 +371,10 @@ struct OnboardingWizardView: View {
             )
 
             if selectedOptions.isEmpty {
-                ContentUnavailableView(
-                    L10n.onboardingWizard.noAccountsSelected,
-                    systemImage: "person.crop.circle.badge.questionmark"
+                emptyState(
+                    icon: "person.crop.circle.badge.questionmark",
+                    title: L10n.onboardingWizard.noAccountsSelected
                 )
-                .frame(maxHeight: .infinity)
             } else {
                 ScrollView {
                     LazyVStack(spacing: 10) {
@@ -943,6 +941,24 @@ struct OnboardingWizardView: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private func emptyState(
+        icon: String,
+        title: String
+    ) -> some View {
+        VStack(spacing: 9) {
+            Image(systemName: icon)
+                .font(.system(size: 28, weight: .medium))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private func privacyCard(

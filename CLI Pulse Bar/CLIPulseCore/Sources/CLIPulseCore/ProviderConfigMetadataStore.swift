@@ -39,6 +39,12 @@ public struct ProviderConfigMetadataStore {
             data,
             forKey: HelperIPC.providerConfigsKey
         )
+        helperDefaults?.set(
+            defaults.bool(
+                forKey: ProviderAccountFeatureFlags.writeDefaultsKey
+            ),
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        )
         return true
     }
 }

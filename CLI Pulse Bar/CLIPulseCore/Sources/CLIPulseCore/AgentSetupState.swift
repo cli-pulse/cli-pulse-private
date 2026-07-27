@@ -143,6 +143,24 @@ public struct AgentSetupState: Equatable, Sendable {
         previousStep != nil
     }
 
+    /// Whether Settings may offer an explicit Agent setup rerun. A user who
+    /// already completed V2 keeps that capability while either V2 rollout is
+    /// active; the existing-user flag only gates legacy users who have never
+    /// completed V2.
+    public var canBeginRerun: Bool {
+        guard
+            !mustPreserveStoredProgress,
+            storedState.legacyCompleted
+        else {
+            return false
+        }
+        if hasCompletedV2 {
+            return featureFlags.newUsersV2
+                || featureFlags.existingUsersV2
+        }
+        return featureFlags.existingUsersV2
+    }
+
     public var route: AgentSetupRoute {
         // A downgraded client must never reinterpret or overwrite progress
         // created by a newer state-machine version.
@@ -153,11 +171,17 @@ public struct AgentSetupState: Equatable, Sendable {
         if let progress = validProgress,
            progress.step != .completed {
             if storedState.legacyCompleted {
-                let explicitlyAuthorizedResume =
-                    progress.origin == .existingUserUpgrade
-                    || progress.origin == .explicitRerun
-                if explicitlyAuthorizedResume {
+                if progress.origin == .existingUserUpgrade {
                     return featureFlags.existingUsersV2
+                        ? .v2Onboarding(progress.step)
+                        : .mainApp
+                }
+                if progress.origin == .explicitRerun {
+                    let rerunEnabled = hasCompletedV2
+                        ? featureFlags.newUsersV2
+                            || featureFlags.existingUsersV2
+                        : featureFlags.existingUsersV2
+                    return rerunEnabled
                         ? .v2Onboarding(progress.step)
                         : .mainApp
                 }
@@ -225,7 +249,7 @@ public struct AgentSetupState: Equatable, Sendable {
     /// An explicit Settings rerun starts at passive discovery and preserves
     /// the stable selected account UUID set from the prior run.
     public mutating func beginRerun() {
-        guard !mustPreserveStoredProgress else { return }
+        guard canBeginRerun else { return }
         let selections =
             validProgress?.selectedAccountIDs ?? []
         replaceProgress(AgentSetupProgress(
@@ -309,6 +333,12 @@ public struct AgentSetupState: Equatable, Sendable {
             return nil
         }
         return progress
+    }
+
+    private var hasCompletedV2: Bool {
+        (storedState.onboardingVersion ?? 0)
+            >= Self.currentVersion
+            || validProgress?.step == .completed
     }
 
     private var previousStep: AgentSetupStep? {

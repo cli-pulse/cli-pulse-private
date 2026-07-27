@@ -63,6 +63,44 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         )
     }
 
+    func testReconcileSkipsAccountsThatDisableSharedFallback() throws {
+        let isolatedID = try XCTUnwrap(
+            UUID(uuidString: "12121212-1212-4121-8121-121212121212")
+        )
+        let compatibilityID = try XCTUnwrap(
+            UUID(uuidString: "34343434-3434-4343-8343-343434343434")
+        )
+
+        ProviderSharedCredentialOwner.reconcile(configs: [
+            ProviderConfig(
+                kind: .claude,
+                accountID: isolatedID,
+                isEnabled: true,
+                sortOrder: 0,
+                sharedCredentialFallbackDisabled: true
+            ),
+            ProviderConfig(
+                kind: .claude,
+                accountID: compatibilityID,
+                isEnabled: true,
+                sortOrder: 1
+            ),
+        ])
+
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.isOwner(
+                kind: .claude,
+                accountID: isolatedID
+            )
+        )
+        XCTAssertTrue(
+            ProviderSharedCredentialOwner.isOwner(
+                kind: .claude,
+                accountID: compatibilityID
+            )
+        )
+    }
+
     func testReconcileReassignsRemovedOwnerWithoutCrossingProviders() throws {
         let claudeID = try XCTUnwrap(
             UUID(uuidString: "33333333-3333-4333-8333-333333333333")

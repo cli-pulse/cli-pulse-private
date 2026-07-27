@@ -14,6 +14,9 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     public var cookieSource: CookieSource?
     public var accountLabel: String?
     public var planOverride: String?
+    /// CLIPulse/Supabase user that may receive this account's normalized
+    /// metadata and quota snapshots. Nil means local-only/unclaimed.
+    public var syncOwnerUserID: String?
     /// When true, this account must use only its account-scoped credentials.
     /// Machine-global CLI/helper/environment credentials remain available to
     /// legacy configs where the field is absent.
@@ -36,6 +39,7 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     // Only encode non-sensitive fields to UserDefaults
     private enum CodingKeys: String, CodingKey {
         case accountID, kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel, planOverride
+        case syncOwnerUserID
         case sharedCredentialFallbackDisabled
         case geminiCliProbeFallback
     }
@@ -51,6 +55,7 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         manualCookieHeader: String? = nil,
         accountLabel: String? = nil,
         planOverride: String? = nil,
+        syncOwnerUserID: String? = nil,
         sharedCredentialFallbackDisabled: Bool? = nil,
         geminiCliProbeFallback: Bool? = nil
     ) {
@@ -64,6 +69,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         self.manualCookieHeader = manualCookieHeader
         self.accountLabel = accountLabel
         self.planOverride = planOverride
+        self.syncOwnerUserID =
+            ProviderAccountSyncOwnership.normalizedUserID(
+                syncOwnerUserID
+            )
         self.sharedCredentialFallbackDisabled =
             sharedCredentialFallbackDisabled
         self.geminiCliProbeFallback = geminiCliProbeFallback

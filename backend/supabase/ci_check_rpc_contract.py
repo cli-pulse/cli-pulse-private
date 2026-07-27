@@ -268,6 +268,8 @@ V070_MIRRORED_FUNCTIONS = {
     "_refresh_provider_quota_after_account_delete": "app_rpc.sql",
     "_upsert_provider_account_quotas_for_user": "app_rpc.sql",
     "upsert_provider_account_quotas": "app_rpc.sql",
+    "set_provider_account_statuses": "app_rpc.sql",
+    "delete_provider_account": "app_rpc.sql",
     "provider_account_summary": "app_rpc.sql",
     "helper_sync_provider_account_quotas": "helper_rpc.sql",
 }

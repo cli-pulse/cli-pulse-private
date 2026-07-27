@@ -17,8 +17,8 @@
 --   to zero because old clients interpret zero as exhausted.
 --
 -- Rollback (before clients depend on v2):
---   drop the three public RPCs, five internal functions, three triggers, then
---   the two tables. provider_quotas/provider_summary remain intact throughout.
+--   drop the five public RPCs, five internal functions, three triggers, then
+--   the three tables. provider_quotas/provider_summary remain intact throughout.
 -- ============================================================================
 
 -- v0.43 already widened the live table. Reassert the canonical type here so
@@ -53,6 +53,24 @@ create table if not exists public.provider_accounts (
   unique (user_id, id, provider)
 );
 
+-- User-controlled lifecycle authority is deliberately independent from quota
+-- rows. It can therefore exist before the first observation, and a deleted
+-- tombstone survives physical account-row deletion to reject stale writers.
+create table if not exists public.provider_account_lifecycle (
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  provider_account_id uuid not null,
+  provider text
+    check (
+      provider is null
+      or char_length(provider) between 1 and 64
+    ),
+  status text not null
+    check (status in ('active', 'disabled', 'deleted')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, provider_account_id)
+);
+
 create table if not exists public.provider_account_quotas (
   user_id uuid not null references public.profiles(id) on delete cascade,
   provider_account_id uuid not null,
@@ -75,6 +93,7 @@ create table if not exists public.provider_account_quotas (
 );
 
 alter table public.provider_accounts enable row level security;
+alter table public.provider_account_lifecycle enable row level security;
 alter table public.provider_account_quotas enable row level security;
 
 drop policy if exists "Users can manage own provider accounts"
@@ -97,6 +116,8 @@ create index if not exists idx_provider_accounts_user_provider
   on public.provider_accounts(user_id, provider);
 create index if not exists idx_provider_accounts_updated_at
   on public.provider_accounts(updated_at);
+create index if not exists idx_provider_account_lifecycle_updated_at
+  on public.provider_account_lifecycle(updated_at);
 create index if not exists idx_provider_account_quotas_user_provider
   on public.provider_account_quotas(user_id, provider);
 create index if not exists idx_provider_account_quotas_updated_at
@@ -107,12 +128,16 @@ create index if not exists idx_provider_account_quotas_source_device
 
 revoke all on public.provider_accounts
   from public, anon, authenticated;
+revoke all on public.provider_account_lifecycle
+  from public, anon, authenticated;
 revoke all on public.provider_account_quotas
   from public, anon, authenticated;
 grant select on public.provider_accounts, public.provider_account_quotas
   to authenticated;
 grant select, insert, update, delete
-  on public.provider_accounts, public.provider_account_quotas
+  on public.provider_accounts,
+     public.provider_account_lifecycle,
+     public.provider_account_quotas
   to service_role;
 
 -- Defense in depth for privileged writes: source-device provenance must still
@@ -282,6 +307,8 @@ declare
   v_row jsonb;
   v_account_id uuid;
   v_provider text;
+  v_lifecycle_provider text;
+  v_lifecycle_status text;
   v_existing_provider text;
   v_existing_plan_observed_at timestamptz;
   v_existing_quota_observed_at timestamptz;
@@ -567,6 +594,40 @@ begin
       raise exception 'Source device does not belong to provider account owner';
     end if;
 
+    -- Lifecycle is the authority for enablement and deletion. A quota
+    -- observation may create the initial active lifecycle row, but it can
+    -- neither override a prior disable nor resurrect a deleted account.
+    v_lifecycle_provider := null;
+    v_lifecycle_status := null;
+    select provider, status
+      into v_lifecycle_provider, v_lifecycle_status
+    from public.provider_account_lifecycle
+    where user_id = p_user_id
+      and provider_account_id = v_account_id
+    for update;
+
+    if v_lifecycle_status = 'deleted' then
+      continue;
+    end if;
+    if v_lifecycle_status is null then
+      insert into public.provider_account_lifecycle (
+        user_id, provider_account_id, provider, status
+      ) values (
+        p_user_id, v_account_id, v_provider, 'active'
+      );
+      v_status := 'active';
+    else
+      if v_lifecycle_provider is not null
+         and v_lifecycle_provider <> v_provider then
+        raise exception 'Provider account lifecycle does not match provider';
+      end if;
+      update public.provider_account_lifecycle
+      set provider = coalesce(provider, v_provider)
+      where user_id = p_user_id
+        and provider_account_id = v_account_id;
+      v_status := v_lifecycle_status;
+    end if;
+
     v_existing_provider := null;
     v_existing_plan_observed_at := null;
     v_existing_quota_observed_at := null;
@@ -627,10 +688,6 @@ begin
       plan_observed_at = case
         when v_plan_is_fresh then excluded.plan_observed_at
         else current_account.plan_observed_at
-      end,
-      status = case
-        when v_quota_is_fresh then excluded.status
-        else current_account.status
       end,
       updated_at = now()
     where v_quota_is_fresh or v_plan_is_fresh;
@@ -699,6 +756,194 @@ set search_path = pg_catalog, public, extensions;
 revoke execute on function public.upsert_provider_account_quotas(jsonb)
   from public, anon;
 grant execute on function public.upsert_provider_account_quotas(jsonb)
+  to authenticated, service_role;
+
+-- Account enablement is user-controlled state, not quota-observation state.
+-- Keep it in a dedicated authenticated RPC so a late collector/helper snapshot
+-- can never reactivate an account after the user disables it.
+create or replace function public.set_provider_account_statuses(
+  p_rows jsonb
+)
+returns jsonb as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_row jsonb;
+  v_account_id uuid;
+  v_status text;
+  v_effective_status text;
+  v_provider text;
+  v_updated integer := 0;
+  v_touched_providers text[] := array[]::text[];
+begin
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+  if p_rows is null or jsonb_typeof(p_rows) <> 'array' then
+    raise exception 'Provider account status payload must be an array';
+  end if;
+  if pg_column_size(p_rows) > 65536 then
+    raise exception
+      'Provider account status payload too large (max 65536 bytes)';
+  end if;
+  if jsonb_array_length(p_rows) > 100 then
+    raise exception 'Too many provider account statuses (max 100)';
+  end if;
+
+  perform pg_advisory_xact_lock(
+    hashtextextended(v_user_id::text, 70)
+  );
+
+  for v_row in select value from jsonb_array_elements(p_rows) loop
+    if jsonb_typeof(v_row) <> 'object' then
+      raise exception 'Provider account status row must be an object';
+    end if;
+    if v_row ?| array[
+      'api_key', 'apiKey', 'cookie', 'cookie_header',
+      'manualCookieHeader', 'access_token', 'accessToken',
+      'refresh_token', 'refreshToken', 'token', 'secret', 'password'
+    ] then
+      raise exception 'Provider secrets are not accepted';
+    end if;
+    if exists (
+      select 1
+      from jsonb_object_keys(v_row) as fields(field_name)
+      where field_name not in ('account_id', 'status')
+    ) then
+      raise exception 'Unknown provider account status field';
+    end if;
+    if not (v_row ? 'account_id')
+       or jsonb_typeof(v_row->'account_id') <> 'string' then
+      raise exception 'Provider account status account_id is required';
+    end if;
+    if not (v_row ? 'status')
+       or jsonb_typeof(v_row->'status') <> 'string' then
+      raise exception 'Provider account status is required';
+    end if;
+
+    begin
+      v_account_id := (v_row->>'account_id')::uuid;
+    exception when invalid_text_representation then
+      raise exception 'Invalid provider account status account_id';
+    end;
+    v_status := v_row->>'status';
+    if v_status not in ('active', 'disabled') then
+      raise exception 'Invalid provider account status';
+    end if;
+
+    -- Persist the user choice even when no quota row exists yet. Deleted is
+    -- terminal for this stable UUID; adding the account again must use the new
+    -- local account UUID generated by the client.
+    v_effective_status := null;
+    insert into public.provider_account_lifecycle as lifecycle (
+      user_id, provider_account_id, status, updated_at
+    ) values (
+      v_user_id, v_account_id, v_status, now()
+    )
+    on conflict (user_id, provider_account_id) do update set
+      status = excluded.status,
+      updated_at = now()
+    where lifecycle.status <> 'deleted'
+    returning status into v_effective_status;
+
+    if v_effective_status is null then
+      select status into v_effective_status
+      from public.provider_account_lifecycle
+      where user_id = v_user_id
+        and provider_account_id = v_account_id;
+    else
+      v_updated := v_updated + 1;
+    end if;
+
+    v_provider := null;
+    if v_effective_status <> 'deleted' then
+      update public.provider_accounts
+      set status = v_effective_status, updated_at = now()
+      where user_id = v_user_id and id = v_account_id
+      returning provider into v_provider;
+    end if;
+
+    if v_provider is not null then
+      update public.provider_account_lifecycle
+      set provider = coalesce(provider, v_provider)
+      where user_id = v_user_id
+        and provider_account_id = v_account_id;
+      if not (v_provider = any(v_touched_providers)) then
+        v_touched_providers :=
+          array_append(v_touched_providers, v_provider);
+      end if;
+    end if;
+  end loop;
+
+  foreach v_provider in array v_touched_providers loop
+    perform public._refresh_provider_quota_projection(
+      v_user_id, v_provider
+    );
+  end loop;
+
+  return jsonb_build_object('accounts_updated', v_updated);
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.set_provider_account_statuses(jsonb)
+  from public, anon;
+grant execute on function public.set_provider_account_statuses(jsonb)
+  to authenticated, service_role;
+
+-- Persist a caller-owned tombstone, then remove the materialized account row.
+-- The tombstone is the acknowledgement required by the client's durable
+-- deletion outbox and rejects every later app/helper quota snapshot.
+create or replace function public.delete_provider_account(
+  p_account_id uuid
+)
+returns jsonb as $$
+declare
+  v_user_id uuid := auth.uid();
+  v_provider text;
+  v_deleted integer := 0;
+  v_tombstones integer := 0;
+begin
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+  if p_account_id is null then
+    raise exception 'Provider account id is required';
+  end if;
+
+  perform pg_advisory_xact_lock(
+    hashtextextended(v_user_id::text, 70)
+  );
+
+  select provider into v_provider
+  from public.provider_accounts
+  where user_id = v_user_id and id = p_account_id;
+
+  insert into public.provider_account_lifecycle as lifecycle (
+    user_id, provider_account_id, provider, status, updated_at
+  ) values (
+    v_user_id, p_account_id, v_provider, 'deleted', now()
+  )
+  on conflict (user_id, provider_account_id) do update set
+    provider = coalesce(lifecycle.provider, excluded.provider),
+    status = 'deleted',
+    updated_at = now()
+  returning 1 into v_tombstones;
+
+  delete from public.provider_accounts
+  where user_id = v_user_id and id = p_account_id;
+  get diagnostics v_deleted = row_count;
+
+  return jsonb_build_object(
+    'accounts_deleted', v_deleted,
+    'tombstones_persisted', v_tombstones
+  );
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.delete_provider_account(uuid)
+  from public, anon;
+grant execute on function public.delete_provider_account(uuid)
   to authenticated, service_role;
 
 -- Provider-level usage/cost is computed once, while quota accounts remain a

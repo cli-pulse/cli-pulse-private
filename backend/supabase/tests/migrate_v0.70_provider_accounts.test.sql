@@ -30,6 +30,7 @@ begin;
 \set accountB '''57000000-7000-4700-8700-700000000005'''
 \set accountBig '''67000000-7000-4700-8700-700000000006'''
 \set accountClock '''77000000-7000-4700-8700-700000000007'''
+\set accountDisabledFirst '''87000000-7000-4700-8700-700000000008'''
 
 insert into auth.users (id, email) values
   (:userA, 'owner@example.test'),
@@ -255,7 +256,7 @@ begin
 end $$;
 
 -- Quota freshness and plan evidence are independent clocks. A newer quota
--- snapshot without fresh plan evidence may update label/status/quota but must
+-- snapshot without fresh plan evidence may update label/quota but must
 -- preserve the existing plan. Conversely, an older quota snapshot carrying
 -- newer plan evidence must update only the plan fields.
 select set_config(
@@ -799,11 +800,214 @@ begin
 end $$;
 reset role;
 
+-- Account lifecycle is caller-owned and independent from quota freshness.
+-- An attacker cannot mutate another user, and a late quota snapshot cannot
+-- reactivate an account after the owner disables it.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"b7000000-7000-4700-8700-700000000002","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.set_provider_account_statuses(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA2,
+    'status', 'disabled'
+  )
+));
+select public.delete_provider_account(:accountA2);
+reset role;
+
+do $$
+declare
+  v_status text;
+begin
+  select status into v_status
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '27000000-7000-4700-8700-700000000002';
+  if v_status is distinct from 'active' then
+    raise exception 'FAIL[lifecycle ownership]: attacker changed owner status';
+  end if;
+end $$;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.set_provider_account_statuses(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountDisabledFirst,
+    'status', 'disabled'
+  )
+));
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountDisabledFirst,
+    'provider', 'DeepSeek',
+    'account_label', 'Disabled before first observation',
+    'plan_source', 'unknown',
+    'plan_confidence', 'unavailable',
+    'remaining', 99,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T05:59:00Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_status text;
+  v_count integer;
+begin
+  select status into v_status
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '87000000-7000-4700-8700-700000000008';
+  if v_status is distinct from 'disabled' then
+    raise exception
+      'FAIL[disable before first upsert]: expected disabled, got %',
+      v_status;
+  end if;
+
+  select count(*) into v_count
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'DeepSeek';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[disable before first upsert]: disabled account entered projection';
+  end if;
+end $$;
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.set_provider_account_statuses(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA2,
+    'status', 'disabled'
+  )
+));
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA2,
+    'provider', 'Claude',
+    'account_label', 'Late snapshot',
+    'plan_source', 'unknown',
+    'plan_confidence', 'unavailable',
+    'remaining', 1,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T06:00:00Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_status text;
+  v_remaining bigint;
+begin
+  select status into v_status
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '27000000-7000-4700-8700-700000000002';
+  if v_status is distinct from 'disabled' then
+    raise exception 'FAIL[status authority]: late quota reactivated account';
+  end if;
+
+  select remaining into v_remaining
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Claude';
+  if v_remaining is distinct from 10 then
+    raise exception
+      'FAIL[disabled projection]: expected active sibling 10, got %',
+      v_remaining;
+  end if;
+end $$;
+
+-- Status payload validation rejects secret-shaped or unknown fields.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+do $$
+declare
+  v_rejected boolean := false;
+begin
+  begin
+    perform public.set_provider_account_statuses(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', '27000000-7000-4700-8700-700000000002',
+        'status', 'active',
+        'access_token', 'must-not-be-accepted'
+      )
+    ));
+  exception when others then
+    v_rejected :=
+      position('Provider secrets are not accepted' in sqlerrm) > 0;
+  end;
+  if not v_rejected then
+    raise exception 'FAIL[status secret boundary]: secret was accepted';
+  end if;
+end $$;
+
+select public.set_provider_account_statuses(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA2,
+    'status', 'active'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_remaining bigint;
+begin
+  select remaining into v_remaining
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Claude';
+  if v_remaining is distinct from 1 then
+    raise exception
+      'FAIL[reenable projection]: expected restored account 1, got %',
+      v_remaining;
+  end if;
+end $$;
+
 -- Deleting the most-constrained account cascades only its own quota row and
 -- immediately refreshes the provider-level compatibility projection.
-delete from public.provider_accounts
-where user_id = 'a7000000-7000-4700-8700-700000000001'
-  and id = '27000000-7000-4700-8700-700000000002';
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.delete_provider_account(:accountA2);
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA2,
+    'provider', 'Claude',
+    'account_label', 'Stale app snapshot after delete',
+    'plan_source', 'unknown',
+    'plan_confidence', 'unavailable',
+    'remaining', 0,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T07:00:00Z'
+  )
+));
+reset role;
 
 do $$
 declare
@@ -828,6 +1032,14 @@ begin
   end if;
 
   select count(*) into v_count
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '27000000-7000-4700-8700-700000000002';
+  if v_count <> 0 then
+    raise exception 'FAIL[delete tombstone]: stale app upsert restored account';
+  end if;
+
+  select count(*) into v_count
   from public.provider_account_quotas
   where user_id = 'a7000000-7000-4700-8700-700000000001'
     and provider_account_id = '17000000-7000-4700-8700-700000000001';
@@ -846,6 +1058,71 @@ begin
   end if;
 end $$;
 
+-- A helper snapshot already in flight at deletion time must observe the same
+-- durable server tombstone as the authenticated app writer.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.delete_provider_account(:accountHelper);
+reset role;
+
+set local role anon;
+select public.helper_sync_provider_account_quotas(
+  :deviceA,
+  'owner-helper-secret',
+  jsonb_build_array(
+    jsonb_build_object(
+      'account_id', :accountHelper,
+      'provider', 'Codex',
+      'account_label', 'Stale helper snapshot after delete',
+      'plan_source', 'accountMetadata',
+      'plan_confidence', 'medium',
+      'remaining', 1,
+      'quota', 100,
+      'tiers', '[]'::jsonb,
+      'observed_at', '2026-07-24T07:01:00Z'
+    )
+  )
+);
+reset role;
+
+do $$
+declare
+  v_count integer;
+  v_status text;
+begin
+  select count(*) into v_count
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '47000000-7000-4700-8700-700000000004';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[delete tombstone]: stale helper upsert restored account';
+  end if;
+
+  select status into v_status
+  from public.provider_account_lifecycle
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider_account_id = '47000000-7000-4700-8700-700000000004';
+  if v_status is distinct from 'deleted' then
+    raise exception
+      'FAIL[delete tombstone]: helper lifecycle status is %',
+      v_status;
+  end if;
+
+  select count(*) into v_count
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Codex';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[delete tombstone]: stale helper entered projection';
+  end if;
+end $$;
+
 -- ACL boundary: app RPCs are authenticated-only; helper RPC remains callable
 -- with the anon key plus device credentials.
 do $$
@@ -859,6 +1136,23 @@ begin
     'authenticated', 'public.upsert_provider_account_quotas(jsonb)', 'execute'
   ) then
     raise exception 'FAIL[ACL]: authenticated cannot execute app upsert';
+  end if;
+  if has_function_privilege(
+    'anon', 'public.set_provider_account_statuses(jsonb)', 'execute'
+  ) or has_function_privilege(
+    'anon', 'public.delete_provider_account(uuid)', 'execute'
+  ) then
+    raise exception 'FAIL[ACL]: anon can mutate provider account lifecycle';
+  end if;
+  if not has_function_privilege(
+    'authenticated',
+    'public.set_provider_account_statuses(jsonb)',
+    'execute'
+  ) or not has_function_privilege(
+    'authenticated', 'public.delete_provider_account(uuid)', 'execute'
+  ) then
+    raise exception
+      'FAIL[ACL]: authenticated cannot mutate provider account lifecycle';
   end if;
   if has_function_privilege(
     'anon', 'public.provider_account_summary(date)', 'execute'
@@ -889,6 +1183,14 @@ begin
     'authenticated', 'public.provider_account_quotas', 'update'
   ) or has_table_privilege(
     'authenticated', 'public.provider_account_quotas', 'delete'
+  ) or has_table_privilege(
+    'authenticated', 'public.provider_account_lifecycle', 'select'
+  ) or has_table_privilege(
+    'authenticated', 'public.provider_account_lifecycle', 'insert'
+  ) or has_table_privilege(
+    'authenticated', 'public.provider_account_lifecycle', 'update'
+  ) or has_table_privilege(
+    'authenticated', 'public.provider_account_lifecycle', 'delete'
   ) then
     raise exception 'FAIL[ACL]: authenticated can bypass account RPC writes';
   end if;
