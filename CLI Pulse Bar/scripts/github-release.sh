@@ -46,9 +46,9 @@ macOS menu bar app for monitoring AI coding tool usage across Claude, Codex, Gem
 2. Open the DMG and drag to Applications
 3. Launch from Applications
 
-**Homebrew (coming soon):**
+**Homebrew:**
 \`\`\`bash
-brew install --cask cli-pulse-bar
+brew install --cask cli-pulse
 \`\`\`
 
 ### Requirements
