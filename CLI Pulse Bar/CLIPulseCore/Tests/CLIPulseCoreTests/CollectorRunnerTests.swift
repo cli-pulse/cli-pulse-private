@@ -267,6 +267,67 @@ final class CollectorRunnerTests: XCTestCase {
         XCTAssertEqual(CollectorOutcome.failed(.parse).telemetryToken, "failed_parse")
     }
 
+    // MARK: - telemetry throttle
+
+    /// A refresh tick is 60–120s. Reporting unconditionally would be well over
+    /// a thousand writes per device per day to answer a question that changes
+    /// maybe twice a week.
+    func testUnchangedStatusIsNotReReportedEveryTick() {
+        let map = ["Codex": "ok"]
+        XCTAssertFalse(
+            CollectorRunner.shouldReportTelemetry(
+                current: map, lastReported: map,
+                lastReportedAt: Date(timeIntervalSince1970: 1000),
+                now: Date(timeIntervalSince1970: 1060)      // one tick later
+            ),
+            "nothing changed a minute ago — this is the 1400-writes-a-day path"
+        )
+    }
+
+    /// …but a change must go out immediately. A provider that just broke is
+    /// the entire reason this column exists.
+    func testAChangedStatusIsReportedImmediately() {
+        XCTAssertTrue(
+            CollectorRunner.shouldReportTelemetry(
+                current: ["Codex": "failed_auth"], lastReported: ["Codex": "ok"],
+                lastReportedAt: Date(timeIntervalSince1970: 1000),
+                now: Date(timeIntervalSince1970: 1001)
+            )
+        )
+    }
+
+    /// A steadily-healthy device must still check in, or "no rows" becomes
+    /// ambiguous between "fine" and "stopped reporting" — the exact ambiguity
+    /// that made the v0.71 column useless in the first place.
+    func testHealthyDeviceStillReportsOnceAnHour() {
+        let map = ["Codex": "ok"]
+        XCTAssertTrue(
+            CollectorRunner.shouldReportTelemetry(
+                current: map, lastReported: map,
+                lastReportedAt: Date(timeIntervalSince1970: 1000),
+                now: Date(timeIntervalSince1970: 1000 + 3600)
+            )
+        )
+    }
+
+    func testFirstEverReportAlwaysGoesOut() {
+        XCTAssertTrue(
+            CollectorRunner.shouldReportTelemetry(
+                current: ["Codex": "ok"], lastReported: nil, lastReportedAt: nil, now: Date()
+            )
+        )
+    }
+
+    /// Never upload an empty map — it would overwrite a real prior reading
+    /// with nothing and look like a device that lost all its providers.
+    func testEmptyMapIsNeverUploaded() {
+        XCTAssertFalse(
+            CollectorRunner.shouldReportTelemetry(
+                current: [:], lastReported: nil, lastReportedAt: nil, now: Date()
+            )
+        )
+    }
+
     /// `ok` and `empty` must match what the daemon already reports under
     /// migrate_v0.71, or the two reporters would split the same column.
     func testTokensMatchTheDaemonsExistingVocabulary() {

@@ -279,6 +279,30 @@ public enum CollectorRunner {
         }
         return map
     }
+
+    /// Should this pass's outcome map be uploaded?
+    ///
+    /// A refresh tick is 60–120s, so reporting unconditionally would be well
+    /// over a thousand writes per device per day to answer a question that
+    /// changes maybe twice a week. Upload when the picture actually changed,
+    /// and otherwise at most once per `minInterval` so a device that is
+    /// steadily fine still proves it is alive and reporting.
+    ///
+    /// Pure — clock and previous state are injected — because the alternative
+    /// is a throttle that can only be verified by watching production write
+    /// volume after the fact.
+    public static func shouldReportTelemetry(
+        current: [String: String],
+        lastReported: [String: String]?,
+        lastReportedAt: Date?,
+        now: Date,
+        minInterval: TimeInterval = 3600
+    ) -> Bool {
+        guard !current.isEmpty else { return false }
+        guard let lastReported, let lastReportedAt else { return true }
+        if current != lastReported { return true }
+        return now.timeIntervalSince(lastReportedAt) >= minInterval
+    }
 }
 
 /// Readiness, split out from `isAvailable` so a collector can explain itself.

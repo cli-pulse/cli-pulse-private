@@ -902,6 +902,48 @@ public final class AppState: ObservableObject {
     /// never affect app startup.
     /// Internal (not `private`): invoked from `completeAuthenticatedSignIn` in
     /// AuthManager.swift, a different file in this module.
+    /// v1.44 W3: upload the per-provider outcome map for a paired device.
+    ///
+    /// This is what makes `devices.collector_status` non-dead. The v0.71
+    /// column has been written by nothing: only `HelperDaemon` reported it,
+    /// and 63 of 70 Macs report `helper_version = "1.0.0"` — the constant the
+    /// *app* passes when it registers the device — meaning they never had a
+    /// daemon to do the reporting. Those are exactly the devices whose silence
+    /// we were trying to explain.
+    ///
+    /// Uses the same `HelperConfig` secret the app already authenticates
+    /// `reportAppVersion` with, so this needs no new credential path and no
+    /// schema change; `helper_report_app_version` has accepted
+    /// `p_collector_status` since v0.71 and coalesces each field independently.
+    ///
+    /// Anonymous local-mode users are NOT covered — with no pairing there is
+    /// no device row and no secret. That gap is real and deliberate: closing
+    /// it needs an installation-UUID RPC and a privacy story, both of which
+    /// are Owner decisions. The local UI does not depend on this upload.
+    func reportCollectorStatusIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+        var map: [String: String] = [:]
+        for (kind, outcome) in outcomes {
+            map[kind.rawValue] = outcome.telemetryToken
+        }
+        let defaults = UserDefaults.standard
+        let last = defaults.dictionary(forKey: Self.lastCollectorStatusKey) as? [String: String]
+        let lastAt = defaults.object(forKey: Self.lastCollectorStatusAtKey) as? Date
+        guard CollectorRunner.shouldReportTelemetry(
+            current: map, lastReported: last, lastReportedAt: lastAt, now: Date()
+        ) else { return }
+        do {
+            try await HelperAPIClient().reportCollectorStatus(config: config, status: map)
+            defaults.set(map, forKey: Self.lastCollectorStatusKey)
+            defaults.set(Date(), forKey: Self.lastCollectorStatusAtKey)
+        } catch {
+            // Retried on the next pass — never surfaced to the user.
+        }
+    }
+
+    static let lastCollectorStatusKey = "cli_pulse_last_collector_status"
+    static let lastCollectorStatusAtKey = "cli_pulse_last_collector_status_at"
+
     func reportAppVersionIfNeeded() async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
         let appVersion = HelperAPIClient.currentAppVersionString

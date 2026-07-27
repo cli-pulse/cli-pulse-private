@@ -2711,7 +2711,16 @@ extension AppState {
                 self?.needsScannerFolderAccess = value
             },
             setCollectorOutcomes: { @MainActor [weak self] outcomes in
-                self?.collectorOutcomes = outcomes
+                guard let self else { return }
+                self.collectorOutcomes = outcomes
+                #if os(macOS)
+                // Detached: the RPC has a network timeout and this runs inside
+                // the refresh path. `reportCollectorStatusIfNeeded` self-gates
+                // on pairing and throttles itself, so a fire-and-forget here is
+                // at most one write per hour per device — and none at all for
+                // unpaired or local-mode users.
+                Task { [weak self] in await self?.reportCollectorStatusIfNeeded(outcomes) }
+                #endif
             }
         )
     }
