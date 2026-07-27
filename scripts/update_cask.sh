@@ -70,4 +70,10 @@ else
 fi
 
 echo
-echo "Next (Owner-gated): publish to the tap so \`brew install --cask cli-pulse\` resolves."
+echo "Next: copy this file into the tap and push."
+echo "  TAP=\$(brew --repository)/Library/Taps/cli-pulse/homebrew-tap"
+echo "  cp \"$CASK\" \"\$TAP/Casks/\" && git -C \"\$TAP\" commit -am \"cli-pulse $VERSION\" && git -C \"\$TAP\" push"
+echo
+echo "Verify from a clean state afterwards:"
+echo "  brew untap cli-pulse/tap && brew tap cli-pulse/tap && brew trust cli-pulse/tap"
+echo "  brew fetch --cask cli-pulse   # downloads and checks the sha256 without installing"
