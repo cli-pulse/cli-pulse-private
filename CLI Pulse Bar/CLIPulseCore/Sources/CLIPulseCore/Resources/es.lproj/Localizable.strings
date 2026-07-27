@@ -766,3 +766,28 @@
 "pet.form_huff" = "Hmph Ofendido";
 "pet.form_ouch" = "Ay Dolor";
 "pet.form_flop" = "Desplome Dramático";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "Funcionando";
+"collector_status.off" = "Desactivado";
+"collector_status.no_quota_source" = "Sin fuente de cuota";
+"collector_status.no_quota_source_hint" = "El coste y las sesiones se siguen registrando: esta herramienta no tiene una API de cuota que podamos leer.";
+"collector_status.not_installed" = "No instalado";
+"collector_status.not_installed_hint" = "Instala %@ y su uso aparecerá aquí automáticamente.";
+"collector_status.not_signed_in" = "Sin iniciar sesión";
+"collector_status.not_signed_in_hint" = "Inicia sesión en %@ desde su propia app o CLI; aquí no hace falta ninguna clave.";
+"collector_status.not_set_up" = "Sin configurar";
+"collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
+"collector_status.no_data" = "Sin datos";
+"collector_status.no_data_hint" = "La comprobación se ejecutó pero volvió vacía. Usar la herramienta una vez suele arreglarlo.";
+"collector_status.sign_in_expired" = "Sesión caducada";
+"collector_status.sign_in_expired_hint" = "Vuelve a iniciar sesión en %@: su sesión guardada ha caducado.";
+"collector_status.access_blocked" = "Acceso bloqueado";
+"collector_status.access_blocked_hint" = "Concede acceso a la carpeta en Ajustes para leer los archivos de esta herramienta.";
+"collector_status.unreachable" = "No se puede conectar";
+"collector_status.unreachable_hint" = "Comprueba tu conexión de red.";
+"collector_status.cannot_read" = "No se puede leer la respuesta";
+"collector_status.cannot_read_hint" = "Esto es cosa nuestra: el proveedor cambió su formato. Una actualización lo arreglará.";
+"collector_status.failed" = "Comprobación fallida";
+"collector_status.failed_hint" = "El proveedor devolvió un error. Suele resolverse solo.";

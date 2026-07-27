@@ -1041,3 +1041,28 @@
 "pet.form_huff" = "Hmph Huff";
 "pet.form_ouch" = "Ouch Wince";
 "pet.form_flop" = "Dramatic Flop";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "Working";
+"collector_status.off" = "Off";
+"collector_status.no_quota_source" = "No quota source";
+"collector_status.no_quota_source_hint" = "Cost and sessions still tracked — this tool has no quota API we can read.";
+"collector_status.not_installed" = "Not installed";
+"collector_status.not_installed_hint" = "Install %@ and its usage will appear here automatically.";
+"collector_status.not_signed_in" = "Not signed in";
+"collector_status.not_signed_in_hint" = "Sign in to %@ in its own app or CLI — no key needed here.";
+"collector_status.not_set_up" = "Not set up";
+"collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
+"collector_status.no_data" = "No data returned";
+"collector_status.no_data_hint" = "The check ran but came back empty. Using this tool once usually fixes it.";
+"collector_status.sign_in_expired" = "Sign-in expired";
+"collector_status.sign_in_expired_hint" = "Sign in to %@ again — its saved session has lapsed.";
+"collector_status.access_blocked" = "Access blocked";
+"collector_status.access_blocked_hint" = "Grant folder access in Settings to read this tool's files.";
+"collector_status.unreachable" = "Can't reach";
+"collector_status.unreachable_hint" = "Check your network connection.";
+"collector_status.cannot_read" = "Can't read response";
+"collector_status.cannot_read_hint" = "This one is on us — the provider changed its format. An update will fix it.";
+"collector_status.failed" = "Check failed";
+"collector_status.failed_hint" = "The provider returned an error. It usually clears on its own.";

@@ -1043,3 +1043,28 @@
 "pet.form_huff" = "ぷんぷんそっぽ猫";
 "pet.form_ouch" = "いてっ痛い猫";
 "pet.form_flop" = "ばたんぐったり猫";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "正常";
+"collector_status.off" = "オフ";
+"collector_status.no_quota_source" = "クォータ情報なし";
+"collector_status.no_quota_source_hint" = "コストとセッションは記録されます。このツールには読み取れるクォータ API がありません。";
+"collector_status.not_installed" = "未インストール";
+"collector_status.not_installed_hint" = "%@ をインストールすると、使用量が自動的にここに表示されます。";
+"collector_status.not_signed_in" = "未サインイン";
+"collector_status.not_signed_in_hint" = "%@ のアプリまたは CLI でサインインしてください。ここでキーを入力する必要はありません。";
+"collector_status.not_set_up" = "未設定";
+"collector_status.not_set_up_hint" = "設定を開いてこのプロバイダを接続してください。";
+"collector_status.no_data" = "データが空でした";
+"collector_status.no_data_hint" = "チェックは実行されましたが、結果は空でした。一度使うと解決することが多いです。";
+"collector_status.sign_in_expired" = "サインインの期限切れ";
+"collector_status.sign_in_expired_hint" = "%@ に再度サインインしてください。保存されたセッションが失効しています。";
+"collector_status.access_blocked" = "アクセスがブロックされています";
+"collector_status.access_blocked_hint" = "設定でフォルダへのアクセスを許可してください。";
+"collector_status.unreachable" = "接続できません";
+"collector_status.unreachable_hint" = "ネットワーク接続を確認してください。";
+"collector_status.cannot_read" = "応答を解析できません";
+"collector_status.cannot_read_hint" = "これは私たちの問題です。提供元が形式を変更しました。アップデートで修正します。";
+"collector_status.failed" = "チェックに失敗";
+"collector_status.failed_hint" = "プロバイダがエラーを返しました。通常は自然に解消します。";
