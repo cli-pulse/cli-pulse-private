@@ -28,7 +28,13 @@ final class FolderAccessNudgeTests: XCTestCase {
     /// guard and returned true here.
     func testUnsandboxedBuildIsNeverNudgedForFolderAccess() {
         XCTAssertFalse(
-            DataRefreshManager.needsFolderAccessNudge(scanIsEmpty: true, isSandboxed: false),
+            DataRefreshManager.needsFolderAccessNudge(
+                scanIsEmpty: true,
+                isSandboxed: false,
+                // Worst case for the guard: every root reads as unbookmarked,
+                // which is exactly what an unsandboxed build always reports.
+                missingRoots: { Self.allRootsMissing }
+            ),
             "an unsandboxed build needs no bookmarks — an empty scan there means no CLI usage, not blocked access"
         )
     }
@@ -39,30 +45,56 @@ final class FolderAccessNudgeTests: XCTestCase {
     /// Pairing this with the test above makes a constant implementation
     /// fail one of them.
     func testSandboxedBuildWithNoBookmarksIsNudged() {
-        // The test process stores no security-scoped bookmarks, so every
-        // scan root reads as missing — the same state a fresh MAS install
-        // is in before the user grants access.
-        XCTAssertFalse(
-            CostUsageScanner.missingScanRoots().isEmpty,
-            "precondition: the test process holds no bookmarks"
-        )
         XCTAssertTrue(
-            DataRefreshManager.needsFolderAccessNudge(scanIsEmpty: true, isSandboxed: true),
+            DataRefreshManager.needsFolderAccessNudge(
+                scanIsEmpty: true,
+                isSandboxed: true,
+                missingRoots: { Self.allRootsMissing }
+            ),
             "a sandboxed build with no bookmarks and an empty scan is exactly who the banner is for"
+        )
+    }
+
+    /// A sandboxed user who HAS granted access but still scans empty has
+    /// nothing to grant — they simply have no CLI usage yet. Nudging them
+    /// would send them to a Settings panel where everything is already
+    /// checked off. This is the branch the sandbox guard must not swallow.
+    func testSandboxedBuildWithAccessAlreadyGrantedIsNotNudged() {
+        XCTAssertFalse(
+            DataRefreshManager.needsFolderAccessNudge(
+                scanIsEmpty: true,
+                isSandboxed: true,
+                missingRoots: { [] }
+            ),
+            "access is already granted — an empty scan here means no CLI usage, not blocked access"
         )
     }
 
     /// A non-empty scan means data is already flowing; nothing to nudge
     /// about, regardless of sandbox status or bookmark state.
     func testScanThatProducedDataNeverNudges() {
-        XCTAssertFalse(
-            DataRefreshManager.needsFolderAccessNudge(scanIsEmpty: false, isSandboxed: true),
-            "data is flowing — asking for folder access here would be noise"
-        )
-        XCTAssertFalse(
-            DataRefreshManager.needsFolderAccessNudge(scanIsEmpty: false, isSandboxed: false),
-            "data is flowing — asking for folder access here would be noise"
-        )
+        for sandboxed in [true, false] {
+            XCTAssertFalse(
+                DataRefreshManager.needsFolderAccessNudge(
+                    scanIsEmpty: false,
+                    isSandboxed: sandboxed,
+                    missingRoots: { Self.allRootsMissing }
+                ),
+                "data is flowing (isSandboxed=\(sandboxed)) — asking for folder access here would be noise"
+            )
+        }
     }
+
+    /// Stand-in for "no bookmark covers any scan root". Injected rather than
+    /// read for real: `CostUsageScanner.missingScanRoots()` goes through
+    /// `BookmarkManager`, which reads the shared app-group suite
+    /// `group.yyh.CLI-Pulse` — i.e. whatever the developer's own installed
+    /// copy of CLI Pulse holds. Letting that leak in would make these tests
+    /// pass on an unsandboxed DEVID machine and fail on one where MAS has
+    /// been granted access.
+    private static let allRootsMissing = [
+        "/Users/test/.claude", "/Users/test/.config/claude",
+        "/Users/test/.codex", "/Users/test/.config/codex",
+    ]
 }
 #endif

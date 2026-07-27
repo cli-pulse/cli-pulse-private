@@ -847,11 +847,21 @@ internal final class DataRefreshManager {
     /// sandbox hasn't been granted access to the scan roots — i.e. the user
     /// should be nudged to click "Grant access" in Settings. Called on the
     /// main actor because `BookmarkManager` is `@MainActor`-isolated.
+    ///
+    /// `missingRoots` is injected as a closure rather than called directly so
+    /// tests are deterministic. `CostUsageScanner.missingScanRoots()` resolves
+    /// through `BookmarkManager`, which reads the SHARED app-group suite
+    /// (`group.yyh.CLI-Pulse`) — so a test that let it run for real would be
+    /// asserting against whatever bookmarks the developer's own installed copy
+    /// of CLI Pulse happens to hold. That passes on an unsandboxed DEVID
+    /// machine (never stores bookmarks) and fails on one where MAS has been
+    /// granted access. Kept lazy so the cheap guards below still short-circuit.
     #if os(macOS)
     @MainActor
     static func needsFolderAccessNudge(
         scanIsEmpty: Bool,
-        isSandboxed: Bool = MASSandboxGate.isSandboxed
+        isSandboxed: Bool = MASSandboxGate.isSandboxed,
+        missingRoots: @MainActor () -> [String] = { CostUsageScanner.missingScanRoots() }
     ) -> Bool {
         guard scanIsEmpty else { return false }
         // v1.44 W1: bookmarks are an App Sandbox mechanism. An unsandboxed
@@ -875,8 +885,7 @@ internal final class DataRefreshManager {
         // nudge the user if ANY key root is unbookmarked (they only need one
         // to start getting data, but the banner drives them to Settings
         // where all four are listed).
-        let missing = CostUsageScanner.missingScanRoots()
-        return !missing.isEmpty
+        return !missingRoots().isEmpty
     }
     #endif
 
