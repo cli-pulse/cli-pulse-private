@@ -61,14 +61,20 @@ BUILD_NUM="$(_read_build_setting CURRENT_PROJECT_VERSION)"
 # `releases finalize`, insufficient for anything destructive. Generate at
 # https://jason-yeyuhe.sentry.io/settings/auth-tokens/ if it's missing.
 #
-# iOS+Watch share one Sentry project whose display name is "apple-ios" but
-# whose actual slug is `tokyohelp-ios` (distinguished by platform_family tag at
-# the SDK level). sentry-cli --project takes the SLUG, not the display name —
-# passing `apple-ios` here 400s with "Invalid project ids or slugs". macOS uses
-# `apple-macos` (slug == name there). Android uses `android` (handled by the
-# Sentry Gradle plugin, not this script). To re-verify the slug if uploads ever
-# break again: `sentry-cli projects list --org jason-yeyuhe` (needs a token with
-# project:read — e.g. the one in ~/.sentryclirc, not the upload-only org token).
+# iOS+Watch share one Sentry project (distinguished by the platform_family tag
+# at the SDK level). Its slug is `apple-ios` (project id 4511263241601024);
+# macOS is `apple-macos`; Android is `android` (handled by the Sentry Gradle
+# plugin, not this script).
+#
+# ⚠️ The slug HAS CHANGED before and silently broke uploads twice. It was
+# `tokyohelp-ios` (a leftover from the project's origin) until it was re-slugged
+# to `apple-ios`; the stale value then 400'd with "Project not found" and dSYMs
+# stopped uploading for iOS/watchOS while the build still reported success —
+# caught 2026-07-27 during the 1.43.0 submission. sentry-cli --project takes the
+# SLUG, not the display name, and the two are NOT guaranteed to match.
+# Re-verify with: `sentry-cli projects list --org jason-yeyuhe` (needs a token
+# with project:read — the one in ~/.sentryclirc, not the upload-only org token).
+# The project ID is stable across re-slugging; the slug is not.
 SENTRY_ORG="jason-yeyuhe"
 SENTRY_AUTH_TOKEN_FILE="$HOME/Library/Application Support/CLI-Pulse-Secrets/sentry-cli-auth-token-2026-04-29.txt"
 
@@ -385,7 +391,7 @@ EOF
         echo "  ✓ Export: $EXPORT"
     fi
 
-    upload_dsyms_to_sentry "$ARCHIVE" "tokyohelp-ios"
+    upload_dsyms_to_sentry "$ARCHIVE" "apple-ios"
 
     if [[ "$UPLOAD" == true ]]; then
         echo "[3/3] Uploading iOS to App Store Connect..."
@@ -452,10 +458,9 @@ EOF
         echo "  ✓ Export: $EXPORT"
     fi
 
-    # watchOS reuses the iOS Sentry project (iOS+Watch share DSN, distinguished
-    # by platform_family tag). Display name is "apple-ios"; the slug sentry-cli
-    # wants is `tokyohelp-ios`.
-    upload_dsyms_to_sentry "$ARCHIVE" "tokyohelp-ios"
+    # watchOS reuses the iOS Sentry project (iOS+Watch share one DSN,
+    # distinguished by the platform_family tag). Same slug as iOS.
+    upload_dsyms_to_sentry "$ARCHIVE" "apple-ios"
 
     if [[ "$UPLOAD" == true ]]; then
         echo "[3/3] Uploading watchOS to App Store Connect..."
