@@ -48,8 +48,12 @@ macOS menu bar app for monitoring AI coding tool usage across Claude, Codex, Gem
 
 **Homebrew:**
 \`\`\`bash
+brew tap cli-pulse/tap
+brew trust cli-pulse/tap
 brew install --cask cli-pulse
 \`\`\`
+(\`brew trust\` is required once — Homebrew 6 refuses to load casks from
+third-party taps until you confirm you trust the source.)
 
 ### Requirements
 - macOS 13.0 (Ventura) or later
