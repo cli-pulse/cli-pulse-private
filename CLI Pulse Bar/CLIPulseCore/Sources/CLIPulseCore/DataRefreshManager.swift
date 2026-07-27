@@ -79,6 +79,11 @@ internal final class DataRefreshManager {
         /// v1.9.4: signal when the cost scan came up empty because the
         /// sandbox blocked the scanner roots → prompt user via banner.
         let setNeedsFolderAccess: (Bool) async -> Void
+        /// v1.44 W3: per-provider outcome of the pass that just ran — including
+        /// the providers that never executed (disabled / unsupported / not
+        /// ready). Before this the UI could only see results, so those three
+        /// were indistinguishable from a collector that ran and failed.
+        let setCollectorOutcomes: ([ProviderKind: CollectorOutcome]) async -> Void
     }
 
     private let api: APIClient
@@ -217,7 +222,11 @@ internal final class DataRefreshManager {
             // so both main app collectors and helper can use them
             CredentialBridge.syncCredentialsToAppGroup()
 
-            var localResults = await runCollectors(providerConfigs: context.providerConfigs)
+            let localRuns = await runCollectorsWithOutcomes(providerConfigs: context.providerConfigs)
+            await callbacks.setCollectorOutcomes(
+                Dictionary(localRuns.map { ($0.kind, $0.outcome) }, uniquingKeysWith: { _, latest in latest })
+            )
+            var localResults = localRuns.compactMap(\.result)
 
             // Supplement with helper's collector results from app group
             let helperResults = Self.readHelperCollectorResults()
@@ -577,7 +586,11 @@ internal final class DataRefreshManager {
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
 
-        let collectorResults = await runCollectors(providerConfigs: context.providerConfigs)
+        let collectorRuns = await runCollectorsWithOutcomes(providerConfigs: context.providerConfigs)
+        await callbacks.setCollectorOutcomes(
+            Dictionary(collectorRuns.map { ($0.kind, $0.outcome) }, uniquingKeysWith: { _, latest in latest })
+        )
+        let collectorResults = collectorRuns.compactMap(\.result)
         let scanResult = await Task.detached { LocalScanner.shared.scan() }.value
 
         // Scan local JSONL logs for precise token counts and costs.
@@ -740,16 +753,40 @@ internal final class DataRefreshManager {
         callbacks.setLoading(false)
     }
 
+    /// v1.44 W3: the full pass, one entry per configured provider.
+    ///
+    /// The old body filtered to runnable providers before executing and threw
+    /// the rest away, so "you turned this off", "we have no collector for
+    /// this", "we have no credentials for this" and "it ran and blew up" all
+    /// reached the UI as absence. `CollectorRunner` keeps an entry for each.
+    /// Bounded fan-out is unchanged — at most `maxConcurrentCollectors` at once
+    /// rather than spawning all ~48 every refresh.
+    func runCollectorsWithOutcomes(providerConfigs: [ProviderConfig]) async -> [CollectorRun] {
+        await CollectorRunner.run(
+            configs: providerConfigs,
+            maxConcurrent: maxConcurrentCollectors
+        ) { config, collector in
+            do {
+                return .success(try await collector.collect(config: config))
+            } catch {
+                // Logging stays here, not in CollectorRunner: the silencing
+                // rule is a property of this driver's per-tick cadence
+                // (Gemini's 1h OAuth backoff, Ollama's connection refused),
+                // not of the classification. The runner still records the
+                // failure and its category either way, so a silenced error is
+                // no longer an invisible one.
+                let message = "[Collector] \(config.kind.rawValue) failed: \(error.localizedDescription)"
+                if !Self.shouldSilenceCollectorError(kind: config.kind, error: error) {
+                    refreshLogger.warning("\(message)")
+                }
+                await CollectorErrorLog.shared.append(message)
+                return .failure(error)
+            }
+        }
+    }
+
     func runCollectors(providerConfigs: [ProviderConfig]) async -> [CollectorResult] {
-        // Only providers that are enabled AND have a registered collector.
-        let runnable = providerConfigs.filter(\.isEnabled).filter {
-            CollectorRegistry.collector(for: $0.kind, config: $0) != nil
-        }
-        // Bounded fan-out: at most `maxConcurrentCollectors` collectors run at
-        // once instead of spawning all ~48 every refresh (thundering herd).
-        return await mapWithConcurrencyLimit(runnable, maxConcurrent: maxConcurrentCollectors) { config in
-            await Self.runOneCollector(config: config)
-        }
+        await runCollectorsWithOutcomes(providerConfigs: providerConfigs).compactMap(\.result)
     }
 
     /// Runs a single collector, logging (and swallowing) any failure. Off-actor
@@ -2672,6 +2709,9 @@ extension AppState {
             },
             setNeedsFolderAccess: { @MainActor [weak self] value in
                 self?.needsScannerFolderAccess = value
+            },
+            setCollectorOutcomes: { @MainActor [weak self] outcomes in
+                self?.collectorOutcomes = outcomes
             }
         )
     }

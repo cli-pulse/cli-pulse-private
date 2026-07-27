@@ -12,6 +12,15 @@ public struct CopilotCollector: ProviderCollector, Sendable {
         resolveToken(config: config) != nil
     }
 
+    /// v1.44 W3: unambiguous — this collector is a pure token lookup, so a
+    /// false here always means "no credential", never "no tool". Copilot is
+    /// also the clearest example of the problem W3 measures: 9 sessions across
+    /// 3 users produced exactly 1 quota row, because using it requires the
+    /// user to go hunt down a `COPILOT_API_TOKEN` on their own.
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        isAvailable(config: config) ? .ready : .notReady(.missingCredentials)
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
             throw CollectorError.missingCredentials("Copilot: no API token found")

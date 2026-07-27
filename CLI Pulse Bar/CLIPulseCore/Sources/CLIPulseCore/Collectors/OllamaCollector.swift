@@ -12,6 +12,16 @@ import Foundation
 public struct OllamaCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.ollama
 
+    /// v1.44 W3: Ollama's availability check is a TCP probe, not a credential
+    /// lookup — it is local and needs no key at all. So a false here means the
+    /// server is not running (or not installed), and telling this user to go
+    /// find an API token would send them after something that does not exist.
+    /// This is the concrete reason `CollectorNotReadyReason.unknown` is the
+    /// default rather than `missingCredentials`.
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        isAvailable(config: config) ? .ready : .notReady(.notInstalled)
+    }
+
     public func isAvailable(config: ProviderConfig) -> Bool {
         // Quick check: see if the Ollama port is listening via a TCP connect.
         // Avoids noisy connection-refused errors when Ollama isn't running.

@@ -174,6 +174,16 @@ public final class AppState: ObservableObject {
     /// access via `FolderAccessView`.
     @Published public var needsScannerFolderAccess: Bool = false
 
+    /// v1.44 W3: what happened to each provider on the last collector pass.
+    ///
+    /// Populated for EVERY configured provider, not just the ones that
+    /// produced data — that is the point. Before this, a provider the user had
+    /// disabled, one we have no collector for, one missing credentials and one
+    /// whose collector threw were all equally invisible, so neither the user
+    /// nor we could tell them apart. Empty until the first pass completes,
+    /// and permanently empty off macOS (nothing else runs collectors).
+    @Published public var collectorOutcomes: [ProviderKind: CollectorOutcome] = [:]
+
     /// v1.9.4: total token count for a provider, sourced from the JSONL scan
     /// result. Convention matches codexbar for parity:
     /// - Codex: `input + output` only (cached tokens tracked but not added to

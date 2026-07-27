@@ -36,6 +36,18 @@ public protocol ProviderCollector: Sendable {
     /// Return false if required credentials are missing.
     func isAvailable(config: ProviderConfig) -> Bool
 
+    /// v1.44 W3: why `isAvailable` said no, so the UI can give a specific next
+    /// step instead of silently omitting the provider.
+    ///
+    /// MUST be declared here, not only in the protocol extension that supplies
+    /// the default. `CollectorRunner.preflight` takes a `ProviderCollector?`
+    /// existential, and a method that exists only in an extension is
+    /// statically dispatched — every conforming type's override would be
+    /// silently ignored at exactly the call site that matters, and the app
+    /// would report `.unknown` for collectors that knew the real reason. The
+    /// default implementation lives in the extension in `CollectorRunner.swift`.
+    func readiness(config: ProviderConfig) -> CollectorReadiness
+
     /// Fetch real provider data. Throws on network/parse errors.
     func collect(config: ProviderConfig) async throws -> CollectorResult
 }
