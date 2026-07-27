@@ -550,6 +550,27 @@ extension AppState {
         localModePreviouslyChosen ? .localMode : .signIn
     }
 
+    /// Applies a cold-launch landing decision.
+    ///
+    /// Split out from `restoreSession()` so the decision-to-effect wiring is
+    /// reachable from tests. `resolveColdLaunchLanding` alone is a Bool→enum
+    /// relabel: pinning it proves nothing about whether anything acts on the
+    /// answer, and deleting the call site would leave the whole suite green
+    /// while silently restoring the bug this release exists to fix.
+    /// `AppState.restoreSession()` itself cannot be called from a test — it
+    /// reads live Keychain tokens and starts a real refresh loop (see the
+    /// standing note in `SignedOutLandingTests`).
+    #if os(macOS)
+    func applyColdLaunchLanding(_ landing: ColdLaunchLanding) {
+        switch landing {
+        case .localMode:
+            continueWithoutAccount()
+        case .signIn:
+            selectedTab = .settings
+        }
+    }
+    #endif
+
     public func restoreSession() async {
         switch await authManager.restoreSession(
             isDemoMode: isDemoMode,
@@ -592,16 +613,13 @@ extension AppState {
             // choice and left the app in a signed-out shell with no data
             // and no running refresh loop. Restore the mode instead.
             #if os(macOS)
-            switch Self.resolveColdLaunchLanding(
-                localModePreviouslyChosen: UserDefaults.standard.bool(
-                    forKey: Self.localModeEnabledKey
+            applyColdLaunchLanding(
+                Self.resolveColdLaunchLanding(
+                    localModePreviouslyChosen: UserDefaults.standard.bool(
+                        forKey: Self.localModeEnabledKey
+                    )
                 )
-            ) {
-            case .localMode:
-                continueWithoutAccount()
-            case .signIn:
-                selectedTab = .settings
-            }
+            )
             #else
             selectedTab = .settings
             #endif
@@ -642,12 +660,23 @@ extension AppState {
         isAuthenticated = true
         serverOnline = true
         // v1.44 W1: signing in is a later explicit choice that supersedes
-        // "continue without an account", so retire the marker and the live
-        // flag together. Without this, a signed-in user who later loses the
-        // Keychain entry would silently land in local mode instead of the
-        // Sign-In form. Invariant: the marker is true iff the user's most
-        // recent explicit choice was to go without an account.
-        isLocalMode = false
+        // "continue without an account", so retire the marker. Without this,
+        // a signed-in user who later loses the Keychain entry would silently
+        // land in local mode instead of the Sign-In form. Invariant: the
+        // marker is true iff the user's most recent explicit choice was to go
+        // without an account.
+        //
+        // Only the MARKER is cleared here — deliberately not the live
+        // `isLocalMode` flag. Clearing that too (as the first draft did) is
+        // both unnecessary and harmful: `RefreshRoute.decide` ignores
+        // `isLocalMode` once authenticated (macOS + !isPaired is already
+        // `.localOnly`), and `refreshLocal` re-asserts `isLocalMode: true` in
+        // its payload anyway. All it actually changed was `MenuBarView`'s
+        // `isLocalMode || isPaired` route — so a local-mode user who signed in
+        // to start syncing got bounced out of the dashboard they were looking
+        // at into the pairing shell until the next refresh tick put it back.
+        // That is the one user taking exactly the action W1 wants, punished
+        // for it. The live flag belongs to the refresh payload; leave it there.
         UserDefaults.standard.removeObject(forKey: Self.localModeEnabledKey)
 
         // iter8 hotfix: replay any APNs push token the iOS app cached

@@ -107,14 +107,68 @@ final class ContinueWithoutAccountTests: XCTestCase {
         defer { UserDefaults.standard.removeObject(forKey: AppState.localModeEnabledKey) }
 
         let state = AppState()
-        state.isLocalMode = true
         state.applyAuthenticatedState(
             AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: false)
         )
 
-        XCTAssertFalse(state.isLocalMode, "signing in must clear the live flag")
         XCTAssertFalse(UserDefaults.standard.bool(forKey: AppState.localModeEnabledKey),
-                       "signing in must clear the persisted marker too")
+                       "signing in must clear the persisted marker")
+    }
+
+    /// …but it must clear ONLY the marker, not the live flag.
+    ///
+    /// `MenuBarView` routes on `isLocalMode || isPaired`. A Mac that has just
+    /// signed in is not yet paired, so forcing `isLocalMode = false` here
+    /// bounces the user out of the tab shell into the pairing screen — and the
+    /// user this hits is precisely the local-mode convert who was looking at a
+    /// populated dashboard and clicked "sign in" to start syncing, i.e. the
+    /// one person doing exactly what W1 wants. It also fixes itself a refresh
+    /// tick later, which makes it a flicker rather than a stable state.
+    ///
+    /// Nothing needs the flag cleared: `RefreshRoute.decide` ignores
+    /// `isLocalMode` once authenticated, and `refreshLocal` re-asserts
+    /// `isLocalMode: true` in its payload. Ownership stays with the payload.
+    func testSigningInDoesNotBounceALocalModeUserOutOfTheDashboard() {
+        let state = AppState()
+        state.isLocalMode = true
+
+        state.applyAuthenticatedState(
+            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: false)
+        )
+
+        XCTAssertTrue(
+            state.isLocalMode || state.isPaired,
+            "signing in from local mode on an unpaired Mac must keep MenuBarView on connectedView"
+        )
+    }
+
+    /// The decision-to-effect wiring, which `resolveColdLaunchLanding` alone
+    /// does not pin — that helper is a Bool→enum relabel, so testing it proves
+    /// only that a mapping exists, not that anything acts on it. Deleting the
+    /// call site in `restoreSession()` would otherwise leave the suite green
+    /// while restoring the every-launch-signed-out-shell bug.
+    func testColdLaunchLandingActuallyEntersLocalMode() {
+        let state = AppState()
+        state.isLocalMode = false
+        state.selectedTab = .settings
+
+        state.applyColdLaunchLanding(.localMode)
+
+        XCTAssertTrue(state.isLocalMode, "the .localMode landing must actually enter local mode")
+        XCTAssertEqual(state.selectedTab, .overview, "…and land on Overview, where the data is")
+    }
+
+    /// The other arm, so a `applyColdLaunchLanding` that ignored its argument
+    /// and always entered local mode would fail here.
+    func testColdLaunchLandingSignInGoesToSettings() {
+        let state = AppState()
+        state.isLocalMode = false
+        state.selectedTab = .overview
+
+        state.applyColdLaunchLanding(.signIn)
+
+        XCTAssertEqual(state.selectedTab, .settings, "the .signIn landing must show the Sign-In form")
+        XCTAssertFalse(state.isLocalMode, "the .signIn landing must not silently enter local mode")
     }
 
     /// Signing out is a request for the Sign-In form — it must not bounce
