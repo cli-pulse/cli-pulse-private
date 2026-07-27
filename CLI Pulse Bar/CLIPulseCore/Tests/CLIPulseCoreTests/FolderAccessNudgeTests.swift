@@ -94,7 +94,7 @@ final class FolderAccessNudgeTests: XCTestCase {
     /// been granted access.
     private static let allRootsMissing = [
         "/Users/test/.claude", "/Users/test/.config/claude",
-        "/Users/test/.codex", "/Users/test/.config/codex",
+        "/Users/test/.codex", "/Users/test/.config/codex"
     ]
 }
 #endif
