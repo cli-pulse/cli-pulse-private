@@ -14,12 +14,19 @@ public struct OllamaCollector: ProviderCollector, Sendable {
 
     /// v1.44 W3: Ollama's availability check is a TCP probe, not a credential
     /// lookup — it is local and needs no key at all. So a false here means the
-    /// server is not running (or not installed), and telling this user to go
-    /// find an API token would send them after something that does not exist.
-    /// This is the concrete reason `CollectorNotReadyReason.unknown` is the
-    /// default rather than `missingCredentials`.
+    /// server is not answering, and telling this user to go find an API token
+    /// would send them after something that does not exist. This is the
+    /// concrete reason `CollectorNotReadyReason.unknown` is the default rather
+    /// than `missingCredentials`.
+    ///
+    /// `.notRunning`, not `.notInstalled`: the probe cannot tell the two
+    /// apart, and the overwhelmingly common case for someone who has Ollama
+    /// configured at all is that it is installed and simply stopped (or a
+    /// remote `OLLAMA_HOST` is briefly unreachable). "Start Ollama" is
+    /// harmless advice to someone who hasn't installed it; "install Ollama"
+    /// is useless advice to someone who has.
     public func readiness(config: ProviderConfig) -> CollectorReadiness {
-        isAvailable(config: config) ? .ready : .notReady(.notInstalled)
+        isAvailable(config: config) ? .ready : .notReady(.notRunning)
     }
 
     public func isAvailable(config: ProviderConfig) -> Bool {

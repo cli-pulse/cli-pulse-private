@@ -184,6 +184,10 @@ public final class AppState: ObservableObject {
     /// and permanently empty off macOS (nothing else runs collectors).
     @Published public var collectorOutcomes: [ProviderKind: CollectorOutcome] = [:]
 
+    /// Single-flight guard for the detached collector-status upload. Not
+    /// `@Published` — it is scheduling state, not something a view renders.
+    var isReportingCollectorStatus = false
+
     /// v1.9.4: total token count for a provider, sourced from the JSONL scan
     /// result. Convention matches codexbar for parity:
     /// - Codex: `input + output` only (cached tokens tracked but not added to
@@ -922,27 +926,61 @@ public final class AppState: ObservableObject {
     /// are Owner decisions. The local UI does not depend on this upload.
     func reportCollectorStatusIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+
+        // Single-flight. The caller fires this detached from the refresh path,
+        // and the RPC can outlive the refresh that started it — so a slow pass
+        // A and a later pass B can be in flight together. Both would read the
+        // same pre-A cache (defeating the throttle), and if A lands last it
+        // overwrites B's newer reading in BOTH the backend and the cache. That
+        // leaves the fleet showing `ok` for a provider that has since been
+        // disabled or has broken, until some later pass happens to repair it —
+        // or forever, if the app is closed first.
+        //
+        // The check-and-set below has no `await` between them and AppState is
+        // @MainActor, so no second pass can interleave: dropping the overlap is
+        // safe because the next refresh re-evaluates from current state anyway.
+        guard !isReportingCollectorStatus else { return }
+
         var map: [String: String] = [:]
         for (kind, outcome) in outcomes {
             map[kind.rawValue] = outcome.telemetryToken
         }
         let defaults = UserDefaults.standard
-        let last = defaults.dictionary(forKey: Self.lastCollectorStatusKey) as? [String: String]
-        let lastAt = defaults.object(forKey: Self.lastCollectorStatusAtKey) as? Date
+        // Device-scoped, mirroring `appVersionReportKey`. Global keys would let
+        // account A's cached map suppress the FIRST report from newly-paired
+        // device B when their maps happen to match, leaving B's row null for up
+        // to an hour — which is indistinguishable from the silence this whole
+        // feature exists to explain.
+        let mapKey = Self.collectorStatusKey(deviceId: config.deviceId)
+        let atKey = Self.collectorStatusAtKey(deviceId: config.deviceId)
+        let last = defaults.dictionary(forKey: mapKey) as? [String: String]
+        let lastAt = defaults.object(forKey: atKey) as? Date
         guard CollectorRunner.shouldReportTelemetry(
             current: map, lastReported: last, lastReportedAt: lastAt, now: Date()
         ) else { return }
+
+        isReportingCollectorStatus = true
+        defer { isReportingCollectorStatus = false }
         do {
             try await HelperAPIClient().reportCollectorStatus(config: config, status: map)
-            defaults.set(map, forKey: Self.lastCollectorStatusKey)
-            defaults.set(Date(), forKey: Self.lastCollectorStatusAtKey)
+            defaults.set(map, forKey: mapKey)
+            defaults.set(Date(), forKey: atKey)
         } catch {
             // Retried on the next pass — never surfaced to the user.
         }
     }
 
-    static let lastCollectorStatusKey = "cli_pulse_last_collector_status"
-    static let lastCollectorStatusAtKey = "cli_pulse_last_collector_status_at"
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_\(deviceId)"
+    }
+
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusAtKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_at_\(deviceId)"
+    }
 
     func reportAppVersionIfNeeded() async {
         guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }

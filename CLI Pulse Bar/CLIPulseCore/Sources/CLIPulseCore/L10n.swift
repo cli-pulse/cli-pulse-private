@@ -311,10 +311,19 @@ public enum L10n {
         public static var notSetUpHint: String { tr("collector_status.not_set_up_hint") }
         public static var noData: String { tr("collector_status.no_data") }
         public static var noDataHint: String { tr("collector_status.no_data_hint") }
-        public static var signInExpired: String { tr("collector_status.sign_in_expired") }
-        public static func signInExpiredHint(_ provider: String) -> String {
-            tr("collector_status.sign_in_expired_hint", provider)
+        public static var notRunning: String { tr("collector_status.not_running") }
+        public static func notRunningHint(_ provider: String) -> String {
+            tr("collector_status.not_running_hint", provider)
         }
+        public static var needsKey: String { tr("collector_status.needs_key") }
+        public static func needsKeyHint(_ provider: String) -> String {
+            tr("collector_status.needs_key_hint", provider)
+        }
+        public static var authFailed: String { tr("collector_status.auth_failed") }
+        public static func authFailedHint(_ provider: String) -> String {
+            tr("collector_status.auth_failed_hint", provider)
+        }
+        public static var failedOtherHint: String { tr("collector_status.failed_other_hint") }
         public static var accessBlocked: String { tr("collector_status.access_blocked") }
         public static var accessBlockedHint: String { tr("collector_status.access_blocked_hint") }
         public static var unreachable: String { tr("collector_status.unreachable") }

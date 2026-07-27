@@ -781,8 +781,6 @@
 "collector_status.not_set_up_hint" = "설정을 열어 이 제공업체를 연결하세요.";
 "collector_status.no_data" = "데이터 없음";
 "collector_status.no_data_hint" = "검사는 실행됐지만 결과가 비어 있습니다. 이 도구를 한 번 사용하면 대개 해결됩니다.";
-"collector_status.sign_in_expired" = "로그인 만료";
-"collector_status.sign_in_expired_hint" = "%@에 다시 로그인하세요. 저장된 세션이 만료되었습니다.";
 "collector_status.access_blocked" = "접근 차단됨";
 "collector_status.access_blocked_hint" = "설정에서 폴더 접근을 허용해야 이 도구의 파일을 읽을 수 있습니다.";
 "collector_status.unreachable" = "연결할 수 없음";
@@ -791,3 +789,10 @@
 "collector_status.cannot_read_hint" = "저희 문제입니다. 제공업체가 형식을 변경했습니다. 업데이트로 해결됩니다.";
 "collector_status.failed" = "검사 실패";
 "collector_status.failed_hint" = "제공업체가 오류를 반환했습니다. 보통 저절로 해결됩니다.";
+"collector_status.not_running" = "실행 중이 아님";
+"collector_status.not_running_hint" = "%@을(를) 실행하면 사용량이 여기에 표시됩니다.";
+"collector_status.needs_key" = "API 키 필요";
+"collector_status.needs_key_hint" = "설정에서 %@ API 토큰을 입력하세요. 이 서비스는 읽을 수 있는 로그인 상태가 없습니다.";
+"collector_status.auth_failed" = "인증 실패";
+"collector_status.auth_failed_hint" = "%@을(를) 다시 연결하세요. 저장된 자격 증명이 거부되었습니다.";
+"collector_status.failed_other_hint" = "저희 문제입니다. 검사를 완료하지 못했습니다. 업데이트로 해결됩니다.";

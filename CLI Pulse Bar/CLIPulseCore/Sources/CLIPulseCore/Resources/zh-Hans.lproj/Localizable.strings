@@ -1058,8 +1058,6 @@
 "collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
 "collector_status.no_data" = "没有返回数据";
 "collector_status.no_data_hint" = "检查跑通了,但返回为空。用一次这个工具通常就好了。";
-"collector_status.sign_in_expired" = "登录已过期";
-"collector_status.sign_in_expired_hint" = "重新登录 %@ —— 保存的会话已失效。";
 "collector_status.access_blocked" = "访问被阻止";
 "collector_status.access_blocked_hint" = "在设置里授予文件夹权限,才能读取这个工具的文件。";
 "collector_status.unreachable" = "无法连接";
@@ -1068,3 +1066,10 @@
 "collector_status.cannot_read_hint" = "这是我们的问题 —— 对方改了返回格式,后续更新会修复。";
 "collector_status.failed" = "检查失败";
 "collector_status.failed_hint" = "服务商返回了错误,通常会自行恢复。";
+"collector_status.not_running" = "未运行";
+"collector_status.not_running_hint" = "启动 %@ 后,用量就会出现在这里。";
+"collector_status.needs_key" = "需要 API 密钥";
+"collector_status.needs_key_hint" = "在设置里填入 %@ 的 API token —— 这家没有我们能读取的登录态。";
+"collector_status.auth_failed" = "认证失败";
+"collector_status.auth_failed_hint" = "重新连接 %@ —— 保存的凭据被拒绝了。";
+"collector_status.failed_other_hint" = "这是我们的问题 —— 这次检查没能完成,后续更新会修复。";

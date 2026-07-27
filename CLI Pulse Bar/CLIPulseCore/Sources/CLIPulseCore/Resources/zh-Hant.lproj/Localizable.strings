@@ -1058,8 +1058,6 @@
 "collector_status.not_set_up_hint" = "開啟設定來連接這個服務商。";
 "collector_status.no_data" = "沒有回傳資料";
 "collector_status.no_data_hint" = "檢查執行完成,但回傳為空。使用一次這個工具通常就好了。";
-"collector_status.sign_in_expired" = "登入已過期";
-"collector_status.sign_in_expired_hint" = "重新登入 %@ —— 已儲存的工作階段失效了。";
 "collector_status.access_blocked" = "存取被封鎖";
 "collector_status.access_blocked_hint" = "在設定中授予檔案夾權限,才能讀取這個工具的檔案。";
 "collector_status.unreachable" = "無法連線";
@@ -1068,3 +1066,10 @@
 "collector_status.cannot_read_hint" = "這是我們的問題 —— 對方改了回傳格式,後續更新會修正。";
 "collector_status.failed" = "檢查失敗";
 "collector_status.failed_hint" = "服務商回傳了錯誤,通常會自行恢復。";
+"collector_status.not_running" = "未執行";
+"collector_status.not_running_hint" = "啟動 %@ 後,用量就會出現在這裡。";
+"collector_status.needs_key" = "需要 API 金鑰";
+"collector_status.needs_key_hint" = "在設定中填入 %@ 的 API token —— 這家沒有我們能讀取的登入狀態。";
+"collector_status.auth_failed" = "驗證失敗";
+"collector_status.auth_failed_hint" = "重新連接 %@ —— 已儲存的憑證遭到拒絕。";
+"collector_status.failed_other_hint" = "這是我們的問題 —— 這次檢查沒能完成,後續更新會修正。";

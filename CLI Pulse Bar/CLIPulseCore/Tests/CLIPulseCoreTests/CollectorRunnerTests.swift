@@ -328,6 +328,29 @@ final class CollectorRunnerTests: XCTestCase {
         )
     }
 
+    /// The throttle cache must be per-device, mirroring `appVersionReportKey`.
+    ///
+    /// With a global key, account A's cached map suppresses the FIRST report
+    /// from a newly-paired device B whenever their maps happen to match —
+    /// leaving B's backend row null for up to an hour, which is
+    /// indistinguishable from the silence this feature exists to explain.
+    func testThrottleCacheIsScopedPerDevice() {
+        XCTAssertNotEqual(
+            AppState.collectorStatusKey(deviceId: "device-a"),
+            AppState.collectorStatusKey(deviceId: "device-b"),
+            "a global cache key lets one device's history silence another's first report"
+        )
+        XCTAssertNotEqual(
+            AppState.collectorStatusAtKey(deviceId: "device-a"),
+            AppState.collectorStatusAtKey(deviceId: "device-b")
+        )
+        // Map and timestamp must not collide with each other either.
+        XCTAssertNotEqual(
+            AppState.collectorStatusKey(deviceId: "d"),
+            AppState.collectorStatusAtKey(deviceId: "d")
+        )
+    }
+
     /// `ok` and `empty` must match what the daemon already reports under
     /// migrate_v0.71, or the two reporters would split the same column.
     func testTokensMatchTheDaemonsExistingVocabulary() {

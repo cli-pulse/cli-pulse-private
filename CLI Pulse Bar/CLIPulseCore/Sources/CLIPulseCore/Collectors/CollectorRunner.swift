@@ -90,8 +90,22 @@ public enum CollectorOutcome: Sendable, Equatable {
 public enum CollectorNotReadyReason: String, Sendable, Equatable {
     /// The provider's CLI/app is not present on this machine.
     case notInstalled = "not_installed"
-    /// The tool is present; we have no API key / token / session for it.
+    /// The tool is installed but its local service isn't answering. Distinct
+    /// from `notInstalled` because the fixes differ and the wrong one wastes
+    /// real time: telling someone whose Ollama is merely stopped to *install*
+    /// Ollama sends them to redo something they already did. Applies to the
+    /// probe-a-local-port collectors, and to a configured-but-unreachable
+    /// remote host.
+    case notRunning = "not_running"
+    /// The tool is present and signed out — the user fixes this inside that
+    /// tool (`codex login`, opening the app), not in CLI Pulse.
     case missingCredentials = "missing_credentials"
+    /// We need an API key or token entered HERE. Split from
+    /// `missingCredentials` because the advice is not interchangeable:
+    /// Copilot has no "sign in and we'll pick it up" path — the user must
+    /// supply `COPILOT_API_TOKEN` — so telling them to sign in to the Copilot
+    /// app and that "no key is needed here" is advice that cannot work.
+    case missingApiKey = "missing_api_key"
     /// `isAvailable` said no and the collector did not say why.
     case unknown
 }

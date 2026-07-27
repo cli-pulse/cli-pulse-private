@@ -1058,8 +1058,6 @@
 "collector_status.not_set_up_hint" = "設定を開いてこのプロバイダを接続してください。";
 "collector_status.no_data" = "データが空でした";
 "collector_status.no_data_hint" = "チェックは実行されましたが、結果は空でした。一度使うと解決することが多いです。";
-"collector_status.sign_in_expired" = "サインインの期限切れ";
-"collector_status.sign_in_expired_hint" = "%@ に再度サインインしてください。保存されたセッションが失効しています。";
 "collector_status.access_blocked" = "アクセスがブロックされています";
 "collector_status.access_blocked_hint" = "設定でフォルダへのアクセスを許可してください。";
 "collector_status.unreachable" = "接続できません";
@@ -1068,3 +1066,10 @@
 "collector_status.cannot_read_hint" = "これは私たちの問題です。提供元が形式を変更しました。アップデートで修正します。";
 "collector_status.failed" = "チェックに失敗";
 "collector_status.failed_hint" = "プロバイダがエラーを返しました。通常は自然に解消します。";
+"collector_status.not_running" = "実行されていません";
+"collector_status.not_running_hint" = "%@ を起動すると、使用量がここに表示されます。";
+"collector_status.needs_key" = "API キーが必要";
+"collector_status.needs_key_hint" = "設定で %@ の API トークンを入力してください。このサービスには読み取れるサインイン状態がありません。";
+"collector_status.auth_failed" = "認証に失敗";
+"collector_status.auth_failed_hint" = "%@ を再接続してください。保存された認証情報が拒否されました。";
+"collector_status.failed_other_hint" = "これは私たちの問題です。チェックを完了できませんでした。アップデートで修正します。";

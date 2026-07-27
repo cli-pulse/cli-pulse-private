@@ -781,8 +781,6 @@
 "collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
 "collector_status.no_data" = "Sin datos";
 "collector_status.no_data_hint" = "La comprobación se ejecutó pero volvió vacía. Usar la herramienta una vez suele arreglarlo.";
-"collector_status.sign_in_expired" = "Sesión caducada";
-"collector_status.sign_in_expired_hint" = "Vuelve a iniciar sesión en %@: su sesión guardada ha caducado.";
 "collector_status.access_blocked" = "Acceso bloqueado";
 "collector_status.access_blocked_hint" = "Concede acceso a la carpeta en Ajustes para leer los archivos de esta herramienta.";
 "collector_status.unreachable" = "No se puede conectar";
@@ -791,3 +789,10 @@
 "collector_status.cannot_read_hint" = "Esto es cosa nuestra: el proveedor cambió su formato. Una actualización lo arreglará.";
 "collector_status.failed" = "Comprobación fallida";
 "collector_status.failed_hint" = "El proveedor devolvió un error. Suele resolverse solo.";
+"collector_status.not_running" = "No está en ejecución";
+"collector_status.not_running_hint" = "Inicia %@ y su uso aparecerá aquí.";
+"collector_status.needs_key" = "Necesita una clave API";
+"collector_status.needs_key_hint" = "Añade un token de API de %@ en Ajustes: este no tiene un inicio de sesión que podamos leer.";
+"collector_status.auth_failed" = "Error de autenticación";
+"collector_status.auth_failed_hint" = "Vuelve a conectar %@: su credencial guardada fue rechazada.";
+"collector_status.failed_other_hint" = "Esto es cosa nuestra: la comprobación no pudo completarse. Una actualización lo arreglará.";

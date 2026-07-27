@@ -20,7 +20,8 @@ final class CollectorOutcomePresentationTests: XCTestCase {
     /// and abandons them there.
     func testEveryActionableOutcomeOffersANextStep() {
         let actionable: [CollectorOutcome] = [
-            .notReady(.notInstalled), .notReady(.missingCredentials), .notReady(.unknown),
+            .notReady(.notInstalled), .notReady(.notRunning),
+            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
             .ranButEmpty,
             .failed(.auth), .failed(.network), .failed(.parse),
             .failed(.permission), .failed(.http), .failed(.other),
@@ -98,11 +99,68 @@ final class CollectorOutcomePresentationTests: XCTestCase {
         XCTAssertEqual(presentation(.notReady(.notInstalled)).severity, .normal)
     }
 
+    // MARK: - advice that used to be wrong (codex review of #388)
+
+    /// Copilot has no "sign in and we'll pick it up" path — it reads
+    /// `COPILOT_API_TOKEN` and nothing else. The generic missing-credentials
+    /// advice ("no key needed here") is therefore unactionable for it, and
+    /// sends the user to a sign-in screen that cannot help.
+    func testKeyOnlyProvidersAreToldToAddAKey() {
+        let step = CollectorOutcomePresentation.of(
+            .notReady(.missingApiKey), providerName: "Copilot"
+        ).nextStep ?? ""
+        XCTAssertTrue(step.lowercased().contains("api"),
+                      "a key-only provider must be told to supply a key, got: \(step)")
+        XCTAssertFalse(step.lowercased().contains("no key needed"),
+                       "that advice is exactly backwards for a key-only provider")
+    }
+
+    /// The sign-in advice must stay reserved for providers that actually have
+    /// a sign-in — otherwise the split above buys nothing.
+    func testSignInAdviceIsNotUsedForKeyOnlyProviders() {
+        let signIn = presentation(.notReady(.missingCredentials)).nextStep ?? ""
+        let key = presentation(.notReady(.missingApiKey)).nextStep ?? ""
+        XCTAssertNotEqual(signIn, key, "the two credential problems need different advice")
+    }
+
+    /// A stopped Ollama must not be reported as uninstalled. The probe is a TCP
+    /// connect and cannot tell the two apart, and "reinstall the thing you
+    /// already have" is the more expensive of the two wrong answers.
+    func testStoppedServiceIsNotReportedAsUninstalled() {
+        let step = CollectorOutcomePresentation.of(
+            .notReady(.notRunning), providerName: "Ollama"
+        ).nextStep ?? ""
+        XCTAssertTrue(step.lowercased().contains("start"),
+                      "tell them to start it, got: \(step)")
+        XCTAssertFalse(step.lowercased().contains("install"),
+                       "they very likely already installed it")
+    }
+
+    /// A 401 covers both an expired OAuth session and a revoked API key, and we
+    /// cannot tell which from the status alone — so the advice must not assert
+    /// one. It previously claimed "its saved session has lapsed", which is
+    /// simply false for every key-based provider.
+    func testAuthFailureDoesNotClaimASessionThatMayNotExist() {
+        let step = presentation(.failed(.auth)).nextStep ?? ""
+        XCTAssertFalse(step.lowercased().contains("session"),
+                       "we don't know it was a session, got: \(step)")
+    }
+
+    /// `.other` includes `invalidURL`, where no request was ever sent. Claiming
+    /// the provider returned an error points the user at an upstream that never
+    /// heard from us, and away from the fault, which is ours.
+    func testGenericFailureDoesNotBlameTheProviderWhenNoRequestWasSent() {
+        let step = presentation(.failed(.other)).nextStep ?? ""
+        XCTAssertFalse(step.lowercased().contains("provider returned"),
+                       "invalidURL never reached a provider, got: \(step)")
+    }
+
     /// No label may be empty, or the row renders a coloured blank.
     func testNoLabelIsEmpty() {
         let all: [CollectorOutcome] = [
             .disabled, .unsupported, .producedData, .ranButEmpty,
-            .notReady(.notInstalled), .notReady(.missingCredentials), .notReady(.unknown),
+            .notReady(.notInstalled), .notReady(.notRunning),
+            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
             .failed(.auth), .failed(.network), .failed(.parse),
             .failed(.permission), .failed(.http), .failed(.other),
         ]
@@ -116,7 +174,8 @@ final class CollectorOutcomePresentationTests: XCTestCase {
     func testLabelsAreResolvedNotRawKeys() {
         let all: [CollectorOutcome] = [
             .disabled, .unsupported, .producedData, .ranButEmpty,
-            .notReady(.notInstalled), .notReady(.missingCredentials), .notReady(.unknown),
+            .notReady(.notInstalled), .notReady(.notRunning),
+            .notReady(.missingCredentials), .notReady(.missingApiKey), .notReady(.unknown),
             .failed(.auth), .failed(.network), .failed(.parse),
             .failed(.permission), .failed(.http), .failed(.other),
         ]

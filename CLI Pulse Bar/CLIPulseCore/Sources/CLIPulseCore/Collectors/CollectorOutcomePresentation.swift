@@ -67,10 +67,27 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .normal
             )
 
+        case .notReady(.notRunning):
+            return .init(
+                label: L10n.collectorStatus.notRunning,
+                nextStep: L10n.collectorStatus.notRunningHint(providerName),
+                severity: .normal
+            )
+
         case .notReady(.missingCredentials):
             return .init(
                 label: L10n.collectorStatus.notSignedIn,
                 nextStep: L10n.collectorStatus.notSignedInHint(providerName),
+                severity: .attention
+            )
+
+        case .notReady(.missingApiKey):
+            // Distinct from the above on purpose: "sign in to the app, no key
+            // needed here" is unactionable for a provider that only reads a
+            // token, and sends the user to a screen that cannot help them.
+            return .init(
+                label: L10n.collectorStatus.needsKey,
+                nextStep: L10n.collectorStatus.needsKeyHint(providerName),
                 severity: .attention
             )
 
@@ -94,9 +111,14 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
             )
 
         case .failed(.auth):
+            // Wording is deliberately neutral about WHICH credential lapsed.
+            // The category covers both an expired OAuth session and a revoked
+            // API key, and we cannot tell them apart from a 401 — so the old
+            // "your saved session has lapsed" was a confident guess that is
+            // simply false for every key-based provider.
             return .init(
-                label: L10n.collectorStatus.signInExpired,
-                nextStep: L10n.collectorStatus.signInExpiredHint(providerName),
+                label: L10n.collectorStatus.authFailed,
+                nextStep: L10n.collectorStatus.authFailedHint(providerName),
                 severity: .attention
             )
 
@@ -124,10 +146,21 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .problem
             )
 
-        case .failed(.http), .failed(.other):
+        case .failed(.http):
             return .init(
                 label: L10n.collectorStatus.failed,
                 nextStep: L10n.collectorStatus.failedHint,
+                severity: .problem
+            )
+
+        case .failed(.other):
+            // Must NOT claim "the provider returned an error" — `.other`
+            // includes `invalidURL`, where no request was ever sent. Saying
+            // otherwise points the user at an upstream that never heard from
+            // us, and at a fault that is on our side.
+            return .init(
+                label: L10n.collectorStatus.failed,
+                nextStep: L10n.collectorStatus.failedOtherHint,
                 severity: .problem
             )
         }

@@ -1056,8 +1056,6 @@
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";
 "collector_status.no_data_hint" = "The check ran but came back empty. Using this tool once usually fixes it.";
-"collector_status.sign_in_expired" = "Sign-in expired";
-"collector_status.sign_in_expired_hint" = "Sign in to %@ again — its saved session has lapsed.";
 "collector_status.access_blocked" = "Access blocked";
 "collector_status.access_blocked_hint" = "Grant folder access in Settings to read this tool's files.";
 "collector_status.unreachable" = "Can't reach";
@@ -1066,3 +1064,10 @@
 "collector_status.cannot_read_hint" = "This one is on us — the provider changed its format. An update will fix it.";
 "collector_status.failed" = "Check failed";
 "collector_status.failed_hint" = "The provider returned an error. It usually clears on its own.";
+"collector_status.not_running" = "Not running";
+"collector_status.not_running_hint" = "Start %@ and its usage will appear here.";
+"collector_status.needs_key" = "Needs an API key";
+"collector_status.needs_key_hint" = "Add a %@ API token in Settings — this one has no sign-in we can read.";
+"collector_status.auth_failed" = "Authentication failed";
+"collector_status.auth_failed_hint" = "Reconnect %@ — its saved credential was rejected.";
+"collector_status.failed_other_hint" = "This one is on us — the check couldn't be completed. An update will fix it.";
