@@ -1,10 +1,12 @@
 import Foundation
+import Darwin
 import XCTest
 @testable import CLIPulseCore
 
 final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
     private static let qaRoot = "/private/tmp/clipulse-qa-home"
     private static let qaBundleIdentifier = "app.clipulse.qa.local"
+    private static let productionBundleIdentifier = "yyh.CLI-Pulse"
 
     func testAbsentAndUnknownChannelsResolveToProduction() {
         let absent = resolve(channel: nil)
@@ -17,11 +19,15 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
     }
 
     func testProductionRetainsExistingNamespacesAndCapabilities() {
-        let runtime = resolve(channel: nil)
+        let runtime = resolve(
+            channel: nil,
+            bundleIdentifier: Self.productionBundleIdentifier
+        )
 
         XCTAssertEqual(runtime.keychainService, "com.clipulse.app")
         XCTAssertEqual(runtime.keychainAccessGroup, "group.yyh.CLI-Pulse")
         XCTAssertTrue(runtime.isLaunchSafe)
+        runtime.preconditionSafeLaunch()
 
         let capabilities = runtime.capabilities
         XCTAssertTrue(capabilities.allowsTelemetry)
@@ -34,6 +40,46 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertTrue(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
+    }
+
+    func testProductionLaunchRequiresExactProductionBundleIdentifier() {
+        let rejectedBundleIdentifiers: [String?] = [
+            nil,
+            "",
+            Self.qaBundleIdentifier,
+            "com.example.clipulse",
+            "YYH.CLI-Pulse",
+            "yyh.cli-pulse",
+            Self.productionBundleIdentifier + " ",
+            "$(PRODUCT_BUNDLE_IDENTIFIER)",
+        ]
+
+        for bundleIdentifier in rejectedBundleIdentifiers {
+            let runtime = resolve(
+                channel: nil,
+                bundleIdentifier: bundleIdentifier
+            )
+            XCTAssertFalse(
+                runtime.isLaunchSafe,
+                "expected bundle \(bundleIdentifier ?? "nil") to fail closed"
+            )
+        }
+    }
+
+    func testUnknownChannelStaysProductionButRejectsNonProductionBundle() {
+        let mismatched = resolve(
+            channel: "prodution",
+            bundleIdentifier: Self.qaBundleIdentifier
+        )
+        let matched = resolve(
+            channel: "prodution",
+            bundleIdentifier: Self.productionBundleIdentifier
+        )
+
+        XCTAssertEqual(mismatched.channel, .production)
+        XCTAssertFalse(mismatched.isLaunchSafe)
+        XCTAssertEqual(matched.channel, .production)
+        XCTAssertTrue(matched.isLaunchSafe)
     }
 
     func testQAUsesIsolatedNamespacesAndRestrictedCapabilities() {
@@ -66,17 +112,35 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
 
         XCTAssertTrue(root.isLaunchSafe)
         XCTAssertTrue(descendant.isLaunchSafe)
-        root.preconditionSafeLaunch()
-        descendant.preconditionSafeLaunch()
+        if root.isLaunchSafe {
+            root.preconditionSafeLaunch()
+        }
+        if descendant.isLaunchSafe {
+            descendant.preconditionSafeLaunch()
+        }
     }
 
-    func testQALaunchRequiresNonProductionBundleIdentifier() {
-        let runtime = resolve(
-            channel: "qa",
-            bundleIdentifier: "yyh.CLI-Pulse"
-        )
+    func testQALaunchRequiresExactQABundleIdentifier() {
+        let rejectedBundleIdentifiers: [String?] = [
+            nil,
+            "",
+            Self.productionBundleIdentifier,
+            "com.example.clipulse.qa",
+            "APP.clipulse.qa.local",
+            Self.qaBundleIdentifier + " ",
+            "$(PRODUCT_BUNDLE_IDENTIFIER)",
+        ]
 
-        XCTAssertFalse(runtime.isLaunchSafe)
+        for bundleIdentifier in rejectedBundleIdentifiers {
+            let runtime = resolve(
+                channel: "qa",
+                bundleIdentifier: bundleIdentifier
+            )
+            XCTAssertFalse(
+                runtime.isLaunchSafe,
+                "expected bundle \(bundleIdentifier ?? "nil") to fail closed"
+            )
+        }
     }
 
     func testQALaunchRejectsMissingEmptyRootRealHomeAndPrefixSpoof() {
@@ -108,6 +172,9 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             channel: "qa",
             fixedUserHome: link,
             resolvingSymlinks: {
+                if $0 == Self.qaRoot {
+                    return Self.qaRoot
+                }
                 resolvedInput = $0
                 return Self.qaRoot + "/resolved"
             }
@@ -122,9 +189,95 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         let runtime = resolve(
             channel: "qa",
             fixedUserHome: Self.qaRoot + "/escape",
-            resolvingSymlinks: { _ in
-                FileManager.default.homeDirectoryForCurrentUser.path
+            resolvingSymlinks: {
+                if $0 == Self.qaRoot {
+                    return Self.qaRoot
+                }
+                return FileManager.default.homeDirectoryForCurrentUser.path
             }
+        )
+
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsWhenQARootDoesNotExist() {
+        let runtime = resolve(
+            channel: "qa",
+            pathEntryExists: { path in
+                path != Self.qaRoot
+            }
+        )
+
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testDefaultResolverRejectsMissingDescendantThroughEscapingSymlink() throws {
+        let fileManager = FileManager.default
+        let identifier = UUID().uuidString
+        let qaFixture = try makeQAFixtureDirectory(identifier: identifier)
+        defer { try? fileManager.removeItem(at: qaFixture) }
+
+        let outsideFixture = URL(
+            fileURLWithPath: "/private/tmp/clipulse-qa-outside-\(identifier)",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(
+            at: outsideFixture,
+            withIntermediateDirectories: false
+        )
+        defer { try? fileManager.removeItem(at: outsideFixture) }
+
+        let escape = qaFixture.appendingPathComponent("escape")
+        try fileManager.createSymbolicLink(
+            at: escape,
+            withDestinationURL: outsideFixture
+        )
+
+        let runtime = resolveUsingDefaultFileSystem(
+            fixedUserHome: escape.appendingPathComponent("missing").path
+        )
+
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testDefaultResolverAllowsMissingDescendantBelowExistingQADirectory() throws {
+        let fileManager = FileManager.default
+        let identifier = UUID().uuidString
+        let qaFixture = try makeQAFixtureDirectory(identifier: identifier)
+        defer { try? fileManager.removeItem(at: qaFixture) }
+
+        let existingAncestor = qaFixture.appendingPathComponent(
+            "existing",
+            isDirectory: true
+        )
+        try fileManager.createDirectory(
+            at: existingAncestor,
+            withIntermediateDirectories: false
+        )
+
+        let runtime = resolveUsingDefaultFileSystem(
+            fixedUserHome: existingAncestor
+                .appendingPathComponent("missing/descendant")
+                .path
+        )
+
+        XCTAssertTrue(runtime.isLaunchSafe)
+    }
+
+    func testDefaultResolverRejectsBrokenSymlinkAncestor() throws {
+        let fileManager = FileManager.default
+        let identifier = UUID().uuidString
+        let qaFixture = try makeQAFixtureDirectory(identifier: identifier)
+        defer { try? fileManager.removeItem(at: qaFixture) }
+
+        let brokenLink = qaFixture.appendingPathComponent("broken")
+        try fileManager.createSymbolicLink(
+            atPath: brokenLink.path,
+            withDestinationPath: "/private/tmp/clipulse-qa-missing-\(identifier)"
+        )
+
+        let runtime = resolveUsingDefaultFileSystem(
+            fixedUserHome: brokenLink.appendingPathComponent("missing").path
         )
 
         XCTAssertFalse(runtime.isLaunchSafe)
@@ -132,15 +285,17 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
 
     private func resolve(
         channel: String?,
-        bundleIdentifier: String = qaBundleIdentifier,
+        bundleIdentifier: String? = qaBundleIdentifier,
         fixedUserHome: String? = qaRoot,
-        resolvingSymlinks: (String) -> String = { $0 }
+        resolvingSymlinks: @escaping (String) -> String? = { $0 },
+        pathEntryExists: @escaping (String) -> Bool = { _ in true }
     ) -> CLIPulseRuntimeEnvironment {
-        var infoDictionary: [String: Any] = [
-            "CFBundleIdentifier": bundleIdentifier,
-        ]
+        var infoDictionary: [String: Any] = [:]
         if let channel {
             infoDictionary["CLIPULSE_CHANNEL"] = channel
+        }
+        if let bundleIdentifier {
+            infoDictionary["CFBundleIdentifier"] = bundleIdentifier
         }
 
         var environment: [String: String] = [:]
@@ -151,7 +306,65 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         return CLIPulseRuntimeEnvironment.resolve(
             infoDictionary: infoDictionary,
             environment: environment,
-            resolvingSymlinks: resolvingSymlinks
+            resolvingSymlinks: resolvingSymlinks,
+            pathEntryExists: pathEntryExists
+        )
+    }
+
+    private func resolveUsingDefaultFileSystem(
+        fixedUserHome: String
+    ) -> CLIPulseRuntimeEnvironment {
+        CLIPulseRuntimeEnvironment.resolve(
+            infoDictionary: [
+                "CLIPULSE_CHANNEL": "qa",
+                "CFBundleIdentifier": Self.qaBundleIdentifier,
+            ],
+            environment: [
+                "CFFIXED_USER_HOME": fixedUserHome,
+            ]
+        )
+    }
+
+    private func makeQAFixtureDirectory(identifier: String) throws -> URL {
+        try ensureQARootDirectory()
+
+        let fixture = URL(
+            fileURLWithPath: Self.qaRoot,
+            isDirectory: true
+        ).appendingPathComponent(identifier, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: fixture,
+            withIntermediateDirectories: false
+        )
+        return fixture
+    }
+
+    private func ensureQARootDirectory() throws {
+        var metadata = stat()
+        let status = Self.qaRoot.withCString {
+            Darwin.lstat($0, &metadata)
+        }
+
+        if status == 0 {
+            guard metadata.st_mode & S_IFMT == S_IFDIR else {
+                throw NSError(
+                    domain: "CLIPulseRuntimeEnvironmentTests",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "QA root exists but is not a physical directory",
+                    ]
+                )
+            }
+            return
+        }
+
+        guard errno == ENOENT else {
+            throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+        }
+        try FileManager.default.createDirectory(
+            atPath: Self.qaRoot,
+            withIntermediateDirectories: false
         )
     }
 }
