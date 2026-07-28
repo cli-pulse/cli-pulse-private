@@ -6,7 +6,15 @@ import XCTest
 final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
     private static let qaRoot = "/private/tmp/clipulse-qa-home"
     private static let qaBundleIdentifier = "app.clipulse.qa.local"
+    private static let qaHelperBundleIdentifier =
+        "app.clipulse.qa.local.helper"
     private static let productionBundleIdentifier = "yyh.CLI-Pulse"
+    private static let watchBundleIdentifier =
+        "yyh.CLI-Pulse.watchkitapp"
+    private static let widgetsBundleIdentifier =
+        "yyh.CLI-Pulse.widgets"
+    private static let helperBundleIdentifier =
+        "yyh.CLI-Pulse.helper"
     private typealias FileSystemAccess =
         CLIPulseRuntimeEnvironment.FileSystemAccess
     private typealias PathEntry = FileSystemAccess.PathEntry
@@ -50,6 +58,9 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             nil,
             "",
             Self.qaBundleIdentifier,
+            Self.watchBundleIdentifier,
+            Self.widgetsBundleIdentifier,
+            Self.helperBundleIdentifier,
             "com.example.clipulse",
             "YYH.CLI-Pulse",
             "yyh.cli-pulse",
@@ -66,6 +77,62 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
                 runtime.isLaunchSafe,
                 "expected bundle \(bundleIdentifier ?? "nil") to fail closed"
             )
+        }
+    }
+
+    func testProductionKeychainClientAllowlistDoesNotGrantAppCapabilities() {
+        let clientBundleIdentifiers = [
+            Self.watchBundleIdentifier,
+            Self.widgetsBundleIdentifier,
+            Self.helperBundleIdentifier,
+        ]
+
+        for bundleIdentifier in clientBundleIdentifiers {
+            let runtime = resolve(
+                channel: nil,
+                bundleIdentifier: bundleIdentifier,
+                fixedUserHome: nil
+            )
+
+            XCTAssertFalse(
+                runtime.isLaunchSafe,
+                "\(bundleIdentifier) must not become app launch-safe"
+            )
+            XCTAssertEqual(
+                runtime.keychainService,
+                "com.clipulse.app"
+            )
+            XCTAssertEqual(
+                runtime.keychainAccessGroup,
+                "group.yyh.CLI-Pulse"
+            )
+            XCTAssertFalse(runtime.shouldResetQAExperience)
+            assertCapabilitiesQuarantined(runtime)
+        }
+    }
+
+    func testProductionKeychainClientAllowlistRequiresExactBundleIdentifier() {
+        let rejectedBundleIdentifiers: [String?] = [
+            nil,
+            "",
+            "com.example.clipulse",
+            "yyh.CLI-Pulse.evil",
+            "prefix.yyh.CLI-Pulse.helper",
+            Self.helperBundleIdentifier + ".evil",
+            Self.watchBundleIdentifier + " ",
+            Self.widgetsBundleIdentifier.uppercased(),
+            "yyh.CLI-Pulse.Helper",
+            "$(PRODUCT_BUNDLE_IDENTIFIER)",
+        ]
+
+        for bundleIdentifier in rejectedBundleIdentifiers {
+            let runtime = resolve(
+                channel: nil,
+                bundleIdentifier: bundleIdentifier,
+                fixedUserHome: nil
+            )
+
+            assertFullyQuarantined(runtime)
         }
     }
 
@@ -177,6 +244,69 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(invalidQA.shouldResetQAExperience)
         XCTAssertTrue(unknownChannel.isLaunchSafe)
         XCTAssertFalse(unknownChannel.shouldResetQAExperience)
+    }
+
+    func testQAHelperUsesQANamespaceWithoutAppCapabilities() {
+        let runtime = resolve(
+            channel: "qa",
+            bundleIdentifier: Self.qaHelperBundleIdentifier,
+            fixedUserHome: Self.qaRoot,
+            resetOnLaunch: "1"
+        )
+
+        XCTAssertEqual(runtime.channel, .qa)
+        XCTAssertFalse(runtime.isLaunchSafe)
+        XCTAssertEqual(runtime.keychainService, "com.clipulse.app.qa")
+        XCTAssertEqual(
+            runtime.keychainAccessGroup,
+            "group.yyh.CLI-Pulse.qa"
+        )
+        XCTAssertFalse(runtime.shouldResetQAExperience)
+        assertCapabilitiesQuarantined(runtime)
+    }
+
+    func testQAHelperNamespaceRequiresValidatedQARootAndHome() {
+        let invalidRuntimes = [
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaHelperBundleIdentifier,
+                fixedUserHome: nil
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaHelperBundleIdentifier,
+                fixedUserHome: Self.qaRoot + "-evil"
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaHelperBundleIdentifier,
+                fixedUserHome: Self.qaRoot,
+                fileSystem: makeFileSystem(
+                    inspectEntry: { path in
+                        path == Self.qaRoot ? .missing : .directory
+                    }
+                )
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaHelperBundleIdentifier,
+                fixedUserHome: Self.qaRoot,
+                fileSystem: makeFileSystem(
+                    inspectEntry: { path in
+                        path == Self.qaRoot ? .symbolicLink : .directory
+                    }
+                )
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local.helper.evil",
+                fixedUserHome: Self.qaRoot
+            ),
+        ]
+
+        for runtime in invalidRuntimes {
+            assertFullyQuarantined(runtime)
+        }
     }
 
     func testInvalidQAIsFullyQuarantined() {
@@ -549,6 +679,18 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             line: line
         )
 
+        assertCapabilitiesQuarantined(
+            runtime,
+            file: file,
+            line: line
+        )
+    }
+
+    private func assertCapabilitiesQuarantined(
+        _ runtime: CLIPulseRuntimeEnvironment,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         let capabilities = runtime.capabilities
         let capabilityStates: [(name: String, isEnabled: Bool)] = [
             ("telemetry", capabilities.allowsTelemetry),

@@ -75,7 +75,21 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
 
     private static let productionBundleIdentifier = "yyh.CLI-Pulse"
     private static let qaBundleIdentifier = "app.clipulse.qa.local"
+    private static let qaHelperBundleIdentifier =
+        "app.clipulse.qa.local.helper"
     private static let qaHomeRoot = "/private/tmp/clipulse-qa-home"
+    private static let productionKeychainClientBundleIdentifiers: Set<String> = [
+        productionBundleIdentifier,
+        "yyh.CLI-Pulse.watchkitapp",
+        "yyh.CLI-Pulse.widgets",
+        "yyh.CLI-Pulse.helper",
+    ]
+
+    private enum KeychainNamespace {
+        case production
+        case qa
+        case quarantine
+    }
 
     public let channel: Channel
     public let bundleIdentifier: String
@@ -88,18 +102,29 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         channel == .qa
     }
 
+    /// Keychain authorization is a separate, exact multi-process client
+    /// allowlist. It must never be used to infer app launch safety or grant app
+    /// capabilities to Watch, widgets, or helper processes.
     public var keychainService: String {
-        guard isLaunchSafe else {
+        switch keychainNamespace {
+        case .production:
+            return "com.clipulse.app"
+        case .qa:
+            return "com.clipulse.app.qa"
+        case .quarantine:
             return "com.clipulse.app.quarantine"
         }
-        return isQA ? "com.clipulse.app.qa" : "com.clipulse.app"
     }
 
     public var keychainAccessGroup: String {
-        guard isLaunchSafe else {
+        switch keychainNamespace {
+        case .production:
+            return "group.yyh.CLI-Pulse"
+        case .qa:
+            return "group.yyh.CLI-Pulse.qa"
+        case .quarantine:
             return "group.yyh.CLI-Pulse.quarantine"
         }
-        return isQA ? "group.yyh.CLI-Pulse.qa" : "group.yyh.CLI-Pulse"
     }
 
     public var isLaunchSafe: Bool {
@@ -108,6 +133,37 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             bundleIdentifier: bundleIdentifier,
             resolvedFixedUserHome: resolvedFixedUserHome
         )
+    }
+
+    private var keychainNamespace: KeychainNamespace {
+        Self.keychainNamespace(
+            channel: channel,
+            bundleIdentifier: bundleIdentifier,
+            resolvedFixedUserHome: resolvedFixedUserHome
+        )
+    }
+
+    private static func keychainNamespace(
+        channel: Channel,
+        bundleIdentifier: String,
+        resolvedFixedUserHome: String?
+    ) -> KeychainNamespace {
+        switch channel {
+        case .production:
+            return productionKeychainClientBundleIdentifiers.contains(
+                bundleIdentifier
+            )
+                ? .production
+                : .quarantine
+        case .qa:
+            guard bundleIdentifier == qaBundleIdentifier
+                    || bundleIdentifier == qaHelperBundleIdentifier,
+                  isResolvedQAHomeSafe(resolvedFixedUserHome)
+            else {
+                return .quarantine
+            }
+            return .qa
+        }
     }
 
     private static func isLaunchSafe(
@@ -119,15 +175,19 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         case .production:
             return bundleIdentifier == Self.productionBundleIdentifier
         case .qa:
-            guard bundleIdentifier == Self.qaBundleIdentifier,
-                  let resolvedFixedUserHome
-            else {
-                return false
-            }
-
-            return resolvedFixedUserHome == Self.qaHomeRoot
-                || resolvedFixedUserHome.hasPrefix(Self.qaHomeRoot + "/")
+            return bundleIdentifier == Self.qaBundleIdentifier
+                && isResolvedQAHomeSafe(resolvedFixedUserHome)
         }
+    }
+
+    private static func isResolvedQAHomeSafe(
+        _ resolvedFixedUserHome: String?
+    ) -> Bool {
+        guard let resolvedFixedUserHome else {
+            return false
+        }
+        return resolvedFixedUserHome == Self.qaHomeRoot
+            || resolvedFixedUserHome.hasPrefix(Self.qaHomeRoot + "/")
     }
 
     /// Captures the bundle, process environment, and live filesystem state
