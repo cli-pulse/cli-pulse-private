@@ -781,6 +781,7 @@ public final class AppState: ObservableObject {
     let dataRefreshManager: DataRefreshManager
     private let providerConfigDefaults: UserDefaults
     private let providerConfigHelperDefaults: UserDefaults?
+    private let providerSecretStore: any ProviderSecretStoring
 
     private static let secretsMigratedKey = "cli_pulse_provider_secrets_migrated"
     /// v1.33 keychain-access-group migration flag. One-shot: re-homes
@@ -812,7 +813,9 @@ public final class AppState: ObservableObject {
     internal init(
         runtimeEnvironment runtime: CLIPulseRuntimeEnvironment,
         defaults: UserDefaults,
-        helperDefaults: UserDefaults? = nil
+        helperDefaults: UserDefaults? = nil,
+        providerSecretStore: any ProviderSecretStoring =
+            KeychainProviderSecretStore()
     ) {
         if runtime.isQA {
             runtime.preconditionSafeLaunch()
@@ -842,6 +845,7 @@ public final class AppState: ObservableObject {
         self.dataRefreshManager = DataRefreshManager(api: api)
         self.providerConfigDefaults = defaults
         self.providerConfigHelperDefaults = helperDefaults
+        self.providerSecretStore = providerSecretStore
         subscriptionManager.apiClient = api
         loadProviderConfigs(defaults: defaults)
         #if os(macOS)
@@ -1141,7 +1145,7 @@ public final class AppState: ObservableObject {
         ) else {
             return
         }
-        config.deleteSecrets()
+        config.deleteSecrets(using: providerSecretStore)
         #if os(macOS)
         if config.kind == .gemini {
             GeminiOAuthManager.shared.clearTokens(
@@ -1149,10 +1153,12 @@ public final class AppState: ObservableObject {
             )
         }
         #endif
-        ProviderSharedCredentialOwner.release(
-            kind: config.kind,
-            accountID: accountID
-        )
+        if runtimeEnvironment.capabilities.allowsHelperRegistration {
+            ProviderSharedCredentialOwner.release(
+                kind: config.kind,
+                accountID: accountID
+            )
+        }
         saveProviderConfigMetadata()
         buildProviderDetails()
     }
@@ -1174,7 +1180,7 @@ public final class AppState: ObservableObject {
                 config
             )
 
-        config.deleteSecrets()
+        config.deleteSecrets(using: providerSecretStore)
         #if os(macOS)
         if config.kind == .gemini {
             GeminiOAuthManager.shared.clearTokens(
@@ -1182,10 +1188,12 @@ public final class AppState: ObservableObject {
             )
         }
         #endif
-        ProviderSharedCredentialOwner.release(
-            kind: config.kind,
-            accountID: accountID
-        )
+        if runtimeEnvironment.capabilities.allowsHelperRegistration {
+            ProviderSharedCredentialOwner.release(
+                kind: config.kind,
+                accountID: accountID
+            )
+        }
         guard providerState.removeProviderAccount(accountID) != nil else {
             return false
         }

@@ -130,9 +130,9 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
 
         let helperDataSentinel = Data([0x51, 0x41])
         let claudeOwnerKey =
-            "cli_pulse_provider_shared_credential_owner_claude"
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
         let geminiOwnerKey =
-            "cli_pulse_provider_shared_credential_owner_gemini"
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.gemini.rawValue)"
         helperDefaults.set(
             helperDataSentinel,
             forKey: HelperIPC.providerConfigsKey
@@ -213,6 +213,162 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         )
     }
 
+    #if os(macOS)
+    @MainActor
+    func testSafeQALocalSessionRefreshLeavesHelperStateAndDiagnosticsUntouched()
+        async throws
+    {
+        let fixture = try makeDefaults()
+        defer {
+            fixture.defaults.removePersistentDomain(forName: fixture.suiteName)
+        }
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: fixture.defaults
+        )
+        let diagnostics = LocalSessionControlClient.Diagnostics(
+            resolvedSocketPath: "/sentinel/helper.sock",
+            socketExists: true,
+            resolvedTokenPath: "/sentinel/auth-token",
+            tokenExists: true,
+            tokenReadable: true,
+            appGroupContainerPath: "/sentinel/app-group",
+            nsHomeDirectory: "/sentinel/home"
+        )
+        state.localHelperReachable = true
+        state.localControlEnabled = true
+        state.localCapabilities = .iter2bLocal
+        state.localSupportedMethods = ["sentinel-method"]
+        state.localProtocolVersion = 99
+        state.localProviderAvailability = ["sentinel-provider"]
+        state.localProviderPlanStatus = ["sentinel-provider": "on_plan"]
+        state.localHelperVersion = "sentinel-version"
+        state.localHelperError = "sentinel-error"
+        state.localDiagnostics = diagnostics
+        let installerState = state.helperInstaller.state
+        let installerLastChecked = state.helperInstaller.lastChecked
+
+        await state.refreshLocalSessionControlState()
+
+        XCTAssertTrue(state.localHelperReachable)
+        XCTAssertTrue(state.localControlEnabled)
+        XCTAssertEqual(state.localCapabilities, .iter2bLocal)
+        XCTAssertEqual(state.localSupportedMethods, ["sentinel-method"])
+        XCTAssertEqual(state.localProtocolVersion, 99)
+        XCTAssertEqual(
+            state.localProviderAvailability,
+            ["sentinel-provider"]
+        )
+        XCTAssertEqual(
+            state.localProviderPlanStatus,
+            ["sentinel-provider": "on_plan"]
+        )
+        XCTAssertEqual(state.localHelperVersion, "sentinel-version")
+        XCTAssertEqual(state.localHelperError, "sentinel-error")
+        XCTAssertEqual(state.localDiagnostics, diagnostics)
+        XCTAssertEqual(state.helperInstaller.state, installerState)
+        XCTAssertEqual(
+            state.helperInstaller.lastChecked,
+            installerLastChecked
+        )
+    }
+    #endif
+
+    @MainActor
+    func testSafeQACancelProviderDraftDoesNotTouchSharedOwnerDefaults()
+        throws
+    {
+        let appFixture = try makeDefaults()
+        let ownerFixture = try makeDefaults()
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            ownerFixture.defaults.removePersistentDomain(
+                forName: ownerFixture.suiteName
+            )
+        }
+        let secretStore = RecordingProviderSecretStore()
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: ownerFixture.defaults,
+            providerSecretStore: secretStore
+        )
+        let draftID = state.addProviderAccount(kind: .claude)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
+        ownerFixture.defaults.set(draftID.uuidString, forKey: ownerKey)
+        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+
+        state.cancelProviderAccountDraft(draftID)
+
+        XCTAssertFalse(
+            state.providerConfigs.contains { $0.accountID == draftID }
+        )
+        XCTAssertEqual(
+            ownerFixture.defaults.string(forKey: ownerKey),
+            draftID.uuidString
+        )
+        XCTAssertEqual(secretStore.deletedKeys.count, 2)
+    }
+
+    @MainActor
+    func testSafeQARemoveProviderAccountDoesNotTouchSharedOwnerDefaults()
+        throws
+    {
+        let appFixture = try makeDefaults()
+        let ownerFixture = try makeDefaults()
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            ownerFixture.defaults.removePersistentDomain(
+                forName: ownerFixture.suiteName
+            )
+        }
+        let secretStore = RecordingProviderSecretStore()
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: ownerFixture.defaults,
+            providerSecretStore: secretStore
+        )
+        let accountID = state.addProviderAccount(kind: .claude)
+        state.commitProviderAccountDraft(accountID)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
+        ownerFixture.defaults.set(accountID.uuidString, forKey: ownerKey)
+        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+
+        XCTAssertFalse(
+            state.providerConfigs.contains { $0.accountID == accountID }
+        )
+        XCTAssertEqual(
+            ownerFixture.defaults.string(forKey: ownerKey),
+            accountID.uuidString
+        )
+        XCTAssertEqual(secretStore.deletedKeys.count, 2)
+    }
+
     @MainActor
     func testSafeQARelaunchSynchronouslyRestoresLocalConnectedDemo() throws {
         let fixture = try makeDefaults()
@@ -279,5 +435,19 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
         return (defaults, suiteName)
+    }
+}
+
+private final class RecordingProviderSecretStore: ProviderSecretStoring {
+    private(set) var deletedKeys: [String] = []
+
+    func save(key: String, value: String, accessGroup: String?) {}
+
+    func load(key: String, accessGroup: String?) -> String? {
+        nil
+    }
+
+    func delete(key: String, accessGroup: String?) {
+        deletedKeys.append(key)
     }
 }

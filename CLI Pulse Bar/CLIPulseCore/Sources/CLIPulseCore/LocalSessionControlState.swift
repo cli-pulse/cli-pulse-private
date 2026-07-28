@@ -58,6 +58,9 @@ extension AppState {
     /// tab can call this from its `.task` loop on a short cadence.
     @MainActor
     public func refreshLocalSessionControlState() async {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         let client = LocalSessionControlClient()
         // Diagnostic snapshot on every tick — non-sensitive: paths
         // and existence flags only, no token contents. Surfaces the
@@ -110,7 +113,9 @@ extension AppState {
                 // .running the guard above stops re-running it anyway.
                 let staleEnough = helperInstaller.lastChecked
                     .map { Date().timeIntervalSince($0) > 30 } ?? true
-                if staleEnough {
+                if staleEnough,
+                   runtimeEnvironment.capabilities
+                       .allowsHelperManifestRefresh {
                     await helperInstaller.refresh()
                 }
             default:
