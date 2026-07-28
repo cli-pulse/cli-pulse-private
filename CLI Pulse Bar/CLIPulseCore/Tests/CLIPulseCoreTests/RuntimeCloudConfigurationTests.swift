@@ -23,6 +23,11 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
                 "\(bundleIdentifier) must retain production cloud configuration"
             )
             XCTAssertEqual(
+                runtime.capabilities.allowsProductionCloudEndpoints,
+                bundleIdentifier == "yyh.CLI-Pulse",
+                "legacy app capability must remain false for Watch/widgets/helper"
+            )
+            XCTAssertEqual(
                 runtime.isLaunchSafe,
                 bundleIdentifier == "yyh.CLI-Pulse",
                 "cloud authorization must not make Watch/widgets/helper app-launch safe"

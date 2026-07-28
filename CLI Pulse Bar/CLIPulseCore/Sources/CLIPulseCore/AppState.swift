@@ -779,6 +779,8 @@ public final class AppState: ObservableObject {
     public let api: APIClient
     let authManager: AuthManager
     let dataRefreshManager: DataRefreshManager
+    private let providerConfigDefaults: UserDefaults
+    private let providerConfigHelperDefaults: UserDefaults?
 
     private static let secretsMigratedKey = "cli_pulse_provider_secrets_migrated"
     /// v1.33 keychain-access-group migration flag. One-shot: re-homes
@@ -790,18 +792,27 @@ public final class AppState: ObservableObject {
     /// rapid user toggles.
     private var providerAccountStatusMutationRevision: UInt64 = 0
 
+    public convenience init() {
+        self.init(runtimeEnvironment: .current)
+    }
+
     public convenience init(
-        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
     ) {
         self.init(
             runtimeEnvironment: runtimeEnvironment,
-            defaults: .standard
+            defaults: .standard,
+            helperDefaults:
+                runtimeEnvironment.capabilities.allowsHelperRegistration
+                    ? UserDefaults(suiteName: HelperIPC.suiteName)
+                    : nil
         )
     }
 
     internal init(
         runtimeEnvironment runtime: CLIPulseRuntimeEnvironment,
-        defaults: UserDefaults
+        defaults: UserDefaults,
+        helperDefaults: UserDefaults? = nil
     ) {
         if runtime.isQA {
             runtime.preconditionSafeLaunch()
@@ -829,6 +840,8 @@ public final class AppState: ObservableObject {
         self.api = APIClient(runtimeEnvironment: runtime)
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
+        self.providerConfigDefaults = defaults
+        self.providerConfigHelperDefaults = helperDefaults
         subscriptionManager.apiClient = api
         loadProviderConfigs(defaults: defaults)
         #if os(macOS)
@@ -1600,8 +1613,17 @@ public final class AppState: ObservableObject {
     /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
     /// for enable/order/label changes that must never mutate Keychain state.
     public func saveProviderConfigMetadata() {
-        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
-        _ = ProviderConfigMetadataStore().save(providerConfigs)
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        if allowsHelperMirror {
+            ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+        }
+        _ = ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        ).save(providerConfigs)
     }
 
     public func buildProviderDetails() {

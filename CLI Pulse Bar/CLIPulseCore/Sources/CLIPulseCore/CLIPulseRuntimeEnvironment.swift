@@ -15,6 +15,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         public let allowsStoreKitBootstrap: Bool
         public let allowsLiveCollection: Bool
         public let allowsWidgetPublishing: Bool
+        public let allowsProductionCloudEndpoints: Bool
         public let allowsPassiveDiscovery: Bool
         public let allowsInMemoryDemoRendering: Bool
         public let allowsBookmarkRestoration: Bool
@@ -33,6 +34,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: true,
             allowsLiveCollection: true,
             allowsWidgetPublishing: true,
+            allowsProductionCloudEndpoints: true,
             allowsPassiveDiscovery: true,
             allowsInMemoryDemoRendering: true,
             allowsBookmarkRestoration: true,
@@ -52,6 +54,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: false,
             allowsLiveCollection: false,
             allowsWidgetPublishing: false,
+            allowsProductionCloudEndpoints: false,
             allowsPassiveDiscovery: true,
             allowsInMemoryDemoRendering: true,
             allowsBookmarkRestoration: false,
@@ -71,6 +74,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: false,
             allowsLiveCollection: false,
             allowsWidgetPublishing: false,
+            allowsProductionCloudEndpoints: false,
             allowsPassiveDiscovery: false,
             allowsInMemoryDemoRendering: false,
             allowsBookmarkRestoration: false,

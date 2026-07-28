@@ -48,6 +48,7 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertTrue(capabilities.allowsStoreKitBootstrap)
         XCTAssertTrue(capabilities.allowsLiveCollection)
         XCTAssertTrue(capabilities.allowsWidgetPublishing)
+        XCTAssertTrue(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
         XCTAssertTrue(capabilities.allowsBookmarkRestoration)
@@ -197,6 +198,7 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(capabilities.allowsStoreKitBootstrap)
         XCTAssertFalse(capabilities.allowsLiveCollection)
         XCTAssertFalse(capabilities.allowsWidgetPublishing)
+        XCTAssertFalse(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
         XCTAssertFalse(capabilities.allowsBookmarkRestoration)
@@ -725,6 +727,10 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             ("StoreKit bootstrap", capabilities.allowsStoreKitBootstrap),
             ("live collection", capabilities.allowsLiveCollection),
             ("widget publishing", capabilities.allowsWidgetPublishing),
+            (
+                "legacy production cloud capability",
+                capabilities.allowsProductionCloudEndpoints
+            ),
             ("passive discovery", capabilities.allowsPassiveDiscovery),
             (
                 "in-memory demo rendering",

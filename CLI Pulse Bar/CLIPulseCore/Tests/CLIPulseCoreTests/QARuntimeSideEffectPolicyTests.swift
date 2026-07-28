@@ -5,6 +5,12 @@ import XCTest
 final class QARuntimeSideEffectPolicyTests: XCTestCase {
     private static let qaRoot = "/private/tmp/clipulse-qa-home"
 
+    @MainActor
+    func testAppStateRetainsExactZeroArgumentInitializer() {
+        let factory: () -> AppState = AppState.init
+        _ = factory
+    }
+
     func testLocalModeStrategyIsDemoForQALiveForProductionAndDisabledForQuarantine() {
         XCTAssertEqual(
             RuntimeExperiencePolicy.localModeStrategy(
@@ -104,6 +110,107 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         XCTAssertFalse(state.providers.isEmpty)
         XCTAssertEqual(state.subscriptionManager.currentTier, .team)
         XCTAssertNil(state.lastPublishedWidgetData)
+    }
+
+    @MainActor
+    func testSafeQAMetadataSaveWritesOnlyIsolatedAppDefaults() throws {
+        let appFixture = try makeDefaults()
+        let helperFixture = try makeDefaults()
+        let helperDefaults = helperFixture.defaults
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            helperDefaults.removePersistentDomain(
+                forName: helperFixture.suiteName
+            )
+        }
+
+        let helperDataSentinel = Data([0x51, 0x41])
+        let claudeOwnerKey =
+            "cli_pulse_provider_shared_credential_owner_claude"
+        let geminiOwnerKey =
+            "cli_pulse_provider_shared_credential_owner_gemini"
+        helperDefaults.set(
+            helperDataSentinel,
+            forKey: HelperIPC.providerConfigsKey
+        )
+        helperDefaults.set(
+            true,
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        )
+        helperDefaults.set("claude-sentinel", forKey: claudeOwnerKey)
+        helperDefaults.set("gemini-sentinel", forKey: geminiOwnerKey)
+        helperDefaults.set("keep", forKey: "unrelated-sentinel")
+        let helperKeysBefore = Set(
+            helperDefaults.dictionaryRepresentation().keys
+        )
+        ProviderSharedCredentialOwner.defaults = helperDefaults
+
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: helperDefaults
+        )
+        var configs = state.providerConfigs
+        let savedAccountID = try XCTUnwrap(configs.first?.accountID)
+        configs[0].accountLabel = "QA metadata saved"
+        state.providerConfigs = configs
+
+        state.saveProviderConfigMetadata()
+
+        let savedData = try XCTUnwrap(
+            appFixture.defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+        )
+        let savedConfigs = try JSONDecoder().decode(
+            [ProviderConfig].self,
+            from: savedData
+        )
+        XCTAssertEqual(
+            savedConfigs.first(where: { $0.accountID == savedAccountID })?
+                .accountLabel,
+            "QA metadata saved"
+        )
+        XCTAssertEqual(
+            appFixture.defaults.integer(
+                forKey: ProviderAccountMigration.schemaVersionKey
+            ),
+            ProviderAccountMigration.currentSchemaVersion
+        )
+
+        XCTAssertEqual(
+            Set(helperDefaults.dictionaryRepresentation().keys),
+            helperKeysBefore
+        )
+        XCTAssertEqual(
+            helperDefaults.data(forKey: HelperIPC.providerConfigsKey),
+            helperDataSentinel
+        )
+        XCTAssertTrue(
+            helperDefaults.bool(
+                forKey: HelperIPC.providerAccountsWriteV2Key
+            )
+        )
+        XCTAssertEqual(
+            helperDefaults.string(forKey: claudeOwnerKey),
+            "claude-sentinel"
+        )
+        XCTAssertEqual(
+            helperDefaults.string(forKey: geminiOwnerKey),
+            "gemini-sentinel"
+        )
+        XCTAssertEqual(
+            helperDefaults.string(forKey: "unrelated-sentinel"),
+            "keep"
+        )
     }
 
     @MainActor
