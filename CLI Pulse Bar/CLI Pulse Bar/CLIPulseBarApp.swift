@@ -17,6 +17,9 @@ struct CLIPulseBarApp: App {
     private let backgroundActivity = BackgroundActivityAssertion()
 
     init() {
+        let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
+        runtimeEnvironment.preconditionSafeLaunch()
+
         // W1-A: on the unsandboxed Developer-ID build, migrate per-app-container
         // UserDefaults (provider configs, onboarding flag, display prefs,
         // language override) from the old sandbox container to the real home
@@ -26,19 +29,35 @@ struct CLIPulseBarApp: App {
         // assign it explicitly here AFTER the migration so the
         // migration-before-read ordering is obvious and robust against future
         // edits. No-op on sandboxed (MAS) builds and after the first DEVID run.
-        UnsandboxedDataMigration.runIfNeeded()
-        _appState = StateObject(wrappedValue: AppState())
-        SentryLogger.start(platform: .macOS)
-        backgroundActivity.begin()
+        if runtimeEnvironment.capabilities.allowsUnsandboxedMigration {
+            UnsandboxedDataMigration.runIfNeeded()
+        }
+        _appState = StateObject(
+            wrappedValue: AppState(runtimeEnvironment: runtimeEnvironment)
+        )
+        if runtimeEnvironment.capabilities.allowsTelemetry {
+            SentryLogger.start(platform: .macOS)
+        }
+        if runtimeEnvironment.capabilities.allowsBackgroundActivityAssertion {
+            backgroundActivity.begin()
+        }
         // Resolve stored security-scoped bookmarks shortly AFTER launch — off
         // the synchronous init path. Each resolution does slow sandbox XPC, so
         // doing the batch synchronously here stalled startup on the main
         // thread; the deferred, yielding async version keeps launch responsive.
-        Task { @MainActor in
-            await BookmarkManager.shared.resolveAllBookmarks()
-            // v1.42 Pulse Cat: re-show the floating companion at launch iff the
-            // user had it on + Pulse Cat is enabled (startup bootstrap, Codex M2b#6).
-            PetPanelController.shared.restoreIfNeeded()
+        if runtimeEnvironment.capabilities.allowsBookmarkRestoration
+            || runtimeEnvironment.capabilities.allowsPetRestoration
+        {
+            Task { @MainActor in
+                if runtimeEnvironment.capabilities.allowsBookmarkRestoration {
+                    await BookmarkManager.shared.resolveAllBookmarks()
+                }
+                // v1.42 Pulse Cat: re-show the floating companion at launch iff the
+                // user had it on + Pulse Cat is enabled (startup bootstrap, Codex M2b#6).
+                if runtimeEnvironment.capabilities.allowsPetRestoration {
+                    PetPanelController.shared.restoreIfNeeded()
+                }
+            }
         }
     }
 

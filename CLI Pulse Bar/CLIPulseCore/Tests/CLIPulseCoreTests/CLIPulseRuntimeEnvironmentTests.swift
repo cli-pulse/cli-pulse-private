@@ -48,9 +48,16 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertTrue(capabilities.allowsStoreKitBootstrap)
         XCTAssertTrue(capabilities.allowsLiveCollection)
         XCTAssertTrue(capabilities.allowsWidgetPublishing)
-        XCTAssertTrue(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
+        XCTAssertTrue(capabilities.allowsBookmarkRestoration)
+        XCTAssertTrue(capabilities.allowsPetRestoration)
+        XCTAssertTrue(capabilities.allowsHelperManifestRefresh)
+        XCTAssertTrue(capabilities.allowsAppUpdateRefresh)
+        XCTAssertTrue(capabilities.allowsCurrencyNetworkRefresh)
+        XCTAssertTrue(capabilities.allowsCloudSessionRestore)
+        XCTAssertTrue(capabilities.allowsBackgroundActivityAssertion)
+        XCTAssertTrue(runtime.allowsProductionCloudEndpoints)
     }
 
     func testProductionLaunchRequiresExactProductionBundleIdentifier() {
@@ -108,6 +115,10 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             )
             XCTAssertFalse(runtime.shouldResetQAExperience)
             assertCapabilitiesQuarantined(runtime)
+            XCTAssertTrue(
+                runtime.allowsProductionCloudEndpoints,
+                "\(bundleIdentifier) must retain trusted production cloud configuration"
+            )
         }
     }
 
@@ -186,9 +197,16 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(capabilities.allowsStoreKitBootstrap)
         XCTAssertFalse(capabilities.allowsLiveCollection)
         XCTAssertFalse(capabilities.allowsWidgetPublishing)
-        XCTAssertFalse(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
+        XCTAssertFalse(capabilities.allowsBookmarkRestoration)
+        XCTAssertFalse(capabilities.allowsPetRestoration)
+        XCTAssertFalse(capabilities.allowsHelperManifestRefresh)
+        XCTAssertFalse(capabilities.allowsAppUpdateRefresh)
+        XCTAssertFalse(capabilities.allowsCurrencyNetworkRefresh)
+        XCTAssertFalse(capabilities.allowsCloudSessionRestore)
+        XCTAssertFalse(capabilities.allowsBackgroundActivityAssertion)
+        XCTAssertFalse(runtime.allowsProductionCloudEndpoints)
     }
 
     func testQAResetOnLaunchRequiresExactOne() {
@@ -263,6 +281,7 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         )
         XCTAssertFalse(runtime.shouldResetQAExperience)
         assertCapabilitiesQuarantined(runtime)
+        XCTAssertFalse(runtime.allowsProductionCloudEndpoints)
     }
 
     func testQAHelperNamespaceRequiresValidatedQARootAndHome() {
@@ -678,6 +697,12 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             file: file,
             line: line
         )
+        XCTAssertFalse(
+            runtime.allowsProductionCloudEndpoints,
+            "unknown clients must not receive production cloud configuration",
+            file: file,
+            line: line
+        )
 
         assertCapabilitiesQuarantined(
             runtime,
@@ -700,14 +725,26 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             ("StoreKit bootstrap", capabilities.allowsStoreKitBootstrap),
             ("live collection", capabilities.allowsLiveCollection),
             ("widget publishing", capabilities.allowsWidgetPublishing),
-            (
-                "production cloud endpoints",
-                capabilities.allowsProductionCloudEndpoints
-            ),
             ("passive discovery", capabilities.allowsPassiveDiscovery),
             (
                 "in-memory demo rendering",
                 capabilities.allowsInMemoryDemoRendering
+            ),
+            ("bookmark restoration", capabilities.allowsBookmarkRestoration),
+            ("pet restoration", capabilities.allowsPetRestoration),
+            (
+                "helper manifest refresh",
+                capabilities.allowsHelperManifestRefresh
+            ),
+            ("app update refresh", capabilities.allowsAppUpdateRefresh),
+            (
+                "currency network refresh",
+                capabilities.allowsCurrencyNetworkRefresh
+            ),
+            ("cloud session restore", capabilities.allowsCloudSessionRestore),
+            (
+                "background activity assertion",
+                capabilities.allowsBackgroundActivityAssertion
             ),
         ]
 

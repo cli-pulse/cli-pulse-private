@@ -117,32 +117,22 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         XCTAssertNil(mgr.lastTierRefreshSource)
     }
 
-    /// `updateCurrentEntitlements()` with `apiClient == nil`
-    /// (singleton init race the bug surface depends on) must NOT
-    /// stamp `.resolvedConfirmed`. It records `.resolvedDegraded`
-    /// + `.noApiClient` so the diagnostic surface can show the
-    /// race + the banner gate suppresses.
+    /// A quarantined process must return before StoreKit or server-tier work.
+    /// Production bootstrap defaults remain pinned by the pure policy test
+    /// below, without asking the test host to touch the real App Store.
     @MainActor
-    func testUpdateEntitlementsWithoutApiClientRecordsNoApiClient() async {
-        let mgr = SubscriptionManager()
-        // No apiClient assignment — simulates the race.
+    func testUpdateEntitlementsOnQuarantinedHostRemainsUnresolved() async {
+        let mgr = SubscriptionManager(
+            runtimeEnvironment: runtime(
+                channel: nil,
+                bundleIdentifier: "com.example.clipulse"
+            )
+        )
         await mgr.updateCurrentEntitlements()
-        #if DEVID_BUILD
-        // DEVID Beta channel intentionally short-circuits to a LOCAL Pro-Lifetime grant
-        // (v1.19 SR1, SubscriptionManager.updateCurrentEntitlements) BEFORE the apiClient
-        // check — DEVID DMG users have no MAS receipt and are positioned as a power-user
-        // beta tier. It's LOCAL-ONLY (server endpoints still reject the beta channel), so
-        // it does not silently unlock paid server resources. The apiClient-race path
-        // (#else) is therefore unreachable on DEVID.
-        XCTAssertEqual(mgr.tierResolutionState, .resolvedConfirmed)
-        XCTAssertEqual(mgr.lastTierRefreshSource, "devid-beta-channel")
+        XCTAssertEqual(mgr.currentTier, .free)
+        XCTAssertEqual(mgr.tierResolutionState, .unresolved)
         XCTAssertNil(mgr.lastTierRefreshError)
-        #else
-        XCTAssertEqual(mgr.tierResolutionState, .resolvedDegraded,
-                       "missing apiClient must NOT silently produce confirmed-free")
-        XCTAssertEqual(mgr.lastTierRefreshError, .noApiClient)
-        XCTAssertEqual(mgr.lastTierRefreshSource, "local-only-fallback")
-        #endif
+        XCTAssertNil(mgr.lastTierRefreshSource)
     }
 
     // MARK: - Diagnostic field semantics
@@ -341,6 +331,117 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         XCTAssertEqual(mgr.currentTier, .free, "sign-out must immediately drop the server-granted tier")
         XCTAssertFalse(mgr.isLifetime)
         XCTAssertEqual(mgr.tierResolutionState, .unresolved)
+    }
+
+    // MARK: - Task 3 runtime-aware StoreKit bootstrap
+
+    func testProductionBootstrapPolicyPreservesStoreKitDefaults() {
+        let policy = SubscriptionBootstrapPolicy.resolve(
+            runtimeEnvironment: runtime(
+                channel: nil,
+                bundleIdentifier: "yyh.CLI-Pulse"
+            )
+        )
+
+        XCTAssertTrue(policy.allowsStoreKit)
+        XCTAssertEqual(policy.initialTier, .free)
+        XCTAssertEqual(policy.resolutionState, .unresolved)
+        XCTAssertNil(policy.source)
+    }
+
+    @MainActor
+    func testQABootstrapUsesInMemoryTeamAndNeverEnablesStoreKit() async {
+        let manager = SubscriptionManager(
+            runtimeEnvironment: runtime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: "/private/tmp/clipulse-qa-home"
+            )
+        )
+
+        XCTAssertFalse(manager.isStoreKitBootstrapEnabled)
+        XCTAssertEqual(manager.currentTier, .team)
+        XCTAssertEqual(manager.tierResolutionState, .resolvedConfirmed)
+        XCTAssertEqual(manager.lastTierRefreshSource, "qa-in-memory")
+        XCTAssertNil(manager.lastTierRefreshError)
+        XCTAssertTrue(manager.products.isEmpty)
+        XCTAssertTrue(manager.purchasedSubscriptions.isEmpty)
+        XCTAssertFalse(manager.isLifetime)
+
+        await manager.loadProducts()
+        await manager.updateCurrentEntitlements()
+        await manager.restorePurchases()
+
+        XCTAssertEqual(manager.currentTier, .team)
+        XCTAssertEqual(manager.tierResolutionState, .resolvedConfirmed)
+        XCTAssertEqual(manager.lastTierRefreshSource, "qa-in-memory")
+        XCTAssertFalse(manager.isLoading)
+        XCTAssertThrowsError(try manager.requireStoreKitAvailability()) {
+            XCTAssertEqual(
+                $0 as? SubscriptionManagerError,
+                .unavailable
+            )
+        }
+    }
+
+    @MainActor
+    func testInvalidRuntimeStaysFreeUnresolvedAndNeverEnablesStoreKit() async {
+        let manager = SubscriptionManager(
+            runtimeEnvironment: runtime(
+                channel: nil,
+                bundleIdentifier: "com.example.clipulse"
+            )
+        )
+
+        XCTAssertFalse(manager.isStoreKitBootstrapEnabled)
+        XCTAssertEqual(manager.currentTier, .free)
+        XCTAssertEqual(manager.tierResolutionState, .unresolved)
+        XCTAssertNil(manager.lastTierRefreshSource)
+        XCTAssertNil(manager.lastTierRefreshError)
+        XCTAssertFalse(manager.isLifetime)
+
+        manager.resetForSignOut()
+        await manager.updateCurrentEntitlements()
+
+        XCTAssertEqual(manager.currentTier, .free)
+        XCTAssertEqual(manager.tierResolutionState, .unresolved)
+        XCTAssertNil(manager.lastTierRefreshSource)
+        XCTAssertThrowsError(try manager.requireStoreKitAvailability()) {
+            XCTAssertEqual(
+                $0 as? SubscriptionManagerError,
+                .unavailable
+            )
+        }
+    }
+
+    private func runtime(
+        channel: String?,
+        bundleIdentifier: String,
+        fixedUserHome: String? = nil
+    ) -> CLIPulseRuntimeEnvironment {
+        var infoDictionary: [String: Any] = [
+            "CFBundleIdentifier": bundleIdentifier,
+        ]
+        if let channel {
+            infoDictionary["CLIPULSE_CHANNEL"] = channel
+        }
+        var environment: [String: String] = [:]
+        if let fixedUserHome {
+            environment["CFFIXED_USER_HOME"] = fixedUserHome
+        }
+
+        return CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: infoDictionary,
+            environment: environment,
+            fileSystem: .init(
+                inspectEntry: { path in
+                    path == "/private/tmp/clipulse-qa-home"
+                        ? .directory
+                        : .missing
+                },
+                resolveRealPath: { $0 }
+            )
+        )
     }
 }
 

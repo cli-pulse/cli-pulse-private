@@ -477,10 +477,9 @@ extension AppState {
     ///   3. `selectedTab = .overview` — landing tab for the local-
     ///      mode user. Local-mode-ready empty state explains what to
     ///      do next.
-    ///   4. `Task { await refreshAll() }` — kick off a refresh now so
-    ///      collector data appears immediately, not after the next
-    ///      120s timer tick. Also starts the refresh loop via
-    ///      `startRefreshLoop` so periodic refreshes follow.
+    ///   4. Apply the runtime strategy: production starts the live refresh
+    ///      loop, safe QA renders in-memory demo data, and quarantine starts
+    ///      neither.
     ///
     /// On non-macOS targets this is a no-op (Watch / iOS have no
     /// local collectors). The L10n strings still exist on those
@@ -491,10 +490,19 @@ extension AppState {
         isLocalMode = true
         serverOnline = true
         selectedTab = .overview
-        // Spin up the same refresh loop the authenticated path uses,
-        // so collector data refreshes on the same cadence.
-        startRefreshLoop()
-        Task { await refreshAll() }
+        switch RuntimeExperiencePolicy.localModeStrategy(
+            for: runtimeEnvironment
+        ) {
+        case .liveCollection:
+            // Spin up the same refresh loop the authenticated path uses,
+            // so collector data refreshes on the same cadence.
+            startRefreshLoop()
+            Task { await refreshAll() }
+        case .inMemoryDemo:
+            enterDemoMode()
+        case .disabled:
+            break
+        }
     }
     #endif
 

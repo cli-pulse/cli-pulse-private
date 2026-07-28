@@ -15,9 +15,15 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         public let allowsStoreKitBootstrap: Bool
         public let allowsLiveCollection: Bool
         public let allowsWidgetPublishing: Bool
-        public let allowsProductionCloudEndpoints: Bool
         public let allowsPassiveDiscovery: Bool
         public let allowsInMemoryDemoRendering: Bool
+        public let allowsBookmarkRestoration: Bool
+        public let allowsPetRestoration: Bool
+        public let allowsHelperManifestRefresh: Bool
+        public let allowsAppUpdateRefresh: Bool
+        public let allowsCurrencyNetworkRefresh: Bool
+        public let allowsCloudSessionRestore: Bool
+        public let allowsBackgroundActivityAssertion: Bool
 
         fileprivate static let production = Self(
             allowsTelemetry: true,
@@ -27,9 +33,15 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: true,
             allowsLiveCollection: true,
             allowsWidgetPublishing: true,
-            allowsProductionCloudEndpoints: true,
             allowsPassiveDiscovery: true,
-            allowsInMemoryDemoRendering: true
+            allowsInMemoryDemoRendering: true,
+            allowsBookmarkRestoration: true,
+            allowsPetRestoration: true,
+            allowsHelperManifestRefresh: true,
+            allowsAppUpdateRefresh: true,
+            allowsCurrencyNetworkRefresh: true,
+            allowsCloudSessionRestore: true,
+            allowsBackgroundActivityAssertion: true
         )
 
         fileprivate static let qa = Self(
@@ -40,9 +52,15 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: false,
             allowsLiveCollection: false,
             allowsWidgetPublishing: false,
-            allowsProductionCloudEndpoints: false,
             allowsPassiveDiscovery: true,
-            allowsInMemoryDemoRendering: true
+            allowsInMemoryDemoRendering: true,
+            allowsBookmarkRestoration: false,
+            allowsPetRestoration: false,
+            allowsHelperManifestRefresh: false,
+            allowsAppUpdateRefresh: false,
+            allowsCurrencyNetworkRefresh: false,
+            allowsCloudSessionRestore: false,
+            allowsBackgroundActivityAssertion: false
         )
 
         fileprivate static let quarantine = Self(
@@ -53,9 +71,15 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsStoreKitBootstrap: false,
             allowsLiveCollection: false,
             allowsWidgetPublishing: false,
-            allowsProductionCloudEndpoints: false,
             allowsPassiveDiscovery: false,
-            allowsInMemoryDemoRendering: false
+            allowsInMemoryDemoRendering: false,
+            allowsBookmarkRestoration: false,
+            allowsPetRestoration: false,
+            allowsHelperManifestRefresh: false,
+            allowsAppUpdateRefresh: false,
+            allowsCurrencyNetworkRefresh: false,
+            allowsCloudSessionRestore: false,
+            allowsBackgroundActivityAssertion: false
         )
     }
 
@@ -84,6 +108,15 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         "yyh.CLI-Pulse.widgets",
         "yyh.CLI-Pulse.helper",
     ]
+    /// Production cloud authorization is intentionally separate from both app
+    /// launch safety and keychain namespace selection. Watch, widgets, and the
+    /// helper are trusted cloud clients without becoming launch-safe apps.
+    private static let productionCloudClientBundleIdentifiers: Set<String> = [
+        productionBundleIdentifier,
+        "yyh.CLI-Pulse.watchkitapp",
+        "yyh.CLI-Pulse.widgets",
+        "yyh.CLI-Pulse.helper",
+    ]
 
     private enum KeychainNamespace {
         case production
@@ -96,6 +129,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     public let fixedUserHome: String?
     public let resolvedFixedUserHome: String?
     public let capabilities: Capabilities
+    public let allowsProductionCloudEndpoints: Bool
     public let shouldResetQAExperience: Bool
 
     public var isQA: Bool {
@@ -250,6 +284,11 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             channel == .qa
             && isLaunchSafe
             && environment["CLIPULSE_QA_RESET_ON_LAUNCH"] == "1"
+        let allowsProductionCloudEndpoints =
+            channel == .production
+            && productionCloudClientBundleIdentifiers.contains(
+                bundleIdentifier
+            )
 
         return Self(
             channel: channel,
@@ -259,6 +298,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             capabilities: isLaunchSafe
                 ? (channel == .qa ? .qa : .production)
                 : .quarantine,
+            allowsProductionCloudEndpoints: allowsProductionCloudEndpoints,
             shouldResetQAExperience: shouldResetQAExperience
         )
     }
@@ -415,5 +455,38 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
                 return String(cString: baseAddress)
             }
         }
+    }
+}
+
+enum RuntimeExperiencePolicy {
+    enum LocalModeStrategy: Equatable, Sendable {
+        case liveCollection
+        case inMemoryDemo
+        case disabled
+    }
+
+    static func localModeStrategy(
+        for runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> LocalModeStrategy {
+        if runtimeEnvironment.capabilities.allowsLiveCollection {
+            return .liveCollection
+        }
+        if runtimeEnvironment.isQA,
+           runtimeEnvironment.isLaunchSafe,
+           runtimeEnvironment.capabilities.allowsInMemoryDemoRendering
+        {
+            return .inMemoryDemo
+        }
+        return .disabled
+    }
+
+    static func shouldSynchronouslyResumeDemo(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistedIsDemoMode: Bool
+    ) -> Bool {
+        persistedIsDemoMode
+            && runtimeEnvironment.isQA
+            && runtimeEnvironment.isLaunchSafe
+            && runtimeEnvironment.capabilities.allowsInMemoryDemoRendering
     }
 }

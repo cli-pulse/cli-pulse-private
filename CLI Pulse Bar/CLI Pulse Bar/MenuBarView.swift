@@ -127,13 +127,17 @@ struct MenuBarView: View {
             // network cost is one tiny hello + manifest GET at most once
             // per `maxAge` window.
             guard newValue != .inactive else { return }
-            Task { await state.helperInstaller.refreshIfStale() }
+            if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
+                Task { await state.helperInstaller.refreshIfStale() }
+            }
             #if DEVID_BUILD
             // Post-1.42.0 audit: app-update discovery used to fire ONLY from
             // the Settings Updates section, so users who never opened Settings
             // never learned a release existed. Same focus hook, 24h throttle
             // inside refreshIfStale — at most one manifest GET per day.
-            Task { await state.appUpdater.refreshIfStale() }
+            if state.runtimeEnvironment.capabilities.allowsAppUpdateRefresh {
+                Task { await state.appUpdater.refreshIfStale() }
+            }
             #endif
             // v1.40 PR-8: feed the adaptive refresh cadence — an active popover is
             // a "recent interaction" and shortens the next auto-refresh to ~2 min.

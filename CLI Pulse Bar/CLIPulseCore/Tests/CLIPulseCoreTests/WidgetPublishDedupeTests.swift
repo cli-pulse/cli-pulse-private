@@ -98,4 +98,25 @@ final class WidgetPublishDedupeTests: XCTestCase {
             XCTAssertNotNil(first?[k], "missing provider key \(k)")
         }
     }
+
+    @MainActor
+    func testQuarantinedRuntimeDoesNotAdvanceWidgetPublishState() {
+        let runtime = CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: [
+                "CFBundleIdentifier": "com.example.clipulse",
+            ],
+            environment: [:]
+        )
+        let state = AppState(runtimeEnvironment: runtime)
+        let sentinel = payload(at: Date(timeIntervalSince1970: 1_000))
+        state.lastPublishedWidgetData = sentinel
+
+        state.publishWidgetData()
+
+        XCTAssertEqual(
+            state.lastPublishedWidgetData,
+            sentinel,
+            "guard must run before payload creation, dedupe mutation, app-group writes, and WidgetCenter"
+        )
+    }
 }

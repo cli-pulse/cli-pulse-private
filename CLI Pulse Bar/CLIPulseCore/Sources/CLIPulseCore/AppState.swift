@@ -8,6 +8,8 @@ import WidgetKit
 
 @MainActor
 public final class AppState: ObservableObject {
+    public let runtimeEnvironment: CLIPulseRuntimeEnvironment
+
     // MARK: - Widget publish (app-group) — off-main + dedupe
 
     /// Serial off-main queue for the app-group widget write + timeline reload
@@ -97,7 +99,7 @@ public final class AppState: ObservableObject {
     // observe `SubscriptionManager` directly via `@ObservedObject`, so tier /
     // product changes re-render only those views instead of invalidating the
     // entire AppState tree via a blanket `objectWillChange.sink` forwarder.
-    public let subscriptionManager = SubscriptionManager.shared
+    public let subscriptionManager: SubscriptionManager
 
     // MARK: - UI State
     @Published public var selectedTab: Tab = .overview
@@ -685,7 +687,9 @@ public final class AppState: ObservableObject {
         displayCurrencyRaw = currency.rawValue
         CurrencyConverter.shared.setCurrency(currency)
         objectWillChange.send()   // re-render the popover's cost labels immediately
-        Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+        if runtimeEnvironment.capabilities.allowsCurrencyNetworkRefresh {
+            Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+        }
     }
     @AppStorage("cli_pulse_show_cost") public var showCost = true
     @AppStorage("cli_pulse_notifications") public var notificationsEnabled = true
@@ -786,11 +790,25 @@ public final class AppState: ObservableObject {
     /// rapid user toggles.
     private var providerAccountStatusMutationRevision: UInt64 = 0
 
-    public init() {
-        let runtime = CLIPulseRuntimeEnvironment.current
+    public convenience init(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) {
+        self.init(
+            runtimeEnvironment: runtimeEnvironment,
+            defaults: .standard
+        )
+    }
+
+    internal init(
+        runtimeEnvironment runtime: CLIPulseRuntimeEnvironment,
+        defaults: UserDefaults
+    ) {
         if runtime.isQA {
             runtime.preconditionSafeLaunch()
-            let seedOutcome = QAExperienceSeed.prepare(runtime: runtime)
+            let seedOutcome = QAExperienceSeed.prepareForTesting(
+                runtime: runtime,
+                defaults: defaults
+            )
             guard seedOutcome.isReady else {
                 preconditionFailure(
                     "QA experience preparation failed: \(seedOutcome)"
@@ -798,40 +816,76 @@ public final class AppState: ObservableObject {
             }
         }
 
-        self.api = APIClient()
+        self.runtimeEnvironment = runtime
+        self._isDemoMode = AppStorage(
+            wrappedValue: false,
+            QAExperienceSeed.demoModeKey,
+            store: defaults
+        )
+        self.subscriptionManager =
+            runtime.capabilities.allowsStoreKitBootstrap
+                ? SubscriptionManager.shared
+                : SubscriptionManager(runtimeEnvironment: runtime)
+        self.api = APIClient(runtimeEnvironment: runtime)
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
         subscriptionManager.apiClient = api
-        loadProviderConfigs()
+        loadProviderConfigs(defaults: defaults)
         #if os(macOS)
-        UserDefaults(suiteName: HelperIPC.suiteName)?.set(
-            UserDefaults.standard.bool(
-                forKey: ProviderAccountFeatureFlags.writeDefaultsKey
-            ),
-            forKey: HelperIPC.providerAccountsWriteV2Key
-        )
+        if runtime.capabilities.allowsHelperRegistration {
+            UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+                defaults.bool(
+                    forKey: ProviderAccountFeatureFlags.writeDefaultsKey
+                ),
+                forKey: HelperIPC.providerAccountsWriteV2Key
+            )
+        }
         #endif
-        loadSuppressedAlertIDs()
-        applyAdaptiveRefreshDefaultIfFreshInstall()
+        if runtime.capabilities.allowsUnsandboxedMigration {
+            loadSuppressedAlertIDs()
+            applyAdaptiveRefreshDefaultIfFreshInstall()
+        }
         // v1.40 PR-7: sync the display currency + refresh FX rates (cached 24h).
         CurrencyConverter.shared.setCurrency(displayCurrency)
-        Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+        if runtime.capabilities.allowsCurrencyNetworkRefresh {
+            Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+        }
 
         // v1.10 P2-3 slice 2: the `subscriptionCancellable` forwarder that
         // re-emitted the manager's objectWillChange into AppState's has been
         // removed. Views now observe SubscriptionManager directly via
         // @ObservedObject.
 
-        if let legacyToken = UserDefaults.standard.string(forKey: "cli_pulse_token"), !legacyToken.isEmpty {
-            Self.persistAuthTokens(access: legacyToken, refresh: KeychainHelper.load(key: AuthManager.refreshTokenKeychainKey))
+        if RuntimeExperiencePolicy.shouldSynchronouslyResumeDemo(
+            runtimeEnvironment: runtime,
+            persistedIsDemoMode: isDemoMode
+        ) {
+            isLocalMode = true
+            enterDemoMode()
         }
-        UserDefaults.standard.removeObject(forKey: "cli_pulse_token")
 
-        Task {
-            await api.setTokenRefreshHandler { newAccess, newRefresh in
-                Self.persistAuthTokens(access: newAccess, refresh: newRefresh)
+        if runtime.capabilities.allowsCloudSessionRestore {
+            if let legacyToken = defaults.string(forKey: "cli_pulse_token"),
+               !legacyToken.isEmpty
+            {
+                Self.persistAuthTokens(
+                    access: legacyToken,
+                    refresh: KeychainHelper.load(
+                        key: AuthManager.refreshTokenKeychainKey
+                    )
+                )
             }
-            await restoreSession()
+            defaults.removeObject(forKey: "cli_pulse_token")
+
+            Task {
+                await api.setTokenRefreshHandler { newAccess, newRefresh in
+                    Self.persistAuthTokens(
+                        access: newAccess,
+                        refresh: newRefresh
+                    )
+                }
+                await restoreSession()
+            }
         }
 
         #if os(macOS)
@@ -843,34 +897,36 @@ public final class AppState: ObservableObject {
         // the new value without a manual refresh. iOS / watchOS /
         // Widgets have no helper to register; this whole block
         // compiles out on those platforms.
-        Task { [weak self] in
-            guard let self else { return }
-            let status = await self.helperLifecycle.ensureRegistered()
-            await MainActor.run {
-                self.helperAgentStatus = status
+        if runtime.capabilities.allowsHelperRegistration {
+            Task { [weak self] in
+                guard let self else { return }
+                let status = await self.helperLifecycle.ensureRegistered()
+                await MainActor.run {
+                    self.helperAgentStatus = status
+                }
+                #if DEVID_BUILD
+                // v1.43 controlled helper swap: `ensureRegistered()` is a no-op for
+                // an already-registered KeepAlive agent, so after an in-place app
+                // update launchd keeps the OLD bundled helper process alive (old
+                // binary) until re-login — leaving an upgraded user nagged. Detect
+                // the app-binary change via a persisted sentinel and kickstart OUR
+                // LaunchAgent once per new app version so the new bundle's helper
+                // takes over now. This clears the nag even for users upgrading from
+                // a pre-v1.43 helper whose hello can't be identified as stale (dual
+                // review codex+agy P1). No-op on same-version launches; failure-soft.
+                let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+                let didSwap = await self.helperLifecycle.kickstartBundledHelperIfAppUpdated(
+                    currentAppVersion: "\(short)/\(build)"
+                )
+                if didSwap {
+                    // Reconcile the installer UI once the respawned helper is up, so
+                    // a refresh that ran against the pre-swap helper can't leave a
+                    // stale update nag on screen (codex round-2 P2).
+                    await self.helperInstaller.refreshAfterHelperRespawn()
+                }
+                #endif
             }
-            #if DEVID_BUILD
-            // v1.43 controlled helper swap: `ensureRegistered()` is a no-op for
-            // an already-registered KeepAlive agent, so after an in-place app
-            // update launchd keeps the OLD bundled helper process alive (old
-            // binary) until re-login — leaving an upgraded user nagged. Detect
-            // the app-binary change via a persisted sentinel and kickstart OUR
-            // LaunchAgent once per new app version so the new bundle's helper
-            // takes over now. This clears the nag even for users upgrading from
-            // a pre-v1.43 helper whose hello can't be identified as stale (dual
-            // review codex+agy P1). No-op on same-version launches; failure-soft.
-            let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-            let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-            let didSwap = await self.helperLifecycle.kickstartBundledHelperIfAppUpdated(
-                currentAppVersion: "\(short)/\(build)"
-            )
-            if didSwap {
-                // Reconcile the installer UI once the respawned helper is up, so
-                // a refresh that ran against the pre-swap helper can't leave a
-                // stale update nag on screen (codex round-2 P2).
-                await self.helperInstaller.refreshAfterHelperRespawn()
-            }
-            #endif
         }
 
         // v1.19 G1: write a TCC permission snapshot to app-group
@@ -879,18 +935,22 @@ public final class AppState: ObservableObject {
         // previous snapshot and surface a banner if permissions look
         // reverted. Read-only — does not request authorization (that
         // remains owned by DataRefreshManager).
-        Task { [weak self] in
-            guard let self else { return }
-            await self.permissionMigrationChecker.runOnLaunch()
+        if runtime.capabilities.allowsPermissionSnapshot {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.permissionMigrationChecker.runOnLaunch()
+            }
         }
 
         #if DEVID_BUILD
         // v1.41: start the remote machine-control executor. It stays idle (no UDS
         // traffic) until the `remoteMachineControlEnabled` opt-in AND the fan
         // daemon are both ready, so starting unconditionally on launch is safe.
-        Task { [weak self] in
-            guard let self else { return }
-            await self.remoteMachineExecutor.start()
+        if runtime.capabilities.allowsLiveCollection {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.remoteMachineExecutor.start()
+            }
         }
         #endif
         #endif
@@ -1651,16 +1711,32 @@ public final class AppState: ObservableObject {
         }
     }
 
-    private func loadProviderConfigs() {
-        guard let data = UserDefaults.standard.data(
+    private func loadProviderConfigs(defaults: UserDefaults) {
+        guard runtimeEnvironment.capabilities.allowsUnsandboxedMigration else {
+            guard runtimeEnvironment.capabilities.allowsPassiveDiscovery,
+                  let data = defaults.data(
+                    forKey: ProviderAccountMigration.configsKey
+                  ),
+                  let configs = try? JSONDecoder().decode(
+                    [ProviderConfig].self,
+                    from: data
+                  )
+            else {
+                return
+            }
+            providerConfigs = configs
+            return
+        }
+
+        guard let data = defaults.data(
             forKey: ProviderAccountMigration.configsKey
         ) else {
             return
         }
 
-        if !UserDefaults.standard.bool(forKey: Self.secretsMigratedKey) {
+        if !defaults.bool(forKey: Self.secretsMigratedKey) {
             migrateLegacySecrets(from: data)
-            UserDefaults.standard.set(true, forKey: Self.secretsMigratedKey)
+            defaults.set(true, forKey: Self.secretsMigratedKey)
         }
 
         // Must run BEFORE the loadSecrets() loop below: on macOS loadSecrets()
@@ -1671,7 +1747,7 @@ public final class AppState: ObservableObject {
 
         do {
             guard let migration = try ProviderAccountMigration.migrateIfNeeded(
-                defaults: .standard
+                defaults: defaults
             ) else {
                 return
             }
@@ -1682,14 +1758,16 @@ public final class AppState: ObservableObject {
         }
 
         if let migratedData = try? JSONEncoder().encode(providerConfigs) {
-            UserDefaults.standard.set(
+            defaults.set(
                 migratedData,
                 forKey: ProviderAccountMigration.configsKey
             )
-            UserDefaults(suiteName: HelperIPC.suiteName)?.set(
-                migratedData,
-                forKey: HelperIPC.providerConfigsKey
-            )
+            if runtimeEnvironment.capabilities.allowsHelperRegistration {
+                UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+                    migratedData,
+                    forKey: HelperIPC.providerConfigsKey
+                )
+            }
         }
 
         for index in providerConfigs.indices {
