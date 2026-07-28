@@ -22,7 +22,9 @@ struct KeychainProviderSecretStore: ProviderSecretStoring {
 }
 
 public enum KeychainHelper {
-    private static let service = "com.clipulse.app"
+    static var service: String {
+        CLIPulseRuntimeEnvironment.current.keychainService
+    }
 
     /// The app-group keychain access group shared by the main app, the
     /// LoginItem helper, and the .pkg daemon. Bare group string (no
@@ -31,7 +33,9 @@ public enum KeychainHelper {
     /// and the `keychain-access-groups` entry in the app/LoginItem/.pkg
     /// entitlements. Items written into this group are readable by every
     /// process that declares the group, with NO per-item consent prompt.
-    public static let sharedAccessGroup = "group.yyh.CLI-Pulse"
+    public static var sharedAccessGroup: String {
+        CLIPulseRuntimeEnvironment.current.keychainAccessGroup
+    }
 
     /// One-time migration: re-home a keychain item that was written WITHOUT
     /// an access group (so its ACL trusts only the writing app) into

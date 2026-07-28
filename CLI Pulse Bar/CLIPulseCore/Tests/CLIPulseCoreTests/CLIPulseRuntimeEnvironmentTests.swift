@@ -124,6 +124,61 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
     }
 
+    func testQAResetOnLaunchRequiresExactOne() {
+        XCTAssertTrue(
+            resolve(
+                channel: "qa",
+                resetOnLaunch: "1"
+            ).shouldResetQAExperience
+        )
+
+        let rejectedValues: [String?] = [
+            nil,
+            "",
+            "0",
+            "01",
+            "true",
+            "1 ",
+            " 1",
+        ]
+        for value in rejectedValues {
+            XCTAssertFalse(
+                resolve(
+                    channel: "qa",
+                    resetOnLaunch: value
+                ).shouldResetQAExperience,
+                "expected reset value \(value ?? "nil") to fail closed"
+            )
+        }
+    }
+
+    func testQAResetOnLaunchFailsClosedOutsideLaunchSafeQA() {
+        let safeProduction = resolve(
+            channel: nil,
+            bundleIdentifier: Self.productionBundleIdentifier,
+            fixedUserHome: nil,
+            resetOnLaunch: "1"
+        )
+        let invalidQA = resolve(
+            channel: "qa",
+            bundleIdentifier: Self.productionBundleIdentifier,
+            resetOnLaunch: "1"
+        )
+        let unknownChannel = resolve(
+            channel: "preview",
+            bundleIdentifier: Self.productionBundleIdentifier,
+            fixedUserHome: nil,
+            resetOnLaunch: "1"
+        )
+
+        XCTAssertTrue(safeProduction.isLaunchSafe)
+        XCTAssertFalse(safeProduction.shouldResetQAExperience)
+        XCTAssertFalse(invalidQA.isLaunchSafe)
+        XCTAssertFalse(invalidQA.shouldResetQAExperience)
+        XCTAssertTrue(unknownChannel.isLaunchSafe)
+        XCTAssertFalse(unknownChannel.shouldResetQAExperience)
+    }
+
     func testInvalidQAIsFullyQuarantined() {
         let invalidRuntimes = [
             resolve(
@@ -434,6 +489,7 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         channel: String?,
         bundleIdentifier: String? = qaBundleIdentifier,
         fixedUserHome: String? = qaRoot,
+        resetOnLaunch: String? = nil,
         fileSystem: FileSystemAccess? = nil
     ) -> CLIPulseRuntimeEnvironment {
         var infoDictionary: [String: Any] = [:]
@@ -447,6 +503,9 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         var environment: [String: String] = [:]
         if let fixedUserHome {
             environment["CFFIXED_USER_HOME"] = fixedUserHome
+        }
+        if let resetOnLaunch {
+            environment["CLIPULSE_QA_RESET_ON_LAUNCH"] = resetOnLaunch
         }
 
         return CLIPulseRuntimeEnvironment.resolveForTesting(

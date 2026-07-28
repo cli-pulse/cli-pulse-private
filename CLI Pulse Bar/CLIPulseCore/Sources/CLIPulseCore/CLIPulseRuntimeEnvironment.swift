@@ -82,6 +82,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     public let fixedUserHome: String?
     public let resolvedFixedUserHome: String?
     public let capabilities: Capabilities
+    public let shouldResetQAExperience: Bool
 
     public var isQA: Bool {
         channel == .qa
@@ -185,6 +186,10 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             bundleIdentifier: bundleIdentifier,
             resolvedFixedUserHome: resolvedFixedUserHome
         )
+        let shouldResetQAExperience =
+            channel == .qa
+            && isLaunchSafe
+            && environment["CLIPULSE_QA_RESET_ON_LAUNCH"] == "1"
 
         return Self(
             channel: channel,
@@ -193,7 +198,8 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             resolvedFixedUserHome: resolvedFixedUserHome,
             capabilities: isLaunchSafe
                 ? (channel == .qa ? .qa : .production)
-                : .quarantine
+                : .quarantine,
+            shouldResetQAExperience: shouldResetQAExperience
         )
     }
 

@@ -787,6 +787,16 @@ public final class AppState: ObservableObject {
     private var providerAccountStatusMutationRevision: UInt64 = 0
 
     public init() {
+        let runtime = CLIPulseRuntimeEnvironment.current
+        if runtime.isQA {
+            runtime.preconditionSafeLaunch()
+            QAExperienceSeed.prepare(
+                runtime: runtime,
+                defaults: .standard,
+                reset: runtime.shouldResetQAExperience
+            )
+        }
+
         self.api = APIClient()
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
