@@ -790,11 +790,12 @@ public final class AppState: ObservableObject {
         let runtime = CLIPulseRuntimeEnvironment.current
         if runtime.isQA {
             runtime.preconditionSafeLaunch()
-            QAExperienceSeed.prepare(
-                runtime: runtime,
-                defaults: .standard,
-                reset: runtime.shouldResetQAExperience
-            )
+            let seedOutcome = QAExperienceSeed.prepare(runtime: runtime)
+            guard seedOutcome.isReady else {
+                preconditionFailure(
+                    "QA experience preparation failed: \(seedOutcome)"
+                )
+            }
         }
 
         self.api = APIClient()

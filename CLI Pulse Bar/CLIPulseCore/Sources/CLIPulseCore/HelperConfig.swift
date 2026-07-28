@@ -23,7 +23,12 @@ public struct HelperConfig: Codable, Sendable {
     private static let suiteName = "group.yyh.CLI-Pulse"
     private static let key = "helper_config"
     private static let secretKeychainKey = "helper_secret"
-    private static let keychainAccessGroup = "group.yyh.CLI-Pulse"
+    /// Resolve on every call so each trusted process uses the namespace
+    /// authorized for its runtime channel without changing the app-group
+    /// UserDefaults suite above.
+    static var keychainAccessGroup: String {
+        KeychainHelper.sharedAccessGroup
+    }
 
     /// Non-secret portion stored in UserDefaults.
     private struct StoredConfig: Codable {

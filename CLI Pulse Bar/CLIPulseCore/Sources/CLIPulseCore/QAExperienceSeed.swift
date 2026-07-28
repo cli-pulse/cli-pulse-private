@@ -1,11 +1,29 @@
 import Foundation
 
-public enum QAExperienceSeed {
-    public enum Outcome: Equatable, Sendable {
+protocol QAExperienceSeedStore: AnyObject {
+    func object(forKey defaultName: String) -> Any?
+    func set(_ value: Any?, forKey defaultName: String)
+    func removeObject(forKey defaultName: String)
+}
+
+extension UserDefaults: QAExperienceSeedStore {}
+
+enum QAExperienceSeed {
+    enum Outcome: Equatable, Sendable {
         case skippedUnsafeRuntime
+        case invalidExistingConfigs
         case preservedExistingConfigs
         case seeded
         case seedFailed
+
+        var isReady: Bool {
+            switch self {
+            case .preservedExistingConfigs, .seeded:
+                return true
+            case .skippedUnsafeRuntime, .invalidExistingConfigs, .seedFailed:
+                return false
+            }
+        }
     }
 
     static let seedMarkerKey = "cli_pulse_qa_experience_seed_v1"
@@ -27,46 +45,178 @@ public enum QAExperienceSeed {
     ]
 
     @discardableResult
-    public static func prepare(
+    static func prepare(
+        runtime: CLIPulseRuntimeEnvironment
+    ) -> Outcome {
+        prepare(runtime: runtime, store: UserDefaults.standard)
+    }
+
+    @discardableResult
+    static func prepareForTesting(
         runtime: CLIPulseRuntimeEnvironment,
-        defaults: UserDefaults = .standard,
-        reset: Bool
+        defaults: UserDefaults
+    ) -> Outcome {
+        prepare(runtime: runtime, store: defaults)
+    }
+
+    @discardableResult
+    static func prepareForTesting(
+        runtime: CLIPulseRuntimeEnvironment,
+        store: any QAExperienceSeedStore
+    ) -> Outcome {
+        prepare(runtime: runtime, store: store)
+    }
+
+    private static func prepare(
+        runtime: CLIPulseRuntimeEnvironment,
+        store: any QAExperienceSeedStore
     ) -> Outcome {
         guard runtime.isQA, runtime.isLaunchSafe else {
             return .skippedUnsafeRuntime
         }
 
-        if reset {
+        if runtime.shouldResetQAExperience {
             for key in resetKeys {
-                defaults.removeObject(forKey: key)
+                store.removeObject(forKey: key)
+            }
+            guard resetKeys.allSatisfy({
+                store.object(forKey: $0) == nil
+            }) else {
+                return .seedFailed
             }
         }
 
-        defaults.set(
+        store.set(
             true,
             forKey: AgentSetupFeatureFlags.newUsersDefaultsKey
         )
-        defaults.set(
+        store.set(
             true,
             forKey: AgentSetupFeatureFlags.existingUsersDefaultsKey
         )
 
-        guard defaults.object(
+        if !runtime.shouldResetQAExperience,
+           let existing = store.object(
             forKey: ProviderAccountMigration.configsKey
-        ) == nil else {
+           )
+        {
+            guard let data = existing as? Data,
+                  (try? JSONDecoder().decode(
+                      [ProviderConfig].self,
+                      from: data
+                  )) != nil
+            else {
+                return .invalidExistingConfigs
+            }
+            guard featureFlagsAreEnabled(in: store) else {
+                return .seedFailed
+            }
             return .preservedExistingConfigs
         }
 
-        let didSave = ProviderConfigMetadataStore(
-            defaults: defaults,
-            helperDefaults: nil
-        ).save(seedConfigs)
-        guard didSave else {
+        guard let data = try? JSONEncoder().encode(seedConfigs) else {
             return .seedFailed
         }
 
-        defaults.set(seedVersion, forKey: seedMarkerKey)
+        store.set(
+            data,
+            forKey: ProviderAccountMigration.configsKey
+        )
+        store.set(
+            ProviderAccountMigration.currentSchemaVersion,
+            forKey: ProviderAccountMigration.schemaVersionKey
+        )
+        store.set(seedVersion, forKey: seedMarkerKey)
+
+        guard readBackMatchesSeed(in: store) else {
+            return .seedFailed
+        }
         return .seeded
+    }
+
+    private static func featureFlagsAreEnabled(
+        in store: any QAExperienceSeedStore
+    ) -> Bool {
+        boolValue(
+            store.object(
+                forKey: AgentSetupFeatureFlags.newUsersDefaultsKey
+            )
+        ) == true
+            && boolValue(
+                store.object(
+                    forKey: AgentSetupFeatureFlags.existingUsersDefaultsKey
+                )
+            ) == true
+    }
+
+    private static func readBackMatchesSeed(
+        in store: any QAExperienceSeedStore
+    ) -> Bool {
+        guard let data = store.object(
+            forKey: ProviderAccountMigration.configsKey
+        ) as? Data,
+              let configs = try? JSONDecoder().decode(
+                  [ProviderConfig].self,
+                  from: data
+              ),
+              configsMatchSeed(configs),
+              integerValue(
+                  store.object(
+                      forKey: ProviderAccountMigration.schemaVersionKey
+                  )
+              ) == ProviderAccountMigration.currentSchemaVersion,
+              featureFlagsAreEnabled(in: store),
+              integerValue(store.object(forKey: seedMarkerKey))
+                == seedVersion
+        else {
+            return false
+        }
+        return true
+    }
+
+    private static func configsMatchSeed(
+        _ configs: [ProviderConfig]
+    ) -> Bool {
+        let expectedConfigs = seedConfigs
+        guard configs.count == expectedConfigs.count else {
+            return false
+        }
+        for (config, expected) in zip(configs, expectedConfigs) {
+            guard config.accountID == expected.accountID,
+                  config.kind == expected.kind,
+                  config.isEnabled == expected.isEnabled,
+                  config.sortOrder == expected.sortOrder,
+                  config.sourceMode == expected.sourceMode,
+                  config.apiKey == expected.apiKey,
+                  config.cookieSource == expected.cookieSource,
+                  config.manualCookieHeader
+                    == expected.manualCookieHeader,
+                  config.accountLabel == expected.accountLabel,
+                  config.planOverride == expected.planOverride,
+                  config.syncOwnerUserID == expected.syncOwnerUserID,
+                  config.sharedCredentialFallbackDisabled
+                    == expected.sharedCredentialFallbackDisabled,
+                  config.geminiCliProbeFallback
+                    == expected.geminiCliProbeFallback
+            else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func boolValue(_ value: Any?) -> Bool? {
+        if let value = value as? Bool {
+            return value
+        }
+        return (value as? NSNumber)?.boolValue
+    }
+
+    private static func integerValue(_ value: Any?) -> Int? {
+        if let value = value as? Int {
+            return value
+        }
+        return (value as? NSNumber)?.intValue
     }
 
     private static var seedConfigs: [ProviderConfig] {

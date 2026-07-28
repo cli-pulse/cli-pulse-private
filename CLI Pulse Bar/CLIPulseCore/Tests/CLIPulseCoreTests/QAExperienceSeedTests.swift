@@ -60,7 +60,10 @@ final class QAExperienceSeedTests: XCTestCase {
     ]
 
     func testPrepareFailsClosedWithoutMutatingDefaultsForUnsafeRuntimes() throws {
-        for runtime in [safeProductionRuntime(), invalidQARuntime()] {
+        for runtime in [
+            safeProductionRuntime(resetOnLaunch: true),
+            invalidQARuntime(resetOnLaunch: true),
+        ] {
             let defaults = try makeDefaults()
             defer { cleanUp(defaults) }
             defaults.set("keep", forKey: "unrelated_sentinel")
@@ -69,10 +72,9 @@ final class QAExperienceSeedTests: XCTestCase {
                 forKey: ProviderAccountMigration.configsKey
             )
 
-            let outcome = QAExperienceSeed.prepare(
+            let outcome = QAExperienceSeed.prepareForTesting(
                 runtime: runtime,
-                defaults: defaults,
-                reset: true
+                defaults: defaults
             )
 
             XCTAssertEqual(outcome, .skippedUnsafeRuntime)
@@ -103,10 +105,9 @@ final class QAExperienceSeedTests: XCTestCase {
         let defaults = try makeDefaults()
         defer { cleanUp(defaults) }
 
-        let outcome = QAExperienceSeed.prepare(
+        let outcome = QAExperienceSeed.prepareForTesting(
             runtime: safeQARuntime(),
-            defaults: defaults,
-            reset: false
+            defaults: defaults
         )
 
         XCTAssertEqual(outcome, .seeded)
@@ -160,10 +161,9 @@ final class QAExperienceSeedTests: XCTestCase {
         defer { cleanUp(defaults) }
 
         XCTAssertEqual(
-            QAExperienceSeed.prepare(
+            QAExperienceSeed.prepareForTesting(
                 runtime: safeQARuntime(),
-                defaults: defaults,
-                reset: false
+                defaults: defaults
             ),
             .seeded
         )
@@ -172,10 +172,9 @@ final class QAExperienceSeedTests: XCTestCase {
         )
 
         XCTAssertEqual(
-            QAExperienceSeed.prepare(
+            QAExperienceSeed.prepareForTesting(
                 runtime: safeQARuntime(),
-                defaults: defaults,
-                reset: false
+                defaults: defaults
             ),
             .preservedExistingConfigs
         )
@@ -185,7 +184,7 @@ final class QAExperienceSeedTests: XCTestCase {
         )
     }
 
-    func testPreparePreservesUndecodableExistingConfigsButEnablesFlags() throws {
+    func testPrepareRejectsUndecodableExistingConfigsWithoutReplacingThem() throws {
         let defaults = try makeDefaults()
         defer { cleanUp(defaults) }
         let existing = Data([0xFF, 0x00, 0x7F])
@@ -198,13 +197,12 @@ final class QAExperienceSeedTests: XCTestCase {
             forKey: ProviderAccountMigration.schemaVersionKey
         )
 
-        let outcome = QAExperienceSeed.prepare(
+        let outcome = QAExperienceSeed.prepareForTesting(
             runtime: safeQARuntime(),
-            defaults: defaults,
-            reset: false
+            defaults: defaults
         )
 
-        XCTAssertEqual(outcome, .preservedExistingConfigs)
+        XCTAssertEqual(outcome, .invalidExistingConfigs)
         XCTAssertEqual(
             defaults.data(forKey: ProviderAccountMigration.configsKey),
             existing
@@ -228,6 +226,119 @@ final class QAExperienceSeedTests: XCTestCase {
         XCTAssertNil(
             defaults.object(forKey: QAExperienceSeed.seedMarkerKey)
         )
+    }
+
+    func testPrepareRejectsWrongExistingConfigTypeWithoutReplacingIt() throws {
+        let defaults = try makeDefaults()
+        defer { cleanUp(defaults) }
+        defaults.set(
+            "not-provider-config-data",
+            forKey: ProviderAccountMigration.configsKey
+        )
+
+        let outcome = QAExperienceSeed.prepareForTesting(
+            runtime: safeQARuntime(),
+            defaults: defaults
+        )
+
+        XCTAssertEqual(outcome, .invalidExistingConfigs)
+        XCTAssertEqual(
+            defaults.string(forKey: ProviderAccountMigration.configsKey),
+            "not-provider-config-data"
+        )
+        XCTAssertTrue(
+            defaults.bool(
+                forKey: AgentSetupFeatureFlags.newUsersDefaultsKey
+            )
+        )
+        XCTAssertTrue(
+            defaults.bool(
+                forKey: AgentSetupFeatureFlags.existingUsersDefaultsKey
+            )
+        )
+    }
+
+    func testPreparePreservesValidExistingConfigsAndEnablesFlags() throws {
+        let defaults = try makeDefaults()
+        defer { cleanUp(defaults) }
+        let existingConfig = ProviderConfig(
+            kind: .claude,
+            accountID: UUID(
+                uuidString: "D4000000-0000-4000-8000-000000000001"
+            )!,
+            isEnabled: false,
+            sortOrder: 9,
+            sourceMode: .auto,
+            apiKey: nil,
+            cookieSource: nil,
+            manualCookieHeader: nil,
+            accountLabel: "Existing",
+            planOverride: "Custom",
+            syncOwnerUserID: nil,
+            sharedCredentialFallbackDisabled: nil,
+            geminiCliProbeFallback: nil
+        )
+        let existing = try JSONEncoder().encode([existingConfig])
+        defaults.set(
+            existing,
+            forKey: ProviderAccountMigration.configsKey
+        )
+        defaults.set(
+            777,
+            forKey: ProviderAccountMigration.schemaVersionKey
+        )
+
+        let outcome = QAExperienceSeed.prepareForTesting(
+            runtime: safeQARuntime(),
+            defaults: defaults
+        )
+
+        XCTAssertEqual(outcome, .preservedExistingConfigs)
+        XCTAssertTrue(outcome.isReady)
+        XCTAssertEqual(
+            defaults.data(forKey: ProviderAccountMigration.configsKey),
+            existing
+        )
+        XCTAssertEqual(
+            defaults.integer(
+                forKey: ProviderAccountMigration.schemaVersionKey
+            ),
+            777
+        )
+        XCTAssertTrue(
+            defaults.bool(
+                forKey: AgentSetupFeatureFlags.newUsersDefaultsKey
+            )
+        )
+        XCTAssertTrue(
+            defaults.bool(
+                forKey: AgentSetupFeatureFlags.existingUsersDefaultsKey
+            )
+        )
+    }
+
+    func testPrepareReturnsSeedFailedWhenWritesDoNotPersist() {
+        let outcome = QAExperienceSeed.prepareForTesting(
+            runtime: safeQARuntime(),
+            store: NonPersistingQAExperienceSeedStore()
+        )
+
+        XCTAssertEqual(outcome, .seedFailed)
+        XCTAssertFalse(outcome.isReady)
+    }
+
+    func testOutcomeReadinessAllowsOnlySeededAndPreservedConfigs() {
+        XCTAssertTrue(QAExperienceSeed.Outcome.seeded.isReady)
+        XCTAssertTrue(
+            QAExperienceSeed.Outcome.preservedExistingConfigs.isReady
+        )
+        XCTAssertFalse(
+            QAExperienceSeed.Outcome.skippedUnsafeRuntime.isReady
+        )
+        XCTAssertFalse(
+            QAExperienceSeed.Outcome.invalidExistingConfigs.isReady
+        )
+        XCTAssertFalse(QAExperienceSeed.Outcome.seedFailed.isReady)
     }
 
     func testResetReseedsKnownKeysAndPreservesUnrelatedSentinel() throws {
@@ -276,10 +387,9 @@ final class QAExperienceSeedTests: XCTestCase {
         )
         defaults.set(true, forKey: QAExperienceSeed.demoModeKey)
 
-        let outcome = QAExperienceSeed.prepare(
-            runtime: safeQARuntime(),
-            defaults: defaults,
-            reset: true
+        let outcome = QAExperienceSeed.prepareForTesting(
+            runtime: safeQARuntime(resetOnLaunch: true),
+            defaults: defaults
         )
 
         XCTAssertEqual(outcome, .seeded)
@@ -346,6 +456,10 @@ final class QAExperienceSeedTests: XCTestCase {
         XCTAssertEqual(
             KeychainHelper.sharedAccessGroup,
             runtime.keychainAccessGroup
+        )
+        XCTAssertEqual(
+            HelperConfig.keychainAccessGroup,
+            KeychainHelper.sharedAccessGroup
         )
     }
 
@@ -420,34 +534,44 @@ final class QAExperienceSeedTests: XCTestCase {
         }
     }
 
-    private func safeQARuntime() -> CLIPulseRuntimeEnvironment {
+    private func safeQARuntime(
+        resetOnLaunch: Bool = false
+    ) -> CLIPulseRuntimeEnvironment {
         resolveRuntime(
             channel: "qa",
             bundleIdentifier: "app.clipulse.qa.local",
-            fixedUserHome: "/private/tmp/clipulse-qa-home"
+            fixedUserHome: "/private/tmp/clipulse-qa-home",
+            resetOnLaunch: resetOnLaunch
         )
     }
 
-    private func safeProductionRuntime() -> CLIPulseRuntimeEnvironment {
+    private func safeProductionRuntime(
+        resetOnLaunch: Bool = false
+    ) -> CLIPulseRuntimeEnvironment {
         resolveRuntime(
             channel: nil,
             bundleIdentifier: "yyh.CLI-Pulse",
-            fixedUserHome: nil
+            fixedUserHome: nil,
+            resetOnLaunch: resetOnLaunch
         )
     }
 
-    private func invalidQARuntime() -> CLIPulseRuntimeEnvironment {
+    private func invalidQARuntime(
+        resetOnLaunch: Bool = false
+    ) -> CLIPulseRuntimeEnvironment {
         resolveRuntime(
             channel: "qa",
             bundleIdentifier: "yyh.CLI-Pulse",
-            fixedUserHome: "/private/tmp/clipulse-qa-home"
+            fixedUserHome: "/private/tmp/clipulse-qa-home",
+            resetOnLaunch: resetOnLaunch
         )
     }
 
     private func resolveRuntime(
         channel: String?,
         bundleIdentifier: String,
-        fixedUserHome: String?
+        fixedUserHome: String?,
+        resetOnLaunch: Bool
     ) -> CLIPulseRuntimeEnvironment {
         var infoDictionary: [String: Any] = [
             "CFBundleIdentifier": bundleIdentifier,
@@ -458,6 +582,9 @@ final class QAExperienceSeedTests: XCTestCase {
         var environment: [String: String] = [:]
         if let fixedUserHome {
             environment["CFFIXED_USER_HOME"] = fixedUserHome
+        }
+        if resetOnLaunch {
+            environment["CLIPULSE_QA_RESET_ON_LAUNCH"] = "1"
         }
 
         return CLIPulseRuntimeEnvironment.resolveForTesting(
@@ -498,4 +625,16 @@ final class QAExperienceSeedTests: XCTestCase {
             defaults.removeObject(forKey: key)
         }
     }
+}
+
+private final class NonPersistingQAExperienceSeedStore:
+    QAExperienceSeedStore
+{
+    func object(forKey defaultName: String) -> Any? {
+        nil
+    }
+
+    func set(_ value: Any?, forKey defaultName: String) {}
+
+    func removeObject(forKey defaultName: String) {}
 }
