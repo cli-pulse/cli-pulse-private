@@ -1149,7 +1149,8 @@ public final class AppState: ObservableObject {
         #if os(macOS)
         if config.kind == .gemini {
             GeminiOAuthManager.shared.clearTokens(
-                accountID: accountID
+                accountID: accountID,
+                runtimeEnvironment: runtimeEnvironment
             )
         }
         #endif
@@ -1184,7 +1185,8 @@ public final class AppState: ObservableObject {
         #if os(macOS)
         if config.kind == .gemini {
             GeminiOAuthManager.shared.clearTokens(
-                accountID: accountID
+                accountID: accountID,
+                runtimeEnvironment: runtimeEnvironment
             )
         }
         #endif

@@ -276,97 +276,102 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
             installerLastChecked
         )
     }
+
+    func testGeminiTokenCleanupPolicyRequiresLiveCollection() {
+        XCTAssertFalse(
+            GeminiOAuthManager.allowsTokenCleanup(
+                in: makeRuntime(
+                    channel: "qa",
+                    bundleIdentifier: "app.clipulse.qa.local",
+                    fixedUserHome: Self.qaRoot
+                )
+            )
+        )
+        XCTAssertTrue(
+            GeminiOAuthManager.allowsTokenCleanup(
+                in: makeRuntime(
+                    channel: nil,
+                    bundleIdentifier: "yyh.CLI-Pulse"
+                )
+            )
+        )
+        XCTAssertFalse(
+            GeminiOAuthManager.allowsTokenCleanup(
+                in: makeRuntime(
+                    channel: nil,
+                    bundleIdentifier: "com.example.clipulse"
+                )
+            )
+        )
+    }
+
+    func testExplicitSafeQARuntimeSkipsGeminiCleanupBeforeOwnerStore()
+        throws
+    {
+        let ownerFixture = try makeDefaults()
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            ownerFixture.defaults.removePersistentDomain(
+                forName: ownerFixture.suiteName
+            )
+        }
+        let accountID = UUID()
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.gemini.rawValue)"
+        ownerFixture.defaults.set(accountID.uuidString, forKey: ownerKey)
+        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+
+        GeminiOAuthManager.shared.clearTokens(
+            accountID: accountID,
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            )
+        )
+
+        XCTAssertEqual(
+            ownerFixture.defaults.string(forKey: ownerKey),
+            accountID.uuidString
+        )
+    }
     #endif
 
     @MainActor
     func testSafeQACancelProviderDraftDoesNotTouchSharedOwnerDefaults()
         throws
     {
-        let appFixture = try makeDefaults()
-        let ownerFixture = try makeDefaults()
-        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
-        defer {
-            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
-            appFixture.defaults.removePersistentDomain(
-                forName: appFixture.suiteName
-            )
-            ownerFixture.defaults.removePersistentDomain(
-                forName: ownerFixture.suiteName
-            )
-        }
-        let secretStore = RecordingProviderSecretStore()
-        let state = AppState(
-            runtimeEnvironment: makeRuntime(
-                channel: "qa",
-                bundleIdentifier: "app.clipulse.qa.local",
-                fixedUserHome: Self.qaRoot
-            ),
-            defaults: appFixture.defaults,
-            helperDefaults: ownerFixture.defaults,
-            providerSecretStore: secretStore
+        try assertSafeQACancelDoesNotTouchSharedOwnerDefaults(
+            kind: .claude
         )
-        let draftID = state.addProviderAccount(kind: .claude)
-        let ownerKey =
-            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
-        ownerFixture.defaults.set(draftID.uuidString, forKey: ownerKey)
-        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+    }
 
-        state.cancelProviderAccountDraft(draftID)
-
-        XCTAssertFalse(
-            state.providerConfigs.contains { $0.accountID == draftID }
+    @MainActor
+    func testSafeQACancelGeminiDraftDoesNotTouchSharedOwnerDefaults()
+        throws
+    {
+        try assertSafeQACancelDoesNotTouchSharedOwnerDefaults(
+            kind: .gemini
         )
-        XCTAssertEqual(
-            ownerFixture.defaults.string(forKey: ownerKey),
-            draftID.uuidString
-        )
-        XCTAssertEqual(secretStore.deletedKeys.count, 2)
     }
 
     @MainActor
     func testSafeQARemoveProviderAccountDoesNotTouchSharedOwnerDefaults()
         throws
     {
-        let appFixture = try makeDefaults()
-        let ownerFixture = try makeDefaults()
-        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
-        defer {
-            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
-            appFixture.defaults.removePersistentDomain(
-                forName: appFixture.suiteName
-            )
-            ownerFixture.defaults.removePersistentDomain(
-                forName: ownerFixture.suiteName
-            )
-        }
-        let secretStore = RecordingProviderSecretStore()
-        let state = AppState(
-            runtimeEnvironment: makeRuntime(
-                channel: "qa",
-                bundleIdentifier: "app.clipulse.qa.local",
-                fixedUserHome: Self.qaRoot
-            ),
-            defaults: appFixture.defaults,
-            helperDefaults: ownerFixture.defaults,
-            providerSecretStore: secretStore
+        try assertSafeQARemoveDoesNotTouchSharedOwnerDefaults(
+            kind: .claude
         )
-        let accountID = state.addProviderAccount(kind: .claude)
-        state.commitProviderAccountDraft(accountID)
-        let ownerKey =
-            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
-        ownerFixture.defaults.set(accountID.uuidString, forKey: ownerKey)
-        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+    }
 
-        XCTAssertTrue(state.removeProviderAccount(accountID))
-
-        XCTAssertFalse(
-            state.providerConfigs.contains { $0.accountID == accountID }
+    @MainActor
+    func testSafeQARemoveGeminiAccountDoesNotTouchSharedOwnerDefaults()
+        throws
+    {
+        try assertSafeQARemoveDoesNotTouchSharedOwnerDefaults(
+            kind: .gemini
         )
-        XCTAssertEqual(
-            ownerFixture.defaults.string(forKey: ownerKey),
-            accountID.uuidString
-        )
-        XCTAssertEqual(secretStore.deletedKeys.count, 2)
     }
 
     @MainActor
@@ -397,6 +402,97 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
             state.lastPublishedWidgetData,
             "QA demo rendering must not advance widget dedupe state"
         )
+    }
+
+    @MainActor
+    private func assertSafeQACancelDoesNotTouchSharedOwnerDefaults(
+        kind: ProviderKind
+    ) throws {
+        let appFixture = try makeDefaults()
+        let ownerFixture = try makeDefaults()
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            ownerFixture.defaults.removePersistentDomain(
+                forName: ownerFixture.suiteName
+            )
+        }
+        let secretStore = RecordingProviderSecretStore()
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: ownerFixture.defaults,
+            providerSecretStore: secretStore
+        )
+        let draftID = state.addProviderAccount(kind: kind)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(kind.rawValue)"
+        ownerFixture.defaults.set(draftID.uuidString, forKey: ownerKey)
+        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+
+        state.cancelProviderAccountDraft(draftID)
+
+        XCTAssertFalse(
+            state.providerConfigs.contains { $0.accountID == draftID }
+        )
+        XCTAssertEqual(
+            ownerFixture.defaults.string(forKey: ownerKey),
+            draftID.uuidString
+        )
+        XCTAssertEqual(secretStore.deletedKeys.count, 2)
+    }
+
+    @MainActor
+    private func assertSafeQARemoveDoesNotTouchSharedOwnerDefaults(
+        kind: ProviderKind
+    ) throws {
+        let appFixture = try makeDefaults()
+        let ownerFixture = try makeDefaults()
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            ownerFixture.defaults.removePersistentDomain(
+                forName: ownerFixture.suiteName
+            )
+        }
+        let secretStore = RecordingProviderSecretStore()
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: ownerFixture.defaults,
+            providerSecretStore: secretStore
+        )
+        let accountID = state.addProviderAccount(kind: kind)
+        state.commitProviderAccountDraft(accountID)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(kind.rawValue)"
+        ownerFixture.defaults.set(accountID.uuidString, forKey: ownerKey)
+        ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+
+        XCTAssertFalse(
+            state.providerConfigs.contains { $0.accountID == accountID }
+        )
+        XCTAssertEqual(
+            ownerFixture.defaults.string(forKey: ownerKey),
+            accountID.uuidString
+        )
+        XCTAssertEqual(secretStore.deletedKeys.count, 2)
     }
 
     private func makeRuntime(

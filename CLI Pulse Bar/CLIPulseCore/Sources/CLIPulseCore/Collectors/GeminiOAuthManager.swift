@@ -452,7 +452,19 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     }
 
     /// Remove all stored tokens (Keychain + shared file).
-    public func clearTokens(accountID: UUID? = nil) {
+    static func allowsTokenCleanup(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        runtimeEnvironment.capabilities.allowsLiveCollection
+    }
+
+    public func clearTokens(
+        accountID: UUID? = nil,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) {
+        guard Self.allowsTokenCleanup(in: runtimeEnvironment) else {
+            return
+        }
         let keys = Self.tokenKeys(accountID: accountID)
         deleteTokens(keys: keys)
 
