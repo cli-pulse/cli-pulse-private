@@ -7,6 +7,9 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
     private static let qaRoot = "/private/tmp/clipulse-qa-home"
     private static let qaBundleIdentifier = "app.clipulse.qa.local"
     private static let productionBundleIdentifier = "yyh.CLI-Pulse"
+    private typealias FileSystemAccess =
+        CLIPulseRuntimeEnvironment.FileSystemAccess
+    private typealias PathEntry = FileSystemAccess.PathEntry
 
     func testAbsentAndUnknownChannelsResolveToProduction() {
         let absent = resolve(channel: nil)
@@ -171,13 +174,18 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         let runtime = resolve(
             channel: "qa",
             fixedUserHome: link,
-            resolvingSymlinks: {
-                if $0 == Self.qaRoot {
-                    return Self.qaRoot
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == link ? .symbolicLink : .directory
+                },
+                resolveRealPath: {
+                    if $0 == Self.qaRoot {
+                        return Self.qaRoot
+                    }
+                    resolvedInput = $0
+                    return Self.qaRoot + "/resolved"
                 }
-                resolvedInput = $0
-                return Self.qaRoot + "/resolved"
-            }
+            )
         )
 
         XCTAssertEqual(resolvedInput, link)
@@ -189,12 +197,19 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         let runtime = resolve(
             channel: "qa",
             fixedUserHome: Self.qaRoot + "/escape",
-            resolvingSymlinks: {
-                if $0 == Self.qaRoot {
-                    return Self.qaRoot
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == Self.qaRoot + "/escape"
+                        ? .symbolicLink
+                        : .directory
+                },
+                resolveRealPath: {
+                    if $0 == Self.qaRoot {
+                        return Self.qaRoot
+                    }
+                    return FileManager.default.homeDirectoryForCurrentUser.path
                 }
-                return FileManager.default.homeDirectoryForCurrentUser.path
-            }
+            )
         )
 
         XCTAssertFalse(runtime.isLaunchSafe)
@@ -203,11 +218,107 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
     func testQALaunchRejectsWhenQARootDoesNotExist() {
         let runtime = resolve(
             channel: "qa",
-            pathEntryExists: { path in
-                path != Self.qaRoot
-            }
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == Self.qaRoot ? .missing : .directory
+                }
+            )
         )
 
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsSymlinkedQARoot() {
+        let runtime = resolve(
+            channel: "qa",
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == Self.qaRoot ? .symbolicLink : .directory
+                },
+                resolveRealPath: { path in
+                    path == Self.qaRoot ? "/private/tmp/elsewhere" : path
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsQARootThatIsNotDirectory() {
+        let runtime = resolve(
+            channel: "qa",
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == Self.qaRoot ? .other : .directory
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsQARootInspectionFailure() {
+        let runtime = resolve(
+            channel: "qa",
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == Self.qaRoot ? .lookupFailed : .directory
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsQARootRealPathFailure() {
+        let runtime = resolve(
+            channel: "qa",
+            fileSystem: makeFileSystem(
+                resolveRealPath: { path in
+                    path == Self.qaRoot ? nil : path
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsHomePathInspectionFailure() {
+        let home = Self.qaRoot + "/unreadable"
+        let runtime = resolve(
+            channel: "qa",
+            fixedUserHome: home,
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == home ? .lookupFailed : .directory
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
+    func testQALaunchRejectsHomePathRealPathFailure() {
+        let home = Self.qaRoot + "/unresolvable-link"
+        let runtime = resolve(
+            channel: "qa",
+            fixedUserHome: home,
+            fileSystem: makeFileSystem(
+                inspectEntry: { path in
+                    path == home ? .symbolicLink : .directory
+                },
+                resolveRealPath: { path in
+                    path == home ? nil : path
+                }
+            )
+        )
+
+        XCTAssertNil(runtime.resolvedFixedUserHome)
         XCTAssertFalse(runtime.isLaunchSafe)
     }
 
@@ -287,8 +398,7 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         channel: String?,
         bundleIdentifier: String? = qaBundleIdentifier,
         fixedUserHome: String? = qaRoot,
-        resolvingSymlinks: @escaping (String) -> String? = { $0 },
-        pathEntryExists: @escaping (String) -> Bool = { _ in true }
+        fileSystem: FileSystemAccess? = nil
     ) -> CLIPulseRuntimeEnvironment {
         var infoDictionary: [String: Any] = [:]
         if let channel {
@@ -303,11 +413,20 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
             environment["CFFIXED_USER_HOME"] = fixedUserHome
         }
 
-        return CLIPulseRuntimeEnvironment.resolve(
+        return CLIPulseRuntimeEnvironment.resolveForTesting(
             infoDictionary: infoDictionary,
             environment: environment,
-            resolvingSymlinks: resolvingSymlinks,
-            pathEntryExists: pathEntryExists
+            fileSystem: fileSystem ?? makeFileSystem()
+        )
+    }
+
+    private func makeFileSystem(
+        inspectEntry: @escaping (String) -> PathEntry = { _ in .directory },
+        resolveRealPath: @escaping (String) -> String? = { $0 }
+    ) -> FileSystemAccess {
+        FileSystemAccess(
+            inspectEntry: inspectEntry,
+            resolveRealPath: resolveRealPath
         )
     }
 

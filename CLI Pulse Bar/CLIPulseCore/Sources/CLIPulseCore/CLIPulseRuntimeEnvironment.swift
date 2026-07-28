@@ -46,6 +46,20 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         )
     }
 
+    internal struct FileSystemAccess {
+        enum PathEntry: Equatable {
+            case directory
+            case symbolicLink
+            case other
+            case missing
+            case notDirectory
+            case lookupFailed
+        }
+
+        let inspectEntry: (String) -> PathEntry
+        let resolveRealPath: (String) -> String?
+    }
+
     private static let productionBundleIdentifier = "yyh.CLI-Pulse"
     private static let qaBundleIdentifier = "app.clipulse.qa.local"
     private static let qaHomeRoot = "/private/tmp/clipulse-qa-home"
@@ -92,15 +106,33 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     }
 
     /// Resolves the runtime contract without mutating process state.
-    ///
-    /// Passing `nil` for the filesystem seams uses the live fail-closed
-    /// `lstat`/`realpath` implementation. Tests can inject both seams to remain
-    /// independent of the process environment and host filesystem.
     public static func resolve(
         infoDictionary: [String: Any],
+        environment: [String: String]
+    ) -> Self {
+        resolve(
+            infoDictionary: infoDictionary,
+            environment: environment,
+            fileSystem: liveFileSystem
+        )
+    }
+
+    internal static func resolveForTesting(
+        infoDictionary: [String: Any],
         environment: [String: String],
-        resolvingSymlinks: ((String) -> String?)? = nil,
-        pathEntryExists: ((String) -> Bool)? = nil
+        fileSystem: FileSystemAccess
+    ) -> Self {
+        resolve(
+            infoDictionary: infoDictionary,
+            environment: environment,
+            fileSystem: fileSystem
+        )
+    }
+
+    private static func resolve(
+        infoDictionary: [String: Any],
+        environment: [String: String],
+        fileSystem: FileSystemAccess
     ) -> Self {
         let channel = (infoDictionary["CLIPULSE_CHANNEL"] as? String) == Channel.qa.rawValue
             ? Channel.qa
@@ -110,8 +142,7 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         let resolvedFixedUserHome = resolveFixedUserHome(
             fixedUserHome,
             requiresExistingQARoot: channel == .qa,
-            resolvingSymlinks: resolvingSymlinks ?? canonicalizePath,
-            pathEntryExists: pathEntryExists ?? pathEntryExistsIncludingSymlink
+            fileSystem: fileSystem
         )
 
         return Self(
@@ -138,24 +169,20 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     private static func resolveFixedUserHome(
         _ fixedUserHome: String?,
         requiresExistingQARoot: Bool,
-        resolvingSymlinks: (String) -> String?,
-        pathEntryExists: (String) -> Bool
+        fileSystem: FileSystemAccess
     ) -> String? {
         guard let fixedUserHome, !fixedUserHome.isEmpty else { return nil }
 
         if requiresExistingQARoot {
-            guard pathEntryExists(Self.qaHomeRoot),
-                  let resolvedRoot = resolvingSymlinks(Self.qaHomeRoot),
+            guard fileSystem.inspectEntry(Self.qaHomeRoot) == .directory,
+                  let resolvedRoot = fileSystem.resolveRealPath(Self.qaHomeRoot),
                   standardizedAbsolutePath(resolvedRoot) == Self.qaHomeRoot
             else {
                 return nil
             }
         }
 
-        guard let resolved = resolvingSymlinks(fixedUserHome) else {
-            return nil
-        }
-        return standardizedAbsolutePath(resolved)
+        return canonicalizePath(fixedUserHome, fileSystem: fileSystem)
     }
 
     private static func standardizedAbsolutePath(_ path: String) -> String? {
@@ -178,16 +205,17 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             : "/" + components.joined(separator: "/")
     }
 
-    private static func pathEntryExistsIncludingSymlink(_ path: String) -> Bool {
-        guard !path.utf8.contains(0) else { return false }
-
-        var metadata = stat()
-        return path.withCString {
-            Darwin.lstat($0, &metadata) == 0
-        }
+    private static var liveFileSystem: FileSystemAccess {
+        FileSystemAccess(
+            inspectEntry: inspectLivePathEntry,
+            resolveRealPath: resolveLiveRealPath
+        )
     }
 
-    private static func canonicalizePath(_ path: String) -> String? {
+    private static func canonicalizePath(
+        _ path: String,
+        fileSystem: FileSystemAccess
+    ) -> String? {
         guard let standardizedPath = standardizedAbsolutePath(path) else {
             return nil
         }
@@ -196,14 +224,13 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         var missingComponents: [String] = []
 
         while true {
-            var metadata = stat()
-            let lookupStatus = candidate.withCString {
-                Darwin.lstat($0, &metadata)
-            }
-
-            if lookupStatus == 0 {
-                guard let canonicalAncestor = realPath(candidate),
-                      isDirectory(atPath: canonicalAncestor)
+            switch fileSystem.inspectEntry(candidate) {
+            case .directory, .symbolicLink:
+                guard let resolvedAncestor =
+                        fileSystem.resolveRealPath(candidate),
+                      let canonicalAncestor =
+                        standardizedAbsolutePath(resolvedAncestor),
+                      fileSystem.inspectEntry(canonicalAncestor) == .directory
                 else {
                     return nil
                 }
@@ -211,28 +238,60 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
                 return missingComponents.reduce(canonicalAncestor) {
                     ($0 as NSString).appendingPathComponent($1)
                 }
-            }
-
-            let lookupError = errno
-            guard lookupError == ENOENT || lookupError == ENOTDIR,
-                  candidate != "/"
-            else {
+            case .other, .lookupFailed:
                 return nil
-            }
+            case .missing, .notDirectory:
+                guard candidate != "/" else {
+                    return nil
+                }
 
-            let candidatePath = candidate as NSString
-            let missingComponent = candidatePath.lastPathComponent
-            guard !missingComponent.isEmpty, missingComponent != "/" else {
-                return nil
-            }
+                let candidatePath = candidate as NSString
+                let missingComponent = candidatePath.lastPathComponent
+                guard !missingComponent.isEmpty, missingComponent != "/" else {
+                    return nil
+                }
 
-            missingComponents.insert(missingComponent, at: 0)
-            let parent = candidatePath.deletingLastPathComponent
-            candidate = parent.isEmpty ? "/" : parent
+                missingComponents.insert(missingComponent, at: 0)
+                let parent = candidatePath.deletingLastPathComponent
+                candidate = parent.isEmpty ? "/" : parent
+            }
         }
     }
 
-    private static func realPath(_ path: String) -> String? {
+    private static func inspectLivePathEntry(
+        _ path: String
+    ) -> FileSystemAccess.PathEntry {
+        guard !path.utf8.contains(0) else {
+            return .lookupFailed
+        }
+
+        var metadata = stat()
+        let status = path.withCString {
+            Darwin.lstat($0, &metadata)
+        }
+
+        if status == 0 {
+            let entryType = metadata.st_mode & S_IFMT
+            if entryType == S_IFDIR {
+                return .directory
+            }
+            if entryType == S_IFLNK {
+                return .symbolicLink
+            }
+            return .other
+        }
+
+        switch errno {
+        case ENOENT:
+            return .missing
+        case ENOTDIR:
+            return .notDirectory
+        default:
+            return .lookupFailed
+        }
+    }
+
+    private static func resolveLiveRealPath(_ path: String) -> String? {
         var buffer = [CChar](repeating: 0, count: Int(PATH_MAX))
 
         return path.withCString { source in
@@ -245,14 +304,5 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
                 return String(cString: baseAddress)
             }
         }
-    }
-
-    private static func isDirectory(atPath path: String) -> Bool {
-        var metadata = stat()
-        let status = path.withCString {
-            Darwin.lstat($0, &metadata)
-        }
-
-        return status == 0 && metadata.st_mode & S_IFMT == S_IFDIR
     }
 }
