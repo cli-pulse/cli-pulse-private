@@ -85,6 +85,24 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertTrue(matched.isLaunchSafe)
     }
 
+    func testInvalidProductionFallbackIsFullyQuarantined() {
+        let invalidRuntimes = [
+            resolve(
+                channel: "prodution",
+                bundleIdentifier: Self.qaBundleIdentifier
+            ),
+            resolve(
+                channel: nil,
+                bundleIdentifier: "com.example.clipulse"
+            ),
+        ]
+
+        for runtime in invalidRuntimes {
+            XCTAssertEqual(runtime.channel, .production)
+            assertFullyQuarantined(runtime)
+        }
+    }
+
     func testQAUsesIsolatedNamespacesAndRestrictedCapabilities() {
         let runtime = resolve(channel: "qa")
 
@@ -104,6 +122,24 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(capabilities.allowsProductionCloudEndpoints)
         XCTAssertTrue(capabilities.allowsPassiveDiscovery)
         XCTAssertTrue(capabilities.allowsInMemoryDemoRendering)
+    }
+
+    func testInvalidQAIsFullyQuarantined() {
+        let invalidRuntimes = [
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.productionBundleIdentifier
+            ),
+            resolve(
+                channel: "qa",
+                fixedUserHome: Self.qaRoot + "-evil"
+            ),
+        ]
+
+        for runtime in invalidRuntimes {
+            XCTAssertEqual(runtime.channel, .qa)
+            assertFullyQuarantined(runtime)
+        }
     }
 
     func testQALaunchIsSafeAtRootAndWithinDescendant() {
@@ -430,10 +466,64 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         )
     }
 
+    private func assertFullyQuarantined(
+        _ runtime: CLIPulseRuntimeEnvironment,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        XCTAssertFalse(
+            runtime.isLaunchSafe,
+            "preconditionSafeLaunch must reject an invalid runtime",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            runtime.keychainService,
+            "com.clipulse.app.quarantine",
+            file: file,
+            line: line
+        )
+        XCTAssertEqual(
+            runtime.keychainAccessGroup,
+            "group.yyh.CLI-Pulse.quarantine",
+            file: file,
+            line: line
+        )
+
+        let capabilities = runtime.capabilities
+        let capabilityStates: [(name: String, isEnabled: Bool)] = [
+            ("telemetry", capabilities.allowsTelemetry),
+            ("unsandboxed migration", capabilities.allowsUnsandboxedMigration),
+            ("helper registration", capabilities.allowsHelperRegistration),
+            ("permission snapshot", capabilities.allowsPermissionSnapshot),
+            ("StoreKit bootstrap", capabilities.allowsStoreKitBootstrap),
+            ("live collection", capabilities.allowsLiveCollection),
+            ("widget publishing", capabilities.allowsWidgetPublishing),
+            (
+                "production cloud endpoints",
+                capabilities.allowsProductionCloudEndpoints
+            ),
+            ("passive discovery", capabilities.allowsPassiveDiscovery),
+            (
+                "in-memory demo rendering",
+                capabilities.allowsInMemoryDemoRendering
+            ),
+        ]
+
+        for capability in capabilityStates {
+            XCTAssertFalse(
+                capability.isEnabled,
+                "\(capability.name) must be disabled for an invalid runtime",
+                file: file,
+                line: line
+            )
+        }
+    }
+
     private func resolveUsingDefaultFileSystem(
         fixedUserHome: String
     ) -> CLIPulseRuntimeEnvironment {
-        CLIPulseRuntimeEnvironment.resolve(
+        CLIPulseRuntimeEnvironment.resolveForTesting(
             infoDictionary: [
                 "CLIPULSE_CHANNEL": "qa",
                 "CFBundleIdentifier": Self.qaBundleIdentifier,

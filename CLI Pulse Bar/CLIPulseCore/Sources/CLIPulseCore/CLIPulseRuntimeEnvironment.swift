@@ -44,6 +44,19 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             allowsPassiveDiscovery: true,
             allowsInMemoryDemoRendering: true
         )
+
+        fileprivate static let quarantine = Self(
+            allowsTelemetry: false,
+            allowsUnsandboxedMigration: false,
+            allowsHelperRegistration: false,
+            allowsPermissionSnapshot: false,
+            allowsStoreKitBootstrap: false,
+            allowsLiveCollection: false,
+            allowsWidgetPublishing: false,
+            allowsProductionCloudEndpoints: false,
+            allowsPassiveDiscovery: false,
+            allowsInMemoryDemoRendering: false
+        )
     }
 
     internal struct FileSystemAccess {
@@ -75,14 +88,32 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     }
 
     public var keychainService: String {
-        isQA ? "com.clipulse.app.qa" : "com.clipulse.app"
+        guard isLaunchSafe else {
+            return "com.clipulse.app.quarantine"
+        }
+        return isQA ? "com.clipulse.app.qa" : "com.clipulse.app"
     }
 
     public var keychainAccessGroup: String {
-        isQA ? "group.yyh.CLI-Pulse.qa" : "group.yyh.CLI-Pulse"
+        guard isLaunchSafe else {
+            return "group.yyh.CLI-Pulse.quarantine"
+        }
+        return isQA ? "group.yyh.CLI-Pulse.qa" : "group.yyh.CLI-Pulse"
     }
 
     public var isLaunchSafe: Bool {
+        Self.isLaunchSafe(
+            channel: channel,
+            bundleIdentifier: bundleIdentifier,
+            resolvedFixedUserHome: resolvedFixedUserHome
+        )
+    }
+
+    private static func isLaunchSafe(
+        channel: Channel,
+        bundleIdentifier: String,
+        resolvedFixedUserHome: String?
+    ) -> Bool {
         switch channel {
         case .production:
             return bundleIdentifier == Self.productionBundleIdentifier
@@ -98,19 +129,24 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         }
     }
 
+    /// Captures the bundle, process environment, and live filesystem state
+    /// intended to be validated during app startup.
+    ///
+    /// This is a point-in-time startup snapshot, not an atomic isolation
+    /// boundary against concurrent filesystem mutation by the same user.
     public static var current: Self {
-        resolve(
+        resolveSnapshot(
             infoDictionary: Bundle.main.infoDictionary ?? [:],
-            environment: ProcessInfo.processInfo.environment
+            environment: ProcessInfo.processInfo.environment,
+            fileSystem: liveFileSystem
         )
     }
 
-    /// Resolves the runtime contract without mutating process state.
-    public static func resolve(
+    internal static func resolveForTesting(
         infoDictionary: [String: Any],
         environment: [String: String]
     ) -> Self {
-        resolve(
+        resolveSnapshot(
             infoDictionary: infoDictionary,
             environment: environment,
             fileSystem: liveFileSystem
@@ -122,14 +158,14 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         environment: [String: String],
         fileSystem: FileSystemAccess
     ) -> Self {
-        resolve(
+        resolveSnapshot(
             infoDictionary: infoDictionary,
             environment: environment,
             fileSystem: fileSystem
         )
     }
 
-    private static func resolve(
+    private static func resolveSnapshot(
         infoDictionary: [String: Any],
         environment: [String: String],
         fileSystem: FileSystemAccess
@@ -144,16 +180,25 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
             requiresExistingQARoot: channel == .qa,
             fileSystem: fileSystem
         )
+        let isLaunchSafe = isLaunchSafe(
+            channel: channel,
+            bundleIdentifier: bundleIdentifier,
+            resolvedFixedUserHome: resolvedFixedUserHome
+        )
 
         return Self(
             channel: channel,
             bundleIdentifier: bundleIdentifier,
             fixedUserHome: fixedUserHome,
             resolvedFixedUserHome: resolvedFixedUserHome,
-            capabilities: channel == .qa ? .qa : .production
+            capabilities: isLaunchSafe
+                ? (channel == .qa ? .qa : .production)
+                : .quarantine
         )
     }
 
+    /// Validates the captured startup snapshot. This does not make filesystem
+    /// validation atomic against concurrent mutation by the same user.
     public func preconditionSafeLaunch(
         file: StaticString = #fileID,
         line: UInt = #line
