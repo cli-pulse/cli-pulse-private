@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "2640"
+   version = "1.7">
+   <BuildAction
+      parallelizeBuildables = "YES"
+      buildImplicitDependencies = "YES">
+      <BuildActionEntries>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "F10001"
+               BuildableName = "CLIPulse QA.app"
+               BlueprintName = "CLI Pulse Bar"
+               ReferencedContainer = "container:CLI Pulse Bar.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+      </BuildActionEntries>
+   </BuildAction>
+   <TestAction
+      buildConfiguration = "Debug QA"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      shouldAutocreateTestPlan = "YES">
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "Debug QA"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
+      launchStyle = "0"
+      useCustomWorkingDirectory = "NO"
+      ignoresPersistentStateOnLaunch = "NO"
+      debugDocumentVersioning = "YES"
+      debugServiceExtension = "internal"
+      allowLocationSimulation = "YES">
+      <PreActions>
+         <ExecutionAction
+            ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
+            <ActionContent
+               title = "Prepare isolated QA home"
+               scriptText = "set -eu&#10;qa_root=&quot;/private/tmp/clipulse-qa-home&quot;&#10;if [ -L &quot;$qa_root&quot; ]; then&#10;  echo &quot;Refusing symlink QA root: $qa_root&quot; &gt;&amp;2&#10;  exit 1&#10;fi&#10;if [ -e &quot;$qa_root&quot; ] &amp;&amp; [ ! -d &quot;$qa_root&quot; ]; then&#10;  echo &quot;Refusing non-directory QA root: $qa_root&quot; &gt;&amp;2&#10;  exit 1&#10;fi&#10;if [ ! -e &quot;$qa_root&quot; ]; then&#10;  /bin/mkdir -m 700 &quot;$qa_root&quot;&#10;fi&#10;qa_owner=$(/usr/bin/stat -f &apos;%u&apos; &quot;$qa_root&quot;)&#10;current_uid=$(/usr/bin/id -u)&#10;if [ &quot;$qa_owner&quot; != &quot;$current_uid&quot; ]; then&#10;  echo &quot;Refusing QA root owned by uid $qa_owner (expected $current_uid)&quot; &gt;&amp;2&#10;  exit 1&#10;fi&#10;/bin/chmod 700 &quot;$qa_root&quot;&#10;">
+               <EnvironmentBuildable>
+                  <BuildableReference
+                     BuildableIdentifier = "primary"
+                     BlueprintIdentifier = "F10001"
+                     BuildableName = "CLIPulse QA.app"
+                     BlueprintName = "CLI Pulse Bar"
+                     ReferencedContainer = "container:CLI Pulse Bar.xcodeproj">
+                  </BuildableReference>
+               </EnvironmentBuildable>
+            </ActionContent>
+         </ExecutionAction>
+      </PreActions>
+      <BuildableProductRunnable
+         runnableDebuggingMode = "0">
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "F10001"
+            BuildableName = "CLIPulse QA.app"
+            BlueprintName = "CLI Pulse Bar"
+            ReferencedContainer = "container:CLI Pulse Bar.xcodeproj">
+         </BuildableReference>
+      </BuildableProductRunnable>
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "CFFIXED_USER_HOME"
+            value = "/private/tmp/clipulse-qa-home"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "CLIPULSE_QA_RESET_ON_LAUNCH"
+            value = "0"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
+   </LaunchAction>
+   <ProfileAction
+      buildConfiguration = "Debug QA"
+      shouldUseLaunchSchemeArgsEnv = "YES"
+      savedToolIdentifier = ""
+      useCustomWorkingDirectory = "NO"
+      debugDocumentVersioning = "YES">
+   </ProfileAction>
+   <AnalyzeAction
+      buildConfiguration = "Debug QA">
+   </AnalyzeAction>
+   <ArchiveAction
+      buildConfiguration = "Debug QA"
+      revealArchiveInOrganizer = "NO">
+   </ArchiveAction>
+</Scheme>
