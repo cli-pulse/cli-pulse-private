@@ -943,12 +943,26 @@ public final class AppState: ObservableObject {
     /// at launch, and why the user's own toggle always wins.
     func enableLaunchAtLoginAtFirstValueIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) {
         let defaults = UserDefaults.standard
+        let status = SMAppService.mainApp.status
         let decision = FirstValueLaunchAtLogin.decide(
             producedValue: FirstValueLaunchAtLogin.producedValue(outcomes),
-            alreadyEnabled: SMAppService.mainApp.status == .enabled,
+            loginItem: FirstValueLaunchAtLogin.loginItemState(
+                isEnabled: status == .enabled,
+                // `.requiresApproval` = registered, then switched off by the
+                // user in System Settings. Reading only `== .enabled` collapses
+                // that into "never registered" and re-enables it behind their
+                // back — see `decide`.
+                requiresApproval: status == .requiresApproval
+            ),
             alreadyAutoEnabled: defaults.bool(forKey: FirstValueLaunchAtLogin.didAutoEnableKey),
             userTouchedToggle: defaults.bool(forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
         )
+        if decision == .skipAndRememberUserChoice {
+            // Persist it so we stop asking the system every pass, and so the
+            // answer survives them later re-enabling it by hand.
+            defaults.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+            return
+        }
         guard decision == .enableAndNotify else { return }
         do {
             try SMAppService.mainApp.register()

@@ -37,6 +37,28 @@ public enum FirstValueLaunchAtLogin {
         case enableAndNotify
         /// Do nothing.
         case skip
+        /// Do nothing, AND record that the user has expressed a preference, so
+        /// this never re-evaluates. Used when we can see they turned the login
+        /// item off themselves.
+        case skipAndRememberUserChoice
+    }
+
+    /// The three login-item states that matter here, because `== .enabled` is
+    /// not enough to answer "may we turn this on?".
+    ///
+    /// `SMAppService.Status.requiresApproval` means the item IS registered but
+    /// the user switched it off in System Settings. A naive `status == .enabled`
+    /// check reads that as false — the same answer it gives for "never
+    /// registered" — so the app would cheerfully re-enable something the user
+    /// had just deliberately turned off. `FanDaemonInstaller.state()` in this
+    /// same package already distinguishes all four cases; this mirrors it.
+    public enum LoginItemState: Equatable {
+        /// Registered and permitted to run.
+        case enabled
+        /// Registered, but the user disabled it in System Settings.
+        case userDisabled
+        /// Never registered, or unregistered.
+        case notRegistered
     }
 
     /// Pure decision. Every input is injected so all five reasons to skip are
@@ -50,7 +72,7 @@ public enum FirstValueLaunchAtLogin {
     ///   - userTouchedToggle: the user has set the toggle themselves.
     public static func decide(
         producedValue: Bool,
-        alreadyEnabled: Bool,
+        loginItem: LoginItemState,
         alreadyAutoEnabled: Bool,
         userTouchedToggle: Bool
     ) -> Decision {
@@ -59,10 +81,28 @@ public enum FirstValueLaunchAtLogin {
         // merely legal. Re-enabling something someone deliberately switched off
         // is how an app earns a one-star review.
         guard !userTouchedToggle else { return .skip }
+
+        // Checked BEFORE `alreadyAutoEnabled`, and it is the whole point of
+        // this fix. `userTouchedToggle` is a v1.44 key, so NOBODY upgrading
+        // from v1.43 has it — an existing user who had turned the login item
+        // off in System Settings would otherwise sail through every remaining
+        // guard and have it switched back on. Same shape as the bug in #382:
+        // a new flag cannot speak for the install base that predates it, so
+        // the state has to be read from the system instead.
+        if loginItem == .userDisabled { return .skipAndRememberUserChoice }
+
         guard !alreadyAutoEnabled else { return .skip }
-        guard !alreadyEnabled else { return .skip }
+        guard loginItem == .notRegistered else { return .skip }
         guard producedValue else { return .skip }
         return .enableAndNotify
+    }
+
+    /// Map `SMAppService.Status` to the three cases that matter. Kept separate
+    /// from `decide` so the mapping is testable without a live SMAppService.
+    public static func loginItemState(isEnabled: Bool, requiresApproval: Bool) -> LoginItemState {
+        if isEnabled { return .enabled }
+        if requiresApproval { return .userDisabled }
+        return .notRegistered
     }
 
     /// Did this pass produce real numbers? Reuses the W3 outcome taxonomy so
