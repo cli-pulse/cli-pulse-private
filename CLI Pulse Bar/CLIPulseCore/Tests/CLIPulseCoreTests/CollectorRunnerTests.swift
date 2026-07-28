@@ -165,6 +165,49 @@ final class CollectorRunnerTests: XCTestCase {
         XCTAssertEqual(CollectorRunner.classify(result), .producedData)
     }
 
+    /// THE AUDIT FINDING. A `.statusOnly` or `.credits` collector reports its
+    /// payload in `status_text` and hardcodes the counters to zero/nil on its
+    /// SUCCESS path — Groq returns "12.5 req/min · 4300 tok/min" with
+    /// `today_usage: 0, quota: nil, tiers: []`, OpenRouter returns
+    /// "$12.34 / $50.00" the same way.
+    ///
+    /// Running those five numeric fields through the counter predicate called
+    /// 26 healthy collectors empty, which put a permanent orange
+    /// "No data returned" warning directly beneath the live numbers they had
+    /// just fetched — and, because `producedValue` needs a `.producedData`,
+    /// meant a user whose providers are all credits/status-only never got W5,
+    /// while every telemetry report logged them "empty".
+    func testStatusOnlyAndCreditsCollectorsAreNotCalledEmpty() {
+        let statusOnly = CollectorResult(
+            usage: stubUsage(quota: nil, remaining: nil), dataKind: .statusOnly
+        )
+        XCTAssertEqual(
+            CollectorRunner.classify(statusOnly), .producedData,
+            "a status-only collector that returned successfully HAS produced its kind of value"
+        )
+
+        let credits = CollectorResult(
+            usage: stubUsage(quota: nil, remaining: nil), dataKind: .credits
+        )
+        XCTAssertEqual(
+            CollectorRunner.classify(credits), .producedData,
+            "a balance is data — it just isn't a counter"
+        )
+    }
+
+    /// …and the counter predicate must still apply to `.quota`, or the fix
+    /// above would simply declare every collector healthy and re-hide the
+    /// silent-zero case this release exists to expose.
+    func testQuotaCollectorsAreStillHeldToTheCounterPredicate() {
+        XCTAssertEqual(
+            CollectorRunner.classify(
+                CollectorResult(usage: stubUsage(quota: nil, remaining: nil), dataKind: .quota)
+            ),
+            .ranButEmpty,
+            "a quota collector with no numbers is exactly the silent-zero case"
+        )
+    }
+
     // MARK: - failure categories
 
     func testAuthFailuresAreDistinguishedFromGenericHTTP() {

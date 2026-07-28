@@ -206,6 +206,30 @@ public enum CollectorRunner {
     /// a tautology that reported `ok` for precisely the silent-zero devices the
     /// feature existed to find.
     public static func classify(_ result: CollectorResult) -> CollectorOutcome {
+        // The numeric predicate below only means anything for `.quota`
+        // results. `CollectorDataKind` says so itself: `.credits` is "a
+        // credit-based balance", `.statusOnly` is "local status only, no quota
+        // model". Those collectors report their payload in `status_text` —
+        // "$12.34 / $50.00", "12.5 req/min · 4300 tok/min" — and hardcode
+        // today/week/quota/remaining to zero-or-nil on their SUCCESS path.
+        //
+        // Feeding those five fields to the counter predicate therefore called
+        // 26 healthy collectors empty: a working Groq or OpenRouter card got a
+        // permanent orange "No data returned" warning sitting directly under
+        // the live numbers it had just fetched. Worse, `producedValue` needs a
+        // `.producedData` to exist, so a user whose providers are all
+        // credits/status-only would never trigger W5 — and every report to
+        // `devices.collector_status` logged them as "empty", poisoning the
+        // silent-zero diagnostic this release exists to power.
+        //
+        // I excluded `status_text` from the predicate deliberately, because for
+        // quota providers it is always populated and made the check a
+        // tautology. That reasoning was right for `.quota` and wrong to
+        // generalise: for these two kinds `status_text` IS the data. Rather
+        // than reintroduce a string test, trust the collector's own
+        // declaration — it returned successfully as the kind it says it is.
+        guard result.dataKind == .quota else { return .producedData }
+
         let token = HelperAPIClient.classifyCollectorOutcome(
             tiersCount: result.usage.tiers.count,
             quota: result.usage.quota,
