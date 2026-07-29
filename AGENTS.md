@@ -172,6 +172,38 @@ There is no automated SQL test runner yet. When touching files in
 - RPC contracts match app/helper call sites
 - Migration ordering is consistent with `schema.sql`
 
+### Migration numbering — one number, one migration, forever
+
+**Before you name a new `backend/supabase/migrate_vX.YY_*.sql`, run:**
+
+```bash
+ls backend/supabase/migrate_v*.sql | sort -V | tail -5
+```
+
+Take the next unused number. Never reuse one, **even if the existing file is on
+a branch you have not merged yet** — parallel work is normal here and two
+sessions picking "the next number" at the same time is exactly how this breaks.
+
+Why it matters: these files are the only record of what has actually been
+applied to production, and they are matched **by number**. Two different
+migrations sharing a number means nobody can later answer "did v0.70 run?" —
+the answer becomes "which v0.70?". The database will not stop you: both apply
+cleanly, and the damage only surfaces months later during an incident.
+
+If your branch already carries a number that has since been taken on `main`,
+**renumber yours** — `main` wins, because its migration has usually already
+been applied to production. Rename the file, update any reference to it, and
+say so in the PR.
+
+CI enforces this: `scripts/check_migration_numbers.sh` fails the build on a
+duplicate. Run it locally before pushing.
+
+**Real example this rule came from (2026-07-28):** `main` had
+`migrate_v0.70_device_app_version.sql`, already applied to production, while
+PR #393 independently added `migrate_v0.70_provider_accounts.sql`. Different
+schema, same number, neither author aware. Caught by review, not by tooling —
+hence the CI guard.
+
 ## If You Are a New AI Starting Work
 
 1. Read this file first.
