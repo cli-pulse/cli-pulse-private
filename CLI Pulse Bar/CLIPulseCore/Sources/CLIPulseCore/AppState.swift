@@ -775,6 +775,8 @@ public final class AppState: ObservableObject {
     public let api: APIClient
     let authManager: AuthManager
     let dataRefreshManager: DataRefreshManager
+    private let providerAccountDeletionOutbox:
+        ProviderAccountDeletionOutbox
 
     private static let secretsMigratedKey = "cli_pulse_provider_secrets_migrated"
     /// v1.33 keychain-access-group migration flag. One-shot: re-homes
@@ -786,10 +788,31 @@ public final class AppState: ObservableObject {
     /// rapid user toggles.
     private var providerAccountStatusMutationRevision: UInt64 = 0
 
-    public init() {
-        self.api = APIClient()
+    /// Production entry point. Keep all launch behavior in the designated
+    /// initializer so production and composition-test wiring cannot diverge.
+    public convenience init() {
+        self.init(
+            api: APIClient(),
+            providerAccountDeletionOutbox: .shared,
+            performLaunchSetup: true
+        )
+    }
+
+    /// Narrow composition-test seam. Production continues through the public
+    /// initializer above; tests can inject an isolated API/outbox and skip
+    /// launch-time Keychain, UserDefaults, helper, and restoration effects.
+    init(
+        api: APIClient,
+        providerAccountDeletionOutbox:
+            ProviderAccountDeletionOutbox,
+        performLaunchSetup: Bool
+    ) {
+        self.api = api
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
+        self.providerAccountDeletionOutbox =
+            providerAccountDeletionOutbox
+        guard performLaunchSetup else { return }
         subscriptionManager.apiClient = api
         loadProviderConfigs()
         #if os(macOS)
@@ -1108,7 +1131,7 @@ public final class AppState: ObservableObject {
         saveProviderConfigMetadata()
         buildProviderDetails()
         if let deletionOwnerID {
-            ProviderAccountDeletionOutbox.shared.enqueue(
+            providerAccountDeletionOutbox.enqueue(
                 userID: deletionOwnerID,
                 accountID: accountID
             )
@@ -1196,7 +1219,7 @@ public final class AppState: ObservableObject {
         else {
             return
         }
-        let pending = ProviderAccountDeletionOutbox.shared
+        let pending = providerAccountDeletionOutbox
             .pendingAccountIDs(for: expectedUserID)
             .prefix(10)
         for accountID in pending {
@@ -1216,7 +1239,7 @@ public final class AppState: ObservableObject {
                 // refresh instead of hammering the endpoint.
                 return
             }
-            ProviderAccountDeletionOutbox.shared.markCompleted(
+            providerAccountDeletionOutbox.markCompleted(
                 userID: expectedUserID,
                 accountID: accountID
             )
