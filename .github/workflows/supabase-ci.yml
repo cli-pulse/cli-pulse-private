@@ -169,6 +169,51 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rlstest
         run: bash backend/supabase/tests/rls/run_rls_tests.sh
 
+  provider-accounts-v070:
+    # Provider-account behavior must remain equivalent for an existing
+    # installation upgraded from the exact pre-v0.70 baseline and a new
+    # installation seeded from the canonical schema/RPC files. Both paths also
+    # run the two-connection delete/freshness/independent-clock race suite.
+    name: Provider accounts upgrade + fresh contracts (v0.70)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          # The runner extracts the exact pre-v0.70 baseline by commit.
+          fetch-depth: 0
+
+      - name: Ensure psql client
+        run: psql --version || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      - name: Create isolated upgrade and fresh databases
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'create database v070_upgrade;' \
+            -c 'create database v070_fresh;'
+
+      - name: Run provider-account install-path contracts
+        env:
+          UPGRADE_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/v070_upgrade
+          FRESH_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/v070_fresh
+        run: bash backend/supabase/tests/run_v070_provider_accounts_tests.sh
+
   # v1.21 F9 (still DEFERRED): a FULL `schema.sql → migrate_v0.X.sql` replay
   # against a fresh `supabase start` Postgres double-applies anything already in
   # the schema.sql snapshot (first surfaced at migrate_v0.9.sql CREATE POLICY →
