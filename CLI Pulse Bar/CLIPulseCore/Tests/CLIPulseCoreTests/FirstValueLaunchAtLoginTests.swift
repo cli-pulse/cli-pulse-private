@@ -13,13 +13,13 @@ final class FirstValueLaunchAtLoginTests: XCTestCase {
 
     private func decide(
         producedValue: Bool = true,
-        alreadyEnabled: Bool = false,
+        loginItem: FirstValueLaunchAtLogin.LoginItemState = .notRegistered,
         alreadyAutoEnabled: Bool = false,
         userTouchedToggle: Bool = false
     ) -> FirstValueLaunchAtLogin.Decision {
         FirstValueLaunchAtLogin.decide(
             producedValue: producedValue,
-            alreadyEnabled: alreadyEnabled,
+            loginItem: loginItem,
             alreadyAutoEnabled: alreadyAutoEnabled,
             userTouchedToggle: userTouchedToggle
         )
@@ -41,7 +41,7 @@ final class FirstValueLaunchAtLoginTests: XCTestCase {
     /// Also true when they turned it ON themselves — we must not then claim
     /// credit with a notice for something they did.
     func testAUserWhoTurnedItOnThemselvesGetsNoNotice() {
-        XCTAssertEqual(decide(alreadyEnabled: true, userTouchedToggle: true), .skip)
+        XCTAssertEqual(decide(loginItem: .enabled, userTouchedToggle: true), .skip)
     }
 
     /// One-shot for the lifetime of the install. Without this the notice
@@ -61,7 +61,48 @@ final class FirstValueLaunchAtLoginTests: XCTestCase {
     /// Idempotence against reality: if the item is already registered there is
     /// nothing to do and nothing to announce.
     func testAlreadyRegisteredIsLeftAlone() {
-        XCTAssertEqual(decide(alreadyEnabled: true), .skip)
+        XCTAssertEqual(decide(loginItem: .enabled), .skip)
+    }
+
+    /// THE REGRESSION THIS FILE EXISTS FOR NOW.
+    ///
+    /// `SMAppService.Status.requiresApproval` means the item IS registered and
+    /// the user switched it off in System Settings. Reading only `== .enabled`
+    /// gives the same answer as "never registered", so the app re-enables the
+    /// thing they just turned off.
+    ///
+    /// The v1.44 `userTouchedToggle` key cannot save us here: it did not exist
+    /// in v1.43, so nobody upgrading has it. Exactly the shape of #382 — a new
+    /// flag cannot speak for the install base that predates it.
+    func testAUserWhoDisabledItInSystemSettingsIsNotOverridden() {
+        XCTAssertEqual(
+            decide(loginItem: .userDisabled),
+            .skipAndRememberUserChoice,
+            "they turned it off in System Settings — turning it back on is not ours to do"
+        )
+    }
+
+    /// And the answer must be made permanent, or every refresh pass re-asks the
+    /// system and the user's choice depends on us reading it right forever.
+    func testTheUserDisabledAnswerIsRecordedNotJustSkipped() {
+        XCTAssertNotEqual(
+            decide(loginItem: .userDisabled), .skip,
+            "a bare skip would re-evaluate on every pass instead of settling it"
+        )
+    }
+
+    /// Mapping is separate from the decision so it is testable without a live
+    /// SMAppService. All three arms pinned — a constant would fail two.
+    func testStatusMapping() {
+        XCTAssertEqual(
+            FirstValueLaunchAtLogin.loginItemState(isEnabled: true, requiresApproval: false), .enabled
+        )
+        XCTAssertEqual(
+            FirstValueLaunchAtLogin.loginItemState(isEnabled: false, requiresApproval: true), .userDisabled
+        )
+        XCTAssertEqual(
+            FirstValueLaunchAtLogin.loginItemState(isEnabled: false, requiresApproval: false), .notRegistered
+        )
     }
 
     // MARK: - what counts as "value"
