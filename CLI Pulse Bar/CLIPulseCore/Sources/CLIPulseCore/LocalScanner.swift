@@ -182,9 +182,11 @@ public final class LocalScanner: @unchecked Sendable {
             }
         }
 
-        // Load per-device secret once per scan so we can compute project_hash for sessions
-        // whose path we can resolve. Failures here are silent: we just emit project_hash=nil.
-        let secret: Data? = (try? UserSecret.loadOrCreate())
+        // Load the per-device secret only when a detected session could use
+        // it. Empty/denied process scans must not touch Keychain at all.
+        let secret: Data? = bestByPID.isEmpty
+            ? nil
+            : (try? UserSecret.loadOrCreate())
 
         for (pid, match) in bestByPID {
             let row = match.row
