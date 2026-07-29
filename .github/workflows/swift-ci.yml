@@ -108,6 +108,24 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check-versions.sh
 
+  check-migration-numbers:
+    name: Migration numbers unique
+    # Two migrations sharing a number means nobody can later answer "did v0.70
+    # run?" — the answer becomes "which v0.70?". Postgres applies both happily,
+    # so the damage only surfaces months later during an incident.
+    #
+    # Real case (2026-07-28): `main` had migrate_v0.70_device_app_version.sql
+    # already applied to production while PR #393 independently added
+    # migrate_v0.70_provider_accounts.sql. Neither author could have known;
+    # review caught it, nothing in the toolchain would have. Parallel branches
+    # are normal here, so "check before you name it" is advice that gets missed
+    # — this is the part that cannot be.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - run: bash scripts/check_migration_numbers.sh
+
   check-helper-guards:
     name: Helper guards (TCC container-touch + version sync)
     # Pure-grep guards over the helper sources. Both defend against failures
