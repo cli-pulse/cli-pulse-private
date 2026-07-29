@@ -619,7 +619,7 @@ begin
     else
       if v_lifecycle_provider is not null
          and v_lifecycle_provider <> v_provider then
-        raise exception 'Provider account lifecycle does not match provider';
+        raise exception 'Provider account does not match existing provider';
       end if;
       update public.provider_account_lifecycle
       set provider = coalesce(provider, v_provider)
