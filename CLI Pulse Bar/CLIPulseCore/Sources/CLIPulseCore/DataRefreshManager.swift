@@ -1991,6 +1991,9 @@ extension AppState {
     /// runs may have recorded negative deltas that incremental scanning
     /// wouldn't undo.
     public func forceRescanTokenCache() async {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         // Re-activate stored security-scoped bookmarks BEFORE scanning. The
         // folder-access grant only persists a bookmark; the cost scan reads via
         // FileManager and needs an ACTIVE security-scoped resource, else

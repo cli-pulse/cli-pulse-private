@@ -21,64 +21,77 @@ struct AdvancedSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Startup", icon: "power")
+            if state.runtimeEnvironment.capabilities.allowsHelperRegistration {
+                SectionHeader(title: "Startup", icon: "power")
 
-            Toggle(isOn: $launchAtLogin) {
-                Text(L10n.advanced.launchAtLogin)
-                    .font(.system(size: 11))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .onChange(of: launchAtLogin) { _ in
-                LaunchAtLogin.toggle()
-            }
-
-            Divider()
-
-            SectionHeader(title: "Background Helper", icon: "arrow.triangle.2.circlepath")
-
-            Toggle(isOn: $helperEnabled) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(L10n.advanced.backgroundSync)
+                Toggle(isOn: $launchAtLogin) {
+                    Text(L10n.advanced.launchAtLogin)
                         .font(.system(size: 11))
-                    Text(L10n.advanced.backgroundSyncHint)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
                 }
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .onChange(of: helperEnabled) { _ in
-                HelperLogin.toggle()
-            }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: launchAtLogin) { enabled in
+                    LaunchAtLogin.setEnabled(
+                        enabled,
+                        in: state.runtimeEnvironment
+                    )
+                }
 
-            if let status = HelperIPC.readStatus() {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(status.state == .running ? Color.green : (status.state == .error ? Color.red : Color.gray))
-                        .frame(width: 6, height: 6)
-                    if let lastSync = status.lastSync {
-                        let ago = Int(Date().timeIntervalSince(lastSync))
-                        Text(ago < 60 ? L10n.advanced.syncJustNow : L10n.advanced.syncMinutesAgo(ago / 60))
+                Divider()
+
+                SectionHeader(
+                    title: "Background Helper",
+                    icon: "arrow.triangle.2.circlepath"
+                )
+
+                Toggle(isOn: $helperEnabled) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(L10n.advanced.backgroundSync)
+                            .font(.system(size: 11))
+                        Text(L10n.advanced.backgroundSyncHint)
                             .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
-                    } else if let error = status.error {
-                        Text(error)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.red)
-                    } else {
-                        Text(status.state == .running ? L10n.advanced.helperRunning : L10n.advanced.helperNotRunning)
-                            .font(.system(size: 9))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                     }
                 }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .onChange(of: helperEnabled) { enabled in
+                    HelperLogin.setEnabled(
+                        enabled,
+                        in: state.runtimeEnvironment
+                    )
+                }
+
+                if let status = HelperIPC.readStatus() {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(status.state == .running ? Color.green : (status.state == .error ? Color.red : Color.gray))
+                            .frame(width: 6, height: 6)
+                        if let lastSync = status.lastSync {
+                            let ago = Int(Date().timeIntervalSince(lastSync))
+                            Text(ago < 60 ? L10n.advanced.syncJustNow : L10n.advanced.syncMinutesAgo(ago / 60))
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        } else if let error = status.error {
+                            Text(error)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.red)
+                        } else {
+                            Text(status.state == .running ? L10n.advanced.helperRunning : L10n.advanced.helperNotRunning)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Divider()
             }
 
-            Divider()
+            if state.runtimeEnvironment.capabilities.allowsLiveCollection {
+                FolderAccessView()
 
-            FolderAccessView()
-
-            Divider()
+                Divider()
+            }
 
             SectionHeader(title: L10n.settings.privacy, icon: "lock.shield")
 
@@ -305,6 +318,21 @@ struct AdvancedSection: View {
                         .foregroundStyle(.tertiary)
                 }
             }
+        }
+        .onAppear {
+            guard state.runtimeEnvironment.capabilities
+                .allowsHelperRegistration
+            else {
+                launchAtLogin = false
+                helperEnabled = false
+                return
+            }
+            launchAtLogin = LaunchAtLogin.isEnabled(
+                in: state.runtimeEnvironment
+            )
+            helperEnabled = HelperLogin.isEnabled(
+                in: state.runtimeEnvironment
+            )
         }
     }
 

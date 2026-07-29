@@ -284,6 +284,86 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(runtime.shouldResetQAExperience)
         assertCapabilitiesQuarantined(runtime)
         XCTAssertFalse(runtime.allowsProductionCloudEndpoints)
+        XCTAssertFalse(runtime.allowsLoginItemHelperStartup)
+    }
+
+    func testOnlyExactProductionLoginItemHelperMayStartHelperProcess() {
+        let productionHelper = resolve(
+            channel: nil,
+            bundleIdentifier: Self.helperBundleIdentifier,
+            fixedUserHome: nil
+        )
+        let productionApp = resolve(
+            channel: nil,
+            bundleIdentifier: Self.productionBundleIdentifier,
+            fixedUserHome: nil
+        )
+        let qaHelper = resolve(
+            channel: "qa",
+            bundleIdentifier: Self.qaHelperBundleIdentifier,
+            fixedUserHome: Self.qaRoot
+        )
+        let spoofedHelper = resolve(
+            channel: nil,
+            bundleIdentifier: Self.helperBundleIdentifier + ".evil",
+            fixedUserHome: nil
+        )
+
+        XCTAssertTrue(productionHelper.allowsLoginItemHelperStartup)
+        XCTAssertFalse(productionApp.allowsLoginItemHelperStartup)
+        XCTAssertFalse(qaHelper.allowsLoginItemHelperStartup)
+        XCTAssertFalse(spoofedHelper.allowsLoginItemHelperStartup)
+    }
+
+    func testOnlyExactProductionAppAndHelperMayUseLocalSessionClient() {
+        let allowedBundleIdentifiers = [
+            Self.productionBundleIdentifier,
+            Self.helperBundleIdentifier,
+        ]
+        for bundleIdentifier in allowedBundleIdentifiers {
+            XCTAssertTrue(
+                resolve(
+                    channel: nil,
+                    bundleIdentifier: bundleIdentifier,
+                    fixedUserHome: nil
+                ).allowsLocalSessionControlClientAccess,
+                "\(bundleIdentifier) must retain local UDS client access"
+            )
+        }
+
+        let rejectedRuntimes = [
+            resolve(
+                channel: nil,
+                bundleIdentifier: Self.watchBundleIdentifier,
+                fixedUserHome: nil
+            ),
+            resolve(
+                channel: nil,
+                bundleIdentifier: Self.widgetsBundleIdentifier,
+                fixedUserHome: nil
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaBundleIdentifier,
+                fixedUserHome: Self.qaRoot
+            ),
+            resolve(
+                channel: "qa",
+                bundleIdentifier: Self.qaHelperBundleIdentifier,
+                fixedUserHome: Self.qaRoot
+            ),
+            resolve(
+                channel: nil,
+                bundleIdentifier: Self.helperBundleIdentifier + ".evil",
+                fixedUserHome: nil
+            ),
+        ]
+        for runtime in rejectedRuntimes {
+            XCTAssertFalse(
+                runtime.allowsLocalSessionControlClientAccess,
+                "\(runtime.bundleIdentifier) must not receive local UDS access"
+            )
+        }
     }
 
     func testQAHelperNamespaceRequiresValidatedQARootAndHome() {
@@ -487,6 +567,23 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         XCTAssertFalse(runtime.isLaunchSafe)
     }
 
+    func testQALaunchRejectsQARootWithUnsafeOwnerOrPermissions() {
+        var inspectedPaths: [String] = []
+        let runtime = resolve(
+            channel: "qa",
+            fileSystem: makeFileSystem(
+                isPrivateDirectoryOwnedByCurrentUser: { path in
+                    inspectedPaths.append(path)
+                    return false
+                }
+            )
+        )
+
+        XCTAssertEqual(inspectedPaths, [Self.qaRoot])
+        XCTAssertNil(runtime.resolvedFixedUserHome)
+        XCTAssertFalse(runtime.isLaunchSafe)
+    }
+
     func testQALaunchRejectsQARootThatIsNotDirectory() {
         let runtime = resolve(
             channel: "qa",
@@ -668,11 +765,15 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
 
     private func makeFileSystem(
         inspectEntry: @escaping (String) -> PathEntry = { _ in .directory },
-        resolveRealPath: @escaping (String) -> String? = { $0 }
+        resolveRealPath: @escaping (String) -> String? = { $0 },
+        isPrivateDirectoryOwnedByCurrentUser:
+            @escaping (String) -> Bool = { _ in true }
     ) -> FileSystemAccess {
         FileSystemAccess(
             inspectEntry: inspectEntry,
-            resolveRealPath: resolveRealPath
+            resolveRealPath: resolveRealPath,
+            isPrivateDirectoryOwnedByCurrentUser:
+                isPrivateDirectoryOwnedByCurrentUser
         )
     }
 

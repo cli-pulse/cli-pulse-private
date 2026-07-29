@@ -99,6 +99,19 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
 
         let inspectEntry: (String) -> PathEntry
         let resolveRealPath: (String) -> String?
+        let isPrivateDirectoryOwnedByCurrentUser: (String) -> Bool
+
+        init(
+            inspectEntry: @escaping (String) -> PathEntry,
+            resolveRealPath: @escaping (String) -> String?,
+            isPrivateDirectoryOwnedByCurrentUser:
+                @escaping (String) -> Bool = { _ in true }
+        ) {
+            self.inspectEntry = inspectEntry
+            self.resolveRealPath = resolveRealPath
+            self.isPrivateDirectoryOwnedByCurrentUser =
+                isPrivateDirectoryOwnedByCurrentUser
+        }
     }
 
     private static let productionBundleIdentifier = "yyh.CLI-Pulse"
@@ -138,6 +151,42 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
 
     public var isQA: Bool {
         channel == .qa
+    }
+
+    /// The legacy login-item helper is trusted only under its exact production
+    /// bundle identity. QA embeds the target for build coverage, but launching
+    /// that artifact must terminate before it reads or writes host state.
+    public var allowsLoginItemHelperStartup: Bool {
+        channel == .production
+            && bundleIdentifier == "yyh.CLI-Pulse.helper"
+    }
+
+    /// Helper pairing configuration contains a production device identity and
+    /// a Keychain-backed helper secret. Only the exact production macOS app
+    /// and its Login Item helper may touch that persistence surface.
+    ///
+    /// This is deliberately independent from `keychainNamespace`: QA has its
+    /// own namespace for provider test fixtures, but its isolated experience
+    /// must never read, migrate, or write helper pairing credentials.
+    public var allowsHelperConfigurationAccess: Bool {
+        guard channel == .production else { return false }
+        return bundleIdentifier == Self.productionBundleIdentifier
+            || bundleIdentifier == "yyh.CLI-Pulse.helper"
+    }
+
+    /// The production Login Item helper performs a read-only `hello` request
+    /// against the local spawn helper so heartbeat payloads can include
+    /// provider plan status. It is not app-launch-safe and therefore keeps
+    /// quarantine capabilities, but it still needs the same local UDS client
+    /// path as the exact production app identity.
+    ///
+    /// Keep this separate from `allowsLiveCollection`: granting the helper
+    /// this narrow transport permission must not enable app collectors,
+    /// StoreKit, telemetry, or any other production capability.
+    public var allowsLocalSessionControlClientAccess: Bool {
+        guard channel == .production else { return false }
+        return bundleIdentifier == Self.productionBundleIdentifier
+            || bundleIdentifier == "yyh.CLI-Pulse.helper"
     }
 
     /// Keychain authorization is a separate, exact multi-process client
@@ -330,6 +379,9 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
 
         if requiresExistingQARoot {
             guard fileSystem.inspectEntry(Self.qaHomeRoot) == .directory,
+                  fileSystem.isPrivateDirectoryOwnedByCurrentUser(
+                    Self.qaHomeRoot
+                  ),
                   let resolvedRoot = fileSystem.resolveRealPath(Self.qaHomeRoot),
                   standardizedAbsolutePath(resolvedRoot) == Self.qaHomeRoot
             else {
@@ -363,7 +415,9 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     private static var liveFileSystem: FileSystemAccess {
         FileSystemAccess(
             inspectEntry: inspectLivePathEntry,
-            resolveRealPath: resolveLiveRealPath
+            resolveRealPath: resolveLiveRealPath,
+            isPrivateDirectoryOwnedByCurrentUser:
+                isLivePrivateDirectoryOwnedByCurrentUser
         )
     }
 
@@ -444,6 +498,25 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
         default:
             return .lookupFailed
         }
+    }
+
+    private static func isLivePrivateDirectoryOwnedByCurrentUser(
+        _ path: String
+    ) -> Bool {
+        guard !path.utf8.contains(0) else { return false }
+
+        var metadata = stat()
+        let status = path.withCString {
+            Darwin.lstat($0, &metadata)
+        }
+        guard status == 0,
+              metadata.st_mode & S_IFMT == S_IFDIR,
+              metadata.st_uid == Darwin.geteuid()
+        else {
+            return false
+        }
+
+        return metadata.st_mode & mode_t(0o777) == mode_t(0o700)
     }
 
     private static func resolveLiveRealPath(_ path: String) -> String? {

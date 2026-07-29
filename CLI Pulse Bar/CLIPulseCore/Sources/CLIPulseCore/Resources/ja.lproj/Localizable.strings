@@ -556,6 +556,7 @@
 /* ── オンボーディングウィザード ── */
 "onboarding_wizard.welcome_title" = "CLI Pulse へようこそ";
 "onboarding_wizard.welcome_subtitle" = "AI コーディングツールの使用量、\nコスト、クォータを一カ所で監視。";
+"onboarding_wizard.welcome_accounts_body" = "Codex、Claude、Gemini の個人用・仕事用アカウントを検出して、それぞれ設定します。";
 "onboarding_wizard.get_started" = "はじめる";
 "onboarding_wizard.what_does" = "CLI Pulse でできること";
 "onboarding_wizard.continue" = "続ける";

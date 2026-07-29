@@ -38,8 +38,12 @@ struct RuntimeCloudConfiguration: Equatable, Sendable {
         }
 
         return RuntimeCloudConfiguration(
-            url: explicitURL ?? resolvedURL,
-            anonKey: explicitAnonKey ?? resolvedAnonKey
+            url: runtimeEnvironment.allowsProductionCloudEndpoints
+                ? (explicitURL ?? resolvedURL)
+                : resolvedURL,
+            anonKey: runtimeEnvironment.allowsProductionCloudEndpoints
+                ? (explicitAnonKey ?? resolvedAnonKey)
+                : resolvedAnonKey
         )
     }
 }
@@ -112,6 +116,7 @@ public actor APIClient {
 
     private let supabaseURL: String
     private let supabaseAnonKey: String
+    private let runtimeEnvironment: CLIPulseRuntimeEnvironment
 
     private var accessToken: String?
     private var refreshToken: String?
@@ -160,6 +165,7 @@ public actor APIClient {
             providerAccountFlags ?? ProviderAccountFeatureFlags.load()
         self.supabaseURL = cloudConfiguration.url
         self.supabaseAnonKey = cloudConfiguration.anonKey
+        self.runtimeEnvironment = runtimeEnvironment
         // `session` injectable for tests (URLProtocol stub); production uses the
         // configured default.
         if let session {
@@ -2775,7 +2781,8 @@ public actor APIClient {
         // the config to the matching pair.
         var body: [String: Any] = ["metrics": metrics]
         if let deviceId = HelperConfig.loadIfMatches(
-            authenticatedUserId: userId
+            authenticatedUserId: userId,
+            runtimeEnvironment: runtimeEnvironment
         )?.deviceId, !deviceId.isEmpty {
             body["p_device_id"] = deviceId
         }

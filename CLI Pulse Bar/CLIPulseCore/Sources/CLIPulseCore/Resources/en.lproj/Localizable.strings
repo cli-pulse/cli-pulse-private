@@ -476,6 +476,7 @@
 /* ── Onboarding Wizard (macOS first-launch flow; distinct from `onboarding.*` which is iOS sync setup) ── */
 "onboarding_wizard.welcome_title" = "Welcome to CLI Pulse";
 "onboarding_wizard.welcome_subtitle" = "Monitor your AI coding tool usage,\ncosts, and quotas in one place.";
+"onboarding_wizard.welcome_accounts_body" = "Find and configure personal and work accounts for Codex, Claude, and Gemini.";
 "onboarding_wizard.get_started" = "Get Started";
 "onboarding_wizard.what_does" = "What CLI Pulse does";
 "onboarding_wizard.continue" = "Continue";

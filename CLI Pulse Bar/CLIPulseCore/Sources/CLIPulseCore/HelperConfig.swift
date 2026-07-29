@@ -23,6 +23,19 @@ public struct HelperConfig: Codable, Sendable {
     private static let suiteName = "group.yyh.CLI-Pulse"
     private static let key = "helper_config"
     private static let secretKeychainKey = "helper_secret"
+
+    /// Injectable persistence boundary used by runtime-isolation tests.
+    /// Live closures are created only after the runtime guard passes.
+    internal struct PersistenceAccess {
+        let loadStoredData: () -> Data?
+        let saveStoredData: (Data) -> Void
+        let removeStoredData: () -> Void
+        let loadSecret: () -> String?
+        let saveSecret: (String) -> Void
+        let removeSecret: () -> Void
+        let loadLegacyFileData: () -> Data?
+    }
+
     /// Resolve on every call so each trusted process uses the namespace
     /// authorized for its runtime channel without changing the app-group
     /// UserDefaults suite above.
@@ -39,15 +52,42 @@ public struct HelperConfig: Codable, Sendable {
     }
 
     /// Read config from shared UserDefaults + Keychain.
-    public static func load() -> HelperConfig? {
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let data = defaults.data(forKey: key),
-              let stored = try? JSONDecoder().decode(StoredConfig.self, from: data) else {
+    public static func load(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return loadAllowed(
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func load(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return loadAllowed(persistence: persistence)
+    }
+
+    private static func loadAllowed(
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
+        guard let data = persistence.loadStoredData(),
+              let stored = try? JSONDecoder().decode(
+                  StoredConfig.self,
+                  from: data
+              ) else {
             return nil
         }
         // Read secret from Keychain; fall back to legacy UserDefaults migration
-        let secret = KeychainHelper.load(key: secretKeychainKey, accessGroup: keychainAccessGroup)
-            ?? migrateLegacySecret()
+        let secret = persistence.loadSecret()
+            ?? migrateLegacySecret(using: persistence)
             ?? ""
         guard !secret.isEmpty else { return nil }
         return HelperConfig(
@@ -76,8 +116,42 @@ public struct HelperConfig: Codable, Sendable {
     /// `p_device_id` is the safe fallback (the server then attributes
     /// the upsert to the sentinel UUID instead of failing the device
     /// check; see migrate_v0.37_daily_usage_device_id.sql).
-    public static func loadIfMatches(authenticatedUserId: String?) -> HelperConfig? {
-        guard let cfg = load() else { return nil }
+    public static func loadIfMatches(
+        authenticatedUserId: String?,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return loadIfMatchesAllowed(
+            authenticatedUserId: authenticatedUserId,
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func loadIfMatches(
+        authenticatedUserId: String?,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return loadIfMatchesAllowed(
+            authenticatedUserId: authenticatedUserId,
+            persistence: persistence
+        )
+    }
+
+    private static func loadIfMatchesAllowed(
+        authenticatedUserId: String?,
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
+        guard let cfg = loadAllowed(persistence: persistence) else {
+            return nil
+        }
         guard let auth = authenticatedUserId, !auth.isEmpty else {
             // No authenticated user yet — caller shouldn't be sending
             // p_device_id at all.
@@ -91,36 +165,89 @@ public struct HelperConfig: Codable, Sendable {
     }
 
     /// Write config: non-secret fields to UserDefaults, secret to Keychain.
-    public static func save(_ config: HelperConfig) {
+    public static func save(
+        _ config: HelperConfig,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return
+        }
+        saveAllowed(
+            config,
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func save(
+        _ config: HelperConfig,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return
+        }
+        saveAllowed(config, persistence: persistence)
+    }
+
+    private static func saveAllowed(
+        _ config: HelperConfig,
+        persistence: PersistenceAccess
+    ) {
         let stored = StoredConfig(
             deviceId: config.deviceId,
             userId: config.userId,
             deviceName: config.deviceName,
             helperVersion: config.helperVersion
         )
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let data = try? JSONEncoder().encode(stored) else { return }
-        defaults.set(data, forKey: key)
-        KeychainHelper.save(key: secretKeychainKey, value: config.helperSecret, accessGroup: keychainAccessGroup)
+        guard let data = try? JSONEncoder().encode(stored) else { return }
+        persistence.saveStoredData(data)
+        persistence.saveSecret(config.helperSecret)
     }
 
     /// Remove config from shared UserDefaults and Keychain.
-    public static func remove() {
-        guard let defaults = UserDefaults(suiteName: suiteName) else { return }
-        defaults.removeObject(forKey: key)
-        KeychainHelper.delete(key: secretKeychainKey, accessGroup: keychainAccessGroup)
+    public static func remove(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return
+        }
+        removeAllowed(
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func remove(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return
+        }
+        removeAllowed(persistence: persistence)
+    }
+
+    private static func removeAllowed(
+        persistence: PersistenceAccess
+    ) {
+        persistence.removeStoredData()
+        persistence.removeSecret()
     }
 
     /// Migrate helperSecret from old full-config UserDefaults to Keychain.
-    private static func migrateLegacySecret() -> String? {
-        guard let defaults = UserDefaults(suiteName: suiteName),
-              let data = defaults.data(forKey: key),
+    private static func migrateLegacySecret(
+        using persistence: PersistenceAccess
+    ) -> String? {
+        guard let data = persistence.loadStoredData(),
               let legacy = try? JSONDecoder().decode(HelperConfig.self, from: data),
               !legacy.helperSecret.isEmpty else {
             return nil
         }
         // Move secret to Keychain and re-save without it in UserDefaults
-        KeychainHelper.save(key: secretKeychainKey, value: legacy.helperSecret, accessGroup: keychainAccessGroup)
+        persistence.saveSecret(legacy.helperSecret)
         return legacy.helperSecret
     }
 
@@ -128,11 +255,34 @@ public struct HelperConfig: Codable, Sendable {
 
     /// Attempt to import config from the legacy Python helper JSON file.
     /// Path: ~/.cli-pulse-helper.json
-    public static func importFromLegacy() -> HelperConfig? {
+    public static func importFromLegacy(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return importFromLegacyAllowed(
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func importFromLegacy(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return importFromLegacyAllowed(persistence: persistence)
+    }
+
+    private static func importFromLegacyAllowed(
+        persistence: PersistenceAccess
+    ) -> HelperConfig? {
         #if os(macOS)
-        let home = NSHomeDirectory()
-        let path = (home as NSString).appendingPathComponent(".cli-pulse-helper.json")
-        guard let data = FileManager.default.contents(atPath: path),
+        guard let data = persistence.loadLegacyFileData(),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let deviceId = json["device_id"] as? String,
               let userId = json["user_id"] as? String,
@@ -149,5 +299,50 @@ public struct HelperConfig: Codable, Sendable {
         #else
         return nil
         #endif
+    }
+
+    private static func livePersistence(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> PersistenceAccess {
+        let accessGroup = runtimeEnvironment.keychainAccessGroup
+        return PersistenceAccess(
+            loadStoredData: {
+                UserDefaults(suiteName: suiteName)?.data(forKey: key)
+            },
+            saveStoredData: { data in
+                UserDefaults(suiteName: suiteName)?.set(data, forKey: key)
+            },
+            removeStoredData: {
+                UserDefaults(suiteName: suiteName)?.removeObject(forKey: key)
+            },
+            loadSecret: {
+                KeychainHelper.load(
+                    key: secretKeychainKey,
+                    accessGroup: accessGroup
+                )
+            },
+            saveSecret: { secret in
+                KeychainHelper.save(
+                    key: secretKeychainKey,
+                    value: secret,
+                    accessGroup: accessGroup
+                )
+            },
+            removeSecret: {
+                KeychainHelper.delete(
+                    key: secretKeychainKey,
+                    accessGroup: accessGroup
+                )
+            },
+            loadLegacyFileData: {
+                #if os(macOS)
+                let path = (NSHomeDirectory() as NSString)
+                    .appendingPathComponent(".cli-pulse-helper.json")
+                return FileManager.default.contents(atPath: path)
+                #else
+                return nil
+                #endif
+            }
+        )
     }
 }

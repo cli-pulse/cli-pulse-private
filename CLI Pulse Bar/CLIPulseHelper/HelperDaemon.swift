@@ -8,9 +8,10 @@ import os
 /// Runs on a background DispatchSourceTimer every N seconds.
 final class HelperDaemon {
     private let logger = Logger(subsystem: "yyh.CLI-Pulse.helper", category: "daemon")
+    private let runtimeEnvironment: CLIPulseRuntimeEnvironment
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.clipulse.helper.daemon", qos: .utility)
-    private let apiClient = HelperAPIClient()
+    private lazy var apiClient = HelperAPIClient()
     private var isRunning = false
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
@@ -30,6 +31,10 @@ final class HelperDaemon {
         func finish() { isSyncing = false }
     }
 
+    init(runtimeEnvironment: CLIPulseRuntimeEnvironment = .current) {
+        self.runtimeEnvironment = runtimeEnvironment
+    }
+
     /// Default sync interval (seconds). Can be overridden via shared UserDefaults.
     private var syncInterval: Int {
         let defaults = UserDefaults(suiteName: HelperIPC.suiteName)
@@ -44,6 +49,12 @@ final class HelperDaemon {
     }
 
     func start() {
+        guard runtimeEnvironment.allowsLoginItemHelperStartup else {
+            logger.fault(
+                "Blocked daemon startup outside the exact production helper runtime"
+            )
+            return
+        }
         guard !isRunning else { return }
         isRunning = true
         logger.info("Daemon starting, interval=\(self.syncInterval)s")

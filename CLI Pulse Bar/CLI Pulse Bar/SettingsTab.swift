@@ -12,8 +12,8 @@ struct SettingsTab: View {
     @State private var otpCode = ""
     @State private var password = ""
     @State private var usePasswordLogin = false
-    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
-    @State private var helperEnabled = HelperLogin.isEnabled
+    @State private var launchAtLogin = false
+    @State private var helperEnabled = false
     @State private var settingsSection: SettingsSection = .general
     // Delete-account state moved to DangerZoneSection.swift (v1.10 P2-2)
     // showGitTrackingConsent state moved to AdvancedSection (v1.10 P2-2 slice 6)
@@ -239,13 +239,15 @@ struct SettingsTab: View {
 
                 SubscriptionSection()
 
-                // v1.16: Companion CLI Helper installer surface. Visible
-                // to every authenticated user (post-pairing) right above
-                // the section picker so it's discoverable without
-                // digging into Advanced. Renders nothing on iOS / Watch
-                // builds — HelperInstaller is macOS-only.
-                Divider()
-                CompanionCLISection(installer: state.helperInstaller)
+                if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
+                    // v1.16: Companion CLI Helper installer surface. Visible
+                    // to every authenticated user (post-pairing) right above
+                    // the section picker so it's discoverable without
+                    // digging into Advanced. Renders nothing on iOS / Watch
+                    // builds — HelperInstaller is macOS-only.
+                    Divider()
+                    CompanionCLISection(installer: state.helperInstaller)
+                }
 
                 // v1.19: Developer ID DMG channel updater. Only present
                 // in DEVID builds — MAS users get updates via the App

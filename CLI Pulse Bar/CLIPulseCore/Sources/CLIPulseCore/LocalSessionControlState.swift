@@ -38,7 +38,12 @@ extension AppState {
     /// decide whether a target session belongs to "this Mac." Returns
     /// nil if the helper isn't paired yet.
     public var selfDeviceId: String? {
-        HelperConfig.load()?.deviceId
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return nil
+        }
+        return HelperConfig.load(
+            runtimeEnvironment: runtimeEnvironment
+        )?.deviceId
     }
 
     /// True iff `deviceId` matches this Mac's paired helper. Used by
@@ -61,7 +66,9 @@ extension AppState {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         // Diagnostic snapshot on every tick — non-sensitive: paths
         // and existence flags only, no token contents. Surfaces the
         // path-mismatch class of bug (sandboxed app's containerURL
@@ -270,7 +277,12 @@ extension AppState {
     @MainActor
     @discardableResult
     public func setLocalControlEnabled(_ enabled: Bool) async -> Bool {
-        let client = LocalSessionControlClient()
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return self.localControlEnabled
+        }
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             let next = try await client.setLocalControlEnabled(enabled)
             self.localControlEnabled = next
@@ -306,6 +318,9 @@ extension AppState {
     /// reachable, and with Local Session Control on. Doesn't require a
     /// *target* device id because the start path implicitly targets THIS Mac.
     public var canStartLocalManagedSession: Bool {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return false
+        }
         guard let mine = selfDeviceId, !mine.isEmpty else { return false }
         return localHelperReachable && localControlEnabled
     }
@@ -379,6 +394,9 @@ extension AppState {
     /// longer rely on `device_id` to make routing decisions for
     /// helper-owned actions.
     public func shouldRouteSessionLocally(_ session: RemoteSession) -> Bool {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return false
+        }
         guard localHelperReachable, localControlEnabled else { return false }
         return localManagedSessions.contains(where: { $0.id == session.id })
     }
@@ -466,7 +484,9 @@ extension AppState {
         RemoteSession(
             id: summary.id,
             device_id: selfDeviceId ?? "",
-            device_name: HelperConfig.load()?.deviceName,
+            device_name: HelperConfig.load(
+                runtimeEnvironment: runtimeEnvironment
+            )?.deviceName,
             provider: summary.provider.lowercased() == "claude" ? "claude" : summary.provider,
             cwd_basename: "",
             cwd_hmac: nil,
@@ -503,7 +523,12 @@ extension AppState {
         provider: String = "claude",
         clientLabel: String?
     ) async -> LocalManagedStartOutcome {
-        let client = LocalSessionControlClient()
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return .failed
+        }
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         // v1.34 R1d: Claude-on-Max safety gate. If the helper that OWNS the
         // socket predates the OAuth-injection floor, a managed `claude` session
         // would silently run on the Claude API, not the user's Max/Pro plan.
@@ -585,7 +610,9 @@ extension AppState {
     /// Stop a session via the local UDS path.
     @MainActor
     public func stopLocalSession(sessionId: String) async -> Bool {
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             try await client.stopSession(sessionId: sessionId)
             // Drop the optimistic timestamp so the next refresh poll
@@ -611,7 +638,9 @@ extension AppState {
     public func sendLocalSessionInput(sessionId: String, payload: String) async -> Bool {
         // Capability gate: don't try if the helper said it can't.
         guard localCapabilities?.sendInput == true else { return false }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             try await client.sendInput(sessionId: sessionId, payload: payload)
             return true
@@ -631,7 +660,9 @@ extension AppState {
     @MainActor
     public func listLocalSessions() async -> [SessionControlSummary] {
         guard localHelperReachable, localControlEnabled else { return [] }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             return try await client.listSessions()
         } catch {
@@ -675,7 +706,9 @@ extension AppState {
             return
         }
         if localEventTasks[sessionId] != nil { return }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         let task = Task { [weak self, sessionId] in
             do {
                 Self.localStateLogger.info("[stream-debug] task START sessionId=\(sessionId, privacy: .public)")
@@ -845,7 +878,9 @@ extension AppState {
             self.localHelperError = "approveLocalAction: session not owned by current helper"
             return false
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             try await client.approveAction(
                 sessionId: sessionId,
@@ -902,7 +937,9 @@ extension AppState {
             localPendingApprovals.removeValue(forKey: sessionId)
             return
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             let pending = try await client.getPendingApprovals(sessionId: sessionId)
             if let sessionId {
@@ -946,7 +983,9 @@ extension AppState {
             self.localHelperError = "installClaudeHookViaHelper: helper not reachable or local control disabled"
             return nil
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             let result = try await client.installClaudeHook()
             // Clear any prior error so the banner doesn't get
@@ -970,7 +1009,9 @@ extension AppState {
             self.localHelperError = "uninstallClaudeHookViaHelper: helper not reachable or local control disabled"
             return nil
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         do {
             let result = try await client.uninstallClaudeHook()
             self.localHelperError = nil
@@ -992,6 +1033,10 @@ extension AppState {
     /// of `refreshLocalSessionControlState`.
     @MainActor
     public func refreshClaudeApprovalHookStatus() async {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            self.claudeApprovalHookStatus = nil
+            return
+        }
         self.claudeApprovalHookStatus = ClaudeHookDetector.currentStatus()
     }
 
@@ -1012,7 +1057,9 @@ extension AppState {
             self.wrappedCloudSharedSessionIds = []
             return
         }
-        let client = LocalSessionControlClient()
+        let client = LocalSessionControlClient(
+            runtimeEnvironment: runtimeEnvironment
+        )
         self.shellIntegrationStatus = try? await client.shellIntegrationStatus()
         self.wrappedSessions = (try? await client.listWrappedSessions()) ?? []
         // M4.4d: on failure KEEP the last known set (review: audit workflow).
@@ -1039,7 +1086,9 @@ extension AppState {
             return nil
         }
         do {
-            let now = try await LocalSessionControlClient()
+            let now = try await LocalSessionControlClient(
+                runtimeEnvironment: runtimeEnvironment
+            )
                 .setWrappedSessionCloudShared(sessionId: sessionId, shared: shared)
             self.localHelperError = nil
             if now {
@@ -1055,7 +1104,9 @@ extension AppState {
             // is the authority on what actually happened — but if we can't reach
             // it, keep the last known set rather than claiming nothing is
             // shared (same reasoning as refreshWrappedSessionState).
-            if let live = try? await LocalSessionControlClient().wrappedSessionCloudState() {
+            if let live = try? await LocalSessionControlClient(
+                runtimeEnvironment: runtimeEnvironment
+            ).wrappedSessionCloudState() {
                 self.wrappedCloudSharedSessionIds = live
             }
             return nil
@@ -1071,7 +1122,9 @@ extension AppState {
             return nil
         }
         do {
-            let st = try await LocalSessionControlClient().installShellIntegration()
+            let st = try await LocalSessionControlClient(
+                runtimeEnvironment: runtimeEnvironment
+            ).installShellIntegration()
             self.localHelperError = nil
             self.shellIntegrationStatus = st
             return st
@@ -1089,7 +1142,9 @@ extension AppState {
             return nil
         }
         do {
-            let st = try await LocalSessionControlClient().uninstallShellIntegration()
+            let st = try await LocalSessionControlClient(
+                runtimeEnvironment: runtimeEnvironment
+            ).uninstallShellIntegration()
             self.localHelperError = nil
             self.shellIntegrationStatus = st
             return st
@@ -1124,7 +1179,9 @@ extension AppState {
         }
         let sessionId = WrappedSessionID.sessionId(forTmuxName: tmuxName)
         do {
-            let ok = try await LocalSessionControlClient().attachWrappedSession(
+            let ok = try await LocalSessionControlClient(
+                runtimeEnvironment: runtimeEnvironment
+            ).attachWrappedSession(
                 sessionId: sessionId, tmuxSessionName: tmuxName, provider: provider)
             if ok {
                 self.localHelperError = nil

@@ -147,7 +147,7 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
         }
     }
 
-    func testExplicitOverridesWinIndependentlyForQAAPIClient() async {
+    func testQAAPIClientIgnoresExplicitCloudOverrides() async {
         let runtime = makeRuntime(
             channel: "qa",
             bundleIdentifier: "app.clipulse.qa.local",
@@ -161,7 +161,7 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
         let explicitURLConfiguration = await explicitURL.realtimeConfiguration()
         XCTAssertEqual(
             explicitURLConfiguration.supabaseURL,
-            "https://explicit.example"
+            "http://127.0.0.1:0"
         )
         XCTAssertEqual(
             explicitURLConfiguration.supabaseAnonKey,
@@ -179,7 +179,7 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
         )
         XCTAssertEqual(
             explicitKeyConfiguration.supabaseAnonKey,
-            "explicit-key"
+            "qa-local-invalid-anon-key"
         )
     }
 

@@ -225,7 +225,7 @@ struct OnboardingWizardView: View {
                 )
                 setupValue(
                     icon: "person.2.badge.gearshape",
-                    text: L10n.onboardingWizard.upgradeBody
+                    text: L10n.onboardingWizard.welcomeAccountsBody
                 )
                 setupValue(
                     icon: "lock.shield",

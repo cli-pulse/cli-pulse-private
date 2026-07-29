@@ -808,3 +808,4 @@
 "provider_config.manual_plan" = "수동 요금제 라벨";
 "provider_config.manual_plan_placeholder" = "예: Max 20x, Pro";
 "provider_config.manual_plan_hint" = "표시용 대체 정보일 뿐이며 수집된 할당량이나 비용을 변경하지 않습니다.";
+"onboarding_wizard.welcome_accounts_body" = "Codex, Claude, Gemini의 개인용 및 업무용 계정을 찾아 각각 설정합니다.";

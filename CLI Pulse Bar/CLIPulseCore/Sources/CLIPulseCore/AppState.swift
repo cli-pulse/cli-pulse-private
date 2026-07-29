@@ -610,7 +610,7 @@ public final class AppState: ObservableObject {
     /// constructed on first access so unit tests that don't exercise this
     /// surface don't need to mock URLSession + UDS at all.
     #if os(macOS)
-    @Published public var helperInstaller: HelperInstaller = HelperInstaller()
+    @Published public var helperInstaller: HelperInstaller
     #endif
 
     // MARK: - v1.19 Developer ID App Updater
@@ -831,6 +831,9 @@ public final class AppState: ObservableObject {
         }
 
         self.runtimeEnvironment = runtime
+        #if os(macOS)
+        self.helperInstaller = HelperInstaller(runtimeEnvironment: runtime)
+        #endif
         self._isDemoMode = AppStorage(
             wrappedValue: false,
             QAExperienceSeed.demoModeKey,

@@ -29,9 +29,32 @@ final class SessionControlIntegrationGapTests: XCTestCase {
 
     // MARK: - Setup
 
+    private var testDefaultSuites: [String] = []
+
+    override func tearDown() {
+        for suiteName in testDefaultSuites {
+            UserDefaults(suiteName: suiteName)?
+                .removePersistentDomain(forName: suiteName)
+        }
+        testDefaultSuites.removeAll()
+        super.tearDown()
+    }
+
     @MainActor
-    private func makeState() -> AppState {
-        let state = AppState()
+    private func makeState(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) -> AppState {
+        let suiteName =
+            "SessionControlIntegrationGapTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defaults.removePersistentDomain(forName: suiteName)
+        testDefaultSuites.append(suiteName)
+        let state = AppState(
+            runtimeEnvironment: runtimeEnvironment,
+            defaults: defaults,
+            helperDefaults: defaults,
+            providerSecretStore: SessionControlNoopSecretStore()
+        )
         // No real network; we mutate the published surfaces directly
         // to simulate `refreshLocalSessionControlState` outcomes.
         state.remoteSessions = []
@@ -256,7 +279,9 @@ final class SessionControlIntegrationGapTests: XCTestCase {
         // (in `remoteSessions`) carries a `device_id` that DOESN'T
         // match `selfDeviceId` because the two pairing stores
         // drifted. Ownership-by-id MUST win.
-        let state = makeState()
+        let state = makeState(
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
+        )
         state.localHelperReachable = true
         state.localControlEnabled = true
         state.localManagedSessions = [
@@ -387,7 +412,8 @@ final class SessionControlIntegrationGapTests: XCTestCase {
             socketPath: "/tmp/cli-pulse-diag-no-such-socket.sock",
             tokenPath: "/tmp/cli-pulse-diag-no-such-token",
             connectTimeout: 0.2,
-            requestTimeout: 0.2
+            requestTimeout: 0.2,
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
         )
         let diag = client.diagnostics()
         XCTAssertEqual(diag.resolvedSocketPath, "/tmp/cli-pulse-diag-no-such-socket.sock")
@@ -653,4 +679,15 @@ final class SessionControlIntegrationGapTests: XCTestCase {
         XCTAssertNil(state.localOutputPreview["S-X"])
     }
 }
+
+private struct SessionControlNoopSecretStore: ProviderSecretStoring {
+    func save(key: String, value: String, accessGroup: String?) {}
+
+    func load(key: String, accessGroup: String?) -> String? {
+        nil
+    }
+
+    func delete(key: String, accessGroup: String?) {}
+}
+
 #endif

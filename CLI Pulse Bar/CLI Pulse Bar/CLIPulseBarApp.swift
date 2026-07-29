@@ -109,7 +109,10 @@ struct CLIPulseBarApp: App {
             // confusingly on tap. The App body already observes `appState`
             // (@StateObject), so reading the predicate here adds no new scene
             // invalidation.
-            if MASSandboxGate.canHostInAppTerminal {
+            if MASSandboxGate.canHostInAppTerminal
+                && appState.runtimeEnvironment.capabilities
+                    .allowsLiveCollection
+            {
                 CommandMenu("Terminal") {
                     let ready = appState.canStartLocalManagedSession
                     // v1.34 R1d: when the user opted into the strict block AND
@@ -205,6 +208,11 @@ struct CLIPulseBarApp: App {
     /// unifying "New" and "Open existing" on one code path.
     @MainActor
     private func newTerminal(provider: String) {
+        guard appState.runtimeEnvironment.capabilities
+            .allowsLiveCollection
+        else {
+            return
+        }
         // W1-B readiness guard: the menu items are disabled when the helper
         // isn't ready, but guard here too in case the gate flipped between menu
         // render and tap. Surface a clear, actionable message instead of failing
@@ -279,7 +287,9 @@ struct CLIPulseBarApp: App {
             guard response == .OK, let cwd = panel.url?.path else { return }
             Task { @MainActor in
                 do {
-                    let result = try await LocalSessionControlClient().startManagedSession(
+                    let result = try await LocalSessionControlClient(
+                        runtimeEnvironment: appState.runtimeEnvironment
+                    ).startManagedSession(
                         provider: provider,
                         clientLabel: "in-app-terminal",
                         cwdBasename: (cwd as NSString).lastPathComponent,
@@ -434,18 +444,39 @@ struct AboutView: View {
 
 enum LaunchAtLogin {
     @available(macOS 13.0, *)
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+    private static func controller(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> RuntimeProtectedSystemService {
+        RuntimeProtectedSystemService(
+            runtimeEnvironment: runtimeEnvironment,
+            isEnabled: {
+                SMAppService.mainApp.status == .enabled
+            },
+            register: {
+                try SMAppService.mainApp.register()
+            },
+            unregister: {
+                try SMAppService.mainApp.unregister()
+            }
+        )
     }
 
     @available(macOS 13.0, *)
-    static func toggle() {
+    static func isEnabled(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        controller(runtimeEnvironment: runtimeEnvironment).isEnabled
+    }
+
+    @available(macOS 13.0, *)
+    static func setEnabled(
+        _ enabled: Bool,
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
         do {
-            if isEnabled {
-                try SMAppService.mainApp.unregister()
-            } else {
-                try SMAppService.mainApp.register()
-            }
+            try controller(
+                runtimeEnvironment: runtimeEnvironment
+            ).setEnabled(enabled)
         } catch {
             logger.error("LaunchAtLogin error: \(error.localizedDescription)")
         }
@@ -458,41 +489,54 @@ enum HelperLogin {
     private static let identifier = "yyh.CLI-Pulse.helper"
 
     @available(macOS 13.0, *)
-    static var service: SMAppService {
-        SMAppService.loginItem(identifier: identifier)
+    private static func controller(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> RuntimeProtectedSystemService {
+        RuntimeProtectedSystemService(
+            runtimeEnvironment: runtimeEnvironment,
+            isEnabled: {
+                SMAppService.loginItem(
+                    identifier: identifier
+                ).status == .enabled
+            },
+            register: {
+                try SMAppService.loginItem(
+                    identifier: identifier
+                ).register()
+            },
+            unregister: {
+                try SMAppService.loginItem(
+                    identifier: identifier
+                ).unregister()
+            }
+        )
     }
 
     @available(macOS 13.0, *)
-    static var isEnabled: Bool {
-        service.status == .enabled
+    static func isEnabled(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        controller(runtimeEnvironment: runtimeEnvironment).isEnabled
     }
 
     @available(macOS 13.0, *)
-    static func register() {
+    static func setEnabled(
+        _ enabled: Bool,
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
         do {
-            try service.register()
-            logger.info("HelperLogin: registered")
+            let changed = try controller(
+                runtimeEnvironment: runtimeEnvironment
+            ).setEnabled(enabled)
+            if changed {
+                logger.info(
+                    "HelperLogin: \(enabled ? "registered" : "unregistered")"
+                )
+            }
         } catch {
-            logger.error("HelperLogin register error: \(error.localizedDescription)")
-        }
-    }
-
-    @available(macOS 13.0, *)
-    static func unregister() {
-        do {
-            try service.unregister()
-            logger.info("HelperLogin: unregistered")
-        } catch {
-            logger.error("HelperLogin unregister error: \(error.localizedDescription)")
-        }
-    }
-
-    @available(macOS 13.0, *)
-    static func toggle() {
-        if isEnabled {
-            unregister()
-        } else {
-            register()
+            logger.error(
+                "HelperLogin update error: \(error.localizedDescription)"
+            )
         }
     }
 }

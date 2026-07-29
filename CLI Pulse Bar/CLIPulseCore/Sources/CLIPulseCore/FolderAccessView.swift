@@ -130,10 +130,17 @@ public struct FolderAccessView: View {
     }
 
     private func refreshStatuses() {
+        guard state.runtimeEnvironment.capabilities.allowsLiveCollection else {
+            statuses = []
+            return
+        }
         statuses = BookmarkManager.shared.accessStatus()
     }
 
     private func grantAll() {
+        guard state.runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         // Open panel at home directory — grants access to all subdirectories
         let panel = NSOpenPanel()
         panel.message = L10n.folderAccess.panelMessage
