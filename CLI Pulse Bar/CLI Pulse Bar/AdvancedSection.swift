@@ -7,7 +7,7 @@ import CLIPulseCore
 /// sub-sections.
 ///
 /// `launchAtLogin` and `helperEnabled` remain parent-owned (SettingsTab)
-/// via `@Binding` because they pair with `LaunchAtLogin.toggle()` /
+/// via `@Binding` because they pair with `LaunchAtLogin.setEnabled()` /
 /// `HelperLogin.toggle()` services that also fire from PairingSection.
 struct AdvancedSection: View {
     @EnvironmentObject var state: AppState
@@ -29,8 +29,11 @@ struct AdvancedSection: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            .onChange(of: launchAtLogin) { _ in
-                LaunchAtLogin.toggle()
+            .onChange(of: launchAtLogin) { newValue in
+                // Pass the intended value. `toggle()` inferred direction from
+                // live status, which inverts the control whenever the switch's
+                // snapshot has gone stale — see `LaunchAtLogin.setEnabled`.
+                LaunchAtLogin.setEnabled(newValue)
             }
 
             Divider()

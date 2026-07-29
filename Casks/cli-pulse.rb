@@ -40,17 +40,27 @@ cask "cli-pulse" do
             quit:      "yyh.CLI-Pulse"
 
   # Only `zap` may delete user data — `uninstall` must not, since a plain
-  # `brew uninstall` is expected to be reversible. Covers the app group
-  # container the app and its helper share, which is where pairing state and
-  # scan bookmarks live.
+  # `brew uninstall` is expected to be reversible.
+  #
+  # Two of these are easy to get wrong, and the first shipped wrong:
+  #   - "CLIPulse" has NO space. `DailyUsageArchive.defaultRoot()` appends that
+  #     literal, and the pet ledger/state share the directory — it holds the
+  #     entire usage history. The cask originally listed "CLI Pulse", a path
+  #     that does not exist, so `--zap` silently left everything behind and a
+  #     reinstall came back with all of it.
+  #   - the app-group defaults suite backs to a plist NEXT TO the group
+  #     container, not inside it. Unsandboxed (which is what brew installs) that
+  #     is ~/Library/Preferences/group.yyh.CLI-Pulse.plist, holding provider
+  #     configs, helper status and cached collector results.
   zap trash: [
     "~/Library/Application Scripts/yyh.CLI-Pulse",
-    "~/Library/Application Support/CLI Pulse",
+    "~/Library/Application Support/CLIPulse",
     "~/Library/Caches/yyh.CLI-Pulse",
     "~/Library/Containers/yyh.CLI-Pulse",
     "~/Library/Group Containers/group.yyh.CLI-Pulse",
     "~/Library/HTTPStorages/yyh.CLI-Pulse",
     "~/Library/LaunchAgents/yyh.CLI-Pulse.helper.agent.plist",
+    "~/Library/Preferences/group.yyh.CLI-Pulse.plist",
     "~/Library/Preferences/yyh.CLI-Pulse.plist",
   ]
 end

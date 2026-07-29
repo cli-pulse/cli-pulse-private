@@ -223,6 +223,17 @@ internal final class DataRefreshManager {
             CredentialBridge.syncCredentialsToAppGroup()
 
             let localRuns = await runCollectorsWithOutcomes(providerConfigs: context.providerConfigs)
+            // v1.44 audit: a cancelled pass must not publish. `requestRefresh`
+            // cancels the in-flight task, which propagates into every collector;
+            // `URLSession` then throws `URLError(.cancelled)` (-999), which
+            // `categorize` correctly reads as `.network`. Publishing that paints
+            // every network-backed provider red for a refresh the user
+            // themselves superseded (⌘R, or the helper's sync notification), and
+            // the replacement pass returns early on `isLoading`, so nothing
+            // repairs it until the next 60-120s tick. The detached telemetry
+            // Task is unstructured and does NOT inherit cancellation, so it
+            // would upload `failed_network` for the whole fleet row too.
+            guard !Task.isCancelled else { return }
             await callbacks.setCollectorOutcomes(
                 Dictionary(localRuns.map { ($0.kind, $0.outcome) }, uniquingKeysWith: { _, latest in latest })
             )
@@ -587,6 +598,17 @@ internal final class DataRefreshManager {
         callbacks.setServerOnline(true)
 
         let collectorRuns = await runCollectorsWithOutcomes(providerConfigs: context.providerConfigs)
+        // v1.44 audit: a cancelled pass must not publish. `requestRefresh`
+        // cancels the in-flight task, which propagates into every collector;
+        // `URLSession` then throws `URLError(.cancelled)` (-999), which
+        // `categorize` correctly reads as `.network`. Publishing that paints
+        // every network-backed provider red for a refresh the user
+        // themselves superseded (⌘R, or the helper's sync notification), and
+        // the replacement pass returns early on `isLoading`, so nothing
+        // repairs it until the next 60-120s tick. The detached telemetry
+        // Task is unstructured and does NOT inherit cancellation, so it
+        // would upload `failed_network` for the whole fleet row too.
+        guard !Task.isCancelled else { return }
         await callbacks.setCollectorOutcomes(
             Dictionary(collectorRuns.map { ($0.kind, $0.outcome) }, uniquingKeysWith: { _, latest in latest })
         )
