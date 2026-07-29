@@ -25,6 +25,8 @@ on:
       - 'CLI Pulse Bar/scripts/build-appstore.sh'
       - 'scripts/check_helper_no_container_touch.sh'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/ci_check_qa_scheme.py'
+      - 'scripts/test_ci_check_qa_scheme.py'
       - '.github/workflows/swift-ci.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -43,6 +45,8 @@ on:
       - 'CLI Pulse Bar/scripts/build-appstore.sh'
       - 'scripts/check_helper_no_container_touch.sh'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/ci_check_qa_scheme.py'
+      - 'scripts/test_ci_check_qa_scheme.py'
       - '.github/workflows/swift-ci.yml'
   workflow_dispatch:
 
@@ -123,6 +127,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check_helper_no_container_touch.sh
       - run: bash scripts/check_helper_version_sync.sh
+
+  check-qa-isolation:
+    name: QA scheme isolation contract
+    # Pure text/XML validation on Ubuntu. This fails before a macOS build if
+    # the QA scheme drifts back to production signing, bundle IDs, entitlements,
+    # reset-on-launch, or a non-isolated home directory.
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - name: Run QA guard regression tests
+        run: python3 -m unittest scripts/test_ci_check_qa_scheme.py
+      - name: Verify checked-in QA isolation contract
+        run: python3 scripts/ci_check_qa_scheme.py
 
   test-core:
     name: CLIPulseCore unit tests
