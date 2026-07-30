@@ -1081,5 +1081,5 @@
 "launch_at_login_notice.keep" = "知道了";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "机器健康需要 Companion CLI helper —— 内置 helper 不读取传感器。在「设置 › 配对」里安装它,即可看到温度、风扇和电源。";
-"machine.helper_unauthenticated" = "helper 拒绝了本应用的凭据。请在「设置 › 配对」重新配对。";
+"machine.helper_lacks_machine_health" = "机器健康需要 Companion CLI helper —— 内置 helper 不读取传感器。在「设置 › General」里安装它,即可看到温度、风扇和电源。";
+"machine.helper_unauthenticated" = "helper 拒绝了本应用的凭据。请在「设置 › General」重新配对。";

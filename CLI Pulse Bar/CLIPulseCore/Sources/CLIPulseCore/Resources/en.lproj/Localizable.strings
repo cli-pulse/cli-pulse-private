@@ -1079,5 +1079,5 @@
 "launch_at_login_notice.keep" = "Got it";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "Machine health needs the Companion CLI helper — the built-in helper doesn't read sensors. Install it from Settings › Pairing to see temperature, fans and power.";
-"machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › Pairing.";
+"machine.helper_lacks_machine_health" = "Machine health needs the Companion CLI helper — the built-in helper doesn't read sensors. Install it from Settings › General to see temperature, fans and power.";
+"machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › General.";

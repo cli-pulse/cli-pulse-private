@@ -87,6 +87,20 @@ final class MachineSnapshotUnavailabilityTests: XCTestCase {
         )
     }
 
+    /// The route named in the advice must be a section that EXISTS. The first
+    /// draft said "Settings › Pairing"; the picker only has General / Display /
+    /// Providers / Advanced, and "Managed CLI Helper" lives under General. An
+    /// instruction pointing at a tab the user cannot find is the same failure
+    /// as the message it replaced.
+    func testAdviceNamesARealSettingsSection() {
+        let m = MachineSnapshotUnavailability.unsupportedByHelper.message
+        XCTAssertFalse(
+            m.contains("Pairing") || m.contains("配对") || m.contains("配對")
+                || m.contains("ペアリング") || m.contains("페어링") || m.contains("Emparejamiento"),
+            "there is no Pairing section in the Settings picker. Got: \(m)"
+        )
+    }
+
     /// An outage and a missing capability should not look identical either —
     /// the old state rendered both with the same "power lost" bolt.
     func testIconsDistinguishTheStates() {

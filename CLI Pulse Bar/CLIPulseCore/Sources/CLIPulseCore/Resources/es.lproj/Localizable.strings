@@ -804,5 +804,5 @@
 "launch_at_login_notice.keep" = "Entendido";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "El estado de la máquina necesita el helper Companion CLI: el helper integrado no lee sensores. Instálalo en Ajustes › Emparejamiento para ver temperatura, ventiladores y energía.";
-"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › Emparejamiento.";
+"machine.helper_lacks_machine_health" = "El estado de la máquina necesita el helper Companion CLI: el helper integrado no lee sensores. Instálalo en Ajustes › General para ver temperatura, ventiladores y energía.";
+"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › General.";

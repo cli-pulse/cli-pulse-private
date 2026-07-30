@@ -1081,5 +1081,5 @@
 "launch_at_login_notice.keep" = "OK";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "マシンヘルスには Companion CLI ヘルパーが必要です。内蔵ヘルパーはセンサーを読み取りません。「設定 › ペアリング」からインストールすると、温度・ファン・電源が表示されます。";
-"machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › ペアリング」から再度ペアリングしてください。";
+"machine.helper_lacks_machine_health" = "マシンヘルスには Companion CLI ヘルパーが必要です。内蔵ヘルパーはセンサーを読み取りません。「設定 › General」からインストールすると、温度・ファン・電源が表示されます。";
+"machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › General」から再度ペアリングしてください。";
