@@ -256,6 +256,70 @@ final class HelperInstallerTests: XCTestCase {
             state: .bundled(version: "1.30.0"),
             lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8))
     }
-}
+    // MARK: - v1.44: status must describe the path the client actually tried
 
+    /// The bug: `udsPath` is built from `groupContainerBasePath()` alone, but the
+    /// client tries `~/.clipulse` FIRST — that is where the bundled helper has
+    /// bound since the TCC-prompt fix. So this status was drawn from an
+    /// existence check on a path the client never connected to, and then named
+    /// that path in the error text.
+    ///
+    /// Observed on a real machine: a live helper (pid 848) held
+    /// `~/.clipulse/clipulse-helper.sock` while a leftover node sat in the
+    /// container. The UI said "socket exists but isn't responding
+    /// (…/Group Containers/…)" and the log showed a connection attempt somewhere
+    /// else entirely.
+    func testProbeReportsTheRuntimeRootBeforeTheContainer() {
+        let runtime = "/Users/x/.clipulse/clipulse-helper.sock"
+        let container = "/Users/x/Library/Group Containers/group.yyh.CLI-Pulse/clipulse-helper.sock"
+        let found = HelperInstaller.firstExistingSocket(
+            candidates: ["/Users/x/.clipulse", "/Users/x/Library/Group Containers/group.yyh.CLI-Pulse"],
+            exists: { $0 == runtime || $0 == container }   // BOTH exist, as on that machine
+        )
+        XCTAssertEqual(found, runtime, "must name the candidate the client tries first, not the container")
+    }
+
+    /// A leftover node in the container, with nothing at the runtime root, must
+    /// still be found — otherwise the `.pkg` helper's own path stops being
+    /// reported at all.
+    func testContainerIsStillProbedWhenTheRuntimeRootIsEmpty() {
+        let container = "/Users/x/Library/Group Containers/group.yyh.CLI-Pulse/clipulse-helper.sock"
+        XCTAssertEqual(
+            HelperInstaller.firstExistingSocket(
+                candidates: ["/Users/x/.clipulse", "/Users/x/Library/Group Containers/group.yyh.CLI-Pulse"],
+                exists: { $0 == container }
+            ),
+            container
+        )
+    }
+
+    func testNoSocketAnywhereIsNil() {
+        XCTAssertNil(
+            HelperInstaller.firstExistingSocket(candidates: ["/a", "/b"], exists: { _ in false })
+        )
+    }
+
+    /// The advice must no longer promise the helper is present and fixable by
+    /// reinstalling. The case that actually shows up is a SANDBOXED build that
+    /// cannot reach `~/.clipulse` at all — connect returns EPERM while a healthy
+    /// helper holds the socket, and "uninstall and reinstall" cannot fix a
+    /// permission boundary.
+    func testUnreachableTextDoesNotPromiseAReinstallWillFixIt() {
+        let state = HelperInstaller.resolveState(
+            hello: nil, manifest: nil, socketExists: true,
+            udsPath: "/Users/x/.clipulse/clipulse-helper.sock"
+        )
+        guard case .unreachable(let message) = state else {
+            return XCTFail("expected .unreachable, got \(state)")
+        }
+        XCTAssertTrue(
+            message.lowercased().contains("sandbox"),
+            "must name the sandbox case — it is the common one. Got: \(message)"
+        )
+        XCTAssertFalse(
+            message.lowercased().contains("may be restarting"),
+            "that was a guess among three causes, and the likeliest was missing"
+        )
+    }
+}
 #endif
