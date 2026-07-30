@@ -81,9 +81,21 @@ final class MachineSnapshotUnavailabilityTests: XCTestCase {
             m.contains("not reachable") || m.contains("needs the cli pulse helper running"),
             "the helper IS running and reachable. Got: \(m)"
         )
+        // And it must NOT tell them to install anything. When the bundled
+        // helper answers `.notImplemented`, `HelperInstaller` resolves to
+        // `.bundled` and `CompanionCLISection` deliberately renders NO install
+        // action — it says "No separate install needed". Two earlier drafts of
+        // this sentence sent the user to a button that is not on screen; the
+        // second one even named a Settings section that does not exist. There is
+        // no in-app remedy for this state, so the message states the gap and
+        // stops.
+        XCTAssertFalse(
+            m.contains("install"),
+            "there is no install action in the .bundled state. Got: \(m)"
+        )
         XCTAssertTrue(
-            m.contains("install") || m.contains("companion"),
-            "must point at the helper that has the method. Got: \(m)"
+            m.contains("built-in") || m.contains("sensor"),
+            "must say which helper and why. Got: \(m)"
         )
     }
 
@@ -92,7 +104,7 @@ final class MachineSnapshotUnavailabilityTests: XCTestCase {
     /// Providers / Advanced, and "Managed CLI Helper" lives under General. An
     /// instruction pointing at a tab the user cannot find is the same failure
     /// as the message it replaced.
-    func testAdviceNamesARealSettingsSection() {
+    func testMessageDoesNotSendTheUserToASettingsSectionAtAll() {
         let m = MachineSnapshotUnavailability.unsupportedByHelper.message
         XCTAssertFalse(
             m.contains("Pairing") || m.contains("配对") || m.contains("配對")

@@ -1081,5 +1081,5 @@
 "launch_at_login_notice.keep" = "知道了";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "機器健康需要 Companion CLI helper —— 內建 helper 不讀取感測器。在「設定 › General」中安裝它,即可看到溫度、風扇與電源。";
+"machine.helper_lacks_machine_health" = "內建 helper 不讀取感測器,所以機器健康暫時不可用。這台 Mac 上其他功能都正常;感測器支援正在進行。";
 "machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › General」重新配對。";

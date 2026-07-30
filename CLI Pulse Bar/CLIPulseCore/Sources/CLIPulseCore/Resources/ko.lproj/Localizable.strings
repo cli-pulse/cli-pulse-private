@@ -804,5 +804,5 @@
 "launch_at_login_notice.keep" = "확인";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "머신 상태에는 Companion CLI 헬퍼가 필요합니다. 내장 헬퍼는 센서를 읽지 않습니다. '설정 › General'에서 설치하면 온도, 팬, 전원을 볼 수 있습니다.";
+"machine.helper_lacks_machine_health" = "내장 헬퍼는 센서를 읽지 않으므로 머신 상태는 현재 사용할 수 없습니다. 이 Mac의 다른 기능은 정상 작동하며, 센서 지원은 준비 중입니다.";
 "machine.helper_unauthenticated" = "헬퍼가 이 앱의 자격 증명을 거부했습니다. '설정 › General'에서 다시 페어링하세요.";
