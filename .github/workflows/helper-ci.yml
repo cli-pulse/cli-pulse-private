@@ -5,12 +5,14 @@ on:
     paths:
       - 'helper/**'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
       - '.github/workflows/helper-ci.yml'
   pull_request:
     paths:
       - 'helper/**'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
       - '.github/workflows/helper-ci.yml'
   # v1.26 C2: manual retrigger trigger so a future Actions outage
@@ -23,16 +25,23 @@ concurrency:
 
 jobs:
   version-sync:
-    name: Helper version sync (Swift kHelperVersion == Python HELPER_VERSION)
+    name: Helper parity (version sync + method parity)
     # Duplicated from swift-ci's check-helper-guards ON PURPOSE: a Python-only
     # HELPER_VERSION bump touches helper/** which does NOT trigger swift-ci,
     # so without this job the exact 1.23.0->1.29.1 drift the guard exists to
     # prevent would land unchecked again (codex review on the guard's own PR).
+    #
+    # v1.44 adds the method-parity gate here for exactly the same reason, and it
+    # needed saying twice: the gate shipped wired only into swift-ci, whose paths
+    # filter excludes helper/**. Adding a verb to SUPPORTED_METHODS is a
+    # helper/**-only change — the normal shape of the drift — so the gate could
+    # not fire in the one case it exists for. Self-review caught it before merge.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check_helper_version_sync.sh
+      - run: bash scripts/check_helper_method_parity.sh
 
   test:
     runs-on: ubuntu-latest

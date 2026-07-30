@@ -80,7 +80,7 @@ case "machine-snapshot":
     //     embed_helper_in_archive.sh runs this against the SIGNED binary and
     //     fails the build if it cannot launch and emit JSON. If it can't run on
     //     the build machine it can't run on a user's Mac either.
-    let snapshotDict = MachineSnapshotCollector.collectSync().wireDict
+    let snapshotDict = MachineSnapshotCollector.jsonSafeWireDict(MachineSnapshotCollector.collectSync())
     guard JSONSerialization.isValidJSONObject(snapshotDict),
           let snapshotJSON = try? JSONSerialization.data(
               withJSONObject: snapshotDict,

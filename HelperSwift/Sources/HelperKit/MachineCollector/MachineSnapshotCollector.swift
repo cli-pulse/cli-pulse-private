@@ -31,6 +31,42 @@ public enum MachineSnapshotCollector {
     /// cooperative pool — so this cannot starve other requests. That is a
     /// property of the server's threading model, not a general licence: moving
     /// dispatch onto the cooperative pool would make this a deadlock risk.
+    /// The wire dict, with any non-finite Double removed.
+    ///
+    /// This is not defensive tidiness — it is the difference between a missing
+    /// field and a dead daemon. `JSONSerialization.data(withJSONObject:)` raises
+    /// an **NSException** on NaN or ±infinity, and an ObjC exception cannot be
+    /// caught by Swift `try`, so the response encoder at
+    /// `LocalSessionServer.swift:1139` would abort the whole helper process —
+    /// taking every PTY session, hook and approval subscription with it.
+    ///
+    /// The CLI path guards with `isValidJSONObject` and exits 1; the RPC path
+    /// has no such guard, and that asymmetry is easy to miss because the CLI is
+    /// what a developer runs by hand.
+    ///
+    /// Reachable in principle from two directions: `Double(cpuS)` on the `ps`
+    /// %CPU column returns `+infinity` for an overflowing literal and `nan` for
+    /// the text "nan", and SensorKit's Doubles reach here unvalidated by this
+    /// module. Neither is expected from a healthy machine, which is exactly why
+    /// it would surface as an unexplained daemon death rather than a bug report.
+    ///
+    /// Dropping the key rather than substituting 0 is deliberate: the client
+    /// coerces a missing key to a sane default, whereas a fabricated 0 would be
+    /// indistinguishable from a real reading.
+    public static func jsonSafeWireDict(_ snapshot: MachineSnapshotValue) -> [String: Any] {
+        func clean(_ value: Any) -> Any? {
+            if let d = value as? Double { return d.isFinite ? d : nil }
+            if let dict = value as? [String: Any] {
+                return dict.compactMapValues(clean)
+            }
+            if let array = value as? [[String: Any]] {
+                return array.map { $0.compactMapValues(clean) }
+            }
+            return value
+        }
+        return snapshot.wireDict.compactMapValues(clean)
+    }
+
     public static func collectSync() -> MachineSnapshotValue {
         let semaphore = DispatchSemaphore(value: 0)
         // `nonisolated(unsafe)` is sound here: exactly one task writes it, and

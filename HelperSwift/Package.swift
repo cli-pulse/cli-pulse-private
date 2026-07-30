@@ -69,13 +69,24 @@ let package = Package(
                 // target, so every consumer has to repeat them — omitting them
                 // fails at link with 7 undefined `_IOReport*` symbols.
                 //
-                // Hardened runtime does not break this: `clipulse-sensors`
-                // already ships signed `--options runtime` with the same
-                // symbols, and build_helper_pkg.sh smokes the signed binary.
-                // The difference here is blast radius — if this ever DID fail
-                // to load, the whole helper dies rather than just sensors — so
-                // the equivalent post-sign smoke gate is mandatory on both the
-                // MAS and DEVID paths, not optional.
+                // Hardened runtime does not break this — measured, not argued:
+                // a release build signed `--options runtime` launches and reads
+                // real values (cpu_temp 61.7 C, fan 1666 RPM). `clipulse-sensors`
+                // has shipped the same symbols under the same flag for releases.
+                //
+                // The difference here is blast radius: if this ever DID fail to
+                // load, the whole helper dies rather than just sensors. So the
+                // guard is the `Signed-helper dynamic_lookup smoke` step in
+                // .github/workflows/swift-ci.yml, which signs and runs the
+                // binary on every PR.
+                //
+                // The first version of that guard lived in
+                // embed_helper_in_archive.sh and this comment claimed it was
+                // "mandatory on both the MAS and DEVID paths". It was neither —
+                // devid-dmg.yml never calls that script, and swift-ci mentioned
+                // it only in a `paths:` filter. Naming the real job here is the
+                // point: a guard that is only asserted, never run, is worse than
+                // no guard, because the assertion gets quoted as evidence.
                 .unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]),
             ]
         ),

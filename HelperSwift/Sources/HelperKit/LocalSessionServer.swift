@@ -522,6 +522,12 @@ public final class LocalSessionServer: @unchecked Sendable {
                     "send_input": true,
                     "subscribe_events": true,
                     "approvals": true,
+                    // Python advertises this too (local_session_server.py:1018).
+                    // Nothing on the client decodes it today — capability
+                    // negotiation goes through `supported_methods` — but the
+                    // two helpers must describe themselves identically or the
+                    // next reader has to work out which one is lying.
+                    "machine_snapshot": true,
                 ],
                 "provider_availability": providerAvailability,
                 // Per-provider plan-auth status ("on_plan"/"off_plan") so the picker can
@@ -600,7 +606,7 @@ public final class LocalSessionServer: @unchecked Sendable {
     /// that a deliberate IOReport sampling window) against the client's 5s
     /// request timeout and 2s poll interval.
     private func handleGetMachineSnapshot(request: WireRequest) -> WireResponse {
-        .ok(id: request.id, result: MachineSnapshotCollector.collectSync().wireDict)
+        .ok(id: request.id, result: MachineSnapshotCollector.jsonSafeWireDict(MachineSnapshotCollector.collectSync()))
     }
 
     // MARK: - iter3 method handlers
