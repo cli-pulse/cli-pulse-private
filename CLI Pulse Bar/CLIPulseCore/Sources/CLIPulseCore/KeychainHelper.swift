@@ -13,6 +13,36 @@ public enum KeychainHelper {
     /// process that declares the group, with NO per-item consent prompt.
     public static let sharedAccessGroup = "group.yyh.CLI-Pulse"
 
+    // MARK: - Test seam
+
+    /// In-memory stand-in for the login Keychain, honoured ONLY under XCTest.
+    ///
+    /// `load` searches the legacy file-based keychain — the query carries no
+    /// `kSecUseDataProtectionKeychain` — so a test binary, whose signature does
+    /// not match the ACL on items the shipped app wrote, makes macOS raise the
+    /// "wants to use information stored by ... in your keychain" dialog this
+    /// file already describes above. Headless there is nobody to click it, and
+    /// `SecItemCopyMatching` blocks in `mach_msg` indefinitely.
+    ///
+    /// Not hypothetical. `applyAuthenticatedState` reads `storedToken` to build
+    /// its notification userInfo, so every test that signs in inherited that
+    /// stall: it wedged the 2200-test suite past a 9-minute timeout, and had
+    /// surfaced earlier as one 27s test that a re-run at 0.037s made look like
+    /// a one-off blip. CI cannot catch it — a fresh runner keychain answers
+    /// `errSecItemNotFound` immediately — so it only ever bites on a developer
+    /// machine, where it reads as "the test suite hangs" with no other clue.
+    ///
+    /// Gated on XCTest actually being loaded, so the shipped app cannot take
+    /// this path even if something set the property: in production, auth tokens
+    /// come from the Keychain, full stop.
+    nonisolated(unsafe) public static var inMemoryStoreForTesting: [String: String]?
+
+    private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
+
+    private static func testStoreKey(_ key: String, _ accessGroup: String?) -> String {
+        "\(accessGroup ?? "-")|\(key)"
+    }
+
     /// One-time migration: re-home a keychain item that was written WITHOUT
     /// an access group (so its ACL trusts only the writing app) into
     /// `sharedAccessGroup`, so the LoginItem helper can read it without the
@@ -38,6 +68,10 @@ public enum KeychainHelper {
 
     public static func save(key: String, value: String, accessGroup: String? = nil) {
         guard let data = value.data(using: .utf8) else { return }
+        if isRunningUnderXCTest, inMemoryStoreForTesting != nil {
+            inMemoryStoreForTesting?[testStoreKey(key, accessGroup)] = value
+            return
+        }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -81,6 +115,9 @@ public enum KeychainHelper {
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
         }
+        if isRunningUnderXCTest, let store = inMemoryStoreForTesting {
+            return store[testStoreKey(key, accessGroup)]
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }
@@ -95,6 +132,10 @@ public enum KeychainHelper {
         ]
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
+        }
+        if isRunningUnderXCTest, inMemoryStoreForTesting != nil {
+            inMemoryStoreForTesting?[testStoreKey(key, accessGroup)] = nil
+            return
         }
         SecItemDelete(query as CFDictionary)
     }
