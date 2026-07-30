@@ -52,7 +52,18 @@ jobs:
           python-version: '3.12'
 
       - name: Install dev tooling
-        run: python -m pip install --upgrade pip pytest ruff cryptography
+        # ruff is PINNED. Unpinned, `--upgrade` installs whatever shipped since
+        # the last run, and a release that enables new rules turns a PR red for
+        # code it never touched. That is not hypothetical: main was green on
+        # 2026-07-23, and the next PR to trigger this workflow (2026-07-30, and
+        # only because helper-ci watches Protocol.swift) drew 380 errors across
+        # files nobody had edited — UP045 and friends. Ten minutes went into
+        # proving the feature branch was innocent.
+        #
+        # Raising this pin is a deliberate task: bump it, run `ruff check .`,
+        # and fix or `# noqa` what the new rules find, in a PR that does only
+        # that. Never bump it as a side effect of unrelated work.
+        run: python -m pip install --upgrade pip && python -m pip install pytest 'ruff==0.15.11' cryptography
 
       - name: Ruff lint
         run: ruff check .
