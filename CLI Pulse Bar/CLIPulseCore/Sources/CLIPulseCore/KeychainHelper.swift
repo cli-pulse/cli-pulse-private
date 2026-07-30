@@ -32,10 +32,19 @@ public enum KeychainHelper {
     /// `errSecItemNotFound` immediately — so it only ever bites on a developer
     /// machine, where it reads as "the test suite hangs" with no other clue.
     ///
+    /// Active for the WHOLE test bundle, not opt-in per class, because the
+    /// blocking read is not something a test asks for: `AppState.init` starts a
+    /// MainActor task that calls `restoreSession()` (AppState.swift:830), so
+    /// merely constructing an `AppState` — which dozens of tests do — arms it.
+    /// When it blocks it holds the main actor, and the next test that needs the
+    /// main actor deadlocks. That is why `CookieResolverTests` passed alone in
+    /// 0.005s and hung in the full run: it was the victim, not the cause. An
+    /// opt-in seam would have to be remembered by every future test that ever
+    /// touches `AppState`, which is exactly the kind of thing nobody remembers.
+    ///
     /// Gated on XCTest actually being loaded, so the shipped app cannot take
-    /// this path even if something set the property: in production, auth tokens
-    /// come from the Keychain, full stop.
-    nonisolated(unsafe) public static var inMemoryStoreForTesting: [String: String]?
+    /// this path: in production, auth tokens come from the Keychain, full stop.
+    nonisolated(unsafe) public static var inMemoryStoreForTesting: [String: String] = [:]
 
     private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
 
@@ -68,8 +77,8 @@ public enum KeychainHelper {
 
     public static func save(key: String, value: String, accessGroup: String? = nil) {
         guard let data = value.data(using: .utf8) else { return }
-        if isRunningUnderXCTest, inMemoryStoreForTesting != nil {
-            inMemoryStoreForTesting?[testStoreKey(key, accessGroup)] = value
+        if isRunningUnderXCTest {
+            inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = value
             return
         }
         var query: [String: Any] = [
@@ -115,8 +124,8 @@ public enum KeychainHelper {
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
         }
-        if isRunningUnderXCTest, let store = inMemoryStoreForTesting {
-            return store[testStoreKey(key, accessGroup)]
+        if isRunningUnderXCTest {
+            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
         }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -133,8 +142,8 @@ public enum KeychainHelper {
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
         }
-        if isRunningUnderXCTest, inMemoryStoreForTesting != nil {
-            inMemoryStoreForTesting?[testStoreKey(key, accessGroup)] = nil
+        if isRunningUnderXCTest {
+            inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
             return
         }
         SecItemDelete(query as CFDictionary)

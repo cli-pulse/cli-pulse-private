@@ -19,19 +19,12 @@ import XCTest
 /// (which pins the routing decision the spawned task will reach).
 @MainActor
 final class ContinueWithoutAccountTests: XCTestCase {
-    /// Both sign-in tests below call `applyAuthenticatedState`, which reads
-    /// `storedToken` out of the Keychain to build its notification userInfo.
-    /// From a test binary that read raises a macOS authorization dialog nobody
-    /// can answer, and the test blocks in `mach_msg` forever — see the seam's
-    /// documentation in `KeychainHelper`. Route those reads to memory instead.
+    /// The Keychain is already routed to memory for the whole bundle (see
+    /// `KeychainHelper.inMemoryStoreForTesting`); reset it so tokens written by
+    /// an earlier class cannot leak into these assertions.
     override func setUp() {
         super.setUp()
         KeychainHelper.inMemoryStoreForTesting = [:]
-    }
-
-    override func tearDown() {
-        KeychainHelper.inMemoryStoreForTesting = nil
-        super.tearDown()
     }
 
 
