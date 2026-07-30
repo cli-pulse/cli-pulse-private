@@ -1079,3 +1079,7 @@
 "launch_at_login_notice.body" = "CLI Pulse 现在会随登录自动打开,你不用惦记它,用量也一直是新的。";
 "launch_at_login_notice.undo" = "撤销";
 "launch_at_login_notice.keep" = "知道了";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "内置 helper 不读取传感器,所以机器健康暂时不可用。这台 Mac 上其他功能都正常;传感器支持正在做。";
+"machine.helper_unauthenticated" = "helper 拒绝了本应用的凭据。请在「设置 › General」重新配对。";

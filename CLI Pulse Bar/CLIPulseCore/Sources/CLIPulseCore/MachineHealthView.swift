@@ -12,6 +12,10 @@ import SwiftUI
 public struct MachineHealthView: View {
     @State private var snapshot: MachineSnapshot?
     @State private var didLoadOnce = false
+    /// v1.44: WHY there is no snapshot. Every throw used to collapse into one
+    /// "Helper not reachable" message, which was false for the case that
+    /// actually happens — see `MachineSnapshotUnavailability`.
+    @State private var unavailability: MachineSnapshotUnavailability = .unreachable
     private let client = LocalSessionControlClient()
     private let refreshInterval: UInt64 = 2_000_000_000  // 2 s
 
@@ -1018,10 +1022,10 @@ public struct MachineHealthView: View {
 
     private var unavailableState: some View {
         VStack(spacing: 8) {
-            Image(systemName: "bolt.horizontal.circle")
+            Image(systemName: unavailability.iconName)
                 .font(.system(size: 28))
                 .foregroundStyle(.tertiary)
-            Text(L10n.machine.helperUnavailable)
+            Text(unavailability.message)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -1066,8 +1070,10 @@ public struct MachineHealthView: View {
                     didLoadOnce = true
                 }
             } catch {
+                let reason = MachineSnapshotUnavailability(error)
                 await MainActor.run {
                     didLoadOnce = true
+                    unavailability = reason
                     if snapshot != nil { snapshot = nil }  // helper went away
                 }
             }

@@ -1077,3 +1077,7 @@
 "launch_at_login_notice.body" = "CLI Pulse now opens when you log in, so your usage stays current without you thinking about it.";
 "launch_at_login_notice.undo" = "Undo";
 "launch_at_login_notice.keep" = "Got it";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "Machine health isn't available with the built-in helper — it doesn't read sensors. Everything else on this Mac keeps working; sensor support is on the way.";
+"machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › General.";
