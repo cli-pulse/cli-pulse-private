@@ -1111,3 +1111,7 @@
 "launch_at_login_notice.body" = "CLI Pulse はログイン時に自動で開きます。意識しなくても使用量が最新に保たれます。";
 "launch_at_login_notice.undo" = "元に戻す";
 "launch_at_login_notice.keep" = "OK";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
+"machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › General」から再度ペアリングしてください。";
