@@ -216,7 +216,10 @@ public enum MachineSnapshotCollector {
     /// doesn't report a diff that nobody should act on.
     static func isoTimestamp(_ date: Date = Date()) -> String {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        // `TimeZone(secondsFromGMT: 0)` cannot realistically fail, but this is a
+        // long-lived daemon where a trap takes down sessions, hooks and
+        // approvals — and it would do so over a field no client even reads.
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         let c = calendar.dateComponents(
             [.year, .month, .day, .hour, .minute, .second, .nanosecond], from: date
         )
