@@ -188,23 +188,27 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // v1.30.2 (RC-1): record pairing state from this probe. nil when
         // hello failed (unknown) or the helper predates the `paired` field.
         helperPaired = helperRunning?.paired
-        // v1.44: probe EVERY candidate base, not just the group container.
+        // NOTE: deliberately still the CONTAINER path only.
         //
-        // `udsPath` is built from `groupContainerBasePath()` alone, but the
-        // client tries `~/.clipulse` FIRST — that is where the bundled helper
-        // has bound since the TCC-prompt fix. Checking only the container meant
-        // this status was drawn from evidence about a path the client never
-        // connected to, and reported that path in the error text. On a machine
-        // with a live helper on `~/.clipulse` and a leftover node in the
-        // container, the UI said "socket exists but isn't responding
-        // (…/Group Containers/…)" while the log showed a perfectly healthy
-        // connection attempt somewhere else entirely.
-        let liveSocket = Self.firstExistingSocket()
+        // A first pass here walked `candidateBasePaths()` so the status would
+        // name `~/.clipulse` when a socket sits there. Review killed it, twice
+        // over: (a) a sandboxed app cannot stat `~/.clipulse` at all, so the
+        // only path it can ever report is the container — and the container is
+        // exactly what the app-group entitlement permits, so no path-based
+        // claim about sandboxing can be true; (b) with a stale runtime node AND
+        // a live container helper whose hello fails, the walk names the stale
+        // node while the client is talking to the container — swapping one
+        // wrong path for another.
+        //
+        // Naming the right socket needs the client's `connect(2)`
+        // discrimination (`pickLiveBase`), not an existence check from here.
+        // Until that is shared, this reports the path it actually probes and the
+        // message below claims nothing about why.
         state = Self.resolveState(
             hello: helperRunning,
             manifest: manifest,
-            socketExists: liveSocket != nil,
-            udsPath: liveSocket ?? udsPath
+            socketExists: FileManager.default.fileExists(atPath: udsPath),
+            udsPath: udsPath
         )
     }
 
@@ -242,29 +246,6 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// release can never produce a spurious "update available" for a helper the
     /// user can only update by updating the app. Every other path preserves the
     /// pre-v1.43 behaviour exactly (`.pkg`/older-helper owners are unaffected).
-    /// First candidate base whose socket node exists, in the client's own
-    /// priority order (`~/.clipulse`, then the app-group container).
-    ///
-    /// Existence, not liveness — `hello` has already settled liveness by the
-    /// time this is consulted, and a sandboxed build cannot `connect(2)` to
-    /// `~/.clipulse` to check anyway. The point is only to name the path the
-    /// client actually tried instead of one it never touched.
-    static func firstExistingSocket(
-        candidates: [String] = LocalSessionControlClient.candidateBasePaths(),
-        exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
-    ) -> String? {
-        for base in candidates {
-            // The CONSTANT, not a literal. Line 133 in this same file already
-            // uses it; a second spelling here would mean a future rename finds
-            // no socket and reports `.notInstalled` while a helper is running —
-            // precisely the class of wrong answer this change exists to fix.
-            let sock = (base as NSString)
-                .appendingPathComponent(LocalSessionControlClient.socketFilename)
-            if exists(sock) { return sock }
-        }
-        return nil
-    }
-
     static func resolveState(
         hello: SessionControlHello?,
         manifest: Manifest?,
@@ -298,10 +279,9 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
                 // This state means "something is at that path and we could not
                 // talk to it", and the text now says only that.
                 return .unreachable(
-                    "Can't reach the companion CLI helper at \(udsPath). "
-                        + "If you're running the App Store build, the sandbox blocks this path and "
-                        + "that's expected — local scanning still works. Otherwise try Re-check, "
-                        + "then Uninstall and reinstall."
+                    "Can't reach the companion CLI helper (probed \(udsPath)). "
+                        + "Local scanning is unaffected. Try Re-check; if it persists, "
+                        + "Uninstall and reinstall."
                 )
             }
             return .notInstalled
