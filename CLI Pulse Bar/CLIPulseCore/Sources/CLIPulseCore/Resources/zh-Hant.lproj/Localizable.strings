@@ -1079,3 +1079,7 @@
 "launch_at_login_notice.body" = "CLI Pulse 現在會隨登入自動開啟,你不用惦記它,用量也一直是新的。";
 "launch_at_login_notice.undo" = "復原";
 "launch_at_login_notice.keep" = "知道了";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "機器健康需要 Companion CLI helper —— 內建 helper 不讀取感測器。在「設定 › 配對」中安裝它,即可看到溫度、風扇與電源。";
+"machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › 配對」重新配對。";

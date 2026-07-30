@@ -802,3 +802,7 @@
 "launch_at_login_notice.body" = "CLI Pulse ahora se abre al iniciar sesión, así tu uso se mantiene al día sin que tengas que pensarlo.";
 "launch_at_login_notice.undo" = "Deshacer";
 "launch_at_login_notice.keep" = "Entendido";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "El estado de la máquina necesita el helper Companion CLI: el helper integrado no lee sensores. Instálalo en Ajustes › Emparejamiento para ver temperatura, ventiladores y energía.";
+"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › Emparejamiento.";

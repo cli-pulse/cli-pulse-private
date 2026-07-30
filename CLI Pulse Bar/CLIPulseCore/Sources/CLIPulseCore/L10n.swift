@@ -110,6 +110,12 @@ public enum L10n {
         public static var topProcesses: String { tr("machine.top_processes") }
         public static var noProcesses: String { tr("machine.no_processes") }
         public static var helperUnavailable: String { tr("machine.helper_unavailable") }
+        /// v1.44: the helper answered but does not implement
+        /// `get_machine_snapshot` — the bundled helper's method surface is
+        /// session control only. Reachability is fine, so the old
+        /// "helper not running" text was simply untrue.
+        public static var helperLacksMachineHealth: String { tr("machine.helper_lacks_machine_health") }
+        public static var helperUnauthenticated: String { tr("machine.helper_unauthenticated") }
         public static var noSensorsDevid: String { tr("machine.no_sensors_devid") }
         public static var masAffordance: String { tr("machine.mas_affordance") }
         public static var thermalNominal: String { tr("machine.thermal_nominal") }
