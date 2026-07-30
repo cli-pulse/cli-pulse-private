@@ -25,6 +25,7 @@ on:
       - 'CLI Pulse Bar/scripts/build-appstore.sh'
       - 'scripts/check_helper_no_container_touch.sh'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -43,6 +44,7 @@ on:
       - 'CLI Pulse Bar/scripts/build-appstore.sh'
       - 'scripts/check_helper_no_container_touch.sh'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
   workflow_dispatch:
 
@@ -127,20 +129,31 @@ jobs:
       - run: bash scripts/check_migration_numbers.sh
 
   check-helper-guards:
-    name: Helper guards (TCC container-touch + version sync)
-    # Pure-grep guards over the helper sources. Both defend against failures
-    # that are INVISIBLE in CI and unit tests and only surface on a user's
-    # Mac: a container touch re-arms the recurring TCC permission dialog
+    name: Helper guards (TCC container-touch + version sync + method parity)
+    # Pure-grep guards over the helper sources. All three defend against
+    # failures that are INVISIBLE in CI and unit tests and only surface on a
+    # user's Mac: a container touch re-arms the recurring TCC permission dialog
     # (PROJECT_FIX_2026-07-19), and helper-version drift produces a perpetual
     # unclearable "Update available" nag (1.42.0 post-release audit). The
     # container-touch guard existed since #372 but was wired into NOTHING —
     # it caught three real holes when run by hand and then sat idle.
+    #
+    # v1.44 adds method parity. Protocol.swift has always said its method set
+    # "must match helper/local_session_server.py:SUPPORTED_METHODS
+    # element-for-element", and nothing checked it — the version-sync guard
+    # compares only the two version STRINGS. So a Swift helper reporting the
+    # same helper_version while implementing six fewer methods looked correct
+    # to CI and to the app's capability negotiation. That is exactly how the
+    # blank Machine tab shipped: the bundled Swift helper answered
+    # get_machine_snapshot with unknown_method for every user who never
+    # installed the .pkg.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check_helper_no_container_touch.sh
       - run: bash scripts/check_helper_version_sync.sh
+      - run: bash scripts/check_helper_method_parity.sh
 
   test-core:
     name: CLIPulseCore unit tests

@@ -63,6 +63,36 @@ case "self-path":
     // argv[0] is the launchd label, not the path.
     print(ExecutablePath.current() ?? "<unresolved>")
 
+case "machine-snapshot":
+    // v1.44. Two jobs, both deliberate:
+    //
+    //  1. Development: prints the exact dict `get_machine_snapshot` returns, so
+    //     it can be diffed field-for-field against the Python helper's output
+    //     without going through the socket, the app, or an auth token.
+    //
+    //  2. Build-time smoke (the important one). SensorKit resolves private
+    //     IOReport / IOHID symbols via `-undefined dynamic_lookup`, and this
+    //     binary ships signed with hardened runtime on BOTH the MAS and DEVID
+    //     paths. `clipulse-sensors` already proves that combination works — but
+    //     it is a standalone binary, so when it fails the user merely loses
+    //     sensor readings. Here the symbols live in the helper itself: a load
+    //     failure would take down sessions, hooks, everything. So
+    //     embed_helper_in_archive.sh runs this against the SIGNED binary and
+    //     fails the build if it cannot launch and emit JSON. If it can't run on
+    //     the build machine it can't run on a user's Mac either.
+    let snapshotDict = MachineSnapshotCollector.collectSync().wireDict
+    guard JSONSerialization.isValidJSONObject(snapshotDict),
+          let snapshotJSON = try? JSONSerialization.data(
+              withJSONObject: snapshotDict,
+              options: [.prettyPrinted, .sortedKeys]
+          )
+    else {
+        FileHandle.standardError.write(Data("error: machine snapshot is not JSON-encodable\n".utf8))
+        exit(1)
+    }
+    FileHandle.standardOutput.write(snapshotJSON)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+
 case "remote-approval-hook":
     // Phase 4D P1.1 (Codex): the installed Claude hook command is
     // `<binary> remote-approval-hook --provider claude`. Without

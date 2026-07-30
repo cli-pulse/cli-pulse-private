@@ -582,9 +582,25 @@ public final class LocalSessionServer: @unchecked Sendable {
             return handleShellIntegration(request: request, action: .install)
         case .shellIntegrationUninstall:
             return handleShellIntegration(request: request, action: .uninstall)
+        case .getMachineSnapshot:
+            return handleGetMachineSnapshot(request: request)
         default:
             return .err(id: request.id, code: .notImplemented, message: "method \(request.method) lands in a later iter of the Swift port")
         }
+    }
+
+    // MARK: - v1.44 machine health
+
+    /// Machine health for the Machine tab.
+    ///
+    /// Blocking on purpose. `dispatch` / `handleAuthenticated` return
+    /// `WireResponse` synchronously while the collection is async, and this
+    /// server gives every connection its own dedicated `Thread`, so blocking
+    /// one cannot starve another request. Collection costs ~0.65s (~0.3s of
+    /// that a deliberate IOReport sampling window) against the client's 5s
+    /// request timeout and 2s poll interval.
+    private func handleGetMachineSnapshot(request: WireRequest) -> WireResponse {
+        .ok(id: request.id, result: MachineSnapshotCollector.collectSync().wireDict)
     }
 
     // MARK: - iter3 method handlers

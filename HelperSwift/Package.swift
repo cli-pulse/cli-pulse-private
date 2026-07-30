@@ -42,19 +42,51 @@ let package = Package(
         .library(name: "HelperKit", targets: ["HelperKit"]),
         .executable(name: "cli_pulse_helper", targets: ["cli_pulse_helper"]),
     ],
-    dependencies: [],
+    dependencies: [
+        // v1.44: `get_machine_snapshot` needs real sensor readings. SensorKit
+        // already implements SMC / HID / IOReport correctly; rewriting that
+        // here would be a second, worse copy of the hardest code in the repo.
+        //
+        // Path dependency, not versioned — `.unsafeFlags` below is only
+        // permitted for local packages, and SensorKit cannot link without it.
+        .package(path: "../SensorProbe"),
+    ],
     targets: [
         .target(
             name: "HelperKit",
-            dependencies: []
+            dependencies: [
+                .product(name: "SensorKit", package: "SensorProbe"),
+            ]
         ),
         .executableTarget(
             name: "cli_pulse_helper",
-            dependencies: ["HelperKit"]
+            dependencies: ["HelperKit"],
+            linkerSettings: [
+                // SensorKit references private IOReport / IOHID symbols that
+                // have no SDK stub, so they must resolve from the dyld shared
+                // cache at runtime. SensorProbe puts these flags on its OWN
+                // executable and test targets but NOT on the SensorKit library
+                // target, so every consumer has to repeat them — omitting them
+                // fails at link with 7 undefined `_IOReport*` symbols.
+                //
+                // Hardened runtime does not break this: `clipulse-sensors`
+                // already ships signed `--options runtime` with the same
+                // symbols, and build_helper_pkg.sh smokes the signed binary.
+                // The difference here is blast radius — if this ever DID fail
+                // to load, the whole helper dies rather than just sensors — so
+                // the equivalent post-sign smoke gate is mandatory on both the
+                // MAS and DEVID paths, not optional.
+                .unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]),
+            ]
         ),
         .testTarget(
             name: "HelperKitTests",
-            dependencies: ["HelperKit"]
+            dependencies: ["HelperKit"],
+            linkerSettings: [
+                // The test bundle links HelperKit, which links SensorKit —
+                // without these, `swift test` fails at link in CI.
+                .unsafeFlags(["-Xlinker", "-undefined", "-Xlinker", "dynamic_lookup"]),
+            ]
         ),
     ]
 )
