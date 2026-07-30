@@ -399,9 +399,6 @@ create table public.provider_quotas (
 );
 alter table public.provider_quotas enable row level security;
 
-create policy "Users can manage own quotas"
-  on public.provider_quotas for all using (auth.uid() = user_id);
-
 -- ── Provider Accounts (v0.70: multiple accounts per provider) ──
 -- Credentials remain local. These tables contain only user labels, plan
 -- evidence, normalized quota state, and collection provenance.
@@ -502,11 +499,73 @@ revoke all on public.provider_account_quotas
   from public, anon, authenticated;
 grant select on public.provider_accounts, public.provider_account_quotas
   to authenticated;
-grant select, insert, update, delete
+revoke delete
+  on public.provider_accounts,
+     public.provider_account_lifecycle,
+     public.provider_account_quotas
+  from service_role;
+grant select, insert, update
   on public.provider_accounts,
      public.provider_account_lifecycle,
      public.provider_account_quotas
   to service_role;
+
+-- Legacy clients write provider_quotas directly. Once any v2 lifecycle row
+-- adopts a provider, only the account projection may mutate that provider's
+-- compatibility row. The per-user lock serializes this decision with account
+-- upsert/status/delete RPCs.
+create or replace function public.can_write_legacy_provider_quota(
+  p_user_id uuid,
+  p_provider text
+)
+returns boolean as $$
+begin
+  if p_user_id is null
+     or p_provider is null
+     or auth.uid() is distinct from p_user_id then
+    return false;
+  end if;
+  perform pg_advisory_xact_lock(
+    hashtextextended(p_user_id::text, 70)
+  );
+  return not exists (
+    select 1
+    from public.provider_account_lifecycle
+    where user_id = p_user_id
+      and provider = p_provider
+  );
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.can_write_legacy_provider_quota(
+  uuid, text
+) from public, anon;
+grant execute on function public.can_write_legacy_provider_quota(
+  uuid, text
+) to authenticated, service_role;
+
+create policy "Users can read own quotas"
+  on public.provider_quotas for select
+  using ((select auth.uid()) = user_id);
+create policy "Users can insert unadopted quotas"
+  on public.provider_quotas for insert
+  with check (
+    public.can_write_legacy_provider_quota(user_id, provider)
+  );
+create policy "Users can update unadopted quotas"
+  on public.provider_quotas for update
+  using (
+    public.can_write_legacy_provider_quota(user_id, provider)
+  )
+  with check (
+    public.can_write_legacy_provider_quota(user_id, provider)
+  );
+create policy "Users can delete unadopted quotas"
+  on public.provider_quotas for delete
+  using (
+    public.can_write_legacy_provider_quota(user_id, provider)
+  );
 
 -- Defense in depth for privileged writes: source-device provenance must still
 -- belong to the account owner even when a trusted server role writes directly.

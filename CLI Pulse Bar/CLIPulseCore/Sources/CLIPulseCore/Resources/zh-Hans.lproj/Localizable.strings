@@ -1127,3 +1127,39 @@
 "pet.form_huff" = "哼哼扭头猫";
 "pet.form_ouch" = "哎哟喊疼猫";
 "pet.form_flop" = "瘫倒放空猫";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "正常";
+"collector_status.off" = "已关闭";
+"collector_status.no_quota_source" = "无配额来源";
+"collector_status.no_quota_source_hint" = "成本与会话仍在统计 —— 这个工具没有可读取的配额接口。";
+"collector_status.not_installed" = "未安装";
+"collector_status.not_installed_hint" = "装上 %@ 后,用量会自动出现在这里。";
+"collector_status.not_signed_in" = "未登录";
+"collector_status.not_signed_in_hint" = "在 %@ 自己的应用或命令行里登录即可,不需要在这里填密钥。";
+"collector_status.not_set_up" = "未配置";
+"collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
+"collector_status.no_data" = "没有返回数据";
+"collector_status.no_data_hint" = "检查跑通了,但返回为空。用一次这个工具通常就好了。";
+"collector_status.access_blocked" = "访问被阻止";
+"collector_status.access_blocked_hint" = "在设置里授予文件夹权限,才能读取这个工具的文件。";
+"collector_status.unreachable" = "无法连接";
+"collector_status.unreachable_hint" = "检查一下网络连接。";
+"collector_status.cannot_read" = "无法解析响应";
+"collector_status.cannot_read_hint" = "这是我们的问题 —— 对方改了返回格式,后续更新会修复。";
+"collector_status.failed" = "检查失败";
+"collector_status.failed_hint" = "服务商返回了错误,通常会自行恢复。";
+"collector_status.not_running" = "未运行";
+"collector_status.not_running_hint" = "启动 %@ 后,用量就会出现在这里。";
+"collector_status.needs_key" = "需要 API 密钥";
+"collector_status.needs_key_hint" = "在设置里填入 %@ 的 API token —— 这家没有我们能读取的登录态。";
+"collector_status.auth_failed" = "认证失败";
+"collector_status.auth_failed_hint" = "重新连接 %@ —— 保存的凭据被拒绝了。";
+"collector_status.failed_other_hint" = "这是我们的问题 —— 这次检查没能完成,后续更新会修复。";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "已设为开机启动";
+"launch_at_login_notice.body" = "CLI Pulse 现在会随登录自动打开,你不用惦记它,用量也一直是新的。";
+"launch_at_login_notice.undo" = "撤销";
+"launch_at_login_notice.keep" = "知道了";

@@ -1075,3 +1075,39 @@
 "pet.form_huff" = "哼哼扭頭貓";
 "pet.form_ouch" = "哎喲喊疼貓";
 "pet.form_flop" = "癱倒放空貓";
+
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "正常";
+"collector_status.off" = "已關閉";
+"collector_status.no_quota_source" = "無配額來源";
+"collector_status.no_quota_source_hint" = "成本與工作階段仍在統計 —— 這個工具沒有可讀取的配額介面。";
+"collector_status.not_installed" = "未安裝";
+"collector_status.not_installed_hint" = "裝上 %@ 後,用量會自動出現在這裡。";
+"collector_status.not_signed_in" = "未登入";
+"collector_status.not_signed_in_hint" = "在 %@ 自己的應用程式或命令列登入即可,不需要在這裡填密鑰。";
+"collector_status.not_set_up" = "未設定";
+"collector_status.not_set_up_hint" = "開啟設定來連接這個服務商。";
+"collector_status.no_data" = "沒有回傳資料";
+"collector_status.no_data_hint" = "檢查執行完成,但回傳為空。使用一次這個工具通常就好了。";
+"collector_status.access_blocked" = "存取被封鎖";
+"collector_status.access_blocked_hint" = "在設定中授予檔案夾權限,才能讀取這個工具的檔案。";
+"collector_status.unreachable" = "無法連線";
+"collector_status.unreachable_hint" = "檢查一下網路連線。";
+"collector_status.cannot_read" = "無法解析回應";
+"collector_status.cannot_read_hint" = "這是我們的問題 —— 對方改了回傳格式,後續更新會修正。";
+"collector_status.failed" = "檢查失敗";
+"collector_status.failed_hint" = "服務商回傳了錯誤,通常會自行恢復。";
+"collector_status.not_running" = "未執行";
+"collector_status.not_running_hint" = "啟動 %@ 後,用量就會出現在這裡。";
+"collector_status.needs_key" = "需要 API 金鑰";
+"collector_status.needs_key_hint" = "在設定中填入 %@ 的 API token —— 這家沒有我們能讀取的登入狀態。";
+"collector_status.auth_failed" = "驗證失敗";
+"collector_status.auth_failed_hint" = "重新連接 %@ —— 已儲存的憑證遭到拒絕。";
+"collector_status.failed_other_hint" = "這是我們的問題 —— 這次檢查沒能完成,後續更新會修正。";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "已設為開機啟動";
+"launch_at_login_notice.body" = "CLI Pulse 現在會隨登入自動開啟,你不用惦記它,用量也一直是新的。";
+"launch_at_login_notice.undo" = "復原";
+"launch_at_login_notice.keep" = "知道了";

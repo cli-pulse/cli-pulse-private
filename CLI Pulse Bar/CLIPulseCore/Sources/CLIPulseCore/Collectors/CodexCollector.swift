@@ -20,6 +20,15 @@ public struct CodexCollector: ProviderCollector, Sendable {
         return auth?.accessToken != nil
     }
 
+    /// v1.44 W3: `isAvailable` above is false both when Codex was never
+    /// installed and when it is installed but signed out — two problems with
+    /// completely different fixes ("install Codex" vs "run `codex login`").
+    /// The presence of `~/.codex` (or `$CODEX_HOME`) separates them.
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        if isAvailable(config: config) { return .ready }
+        return CollectorReadinessProbe.fromConfigDirectory(path: codexHomePath())
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard var auth = readAuthFile(), let accessToken = auth.accessToken else {
             throw CollectorError.missingCredentials("Codex auth.json not found or has no access token")

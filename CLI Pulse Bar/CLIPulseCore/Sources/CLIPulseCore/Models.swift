@@ -47,6 +47,15 @@ public func sharedISO8601Parse(_ text: String) -> Date? {
     return sharedISO8601FormatterFractional.date(from: text)
 }
 
+/// Stable millisecond-resolution writer for mutation clocks. Provider-account
+/// freshness uses strict ordering, so truncating two edits in the same second
+/// would make the later edit indistinguishable from a replay.
+public func sharedISO8601FractionalString(from date: Date) -> String {
+    sharedISO8601ParseLock.lock()
+    defer { sharedISO8601ParseLock.unlock() }
+    return sharedISO8601FormatterFractional.string(from: date)
+}
+
 // MARK: - Enums
 
 public enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {

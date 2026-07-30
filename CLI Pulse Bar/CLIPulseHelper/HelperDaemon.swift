@@ -12,6 +12,32 @@ final class HelperDaemon {
     private let queue = DispatchQueue(label: "com.clipulse.helper.daemon", qos: .utility)
     private let apiClient = HelperAPIClient()
     private var isRunning = false
+    /// v1.44 observability (migrate_v0.71): the last collector-outcome map sent
+    /// to the backend, and the device it was sent FOR, so an unchanged outcome
+    /// costs no RPC. Set only on success, so a transient failure retries on the
+    /// next cycle.
+    ///
+    /// The deviceId is part of the key on purpose: this daemon is long-lived and
+    /// re-reads `HelperConfig` every cycle, so a re-pair or account switch swaps
+    /// the device underneath us. Keyed on the map alone, an unchanged outcome
+    /// would mean the NEW device row never receives a status at all (codex
+    /// review — the same trap the app-version report already had to fix).
+    private var lastReportedCollectorStatus: (deviceId: String, status: [String: String])?
+    /// The previous cycle's computed outcome map, used to require an outcome to
+    /// hold for TWO consecutive cycles before it is reported.
+    ///
+    /// Why: `didWake` fires an immediate collect, and the ~49 collectors run
+    /// serially doing network I/O. On wake the network is often not up yet, so
+    /// the providers early in registry order (Claude/Codex/Gemini — the
+    /// highest-value ones) throw while later ones succeed as connectivity
+    /// returns. Reporting that sweep would overwrite the device's authoritative
+    /// diagnostic with a wake artifact — and since the row carries no timestamp,
+    /// triage cannot tell it from the persistent auth-expired fault this field
+    /// exists to find. It self-corrects next cycle, unless the user shuts the lid
+    /// first. Confirming twice also stops a single flaky endpoint from flipping
+    /// the whole-map comparison every cycle, which would defeat the
+    /// no-RPC-in-steady-state property. (Independent adversarial review.)
+    private var pendingCollectorStatus: [String: String]?
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
     private var suspendCount = 0
@@ -134,6 +160,7 @@ final class HelperDaemon {
 
         // Step 4: Provider quotas via collectors
         let providerCollection = await collectProviderQuotas()
+        let collectorStatus = providerCollection.collectorStatus
 
         // Step 4.5: Write collector results to app group for main app
         writeCollectorResultsToAppGroup(providerCollection)
@@ -210,20 +237,56 @@ final class HelperDaemon {
                 providerPlanStatus: providerPlanStatus
             )
 
+            // NOTE: the app-version report (migrate_v0.70) deliberately does
+            // NOT happen here. macOS does not restart this LoginItem after an
+            // in-place app update, so this process can still be the OLD binary
+            // — it would report a stale version, or (for any build predating
+            // the feature) never report at all. `AppState` reports it from the
+            // main app instead, which is guaranteed to be the new version.
+            //
+            // Collector status (migrate_v0.71) DOES belong here: this daemon is
+            // the process that actually runs the collectors, so it is the only
+            // thing that knows why a provider produced nothing. Re-reported only
+            // when the outcome map CHANGES, so a steady state costs no RPCs.
+            // Best-effort — never break the sync that follows.
+            // Confirm-twice (see `pendingCollectorStatus`): only an outcome that
+            // held across two consecutive cycles is worth writing as this
+            // device's diagnostic.
+            let heldTwice = (pendingCollectorStatus == collectorStatus)
+            pendingCollectorStatus = collectorStatus
+            if heldTwice,
+               lastReportedCollectorStatus?.deviceId != config.deviceId
+                || lastReportedCollectorStatus?.status != collectorStatus {
+                do {
+                    try await apiClient.reportCollectorStatus(config: config, status: collectorStatus)
+                    lastReportedCollectorStatus = (deviceId: config.deviceId, status: collectorStatus)
+                } catch {
+                    logger.debug("collector-status report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
+                }
+            }
+
             // Sync
+            let legacyProviderRemaining =
+                providerAccountsWriteV2Enabled
+                ? [String: Int]()
+                : providerRemaining
+            let legacyProviderTiers =
+                providerAccountsWriteV2Enabled
+                ? [String: Any]()
+                : providerTiers
             let result = try await apiClient.sync(
                 config: config,
                 sessions: sessionDicts,
                 alerts: alerts,
-                providerRemaining: providerRemaining,
-                providerTiers: providerTiers
+                providerRemaining: legacyProviderRemaining,
+                providerTiers: legacyProviderTiers
             )
             logger.info("Synced \(result.sessionsSynced) sessions, \(result.alertsSynced) alerts")
 
-            // Run after the legacy helper_sync write so the account-aware
-            // compatibility projection wins when v2 is enabled. Failure-soft:
-            // an older backend missing the staged RPC must not break legacy
-            // sessions, alerts, heartbeat, or provider-level quotas.
+            // In v2 mode helper_sync carries sessions/alerts only; provider
+            // quotas have exactly one writer below. Failure-soft: an older
+            // backend missing the staged RPC must not break session, alert, or
+            // heartbeat sync, but it must not regain projection ownership.
             if providerAccountsWriteV2Enabled,
                !syncableAccounts.isEmpty {
                 do {
@@ -238,7 +301,7 @@ final class HelperDaemon {
                     )
                 } catch {
                     logger.warning(
-                        "Provider account v2 sync failed; response details omitted and legacy sync remains active"
+                        "Provider account v2 sync failed; response details omitted"
                     )
                 }
             } else if providerAccountsWriteV2Enabled,
@@ -266,15 +329,21 @@ final class HelperDaemon {
     private struct ProviderQuotaCollection {
         let accounts: [HelperIPC.CollectorAccountPayload]
         let providers: [String: HelperIPC.CollectorUsagePayload]
+        let collectorStatus: [String: String]
         let observedAt: Date
     }
 
     /// Run the same collectors the main app uses once per enabled account.
     /// The provider dictionary remains a deterministic compatibility
-    /// projection for the existing helper_sync RPC and old main apps.
+    /// projection for the existing helper_sync RPC and old main apps. Collector
+    /// status remains a provider-level diagnostic, using a deterministic
+    /// worst-account projection when two accounts share a provider.
     private func collectProviderQuotas() async -> ProviderQuotaCollection {
         var accountResults: [HelperIPC.CollectorAccountPayload] = []
         var providerProjection: [String: HelperIPC.CollectorUsagePayload] = [:]
+        var status: [String: String] = [:]
+        var disabledCount = 0
+        var unavailableCount = 0
 
         // Read provider configs from shared app group (written by main app)
         var configs: [ProviderConfig] = ProviderConfig.defaults()
@@ -290,27 +359,38 @@ final class HelperDaemon {
             }
         }
 
-        let runnableConfigs = configs
-            .filter(\.isEnabled)
-            .sorted {
-                if $0.sortOrder != $1.sortOrder { return $0.sortOrder < $1.sortOrder }
-                if $0.kind.rawValue != $1.kind.rawValue {
-                    return $0.kind.rawValue < $1.kind.rawValue
-                }
-                return $0.accountID.uuidString < $1.accountID.uuidString
+        let orderedConfigs = configs.sorted {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
             }
+            if $0.kind.rawValue != $1.kind.rawValue {
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
+            return $0.accountID.uuidString < $1.accountID.uuidString
+        }
 
-        logger.info("Running collectors for \(runnableConfigs.count) enabled account configs")
-        for config in runnableConfigs {
+        logger.info("Inspecting \(orderedConfigs.count) account configs")
+        for config in orderedConfigs {
             let providerName = config.kind.rawValue
+            guard config.isEnabled else {
+                logger.debug("Skipping \(providerName): disabled in user config")
+                disabledCount += 1
+                continue
+            }
             guard let collector = CollectorRegistry.collector(
                 for: config.kind,
                 config: config
             ) else {
                 logger.debug("Skipping \(providerName): isAvailable=false")
+                // Enabled but nothing to read — CLI not installed, or no
+                // credentials on this machine. Counted, not listed: with every
+                // ProviderKind enabled by default this is the overwhelming
+                // majority (~47 of ~50) and would swamp the row.
+                unavailableCount += 1
                 continue
             }
 
+            let collectionStartedAt = Date()
             do {
                 let collectorResult = try await collector.collect(config: config)
                 let usage = collectorResult.usage
@@ -341,20 +421,47 @@ final class HelperDaemon {
                             provider: providerName,
                             accountLabel: config.accountLabel,
                             planOverride: config.planOverride,
+                            planOverrideUpdatedAt:
+                                config.planOverrideUpdatedAt,
+                            planDetectionStartedAt:
+                                collectionStartedAt,
                             dataKind: helperDataKind(collectorResult.dataKind),
                             usage: payload
                         )
                     )
                 }
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
+                // ok vs empty — the load-bearing distinction for this whole
+                // diagnostic. Lives in CLIPulseCore so it is unit-testable; see
+                // `classifyCollectorOutcome` for why `status_text` must not be
+                // part of the test (it is always populated, even on the exact
+                // no-data paths we are hunting).
+                let candidateStatus =
+                    CollectorRunner.classify(collectorResult).telemetryToken
+                status[providerName] =
+                    HelperAPIClient.aggregateCollectorStatus(
+                        current: status[providerName],
+                        candidate: candidateStatus
+                    )
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
+                status[providerName] =
+                    HelperAPIClient.aggregateCollectorStatus(
+                        current: status[providerName],
+                        candidate: "error"
+                    )
             }
         }
+
+        // Totals for the providers deliberately left out of the map above, so a
+        // reader can tell "3 real providers, 47 not installed" from "3 real
+        // providers, 47 switched off by the user".
+        status["_counts"] = "d=\(disabledCount) u=\(unavailableCount) p=\(status.count)"
 
         return ProviderQuotaCollection(
             accounts: accountResults,
             providers: providerProjection,
+            collectorStatus: status,
             observedAt: Date()
         )
     }

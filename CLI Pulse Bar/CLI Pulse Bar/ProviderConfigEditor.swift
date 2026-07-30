@@ -323,7 +323,7 @@ struct ProviderConfigEditor: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(L10n.common.save) {
-                    save()
+                    guard save() else { return }
                     didFinishEditing = true
                     dismiss()
                 }
@@ -748,16 +748,46 @@ struct ProviderConfigEditor: View {
     }
     #endif
 
-    private func save() {
+    @discardableResult
+    private func save() -> Bool {
         guard let idx = state.providerConfigs.firstIndex(
             where: { $0.accountID == accountID }
         ) else {
-            return
+            return false
         }
+        guard
+            state.persistProviderAccountCredentialRecoveryAnchor(
+                accountID
+            )
+        else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely prepare provider credentials. Please retry."
+            )
+            #endif
+            return false
+        }
+        #if os(macOS)
+        if kind == .gemini {
+            guard
+                geminiCredentialDraft.commit(
+                    accountID: accountID
+                )
+            else {
+                testState = .failure(
+                    GeminiOAuthError
+                        .credentialPersistenceFailed
+                        .localizedDescription
+                )
+                return false
+            }
+        }
+        #endif
         state.providerConfigs[idx].sourceMode = sourceMode
         state.providerConfigs[idx].accountLabel = accountLabel.isEmpty ? nil : accountLabel
-        state.providerConfigs[idx].planOverride =
+        state.providerConfigs[idx].setPlanOverride(
             planOverride.isEmpty ? nil : planOverride
+        )
         state.providerConfigs[idx].cookieSource = cookieSource
         state.providerConfigs[idx].apiKey = apiKey.isEmpty ? nil : apiKey
         state.providerConfigs[idx].manualCookieHeader = manualCookieHeader.isEmpty ? nil : manualCookieHeader
@@ -774,13 +804,23 @@ struct ProviderConfigEditor: View {
         // keeps the iOS/watch build green (Gemini G3-R1 CRITICAL).
         state.providerConfigs[idx].geminiCliProbeFallback =
             (kind == .gemini && geminiCliProbeFallback) ? true : nil
-        if kind == .gemini {
-            geminiCredentialDraft.commit(
-                accountID: accountID
-            )
-        }
         #endif
-        state.commitProviderAccountDraft(accountID)
-        state.providerConfigs[idx].saveSecrets()
+        guard state.providerConfigs[idx].saveSecrets() else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely save provider credentials. Please retry."
+            )
+            #endif
+            return false
+        }
+        guard state.commitProviderAccountDraft(accountID) else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely save provider configuration. Please retry."
+            )
+            #endif
+            return false
+        }
+        return true
     }
 }

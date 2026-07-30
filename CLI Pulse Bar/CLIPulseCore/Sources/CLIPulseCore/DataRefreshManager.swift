@@ -81,6 +81,11 @@ internal final class DataRefreshManager {
         /// v1.9.4: signal when the cost scan came up empty because the
         /// sandbox blocked the scanner roots → prompt user via banner.
         let setNeedsFolderAccess: (Bool) async -> Void
+        /// v1.44 W3: per-provider outcome of the pass that just ran — including
+        /// the providers that never executed (disabled / unsupported / not
+        /// ready). Before this the UI could only see results, so those three
+        /// were indistinguishable from a collector that ran and failed.
+        let setCollectorOutcomes: ([ProviderKind: CollectorOutcome]) -> Void
     }
 
     #if os(macOS)
@@ -90,9 +95,9 @@ internal final class DataRefreshManager {
     /// process enumeration, user files, or the network beyond their URL stub.
     struct LocalRefreshRuntime: Sendable {
         let prepareCredentials: @MainActor @Sendable () -> Void
-        let collectAccounts:
+        let collectAccountPass:
             @Sendable ([ProviderConfig]) async
-                -> [AccountScopedCollectorResult]
+                -> AccountCollectorPass
         let readHelperSnapshot:
             @Sendable ([ProviderConfig]) -> HelperCollectorSnapshot
         let scanLocal: @Sendable () async -> LocalScanResult
@@ -120,14 +125,13 @@ internal final class DataRefreshManager {
                 prepareCredentials: {
                     CredentialBridge.syncCredentialsToAppGroup()
                 },
-                collectAccounts: { configs in
-                    await DataRefreshManager.runCollectors(
+                collectAccountPass: { configs in
+                    await DataRefreshManager.runCollectorPass(
                         providerConfigs: configs,
                         collectorResolver: { config in
-                            CollectorRegistry.collector(
-                                for: config.kind,
-                                config: config
-                            )
+                            CollectorRegistry.collectors.first {
+                                $0.kind == config.kind
+                            }
                         }
                     )
                 },
@@ -340,14 +344,20 @@ internal final class DataRefreshManager {
             // so both main app collectors and helper can use them
             localRuntime.prepareCredentials()
 
-            let mainAccountResults = await localRuntime.collectAccounts(
+            let mainPass = await localRuntime.collectAccountPass(
                 context.providerConfigs
             )
+            // A cancelled pass can contain cancellation-shaped network
+            // failures. Never publish those outcomes or any stale payload.
+            guard !Task.isCancelled else {
+                callbacks.setLoading(false)
+                return
+            }
             let helperSnapshot = localRuntime.readHelperSnapshot(
                 context.providerConfigs
             )
             let collectorSources = Self.combineCollectorSources(
-                mainAccountResults: mainAccountResults,
+                mainAccountResults: mainPass.accountResults,
                 helperSnapshot: helperSnapshot
             )
             let accountResults = collectorSources.accountResults
@@ -586,6 +596,11 @@ internal final class DataRefreshManager {
                 return
             }
 
+            #if os(macOS)
+            callbacks.setCollectorOutcomes(
+                mainPass.providerOutcomes
+            )
+            #endif
             if context.notificationsEnabled {
                 for alert in newAlerts {
                     callbacks.sendNotification(alert)
@@ -801,14 +816,20 @@ internal final class DataRefreshManager {
             return
         }
 
-        let mainAccountResults = await localRuntime.collectAccounts(
+        let mainPass = await localRuntime.collectAccountPass(
             context.providerConfigs
         )
+        // A cancelled pass can contain cancellation-shaped network failures.
+        // Never publish those outcomes or any stale local payload.
+        guard !Task.isCancelled else {
+            callbacks.setLoading(false)
+            return
+        }
         let helperSnapshot = localRuntime.readHelperSnapshot(
             context.providerConfigs
         )
         let collectorSources = Self.combineCollectorSources(
-            mainAccountResults: mainAccountResults,
+            mainAccountResults: mainPass.accountResults,
             helperSnapshot: helperSnapshot
         )
         let accountResults = collectorSources.accountResults
@@ -973,6 +994,9 @@ internal final class DataRefreshManager {
             }
         }
 
+        callbacks.setCollectorOutcomes(
+            mainPass.providerOutcomes
+        )
         let payload = RefreshPayload(
             dashboard: dashboard,
             providers: providers,
@@ -1029,40 +1053,82 @@ internal final class DataRefreshManager {
         }
     }
 
-    func runCollectors(providerConfigs: [ProviderConfig]) async -> [AccountScopedCollectorResult] {
-        await Self.runCollectors(
-            providerConfigs: providerConfigs,
-            collectorResolver: { config in
-                CollectorRegistry.collector(for: config.kind, config: config)
-            }
-        )
-    }
-
-    /// Testable scheduler seam: production passes the registry resolver while
-    /// focused tests pass a recording collector. The returned rows retain the
-    /// exact account config used for each run.
-    nonisolated static func runCollectors(
+    /// Testable account-aware scheduler seam. `CollectorRun` remains the
+    /// provider-level telemetry primitive; this adapter retains one exact
+    /// `ProviderConfig` and outcome per account without changing that contract.
+    nonisolated static func runCollectorPass(
         providerConfigs: [ProviderConfig],
         collectorResolver: @escaping @Sendable (ProviderConfig) -> (any ProviderCollector)?
-    ) async -> [AccountScopedCollectorResult] {
+    ) async -> AccountCollectorPass {
         // Global CLI/helper compatibility sources do not carry a CLIPulse
         // account ID. Assign them once before concurrent collector fan-out so
         // two configs never race to report the same external account twice.
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
-        // Resolve once so availability checks and collection use the same
-        // collector instance even when runs complete out of order.
-        let runnable = providerConfigs.compactMap { config -> ProviderCollectorInvocation? in
-            guard config.isEnabled, let collector = collectorResolver(config) else { return nil }
-            return ProviderCollectorInvocation(config: config, collector: collector)
+
+        var orderedRuns = Array<AccountCollectorRun?>(
+            repeating: nil,
+            count: providerConfigs.count
+        )
+        var runnable: [ProviderCollectorInvocation] = []
+
+        // Resolve by kind, then let CollectorRunner preflight readiness.
+        // Resolving only "available" collectors would collapse unsupported and
+        // not-ready back into the same invisible absence.
+        for (index, config) in providerConfigs.enumerated() {
+            let collector = collectorResolver(config)
+            if let outcome = CollectorRunner.preflight(
+                config: config,
+                collector: collector
+            ) {
+                orderedRuns[index] = AccountCollectorRun(
+                    config: config,
+                    outcome: outcome,
+                    scopedResult: nil
+                )
+            } else if let collector {
+                runnable.append(
+                    ProviderCollectorInvocation(
+                        index: index,
+                        config: config,
+                        collector: collector
+                    )
+                )
+            }
         }
+
         // Bounded fan-out: at most `maxConcurrentCollectors` collectors run at
         // once instead of spawning all ~48 every refresh (thundering herd).
-        return await mapWithConcurrencyLimit(runnable, maxConcurrent: maxConcurrentCollectors) { invocation in
-            await Self.runOneCollector(
+        let completed = await mapWithConcurrencyLimit(
+            runnable,
+            maxConcurrent: maxConcurrentCollectors
+        ) { invocation in
+            let run = await Self.runOneCollectorWithOutcome(
                 config: invocation.config,
                 collector: invocation.collector
             )
+            return IndexedAccountCollectorRun(
+                index: invocation.index,
+                run: run
+            )
         }
+
+        for completedRun in completed {
+            orderedRuns[completedRun.index] = completedRun.run
+        }
+
+        return AccountCollectorPass(runs: orderedRuns.compactMap { $0 })
+    }
+
+    /// Compatibility wrapper retained for focused account-sync tests and
+    /// call-sites that need only successful account observations.
+    nonisolated static func runCollectors(
+        providerConfigs: [ProviderConfig],
+        collectorResolver: @escaping @Sendable (ProviderConfig) -> (any ProviderCollector)?
+    ) async -> [AccountScopedCollectorResult] {
+        await runCollectorPass(
+            providerConfigs: providerConfigs,
+            collectorResolver: collectorResolver
+        ).accountResults
     }
 
     /// Runs a single collector, logging (and swallowing) any failure. Off-actor
@@ -1077,13 +1143,32 @@ internal final class DataRefreshManager {
         config: ProviderConfig,
         collector: any ProviderCollector
     ) async -> AccountScopedCollectorResult? {
+        await runOneCollectorWithOutcome(
+            config: config,
+            collector: collector
+        ).scopedResult
+    }
+
+    nonisolated static func runOneCollectorWithOutcome(
+        config: ProviderConfig,
+        collector: any ProviderCollector,
+        now: @escaping @Sendable () -> Date = { Date() }
+    ) async -> AccountCollectorRun {
+        let collectionStartedAt = now()
         do {
             let result = try await collector.collect(config: config)
-            return AccountScopedCollectorResult(
+            let scopedResult = AccountScopedCollectorResult(
                 accountID: config.accountID,
                 config: config,
                 result: result,
-                observedAt: Date()
+                planDetectionStartedAt:
+                    collectionStartedAt,
+                observedAt: now()
+            )
+            return AccountCollectorRun(
+                config: config,
+                outcome: CollectorRunner.classify(result),
+                scopedResult: scopedResult
             )
         } catch {
             let message = "[Collector] \(config.kind.rawValue) failed: \(error.localizedDescription)"
@@ -1091,7 +1176,13 @@ internal final class DataRefreshManager {
                 refreshLogger.warning("\(message)")
             }
             await CollectorErrorLog.shared.append(message)
-            return nil
+            return AccountCollectorRun(
+                config: config,
+                outcome: .failed(
+                    CollectorFailureCategory.categorize(error)
+                ),
+                scopedResult: nil
+            )
         }
     }
 
@@ -1114,18 +1205,28 @@ internal final class DataRefreshManager {
                     .trimmingCharacters(in: .whitespacesAndNewlines)
                 let detected = usage.plan_type?
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                let planValue = (override?.isEmpty == false) ? override :
-                    ((detected?.isEmpty == false) ? detected : nil)
                 let evidence: ProviderPlanEvidence
-                if override?.isEmpty == false {
+                if override?.isEmpty == false,
+                   let overrideUpdatedAt =
+                    scoped.config.planOverrideUpdatedAt {
                     evidence = ProviderPlanEvidence(
                         rawValue: override,
                         displayValue: override,
                         source: .userConfirmed,
                         confidence: .high,
-                        observedAt: resultObservedAt
+                        observedAt: overrideUpdatedAt
                     )
-                } else if detected?.isEmpty == false {
+                } else if override?.isEmpty == false {
+                    evidence = ProviderPlanEvidence(
+                        rawValue: nil,
+                        displayValue: nil,
+                        source: .unknown,
+                        confidence: .unavailable,
+                        observedAt: nil
+                    )
+                } else if detected?.isEmpty == false,
+                          let planDetectionStartedAt =
+                            scoped.planDetectionStartedAt {
                     // Existing CollectorResult does not expose whether its
                     // plan_type came from an API, local metadata, or web
                     // fallback. Keep the evidence honest until collectors
@@ -1135,12 +1236,22 @@ internal final class DataRefreshManager {
                         displayValue: detected,
                         source: .unknown,
                         confidence: .low,
-                        observedAt: resultObservedAt
+                        observedAt: planDetectionStartedAt
+                    )
+                } else if let clearedAt =
+                    scoped.config.planOverrideUpdatedAt
+                {
+                    evidence = ProviderPlanEvidence(
+                        rawValue: nil,
+                        displayValue: nil,
+                        source: .userConfirmed,
+                        confidence: .high,
+                        observedAt: clearedAt
                     )
                 } else {
                     evidence = ProviderPlanEvidence(
-                        rawValue: planValue,
-                        displayValue: planValue,
+                        rawValue: nil,
+                        displayValue: nil,
                         source: .unknown,
                         confidence: .unavailable,
                         observedAt: nil
@@ -1156,7 +1267,10 @@ internal final class DataRefreshManager {
                     remaining: usage.remaining,
                     tiers: usage.tiers,
                     resetTime: usage.reset_time,
-                    observedAt: sharedISO8601Formatter.string(from: resultObservedAt),
+                    observedAt:
+                        sharedISO8601FractionalString(
+                            from: resultObservedAt
+                        ),
                     sourceDeviceID: nil,
                     statusText: usage.status_text
                 )
@@ -1395,6 +1509,7 @@ internal final class DataRefreshManager {
                     accountID: config.accountID,
                     config: config,
                     result: result,
+                    planDetectionStartedAt: nil,
                     observedAt: envelopeObservedAt
                 )
             }
@@ -1434,6 +1549,8 @@ internal final class DataRefreshManager {
                         dataKind: collectorDataKind(account.dataKind),
                         legacyDefaults: false
                     ),
+                    planDetectionStartedAt:
+                        account.planDetectionStartedAt,
                     observedAt: envelopeObservedAt
                 )
             }
@@ -1535,17 +1652,45 @@ internal final class DataRefreshManager {
     /// sandbox hasn't been granted access to the scan roots — i.e. the user
     /// should be nudged to click "Grant access" in Settings. Called on the
     /// main actor because `BookmarkManager` is `@MainActor`-isolated.
+    ///
+    /// `missingRoots` is injected as a closure rather than called directly so
+    /// tests are deterministic. `CostUsageScanner.missingScanRoots()` resolves
+    /// through `BookmarkManager`, which reads the SHARED app-group suite
+    /// (`group.yyh.CLI-Pulse`) — so a test that let it run for real would be
+    /// asserting against whatever bookmarks the developer's own installed copy
+    /// of CLI Pulse happens to hold. That passes on an unsandboxed DEVID
+    /// machine (never stores bookmarks) and fails on one where MAS has been
+    /// granted access. Kept lazy so the cheap guards below still short-circuit.
     #if os(macOS)
     @MainActor
-    static func needsFolderAccessNudge(scanIsEmpty: Bool) -> Bool {
+    static func needsFolderAccessNudge(
+        scanIsEmpty: Bool,
+        isSandboxed: Bool = MASSandboxGate.isSandboxed,
+        missingRoots: @MainActor () -> [String] = { CostUsageScanner.missingScanRoots() }
+    ) -> Bool {
         guard scanIsEmpty else { return false }
+        // v1.44 W1: bookmarks are an App Sandbox mechanism. An unsandboxed
+        // Developer ID build reads `~/.codex` and `~/.claude` directly and
+        // never stores one, so `missingScanRoots()` reports every root as
+        // "missing" there — truthfully, but the conclusion does not follow.
+        // Pre-W1 this was masked: the banner was gated on `isAuthenticated`
+        // on Overview and nobody landed there without an account. W1 makes
+        // that the default path, so without this guard a DEVID user who has
+        // simply never run Claude or Codex is told their access is blocked
+        // and asked to hand over their home folder. That trades an empty
+        // first screen for a misleading one — strictly worse than the
+        // problem W1 set out to fix.
+        //
+        // The honest signal for that user is "no CLI usage yet", which the
+        // empty state already says. Separating detection from readiness
+        // properly is W3's job; this guard just stops us from lying.
+        guard isSandboxed else { return false }
         // If at least one core scan root is missing a bookmark, surface the
         // banner. We check the two Claude variants and the two Codex roots;
         // nudge the user if ANY key root is unbookmarked (they only need one
         // to start getting data, but the banner drives them to Settings
         // where all four are listed).
-        let missing = CostUsageScanner.missingScanRoots()
-        return !missing.isEmpty
+        return !missingRoots().isEmpty
     }
     #endif
 
@@ -3346,6 +3491,22 @@ extension AppState {
             },
             setNeedsFolderAccess: { @MainActor [weak self] value in
                 self?.needsScannerFolderAccess = value
+            },
+            setCollectorOutcomes: { @MainActor [weak self] outcomes in
+                guard let self else { return }
+                self.collectorOutcomes = outcomes
+                #if os(macOS)
+                // Detached: the RPC has a network timeout and this runs inside
+                // the refresh path. `reportCollectorStatusIfNeeded` self-gates
+                // on pairing and throttles itself, so a fire-and-forget here is
+                // at most one write per hour per device — and none at all for
+                // unpaired or local-mode users.
+                Task { [weak self] in await self?.reportCollectorStatusIfNeeded(outcomes) }
+                // v1.44 W5: synchronous — registering a login item is local and
+                // instant, and the notice must appear on the same tick the
+                // numbers do, not a beat later.
+                self.enableLaunchAtLoginAtFirstValueIfNeeded(outcomes)
+                #endif
             }
         )
     }

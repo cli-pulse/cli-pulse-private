@@ -6,6 +6,11 @@ final class ClaudeCollectorTests: XCTestCase {
     private var originalOwnerDefaults: UserDefaults!
     private var ownerDefaults: UserDefaults!
     private var ownerSuiteName: String!
+    private var originalOwnerMutationLock:
+        GeminiCredentialMutationLock!
+    private var ownerMutationLockPath: String!
+    private var originalOwnerSynchronizeDefaults:
+        ((UserDefaults) -> Bool)!
 
     override func setUp() {
         super.setUp()
@@ -14,14 +19,46 @@ final class ClaudeCollectorTests: XCTestCase {
         ownerDefaults = UserDefaults(suiteName: ownerSuiteName)
         ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
         ProviderSharedCredentialOwner.defaults = ownerDefaults
+        originalOwnerSynchronizeDefaults =
+            ProviderSharedCredentialOwner
+                .synchronizeDefaults
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults = { _ in true }
+        ownerMutationLockPath =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "\(ownerSuiteName!).lock"
+                )
+                .path
+        originalOwnerMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: ownerMutationLockPath
+            )
     }
 
     override func tearDown() {
+        ProviderSharedCredentialOwner.mutationLock =
+            originalOwnerMutationLock
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults =
+                originalOwnerSynchronizeDefaults
         ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
         ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        if FileManager.default.fileExists(
+            atPath: ownerMutationLockPath
+        ) {
+            try? FileManager.default.removeItem(
+                atPath: ownerMutationLockPath
+            )
+        }
         ownerDefaults = nil
         ownerSuiteName = nil
         originalOwnerDefaults = nil
+        originalOwnerMutationLock = nil
+        ownerMutationLockPath = nil
+        originalOwnerSynchronizeDefaults = nil
         super.tearDown()
     }
 

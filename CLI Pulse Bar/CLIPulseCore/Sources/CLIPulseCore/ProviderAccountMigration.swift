@@ -1,7 +1,7 @@
 import Foundation
 
 public enum ProviderAccountMigration {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
     public static let configsKey = "cli_pulse_provider_configs"
     public static let schemaVersionKey = "cli_pulse_provider_configs_schema_version"
     public static let backupKey = "cli_pulse_provider_configs_v1_backup"
@@ -35,14 +35,19 @@ public enum ProviderAccountMigration {
 
     public static func migrateIfNeeded(
         defaults: UserDefaults,
-        makeAccountID: () -> UUID = UUID.init
+        makeAccountID: () -> UUID = UUID.init,
+        now: () -> Date = Date.init
     ) throws -> Result? {
         guard let originalData = defaults.data(forKey: configsKey) else {
             return nil
         }
 
         let decoder = JSONDecoder()
-        if defaults.integer(forKey: schemaVersionKey) >= currentSchemaVersion {
+        let originalSchemaVersion =
+            defaults.object(forKey: schemaVersionKey) as? Int
+        if defaults.integer(forKey: schemaVersionKey)
+            >= currentSchemaVersion
+        {
             guard let configs = try? decoder.decode([ProviderConfig].self, from: originalData) else {
                 throw MigrationError.invalidStoredConfig
             }
@@ -50,8 +55,20 @@ public enum ProviderAccountMigration {
         }
 
         if let currentConfigs = try? decoder.decode([ProviderConfig].self, from: originalData) {
+            let upgradedConfigs =
+                upgradeMetadata(
+                    in: currentConfigs,
+                    migrationDate: now()
+                )
+            let persistedConfigs = try persist(
+                upgradedConfigs,
+                originalData: originalData,
+                originalSchemaVersion: originalSchemaVersion,
+                defaults: defaults,
+                createBackup: false
+            )
             defaults.set(currentSchemaVersion, forKey: schemaVersionKey)
-            return Result(configs: currentConfigs, didMigrate: false)
+            return Result(configs: persistedConfigs, didMigrate: true)
         }
 
         let legacyConfigs: [LegacyProviderConfigV1]
@@ -61,38 +78,119 @@ public enum ProviderAccountMigration {
             throw MigrationError.invalidStoredConfig
         }
 
-        let migratedConfigs = legacyConfigs.map {
-            $0.providerConfig(accountID: makeAccountID())
-        }
+        let migratedConfigs =
+            upgradeMetadata(
+                in: legacyConfigs.map {
+                    $0.providerConfig(accountID: makeAccountID())
+                },
+                migrationDate: now()
+            )
+        let persistedConfigs = try persist(
+            migratedConfigs,
+            originalData: originalData,
+            originalSchemaVersion: originalSchemaVersion,
+            defaults: defaults,
+            createBackup: true
+        )
 
+        defaults.set(currentSchemaVersion, forKey: schemaVersionKey)
+        return Result(configs: persistedConfigs, didMigrate: true)
+    }
+
+    private static func upgradeMetadata(
+        in configs: [ProviderConfig],
+        migrationDate: Date
+    ) -> [ProviderConfig] {
+        var result = configs
+        for index in result.indices {
+            let override = result[index].planOverride?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if override?.isEmpty == false,
+               result[index].planOverrideUpdatedAt == nil {
+                result[index].planOverrideUpdatedAt = migrationDate
+            }
+        }
+        for kind in ProviderKind.allCases {
+            let indices = result.indices.filter {
+                result[$0].kind == kind
+            }
+            guard
+                !indices.isEmpty,
+                !indices.contains(where: {
+                    result[$0].legacySecretMigrationEligible == true
+                }),
+                let target = indices.min(by: {
+                    let lhs = result[$0]
+                    let rhs = result[$1]
+                    if lhs.sortOrder != rhs.sortOrder {
+                        return lhs.sortOrder < rhs.sortOrder
+                    }
+                    return lhs.accountID.uuidString
+                        < rhs.accountID.uuidString
+                })
+            else {
+                continue
+            }
+            result[target].legacySecretMigrationEligible = true
+        }
+        return result
+    }
+
+    private static func persist(
+        _ configs: [ProviderConfig],
+        originalData: Data,
+        originalSchemaVersion: Int?,
+        defaults: UserDefaults,
+        createBackup: Bool
+    ) throws -> [ProviderConfig] {
         let encoded: Data
         do {
-            encoded = try JSONEncoder().encode(migratedConfigs)
+            encoded = try JSONEncoder().encode(configs)
         } catch {
             throw MigrationError.encodingFailed
         }
 
-        guard (try? decoder.decode([ProviderConfig].self, from: encoded)) != nil else {
+        let decoder = JSONDecoder()
+        guard
+            (try? decoder.decode(
+                [ProviderConfig].self,
+                from: encoded
+            )) != nil
+        else {
             throw MigrationError.verificationFailed
         }
 
-        if defaults.data(forKey: backupKey) == nil {
+        if createBackup,
+           defaults.data(forKey: backupKey) == nil {
             defaults.set(originalData, forKey: backupKey)
         }
         defaults.set(encoded, forKey: configsKey)
 
         guard
             let persistedData = defaults.data(forKey: configsKey),
-            let persistedConfigs = try? decoder.decode([ProviderConfig].self, from: persistedData),
-            persistedConfigs.map(\.accountID) == migratedConfigs.map(\.accountID)
+            let persistedConfigs = try? decoder.decode(
+                [ProviderConfig].self,
+                from: persistedData
+            ),
+            persistedConfigs.map(\.accountID)
+                == configs.map(\.accountID),
+            persistedConfigs.map(\.legacySecretMigrationEligible)
+                == configs.map(\.legacySecretMigrationEligible),
+            persistedConfigs.map(\.planOverrideUpdatedAt)
+                == configs.map(\.planOverrideUpdatedAt)
         else {
             defaults.set(originalData, forKey: configsKey)
-            defaults.removeObject(forKey: schemaVersionKey)
+            if let originalSchemaVersion {
+                defaults.set(
+                    originalSchemaVersion,
+                    forKey: schemaVersionKey
+                )
+            } else {
+                defaults.removeObject(forKey: schemaVersionKey)
+            }
             throw MigrationError.verificationFailed
         }
-
-        defaults.set(currentSchemaVersion, forKey: schemaVersionKey)
-        return Result(configs: persistedConfigs, didMigrate: true)
+        return persistedConfigs
     }
 }
 

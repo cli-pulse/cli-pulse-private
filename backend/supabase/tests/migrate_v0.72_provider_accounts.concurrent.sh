@@ -2,10 +2,10 @@
 # Two-connection regression for provider-account delete serialization.
 #
 # Prerequisite: run against a disposable database with schema.sql, app_rpc.sql,
-# and helper_rpc.sql already loaded (or the equivalent pre-v0.70 + migration).
+# and helper_rpc.sql already loaded (or the equivalent pre-v0.72 + migration).
 #
 # Usage:
-#   DATABASE_URL=postgres://... ./migrate_v0.70_provider_accounts.concurrent.sh
+#   DATABASE_URL=postgres://... ./migrate_v0.72_provider_accounts.concurrent.sh
 #   # or rely on libpq PGHOST/PGPORT/PGUSER/PGDATABASE.
 set -euo pipefail
 
@@ -68,15 +68,23 @@ select public.upsert_provider_account_quotas(jsonb_build_array(
 commit;
 SQL
 
-# Connection A holds the per-user transaction lock after deleting account A.
-# Connection B starts from the overlapping state and must wait before deleting
-# account B. Without a shared delete/upsert lock, B can re-project the already
-# deleted A account after A commits.
+# Connection A holds the per-user transaction lock through the authenticated
+# delete RPC. Connection B starts from the overlapping state and must wait
+# before deleting account B. Direct table DELETE is intentionally not part of
+# the supported service-role path because acquiring an advisory lock from a
+# row trigger creates the reverse tuple-lock/advisory-lock order.
 "${PSQL[@]}" -c "
   begin;
-  delete from public.provider_accounts
-  where user_id = 'a7100000-7100-4710-8710-710000000001'
-    and id = '17100000-7100-4710-8710-710000000001';
+  select set_config(
+    'request.jwt.claims',
+    '{\"sub\":\"a7100000-7100-4710-8710-710000000001\",\"role\":\"authenticated\"}',
+    true
+  );
+  set local role authenticated;
+  select public.delete_provider_account(
+    '17100000-7100-4710-8710-710000000001',
+    'Claude'
+  );
   select pg_sleep(1);
   commit;
 " >/dev/null &
@@ -86,9 +94,16 @@ sleep 0.1
 
 "${PSQL[@]}" -c "
   begin;
-  delete from public.provider_accounts
-  where user_id = 'a7100000-7100-4710-8710-710000000001'
-    and id = '27100000-7100-4710-8710-710000000002';
+  select set_config(
+    'request.jwt.claims',
+    '{\"sub\":\"a7100000-7100-4710-8710-710000000001\",\"role\":\"authenticated\"}',
+    true
+  );
+  set local role authenticated;
+  select public.delete_provider_account(
+    '27100000-7100-4710-8710-710000000002',
+    'Claude'
+  );
   commit;
 " >/dev/null &
 PID_B=$!
@@ -138,7 +153,7 @@ SQL
   select pg_sleep(1);
   select public.upsert_provider_account_quotas(jsonb_build_array(
     jsonb_build_object(
-      'account_id', '17100000-7100-4710-8710-710000000001',
+      'account_id', '37100000-7100-4710-8710-710000000003',
       'provider', 'Claude',
       'account_label', 'Stale completion',
       'plan_type', 'Stale plan',
@@ -167,7 +182,7 @@ sleep 0.1
   set local role authenticated;
   select public.upsert_provider_account_quotas(jsonb_build_array(
     jsonb_build_object(
-      'account_id', '17100000-7100-4710-8710-710000000001',
+      'account_id', '37100000-7100-4710-8710-710000000003',
       'provider', 'Claude',
       'account_label', 'Fresh completion',
       'plan_type', 'Fresh plan',
@@ -199,7 +214,7 @@ begin
   join public.provider_account_quotas q
     on q.user_id = a.user_id and q.provider_account_id = a.id
   where a.user_id = 'a7100000-7100-4710-8710-710000000001'
-    and a.id = '17100000-7100-4710-8710-710000000001';
+    and a.id = '37100000-7100-4710-8710-710000000003';
 
   if v_label is distinct from 'Fresh completion'
      or v_plan is distinct from 'Fresh plan'
@@ -227,7 +242,7 @@ SQL
   select pg_sleep(1);
   select public.upsert_provider_account_quotas(jsonb_build_array(
     jsonb_build_object(
-      'account_id', '17100000-7100-4710-8710-710000000001',
+      'account_id', '37100000-7100-4710-8710-710000000003',
       'provider', 'Claude',
       'account_label', 'Old quota completion',
       'plan_type', 'Newest independent plan',
@@ -256,7 +271,7 @@ sleep 0.1
   set local role authenticated;
   select public.upsert_provider_account_quotas(jsonb_build_array(
     jsonb_build_object(
-      'account_id', '17100000-7100-4710-8710-710000000001',
+      'account_id', '37100000-7100-4710-8710-710000000003',
       'provider', 'Claude',
       'account_label', 'Newest quota completion',
       'plan_type', 'Older plan evidence',
@@ -299,7 +314,7 @@ begin
   join public.provider_account_quotas q
     on q.user_id = a.user_id and q.provider_account_id = a.id
   where a.user_id = 'a7100000-7100-4710-8710-710000000001'
-    and a.id = '17100000-7100-4710-8710-710000000001';
+    and a.id = '37100000-7100-4710-8710-710000000003';
 
   if v_label is distinct from 'Newest quota completion'
      or v_plan is distinct from 'Newest independent plan'
@@ -315,4 +330,4 @@ begin
 end $$;
 SQL
 
-echo "provider-account v0.70 concurrent delete/freshness/clock contract: PASS"
+echo "provider-account v0.72 concurrent delete/freshness/clock contract: PASS"

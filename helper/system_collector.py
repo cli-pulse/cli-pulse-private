@@ -1,17 +1,23 @@
 from __future__ import annotations
 
 import hashlib as _hashlib
+import errno as _errno
+import fcntl as _fcntl
 import json as _json
 import logging
+import math as _math
 import os
 import re
 import sqlite3
+import stat as _stat
 import subprocess
+import threading as _threading
 import time as _time
 import urllib.error
 import urllib.parse
 import urllib.request
-from contextlib import closing
+import uuid as _uuid
+from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -1271,19 +1277,330 @@ def _parse_codex_usage_response(data: dict) -> dict | None:
     }
 
 
-def _get_clipulse_gemini_client_id() -> str:
-    """Return CLI Pulse's own OAuth client_id for Gemini token refresh.
+_GEMINI_CREDENTIAL_PROCESS_LOCK = _threading.RLock()
+_GEMINI_CREDENTIAL_LOCK_TIMEOUT_SECONDS = 2.0
+_GEMINI_CREDENTIAL_MAX_BYTES = 1024 * 1024
+_GEMINI_ACCESS_TOKEN_MAX_LENGTH = 64 * 1024
+_GEMINI_EXPIRY_MIN_MILLISECONDS = 946_684_800_000
+_GEMINI_EXPIRY_MAX_MILLISECONDS = 4_102_444_800_000
+_CLIPULSE_GEMINI_CLIENT_ID = (
+    "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
+)
 
-    Reads from ~/.config/clipulse/gemini_tokens.json (written by the Swift app
-    after the user completes the OAuth flow in the macOS UI).  Returns "" if the
-    file is absent or unreadable.
-    """
-    tokens_path = Path.home() / ".config" / "clipulse" / "gemini_tokens.json"
+
+def _clipulse_gemini_tokens_path() -> Path:
+    return Path.home() / ".config" / "clipulse" / "gemini_tokens.json"
+
+
+def _clipulse_gemini_transaction_marker_path(tokens_path: Path) -> Path:
+    return Path(f"{tokens_path}.transaction")
+
+
+def _clipulse_gemini_lock_path() -> Path:
+    # This helper is unsandboxed. Touching `~/Library/Group Containers`
+    # triggers macOS's recurring app-data consent prompt, so DEVID Swift and
+    # Python deliberately share the lock beside this token file instead.
+    return (
+        _clipulse_gemini_tokens_path().parent
+        / ".gemini-credential.lock"
+    )
+
+
+def _is_clipulse_gemini_tokens_path(path: Path) -> bool:
+    return os.path.abspath(os.fspath(path)) == os.path.abspath(
+        os.fspath(_clipulse_gemini_tokens_path())
+    )
+
+
+def _is_secure_owned_directory(path: Path) -> bool:
     try:
-        data = _json.loads(tokens_path.read_text())
-        return data.get("client_id", "")
+        metadata = os.lstat(path)
+    except OSError:
+        return False
+    return (
+        metadata.st_uid == os.geteuid()
+        and _stat.S_ISDIR(metadata.st_mode)
+        and not metadata.st_mode & 0o022
+    )
+
+
+@contextmanager
+def _clipulse_gemini_credential_lock(
+    *,
+    timeout_seconds: float = _GEMINI_CREDENTIAL_LOCK_TIMEOUT_SECONDS,
+):
+    """Acquire the same bounded POSIX record lock used by the Swift App.
+
+    `lockf`, rather than `flock`, is intentional: Swift's
+    `GeminiCredentialMutationLock` also uses `lockf`, so App and Helper
+    serialize against the same kernel lock. Any setup, validation, or timeout
+    failure yields False and callers fail closed.
+    """
+    with _GEMINI_CREDENTIAL_PROCESS_LOCK:
+        descriptor: int | None = None
+        directory_descriptor: int | None = None
+        acquired = False
+        try:
+            lock_path = _clipulse_gemini_lock_path()
+            lock_path.parent.mkdir(
+                mode=0o700,
+                parents=True,
+                exist_ok=True,
+            )
+            directory_flags = os.O_RDONLY
+            directory_flags |= getattr(os, "O_CLOEXEC", 0)
+            directory_flags |= getattr(os, "O_NOFOLLOW", 0)
+            directory_flags |= getattr(os, "O_DIRECTORY", 0)
+            directory_descriptor = os.open(
+                lock_path.parent,
+                directory_flags,
+            )
+            directory_metadata = os.fstat(
+                directory_descriptor
+            )
+            if (
+                directory_metadata.st_uid
+                != os.geteuid()
+                or not _stat.S_ISDIR(
+                    directory_metadata.st_mode
+                )
+            ):
+                raise OSError(_errno.EPERM, "unsafe Gemini lock directory")
+            if directory_metadata.st_mode & 0o077:
+                os.fchmod(
+                    directory_descriptor,
+                    0o700,
+                )
+            directory_metadata = os.fstat(
+                directory_descriptor
+            )
+            if (
+                directory_metadata.st_uid
+                != os.geteuid()
+                or not _stat.S_ISDIR(
+                    directory_metadata.st_mode
+                )
+                or directory_metadata.st_mode & 0o077
+            ):
+                raise OSError(
+                    _errno.EPERM,
+                    "unsafe Gemini lock directory",
+                )
+            flags = os.O_RDWR | os.O_CREAT
+            flags |= getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(
+                lock_path.name,
+                flags,
+                0o600,
+                dir_fd=directory_descriptor,
+            )
+            metadata = os.fstat(descriptor)
+            if (
+                metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1
+                or not _stat.S_ISREG(metadata.st_mode)
+            ):
+                raise OSError(_errno.EPERM, "unsafe Gemini lock file")
+            if metadata.st_mode & 0o077:
+                os.fchmod(descriptor, 0o600)
+            metadata = os.fstat(descriptor)
+            if (
+                metadata.st_uid != os.geteuid()
+                or metadata.st_nlink != 1
+                or not _stat.S_ISREG(metadata.st_mode)
+                or metadata.st_mode & 0o077
+            ):
+                raise OSError(_errno.EPERM, "unsafe Gemini lock file")
+            path_metadata = os.stat(
+                lock_path.name,
+                dir_fd=directory_descriptor,
+                follow_symlinks=False,
+            )
+            if (
+                path_metadata.st_dev != metadata.st_dev
+                or path_metadata.st_ino != metadata.st_ino
+            ):
+                raise OSError(
+                    _errno.EPERM,
+                    "Gemini lock path changed",
+                )
+            os.close(directory_descriptor)
+            directory_descriptor = None
+        except OSError:
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            if directory_descriptor is not None:
+                try:
+                    os.close(directory_descriptor)
+                except OSError:
+                    pass
+            yield False
+            return
+
+        deadline = _time.monotonic() + max(0.0, timeout_seconds)
+        while True:
+            try:
+                _fcntl.lockf(
+                    descriptor,
+                    _fcntl.LOCK_EX | _fcntl.LOCK_NB,
+                )
+                acquired = True
+                break
+            except OSError as exc:
+                if exc.errno not in (_errno.EACCES, _errno.EAGAIN):
+                    break
+                if _time.monotonic() >= deadline:
+                    break
+                _time.sleep(0.01)
+        if not acquired:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            yield False
+            return
+
+        try:
+            yield True
+        finally:
+            try:
+                _fcntl.lockf(descriptor, _fcntl.LOCK_UN)
+            except OSError:
+                pass
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _read_secure_gemini_json(path: Path) -> dict | None:
+    descriptor: int | None = None
+    try:
+        if not _is_secure_owned_directory(path.parent):
+            return None
+        flags = os.O_RDONLY
+        flags |= getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(path, flags)
+        metadata = os.fstat(descriptor)
+        if (
+            metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or not _stat.S_ISREG(metadata.st_mode)
+            or metadata.st_mode & 0o077
+            or metadata.st_size < 0
+            or metadata.st_size > _GEMINI_CREDENTIAL_MAX_BYTES
+        ):
+            return None
+        chunks: list[bytes] = []
+        remaining = _GEMINI_CREDENTIAL_MAX_BYTES + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(65536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        raw = b"".join(chunks)
+        if len(raw) > _GEMINI_CREDENTIAL_MAX_BYTES:
+            return None
+        value = _json.loads(raw)
+        return value if isinstance(value, dict) else None
     except (OSError, ValueError, _json.JSONDecodeError):
+        return None
+    finally:
+        if descriptor is not None:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+
+
+def _read_clipulse_gemini_credentials(tokens_path: Path) -> dict | None:
+    with _clipulse_gemini_credential_lock() as acquired:
+        if not acquired:
+            return None
+        marker_path = _clipulse_gemini_transaction_marker_path(tokens_path)
+        if os.path.lexists(marker_path):
+            # A valid marker means recovery is unfinished; a corrupt marker is
+            # equally unsafe. Swift owns recovery because only it can reconcile
+            # the Keychain half of the transaction.
+            return None
+        value = _read_secure_gemini_json(tokens_path)
+        if not _is_valid_clipulse_gemini_credentials(value):
+            return None
+        return value
+
+
+def _is_valid_clipulse_gemini_credentials(value: object) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if set(value) != {
+        "version",
+        "generation",
+        "access_token",
+        "client_id",
+        "expiry_date",
+    }:
+        return False
+    version = value.get("version")
+    if (
+        not isinstance(version, int)
+        or isinstance(version, bool)
+        or version != 1
+    ):
+        return False
+    generation = value.get("generation")
+    if not isinstance(generation, str):
+        return False
+    try:
+        parsed_generation = _uuid.UUID(
+            generation
+        )
+    except (ValueError, AttributeError):
+        return False
+    if str(parsed_generation) != generation:
+        return False
+    access_token = value.get("access_token")
+    if (
+        not isinstance(access_token, str)
+        or not access_token
+        or access_token != access_token.strip()
+        or len(access_token)
+        > _GEMINI_ACCESS_TOKEN_MAX_LENGTH
+    ):
+        return False
+    if (
+        value.get("client_id")
+        != _CLIPULSE_GEMINI_CLIENT_ID
+    ):
+        return False
+    expiry = value.get("expiry_date")
+    if (
+        not isinstance(expiry, (int, float))
+        or isinstance(expiry, bool)
+        or not _math.isfinite(expiry)
+        or expiry
+        < _GEMINI_EXPIRY_MIN_MILLISECONDS
+        or expiry
+        > _GEMINI_EXPIRY_MAX_MILLISECONDS
+    ):
+        return False
+    return True
+
+
+def _get_clipulse_gemini_client_id() -> str:
+    """Return CLI Pulse's OAuth client_id only from a committed snapshot."""
+    data = _read_clipulse_gemini_credentials(
+        _clipulse_gemini_tokens_path()
+    )
+    if data is None:
         return ""
+    client_id = data.get("client_id", "")
+    return client_id if isinstance(client_id, str) else ""
 
 
 def _refresh_gemini_token(creds_path: Path) -> str | None:
@@ -1294,6 +1611,11 @@ def _refresh_gemini_token(creds_path: Path) -> str | None:
     flow.  Gemini-CLI-originated tokens cannot be refreshed without that CLI's
     private credentials.
     """
+    if _is_clipulse_gemini_tokens_path(creds_path):
+        # CLI Pulse never writes its refresh token to the helper file. Swift
+        # alone refreshes and republishes the Keychain + helper pair through
+        # the crash-recoverable transaction.
+        return None
     try:
         creds = _json.loads(creds_path.read_text())
         refresh_token = creds.get("refresh_token")
@@ -1333,21 +1655,57 @@ def _refresh_gemini_token(creds_path: Path) -> str | None:
     return None
 
 
+def _gemini_access_token_from_credentials(
+    creds: dict,
+    creds_path: Path,
+    *,
+    allow_refresh: bool,
+    expiry_is_milliseconds: bool = False,
+) -> str | None:
+    access_token = creds.get("access_token", "")
+    if not isinstance(access_token, str):
+        return None
+    expiry = creds.get("expiry_date", 0)
+    if isinstance(expiry, (int, float)) and not isinstance(expiry, bool):
+        exp_ts = (
+            expiry / 1000
+            if expiry_is_milliseconds
+            else expiry / 1000
+            if expiry > 1e12
+            else expiry
+        )
+        if exp_ts < datetime.now(timezone.utc).timestamp():
+            if not allow_refresh:
+                return None
+            access_token = _refresh_gemini_token(creds_path) or ""
+    return access_token or None
+
+
 def _try_read_gemini_token(creds_path: Path) -> str | None:
     """Try to read and return a valid access token from a credential file.
 
     Refreshes the token if expired (only works for CLI Pulse tokens that have a
     client_id).  Returns None on any failure so the caller can fall back.
     """
+    if _is_clipulse_gemini_tokens_path(creds_path):
+        creds = _read_clipulse_gemini_credentials(creds_path)
+        if creds is None:
+            return None
+        return _gemini_access_token_from_credentials(
+            creds,
+            creds_path,
+            allow_refresh=False,
+            expiry_is_milliseconds=True,
+        )
     try:
         creds = _json.loads(creds_path.read_text())
-        access_token = creds.get("access_token", "")
-        expiry = creds.get("expiry_date", 0)
-        if isinstance(expiry, (int, float)):
-            exp_ts = expiry / 1000 if expiry > 1e12 else expiry
-            if exp_ts < datetime.now(timezone.utc).timestamp():
-                access_token = _refresh_gemini_token(creds_path) or ""
-        return access_token or None
+        if not isinstance(creds, dict):
+            return None
+        return _gemini_access_token_from_credentials(
+            creds,
+            creds_path,
+            allow_refresh=True,
+        )
     except (OSError, ValueError, _json.JSONDecodeError) as e:
         logger.debug("Gemini credential read failed for %s: %s", creds_path, e)
         return None
@@ -1356,7 +1714,7 @@ def _try_read_gemini_token(creds_path: Path) -> str | None:
 def _fetch_gemini_usage() -> dict | None:
     """Read Gemini usage via OAuth token → Google quota API."""
     # Priority 1: CLI Pulse's own OAuth tokens (written by the Swift app)
-    clipulse_path = Path.home() / ".config" / "clipulse" / "gemini_tokens.json"
+    clipulse_path = _clipulse_gemini_tokens_path()
     # Priority 2: Gemini CLI's credential file (compatibility fallback)
     gemini_cli_path = Path.home() / ".gemini" / "oauth_creds.json"
 

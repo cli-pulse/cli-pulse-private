@@ -1,9 +1,9 @@
 -- ============================================================================
--- migrate_v0.70_provider_accounts.test.sql
+-- migrate_v0.72_provider_accounts.test.sql
 -- Plain-Postgres contract test for account-scoped provider quotas.
 --
 -- Run in two independent disposable databases:
---   A. upgrade path: pre-v0.70 baseline, then migrate_v0.70 only;
+--   A. upgrade path: pre-v0.72 main baseline, then migrate_v0.72 only;
 --   B. fresh path: tests/rls/00_supabase_shim.sql, schema.sql, app_rpc.sql,
 --      helper_rpc.sql, with no migration replay afterward.
 -- Never load the migration after the canonical files in path B: that would
@@ -31,6 +31,11 @@ begin;
 \set accountBig '''67000000-7000-4700-8700-700000000006'''
 \set accountClock '''77000000-7000-4700-8700-700000000007'''
 \set accountDisabledFirst '''87000000-7000-4700-8700-700000000008'''
+\set accountDeletedFirst '''87000000-7000-4700-8700-700000000018'''
+\set accountCapExisting '''97000000-7000-4700-8700-700000000009'''
+\set accountCapStatus '''a7000000-7000-4700-8700-700000000010'''
+\set accountCapDelete '''a7000000-7000-4700-8700-700000000011'''
+\set accountCapUpsert '''a7000000-7000-4700-8700-700000000012'''
 
 insert into auth.users (id, email) values
   (:userA, 'owner@example.test'),
@@ -255,6 +260,110 @@ begin
   end if;
 end $$;
 
+-- Equal timestamps are replay duplicates, not newer observations. They must
+-- never let a delayed request overwrite an already committed value.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountA1,
+    'provider', 'Claude',
+    'account_label', 'Equal timestamp must not win',
+    'plan_type', 'Equal plan must not win',
+    'plan_source', 'unknown',
+    'plan_confidence', 'low',
+    'plan_observed_at', '2026-07-24T02:59:00Z',
+    'remaining', 99,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T03:00:00Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_label text;
+  v_plan text;
+  v_remaining bigint;
+begin
+  select display_label, plan_type into v_label, v_plan
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '17000000-7000-4700-8700-700000000001';
+  select remaining into v_remaining
+  from public.provider_account_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider_account_id = '17000000-7000-4700-8700-700000000001';
+
+  if v_label is distinct from 'Fresh label'
+     or v_plan is distinct from 'Fresh plan'
+     or v_remaining is distinct from 10 then
+    raise exception
+      'FAIL[equal timestamp]: label=% plan=% remaining=%',
+      v_label, v_plan, v_remaining;
+  end if;
+end $$;
+
+-- A far-future device clock must not lock an account against legitimate
+-- observations. Both quota and independent plan clocks are bounded.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+do $$
+declare
+  v_quota_rejected boolean := false;
+  v_plan_rejected boolean := false;
+begin
+  begin
+    perform public.upsert_provider_account_quotas(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', '17000000-7000-4700-8700-700000000001',
+        'provider', 'Claude',
+        'plan_source', 'unknown',
+        'plan_confidence', 'unavailable',
+        'tiers', '[]'::jsonb,
+        'observed_at', clock_timestamp() + interval '11 minutes'
+      )
+    ));
+  exception when others then
+    v_quota_rejected :=
+      position('observed_at is too far in the future' in sqlerrm) > 0;
+  end;
+
+  begin
+    perform public.upsert_provider_account_quotas(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', '17000000-7000-4700-8700-700000000001',
+        'provider', 'Claude',
+        'plan_type', 'Future lockout',
+        'plan_source', 'userConfirmed',
+        'plan_confidence', 'high',
+        'plan_observed_at', clock_timestamp() + interval '11 minutes',
+        'tiers', '[]'::jsonb,
+        'observed_at', clock_timestamp()
+      )
+    ));
+  exception when others then
+    v_plan_rejected :=
+      position('plan_observed_at is too far in the future' in sqlerrm) > 0;
+  end;
+
+  if not v_quota_rejected or not v_plan_rejected then
+    raise exception
+      'FAIL[future timestamp]: quota_rejected=% plan_rejected=%',
+      v_quota_rejected, v_plan_rejected;
+  end if;
+end $$;
+reset role;
+
 -- Quota freshness and plan evidence are independent clocks. A newer quota
 -- snapshot without fresh plan evidence may update label/quota but must
 -- preserve the existing plan. Conversely, an older quota snapshot carrying
@@ -358,6 +467,56 @@ begin
   end if;
 end $$;
 
+-- Clearing a manual plan is a first-class revision. A fresh user-confirmed
+-- null must clear the previous cloud plan instead of being treated as absent
+-- evidence.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.upsert_provider_account_quotas(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountClock,
+    'provider', 'ClockTest',
+    'account_label', 'Plan explicitly cleared',
+    'plan_type', null,
+    'plan_source', 'userConfirmed',
+    'plan_confidence', 'high',
+    'plan_observed_at', '2026-07-24T05:01:00.125Z',
+    'remaining', 4,
+    'quota', 100,
+    'tiers', '[]'::jsonb,
+    'observed_at', '2026-07-24T04:01:00.250Z'
+  )
+));
+reset role;
+
+do $$
+declare
+  v_plan text;
+  v_source text;
+  v_confidence text;
+  v_plan_observed_at timestamptz;
+begin
+  select plan_type, plan_source, plan_confidence, plan_observed_at
+    into v_plan, v_source, v_confidence, v_plan_observed_at
+  from public.provider_accounts
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and id = '77000000-7000-4700-8700-700000000007';
+
+  if v_plan is not null
+     or v_source is distinct from 'userConfirmed'
+     or v_confidence is distinct from 'high'
+     or v_plan_observed_at is distinct from
+       '2026-07-24T05:01:00.125Z'::timestamptz then
+    raise exception
+      'FAIL[explicit plan clear]: plan=% source=% confidence=% observed=%',
+      v_plan, v_source, v_confidence, v_plan_observed_at;
+  end if;
+end $$;
+
 -- Provider costs remain provider-scoped. Two Claude accounts must not double
 -- the single provider/model cost series in provider_account_summary.
 insert into public.daily_usage_metrics (
@@ -427,12 +586,29 @@ select public.helper_sync_provider_account_quotas(
     )
   )
 );
+select public.helper_sync(
+  :deviceA,
+  'owner-helper-secret',
+  '[]'::jsonb,
+  '[]'::jsonb,
+  '{}'::jsonb,
+  jsonb_build_object(
+    'Codex',
+    jsonb_build_object(
+      'remaining', 0,
+      'quota', 100,
+      'plan_type', 'Stale legacy helper',
+      'tiers', '[]'::jsonb
+    )
+  )
+);
 reset role;
 
 do $$
 declare
   v_user uuid;
   v_device uuid;
+  v_projection_remaining bigint;
 begin
   select user_id, source_device_id into v_user, v_device
   from public.provider_account_quotas
@@ -440,6 +616,15 @@ begin
   if v_user <> 'a7000000-7000-4700-8700-700000000001'
      or v_device <> 'd7000000-7000-4700-8700-700000000001' then
     raise exception 'FAIL[helper ownership]: user=% device=%', v_user, v_device;
+  end if;
+  select remaining into v_projection_remaining
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Codex';
+  if v_projection_remaining is distinct from 55 then
+    raise exception
+      'FAIL[legacy helper projection]: adopted Codex was overwritten with %',
+      v_projection_remaining;
   end if;
 end $$;
 
@@ -812,10 +997,11 @@ set local role authenticated;
 select public.set_provider_account_statuses(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountA2,
+    'provider', 'Claude',
     'status', 'disabled'
   )
 ));
-select public.delete_provider_account(:accountA2);
+select public.delete_provider_account(:accountA2, 'Claude');
 reset role;
 
 do $$
@@ -840,9 +1026,65 @@ set local role authenticated;
 select public.set_provider_account_statuses(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountDisabledFirst,
+    'provider', 'DeepSeek',
     'status', 'disabled'
   )
 ));
+do $$
+declare
+  v_rejected boolean := false;
+begin
+  begin
+    insert into public.provider_quotas (
+      user_id, provider, remaining, quota, plan_type, tiers, updated_at
+    ) values (
+      'a7000000-7000-4700-8700-700000000001',
+      'DeepSeek', 100, 100, 'Legacy app', '[]'::jsonb, now()
+    );
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception
+      'FAIL[disable before first observation]: legacy app write was accepted';
+  end if;
+end $$;
+reset role;
+
+set local role anon;
+select public.helper_sync(
+  :deviceA,
+  'owner-helper-secret',
+  '[]'::jsonb,
+  '[]'::jsonb,
+  '{}'::jsonb,
+  jsonb_build_object(
+    'DeepSeek',
+    jsonb_build_object(
+      'remaining', 100,
+      'quota', 100,
+      'plan_type', 'Legacy helper',
+      'tiers', '[]'::jsonb
+    )
+  )
+);
+reset role;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'DeepSeek';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[disable before first observation]: legacy helper revived provider';
+  end if;
+end $$;
+
+set local role authenticated;
 select public.upsert_provider_account_quotas(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountDisabledFirst,
@@ -892,6 +1134,7 @@ set local role authenticated;
 select public.set_provider_account_statuses(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountA2,
+    'provider', 'Claude',
     'status', 'disabled'
   )
 ));
@@ -949,6 +1192,7 @@ begin
     perform public.set_provider_account_statuses(jsonb_build_array(
       jsonb_build_object(
         'account_id', '27000000-7000-4700-8700-700000000002',
+        'provider', 'Claude',
         'status', 'active',
         'access_token', 'must-not-be-accepted'
       )
@@ -962,9 +1206,35 @@ begin
   end if;
 end $$;
 
+do $$
+declare
+  v_rejected boolean := false;
+begin
+  begin
+    perform public.set_provider_account_statuses(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', '27000000-7000-4700-8700-700000000002',
+        'provider', 'Codex',
+        'status', 'active'
+      )
+    ));
+  exception when others then
+    v_rejected :=
+      position(
+        'provider does not match'
+        in lower(sqlerrm)
+      ) > 0;
+  end;
+  if not v_rejected then
+    raise exception
+      'FAIL[status provider binding]: mismatched provider was accepted';
+  end if;
+end $$;
+
 select public.set_provider_account_statuses(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountA2,
+    'provider', 'Claude',
     'status', 'active'
   )
 ));
@@ -993,7 +1263,7 @@ select set_config(
   true
 );
 set local role authenticated;
-select public.delete_provider_account(:accountA2);
+select public.delete_provider_account(:accountA2, 'Claude');
 select public.upsert_provider_account_quotas(jsonb_build_array(
   jsonb_build_object(
     'account_id', :accountA2,
@@ -1058,6 +1328,56 @@ begin
   end if;
 end $$;
 
+-- Once a provider has account lifecycle state, an old authenticated app must
+-- not overwrite the account-derived compatibility projection directly.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+do $$
+declare
+  v_rejected boolean := false;
+begin
+  begin
+    insert into public.provider_quotas (
+      user_id, provider, remaining, quota, plan_type, tiers, updated_at
+    ) values (
+      'a7000000-7000-4700-8700-700000000001',
+      'Claude', 999, 1000, 'Legacy overwrite', '[]'::jsonb, now()
+    )
+    on conflict (user_id, provider) do update set
+      remaining = excluded.remaining,
+      quota = excluded.quota,
+      plan_type = excluded.plan_type,
+      updated_at = excluded.updated_at;
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+
+  if not v_rejected then
+    raise exception
+      'FAIL[legacy app projection]: adopted provider accepted direct write';
+  end if;
+end $$;
+reset role;
+
+do $$
+declare
+  v_remaining bigint;
+begin
+  select remaining into v_remaining
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Claude';
+  if v_remaining is distinct from 10 then
+    raise exception
+      'FAIL[legacy app projection]: expected account projection 10, got %',
+      v_remaining;
+  end if;
+end $$;
+
 -- A helper snapshot already in flight at deletion time must observe the same
 -- durable server tombstone as the authenticated app writer.
 select set_config(
@@ -1066,7 +1386,7 @@ select set_config(
   true
 );
 set local role authenticated;
-select public.delete_provider_account(:accountHelper);
+select public.delete_provider_account(:accountHelper, 'Codex');
 reset role;
 
 set local role anon;
@@ -1084,6 +1404,22 @@ select public.helper_sync_provider_account_quotas(
       'quota', 100,
       'tiers', '[]'::jsonb,
       'observed_at', '2026-07-24T07:01:00Z'
+    )
+  )
+);
+select public.helper_sync(
+  :deviceA,
+  'owner-helper-secret',
+  '[]'::jsonb,
+  '[]'::jsonb,
+  '{}'::jsonb,
+  jsonb_build_object(
+    'Codex',
+    jsonb_build_object(
+      'remaining', 0,
+      'quota', 100,
+      'plan_type', 'Stale legacy helper after delete',
+      'tiers', '[]'::jsonb
     )
   )
 );
@@ -1119,7 +1455,248 @@ begin
     and provider = 'Codex';
   if v_count <> 0 then
     raise exception
-      'FAIL[delete tombstone]: stale helper entered projection';
+      'FAIL[delete tombstone]: stale v2 or legacy helper entered projection';
+  end if;
+end $$;
+
+-- Even if a pre-fix legacy writer left a compatibility row behind, a stale
+-- v2 snapshot rejected by the tombstone must still touch and repair that
+-- provider projection.
+insert into public.provider_quotas (
+  user_id, provider, remaining, quota, plan_type, tiers, updated_at
+) values (
+  :userA, 'Codex', 0, 100, 'Injected stale projection', '[]'::jsonb, now()
+);
+
+set local role anon;
+select public.helper_sync_provider_account_quotas(
+  :deviceA,
+  'owner-helper-secret',
+  jsonb_build_array(
+    jsonb_build_object(
+      'account_id', :accountHelper,
+      'provider', 'Codex',
+      'plan_source', 'unknown',
+      'plan_confidence', 'unavailable',
+      'remaining', 0,
+      'quota', 100,
+      'tiers', '[]'::jsonb,
+      'observed_at', '2026-07-24T07:02:00Z'
+    )
+  )
+);
+reset role;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Codex';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[deleted projection repair]: stale compatibility row survived';
+  end if;
+end $$;
+
+-- A durable delete before the first v2 quota observation must still type the
+-- tombstone. Neither the old authenticated app nor the old helper may revive
+-- that provider, even though no provider_accounts row ever existed.
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"a7000000-7000-4700-8700-700000000001","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.delete_provider_account(
+  :accountDeletedFirst,
+  'Volcano Engine'
+);
+do $$
+declare
+  v_rejected boolean := false;
+begin
+  begin
+    insert into public.provider_quotas (
+      user_id, provider, remaining, quota, plan_type, tiers, updated_at
+    ) values (
+      'a7000000-7000-4700-8700-700000000001',
+      'Volcano Engine', 100, 100, 'Legacy app', '[]'::jsonb, now()
+    );
+  exception when insufficient_privilege then
+    v_rejected := true;
+  end;
+  if not v_rejected then
+    raise exception
+      'FAIL[delete before first observation]: legacy app write was accepted';
+  end if;
+end $$;
+reset role;
+
+set local role anon;
+select public.helper_sync(
+  :deviceA,
+  'owner-helper-secret',
+  '[]'::jsonb,
+  '[]'::jsonb,
+  '{}'::jsonb,
+  jsonb_build_object(
+    'Volcano Engine',
+    jsonb_build_object(
+      'remaining', 100,
+      'quota', 100,
+      'plan_type', 'Legacy helper',
+      'tiers', '[]'::jsonb
+    )
+  )
+);
+reset role;
+
+do $$
+declare
+  v_provider text;
+  v_status text;
+  v_count integer;
+begin
+  select provider, status into v_provider, v_status
+  from public.provider_account_lifecycle
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider_account_id =
+      '87000000-7000-4700-8700-700000000018';
+  if v_provider is distinct from 'Volcano Engine'
+     or v_status is distinct from 'deleted' then
+    raise exception
+      'FAIL[delete before first observation]: provider=% status=%',
+      v_provider, v_status;
+  end if;
+
+  select count(*) into v_count
+  from public.provider_quotas
+  where user_id = 'a7000000-7000-4700-8700-700000000001'
+    and provider = 'Volcano Engine';
+  if v_count <> 0 then
+    raise exception
+      'FAIL[delete before first observation]: legacy helper revived provider';
+  end if;
+end $$;
+
+-- Lifecycle rows are permanent authority/tombstones, so every creation path
+-- needs a hard per-user bound. Existing rows remain mutable at the cap.
+insert into public.provider_account_lifecycle (
+  user_id, provider_account_id, provider, status
+) values (
+  :userC, :accountCapExisting, null, 'active'
+);
+insert into public.provider_account_lifecycle (
+  user_id, provider_account_id, provider, status
+)
+select :userC, gen_random_uuid(), null, 'active'
+from generate_series(1, 999);
+
+select set_config(
+  'request.jwt.claims',
+  '{"sub":"c7000000-7000-4700-8700-700000000003","role":"authenticated"}',
+  true
+);
+set local role authenticated;
+select public.set_provider_account_statuses(jsonb_build_array(
+  jsonb_build_object(
+    'account_id', :accountCapExisting,
+    'provider', 'Bounded Existing',
+    'status', 'disabled'
+  )
+));
+do $$
+declare
+  v_status_rejected boolean := false;
+  v_delete_rejected boolean := false;
+  v_upsert_rejected boolean := false;
+begin
+  begin
+    perform public.set_provider_account_statuses(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', 'a7000000-7000-4700-8700-700000000010',
+        'provider', 'Bounded Status',
+        'status', 'active'
+      )
+    ));
+  exception when others then
+    v_status_rejected :=
+      position(
+        'Too many provider account lifecycle records (max 1000)'
+        in sqlerrm
+      ) > 0;
+  end;
+
+  begin
+    perform public.delete_provider_account(
+      'a7000000-7000-4700-8700-700000000011',
+      'Bounded Delete'
+    );
+  exception when others then
+    v_delete_rejected :=
+      position(
+        'Too many provider account lifecycle records (max 1000)'
+        in sqlerrm
+      ) > 0;
+  end;
+
+  begin
+    perform public.upsert_provider_account_quotas(jsonb_build_array(
+      jsonb_build_object(
+        'account_id', 'a7000000-7000-4700-8700-700000000012',
+        'provider', 'Bounded',
+        'plan_source', 'unknown',
+        'plan_confidence', 'unavailable',
+        'tiers', '[]'::jsonb,
+        'observed_at', clock_timestamp()
+      )
+    ));
+  exception when others then
+    v_upsert_rejected :=
+      position(
+        'Too many provider account lifecycle records (max 1000)'
+        in sqlerrm
+      ) > 0;
+  end;
+
+  if not v_status_rejected
+     or not v_delete_rejected
+     or not v_upsert_rejected then
+    raise exception
+      'FAIL[lifecycle bound]: status=% delete=% upsert=%',
+      v_status_rejected, v_delete_rejected, v_upsert_rejected;
+  end if;
+end $$;
+reset role;
+
+do $$
+declare
+  v_count integer;
+  v_status text;
+begin
+  select count(*), min(status)
+    into v_count, v_status
+  from public.provider_account_lifecycle
+  where user_id = 'c7000000-7000-4700-8700-700000000003';
+  if v_count <> 1000 or v_status is distinct from 'active' then
+    -- min(status) remains active because 999 active rows coexist with the
+    -- one disabled row; inspect that row separately below.
+    raise exception
+      'FAIL[lifecycle bound]: expected 1000 bounded rows, got %/%',
+      v_count, v_status;
+  end if;
+
+  select status into v_status
+  from public.provider_account_lifecycle
+  where user_id = 'c7000000-7000-4700-8700-700000000003'
+    and provider_account_id =
+      '97000000-7000-4700-8700-700000000009';
+  if v_status is distinct from 'disabled' then
+    raise exception
+      'FAIL[lifecycle bound]: existing row was not mutable at cap';
   end if;
 end $$;
 
@@ -1140,7 +1717,7 @@ begin
   if has_function_privilege(
     'anon', 'public.set_provider_account_statuses(jsonb)', 'execute'
   ) or has_function_privilege(
-    'anon', 'public.delete_provider_account(uuid)', 'execute'
+    'anon', 'public.delete_provider_account(uuid,text)', 'execute'
   ) then
     raise exception 'FAIL[ACL]: anon can mutate provider account lifecycle';
   end if;
@@ -1149,7 +1726,7 @@ begin
     'public.set_provider_account_statuses(jsonb)',
     'execute'
   ) or not has_function_privilege(
-    'authenticated', 'public.delete_provider_account(uuid)', 'execute'
+    'authenticated', 'public.delete_provider_account(uuid,text)', 'execute'
   ) then
     raise exception
       'FAIL[ACL]: authenticated cannot mutate provider account lifecycle';
@@ -1170,6 +1747,35 @@ begin
     'execute'
   ) then
     raise exception 'FAIL[ACL]: anon cannot execute helper account sync';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public.can_write_legacy_provider_quota(uuid,text)',
+    'execute'
+  ) or not has_function_privilege(
+    'authenticated',
+    'public.can_write_legacy_provider_quota(uuid,text)',
+    'execute'
+  ) then
+    raise exception
+      'FAIL[ACL]: legacy quota policy gate has incorrect grants';
+  end if;
+  if to_regprocedure(
+    'public._helper_sync_legacy_payload(uuid,text,jsonb,jsonb,jsonb,jsonb)'
+  ) is null then
+    raise exception 'FAIL[ACL]: internal legacy helper function is missing';
+  end if;
+  if has_function_privilege(
+    'anon',
+    'public._helper_sync_legacy_payload(uuid,text,jsonb,jsonb,jsonb,jsonb)',
+    'execute'
+  ) or has_function_privilege(
+    'authenticated',
+    'public._helper_sync_legacy_payload(uuid,text,jsonb,jsonb,jsonb,jsonb)',
+    'execute'
+  ) then
+    raise exception
+      'FAIL[ACL]: client role can execute internal legacy helper writer';
   end if;
   if has_table_privilege(
     'authenticated', 'public.provider_accounts', 'insert'
@@ -1201,6 +1807,22 @@ begin
   ) then
     raise exception 'FAIL[ACL]: authenticated cannot read own account rows';
   end if;
+  if has_table_privilege(
+    'service_role', 'public.provider_accounts', 'delete'
+  ) or has_table_privilege(
+    'service_role', 'public.provider_account_lifecycle', 'delete'
+  ) or has_table_privilege(
+    'service_role', 'public.provider_account_quotas', 'delete'
+  ) then
+    raise exception
+      'FAIL[ACL]: service_role can bypass serialized account deletes';
+  end if;
+  if to_regprocedure(
+    'public._lock_provider_account_owner_before_delete()'
+  ) is not null then
+    raise exception
+      'FAIL[lock order]: row-delete advisory trigger function still exists';
+  end if;
   if has_function_privilege(
     'authenticated',
     'public._refresh_provider_quota_projection(uuid,text)',
@@ -1208,10 +1830,6 @@ begin
   ) or has_function_privilege(
     'authenticated',
     'public._refresh_provider_quota_after_account_delete()',
-    'execute'
-  ) or has_function_privilege(
-    'authenticated',
-    'public._lock_provider_account_owner_before_delete()',
     'execute'
   ) or has_function_privilege(
     'authenticated',
@@ -1226,5 +1844,5 @@ begin
   end if;
 end $$;
 
-\echo 'provider-account v0.70 SQL contract: PASS'
+\echo 'provider-account v0.72 SQL contract: PASS'
 rollback;

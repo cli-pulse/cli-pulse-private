@@ -172,6 +172,7 @@ final class ProviderAccountAPITests: XCTestCase {
                 [
                     ProviderAccountStatusUpdate(
                         accountID: accountID,
+                        provider: .claude,
                         isEnabled: false
                     ),
                 ],
@@ -184,6 +185,7 @@ final class ProviderAccountAPITests: XCTestCase {
                 [
                     ProviderAccountStatusUpdate(
                         accountID: accountID,
+                        provider: .claude,
                         isEnabled: true
                     ),
                 ],
@@ -233,6 +235,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 ProviderAccountStatusUpdate(
                     accountID: accountID,
+                    provider: .claude,
                     isEnabled: true
                 ),
             ],
@@ -243,6 +246,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 ProviderAccountStatusUpdate(
                     accountID: accountID,
+                    provider: .claude,
                     isEnabled: false
                 ),
             ],
@@ -635,7 +639,10 @@ final class ProviderAccountAPITests: XCTestCase {
             row["account_id"] as? String,
             "33333333-3333-4333-8333-333333333333"
         )
-        XCTAssertEqual(row["observed_at"] as? String, "2026-07-24T03:00:00Z")
+        XCTAssertEqual(
+            row["observed_at"] as? String,
+            "2026-07-24T03:00:00.000Z"
+        )
         XCTAssertEqual(
             Set(row.keys),
             [
@@ -728,6 +735,72 @@ final class ProviderAccountAPITests: XCTestCase {
         XCTAssertFalse(
             String(decoding: body, as: UTF8.self)
                 .contains(resourceHost)
+        )
+    }
+
+    func testV2WriteEncodesExplicitPlanClearWithFreshRevision()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/upsert_provider_account_quotas"
+            )
+            return .json(#"{"accounts_synced":1}"#)
+        }
+        let clearedAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T02:59:00.125Z")
+        )
+        let account = ProviderAccountUsage(
+            id: Self.accountUsage.id,
+            provider: .claude,
+            accountLabel: "Work",
+            planEvidence: ProviderPlanEvidence(
+                rawValue: nil,
+                displayValue: nil,
+                source: .userConfirmed,
+                confidence: .high,
+                observedAt: clearedAt
+            ),
+            quota: 100,
+            remaining: 60,
+            tiers: [],
+            resetTime: nil,
+            observedAt: "2026-07-24T03:00:00.250Z",
+            sourceDeviceID: nil,
+            statusText: "40% used"
+        )
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+
+        await api.syncProviderAccountQuotas(
+            [account],
+            authorizationLease: lease
+        )
+
+        let request = try XCTUnwrap(
+            ProviderAccountAPIStubProtocol.recordedRequests().first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let row = try XCTUnwrap(
+            (root["p_rows"] as? [[String: Any]])?.first
+        )
+        XCTAssertNil(row["plan_type"])
+        XCTAssertEqual(row["plan_source"] as? String, "userConfirmed")
+        XCTAssertEqual(row["plan_confidence"] as? String, "high")
+        XCTAssertEqual(
+            row["plan_observed_at"] as? String,
+            "2026-07-24T02:59:00.125Z"
+        )
+        XCTAssertEqual(
+            row["observed_at"] as? String,
+            "2026-07-24T03:00:00.250Z"
         )
     }
 
@@ -926,7 +999,7 @@ final class ProviderAccountAPITests: XCTestCase {
             recent_errors: []
         )
         let api = makeAPI(
-            flags: .init(readV2: false, writeV2: true)
+            flags: .init(readV2: false, writeV2: false)
         )
         _ = await api.beginExternalAuthorizationTransition(
             generation: 1
@@ -960,6 +1033,46 @@ final class ProviderAccountAPITests: XCTestCase {
         )
     }
 
+    func testV2ModeDoesNotIssueLegacyProviderQuotaWrite()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTFail(
+                "v2 mode must not write the legacy table directly: \(request)"
+            )
+            return .json("{}", status: 500)
+        }
+        let usage = ProviderUsage(
+            provider: ProviderKind.claude.rawValue,
+            today_usage: 20,
+            week_usage: 20,
+            estimated_cost_today: 0,
+            estimated_cost_week: 0,
+            cost_status_today: "Unavailable",
+            cost_status_week: "Unavailable",
+            quota: 100,
+            remaining: 80,
+            plan_type: "Max",
+            status_text: "20% used",
+            trend: [],
+            recent_sessions: [],
+            recent_errors: []
+        )
+        let api = makeAPI(
+            flags: .init(readV2: false, writeV2: true)
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+
+        await api.syncProviderQuotas(
+            [CollectorResult(usage: usage, dataKind: .quota)],
+            authorizationLease: lease
+        )
+
+        XCTAssertTrue(
+            ProviderAccountAPIStubProtocol.recordedRequests().isEmpty
+        )
+    }
+
     func testStatusWriteUsesDedicatedCredentialFreeRPC() async throws {
         ProviderAccountAPIStubProtocol.handler = { request in
             XCTAssertEqual(
@@ -975,6 +1088,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 ProviderAccountStatusUpdate(
                     accountID: Self.accountUsage.id,
+                    provider: .claude,
                     isEnabled: false
                 ),
             ],
@@ -996,7 +1110,11 @@ final class ProviderAccountAPITests: XCTestCase {
             "33333333-3333-4333-8333-333333333333"
         )
         XCTAssertEqual(row["status"] as? String, "disabled")
-        XCTAssertEqual(Set(row.keys), ["account_id", "status"])
+        XCTAssertEqual(row["provider"] as? String, "Claude")
+        XCTAssertEqual(
+            Set(row.keys),
+            ["account_id", "provider", "status"]
+        )
         XCTAssertTrue(
             Self.recursiveKeys(in: object).allSatisfy {
                 !$0.lowercased().contains("token")
@@ -1023,6 +1141,7 @@ final class ProviderAccountAPITests: XCTestCase {
         let lease = try await requireAuthorizationLease(for: api)
         let deleted = await api.deleteProviderAccount(
             Self.accountUsage.id,
+            provider: .claude,
             authorizationLease: lease
         )
 
@@ -1037,7 +1156,8 @@ final class ProviderAccountAPITests: XCTestCase {
             root["p_account_id"] as? String,
             "33333333-3333-4333-8333-333333333333"
         )
-        XCTAssertEqual(Set(root.keys), ["p_account_id"])
+        XCTAssertEqual(root["p_provider"] as? String, "Claude")
+        XCTAssertEqual(Set(root.keys), ["p_account_id", "p_provider"])
     }
 
     func testDeleteRequiresServerTombstoneAcknowledgement() async throws {
@@ -1056,6 +1176,7 @@ final class ProviderAccountAPITests: XCTestCase {
 
         let deleted = await api.deleteProviderAccount(
             Self.accountUsage.id,
+            provider: .claude,
             authorizationLease: lease
         )
 
@@ -1081,6 +1202,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 ProviderAccountStatusUpdate(
                     accountID: Self.accountUsage.id,
+                    provider: .claude,
                     isEnabled: false
                 ),
             ],
@@ -1088,6 +1210,7 @@ final class ProviderAccountAPITests: XCTestCase {
         )
         let deleted = await api.deleteProviderAccount(
             Self.accountUsage.id,
+            provider: .claude,
             authorizationLease: lease
         )
 
@@ -1193,6 +1316,7 @@ final class ProviderAccountAPITests: XCTestCase {
             [
                 ProviderAccountStatusUpdate(
                     accountID: Self.accountUsage.id,
+                    provider: .claude,
                     isEnabled: false
                 ),
             ],
@@ -1200,6 +1324,7 @@ final class ProviderAccountAPITests: XCTestCase {
         )
         let deleted = await api.deleteProviderAccount(
             Self.accountUsage.id,
+            provider: .claude,
             authorizationLease: lease
         )
         await api.syncDailyUsage(
@@ -1472,6 +1597,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         var payloads: [DataRefreshManager.RefreshPayload] = []
         var notifications: [AlertRecord] = []
         var afterRefreshCount = 0
+        var outcomePublicationCount = 0
 
         let refresh = Task { @MainActor in
             await manager.refreshAll(
@@ -1484,6 +1610,9 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
                         reachedCommitBoundary.fulfill()
                         await commitPause.wait()
                         return []
+                    },
+                    setCollectorOutcomes: { _ in
+                        outcomePublicationCount += 1
                     }
                 )
             )
@@ -1503,6 +1632,11 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             "a user-A alert must never notify after switching to user B"
         )
         XCTAssertEqual(afterRefreshCount, 0)
+        XCTAssertEqual(
+            outcomePublicationCount,
+            0,
+            "a stale cloud refresh must not publish collector outcomes"
+        )
     }
 
     func testAccountSwitchDuringHealthCannotAcquireNewUsersLease()
@@ -1575,6 +1709,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         )
         var payloads: [DataRefreshManager.RefreshPayload] = []
         var afterRefreshCount = 0
+        var outcomePublicationCount = 0
 
         let refresh = Task { @MainActor in
             await manager.refreshAll(
@@ -1584,7 +1719,10 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
                 ),
                 callbacks: makeCallbacks(
                     applyPayload: { payloads.append($0) },
-                    afterRefresh: { afterRefreshCount += 1 }
+                    afterRefresh: { afterRefreshCount += 1 },
+                    setCollectorOutcomes: { _ in
+                        outcomePublicationCount += 1
+                    }
                 )
             )
         }
@@ -1604,6 +1742,11 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
 
         XCTAssertTrue(payloads.isEmpty)
         XCTAssertEqual(afterRefreshCount, 0)
+        XCTAssertEqual(
+            outcomePublicationCount,
+            0,
+            "a stale authenticated-local refresh must not publish outcomes"
+        )
         let completedWrites = await writeOrder.values
         XCTAssertTrue(
             completedWrites.isEmpty,
@@ -1612,6 +1755,45 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         XCTAssertTrue(
             ProviderAccountAPIStubProtocol.recordedRequests()
                 .isEmpty
+        )
+    }
+
+    func testCancelledLocalRefreshDoesNotPublishCollectorOutcomes()
+        async
+    {
+        let api = await makeAPI()
+        let collectorGate = ProviderAccountCollectorGate()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .testRuntime(collectorGate: collectorGate)
+        )
+        var outcomePublicationCount = 0
+
+        let refresh = Task { @MainActor in
+            await manager.refreshAll(
+                context: makeContext(
+                    notificationsEnabled: false,
+                    isPaired: false
+                ),
+                callbacks: makeCallbacks(
+                    applyPayload: { _ in },
+                    afterRefresh: {},
+                    setCollectorOutcomes: { _ in
+                        outcomePublicationCount += 1
+                    }
+                )
+            )
+        }
+
+        await collectorGate.waitUntilEntered()
+        refresh.cancel()
+        await collectorGate.open()
+        await refresh.value
+
+        XCTAssertEqual(
+            outcomePublicationCount,
+            0,
+            "a superseded refresh must not publish cancellation-shaped failures"
         )
     }
 
@@ -1890,7 +2072,10 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         sendNotification: @escaping (AlertRecord) -> Void = { _ in },
         afterRefresh: @escaping () -> Void,
         handleTokenExpired: @escaping (String) -> Void = { _ in },
-        activeSuppressedAlertIDs: @escaping () async -> Set<String> = { [] }
+        activeSuppressedAlertIDs: @escaping () async -> Set<String> = { [] },
+        setCollectorOutcomes:
+            @escaping ([ProviderKind: CollectorOutcome]) -> Void =
+                { _ in }
     ) -> DataRefreshManager.Callbacks {
         DataRefreshManager.Callbacks(
             isAuthenticated: { true },
@@ -1902,7 +2087,8 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             afterRefresh: afterRefresh,
             handleTokenExpired: handleTokenExpired,
             activeSuppressedAlertIDs: activeSuppressedAlertIDs,
-            setNeedsFolderAccess: { _ in }
+            setNeedsFolderAccess: { _ in },
+            setCollectorOutcomes: setCollectorOutcomes
         )
     }
 
@@ -2054,11 +2240,11 @@ private extension DataRefreshManager.LocalRefreshRuntime {
     ) -> Self {
         Self(
             prepareCredentials: {},
-            collectAccounts: { _ in
+            collectAccountPass: { _ in
                 if let collectorGate {
                     await collectorGate.wait()
                 }
-                return []
+                return .empty
             },
             readHelperSnapshot: { _ in .empty },
             scanLocal: {

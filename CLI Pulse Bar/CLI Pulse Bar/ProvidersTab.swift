@@ -539,6 +539,59 @@ struct EnhancedProviderCard: View {
         )
     }
 
+    /// v1.44 W3: collector outcome + one next step, or nothing at all.
+    ///
+    /// Deliberately silent for `.producedData`: a provider that is working
+    /// should not spend a line of a dense card saying so. `.disabled` is
+    /// silent too — the DISABLED badge in the header already covers it, and
+    /// repeating it here would nag the user about their own deliberate choice.
+    @ViewBuilder
+    private var collectorOutcomeRow: some View {
+        if let kind = ProviderKind(rawValue: provider.provider),
+           let outcome = state.collectorOutcomes[kind],
+           outcome != .producedData,
+           outcome != .disabled {
+            let presentation = CollectorOutcomePresentation.of(outcome, providerName: provider.provider)
+            HStack(alignment: .top, spacing: 5) {
+                Image(systemName: outcomeIcon(presentation.severity))
+                    .font(.system(size: 9))
+                    .foregroundStyle(outcomeTint(presentation.severity))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(presentation.label)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(outcomeTint(presentation.severity))
+                    if let step = presentation.nextStep {
+                        Text(step)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(outcomeTint(presentation.severity).opacity(0.10))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+    }
+
+    private func outcomeTint(_ severity: CollectorOutcomePresentation.Severity) -> Color {
+        switch severity {
+        case .normal: return .secondary
+        case .attention: return .orange
+        case .problem: return .red
+        }
+    }
+
+    private func outcomeIcon(_ severity: CollectorOutcomePresentation.Severity) -> String {
+        switch severity {
+        case .normal: return "info.circle"
+        case .attention: return "exclamationmark.triangle"
+        case .problem: return "xmark.octagon"
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Header row
@@ -622,6 +675,16 @@ struct EnhancedProviderCard: View {
                     .clipShape(Capsule())
                 }
             }
+
+            // v1.44 W3: what actually happened to this provider's collector.
+            //
+            // Renders nothing when it produced data — a working provider needs
+            // no explanation and the card is already dense. Everything else
+            // gets a label and one concrete next step, because the previous
+            // behaviour (render nothing, whatever happened) reads to the user
+            // as "this tool isn't supported", which is usually false and is
+            // the single most expensive wrong conclusion available here.
+            collectorOutcomeRow
 
             // Provider status page — an expandable "Service Status" row listing
             // this provider's service components (● name · Operational) + an

@@ -216,6 +216,36 @@ struct PairingSection: View {
             await state.checkPairingStatus()
         } catch {
             nativePairingError = error.localizedDescription
+            // Activation diagnosis (2026-07-26): 64% of signups never register a
+            // device, and a failure here is the one moment we know a user TRIED
+            // and was stopped — yet it was previously invisible outside this red
+            // label, because a device row is never created to report from.
+            //
+            // Routed through Sentry rather than a new analytics pipe on purpose:
+            // diagnostics are already covered by the app's declared privacy
+            // label (de-identified crash/diagnostic data), whereas behavioural
+            // funnel tracking would be a new Analytics-purpose collection and an
+            // App Store privacy-label change. No user content is attached — the
+            // message is scrubbed by `beforeSend`, and the error type is what
+            // actually distinguishes "wrong/expired code" from "network down"
+            // from "RPC rejected".
+            // `HelperAPIError.diagnosticCode` rather than `type(of:)`: the latter
+            // collapses every case to "HelperAPIError", leaving an expired code
+            // indistinguishable from a network rejection (codex review). Non-
+            // HelperAPIError falls back to NSError domain+code, still enumerated
+            // values — no free text, no pairing code, no user content.
+            let code: String
+            if let apiError = error as? HelperAPIError {
+                code = apiError.diagnosticCode
+            } else {
+                let ns = error as NSError
+                code = "\(ns.domain)#\(ns.code)"
+            }
+            SentryLogger.captureWarning(
+                "native helper pairing failed",
+                category: "pairing",
+                data: ["error_code": code]
+            )
         }
         pairingInProgress = false
     }
