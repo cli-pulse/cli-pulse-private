@@ -18,19 +18,12 @@ public enum MachineSnapshotCollector {
     /// and `comm` is last precisely because it can contain spaces.
     private static let psColumns = "pid,uid,pcpu,rss,state,comm"
 
+    /// Per-oracle subprocess timeout. See the note at the `ps` calls for why
+    /// this is 2s where Python uses 5-10s.
+    private static let oracleTimeout: TimeInterval = 2
+
     // MARK: - Entry points
 
-    /// Blocking entry point, for the sync RPC dispatch and the
-    /// `machine-snapshot` subcommand.
-    ///
-    /// `LocalSessionServer.dispatch` / `handleAuthenticated` return
-    /// `WireResponse` synchronously, while `SubprocessRunner.run` is async, so
-    /// something has to bridge. Blocking a thread is safe HERE specifically
-    /// because each connection is served on its own dedicated `Thread`
-    /// (`LocalSessionServer` spawns one per accept) rather than on the
-    /// cooperative pool — so this cannot starve other requests. That is a
-    /// property of the server's threading model, not a general licence: moving
-    /// dispatch onto the cooperative pool would make this a deadlock risk.
     /// The wire dict, with any non-finite Double removed.
     ///
     /// This is not defensive tidiness — it is the difference between a missing
@@ -67,6 +60,24 @@ public enum MachineSnapshotCollector {
         return snapshot.wireDict.compactMapValues(clean)
     }
 
+    /// Blocking entry point, for the sync RPC dispatch and the
+    /// `machine-snapshot` subcommand.
+    ///
+    /// `LocalSessionServer.dispatch` / `handleAuthenticated` return
+    /// `WireResponse` synchronously while `SubprocessRunner.run` is async, so
+    /// something has to bridge. Blocking is safe HERE because each connection is
+    /// served on its own dedicated `Thread` (`LocalSessionServer` spawns one per
+    /// accept) rather than on the cooperative pool — it stalls only the client
+    /// that asked. That is a property of the server's threading model, not a
+    /// general licence: moving dispatch onto the cooperative pool would make
+    /// this a deadlock risk.
+    ///
+    /// Cost, measured on the release binary rather than estimated: 1.6-3.5s
+    /// idle, 2.8-5.9s on a loaded machine. An earlier version of this comment
+    /// claimed ~0.65s, which was wrong by 3-5x and mattered — it was the number
+    /// used to argue the handler comfortably fit inside the client's 5s
+    /// watchdog, when in fact it straddles it. The oracle timeouts below are
+    /// what actually bound this now.
     public static func collectSync() -> MachineSnapshotValue {
         let semaphore = DispatchSemaphore(value: 0)
         // `nonisolated(unsafe)` is sound here: exactly one task writes it, and
@@ -84,13 +95,27 @@ public enum MachineSnapshotCollector {
         var snap = MachineSnapshotValue()
         snap.collectedAt = isoTimestamp()
 
-        // Fan the oracles out concurrently. Python runs them serially for ~0.12s
-        // total; the client's request timeout is 5s and the Machine tab polls
-        // every 2s, so serial would still fit — but the sensor read alone costs
-        // ~0.3s of deliberate IOReport sampling, and there is no reason to add
-        // the text oracles on top of it.
-        async let psCPU = run("/bin/ps", ["-Aceo", psColumns, "-r"], timeout: 10)
-        async let psMem = run("/bin/ps", ["-Aceo", psColumns, "-m"], timeout: 10)
+        // Fan the oracles out concurrently: Python runs them serially, but the
+        // sensor read alone costs ~0.3s of deliberate IOReport sampling and
+        // there is no reason to stack the text oracles on top of it.
+        //
+        // Both ps calls get 2s, not Python's 10s, and every other oracle 2s
+        // rather than 5s.
+        //
+        // Python could afford long timeouts because its collection ran on a
+        // dedicated thread that nothing was waiting on. Here the client holds a
+        // socket open with a 5s watchdog and re-polls every 2s, and a timed-out
+        // oracle costs its timeout PLUS SubprocessRunner's 1s SIGKILL grace. At
+        // Python's numbers the worst case is ~11s — comfortably past the point
+        // where the client has closed the connection and the reply write becomes
+        // a write to a dead peer.
+        //
+        // 2s + 1s grace keeps the worst single-oracle stall at 3s, and since
+        // these run concurrently, so is the whole collection's worst case. A
+        // timed-out oracle degrades exactly as Python's does: nil, and its
+        // fields drop out of the payload.
+        async let psCPU = run("/bin/ps", ["-Aceo", psColumns, "-r"], timeout: oracleTimeout)
+        async let psMem = run("/bin/ps", ["-Aceo", psColumns, "-m"], timeout: oracleTimeout)
         async let ioreg = run("/usr/sbin/ioreg", ["-r", "-c", "AppleSmartBattery", "-a"])
         async let pmsetBatt = run("/usr/bin/pmset", ["-g", "batt"])
         async let pmsetTherm = run("/usr/bin/pmset", ["-g", "therm"])
@@ -234,7 +259,7 @@ public enum MachineSnapshotCollector {
     private static func run(
         _ path: String,
         _ arguments: [String],
-        timeout: TimeInterval = 5
+        timeout: TimeInterval = oracleTimeout
     ) async -> String? {
         await SubprocessRunner.run(
             executable: URL(fileURLWithPath: path),

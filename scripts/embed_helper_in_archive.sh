@@ -208,48 +208,20 @@ if grep -q "com.apple.security.app-sandbox" <<< "$HELPER_ENT"; then
     exit 1
 fi
 
-# v1.44: smoke the SIGNED helper's sensor path.
+# NOTE: the dynamic_lookup smoke gate deliberately does NOT live here.
 #
-# The helper now links SensorKit, which resolves private IOReport / IOHID
-# symbols through `-undefined dynamic_lookup` — there are no SDK stubs for
-# them. build_helper_pkg.sh has carried the same guard for `clipulse-sensors`
-# since it shipped, calling it "the scariest ship risk", and it is scarier
-# here: `clipulse-sensors` is standalone, so if it fails to load the user just
-# loses sensor readings, whereas these symbols now live in the helper itself
-# and a load failure takes down sessions, hooks and approvals with it.
+# It was here first, and it was wrong in three ways at once. This script is
+# called by no shipping path — devid-dmg.yml builds via build_signed_app.sh and
+# swift-ci.yml mentions this file only in a `paths:` filter — so it ran nowhere.
+# It hardcodes $HELPER_ENTITLEMENTS (the MAS variant) and never the DEVID one,
+# so its claim to cover "both entitlement configurations" was false. And on the
+# ad-hoc identity this script explicitly falls back to, the smoke fails by
+# construction — AMFI kills a bare Mach-O carrying restricted entitlements with
+# no profile — while reporting it as a dynamic_lookup failure.
 #
-# This runs post-signing on purpose. Hardened runtime + codesigning is exactly
-# the combination that could break dynamic_lookup, so smoking the unsigned
-# binary would prove nothing. Covers both entitlement configurations, because
-# MAS and DEVID both come through this script with different
-# $HELPER_ENTITLEMENTS.
-#
-# Deliberately does NOT assert that sensors are non-null: a machine with no
-# readable sensors is a legitimate state (the wire contract says `null`), and
-# the CI runner is a VM. What must hold is that the binary LAUNCHES and emits
-# a well-formed snapshot — that is what a dynamic_lookup failure destroys.
-echo "==> smoking signed helper's machine-snapshot (dynamic_lookup guard) ..."
-if ! "$APP_PATH/Contents/Helpers/cli_pulse_helper" machine-snapshot \
-    | python3 -c "$(cat <<'PYEOF'
-import sys, json
-d = json.load(sys.stdin)
-required = {
-    "collected_at", "cpu_percent", "memory_percent", "memory_used_bytes",
-    "memory_total_bytes", "battery", "top_processes", "capability",
-    "sensors", "system",
-}
-missing = required - set(d)
-assert not missing, f"snapshot missing keys: {sorted(missing)}"
-assert isinstance(d["capability"], dict), "capability must be a dict"
-assert d["sensors"] is None or isinstance(d["sensors"], dict), "sensors must be dict or null"
-PYEOF
-)"; then
-    echo "error: signed helper failed its machine-snapshot smoke." >&2
-    echo "       Most likely dynamic_lookup broke under hardened runtime, which" >&2
-    echo "       would leave the helper unable to launch on a user's Mac." >&2
-    exit 1
-fi
-echo "signed helper passed machine-snapshot smoke"
+# It now lives in .github/workflows/swift-ci.yml as `Signed-helper
+# dynamic_lookup smoke`, which signs ad-hoc with --options runtime (the flag
+# that could actually break symbol resolution) and runs on every PR.
 
 # Pin the LaunchAgent plist's BundleProgram value points at the
 # embedded helper path. If the plist drifts away from

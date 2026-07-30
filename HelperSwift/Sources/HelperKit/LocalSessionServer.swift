@@ -599,12 +599,10 @@ public final class LocalSessionServer: @unchecked Sendable {
 
     /// Machine health for the Machine tab.
     ///
-    /// Blocking on purpose. `dispatch` / `handleAuthenticated` return
-    /// `WireResponse` synchronously while the collection is async, and this
-    /// server gives every connection its own dedicated `Thread`, so blocking
-    /// one cannot starve another request. Collection costs ~0.65s (~0.3s of
-    /// that a deliberate IOReport sampling window) against the client's 5s
-    /// request timeout and 2s poll interval.
+    /// Blocking on purpose — see `MachineSnapshotCollector.collectSync`, which
+    /// documents why that is safe on this server's threading model and what the
+    /// collection actually costs (measured: 1.6-3.5s idle, 2.8-5.9s loaded, not
+    /// the ~0.65s an earlier version of this comment claimed).
     private func handleGetMachineSnapshot(request: WireRequest) -> WireResponse {
         .ok(id: request.id, result: MachineSnapshotCollector.jsonSafeWireDict(MachineSnapshotCollector.collectSync()))
     }

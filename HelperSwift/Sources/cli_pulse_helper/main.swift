@@ -528,6 +528,31 @@ case "daemon":
     sigSrcTerm.setEventHandler(handler: handleStop)
     signal(SIGINT, SIG_IGN)
     signal(SIGTERM, SIG_IGN)
+    // SIGPIPE would KILL this daemon, and nothing here was disarming it.
+    //
+    // `Framing.writeAll` is a bare `Darwin.write` on the accepted UDS, with no
+    // SO_NOSIGPIPE anywhere in the server. Write a reply to a peer that has
+    // already closed and the default disposition terminates the process — so
+    // `sendResponse`'s `catch { return }`, which was written for EPIPE, never
+    // runs: the process is gone before `write()` returns. Verified by
+    // reproduction: server exits 141 (128 + SIGPIPE), and the catch never fires.
+    //
+    // The client closes its side on its own 5s watchdog, so any handler that
+    // outruns that watchdog turns this from a race into a routine event.
+    // `get_machine_snapshot` is the first one that does: measured 1.6-3.5s idle
+    // and 2.8-5.9s under ordinary load, plus a structural worst case of
+    // timeout + 1s SIGKILL grace per stalled oracle.
+    //
+    // The consequences are worse than a dropped reply. A signal death skips the
+    // SIGTERM path entirely, so `sessionManager.shutdown()` never runs and every
+    // managed CLI child orphans holding its PTY. KeepAlive is true, so launchd
+    // respawns us, and the Machine tab's 2s poll immediately triggers it again —
+    // a restart loop that sheds a fresh batch of orphans each cycle, and which
+    // files no crash report, because SIGPIPE doesn't produce one.
+    //
+    // Ignoring it is the correct disposition for a socket server: `write` then
+    // returns EPIPE and the existing error handling does its job.
+    signal(SIGPIPE, SIG_IGN)
     sigSrcInt.resume()
     sigSrcTerm.resume()
     stopSemaphore.wait()

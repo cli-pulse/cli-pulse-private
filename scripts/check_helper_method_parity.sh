@@ -55,18 +55,22 @@ KNOWN_ABSENT=(
 )
 
 # Python: the SUPPORTED_METHODS tuple literal, up to its closing paren.
+# `|| true`: without it, `set -e` + `pipefail` kills the script the instant the
+# extraction yields nothing, so the "parser broke" guard below — the one that
+# distinguishes "the enum changed shape" from "real drift" — could never fire.
+# A blind gate that dies silently reads exactly like a passing one in a log.
 py_methods="$(
     awk '/^SUPPORTED_METHODS = \(/{f=1} f{print} f&&/^\)/{exit}' "$PY" \
-        | grep -oE '"[a-z_]+"' | tr -d '"' | sort -u
+        | grep -oE '"[A-Za-z0-9_]+"' | tr -d '"' | sort -u || true
 )"
 
 # Swift: the raw values of SupportedMethod's cases. Cases without an explicit
 # raw value take the case name verbatim (`hello`, `ping`), so both forms count.
 swift_methods="$(
     awk '/public enum SupportedMethod: String/{f=1} f{print} f&&/^\}/{exit}' "$SWIFT" \
-        | sed -nE 's/^[[:space:]]*case[[:space:]]+([a-zA-Z]+)[[:space:]]*=[[:space:]]*"([a-z_]+)".*/\2/p;
-                   s/^[[:space:]]*case[[:space:]]+([a-z]+)[[:space:]]*$/\1/p' \
-        | sort -u
+        | sed -nE 's/^[[:space:]]*case[[:space:]]+([a-zA-Z0-9]+)[[:space:]]*=[[:space:]]*"([A-Za-z0-9_]+)".*/\2/p;
+                   s/^[[:space:]]*case[[:space:]]+([a-zA-Z0-9]+)[[:space:]]*$/\1/p' \
+        | sort -u || true
 )"
 
 if [[ -z "$py_methods" || -z "$swift_methods" ]]; then
@@ -75,7 +79,11 @@ if [[ -z "$py_methods" || -z "$swift_methods" ]]; then
     exit 2
 fi
 
-allowed="$(printf '%s\n' "${KNOWN_ABSENT[@]}" | sort -u)"
+# `${KNOWN_ABSENT[@]+"${KNOWN_ABSENT[@]}"}`: under macOS's system bash 3.2, an
+# EMPTY array expands as an unbound variable and `set -u` aborts. Emptying this
+# list is the end state the comment above deliberately pushes toward — porting
+# the last method would have broken the gate that proves it was ported.
+allowed="$(printf '%s\n' ${KNOWN_ABSENT[@]+"${KNOWN_ABSENT[@]}"} | sort -u)"
 
 # In Python but not Swift, minus the allowlist.
 missing="$(comm -23 <(printf '%s\n' "$py_methods") <(printf '%s\n' "$swift_methods") | comm -23 - <(printf '%s\n' "$allowed"))"
