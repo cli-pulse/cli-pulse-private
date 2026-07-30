@@ -63,6 +63,36 @@ case "self-path":
     // argv[0] is the launchd label, not the path.
     print(ExecutablePath.current() ?? "<unresolved>")
 
+case "machine-snapshot":
+    // v1.44. Two jobs, both deliberate:
+    //
+    //  1. Development: prints the exact dict `get_machine_snapshot` returns, so
+    //     it can be diffed field-for-field against the Python helper's output
+    //     without going through the socket, the app, or an auth token.
+    //
+    //  2. Build-time smoke (the important one). SensorKit resolves private
+    //     IOReport / IOHID symbols via `-undefined dynamic_lookup`, and this
+    //     binary ships signed with hardened runtime on BOTH the MAS and DEVID
+    //     paths. `clipulse-sensors` already proves that combination works — but
+    //     it is a standalone binary, so when it fails the user merely loses
+    //     sensor readings. Here the symbols live in the helper itself: a load
+    //     failure would take down sessions, hooks, everything. So
+    //     embed_helper_in_archive.sh runs this against the SIGNED binary and
+    //     fails the build if it cannot launch and emit JSON. If it can't run on
+    //     the build machine it can't run on a user's Mac either.
+    let snapshotDict = MachineSnapshotCollector.jsonSafeWireDict(MachineSnapshotCollector.collectSync())
+    guard JSONSerialization.isValidJSONObject(snapshotDict),
+          let snapshotJSON = try? JSONSerialization.data(
+              withJSONObject: snapshotDict,
+              options: [.prettyPrinted, .sortedKeys]
+          )
+    else {
+        FileHandle.standardError.write(Data("error: machine snapshot is not JSON-encodable\n".utf8))
+        exit(1)
+    }
+    FileHandle.standardOutput.write(snapshotJSON)
+    FileHandle.standardOutput.write(Data("\n".utf8))
+
 case "remote-approval-hook":
     // Phase 4D P1.1 (Codex): the installed Claude hook command is
     // `<binary> remote-approval-hook --provider claude`. Without
@@ -498,6 +528,31 @@ case "daemon":
     sigSrcTerm.setEventHandler(handler: handleStop)
     signal(SIGINT, SIG_IGN)
     signal(SIGTERM, SIG_IGN)
+    // SIGPIPE would KILL this daemon, and nothing here was disarming it.
+    //
+    // `Framing.writeAll` is a bare `Darwin.write` on the accepted UDS, with no
+    // SO_NOSIGPIPE anywhere in the server. Write a reply to a peer that has
+    // already closed and the default disposition terminates the process — so
+    // `sendResponse`'s `catch { return }`, which was written for EPIPE, never
+    // runs: the process is gone before `write()` returns. Verified by
+    // reproduction: server exits 141 (128 + SIGPIPE), and the catch never fires.
+    //
+    // The client closes its side on its own 5s watchdog, so any handler that
+    // outruns that watchdog turns this from a race into a routine event.
+    // `get_machine_snapshot` is the first one that does: measured 1.6-3.5s idle
+    // and 2.8-5.9s under ordinary load, plus a structural worst case of
+    // timeout + 1s SIGKILL grace per stalled oracle.
+    //
+    // The consequences are worse than a dropped reply. A signal death skips the
+    // SIGTERM path entirely, so `sessionManager.shutdown()` never runs and every
+    // managed CLI child orphans holding its PTY. KeepAlive is true, so launchd
+    // respawns us, and the Machine tab's 2s poll immediately triggers it again —
+    // a restart loop that sheds a fresh batch of orphans each cycle, and which
+    // files no crash report, because SIGPIPE doesn't produce one.
+    //
+    // Ignoring it is the correct disposition for a socket server: `write` then
+    // returns EPIPE and the existing error handling does its job.
+    signal(SIGPIPE, SIG_IGN)
     sigSrcInt.resume()
     sigSrcTerm.resume()
     stopSemaphore.wait()

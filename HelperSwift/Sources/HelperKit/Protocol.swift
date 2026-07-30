@@ -124,6 +124,21 @@ public enum SupportedMethod: String, CaseIterable, Sendable {
     case shellIntegrationStatus = "shell_integration_status"
     case shellIntegrationInstall = "shell_integration_install"
     case shellIntegrationUninstall = "shell_integration_uninstall"
+    // v1.44: machine health for the Machine tab. This method existed ONLY in the
+    // .pkg Python helper, so every user whose socket is owned by the app-bundled
+    // Swift helper — the default install — got `unknown_method` and a blank tab.
+    // Verified on a real machine before porting: `hello` returned
+    // `implementation: swift-bundled` with 27 methods, none of them this one.
+    //
+    // Read-only, so it bypasses the local-control gate (below) while still
+    // requiring the app auth token — same rationale Python spells out at
+    // local_session_server.py:236-239.
+    //
+    // Deliberately NOT ported alongside it: `kill_process` and `signal_process`.
+    // Those are process CONTROL, and the capability map this returns omits their
+    // keys so the app hides the affordances rather than offering buttons that
+    // would fail with `unknown_method` — see `MachineCapability.build`.
+    case getMachineSnapshot = "get_machine_snapshot"
 
     /// Methods that use the per-session capability token (set by
     /// the managed-session env vars) instead of the global app
@@ -152,6 +167,12 @@ public enum SupportedMethod: String, CaseIterable, Sendable {
     public var bypassesGate: Bool {
         switch self {
         case .hello, .ping, .getLocalControlStatus, .setLocalControlEnabled:
+            return true
+        // Machine health is read-only and orthogonal to the remote
+        // session-control toggle (which gates spawning/driving sessions). It
+        // still requires the app auth token — it just doesn't require
+        // local_control_enabled. Matches Python's GATE_BYPASSED_METHODS.
+        case .getMachineSnapshot:
             return true
         default:
             return false

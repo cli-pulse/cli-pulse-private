@@ -208,6 +208,21 @@ if grep -q "com.apple.security.app-sandbox" <<< "$HELPER_ENT"; then
     exit 1
 fi
 
+# NOTE: the dynamic_lookup smoke gate deliberately does NOT live here.
+#
+# It was here first, and it was wrong in three ways at once. This script is
+# called by no shipping path — devid-dmg.yml builds via build_signed_app.sh and
+# swift-ci.yml mentions this file only in a `paths:` filter — so it ran nowhere.
+# It hardcodes $HELPER_ENTITLEMENTS (the MAS variant) and never the DEVID one,
+# so its claim to cover "both entitlement configurations" was false. And on the
+# ad-hoc identity this script explicitly falls back to, the smoke fails by
+# construction — AMFI kills a bare Mach-O carrying restricted entitlements with
+# no profile — while reporting it as a dynamic_lookup failure.
+#
+# It now lives in .github/workflows/swift-ci.yml as `Signed-helper
+# dynamic_lookup smoke`, which signs ad-hoc with --options runtime (the flag
+# that could actually break symbol resolution) and runs on every PR.
+
 # Pin the LaunchAgent plist's BundleProgram value points at the
 # embedded helper path. If the plist drifts away from
 # "Contents/Helpers/cli_pulse_helper" the runtime registration
