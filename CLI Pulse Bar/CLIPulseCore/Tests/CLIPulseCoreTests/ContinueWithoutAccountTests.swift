@@ -19,6 +19,14 @@ import XCTest
 /// (which pins the routing decision the spawned task will reach).
 @MainActor
 final class ContinueWithoutAccountTests: XCTestCase {
+    /// The Keychain is already routed to memory for the whole bundle (see
+    /// `KeychainHelper.inMemoryStoreForTesting`); reset it so tokens written by
+    /// an earlier class cannot leak into these assertions.
+    override func setUp() {
+        super.setUp()
+        KeychainHelper.inMemoryStoreForTesting = [:]
+    }
+
 
     /// Headline contract: after `continueWithoutAccount()`, the user
     /// is in local mode, on the Overview tab, with `serverOnline =
