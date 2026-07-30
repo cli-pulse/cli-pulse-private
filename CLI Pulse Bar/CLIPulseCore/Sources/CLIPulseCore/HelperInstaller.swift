@@ -254,7 +254,12 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }
     ) -> String? {
         for base in candidates {
-            let sock = (base as NSString).appendingPathComponent("clipulse-helper.sock")
+            // The CONSTANT, not a literal. Line 133 in this same file already
+            // uses it; a second spelling here would mean a future rename finds
+            // no socket and reports `.notInstalled` while a helper is running —
+            // precisely the class of wrong answer this change exists to fix.
+            let sock = (base as NSString)
+                .appendingPathComponent(LocalSessionControlClient.socketFilename)
             if exists(sock) { return sock }
         }
         return nil
