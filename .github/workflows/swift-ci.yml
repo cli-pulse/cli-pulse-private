@@ -160,6 +160,11 @@ jobs:
       # redirect <user>.github.io/<repo> after a transfer. Checks both that the
       # source is canonical and that both hosts still serve.
       - run: bash scripts/check_legal_urls.sh
+      # This repo is public and named `cli-pulse-private`. That name is the
+      # trap, and it worked — 140 internal documents were published because
+      # AGENTS.md claimed origin was private. The wording is fixed; this is the
+      # part that does not depend on anyone reading it.
+      - run: bash scripts/check_no_internal_docs.sh
 
   test-core:
     name: CLIPulseCore unit tests
