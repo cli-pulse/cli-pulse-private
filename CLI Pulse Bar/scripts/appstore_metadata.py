@@ -152,16 +152,29 @@ CLI Pulse Pro is available as a monthly ($4.99/month) or yearly ($49.99/year) au
 
 Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
 
-Terms of Use: https://jasonyeyuhe.github.io/cli-pulse/terms.html
-Privacy Policy: https://jasonyeyuhe.github.io/cli-pulse/privacy.html"""
+Terms of Use: https://cli-pulse.github.io/cli-pulse/terms.html
+Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
 
     keywords = "AI,coding,monitor,Claude,Codex,Gemini,developer,usage,API,tools"
 
-    whats_new = "Initial release with support for macOS, iOS, iPadOS, watchOS, and widgets."
+    # NO DEFAULT. This used to be hardcoded to
+    #   "Initial release with support for macOS, iOS, iPadOS, watchOS, and widgets."
+    # and this function PATCHes whatsNew unconditionally (see below), so running
+    # this script against any version after the first would have replaced that
+    # version's real release notes with the v1.0.0 text — silently, because the
+    # API call succeeds. Nothing calls this script today, which is exactly what
+    # made it dangerous: a loaded default waiting for the next person who does.
+    whats_new = os.environ.get("ASC_WHATS_NEW")
+    if not whats_new:
+        raise SystemExit(
+            "error: ASC_WHATS_NEW is not set.\n"
+            "       This script overwrites the version's What's New text. Refusing to\n"
+            "       guess — export ASC_WHATS_NEW with the real release notes first."
+        )
 
     promo = "Monitor all your AI coding tools in one place"
 
-    support_url = "https://github.com/jasonyeyuhe/cli-pulse"
+    support_url = "https://cli-pulse.github.io/cli-pulse/support.html"
 
     # Get existing localizations
     r = api_get(f"/appStoreVersions/{version_id}/appStoreVersionLocalizations")
@@ -383,7 +396,7 @@ def set_app_info():
                     "id": loc["id"],
                     "attributes": {
                         "name": "CLI Pulse",
-                        "privacyPolicyUrl": "https://jasonyeyuhe.github.io/cli-pulse/privacy.html",
+                        "privacyPolicyUrl": "https://cli-pulse.github.io/cli-pulse/privacy.html",
                     }
                 }
             })
