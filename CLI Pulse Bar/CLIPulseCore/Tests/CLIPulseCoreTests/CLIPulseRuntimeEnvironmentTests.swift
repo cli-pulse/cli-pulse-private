@@ -918,7 +918,8 @@ final class CLIPulseRuntimeEnvironmentTests: XCTestCase {
         }
         try FileManager.default.createDirectory(
             atPath: Self.qaRoot,
-            withIntermediateDirectories: false
+            withIntermediateDirectories: false,
+            attributes: [.posixPermissions: 0o700]
         )
     }
 }
