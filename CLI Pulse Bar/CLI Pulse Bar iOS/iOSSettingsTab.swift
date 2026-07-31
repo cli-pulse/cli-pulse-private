@@ -453,7 +453,7 @@ struct iOSSettingsTab: View {
                                     .font(.caption)
                             }
                         }
-                        Link(destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/privacy.html")!) {
+                        Link(destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!) {
                             HStack {
                                 Text(L10n.settings.privacyPolicy)
                                 Spacer()
@@ -461,7 +461,7 @@ struct iOSSettingsTab: View {
                                     .font(.caption)
                             }
                         }
-                        Link(destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/terms.html")!) {
+                        Link(destination: URL(string: "https://cli-pulse.github.io/cli-pulse/terms.html")!) {
                             HStack {
                                 Text(L10n.settings.termsOfUse)
                                 Spacer()

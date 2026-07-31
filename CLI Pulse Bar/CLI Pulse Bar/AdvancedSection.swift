@@ -114,7 +114,7 @@ struct AdvancedSection: View {
                     Text(L10n.advanced.fullDetails)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
-                    Link("Privacy Policy", destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/privacy.html")!)
+                    Link("Privacy Policy", destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!)
                         .font(.system(size: 9))
                 }
                 .padding(.top, 2)

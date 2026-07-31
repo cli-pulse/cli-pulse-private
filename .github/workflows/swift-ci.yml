@@ -154,6 +154,12 @@ jobs:
       - run: bash scripts/check_helper_no_container_touch.sh
       - run: bash scripts/check_helper_version_sync.sh
       - run: bash scripts/check_helper_method_parity.sh
+      # The app's Privacy Policy / Terms links, which App Review clicks under
+      # Guideline 3.1.2. They broke silently for twelve days after the org move
+      # — for LIVE users, not just the next build — because GitHub does not
+      # redirect <user>.github.io/<repo> after a transfer. Checks both that the
+      # source is canonical and that both hosts still serve.
+      - run: bash scripts/check_legal_urls.sh
 
   test-core:
     name: CLIPulseCore unit tests
