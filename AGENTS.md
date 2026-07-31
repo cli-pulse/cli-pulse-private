@@ -5,7 +5,8 @@ in this repository.
 
 ## Product State
 
-CLI Pulse is a paid iOS product and an in-progress macOS product.
+CLI Pulse is a paid product shipping on the App Store (iPhone, iPad, Watch, Mac),
+Google Play, a signed Developer ID DMG, and Homebrew (`brew install --cask cli-pulse`).
 
 Current active architecture:
 
@@ -22,32 +23,70 @@ Current active architecture:
 
 ## Repository Visibility Rule
 
-This product should be treated as **closed-source product code**.
+The product is **closed-source commercially** — the licence grants no right to
+copy or redistribute it. That is a legal position, not a statement about where
+the code sits, and the two used to be confused here.
 
-Do not assume the public GitHub repository should contain full source.
+### `origin` IS PUBLIC. All of it.
 
-### Must stay private
+This section previously listed `CLI Pulse Bar/`, `helper/`, `backend/` and
+`archive/` under "Must stay private", and said "`origin` is the private source
+repository". **Both statements were false**, and had been since the repository
+was made public. Every path that list called private has been world-readable
+the whole time.
 
-- `CLI Pulse Bar/`
-- `helper/`
-- `backend/` except public-facing legal/distribution docs
-- `archive/`
-- test fixtures and provider parsing logic
-- anything that reveals helper behavior, quota logic, cookie/keychain access,
-  sync contracts, provider integrations, release internals, or product IP
+That is not a harmless doc bug: it is an instruction to treat this repo as a
+safe place for internal material, and it was followed. 91 `PROJECT_FIX_*.md`
+files and ~46 planning documents under `docs/` are published right now because
+of it.
 
-### Can be public
+The repository is named `cli-pulse-private` and it is **public**. The name is
+the trap; assume nothing from it.
 
-- `docs/index.html`
-- `docs/privacy.html`
-- `docs/terms.html`
-- public download links and release notes
-- support and marketing content
+| Remote   | Repository                    | Visibility |
+| -------- | ----------------------------- | ---------- |
+| `origin` | `cli-pulse/cli-pulse-private` | **PUBLIC** |
+| `public` | `cli-pulse/cli-pulse`         | **PUBLIC** |
+| —        | `cli-pulse/cli-pulse-internal`| private    |
+
+So the rule is not "which directories are private" — none are. It is:
+
+- **Never commit a secret, credential, token, private key, or internal document
+  to `origin`.** There is no directory in it where that is safe.
+- Internal material — planning docs, session checkpoints, credential inventories,
+  anything you would not want a competitor or a stranger to read — goes to
+  `cli-pulse-internal`.
+- Secrets live in 1Password and `~/.appstoreconnect/`, never in a file the repo
+  tracks. `~/Documents/credits.md` holds the subscription/credit ledger and is
+  deliberately outside every repo.
+
+### `public` (`cli-pulse/cli-pulse`) — the marketing + Pages repo
+
+Serves https://cli-pulse.github.io/cli-pulse/ from `docs/` on `main`:
+`index.html`, `privacy.html`, `terms.html`, `support.html`, `security.html`,
+`data-handling.html`, `release-notes.html`.
+
+**`docs/` in THIS repo is not that site.** It is a stale divergent copy that is
+served nowhere and still advertises v1.10.7. Editing it changes nothing a user
+sees. To change the live site, edit `docs/` in the `public` remote.
+
+### The legacy Pages host is load-bearing — do not break it
+
+Shipped app builds hardcode `https://jasonyeyuhe.github.io/cli-pulse/privacy.html`
+and `/terms.html` in the paywall, the iOS settings screen and the
+account-deletion screen. Those binaries cannot be changed.
+
+The 2026-07-18 org move stopped that host serving — GitHub does not redirect
+`<user>.github.io/<repo>` after a transfer — and every one of those links was a
+404 for twelve days, for users of the live build, while App Review's Guideline
+3.1.2 requires them to work. `JasonYeYuhe/cli-pulse` now exists solely to serve
+redirect stubs. **Do not delete that repository.**
+`scripts/check_legal_urls.sh` fails CI if either host stops serving.
 
 ## Git Rules
 
-- `origin` is the private source repository.
-- `public` is the public distribution repository.
+- `origin` is the source repository. It is PUBLIC — see above.
+- `public` is the marketing + GitHub Pages repository. Also public.
 - Do **not** push product source changes to `public` unless the task is
   explicitly about public website/distribution content only.
 - Treat the public repo as distribution-facing unless explicitly told
