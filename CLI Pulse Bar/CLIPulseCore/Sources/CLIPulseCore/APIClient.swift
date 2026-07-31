@@ -72,10 +72,16 @@ public struct ProviderAccountFeatureFlags: Equatable, Sendable {
 
 public struct ProviderAccountStatusUpdate: Equatable, Sendable {
     public let accountID: UUID
+    public let provider: ProviderKind
     public let isEnabled: Bool
 
-    public init(accountID: UUID, isEnabled: Bool) {
+    public init(
+        accountID: UUID,
+        provider: ProviderKind,
+        isEnabled: Bool
+    ) {
         self.accountID = accountID
+        self.provider = provider
         self.isEnabled = isEnabled
     }
 }
@@ -671,6 +677,7 @@ public actor APIClient {
 
     private struct ProviderAccountStatusRow: Encodable {
         let account_id: String
+        let provider: String
         let status: String
     }
 
@@ -680,6 +687,7 @@ public actor APIClient {
 
     private struct ProviderAccountDeleteParams: Encodable {
         let p_account_id: String
+        let p_provider: String
     }
 
     private struct ProviderAccountDeleteResponse: Decodable {
@@ -2434,16 +2442,19 @@ public actor APIClient {
             return false
         }
 
-        var latestByAccountID: [UUID: Bool] = [:]
+        var latestByAccountID:
+            [UUID: ProviderAccountStatusUpdate] = [:]
         for update in updates {
-            latestByAccountID[update.accountID] = update.isEnabled
+            latestByAccountID[update.accountID] = update
         }
         let rows = latestByAccountID
             .sorted { $0.key.uuidString < $1.key.uuidString }
             .map {
                 ProviderAccountStatusRow(
                     account_id: $0.key.uuidString.lowercased(),
-                    status: $0.value ? "active" : "disabled"
+                    provider: $0.value.provider.rawValue,
+                    status:
+                        $0.value.isEnabled ? "active" : "disabled"
                 )
             }
         guard !rows.isEmpty else { return true }
@@ -2469,6 +2480,7 @@ public actor APIClient {
     @discardableResult
     public func deleteProviderAccount(
         _ accountID: UUID,
+        provider: ProviderKind,
         authorizationLease: APIAuthorizationLease
     ) async -> Bool {
         guard providerAccountFlags.writeV2 else { return false }
@@ -2485,7 +2497,8 @@ public actor APIClient {
             let response: ProviderAccountDeleteResponse = try await rpc(
                 "delete_provider_account",
                 params: ProviderAccountDeleteParams(
-                    p_account_id: accountID.uuidString.lowercased()
+                    p_account_id: accountID.uuidString.lowercased(),
+                    p_provider: provider.rawValue
                 ),
                 authorizationLease: authorizationLease
             )
@@ -2520,7 +2533,11 @@ public actor APIClient {
         let rows: [ProviderAccountUpsertRow] = accounts.compactMap { account in
             guard
                 let rawObservedAt = account.observedAt,
-                let observedAt = ProviderAccountCloudPrivacy.reviewedTimestamp(rawObservedAt)
+                ProviderAccountCloudPrivacy.reviewedTimestamp(
+                    rawObservedAt
+                ) != nil,
+                let observedAtDate =
+                    sharedISO8601Parse(rawObservedAt)
             else {
                 apiLogger.warning(
                     "[syncProviderAccountQuotas] skipped \(account.provider.rawValue, privacy: .public)/\(account.id.uuidString, privacy: .private) without a valid observed_at"
@@ -2535,6 +2552,24 @@ public actor APIClient {
                     account.planEvidence.displayValue
                 )
             let hasReviewedPlan = reviewedPlanType != nil
+            let rawPlanWasExplicitlyEmpty =
+                [
+                    account.planEvidence.rawValue,
+                    account.planEvidence.displayValue,
+                ].allSatisfy { value in
+                    guard let value else { return true }
+                    return value.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                }
+            let hasExplicitPlanClear =
+                reviewedPlanType == nil
+                && rawPlanWasExplicitlyEmpty
+                && account.planEvidence.source == .userConfirmed
+                && account.planEvidence.confidence == .high
+                && account.planEvidence.observedAt != nil
+            let hasPlanEvidence =
+                hasReviewedPlan || hasExplicitPlanClear
             return ProviderAccountUpsertRow(
                 account_id: account.id.uuidString.lowercased(),
                 provider: account.provider.rawValue,
@@ -2544,15 +2579,17 @@ public actor APIClient {
                             account.accountLabel
                         ),
                 plan_type: reviewedPlanType,
-                plan_source: hasReviewedPlan
+                plan_source: hasPlanEvidence
                     ? account.planEvidence.source.rawValue
                     : PlanEvidenceSource.unknown.rawValue,
-                plan_confidence: hasReviewedPlan
+                plan_confidence: hasPlanEvidence
                     ? account.planEvidence.confidence.rawValue
                     : DetectionConfidence.unavailable.rawValue,
-                plan_observed_at: hasReviewedPlan
+                plan_observed_at: hasPlanEvidence
                     ? account.planEvidence.observedAt.map {
-                        sharedISO8601Formatter.string(from: $0)
+                        sharedISO8601FractionalString(
+                            from: $0
+                        )
                     }
                     : nil,
                 remaining:
@@ -2573,7 +2610,10 @@ public actor APIClient {
                 tiers:
                     ProviderAccountCloudPrivacy
                         .reviewedTiers(account.tiers),
-                observed_at: observedAt,
+                observed_at:
+                    sharedISO8601FractionalString(
+                        from: observedAtDate
+                    ),
                 source_device_id: account.sourceDeviceID?
                     .uuidString.lowercased()
             )
@@ -2599,6 +2639,10 @@ public actor APIClient {
         _ results: [CollectorResult],
         authorizationLease: APIAuthorizationLease
     ) async {
+        // Once v2 is enabled, the account RPC is the sole owner of the
+        // provider-level compatibility projection. A later legacy POST would
+        // otherwise overwrite a deletion or a multi-account projection.
+        guard !providerAccountFlags.writeV2 else { return }
         do {
             try ensureAuthorizationLeaseIsCurrent(authorizationLease)
         } catch {

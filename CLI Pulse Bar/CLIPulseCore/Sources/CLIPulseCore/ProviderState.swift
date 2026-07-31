@@ -108,6 +108,12 @@ public final class ProviderState: ObservableObject {
         draftProviderAccountIDs.remove(accountID) != nil
     }
 
+    public func isProviderAccountDraft(
+        _ accountID: UUID
+    ) -> Bool {
+        draftProviderAccountIDs.contains(accountID)
+    }
+
     /// Cancels only an account created by the current unsaved Add Account
     /// flow. Existing accounts are never removed by editor cancellation.
     @discardableResult

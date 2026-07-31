@@ -522,6 +522,12 @@ public final class LocalSessionServer: @unchecked Sendable {
                     "send_input": true,
                     "subscribe_events": true,
                     "approvals": true,
+                    // Python advertises this too (local_session_server.py:1018).
+                    // Nothing on the client decodes it today — capability
+                    // negotiation goes through `supported_methods` — but the
+                    // two helpers must describe themselves identically or the
+                    // next reader has to work out which one is lying.
+                    "machine_snapshot": true,
                 ],
                 "provider_availability": providerAvailability,
                 // Per-provider plan-auth status ("on_plan"/"off_plan") so the picker can
@@ -582,9 +588,23 @@ public final class LocalSessionServer: @unchecked Sendable {
             return handleShellIntegration(request: request, action: .install)
         case .shellIntegrationUninstall:
             return handleShellIntegration(request: request, action: .uninstall)
+        case .getMachineSnapshot:
+            return handleGetMachineSnapshot(request: request)
         default:
             return .err(id: request.id, code: .notImplemented, message: "method \(request.method) lands in a later iter of the Swift port")
         }
+    }
+
+    // MARK: - v1.44 machine health
+
+    /// Machine health for the Machine tab.
+    ///
+    /// Blocking on purpose — see `MachineSnapshotCollector.collectSync`, which
+    /// documents why that is safe on this server's threading model and what the
+    /// collection actually costs (measured: 1.6-3.5s idle, 2.8-5.9s loaded, not
+    /// the ~0.65s an earlier version of this comment claimed).
+    private func handleGetMachineSnapshot(request: WireRequest) -> WireResponse {
+        .ok(id: request.id, result: MachineSnapshotCollector.jsonSafeWireDict(MachineSnapshotCollector.collectSync()))
     }
 
     // MARK: - iter3 method handlers

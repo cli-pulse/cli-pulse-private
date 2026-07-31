@@ -7,7 +7,7 @@ import CLIPulseCore
 /// sub-sections.
 ///
 /// `launchAtLogin` and `helperEnabled` remain parent-owned (SettingsTab)
-/// via `@Binding` because they pair with `LaunchAtLogin.toggle()` /
+/// via `@Binding` because they pair with `LaunchAtLogin.setEnabled()` /
 /// `HelperLogin.toggle()` services that also fire from PairingSection.
 struct AdvancedSection: View {
     @EnvironmentObject var state: AppState
@@ -124,7 +124,7 @@ struct AdvancedSection: View {
                     Text(L10n.advanced.fullDetails)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
-                    Link("Privacy Policy", destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/privacy.html")!)
+                    Link("Privacy Policy", destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!)
                         .font(.system(size: 9))
                 }
                 .padding(.top, 2)

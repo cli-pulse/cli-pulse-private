@@ -301,6 +301,8 @@ final class HelperProviderAccountsIPCTests: XCTestCase {
             accountID: accountID,
             provider: ProviderKind.claude.rawValue,
             accountLabel: nil,
+            planDetectionStartedAt:
+                Date(timeIntervalSince1970: 1_774_065_300),
             dataKind: .quota,
             usage: makeUsage(remaining: 50)
         )
@@ -322,10 +324,87 @@ final class HelperProviderAccountsIPCTests: XCTestCase {
             DataRefreshManager.accountUsages(from: snapshot.accountResults, observedAt: now).first
         )
 
-        XCTAssertEqual(accountUsage.observedAt, "2026-03-21T03:56:00Z")
+        XCTAssertEqual(
+            accountUsage.observedAt,
+            "2026-03-21T03:56:00.000Z"
+        )
         XCTAssertEqual(
             accountUsage.planEvidence.observedAt,
-            Date(timeIntervalSince1970: 1_774_065_360)
+            Date(timeIntervalSince1970: 1_774_065_300),
+            "detected plan revision must preserve the per-account collection start while quota freshness uses envelope completion"
+        )
+    }
+
+    func testOldV2WithoutCollectionStartCannotOverrideLaterManualClear()
+        throws
+    {
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "bcbcbcbc-bcbc-4bcb-8bcb-bcbcbcbcbcbc"
+            )
+        )
+        let manualClearAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-03-21T03:55:00.000Z")
+        )
+        let account = HelperIPC.CollectorAccountPayload(
+            accountID: accountID,
+            provider: ProviderKind.claude.rawValue,
+            accountLabel: nil,
+            planDetectionStartedAt: nil,
+            dataKind: .quota,
+            usage: HelperIPC.CollectorUsagePayload(
+                quota: 100,
+                remaining: 50,
+                todayUsage: 50,
+                weekUsage: 50,
+                statusText: nil,
+                planType: "Stale Detected Pro",
+                resetTime: nil,
+                tiers: []
+            )
+        )
+        let data = try HelperIPC.encodeCollectorResultsV2(
+            HelperIPC.CollectorResultsEnvelopeV2(
+                timestamp: "2026-03-21T03:56:00Z",
+                accounts: [account],
+                providers: nil
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            planOverride: nil,
+            planOverrideUpdatedAt: manualClearAt
+        )
+
+        let snapshot = DataRefreshManager
+            .parseHelperCollectorResults(
+                data,
+                providerConfigs: [config],
+                now: now
+            )
+        let accountUsage = try XCTUnwrap(
+            DataRefreshManager.accountUsages(
+                from: snapshot.accountResults,
+                observedAt: now
+            ).first
+        )
+
+        XCTAssertNil(accountUsage.planEvidence.rawValue)
+        XCTAssertEqual(
+            accountUsage.planEvidence.source,
+            .userConfirmed
+        )
+        XCTAssertEqual(
+            accountUsage.planEvidence.observedAt,
+            manualClearAt,
+            "an old helper completion timestamp must not make stale detected plan evidence newer than a manual clear"
+        )
+        XCTAssertEqual(
+            accountUsage.observedAt,
+            "2026-03-21T03:56:00.000Z",
+            "quota freshness still uses the helper envelope completion"
         )
     }
 

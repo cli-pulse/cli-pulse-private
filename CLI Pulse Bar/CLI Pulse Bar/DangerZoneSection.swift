@@ -61,13 +61,13 @@ struct DangerZoneSection: View {
             .buttonStyle(.plain)
             .foregroundStyle(PulseTheme.accent)
 
-            Link(destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/privacy.html")!) {
+            Link(destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!) {
                 Label(L10n.settings.privacyPolicy, systemImage: "hand.raised")
                     .font(.system(size: 11))
             }
             .foregroundStyle(PulseTheme.accent)
 
-            Link(destination: URL(string: "https://jasonyeyuhe.github.io/cli-pulse/terms.html")!) {
+            Link(destination: URL(string: "https://cli-pulse.github.io/cli-pulse/terms.html")!) {
                 Label(L10n.settings.termsOfUse, systemImage: "doc.text")
                     .font(.system(size: 11))
             }

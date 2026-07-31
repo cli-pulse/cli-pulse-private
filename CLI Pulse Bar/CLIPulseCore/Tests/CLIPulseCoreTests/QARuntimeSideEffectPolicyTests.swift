@@ -213,6 +213,71 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testSafeQACredentialRecoveryAnchorUsesIsolatedMetadataStore()
+        throws
+    {
+        let appFixture = try makeDefaults()
+        let helperFixture = try makeDefaults()
+        let helperDefaults = helperFixture.defaults
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            appFixture.defaults.removePersistentDomain(
+                forName: appFixture.suiteName
+            )
+            helperDefaults.removePersistentDomain(
+                forName: helperFixture.suiteName
+            )
+        }
+
+        let helperDataSentinel = Data([0x51, 0x41, 0x32])
+        helperDefaults.set(
+            helperDataSentinel,
+            forKey: HelperIPC.providerConfigsKey
+        )
+        ProviderSharedCredentialOwner.defaults = helperDefaults
+
+        let state = AppState(
+            runtimeEnvironment: makeRuntime(
+                channel: "qa",
+                bundleIdentifier: "app.clipulse.qa.local",
+                fixedUserHome: Self.qaRoot
+            ),
+            defaults: appFixture.defaults,
+            helperDefaults: helperDefaults
+        )
+        let accountID = state.addProviderAccount(kind: .gemini)
+
+        XCTAssertTrue(
+            state.persistProviderAccountCredentialRecoveryAnchor(
+                accountID
+            )
+        )
+
+        let savedData = try XCTUnwrap(
+            appFixture.defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+        )
+        let savedConfigs = try JSONDecoder().decode(
+            [ProviderConfig].self,
+            from: savedData
+        )
+        XCTAssertEqual(
+            savedConfigs.first(where: {
+                $0.accountID == accountID
+            })?.isEnabled,
+            false
+        )
+        XCTAssertEqual(
+            helperDefaults.data(
+                forKey: HelperIPC.providerConfigsKey
+            ),
+            helperDataSentinel
+        )
+    }
+
     #if os(macOS)
     func testSafeQADeniesHelperConfigurationStorageBeforeAnyPersistenceAccess() {
         let runtime = makeRuntime(
@@ -649,12 +714,14 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         ownerFixture.defaults.set(accountID.uuidString, forKey: ownerKey)
         ProviderSharedCredentialOwner.defaults = ownerFixture.defaults
 
-        GeminiOAuthManager.shared.clearTokens(
-            accountID: accountID,
-            runtimeEnvironment: makeRuntime(
-                channel: "qa",
-                bundleIdentifier: "app.clipulse.qa.local",
-                fixedUserHome: Self.qaRoot
+        XCTAssertFalse(
+            GeminiOAuthManager.shared.clearTokens(
+                accountID: accountID,
+                runtimeEnvironment: makeRuntime(
+                    channel: "qa",
+                    bundleIdentifier: "app.clipulse.qa.local",
+                    fixedUserHome: Self.qaRoot
+                )
             )
         )
 
@@ -863,14 +930,30 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
 
 private final class RecordingProviderSecretStore: ProviderSecretStoring {
     private(set) var deletedKeys: [String] = []
+    private var values: [String: String] = [:]
 
-    func save(key: String, value: String, accessGroup: String?) {}
-
-    func load(key: String, accessGroup: String?) -> String? {
-        nil
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        values[slot(key: key, accessGroup: accessGroup)] = value
+        return true
     }
 
-    func delete(key: String, accessGroup: String?) {
+    func load(key: String, accessGroup: String?) -> String? {
+        values[slot(key: key, accessGroup: accessGroup)]
+    }
+
+    func delete(key: String, accessGroup: String?) -> Bool {
         deletedKeys.append(key)
+        values.removeValue(
+            forKey: slot(key: key, accessGroup: accessGroup)
+        )
+        return true
+    }
+
+    private func slot(key: String, accessGroup: String?) -> String {
+        "\(accessGroup ?? "<none>")|\(key)"
     }
 }

@@ -681,13 +681,21 @@ final class SessionControlIntegrationGapTests: XCTestCase {
 }
 
 private struct SessionControlNoopSecretStore: ProviderSecretStoring {
-    func save(key: String, value: String, accessGroup: String?) {}
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        true
+    }
 
     func load(key: String, accessGroup: String?) -> String? {
         nil
     }
 
-    func delete(key: String, accessGroup: String?) {}
+    func delete(key: String, accessGroup: String?) -> Bool {
+        true
+    }
 }
 
 #endif

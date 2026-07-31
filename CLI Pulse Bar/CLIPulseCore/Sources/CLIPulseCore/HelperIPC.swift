@@ -149,6 +149,8 @@ public enum HelperIPC {
         public let provider: String
         public let accountLabel: String?
         public let planOverride: String?
+        public let planOverrideUpdatedAt: Date?
+        public let planDetectionStartedAt: Date?
         public let dataKind: CollectorDataKind
         public let usage: CollectorUsagePayload
 
@@ -157,6 +159,10 @@ public enum HelperIPC {
             case provider
             case accountLabel = "account_label"
             case planOverride = "plan_override"
+            case planOverrideUpdatedAt =
+                "plan_override_updated_at"
+            case planDetectionStartedAt =
+                "plan_detection_started_at"
             case dataKind = "data_kind"
             case usage
         }
@@ -166,6 +172,8 @@ public enum HelperIPC {
             provider: String,
             accountLabel: String?,
             planOverride: String? = nil,
+            planOverrideUpdatedAt: Date? = nil,
+            planDetectionStartedAt: Date? = nil,
             dataKind: CollectorDataKind,
             usage: CollectorUsagePayload
         ) {
@@ -173,6 +181,10 @@ public enum HelperIPC {
             self.provider = provider
             self.accountLabel = accountLabel
             self.planOverride = planOverride
+            self.planOverrideUpdatedAt =
+                planOverrideUpdatedAt
+            self.planDetectionStartedAt =
+                planDetectionStartedAt
             self.dataKind = dataKind
             self.usage = usage
         }

@@ -5,6 +5,11 @@ import Combine
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
+#if os(macOS)
+// v1.44 W5: login-item registration at first value. macOS-only — SMAppService
+// does not exist on iOS/watchOS.
+import ServiceManagement
+#endif
 
 @MainActor
 public final class AppState: ObservableObject {
@@ -180,6 +185,25 @@ public final class AppState: ObservableObject {
     /// Drives a one-shot banner in Providers tab nudging the user to grant
     /// access via `FolderAccessView`.
     @Published public var needsScannerFolderAccess: Bool = false
+
+    /// v1.44 W3: what happened to each provider on the last collector pass.
+    ///
+    /// Populated for EVERY configured provider, not just the ones that
+    /// produced data — that is the point. Before this, a provider the user had
+    /// disabled, one we have no collector for, one missing credentials and one
+    /// whose collector threw were all equally invisible, so neither the user
+    /// nor we could tell them apart. Empty until the first pass completes,
+    /// and permanently empty off macOS (nothing else runs collectors).
+    @Published public var collectorOutcomes: [ProviderKind: CollectorOutcome] = [:]
+
+    /// v1.44 W5: set when the app auto-enabled its login item at first value,
+    /// so Overview can show the "we did this, undo?" notice exactly once.
+    /// Cleared when the user dismisses or undoes it.
+    @Published public var showLaunchAtLoginNotice = false
+
+    /// Single-flight guard for the detached collector-status upload. Not
+    /// `@Published` — it is scheduling state, not something a view renders.
+    var isReportingCollectorStatus = false
 
     /// v1.9.4: total token count for a provider, sourced from the JSONL scan
     /// result. Convention matches codexbar for parity:
@@ -976,6 +1000,13 @@ public final class AppState: ObservableObject {
             }
         }
 
+        // NOTE: the app-version report (migrate_v0.70) is NOT kicked off here.
+        // It needs an authenticated `userId` for the cross-account guard, and
+        // that is only set once session restore completes — a launch-block Task
+        // races it and would silently never report. It is invoked from
+        // `completeAuthenticatedSignIn` instead (the single documented home for
+        // post-auth ordering), which covers sign-in and restore alike.
+
         #if DEVID_BUILD
         // v1.41: start the remote machine-control executor. It stays idle (no UDS
         // traffic) until the `remoteMachineControlEnabled` opt-in AND the fan
@@ -1012,6 +1043,183 @@ public final class AppState: ObservableObject {
             performLaunchSetup: performLaunchSetup
         )
     }
+
+    #if os(macOS)
+    /// Report this app's version to `devices.app_version` (migrate_v0.70) when
+    /// it isn't already what the backend has for this device.
+    ///
+    /// Why this exists: `devices.helper_version` cannot answer "what version is
+    /// this device running" — it is a hardcoded placeholder for every
+    /// app-paired device AND doubles as the remote-command capability gate, so
+    /// it cannot be made truthful without falsely advertising remote-command
+    /// support on App Store builds. See `HelperAPIClient.appPairedHelperVersion`.
+    ///
+    /// Uses `loadIfMatches` rather than `load`: a config left behind by a
+    /// different account must never have its device row written by this user.
+    /// The last-reported key is persisted, so this is one RPC per upgrade
+    /// rather than one per launch. Entirely best-effort — a failure here must
+    /// never affect app startup.
+    /// Internal (not `private`): invoked from `completeAuthenticatedSignIn` in
+    /// AuthManager.swift, a different file in this module.
+    /// v1.44 W3: upload the per-provider outcome map for a paired device.
+    ///
+    /// This is what makes `devices.collector_status` non-dead. The v0.71
+    /// column has been written by nothing: only `HelperDaemon` reported it,
+    /// and 63 of 70 Macs report `helper_version = "1.0.0"` — the constant the
+    /// *app* passes when it registers the device — meaning they never had a
+    /// daemon to do the reporting. Those are exactly the devices whose silence
+    /// we were trying to explain.
+    ///
+    /// Uses the same `HelperConfig` secret the app already authenticates
+    /// `reportAppVersion` with, so this needs no new credential path and no
+    /// schema change; `helper_report_app_version` has accepted
+    /// `p_collector_status` since v0.71 and coalesces each field independently.
+    ///
+    /// Anonymous local-mode users are NOT covered — with no pairing there is
+    /// no device row and no secret. That gap is real and deliberate: closing
+    /// it needs an installation-UUID RPC and a privacy story, both of which
+    /// are Owner decisions. The local UI does not depend on this upload.
+    /// v1.44 W5: register the login item the first time we actually show the
+    /// user numbers, and tell them we did.
+    ///
+    /// Deliberately driven off the same outcome map as the provider rows, so
+    /// "first value" has one definition across the app. See
+    /// `FirstValueLaunchAtLogin` for why this waits for value instead of firing
+    /// at launch, and why the user's own toggle always wins.
+    func enableLaunchAtLoginAtFirstValueIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) {
+        guard runtimeEnvironment.capabilities.allowsHelperRegistration else {
+            return
+        }
+        let defaults = UserDefaults.standard
+        let status = SMAppService.mainApp.status
+        let decision = FirstValueLaunchAtLogin.decide(
+            producedValue: FirstValueLaunchAtLogin.producedValue(outcomes),
+            loginItem: FirstValueLaunchAtLogin.loginItemState(
+                isEnabled: status == .enabled,
+                // `.requiresApproval` = registered, then switched off by the
+                // user in System Settings. Reading only `== .enabled` collapses
+                // that into "never registered" and re-enables it behind their
+                // back — see `decide`.
+                requiresApproval: status == .requiresApproval
+            ),
+            alreadyAutoEnabled: defaults.bool(forKey: FirstValueLaunchAtLogin.didAutoEnableKey),
+            userTouchedToggle: defaults.bool(forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        )
+        if decision == .skipAndRememberUserChoice {
+            // Persist it so we stop asking the system every pass, and so the
+            // answer survives them later re-enabling it by hand.
+            defaults.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+            return
+        }
+        guard decision == .enableAndNotify else { return }
+        do {
+            try SMAppService.mainApp.register()
+            // Record BEFORE showing the notice, and only on success: a failed
+            // registration must be retried on a later pass rather than
+            // announcing something that did not happen.
+            defaults.set(true, forKey: FirstValueLaunchAtLogin.didAutoEnableKey)
+            showLaunchAtLoginNotice = true
+        } catch {
+            // No notice, no marker — try again next time. Registration can fail
+            // legitimately (a user-level login-item restriction), and claiming
+            // success there would be a lie the user can see through in
+            // System Settings.
+        }
+    }
+
+    /// The undo half of the W5 notice. Also records that the user has made an
+    /// explicit choice, so the automatic path never fires again.
+    public func undoLaunchAtLogin() {
+        guard runtimeEnvironment.capabilities.allowsHelperRegistration else {
+            showLaunchAtLoginNotice = false
+            return
+        }
+        try? SMAppService.mainApp.unregister()
+        UserDefaults.standard.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+        showLaunchAtLoginNotice = false
+    }
+
+    func reportCollectorStatusIfNeeded(_ outcomes: [ProviderKind: CollectorOutcome]) async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+
+        // Single-flight. The caller fires this detached from the refresh path,
+        // and the RPC can outlive the refresh that started it — so a slow pass
+        // A and a later pass B can be in flight together. Both would read the
+        // same pre-A cache (defeating the throttle), and if A lands last it
+        // overwrites B's newer reading in BOTH the backend and the cache. That
+        // leaves the fleet showing `ok` for a provider that has since been
+        // disabled or has broken, until some later pass happens to repair it —
+        // or forever, if the app is closed first.
+        //
+        // The check-and-set below has no `await` between them and AppState is
+        // @MainActor, so no second pass can interleave: dropping the overlap is
+        // safe because the next refresh re-evaluates from current state anyway.
+        guard !isReportingCollectorStatus else { return }
+
+        var map: [String: String] = [:]
+        for (kind, outcome) in outcomes {
+            map[kind.rawValue] = outcome.telemetryToken
+        }
+        let defaults = UserDefaults.standard
+        // Device-scoped, mirroring `appVersionReportKey`. Global keys would let
+        // account A's cached map suppress the FIRST report from newly-paired
+        // device B when their maps happen to match, leaving B's row null for up
+        // to an hour — which is indistinguishable from the silence this whole
+        // feature exists to explain.
+        let mapKey = Self.collectorStatusKey(deviceId: config.deviceId)
+        let atKey = Self.collectorStatusAtKey(deviceId: config.deviceId)
+        let last = defaults.dictionary(forKey: mapKey) as? [String: String]
+        let lastAt = defaults.object(forKey: atKey) as? Date
+        guard CollectorRunner.shouldReportTelemetry(
+            current: map, lastReported: last, lastReportedAt: lastAt, now: Date()
+        ) else { return }
+
+        isReportingCollectorStatus = true
+        defer { isReportingCollectorStatus = false }
+        do {
+            try await HelperAPIClient().reportCollectorStatus(config: config, status: map)
+            defaults.set(map, forKey: mapKey)
+            defaults.set(Date(), forKey: atKey)
+        } catch {
+            // Retried on the next pass — never surfaced to the user.
+        }
+    }
+
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_\(deviceId)"
+    }
+
+    /// `nonisolated`: pure string building, and tests reach it without a
+    /// main-actor hop.
+    public nonisolated static func collectorStatusAtKey(deviceId: String) -> String {
+        "cli_pulse_last_collector_status_at_\(deviceId)"
+    }
+
+    func reportAppVersionIfNeeded() async {
+        guard let config = HelperConfig.loadIfMatches(authenticatedUserId: userId) else { return }
+        let appVersion = HelperAPIClient.currentAppVersionString
+        let defaults = UserDefaults.standard
+        let lastKey = defaults.string(forKey: Self.lastReportedAppVersionKeyDefaultsKey)
+        guard HelperAPIClient.shouldReportAppVersion(
+            lastReportedKey: lastKey, deviceId: config.deviceId, appVersion: appVersion
+        ) else { return }
+        do {
+            try await HelperAPIClient().reportAppVersion(config: config, appVersion: appVersion)
+            defaults.set(
+                HelperAPIClient.appVersionReportKey(deviceId: config.deviceId, appVersion: appVersion),
+                forKey: Self.lastReportedAppVersionKeyDefaultsKey
+            )
+        } catch {
+            // Retried on the next launch — never surfaced to the user.
+        }
+    }
+
+    /// UserDefaults key holding the last successfully-reported
+    /// `deviceId|appVersion` pair (see `reportAppVersionIfNeeded`).
+    static let lastReportedAppVersionKeyDefaultsKey = "cli_pulse_last_reported_app_version_key"
+    #endif
 
     // MARK: - Menu Bar
 
@@ -1164,12 +1372,57 @@ public final class AppState: ObservableObject {
         return createdID
     }
 
+    /// Persist a disabled account UUID before any editor writes account-scoped
+    /// credentials. If the process stops between the Keychain write and the
+    /// final Save, the next launch can still locate and clean up that account;
+    /// the helper also sees it as disabled and cannot collect from it.
+    @discardableResult
+    public func persistProviderAccountCredentialRecoveryAnchor(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore? = nil
+    ) -> Bool {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+        guard providerState.isProviderAccountDraft(accountID) else {
+            // Existing accounts already have a durable metadata anchor.
+            return true
+        }
+        guard !config.isEnabled else {
+            // New drafts are deliberately disabled until the editor's final
+            // Save. Never persist an incomplete account as collectable.
+            return false
+        }
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        )
+        return resolvedStore.save(providerConfigs)
+    }
+
+    @discardableResult
     public func commitProviderAccountDraft(
         _ accountID: UUID
-    ) {
+    ) -> Bool {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+        // Persist final metadata while the in-memory draft marker still
+        // exists. A failed write leaves the editor transaction retryable.
+        guard saveProviderConfigMetadata() else {
+            return false
+        }
         _ = providerState.commitProviderAccountDraft(accountID)
-        saveProviderConfigMetadata()
         buildProviderDetails()
+        return true
     }
 
     public func cancelProviderAccountDraft(
@@ -1180,25 +1433,16 @@ public final class AppState: ObservableObject {
         }) else {
             return
         }
+        guard providerState.isProviderAccountDraft(accountID) else {
+            return
+        }
+        guard deleteLocalProviderAccountSecrets(config) else {
+            return
+        }
         guard providerState.cancelProviderAccountDraft(
             accountID
         ) else {
             return
-        }
-        config.deleteSecrets(using: providerSecretStore)
-        #if os(macOS)
-        if config.kind == .gemini {
-            GeminiOAuthManager.shared.clearTokens(
-                accountID: accountID,
-                runtimeEnvironment: runtimeEnvironment
-            )
-        }
-        #endif
-        if runtimeEnvironment.capabilities.allowsHelperRegistration {
-            ProviderSharedCredentialOwner.release(
-                kind: config.kind,
-                accountID: accountID
-            )
         }
         saveProviderConfigMetadata()
         buildProviderDetails()
@@ -1220,21 +1464,21 @@ public final class AppState: ObservableObject {
             ProviderAccountSyncOwnership.ownerForDeletion(
                 config
             )
-
-        config.deleteSecrets(using: providerSecretStore)
-        #if os(macOS)
-        if config.kind == .gemini {
-            GeminiOAuthManager.shared.clearTokens(
+        if let deletionOwnerID {
+            // The durable intent is the crash-recovery authority. Do not
+            // remove metadata or Keychain state unless read-after-write
+            // verification confirms that a relaunch can finish the deletion.
+            guard providerAccountDeletionOutbox.enqueue(
+                userID: deletionOwnerID,
                 accountID: accountID,
-                runtimeEnvironment: runtimeEnvironment
-            )
+                provider: config.kind
+            ) else {
+                return false
+            }
         }
-        #endif
-        if runtimeEnvironment.capabilities.allowsHelperRegistration {
-            ProviderSharedCredentialOwner.release(
-                kind: config.kind,
-                accountID: accountID
-            )
+
+        guard deleteLocalProviderAccountSecrets(config) else {
+            return false
         }
         guard providerState.removeProviderAccount(accountID) != nil else {
             return false
@@ -1242,15 +1486,40 @@ public final class AppState: ObservableObject {
         saveProviderConfigMetadata()
         buildProviderDetails()
         if let deletionOwnerID {
-            providerAccountDeletionOutbox.enqueue(
-                userID: deletionOwnerID,
-                accountID: accountID
-            )
             Task { [weak self] in
                 await self?.flushPendingProviderAccountDeletions(
                     for: deletionOwnerID
                 )
             }
+        }
+        return true
+    }
+
+    /// Metadata remains the retry anchor until every account-scoped Keychain
+    /// item is confirmed absent. A denied or failed SecItemDelete must never
+    /// turn into an orphaned credential with no local account to clean it up.
+    private func deleteLocalProviderAccountSecrets(
+        _ config: ProviderConfig
+    ) -> Bool {
+        guard config.deleteSecrets(using: providerSecretStore) else {
+            return false
+        }
+        #if os(macOS)
+        if config.kind == .gemini,
+           runtimeEnvironment.capabilities.allowsLiveCollection {
+            guard GeminiOAuthManager.shared.clearTokens(
+                accountID: config.accountID,
+                runtimeEnvironment: runtimeEnvironment
+            ) else {
+                return false
+            }
+        }
+        #endif
+        if runtimeEnvironment.capabilities.allowsHelperRegistration {
+            ProviderSharedCredentialOwner.release(
+                kind: config.kind,
+                accountID: config.accountID
+            )
         }
         return true
     }
@@ -1268,6 +1537,11 @@ public final class AppState: ObservableObject {
                 ownedBy: expectedUserID
             )
         guard ownedAccountIDs.contains(accountID) else {
+            return
+        }
+        guard let provider = providerConfigs.first(where: {
+            $0.accountID == accountID
+        })?.kind else {
             return
         }
         Task { [weak self] in
@@ -1292,6 +1566,7 @@ public final class AppState: ObservableObject {
                 [
                     ProviderAccountStatusUpdate(
                         accountID: accountID,
+                        provider: provider,
                         isEnabled: isEnabled
                     ),
                 ],
@@ -1331,17 +1606,24 @@ public final class AppState: ObservableObject {
             return
         }
         let pending = providerAccountDeletionOutbox
-            .pendingAccountIDs(for: expectedUserID)
+            .pendingIntents(for: expectedUserID)
+            .filter { $0.provider != nil }
             .prefix(10)
-        for accountID in pending {
+        for intent in pending {
             guard
                 isAuthenticated,
                 userId == expectedUserID
             else {
                 return
             }
+            guard let provider = intent.provider else {
+                // Provider-less v1 development intents are retained until
+                // local metadata recovery can safely enrich them.
+                continue
+            }
             let deleted = await api.deleteProviderAccount(
-                accountID,
+                intent.accountID,
+                provider: provider,
                 authorizationLease: lease
             )
             guard deleted else {
@@ -1352,7 +1634,7 @@ public final class AppState: ObservableObject {
             }
             providerAccountDeletionOutbox.markCompleted(
                 userID: expectedUserID,
-                accountID: accountID
+                accountID: intent.accountID
             )
         }
     }
@@ -1395,6 +1677,7 @@ public final class AppState: ObservableObject {
             }
             return ProviderAccountStatusUpdate(
                 accountID: config.accountID,
+                provider: config.kind,
                 isEnabled: config.isEnabled
             )
         }
@@ -1656,19 +1939,20 @@ public final class AppState: ObservableObject {
     public func saveProviderConfigs() {
         saveProviderConfigMetadata()
         for config in providerConfigs {
-            config.saveSecrets()
+            config.saveSecrets(using: providerSecretStore)
         }
     }
 
     /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
     /// for enable/order/label changes that must never mutate Keychain state.
-    public func saveProviderConfigMetadata() {
+    @discardableResult
+    public func saveProviderConfigMetadata() -> Bool {
         let allowsHelperMirror =
             runtimeEnvironment.capabilities.allowsHelperRegistration
         if allowsHelperMirror {
             ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
         }
-        _ = ProviderConfigMetadataStore(
+        return ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
                 ? providerConfigHelperDefaults
@@ -1829,6 +2113,8 @@ public final class AppState: ObservableObject {
             return
         }
 
+        recoverPendingLocalProviderAccountDeletions()
+
         if let migratedData = try? JSONEncoder().encode(providerConfigs) {
             defaults.set(
                 migratedData,
@@ -1846,6 +2132,40 @@ public final class AppState: ObservableObject {
             providerConfigs[index].loadSecrets()
         }
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+    }
+
+    /// Finish a local deletion whose durable intent was committed before a
+    /// previous process stopped. Owner matching is mandatory so a queued
+    /// user-A intent can never remove a user-B account after an account switch.
+    private func recoverPendingLocalProviderAccountDeletions() {
+        let accountIDs =
+            ProviderAccountDeletionRecovery.accountIDsToRemove(
+                from: providerConfigs,
+                pending:
+                    providerAccountDeletionOutbox.pendingIntents()
+            )
+        for accountID in accountIDs {
+            guard let config = providerConfigs.first(where: {
+                $0.accountID == accountID
+            }) else {
+                continue
+            }
+            guard
+                let owner =
+                    ProviderAccountSyncOwnership.normalizedUserID(
+                        config.syncOwnerUserID
+                    ),
+                providerAccountDeletionOutbox.enqueue(
+                    userID: owner,
+                    accountID: accountID,
+                    provider: config.kind
+                ),
+                deleteLocalProviderAccountSecrets(config)
+            else {
+                continue
+            }
+            _ = providerState.removeProviderAccount(accountID)
+        }
     }
 
     private func migrateLegacySecrets(from data: Data) {

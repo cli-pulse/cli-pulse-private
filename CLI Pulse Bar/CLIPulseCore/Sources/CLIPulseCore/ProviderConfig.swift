@@ -14,6 +14,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     public var cookieSource: CookieSource?
     public var accountLabel: String?
     public var planOverride: String?
+    /// Revision of the latest manual-plan edit, including an explicit clear.
+    /// Kept separate from `planOverride` so nil can be synchronized as a
+    /// user-confirmed removal instead of looking like missing evidence.
+    public var planOverrideUpdatedAt: Date?
     /// CLIPulse/Supabase user that may receive this account's normalized
     /// metadata and quota snapshots. Nil means local-only/unclaimed.
     public var syncOwnerUserID: String?
@@ -21,6 +25,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     /// Machine-global CLI/helper/environment credentials remain available to
     /// legacy configs where the field is absent.
     public var sharedCredentialFallbackDisabled: Bool?
+    /// Exactly one account created by the provider-to-account metadata
+    /// migration may copy the retained provider-scoped rollback secret.
+    /// New accounts default to nil and can never claim that shared slot.
+    public var legacySecretMigrationEligible: Bool?
     /// v1.23.0 G3 (CodexBar parity, dark/opt-in): when true, the Gemini
     /// collector may fall back to the vendored `GeminiStatusProbe`
     /// (Gemini-CLI-package OAuth path) *only* when its own
@@ -39,8 +47,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     // Only encode non-sensitive fields to UserDefaults
     private enum CodingKeys: String, CodingKey {
         case accountID, kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel, planOverride
+        case planOverrideUpdatedAt
         case syncOwnerUserID
         case sharedCredentialFallbackDisabled
+        case legacySecretMigrationEligible
         case geminiCliProbeFallback
     }
 
@@ -55,8 +65,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         manualCookieHeader: String? = nil,
         accountLabel: String? = nil,
         planOverride: String? = nil,
+        planOverrideUpdatedAt: Date? = nil,
         syncOwnerUserID: String? = nil,
         sharedCredentialFallbackDisabled: Bool? = nil,
+        legacySecretMigrationEligible: Bool? = nil,
         geminiCliProbeFallback: Bool? = nil
     ) {
         self.accountID = accountID
@@ -69,13 +81,29 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         self.manualCookieHeader = manualCookieHeader
         self.accountLabel = accountLabel
         self.planOverride = planOverride
+        self.planOverrideUpdatedAt = planOverrideUpdatedAt
         self.syncOwnerUserID =
             ProviderAccountSyncOwnership.normalizedUserID(
                 syncOwnerUserID
             )
         self.sharedCredentialFallbackDisabled =
             sharedCredentialFallbackDisabled
+        self.legacySecretMigrationEligible =
+            legacySecretMigrationEligible
         self.geminiCliProbeFallback = geminiCliProbeFallback
+    }
+
+    public mutating func setPlanOverride(
+        _ value: String?,
+        changedAt: Date = Date()
+    ) {
+        let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextValue =
+            normalized?.isEmpty == false ? normalized : nil
+        guard planOverride != nextValue else { return }
+        planOverride = nextValue
+        planOverrideUpdatedAt = changedAt
     }
 
     public static func defaults() -> [ProviderConfig] {
@@ -120,13 +148,28 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     }
 
     /// Save this config's secrets to Keychain. Call after mutating apiKey / manualCookieHeader.
-    public func saveSecrets() {
+    @discardableResult
+    public func saveSecrets() -> Bool {
         saveSecrets(using: KeychainProviderSecretStore())
     }
 
-    func saveSecrets(using store: any ProviderSecretStoring) {
-        persistSecret(apiKey, suffix: "apiKey", using: store)
-        persistSecret(manualCookieHeader, suffix: "cookie", using: store)
+    @discardableResult
+    func saveSecrets(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let apiKeySaved =
+            persistSecret(
+                apiKey,
+                suffix: "apiKey",
+                using: store
+            )
+        let cookieSaved =
+            persistSecret(
+                manualCookieHeader,
+                suffix: "cookie",
+                using: store
+            )
+        return apiKeySaved && cookieSaved
     }
 
     /// Load secrets from Keychain into the in-memory fields.
@@ -140,37 +183,69 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     }
 
     /// Remove all Keychain entries for this account.
-    public func deleteSecrets() {
+    @discardableResult
+    public func deleteSecrets() -> Bool {
         deleteSecrets(using: KeychainProviderSecretStore())
     }
 
-    func deleteSecrets(using store: any ProviderSecretStoring) {
-        persistSecret(nil, suffix: "apiKey", using: store)
-        persistSecret(nil, suffix: "cookie", using: store)
+    @discardableResult
+    func deleteSecrets(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let apiKeyDeleted =
+            persistSecret(nil, suffix: "apiKey", using: store)
+        let cookieDeleted =
+            persistSecret(nil, suffix: "cookie", using: store)
+        return apiKeyDeleted && cookieDeleted
     }
 
+    @discardableResult
     private func persistSecret(
         _ value: String?,
         suffix: String,
         using store: any ProviderSecretStoring
-    ) {
+    ) -> Bool {
         let group = Self.secretsAccessGroup
         let accountKey = Self.accountKeychainKey(accountID, suffix)
         let markerKey = Self.migrationMarkerKey(accountID, suffix)
 
         if let value, !value.isEmpty {
-            store.save(key: accountKey, value: value, accessGroup: group)
+            guard store.save(
+                key: accountKey,
+                value: value,
+                accessGroup: group
+            ) else {
+                return false
+            }
             guard store.load(key: accountKey, accessGroup: group) == value else {
-                return
+                return false
             }
         } else {
-            store.delete(key: accountKey, accessGroup: group)
-            guard store.load(key: accountKey, accessGroup: group) == nil else {
-                return
+            guard
+                store.delete(
+                    key: accountKey,
+                    accessGroup: group
+                ),
+                store.load(
+                    key: accountKey,
+                    accessGroup: group
+                ) == nil
+            else {
+                return false
             }
         }
 
-        store.save(key: markerKey, value: "1", accessGroup: group)
+        guard store.save(
+            key: markerKey,
+            value: "1",
+            accessGroup: group
+        ) else {
+            return false
+        }
+        return store.load(
+            key: markerKey,
+            accessGroup: group
+        ) == "1"
     }
 
     private func loadSecret(
@@ -190,6 +265,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
             return nil
         }
 
+        guard legacySecretMigrationEligible == true else {
+            return nil
+        }
+
         let legacyKey = Self.legacyKeychainKey(kind, suffix)
         guard
             let legacyValue = store.load(key: legacyKey, accessGroup: group),
@@ -198,11 +277,21 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
             return nil
         }
 
-        store.save(key: accountKey, value: legacyValue, accessGroup: group)
+        guard store.save(
+            key: accountKey,
+            value: legacyValue,
+            accessGroup: group
+        ) else {
+            return legacyValue
+        }
         guard store.load(key: accountKey, accessGroup: group) == legacyValue else {
             return legacyValue
         }
-        store.save(key: markerKey, value: "1", accessGroup: group)
+        _ = store.save(
+            key: markerKey,
+            value: "1",
+            accessGroup: group
+        )
         return legacyValue
     }
 }

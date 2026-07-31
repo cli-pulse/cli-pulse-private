@@ -461,6 +461,19 @@ enum LaunchAtLogin {
         )
     }
 
+    /// Set the login item to an explicit state.
+    ///
+    /// v1.44 audit: the previous `toggle()` discarded the caller's intent and
+    /// inferred direction from `isEnabled` — the LIVE status — while the
+    /// Settings switch renders from a `@State` snapshot taken when the view was
+    /// built. Anything that changes registration behind that snapshot inverts
+    /// the control: the switch reads OFF, reality is ON, the user taps to turn
+    /// it "on", and the inferred direction unregisters instead. W5 made that
+    /// reachable without the user doing anything wrong, since it registers in
+    /// the background mid-session.
+    ///
+    /// Taking the desired value removes the inference: tapping a stale switch
+    /// now converges on what its label says instead of doing the opposite.
     @available(macOS 13.0, *)
     static func isEnabled(
         in runtimeEnvironment: CLIPulseRuntimeEnvironment
@@ -473,13 +486,34 @@ enum LaunchAtLogin {
         _ enabled: Bool,
         in runtimeEnvironment: CLIPulseRuntimeEnvironment
     ) {
+        guard runtimeEnvironment.capabilities.allowsHelperRegistration else {
+            return
+        }
+        // Record an explicit user choice in either direction before attempting
+        // registration. The first-value auto-enable path must never override it.
+        UserDefaults.standard.set(
+            true,
+            forKey: FirstValueLaunchAtLogin.userTouchedToggleKey
+        )
         do {
             try controller(
                 runtimeEnvironment: runtimeEnvironment
             ).setEnabled(enabled)
         } catch {
-            logger.error("LaunchAtLogin error: \(error.localizedDescription)")
+            logger.error("LaunchAtLogin setEnabled failed: \(error.localizedDescription)")
         }
+    }
+
+    /// Flip from whatever the system currently reports. Retained for callers
+    /// that genuinely have no desired-state to pass; prefer `setEnabled`.
+    @available(macOS 13.0, *)
+    static func toggle(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
+        setEnabled(
+            !isEnabled(in: runtimeEnvironment),
+            in: runtimeEnvironment
+        )
     }
 }
 

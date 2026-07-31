@@ -35,6 +35,16 @@ public struct ProviderConfigMetadataStore {
             ProviderAccountMigration.currentSchemaVersion,
             forKey: ProviderAccountMigration.schemaVersionKey
         )
+        guard
+            defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            ) == data,
+            defaults.integer(
+                forKey: ProviderAccountMigration.schemaVersionKey
+            ) == ProviderAccountMigration.currentSchemaVersion
+        else {
+            return false
+        }
         helperDefaults?.set(
             data,
             forKey: HelperIPC.providerConfigsKey
@@ -45,6 +55,22 @@ public struct ProviderConfigMetadataStore {
             ),
             forKey: HelperIPC.providerAccountsWriteV2Key
         )
+        if let helperDefaults {
+            guard
+                helperDefaults.data(
+                    forKey: HelperIPC.providerConfigsKey
+                ) == data,
+                helperDefaults.bool(
+                    forKey: HelperIPC.providerAccountsWriteV2Key
+                ) == defaults.bool(
+                    forKey:
+                        ProviderAccountFeatureFlags
+                            .writeDefaultsKey
+                )
+            else {
+                return false
+            }
+        }
         return true
     }
 }

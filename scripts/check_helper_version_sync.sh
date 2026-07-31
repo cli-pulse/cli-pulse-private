@@ -30,11 +30,13 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SWIFT_FILE="$ROOT/HelperSwift/Sources/HelperKit/Protocol.swift"
 PY_FILE="$ROOT/helper/system_collector.py"
+GEMINI_SWIFT_FILE="$ROOT/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift"
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 [[ -f "$SWIFT_FILE" ]] || fail "missing $SWIFT_FILE"
 [[ -f "$PY_FILE" ]] || fail "missing $PY_FILE"
+[[ -f "$GEMINI_SWIFT_FILE" ]] || fail "missing $GEMINI_SWIFT_FILE"
 
 SWIFT_V="$(grep -E '^public let kHelperVersion: String = "' "$SWIFT_FILE" \
     | sed -E 's/.*"([0-9]+\.[0-9]+\.[0-9]+)".*/\1/' | head -1)"
@@ -52,3 +54,24 @@ if [[ "$SWIFT_V" != "$PY_V" ]]; then
 fi
 
 echo "OK: helper version lines in sync ($SWIFT_V)"
+
+# The Python helper accepts only the exact OAuth client ID compiled into the
+# Swift writer. A drift would make every otherwise-valid committed Gemini
+# snapshot fail closed, so keep the public PKCE client ID synchronized too.
+SWIFT_GEMINI_CLIENT_ID="$(grep -E '^[[:space:]]*public static let clientID = "' "$GEMINI_SWIFT_FILE" \
+    | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
+PY_GEMINI_CLIENT_ID="$(sed -n '/^_CLIPULSE_GEMINI_CLIENT_ID = (/ {
+    n
+    s/.*"\([^"]*\)".*/\1/p
+}' "$PY_FILE" | head -1)"
+
+[[ -n "$SWIFT_GEMINI_CLIENT_ID" ]] || fail "could not extract Gemini Swift client ID"
+[[ -n "$PY_GEMINI_CLIENT_ID" ]] || fail "could not extract Gemini Python client ID"
+
+if [[ "$SWIFT_GEMINI_CLIENT_ID" != "$PY_GEMINI_CLIENT_ID" ]]; then
+    fail "Gemini OAuth client ID drift: Swift=$SWIFT_GEMINI_CLIENT_ID Python=$PY_GEMINI_CLIENT_ID.
+      Update both constants in the same commit; the Python helper rejects
+      snapshots from any other client ID."
+fi
+
+echo "OK: Gemini OAuth client IDs in sync"

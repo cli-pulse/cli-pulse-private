@@ -8,6 +8,13 @@ import Foundation
 /// one account. Without an owner, running two configs for the same provider
 /// would report the same external account twice.
 enum ProviderSharedCredentialOwner {
+    enum Lookup: Equatable {
+        case unavailable
+        case unowned
+        case owned(UUID)
+        case corrupt
+    }
+
     private static let supportedKinds: Set<ProviderKind> = [
         .claude,
         .gemini,
@@ -16,12 +23,58 @@ enum ProviderSharedCredentialOwner {
 
     /// Injectable for focused tests. The production value is shared with the
     /// helper so both processes make the same legacy-account assignment.
-    static var defaults: UserDefaults =
-        UserDefaults(suiteName: HelperIPC.suiteName) ?? .standard
+    static var defaults: UserDefaults? =
+        UserDefaults(suiteName: HelperIPC.suiteName)
+    static var synchronizeDefaults:
+        (UserDefaults) -> Bool = {
+            $0.synchronize()
+        }
 
-    static func reconcile(configs: [ProviderConfig]) {
-        lock.withLock {
-            for kind in supportedKinds {
+    #if os(macOS)
+    /// Every App/Helper owner mutation uses the same advisory lock as Gemini
+    /// credential mutation. Focused tests inject an equivalent lock whose path
+    /// is isolated from production state.
+    static var mutationLock:
+        GeminiCredentialMutationLock = .shared
+    #endif
+
+    @discardableResult
+    static func reconcile(
+        configs: [ProviderConfig]
+    ) -> Bool {
+        withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                _ = synchronizeDefaults(defaults)
+                let kinds = supportedKinds.sorted {
+                    $0.rawValue < $1.rawValue
+                }
+                let currentByKind =
+                    Dictionary(
+                        uniqueKeysWithValues:
+                            kinds.map {
+                                (
+                                    $0,
+                                    ownerLookup(
+                                        defaults: defaults,
+                                        forKey:
+                                            ownerKey(
+                                                for: $0
+                                            )
+                                    )
+                                )
+                            }
+                    )
+                guard
+                    !currentByKind.values.contains(
+                        .corrupt
+                    )
+                else {
+                    return false
+                }
+                for kind in kinds {
                 let eligible = configs
                     .filter {
                         $0.kind == kind
@@ -38,19 +91,37 @@ enum ProviderSharedCredentialOwner {
                 let eligibleIDs = Set(eligible.map(\.accountID))
                 let key = ownerKey(for: kind)
 
-                if let current = storedOwner(forKey: key),
-                   eligibleIDs.contains(current) {
+                    if
+                        case let .owned(current) =
+                            currentByKind[kind],
+                        eligibleIDs.contains(current)
+                    {
                     continue
                 }
 
                 if let replacement = eligible.first?.accountID {
-                    defaults.set(
-                        replacement.uuidString,
-                        forKey: key
-                    )
+                    guard
+                        persistOwner(
+                            replacement,
+                            defaults: defaults,
+                            forKey: key
+                        )
+                    else {
+                        return false
+                    }
                 } else {
-                    defaults.removeObject(forKey: key)
+                    guard
+                        persistOwner(
+                            nil,
+                            defaults: defaults,
+                            forKey: key
+                        )
+                    else {
+                        return false
+                    }
+                    }
                 }
+                return true
             }
         }
     }
@@ -63,13 +134,29 @@ enum ProviderSharedCredentialOwner {
         accountID: UUID
     ) -> Bool {
         guard supportedKinds.contains(kind) else { return false }
-        return lock.withLock {
-            let key = ownerKey(for: kind)
-            if let current = storedOwner(forKey: key) {
-                return current == accountID
+        return withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                _ = synchronizeDefaults(defaults)
+                let key = ownerKey(for: kind)
+                switch ownerLookup(
+                    defaults: defaults,
+                    forKey: key
+                ) {
+                case .owned(let current):
+                    return current == accountID
+                case .corrupt, .unavailable:
+                    return false
+                case .unowned:
+                    return persistOwner(
+                        accountID,
+                        defaults: defaults,
+                        forKey: key
+                    )
+                }
             }
-            defaults.set(accountID.uuidString, forKey: key)
-            return true
         }
     }
 
@@ -78,8 +165,67 @@ enum ProviderSharedCredentialOwner {
         accountID: UUID
     ) -> Bool {
         guard supportedKinds.contains(kind) else { return false }
-        return lock.withLock {
-            storedOwner(forKey: ownerKey(for: kind)) == accountID
+        return withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                _ = synchronizeDefaults(defaults)
+                return ownerLookup(
+                    defaults: defaults,
+                    forKey: ownerKey(for: kind)
+                ) == .owned(accountID)
+            }
+        }
+    }
+
+    static func owner(
+        kind: ProviderKind
+    ) -> UUID? {
+        guard supportedKinds.contains(kind) else {
+            return nil
+        }
+        return withMutationLock(
+            or: Optional<UUID>.none
+        ) {
+            lock.withLock {
+                guard let defaults else {
+                    return nil
+                }
+                _ = synchronizeDefaults(defaults)
+                guard
+                    case let .owned(owner) =
+                        ownerLookup(
+                            defaults: defaults,
+                            forKey: ownerKey(
+                                for: kind
+                            )
+                        )
+                else {
+                    return nil
+                }
+                return owner
+            }
+        }
+    }
+
+    static func lookup(
+        kind: ProviderKind
+    ) -> Lookup {
+        guard supportedKinds.contains(kind) else {
+            return .unavailable
+        }
+        return withMutationLock(or: .unavailable) {
+            lock.withLock {
+                guard let defaults else {
+                    return .unavailable
+                }
+                _ = synchronizeDefaults(defaults)
+                return ownerLookup(
+                    defaults: defaults,
+                    forKey: ownerKey(for: kind)
+                )
+            }
         }
     }
 
@@ -91,42 +237,138 @@ enum ProviderSharedCredentialOwner {
         accountID: UUID
     ) -> Bool {
         guard supportedKinds.contains(kind) else { return false }
-        return lock.withLock {
-            let raw = defaults.string(
-                forKey: ownerKey(for: kind)
-            )
-            guard let raw else { return true }
-            return UUID(uuidString: raw) == accountID
+        return withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                _ = synchronizeDefaults(defaults)
+                switch ownerLookup(
+                    defaults: defaults,
+                    forKey: ownerKey(for: kind)
+                ) {
+                case .unowned:
+                    return true
+                case .owned(let owner):
+                    return owner == accountID
+                case .corrupt, .unavailable:
+                    return false
+                }
+            }
         }
     }
 
+    @discardableResult
     static func release(
         kind: ProviderKind,
         accountID: UUID
-    ) {
-        guard supportedKinds.contains(kind) else { return }
-        lock.withLock {
-            let key = ownerKey(for: kind)
-            guard storedOwner(forKey: key) == accountID else {
-                return
+    ) -> Bool {
+        guard supportedKinds.contains(kind) else {
+            return false
+        }
+        return withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                _ = synchronizeDefaults(defaults)
+                let key = ownerKey(for: kind)
+                switch ownerLookup(
+                    defaults: defaults,
+                    forKey: key
+                ) {
+                case .unowned:
+                    return true
+                case .owned(let owner)
+                    where owner != accountID:
+                    return true
+                case .owned:
+                    return persistOwner(
+                        nil,
+                        defaults: defaults,
+                        forKey: key
+                    )
+                case .corrupt, .unavailable:
+                    return false
+                }
             }
+        }
+    }
+
+    private static func persistOwner(
+        _ owner: UUID?,
+        defaults: UserDefaults,
+        forKey key: String
+    ) -> Bool {
+        let previous = defaults.object(
+            forKey: key
+        )
+        if let owner {
+            defaults.set(
+                owner.uuidString,
+                forKey: key
+            )
+        } else {
             defaults.removeObject(forKey: key)
         }
+        let expected: Lookup =
+            owner.map(Lookup.owned)
+                ?? .unowned
+        guard
+            synchronizeDefaults(defaults),
+            ownerLookup(
+                defaults: defaults,
+                forKey: key
+            ) == expected
+        else {
+            if let previous {
+                defaults.set(
+                    previous,
+                    forKey: key
+                )
+            } else {
+                defaults.removeObject(
+                    forKey: key
+                )
+            }
+            _ = synchronizeDefaults(defaults)
+            return false
+        }
+        return true
     }
 
     private static func ownerKey(for kind: ProviderKind) -> String {
         "cli_pulse_provider_shared_credential_owner_\(kind.rawValue)"
     }
 
-    private static func storedOwner(forKey key: String) -> UUID? {
-        guard let raw = defaults.string(forKey: key) else {
-            return nil
+    private static func ownerLookup(
+        defaults: UserDefaults,
+        forKey key: String
+    ) -> Lookup {
+        guard let raw = defaults.object(forKey: key) else {
+            return .unowned
         }
-        guard let owner = UUID(uuidString: raw) else {
-            defaults.removeObject(forKey: key)
-            return nil
+        guard
+            let value = raw as? String,
+            let owner = UUID(uuidString: value)
+        else {
+            return .corrupt
         }
-        return owner
+        return .owned(owner)
+    }
+
+    private static func withMutationLock<T>(
+        or failure: T,
+        _ body: () -> T
+    ) -> T {
+        #if os(macOS)
+        return mutationLock.withLock(
+            or: failure,
+            body
+        )
+        #else
+        return body()
+        #endif
     }
 }
 

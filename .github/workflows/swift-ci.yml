@@ -27,6 +27,7 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/ci_check_qa_scheme.py'
       - 'scripts/test_ci_check_qa_scheme.py'
+      - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -47,6 +48,7 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/ci_check_qa_scheme.py'
       - 'scripts/test_ci_check_qa_scheme.py'
+      - 'scripts/check_helper_method_parity.sh'
       - '.github/workflows/swift-ci.yml'
   workflow_dispatch:
 
@@ -112,21 +114,61 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check-versions.sh
 
+  check-migration-numbers:
+    name: Migration numbers unique
+    # Two migrations sharing a number means nobody can later answer "did v0.70
+    # run?" — the answer becomes "which v0.70?". Postgres applies both happily,
+    # so the damage only surfaces months later during an incident.
+    #
+    # Real case (2026-07-28): `main` had migrate_v0.70_device_app_version.sql
+    # already applied to production while PR #393 independently added
+    # migrate_v0.70_provider_accounts.sql. Neither author could have known;
+    # review caught it, nothing in the toolchain would have. Parallel branches
+    # are normal here, so "check before you name it" is advice that gets missed
+    # — this is the part that cannot be.
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+      - run: bash scripts/check_migration_numbers.sh
+
   check-helper-guards:
-    name: Helper guards (TCC container-touch + version sync)
-    # Pure-grep guards over the helper sources. Both defend against failures
-    # that are INVISIBLE in CI and unit tests and only surface on a user's
-    # Mac: a container touch re-arms the recurring TCC permission dialog
+    name: Helper guards (TCC container-touch + version sync + method parity)
+    # Pure-grep guards over the helper sources. All three defend against
+    # failures that are INVISIBLE in CI and unit tests and only surface on a
+    # user's Mac: a container touch re-arms the recurring TCC permission dialog
     # (PROJECT_FIX_2026-07-19), and helper-version drift produces a perpetual
     # unclearable "Update available" nag (1.42.0 post-release audit). The
     # container-touch guard existed since #372 but was wired into NOTHING —
     # it caught three real holes when run by hand and then sat idle.
+    #
+    # v1.44 adds method parity. Protocol.swift has always said its method set
+    # "must match helper/local_session_server.py:SUPPORTED_METHODS
+    # element-for-element", and nothing checked it — the version-sync guard
+    # compares only the two version STRINGS. So a Swift helper reporting the
+    # same helper_version while implementing six fewer methods looked correct
+    # to CI and to the app's capability negotiation. That is exactly how the
+    # blank Machine tab shipped: the bundled Swift helper answered
+    # get_machine_snapshot with unknown_method for every user who never
+    # installed the .pkg.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check_helper_no_container_touch.sh
       - run: bash scripts/check_helper_version_sync.sh
+      - run: bash scripts/check_helper_method_parity.sh
+      # The app's Privacy Policy / Terms links, which App Review clicks under
+      # Guideline 3.1.2. They broke silently for twelve days after the org move
+      # — for LIVE users, not just the next build — because GitHub does not
+      # redirect <user>.github.io/<repo> after a transfer. Checks both that the
+      # source is canonical and that both hosts still serve.
+      - run: bash scripts/check_legal_urls.sh
+      # This repo is public and named `cli-pulse-private`. That name is the
+      # trap, and it worked — 140 internal documents were published because
+      # AGENTS.md claimed origin was private. The wording is fixed; this is the
+      # part that does not depend on anyone reading it.
+      - run: bash scripts/check_no_internal_docs.sh
 
   check-qa-isolation:
     name: QA scheme isolation contract
@@ -232,6 +274,51 @@ jobs:
       - name: Swift test (HelperSwift)
         working-directory: HelperSwift
         run: swift test
+
+      # v1.44: the dynamic_lookup guard, run where it actually runs.
+      #
+      # The helper now links SensorKit, which resolves private IOReport/IOHID
+      # symbols via `-undefined dynamic_lookup` because they have no SDK stub.
+      # If codesigning with hardened runtime ever breaks that resolution, the
+      # helper does not merely lose sensor readings — it fails to launch, taking
+      # every PTY session, hook and approval subscription with it.
+      #
+      # The first cut of this guard lived in embed_helper_in_archive.sh and was
+      # described in Package.swift as "mandatory on both the MAS and DEVID
+      # paths". It was neither: devid-dmg.yml never calls that script, and
+      # swift-ci referenced it only in a `paths:` filter, so it ran in no job on
+      # no path. A guard nobody runs is worse than none, because it is quoted as
+      # evidence. Self-review caught it before merge.
+      #
+      # Ad-hoc signing is enough: `--options runtime` is what could break
+      # dynamic_lookup, and that flag works without an Apple certificate, so
+      # this runs on every PR rather than only on release builds.
+      #
+      # Deliberately does NOT assert sensors are non-null — a CI VM has none,
+      # and `null` is a legitimate wire value. What must hold is that the signed
+      # binary LAUNCHES and emits a well-formed snapshot.
+      - name: Signed-helper dynamic_lookup smoke
+        working-directory: HelperSwift
+        run: |
+          set -euo pipefail
+          swift build -c release
+          cp .build/release/cli_pulse_helper "$RUNNER_TEMP/helper_smoke"
+          codesign --force --options runtime --timestamp=none --sign - "$RUNNER_TEMP/helper_smoke"
+          codesign --verify --strict --verbose=2 "$RUNNER_TEMP/helper_smoke"
+          "$RUNNER_TEMP/helper_smoke" machine-snapshot | python3 -c '
+          import sys, json
+          d = json.load(sys.stdin)
+          required = {
+              "collected_at", "cpu_percent", "memory_percent", "memory_used_bytes",
+              "memory_total_bytes", "battery", "top_processes", "capability",
+              "sensors", "system",
+          }
+          missing = required - set(d)
+          assert not missing, f"snapshot missing keys: {sorted(missing)}"
+          assert isinstance(d["capability"], dict), "capability must be a dict"
+          assert d["sensors"] is None or isinstance(d["sensors"], dict), "sensors must be dict or null"
+          print(f"signed helper launched; {len(d)} top-level keys, sensors={type(d["sensors"]).__name__}")
+          '
 
   test-sensorprobe:
     # System Monitor S3: native Apple-Silicon sensor reader (clipulse-sensors).

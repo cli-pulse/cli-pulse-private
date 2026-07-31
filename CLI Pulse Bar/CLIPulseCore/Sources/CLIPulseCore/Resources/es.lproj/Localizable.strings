@@ -809,3 +809,42 @@
 "provider_config.manual_plan_placeholder" = "p. ej., Max 20x, Pro";
 "provider_config.manual_plan_hint" = "Solo sirve como alternativa visual. No cambia la cuota ni los costes recopilados.";
 "onboarding_wizard.welcome_accounts_body" = "Detecta y configura cuentas personales y de trabajo para Codex, Claude y Gemini.";
+
+/* v1.44 W3 — per-provider collector outcome labels + next steps */
+"collector_status.ok" = "Funcionando";
+"collector_status.off" = "Desactivado";
+"collector_status.no_quota_source" = "Sin fuente de cuota";
+"collector_status.no_quota_source_hint" = "El coste y las sesiones se siguen registrando: esta herramienta no tiene una API de cuota que podamos leer.";
+"collector_status.not_installed" = "No instalado";
+"collector_status.not_installed_hint" = "Instala %@ y su uso aparecerá aquí automáticamente.";
+"collector_status.not_signed_in" = "Sin iniciar sesión";
+"collector_status.not_signed_in_hint" = "Inicia sesión en %@ desde su propia app o CLI; aquí no hace falta ninguna clave.";
+"collector_status.not_set_up" = "Sin configurar";
+"collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
+"collector_status.no_data" = "Sin datos";
+"collector_status.no_data_hint" = "La comprobación se ejecutó pero volvió vacía. Usar la herramienta una vez suele arreglarlo.";
+"collector_status.access_blocked" = "Acceso bloqueado";
+"collector_status.access_blocked_hint" = "Concede acceso a la carpeta en Ajustes para leer los archivos de esta herramienta.";
+"collector_status.unreachable" = "No se puede conectar";
+"collector_status.unreachable_hint" = "Comprueba tu conexión de red.";
+"collector_status.cannot_read" = "No se puede leer la respuesta";
+"collector_status.cannot_read_hint" = "Esto es cosa nuestra: el proveedor cambió su formato. Una actualización lo arreglará.";
+"collector_status.failed" = "Comprobación fallida";
+"collector_status.failed_hint" = "El proveedor devolvió un error. Suele resolverse solo.";
+"collector_status.not_running" = "No está en ejecución";
+"collector_status.not_running_hint" = "Inicia %@ y su uso aparecerá aquí.";
+"collector_status.needs_key" = "Necesita una clave API";
+"collector_status.needs_key_hint" = "Añade un token de API de %@ en Ajustes: este no tiene un inicio de sesión que podamos leer.";
+"collector_status.auth_failed" = "Error de autenticación";
+"collector_status.auth_failed_hint" = "Vuelve a conectar %@: su credencial guardada fue rechazada.";
+"collector_status.failed_other_hint" = "Esto es cosa nuestra: la comprobación no pudo completarse. Una actualización lo arreglará.";
+
+/* v1.44 W5 — first-value login item notice */
+"launch_at_login_notice.title" = "Se abrirá al iniciar sesión";
+"launch_at_login_notice.body" = "CLI Pulse ahora se abre al iniciar sesión, así tu uso se mantiene al día sin que tengas que pensarlo.";
+"launch_at_login_notice.undo" = "Deshacer";
+"launch_at_login_notice.keep" = "Entendido";
+
+/* v1.44 — why machine health is unavailable, told apart */
+"machine.helper_lacks_machine_health" = "El estado de la máquina no está disponible con el helper integrado: no lee sensores. Todo lo demás en este Mac sigue funcionando; el soporte de sensores está en camino.";
+"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › General.";

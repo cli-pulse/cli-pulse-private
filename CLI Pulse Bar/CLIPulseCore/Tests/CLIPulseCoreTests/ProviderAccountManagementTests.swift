@@ -6,6 +6,13 @@ final class ProviderAccountManagementTests: XCTestCase {
     private var originalOwnerDefaults: UserDefaults!
     private var ownerDefaults: UserDefaults!
     private var ownerSuiteName: String!
+    private var originalOwnerSynchronizeDefaults:
+        ((UserDefaults) -> Bool)!
+    #if os(macOS)
+    private var originalOwnerMutationLock:
+        GeminiCredentialMutationLock!
+    private var ownerMutationLockPath: String!
+    #endif
 
     override func setUp() {
         super.setUp()
@@ -15,14 +22,52 @@ final class ProviderAccountManagementTests: XCTestCase {
         ownerDefaults = UserDefaults(suiteName: ownerSuiteName)
         ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
         ProviderSharedCredentialOwner.defaults = ownerDefaults
+        originalOwnerSynchronizeDefaults =
+            ProviderSharedCredentialOwner
+                .synchronizeDefaults
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults = { _ in true }
+        #if os(macOS)
+        ownerMutationLockPath =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "\(ownerSuiteName!).lock"
+                )
+                .path
+        originalOwnerMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: ownerMutationLockPath
+            )
+        #endif
     }
 
     override func tearDown() {
+        #if os(macOS)
+        ProviderSharedCredentialOwner.mutationLock =
+            originalOwnerMutationLock
+        if FileManager.default.fileExists(
+            atPath: ownerMutationLockPath
+        ) {
+            try? FileManager.default.removeItem(
+                atPath: ownerMutationLockPath
+            )
+        }
+        #endif
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults =
+                originalOwnerSynchronizeDefaults
         ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
         ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
         ownerDefaults = nil
         ownerSuiteName = nil
         originalOwnerDefaults = nil
+        originalOwnerSynchronizeDefaults = nil
+        #if os(macOS)
+        originalOwnerMutationLock = nil
+        ownerMutationLockPath = nil
+        #endif
         super.tearDown()
     }
 

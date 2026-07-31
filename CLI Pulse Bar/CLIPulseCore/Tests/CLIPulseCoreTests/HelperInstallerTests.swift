@@ -256,6 +256,37 @@ final class HelperInstallerTests: XCTestCase {
             state: .bundled(version: "1.30.0"),
             lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8))
     }
-}
+    // MARK: - v1.44: the unreachable message must not assert a cause
 
+    /// The advice must no longer promise the helper is present and fixable by
+    /// reinstalling. The case that actually shows up is a SANDBOXED build that
+    /// cannot reach `~/.clipulse` at all — connect returns EPERM while a healthy
+    /// helper holds the socket, and "uninstall and reinstall" cannot fix a
+    /// permission boundary.
+    func testUnreachableTextDoesNotPromiseAReinstallWillFixIt() {
+        let state = HelperInstaller.resolveState(
+            hello: nil, manifest: nil, socketExists: true,
+            udsPath: "/Users/x/.clipulse/clipulse-helper.sock"
+        )
+        guard case .unreachable(let message) = state else {
+            return XCTFail("expected .unreachable, got \(state)")
+        }
+        // No sandbox claim: the only path this can ever report is the app-group
+        // container, which the app-group entitlement PERMITS — so "the sandbox
+        // blocks this path" is false by construction. Review caught that after
+        // I had already written it.
+        XCTAssertFalse(
+            message.lowercased().contains("sandbox"),
+            "cannot claim the sandbox blocks a path the entitlement allows. Got: \(message)"
+        )
+        XCTAssertTrue(
+            message.lowercased().contains("local scanning"),
+            "should say what still works, since that is the true part. Got: \(message)"
+        )
+        XCTAssertFalse(
+            message.lowercased().contains("may be restarting"),
+            "that was a guess among three causes, and the likeliest was missing"
+        )
+    }
+}
 #endif

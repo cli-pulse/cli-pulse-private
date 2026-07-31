@@ -41,9 +41,21 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
             storageKey: "test.pending"
         )
 
-        outbox.enqueue(userID: "USER-A", accountID: accountA)
-        outbox.enqueue(userID: "USER-A", accountID: accountA)
-        outbox.enqueue(userID: "USER-B", accountID: accountB)
+        outbox.enqueue(
+            userID: "USER-A",
+            accountID: accountA,
+            provider: .claude
+        )
+        outbox.enqueue(
+            userID: "USER-A",
+            accountID: accountA,
+            provider: .claude
+        )
+        outbox.enqueue(
+            userID: "USER-B",
+            accountID: accountB,
+            provider: .codex
+        )
 
         XCTAssertEqual(
             outbox.pendingAccountIDs(for: "user-a"),
@@ -68,8 +80,16 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
             defaults: defaults,
             storageKey: "test.pending"
         )
-        outbox.enqueue(userID: "user-a", accountID: account)
-        outbox.enqueue(userID: "user-b", accountID: account)
+        outbox.enqueue(
+            userID: "user-a",
+            accountID: account,
+            provider: .claude
+        )
+        outbox.enqueue(
+            userID: "user-b",
+            accountID: account,
+            provider: .codex
+        )
 
         outbox.markCompleted(
             userID: "user-a",
@@ -95,7 +115,11 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
         ProviderAccountDeletionOutbox(
             defaults: defaults,
             storageKey: "test.pending"
-        ).enqueue(userID: "user-a", accountID: account)
+        ).enqueue(
+            userID: "user-a",
+            accountID: account,
+            provider: .claude
+        )
 
         let restored = ProviderAccountDeletionOutbox(
             defaults: defaults,
@@ -105,6 +129,201 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
         XCTAssertEqual(
             restored.pendingAccountIDs(for: "USER-A"),
             [account]
+        )
+        XCTAssertEqual(
+            restored.pendingIntents().first?.provider,
+            .claude
+        )
+    }
+
+    func testProviderlessV1IntentDecodesAndCanBeSafelyEnriched()
+        throws
+    {
+        let account = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "45454545-4545-4545-8545-454545454545"
+            )
+        )
+        let storageKey = "test.pending"
+        defaults.set(
+            Data(
+                """
+                [{"userID":"user-a","accountID":"\(account.uuidString)"}]
+                """.utf8
+            ),
+            forKey: storageKey
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+
+        XCTAssertNil(outbox.pendingIntents().first?.provider)
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: account,
+                provider: .claude
+            )
+        )
+        XCTAssertEqual(outbox.pendingIntents().count, 1)
+        XCTAssertEqual(
+            outbox.pendingIntents().first?.provider,
+            .claude
+        )
+    }
+
+    func testPersistedIntentRecoversLocalConfigAfterCrash() throws {
+        let account = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "55555555-5555-4555-8555-555555555555"
+            )
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: "test.pending"
+        )
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: account,
+                provider: .claude
+            )
+        )
+        let configs = [
+            ProviderConfig(
+                kind: .claude,
+                accountID: account,
+                syncOwnerUserID: "user-a"
+            ),
+            ProviderConfig(
+                kind: .codex,
+                accountID: UUID(),
+                syncOwnerUserID: "user-b"
+            ),
+        ]
+
+        let recovered = ProviderAccountDeletionRecovery
+            .accountIDsToRemove(
+                from: configs,
+                pending: outbox.pendingIntents()
+            )
+
+        XCTAssertEqual(recovered, [account])
+    }
+
+    func testRecoveryNeverCrossesSyncOwnerBoundary() throws {
+        let account = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "66666666-6666-4666-8666-666666666666"
+            )
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: "test.pending"
+        )
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: account,
+                provider: .claude
+            )
+        )
+
+        let recovered = ProviderAccountDeletionRecovery
+            .accountIDsToRemove(
+                from: [
+                    ProviderConfig(
+                        kind: .claude,
+                        accountID: account,
+                        syncOwnerUserID: "user-b"
+                    ),
+                ],
+                pending: outbox.pendingIntents()
+            )
+
+        XCTAssertTrue(recovered.isEmpty)
+    }
+
+    func testTruncatedStorageFailsClosedAndIsPreserved()
+        throws
+    {
+        let storageKey = "test.corrupt.truncated"
+        let corruptData = Data("{\"version\":1".utf8)
+        defaults.set(corruptData, forKey: storageKey)
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+
+        XCTAssertTrue(outbox.hasCorruptStorage)
+        XCTAssertFalse(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: UUID(),
+                provider: .claude
+            )
+        )
+        XCTAssertEqual(
+            defaults.data(forKey: storageKey),
+            corruptData,
+            "a failed decode must never be overwritten as an empty queue"
+        )
+        XCTAssertEqual(
+            defaults.data(
+                forKey: "\(storageKey).corrupt_backup"
+            ),
+            corruptData
+        )
+    }
+
+    func testUnknownEnvelopeVersionFailsClosed() {
+        let storageKey = "test.corrupt.version"
+        defaults.set(
+            Data(
+                """
+                {"version":999,"intents":[]}
+                """.utf8
+            ),
+            forKey: storageKey
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+
+        XCTAssertTrue(outbox.hasCorruptStorage)
+        XCTAssertFalse(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: UUID(),
+                provider: .codex
+            )
+        )
+    }
+
+    func testWrongStoredTypeFailsClosed() {
+        let storageKey = "test.corrupt.type"
+        defaults.set("not-data", forKey: storageKey)
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey: storageKey
+        )
+
+        XCTAssertTrue(outbox.hasCorruptStorage)
+        XCTAssertFalse(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: UUID(),
+                provider: .gemini
+            )
+        )
+        XCTAssertEqual(
+            defaults.string(forKey: storageKey),
+            "not-data"
         )
     }
 }

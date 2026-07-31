@@ -225,24 +225,10 @@ revoke execute on function public._refresh_provider_quota_projection(
   uuid, text
 ) from public, anon, authenticated;
 
-create or replace function public._lock_provider_account_owner_before_delete()
-returns trigger as $$
-begin
-  perform pg_advisory_xact_lock(hashtextextended(old.user_id::text, 70));
-  return old;
-end;
-$$ language plpgsql security definer
-set search_path = pg_catalog, public, extensions;
-
-revoke execute on function public._lock_provider_account_owner_before_delete()
-  from public, anon, authenticated;
-
 drop trigger if exists lock_provider_account_owner_before_delete
   on public.provider_accounts;
-create trigger lock_provider_account_owner_before_delete
-  before delete on public.provider_accounts
-  for each row
-  execute function public._lock_provider_account_owner_before_delete();
+drop function if exists
+  public._lock_provider_account_owner_before_delete();
 
 create or replace function public._refresh_provider_quota_after_account_delete()
 returns trigger as $$
@@ -306,6 +292,7 @@ declare
   v_effective_source_device_id uuid;
   v_synced integer := 0;
   v_stored_account_count integer;
+  v_stored_lifecycle_count integer;
   v_touched_providers text[] := array[]::text[];
   v_field text;
 begin
@@ -334,6 +321,9 @@ begin
   perform pg_advisory_xact_lock(hashtextextended(p_user_id::text, 70));
   select count(*) into v_stored_account_count
   from public.provider_accounts
+  where user_id = p_user_id;
+  select count(*) into v_stored_lifecycle_count
+  from public.provider_account_lifecycle
   where user_id = p_user_id;
 
   for v_row in select value from jsonb_array_elements(p_rows) loop
@@ -424,6 +414,15 @@ begin
     end;
     if v_observed_at is null then
       raise exception 'Provider account observed_at is required';
+    end if;
+    if v_observed_at > clock_timestamp() + interval '10 minutes' then
+      raise exception
+        'Provider account observed_at is too far in the future';
+    end if;
+    if v_plan_observed_at
+       > clock_timestamp() + interval '10 minutes' then
+      raise exception
+        'Provider account plan_observed_at is too far in the future';
     end if;
 
     if v_row ? 'remaining'
@@ -577,14 +576,33 @@ begin
     for update;
 
     if v_lifecycle_status = 'deleted' then
+      if v_lifecycle_provider is not null
+         and v_lifecycle_provider <> v_provider then
+        raise exception 'Provider account does not match existing provider';
+      end if;
+      if not (
+        coalesce(v_lifecycle_provider, v_provider)
+          = any(v_touched_providers)
+      ) then
+        v_touched_providers := array_append(
+          v_touched_providers,
+          coalesce(v_lifecycle_provider, v_provider)
+        );
+      end if;
       continue;
     end if;
     if v_lifecycle_status is null then
+      if v_stored_lifecycle_count >= 1000 then
+        raise exception
+          'Too many provider account lifecycle records (max 1000)';
+      end if;
       insert into public.provider_account_lifecycle (
         user_id, provider_account_id, provider, status
       ) values (
         p_user_id, v_account_id, v_provider, 'active'
       );
+      v_stored_lifecycle_count :=
+        v_stored_lifecycle_count + 1;
       v_status := 'active';
     else
       if v_lifecycle_provider is not null
@@ -623,12 +641,12 @@ begin
     v_quota_is_fresh :=
       v_existing_provider is null
       or v_existing_quota_observed_at is null
-      or v_observed_at >= v_existing_quota_observed_at;
+      or v_observed_at > v_existing_quota_observed_at;
     v_plan_is_fresh :=
       v_plan_observed_at is not null
       and (
         v_existing_plan_observed_at is null
-        or v_plan_observed_at >= v_existing_plan_observed_at
+        or v_plan_observed_at > v_existing_plan_observed_at
       );
 
     insert into public.provider_accounts as current_account (
@@ -679,7 +697,7 @@ begin
       observed_at = excluded.observed_at,
       source_device_id = excluded.source_device_id,
       updated_at = now()
-    where excluded.observed_at >= current_quota.observed_at;
+    where excluded.observed_at > current_quota.observed_at;
 
     if not (v_provider = any(v_touched_providers)) then
       v_touched_providers := array_append(v_touched_providers, v_provider);
@@ -741,7 +759,10 @@ declare
   v_status text;
   v_effective_status text;
   v_provider text;
+  v_lifecycle_provider text;
+  v_account_provider text;
   v_updated integer := 0;
+  v_stored_lifecycle_count integer;
   v_touched_providers text[] := array[]::text[];
 begin
   if v_user_id is null then
@@ -761,6 +782,9 @@ begin
   perform pg_advisory_xact_lock(
     hashtextextended(v_user_id::text, 70)
   );
+  select count(*) into v_stored_lifecycle_count
+  from public.provider_account_lifecycle
+  where user_id = v_user_id;
 
   for v_row in select value from jsonb_array_elements(p_rows) loop
     if jsonb_typeof(v_row) <> 'object' then
@@ -776,7 +800,7 @@ begin
     if exists (
       select 1
       from jsonb_object_keys(v_row) as fields(field_name)
-      where field_name not in ('account_id', 'status')
+      where field_name not in ('account_id', 'provider', 'status')
     ) then
       raise exception 'Unknown provider account status field';
     end if;
@@ -788,6 +812,10 @@ begin
        or jsonb_typeof(v_row->'status') <> 'string' then
       raise exception 'Provider account status is required';
     end if;
+    if not (v_row ? 'provider')
+       or jsonb_typeof(v_row->'provider') <> 'string' then
+      raise exception 'Provider account status provider is required';
+    end if;
 
     begin
       v_account_id := (v_row->>'account_id')::uuid;
@@ -798,20 +826,66 @@ begin
     if v_status not in ('active', 'disabled') then
       raise exception 'Invalid provider account status';
     end if;
+    v_provider := btrim(v_row->>'provider');
+    if v_provider = '' or char_length(v_provider) > 64 then
+      raise exception 'Invalid provider account status provider';
+    end if;
+
+    v_lifecycle_provider := null;
+    select provider into v_lifecycle_provider
+    from public.provider_account_lifecycle
+    where user_id = v_user_id
+      and provider_account_id = v_account_id;
+    if v_lifecycle_provider is not null
+       and v_lifecycle_provider <> v_provider then
+      raise exception
+        'Provider account status provider does not match lifecycle';
+    end if;
+
+    v_account_provider := null;
+    select provider into v_account_provider
+    from public.provider_accounts
+    where user_id = v_user_id and id = v_account_id;
+    if v_account_provider is not null
+       and v_account_provider <> v_provider then
+      raise exception
+        'Provider account status provider does not match account';
+    end if;
 
     -- Persist the user choice even when no quota row exists yet. Deleted is
     -- terminal for this stable UUID; adding the account again must use the new
     -- local account UUID generated by the client.
     v_effective_status := null;
+    if not exists (
+      select 1
+      from public.provider_account_lifecycle
+      where user_id = v_user_id
+        and provider_account_id = v_account_id
+    ) then
+      if v_stored_lifecycle_count >= 1000 then
+        raise exception
+          'Too many provider account lifecycle records (max 1000)';
+      end if;
+      v_stored_lifecycle_count :=
+        v_stored_lifecycle_count + 1;
+    end if;
     insert into public.provider_account_lifecycle as lifecycle (
-      user_id, provider_account_id, status, updated_at
+      user_id, provider_account_id, provider, status, updated_at
     ) values (
-      v_user_id, v_account_id, v_status, now()
+      v_user_id, v_account_id, v_provider, v_status, now()
     )
     on conflict (user_id, provider_account_id) do update set
-      status = excluded.status,
-      updated_at = now()
-    where lifecycle.status <> 'deleted'
+      provider = coalesce(lifecycle.provider, excluded.provider),
+      status = case
+        when lifecycle.status = 'deleted' then 'deleted'
+        else excluded.status
+      end,
+      updated_at = case
+        when lifecycle.status = 'deleted' then lifecycle.updated_at
+        else now()
+      end
+    where lifecycle.provider is null
+       or lifecycle.provider = excluded.provider
     returning status into v_effective_status;
 
     if v_effective_status is null then
@@ -823,23 +897,17 @@ begin
       v_updated := v_updated + 1;
     end if;
 
-    v_provider := null;
     if v_effective_status <> 'deleted' then
       update public.provider_accounts
       set status = v_effective_status, updated_at = now()
-      where user_id = v_user_id and id = v_account_id
-      returning provider into v_provider;
+      where user_id = v_user_id
+        and id = v_account_id
+        and provider = v_provider;
     end if;
 
-    if v_provider is not null then
-      update public.provider_account_lifecycle
-      set provider = coalesce(provider, v_provider)
-      where user_id = v_user_id
-        and provider_account_id = v_account_id;
-      if not (v_provider = any(v_touched_providers)) then
-        v_touched_providers :=
-          array_append(v_touched_providers, v_provider);
-      end if;
+    if not (v_provider = any(v_touched_providers)) then
+      v_touched_providers :=
+        array_append(v_touched_providers, v_provider);
     end if;
   end loop;
 
@@ -862,15 +930,20 @@ grant execute on function public.set_provider_account_statuses(jsonb)
 -- Persist a caller-owned tombstone, then remove the materialized account row.
 -- The tombstone is the acknowledgement required by the client's durable
 -- deletion outbox and rejects every later app/helper quota snapshot.
+drop function if exists public.delete_provider_account(uuid);
 create or replace function public.delete_provider_account(
-  p_account_id uuid
+  p_account_id uuid,
+  p_provider text
 )
 returns jsonb as $$
 declare
   v_user_id uuid := auth.uid();
   v_provider text;
+  v_lifecycle_provider text;
+  v_account_provider text;
   v_deleted integer := 0;
   v_tombstones integer := 0;
+  v_stored_lifecycle_count integer;
 begin
   if v_user_id is null then
     raise exception 'Not authenticated';
@@ -878,14 +951,49 @@ begin
   if p_account_id is null then
     raise exception 'Provider account id is required';
   end if;
+  v_provider := btrim(p_provider);
+  if p_provider is null
+     or v_provider = ''
+     or char_length(v_provider) > 64 then
+    raise exception 'Provider account provider is required';
+  end if;
 
   perform pg_advisory_xact_lock(
     hashtextextended(v_user_id::text, 70)
   );
+  select count(*) into v_stored_lifecycle_count
+  from public.provider_account_lifecycle
+  where user_id = v_user_id;
+  if not exists (
+    select 1
+    from public.provider_account_lifecycle
+    where user_id = v_user_id
+      and provider_account_id = p_account_id
+  ) and v_stored_lifecycle_count >= 1000 then
+    raise exception
+      'Too many provider account lifecycle records (max 1000)';
+  end if;
 
-  select provider into v_provider
+  v_lifecycle_provider := null;
+  select provider into v_lifecycle_provider
+  from public.provider_account_lifecycle
+  where user_id = v_user_id
+    and provider_account_id = p_account_id;
+  if v_lifecycle_provider is not null
+     and v_lifecycle_provider <> v_provider then
+    raise exception
+      'Provider account provider does not match lifecycle';
+  end if;
+
+  v_account_provider := null;
+  select provider into v_account_provider
   from public.provider_accounts
   where user_id = v_user_id and id = p_account_id;
+  if v_account_provider is not null
+     and v_account_provider <> v_provider then
+    raise exception
+      'Provider account provider does not match account';
+  end if;
 
   insert into public.provider_account_lifecycle as lifecycle (
     user_id, provider_account_id, provider, status, updated_at
@@ -896,11 +1004,19 @@ begin
     provider = coalesce(lifecycle.provider, excluded.provider),
     status = 'deleted',
     updated_at = now()
+  where lifecycle.provider is null
+     or lifecycle.provider = excluded.provider
   returning 1 into v_tombstones;
 
   delete from public.provider_accounts
-  where user_id = v_user_id and id = p_account_id;
+  where user_id = v_user_id
+    and id = p_account_id
+    and provider = v_provider;
   get diagnostics v_deleted = row_count;
+
+  perform public._refresh_provider_quota_projection(
+    v_user_id, v_provider
+  );
 
   return jsonb_build_object(
     'accounts_deleted', v_deleted,
@@ -910,9 +1026,9 @@ end;
 $$ language plpgsql security definer
 set search_path = pg_catalog, public, extensions;
 
-revoke execute on function public.delete_provider_account(uuid)
+revoke execute on function public.delete_provider_account(uuid, text)
   from public, anon;
-grant execute on function public.delete_provider_account(uuid)
+grant execute on function public.delete_provider_account(uuid, text)
   to authenticated, service_role;
 
 create or replace function public.provider_account_summary(
@@ -1091,6 +1207,10 @@ begin
   if v_user_id is null then
     raise exception 'Not authenticated';
   end if;
+
+  perform pg_advisory_xact_lock(
+    hashtextextended(v_user_id::text, 70)
+  );
 
   delete from public.usage_snapshots where user_id = v_user_id;
   delete from public.alerts where user_id = v_user_id;

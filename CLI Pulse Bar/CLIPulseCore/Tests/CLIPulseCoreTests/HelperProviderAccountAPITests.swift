@@ -71,7 +71,7 @@ final class HelperProviderAccountAPITests: XCTestCase {
         XCTAssertEqual(row["quota"] as? Int, 100)
         XCTAssertEqual(
             row["observed_at"] as? String,
-            "2026-07-24T06:00:00Z"
+            "2026-07-24T06:00:00.000Z"
         )
         XCTAssertNil(row["status"])
         XCTAssertNil(row["source_device_id"])
@@ -152,6 +152,72 @@ final class HelperProviderAccountAPITests: XCTestCase {
         )
         XCTAssertFalse(
             String(decoding: body, as: UTF8.self).contains(email)
+        )
+    }
+
+    func testHelperV2SyncEncodesExplicitPlanClearRevision()
+        async throws
+    {
+        HelperProviderAccountAPIStub.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/helper_sync_provider_account_quotas"
+            )
+            return .json(#"{"accounts_synced":1}"#)
+        }
+        let clearedAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T05:59:00.125Z")
+        )
+        let account = HelperIPC.CollectorAccountPayload(
+            accountID: Self.accountPayload.accountID,
+            provider: Self.accountPayload.provider,
+            accountLabel: Self.accountPayload.accountLabel,
+            planOverride: nil,
+            planOverrideUpdatedAt: clearedAt,
+            dataKind: .quota,
+            usage: HelperIPC.CollectorUsagePayload(
+                quota: 100,
+                remaining: 40,
+                todayUsage: 60,
+                weekUsage: 60,
+                statusText: "60% used",
+                planType: nil,
+                resetTime: nil,
+                tiers: []
+            )
+        )
+        let observedAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T06:00:00.250Z")
+        )
+
+        let synced = try await makeAPI().syncProviderAccountQuotas(
+            config: Self.helperConfig,
+            accounts: [account],
+            observedAt: observedAt
+        )
+
+        XCTAssertEqual(synced, 1)
+        let request = try XCTUnwrap(
+            HelperProviderAccountAPIStub.requests.first
+        )
+        let body = try XCTUnwrap(request.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let row = try XCTUnwrap(
+            (root["p_rows"] as? [[String: Any]])?.first
+        )
+        XCTAssertNil(row["plan_type"])
+        XCTAssertEqual(row["plan_source"] as? String, "userConfirmed")
+        XCTAssertEqual(row["plan_confidence"] as? String, "high")
+        XCTAssertEqual(
+            row["plan_observed_at"] as? String,
+            "2026-07-24T05:59:00.125Z"
+        )
+        XCTAssertEqual(
+            row["observed_at"] as? String,
+            "2026-07-24T06:00:00.250Z"
         )
     }
 
@@ -255,6 +321,197 @@ final class HelperProviderAccountAPITests: XCTestCase {
         XCTAssertFalse(
             String(decoding: body, as: UTF8.self)
                 .contains(oversizedTierName)
+        )
+    }
+
+    func testRejectedNonEmptyManualPlanNeverBecomesExplicitClear()
+        async throws
+    {
+        HelperProviderAccountAPIStub.handler = { _ in
+            .json(#"{"accounts_synced":1}"#)
+        }
+        let revision = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T05:59:00.125Z")
+        )
+        let rejectedOverrides = [
+            String(repeating: "x", count: 121),
+            "user@example.com",
+            "tenant.example.com",
+        ]
+
+        for rejected in rejectedOverrides {
+            let account = HelperIPC.CollectorAccountPayload(
+                accountID: Self.accountPayload.accountID,
+                provider: Self.accountPayload.provider,
+                accountLabel: Self.accountPayload.accountLabel,
+                planOverride: rejected,
+                planOverrideUpdatedAt: revision,
+                dataKind: .quota,
+                usage: HelperIPC.CollectorUsagePayload(
+                    quota: 100,
+                    remaining: 40,
+                    todayUsage: 60,
+                    weekUsage: 60,
+                    statusText: "60% used",
+                    planType: "Detected Pro",
+                    resetTime: nil,
+                    tiers: []
+                )
+            )
+
+            _ = try await makeAPI().syncProviderAccountQuotas(
+                config: Self.helperConfig,
+                accounts: [account],
+                observedAt: revision.addingTimeInterval(60)
+            )
+        }
+
+        XCTAssertEqual(
+            HelperProviderAccountAPIStub.requests.count,
+            rejectedOverrides.count
+        )
+        for (request, rejected) in zip(
+            HelperProviderAccountAPIStub.requests,
+            rejectedOverrides
+        ) {
+            let body = try XCTUnwrap(request.httpBody)
+            let root = try XCTUnwrap(
+                JSONSerialization.jsonObject(with: body)
+                    as? [String: Any]
+            )
+            let row = try XCTUnwrap(
+                (root["p_rows"] as? [[String: Any]])?.first
+            )
+            XCTAssertNil(row["plan_type"])
+            XCTAssertNil(row["plan_observed_at"])
+            XCTAssertEqual(
+                row["plan_source"] as? String,
+                "unknown"
+            )
+            XCTAssertEqual(
+                row["plan_confidence"] as? String,
+                "unavailable"
+            )
+            XCTAssertFalse(
+                String(decoding: body, as: UTF8.self)
+                    .contains(rejected)
+            )
+        }
+    }
+
+    func testDetectedPlanUsesHelperCollectionStartRevision()
+        async throws
+    {
+        HelperProviderAccountAPIStub.handler = { _ in
+            .json(#"{"accounts_synced":1}"#)
+        }
+        let collectionStartedAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T05:58:00.125Z")
+        )
+        let collectionFinishedAt = try XCTUnwrap(
+            sharedISO8601Parse("2026-07-24T06:00:00.250Z")
+        )
+        let account = HelperIPC.CollectorAccountPayload(
+            accountID: Self.accountPayload.accountID,
+            provider: Self.accountPayload.provider,
+            accountLabel: Self.accountPayload.accountLabel,
+            planDetectionStartedAt: collectionStartedAt,
+            dataKind: .quota,
+            usage: HelperIPC.CollectorUsagePayload(
+                quota: 100,
+                remaining: 40,
+                todayUsage: 60,
+                weekUsage: 60,
+                statusText: "60% used",
+                planType: "Detected Pro",
+                resetTime: nil,
+                tiers: []
+            )
+        )
+
+        _ = try await makeAPI().syncProviderAccountQuotas(
+            config: Self.helperConfig,
+            accounts: [account],
+            observedAt: collectionFinishedAt
+        )
+
+        let body = try XCTUnwrap(
+            HelperProviderAccountAPIStub.requests.first?.httpBody
+        )
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let row = try XCTUnwrap(
+            (root["p_rows"] as? [[String: Any]])?.first
+        )
+        XCTAssertEqual(
+            row["plan_observed_at"] as? String,
+            "2026-07-24T05:58:00.125Z"
+        )
+        XCTAssertEqual(
+            row["observed_at"] as? String,
+            "2026-07-24T06:00:00.250Z"
+        )
+    }
+
+    func testDetectedPlanWithoutCollectionStartIsOmitted()
+        async throws
+    {
+        HelperProviderAccountAPIStub.handler = { _ in
+            .json(#"{"accounts_synced":1}"#)
+        }
+        let account = HelperIPC.CollectorAccountPayload(
+            accountID: Self.accountPayload.accountID,
+            provider: Self.accountPayload.provider,
+            accountLabel: Self.accountPayload.accountLabel,
+            planDetectionStartedAt: nil,
+            dataKind: .quota,
+            usage: HelperIPC.CollectorUsagePayload(
+                quota: 100,
+                remaining: 40,
+                todayUsage: 60,
+                weekUsage: 60,
+                statusText: "60% used",
+                planType: "Unclocked Detected Pro",
+                resetTime: nil,
+                tiers: []
+            )
+        )
+
+        _ = try await makeAPI().syncProviderAccountQuotas(
+            config: Self.helperConfig,
+            accounts: [account],
+            observedAt: try XCTUnwrap(
+                sharedISO8601Parse(
+                    "2026-07-24T06:00:00.250Z"
+                )
+            )
+        )
+
+        let body = try XCTUnwrap(
+            HelperProviderAccountAPIStub.requests.first?.httpBody
+        )
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body)
+                as? [String: Any]
+        )
+        let row = try XCTUnwrap(
+            (root["p_rows"] as? [[String: Any]])?.first
+        )
+        XCTAssertNil(row["plan_type"])
+        XCTAssertNil(row["plan_observed_at"])
+        XCTAssertEqual(
+            row["plan_source"] as? String,
+            "unknown"
+        )
+        XCTAssertEqual(
+            row["plan_confidence"] as? String,
+            "unavailable"
+        )
+        XCTAssertEqual(
+            row["observed_at"] as? String,
+            "2026-07-24T06:00:00.250Z"
         )
     }
 
@@ -409,6 +666,8 @@ final class HelperProviderAccountAPITests: XCTestCase {
             provider: "Claude",
             accountLabel: "Work",
             planOverride: "Max 20x",
+            planOverrideUpdatedAt:
+                Date(timeIntervalSince1970: 1_721_797_140),
             dataKind: .quota,
             usage: HelperIPC.CollectorUsagePayload(
                 quota: 100,

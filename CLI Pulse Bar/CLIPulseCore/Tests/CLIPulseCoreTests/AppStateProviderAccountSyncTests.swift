@@ -49,7 +49,8 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         let firstOutbox = makeOutbox()
         firstOutbox.enqueue(
             userID: "user-a",
-            accountID: accountID
+            accountID: accountID,
+            provider: .claude
         )
         let firstState = makeState(
             api: api,
@@ -95,6 +96,74 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         )
     }
 
+    func testProviderlessLegacyIntentsDoNotStarveTypedDeletion()
+        async throws
+    {
+        let typedAccountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ffffffff-ffff-4fff-8fff-ffffffffffff"
+            )
+        )
+        let providerless = try (1...10).map { index in
+            ProviderAccountDeletionOutbox.Intent(
+                userID: "user-a",
+                accountID: try XCTUnwrap(
+                    UUID(
+                        uuidString: String(
+                            format:
+                                "00000000-0000-4000-8000-%012d",
+                            index
+                        )
+                    )
+                ),
+                provider: nil
+            )
+        }
+        let typed = ProviderAccountDeletionOutbox.Intent(
+            userID: "user-a",
+            accountID: typedAccountID,
+            provider: .claude
+        )
+        defaults.set(
+            try JSONEncoder().encode(providerless + [typed]),
+            forKey: storageKey
+        )
+        AppStateProviderAccountStubProtocol.configure(
+            responses: [
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#
+                ),
+            ]
+        )
+        let outbox = makeOutbox()
+        let state = makeState(
+            api: await makeAuthenticatedAPI(),
+            outbox: outbox,
+            userID: "user-a"
+        )
+
+        await state.flushPendingProviderAccountDeletions(
+            for: "user-a"
+        )
+
+        XCTAssertEqual(
+            AppStateProviderAccountStubProtocol.recordedRequests()
+                .count,
+            1,
+            "typed deletes must run even when ten old providerless records sort first"
+        )
+        XCTAssertFalse(
+            outbox.pendingAccountIDs(for: "user-a")
+                .contains(typedAccountID)
+        )
+        XCTAssertEqual(
+            outbox.pendingAccountIDs(for: "user-a").count,
+            10,
+            "untyped development records stay quarantined for safe metadata recovery"
+        )
+    }
+
     func testAccountSwitchBeforeFlushDoesNotConsumePreviousOwnersDeletion()
         async throws
     {
@@ -116,7 +185,11 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
             accessToken: "user-b-access"
         )
         let outbox = makeOutbox()
-        outbox.enqueue(userID: "user-a", accountID: accountID)
+        outbox.enqueue(
+            userID: "user-a",
+            accountID: accountID,
+            provider: .claude
+        )
         let state = makeState(
             api: api,
             outbox: outbox,
@@ -162,7 +235,11 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         )
         let api = await makeAuthenticatedAPI()
         let outbox = makeOutbox()
-        outbox.enqueue(userID: "user-a", accountID: accountID)
+        outbox.enqueue(
+            userID: "user-a",
+            accountID: accountID,
+            provider: .claude
+        )
         let state = makeState(
             api: api,
             outbox: outbox,

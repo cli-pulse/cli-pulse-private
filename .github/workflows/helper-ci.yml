@@ -5,12 +5,14 @@ on:
     paths:
       - 'helper/**'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
       - '.github/workflows/helper-ci.yml'
   pull_request:
     paths:
       - 'helper/**'
       - 'scripts/check_helper_version_sync.sh'
+      - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
       - '.github/workflows/helper-ci.yml'
   # v1.26 C2: manual retrigger trigger so a future Actions outage
@@ -23,16 +25,23 @@ concurrency:
 
 jobs:
   version-sync:
-    name: Helper version sync (Swift kHelperVersion == Python HELPER_VERSION)
+    name: Helper parity (version sync + method parity)
     # Duplicated from swift-ci's check-helper-guards ON PURPOSE: a Python-only
     # HELPER_VERSION bump touches helper/** which does NOT trigger swift-ci,
     # so without this job the exact 1.23.0->1.29.1 drift the guard exists to
     # prevent would land unchecked again (codex review on the guard's own PR).
+    #
+    # v1.44 adds the method-parity gate here for exactly the same reason, and it
+    # needed saying twice: the gate shipped wired only into swift-ci, whose paths
+    # filter excludes helper/**. Adding a verb to SUPPORTED_METHODS is a
+    # helper/**-only change — the normal shape of the drift — so the gate could
+    # not fire in the one case it exists for. Self-review caught it before merge.
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - run: bash scripts/check_helper_version_sync.sh
+      - run: bash scripts/check_helper_method_parity.sh
 
   test:
     runs-on: ubuntu-latest
@@ -52,7 +61,18 @@ jobs:
           python-version: '3.12'
 
       - name: Install dev tooling
-        run: python -m pip install --upgrade pip pytest ruff cryptography
+        # ruff is PINNED. Unpinned, `--upgrade` installs whatever shipped since
+        # the last run, and a release that enables new rules turns a PR red for
+        # code it never touched. That is not hypothetical: main was green on
+        # 2026-07-23, and the next PR to trigger this workflow (2026-07-30, and
+        # only because helper-ci watches Protocol.swift) drew 380 errors across
+        # files nobody had edited — UP045 and friends. Ten minutes went into
+        # proving the feature branch was innocent.
+        #
+        # Raising this pin is a deliberate task: bump it, run `ruff check .`,
+        # and fix or `# noqa` what the new rules find, in a PR that does only
+        # that. Never bump it as a side effect of unrelated work.
+        run: python -m pip install --upgrade pip && python -m pip install pytest 'ruff==0.15.11' cryptography
 
       - name: Ruff lint
         run: ruff check .

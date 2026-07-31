@@ -2,21 +2,37 @@ import Foundation
 import Security
 
 protocol ProviderSecretStoring {
-    func save(key: String, value: String, accessGroup: String?)
+    @discardableResult
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool
     func load(key: String, accessGroup: String?) -> String?
-    func delete(key: String, accessGroup: String?)
+    @discardableResult
+    func delete(key: String, accessGroup: String?) -> Bool
 }
 
 struct KeychainProviderSecretStore: ProviderSecretStoring {
-    func save(key: String, value: String, accessGroup: String?) {
-        KeychainHelper.save(key: key, value: value, accessGroup: accessGroup)
+    @discardableResult
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        KeychainHelper.save(
+            key: key,
+            value: value,
+            accessGroup: accessGroup
+        )
     }
 
     func load(key: String, accessGroup: String?) -> String? {
         KeychainHelper.load(key: key, accessGroup: accessGroup)
     }
 
-    func delete(key: String, accessGroup: String?) {
+    @discardableResult
+    func delete(key: String, accessGroup: String?) -> Bool {
         KeychainHelper.delete(key: key, accessGroup: accessGroup)
     }
 }
@@ -35,6 +51,45 @@ public enum KeychainHelper {
     /// process that declares the group, with NO per-item consent prompt.
     public static var sharedAccessGroup: String {
         CLIPulseRuntimeEnvironment.current.keychainAccessGroup
+    }
+
+    // MARK: - Test seam
+
+    /// In-memory stand-in for the login Keychain, honoured ONLY under XCTest.
+    ///
+    /// `load` searches the legacy file-based keychain — the query carries no
+    /// `kSecUseDataProtectionKeychain` — so a test binary, whose signature does
+    /// not match the ACL on items the shipped app wrote, makes macOS raise the
+    /// "wants to use information stored by ... in your keychain" dialog this
+    /// file already describes above. Headless there is nobody to click it, and
+    /// `SecItemCopyMatching` blocks in `mach_msg` indefinitely.
+    ///
+    /// Not hypothetical. `applyAuthenticatedState` reads `storedToken` to build
+    /// its notification userInfo, so every test that signs in inherited that
+    /// stall: it wedged the 2200-test suite past a 9-minute timeout, and had
+    /// surfaced earlier as one 27s test that a re-run at 0.037s made look like
+    /// a one-off blip. CI cannot catch it — a fresh runner keychain answers
+    /// `errSecItemNotFound` immediately — so it only ever bites on a developer
+    /// machine, where it reads as "the test suite hangs" with no other clue.
+    ///
+    /// Active for the WHOLE test bundle, not opt-in per class, because the
+    /// blocking read is not something a test asks for: `AppState.init` starts a
+    /// MainActor task that calls `restoreSession()` (AppState.swift:830), so
+    /// merely constructing an `AppState` — which dozens of tests do — arms it.
+    /// When it blocks it holds the main actor, and the next test that needs the
+    /// main actor deadlocks. That is why `CookieResolverTests` passed alone in
+    /// 0.005s and hung in the full run: it was the victim, not the cause. An
+    /// opt-in seam would have to be remembered by every future test that ever
+    /// touches `AppState`, which is exactly the kind of thing nobody remembers.
+    ///
+    /// Gated on XCTest actually being loaded, so the shipped app cannot take
+    /// this path: in production, auth tokens come from the Keychain, full stop.
+    nonisolated(unsafe) public static var inMemoryStoreForTesting: [String: String] = [:]
+
+    private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
+
+    private static func testStoreKey(_ key: String, _ accessGroup: String?) -> String {
+        "\(accessGroup ?? "-")|\(key)"
     }
 
     /// One-time migration: re-home a keychain item that was written WITHOUT
@@ -60,8 +115,19 @@ public enum KeychainHelper {
         save(key: key, value: legacy, accessGroup: sharedAccessGroup)
     }
 
-    public static func save(key: String, value: String, accessGroup: String? = nil) {
-        guard let data = value.data(using: .utf8) else { return }
+    @discardableResult
+    public static func save(
+        key: String,
+        value: String,
+        accessGroup: String? = nil
+    ) -> Bool {
+        guard let data = value.data(using: .utf8) else {
+            return false
+        }
+        if isRunningUnderXCTest {
+            inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = value
+            return true
+        }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -76,6 +142,9 @@ public enum KeychainHelper {
             kSecValueData as String: data,
         ]
         let status = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+        if status == errSecSuccess {
+            return true
+        }
         if status == errSecItemNotFound {
             var addQuery = query
             addQuery[kSecValueData as String] = data
@@ -90,8 +159,19 @@ public enum KeychainHelper {
             // in SecItemUpdate with errSecParam, so the safe path is just
             // new writes = tighter, old items continue to work as-is).
             addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            SecItemAdd(addQuery as CFDictionary, nil)
+            let addStatus =
+                SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus == errSecSuccess {
+                return true
+            }
+            if addStatus == errSecDuplicateItem {
+                return SecItemUpdate(
+                    query as CFDictionary,
+                    updateAttrs as CFDictionary
+                ) == errSecSuccess
+            }
         }
+        return false
     }
 
     public static func load(key: String, accessGroup: String? = nil) -> String? {
@@ -105,13 +185,20 @@ public enum KeychainHelper {
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
         }
+        if isRunningUnderXCTest {
+            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
+        }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess, let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    public static func delete(key: String, accessGroup: String? = nil) {
+    @discardableResult
+    public static func delete(
+        key: String,
+        accessGroup: String? = nil
+    ) -> Bool {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -120,6 +207,11 @@ public enum KeychainHelper {
         if let group = accessGroup {
             query[kSecAttrAccessGroup as String] = group
         }
-        SecItemDelete(query as CFDictionary)
+        if isRunningUnderXCTest {
+            inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
+            return true
+        }
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }

@@ -38,14 +38,27 @@ cd "$SWIFT_PKG_DIR"
 # incremental build stays sub-second.
 if [[ -f "$OUTPUT_BIN" ]]; then
     NEED_REBUILD=0
+    # v1.44: SensorProbe is scanned too, not just this package.
+    #
+    # `get_machine_snapshot` links SensorKit via a path dependency, so
+    # SensorProbe's sources are now part of this binary. Scanning only
+    # HelperSwift/Sources would report "cached output is fresh" after a SensorKit
+    # edit, and Xcode's Copy Files phase would embed and CODE-SIGN the stale
+    # binary — a wrong helper shipped with no error anywhere. SwiftPM's own
+    # incremental build would have caught it; this short-circuit runs before
+    # SwiftPM is ever invoked, which is exactly what makes it dangerous.
+    SCAN_DIRS=("Sources")
+    [[ -d "$PROJECT_ROOT/SensorProbe/Sources" ]] && SCAN_DIRS+=("$PROJECT_ROOT/SensorProbe/Sources")
     while IFS= read -r -d '' src; do
         if [[ "$src" -nt "$OUTPUT_BIN" ]]; then
             NEED_REBUILD=1
             break
         fi
-    done < <(find Sources -type f -name '*.swift' -print0)
-    # Also check Package.swift.
+    done < <(find "${SCAN_DIRS[@]}" -type f \( -name '*.swift' -o -name '*.c' -o -name '*.h' \) -print0)
+    # Also check both manifests.
     if [[ "Package.swift" -nt "$OUTPUT_BIN" ]]; then NEED_REBUILD=1; fi
+    if [[ -f "$PROJECT_ROOT/SensorProbe/Package.swift" \
+          && "$PROJECT_ROOT/SensorProbe/Package.swift" -nt "$OUTPUT_BIN" ]]; then NEED_REBUILD=1; fi
     if [[ $NEED_REBUILD -eq 0 ]]; then
         echo "build_helper_swift.sh: cached output is fresh ($OUTPUT_BIN)"
         exit 0

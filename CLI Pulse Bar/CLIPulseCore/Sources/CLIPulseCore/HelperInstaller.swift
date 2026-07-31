@@ -239,6 +239,22 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // v1.30.2 (RC-1): record pairing state from this probe. nil when
         // hello failed (unknown) or the helper predates the `paired` field.
         helperPaired = helperRunning?.paired
+        // NOTE: deliberately still the CONTAINER path only.
+        //
+        // A first pass here walked `candidateBasePaths()` so the status would
+        // name `~/.clipulse` when a socket sits there. Review killed it, twice
+        // over: (a) a sandboxed app cannot stat `~/.clipulse` at all, so the
+        // only path it can ever report is the container — and the container is
+        // exactly what the app-group entitlement permits, so no path-based
+        // claim about sandboxing can be true; (b) with a stale runtime node AND
+        // a live container helper whose hello fails, the walk names the stale
+        // node while the client is talking to the container — swapping one
+        // wrong path for another.
+        //
+        // Naming the right socket needs the client's `connect(2)`
+        // discrimination (`pickLiveBase`), not an existence check from here.
+        // Until that is shared, this reports the path it actually probes and the
+        // message below claims nothing about why.
         state = Self.resolveState(
             hello: helperRunning,
             manifest: manifest,
@@ -297,8 +313,27 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             // but not answering (.unreachable); no socket = ENOENT → nothing
             // bound here (.notInstalled).
             if socketExists {
+                // Deliberately no longer promises the helper "is there".
+                //
+                // The old text named three causes — restarting, mis-bound,
+                // reinstall — and all three are wrong for the case that
+                // actually shows up: a SANDBOXED build (MAS, or any Debug build
+                // of the app scheme) cannot reach `~/.clipulse` at all, so the
+                // connect returns EPERM while a perfectly healthy helper holds
+                // the socket. "Uninstall and reinstall" cannot fix a permission
+                // boundary, and sending someone to do it costs them the time
+                // plus a working helper.
+                //
+                // An AF_UNIX node also outlives whatever bound it, so its mere
+                // presence is not evidence the helper lives — the sibling
+                // comment on `LocalSessionControlClient.pickLiveBase` spells
+                // this out and probes by `connect(2)` for exactly that reason.
+                // This state means "something is at that path and we could not
+                // talk to it", and the text now says only that.
                 return .unreachable(
-                    "Companion CLI socket exists but isn't responding (\(udsPath)). The helper may be restarting or mis-bound — try Re-check, or Uninstall and reinstall."
+                    "Can't reach the companion CLI helper (probed \(udsPath)). "
+                        + "Local scanning is unaffected. Try Re-check; if it persists, "
+                        + "Uninstall and reinstall."
                 )
             }
             return .notInstalled

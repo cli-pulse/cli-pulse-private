@@ -64,7 +64,11 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
             value: "legacy-cookie",
             accessGroup: group
         )
-        var config = ProviderConfig(kind: .gemini, accountID: accountID)
+        var config = ProviderConfig(
+            kind: .gemini,
+            accountID: accountID,
+            legacySecretMigrationEligible: true
+        )
 
         config.loadSecrets(using: store)
 
@@ -103,7 +107,11 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
             value: "current-account-key",
             accessGroup: group
         )
-        var config = ProviderConfig(kind: .claude, accountID: accountID)
+        var config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            legacySecretMigrationEligible: true
+        )
 
         config.loadSecrets(using: store)
         config.loadSecrets(using: store)
@@ -130,7 +138,11 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
             value: "legacy-api-key",
             accessGroup: group
         )
-        var config = ProviderConfig(kind: .claude, accountID: accountID)
+        var config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            legacySecretMigrationEligible: true
+        )
         config.loadSecrets(using: store)
         XCTAssertEqual(config.apiKey, "legacy-api-key")
 
@@ -143,6 +155,95 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
             store.load(key: legacyKey(.claude, "apiKey"), accessGroup: group),
             "legacy-api-key",
             "The retained rollback slot must not reactivate a deleted account secret."
+        )
+    }
+
+    func testOnlyDesignatedMigratedAccountCanConsumeLegacySecret() throws {
+        let store = InMemoryProviderSecretStore()
+        let migratedID = try XCTUnwrap(
+            UUID(uuidString: "66666666-6666-4666-8666-666666666666")
+        )
+        let addedLaterID = try XCTUnwrap(
+            UUID(uuidString: "77777777-7777-4777-8777-777777777777")
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        store.save(
+            key: legacyKey(.claude, "apiKey"),
+            value: "legacy-owner-key",
+            accessGroup: group
+        )
+        var addedLater = ProviderConfig(
+            kind: .claude,
+            accountID: addedLaterID
+        )
+        var migrated = ProviderConfig(
+            kind: .claude,
+            accountID: migratedID,
+            legacySecretMigrationEligible: true
+        )
+
+        // Model an interruption after the second account metadata was saved but
+        // before the original account copied or marked the legacy Keychain slot.
+        addedLater.loadSecrets(using: store)
+        migrated.loadSecrets(using: store)
+
+        XCTAssertNil(
+            addedLater.apiKey,
+            "a later same-provider account must never claim the provider-scoped rollback slot"
+        )
+        XCTAssertEqual(migrated.apiKey, "legacy-owner-key")
+    }
+
+    func testDeleteSecretsReportsFailureAndRetainsSecret() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(uuidString: "88888888-8888-4888-8888-888888888888")
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "must-remain-retryable"
+        )
+        config.saveSecrets(using: store)
+        store.failingDeleteKeys.insert(
+            accountKey(accountID, "apiKey")
+        )
+
+        let deleted = config.deleteSecrets(using: store)
+
+        XCTAssertFalse(deleted)
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "must-remain-retryable"
+        )
+    }
+
+    func testSaveSecretsReportsKeychainWriteFailure() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "99999999-9999-4999-8999-999999999999"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "must-not-be-reported-as-saved"
+        )
+        store.failingSaveKeys.insert(
+            accountKey(accountID, "apiKey")
+        )
+
+        XCTAssertFalse(config.saveSecrets(using: store))
+        XCTAssertNil(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
         )
     }
 
@@ -162,16 +263,32 @@ private final class InMemoryProviderSecretStore: ProviderSecretStoring {
     }
 
     private var values: [Slot: String] = [:]
+    var failingSaveKeys: Set<String> = []
+    var failingDeleteKeys: Set<String> = []
 
-    func save(key: String, value: String, accessGroup: String?) {
+    @discardableResult
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        guard !failingSaveKeys.contains(key) else {
+            return false
+        }
         values[Slot(key: key, accessGroup: accessGroup)] = value
+        return true
     }
 
     func load(key: String, accessGroup: String?) -> String? {
         values[Slot(key: key, accessGroup: accessGroup)]
     }
 
-    func delete(key: String, accessGroup: String?) {
+    @discardableResult
+    func delete(key: String, accessGroup: String?) -> Bool {
+        guard !failingDeleteKeys.contains(key) else {
+            return false
+        }
         values.removeValue(forKey: Slot(key: key, accessGroup: accessGroup))
+        return true
     }
 }

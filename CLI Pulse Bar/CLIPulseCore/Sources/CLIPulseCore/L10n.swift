@@ -110,6 +110,12 @@ public enum L10n {
         public static var topProcesses: String { tr("machine.top_processes") }
         public static var noProcesses: String { tr("machine.no_processes") }
         public static var helperUnavailable: String { tr("machine.helper_unavailable") }
+        /// v1.44: the helper answered but does not implement
+        /// `get_machine_snapshot` — the bundled helper's method surface is
+        /// session control only. Reachability is fine, so the old
+        /// "helper not running" text was simply untrue.
+        public static var helperLacksMachineHealth: String { tr("machine.helper_lacks_machine_health") }
+        public static var helperUnauthenticated: String { tr("machine.helper_unauthenticated") }
         public static var noSensorsDevid: String { tr("machine.no_sensors_devid") }
         public static var masAffordance: String { tr("machine.mas_affordance") }
         public static var thermalNominal: String { tr("machine.thermal_nominal") }
@@ -289,6 +295,60 @@ public enum L10n {
     }
 
     // MARK: - Providers
+
+    /// v1.44 W5: the notice shown once, after the app enables its own login
+    /// item at first value. Undo must be one tap — a silent registration is
+    /// the version of this feature that deserves to be rejected.
+    public enum launchAtLoginNotice {
+        public static var title: String { tr("launch_at_login_notice.title") }
+        public static var body: String { tr("launch_at_login_notice.body") }
+        public static var undo: String { tr("launch_at_login_notice.undo") }
+        public static var keep: String { tr("launch_at_login_notice.keep") }
+    }
+
+    /// v1.44 W3: per-provider collector outcome labels + one concrete next
+    /// step each. Kept in its own namespace rather than folded into
+    /// `providers` because these are status vocabulary, reused by the Overview
+    /// summary as well as the provider rows.
+    public enum collectorStatus {
+        public static var ok: String { tr("collector_status.ok") }
+        public static var off: String { tr("collector_status.off") }
+        public static var noQuotaSource: String { tr("collector_status.no_quota_source") }
+        public static var noQuotaSourceHint: String { tr("collector_status.no_quota_source_hint") }
+        public static var notInstalled: String { tr("collector_status.not_installed") }
+        public static func notInstalledHint(_ provider: String) -> String {
+            tr("collector_status.not_installed_hint", provider)
+        }
+        public static var notSignedIn: String { tr("collector_status.not_signed_in") }
+        public static func notSignedInHint(_ provider: String) -> String {
+            tr("collector_status.not_signed_in_hint", provider)
+        }
+        public static var notSetUp: String { tr("collector_status.not_set_up") }
+        public static var notSetUpHint: String { tr("collector_status.not_set_up_hint") }
+        public static var noData: String { tr("collector_status.no_data") }
+        public static var noDataHint: String { tr("collector_status.no_data_hint") }
+        public static var notRunning: String { tr("collector_status.not_running") }
+        public static func notRunningHint(_ provider: String) -> String {
+            tr("collector_status.not_running_hint", provider)
+        }
+        public static var needsKey: String { tr("collector_status.needs_key") }
+        public static func needsKeyHint(_ provider: String) -> String {
+            tr("collector_status.needs_key_hint", provider)
+        }
+        public static var authFailed: String { tr("collector_status.auth_failed") }
+        public static func authFailedHint(_ provider: String) -> String {
+            tr("collector_status.auth_failed_hint", provider)
+        }
+        public static var failedOtherHint: String { tr("collector_status.failed_other_hint") }
+        public static var accessBlocked: String { tr("collector_status.access_blocked") }
+        public static var accessBlockedHint: String { tr("collector_status.access_blocked_hint") }
+        public static var unreachable: String { tr("collector_status.unreachable") }
+        public static var unreachableHint: String { tr("collector_status.unreachable_hint") }
+        public static var cannotRead: String { tr("collector_status.cannot_read") }
+        public static var cannotReadHint: String { tr("collector_status.cannot_read_hint") }
+        public static var failed: String { tr("collector_status.failed") }
+        public static var failedHint: String { tr("collector_status.failed_hint") }
+    }
 
     public enum providers {
         public static var title: String { tr("providers.title") }

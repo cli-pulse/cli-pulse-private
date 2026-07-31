@@ -1,4 +1,5 @@
 #if os(macOS)
+import Darwin
 import XCTest
 @testable import CLIPulseCore
 
@@ -6,23 +7,298 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
     private var originalDefaults: UserDefaults!
     private var testDefaults: UserDefaults!
     private var suiteName: String!
+    private var originalMutationLock:
+        GeminiCredentialMutationLock!
+    private var mutationLockPath: String!
+    private var originalSynchronizeDefaults:
+        ((UserDefaults) -> Bool)!
 
     override func setUp() {
         super.setUp()
         originalDefaults = ProviderSharedCredentialOwner.defaults
+        originalSynchronizeDefaults =
+            ProviderSharedCredentialOwner
+                .synchronizeDefaults
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults = { _ in
+                true
+            }
         suiteName = "ProviderSharedCredentialOwnerTests-\(UUID().uuidString)"
         testDefaults = UserDefaults(suiteName: suiteName)
         testDefaults.removePersistentDomain(forName: suiteName)
         ProviderSharedCredentialOwner.defaults = testDefaults
+        mutationLockPath =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "\(suiteName!).lock"
+                )
+                .path
+        originalMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: mutationLockPath
+            )
     }
 
     override func tearDown() {
+        ProviderSharedCredentialOwner.mutationLock =
+            originalMutationLock
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults =
+                originalSynchronizeDefaults
         ProviderSharedCredentialOwner.defaults = originalDefaults
         testDefaults.removePersistentDomain(forName: suiteName)
+        if FileManager.default.fileExists(
+            atPath: mutationLockPath
+        ) {
+            try? FileManager.default.removeItem(
+                atPath: mutationLockPath
+            )
+        }
         testDefaults = nil
         suiteName = nil
         originalDefaults = nil
+        originalMutationLock = nil
+        mutationLockPath = nil
+        originalSynchronizeDefaults = nil
         super.tearDown()
+    }
+
+    func testConcurrentClaimsChooseOnePersistedOwner()
+        async throws
+    {
+        let firstID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "01010101-0101-4101-8101-010101010101"
+            )
+        )
+        let secondID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "02020202-0202-4202-8202-020202020202"
+            )
+        )
+        let start = DispatchSemaphore(value: 0)
+        let first = Task.detached {
+            _ = start.wait(
+                timeout: .now() + .seconds(2)
+            )
+            return ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: firstID
+            )
+        }
+        let second = Task.detached {
+            _ = start.wait(
+                timeout: .now() + .seconds(2)
+            )
+            return ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: secondID
+            )
+        }
+        start.signal()
+        start.signal()
+
+        let results = await [
+            first.value,
+            second.value,
+        ]
+        XCTAssertEqual(
+            results.filter { $0 }.count,
+            1
+        )
+        let winner = try XCTUnwrap(
+            ProviderSharedCredentialOwner.owner(
+                kind: .gemini
+            )
+        )
+        XCTAssertTrue(
+            winner == firstID || winner == secondID
+        )
+    }
+
+    func testOwnerStoreUnavailableAndCorruptStatesFailClosed()
+        throws
+    {
+        ProviderSharedCredentialOwner.defaults = nil
+        XCTAssertEqual(
+            ProviderSharedCredentialOwner.lookup(
+                kind: .gemini
+            ),
+            .unavailable
+        )
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: UUID()
+            )
+        )
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.canUse(
+                kind: .gemini,
+                accountID: UUID()
+            )
+        )
+
+        ProviderSharedCredentialOwner.defaults = testDefaults
+        let key =
+            "cli_pulse_provider_shared_credential_owner_Gemini"
+        testDefaults.set("not-a-uuid", forKey: key)
+        XCTAssertEqual(
+            ProviderSharedCredentialOwner.lookup(
+                kind: .gemini
+            ),
+            .corrupt
+        )
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: UUID()
+            )
+        )
+        XCTAssertEqual(
+            testDefaults.string(forKey: key),
+            "not-a-uuid",
+            "a corrupt owner record must remain fail-closed instead of being silently erased"
+        )
+    }
+
+    func testOwnerStoreSynchronizationFailureFailsClosed()
+        throws
+    {
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults = { _ in
+                false
+            }
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "04040404-0404-4404-8404-040404040404"
+            )
+        )
+
+        XCTAssertEqual(
+            ProviderSharedCredentialOwner.lookup(
+                kind: .gemini
+            ),
+            .unowned,
+            "a read-only synchronize hint is advisory; failed persistence must be enforced at the mutation boundary"
+        )
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.claim(
+                kind: .gemini,
+                accountID: accountID
+            )
+        )
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.reconcile(
+                configs: [
+                    ProviderConfig(
+                        kind: .gemini,
+                        accountID: accountID,
+                        isEnabled: true
+                    ),
+                ]
+            )
+        )
+        XCTAssertNil(
+            ProviderSharedCredentialOwner.owner(
+                kind: .gemini
+            )
+        )
+    }
+
+    func testOwnerCallIsReentrantInsideCredentialMutationLock()
+        throws
+    {
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "03030303-0303-4303-8303-030303030303"
+            )
+        )
+        let outer = GeminiCredentialMutationLock(
+            lockFilePath: mutationLockPath
+        )
+
+        XCTAssertTrue(
+            outer.withLock(or: false) {
+                ProviderSharedCredentialOwner.claim(
+                    kind: .gemini,
+                    accountID: accountID
+                )
+            }
+        )
+        XCTAssertTrue(
+            ProviderSharedCredentialOwner.isOwner(
+                kind: .gemini,
+                accountID: accountID
+            )
+        )
+    }
+
+    func testMutationLockRejectsHardLinkBeforeChangingPermissions()
+        throws
+    {
+        let directory =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "GeminiMutationLockHardLink-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: false,
+            attributes: [
+                .posixPermissions: 0o700,
+            ]
+        )
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory
+            )
+        }
+        let target = directory
+            .appendingPathComponent("target")
+        let lockPath = directory
+            .appendingPathComponent("credential.lock")
+        try Data("target".utf8).write(to: target)
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644],
+            ofItemAtPath: target.path
+        )
+        XCTAssertEqual(
+            Darwin.link(
+                target.path,
+                lockPath.path
+            ),
+            0
+        )
+
+        let acquired =
+            GeminiCredentialMutationLock(
+                lockFilePath: lockPath.path
+            ).withLock(or: false) {
+                true
+            }
+        XCTAssertFalse(acquired)
+        let attributes =
+            try FileManager.default
+                .attributesOfItem(
+                    atPath: target.path
+                )
+        XCTAssertEqual(
+            (
+                attributes[
+                    .posixPermissions
+                ] as? NSNumber
+            )?.intValue,
+            0o644,
+            "hard-link validation must happen before fchmod"
+        )
     }
 
     func testReconcileChoosesOneDeterministicOwnerPerProvider() throws {

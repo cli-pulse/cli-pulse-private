@@ -1021,9 +1021,9 @@ class LocalSessionServer:
                     # executor lights up only when this is true.
                     "machine_commands": self._pull_machine_commands is not None,
                 },
-                # v1.15: array of installed providers (subset of
-                # ['claude','codex','gemini']). UI uses this to disable
-                # menu items for providers whose binary is missing.
+                # v1.15: array of installed providers (a subset of the
+                # provider-spawner registry). UI uses this to disable menu
+                # items for providers whose binary is missing.
                 "provider_availability": provider_availability,
                 # v1.35: per-provider plan-auth status ("on_plan"/
                 # "off_plan"); omits "unknown". The picker warns before
