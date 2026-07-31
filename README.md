@@ -1,5 +1,41 @@
 # CLI Pulse
 
+Real-time usage, cost and quota tracking for AI coding tools — Claude Code,
+Codex, Gemini, Cursor, Copilot and 45 others — across a macOS menu bar app,
+iPhone, iPad, Apple Watch and Android, with a shared account so history follows
+you between devices.
+
+> **This repository is PUBLIC**, despite being named `cli-pulse-private`.
+> Never commit a secret, credential, or internal document here. Internal
+> material belongs in `cli-pulse-internal`. See [AGENTS.md](AGENTS.md).
+
+**Site:** https://cli-pulse.github.io/cli-pulse/ ·
+**Licence:** closed-source, see [LICENSE.md](LICENSE.md)
+
+## Install
+
+| | |
+| --- | --- |
+| **App Store** — iPhone · iPad · Watch · Mac | search "CLI Pulse" |
+| **Homebrew** (macOS) | see below |
+| **Developer ID DMG** (macOS, notarized) | [cli-pulse-distrib releases](https://github.com/cli-pulse/cli-pulse-distrib/releases/latest) |
+| **Android** | [Google Play](https://play.google.com/store/apps/details?id=com.clipulse.android) · or sideload the APK from [releases](https://github.com/cli-pulse/cli-pulse/releases) |
+| **Windows · Linux** | [cli-pulse-desktop](https://github.com/cli-pulse/cli-pulse-desktop) |
+
+```bash
+brew tap cli-pulse/tap
+brew trust cli-pulse/tap
+brew install --cask cli-pulse
+```
+
+`brew trust` is not optional. Homebrew 6 refuses to load casks from a
+third-party tap until it is trusted, so without it the install stops silently
+after `brew tap`.
+
+---
+
+The rest of this file is for people working on the code.
+
 This workspace contains the current `CLI Pulse Bar` app plus a small amount of
 legacy material kept for reference.
 
@@ -115,7 +151,9 @@ cd android && ./gradlew testDebugUnitTest
   `helper/`.
 - If you are looking for the live backend contract, start in
   `backend/supabase/`.
-- If you are preparing a release, read `RELEASE_WORKFLOW.md`.
+- If you are preparing a release, read `AGENTS.md` and the `appstore-submit`
+  skill. (`RELEASE_WORKFLOW.md` was referenced here for a long time and has
+  never existed in this repo.)
 - If you are starting a new task branch, read `BRANCHING.md`.
 - If you are handing a new task to another AI, use `TASK_START_PROMPT.md`.
 - If you are asking an AI to commit, merge, or decide whether public updates are needed, read `MERGE_AND_PUBLISH_RULES.md`.

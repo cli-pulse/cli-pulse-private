@@ -308,8 +308,8 @@ CLI Pulse Pro is available as a monthly ($4.99/month) or yearly ($49.99/year) au
 
 Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
 
-Terms of Use: https://jasonyeyuhe.github.io/cli-pulse/terms.html
-Privacy Policy: https://jasonyeyuhe.github.io/cli-pulse/privacy.html"""
+Terms of Use: https://cli-pulse.github.io/cli-pulse/terms.html
+Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
 
     for vid in [mac_vid, ios_vid]:
         if not vid:
@@ -337,7 +337,7 @@ Privacy Policy: https://jasonyeyuhe.github.io/cli-pulse/privacy.html"""
                         "type": "appInfoLocalizations",
                         "id": loc["id"],
                         "attributes": {
-                            "privacyPolicyUrl": "https://jasonyeyuhe.github.io/cli-pulse/privacy.html",
+                            "privacyPolicyUrl": "https://cli-pulse.github.io/cli-pulse/privacy.html",
                         }
                     }
                 })
