@@ -2,9 +2,15 @@
 # Keep the product copyright line consistent, and keep it away from the two
 # things that look like copyright and are not.
 #
-# From v1.45 the holder is "Ye Yuhe & Cao Yuqi" — the partner was added as a
-# joint holder on 2026-08-01. v1.44.0 shipped as "2026 Yuhe Ye" and is not
-# changed retroactively.
+# The holder is "Ye Yuhe & Cao Yuqi" — the partner was added as a joint holder
+# on 2026-08-01, effective from v1.44.0.
+#
+# An earlier draft of this comment said the change started at v1.45 because
+# v1.44.0 was already approved and editing an approved version's metadata was
+# assumed to risk a return to review. That assumption was never tested and was
+# wrong for this field: the ASC `copyright` PATCH went through on both
+# platforms with the state staying PENDING_DEVELOPER_RELEASE and no review
+# submission reopening, so 1.44.0 shipped with the joint holder.
 #
 # THREE STRINGS IN THIS REPO LOOK ALIKE. ONLY ONE IS THE PRODUCT COPYRIGHT:
 #
@@ -20,10 +26,12 @@
 # so that mistake fails loudly instead of shipping.
 #
 # The App Store Connect `copyright` field on each appStoreVersion must match
-# LICENSE.md, and nothing in this repo can enforce that — it is set through the
-# API or the ASC web UI per version, and it silently inherits the previous
-# version's value when a new one is created. The reminder below is the only
-# guard there is; treat a release checklist item as mandatory.
+# LICENSE.md, and nothing in this repo can enforce that — it is set per version
+# through the API or the ASC web UI. A new version SILENTLY INHERITS the
+# previous one's value, so 1.45.0 will pick up the correct string from 1.44.0
+# on its own. That inheritance is also the hazard: if the holder ever changes
+# again, every future version keeps the old value until someone sets it by
+# hand, and nothing here will complain.
 #
 # Usage: scripts/check_copyright.sh
 
