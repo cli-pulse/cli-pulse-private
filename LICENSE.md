@@ -1,6 +1,6 @@
 # License
 
-**Copyright (c) 2025–2026 Yuhe Ye. All Rights Reserved.**
+**Copyright (c) 2025–2026 Ye Yuhe & Cao Yuqi. All Rights Reserved.**
 
 This source code is made publicly available for **transparency, security review, and privacy audit** — so anyone can verify the claims made in [PRIVACY.md](PRIVACY.md) about what CLI Pulse does and does not do with your data.
 
