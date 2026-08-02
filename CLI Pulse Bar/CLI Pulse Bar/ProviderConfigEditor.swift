@@ -570,29 +570,35 @@ struct ProviderConfigEditor: View {
                                 // Stage the imported token in this editor. It
                                 // reaches the account-scoped Keychain slot only
                                 // when the user presses Save; Cancel discards it.
-                                apiKey = creds.accessToken
-                                // Deliberately NOT setting
-                                // `sharedCredentialFallbackDisabled` here.
+                                // Deliberately NOT snapshotting `creds.accessToken` into
+                                // `apiKey`, and explicitly clearing the fallback
+                                // latch rather than setting it.
                                 //
-                                // What is being staged is Claude Code's OAuth
-                                // ACCESS token, which expires. The live source
-                                // — Claude Code's own keychain item — is
-                                // refreshed by `claude` itself, so the snapshot
-                                // goes stale while the thing it was copied from
-                                // stays valid.
+                                // Two facts make the obvious version wrong.
+                                // `resolveTokenDetails` returns an account-scoped
+                                // `apiKey` before it ever consults machine-global
+                                // sources — its own comment says they "always win"
+                                // — and on 401 the OAuth strategy does not retry
+                                // against the live keychain, because the rejected
+                                // source was `.accountConfig`. So a copied token is
+                                // not a cache that degrades: it is a permanent
+                                // override that outranks the very credential it was
+                                // copied from.
                                 //
-                                // Latching the flag says "this account may use
-                                // only its account-scoped credentials", which
-                                // severs exactly the path that would have
-                                // re-read the refreshed token. The account then
-                                // stops returning data the moment the snapshot
-                                // expires, and never recovers on its own.
+                                // And what gets copied is an OAuth ACCESS token,
+                                // which expires. Claude Code refreshes its own
+                                // keychain item; the snapshot cannot. The account
+                                // therefore stops returning data at expiry and never
+                                // recovers — under an explicit `.oauth` source mode
+                                // it cannot even fall through to CLI or web.
                                 //
-                                // Pressing "Connect Claude Code" means "this
-                                // account is the Claude Code login", not "never
-                                // look at Claude Code again". Leaving fallback
-                                // enabled makes expiry self-healing: the
-                                // collector falls through to the live item.
+                                // Connect means "this account is the Claude Code
+                                // login". Recording that and reading the live item
+                                // is both simpler and correct. The explicit `false`
+                                // matters because Disconnect sets the latch true:
+                                // without it, Disconnect → Connect → Save leaves
+                                // shared fallback permanently off.
+                                sharedCredentialFallbackDisabled = false
                                 isClaudeConnected = true
                                 claudeConnectedEmail = nil  // email not in credentials; will populate on next fetch
                                 claudeConnectError = nil

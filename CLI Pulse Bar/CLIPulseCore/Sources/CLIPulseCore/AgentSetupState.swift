@@ -482,12 +482,29 @@ public final class AgentSetupStateStore {
     /// away in Settings. The reverse hides a working dashboard behind a wizard.
     static func hasUsedThisAppBefore(_ defaults: UserDefaults) -> Bool {
         if defaults.bool(forKey: legacyCompletedKey) { return true }
-        if defaults.data(forKey: ProviderAccountMigration.configsKey) != nil {
-            return true
-        }
-        if defaults.bool(forKey: AppState.localModeEnabledKey) { return true }
-        return false
+        if defaults.bool(forKey: localModeEnabledKey) { return true }
+        // Provider configs count as prior use ONLY if the v2 wizard did not
+        // write them itself. Selecting an account mid-wizard persists a seeded
+        // blob (`OnboardingWizardView.persistSeededProviderMetadataIfNeeded`),
+        // so a genuinely new user who picks an agent and quits before finishing
+        // would look "existing" on relaunch — and be routed to the main app or
+        // the upgrade prompt instead of resuming the setup they were halfway
+        // through. The wizard already marks its own writes; this reads that
+        // marker rather than inventing a second one.
+        if defaults.bool(forKey: wizardSeededConfigsKey) { return false }
+        return defaults.data(forKey: ProviderAccountMigration.configsKey) != nil
     }
+
+    /// Written by `OnboardingWizardView` while the v2 wizard is mid-flight and
+    /// removed when it finishes. Duplicated here rather than imported because
+    /// the wizard lives in the app target and this store lives in the package.
+    static let wizardSeededConfigsKey =
+        "cli_pulse_agent_setup_seeded_provider_configs_v2"
+
+    /// Duplicated from `AppState.localModeEnabledKey`, which is main-actor
+    /// isolated. Referencing it from this nonisolated function is a warning
+    /// today and an error under the Swift 6 language mode.
+    static let localModeEnabledKey = "cli_pulse_local_mode_enabled"
 
     public func load() -> AgentSetupStoredState {
         let version = (

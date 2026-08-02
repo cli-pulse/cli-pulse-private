@@ -135,7 +135,37 @@ final class ExistingUserRoutingTests: XCTestCase {
             return XCTFail("a fresh install must still see new-user onboarding")
         }
     }
+
+    /// codex caught this one: the first version of the widened predicate
+    /// counted ANY provider-config blob as prior use. But selecting an agent
+    /// mid-wizard persists a seeded blob, so a genuinely new user who picks an
+    /// account and quits before finishing looked "existing" on relaunch — and
+    /// was routed to the main app instead of resuming the setup they were
+    /// halfway through. Fixing one broken audience by breaking another.
+    func testWizardSeededConfigsDoNotCountAsPriorUse() {
+        defaults.set(Data("[{\"kind\":\"claude\"}]".utf8),
+                     forKey: ProviderAccountMigration.configsKey)
+        defaults.set(true, forKey: AgentSetupStateStore.wizardSeededConfigsKey)
+
+        XCTAssertFalse(
+            AgentSetupStateStore.hasUsedThisAppBefore(defaults),
+            "the wizard wrote those configs itself — an interrupted new-user "
+                + "setup must resume, not be mistaken for an upgrade"
+        )
+    }
+
+    /// …and once the wizard finishes it clears the marker, so the same blob
+    /// then correctly counts.
+    func testConfigsCountAgainOnceTheWizardMarkerIsCleared() {
+        defaults.set(Data("[{\"kind\":\"claude\"}]".utf8),
+                     forKey: ProviderAccountMigration.configsKey)
+        defaults.set(true, forKey: AgentSetupStateStore.wizardSeededConfigsKey)
+        defaults.removeObject(forKey: AgentSetupStateStore.wizardSeededConfigsKey)
+
+        XCTAssertTrue(AgentSetupStateStore.hasUsedThisAppBefore(defaults))
+    }
 }
+
 
 /// `applySelectedAccounts` writes `isEnabled = selectedIDs.contains(id)` for
 /// every account the wizard showed, and nothing in the wizard pre-ticks
