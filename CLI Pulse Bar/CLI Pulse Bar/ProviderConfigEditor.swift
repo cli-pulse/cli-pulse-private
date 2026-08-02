@@ -571,7 +571,28 @@ struct ProviderConfigEditor: View {
                                 // reaches the account-scoped Keychain slot only
                                 // when the user presses Save; Cancel discards it.
                                 apiKey = creds.accessToken
-                                sharedCredentialFallbackDisabled = true
+                                // Deliberately NOT setting
+                                // `sharedCredentialFallbackDisabled` here.
+                                //
+                                // What is being staged is Claude Code's OAuth
+                                // ACCESS token, which expires. The live source
+                                // — Claude Code's own keychain item — is
+                                // refreshed by `claude` itself, so the snapshot
+                                // goes stale while the thing it was copied from
+                                // stays valid.
+                                //
+                                // Latching the flag says "this account may use
+                                // only its account-scoped credentials", which
+                                // severs exactly the path that would have
+                                // re-read the refreshed token. The account then
+                                // stops returning data the moment the snapshot
+                                // expires, and never recovers on its own.
+                                //
+                                // Pressing "Connect Claude Code" means "this
+                                // account is the Claude Code login", not "never
+                                // look at Claude Code again". Leaving fallback
+                                // enabled makes expiry self-healing: the
+                                // collector falls through to the live item.
                                 isClaudeConnected = true
                                 claudeConnectedEmail = nil  // email not in credentials; will populate on next fetch
                                 claudeConnectError = nil

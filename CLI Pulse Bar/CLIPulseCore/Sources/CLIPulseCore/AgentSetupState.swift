@@ -227,10 +227,28 @@ public struct AgentSetupState: Equatable, Sendable {
         ))
     }
 
-    public mutating func acceptExistingUserUpgrade() {
+    /// Enter the upgrade flow, pre-selecting the accounts the user already has
+    /// switched on.
+    ///
+    /// `preselecting` is not a convenience. `applySelectedAccounts` writes
+    /// `isEnabled = selectedIDs.contains(id)` for every account the wizard
+    /// showed, and nothing in the wizard pre-ticks anything — `selectAccount`
+    /// is only ever called from a tap. So an existing user who accepts the
+    /// upgrade prompt and clicks straight through, changing nothing, ends with
+    /// every discovered provider DISABLED. Clicking through an upgrade without
+    /// touching a control has to be a no-op; seeding the set is what makes it
+    /// one.
+    ///
+    /// Callers pass the currently-enabled account IDs. The default is empty so
+    /// the new-user path, where nothing should be pre-selected, is unchanged.
+    public mutating func acceptExistingUserUpgrade(
+        preselecting enabledAccountIDs: Set<UUID> = []
+    ) {
         guard !mustPreserveStoredProgress else { return }
-        let selections =
-            validProgress?.selectedAccountIDs ?? []
+        let stored = validProgress?.selectedAccountIDs ?? []
+        // A resumed upgrade keeps whatever the user had already ticked; a fresh
+        // one starts from what is enabled today.
+        let selections = stored.isEmpty ? enabledAccountIDs : stored
         replaceProgress(AgentSetupProgress(
             version: Self.currentVersion,
             step: .discovery,

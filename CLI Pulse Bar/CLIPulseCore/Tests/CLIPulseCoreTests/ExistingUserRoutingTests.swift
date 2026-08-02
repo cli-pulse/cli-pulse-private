@@ -136,3 +136,67 @@ final class ExistingUserRoutingTests: XCTestCase {
         }
     }
 }
+
+/// `applySelectedAccounts` writes `isEnabled = selectedIDs.contains(id)` for
+/// every account the wizard showed, and nothing in the wizard pre-ticks
+/// anything — `selectAccount` is only ever reached from a tap.
+///
+/// So the upgrade flow has a destructive default: accept the prompt, click
+/// through without touching a control, and every discovered provider is
+/// switched off. Clicking through an upgrade unchanged has to be a no-op.
+final class UpgradePreselectionTests: XCTestCase {
+
+    private func upgradeReadyState() -> AgentSetupState {
+        AgentSetupState(
+            storedState: AgentSetupStoredState(
+                legacyCompleted: true,
+                onboardingVersion: nil,
+                progress: nil,
+                upgradePromptDismissed: false
+            ),
+            featureFlags: .init(newUsersV2: true, existingUsersV2: true)
+        )
+    }
+
+    func testAcceptingUpgradePreselectsWhatIsAlreadyEnabled() {
+        let claude = UUID(), codex = UUID()
+        var state = upgradeReadyState()
+
+        state.acceptExistingUserUpgrade(preselecting: [claude, codex])
+
+        XCTAssertEqual(
+            state.progress?.selectedAccountIDs, [claude, codex],
+            "clicking through the upgrade unchanged must leave these enabled; "
+                + "an empty selection disables every provider the user had"
+        )
+    }
+
+    /// The new-user path must NOT inherit this — nothing is pre-ticked there.
+    func testNewUserSetupPreselectsNothing() {
+        var state = upgradeReadyState()
+        state.beginNewUserSetup()
+
+        XCTAssertEqual(
+            state.progress?.selectedAccountIDs, [],
+            "a fresh install has nothing to preserve"
+        )
+    }
+
+    /// A resumed upgrade keeps what the user already ticked — the seed must not
+    /// overwrite a real, in-progress choice.
+    func testResumedUpgradeKeepsTheUsersOwnSelection() {
+        let chosen = UUID(), enabled = UUID()
+        var state = upgradeReadyState()
+        state.acceptExistingUserUpgrade(preselecting: [chosen])
+        state.deselectAccount(chosen)
+        let theirPick = UUID()
+        state.selectAccount(theirPick)
+
+        state.acceptExistingUserUpgrade(preselecting: [enabled])
+
+        XCTAssertEqual(
+            state.progress?.selectedAccountIDs, [theirPick],
+            "re-entering must not discard a selection the user made by hand"
+        )
+    }
+}
