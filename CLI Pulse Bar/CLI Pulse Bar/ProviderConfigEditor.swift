@@ -570,8 +570,35 @@ struct ProviderConfigEditor: View {
                                 // Stage the imported token in this editor. It
                                 // reaches the account-scoped Keychain slot only
                                 // when the user presses Save; Cancel discards it.
-                                apiKey = creds.accessToken
-                                sharedCredentialFallbackDisabled = true
+                                // Deliberately NOT snapshotting `creds.accessToken` into
+                                // `apiKey`, and explicitly clearing the fallback
+                                // latch rather than setting it.
+                                //
+                                // Two facts make the obvious version wrong.
+                                // `resolveTokenDetails` returns an account-scoped
+                                // `apiKey` before it ever consults machine-global
+                                // sources — its own comment says they "always win"
+                                // — and on 401 the OAuth strategy does not retry
+                                // against the live keychain, because the rejected
+                                // source was `.accountConfig`. So a copied token is
+                                // not a cache that degrades: it is a permanent
+                                // override that outranks the very credential it was
+                                // copied from.
+                                //
+                                // And what gets copied is an OAuth ACCESS token,
+                                // which expires. Claude Code refreshes its own
+                                // keychain item; the snapshot cannot. The account
+                                // therefore stops returning data at expiry and never
+                                // recovers — under an explicit `.oauth` source mode
+                                // it cannot even fall through to CLI or web.
+                                //
+                                // Connect means "this account is the Claude Code
+                                // login". Recording that and reading the live item
+                                // is both simpler and correct. The explicit `false`
+                                // matters because Disconnect sets the latch true:
+                                // without it, Disconnect → Connect → Save leaves
+                                // shared fallback permanently off.
+                                sharedCredentialFallbackDisabled = false
                                 isClaudeConnected = true
                                 claudeConnectedEmail = nil  // email not in credentials; will populate on next fetch
                                 claudeConnectError = nil

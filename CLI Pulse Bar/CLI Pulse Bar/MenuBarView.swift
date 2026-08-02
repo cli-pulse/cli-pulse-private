@@ -191,7 +191,16 @@ struct MenuBarView: View {
         AgentSetupUpgradeCard(
             onCheckAccounts: {
                 var updated = agentSetupState
-                updated.acceptExistingUserUpgrade()
+                // Seed with what is already switched on, so clicking through
+                // the upgrade without touching anything leaves the user's
+                // providers exactly as they were.
+                updated.acceptExistingUserUpgrade(
+                    preselecting: Set(
+                        state.providerConfigs
+                            .filter(\.isEnabled)
+                            .map(\.accountID)
+                    )
+                )
                 agentSetupState = updated
                 agentSetupStore.save(updated)
                 agentSetupDismissedForSession = false
