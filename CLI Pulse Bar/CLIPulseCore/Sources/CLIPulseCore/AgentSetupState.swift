@@ -427,6 +427,50 @@ public final class AgentSetupStateStore {
         self.defaults = defaults
     }
 
+    /// Has this install been used before? Drives `legacyCompleted`, which is
+    /// what routes someone to the main app instead of new-user onboarding.
+    ///
+    /// This deliberately does NOT rely on `cli_pulse_onboarding_completed`
+    /// alone. That flag is written when a user finishes the legacy wizard by
+    /// pressing the close button — but a user who finished it BY SIGNING IN
+    /// never had it written. On 1.44 that is a large share of the installed
+    /// base, and keying on the flag alone classifies every one of them as a
+    /// brand-new user: the wizard captures them on launch and hides the
+    /// dashboard they already had.
+    ///
+    /// The repository has already made this exact mistake once and written
+    /// down the fix. `AuthManager.resolveColdLaunchLanding` carries the note:
+    ///
+    ///   "Deliberately keyed on the local-mode marker alone and NOT on
+    ///    `cli_pulse_onboarding_completed`: that flag is also set by users who
+    ///    completed the wizard by signing in and later signed out..."
+    ///
+    /// So the question to ask is not "did a flag get written" — a flag that a
+    /// previous release never wrote can never be true for a previous release's
+    /// users. Ask instead for evidence the app was actually used, which older
+    /// builds DID leave behind:
+    ///
+    ///   - `cli_pulse_provider_configs` — providers were configured. Written on
+    ///     the first refresh, so any user who ever saw data has it.
+    ///   - `cli_pulse_local_mode_enabled` — the v1.44 W1 marker, set by
+    ///     "continue without account".
+    ///
+    /// Verified against a real 1.44 install: it has provider configs and the
+    /// legacy flag, but NOT the local-mode marker — i.e. exactly the signed-in
+    /// shape that the flag-only predicate would have misrouted.
+    ///
+    /// False positives are the safe direction here. Treating a genuinely new
+    /// user as existing shows them the main app, where onboarding is one click
+    /// away in Settings. The reverse hides a working dashboard behind a wizard.
+    static func hasUsedThisAppBefore(_ defaults: UserDefaults) -> Bool {
+        if defaults.bool(forKey: legacyCompletedKey) { return true }
+        if defaults.data(forKey: ProviderAccountMigration.configsKey) != nil {
+            return true
+        }
+        if defaults.bool(forKey: AppState.localModeEnabledKey) { return true }
+        return false
+    }
+
     public func load() -> AgentSetupStoredState {
         let version = (
             defaults.object(
@@ -441,9 +485,7 @@ public final class AgentSetupStateStore {
             ?? progressData.flatMap(Self.persistedProgressVersion)
 
         return AgentSetupStoredState(
-            legacyCompleted: defaults.bool(
-                forKey: Self.legacyCompletedKey
-            ),
+            legacyCompleted: Self.hasUsedThisAppBefore(defaults),
             onboardingVersion: version,
             progress: progress,
             upgradePromptDismissed: defaults.bool(
