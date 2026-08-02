@@ -230,3 +230,33 @@ final class UpgradePreselectionTests: XCTestCase {
         )
     }
 }
+
+/// Two UserDefaults keys are duplicated into `AgentSetupStateStore` rather than
+/// imported — one because its owner is main-actor isolated, one because its
+/// owner lives in the app target. A duplicated constant drifts silently: rename
+/// it on one side and the predicate simply stops matching, with no compile
+/// error and no failing assertion anywhere else.
+final class DuplicatedKeyLiteralTests: XCTestCase {
+
+    /// `AppState.localModeEnabledKey` is the source of truth.
+    func testLocalModeKeyMatchesItsSource() {
+        XCTAssertEqual(
+            AgentSetupStateStore.localModeEnabledKey,
+            AppState.localModeEnabledKey,
+            "the copy in AgentSetupStateStore has drifted from AuthManager's "
+                + "constant — existing local-mode users will be misrouted"
+        )
+    }
+
+    /// `OnboardingWizardView.seededConfigsKey` is the source of truth, and it
+    /// lives in the app target, so this pins the literal instead. If the wizard
+    /// renames it, this fails and points at the other half.
+    func testWizardSeededKeyLiteralIsPinned() {
+        XCTAssertEqual(
+            AgentSetupStateStore.wizardSeededConfigsKey,
+            "cli_pulse_agent_setup_seeded_provider_configs_v2",
+            "if OnboardingWizardView renamed its seededConfigsKey, update this "
+                + "too — otherwise an interrupted new-user setup stops resuming"
+        )
+    }
+}
