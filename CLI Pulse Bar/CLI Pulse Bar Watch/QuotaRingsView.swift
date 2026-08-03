@@ -21,23 +21,48 @@ struct QuotaRingsView: View {
     /// Weekly-window numbers the rings + card headers display, so the order
     /// reflects the risk the user actually sees.
     private var sortedProviders: [ProviderUsage] {
-        visibleProviders.sorted { a, b in
-            let wa = WatchRingMath.weeklyUsagePercent(a)
-            let wb = WatchRingMath.weeklyUsagePercent(b)
-            if wa != wb { return wa > wb }
-            return a.provider < b.provider
+        let ranks = Dictionary(
+            uniqueKeysWithValues:
+                WatchRingMath.orderedQuotaSnapshots(
+                    visibleProviders,
+                    accounts: state.enabledProviderAccounts
+                )
+                .enumerated()
+                .map { ($0.element.id, $0.offset) }
+        )
+        return visibleProviders.sorted { a, b in
+            switch (ranks[a.id], ranks[b.id]) {
+            case let (lhs?, rhs?):
+                return lhs < rhs
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return a.provider < b.provider
+            }
         }
     }
 
     /// Concentric rings: metered providers, most-constrained first, capped
     /// at 3 for legibility. Shared math so rings can't diverge from the
     /// bars / complication.
-    private var ringProviders: [ProviderUsage] {
-        WatchRingMath.ringProviders(visibleProviders, limit: 3)
+    private var ringSnapshots: [WatchProviderQuotaSnapshot] {
+        WatchRingMath.liveRingSnapshots(
+            visibleProviders,
+            accounts: state.enabledProviderAccounts,
+            limit: 3
+        )
     }
 
     private var meteredCount: Int {
-        visibleProviders.filter { $0.quota != nil }.count
+        visibleProviders.compactMap { provider in
+            WatchRingMath.quotaSnapshot(
+                for: provider,
+                accounts: state.enabledProviderAccounts
+            )
+        }
+        .count
     }
 
     var body: some View {
@@ -56,20 +81,41 @@ struct QuotaRingsView: View {
                         emptyState
                     }
                 } else {
-                    if !ringProviders.isEmpty {
-                        ProviderRingCluster(providers: ringProviders)
+                    if !ringSnapshots.isEmpty {
+                        ProviderRingCluster(
+                            snapshots: ringSnapshots
+                        )
                             .frame(height: 142)
                             .padding(.vertical, 2)
                         // Legend mapping each ring's colour → its provider
                         // (outer ring first), so the concentric rings are
                         // readable at a glance.
-                        RingLegend(providers: ringProviders)
+                        RingLegend(snapshots: ringSnapshots)
                     }
                     ForEach(sortedProviders) { provider in
+                        let accounts = state.accounts(
+                            for: provider.provider
+                        )
                         NavigationLink {
-                            WatchProviderDetailView(provider: provider, showCost: state.showCost)
+                            if accounts.count > 1 {
+                                WatchProviderAccountsDetailView(
+                                    provider: provider,
+                                    accounts: accounts,
+                                    showCost: state.showCost
+                                )
+                            } else {
+                                WatchProviderDetailView(
+                                    provider: provider,
+                                    account: accounts.first,
+                                    showCost: state.showCost
+                                )
+                            }
                         } label: {
-                            ProviderTierCard(provider: provider, showCost: state.showCost)
+                            ProviderTierCard(
+                                provider: provider,
+                                accounts: accounts,
+                                showCost: state.showCost
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -101,6 +147,13 @@ struct QuotaRingsView: View {
             Text(L10n.providers.noData)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if state.providerDataLoaded {
+                Text(L10n.watch.connectAgentsOnMac)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -123,18 +176,18 @@ enum QuotaTierStyle {
 
 // MARK: - Concentric ring cluster (remaining / countdown)
 
-/// Activity-ring-style concentric rings. `providers` is already
-/// `WatchRingMath.ringProviders` output (≤3, most-active first by token
-/// usage), so the outermost ring and the centre label both key off
-/// `providers.first` (the "main" provider, same as the Pulse teaser). Each ring's arc is the provider's **Weekly**-
-/// window remaining headroom and depletes as that budget is used.
+/// Activity-ring-style concentric rings. `snapshots` is already filtered to
+/// fresh account-aware quota values and ordered by tightest headroom.
 struct ProviderRingCluster: View {
-    let providers: [ProviderUsage]
+    let snapshots: [WatchProviderQuotaSnapshot]
 
     var body: some View {
         ZStack {
-            ForEach(Array(providers.enumerated()), id: \.element.id) { idx, provider in
-                ring(for: provider, index: idx)
+            ForEach(
+                Array(snapshots.enumerated()),
+                id: \.element.id
+            ) { idx, snapshot in
+                ring(for: snapshot, index: idx)
             }
             centerLabel
         }
@@ -143,17 +196,17 @@ struct ProviderRingCluster: View {
         .accessibilityLabel(accessibilitySummary)
     }
 
-    private func ring(for provider: ProviderUsage, index: Int) -> some View {
+    private func ring(
+        for snapshot: WatchProviderQuotaSnapshot,
+        index: Int
+    ) -> some View {
+        let provider = snapshot.provider
         // Each ring is drawn in the provider's OWN brand colour (stable, never
         // recoloured by usage) so a provider is identifiable by its ring colour
         // and the legend below can map colour → provider. Urgency is conveyed by
         // the arc length (how empty the ring is) and by the per-provider cards,
         // which keep the red/amber tier tinting.
         let base = PulseTheme.providerColor(provider.provider)
-        // The arc tracks the WEEKLY window (falls back to the primary when a
-        // provider has no weekly tier) — the slower, more meaningful budget.
-        let wpct = WatchRingMath.weeklyUsagePercent(provider)
-        let remaining = WatchRingMath.remainingFraction(usagePercent: wpct)
         // Inset each successive ring so it nests inside the previous one;
         // the +ringWidth/2 keeps the outermost stroke from clipping the edge.
         let inset = WatchTheme.ringWidth / 2
@@ -162,7 +215,10 @@ struct ProviderRingCluster: View {
             Circle()
                 .stroke(base.opacity(WatchTheme.ringTrackOpacity), lineWidth: WatchTheme.ringWidth)
             Circle()
-                .trim(from: 0, to: remaining)
+                .trim(
+                    from: 0,
+                    to: snapshot.remainingFraction
+                )
                 .stroke(base, style: StrokeStyle(lineWidth: WatchTheme.ringWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
@@ -171,16 +227,20 @@ struct ProviderRingCluster: View {
 
     @ViewBuilder
     private var centerLabel: some View {
-        if let top = providers.first {
+        if let top = snapshots.first {
             // Constrained to the innermost ring's ~72pt opening so a long or
             // localized provider name shrinks/truncates instead of spilling
             // over the rings.
             VStack(spacing: 0) {
-                Text("\(WatchRingMath.weeklyRemainingPercentInt(top))%")
+                Text("\(top.remainingPercent)%")
                     .font(WatchTheme.monoNumber(size: 22))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(L10n.watch.providerLeft(top.provider))
+                Text(
+                    L10n.watch.providerLeft(
+                        top.provider.provider
+                    )
+                )
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -192,34 +252,47 @@ struct ProviderRingCluster: View {
     }
 
     private var accessibilitySummary: String {
-        providers
-            .map { L10n.widget.percentLeft($0.provider, WatchRingMath.weeklyRemainingPercentInt($0)) }
+        snapshots
+            .map {
+                L10n.widget.percentLeft(
+                    $0.provider.provider,
+                    $0.remainingPercent
+                )
+            }
             .joined(separator: ", ")
     }
 }
 
 // MARK: - Ring legend (colour → provider)
 
-/// Maps each concentric ring's colour to its provider so the cluster is
-/// readable at a glance. `providers` is the same `ringProviders` array the
-/// rings use (index 0 = outermost), so the rows are listed outer → inner and
-/// each colour dot matches exactly the colour of that provider's ring.
+/// Maps each concentric ring's colour to its account-aware provider snapshot.
 struct RingLegend: View {
-    let providers: [ProviderUsage]
+    let snapshots: [WatchProviderQuotaSnapshot]
 
     var body: some View {
         VStack(spacing: 4) {
-            ForEach(Array(providers.enumerated()), id: \.element.id) { _, provider in
+            ForEach(
+                Array(snapshots.enumerated()),
+                id: \.element.id
+            ) { _, snapshot in
                 HStack(spacing: 6) {
                     Circle()
-                        .fill(PulseTheme.providerColor(provider.provider))
+                        .fill(
+                            PulseTheme.providerColor(
+                                snapshot.provider.provider
+                            )
+                        )
                         .frame(width: 8, height: 8)
-                    Text(provider.provider)
+                    Text(snapshot.provider.provider)
                         .font(.system(size: 12, weight: .medium))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Spacer(minLength: 4)
-                    Text(L10n.watch.percentLeft(WatchRingMath.weeklyRemainingPercentInt(provider)))
+                    Text(
+                        L10n.watch.percentLeft(
+                            snapshot.remainingPercent
+                        )
+                    )
                         .font(.system(size: 11).monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -234,8 +307,13 @@ struct RingLegend: View {
     }
 
     private var legendAccessibility: String {
-        providers
-            .map { L10n.widget.percentLeft($0.provider, WatchRingMath.weeklyRemainingPercentInt($0)) }
+        snapshots
+            .map {
+                L10n.widget.percentLeft(
+                    $0.provider.provider,
+                    $0.remainingPercent
+                )
+            }
             .joined(separator: ", ")
     }
 }
@@ -255,47 +333,155 @@ private func watchPaceMarkers(_ tier: TierDTO) -> [BarMarker] {
     return [BarMarker(position: QuotaBarMarkers.place(used, onRemainingBar: true), kind: .pace)]
 }
 
+func watchAccountLabel(
+    _ account: ProviderAccountUsage,
+    in accounts: [ProviderAccountUsage]
+) -> String {
+    let trimmed = account.accountLabel?
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    if let trimmed, !trimmed.isEmpty {
+        return trimmed
+    }
+    guard accounts.count > 1 else {
+        return L10n.providers.defaultAccount
+    }
+    let index = accounts.firstIndex {
+        $0.id == account.id
+    } ?? 0
+    return L10n.providers.accountNumber(index + 1)
+}
+
 struct ProviderTierCard: View {
     let provider: ProviderUsage
+    let accounts: [ProviderAccountUsage]
     let showCost: Bool
 
     private var providerColor: Color { PulseTheme.providerColor(provider.provider) }
 
-    /// Colour for the header "% left" — keyed on the Weekly window so the
-    /// headline matches the rings.
+    private var constrainedAccount: ProviderAccountUsage? {
+        ProviderAccountPresentation
+            .mostConstrainedEnabledAccount(in: accounts)
+    }
+
+    private var isMultiAccount: Bool {
+        accounts.count > 1
+    }
+
+    private var displayedAccount: ProviderAccountUsage? {
+        constrainedAccount ?? accounts.first
+    }
+
+    private var quotaSnapshot: WatchProviderQuotaSnapshot? {
+        WatchRingMath.quotaSnapshot(
+            for: provider,
+            accounts: accounts
+        )
+    }
+
+    private var isStale: Bool {
+        quotaSnapshot?.isStale == true
+    }
+
+    private var displayedTiers: [TierDTO] {
+        displayedAccount?.tiers ?? provider.tiers
+    }
+
+    private var overallRemainingFraction: Double? {
+        quotaSnapshot?.remainingFraction
+    }
+
     private var overallColor: Color {
-        WatchTheme.tierColor(WatchRingMath.tier(usagePercent: WatchRingMath.weeklyUsagePercent(provider)), base: providerColor)
+        guard !isStale else { return .gray }
+        return WatchTheme.tierColor(
+            WatchRingMath.tier(
+                usagePercent:
+                    1 - (overallRemainingFraction ?? 1)
+            ),
+            base: providerColor
+        )
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Header: dot + name + overall "% left" (provider-level headline).
             HStack(spacing: 6) {
                 Circle()
                     .fill(providerColor)
                     .frame(width: 8, height: 8)
-                Text(provider.provider)
+                Text(
+                    isMultiAccount
+                        ? "\(provider.provider) · "
+                            + L10n.providers.accountsCount(
+                                accounts.count
+                            )
+                        : provider.provider
+                )
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Spacer(minLength: 4)
-                if provider.quota != nil {
-                    Text(L10n.watch.percentLeft(WatchRingMath.weeklyRemainingPercentInt(provider)))
+                if let overallRemainingFraction {
+                    Text(
+                        L10n.watch.percentLeft(
+                            Int(overallRemainingFraction * 100)
+                        )
+                    )
                         .font(WatchTheme.monoNumber(size: 12))
                         .foregroundStyle(overallColor)
                 }
             }
 
-            // Per-window quota bars (5h / Weekly …), or one overall bar.
-            if !provider.tiers.isEmpty {
-                ForEach(Array(provider.tiers.prefix(2).enumerated()), id: \.offset) { _, tier in
+            if isMultiAccount, let constrainedAccount {
+                Text(
+                    L10n.watch.tightestAccount(
+                        watchAccountLabel(
+                            constrainedAccount,
+                            in: accounts
+                        )
+                    )
+                )
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+
+            if !displayedTiers.isEmpty {
+                ForEach(
+                    Array(displayedTiers.prefix(2).enumerated()),
+                    id: \.offset
+                ) { _, tier in
                     UsageBar(
                         label: tier.name,
                         value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
-                        color: QuotaTierStyle.color(quota: tier.quota, remaining: tier.remaining, base: providerColor),
+                        color:
+                            isStale
+                                ? .gray
+                                : QuotaTierStyle.color(
+                                    quota: tier.quota,
+                                    remaining: tier.remaining,
+                                    base: providerColor
+                                ),
                         detail: QuotaTierStyle.detail(quota: tier.quota, remaining: tier.remaining),
-                        markers: watchPaceMarkers(tier)
+                        markers:
+                            isStale
+                                ? []
+                                : watchPaceMarkers(tier)
                     )
                 }
+            } else if let quota = displayedAccount?.quota,
+                      quota > 0,
+                      let remaining = displayedAccount?.remaining {
+                let fraction = WatchRingMath.remainingFraction(
+                    quota: quota,
+                    remaining: remaining
+                )
+                UsageBar(
+                    label: L10n.providers.quota,
+                    value: fraction,
+                    color: overallColor,
+                    detail: L10n.watch.percentLeft(
+                        Int(fraction * 100)
+                    )
+                )
             } else if provider.quota != nil {
                 UsageBar(
                     label: L10n.providers.quota,
@@ -305,9 +491,9 @@ struct ProviderTierCard: View {
                 )
             }
 
-            // v1.30 F1 — pace forecast ("X% in reserve · lasts to reset"),
-            // omitted when the provider has no usable reset window.
-            if let pace = provider.paceSummary() {
+            if accounts.isEmpty,
+               !isStale,
+               let pace = provider.paceSummary() {
                 Text(pace)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -315,7 +501,14 @@ struct ProviderTierCard: View {
                     .minimumScaleFactor(0.8)
             }
 
-            // Footer: today's cost (labelled) + today's token usage.
+            if let freshnessAccount = displayedAccount {
+                WatchAccountFreshnessLabel(
+                    account: freshnessAccount
+                )
+            }
+
+            // Provider-level cost is deliberately rendered once here, never
+            // inside an account row.
             HStack(spacing: 4) {
                 if showCost && provider.estimated_cost_today > 0 {
                     Text(L10n.dashboard.today)
@@ -343,14 +536,322 @@ struct ProviderTierCard: View {
     }
 }
 
-// MARK: - Provider Detail (relocated from the retired WatchProvidersView)
+struct WatchAccountFreshnessLabel: View {
+    let account: ProviderAccountUsage
 
-struct WatchProviderDetailView: View {
+    private var timestamp: String? {
+        ProviderAccountPresentation.freshnessTimestamp(
+            for: account
+        )
+    }
+
+    private var isStale: Bool {
+        ProviderAccountPresentation.isStale(account)
+    }
+
+    private var text: String {
+        guard let timestamp else {
+            return L10n.watch.staleUpdated("—")
+        }
+        let relative = RelativeTime.format(timestamp)
+        return isStale
+            ? L10n.watch.staleUpdated(relative)
+            : L10n.dashboard.updated(relative)
+    }
+
+    var body: some View {
+        Label(
+            text,
+            systemImage:
+                isStale
+                    ? "clock.badge.exclamationmark"
+                    : "clock"
+        )
+        .font(.caption2)
+        .foregroundStyle(
+            isStale
+                ? Color.orange
+                : Color.secondary.opacity(0.7)
+        )
+        .lineLimit(1)
+        .minimumScaleFactor(0.75)
+        .accessibilityLabel(text)
+    }
+}
+
+struct WatchProviderAccountsDetailView: View {
     let provider: ProviderUsage
+    let accounts: [ProviderAccountUsage]
     let showCost: Bool
 
     private var providerColor: Color {
         PulseTheme.providerColor(provider.provider)
+    }
+
+    private var sortedAccounts: [ProviderAccountUsage] {
+        ProviderAccountPresentation.enabledGroups(accounts)
+            .first?
+            .accounts ?? []
+    }
+
+    private var constrainedAccount: ProviderAccountUsage? {
+        ProviderAccountPresentation
+            .mostConstrainedEnabledAccount(
+                in: sortedAccounts
+            )
+    }
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 8) {
+                    Image(
+                        systemName:
+                            provider.providerKind?.iconName
+                                ?? "cpu"
+                    )
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(providerColor)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(provider.provider)
+                            .font(.headline)
+                            .lineLimit(1)
+                        Text(
+                            L10n.providers.accountsCount(
+                                sortedAccounts.count
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let constrainedAccount {
+                    Text(
+                        L10n.watch.tightestAccount(
+                            watchAccountLabel(
+                                constrainedAccount,
+                                in: sortedAccounts
+                            )
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+            }
+
+            Section(L10n.dashboard.today) {
+                WatchMetricRow(
+                    label: L10n.widget.usageTitle,
+                    value:
+                        provider.today_usage > 0
+                            ? CostFormatter.formatUsage(
+                                provider.today_usage
+                            )
+                            : "—",
+                    icon: "chart.bar.fill"
+                )
+                if showCost {
+                    WatchMetricRow(
+                        label: L10n.dashboard.costToday,
+                        value: CostFormatter.format(
+                            provider.estimated_cost_today
+                        ),
+                        icon: "dollarsign.circle",
+                        valueColor: .green
+                    )
+                }
+            }
+
+            ForEach(
+                Array(sortedAccounts.enumerated()),
+                id: \.element.id
+            ) { _, account in
+                Section {
+                    WatchAccountQuotaDetail(
+                        account: account,
+                        providerColor: providerColor
+                    )
+                } header: {
+                    Text(
+                        watchAccountLabel(
+                            account,
+                            in: sortedAccounts
+                        )
+                    )
+                    .lineLimit(1)
+                }
+            }
+        }
+        .navigationTitle(provider.provider)
+    }
+}
+
+struct WatchAccountQuotaDetail: View {
+    let account: ProviderAccountUsage
+    let providerColor: Color
+
+    private var planLabel: String {
+        account.planEvidence.displayValue
+            ?? account.planEvidence.rawValue
+            ?? L10n.providers.planUnconfirmed
+    }
+
+    private var validTiers: [TierDTO] {
+        account.tiers.filter { $0.quota > 0 }
+    }
+
+    private var isStale: Bool {
+        ProviderAccountPresentation.isStale(account)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(planLabel)
+                .lineLimit(1)
+            Spacer()
+            Text(
+                L10n.providers.planSource(
+                    account.planEvidence.source
+                )
+            )
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+        }
+        .font(.caption2)
+
+        WatchAccountFreshnessLabel(account: account)
+
+        if !validTiers.isEmpty {
+            ForEach(
+                Array(validTiers.enumerated()),
+                id: \.offset
+            ) { _, tier in
+                UsageBar(
+                    label: tier.name,
+                    value: WatchRingMath.remainingFraction(
+                        quota: tier.quota,
+                        remaining: tier.remaining
+                    ),
+                    color:
+                        isStale
+                            ? .gray
+                            : QuotaTierStyle.color(
+                                quota: tier.quota,
+                                remaining: tier.remaining,
+                                base: providerColor
+                            ),
+                    detail: tierDetail(tier)
+                )
+            }
+        } else if let quota = account.quota,
+                  quota > 0,
+                  let remaining = account.remaining {
+            UsageBar(
+                label: L10n.providers.quota,
+                value: WatchRingMath.remainingFraction(
+                    quota: quota,
+                    remaining: remaining
+                ),
+                color:
+                    isStale
+                        ? .gray
+                        : QuotaTierStyle.color(
+                            quota: quota,
+                            remaining: remaining,
+                            base: providerColor
+                        ),
+                detail: quotaDetail(
+                    quota: quota,
+                    remaining: remaining,
+                    resetTime: account.resetTime
+                )
+            )
+        } else {
+            Text(account.statusText)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func tierDetail(_ tier: TierDTO) -> String {
+        quotaDetail(
+            quota: tier.quota,
+            remaining: tier.remaining,
+            resetTime: tier.reset_time
+        )
+    }
+
+    private func quotaDetail(
+        quota: Int,
+        remaining: Int,
+        resetTime: String?
+    ) -> String {
+        var result = L10n.watch.percentLeft(
+            WatchRingMath.remainingPercentInt(
+                quota: quota,
+                remaining: remaining
+            )
+        )
+        if let resetTime,
+           let reset = RelativeTime.formatReset(resetTime) {
+            result += " · \(reset)"
+        }
+        return result
+    }
+}
+
+// MARK: - Provider Detail (relocated from the retired WatchProvidersView)
+
+struct WatchProviderDetailView: View {
+    let provider: ProviderUsage
+    let account: ProviderAccountUsage?
+    let showCost: Bool
+
+    private var providerColor: Color {
+        PulseTheme.providerColor(provider.provider)
+    }
+
+    private var isStale: Bool {
+        account.map {
+            ProviderAccountPresentation.isStale($0)
+        } ?? false
+    }
+
+    private var displayedTiers: [TierDTO] {
+        if let account { return account.tiers }
+        return provider.tiers
+    }
+
+    private var displayedQuota: Int? {
+        if let account { return account.quota }
+        return provider.quota
+    }
+
+    private var displayedRemaining: Int? {
+        if let account { return account.remaining }
+        return provider.remaining
+    }
+
+    private var quotaSnapshot: WatchProviderQuotaSnapshot? {
+        WatchRingMath.quotaSnapshot(
+            for: provider,
+            accounts: account.map { [$0] } ?? []
+        )
+    }
+
+    private var quotaColor: Color {
+        guard !isStale, let quotaSnapshot else {
+            return .gray
+        }
+        return WatchTheme.tierColor(
+            WatchRingMath.tier(
+                usagePercent: quotaSnapshot.usagePercent
+            ),
+            base: providerColor
+        )
     }
 
     var body: some View {
@@ -363,36 +864,84 @@ struct WatchProviderDetailView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(provider.provider)
                             .font(.headline)
-                        if provider.quota != nil {
-                            Text("\(WatchRingMath.remainingPercentInt(usagePercent: provider.usagePercent))% \(L10n.watch.remaining)")
+                        if let account {
+                            Text(
+                                watchAccountLabel(
+                                    account,
+                                    in: [account]
+                                )
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        }
+                        if let quotaSnapshot {
+                            Text(
+                                "\(quotaSnapshot.remainingPercent)% "
+                                    + L10n.watch.remaining
+                            )
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
+
+                if let account {
+                    HStack(spacing: 4) {
+                        Text(
+                            account.planEvidence.displayValue
+                                ?? account.planEvidence.rawValue
+                                ?? L10n.providers.planUnconfirmed
+                        )
+                        .lineLimit(1)
+                        Spacer()
+                        Text(
+                            L10n.providers.planSource(
+                                account.planEvidence.source
+                            )
+                        )
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                    }
+                    .font(.caption2)
+
+                    WatchAccountFreshnessLabel(
+                        account: account
+                    )
+                }
             }
 
             // Quota — per-window bars (remaining/countdown) like macOS/iOS,
             // or the overall gauge when the provider reports no tiers.
-            if !provider.tiers.isEmpty {
+            if !displayedTiers.isEmpty {
                 Section(L10n.providers.quota) {
-                    ForEach(provider.tiers.indices, id: \.self) { i in
-                        let tier = provider.tiers[i]
+                    ForEach(displayedTiers.indices, id: \.self) { i in
+                        let tier = displayedTiers[i]
                         UsageBar(
                             label: tier.name,
                             value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
-                            color: QuotaTierStyle.color(quota: tier.quota, remaining: tier.remaining, base: providerColor),
+                            color:
+                                isStale
+                                    ? .gray
+                                    : QuotaTierStyle.color(
+                                        quota: tier.quota,
+                                        remaining: tier.remaining,
+                                        base: providerColor
+                                    ),
                             detail: tierDetail(tier),
-                            markers: watchPaceMarkers(tier)
+                            markers:
+                                isStale
+                                    ? []
+                                    : watchPaceMarkers(tier)
                         )
                     }
                 }
-            } else if provider.quota != nil {
+            } else if let quotaSnapshot {
                 Section(L10n.providers.quota) {
-                    Gauge(value: WatchRingMath.remainingFraction(usagePercent: provider.usagePercent)) {
+                    Gauge(value: quotaSnapshot.remainingFraction) {
                         Text(provider.provider)
                     } currentValueLabel: {
-                        Text("\(WatchRingMath.remainingPercentInt(usagePercent: provider.usagePercent))%")
+                        Text("\(quotaSnapshot.remainingPercent)%")
                             .font(.caption.weight(.bold))
                     } minimumValueLabel: {
                         Text("0")
@@ -402,7 +951,7 @@ struct WatchProviderDetailView: View {
                             .font(.system(size: 8))
                     }
                     .gaugeStyle(.linearCapacity)
-                    .tint(WatchTheme.tierColor(WatchRingMath.tier(usagePercent: provider.usagePercent), base: providerColor))
+                    .tint(quotaColor)
                 }
             }
 
@@ -421,19 +970,25 @@ struct WatchProviderDetailView: View {
                         valueColor: .green
                     )
                 }
-                if let quota = provider.quota {
+                if let quota = displayedQuota {
                     WatchMetricRow(
                         label: L10n.providers.quota,
                         value: CostFormatter.formatUsage(quota),
                         icon: "gauge.with.needle"
                     )
                 }
-                if let remaining = provider.remaining {
+                if let remaining = displayedRemaining {
                     WatchMetricRow(
                         label: L10n.watch.remaining,
                         value: CostFormatter.formatUsage(remaining),
                         icon: "hourglass",
-                        valueColor: remaining < (provider.quota ?? Int.max) / 5 ? .red : .primary
+                        valueColor:
+                            isStale
+                                ? .secondary
+                                : remaining
+                                    < (displayedQuota ?? Int.max) / 5
+                                    ? .red
+                                    : .primary
                     )
                 }
             }

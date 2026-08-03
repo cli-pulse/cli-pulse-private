@@ -339,7 +339,7 @@ private struct MenuBarLabel: View {
 // MARK: - Provider Config Window Content
 
 /// Wraps the provider config editor in a View so the App Scene closure doesn't
-/// need to read `appState.editingProviderKind` directly. Reading a @Published
+/// need to read `appState.editingProviderAccountID` directly. Reading a @Published
 /// property from inside a Scene closure can cause the App body to re-evaluate
 /// on every state change, destabilizing MenuBarExtra.
 private struct ProviderConfigWindowContent: View {
@@ -348,8 +348,13 @@ private struct ProviderConfigWindowContent: View {
 
     var body: some View {
         Group {
-            if let kind = providerState.editingProviderKind {
-                ProviderConfigEditor(kind: kind, state: state)
+            if let config = providerState.editingProviderConfig {
+                ProviderConfigEditor(
+                    accountID: config.accountID,
+                    kind: config.kind,
+                    state: state
+                )
+                .id(config.accountID)
             } else {
                 Text(L10n.common.noProviderSelected)
                     .foregroundStyle(.secondary)

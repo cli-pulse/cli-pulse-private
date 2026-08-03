@@ -90,7 +90,10 @@ struct DisplaySection: View {
             List {
                 ForEach(providerState.providerConfigs) { config in
                     Button {
-                        state.toggleProvider(config.kind)
+                        state.setProviderAccountEnabled(
+                            config.accountID,
+                            isEnabled: !config.isEnabled
+                        )
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "line.3.horizontal")
@@ -99,7 +102,7 @@ struct DisplaySection: View {
                             Image(systemName: config.kind.iconName)
                                 .font(.system(size: 8))
                                 .foregroundStyle(PulseTheme.providerColor(config.kind.rawValue))
-                            Text(config.kind.rawValue)
+                            Text(displayLabel(for: config))
                                 .font(.system(size: 9))
                                 .lineLimit(1)
                             Spacer()
@@ -123,5 +126,28 @@ struct DisplaySection: View {
             .listStyle(.plain)
             .frame(height: min(CGFloat(providerState.providerConfigs.count) * 24, 240))
         }
+    }
+
+    private func displayLabel(
+        for config: ProviderConfig
+    ) -> String {
+        let accounts = providerState.configs(for: config.kind)
+        guard accounts.count > 1 else {
+            return config.kind.rawValue
+        }
+        let label =
+            config.accountLabel?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        let accountName: String
+        if let label, !label.isEmpty {
+            accountName = label
+        } else if let index = accounts.firstIndex(where: {
+            $0.accountID == config.accountID
+        }) {
+            accountName = L10n.providers.accountNumber(index + 1)
+        } else {
+            accountName = L10n.providers.defaultAccount
+        }
+        return "\(config.kind.rawValue) · \(accountName)"
     }
 }

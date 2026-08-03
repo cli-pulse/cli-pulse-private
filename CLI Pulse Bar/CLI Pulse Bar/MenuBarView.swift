@@ -20,6 +20,20 @@ struct MenuBarView: View {
     /// view is reused across open/close), so a helper that came up after the
     /// user finished Installer.app keeps showing a stale "not installed".
     @Environment(\.controlActiveState) private var controlActiveState
+    private let agentSetupStore: AgentSetupStateStore
+    @State private var agentSetupState: AgentSetupState
+    @State private var agentSetupDismissedForSession = false
+
+    init() {
+        let store = AgentSetupStateStore()
+        agentSetupStore = store
+        _agentSetupState = State(
+            initialValue: AgentSetupState(
+                storedState: store.load(),
+                featureFlags: AgentSetupFeatureFlags.load()
+            )
+        )
+    }
 
     /// Adaptive max height: 85% of the screen where the status item lives, capped at 900pt.
     private static var maxMenuBarHeight: CGFloat {
@@ -77,7 +91,21 @@ struct MenuBarView: View {
                     // and sees their local Mac collector data. The
                     // signed-in-but-unpaired-non-local-mode branch
                     // (PairingSection flow) stays in `notConnectedView`.
-                    if state.isLocalMode || authState.isPaired {
+                    if shouldPresentAgentSetup {
+                        OnboardingWizardView(
+                            setupState: $agentSetupState,
+                            onStateChange: { updatedState in
+                                agentSetupStore.save(updatedState)
+                            },
+                            onClose: {
+                                agentSetupDismissedForSession = true
+                            },
+                            onFinished: {
+                                agentSetupDismissedForSession = false
+                            }
+                        )
+                        .environmentObject(state)
+                    } else if state.isLocalMode || authState.isPaired {
                         connectedView
                     } else {
                         notConnectedView
@@ -86,6 +114,12 @@ struct MenuBarView: View {
             }
         }
         .frame(width: 380, height: effectiveHeight)
+        .onAppear {
+            reloadAgentSetupState()
+        }
+        .onChange(of: onboardingCompleted) { _ in
+            reloadAgentSetupState()
+        }
         .onChange(of: controlActiveState) { newValue in
             // RC-2: re-probe the companion-CLI helper when the popover
             // (re)gains focus. `refreshIfStale` self-throttles so this is a
@@ -104,6 +138,7 @@ struct MenuBarView: View {
             // v1.40 PR-8: feed the adaptive refresh cadence — an active popover is
             // a "recent interaction" and shortens the next auto-refresh to ~2 min.
             state.notePopoverActivated()
+            reloadAgentSetupState()
         }
     }
 
@@ -139,16 +174,89 @@ struct MenuBarView: View {
 
     @AppStorage("cli_pulse_onboarding_completed") private var onboardingCompleted = false
 
+    private var shouldPresentAgentSetup: Bool {
+        guard !agentSetupDismissedForSession else { return false }
+        if case .v2Onboarding = agentSetupState.route {
+            return true
+        }
+        return false
+    }
+
+    private var shouldShowAgentSetupUpgrade: Bool {
+        guard !agentSetupDismissedForSession else { return false }
+        return agentSetupState.route == .upgradePrompt
+    }
+
+    private var agentSetupUpgradeCard: some View {
+        AgentSetupUpgradeCard(
+            onCheckAccounts: {
+                var updated = agentSetupState
+                // Seed with what is already switched on, so clicking through
+                // the upgrade without touching anything leaves the user's
+                // providers exactly as they were.
+                updated.acceptExistingUserUpgrade(
+                    preselecting: Set(
+                        state.providerConfigs
+                            .filter(\.isEnabled)
+                            .map(\.accountID)
+                    )
+                )
+                agentSetupState = updated
+                agentSetupStore.save(updated)
+                agentSetupDismissedForSession = false
+            },
+            onLater: {
+                var updated = agentSetupState
+                updated.dismissExistingUserUpgrade()
+                agentSetupState = updated
+                agentSetupStore.save(updated)
+            }
+        )
+    }
+
+    private func reloadAgentSetupState() {
+        agentSetupState = AgentSetupState(
+            storedState: agentSetupStore.load(),
+            featureFlags: AgentSetupFeatureFlags.load()
+        )
+    }
+
+    private var agentSettingsTab: some View {
+        SettingsTab(
+            canRerunAgentSetup: agentSetupState.canBeginRerun,
+            onRerunAgentSetup: beginAgentSetupRerun
+        )
+    }
+
+    private func beginAgentSetupRerun() {
+        var updated = agentSetupState
+        guard updated.canBeginRerun else { return }
+
+        updated.beginRerun()
+        guard case .v2Onboarding = updated.route else { return }
+
+        agentSetupState = updated
+        agentSetupStore.save(updated)
+        agentSetupDismissedForSession = false
+    }
+
     private var notConnectedView: some View {
         VStack(spacing: 0) {
+            if shouldShowAgentSetupUpgrade {
+                agentSetupUpgradeCard
+                    .padding(.horizontal, 10)
+                    .padding(.top, 8)
+            }
+
             // Inner content branches by auth/onboarding state. Each
             // branch is wrapped in a `.frame(maxHeight: .infinity)`
             // container so the basic footer below sits flush against
             // the bottom of the popover, matching the connected view's
             // footer placement.
             Group {
-                if !authState.isAuthenticated && !onboardingCompleted {
-                    OnboardingWizardView()
+                if !authState.isAuthenticated
+                    && agentSetupState.route == .legacyOnboarding {
+                    LegacyOnboardingWizardView()
                         .environmentObject(state)
                 } else if !authState.isAuthenticated {
                     // iter14 hotfix (2026-04-29): signed-out + onboarding
@@ -177,7 +285,8 @@ struct MenuBarView: View {
                             case .swarm:       SwarmTab()
                             case .alerts:      AlertsTab()
                             case .pet:         PetTab()
-                            case .settings:    SettingsTab()
+                            case .settings:
+                                agentSettingsTab
                             }
                         }
                         .environmentObject(state)
@@ -186,7 +295,7 @@ struct MenuBarView: View {
                 } else {
                     VStack(spacing: 0) {
                         tabBar
-                        SettingsTab()
+                        agentSettingsTab
                             .environmentObject(state)
                             .frame(maxHeight: .infinity)
                     }
@@ -295,6 +404,12 @@ struct MenuBarView: View {
                 .background(Color.purple.opacity(0.08))
             }
 
+            if shouldShowAgentSetupUpgrade {
+                agentSetupUpgradeCard
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+            }
+
             tabBar
 
             // Tab Content
@@ -315,7 +430,7 @@ struct MenuBarView: View {
                 case .pet:
                     PetTab()
                 case .settings:
-                    SettingsTab()
+                    agentSettingsTab
                 }
             }
             .environmentObject(state)

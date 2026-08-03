@@ -68,8 +68,12 @@ Example: if your client ID is
 
 ## Step 5 — Update the Code
 
-Open `CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift`
-and replace the placeholder:
+Update both of these files with the same public client ID:
+
+- `CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift`
+- `helper/system_collector.py`
+
+Replace the Swift placeholder:
 
 ```swift
 public static let clientID = "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
@@ -80,6 +84,10 @@ with your actual client ID:
 ```swift
 public static let clientID = "123456789-abcdef.apps.googleusercontent.com"
 ```
+
+Then set `_CLIPULSE_GEMINI_CLIENT_ID` in `helper/system_collector.py` to the
+same value. `scripts/check_helper_version_sync.sh` fails CI if the two values
+drift.
 
 ## Step 6 — Verify
 
@@ -96,10 +104,30 @@ public static let clientID = "123456789-abcdef.apps.googleusercontent.com"
   challenge) to perform the OAuth2 authorization code flow.
 - Tokens are stored in the macOS Keychain (access group:
   `group.yyh.CLI-Pulse`).
-- A copy is also written to `~/.config/clipulse/gemini_tokens.json` (mode 0600)
-  so the Python helper can read it.
+- The Developer ID app publishes an access-token-only v1 snapshot to
+  `~/.config/clipulse/gemini_tokens.json` (mode 0600) for the Python helper.
+  The Mac App Store app writes only inside its sandbox home; an unsandboxed
+  helper must not touch Group Containers because doing so causes recurring
+  macOS app-data authorization prompts.
+- The helper accepts only the exact v1 schema, generation UUID, compiled
+  client ID, bounded token, and finite millisecond expiry. It never receives
+  or refreshes CLI Pulse's refresh token.
 - Token refresh uses only the `client_id` (no secret required for public
   clients).
+
+## Distribution-channel boundary
+
+MAS and Developer ID builds use the same bundle ID and are mutually exclusive:
+install one channel at a time. Before changing channels, stop/uninstall the
+standalone Python helper, replace the app, then install or enable only the
+helper intended for the destination channel. Confirm the helper `hello`
+response reports the expected implementation before reconnecting Gemini.
+
+Do not make MAS and an old Developer ID/Python helper share a lock by reaching
+into `~/Library/Group Containers`; that reintroduces the recurring TCC prompt.
+CLI Pulse snapshots cannot be refreshed by Python and are rejected at expiry,
+so a forgotten old snapshot is time-bounded, but channel-switch QA must still
+remove the old helper and snapshot before acceptance.
 
 ## Troubleshooting
 

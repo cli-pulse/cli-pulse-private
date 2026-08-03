@@ -41,7 +41,9 @@ struct WatchLoginView: View {
                                 .multilineTextAlignment(.center)
                         }
 
-                        if let token = sessionManager.pendingAuthToken {
+                        if let token = sessionManager.pendingAuthToken,
+                           let identity =
+                               sessionManager.lastReceivedIdentity {
                             Button {
                                 let refresh = sessionManager.pendingRefreshToken
                                 let email = sessionManager.pendingAuthEmail ?? ""
@@ -50,6 +52,7 @@ struct WatchLoginView: View {
                                     await state.applyWatchAuth(
                                         token: token,
                                         refreshToken: refresh,
+                                        identity: identity,
                                         email: email,
                                         name: name
                                     )

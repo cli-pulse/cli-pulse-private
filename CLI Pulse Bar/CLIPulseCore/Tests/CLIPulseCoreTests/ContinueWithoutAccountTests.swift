@@ -40,7 +40,10 @@ final class ContinueWithoutAccountTests: XCTestCase {
         state.selectedTab = .settings
         state.serverOnline = false
 
-        state.continueWithoutAccount(defaults: Self.isolatedDefaults())
+        state.continueWithoutAccount(
+            defaults: Self.isolatedDefaults(),
+            startRefreshing: false
+        )
 
         XCTAssertTrue(state.isLocalMode,
                       "must flip isLocalMode → MenuBarView routes to connectedView")
@@ -56,10 +59,16 @@ final class ContinueWithoutAccountTests: XCTestCase {
     /// re-renders).
     func testContinueWithoutAccountIsIdempotent() {
         let state = AppState()
-        state.continueWithoutAccount(defaults: Self.isolatedDefaults())
+        state.continueWithoutAccount(
+            defaults: Self.isolatedDefaults(),
+            startRefreshing: false
+        )
         let firstSnapshot = (state.isLocalMode, state.selectedTab, state.serverOnline)
 
-        state.continueWithoutAccount(defaults: Self.isolatedDefaults())
+        state.continueWithoutAccount(
+            defaults: Self.isolatedDefaults(),
+            startRefreshing: false
+        )
         let secondSnapshot = (state.isLocalMode, state.selectedTab, state.serverOnline)
 
         XCTAssertEqual(firstSnapshot.0, secondSnapshot.0)
@@ -86,7 +95,10 @@ final class ContinueWithoutAccountTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: AppState.localModeEnabledKey),
                        "precondition: fresh install has no marker")
 
-        AppState().continueWithoutAccount(defaults: defaults)
+        AppState().continueWithoutAccount(
+            defaults: defaults,
+            startRefreshing: false
+        )
 
         XCTAssertTrue(defaults.bool(forKey: AppState.localModeEnabledKey),
                       "choosing local mode must persist, or the next launch silently reverts it")
@@ -160,7 +172,10 @@ final class ContinueWithoutAccountTests: XCTestCase {
         state.isLocalMode = false
         state.selectedTab = .settings
 
-        state.applyColdLaunchLanding(.localMode)
+        state.applyColdLaunchLanding(
+            .localMode,
+            startRefreshing: false
+        )
 
         XCTAssertTrue(state.isLocalMode, "the .localMode landing must actually enter local mode")
         XCTAssertEqual(state.selectedTab, .overview, "…and land on Overview, where the data is")
@@ -173,7 +188,10 @@ final class ContinueWithoutAccountTests: XCTestCase {
         state.isLocalMode = false
         state.selectedTab = .overview
 
-        state.applyColdLaunchLanding(.signIn)
+        state.applyColdLaunchLanding(
+            .signIn,
+            startRefreshing: false
+        )
 
         XCTAssertEqual(state.selectedTab, .settings, "the .signIn landing must show the Sign-In form")
         XCTAssertFalse(state.isLocalMode, "the .signIn landing must not silently enter local mode")

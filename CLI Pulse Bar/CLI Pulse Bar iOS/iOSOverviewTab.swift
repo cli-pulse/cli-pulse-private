@@ -7,6 +7,11 @@ struct iOSOverviewTab: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var isIPad: Bool { horizontalSizeClass == .regular }
+    private var accountGroups: [ProviderAccountGroup] {
+        ProviderAccountPresentation.groups(
+            providerState.providerAccounts
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -78,6 +83,10 @@ struct iOSOverviewTab: View {
                     // dashboard so it shows even before/without dashboard data.
                     deviceHealthSection
 
+                    if !accountGroups.isEmpty {
+                        providerAccountSummary
+                    }
+
                     if let dash = state.dashboard {
                         metricsGrid(dash)
 
@@ -115,11 +124,16 @@ struct iOSOverviewTab: View {
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 60)
-                    } else {
+                    } else if accountGroups.isEmpty {
                         iOSSyncOnboardingCard()
                             .environmentObject(state)
                             .padding(.horizontal)
                             .padding(.vertical, 20)
+                    } else {
+                        // Account snapshots can arrive before the broader
+                        // dashboard aggregation. The summary above is valid
+                        // content, so do not replace it with a Mac setup card.
+                        EmptyView()
                     }
                 }
                 .padding(.vertical)
@@ -157,6 +171,97 @@ struct iOSOverviewTab: View {
                 await state.refreshAll()
             }
         }
+    }
+
+    private var providerAccountSummary: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.2.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(PulseTheme.accent)
+                Text(L10n.providers.accountConfiguration)
+                    .font(.subheadline.weight(.semibold))
+
+                Spacer()
+
+                Text(
+                    L10n.providers.accountsCount(
+                        providerState.providerAccounts.count
+                    )
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+
+            if let latest =
+                ProviderAccountPresentation
+                    .latestFreshnessTimestamp(
+                        in: providerState.providerAccounts
+                    ) {
+                Text(
+                    L10n.dashboard.updated(
+                        RelativeTime.format(latest)
+                    )
+                )
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            }
+
+            ForEach(accountGroups) { group in
+                HStack(spacing: 10) {
+                    Image(systemName: group.provider.iconName)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(
+                            PulseTheme.providerColor(
+                                group.provider.rawValue
+                            )
+                        )
+                        .frame(width: 28)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(group.provider.rawValue)
+                            .font(.subheadline.weight(.medium))
+                        Text(
+                            L10n.providers.accountsCount(
+                                group.accounts.count
+                            )
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    if let freshest =
+                        ProviderAccountPresentation
+                            .latestFreshnessTimestamp(
+                                in: group.accounts
+                            ) {
+                        Text(RelativeTime.format(freshest))
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+            }
+
+            Button {
+                state.selectedTab = .providers
+            } label: {
+                Label(
+                    L10n.tab.providers,
+                    systemImage: "chevron.right"
+                )
+                .font(.caption.weight(.semibold))
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
+        .background(PulseTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal)
     }
 
     // MARK: - Metrics Grid

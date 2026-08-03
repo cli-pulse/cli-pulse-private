@@ -98,9 +98,26 @@ struct ProvidersTab: View {
                     )
                 } else {
                     ForEach(filteredDetails) { detail in
-                        EnhancedProviderCard(detail: detail, showCost: state.showCost) { newValue in
-                            state.setProviderEnabled(detail.config.kind, isEnabled: newValue)
-                        }
+                        let configs = providerState.configs(
+                            for: detail.config.kind
+                        )
+                        EnhancedProviderCard(
+                            detail: detail,
+                            showCost: state.showCost,
+                            accountConfigs: configs,
+                            accountUsages:
+                                providerState.providerAccounts.filter {
+                                    $0.provider == detail.config.kind
+                                },
+                            onAccountToggle: {
+                                accountID,
+                                isEnabled in
+                                state.setProviderAccountEnabled(
+                                    accountID,
+                                    isEnabled: isEnabled
+                                )
+                            }
+                        )
                     }
                 }
             }
@@ -164,12 +181,266 @@ struct ProvidersTab: View {
     }
 }
 
+struct ProviderAccountQuotaSummaryView: View {
+    let provider: ProviderKind
+    let configs: [ProviderConfig]
+    let usages: [ProviderAccountUsage]
+    let showProviderCostNote: Bool
+    let showsToggles: Bool
+    let onToggle: (UUID, Bool) -> Void
+
+    @State private var isExpanded = false
+
+    private var scopedUsages: [ProviderAccountUsage] {
+        let accountIDs = Set(configs.map(\.accountID))
+        return usages.filter {
+            $0.provider == provider
+                && accountIDs.contains($0.id)
+        }
+    }
+
+    private var mostConstrained: ProviderAccountUsage? {
+        ProviderState.mostConstrainedAccount(
+            in: scopedUsages,
+            enabledAccountIDs: Set(
+                configs.filter(\.isEnabled).map(\.accountID)
+            )
+        )
+    }
+
+    var body: some View {
+        DisclosureGroup(
+            isExpanded: $isExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(configs) { config in
+                    accountQuotaRow(config)
+                }
+
+                if showProviderCostNote {
+                    Label(
+                        L10n.providers.providerLevelCost,
+                        systemImage: "info.circle"
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                }
+            }
+            .padding(.top, 7)
+            .padding(.leading, 6)
+        } label: {
+            HStack(spacing: 6) {
+                Text(
+                    L10n.providers.accountsCount(
+                        configs.count
+                    )
+                )
+                .font(.caption.weight(.semibold))
+
+                if let mostConstrained,
+                   let fraction =
+                    ProviderState.remainingFraction(
+                        for: mostConstrained
+                    ) {
+                    Text(L10n.providers.mostConstrained)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    Text(
+                        "\(accountDisplayLabel(for: mostConstrained.id)) · "
+                        + L10n.providers.remainingPercent(
+                            Int((fraction * 100).rounded())
+                        )
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
+            }
+        }
+        .padding(8)
+        .background(Color.secondary.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func accountQuotaRow(
+        _ config: ProviderConfig
+    ) -> some View {
+        let usage = scopedUsages.first {
+            $0.id == config.accountID
+        }
+        let plan =
+            usage?.planEvidence.displayValue
+            ?? config.planOverride
+            ?? L10n.providers.planUnconfirmed
+
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(accountDisplayLabel(for: config.accountID))
+                        .font(.caption.weight(.medium))
+                        .lineLimit(1)
+                    Text(plan)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if mostConstrained?.id == config.accountID {
+                    Text(L10n.providers.mostConstrained)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+
+                if !config.isEnabled {
+                    Text(L10n.providers.disabledBadge)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                if showsToggles {
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { config.isEnabled },
+                            set: { isEnabled in
+                                onToggle(
+                                    config.accountID,
+                                    isEnabled
+                                )
+                            }
+                        )
+                    )
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .accessibilityLabel(
+                        L10n.providers.monitorAccount(
+                            accountDisplayLabel(
+                                for: config.accountID
+                            )
+                        )
+                    )
+                }
+            }
+
+            accountQuotaContent(usage)
+        }
+        .padding(7)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    @ViewBuilder
+    private func accountQuotaContent(
+        _ usage: ProviderAccountUsage?
+    ) -> some View {
+        if let usage {
+            let validTiers = usage.tiers.filter { $0.quota > 0 }
+            if !validTiers.isEmpty {
+                ForEach(
+                    Array(validTiers.enumerated()),
+                    id: \.offset
+                ) { _, tier in
+                    let fraction = remainingFraction(
+                        remaining: tier.remaining,
+                        quota: tier.quota
+                    )
+                    UsageBar(
+                        label: tier.name,
+                        value: fraction,
+                        color: quotaColor(fraction),
+                        detail:
+                            "\(tier.remaining) / \(tier.quota)"
+                    )
+                }
+            } else if let quota = usage.quota,
+                      quota > 0,
+                      let remaining = usage.remaining {
+                let fraction = remainingFraction(
+                    remaining: remaining,
+                    quota: quota
+                )
+                UsageBar(
+                    label: L10n.providers.quota,
+                    value: fraction,
+                    color: quotaColor(fraction),
+                    detail: "\(remaining) / \(quota)"
+                )
+            } else {
+                Text(usage.statusText)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Text(L10n.providers.needsReconnect)
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        }
+    }
+
+    private func accountDisplayLabel(
+        for accountID: UUID
+    ) -> String {
+        let usage = scopedUsages.first { $0.id == accountID }
+        if let label = usage?.accountLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !label.isEmpty {
+            return label
+        }
+        if let label = configs.first(where: {
+            $0.accountID == accountID
+        })?.accountLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !label.isEmpty {
+            return label
+        }
+        guard configs.count > 1,
+              let index = configs.firstIndex(where: {
+                  $0.accountID == accountID
+              })
+        else {
+            return L10n.providers.defaultAccount
+        }
+        return L10n.providers.accountNumber(index + 1)
+    }
+
+    private func remainingFraction(
+        remaining: Int,
+        quota: Int
+    ) -> Double {
+        min(max(Double(remaining) / Double(quota), 0), 1)
+    }
+
+    private func quotaColor(
+        _ remainingFraction: Double
+    ) -> Color {
+        if remainingFraction <= 0.1 {
+            return .red
+        }
+        if remainingFraction <= 0.25 {
+            return .orange
+        }
+        return PulseTheme.providerColor(provider.rawValue)
+    }
+}
+
 // MARK: - Enhanced Provider Card
 
 struct EnhancedProviderCard: View {
     let detail: ProviderDetail
     let showCost: Bool
-    let onToggle: (Bool) -> Void
+    let accountConfigs: [ProviderConfig]
+    let accountUsages: [ProviderAccountUsage]
+    let onAccountToggle: (UUID, Bool) -> Void
 
     @EnvironmentObject var state: AppState
 
@@ -362,18 +633,47 @@ struct EnhancedProviderCard: View {
                 }
                 Spacer()
 
-                // Enable/disable toggle. The binding's `set` forwards the
-                // user's intended boolean (no blind flip) and AppState's
-                // `setProviderEnabled` rebuilds `providerDetails` on the same
-                // tick so the visual updates immediately. See v1.9.3 fix.
-                Toggle("", isOn: Binding(
-                    get: { config.isEnabled },
-                    set: { newValue in onToggle(newValue) }
-                ))
-                .toggleStyle(.switch)
-                .controlSize(.mini)
-                .labelsHidden()
-                .animation(.easeInOut(duration: 0.15), value: config.isEnabled)
+                if accountConfigs.count == 1,
+                   let accountID = accountConfigs.first?.accountID {
+                    Toggle(
+                        "",
+                        isOn: Binding(
+                            get: { config.isEnabled },
+                            set: { newValue in
+                                onAccountToggle(
+                                    accountID,
+                                    newValue
+                                )
+                            }
+                        )
+                    )
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .animation(
+                        .easeInOut(duration: 0.15),
+                        value: config.isEnabled
+                    )
+                    .accessibilityLabel(
+                        L10n.providers.monitorAccount(
+                            accountConfigs.first?
+                                .accountLabel
+                                ?? config.kind.rawValue
+                        )
+                    )
+                } else if accountConfigs.count > 1 {
+                    Text(
+                        L10n.providers.accountsCount(
+                            accountConfigs.count
+                        )
+                    )
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(Capsule())
+                }
             }
 
             // v1.44 W3: what actually happened to this provider's collector.
@@ -392,6 +692,17 @@ struct EnhancedProviderCard: View {
             // known status page; fetches only when expanded.
             if let kind = ProviderKind(rawValue: provider.provider) {
                 ProviderStatusComponentsView(provider: kind)
+            }
+
+            if accountConfigs.count > 1 {
+                ProviderAccountQuotaSummaryView(
+                    provider: config.kind,
+                    configs: accountConfigs,
+                    usages: accountUsages,
+                    showProviderCostNote: showCost,
+                    showsToggles: true,
+                    onToggle: onAccountToggle
+                )
             }
 
             if config.isEnabled {

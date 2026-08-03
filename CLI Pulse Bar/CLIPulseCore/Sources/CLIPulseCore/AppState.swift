@@ -68,7 +68,7 @@ public final class AppState: ObservableObject {
 
     // v1.10 P2-3 slice 5: extracted into a child ProviderState ObservableObject.
     // `providers`, `providerConfigs`, `providerDetails`, `costSummary`, and
-    // `editingProviderKind` live on `providerState`; AppState exposes them as
+    // `editingProviderAccountID` live on `providerState`; AppState exposes them as
     // computed forwarders so setProviderEnabled/toggleProvider/DemoDataProvider/
     // DataRefreshManager-payload-assign compile unchanged.
     public let providerState = ProviderState()
@@ -76,6 +76,11 @@ public final class AppState: ObservableObject {
     public var providers: [ProviderUsage] {
         get { providerState.providers }
         set { providerState.providers = newValue }
+    }
+
+    public var providerAccounts: [ProviderAccountUsage] {
+        get { providerState.providerAccounts }
+        set { providerState.providerAccounts = newValue }
     }
 
     // v1.10 P2-3 slice 4: extracted into a child AlertState ObservableObject.
@@ -111,10 +116,10 @@ public final class AppState: ObservableObject {
     @Published public var lastRefresh: Date?
     @Published public var serverOnline = false
     @Published public var isLocalMode = false
-    /// v1.10 P2-3 slice 5: forwarder to `providerState.editingProviderKind`.
-    public var editingProviderKind: ProviderKind? {
-        get { providerState.editingProviderKind }
-        set { providerState.editingProviderKind = newValue }
+    /// Stable account targeted by the standalone provider editor.
+    public var editingProviderAccountID: UUID? {
+        get { providerState.editingProviderAccountID }
+        set { providerState.editingProviderAccountID = newValue }
     }
 
     // MARK: - Provider Management
@@ -794,19 +799,54 @@ public final class AppState: ObservableObject {
     public let api: APIClient
     let authManager: AuthManager
     let dataRefreshManager: DataRefreshManager
+    private let providerAccountDeletionOutbox:
+        ProviderAccountDeletionOutbox
 
     private static let secretsMigratedKey = "cli_pulse_provider_secrets_migrated"
     /// v1.33 keychain-access-group migration flag. One-shot: re-homes
     /// pre-existing provider secrets into the shared app-group keychain so the
     /// LoginItem helper stops firing the recurring consent prompt.
     private static let keychainGroupMigratedKey = "cli_pulse_keychain_group_migrated"
+    /// Main-actor logical ordering for status mutations. The revision travels
+    /// with each unstructured sync Task so Task scheduling cannot reverse two
+    /// rapid user toggles.
+    private var providerAccountStatusMutationRevision: UInt64 = 0
 
-    public init() {
-        self.api = APIClient()
+    /// Production entry point. Keep all launch behavior in the designated
+    /// initializer so production and composition-test wiring cannot diverge.
+    public convenience init() {
+        self.init(
+            api: APIClient(),
+            providerAccountDeletionOutbox: .shared,
+            performLaunchSetup: true
+        )
+    }
+
+    /// Narrow composition-test seam. Production continues through the public
+    /// initializer above; tests can inject an isolated API/outbox and skip
+    /// launch-time Keychain, UserDefaults, helper, and restoration effects.
+    init(
+        api: APIClient,
+        providerAccountDeletionOutbox:
+            ProviderAccountDeletionOutbox,
+        performLaunchSetup: Bool
+    ) {
+        self.api = api
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
+        self.providerAccountDeletionOutbox =
+            providerAccountDeletionOutbox
+        guard performLaunchSetup else { return }
         subscriptionManager.apiClient = api
         loadProviderConfigs()
+        #if os(macOS)
+        UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+            UserDefaults.standard.bool(
+                forKey: ProviderAccountFeatureFlags.writeDefaultsKey
+            ),
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        )
+        #endif
         loadSuppressedAlertIDs()
         applyAdaptiveRefreshDefaultIfFreshInstall()
         // v1.40 PR-7: sync the display currency + refresh FX rates (cached 24h).
@@ -1130,7 +1170,10 @@ public final class AppState: ObservableObject {
 
     public func toggleProvider(_ kind: ProviderKind) {
         guard let idx = providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
-        setProviderEnabled(kind, isEnabled: !providerConfigs[idx].isEnabled)
+        setProviderAccountEnabled(
+            providerConfigs[idx].accountID,
+            isEnabled: !providerConfigs[idx].isEnabled
+        )
     }
 
     /// Explicitly set a provider's enabled flag. v1.9.3: the Toggle binding
@@ -1138,11 +1181,36 @@ public final class AppState: ObservableObject {
     /// (not a blind flip) is applied even under rapid-tap / SwiftUI reconciliation.
     public func setProviderEnabled(_ kind: ProviderKind, isEnabled: Bool) {
         guard let idx = providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
-        if providerConfigs[idx].isEnabled == isEnabled { return }
+        setProviderAccountEnabled(
+            providerConfigs[idx].accountID,
+            isEnabled: isEnabled
+        )
+    }
+
+    /// Enable or disable one stable provider account. Subscription limits are
+    /// provider-kind limits: enabling a second account for an already-enabled
+    /// provider does not consume another provider slot.
+    public func setProviderAccountEnabled(
+        _ accountID: UUID,
+        isEnabled: Bool
+    ) {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return
+        }
+        if config.isEnabled == isEnabled { return }
         if isEnabled {
             let maxProviders = subscriptionManager.maxProviders
-            if maxProviders >= 0 {
-                let currentEnabled = providerConfigs.filter(\.isEnabled).count
+            let kindAlreadyEnabled = providerConfigs.contains {
+                $0.kind == config.kind
+                    && $0.isEnabled
+                    && $0.accountID != accountID
+            }
+            if maxProviders >= 0 && !kindAlreadyEnabled {
+                let currentEnabled = Set(
+                    providerConfigs.filter(\.isEnabled).map(\.kind)
+                ).count
                 if currentEnabled >= maxProviders {
                     // Same "CLI Pulse" disambiguation as the periodic
                     // tier-limit banner — see DataRefreshManager
@@ -1157,12 +1225,349 @@ public final class AppState: ObservableObject {
                 }
             }
         }
-        providerConfigs[idx].isEnabled = isEnabled
-        saveProviderConfigs()
+        guard providerState.setProviderAccountEnabled(
+            accountID,
+            isEnabled: isEnabled
+        ) else {
+            return
+        }
+        saveProviderConfigMetadata()
         // v1.9.3: rebuild provider details synchronously so the SwiftUI
         // Toggle bound to `detail.config.isEnabled` flips in the same frame
         // instead of waiting for the next data refresh cycle.
         buildProviderDetails()
+        let mutationRevision =
+            nextProviderAccountStatusMutationRevision()
+        syncProviderAccountStatus(
+            accountID,
+            isEnabled: isEnabled,
+            mutationRevision: mutationRevision
+        )
+    }
+
+    @discardableResult
+    public func addProviderAccount(
+        kind: ProviderKind,
+        accountID: UUID = UUID()
+    ) -> UUID {
+        let createdID = providerState.addProviderAccount(
+            kind: kind,
+            accountID: accountID,
+            syncOwnerUserID:
+                isAuthenticated ? userId : nil
+        )
+        buildProviderDetails()
+        return createdID
+    }
+
+    /// Persist a disabled account UUID before any editor writes account-scoped
+    /// credentials. If the process stops between the Keychain write and the
+    /// final Save, the next launch can still locate and clean up that account;
+    /// the helper also sees it as disabled and cannot collect from it.
+    @discardableResult
+    public func persistProviderAccountCredentialRecoveryAnchor(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore =
+            ProviderConfigMetadataStore()
+    ) -> Bool {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+        guard providerState.isProviderAccountDraft(accountID) else {
+            // Existing accounts already have a durable metadata anchor.
+            return true
+        }
+        guard !config.isEnabled else {
+            // New drafts are deliberately disabled until the editor's final
+            // Save. Never persist an incomplete account as collectable.
+            return false
+        }
+        return metadataStore.save(providerConfigs)
+    }
+
+    @discardableResult
+    public func commitProviderAccountDraft(
+        _ accountID: UUID
+    ) -> Bool {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+        // Persist final metadata while the in-memory draft marker still
+        // exists. A failed write leaves the editor transaction retryable.
+        guard saveProviderConfigMetadata() else {
+            return false
+        }
+        _ = providerState.commitProviderAccountDraft(accountID)
+        buildProviderDetails()
+        return true
+    }
+
+    public func cancelProviderAccountDraft(
+        _ accountID: UUID
+    ) {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return
+        }
+        guard providerState.isProviderAccountDraft(accountID) else {
+            return
+        }
+        guard deleteLocalProviderAccountSecrets(config) else {
+            return
+        }
+        guard providerState.cancelProviderAccountDraft(
+            accountID
+        ) else {
+            return
+        }
+        saveProviderConfigMetadata()
+        buildProviderDetails()
+    }
+
+    /// Delete exactly one local CLIPulse account configuration and its
+    /// account-scoped Keychain entries. This does not cancel or modify the
+    /// external provider subscription.
+    @discardableResult
+    public func removeProviderAccount(
+        _ accountID: UUID
+    ) -> Bool {
+        guard let config = providerConfigs.first(where: {
+            $0.accountID == accountID
+        }) else {
+            return false
+        }
+        let deletionOwnerID =
+            ProviderAccountSyncOwnership.ownerForDeletion(
+                config
+            )
+        if let deletionOwnerID {
+            // The durable intent is the crash-recovery authority. Do not
+            // remove metadata or Keychain state unless read-after-write
+            // verification confirms that a relaunch can finish the deletion.
+            guard providerAccountDeletionOutbox.enqueue(
+                userID: deletionOwnerID,
+                accountID: accountID,
+                provider: config.kind
+            ) else {
+                return false
+            }
+        }
+
+        guard deleteLocalProviderAccountSecrets(config) else {
+            return false
+        }
+        guard providerState.removeProviderAccount(accountID) != nil else {
+            return false
+        }
+        saveProviderConfigMetadata()
+        buildProviderDetails()
+        if let deletionOwnerID {
+            Task { [weak self] in
+                await self?.flushPendingProviderAccountDeletions(
+                    for: deletionOwnerID
+                )
+            }
+        }
+        return true
+    }
+
+    /// Metadata remains the retry anchor until every account-scoped Keychain
+    /// item is confirmed absent. A denied or failed SecItemDelete must never
+    /// turn into an orphaned credential with no local account to clean it up.
+    private func deleteLocalProviderAccountSecrets(
+        _ config: ProviderConfig
+    ) -> Bool {
+        guard config.deleteSecrets() else {
+            return false
+        }
+        #if os(macOS)
+        if config.kind == .gemini,
+           !GeminiOAuthManager.shared.clearTokens(
+               accountID: config.accountID
+           ) {
+            return false
+        }
+        #endif
+        ProviderSharedCredentialOwner.release(
+            kind: config.kind,
+            accountID: config.accountID
+        )
+        return true
+    }
+
+    private func syncProviderAccountStatus(
+        _ accountID: UUID,
+        isEnabled: Bool,
+        mutationRevision: UInt64
+    ) {
+        guard isAuthenticated, !userId.isEmpty else { return }
+        let expectedUserID = userId
+        let ownedAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: providerConfigs,
+                ownedBy: expectedUserID
+            )
+        guard ownedAccountIDs.contains(accountID) else {
+            return
+        }
+        guard let provider = providerConfigs.first(where: {
+            $0.accountID == accountID
+        })?.kind else {
+            return
+        }
+        Task { [weak self] in
+            guard
+                let self,
+                self.isAuthenticated,
+                self.userId == expectedUserID
+            else {
+                return
+            }
+            let lease = await self.api.authorizationLease(
+                expectedUserID: expectedUserID
+            )
+            guard
+                self.isAuthenticated,
+                self.userId == expectedUserID,
+                let lease
+            else {
+                return
+            }
+            _ = await self.api.syncProviderAccountStatuses(
+                [
+                    ProviderAccountStatusUpdate(
+                        accountID: accountID,
+                        provider: provider,
+                        isEnabled: isEnabled
+                    ),
+                ],
+                mutationRevision: mutationRevision,
+                authorizationLease: lease
+            )
+        }
+    }
+
+    private func nextProviderAccountStatusMutationRevision()
+        -> UInt64
+    {
+        providerAccountStatusMutationRevision &+= 1
+        return providerAccountStatusMutationRevision
+    }
+
+    /// Retry durable deletes for only the currently authenticated owner.
+    /// Keeping the owner check outside and the API lease inside the loop
+    /// prevents queued user-A mutations from crossing an account switch.
+    func flushPendingProviderAccountDeletions(
+        for expectedUserID: String
+    ) async {
+        guard
+            isAuthenticated,
+            userId == expectedUserID
+        else {
+            return
+        }
+        let lease = await api.authorizationLease(
+            expectedUserID: expectedUserID
+        )
+        guard
+            isAuthenticated,
+            userId == expectedUserID,
+            let lease
+        else {
+            return
+        }
+        let pending = providerAccountDeletionOutbox
+            .pendingIntents(for: expectedUserID)
+            .filter { $0.provider != nil }
+            .prefix(10)
+        for intent in pending {
+            guard
+                isAuthenticated,
+                userId == expectedUserID
+            else {
+                return
+            }
+            guard let provider = intent.provider else {
+                // Provider-less v1 development intents are retained until
+                // local metadata recovery can safely enrich them.
+                continue
+            }
+            let deleted = await api.deleteProviderAccount(
+                intent.accountID,
+                provider: provider,
+                authorizationLease: lease
+            )
+            guard deleted else {
+                // A missing RPC, disabled feature flag, or transient network
+                // failure should leave every remaining tombstone for a later
+                // refresh instead of hammering the endpoint.
+                return
+            }
+            providerAccountDeletionOutbox.markCompleted(
+                userID: expectedUserID,
+                accountID: intent.accountID
+            )
+        }
+    }
+
+    /// Periodic reconciliation makes a failed immediate toggle eventually
+    /// consistent. The server updates existing account rows only, so legacy
+    /// default configs cannot create phantom cloud accounts.
+    func syncCurrentProviderAccountStatuses() async {
+        guard
+            isAuthenticated,
+            !userId.isEmpty
+        else {
+            return
+        }
+        let mutationRevision =
+            nextProviderAccountStatusMutationRevision()
+        let expectedUserID = userId
+        let lease = await api.authorizationLease(
+            expectedUserID: expectedUserID
+        )
+        guard
+            isAuthenticated,
+            userId == expectedUserID,
+            let lease
+        else {
+            return
+        }
+        let ownedAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: providerConfigs,
+                ownedBy: expectedUserID
+            )
+        let updates: [ProviderAccountStatusUpdate] =
+            providerConfigs.compactMap { config
+                -> ProviderAccountStatusUpdate? in
+            guard ownedAccountIDs.contains(
+                config.accountID
+            ) else {
+                return nil
+            }
+            return ProviderAccountStatusUpdate(
+                accountID: config.accountID,
+                provider: config.kind,
+                isEnabled: config.isEnabled
+            )
+        }
+        guard
+            isAuthenticated,
+            userId == expectedUserID
+        else {
+            return
+        }
+        _ = await api.syncProviderAccountStatuses(
+            updates,
+            mutationRevision: mutationRevision,
+            authorizationLease: lease
+        )
     }
 
     /// Auto-disables extra providers when a free-tier user has more enabled
@@ -1239,50 +1644,51 @@ public final class AppState: ObservableObject {
         // ones first.
         let enabledConfigs = providerConfigs.filter(\.isEnabled)
 
-        // Rank the enabled configs.
+        // Rank distinct provider kinds. Multiple accounts for one provider
+        // consume one plan slot and must rise/fall together during migration.
         let usageByKind: [String: ProviderUsage] = Dictionary(
             uniqueKeysWithValues: providers.map { ($0.provider, $0) }
         )
         let fallbackOrder: [ProviderKind] = Array(ProviderKind.allCases.prefix(maxProviders))
 
-        func rank(_ config: ProviderConfig) -> Int {
-            if let u = usageByKind[config.kind.rawValue],
+        func rank(_ kind: ProviderKind) -> Int {
+            if let u = usageByKind[kind.rawValue],
                u.today_usage > 0 || u.week_usage > 0 {
                 return 0  // tier 1 — recent usage
             }
-            if config.hasCredentials {
+            if enabledConfigs.contains(where: { $0.kind == kind && $0.hasCredentials }) {
                 return 1  // tier 2 — configured credentials
             }
-            if fallbackOrder.contains(config.kind) {
+            if fallbackOrder.contains(kind) {
                 return 2  // tier 3 — default-trio fallback
             }
             return 3  // no signal
         }
 
-        // Sort enabled configs by rank asc, then by (within same rank) usage
+        // Sort enabled provider kinds by rank asc, then by usage
         // desc, then by `ProviderKind.allCases` index asc for a deterministic
         // tiebreak.
         let kindIndex: [ProviderKind: Int] = Dictionary(
             uniqueKeysWithValues: ProviderKind.allCases.enumerated().map { ($0.element, $0.offset) }
         )
-        let ranked = enabledConfigs.sorted { a, b in
+        let rankedKinds = Set(enabledConfigs.map(\.kind)).sorted { a, b in
             let ra = rank(a); let rb = rank(b)
             if ra != rb { return ra < rb }
-            let ua = usageByKind[a.kind.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
-            let ub = usageByKind[b.kind.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
+            let ua = usageByKind[a.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
+            let ub = usageByKind[b.rawValue].map { $0.today_usage + $0.week_usage } ?? 0
             if ua != ub { return ua > ub }
-            return (kindIndex[a.kind] ?? .max) < (kindIndex[b.kind] ?? .max)
+            return (kindIndex[a] ?? .max) < (kindIndex[b] ?? .max)
         }
 
-        let keptKinds = Set(ranked.prefix(maxProviders).map(\.kind))
-        var disabledByMigration: [ProviderKind] = []
+        let keptKinds = Set(rankedKinds.prefix(maxProviders))
+        var disabledByMigration = Set<ProviderKind>()
         // iter9 hotfix: also track which of the disabled kinds were
         // *actually* in active use (had usage or credentials) so we can
         // report only the user-visible impact in the banner. Disabling 20
         // default-but-untouched toggles alongside the 3 actively-used ones
         // is implementation detail; the user's mental model says "you
         // disabled 3 things I was using", not "you disabled 23 toggles".
-        var disabledActiveByMigration: [ProviderKind] = []
+        var disabledActiveByMigration = Set<ProviderKind>()
         let activeKinds = Self.activeKindsForMigrationBanner(
             providers: providers,
             providerConfigs: providerConfigs
@@ -1291,9 +1697,9 @@ public final class AppState: ObservableObject {
             if !keptKinds.contains(providerConfigs[i].kind) {
                 let kind = providerConfigs[i].kind
                 providerConfigs[i].isEnabled = false
-                disabledByMigration.append(kind)
+                disabledByMigration.insert(kind)
                 if activeKinds.contains(kind) {
-                    disabledActiveByMigration.append(kind)
+                    disabledActiveByMigration.insert(kind)
                 }
             }
         }
@@ -1309,7 +1715,7 @@ public final class AppState: ObservableObject {
         let mergedRaw = Set(existingRaw).union(disabledByMigration.map(\.rawValue))
         UserDefaults.standard.set(Array(mergedRaw), forKey: disabledByTierKey)
 
-        saveProviderConfigs()
+        saveProviderConfigMetadata()
         buildProviderDetails()
 
         // iter9 hotfix: banner reflects the actively-used provider count
@@ -1401,19 +1807,24 @@ public final class AppState: ObservableObject {
         for index in providerConfigs.indices {
             providerConfigs[index].sortOrder = index
         }
-        saveProviderConfigs()
+        saveProviderConfigMetadata()
         // Rebuild so re-ordered providers reflect immediately in the UI.
         buildProviderDetails()
     }
 
     public func saveProviderConfigs() {
-        if let data = try? JSONEncoder().encode(providerConfigs) {
-            UserDefaults.standard.set(data, forKey: "cli_pulse_provider_configs")
-            UserDefaults(suiteName: HelperIPC.suiteName)?.set(data, forKey: HelperIPC.providerConfigsKey)
-        }
+        saveProviderConfigMetadata()
         for config in providerConfigs {
             config.saveSecrets()
         }
+    }
+
+    /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
+    /// for enable/order/label changes that must never mutate Keychain state.
+    @discardableResult
+    public func saveProviderConfigMetadata() -> Bool {
+        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+        return ProviderConfigMetadataStore().save(providerConfigs)
     }
 
     public func buildProviderDetails() {
@@ -1439,7 +1850,28 @@ public final class AppState: ObservableObject {
         isLocalMode: Bool,
         locallySupplementedProviders: Set<String>
     ) -> [ProviderDetail] {
-        configs.sorted(by: { $0.sortOrder < $1.sortOrder }).compactMap { config in
+        let sortedConfigs = configs.sorted {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
+            }
+            return $0.accountID.uuidString < $1.accountID.uuidString
+        }
+        var seenKinds: Set<ProviderKind> = []
+
+        return sortedConfigs.compactMap { seedConfig in
+            guard seenKinds.insert(seedConfig.kind).inserted else {
+                return nil
+            }
+            let accountConfigs = sortedConfigs.filter {
+                $0.kind == seedConfig.kind
+            }
+            var config =
+                accountConfigs.first(where: \.isEnabled)
+                ?? seedConfig
+            config.isEnabled = accountConfigs.contains(where: \.isEnabled)
+            if accountConfigs.count > 1 {
+                config.accountLabel = nil
+            }
             guard let usage = providers.first(where: { $0.provider == config.kind.rawValue }) else { return nil }
 
             // Tier rendering rule (v1.9.3):
@@ -1503,7 +1935,11 @@ public final class AppState: ObservableObject {
     }
 
     private func loadProviderConfigs() {
-        guard let data = UserDefaults.standard.data(forKey: "cli_pulse_provider_configs") else { return }
+        guard let data = UserDefaults.standard.data(
+            forKey: ProviderAccountMigration.configsKey
+        ) else {
+            return
+        }
 
         if !UserDefaults.standard.bool(forKey: Self.secretsMigratedKey) {
             migrateLegacySecrets(from: data)
@@ -1516,16 +1952,68 @@ public final class AppState: ObservableObject {
         // hydrate would return nil for existing users.
         migrateProviderSecretsToSharedGroup()
 
-        if let configs = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
-            providerConfigs = configs
-            let existingKinds = Set(configs.map(\.kind))
-            for kind in ProviderKind.allCases where !existingKinds.contains(kind) {
-                providerConfigs.append(ProviderConfig(kind: kind, isEnabled: true, sortOrder: providerConfigs.count))
+        do {
+            guard let migration = try ProviderAccountMigration.migrateIfNeeded(
+                defaults: .standard
+            ) else {
+                return
             }
+            providerConfigs = migration.configs
+        } catch {
+            lastError = "Provider configuration migration failed. Existing data was preserved."
+            return
+        }
+
+        recoverPendingLocalProviderAccountDeletions()
+
+        if let migratedData = try? JSONEncoder().encode(providerConfigs) {
+            UserDefaults.standard.set(
+                migratedData,
+                forKey: ProviderAccountMigration.configsKey
+            )
+            UserDefaults(suiteName: HelperIPC.suiteName)?.set(
+                migratedData,
+                forKey: HelperIPC.providerConfigsKey
+            )
         }
 
         for index in providerConfigs.indices {
             providerConfigs[index].loadSecrets()
+        }
+        ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+    }
+
+    /// Finish a local deletion whose durable intent was committed before a
+    /// previous process stopped. Owner matching is mandatory so a queued
+    /// user-A intent can never remove a user-B account after an account switch.
+    private func recoverPendingLocalProviderAccountDeletions() {
+        let accountIDs =
+            ProviderAccountDeletionRecovery.accountIDsToRemove(
+                from: providerConfigs,
+                pending:
+                    providerAccountDeletionOutbox.pendingIntents()
+            )
+        for accountID in accountIDs {
+            guard let config = providerConfigs.first(where: {
+                $0.accountID == accountID
+            }) else {
+                continue
+            }
+            guard
+                let owner =
+                    ProviderAccountSyncOwnership.normalizedUserID(
+                        config.syncOwnerUserID
+                    ),
+                providerAccountDeletionOutbox.enqueue(
+                    userID: owner,
+                    accountID: accountID,
+                    provider: config.kind
+                ),
+                deleteLocalProviderAccountSecrets(config)
+            else {
+                continue
+            }
+            _ = providerState.removeProviderAccount(accountID)
         }
     }
 

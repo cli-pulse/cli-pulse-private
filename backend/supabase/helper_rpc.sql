@@ -107,6 +107,43 @@ begin
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
 
+-- v0.70: account-scoped quota sync remains a sibling RPC so the legacy
+-- helper_sync signature and old clients stay byte-for-byte compatible.
+create or replace function public.helper_sync_provider_account_quotas(
+  p_device_id uuid,
+  p_helper_secret text,
+  p_rows jsonb default '[]'::jsonb
+)
+returns jsonb as $$
+declare
+  v_user_id uuid;
+begin
+  select user_id into v_user_id
+  from public.devices
+  where id = p_device_id
+    and helper_secret = encode(
+      extensions.digest(p_helper_secret, 'sha256'),
+      'hex'
+    );
+
+  if v_user_id is null then
+    raise exception 'Device not found or unauthorized';
+  end if;
+
+  return public._upsert_provider_account_quotas_for_user(
+    v_user_id, p_rows, p_device_id
+  );
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.helper_sync_provider_account_quotas(
+  uuid, text, jsonb
+) from public;
+grant execute on function public.helper_sync_provider_account_quotas(
+  uuid, text, jsonb
+) to anon, authenticated, service_role;
+
 -- Helper heartbeat — requires device secret
 -- v0.60: optional p_provider_plan_status carries the per-provider managed-session
 -- plan map ({"codex":"off_plan",...}); defaults NULL so pre-v0.60 callers that omit
@@ -248,7 +285,7 @@ grant execute on function public.helper_heartbeat(uuid, text, integer, integer, 
 
 -- Helper sync — upsert sessions, alerts, provider quotas
 -- Requires device secret for authentication
-create or replace function public.helper_sync(
+create or replace function public._helper_sync_legacy_payload(
   p_device_id uuid,
   p_helper_secret text,
   p_sessions jsonb default '[]'::jsonb,
@@ -387,3 +424,83 @@ begin
   return jsonb_build_object('sessions_synced', v_session_count, 'alerts_synced', v_alert_count);
 end;
 $$ language plpgsql security definer set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public._helper_sync_legacy_payload(
+  uuid, text, jsonb, jsonb, jsonb, jsonb
+) from public, anon, authenticated;
+
+-- Compatibility wrapper for old helpers. Sessions and alerts retain their
+-- original behavior, while provider maps are filtered under the same per-user
+-- lock used by v2. Once a provider has lifecycle state, only the account
+-- projection may write its provider_quotas row.
+create or replace function public.helper_sync(
+  p_device_id uuid,
+  p_helper_secret text,
+  p_sessions jsonb default '[]'::jsonb,
+  p_alerts jsonb default '[]'::jsonb,
+  p_provider_remaining jsonb default '{}'::jsonb,
+  p_provider_tiers jsonb default '{}'::jsonb
+)
+returns jsonb as $$
+declare
+  v_user_id uuid;
+  v_safe_provider_remaining jsonb;
+  v_safe_provider_tiers jsonb;
+begin
+  select user_id into v_user_id
+  from public.devices
+  where id = p_device_id
+    and helper_secret = encode(
+      extensions.digest(p_helper_secret, 'sha256'),
+      'hex'
+    );
+  if v_user_id is null then
+    raise exception 'Device not found or unauthorized';
+  end if;
+  if jsonb_typeof(p_provider_remaining) <> 'object'
+     or jsonb_typeof(p_provider_tiers) <> 'object' then
+    raise exception 'Provider quota payloads must be objects';
+  end if;
+
+  perform pg_advisory_xact_lock(
+    hashtextextended(v_user_id::text, 70)
+  );
+
+  select coalesce(jsonb_object_agg(entry.key, entry.value), '{}'::jsonb)
+    into v_safe_provider_remaining
+  from jsonb_each(p_provider_remaining) as entry
+  where not exists (
+    select 1
+    from public.provider_account_lifecycle
+    where user_id = v_user_id
+      and provider = entry.key
+  );
+
+  select coalesce(jsonb_object_agg(entry.key, entry.value), '{}'::jsonb)
+    into v_safe_provider_tiers
+  from jsonb_each(p_provider_tiers) as entry
+  where not exists (
+    select 1
+    from public.provider_account_lifecycle
+    where user_id = v_user_id
+      and provider = entry.key
+  );
+
+  return public._helper_sync_legacy_payload(
+    p_device_id,
+    p_helper_secret,
+    p_sessions,
+    p_alerts,
+    v_safe_provider_remaining,
+    v_safe_provider_tiers
+  );
+end;
+$$ language plpgsql security definer
+set search_path = pg_catalog, public, extensions;
+
+revoke execute on function public.helper_sync(
+  uuid, text, jsonb, jsonb, jsonb, jsonb
+) from public;
+grant execute on function public.helper_sync(
+  uuid, text, jsonb, jsonb, jsonb, jsonb
+) to anon, authenticated, service_role;

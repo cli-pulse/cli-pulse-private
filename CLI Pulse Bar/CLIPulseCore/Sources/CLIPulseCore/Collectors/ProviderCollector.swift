@@ -23,6 +23,90 @@ public struct CollectorResult: Sendable {
     }
 }
 
+/// A collector result tied to the exact configured provider account that
+/// produced it. Collectors remain provider-focused; the scheduler attaches
+/// account identity so the 50+ collector implementations do not need to
+/// duplicate multi-account plumbing.
+public struct AccountScopedCollectorResult: Sendable {
+    public let accountID: UUID
+    public let config: ProviderConfig
+    public let result: CollectorResult
+    /// Start of the collection whose detected plan was observed. A manual
+    /// edit made while a slow collector is in flight must remain newer than
+    /// that collector's plan evidence.
+    public let planDetectionStartedAt: Date?
+    public let observedAt: Date?
+
+    public init(
+        accountID: UUID,
+        config: ProviderConfig,
+        result: CollectorResult,
+        planDetectionStartedAt: Date? = nil,
+        observedAt: Date? = nil
+    ) {
+        self.accountID = accountID
+        self.config = config
+        self.result = result
+        self.planDetectionStartedAt =
+            planDetectionStartedAt
+        self.observedAt = observedAt
+    }
+}
+
+/// One configured account's observable collector outcome. This is the adapter
+/// between the account domain model and the provider-level v1.44 telemetry
+/// model: `CollectorRun` stays provider-focused while this record retains the
+/// exact `ProviderConfig` that was executed or preflighted.
+struct AccountCollectorRun: Sendable {
+    let config: ProviderConfig
+    let outcome: CollectorOutcome
+    let scopedResult: AccountScopedCollectorResult?
+}
+
+/// A complete account-aware pass. `runs` has exactly one entry per input
+/// configuration, while `accountResults` contains only successful observations.
+/// Provider-level consumers receive a deterministic, worst-actionable
+/// projection and never become the source of truth for account identity.
+struct AccountCollectorPass: Sendable {
+    let runs: [AccountCollectorRun]
+
+    static let empty = AccountCollectorPass(runs: [])
+
+    var accountResults: [AccountScopedCollectorResult] {
+        runs.compactMap(\.scopedResult)
+    }
+
+    var providerOutcomes: [ProviderKind: CollectorOutcome] {
+        CollectorRunner.providerOutcomeMap(
+            runs.map {
+                CollectorRun(
+                    kind: $0.config.kind,
+                    outcome: $0.outcome,
+                    result: $0.scopedResult?.result
+                )
+            }
+        )
+    }
+}
+
+struct HelperCollectorSnapshot: Sendable {
+    let accountResults: [AccountScopedCollectorResult]
+    let providerResults: [CollectorResult]
+
+    static let empty = HelperCollectorSnapshot(accountResults: [], providerResults: [])
+}
+
+struct ProviderCollectorInvocation: Sendable {
+    let index: Int
+    let config: ProviderConfig
+    let collector: any ProviderCollector
+}
+
+struct IndexedAccountCollectorRun: Sendable {
+    let index: Int
+    let run: AccountCollectorRun
+}
+
 /// Protocol for provider-native local data collectors.
 ///
 /// Each collector fetches real usage/quota/credit data from a single provider

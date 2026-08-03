@@ -20,7 +20,12 @@
 -- exactly like prod. All denial assertions therefore run as `authenticated`.
 -- ============================================================================
 
-create extension if not exists pgcrypto;
+-- Supabase installs extensions in the dedicated `extensions` schema. Keep the
+-- plain-Postgres harness faithful to that layout: production functions pin
+-- `extensions` in their search_path and migration tests call
+-- `extensions.digest(...)` explicitly.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
 
 -- ── Supabase roles ──────────────────────────────────────────────────────────
 do $$
@@ -44,6 +49,7 @@ grant anon, authenticated, service_role to authenticator;
 grant anon, authenticated, service_role to postgres;
 
 grant usage on schema public to anon, authenticated, service_role;
+grant usage on schema extensions to anon, authenticated, service_role;
 
 -- Every public table/sequence created after this point is auto-granted to
 -- authenticated (mirrors Supabase's default grants). schema.sql's later

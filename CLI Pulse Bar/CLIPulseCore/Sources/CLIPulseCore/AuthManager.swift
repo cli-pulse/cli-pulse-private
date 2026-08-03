@@ -98,7 +98,9 @@ public final class AuthManager {
 
     public func signOut(currentAccessToken: String) async {
         // Attempt server-side token revocation
-        await api.signOutServer()
+        await api.signOutServer(
+            expectedAccessToken: currentAccessToken
+        )
         // Only clear tokens if they haven't been replaced by a new sign-in
         let storedToken = KeychainHelper.load(key: AppState.tokenKeychainKey)
         if storedToken == nil || storedToken == currentAccessToken || storedToken?.isEmpty == true {
@@ -416,12 +418,17 @@ extension AppState {
         unregisterPushTokenOnLogout()
         // Capture current token so async logout only clears the right session
         let currentToken = storedToken
+        let currentUserID = userId
         Task { await authManager.signOut(currentAccessToken: currentToken) }
         // Clear local state immediately — don't block on network
         isDemoMode = false
         applySignedOutState()
         // Notify iOS companion to forward logout to watch
-        NotificationCenter.default.post(name: .cliPulseDidSignOut, object: nil)
+        NotificationCenter.default.post(
+            name: .cliPulseDidSignOut,
+            object: nil,
+            userInfo: ["user_id": currentUserID]
+        )
     }
 
     /// Delete the user's account. Returns `true` on confirmed server-side
@@ -504,7 +511,10 @@ extension AppState {
     /// targets to keep the shared localization bundle honest, but
     /// the call sites are macOS-gated in SettingsTab.
     #if os(macOS)
-    public func continueWithoutAccount(defaults: UserDefaults = .standard) {
+    public func continueWithoutAccount(
+        defaults: UserDefaults = .standard,
+        startRefreshing: Bool = true
+    ) {
         // v1.44 W1 step 5: remember the choice. `isLocalMode` is a plain
         // `@Published` with no backing store, so before this the mode
         // survived exactly one launch: on the next cold start
@@ -517,10 +527,14 @@ extension AppState {
         isLocalMode = true
         serverOnline = true
         selectedTab = .overview
-        // Spin up the same refresh loop the authenticated path uses,
-        // so collector data refreshes on the same cadence.
-        startRefreshLoop()
-        Task { await refreshAll() }
+        if startRefreshing {
+            // Spin up the same refresh loop the authenticated path uses,
+            // so collector data refreshes on the same cadence. Focused tests
+            // disable this branch to avoid leaking an unstructured live
+            // collector task into the next test case.
+            startRefreshLoop()
+            Task { await refreshAll() }
+        }
     }
     #endif
 
@@ -561,10 +575,15 @@ extension AppState {
     /// reads live Keychain tokens and starts a real refresh loop (see the
     /// standing note in `SignedOutLandingTests`).
     #if os(macOS)
-    func applyColdLaunchLanding(_ landing: ColdLaunchLanding) {
+    func applyColdLaunchLanding(
+        _ landing: ColdLaunchLanding,
+        startRefreshing: Bool = true
+    ) {
         switch landing {
         case .localMode:
-            continueWithoutAccount()
+            continueWithoutAccount(
+                startRefreshing: startRefreshing
+            )
         case .signIn:
             selectedTab = .settings
         }
@@ -679,6 +698,18 @@ extension AppState {
         // for it. The live flag belongs to the refresh payload; leave it there.
         UserDefaults.standard.removeObject(forKey: Self.localModeEnabledKey)
 
+        // Legacy/local-only configs have no cloud owner. The first
+        // authenticated CLIPulse user claims them exactly once; a later login
+        // cannot silently redirect their account labels or quotas.
+        var ownedConfigs = providerConfigs
+        if ProviderAccountSyncOwnership.bindUnowned(
+            configs: &ownedConfigs,
+            to: session.userId
+        ) {
+            providerConfigs = ownedConfigs
+            saveProviderConfigMetadata()
+        }
+
         // iter8 hotfix: replay any APNs push token the iOS app cached
         // before sign-in completed. APNs delivers the token once per
         // launch via didRegister; if the user signed in AFTER that
@@ -694,6 +725,7 @@ extension AppState {
             userInfo: [
                 "access_token": storedToken,
                 "refresh_token": storedRefreshToken,
+                "user_id": session.userId,
                 "email": session.userEmail,
                 "name": session.userName,
             ]
@@ -715,6 +747,7 @@ extension AppState {
         userEmail = ""
         dashboard = nil
         providers = []
+        providerAccounts = []
         sessions = []
         devices = []
         alerts = []

@@ -1,6 +1,42 @@
 import Foundation
 import Security
 
+protocol ProviderSecretStoring {
+    @discardableResult
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool
+    func load(key: String, accessGroup: String?) -> String?
+    @discardableResult
+    func delete(key: String, accessGroup: String?) -> Bool
+}
+
+struct KeychainProviderSecretStore: ProviderSecretStoring {
+    @discardableResult
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        KeychainHelper.save(
+            key: key,
+            value: value,
+            accessGroup: accessGroup
+        )
+    }
+
+    func load(key: String, accessGroup: String?) -> String? {
+        KeychainHelper.load(key: key, accessGroup: accessGroup)
+    }
+
+    @discardableResult
+    func delete(key: String, accessGroup: String?) -> Bool {
+        KeychainHelper.delete(key: key, accessGroup: accessGroup)
+    }
+}
+
 public enum KeychainHelper {
     private static let service = "com.clipulse.app"
 
@@ -75,11 +111,18 @@ public enum KeychainHelper {
         save(key: key, value: legacy, accessGroup: sharedAccessGroup)
     }
 
-    public static func save(key: String, value: String, accessGroup: String? = nil) {
-        guard let data = value.data(using: .utf8) else { return }
+    @discardableResult
+    public static func save(
+        key: String,
+        value: String,
+        accessGroup: String? = nil
+    ) -> Bool {
+        guard let data = value.data(using: .utf8) else {
+            return false
+        }
         if isRunningUnderXCTest {
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = value
-            return
+            return true
         }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -95,6 +138,9 @@ public enum KeychainHelper {
             kSecValueData as String: data,
         ]
         let status = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+        if status == errSecSuccess {
+            return true
+        }
         if status == errSecItemNotFound {
             var addQuery = query
             addQuery[kSecValueData as String] = data
@@ -109,8 +155,19 @@ public enum KeychainHelper {
             // in SecItemUpdate with errSecParam, so the safe path is just
             // new writes = tighter, old items continue to work as-is).
             addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            SecItemAdd(addQuery as CFDictionary, nil)
+            let addStatus =
+                SecItemAdd(addQuery as CFDictionary, nil)
+            if addStatus == errSecSuccess {
+                return true
+            }
+            if addStatus == errSecDuplicateItem {
+                return SecItemUpdate(
+                    query as CFDictionary,
+                    updateAttrs as CFDictionary
+                ) == errSecSuccess
+            }
         }
+        return false
     }
 
     public static func load(key: String, accessGroup: String? = nil) -> String? {
@@ -133,7 +190,11 @@ public enum KeychainHelper {
         return String(data: data, encoding: .utf8)
     }
 
-    public static func delete(key: String, accessGroup: String? = nil) {
+    @discardableResult
+    public static func delete(
+        key: String,
+        accessGroup: String? = nil
+    ) -> Bool {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -144,8 +205,9 @@ public enum KeychainHelper {
         }
         if isRunningUnderXCTest {
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
-            return
+            return true
         }
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 }

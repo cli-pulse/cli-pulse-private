@@ -4,7 +4,78 @@ import os
 
 private let apiLogger = Logger(subsystem: "com.clipulse", category: "APIClient")
 
+public struct ProviderAccountFeatureFlags: Equatable, Sendable {
+    public static let readDefaultsKey = "provider_accounts_v2_read"
+    public static let writeDefaultsKey = "provider_accounts_v2_write"
+
+    public let readV2: Bool
+    public let writeV2: Bool
+
+    public init(readV2: Bool, writeV2: Bool) {
+        self.readV2 = readV2
+        self.writeV2 = writeV2
+    }
+
+    public static func load(
+        from defaults: UserDefaults = .standard
+    ) -> ProviderAccountFeatureFlags {
+        ProviderAccountFeatureFlags(
+            readV2: defaults.bool(forKey: readDefaultsKey),
+            writeV2: defaults.bool(forKey: writeDefaultsKey)
+        )
+    }
+}
+
+public struct ProviderAccountStatusUpdate: Equatable, Sendable {
+    public let accountID: UUID
+    public let provider: ProviderKind
+    public let isEnabled: Bool
+
+    public init(
+        accountID: UUID,
+        provider: ProviderKind,
+        isEnabled: Bool
+    ) {
+        self.accountID = accountID
+        self.provider = provider
+        self.isEnabled = isEnabled
+    }
+}
+
+public struct ProviderAccountSummaryResult: Sendable {
+    public let providers: [ProviderUsage]
+    public let providerAccounts: [ProviderAccountUsage]
+    public let usedLegacyFallback: Bool
+
+    public init(
+        providers: [ProviderUsage],
+        providerAccounts: [ProviderAccountUsage],
+        usedLegacyFallback: Bool
+    ) {
+        self.providers = providers
+        self.providerAccounts = providerAccounts
+        self.usedLegacyFallback = usedLegacyFallback
+    }
+}
+
+/// Opaque snapshot of the authenticated API session that authorized a
+/// background refresh. Callers cannot inspect or construct it; `APIClient`
+/// rejects stale writes and UI commits if sign-out/account-switch changes the
+/// generation or resolved user.
+public struct APIAuthorizationLease: Equatable, Sendable {
+    fileprivate let generation: UInt64
+    fileprivate let userID: String?
+}
+
 public actor APIClient {
+    private enum AuthorizationLeaseError: LocalizedError {
+        case changed
+
+        var errorDescription: String? {
+            "Authorization session changed; write cancelled"
+        }
+    }
+
     private let supabaseURL: String
     private let supabaseAnonKey: String
 
@@ -15,6 +86,21 @@ public actor APIClient {
     private let session: URLSession
     private let decoder = JSONDecoder()
     private let encoder = JSONEncoder()
+    private var providerAccountFlags: ProviderAccountFeatureFlags
+    /// Serializes user-controlled status writes so an older, slower request
+    /// cannot land after a newer toggle and overwrite the final cloud state.
+    private var providerAccountStatusWriteTail: Task<Bool, Never>?
+    /// Logical order assigned synchronously by AppState. Unstructured Tasks
+    /// may reach this actor out of creation order, so network invocation order
+    /// alone is not sufficient to preserve the user's latest toggle.
+    private var highestProviderAccountStatusRevision: UInt64 = 0
+    private var authorizationGeneration: UInt64 = 0
+    private var externalAuthorizationTransitionGeneration: UInt64 = 0
+    /// The exact lease whose refresh token was rejected and compare-cleared.
+    /// Kept only until DataRefreshManager consumes the expiry or a different
+    /// authorization session supersedes it.
+    private var pendingExpiredAuthorizationLease:
+        APIAuthorizationLease?
 
     /// Called after a successful token refresh with (newAccessToken, newRefreshToken).
     /// Set by AppState to persist rotated tokens to Keychain.
@@ -24,9 +110,12 @@ public actor APIClient {
         token: String? = nil,
         supabaseURL: String? = nil,
         supabaseAnonKey: String? = nil,
-        session: URLSession? = nil
+        session: URLSession? = nil,
+        providerAccountFlags: ProviderAccountFeatureFlags? = nil
     ) {
         self.accessToken = token
+        self.providerAccountFlags =
+            providerAccountFlags ?? ProviderAccountFeatureFlags.load()
         self.supabaseURL = supabaseURL
             ?? Bundle.main.infoDictionary?["SUPABASE_URL"] as? String
             ?? ProcessInfo.processInfo.environment["CLI_PULSE_SUPABASE_URL"]
@@ -70,6 +159,10 @@ public actor APIClient {
     }
 
     public func updateToken(_ token: String?) {
+        if accessToken != token {
+            authorizationGeneration &+= 1
+            pendingExpiredAuthorizationLease = nil
+        }
         self.accessToken = token
     }
 
@@ -87,6 +180,146 @@ public actor APIClient {
 
     public func getRefreshToken() -> String? {
         return refreshToken
+    }
+
+    public func authorizationLease(
+        expectedUserID: String? = nil
+    ) -> APIAuthorizationLease? {
+        guard accessToken != nil else { return nil }
+        if let expectedUserID {
+            guard
+                !expectedUserID.isEmpty,
+                userId == expectedUserID
+            else {
+                return nil
+            }
+        }
+        return APIAuthorizationLease(
+            generation: authorizationGeneration,
+            userID: userId
+        )
+    }
+
+    /// Returns whether a previously captured authorization snapshot still
+    /// represents the active signed-in session. Refresh pipelines use this
+    /// immediately before committing read results to UI/notification state,
+    /// not only before uploading writes.
+    func isAuthorizationLeaseCurrent(
+        _ lease: APIAuthorizationLease
+    ) -> Bool {
+        do {
+            try ensureAuthorizationLeaseIsCurrent(lease)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Returns true exactly when a token-expired result still belongs to the
+    /// refresh that captured `lease`. A rejected refresh token invalidates the
+    /// generation before the error reaches DataRefreshManager, so ordinary
+    /// lease equality is insufficient; the compare-and-clear path records the
+    /// originating lease here. A subsequent sign-in clears that record.
+    func consumeTokenExpiry(
+        for lease: APIAuthorizationLease
+    ) -> Bool {
+        if isAuthorizationLeaseCurrent(lease) {
+            return true
+        }
+        guard
+            pendingExpiredAuthorizationLease == lease,
+            accessToken == nil,
+            refreshToken == nil
+        else {
+            return false
+        }
+        pendingExpiredAuthorizationLease = nil
+        return true
+    }
+
+    public func updateProviderAccountFeatureFlags(
+        _ flags: ProviderAccountFeatureFlags
+    ) {
+        providerAccountFlags = flags
+    }
+
+    /// Begin a newest-wins externally coordinated auth transition (used by
+    /// watchOS). A later generation permanently invalidates installs from
+    /// earlier OTP/restore/phone-auth tasks.
+    @discardableResult
+    public func beginExternalAuthorizationTransition(
+        generation: UInt64
+    ) -> Bool {
+        guard generation > externalAuthorizationTransitionGeneration else {
+            return false
+        }
+        externalAuthorizationTransitionGeneration = generation
+        if accessToken != nil || refreshToken != nil || userId != nil {
+            authorizationGeneration &+= 1
+        }
+        pendingExpiredAuthorizationLease = nil
+        accessToken = nil
+        refreshToken = nil
+        userId = nil
+        return true
+    }
+
+    /// Atomically install an externally authenticated session only when its
+    /// transition is still current.
+    @discardableResult
+    public func installExternalAuthenticatedSession(
+        accessToken: String,
+        refreshToken: String?,
+        userID: String,
+        transitionGeneration: UInt64
+    ) -> Bool {
+        guard
+            transitionGeneration
+                == externalAuthorizationTransitionGeneration,
+            !accessToken.isEmpty,
+            !userID.isEmpty
+        else {
+            return false
+        }
+        installAuthenticatedSession(
+            accessToken: accessToken,
+            userID: userID
+        )
+        self.refreshToken = refreshToken
+        return true
+    }
+
+    private func installAuthenticatedSession(
+        accessToken: String,
+        userID: String?
+    ) {
+        // A successful sign-in is a new authorization session even when a
+        // test/stub happens to return the same token text.
+        authorizationGeneration &+= 1
+        pendingExpiredAuthorizationLease = nil
+        self.accessToken = accessToken
+        self.userId = userID
+    }
+
+    private func updateResolvedUserID(_ userID: String) {
+        if self.userId != userID {
+            authorizationGeneration &+= 1
+            pendingExpiredAuthorizationLease = nil
+            self.userId = userID
+        }
+    }
+
+    private func ensureAuthorizationLeaseIsCurrent(
+        _ lease: APIAuthorizationLease?
+    ) throws {
+        guard let lease else { return }
+        guard
+            accessToken != nil,
+            lease.generation == authorizationGeneration,
+            lease.userID == userId
+        else {
+            throw AuthorizationLeaseError.changed
+        }
     }
 
     // MARK: - Token Refresh
@@ -132,8 +365,14 @@ public actor APIClient {
             // refresh token is still the one we used — never clobber tokens a
             // concurrent successful refresh already rotated in (NEW-H5).
             if self.refreshToken == currentRefreshToken {
+                let expiredLease = APIAuthorizationLease(
+                    generation: authorizationGeneration,
+                    userID: userId
+                )
+                authorizationGeneration &+= 1
                 self.accessToken = nil
                 self.refreshToken = nil
+                pendingExpiredAuthorizationLease = expiredLease
             }
             throw APIError.tokenExpired
         }
@@ -156,6 +395,7 @@ public actor APIClient {
 
         self.accessToken = newAccess
         self.refreshToken = newRefresh
+        pendingExpiredAuthorizationLease = nil
 
         // Notify so caller can persist to Keychain
         onTokenRefreshed?(newAccess, newRefresh)
@@ -165,12 +405,24 @@ public actor APIClient {
 
     // MARK: - Sign Out (server-side token revocation)
 
-    public func signOutServer() async {
-        // Capture token before clearing to avoid race with new sign-in
-        let tokenToRevoke = accessToken
-        self.accessToken = nil
-        self.refreshToken = nil
-        self.userId = nil
+    public func signOutServer(
+        expectedAccessToken: String? = nil
+    ) async {
+        // Always revoke the captured/expected old token, but clear actor state
+        // only if it still represents that same session. A delayed logout
+        // must never clear a newer account installed while its Task waited.
+        let tokenToRevoke = expectedAccessToken ?? accessToken
+        if expectedAccessToken == nil
+            || accessToken == expectedAccessToken
+        {
+            if accessToken != nil || refreshToken != nil || userId != nil {
+                authorizationGeneration &+= 1
+            }
+            pendingExpiredAuthorizationLease = nil
+            self.accessToken = nil
+            self.refreshToken = nil
+            self.userId = nil
+        }
 
         guard let tokenToRevoke, let url = URL(string: "\(supabaseURL)/auth/v1/logout") else { return }
         var request = URLRequest(url: url)
@@ -305,16 +557,105 @@ public actor APIClient {
 
     private struct ProviderSummaryPayload: Decodable {
         let provider: String?
-        let today_usage: Int?
-        let total_usage: Int?
+        let today_usage: Int64?
+        let total_usage: Int64?
         let estimated_cost: Double?         // 7-day cost (historical name kept for backward compat)
         let estimated_cost_today: Double?   // v1.10.6+ today cost from daily_usage_metrics
         let estimated_cost_30_day: Double?  // v1.10.6+ 30-day cost from daily_usage_metrics
-        let quota: Int?
-        let remaining: Int?
+        let quota: Int64?
+        let remaining: Int64?
         let plan_type: String?
         let reset_time: String?
         let tiers: [TierDTO]?
+    }
+
+    private struct ProviderAccountPlanEvidencePayload: Decodable {
+        let raw_value: String?
+        let display_value: String?
+        let source: String?
+        let confidence: String?
+        let observed_at: String?
+    }
+
+    private struct ProviderAccountPayload: Decodable {
+        let id: UUID?
+        let provider: String?
+        let account_label: String?
+        let plan_evidence: ProviderAccountPlanEvidencePayload?
+        let quota: Int64?
+        let remaining: Int64?
+        let tiers: [TierDTO]?
+        let reset_time: String?
+        let observed_at: String?
+        let source_device_id: UUID?
+        let status_text: String?
+        let status: String?
+        let updated_at: String?
+    }
+
+    private struct ProviderAccountSummaryPayload: Decodable {
+        let provider: String?
+        let today_usage: Int64?
+        let total_usage: Int64?
+        let estimated_cost: Double?
+        let estimated_cost_today: Double?
+        let estimated_cost_30_day: Double?
+        let accounts: [ProviderAccountPayload]?
+    }
+
+    private struct ProviderAccountUpsertParams: Encodable {
+        let p_rows: [ProviderAccountUpsertRow]
+    }
+
+    private struct ProviderAccountUpsertRow: Encodable {
+        let account_id: String
+        let provider: String
+        let account_label: String?
+        let plan_type: String?
+        let plan_source: String
+        let plan_confidence: String
+        let plan_observed_at: String?
+        let remaining: Int?
+        let quota: Int?
+        let reset_time: String?
+        let tiers: [TierDTO]
+        let observed_at: String
+        let source_device_id: String?
+    }
+
+    private struct ProviderAccountStatusParams: Encodable {
+        let p_rows: [ProviderAccountStatusRow]
+    }
+
+    private struct ProviderAccountStatusRow: Encodable {
+        let account_id: String
+        let provider: String
+        let status: String
+    }
+
+    private struct ProviderAccountStatusResponse: Decodable {
+        let accounts_updated: Int
+    }
+
+    private struct ProviderAccountDeleteParams: Encodable {
+        let p_account_id: String
+        let p_provider: String
+    }
+
+    private struct ProviderAccountDeleteResponse: Decodable {
+        let accounts_deleted: Int
+        let tombstones_persisted: Int
+    }
+
+    private struct ProviderAccountSyncResponse: Decodable {
+        let accounts_synced: Int
+    }
+
+    private struct PostgRESTErrorPayload: Decodable {
+        let code: String?
+        let message: String?
+        let details: String?
+        let hint: String?
     }
 
     private struct SessionDevicePayload: Decodable {
@@ -478,9 +819,11 @@ public actor APIClient {
         let refresh = auth.refresh_token
         let user = auth.user
 
-        self.accessToken = token
+        installAuthenticatedSession(
+            accessToken: token,
+            userID: user?.id
+        )
         self.refreshToken = refresh
-        self.userId = user?.id
 
         let profile = try await fetchProfile(select: "paired")
         let paired = profile?.paired ?? false
@@ -534,9 +877,11 @@ public actor APIClient {
         let refresh = auth.refresh_token
         let user = auth.user
 
-        self.accessToken = token
+        installAuthenticatedSession(
+            accessToken: token,
+            userID: user?.id
+        )
         self.refreshToken = refresh
-        self.userId = user?.id
 
         let profile = try await fetchProfile(select: "paired,name,email")
         let paired = profile?.paired ?? false
@@ -572,9 +917,11 @@ public actor APIClient {
         let refresh = auth.refresh_token
         let user = auth.user
 
-        self.accessToken = token
+        installAuthenticatedSession(
+            accessToken: token,
+            userID: user?.id
+        )
         self.refreshToken = refresh
-        self.userId = user?.id
 
         let profile = try await fetchProfile(select: "paired,name,email")
         let paired = profile?.paired ?? false
@@ -610,7 +957,7 @@ public actor APIClient {
         }
 
         let user = try decode(SupabaseUser.self, from: data)
-        self.userId = user.id
+        updateResolvedUserID(user.id)
 
         let profile = try await fetchProfile(select: "paired,name,email")
         let paired = profile?.paired ?? false
@@ -702,15 +1049,15 @@ public actor APIClient {
             )
             return ProviderUsage(
                 provider: name,
-                today_usage: provider.today_usage ?? 0,
-                week_usage: provider.total_usage ?? 0,
+                today_usage: Self.clampedInt(provider.today_usage) ?? 0,
+                week_usage: Self.clampedInt(provider.total_usage) ?? 0,
                 estimated_cost_today: provider.estimated_cost_today ?? 0,
                 estimated_cost_week: provider.estimated_cost ?? 0,
                 estimated_cost_30_day: provider.estimated_cost_30_day ?? 0,
                 cost_status_today: "Estimated",
                 cost_status_week: "Estimated",
-                quota: provider.quota,
-                remaining: provider.remaining,
+                quota: Self.clampedInt(provider.quota),
+                remaining: Self.clampedInt(provider.remaining),
                 plan_type: provider.plan_type,
                 reset_time: provider.reset_time,
                 tiers: provider.tiers ?? [],
@@ -721,6 +1068,237 @@ public actor APIClient {
                 metadata: meta
             )
         }
+    }
+
+    /// Account-aware provider summary. The v2 read flag and missing-RPC
+    /// fallback are deliberately contained here so every client surface uses
+    /// the same rollback behavior.
+    public func providerAccountSummary() async throws
+        -> ProviderAccountSummaryResult
+    {
+        guard providerAccountFlags.readV2 else {
+            return ProviderAccountSummaryResult(
+                providers: try await providers(),
+                providerAccounts: [],
+                usedLegacyFallback: true
+            )
+        }
+
+        do {
+            let rows: [ProviderAccountSummaryPayload] = try await rpc(
+                "provider_account_summary",
+                params: UserTodayParams(p_user_today: Self.localTodayKey())
+            )
+            return Self.mapProviderAccountSummary(rows)
+        } catch let error as APIError
+            where Self.isProviderAccountRPCUnavailable(error)
+        {
+            return ProviderAccountSummaryResult(
+                providers: try await providers(),
+                providerAccounts: [],
+                usedLegacyFallback: true
+            )
+        }
+    }
+
+    private static func mapProviderAccountSummary(
+        _ rows: [ProviderAccountSummaryPayload]
+    ) -> ProviderAccountSummaryResult {
+        var providers: [ProviderUsage] = []
+        var providerAccounts: [ProviderAccountUsage] = []
+
+        for row in rows {
+            let providerName = row.provider ?? ""
+            let mappedAccounts: [
+                (payload: ProviderAccountPayload, usage: ProviderAccountUsage)
+            ] = (row.accounts ?? []).compactMap { account in
+                guard
+                    let id = account.id,
+                    let kind = ProviderKind(
+                        rawValue: account.provider ?? providerName
+                    )
+                else {
+                    return nil
+                }
+
+                let evidencePayload = account.plan_evidence
+                let evidence = ProviderPlanEvidence(
+                    rawValue: evidencePayload?.raw_value,
+                    displayValue: evidencePayload?.display_value,
+                    source: PlanEvidenceSource(
+                        rawValue: evidencePayload?.source ?? ""
+                    ) ?? .unknown,
+                    confidence: DetectionConfidence(
+                        rawValue: evidencePayload?.confidence ?? ""
+                    ) ?? .unavailable,
+                    observedAt: evidencePayload?.observed_at.flatMap(
+                        sharedISO8601Parse
+                    )
+                )
+                let statusText: String = {
+                    let explicit = account.status_text?
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let explicit, !explicit.isEmpty { return explicit }
+                    return account.status == "disabled"
+                        ? "Disabled"
+                        : "Operational"
+                }()
+
+                return (
+                    account,
+                    ProviderAccountUsage(
+                        id: id,
+                        provider: kind,
+                        accountLabel: account.account_label,
+                        planEvidence: evidence,
+                        quota: clampedInt(account.quota),
+                        remaining: clampedInt(account.remaining),
+                        tiers: account.tiers ?? [],
+                        resetTime: account.reset_time,
+                        observedAt: account.observed_at,
+                        sourceDeviceID: account.source_device_id,
+                        statusText: statusText
+                    )
+                )
+            }
+
+            providerAccounts.append(
+                contentsOf: mappedAccounts.map(\.usage)
+            )
+
+            let activeAccounts = mappedAccounts.filter {
+                $0.payload.status != "disabled"
+            }
+            let selected = activeAccounts
+                .filter { $0.usage.remaining != nil }
+                .sorted(by: accountIsMoreConstrained)
+                .first
+            let planType: String? = {
+                guard let selected else { return nil }
+                if activeAccounts.count > 1 { return "Multiple accounts" }
+                return selected.usage.planEvidence.displayValue
+                    ?? selected.usage.planEvidence.rawValue
+            }()
+            let metadata = ProviderMetadata(
+                display_name: providerName,
+                category: "cloud",
+                supports_exact_cost: false,
+                supports_quota: true
+            )
+
+            providers.append(
+                ProviderUsage(
+                    provider: providerName,
+                    today_usage: clampedInt(row.today_usage) ?? 0,
+                    week_usage: clampedInt(row.total_usage) ?? 0,
+                    estimated_cost_today: row.estimated_cost_today ?? 0,
+                    estimated_cost_week: row.estimated_cost ?? 0,
+                    estimated_cost_30_day: row.estimated_cost_30_day ?? 0,
+                    cost_status_today: "Estimated",
+                    cost_status_week: "Estimated",
+                    quota: selected?.usage.quota,
+                    remaining: selected?.usage.remaining,
+                    plan_type: planType,
+                    reset_time: selected?.usage.resetTime,
+                    tiers: selected?.usage.tiers ?? [],
+                    status_text: "Operational",
+                    trend: [],
+                    recent_sessions: [],
+                    recent_errors: [],
+                    metadata: metadata
+                )
+            )
+        }
+
+        return ProviderAccountSummaryResult(
+            providers: providers,
+            providerAccounts: providerAccounts,
+            usedLegacyFallback: false
+        )
+    }
+
+    private static func accountIsMoreConstrained(
+        _ lhs: (
+            payload: ProviderAccountPayload,
+            usage: ProviderAccountUsage
+        ),
+        _ rhs: (
+            payload: ProviderAccountPayload,
+            usage: ProviderAccountUsage
+        )
+    ) -> Bool {
+        let lhsRatio = quotaRatio(lhs.usage)
+        let rhsRatio = quotaRatio(rhs.usage)
+        switch (lhsRatio, rhsRatio) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            break
+        }
+
+        let lhsRemaining = lhs.usage.remaining ?? Int.max
+        let rhsRemaining = rhs.usage.remaining ?? Int.max
+        if lhsRemaining != rhsRemaining {
+            return lhsRemaining < rhsRemaining
+        }
+
+        let lhsObserved = lhs.usage.observedAt
+            .flatMap(sharedISO8601Parse)?.timeIntervalSince1970
+            ?? -Double.greatestFiniteMagnitude
+        let rhsObserved = rhs.usage.observedAt
+            .flatMap(sharedISO8601Parse)?.timeIntervalSince1970
+            ?? -Double.greatestFiniteMagnitude
+        if lhsObserved != rhsObserved {
+            return lhsObserved > rhsObserved
+        }
+        return lhs.usage.id.uuidString < rhs.usage.id.uuidString
+    }
+
+    private static func quotaRatio(
+        _ account: ProviderAccountUsage
+    ) -> Double? {
+        guard
+            let quota = account.quota, quota > 0,
+            let remaining = account.remaining
+        else {
+            return nil
+        }
+        return Double(remaining) / Double(quota)
+    }
+
+    private static func clampedInt(_ value: Int64?) -> Int? {
+        value.map(SaturatingInt.clamp)
+    }
+
+    private static func isProviderAccountRPCUnavailable(
+        _ error: APIError
+    ) -> Bool {
+        guard case let .httpError(status, body) = error else {
+            return false
+        }
+        guard
+            status == 404,
+            let data = body.data(using: .utf8),
+            let payload = try? JSONDecoder().decode(
+                PostgRESTErrorPayload.self,
+                from: data
+            ),
+            payload.code == "PGRST202"
+        else {
+            return false
+        }
+        let diagnostic = [
+            payload.message,
+            payload.details,
+            payload.hint,
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+        return diagnostic.contains("provider_account_summary")
     }
 
     // MARK: - Sessions
@@ -1135,9 +1713,18 @@ public actor APIClient {
     }
 
     /// Evaluate budget alerts server-side. Returns number of new alerts created.
-    public func evaluateBudgetAlerts() async throws -> Int {
+    /// Refresh callers must provide the authorization lease captured before
+    /// their reads so an old refresh can never execute this user-scoped write
+    /// with credentials from a newly signed-in account.
+    public func evaluateBudgetAlerts(
+        authorizationLease: APIAuthorizationLease
+    ) async throws -> Int {
         struct BudgetResult: Decodable { let alerts_created: Int? }
-        let result: BudgetResult = try await rpc("evaluate_budget_alerts")
+        let result: BudgetResult = try await rpc(
+            "evaluate_budget_alerts",
+            params: EmptyBody(),
+            authorizationLease: authorizationLease
+        )
         return result.alerts_created ?? 0
     }
 
@@ -1465,9 +2052,11 @@ public actor APIClient {
         let refresh = auth.refresh_token
         let user = auth.user
 
-        self.accessToken = token
+        installAuthenticatedSession(
+            accessToken: token,
+            userID: user?.id
+        )
         self.refreshToken = refresh
-        self.userId = user?.id
 
         let profile = try await fetchProfile(select: "paired,name,email")
         let paired = profile?.paired ?? false
@@ -1511,9 +2100,11 @@ public actor APIClient {
         let refresh = auth.refresh_token
         let user = auth.user
 
-        self.accessToken = token
+        installAuthenticatedSession(
+            accessToken: token,
+            userID: user?.id
+        )
         self.refreshToken = refresh
-        self.userId = user?.id
 
         let profile = try await fetchProfile(select: "paired,name,email")
         let paired = profile?.paired ?? false
@@ -1757,10 +2348,261 @@ public actor APIClient {
 
     // MARK: - Provider Quota Sync
 
+    /// Persist user-controlled account enablement separately from quota
+    /// observations. Keeping this out of the quota upsert prevents an older
+    /// in-flight collector result from reactivating an account the user just
+    /// disabled.
+    @discardableResult
+    public func syncProviderAccountStatuses(
+        _ updates: [ProviderAccountStatusUpdate],
+        mutationRevision: UInt64? = nil,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        if let mutationRevision {
+            guard
+                mutationRevision
+                    >= highestProviderAccountStatusRevision
+            else {
+                return false
+            }
+            highestProviderAccountStatusRevision = mutationRevision
+        }
+        let previousWrite = providerAccountStatusWriteTail
+        let write = Task { [weak self] in
+            _ = await previousWrite?.value
+            guard let self else { return false }
+            return await self.performProviderAccountStatusSync(
+                updates,
+                authorizationLease: authorizationLease
+            )
+        }
+        providerAccountStatusWriteTail = write
+        return await write.value
+    }
+
+    private func performProviderAccountStatusSync(
+        _ updates: [ProviderAccountStatusUpdate],
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard providerAccountFlags.writeV2 else { return false }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[syncProviderAccountStatuses] cancelled after authorization changed"
+            )
+            return false
+        }
+
+        var latestByAccountID:
+            [UUID: ProviderAccountStatusUpdate] = [:]
+        for update in updates {
+            latestByAccountID[update.accountID] = update
+        }
+        let rows = latestByAccountID
+            .sorted { $0.key.uuidString < $1.key.uuidString }
+            .map {
+                ProviderAccountStatusRow(
+                    account_id: $0.key.uuidString.lowercased(),
+                    provider: $0.value.provider.rawValue,
+                    status:
+                        $0.value.isEnabled ? "active" : "disabled"
+                )
+            }
+        guard !rows.isEmpty else { return true }
+
+        do {
+            let _: ProviderAccountStatusResponse = try await rpc(
+                "set_provider_account_statuses",
+                params: ProviderAccountStatusParams(p_rows: rows),
+                authorizationLease: authorizationLease
+            )
+            return true
+        } catch {
+            apiLogger.warning(
+                "[syncProviderAccountStatuses] failed; response details omitted"
+            )
+            return false
+        }
+    }
+
+    /// Delete one exact account row owned by the authenticated user. The
+    /// server wrapper derives ownership from auth.uid(); a UUID from another
+    /// user is an idempotent no-op.
+    @discardableResult
+    public func deleteProviderAccount(
+        _ accountID: UUID,
+        provider: ProviderKind,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard providerAccountFlags.writeV2 else { return false }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[deleteProviderAccount] cancelled after authorization changed"
+            )
+            return false
+        }
+
+        do {
+            let response: ProviderAccountDeleteResponse = try await rpc(
+                "delete_provider_account",
+                params: ProviderAccountDeleteParams(
+                    p_account_id: accountID.uuidString.lowercased(),
+                    p_provider: provider.rawValue
+                ),
+                authorizationLease: authorizationLease
+            )
+            return response.tombstones_persisted == 1
+        } catch {
+            apiLogger.warning(
+                "[deleteProviderAccount] failed; response details omitted"
+            )
+            return false
+        }
+    }
+
     #if os(macOS)
+    /// Push account-scoped quota snapshots through the v2 RPC. Provider
+    /// credentials are structurally absent from `ProviderAccountUsage`; this
+    /// encoder sends only identity, plan evidence, quota and freshness fields.
+    /// Non-throwing to preserve the existing best-effort refresh behavior.
+    public func syncProviderAccountQuotas(
+        _ accounts: [ProviderAccountUsage],
+        authorizationLease: APIAuthorizationLease
+    ) async {
+        guard providerAccountFlags.writeV2 else { return }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[syncProviderAccountQuotas] cancelled after authorization changed"
+            )
+            return
+        }
+
+        let rows: [ProviderAccountUpsertRow] = accounts.compactMap { account in
+            guard
+                let rawObservedAt = account.observedAt,
+                ProviderAccountCloudPrivacy.reviewedTimestamp(
+                    rawObservedAt
+                ) != nil,
+                let observedAtDate =
+                    sharedISO8601Parse(rawObservedAt)
+            else {
+                apiLogger.warning(
+                    "[syncProviderAccountQuotas] skipped \(account.provider.rawValue, privacy: .public)/\(account.id.uuidString, privacy: .private) without a valid observed_at"
+                )
+                return nil
+            }
+            let reviewedPlanType =
+                ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.planEvidence.rawValue
+                )
+                ?? ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.planEvidence.displayValue
+                )
+            let hasReviewedPlan = reviewedPlanType != nil
+            let rawPlanWasExplicitlyEmpty =
+                [
+                    account.planEvidence.rawValue,
+                    account.planEvidence.displayValue,
+                ].allSatisfy { value in
+                    guard let value else { return true }
+                    return value.trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    ).isEmpty
+                }
+            let hasExplicitPlanClear =
+                reviewedPlanType == nil
+                && rawPlanWasExplicitlyEmpty
+                && account.planEvidence.source == .userConfirmed
+                && account.planEvidence.confidence == .high
+                && account.planEvidence.observedAt != nil
+            let hasPlanEvidence =
+                hasReviewedPlan || hasExplicitPlanClear
+            return ProviderAccountUpsertRow(
+                account_id: account.id.uuidString.lowercased(),
+                provider: account.provider.rawValue,
+                account_label:
+                    ProviderAccountCloudPrivacy
+                        .reviewedAccountLabel(
+                            account.accountLabel
+                        ),
+                plan_type: reviewedPlanType,
+                plan_source: hasPlanEvidence
+                    ? account.planEvidence.source.rawValue
+                    : PlanEvidenceSource.unknown.rawValue,
+                plan_confidence: hasPlanEvidence
+                    ? account.planEvidence.confidence.rawValue
+                    : DetectionConfidence.unavailable.rawValue,
+                plan_observed_at: hasPlanEvidence
+                    ? account.planEvidence.observedAt.map {
+                        sharedISO8601FractionalString(
+                            from: $0
+                        )
+                    }
+                    : nil,
+                remaining:
+                    ProviderAccountCloudPrivacy
+                        .reviewedNonNegativeValue(
+                            account.remaining
+                        ),
+                quota:
+                    ProviderAccountCloudPrivacy
+                        .reviewedNonNegativeValue(
+                            account.quota
+                        ),
+                reset_time:
+                    ProviderAccountCloudPrivacy
+                        .reviewedTimestamp(
+                            account.resetTime
+                        ),
+                tiers:
+                    ProviderAccountCloudPrivacy
+                        .reviewedTiers(account.tiers),
+                observed_at:
+                    sharedISO8601FractionalString(
+                        from: observedAtDate
+                    ),
+                source_device_id: account.sourceDeviceID?
+                    .uuidString.lowercased()
+            )
+        }
+        guard !rows.isEmpty else { return }
+
+        do {
+            let _: ProviderAccountSyncResponse = try await rpc(
+                "upsert_provider_account_quotas",
+                params: ProviderAccountUpsertParams(p_rows: rows),
+                authorizationLease: authorizationLease
+            )
+        } catch {
+            apiLogger.warning(
+                "[syncProviderAccountQuotas] failed; response details omitted"
+            )
+        }
+    }
+
     /// Push locally collected provider quotas to Supabase (upsert into provider_quotas table).
     /// Non-throwing — sync failures are logged but not propagated.
-    public func syncProviderQuotas(_ results: [CollectorResult]) async {
+    public func syncProviderQuotas(
+        _ results: [CollectorResult],
+        authorizationLease: APIAuthorizationLease
+    ) async {
+        // Once v2 is enabled, the account RPC is the sole owner of the
+        // provider-level compatibility projection. A later legacy POST would
+        // otherwise overwrite a deletion or a multi-account projection.
+        guard !providerAccountFlags.writeV2 else { return }
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[syncProviderQuotas] cancelled after authorization changed"
+            )
+            return
+        }
         guard let userId else { return }
         let rawQuotaResults = results.filter { $0.dataKind == .quota || $0.dataKind == .credits }
         guard !rawQuotaResults.isEmpty else { return }
@@ -1811,7 +2653,10 @@ public actor APIClient {
                 "provider": u.provider,
                 "remaining": u.remaining ?? 0,
                 "quota": u.quota as Any? ?? NSNull(),
-                "plan_type": u.plan_type as Any? ?? NSNull(),
+                "plan_type":
+                    ProviderAccountCloudPrivacy.reviewedPlanType(
+                        u.plan_type
+                    ) as Any? ?? NSNull(),
                 "reset_time": u.reset_time as Any? ?? NSNull(),
                 "tiers": tiersArr,
                 "updated_at": sharedISO8601Formatter.string(from: Date()),
@@ -1871,7 +2716,18 @@ public actor APIClient {
     /// the server-side dashboard_summary read today's real cost from this
     /// table instead. Every refresh overwrites the row with the latest scan,
     /// so partial-day values auto-correct as the day progresses.
-    public func syncDailyUsage(_ scanResult: CostUsageScanResult) async {
+    public func syncDailyUsage(
+        _ scanResult: CostUsageScanResult,
+        authorizationLease: APIAuthorizationLease
+    ) async {
+        do {
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
+        } catch {
+            apiLogger.info(
+                "[syncDailyUsage] cancelled after authorization changed"
+            )
+            return
+        }
         guard let userId else { return }
         guard !scanResult.entries.isEmpty else { return }
 
@@ -1928,7 +2784,10 @@ public actor APIClient {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
-            let (_, response) = try await session.data(for: request)
+            let (_, response) = try await dataWithRetry(
+                for: request,
+                authorizationLease: authorizationLease
+            )
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             if !(200...299).contains(status) {
                 apiLogger.warning("[syncDailyUsage] failed: HTTP \(status)")
@@ -2133,6 +2992,35 @@ public actor APIClient {
         params: Params,
         retried: Bool = false
     ) async throws -> Response {
+        try await rpc(
+            function,
+            params: params,
+            requiredAuthorizationLease: nil,
+            retried: retried
+        )
+    }
+
+    private func rpc<Response: Decodable, Params: Encodable>(
+        _ function: String,
+        params: Params,
+        authorizationLease: APIAuthorizationLease,
+        retried: Bool = false
+    ) async throws -> Response {
+        try await rpc(
+            function,
+            params: params,
+            requiredAuthorizationLease: authorizationLease,
+            retried: retried
+        )
+    }
+
+    private func rpc<Response: Decodable, Params: Encodable>(
+        _ function: String,
+        params: Params,
+        requiredAuthorizationLease: APIAuthorizationLease?,
+        retried: Bool
+    ) async throws -> Response {
+        try ensureAuthorizationLeaseIsCurrent(requiredAuthorizationLease)
         guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/\(function)") else {
             throw APIError.invalidResponse
         }
@@ -2140,11 +3028,25 @@ public actor APIClient {
         request.httpMethod = "POST"
         applyHeaders(&request)
         request.httpBody = try encoder.encode(params)
-        let (data, response) = try await dataWithRetry(for: request)
+        let (data, response) = try await dataWithRetry(
+            for: request,
+            authorizationLease: requiredAuthorizationLease
+        )
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
+            try ensureAuthorizationLeaseIsCurrent(
+                requiredAuthorizationLease
+            )
             let _ = try await refreshAccessToken()
-            return try await rpc(function, params: params, retried: true)
+            try ensureAuthorizationLeaseIsCurrent(
+                requiredAuthorizationLease
+            )
+            return try await rpc(
+                function,
+                params: params,
+                requiredAuthorizationLease: requiredAuthorizationLease,
+                retried: true
+            )
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
             throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
@@ -2153,15 +3055,24 @@ public actor APIClient {
     }
 
     /// Execute a URLRequest with automatic retry on transient network errors.
-    private func dataWithRetry(for request: URLRequest, maxRetries: Int = 2) async throws -> (Data, URLResponse) {
+    private func dataWithRetry(
+        for request: URLRequest,
+        maxRetries: Int = 2,
+        authorizationLease: APIAuthorizationLease? = nil
+    ) async throws -> (Data, URLResponse) {
         var lastError: Error?
         for attempt in 0...maxRetries {
+            try Task.checkCancellation()
+            try ensureAuthorizationLeaseIsCurrent(authorizationLease)
             do {
                 return try await session.data(for: request)
             } catch let error as URLError where [.timedOut, .networkConnectionLost, .notConnectedToInternet].contains(error.code) {
                 lastError = error
                 if attempt < maxRetries {
                     try await Task.sleep(nanoseconds: UInt64(pow(2.0, Double(attempt))) * 1_000_000_000)
+                    try ensureAuthorizationLeaseIsCurrent(
+                        authorizationLease
+                    )
                 }
             }
         }

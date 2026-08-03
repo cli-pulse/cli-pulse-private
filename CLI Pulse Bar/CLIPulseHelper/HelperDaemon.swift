@@ -63,6 +63,12 @@ final class HelperDaemon {
         return stored >= 60 ? stored : 120
     }
 
+    private var providerAccountsWriteV2Enabled: Bool {
+        UserDefaults(suiteName: HelperIPC.suiteName)?.bool(
+            forKey: HelperIPC.providerAccountsWriteV2Key
+        ) ?? false
+    }
+
     func start() {
         guard !isRunning else { return }
         isRunning = true
@@ -153,10 +159,11 @@ final class HelperDaemon {
         )
 
         // Step 4: Provider quotas via collectors
-        let (providerTiers, collectorStatus) = await collectProviderQuotas()
+        let providerCollection = await collectProviderQuotas()
+        let collectorStatus = providerCollection.collectorStatus
 
         // Step 4.5: Write collector results to app group for main app
-        writeCollectorResultsToAppGroup(providerTiers)
+        writeCollectorResultsToAppGroup(providerCollection)
         HelperIPC.postSyncNotification()
 
         guard let config = HelperConfig.load() else {
@@ -173,13 +180,16 @@ final class HelperDaemon {
         // not shipped to Supabase. When no config suite is readable (very
         // first launch before main app has written), pass sessions through
         // unfiltered rather than losing data silently.
-        let enabledProviderNames: Set<String>? = {
+        let savedProviderConfigs: [ProviderConfig]? = {
             guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
                   let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
                   let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
             else { return nil }
-            return Set(saved.filter(\.isEnabled).map(\.kind.rawValue))
+            return saved
         }()
+        let enabledProviderNames = savedProviderConfigs.map {
+            Set($0.filter(\.isEnabled).map(\.kind.rawValue))
+        }
         let filteredSessions: [SessionRecord] = {
             guard let enabled = enabledProviderNames else { return scanResult.sessions }
             return scanResult.sessions.filter { enabled.contains($0.provider) }
@@ -188,6 +198,20 @@ final class HelperDaemon {
             logger.info("Filtered \(scanResult.sessions.count - filteredSessions.count) sessions from disabled providers")
         }
         let sessionDicts = filteredSessions.map { sessionToDict($0) }
+        let syncableAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: savedProviderConfigs ?? [],
+                ownedBy: config.userId
+            )
+        let syncableAccounts =
+            providerCollection.accounts.filter {
+                syncableAccountIDs.contains($0.accountID)
+            }
+        let providerTiers = HelperAPIClient.legacyProviderTiers(
+            from: providerCollection.accounts,
+            configs: savedProviderConfigs ?? [],
+            ownedBy: config.userId
+        )
         let providerRemaining: [String: Int] = providerTiers.compactMapValues { dict in
             (dict as? [String: Any])?["remaining"] as? Int
         }
@@ -242,14 +266,50 @@ final class HelperDaemon {
             }
 
             // Sync
+            let legacyProviderRemaining =
+                providerAccountsWriteV2Enabled
+                ? [String: Int]()
+                : providerRemaining
+            let legacyProviderTiers =
+                providerAccountsWriteV2Enabled
+                ? [String: Any]()
+                : providerTiers
             let result = try await apiClient.sync(
                 config: config,
                 sessions: sessionDicts,
                 alerts: alerts,
-                providerRemaining: providerRemaining,
-                providerTiers: providerTiers
+                providerRemaining: legacyProviderRemaining,
+                providerTiers: legacyProviderTiers
             )
             logger.info("Synced \(result.sessionsSynced) sessions, \(result.alertsSynced) alerts")
+
+            // In v2 mode helper_sync carries sessions/alerts only; provider
+            // quotas have exactly one writer below. Failure-soft: an older
+            // backend missing the staged RPC must not break session, alert, or
+            // heartbeat sync, but it must not regain projection ownership.
+            if providerAccountsWriteV2Enabled,
+               !syncableAccounts.isEmpty {
+                do {
+                    let synced = try await apiClient
+                        .syncProviderAccountQuotas(
+                            config: config,
+                            accounts: syncableAccounts,
+                            observedAt: providerCollection.observedAt
+                        )
+                    logger.info(
+                        "Synced \(synced) provider account quotas"
+                    )
+                } catch {
+                    logger.warning(
+                        "Provider account v2 sync failed; response details omitted"
+                    )
+                }
+            } else if providerAccountsWriteV2Enabled,
+                      !providerCollection.accounts.isEmpty {
+                logger.warning(
+                    "Provider account v2 sync paused: no local accounts are owned by the paired CLIPulse user"
+                )
+            }
 
             // Update status
             HelperIPC.writeStatus(HelperIPC.Status(
@@ -266,62 +326,61 @@ final class HelperDaemon {
 
     // MARK: - Provider Quota Collection
 
-    /// Run the same collectors the main app uses, producing tier data for Supabase.
-    /// Runs every enabled provider collector.
-    ///
-    /// Also returns a per-provider outcome map for backend diagnostics
-    /// (migrate_v0.71). The outcomes already existed as control flow — they were
-    /// just logged locally, so a device that delivers no usage data looked
-    /// identical from the backend whether its providers were missing, disabled,
-    /// or actively failing.
-    ///
-    /// What lands in the map, and why NOT everything: `ProviderConfig.defaults()`
-    /// enables EVERY registered `ProviderKind`, so a stock install runs ~50
-    /// collectors of which the user realistically has two or three actually
-    /// installed. Emitting all of them would blow the RPC's per-row entry cap and
-    /// silently drop whichever providers sort last — the payload would look
-    /// complete while hiding real failures (codex review). So the map carries
-    /// only providers that genuinely exist on this machine (`ok` / `empty` /
-    /// `error`), plus a single `_counts` key so the totals — including how many
-    /// were skipped as disabled or absent — are never lost.
-    private func collectProviderQuotas() async -> (tiers: [String: Any], status: [String: String]) {
-        var result: [String: Any] = [:]
+    private struct ProviderQuotaCollection {
+        let accounts: [HelperIPC.CollectorAccountPayload]
+        let providers: [String: HelperIPC.CollectorUsagePayload]
+        let collectorStatus: [String: String]
+        let observedAt: Date
+    }
+
+    /// Run the same collectors the main app uses once per enabled account.
+    /// The provider dictionary remains a deterministic compatibility
+    /// projection for the existing helper_sync RPC and old main apps. Collector
+    /// status remains a provider-level diagnostic, using a deterministic
+    /// worst-account projection when two accounts share a provider.
+    private func collectProviderQuotas() async -> ProviderQuotaCollection {
+        var accountResults: [HelperIPC.CollectorAccountPayload] = []
+        var providerProjection: [String: HelperIPC.CollectorUsagePayload] = [:]
         var status: [String: String] = [:]
         var disabledCount = 0
         var unavailableCount = 0
 
         // Read provider configs from shared app group (written by main app)
         var configs: [ProviderConfig] = ProviderConfig.defaults()
+        var hasPersistentAccountIDs = false
         if let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
            let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
            let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
             configs = saved
+            hasPersistentAccountIDs = true
             // Hydrate secrets from Keychain
             for i in configs.indices {
                 configs[i].loadSecrets()
             }
         }
 
-        logger.info("Running \(CollectorRegistry.collectors.count) registered collectors")
-        for collector in CollectorRegistry.collectors {
-            let providerName = collector.kind.rawValue
-            // Run collector for any enabled provider (not just active sessions)
-            // so quota data is available even when no session is running.
+        let orderedConfigs = configs.sorted {
+            if $0.sortOrder != $1.sortOrder {
+                return $0.sortOrder < $1.sortOrder
+            }
+            if $0.kind.rawValue != $1.kind.rawValue {
+                return $0.kind.rawValue < $1.kind.rawValue
+            }
+            return $0.accountID.uuidString < $1.accountID.uuidString
+        }
 
-            let config = configs.first(where: { $0.kind == collector.kind }) ?? ProviderConfig(kind: collector.kind)
-            // Respect the user's enabled-set. The tier-migration auto-disables
-            // extra providers for free users, and users can also disable
-            // providers manually. Before this filter, the helper would still
-            // collect quota for all 26 kinds and push them to Supabase, which
-            // defeats the migration's intent and wastes network + battery.
-            // (v1.10.4 free-tier fix, 2026-04-23.)
-            if !config.isEnabled {
+        logger.info("Inspecting \(orderedConfigs.count) account configs")
+        for config in orderedConfigs {
+            let providerName = config.kind.rawValue
+            guard config.isEnabled else {
                 logger.debug("Skipping \(providerName): disabled in user config")
                 disabledCount += 1
                 continue
             }
-            let available = collector.isAvailable(config: config)
-            if !available {
+            guard let collector = CollectorRegistry.collector(
+                for: config.kind,
+                config: config
+            ) else {
                 logger.debug("Skipping \(providerName): isAvailable=false")
                 // Enabled but nothing to read — CLI not installed, or no
                 // credentials on this machine. Counted, not listed: with every
@@ -331,48 +390,66 @@ final class HelperDaemon {
                 continue
             }
 
+            let collectionStartedAt = Date()
             do {
                 let collectorResult = try await collector.collect(config: config)
                 let usage = collectorResult.usage
+                let payload = HelperIPC.CollectorUsagePayload(
+                    quota: usage.quota,
+                    remaining: usage.remaining,
+                    todayUsage: usage.today_usage,
+                    weekUsage: usage.week_usage,
+                    statusText: usage.status_text,
+                    planType: usage.plan_type,
+                    resetTime: usage.reset_time,
+                    tiers: usage.tiers,
+                    metadata: usage.metadata.map(HelperIPC.CollectorMetadataPayload.init)
+                )
 
-                var tierData: [String: Any] = [
-                    "quota": usage.quota ?? 100,
-                    "remaining": usage.remaining ?? 100,
-                    "today_usage": usage.today_usage,
-                    "week_usage": usage.week_usage,
-                    "status_text": usage.status_text,
-                ]
-                if let planType = usage.plan_type { tierData["plan_type"] = planType }
-                if let resetTime = usage.reset_time { tierData["reset_time"] = resetTime }
-
-                let tiers: [[String: Any]] = usage.tiers.map { tier in
-                    var d: [String: Any] = [
-                        "name": tier.name,
-                        "quota": tier.quota,
-                        "remaining": tier.remaining,
-                    ]
-                    if let rt = tier.reset_time { d["reset_time"] = rt }
-                    return d
+                // Lowest sortOrder wins the provider compatibility projection.
+                if providerProjection[providerName] == nil {
+                    providerProjection[providerName] = payload
                 }
-                tierData["tiers"] = tiers
 
-                result[providerName] = tierData
+                // Never publish an ephemeral UUID made by ProviderConfig.defaults().
+                // Account rows start only after the main app has written migrated,
+                // stable ProviderConfig values into the app group.
+                if hasPersistentAccountIDs {
+                    accountResults.append(
+                        HelperIPC.CollectorAccountPayload(
+                            accountID: config.accountID,
+                            provider: providerName,
+                            accountLabel: config.accountLabel,
+                            planOverride: config.planOverride,
+                            planOverrideUpdatedAt:
+                                config.planOverrideUpdatedAt,
+                            planDetectionStartedAt:
+                                collectionStartedAt,
+                            dataKind: helperDataKind(collectorResult.dataKind),
+                            usage: payload
+                        )
+                    )
+                }
                 logger.debug("Collected \(providerName): \(usage.tiers.count) tiers")
                 // ok vs empty — the load-bearing distinction for this whole
                 // diagnostic. Lives in CLIPulseCore so it is unit-testable; see
                 // `classifyCollectorOutcome` for why `status_text` must not be
                 // part of the test (it is always populated, even on the exact
                 // no-data paths we are hunting).
-                status[providerName] = HelperAPIClient.classifyCollectorOutcome(
-                    tiersCount: usage.tiers.count,
-                    quota: usage.quota,
-                    remaining: usage.remaining,
-                    todayUsage: usage.today_usage,
-                    weekUsage: usage.week_usage
-                )
+                let candidateStatus =
+                    CollectorRunner.classify(collectorResult).telemetryToken
+                status[providerName] =
+                    HelperAPIClient.aggregateCollectorStatus(
+                        current: status[providerName],
+                        candidate: candidateStatus
+                    )
             } catch {
                 logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
-                status[providerName] = "error"
+                status[providerName] =
+                    HelperAPIClient.aggregateCollectorStatus(
+                        current: status[providerName],
+                        candidate: "error"
+                    )
             }
         }
 
@@ -381,22 +458,44 @@ final class HelperDaemon {
         // providers, 47 switched off by the user".
         status["_counts"] = "d=\(disabledCount) u=\(unavailableCount) p=\(status.count)"
 
-        return (tiers: result, status: status)
+        return ProviderQuotaCollection(
+            accounts: accountResults,
+            providers: providerProjection,
+            collectorStatus: status,
+            observedAt: Date()
+        )
     }
 
     // MARK: - App Group Collector Sharing
 
-    private func writeCollectorResultsToAppGroup(_ providerTiers: [String: Any]) {
-        // Wrap with timestamp so main app can reject stale data
-        let payload: [String: Any] = [
-            "timestamp": sharedISO8601Formatter.string(from: Date()),
-            "providers": providerTiers,
-        ]
-        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+    private func writeCollectorResultsToAppGroup(_ collection: ProviderQuotaCollection) {
+        let envelope = HelperIPC.CollectorResultsEnvelopeV2(
+            timestamp: sharedISO8601Formatter.string(
+                from: collection.observedAt
+            ),
+            accounts: collection.accounts,
+            providers: collection.providers
+        )
+        do {
+            let data = try HelperIPC.encodeCollectorResultsV2(envelope)
             HelperIPC.writeCollectorResults(data)
-            logger.debug("Wrote \(providerTiers.count) collector results to app group")
-        } else {
-            logger.error("Failed to encode collector results for app group write")
+            logger.debug(
+                "Wrote \(collection.accounts.count) account results and \(collection.providers.count) provider projections to app group"
+            )
+        } catch {
+            logger.error(
+                "Failed to encode collector results for app group write: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func helperDataKind(
+        _ kind: CollectorDataKind
+    ) -> HelperIPC.CollectorDataKind {
+        switch kind {
+        case .quota: return .quota
+        case .credits: return .credits
+        case .statusOnly: return .statusOnly
         }
     }
 

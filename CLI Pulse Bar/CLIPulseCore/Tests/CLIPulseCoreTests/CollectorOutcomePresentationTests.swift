@@ -10,6 +10,18 @@ import XCTest
 /// the problem. Wrong advice here is worse than the silence it replaces,
 /// because silence at least does not waste their afternoon.
 final class CollectorOutcomePresentationTests: XCTestCase {
+    private var savedLocaleOverride: String?
+
+    override func setUp() {
+        super.setUp()
+        savedLocaleOverride = LocaleOverrideStore.shared.override
+        LocaleOverrideStore.shared.set("en")
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(savedLocaleOverride)
+        super.tearDown()
+    }
 
     private func presentation(_ outcome: CollectorOutcome) -> CollectorOutcomePresentation {
         CollectorOutcomePresentation.of(outcome, providerName: "Codex")

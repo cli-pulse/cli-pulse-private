@@ -691,6 +691,25 @@ struct OverviewTab: View {
                     color: PulseTheme.providerColor(provider.provider),
                     detail: "\(CostFormatter.formatUsage(provider.usage)) · \(CostFormatter.format(provider.estimated_cost))"
                 )
+
+                if let kind = ProviderKind(
+                    rawValue: provider.provider
+                ) {
+                    let configs = providerState.configs(for: kind)
+                    if configs.count > 1 {
+                        ProviderAccountQuotaSummaryView(
+                            provider: kind,
+                            configs: configs,
+                            usages:
+                                providerState.providerAccounts.filter {
+                                    $0.provider == kind
+                                },
+                            showProviderCostNote: true,
+                            showsToggles: false,
+                            onToggle: { _, _ in }
+                        )
+                    }
+                }
             }
 
             if enabledProviders.isEmpty {

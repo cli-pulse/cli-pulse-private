@@ -51,4 +51,132 @@ final class L10nEnBaseKeysTests: XCTestCase {
     func test_enOverrideResolvesAKnownKey() {
         XCTAssertEqual(L10n.providerConfig.capabilities, "Capabilities")
     }
+
+    func test_onboardingStepProgressHasLocalizedSemanticCopy() {
+        XCTAssertEqual(
+            L10n.onboardingWizard.stepProgress(
+                current: 3,
+                total: 6,
+                name: "Your Coding Agents"
+            ),
+            "Step 3 of 6: Your Coding Agents"
+        )
+    }
+
+    func test_providerAccountManagementCopyResolvesInEnBase() {
+        XCTAssertEqual(L10n.providers.accountsCount(1), "1 account")
+        XCTAssertEqual(L10n.providers.accountsCount(2), "2 accounts")
+        XCTAssertEqual(
+            L10n.providers.removeAccountTitle("Claude", "Work"),
+            "Remove Claude · Work?"
+        )
+        XCTAssertFalse(
+            L10n.providers.removeAccountMessage.hasPrefix("providers.")
+        )
+    }
+
+    func test_agentSetupRerunCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            XCTAssertFalse(
+                L10n.providers.rerunAgentSetup
+                    .hasPrefix("providers."),
+                "\(locale) is missing the Agent setup rerun title"
+            )
+            XCTAssertFalse(
+                L10n.providers.rerunAgentSetupHint
+                    .hasPrefix("providers."),
+                "\(locale) is missing the Agent setup rerun hint"
+            )
+        }
+    }
+
+    func test_providerAccountDestructiveCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+            let title = L10n.providers.removeAccountTitle(
+                "Claude",
+                "Work"
+            )
+            let message = L10n.providers.removeAccountMessage
+            let manualPlan = L10n.providerConfig.manualPlan
+
+            XCTAssertFalse(
+                title.hasPrefix("providers."),
+                "\(locale) is missing the account removal title"
+            )
+            XCTAssertTrue(
+                title.contains("Claude") && title.contains("Work"),
+                "\(locale) removal title lost its provider/account placeholders"
+            )
+            XCTAssertFalse(
+                message.hasPrefix("providers."),
+                "\(locale) is missing the destructive account removal message"
+            )
+            XCTAssertFalse(
+                manualPlan.hasPrefix("provider_config."),
+                "\(locale) is missing manual-plan copy"
+            )
+        }
+    }
+
+    func test_providerAccountSourceCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            let source = L10n.providers.planSource(.providerAPI)
+            let sourceLabel = L10n.providers.sourceLabel(source)
+            let quotaUnavailable =
+                L10n.providers.quotaDataUnavailable
+
+            XCTAssertFalse(
+                source.hasPrefix("providers."),
+                "\(locale) is missing provider-plan source copy"
+            )
+            XCTAssertFalse(
+                sourceLabel.hasPrefix("providers."),
+                "\(locale) is missing the source label"
+            )
+            XCTAssertTrue(
+                sourceLabel.contains(source),
+                "\(locale) source label lost its placeholder"
+            )
+            XCTAssertFalse(
+                quotaUnavailable.hasPrefix("providers."),
+                "\(locale) is missing quota-unavailable copy"
+            )
+        }
+    }
+
+    func test_watchAccountFreshnessCopyResolvesInEverySupportedLocale() {
+        for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+
+            let connect = L10n.watch.connectAgentsOnMac
+            let stale = L10n.watch.staleUpdated("5m")
+            let tightest = L10n.watch.tightestAccount("Work")
+
+            XCTAssertFalse(
+                connect.hasPrefix("watch."),
+                "\(locale) is missing the Mac setup guidance"
+            )
+            XCTAssertFalse(
+                stale.hasPrefix("watch."),
+                "\(locale) is missing stale-data copy"
+            )
+            XCTAssertTrue(
+                stale.contains("5m"),
+                "\(locale) stale copy lost its timestamp"
+            )
+            XCTAssertFalse(
+                tightest.hasPrefix("watch."),
+                "\(locale) is missing tightest-account copy"
+            )
+            XCTAssertTrue(
+                tightest.contains("Work"),
+                "\(locale) tightest-account copy lost its label"
+            )
+        }
+    }
 }

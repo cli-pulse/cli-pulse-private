@@ -8,6 +8,13 @@ struct iOSMainView: View {
     @EnvironmentObject var providerState: ProviderState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    private var providerAccountBadgeCount: Int {
+        if !providerState.providerAccounts.isEmpty {
+            return providerState.providerAccounts.count
+        }
+        return providerState.providers.count
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if !SupabaseConstants.isConfigured {
@@ -86,12 +93,12 @@ struct iOSMainView: View {
 
             iOSProvidersTab()
                 .environmentObject(state)
-                .environmentObject(authState)
                 .environmentObject(alertState)
                 .environmentObject(providerState)
                 .tabItem {
                     Label(L10n.tab.providers, systemImage: "cpu")
                 }
+                .badge(providerAccountBadgeCount)
                 .tag(AppState.Tab.providers)
 
             iOSSessionsTab()
@@ -175,7 +182,12 @@ struct iPadSplitView: View {
         List {
             Section(L10n.dashboard.monitor) {
                 sidebarButton(.overview)
-                sidebarButton(.providers)
+                sidebarButton(
+                    .providers,
+                    badge: providerState.providerAccounts.isEmpty
+                        ? providerState.providers.count
+                        : providerState.providerAccounts.count
+                )
                 sidebarButton(.sessions)
                 sidebarButton(.swarm)
             }

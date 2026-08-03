@@ -93,9 +93,17 @@ final class MachineSnapshotUnavailabilityTests: XCTestCase {
             m.contains("install"),
             "there is no install action in the .bundled state. Got: \(m)"
         )
+        let capabilityTokens = [
+            "built-in", "sensor",       // English
+            "integrado",                // Spanish
+            "内置", "传感器",             // Simplified Chinese
+            "內建", "感測器",             // Traditional Chinese
+            "内蔵", "センサー",             // Japanese
+            "내장", "센서",                // Korean
+        ]
         XCTAssertTrue(
-            m.contains("built-in") || m.contains("sensor"),
-            "must say which helper and why. Got: \(m)"
+            capabilityTokens.contains(where: m.contains),
+            "must say which helper and why in every supported locale. Got: \(m)"
         )
     }
 

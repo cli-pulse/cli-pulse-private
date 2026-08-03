@@ -75,12 +75,27 @@ final class CollectorRunnerTests: XCTestCase {
         let runs = await CollectorRunner.run(
             configs: configs,
             maxConcurrent: 4,
-            execute: { _, collector in
-                do {
-                    return .success(try await collector.collect(config: configs[0]))
-                } catch {
-                    return .failure(error)
+            collectorResolver: { config in
+                switch config.kind {
+                case .codex:
+                    return StubCollector(kind: .codex)
+                case .claude:
+                    return StubCollector(kind: .claude)
+                case .gemini:
+                    return nil
+                case .cursor:
+                    return StubCollector(
+                        kind: .cursor,
+                        available: false,
+                        readinessOverride:
+                            .notReady(.missingCredentials)
+                    )
+                default:
+                    return nil
                 }
+            },
+            execute: { _, _ in
+                .success(dataBearingResult())
             }
         )
 
@@ -308,6 +323,50 @@ final class CollectorRunnerTests: XCTestCase {
             CollectorOutcome.notReady(.missingCredentials).telemetryToken, "not_ready_missing_credentials"
         )
         XCTAssertEqual(CollectorOutcome.failed(.parse).telemetryToken, "failed_parse")
+    }
+
+    /// A provider-level UI/telemetry map cannot represent two accounts
+    /// separately, so it must never let task completion order decide which
+    /// account is visible. An actionable failure wins over a healthy sibling
+    /// account, and reversing the completed-run order has no effect.
+    func testDuplicateProviderOutcomeAggregationIsOrderIndependent() {
+        let healthy = CollectorRun(
+            kind: .claude,
+            outcome: .producedData
+        )
+        let failed = CollectorRun(
+            kind: .claude,
+            outcome: .failed(.network)
+        )
+
+        let forward = CollectorRunner.providerOutcomeMap([healthy, failed])
+        let reversed = CollectorRunner.providerOutcomeMap([failed, healthy])
+
+        XCTAssertEqual(forward, reversed)
+        XCTAssertEqual(forward[.claude], .failed(.network))
+    }
+
+    /// Two failures have the same actionability rank. Their detailed category
+    /// still must be stable, so the tie-breaker is the telemetry token rather
+    /// than whichever async task happened to finish last.
+    func testDuplicateProviderFailureTieBreakIsStable() {
+        let parse = CollectorRun(
+            kind: .claude,
+            outcome: .failed(.parse)
+        )
+        let auth = CollectorRun(
+            kind: .claude,
+            outcome: .failed(.auth)
+        )
+
+        XCTAssertEqual(
+            CollectorRunner.providerOutcomeMap([parse, auth]),
+            CollectorRunner.providerOutcomeMap([auth, parse])
+        )
+        XCTAssertEqual(
+            CollectorRunner.providerOutcomeMap([parse, auth])[.claude],
+            .failed(.auth)
+        )
     }
 
     // MARK: - telemetry throttle

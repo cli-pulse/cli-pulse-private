@@ -7,6 +7,7 @@ import AuthenticationServices
 /// Editor for per-provider settings (source mode, credentials, account label).
 /// Presented in its own Window scene on macOS; dismissed via `@Environment(\.dismiss)`.
 struct ProviderConfigEditor: View {
+    let accountID: UUID
     let kind: ProviderKind
     @ObservedObject var state: AppState
     @Environment(\.dismiss) private var dismiss
@@ -16,8 +17,11 @@ struct ProviderConfigEditor: View {
     @State private var cookieSource: CookieSource? = nil
     @State private var manualCookieHeader: String = ""
     @State private var accountLabel: String = ""
+    @State private var planOverride: String = ""
+    @State private var didFinishEditing = false
     #if os(macOS)
-    @State private var isGeminiConnected: Bool = false
+    @State private var geminiCredentialDraft =
+        GeminiCredentialDraft(isConnected: false)
     @State private var isConnecting: Bool = false
     @State private var geminiError: String?
     @State private var showAPIKey: Bool = false
@@ -32,6 +36,9 @@ struct ProviderConfigEditor: View {
     @State private var isClaudeConnected: Bool = false
     @State private var claudeConnectError: String?
     @State private var claudeConnectedEmail: String?
+    /// Explicit Connect/Disconnect makes this account self-contained. Legacy
+    /// configs leave the flag off and may still use one machine-global source.
+    @State private var sharedCredentialFallbackDisabled: Bool = false
     /// v1.23.0 G3 follow-on: opt-in for the dark CLI-probe fallback
     /// (shipped in PR #45). macOS-only — the probe and this state are
     /// `#if os(macOS)`; the iOS/watch build never sees it.
@@ -153,6 +160,31 @@ struct ProviderConfigEditor: View {
                     .font(.system(size: 10))
                     .textContentType(.none)
                 #endif
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L10n.providerConfig.manualPlan)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                #if os(macOS)
+                NoAutoFillTextField(
+                    placeholder: L10n.providerConfig.manualPlanPlaceholder,
+                    text: $planOverride
+                )
+                .frame(minHeight: 22)
+                .padding(.vertical, 1)
+                #else
+                TextField(
+                    L10n.providerConfig.manualPlanPlaceholder,
+                    text: $planOverride
+                )
+                .textFieldStyle(.roundedBorder)
+                .font(.system(size: 10))
+                #endif
+                Text(L10n.providerConfig.manualPlanHint)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             // API key (only if provider supports api/oauth)
@@ -282,21 +314,33 @@ struct ProviderConfigEditor: View {
 
             // Actions
             HStack {
-                Button(L10n.common.cancel) { dismiss() }
+                Button(L10n.common.cancel) {
+                    didFinishEditing = true
+                    state.cancelProviderAccountDraft(accountID)
+                    dismiss()
+                }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button(L10n.common.save) {
-                    save()
+                    guard save() else { return }
+                    didFinishEditing = true
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(PulseTheme.accent)
                 .controlSize(.small)
+                #if os(macOS)
+                .disabled(isConnecting)
+                #endif
             }
         }
         .padding(16)
         .onAppear { loadFromConfig() }
+        .onDisappear {
+            guard !didFinishEditing else { return }
+            state.cancelProviderAccountDraft(accountID)
+        }
         #if os(macOS)
         .onChange(of: apiKey) { _ in testState = .idle }
         .onChange(of: manualCookieHeader) { _ in testState = .idle }
@@ -319,14 +363,21 @@ struct ProviderConfigEditor: View {
     }
 
     private func loadFromConfig() {
-        guard let idx = state.providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
+        guard let idx = state.providerConfigs.firstIndex(
+            where: { $0.accountID == accountID }
+        ) else {
+            return
+        }
         let config = state.providerConfigs[idx]
         sourceMode = config.sourceMode
         apiKey = config.apiKey ?? ""
         cookieSource = config.cookieSource
         manualCookieHeader = config.manualCookieHeader ?? ""
         accountLabel = config.accountLabel ?? ""
+        planOverride = config.planOverride ?? ""
         #if os(macOS)
+        sharedCredentialFallbackDisabled =
+            config.sharedCredentialFallbackDisabled ?? false
         // Cursor auto-imports its browser session cookie by default. Surface
         // that as an explicit `.automatic` selection when the user has never
         // chosen a source, so the picker, the auto-import note, and Test
@@ -336,7 +387,15 @@ struct ProviderConfigEditor: View {
             cookieSource = .automatic
         }
         if kind == .gemini {
-            isGeminiConnected = GeminiOAuthManager.shared.isConnected
+            geminiCredentialDraft = GeminiCredentialDraft(
+                isConnected:
+                    GeminiOAuthManager.shared
+                        .isConnectedWithoutMigration(
+                            accountID: accountID,
+                            allowLegacyFallback:
+                                !sharedCredentialFallbackDisabled
+                        )
+            )
             geminiCliProbeFallback = config.geminiCliProbeFallback ?? false
         }
         if kind == .claude {
@@ -355,7 +414,7 @@ struct ProviderConfigEditor: View {
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            if isGeminiConnected {
+            if geminiCredentialDraft.isConnected {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.green)
@@ -365,8 +424,8 @@ struct ProviderConfigEditor: View {
                         .foregroundStyle(.green)
                     Spacer()
                     Button(L10n.providerConfig.disconnect) {
-                        GeminiOAuthManager.shared.clearTokens()
-                        isGeminiConnected = false
+                        geminiCredentialDraft.stageDisconnect()
+                        sharedCredentialFallbackDisabled = true
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.red)
@@ -379,8 +438,15 @@ struct ProviderConfigEditor: View {
                     Task { @MainActor in
                         defer { isConnecting = false }
                         do {
-                            _ = try await GeminiOAuthManager.shared.authorize()
-                            isGeminiConnected = true
+                            let authorization =
+                                try await GeminiOAuthManager.shared
+                                    .authorizeForEditing(
+                                        accountID: accountID
+                                    )
+                            geminiCredentialDraft.stageAuthorization(
+                                authorization
+                            )
+                            sharedCredentialFallbackDisabled = true
                         } catch is CancellationError {
                             // User cancelled — ignore
                         } catch let e as ASWebAuthenticationSessionError
@@ -465,7 +531,11 @@ struct ProviderConfigEditor: View {
                     }
                     Spacer()
                     Button(L10n.providerConfig.disconnect) {
-                        ClaudeCredentials.clearCachedKeychainCredentials()
+                        // Disconnect only this CLIPulse account. The Claude
+                        // Code keychain item and sibling account slots remain
+                        // untouched; Save commits the cleared account slot.
+                        apiKey = ""
+                        sharedCredentialFallbackDisabled = true
                         isClaudeConnected = false
                         claudeConnectedEmail = nil
                         claudeConnectError = nil
@@ -490,10 +560,45 @@ struct ProviderConfigEditor: View {
                         // User-initiated Connect — bypass the cross-app read
                         // cooldown so a reconnect/re-auth is never blocked by a
                         // cooldown a background 401 may have armed.
-                        let creds = ClaudeCredentials.readKeychainCredentials(bypassCooldown: true)
+                        let creds = ClaudeCredentials.readKeychainCredentials(
+                            bypassCooldown: true,
+                            cacheResult: false
+                        )
                         await MainActor.run {
                             isConnecting = false
                             if let creds, !creds.accessToken.isEmpty {
+                                // Stage the imported token in this editor. It
+                                // reaches the account-scoped Keychain slot only
+                                // when the user presses Save; Cancel discards it.
+                                // Deliberately NOT snapshotting `creds.accessToken` into
+                                // `apiKey`, and explicitly clearing the fallback
+                                // latch rather than setting it.
+                                //
+                                // Two facts make the obvious version wrong.
+                                // `resolveTokenDetails` returns an account-scoped
+                                // `apiKey` before it ever consults machine-global
+                                // sources — its own comment says they "always win"
+                                // — and on 401 the OAuth strategy does not retry
+                                // against the live keychain, because the rejected
+                                // source was `.accountConfig`. So a copied token is
+                                // not a cache that degrades: it is a permanent
+                                // override that outranks the very credential it was
+                                // copied from.
+                                //
+                                // And what gets copied is an OAuth ACCESS token,
+                                // which expires. Claude Code refreshes its own
+                                // keychain item; the snapshot cannot. The account
+                                // therefore stops returning data at expiry and never
+                                // recovers — under an explicit `.oauth` source mode
+                                // it cannot even fall through to CLI or web.
+                                //
+                                // Connect means "this account is the Claude Code
+                                // login". Recording that and reading the live item
+                                // is both simpler and correct. The explicit `false`
+                                // matters because Disconnect sets the latch true:
+                                // without it, Disconnect → Connect → Save leaves
+                                // shared fallback permanently off.
+                                sharedCredentialFallbackDisabled = false
                                 isClaudeConnected = true
                                 claudeConnectedEmail = nil  // email not in credentials; will populate on next fetch
                                 claudeConnectError = nil
@@ -531,19 +636,12 @@ struct ProviderConfigEditor: View {
         }
     }
 
-    /// Refresh the "connected" visual based on the app-keychain cache.
-    /// We only show "Connected" when the cache is populated — if the cache
-    /// is empty but the cross-app keychain would succeed on prompt, we still
-    /// show the Connect button so the user knows they need to click once.
-    /// Uses the cache-only peek so this never triggers a prompt.
+    /// Refresh the connected visual from this account's staged/configured
+    /// token. The machine-global Claude Code cache is deliberately not a
+    /// connection state for every local account.
     private func loadClaudeConnectState() {
         guard kind == .claude else { return }
-        if let creds = ClaudeCredentials.readCachedKeychainCredentials(),
-           !creds.accessToken.isEmpty {
-            isClaudeConnected = true
-        } else {
-            isClaudeConnected = false
-        }
+        isClaudeConnected = apiKey.hasPrefix("sk-ant-oat")
     }
     #endif
 
@@ -607,15 +705,44 @@ struct ProviderConfigEditor: View {
 
     @MainActor
     private func runTest() async {
+        if kind == .gemini {
+            switch geminiCredentialDraft
+                .connectionTestDisposition {
+            case .authorizationReadyToSave:
+                testState = .success(
+                    "OAuth authorization ready to save"
+                )
+                return
+            case .stagedForRemoval:
+                testState = .failure(
+                    "Connection is staged for removal"
+                )
+                return
+            case .usePersistedCredentials:
+                break
+            }
+        }
+
         let trimmedKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let probeConfig = ProviderConfig(
             kind: kind,
+            accountID: accountID,
             isEnabled: true,
             sourceMode: sourceMode,
             apiKey: trimmedKey.isEmpty ? nil : trimmedKey,
             cookieSource: cookieSource,
             manualCookieHeader: manualCookieHeader.isEmpty ? nil : manualCookieHeader,
-            accountLabel: accountLabel.isEmpty ? nil : accountLabel
+            accountLabel: accountLabel.isEmpty ? nil : accountLabel,
+            planOverride: planOverride.isEmpty ? nil : planOverride,
+            sharedCredentialFallbackDisabled:
+                ((kind == .claude || kind == .gemini)
+                    && sharedCredentialFallbackDisabled)
+                ? true
+                : nil,
+            geminiCliProbeFallback:
+                (kind == .gemini && geminiCliProbeFallback)
+                ? true
+                : nil
         )
 
         guard let collector = CollectorRegistry.collector(for: kind, config: probeConfig) else {
@@ -648,14 +775,55 @@ struct ProviderConfigEditor: View {
     }
     #endif
 
-    private func save() {
-        guard let idx = state.providerConfigs.firstIndex(where: { $0.kind == kind }) else { return }
+    @discardableResult
+    private func save() -> Bool {
+        guard let idx = state.providerConfigs.firstIndex(
+            where: { $0.accountID == accountID }
+        ) else {
+            return false
+        }
+        guard
+            state.persistProviderAccountCredentialRecoveryAnchor(
+                accountID
+            )
+        else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely prepare provider credentials. Please retry."
+            )
+            #endif
+            return false
+        }
+        #if os(macOS)
+        if kind == .gemini {
+            guard
+                geminiCredentialDraft.commit(
+                    accountID: accountID
+                )
+            else {
+                testState = .failure(
+                    GeminiOAuthError
+                        .credentialPersistenceFailed
+                        .localizedDescription
+                )
+                return false
+            }
+        }
+        #endif
         state.providerConfigs[idx].sourceMode = sourceMode
         state.providerConfigs[idx].accountLabel = accountLabel.isEmpty ? nil : accountLabel
+        state.providerConfigs[idx].setPlanOverride(
+            planOverride.isEmpty ? nil : planOverride
+        )
         state.providerConfigs[idx].cookieSource = cookieSource
         state.providerConfigs[idx].apiKey = apiKey.isEmpty ? nil : apiKey
         state.providerConfigs[idx].manualCookieHeader = manualCookieHeader.isEmpty ? nil : manualCookieHeader
         #if os(macOS)
+        state.providerConfigs[idx].sharedCredentialFallbackDisabled =
+            ((kind == .claude || kind == .gemini)
+                && sharedCredentialFallbackDisabled)
+            ? true
+            : nil
         // v1.23.0 G3 follow-on: persist nil when off / non-Gemini so
         // legacy configs stay byte-identical (dark-safe; Gemini G3-R1
         // HIGH — encodeIfPresent omits the key). Wrapped #if os(macOS)
@@ -664,6 +832,22 @@ struct ProviderConfigEditor: View {
         state.providerConfigs[idx].geminiCliProbeFallback =
             (kind == .gemini && geminiCliProbeFallback) ? true : nil
         #endif
-        state.saveProviderConfigs()
+        guard state.providerConfigs[idx].saveSecrets() else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely save provider credentials. Please retry."
+            )
+            #endif
+            return false
+        }
+        guard state.commitProviderAccountDraft(accountID) else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely save provider configuration. Please retry."
+            )
+            #endif
+            return false
+        }
+        return true
     }
 }

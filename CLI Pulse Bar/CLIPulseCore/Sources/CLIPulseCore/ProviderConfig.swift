@@ -6,12 +6,29 @@ import SwiftUI
 /// Non-sensitive fields that persist in UserDefaults.
 /// Secrets (apiKey, manualCookieHeader) are stored/loaded separately via Keychain.
 public struct ProviderConfig: Codable, Identifiable, Sendable {
+    public let accountID: UUID
     public let kind: ProviderKind
     public var isEnabled: Bool
     public var sortOrder: Int
     public var sourceMode: SourceType
     public var cookieSource: CookieSource?
     public var accountLabel: String?
+    public var planOverride: String?
+    /// Revision of the latest manual-plan edit, including an explicit clear.
+    /// Kept separate from `planOverride` so nil can be synchronized as a
+    /// user-confirmed removal instead of looking like missing evidence.
+    public var planOverrideUpdatedAt: Date?
+    /// CLIPulse/Supabase user that may receive this account's normalized
+    /// metadata and quota snapshots. Nil means local-only/unclaimed.
+    public var syncOwnerUserID: String?
+    /// When true, this account must use only its account-scoped credentials.
+    /// Machine-global CLI/helper/environment credentials remain available to
+    /// legacy configs where the field is absent.
+    public var sharedCredentialFallbackDisabled: Bool?
+    /// Exactly one account created by the provider-to-account metadata
+    /// migration may copy the retained provider-scoped rollback secret.
+    /// New accounts default to nil and can never claim that shared slot.
+    public var legacySecretMigrationEligible: Bool?
     /// v1.23.0 G3 (CodexBar parity, dark/opt-in): when true, the Gemini
     /// collector may fall back to the vendored `GeminiStatusProbe`
     /// (Gemini-CLI-package OAuth path) *only* when its own
@@ -25,16 +42,21 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     public var apiKey: String?
     public var manualCookieHeader: String?
 
-    public var id: String { kind.rawValue }
+    public var id: UUID { accountID }
 
     // Only encode non-sensitive fields to UserDefaults
     private enum CodingKeys: String, CodingKey {
-        case kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel
+        case accountID, kind, isEnabled, sortOrder, sourceMode, cookieSource, accountLabel, planOverride
+        case planOverrideUpdatedAt
+        case syncOwnerUserID
+        case sharedCredentialFallbackDisabled
+        case legacySecretMigrationEligible
         case geminiCliProbeFallback
     }
 
     public init(
         kind: ProviderKind,
+        accountID: UUID = UUID(),
         isEnabled: Bool = true,
         sortOrder: Int = 0,
         sourceMode: SourceType = .auto,
@@ -42,8 +64,14 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         cookieSource: CookieSource? = nil,
         manualCookieHeader: String? = nil,
         accountLabel: String? = nil,
+        planOverride: String? = nil,
+        planOverrideUpdatedAt: Date? = nil,
+        syncOwnerUserID: String? = nil,
+        sharedCredentialFallbackDisabled: Bool? = nil,
+        legacySecretMigrationEligible: Bool? = nil,
         geminiCliProbeFallback: Bool? = nil
     ) {
+        self.accountID = accountID
         self.kind = kind
         self.isEnabled = isEnabled
         self.sortOrder = sortOrder
@@ -52,7 +80,30 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         self.cookieSource = cookieSource
         self.manualCookieHeader = manualCookieHeader
         self.accountLabel = accountLabel
+        self.planOverride = planOverride
+        self.planOverrideUpdatedAt = planOverrideUpdatedAt
+        self.syncOwnerUserID =
+            ProviderAccountSyncOwnership.normalizedUserID(
+                syncOwnerUserID
+            )
+        self.sharedCredentialFallbackDisabled =
+            sharedCredentialFallbackDisabled
+        self.legacySecretMigrationEligible =
+            legacySecretMigrationEligible
         self.geminiCliProbeFallback = geminiCliProbeFallback
+    }
+
+    public mutating func setPlanOverride(
+        _ value: String?,
+        changedAt: Date = Date()
+    ) {
+        let normalized = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextValue =
+            normalized?.isEmpty == false ? normalized : nil
+        guard planOverride != nextValue else { return }
+        planOverride = nextValue
+        planOverrideUpdatedAt = changedAt
     }
 
     public static func defaults() -> [ProviderConfig] {
@@ -70,11 +121,19 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
 
     // MARK: - Keychain secret helpers
 
-    private static func keychainKey(_ kind: ProviderKind, _ suffix: String) -> String {
+    private static func legacyKeychainKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
 
-    /// Access group for per-provider secrets. On macOS the items live in the
+    private static func accountKeychainKey(_ accountID: UUID, _ suffix: String) -> String {
+        "cli_pulse_provider_account_\(accountID.uuidString)_\(suffix)"
+    }
+
+    private static func migrationMarkerKey(_ accountID: UUID, _ suffix: String) -> String {
+        "\(accountKeychainKey(accountID, suffix))_legacy_migrated"
+    }
+
+    /// Access group for per-account secrets. On macOS the items live in the
     /// shared app-group keychain so the LoginItem helper reads them prompt-free
     /// (see `KeychainHelper.migrateToSharedGroup`). On iOS/watchOS there is no
     /// cross-process helper reading these items, so we keep `nil` (no group) —
@@ -89,35 +148,151 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     }
 
     /// Save this config's secrets to Keychain. Call after mutating apiKey / manualCookieHeader.
-    public func saveSecrets() {
-        let group = Self.secretsAccessGroup
-        let apiKeyKey = Self.keychainKey(kind, "apiKey")
-        if let key = apiKey, !key.isEmpty {
-            KeychainHelper.save(key: apiKeyKey, value: key, accessGroup: group)
-        } else {
-            KeychainHelper.delete(key: apiKeyKey, accessGroup: group)
-        }
+    @discardableResult
+    public func saveSecrets() -> Bool {
+        saveSecrets(using: KeychainProviderSecretStore())
+    }
 
-        let cookieKey = Self.keychainKey(kind, "cookie")
-        if let cookie = manualCookieHeader, !cookie.isEmpty {
-            KeychainHelper.save(key: cookieKey, value: cookie, accessGroup: group)
-        } else {
-            KeychainHelper.delete(key: cookieKey, accessGroup: group)
-        }
+    @discardableResult
+    func saveSecrets(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let apiKeySaved =
+            persistSecret(
+                apiKey,
+                suffix: "apiKey",
+                using: store
+            )
+        let cookieSaved =
+            persistSecret(
+                manualCookieHeader,
+                suffix: "cookie",
+                using: store
+            )
+        return apiKeySaved && cookieSaved
     }
 
     /// Load secrets from Keychain into the in-memory fields.
     public mutating func loadSecrets() {
-        let group = Self.secretsAccessGroup
-        apiKey = KeychainHelper.load(key: Self.keychainKey(kind, "apiKey"), accessGroup: group)
-        manualCookieHeader = KeychainHelper.load(key: Self.keychainKey(kind, "cookie"), accessGroup: group)
+        loadSecrets(using: KeychainProviderSecretStore())
     }
 
-    /// Remove all Keychain entries for this provider.
-    public func deleteSecrets() {
+    mutating func loadSecrets(using store: any ProviderSecretStoring) {
+        apiKey = loadSecret(suffix: "apiKey", using: store)
+        manualCookieHeader = loadSecret(suffix: "cookie", using: store)
+    }
+
+    /// Remove all Keychain entries for this account.
+    @discardableResult
+    public func deleteSecrets() -> Bool {
+        deleteSecrets(using: KeychainProviderSecretStore())
+    }
+
+    @discardableResult
+    func deleteSecrets(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let apiKeyDeleted =
+            persistSecret(nil, suffix: "apiKey", using: store)
+        let cookieDeleted =
+            persistSecret(nil, suffix: "cookie", using: store)
+        return apiKeyDeleted && cookieDeleted
+    }
+
+    @discardableResult
+    private func persistSecret(
+        _ value: String?,
+        suffix: String,
+        using store: any ProviderSecretStoring
+    ) -> Bool {
         let group = Self.secretsAccessGroup
-        KeychainHelper.delete(key: Self.keychainKey(kind, "apiKey"), accessGroup: group)
-        KeychainHelper.delete(key: Self.keychainKey(kind, "cookie"), accessGroup: group)
+        let accountKey = Self.accountKeychainKey(accountID, suffix)
+        let markerKey = Self.migrationMarkerKey(accountID, suffix)
+
+        if let value, !value.isEmpty {
+            guard store.save(
+                key: accountKey,
+                value: value,
+                accessGroup: group
+            ) else {
+                return false
+            }
+            guard store.load(key: accountKey, accessGroup: group) == value else {
+                return false
+            }
+        } else {
+            guard
+                store.delete(
+                    key: accountKey,
+                    accessGroup: group
+                ),
+                store.load(
+                    key: accountKey,
+                    accessGroup: group
+                ) == nil
+            else {
+                return false
+            }
+        }
+
+        guard store.save(
+            key: markerKey,
+            value: "1",
+            accessGroup: group
+        ) else {
+            return false
+        }
+        return store.load(
+            key: markerKey,
+            accessGroup: group
+        ) == "1"
+    }
+
+    private func loadSecret(
+        suffix: String,
+        using store: any ProviderSecretStoring
+    ) -> String? {
+        let group = Self.secretsAccessGroup
+        let accountKey = Self.accountKeychainKey(accountID, suffix)
+        let markerKey = Self.migrationMarkerKey(accountID, suffix)
+
+        if let accountValue = store.load(key: accountKey, accessGroup: group) {
+            store.save(key: markerKey, value: "1", accessGroup: group)
+            return accountValue.isEmpty ? nil : accountValue
+        }
+
+        if store.load(key: markerKey, accessGroup: group) == "1" {
+            return nil
+        }
+
+        guard legacySecretMigrationEligible == true else {
+            return nil
+        }
+
+        let legacyKey = Self.legacyKeychainKey(kind, suffix)
+        guard
+            let legacyValue = store.load(key: legacyKey, accessGroup: group),
+            !legacyValue.isEmpty
+        else {
+            return nil
+        }
+
+        guard store.save(
+            key: accountKey,
+            value: legacyValue,
+            accessGroup: group
+        ) else {
+            return legacyValue
+        }
+        guard store.load(key: accountKey, accessGroup: group) == legacyValue else {
+            return legacyValue
+        }
+        _ = store.save(
+            key: markerKey,
+            value: "1",
+            accessGroup: group
+        )
+        return legacyValue
     }
 }
 

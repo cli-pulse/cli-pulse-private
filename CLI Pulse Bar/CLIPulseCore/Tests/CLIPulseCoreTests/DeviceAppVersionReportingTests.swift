@@ -115,6 +115,34 @@ final class DeviceAppVersionReportingTests: XCTestCase {
             tiersCount: 0, quota: 100, remaining: 0, todayUsage: 0, weekUsage: 0), "ok")
     }
 
+    /// The helper reports one status string per provider even when that provider
+    /// has multiple configured accounts. A broken account must not disappear
+    /// behind a healthy sibling, and sequential/config ordering must not change
+    /// the result.
+    func test_aggregateCollectorStatus_surfacesWorstAccountDeterministically() {
+        XCTAssertEqual(
+            HelperAPIClient.aggregateCollectorStatus(
+                current: "ok",
+                candidate: "error"
+            ),
+            "error"
+        )
+        XCTAssertEqual(
+            HelperAPIClient.aggregateCollectorStatus(
+                current: "error",
+                candidate: "ok"
+            ),
+            "error"
+        )
+        XCTAssertEqual(
+            HelperAPIClient.aggregateCollectorStatus(
+                current: "ok",
+                candidate: "empty"
+            ),
+            "empty"
+        )
+    }
+
     // MARK: - The deliberately-preserved capability trap
 
     /// REGRESSION PIN. `helper_version` is overloaded: besides observability it

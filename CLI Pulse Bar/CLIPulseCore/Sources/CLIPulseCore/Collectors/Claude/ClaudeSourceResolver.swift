@@ -51,12 +51,23 @@ public struct ClaudeSourceResolver: Sendable {
 
         // Persist any account metadata we observed so a later quota-only
         // failure can still surface "Signed in as X" under diagnostic copy.
-        Self.persistAccountInfoIfPresent(from: rawSnapshot)
+        Self.persistAccountInfoIfPresent(
+            from: rawSnapshot,
+            config: config
+        )
 
         // Merge the persisted account cache into the snapshot only when the
-        // snapshot itself lacks those metadata fields. Usage fields are not
-        // touched — pure metadata merge.
-        let snapshot = rawSnapshot.mergingAccountInfo(ClaudeHelperContract.readAccountInfo())
+        // snapshot belongs to the one machine-global compatibility account.
+        // Usage fields are not touched — pure metadata merge.
+        let accountInfo =
+            config.sharedCredentialFallbackDisabled != true
+                && ProviderSharedCredentialOwner.isOwner(
+                    kind: .claude,
+                    accountID: config.accountID
+                )
+            ? ClaudeHelperContract.readAccountInfo()
+            : nil
+        let snapshot = rawSnapshot.mergingAccountInfo(accountInfo)
 
         let result = ClaudeResultBuilder.build(from: snapshot)
         Self.logResult(result, source: snapshot.sourceLabel)
@@ -65,7 +76,19 @@ public struct ClaudeSourceResolver: Sendable {
 
     /// Cache any account metadata present on the incoming snapshot to the
     /// sibling `claude_account.json` file. No-op when all account fields are nil.
-    private static func persistAccountInfoIfPresent(from snapshot: ClaudeSnapshot) {
+    private static func persistAccountInfoIfPresent(
+        from snapshot: ClaudeSnapshot,
+        config: ProviderConfig
+    ) {
+        guard
+            config.sharedCredentialFallbackDisabled != true,
+            ProviderSharedCredentialOwner.isOwner(
+                kind: .claude,
+                accountID: config.accountID
+            )
+        else {
+            return
+        }
         let info = ClaudeAccountInfo(
             accountEmail: snapshot.accountEmail,
             rateLimitTier: snapshot.rateLimitTier,

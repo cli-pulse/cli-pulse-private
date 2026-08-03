@@ -64,6 +64,7 @@ from local_session_server import (  # noqa: E402
     read_frame,
     write_frame,
 )
+from provider_spawners import all_provider_names  # noqa: E402
 
 
 # ── framing primitives ────────────────────────────────────────
@@ -291,7 +292,7 @@ def test_hello_returns_caps_without_auth(short_sock_dir):
         assert "provider_availability" in result
         assert isinstance(result["provider_availability"], list)
         assert set(result["provider_availability"]).issubset(
-            {"claude", "codex", "gemini"}
+            set(all_provider_names())
         )
         # v1.16: helper_version is exposed in hello so the MAS app's
         # HelperInstaller state machine can distinguish a v1.15 nohup

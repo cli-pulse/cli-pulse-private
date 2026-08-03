@@ -27,6 +27,88 @@ final class MergeTests: XCTestCase {
         return CollectorResult(usage: usage, dataKind: dataKind)
     }
 
+    private func makeScopedResult(
+        accountID: UUID,
+        sortOrder: Int,
+        remaining: Int
+    ) -> AccountScopedCollectorResult {
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            sortOrder: sortOrder,
+            accountLabel: "Claude \(sortOrder)"
+        )
+        return AccountScopedCollectorResult(
+            accountID: accountID,
+            config: config,
+            result: makeLocalResult(
+                provider: ProviderKind.claude.rawValue,
+                quota: 100,
+                remaining: remaining
+            )
+        )
+    }
+
+    func testAccountUsageMergeKeepsDifferentAccountsForSameProvider() throws {
+        let firstID = try XCTUnwrap(UUID(uuidString: "33333333-3333-4333-8333-333333333333"))
+        let secondID = try XCTUnwrap(UUID(uuidString: "44444444-4444-4444-8444-444444444444"))
+        let scoped = [
+            makeScopedResult(accountID: firstID, sortOrder: 0, remaining: 80),
+            makeScopedResult(accountID: secondID, sortOrder: 1, remaining: 40),
+        ]
+
+        let accounts = DataRefreshManager.accountUsages(
+            from: scoped,
+            observedAt: Date(timeIntervalSince1970: 1_774_065_600)
+        )
+
+        XCTAssertEqual(accounts.count, 2)
+        XCTAssertEqual(Set(accounts.map(\.id)), Set([firstID, secondID]))
+    }
+
+    func testAccountUsageMergeReplacesOnlyMatchingAccountID() throws {
+        let accountID = try XCTUnwrap(UUID(uuidString: "55555555-5555-4555-8555-555555555555"))
+        let scoped = [
+            makeScopedResult(accountID: accountID, sortOrder: 0, remaining: 80),
+            makeScopedResult(accountID: accountID, sortOrder: 0, remaining: 25),
+        ]
+
+        let accounts = DataRefreshManager.accountUsages(
+            from: scoped,
+            observedAt: Date(timeIntervalSince1970: 1_774_065_600)
+        )
+
+        XCTAssertEqual(accounts.count, 1)
+        XCTAssertEqual(accounts.first?.id, accountID)
+        XCTAssertEqual(accounts.first?.remaining, 25)
+        XCTAssertEqual(
+            DataRefreshManager.providerCompatibilityResults(from: scoped)
+                .first?.usage.remaining,
+            25,
+            "The latest helper observation must replace the main-app observation for the same account"
+        )
+    }
+
+    func testCollectorSourceCombinationIncludesHelperAccountAndProjection() throws {
+        let mainID = try XCTUnwrap(UUID(uuidString: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"))
+        let helperID = try XCTUnwrap(UUID(uuidString: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"))
+        let main = makeScopedResult(accountID: mainID, sortOrder: 0, remaining: 80)
+        let helper = makeScopedResult(accountID: helperID, sortOrder: 1, remaining: 30)
+        let helperSnapshot = HelperCollectorSnapshot(
+            accountResults: [helper],
+            providerResults: [helper.result]
+        )
+
+        let combined = DataRefreshManager.combineCollectorSources(
+            mainAccountResults: [main],
+            helperSnapshot: helperSnapshot
+        )
+
+        XCTAssertEqual(Set(combined.accountResults.map(\.accountID)), Set([mainID, helperID]))
+        XCTAssertEqual(combined.providerResults.count, 2)
+        XCTAssertEqual(combined.providerResults.last?.usage.remaining, 30)
+    }
+
     func testCloudWithQuotaButNoTiersGetsOverriddenByRicherLocal() {
         // Cloud has a coarse top-level quota but no tiers
         let cloud = [makeCloudUsage(provider: "Claude", quota: 250000, remaining: 118000)]

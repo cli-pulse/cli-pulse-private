@@ -45,6 +45,11 @@ public enum OverviewFormatters {
 
     nonisolated(unsafe) private static let hourFormatter: DateFormatter = {
         let f = DateFormatter()
+        // `hourLabel` has a stable, locale-independent output contract
+        // ("3pm"). Without POSIX, the `a` token follows the device language
+        // and can render labels such as "3下午" on a Chinese system.
+        // Leave `timeZone` unset so the existing device-local behavior stays.
+        f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "ha"
         return f
     }()

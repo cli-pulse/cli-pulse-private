@@ -11,16 +11,23 @@ public actor HelperAPIClient {
 
     private let supabaseURL: String
     private let anonKey: String
+    private let session: URLSession
 
-    public init(supabaseURL: String, anonKey: String) {
+    public init(
+        supabaseURL: String,
+        anonKey: String,
+        session: URLSession = .shared
+    ) {
         self.supabaseURL = supabaseURL
         self.anonKey = anonKey
+        self.session = session
     }
 
     /// Convenience init reading Supabase config from CLIPulseCore constants.
     public init() {
         self.supabaseURL = SupabaseConstants.url
         self.anonKey = SupabaseConstants.anonKey
+        self.session = .shared
     }
 
     // MARK: - Version reporting (observability only)
@@ -129,6 +136,37 @@ public actor HelperAPIClient {
             || todayUsage > 0
             || weekUsage > 0
         return producedData ? "ok" : "empty"
+    }
+
+    /// Collapse multiple account outcomes into the helper's deliberately-small
+    /// provider vocabulary. The worst actionable state wins, so a failed or
+    /// empty account cannot disappear behind a healthy sibling. Unknown tokens
+    /// are treated as errors rather than silently reported healthy.
+    public static func aggregateCollectorStatus(
+        current: String?,
+        candidate: String
+    ) -> String {
+        guard let current else { return candidate }
+
+        func rank(_ value: String) -> Int {
+            switch value {
+            case "error":
+                return 3
+            case "empty":
+                return 2
+            case "ok":
+                return 1
+            default:
+                return 3
+            }
+        }
+
+        let currentRank = rank(current)
+        let candidateRank = rank(candidate)
+        if currentRank != candidateRank {
+            return currentRank > candidateRank ? current : candidate
+        }
+        return current <= candidate ? current : candidate
     }
 
     /// Report the last collector run's per-provider outcome (migrate_v0.71).
@@ -252,6 +290,229 @@ public actor HelperAPIClient {
         )
     }
 
+    /// Builds the legacy provider quota projection without sending collector
+    /// diagnostics or external account identifiers to the backend.
+    public nonisolated static func legacyProviderTiers(
+        from providers: [String: HelperIPC.CollectorUsagePayload]
+    ) -> [String: Any] {
+        providers.mapValues { payload in
+            var tierData: [String: Any] = [
+                "quota": payload.quota ?? 100,
+                "remaining": payload.remaining ?? 100,
+            ]
+            if let planType =
+                ProviderAccountCloudPrivacy.reviewedPlanType(
+                    payload.planType
+                )
+            {
+                tierData["plan_type"] = planType
+            }
+            if let resetTime = payload.resetTime {
+                tierData["reset_time"] = resetTime
+            }
+            tierData["tiers"] = (payload.tiers ?? []).map {
+                Self.tierDictionary($0)
+            }
+            return tierData
+        }
+    }
+
+    /// Builds the legacy provider projection from account-scoped observations
+    /// owned by the paired CLIPulse user. Filtering before collapsing by
+    /// provider prevents another local user's same-provider account from
+    /// becoming the compatibility row.
+    public nonisolated static func legacyProviderTiers(
+        from accounts: [HelperIPC.CollectorAccountPayload],
+        configs: [ProviderConfig],
+        ownedBy userID: String
+    ) -> [String: Any] {
+        let syncableAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: configs,
+                ownedBy: userID
+            )
+        var providers:
+            [String: HelperIPC.CollectorUsagePayload] = [:]
+        for account in accounts
+        where syncableAccountIDs.contains(account.accountID) {
+            if providers[account.provider] == nil {
+                providers[account.provider] = account.usage
+            }
+        }
+        return legacyProviderTiers(from: providers)
+    }
+
+    /// Sync account-scoped quota observations through the device-authenticated
+    /// v2 helper RPC. Provider credentials never enter the IPC payload and are
+    /// structurally absent from the rows encoded here.
+    public func syncProviderAccountQuotas(
+        config: HelperConfig,
+        accounts: [HelperIPC.CollectorAccountPayload],
+        observedAt: Date
+    ) async throws -> Int {
+        let observedAtString =
+            sharedISO8601FractionalString(from: observedAt)
+        let rows: [[String: Any]] = accounts.compactMap { account in
+            guard
+                account.dataKind == .quota
+                    || account.dataKind == .credits
+            else {
+                return nil
+            }
+
+            let rawOverride =
+                account.planOverride?
+                    .trimmingCharacters(
+                        in: .whitespacesAndNewlines
+                    )
+            let hasRawOverride =
+                rawOverride?.isEmpty == false
+            let override =
+                ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.planOverride
+                )
+            let detected =
+                ProviderAccountCloudPrivacy.reviewedPlanType(
+                    account.usage.planType
+                )
+            let planType: String?
+            let planSource: String
+            let planConfidence: String
+            let planObservedAt: String?
+            if hasRawOverride {
+                if let override,
+                   !override.isEmpty,
+                   let overrideUpdatedAt =
+                    account.planOverrideUpdatedAt {
+                    planType = override
+                    planSource = "userConfirmed"
+                    planConfidence = "high"
+                    planObservedAt =
+                        sharedISO8601FractionalString(
+                            from: overrideUpdatedAt
+                        )
+                } else {
+                    // A non-empty manual value rejected by the privacy
+                    // boundary is not an explicit clear and must also
+                    // suppress lower-priority detected plan evidence.
+                    planType = nil
+                    planSource = "unknown"
+                    planConfidence = "unavailable"
+                    planObservedAt = nil
+                }
+            } else if let detected,
+                      !detected.isEmpty,
+                      let planDetectionStartedAt =
+                        account.planDetectionStartedAt {
+                planType = detected
+                planSource = "unknown"
+                planConfidence = "low"
+                planObservedAt =
+                    sharedISO8601FractionalString(
+                        from: planDetectionStartedAt
+                    )
+            } else if let clearedAt =
+                account.planOverrideUpdatedAt
+            {
+                planType = nil
+                planSource = "userConfirmed"
+                planConfidence = "high"
+                planObservedAt =
+                    sharedISO8601FractionalString(
+                        from: clearedAt
+                    )
+            } else {
+                planType = nil
+                planSource = "unknown"
+                planConfidence = "unavailable"
+                planObservedAt = nil
+            }
+
+            var row: [String: Any] = [
+                "account_id":
+                    account.accountID.uuidString.lowercased(),
+                "provider": account.provider,
+                "plan_source": planSource,
+                "plan_confidence": planConfidence,
+                "tiers":
+                    ProviderAccountCloudPrivacy.reviewedTiers(
+                        account.usage.tiers ?? []
+                    ).map { Self.tierDictionary($0) },
+                "observed_at": observedAtString,
+            ]
+            if let label =
+                ProviderAccountCloudPrivacy
+                    .reviewedAccountLabel(
+                        account.accountLabel
+                    )
+            {
+                row["account_label"] = label
+            }
+            if let planType {
+                row["plan_type"] = planType
+            }
+            if let planObservedAt {
+                row["plan_observed_at"] = planObservedAt
+            }
+            if let remaining =
+                ProviderAccountCloudPrivacy
+                    .reviewedNonNegativeValue(
+                        account.usage.remaining
+                    )
+            {
+                row["remaining"] = remaining
+            }
+            if let quota =
+                ProviderAccountCloudPrivacy
+                    .reviewedNonNegativeValue(
+                        account.usage.quota
+                    )
+            {
+                row["quota"] = quota
+            }
+            if let resetTime =
+                ProviderAccountCloudPrivacy
+                    .reviewedTimestamp(
+                        account.usage.resetTime
+                    )
+            {
+                row["reset_time"] = resetTime
+            }
+            return row
+        }
+        guard !rows.isEmpty else { return 0 }
+
+        let result: [String: Any] = try await rpc(
+            "helper_sync_provider_account_quotas",
+            params: [
+                "p_device_id": config.deviceId,
+                "p_helper_secret": config.helperSecret,
+                "p_rows": rows,
+            ]
+        )
+        return result["accounts_synced"] as? Int ?? 0
+    }
+
+    private nonisolated static func tierDictionary(
+        _ tier: TierDTO
+    ) -> [String: Any] {
+        var value: [String: Any] = [
+            "name": tier.name,
+            "quota": tier.quota,
+            "remaining": tier.remaining,
+        ]
+        if let resetTime = tier.reset_time {
+            value["reset_time"] = resetTime
+        }
+        if let windowMinutes = tier.windowMinutes {
+            value["windowMinutes"] = windowMinutes
+        }
+        if let role = tier.role {
+            value["role"] = role.rawValue
+        }
+        return value
+    }
+
     // MARK: - Generic RPC
 
     /// True when the client has a non-empty Supabase URL and anon key.
@@ -278,7 +539,7 @@ public actor HelperAPIClient {
         request.timeoutInterval = 30
         request.httpBody = try JSONSerialization.data(withJSONObject: params)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw HelperAPIError.parseFailed("non-HTTP response from \(function)")
         }

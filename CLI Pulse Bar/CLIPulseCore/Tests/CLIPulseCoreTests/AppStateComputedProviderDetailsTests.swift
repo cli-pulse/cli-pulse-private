@@ -79,6 +79,49 @@ final class AppStateComputedProviderDetailsTests: XCTestCase {
         XCTAssertEqual(out.first?.provider.provider, ProviderKind.codex.rawValue)
     }
 
+    func testMultipleAccountsProduceOneProviderLevelDetail() throws {
+        let firstID = try XCTUnwrap(
+            UUID(uuidString: "77777777-7777-4777-8777-777777777777")
+        )
+        let secondID = try XCTUnwrap(
+            UUID(uuidString: "88888888-8888-4888-8888-888888888888")
+        )
+        let usages = [
+            makeUsage(
+                provider: ProviderKind.claude.rawValue,
+                planType: "Multiple accounts"
+            ),
+        ]
+        let configs = [
+            ProviderConfig(
+                kind: .claude,
+                accountID: firstID,
+                isEnabled: false,
+                sortOrder: 1,
+                accountLabel: "Work"
+            ),
+            ProviderConfig(
+                kind: .claude,
+                accountID: secondID,
+                isEnabled: true,
+                sortOrder: 2,
+                accountLabel: "Personal"
+            ),
+        ]
+
+        let out = AppState.computedProviderDetails(
+            providers: usages,
+            configs: configs,
+            isLocalMode: false,
+            locallySupplementedProviders: []
+        )
+
+        XCTAssertEqual(out.count, 1)
+        XCTAssertEqual(out.first?.provider.provider, "Claude")
+        XCTAssertTrue(try XCTUnwrap(out.first).config.isEnabled)
+        XCTAssertNil(out.first?.accountEmail)
+    }
+
     // MARK: - Tier synthesis
 
     func testPerTierDataPreservedWhenPresent() {

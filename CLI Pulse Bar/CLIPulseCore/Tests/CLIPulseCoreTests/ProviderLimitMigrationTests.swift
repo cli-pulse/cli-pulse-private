@@ -19,9 +19,40 @@ final class ProviderLimitMigrationTests: XCTestCase {
 
     private let disabledByTierKey = "cli_pulse_providers_disabled_by_tier"
     private let configsKey = "cli_pulse_provider_configs"
+    private var originalOwnerDefaults: UserDefaults!
+    private var ownerDefaults: UserDefaults!
+    private var ownerSuiteName: String!
+    private var originalOwnerMutationLock:
+        GeminiCredentialMutationLock!
+    private var ownerMutationLockPath: String!
+    private var originalOwnerSynchronizeDefaults:
+        ((UserDefaults) -> Bool)!
 
     override func setUp() {
         super.setUp()
+        originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        ownerSuiteName =
+            "ProviderLimitMigrationTests-\(UUID().uuidString)"
+        ownerDefaults = UserDefaults(suiteName: ownerSuiteName)
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        ProviderSharedCredentialOwner.defaults = ownerDefaults
+        originalOwnerSynchronizeDefaults =
+            ProviderSharedCredentialOwner
+                .synchronizeDefaults
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults = { _ in true }
+        ownerMutationLockPath =
+            FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "\(ownerSuiteName!).lock"
+                )
+                .path
+        originalOwnerMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: ownerMutationLockPath
+            )
         // Ensure every test starts with a clean slate.
         UserDefaults.standard.removeObject(forKey: disabledByTierKey)
         UserDefaults.standard.removeObject(forKey: configsKey)
@@ -30,6 +61,26 @@ final class ProviderLimitMigrationTests: XCTestCase {
     override func tearDown() {
         UserDefaults.standard.removeObject(forKey: disabledByTierKey)
         UserDefaults.standard.removeObject(forKey: configsKey)
+        ProviderSharedCredentialOwner.mutationLock =
+            originalOwnerMutationLock
+        ProviderSharedCredentialOwner
+            .synchronizeDefaults =
+                originalOwnerSynchronizeDefaults
+        ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        if FileManager.default.fileExists(
+            atPath: ownerMutationLockPath
+        ) {
+            try? FileManager.default.removeItem(
+                atPath: ownerMutationLockPath
+            )
+        }
+        ownerDefaults = nil
+        ownerSuiteName = nil
+        originalOwnerDefaults = nil
+        originalOwnerMutationLock = nil
+        ownerMutationLockPath = nil
+        originalOwnerSynchronizeDefaults = nil
         super.tearDown()
     }
 
@@ -141,6 +192,51 @@ final class ProviderLimitMigrationTests: XCTestCase {
         // which would be 26 - 3 = 23 (all toggles minus kept).
         XCTAssertEqual(state.providerLimitMigrationCount, activeKinds.count - limit,
                        "banner counts only actively-used providers disabled, not default toggles")
+    }
+
+    /// Multiple accounts for one provider consume one provider slot. During an
+    /// over-limit migration, duplicate account rows must not crowd another
+    /// distinct provider out of the retained set.
+    func testMultipleAccountsConsumeOneProviderSlotDuringMigration() throws {
+        let state = AppState()
+        guard state.subscriptionManager.maxProviders > 0 else {
+            throw XCTSkip("Paid tier — skipping")
+        }
+        let limit = state.subscriptionManager.maxProviders
+        let activeKinds: [ProviderKind] = [.claude, .codex, .gemini, .ollama]
+        state.providers = activeKinds.map { makeUsage($0.rawValue) }
+        state.providerConfigs.append(
+            ProviderConfig(
+                kind: .codex,
+                isEnabled: true,
+                sortOrder: state.providerConfigs.count,
+                accountLabel: "Work"
+            )
+        )
+
+        state.migrateProviderLimitsIfNeeded()
+
+        let enabledActiveKinds = Set(
+            state.providerConfigs
+                .filter { $0.isEnabled && activeKinds.contains($0.kind) }
+                .map(\.kind)
+        )
+        XCTAssertEqual(
+            enabledActiveKinds.count,
+            limit,
+            "two Codex accounts must consume one slot, leaving room for two other provider kinds"
+        )
+        XCTAssertTrue(
+            state.providerConfigs
+                .filter { $0.kind == .codex }
+                .allSatisfy(\.isEnabled),
+            "all accounts belonging to a retained provider kind should remain enabled"
+        )
+        XCTAssertEqual(
+            state.providerLimitMigrationCount,
+            activeKinds.count - limit,
+            "banner counts disabled provider kinds, not disabled account rows"
+        )
     }
 
     /// User spec: "migration still protects downgrade users with many

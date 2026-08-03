@@ -3,6 +3,21 @@ import XCTest
 
 final class ProviderConfigModelTests: XCTestCase {
 
+    // MARK: - ProviderConfig identity
+
+    func testProviderConfigIdentityUsesStableAccountID() throws {
+        let accountID = try XCTUnwrap(
+            UUID(uuidString: "55555555-5555-4555-8555-555555555555")
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            accountLabel: "Work"
+        )
+
+        XCTAssertEqual(config.id, accountID)
+    }
+
     // MARK: - TokenFormatter.format
 
     func testTokenFormatterSmallNumbers() {

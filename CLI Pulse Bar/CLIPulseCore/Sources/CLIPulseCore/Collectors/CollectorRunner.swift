@@ -270,6 +270,13 @@ public enum CollectorRunner {
     public static func run(
         configs: [ProviderConfig],
         maxConcurrent: Int,
+        collectorResolver:
+            @Sendable @escaping (ProviderConfig)
+                -> (any ProviderCollector)? = { config in
+                    CollectorRegistry.collectors.first {
+                        $0.kind == config.kind
+                    }
+                },
         execute: @Sendable @escaping (ProviderConfig, ProviderCollector) async -> Result<CollectorResult, Error>
     ) async -> [CollectorRun] {
         var preflighted: [CollectorRun] = []
@@ -281,7 +288,7 @@ public enum CollectorRunner {
             // collector, which would make "unsupported" and "no credentials"
             // indistinguishable again. Resolve by kind only, then let
             // `preflight` ask about readiness separately.
-            let collector = CollectorRegistry.collectors.first { $0.kind == config.kind }
+            let collector = collectorResolver(config)
             if let outcome = Self.preflight(config: config, collector: collector) {
                 preflighted.append(CollectorRun(kind: config.kind, outcome: outcome))
             } else if let collector {
@@ -311,11 +318,60 @@ public enum CollectorRunner {
     /// Per-provider telemetry map for `helper_report_app_version`'s
     /// `p_collector_status` (migrate_v0.71). Keyed by provider raw value.
     public static func telemetryMap(_ runs: [CollectorRun]) -> [String: String] {
-        var map: [String: String] = [:]
+        providerOutcomeMap(runs).reduce(into: [:]) { map, entry in
+            map[entry.key.rawValue] = entry.value.telemetryToken
+        }
+    }
+
+    /// Deterministic compatibility projection for callers that can expose only
+    /// one outcome per provider even though the account-aware scheduler may run
+    /// several configs for that provider.
+    ///
+    /// The most actionable outcome wins so one broken account is not hidden by
+    /// a healthy sibling. Equal-rank outcomes use their stable telemetry token
+    /// as an order-independent tie-breaker; async completion order never enters
+    /// the decision.
+    public static func providerOutcomeMap(
+        _ runs: [CollectorRun]
+    ) -> [ProviderKind: CollectorOutcome] {
+        var map: [ProviderKind: CollectorOutcome] = [:]
         for run in runs {
-            map[run.kind.rawValue] = run.outcome.telemetryToken
+            guard let current = map[run.kind] else {
+                map[run.kind] = run.outcome
+                continue
+            }
+            map[run.kind] = preferredOutcome(current, run.outcome)
         }
         return map
+    }
+
+    private static func preferredOutcome(
+        _ lhs: CollectorOutcome,
+        _ rhs: CollectorOutcome
+    ) -> CollectorOutcome {
+        let lhsRank = outcomeRank(lhs)
+        let rhsRank = outcomeRank(rhs)
+        if lhsRank != rhsRank {
+            return lhsRank > rhsRank ? lhs : rhs
+        }
+        return lhs.telemetryToken <= rhs.telemetryToken ? lhs : rhs
+    }
+
+    private static func outcomeRank(_ outcome: CollectorOutcome) -> Int {
+        switch outcome {
+        case .failed:
+            return 6
+        case .notReady:
+            return 5
+        case .ranButEmpty:
+            return 4
+        case .producedData:
+            return 3
+        case .unsupported:
+            return 2
+        case .disabled:
+            return 1
+        }
     }
 
     /// Should this pass's outcome map be uploaded?
