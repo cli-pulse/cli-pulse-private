@@ -169,6 +169,11 @@ jobs:
       # AGENTS.md claimed origin was private. The wording is fixed; this is the
       # part that does not depend on anyone reading it.
       - run: bash scripts/check_no_internal_docs.sh
+      # The product copyright, kept apart from the two strings that look like
+      # it and are not: the Developer ID certificate name (breaks signing if
+      # renamed) and the upstream CodexBar attribution (claims someone else's
+      # work if renamed). A blanket replace over "Yuhe Ye" hits all three.
+      - run: bash scripts/check_copyright.sh
 
   check-qa-isolation:
     name: QA scheme isolation contract

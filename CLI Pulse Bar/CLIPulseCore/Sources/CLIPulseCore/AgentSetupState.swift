@@ -227,10 +227,28 @@ public struct AgentSetupState: Equatable, Sendable {
         ))
     }
 
-    public mutating func acceptExistingUserUpgrade() {
+    /// Enter the upgrade flow, pre-selecting the accounts the user already has
+    /// switched on.
+    ///
+    /// `preselecting` is not a convenience. `applySelectedAccounts` writes
+    /// `isEnabled = selectedIDs.contains(id)` for every account the wizard
+    /// showed, and nothing in the wizard pre-ticks anything — `selectAccount`
+    /// is only ever called from a tap. So an existing user who accepts the
+    /// upgrade prompt and clicks straight through, changing nothing, ends with
+    /// every discovered provider DISABLED. Clicking through an upgrade without
+    /// touching a control has to be a no-op; seeding the set is what makes it
+    /// one.
+    ///
+    /// Callers pass the currently-enabled account IDs. The default is empty so
+    /// the new-user path, where nothing should be pre-selected, is unchanged.
+    public mutating func acceptExistingUserUpgrade(
+        preselecting enabledAccountIDs: Set<UUID> = []
+    ) {
         guard !mustPreserveStoredProgress else { return }
-        let selections =
-            validProgress?.selectedAccountIDs ?? []
+        let stored = validProgress?.selectedAccountIDs ?? []
+        // A resumed upgrade keeps whatever the user had already ticked; a fresh
+        // one starts from what is enabled today.
+        let selections = stored.isEmpty ? enabledAccountIDs : stored
         replaceProgress(AgentSetupProgress(
             version: Self.currentVersion,
             step: .discovery,
@@ -427,6 +445,67 @@ public final class AgentSetupStateStore {
         self.defaults = defaults
     }
 
+    /// Has this install been used before? Drives `legacyCompleted`, which is
+    /// what routes someone to the main app instead of new-user onboarding.
+    ///
+    /// This deliberately does NOT rely on `cli_pulse_onboarding_completed`
+    /// alone. That flag is written when a user finishes the legacy wizard by
+    /// pressing the close button — but a user who finished it BY SIGNING IN
+    /// never had it written. On 1.44 that is a large share of the installed
+    /// base, and keying on the flag alone classifies every one of them as a
+    /// brand-new user: the wizard captures them on launch and hides the
+    /// dashboard they already had.
+    ///
+    /// The repository has already made this exact mistake once and written
+    /// down the fix. `AuthManager.resolveColdLaunchLanding` carries the note:
+    ///
+    ///   "Deliberately keyed on the local-mode marker alone and NOT on
+    ///    `cli_pulse_onboarding_completed`: that flag is also set by users who
+    ///    completed the wizard by signing in and later signed out..."
+    ///
+    /// So the question to ask is not "did a flag get written" — a flag that a
+    /// previous release never wrote can never be true for a previous release's
+    /// users. Ask instead for evidence the app was actually used, which older
+    /// builds DID leave behind:
+    ///
+    ///   - `cli_pulse_provider_configs` — providers were configured. Written on
+    ///     the first refresh, so any user who ever saw data has it.
+    ///   - `cli_pulse_local_mode_enabled` — the v1.44 W1 marker, set by
+    ///     "continue without account".
+    ///
+    /// Verified against a real 1.44 install: it has provider configs and the
+    /// legacy flag, but NOT the local-mode marker — i.e. exactly the signed-in
+    /// shape that the flag-only predicate would have misrouted.
+    ///
+    /// False positives are the safe direction here. Treating a genuinely new
+    /// user as existing shows them the main app, where onboarding is one click
+    /// away in Settings. The reverse hides a working dashboard behind a wizard.
+    static func hasUsedThisAppBefore(_ defaults: UserDefaults) -> Bool {
+        if defaults.bool(forKey: legacyCompletedKey) { return true }
+        if defaults.bool(forKey: localModeEnabledKey) { return true }
+        // Provider configs count as prior use ONLY if the v2 wizard did not
+        // write them itself. Selecting an account mid-wizard persists a seeded
+        // blob (`OnboardingWizardView.persistSeededProviderMetadataIfNeeded`),
+        // so a genuinely new user who picks an agent and quits before finishing
+        // would look "existing" on relaunch — and be routed to the main app or
+        // the upgrade prompt instead of resuming the setup they were halfway
+        // through. The wizard already marks its own writes; this reads that
+        // marker rather than inventing a second one.
+        if defaults.bool(forKey: wizardSeededConfigsKey) { return false }
+        return defaults.data(forKey: ProviderAccountMigration.configsKey) != nil
+    }
+
+    /// Written by `OnboardingWizardView` while the v2 wizard is mid-flight and
+    /// removed when it finishes. Duplicated here rather than imported because
+    /// the wizard lives in the app target and this store lives in the package.
+    static let wizardSeededConfigsKey =
+        "cli_pulse_agent_setup_seeded_provider_configs_v2"
+
+    /// Duplicated from `AppState.localModeEnabledKey`, which is main-actor
+    /// isolated. Referencing it from this nonisolated function is a warning
+    /// today and an error under the Swift 6 language mode.
+    static let localModeEnabledKey = "cli_pulse_local_mode_enabled"
+
     public func load() -> AgentSetupStoredState {
         let version = (
             defaults.object(
@@ -441,9 +520,7 @@ public final class AgentSetupStateStore {
             ?? progressData.flatMap(Self.persistedProgressVersion)
 
         return AgentSetupStoredState(
-            legacyCompleted: defaults.bool(
-                forKey: Self.legacyCompletedKey
-            ),
+            legacyCompleted: Self.hasUsedThisAppBefore(defaults),
             onboardingVersion: version,
             progress: progress,
             upgradePromptDismissed: defaults.bool(

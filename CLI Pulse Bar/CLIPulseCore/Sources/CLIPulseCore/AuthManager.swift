@@ -531,7 +531,9 @@ extension AppState {
         ) {
         case .liveCollection:
             // Spin up the same refresh loop the authenticated path uses,
-            // so collector data refreshes on the same cadence.
+            // so collector data refreshes on the same cadence. Focused tests
+            // disable this branch to avoid leaking an unstructured live
+            // collector task into the next test case.
             if startRefreshing {
                 startRefreshLoop()
                 Task { await refreshAll() }
