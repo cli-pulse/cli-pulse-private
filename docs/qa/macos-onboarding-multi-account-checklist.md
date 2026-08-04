@@ -1,15 +1,20 @@
 # macOS Onboarding + Multi-Account QA Checklist
 
-> This document was originally headed "Internal/private-source QA only". That
-> was written on the assumption that `cli-pulse-private` is a private
+> This file originally carried a header restricting it to private-source use.
+> That was written on the assumption that `cli-pulse-private` is a private
 > repository. It is public — the name is the trap, and AGENTS.md stated the
 > false version until #402. Nothing here is sensitive: every value in the table
 > below is already a literal in `CLIPulseRuntimeEnvironment.swift`, which ships
-> in this repo. So the note is corrected rather than the file hidden.
+> in this repo. So the header is corrected rather than the file hidden.
 >
 > The original warning's real content still stands, and is narrower than it
 > looked: do not copy this file or the app source into **`cli-pulse-distrib`**,
 > the release-artifact repository.
+>
+> (Phrased without the original wording on purpose —
+> `scripts/check_no_internal_docs.sh` matches that declaration literally, and
+> quoting it verbatim to explain it away would trip the gate. Correctly: it
+> cannot tell a quotation from a declaration, and it should not try.)
 
 ## Purpose
 
