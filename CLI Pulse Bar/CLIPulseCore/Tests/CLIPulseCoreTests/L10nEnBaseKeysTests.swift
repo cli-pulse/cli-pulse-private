@@ -63,6 +63,36 @@ final class L10nEnBaseKeysTests: XCTestCase {
         )
     }
 
+    func test_onboardingWelcomeAccountCopyIsDistinctFromUpgradeCopy() {
+        XCTAssertEqual(
+            L10n.onboardingWizard.welcomeAccountsBody,
+            "Find and configure personal and work accounts for Codex, Claude, and Gemini."
+        )
+        XCTAssertNotEqual(
+            L10n.onboardingWizard.welcomeAccountsBody,
+            L10n.onboardingWizard.upgradeBody
+        )
+
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(
+            L10n.onboardingWizard.welcomeAccountsBody,
+            "发现并分别设置 Codex、Claude 和 Gemini 的个人与工作账户。"
+        )
+        XCTAssertNotEqual(
+            L10n.onboardingWizard.welcomeAccountsBody,
+            L10n.onboardingWizard.upgradeBody
+        )
+
+        for locale in ["ja", "zh-Hant", "es", "ko"] {
+            LocaleOverrideStore.shared.set(locale)
+            XCTAssertFalse(
+                L10n.onboardingWizard.welcomeAccountsBody
+                    .hasPrefix("onboarding_wizard."),
+                "\(locale) is missing the first-run account summary"
+            )
+        }
+    }
+
     func test_providerAccountManagementCopyResolvesInEnBase() {
         XCTAssertEqual(L10n.providers.accountsCount(1), "1 account")
         XCTAssertEqual(L10n.providers.accountsCount(2), "2 accounts")

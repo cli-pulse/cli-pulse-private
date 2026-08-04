@@ -58,6 +58,10 @@ struct ProviderConfigEditor: View {
         ProviderRegistry.descriptor(for: kind)
     }
 
+    private var allowsLiveProviderActions: Bool {
+        state.runtimeEnvironment.capabilities.allowsLiveCollection
+    }
+
     /// G1: `.automatic` browser auto-import is macOS-only (no browser cookie
     /// stores on iOS/watchOS). On other platforms it is hidden so a synced
     /// `.automatic` config simply falls back to manual.
@@ -129,6 +133,16 @@ struct ProviderConfigEditor: View {
 
             Divider()
 
+            if !allowsLiveProviderActions {
+                Label(
+                    "QA preview uses synthetic provider data. Live credentials and connection tests are disabled.",
+                    systemImage: "lock.shield"
+                )
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
             // Source mode
             HStack {
                 Text(L10n.providerConfig.dataSource)
@@ -188,7 +202,10 @@ struct ProviderConfigEditor: View {
             }
 
             // API key (only if provider supports api/oauth)
-            if descriptor.supportedSources.contains(.api) || descriptor.supportedSources.contains(.oauth) {
+            if allowsLiveProviderActions
+                && (descriptor.supportedSources.contains(.api)
+                    || descriptor.supportedSources.contains(.oauth))
+            {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(L10n.providerConfig.apiKey)
                         .font(.system(size: 10))
@@ -234,7 +251,9 @@ struct ProviderConfigEditor: View {
             }
 
             // Cookie source (only if provider supports web)
-            if descriptor.supportedSources.contains(.web) {
+            if allowsLiveProviderActions
+                && descriptor.supportedSources.contains(.web)
+            {
                 HStack {
                     Text(L10n.providerConfig.cookieSource)
                         .font(.system(size: 10))
@@ -278,18 +297,20 @@ struct ProviderConfigEditor: View {
 
             // Gemini OAuth connection (macOS only)
             #if os(macOS)
-            if kind == .gemini {
-                geminiOAuthSection
+            if allowsLiveProviderActions {
+                if kind == .gemini {
+                    geminiOAuthSection
+                }
+                // Claude Code keychain bootstrap (macOS only). The sandbox can't
+                // read Claude Code's keychain item on its own — it needs the user
+                // to click Allow on the system prompt. This button surfaces the
+                // prompt deliberately instead of hoping it fires during a silent
+                // OAuth-strategy attempt.
+                if kind == .claude {
+                    claudeConnectSection
+                }
+                testConnectionRow
             }
-            // Claude Code keychain bootstrap (macOS only). The sandbox can't
-            // read Claude Code's keychain item on its own — it needs the user
-            // to click Allow on the system prompt. This button surfaces the
-            // prompt deliberately instead of hoping it fires during a silent
-            // OAuth-strategy attempt.
-            if kind == .claude {
-                claudeConnectSection
-            }
-            testConnectionRow
             #endif
 
             // Capabilities summary
@@ -370,9 +391,12 @@ struct ProviderConfigEditor: View {
         }
         let config = state.providerConfigs[idx]
         sourceMode = config.sourceMode
-        apiKey = config.apiKey ?? ""
+        apiKey = allowsLiveProviderActions ? (config.apiKey ?? "") : ""
         cookieSource = config.cookieSource
-        manualCookieHeader = config.manualCookieHeader ?? ""
+        manualCookieHeader =
+            allowsLiveProviderActions
+            ? (config.manualCookieHeader ?? "")
+            : ""
         accountLabel = config.accountLabel ?? ""
         planOverride = config.planOverride ?? ""
         #if os(macOS)
@@ -386,7 +410,7 @@ struct ProviderConfigEditor: View {
         if kind == .cursor, config.cookieSource == nil {
             cookieSource = .automatic
         }
-        if kind == .gemini {
+        if kind == .gemini && allowsLiveProviderActions {
             geminiCredentialDraft = GeminiCredentialDraft(
                 isConnected:
                     GeminiOAuthManager.shared
@@ -433,16 +457,25 @@ struct ProviderConfigEditor: View {
                 }
             } else {
                 Button {
+                    guard allowsLiveProviderActions else { return }
                     isConnecting = true
                     geminiError = nil
                     Task { @MainActor in
                         defer { isConnecting = false }
                         do {
-                            let authorization =
-                                try await GeminiOAuthManager.shared
+                            let gatedAuthorization =
+                                try await RuntimeProtectedProviderAction.perform(
+                                    runtimeEnvironment:
+                                        state.runtimeEnvironment
+                                ) {
+                                    try await GeminiOAuthManager.shared
                                     .authorizeForEditing(
                                         accountID: accountID
                                     )
+                                }
+                            guard let authorization = gatedAuthorization else {
+                                return
+                            }
                             geminiCredentialDraft.stageAuthorization(
                                 authorization
                             )
@@ -546,6 +579,8 @@ struct ProviderConfigEditor: View {
                 }
             } else {
                 Button {
+                    guard allowsLiveProviderActions else { return }
+                    let runtimeEnvironment = state.runtimeEnvironment
                     isConnecting = true
                     claudeConnectError = nil
                     // `readKeychainCredentials` triggers the macOS system
@@ -560,10 +595,15 @@ struct ProviderConfigEditor: View {
                         // User-initiated Connect — bypass the cross-app read
                         // cooldown so a reconnect/re-auth is never blocked by a
                         // cooldown a background 401 may have armed.
-                        let creds = ClaudeCredentials.readKeychainCredentials(
-                            bypassCooldown: true,
-                            cacheResult: false
-                        )
+                        let creds: ClaudeCredentials.Creds? =
+                            await RuntimeProtectedProviderAction.perform(
+                                runtimeEnvironment: runtimeEnvironment
+                            ) {
+                                ClaudeCredentials.readKeychainCredentials(
+                                    bypassCooldown: true,
+                                    cacheResult: false
+                                )
+                            } ?? nil
                         await MainActor.run {
                             isConnecting = false
                             if let creds, !creds.accessToken.isEmpty {
@@ -705,7 +745,14 @@ struct ProviderConfigEditor: View {
 
     @MainActor
     private func runTest() async {
-        if kind == .gemini {
+        guard allowsLiveProviderActions else {
+            testState = .failure(
+                "Live connection tests are disabled in QA preview."
+            )
+            return
+        }
+
+        if kind == .gemini && allowsLiveProviderActions {
             switch geminiCredentialDraft
                 .connectionTestDisposition {
             case .authorizationReadyToSave:
@@ -752,7 +799,18 @@ struct ProviderConfigEditor: View {
 
         let start = Date()
         do {
-            let result = try await collector.collect(config: probeConfig)
+            let gatedResult =
+                try await RuntimeProtectedProviderAction.perform(
+                    runtimeEnvironment: state.runtimeEnvironment
+                ) {
+                    try await collector.collect(config: probeConfig)
+                }
+            guard let result = gatedResult else {
+                testState = .failure(
+                    "Live connection tests are disabled in QA preview."
+                )
+                return
+            }
             let ms = Int(Date().timeIntervalSince(start) * 1000)
             let summary: String
             switch result.dataKind {
@@ -795,7 +853,7 @@ struct ProviderConfigEditor: View {
             return false
         }
         #if os(macOS)
-        if kind == .gemini {
+        if kind == .gemini && allowsLiveProviderActions {
             guard
                 geminiCredentialDraft.commit(
                     accountID: accountID
@@ -816,11 +874,16 @@ struct ProviderConfigEditor: View {
             planOverride.isEmpty ? nil : planOverride
         )
         state.providerConfigs[idx].cookieSource = cookieSource
-        state.providerConfigs[idx].apiKey = apiKey.isEmpty ? nil : apiKey
-        state.providerConfigs[idx].manualCookieHeader = manualCookieHeader.isEmpty ? nil : manualCookieHeader
+        state.providerConfigs[idx].apiKey =
+            allowsLiveProviderActions && !apiKey.isEmpty ? apiKey : nil
+        state.providerConfigs[idx].manualCookieHeader =
+            allowsLiveProviderActions && !manualCookieHeader.isEmpty
+            ? manualCookieHeader
+            : nil
         #if os(macOS)
         state.providerConfigs[idx].sharedCredentialFallbackDisabled =
-            ((kind == .claude || kind == .gemini)
+            (allowsLiveProviderActions
+                && (kind == .claude || kind == .gemini)
                 && sharedCredentialFallbackDisabled)
             ? true
             : nil
@@ -830,15 +893,21 @@ struct ProviderConfigEditor: View {
         // because `geminiCliProbeFallback` @State is macOS-only —
         // keeps the iOS/watch build green (Gemini G3-R1 CRITICAL).
         state.providerConfigs[idx].geminiCliProbeFallback =
-            (kind == .gemini && geminiCliProbeFallback) ? true : nil
+            (allowsLiveProviderActions
+                && kind == .gemini
+                && geminiCliProbeFallback)
+            ? true
+            : nil
         #endif
-        guard state.providerConfigs[idx].saveSecrets() else {
-            #if os(macOS)
-            testState = .failure(
-                "Could not safely save provider credentials. Please retry."
-            )
-            #endif
-            return false
+        if allowsLiveProviderActions {
+            guard state.providerConfigs[idx].saveSecrets() else {
+                #if os(macOS)
+                testState = .failure(
+                    "Could not safely save provider credentials. Please retry."
+                )
+                #endif
+                return false
+            }
         }
         guard state.commitProviderAccountDraft(accountID) else {
             #if os(macOS)

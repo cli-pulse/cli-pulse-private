@@ -70,9 +70,59 @@ public enum TierRefreshErrorCategory: String, Sendable, Equatable, Codable {
     case serverTierError = "server-tier-error"
 }
 
+enum SubscriptionManagerError: LocalizedError, Equatable {
+    case unavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable:
+            return "StoreKit is unavailable in this runtime environment"
+        }
+    }
+}
+
+struct SubscriptionBootstrapPolicy: Equatable, Sendable {
+    let allowsStoreKit: Bool
+    let initialTier: SubscriptionTier
+    let resolutionState: TierResolutionState
+    let source: String?
+
+    static func resolve(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> SubscriptionBootstrapPolicy {
+        if runtimeEnvironment.capabilities.allowsStoreKitBootstrap {
+            return SubscriptionBootstrapPolicy(
+                allowsStoreKit: true,
+                initialTier: .free,
+                resolutionState: .unresolved,
+                source: nil
+            )
+        }
+        if runtimeEnvironment.isQA,
+           runtimeEnvironment.isLaunchSafe,
+           runtimeEnvironment.capabilities.allowsInMemoryDemoRendering
+        {
+            return SubscriptionBootstrapPolicy(
+                allowsStoreKit: false,
+                initialTier: .team,
+                resolutionState: .resolvedConfirmed,
+                source: "qa-in-memory"
+            )
+        }
+        return SubscriptionBootstrapPolicy(
+            allowsStoreKit: false,
+            initialTier: .free,
+            resolutionState: .unresolved,
+            source: nil
+        )
+    }
+}
+
 @MainActor
 public final class SubscriptionManager: ObservableObject {
-    public static let shared = SubscriptionManager()
+    public static let shared = SubscriptionManager(
+        runtimeEnvironment: .current
+    )
 
     // Product IDs (must match App Store Connect)
     public static let proMonthlyID = "com.clipulse.pro.monthly"
@@ -142,8 +192,28 @@ public final class SubscriptionManager: ObservableObject {
     public var proLifetime: Product? { products.first { $0.id == Self.proLifetimeID } }
 
     private var updateListenerTask: Task<Void, Error>?
+    private let runtimeEnvironment: CLIPulseRuntimeEnvironment
+    internal let isStoreKitBootstrapEnabled: Bool
 
-    public init() {
+    public convenience init() {
+        self.init(runtimeEnvironment: .current)
+    }
+
+    internal init(runtimeEnvironment: CLIPulseRuntimeEnvironment) {
+        let policy = SubscriptionBootstrapPolicy.resolve(
+            runtimeEnvironment: runtimeEnvironment
+        )
+        self.runtimeEnvironment = runtimeEnvironment
+        self.isStoreKitBootstrapEnabled = policy.allowsStoreKit
+        self.currentTier = policy.initialTier
+        self.tierResolutionState = policy.resolutionState
+        self.lastTierRefreshSource = policy.source
+        self.lastTierRefreshError = nil
+        self.products = []
+        self.purchasedSubscriptions = []
+        self.isLifetime = false
+
+        guard policy.allowsStoreKit else { return }
         updateListenerTask = listenForTransactions()
         Task { await loadProducts() }
         Task { await updateCurrentEntitlements() }
@@ -156,6 +226,11 @@ public final class SubscriptionManager: ObservableObject {
     // MARK: - Load Products
 
     public func loadProducts() async {
+        guard isStoreKitBootstrapEnabled else {
+            products = []
+            isLoading = false
+            return
+        }
         isLoading = true
         do {
             let storeProducts = try await Product.products(for: Self.allProductIDs)
@@ -170,6 +245,7 @@ public final class SubscriptionManager: ObservableObject {
     // MARK: - Purchase
 
     public func purchase(_ product: Product) async throws -> StoreKit.Transaction? {
+        try requireStoreKitAvailability()
         let result = try await product.purchase()
 
         switch result {
@@ -193,10 +269,20 @@ public final class SubscriptionManager: ObservableObject {
     // MARK: - Restore
 
     public func restorePurchases() async {
+        guard isStoreKitBootstrapEnabled else {
+            isLoading = false
+            return
+        }
         isLoading = true
         try? await AppStore.sync()
         await updateCurrentEntitlements()
         isLoading = false
+    }
+
+    internal func requireStoreKitAvailability() throws {
+        guard isStoreKitBootstrapEnabled else {
+            throw SubscriptionManagerError.unavailable
+        }
     }
 
     // MARK: - Entitlements
@@ -340,6 +426,10 @@ public final class SubscriptionManager: ObservableObject {
     }
 
     public func updateCurrentEntitlements() async {
+        guard isStoreKitBootstrapEnabled else {
+            applyDisabledRuntimePolicy()
+            return
+        }
         // v1.19 SR1: Developer ID Beta channel users have no Mac App
         // Store receipt — StoreKit's currentEntitlements stream is
         // empty for them. Without this short-circuit, the rest of
@@ -436,6 +526,10 @@ public final class SubscriptionManager: ObservableObject {
     /// cleared every other field but left `currentTier`, so a former .team/.pro
     /// user kept paid gates after signing out into the no-account local mode.
     public func resetForSignOut() {
+        guard isStoreKitBootstrapEnabled else {
+            applyDisabledRuntimePolicy()
+            return
+        }
         currentTier = .free
         isLifetime = false
         purchasedSubscriptions = []
@@ -461,6 +555,20 @@ public final class SubscriptionManager: ObservableObject {
             self.lastTierRefreshSource = "storekit-local-signout"
             self.lastTierRefreshError = nil
         }
+    }
+
+    private func applyDisabledRuntimePolicy() {
+        let policy = SubscriptionBootstrapPolicy.resolve(
+            runtimeEnvironment: runtimeEnvironment
+        )
+        currentTier = policy.initialTier
+        products = []
+        purchasedSubscriptions = []
+        isLoading = false
+        isLifetime = false
+        tierResolutionState = policy.resolutionState
+        lastTierRefreshSource = policy.source
+        lastTierRefreshError = nil
     }
 
     /// Server-side tier override — set by admin in profiles.tier or

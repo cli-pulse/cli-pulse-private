@@ -175,7 +175,7 @@ struct iOSProvidersTab: View {
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Text(
-                        "\(accountGroups.isEmpty ? providerState.providers.count : accountGroups.count) "
+                        "\(providerState.enabledProviderCount) "
                         + L10n.providers.tracked
                     )
                         .font(.caption)

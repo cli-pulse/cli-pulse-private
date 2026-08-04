@@ -1087,6 +1087,7 @@ public enum L10n {
     public enum onboardingWizard {
         public static var welcomeTitle: String { tr("onboarding_wizard.welcome_title") }
         public static var welcomeSubtitle: String { tr("onboarding_wizard.welcome_subtitle") }
+        public static var welcomeAccountsBody: String { tr("onboarding_wizard.welcome_accounts_body") }
         public static var getStarted: String { tr("onboarding_wizard.get_started") }
         public static var whatDoes: String { tr("onboarding_wizard.what_does") }
         public static var `continue`: String { tr("onboarding_wizard.continue") }

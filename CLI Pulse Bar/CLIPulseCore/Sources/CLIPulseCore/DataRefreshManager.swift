@@ -2090,6 +2090,9 @@ internal final class DataRefreshManager {
 
 extension AppState {
     public func refreshAll() async {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         await dataRefreshManager.refreshAll(context: refreshContext(), callbacks: refreshCallbacks())
         #if os(macOS)
         // Reconcile user-controlled account lifecycle after the visible
@@ -2121,6 +2124,9 @@ extension AppState {
     /// Do not `await` this; the Button is already disabled via `isLoading`.
     @MainActor
     public func requestRefresh() {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         dataRefreshManager.requestRefresh(using: refreshRequest())
     }
 
@@ -2130,6 +2136,9 @@ extension AppState {
     /// runs may have recorded negative deltas that incremental scanning
     /// wouldn't undo.
     public func forceRescanTokenCache() async {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         // Re-activate stored security-scoped bookmarks BEFORE scanning. The
         // folder-access grant only persists a bookmark; the cost scan reads via
         // FileManager and needs an ACTIVE security-scoped resource, else
@@ -2307,6 +2316,9 @@ extension AppState {
     }
 
     public func startRefreshLoop() {
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         // v1.40 PR-8: refreshInterval == 0 is the "Adaptive" sentinel.
         if refreshInterval == 0 {
             dataRefreshManager.startAdaptiveLoop(onRefreshRequested: refreshRequest())
@@ -2321,6 +2333,9 @@ extension AppState {
 
     public func updateRefreshInterval(_ seconds: Int) {
         refreshInterval = seconds
+        guard runtimeEnvironment.capabilities.allowsLiveCollection else {
+            return
+        }
         if seconds == 0 {
             // Adaptive — gate on the same auth/local-mode condition as the fixed path.
             if isAuthenticated || isLocalMode {
@@ -2604,6 +2619,9 @@ extension AppState {
     }
 
     func publishWidgetData() {
+        guard runtimeEnvironment.capabilities.allowsWidgetPublishing else {
+            return
+        }
         let widgetProviders = providers.prefix(10).map { provider in
             PublishedWidgetProviderData(
                 name: provider.provider,

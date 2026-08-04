@@ -22,94 +22,110 @@ import XCTest
 /// uses the sentinel UUID and skips the ownership check).
 final class HelperConfigCrossAccountGuardTests: XCTestCase {
 
-    private let groupKey = "helper_config"
-    private let suite = "group.yyh.CLI-Pulse"
+    private var productionRuntime: CLIPulseRuntimeEnvironment {
+        CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: [
+                "CFBundleIdentifier": "yyh.CLI-Pulse",
+            ],
+            environment: [:]
+        )
+    }
 
-    private func writeStoredConfig(deviceId: String, userId: String) {
-        // Mirror StoredConfig shape (without helperSecret — that lives in
-        // Keychain). The test only exercises the in-memory matching path,
-        // so a real keychain entry isn't required when load() is bypassed
-        // via the userDefaults path; we set both UserDefaults + Keychain.
+    private func makePersistence(
+        deviceId: String? = nil,
+        userId: String? = nil,
+        secret: String? = "test-secret-xyz"
+    ) -> HelperConfig.PersistenceAccess {
         struct Stored: Codable {
             let deviceId: String
             let userId: String
             let deviceName: String
             let helperVersion: String
         }
-        let s = Stored(
-            deviceId: deviceId, userId: userId,
-            deviceName: "test-device", helperVersion: "test-1.0"
+        let data: Data?
+        if let deviceId, let userId {
+            data = try! JSONEncoder().encode(
+                Stored(
+                    deviceId: deviceId,
+                    userId: userId,
+                    deviceName: "test-device",
+                    helperVersion: "test-1.0"
+                )
+            )
+        } else {
+            data = nil
+        }
+        return HelperConfig.PersistenceAccess(
+            loadStoredData: { data },
+            saveStoredData: { _ in },
+            removeStoredData: {},
+            loadSecret: { secret },
+            saveSecret: { _ in },
+            removeSecret: {},
+            loadLegacyFileData: { nil }
         )
-        let data = try! JSONEncoder().encode(s)
-        UserDefaults(suiteName: suite)?.set(data, forKey: groupKey)
-        // Stub a non-empty secret so load() returns the config.
-        KeychainHelper.save(
-            key: "helper_secret",
-            value: "test-secret-xyz",
-            accessGroup: "group.yyh.CLI-Pulse"
-        )
-    }
-
-    private func clearStoredConfig() {
-        UserDefaults(suiteName: suite)?.removeObject(forKey: groupKey)
-        KeychainHelper.delete(
-            key: "helper_secret",
-            accessGroup: "group.yyh.CLI-Pulse"
-        )
-    }
-
-    override func setUp() {
-        super.setUp()
-        clearStoredConfig()
-    }
-
-    override func tearDown() {
-        clearStoredConfig()
-        super.tearDown()
     }
 
     func testLoadIfMatches_returnsNil_whenStoredUserIdDiffersFromAuth() {
-        writeStoredConfig(
+        let persistence = makePersistence(
             deviceId: "device-A",
             userId: "00000000-0000-0000-0000-aaaaaaaaaaaa"
         )
         let cfg = HelperConfig.loadIfMatches(
-            authenticatedUserId: "00000000-0000-0000-0000-bbbbbbbbbbbb"
+            authenticatedUserId: "00000000-0000-0000-0000-bbbbbbbbbbbb",
+            runtimeEnvironment: productionRuntime,
+            persistence: persistence
         )
         XCTAssertNil(cfg, "cross-account stale config must NOT surface — returning it would route the prior account's device_id to the new account's upsert_daily_usage RPC and trigger 42501/403")
     }
 
     func testLoadIfMatches_returnsConfig_whenStoredUserIdMatchesAuth() {
         let userId = "00000000-0000-0000-0000-cccccccccccc"
-        writeStoredConfig(deviceId: "device-A", userId: userId)
-        let cfg = HelperConfig.loadIfMatches(authenticatedUserId: userId)
+        let persistence = makePersistence(
+            deviceId: "device-A",
+            userId: userId
+        )
+        let cfg = HelperConfig.loadIfMatches(
+            authenticatedUserId: userId,
+            runtimeEnvironment: productionRuntime,
+            persistence: persistence
+        )
         XCTAssertNotNil(cfg, "match must return config so the upload path can pass p_device_id")
         XCTAssertEqual(cfg?.deviceId, "device-A")
         XCTAssertEqual(cfg?.userId, userId)
     }
 
     func testLoadIfMatches_returnsNil_whenAuthIdIsNil() {
-        writeStoredConfig(
+        let persistence = makePersistence(
             deviceId: "device-A",
             userId: "00000000-0000-0000-0000-dddddddddddd"
         )
-        let cfg = HelperConfig.loadIfMatches(authenticatedUserId: nil)
+        let cfg = HelperConfig.loadIfMatches(
+            authenticatedUserId: nil,
+            runtimeEnvironment: productionRuntime,
+            persistence: persistence
+        )
         XCTAssertNil(cfg, "no auth = no p_device_id; sentinel UUID path is the safe default")
     }
 
     func testLoadIfMatches_returnsNil_whenAuthIdIsEmpty() {
-        writeStoredConfig(
+        let persistence = makePersistence(
             deviceId: "device-A",
             userId: "00000000-0000-0000-0000-eeeeeeeeeeee"
         )
-        let cfg = HelperConfig.loadIfMatches(authenticatedUserId: "")
+        let cfg = HelperConfig.loadIfMatches(
+            authenticatedUserId: "",
+            runtimeEnvironment: productionRuntime,
+            persistence: persistence
+        )
         XCTAssertNil(cfg)
     }
 
     func testLoadIfMatches_returnsNil_whenNothingStored() {
-        clearStoredConfig()
         let cfg = HelperConfig.loadIfMatches(
-            authenticatedUserId: "00000000-0000-0000-0000-ffffffffffff"
+            authenticatedUserId: "00000000-0000-0000-0000-ffffffffffff",
+            runtimeEnvironment: productionRuntime,
+            persistence: makePersistence()
         )
         XCTAssertNil(cfg)
     }

@@ -559,21 +559,37 @@ public actor HelperAPIClient {
 // MARK: - Supabase Constants (centralized)
 
 public enum SupabaseConstants {
-    public static let url = "https://gkjwsxotmwrgqsvfijzs.supabase.co"
-    public static let anonKey: String = {
-        if let key = Bundle.main.object(forInfoDictionaryKey: "SUPABASE_ANON_KEY") as? String, !key.isEmpty {
-            return key
+    private static let configuration: RuntimeCloudConfiguration = {
+        let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
+        var infoDictionary = Bundle.main.infoDictionary ?? [:]
+        var environment = ProcessInfo.processInfo.environment
+        if (infoDictionary["SUPABASE_ANON_KEY"] as? String)?.isEmpty == true {
+            infoDictionary.removeValue(forKey: "SUPABASE_ANON_KEY")
         }
-        if let key = ProcessInfo.processInfo.environment["CLI_PULSE_SUPABASE_ANON_KEY"], !key.isEmpty {
-            return key
+        if environment["CLI_PULSE_SUPABASE_ANON_KEY"]?.isEmpty == true {
+            environment.removeValue(forKey: "CLI_PULSE_SUPABASE_ANON_KEY")
+        }
+        let resolved = RuntimeCloudConfiguration.resolve(
+            runtimeEnvironment: runtimeEnvironment,
+            explicitURL: nil,
+            explicitAnonKey: nil,
+            infoDictionary: infoDictionary,
+            environment: environment
+        )
+        guard runtimeEnvironment.allowsProductionCloudEndpoints,
+              resolved.anonKey.isEmpty
+        else {
+            return resolved
         }
         #if DEBUG
         fatalError("SUPABASE_ANON_KEY missing from Info.plist and environment")
         #else
         helperLogger.error("SUPABASE_ANON_KEY missing — API calls will fail")
-        return ""
+        return resolved
         #endif
     }()
+    public static var url: String { configuration.url }
+    public static var anonKey: String { configuration.anonKey }
 
     /// v1.10 P3-6 launch-time self-check: release builds silently fall through
     /// to `anonKey = ""` when the key is missing (see above), which makes every
@@ -581,7 +597,9 @@ public enum SupabaseConstants {
     /// staring at a blank, never-loading dashboard. Top-level views read this
     /// flag and render a persistent "configuration error" banner so the
     /// problem is at least visible.
-    public static var isConfigured: Bool { !anonKey.isEmpty }
+    public static var isConfigured: Bool {
+        !configuration.url.isEmpty && !configuration.anonKey.isEmpty
+    }
 }
 
 // MARK: - Errors

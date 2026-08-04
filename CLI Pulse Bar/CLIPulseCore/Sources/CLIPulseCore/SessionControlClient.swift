@@ -307,6 +307,11 @@ public enum SessionControlError: Error, Equatable, Sendable, CustomStringConvert
     /// device has internet).
     case helperNotRunning
 
+    /// The current runtime channel is not authorized to resolve helper paths,
+    /// read its token, or open the local control socket. QA and quarantined
+    /// processes fail here before touching production host state.
+    case runtimeRestricted
+
     /// Bad / missing / mismatched auth_token (local) or 401 (remote).
     case unauthenticated
 
@@ -416,6 +421,7 @@ public enum SessionControlError: Error, Equatable, Sendable, CustomStringConvert
     public var description: String {
         switch self {
         case .helperNotRunning:    return "helper not running"
+        case .runtimeRestricted:   return "local session control unavailable in this runtime"
         case .unauthenticated:     return "unauthenticated"
         case .versionMismatch:     return "version mismatch"
         case .notImplemented:      return "not implemented"

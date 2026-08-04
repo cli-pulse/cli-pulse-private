@@ -4,6 +4,50 @@ import os
 
 private let apiLogger = Logger(subsystem: "com.clipulse", category: "APIClient")
 
+struct RuntimeCloudConfiguration: Equatable, Sendable {
+    static let productionURL =
+        "https://gkjwsxotmwrgqsvfijzs.supabase.co"
+    static let localInvalidURL = "http://127.0.0.1:0"
+    static let localInvalidAnonKey = "qa-local-invalid-anon-key"
+
+    let url: String
+    let anonKey: String
+
+    static func resolve(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        explicitURL: String?,
+        explicitAnonKey: String?,
+        infoDictionary: [String: Any],
+        environment: [String: String]
+    ) -> RuntimeCloudConfiguration {
+        let resolvedURL: String
+        let resolvedAnonKey: String
+
+        if runtimeEnvironment.allowsProductionCloudEndpoints {
+            resolvedURL =
+                infoDictionary["SUPABASE_URL"] as? String
+                ?? environment["CLI_PULSE_SUPABASE_URL"]
+                ?? Self.productionURL
+            resolvedAnonKey =
+                infoDictionary["SUPABASE_ANON_KEY"] as? String
+                ?? environment["CLI_PULSE_SUPABASE_ANON_KEY"]
+                ?? ""
+        } else {
+            resolvedURL = Self.localInvalidURL
+            resolvedAnonKey = Self.localInvalidAnonKey
+        }
+
+        return RuntimeCloudConfiguration(
+            url: runtimeEnvironment.allowsProductionCloudEndpoints
+                ? (explicitURL ?? resolvedURL)
+                : resolvedURL,
+            anonKey: runtimeEnvironment.allowsProductionCloudEndpoints
+                ? (explicitAnonKey ?? resolvedAnonKey)
+                : resolvedAnonKey
+        )
+    }
+}
+
 public struct ProviderAccountFeatureFlags: Equatable, Sendable {
     public static let readDefaultsKey = "provider_accounts_v2_read"
     public static let writeDefaultsKey = "provider_accounts_v2_write"
@@ -78,6 +122,7 @@ public actor APIClient {
 
     private let supabaseURL: String
     private let supabaseAnonKey: String
+    private let runtimeEnvironment: CLIPulseRuntimeEnvironment
 
     private var accessToken: String?
     private var refreshToken: String?
@@ -111,19 +156,22 @@ public actor APIClient {
         supabaseURL: String? = nil,
         supabaseAnonKey: String? = nil,
         session: URLSession? = nil,
-        providerAccountFlags: ProviderAccountFeatureFlags? = nil
+        providerAccountFlags: ProviderAccountFeatureFlags? = nil,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
     ) {
+        let cloudConfiguration = RuntimeCloudConfiguration.resolve(
+            runtimeEnvironment: runtimeEnvironment,
+            explicitURL: supabaseURL,
+            explicitAnonKey: supabaseAnonKey,
+            infoDictionary: Bundle.main.infoDictionary ?? [:],
+            environment: ProcessInfo.processInfo.environment
+        )
         self.accessToken = token
         self.providerAccountFlags =
             providerAccountFlags ?? ProviderAccountFeatureFlags.load()
-        self.supabaseURL = supabaseURL
-            ?? Bundle.main.infoDictionary?["SUPABASE_URL"] as? String
-            ?? ProcessInfo.processInfo.environment["CLI_PULSE_SUPABASE_URL"]
-            ?? "https://gkjwsxotmwrgqsvfijzs.supabase.co"
-        self.supabaseAnonKey = supabaseAnonKey
-            ?? Bundle.main.infoDictionary?["SUPABASE_ANON_KEY"] as? String
-            ?? ProcessInfo.processInfo.environment["CLI_PULSE_SUPABASE_ANON_KEY"]
-            ?? ""
+        self.supabaseURL = cloudConfiguration.url
+        self.supabaseAnonKey = cloudConfiguration.anonKey
+        self.runtimeEnvironment = runtimeEnvironment
         // `session` injectable for tests (URLProtocol stub); production uses the
         // configured default.
         if let session {
@@ -2777,7 +2825,8 @@ public actor APIClient {
         // the config to the matching pair.
         var body: [String: Any] = ["metrics": metrics]
         if let deviceId = HelperConfig.loadIfMatches(
-            authenticatedUserId: userId
+            authenticatedUserId: userId,
+            runtimeEnvironment: runtimeEnvironment
         )?.deviceId, !deviceId.isEmpty {
             body["p_device_id"] = deviceId
         }

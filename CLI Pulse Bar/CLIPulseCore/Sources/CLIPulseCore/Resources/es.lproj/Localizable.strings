@@ -808,6 +808,7 @@
 "provider_config.manual_plan" = "Etiqueta manual del plan";
 "provider_config.manual_plan_placeholder" = "p. ej., Max 20x, Pro";
 "provider_config.manual_plan_hint" = "Solo sirve como alternativa visual. No cambia la cuota ni los costes recopilados.";
+"onboarding_wizard.welcome_accounts_body" = "Detecta y configura cuentas personales y de trabajo para Codex, Claude y Gemini.";
 
 /* v1.44 W3 — per-provider collector outcome labels + next steps */
 "collector_status.ok" = "Funcionando";

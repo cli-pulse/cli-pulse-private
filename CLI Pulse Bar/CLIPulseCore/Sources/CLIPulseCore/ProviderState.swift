@@ -41,6 +41,18 @@ public final class ProviderState: ObservableObject {
         Set(providerConfigs.filter(\.isEnabled).map(\.kind.rawValue))
     }
 
+    /// Number of loaded provider kinds currently monitored. Multiple usage
+    /// rows or enabled accounts for one provider still represent one tracked
+    /// provider; default-enabled configs without a loaded row do not.
+    public var enabledProviderCount: Int {
+        let enabledNames = enabledProviderNames
+        return Set(
+            providers
+                .map(\.provider)
+                .filter(enabledNames.contains)
+        ).count
+    }
+
     public var editingProviderConfig: ProviderConfig? {
         guard let editingProviderAccountID else { return nil }
         return providerConfigs.first {

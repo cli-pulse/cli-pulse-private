@@ -17,6 +17,9 @@ struct CLIPulseBarApp: App {
     private let backgroundActivity = BackgroundActivityAssertion()
 
     init() {
+        let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
+        runtimeEnvironment.preconditionSafeLaunch()
+
         // W1-A: on the unsandboxed Developer-ID build, migrate per-app-container
         // UserDefaults (provider configs, onboarding flag, display prefs,
         // language override) from the old sandbox container to the real home
@@ -26,19 +29,35 @@ struct CLIPulseBarApp: App {
         // assign it explicitly here AFTER the migration so the
         // migration-before-read ordering is obvious and robust against future
         // edits. No-op on sandboxed (MAS) builds and after the first DEVID run.
-        UnsandboxedDataMigration.runIfNeeded()
-        _appState = StateObject(wrappedValue: AppState())
-        SentryLogger.start(platform: .macOS)
-        backgroundActivity.begin()
+        if runtimeEnvironment.capabilities.allowsUnsandboxedMigration {
+            UnsandboxedDataMigration.runIfNeeded()
+        }
+        _appState = StateObject(
+            wrappedValue: AppState(runtimeEnvironment: runtimeEnvironment)
+        )
+        if runtimeEnvironment.capabilities.allowsTelemetry {
+            SentryLogger.start(platform: .macOS)
+        }
+        if runtimeEnvironment.capabilities.allowsBackgroundActivityAssertion {
+            backgroundActivity.begin()
+        }
         // Resolve stored security-scoped bookmarks shortly AFTER launch — off
         // the synchronous init path. Each resolution does slow sandbox XPC, so
         // doing the batch synchronously here stalled startup on the main
         // thread; the deferred, yielding async version keeps launch responsive.
-        Task { @MainActor in
-            await BookmarkManager.shared.resolveAllBookmarks()
-            // v1.42 Pulse Cat: re-show the floating companion at launch iff the
-            // user had it on + Pulse Cat is enabled (startup bootstrap, Codex M2b#6).
-            PetPanelController.shared.restoreIfNeeded()
+        if runtimeEnvironment.capabilities.allowsBookmarkRestoration
+            || runtimeEnvironment.capabilities.allowsPetRestoration
+        {
+            Task { @MainActor in
+                if runtimeEnvironment.capabilities.allowsBookmarkRestoration {
+                    await BookmarkManager.shared.resolveAllBookmarks()
+                }
+                // v1.42 Pulse Cat: re-show the floating companion at launch iff the
+                // user had it on + Pulse Cat is enabled (startup bootstrap, Codex M2b#6).
+                if runtimeEnvironment.capabilities.allowsPetRestoration {
+                    PetPanelController.shared.restoreIfNeeded()
+                }
+            }
         }
     }
 
@@ -90,7 +109,10 @@ struct CLIPulseBarApp: App {
             // confusingly on tap. The App body already observes `appState`
             // (@StateObject), so reading the predicate here adds no new scene
             // invalidation.
-            if MASSandboxGate.canHostInAppTerminal {
+            if MASSandboxGate.canHostInAppTerminal
+                && appState.runtimeEnvironment.capabilities
+                    .allowsLiveCollection
+            {
                 CommandMenu("Terminal") {
                     let ready = appState.canStartLocalManagedSession
                     // v1.34 R1d: when the user opted into the strict block AND
@@ -186,6 +208,11 @@ struct CLIPulseBarApp: App {
     /// unifying "New" and "Open existing" on one code path.
     @MainActor
     private func newTerminal(provider: String) {
+        guard appState.runtimeEnvironment.capabilities
+            .allowsLiveCollection
+        else {
+            return
+        }
         // W1-B readiness guard: the menu items are disabled when the helper
         // isn't ready, but guard here too in case the gate flipped between menu
         // render and tap. Surface a clear, actionable message instead of failing
@@ -260,7 +287,9 @@ struct CLIPulseBarApp: App {
             guard response == .OK, let cwd = panel.url?.path else { return }
             Task { @MainActor in
                 do {
-                    let result = try await LocalSessionControlClient().startManagedSession(
+                    let result = try await LocalSessionControlClient(
+                        runtimeEnvironment: appState.runtimeEnvironment
+                    ).startManagedSession(
                         provider: provider,
                         clientLabel: "in-app-terminal",
                         cwdBasename: (cwd as NSString).lastPathComponent,
@@ -415,8 +444,21 @@ struct AboutView: View {
 
 enum LaunchAtLogin {
     @available(macOS 13.0, *)
-    static var isEnabled: Bool {
-        SMAppService.mainApp.status == .enabled
+    private static func controller(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> RuntimeProtectedSystemService {
+        RuntimeProtectedSystemService(
+            runtimeEnvironment: runtimeEnvironment,
+            isEnabled: {
+                SMAppService.mainApp.status == .enabled
+            },
+            register: {
+                try SMAppService.mainApp.register()
+            },
+            unregister: {
+                try SMAppService.mainApp.unregister()
+            }
+        )
     }
 
     /// Set the login item to an explicit state.
@@ -433,20 +475,30 @@ enum LaunchAtLogin {
     /// Taking the desired value removes the inference: tapping a stale switch
     /// now converges on what its label says instead of doing the opposite.
     @available(macOS 13.0, *)
-    static func setEnabled(_ enabled: Bool) {
-        // v1.44 W5: record that the user made this call themselves, in EITHER
-        // direction. `FirstValueLaunchAtLogin` checks this and never fires
-        // again once set — so the automatic first-value enable can't
-        // resurrect a login item somebody deliberately switched off. Written
-        // before the attempt, not after: the user's intent is expressed by the
-        // click, whether or not `SMAppService` happens to accept it.
-        UserDefaults.standard.set(true, forKey: FirstValueLaunchAtLogin.userTouchedToggleKey)
+    static func isEnabled(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        controller(runtimeEnvironment: runtimeEnvironment).isEnabled
+    }
+
+    @available(macOS 13.0, *)
+    static func setEnabled(
+        _ enabled: Bool,
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
+        guard runtimeEnvironment.capabilities.allowsHelperRegistration else {
+            return
+        }
+        // Record an explicit user choice in either direction before attempting
+        // registration. The first-value auto-enable path must never override it.
+        UserDefaults.standard.set(
+            true,
+            forKey: FirstValueLaunchAtLogin.userTouchedToggleKey
+        )
         do {
-            if enabled {
-                try SMAppService.mainApp.register()
-            } else {
-                try SMAppService.mainApp.unregister()
-            }
+            try controller(
+                runtimeEnvironment: runtimeEnvironment
+            ).setEnabled(enabled)
         } catch {
             logger.error("LaunchAtLogin setEnabled failed: \(error.localizedDescription)")
         }
@@ -455,8 +507,13 @@ enum LaunchAtLogin {
     /// Flip from whatever the system currently reports. Retained for callers
     /// that genuinely have no desired-state to pass; prefer `setEnabled`.
     @available(macOS 13.0, *)
-    static func toggle() {
-        setEnabled(!isEnabled)
+    static func toggle(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
+        setEnabled(
+            !isEnabled(in: runtimeEnvironment),
+            in: runtimeEnvironment
+        )
     }
 }
 
@@ -466,41 +523,54 @@ enum HelperLogin {
     private static let identifier = "yyh.CLI-Pulse.helper"
 
     @available(macOS 13.0, *)
-    static var service: SMAppService {
-        SMAppService.loginItem(identifier: identifier)
+    private static func controller(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> RuntimeProtectedSystemService {
+        RuntimeProtectedSystemService(
+            runtimeEnvironment: runtimeEnvironment,
+            isEnabled: {
+                SMAppService.loginItem(
+                    identifier: identifier
+                ).status == .enabled
+            },
+            register: {
+                try SMAppService.loginItem(
+                    identifier: identifier
+                ).register()
+            },
+            unregister: {
+                try SMAppService.loginItem(
+                    identifier: identifier
+                ).unregister()
+            }
+        )
     }
 
     @available(macOS 13.0, *)
-    static var isEnabled: Bool {
-        service.status == .enabled
+    static func isEnabled(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        controller(runtimeEnvironment: runtimeEnvironment).isEnabled
     }
 
     @available(macOS 13.0, *)
-    static func register() {
+    static func setEnabled(
+        _ enabled: Bool,
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) {
         do {
-            try service.register()
-            logger.info("HelperLogin: registered")
+            let changed = try controller(
+                runtimeEnvironment: runtimeEnvironment
+            ).setEnabled(enabled)
+            if changed {
+                logger.info(
+                    "HelperLogin: \(enabled ? "registered" : "unregistered")"
+                )
+            }
         } catch {
-            logger.error("HelperLogin register error: \(error.localizedDescription)")
-        }
-    }
-
-    @available(macOS 13.0, *)
-    static func unregister() {
-        do {
-            try service.unregister()
-            logger.info("HelperLogin: unregistered")
-        } catch {
-            logger.error("HelperLogin unregister error: \(error.localizedDescription)")
-        }
-    }
-
-    @available(macOS 13.0, *)
-    static func toggle() {
-        if isEnabled {
-            unregister()
-        } else {
-            register()
+            logger.error(
+                "HelperLogin update error: \(error.localizedDescription)"
+            )
         }
     }
 }

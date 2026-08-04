@@ -1164,7 +1164,9 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     private static let tokenEndpoint = "https://oauth2.googleapis.com/token"
 
     // ── Keychain keys ────────────────────────────────────────────────
-    private static let accessGroup = "group.yyh.CLI-Pulse"
+    private static var accessGroup: String {
+        KeychainHelper.sharedAccessGroup
+    }
     static let keyAccessToken  = "gemini.oauth.access_token"
     static let keyRefreshToken = "gemini.oauth.refresh_token"
     static let keyExpiry       = "gemini.oauth.expiry"
@@ -1917,8 +1919,16 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     }
 
     /// Remove all stored tokens (Keychain + shared file).
+    static func allowsTokenCleanup(
+        in runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        runtimeEnvironment.capabilities.allowsLiveCollection
+    }
+
     @discardableResult
-    public func clearTokens(accountID: UUID? = nil) -> Bool {
+    public func clearTokens(
+        accountID: UUID? = nil
+    ) -> Bool {
         withCredentialLock {
             guard let accountID else {
                 return credentialMutationLock
@@ -1942,6 +1952,19 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
                 )
             }
         }
+    }
+
+    /// Runtime-gated cleanup for app composition roots. QA and quarantined
+    /// builds deny the operation before any credential or owner-store access.
+    @discardableResult
+    public func clearTokens(
+        accountID: UUID? = nil,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> Bool {
+        guard Self.allowsTokenCleanup(in: runtimeEnvironment) else {
+            return false
+        }
+        return clearTokens(accountID: accountID)
     }
 
     private enum LegacyMigrationState: String {

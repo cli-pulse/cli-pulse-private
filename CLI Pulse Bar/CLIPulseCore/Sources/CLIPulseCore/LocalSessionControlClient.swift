@@ -496,21 +496,50 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
     private let tokenPath: String
     private let connectTimeout: TimeInterval
     private let requestTimeout: TimeInterval
+    private let runtimeEnvironment: CLIPulseRuntimeEnvironment
     private let queue = DispatchQueue(label: "com.cli-pulse.local-session-client")
 
-    public init(
+    public convenience init(
         socketPath: String? = nil,
         tokenPath: String? = nil,
         connectTimeout: TimeInterval = 3,
-        requestTimeout: TimeInterval = 5
+        requestTimeout: TimeInterval = 5,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
     ) {
-        if let socketPath, let tokenPath {
+        self.init(
+            socketPath: socketPath,
+            tokenPath: tokenPath,
+            connectTimeout: connectTimeout,
+            requestTimeout: requestTimeout,
+            runtimeEnvironment: runtimeEnvironment,
+            basePathResolver: Self.resolveBasePath
+        )
+    }
+
+    internal init(
+        socketPath: String? = nil,
+        tokenPath: String? = nil,
+        connectTimeout: TimeInterval = 3,
+        requestTimeout: TimeInterval = 5,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        basePathResolver: () -> String
+    ) {
+        self.runtimeEnvironment = runtimeEnvironment
+        if !runtimeEnvironment.allowsLocalSessionControlClientAccess {
+            let base = Self.restrictedBasePath(
+                runtimeEnvironment: runtimeEnvironment
+            )
+            self.socketPath = socketPath ?? (base as NSString)
+                .appendingPathComponent(Self.socketFilename)
+            self.tokenPath = tokenPath ?? (base as NSString)
+                .appendingPathComponent(Self.authTokenFilename)
+        } else if let socketPath, let tokenPath {
             self.socketPath = socketPath
             self.tokenPath = tokenPath
         } else {
             // One base for BOTH: each helper rotates its own token next to its own
             // socket, so mixing bases would authenticate against the wrong one.
-            let base = Self.resolveBasePath()
+            let base = basePathResolver()
             self.socketPath = socketPath ?? (base as NSString)
                 .appendingPathComponent(Self.socketFilename)
             self.tokenPath = tokenPath ?? (base as NSString)
@@ -518,6 +547,16 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
         }
         self.connectTimeout = connectTimeout
         self.requestTimeout = requestTimeout
+    }
+
+    private static func restrictedBasePath(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment
+    ) -> String {
+        let isolatedRoot =
+            runtimeEnvironment.resolvedFixedUserHome
+            ?? "/private/tmp/clipulse-runtime-quarantine"
+        return (isolatedRoot as NSString)
+            .appendingPathComponent(".clipulse-disabled")
     }
 
     /// Diagnostic snapshot of the paths this client resolved + their
@@ -549,6 +588,18 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
     }
 
     public func diagnostics() -> Diagnostics {
+        guard runtimeEnvironment.allowsLocalSessionControlClientAccess else {
+            return Diagnostics(
+                resolvedSocketPath: socketPath,
+                socketExists: false,
+                resolvedTokenPath: tokenPath,
+                tokenExists: false,
+                tokenReadable: false,
+                appGroupContainerPath: nil,
+                nsHomeDirectory:
+                    runtimeEnvironment.resolvedFixedUserHome ?? ""
+            )
+        }
         let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: Self.appGroupID
         )
@@ -914,6 +965,10 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
             let connBox = _ConnectionBox()
             let task = Task { [self] in
                 do {
+                    guard runtimeEnvironment
+                        .allowsLocalSessionControlClientAccess else {
+                        throw SessionControlError.runtimeRestricted
+                    }
                     var params: [String: Any] = [:]
                     if let sessionId { params["session_id"] = sessionId }
                     if raw { params["raw"] = true }
@@ -1280,6 +1335,9 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
         requireAuth: Bool = true,
         timeoutOverride: TimeInterval? = nil
     ) async throws -> [String: Any] {
+        guard runtimeEnvironment.allowsLocalSessionControlClientAccess else {
+            throw SessionControlError.runtimeRestricted
+        }
         // Build envelope. Auth token re-read each call so a manual
         // helper restart (which rotates the token) takes effect
         // without an app restart.
@@ -1337,6 +1395,9 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
     // MARK: - NWConnection helpers
 
     private func connect() async throws -> NWConnection {
+        guard runtimeEnvironment.allowsLocalSessionControlClientAccess else {
+            throw SessionControlError.runtimeRestricted
+        }
         // Pre-flight diagnostic — surface the kind of path mismatch
         // that would make the unsandboxed helper write to one inode
         // and the sandboxed app try to connect to another. Logged

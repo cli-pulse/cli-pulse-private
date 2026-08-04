@@ -32,7 +32,9 @@ final class HelperSocketPathResolutionTests: XCTestCase {
     /// fails (review: codex). So assert the real invariants instead of one
     /// hard-coded base.
     func testClientResolvesSocketAndTokenUnderTheSameLiveBase() {
-        let diag = LocalSessionControlClient().diagnostics()
+        let diag = LocalSessionControlClient(
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
+        ).diagnostics()
         let sock = diag.resolvedSocketPath
         let token = diag.resolvedTokenPath
 

@@ -297,7 +297,8 @@ final class LocalSessionControlClientMacTests: XCTestCase {
             socketPath: "/tmp/cli-pulse-iter1-no-such-socket.sock",
             tokenPath: "/tmp/cli-pulse-iter1-no-such-token",
             connectTimeout: 0.5,
-            requestTimeout: 0.5
+            requestTimeout: 0.5,
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
         )
         do {
             _ = try await client.hello()
@@ -321,7 +322,8 @@ final class LocalSessionControlClientMacTests: XCTestCase {
             socketPath: "/tmp/cli-pulse-iter1-no-such-socket.sock",
             tokenPath: "/tmp/cli-pulse-iter1-no-such-token-2",
             connectTimeout: 0.2,
-            requestTimeout: 0.2
+            requestTimeout: 0.2,
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
         )
         do {
             try await client.stopSession(sessionId: "any")

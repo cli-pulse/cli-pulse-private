@@ -556,6 +556,7 @@
 /* ── 引導向導 ── */
 "onboarding_wizard.welcome_title" = "歡迎使用 CLI Pulse";
 "onboarding_wizard.welcome_subtitle" = "在一處監控 AI 程式設計工具的\n使用量、成本與配額。";
+"onboarding_wizard.welcome_accounts_body" = "偵測並分別設定 Codex、Claude 與 Gemini 的個人與工作帳戶。";
 "onboarding_wizard.get_started" = "開始使用";
 "onboarding_wizard.what_does" = "CLI Pulse 能做什麼";
 "onboarding_wizard.continue" = "繼續";

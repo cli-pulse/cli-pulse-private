@@ -35,7 +35,7 @@ struct ProvidersTab: View {
                             .foregroundStyle(PulseTheme.accent)
                     }
                     .buttonStyle(.plain)
-                    Text("\(providerState.providers.count) \(L10n.providers.tracked)")
+                    Text("\(providerState.enabledProviderCount) \(L10n.providers.tracked)")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }

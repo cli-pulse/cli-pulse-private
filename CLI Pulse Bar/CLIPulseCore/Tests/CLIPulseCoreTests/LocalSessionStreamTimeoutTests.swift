@@ -48,7 +48,8 @@ final class LocalSessionStreamTimeoutTests: XCTestCase {
             socketPath: env.socketPath,
             tokenPath: env.tokenPath,
             connectTimeout: 2,
-            requestTimeout: 1.0   // shorter than the idle gap above
+            requestTimeout: 1.0,   // shorter than the idle gap above
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
         )
         let stream = client.subscribeEvents(sessionId: "SID-A")
         let collector = Task<[LocalSessionEvent], Error> {

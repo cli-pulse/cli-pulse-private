@@ -200,6 +200,11 @@ struct PairingSection: View {
 
     /// Register the native helper via Supabase RPC, save config, and enable Login Item.
     private func pairAndStartNativeHelper(code: String) async {
+        guard state.runtimeEnvironment.capabilities
+            .allowsHelperRegistration
+        else {
+            return
+        }
         pairingInProgress = true
         nativePairingError = nil
         do {
@@ -210,9 +215,17 @@ struct PairingSection: View {
                 deviceName: deviceName,
                 system: "\(ProcessInfo.processInfo.operatingSystemVersionString)"
             )
-            HelperConfig.save(config)
-            HelperLogin.register()
-            helperEnabled = HelperLogin.isEnabled
+            HelperConfig.save(
+                config,
+                runtimeEnvironment: state.runtimeEnvironment
+            )
+            HelperLogin.setEnabled(
+                true,
+                in: state.runtimeEnvironment
+            )
+            helperEnabled = HelperLogin.isEnabled(
+                in: state.runtimeEnvironment
+            )
             await state.checkPairingStatus()
         } catch {
             nativePairingError = error.localizedDescription

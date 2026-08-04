@@ -44,6 +44,10 @@ private let helperInstallerLog = Logger(
 /// agents (it only sees plists inside the calling app's bundle). UDS probe
 /// is the correct alternative.
 public final class HelperInstaller: ObservableObject, @unchecked Sendable {
+    struct ProductionPaths: Equatable, Sendable {
+        let udsPath: String
+        let helperDir: String
+    }
 
     public enum State: Equatable, Sendable {
         case checking
@@ -112,24 +116,69 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     private let helperDir: String
     private let urlSession: URLSession
     private let helloClient: () -> SessionControlClient
+    private let externalActionsAllowed: Bool
 
     public static let defaultManifestURL = URL(string:
         "https://github.com/JasonYeYuhe/cli-pulse-helper-releases/releases/download/latest/latest.json"
     )!
 
-    public init(
+    public convenience init(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current,
         manifestURL: URL = defaultManifestURL,
         urlSession: URLSession = .shared,
-        helloClient: @escaping () -> SessionControlClient = { LocalSessionControlClient() }
+        helloClient: (() -> SessionControlClient)? = nil
+    ) {
+        self.init(
+            runtimeEnvironment: runtimeEnvironment,
+            manifestURL: manifestURL,
+            urlSession: urlSession,
+            helloClient: helloClient ?? {
+                LocalSessionControlClient(
+                    runtimeEnvironment: runtimeEnvironment
+                )
+            },
+            productionPathResolver: Self.resolveProductionPaths
+        )
+    }
+
+    init(
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        manifestURL: URL,
+        urlSession: URLSession,
+        helloClient: @escaping () -> SessionControlClient,
+        productionPathResolver: () -> ProductionPaths
     ) {
         self.manifestURL = manifestURL
         self.urlSession = urlSession
         self.helloClient = helloClient
+        self.externalActionsAllowed =
+            runtimeEnvironment.capabilities.allowsHelperManifestRefresh
+            && runtimeEnvironment.capabilities.allowsHelperRegistration
+
+        guard externalActionsAllowed else {
+            let isolatedRoot =
+                runtimeEnvironment.resolvedFixedUserHome
+                ?? "/private/tmp/clipulse-helper-quarantine"
+            self.udsPath = (isolatedRoot as NSString)
+                .appendingPathComponent(
+                    ".clipulse-disabled/\(LocalSessionControlClient.socketFilename)"
+                )
+            self.helperDir = (isolatedRoot as NSString)
+                .appendingPathComponent("Library/CLI-Pulse-Helper-disabled")
+            return
+        }
+
+        let productionPaths = productionPathResolver()
+        self.udsPath = productionPaths.udsPath
+        self.helperDir = productionPaths.helperDir
+    }
+
+    private static func resolveProductionPaths() -> ProductionPaths {
         // Shared resolver: prefers the sandbox container, else the REAL-home
         // group container the helper binds in (NOT NSHomeDirectory(), which is
         // the app's private sandbox container — a path the helper never uses,
         // which made the post-install liveness probe target the wrong socket).
-        self.udsPath = (LocalSessionControlClient.groupContainerBasePath() as NSString)
+        let udsPath = (LocalSessionControlClient.groupContainerBasePath() as NSString)
             .appendingPathComponent(LocalSessionControlClient.socketFilename)
         // v1.16 hotfix: NSHomeDirectory() / `~` expansion both honour
         // the App Sandbox redirect, returning
@@ -141,8 +190,9 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // sandbox redirect on macOS and returns the actual home directory.
         let realHome: String = passwdHomeDirectory()
             ?? NSHomeDirectoryForUser(NSUserName()) ?? NSHomeDirectory()
-        self.helperDir = (realHome as NSString)
+        let helperDir = (realHome as NSString)
             .appendingPathComponent("Library/CLI-Pulse-Helper")
+        return ProductionPaths(udsPath: udsPath, helperDir: helperDir)
     }
 
     // MARK: - Public API
@@ -152,6 +202,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// running + on user-clicked "Check for Updates".
     @MainActor
     public func refresh() async {
+        guard externalActionsAllowed else { return }
         refreshEpoch &+= 1
         let epoch = refreshEpoch
         state = .checking
@@ -222,6 +273,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// any still-in-flight earlier one.
     @MainActor
     public func refreshAfterHelperRespawn(timeout: TimeInterval = 20) async {
+        guard externalActionsAllowed else { return }
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if await probeHelperLiveness(timeout: 1.0) { break }
@@ -349,6 +401,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// showing its stale state until the user manually taps "Re-check".
     @MainActor
     public func refreshIfStale(now: Date = Date(), maxAge: TimeInterval = 8) async {
+        guard externalActionsAllowed else { return }
         guard Self.shouldReprobe(
             state: state, lastChecked: lastChecked, now: now, maxAge: maxAge
         ) else { return }
@@ -362,6 +415,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// the .installing state promptly when the user cancels Installer.app.
     @MainActor
     public func install() async {
+        guard externalActionsAllowed else { return }
         state = .downloading(progress: 0)
         do {
             let manifest = try await fetchManifest()
@@ -487,6 +541,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// risk for paths outside the app-group container).
     @MainActor
     public func uninstall() async {
+        guard externalActionsAllowed else { return }
         let uninstallerURL = URL(
             fileURLWithPath: helperDir
         ).appendingPathComponent("CLI Pulse Helper Uninstaller.app")
@@ -527,6 +582,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// so the state-update callback is naturally serialized — no lock
     /// needed inside it.
     public func probeHelperLiveness(timeout: TimeInterval = 1.0) async -> Bool {
+        guard externalActionsAllowed else { return false }
         let probeQueue = DispatchQueue(label: "com.cli-pulse.helper-installer.probe")
         return await withCheckedContinuation { continuation in
             let endpoint = NWEndpoint.unix(path: udsPath)
