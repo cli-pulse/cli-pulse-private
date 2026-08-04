@@ -1,12 +1,21 @@
-# Remote Approval Hook — Setup (private internal guide)
+# Remote Approval Hook — Setup (preview feature)
 
 Wires Claude Code's `PermissionRequest` hook on a paired Mac so that
 permission requests can be approved / denied from the user's iPhone or
 another Mac via CLI Pulse.
 
-> **Audience.** Internal dev and trusted-tester docs. Do not publish to
-> the public website / marketing repo. CLI Pulse v1.11.0+ on iOS and
-> macOS, helper paired, Supabase migrations v0.26 through v0.31 applied.
+> **Audience.** Developers and trusted testers running the preview. This file
+> stays in this repository on purpose: `helper/permissions_diagnose.py` sends
+> users here by path when it detects a misconfigured hook, so moving it would
+> point a shipped diagnostic at nothing.
+>
+> It was previously headed "private internal guide" and told the reader not to
+> publish it. That instruction is about the public **website / marketing** repo
+> and still holds — it was never about this repository, which is public despite
+> being named `cli-pulse-private`. Nothing here is a credential.
+>
+> **Requires.** CLI Pulse v1.11.0+ on iOS and macOS, helper paired, Supabase
+> migrations v0.26 through v0.31 applied.
 
 ## Prerequisites
 
