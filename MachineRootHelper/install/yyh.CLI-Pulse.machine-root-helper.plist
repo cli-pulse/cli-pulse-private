@@ -19,7 +19,7 @@
     <string>yyh.CLI-Pulse.machine-root-helper</string>
 
     <!-- Executable path RELATIVE to the app bundle. Embed the release binary here
-         (see SHIP_RUNBOOK.md). -->
+         (see docs/ops/MachineRootHelper_SHIP_RUNBOOK.md in cli-pulse-internal). -->
     <key>BundleProgram</key>
     <string>Contents/MacOS/machine-root-helper</string>
 

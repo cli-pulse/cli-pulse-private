@@ -28,9 +28,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Patterns that mark a file as internal. Deliberately matched against the
-# FILENAME rather than the content: a content heuristic would either miss
-# rewordings or block legitimate public docs that merely mention an incident.
+# LAYER 1 — filename patterns.
+#
+# Matched case-INSENSITIVELY. The original version compared with a
+# case-sensitive glob, which let `macos-onboarding-multi-account-checklist.md`
+# through while blocking `SHIP_CHECKLIST.md`: same kind of document, opposite
+# verdict, decided by the shift key. Naming style is not a security boundary.
 PATTERNS=(
     'PROJECT_FIX'
     'DEVELOPMENT_PLAN'
@@ -38,17 +41,85 @@ PATTERNS=(
     'FIX_PLAN'
     'SESSION_CHECKPOINT'
     'SHIP_CHECKLIST'
+    'POSTMORTEM'
+    'POST_MORTEM'
+    'RUNBOOK'
 )
+
+# LAYER 2 — the document says so itself.
+#
+# The header comment used to argue that content matching was the wrong tool,
+# and for TOPIC words it is: grepping for "incident" blocks a public changelog
+# that mentions one. But an author writing "Internal only. Do not publish."
+# is not mentioning a topic, they are DECLARING the file's audience — and a
+# declaration is exactly what a gate should key on. Layer 1 cannot see it,
+# because that author is free to name the file anything.
+#
+# Only the first 25 lines are searched: a declaration belongs at the top, and
+# bounding it keeps a body quoting one of these phrases from tripping the gate.
+DECLARATIONS=(
+    'internal/private-source'
+    'internal only'
+    'internal-only'
+    'do not publish'
+    'not for public'
+    'internal engineering document'
+)
+
+# Paths that match a rule above but are deliberately public. Each needs a
+# comment saying why — an unexplained entry is how a gate rots into a no-op.
+ALLOWLIST=(
+    # (empty)
+)
+
+is_allowlisted() {
+    local candidate="$1" entry
+    for entry in ${ALLOWLIST[@]+"${ALLOWLIST[@]}"}; do
+        [[ "$candidate" == "$entry" ]] && return 0
+    done
+    return 1
+}
+
+# `nocasematch` makes `[[ == ]]` case-insensitive using bash's own matcher.
+# The obvious alternative — lowercasing with `tr` — forks a process per file
+# per pattern. At this repo's file count that took the gate from milliseconds
+# to over five minutes, which in CI is indistinguishable from a hang. A gate
+# nobody will wait for is a gate somebody will disable.
+shopt -s nocasematch
 
 offenders=""
 while IFS= read -r f; do
-    base="$(basename "$f")"
+    is_allowlisted "$f" && continue
+    base="${f##*/}"
+    matched=""
+
     for p in "${PATTERNS[@]}"; do
-        case "$base" in
-            *"$p"*) offenders="${offenders}${f}"$'\n'; break ;;
-        esac
+        if [[ "$base" == *"$p"* ]]; then
+            matched="filename matches '$p'"
+            break
+        fi
     done
+
+    # Layer 2 reads the file, so restrict it to text documents and skip this
+    # script — which necessarily contains every phrase it searches for.
+    if [[ -z "$matched" && -f "$f" && "$f" != "scripts/check_no_internal_docs.sh" ]]; then
+        case "$f" in
+            *.md|*.txt|*.rst|*.adoc)
+                head_text="$(head -25 "$f" 2>/dev/null || true)"
+                for d in "${DECLARATIONS[@]}"; do
+                    if [[ "$head_text" == *"$d"* ]]; then
+                        matched="declares itself internal (\"$d\")"
+                        break
+                    fi
+                done
+                ;;
+        esac
+    fi
+
+    [[ -n "$matched" ]] && offenders="${offenders}${f} — ${matched}"$'\n'
 done < <(git ls-files)
+
+shopt -u nocasematch
 
 if [[ -n "$offenders" ]]; then
     count="$(grep -c . <<< "$offenders" || true)"
