@@ -33,6 +33,7 @@
 		A10050 /* RemoteApprovalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10050 /* RemoteApprovalsSheet.swift */; };
 		A10051 /* LocalModeGuideCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10051 /* LocalModeGuideCard.swift */; };
 		A10052 /* WelcomeModeChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10052 /* WelcomeModeChoice.swift */; };
+		A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10053 /* AnonymousTelemetryDisclosureCard.swift */; };
 		A10100 /* AgentDiscoveryStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10100 /* AgentDiscoveryStepView.swift */; };
 		A10101 /* ProviderAccountSetupCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10101 /* ProviderAccountSetupCard.swift */; };
 		A10060 /* cli_pulse_helper in Embed Helper Binary */ = {isa = PBXBuildFile; fileRef = B10060 /* cli_pulse_helper */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
@@ -215,6 +216,7 @@
 		B10050 /* RemoteApprovalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteApprovalsSheet.swift; sourceTree = "<group>"; };
 		B10051 /* LocalModeGuideCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModeGuideCard.swift; sourceTree = "<group>"; };
 		B10052 /* WelcomeModeChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeModeChoice.swift; sourceTree = "<group>"; };
+		B10053 /* AnonymousTelemetryDisclosureCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymousTelemetryDisclosureCard.swift; sourceTree = "<group>"; };
 		B10100 /* AgentDiscoveryStepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDiscoveryStepView.swift; sourceTree = "<group>"; };
 		B10101 /* ProviderAccountSetupCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderAccountSetupCard.swift; sourceTree = "<group>"; };
 		B10060 /* cli_pulse_helper */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; path = ../HelperSwift/.build/release/cli_pulse_helper; sourceTree = SOURCE_ROOT; };
@@ -371,6 +373,7 @@
 				B10050 /* RemoteApprovalsSheet.swift */,
 				B10051 /* LocalModeGuideCard.swift */,
 				B10052 /* WelcomeModeChoice.swift */,
+				B10053 /* AnonymousTelemetryDisclosureCard.swift */,
 				B10020 /* ProviderConfigEditor.swift */,
 				B10021 /* NoAutoFillFields.swift */,
 				B10012 /* Assets.xcassets */,
@@ -730,6 +733,7 @@
 				A10050 /* RemoteApprovalsSheet.swift in Sources */,
 				A10051 /* LocalModeGuideCard.swift in Sources */,
 				A10052 /* WelcomeModeChoice.swift in Sources */,
+				A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */,
 				A10020 /* ProviderConfigEditor.swift in Sources */,
 				A10021 /* NoAutoFillFields.swift in Sources */,
 				CE9C5A560EFC6CC22716D4CD /* AppUpdaterSection.swift in Sources */,
