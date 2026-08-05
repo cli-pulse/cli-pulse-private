@@ -75,6 +75,28 @@ struct PrivacySettingsSection: View {
                 .foregroundStyle(.secondary)
                 .padding(.leading, 2)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+                .padding(.vertical, 2)
+
+            // v1.45: anonymous install telemetry. Disabled rather than hidden
+            // when local-only mode is on, so the master switch's effect is
+            // visible instead of a control that silently does nothing.
+            Toggle(isOn: $settings.anonymousTelemetryEnabled) {
+                Text("Send anonymous install statistics")
+                    .font(.system(size: 11))
+            }
+            .toggleStyle(.switch)
+            .controlSize(.small)
+            .disabled(settings.anonymousTelemetrySuppressedByLocalOnlyMode)
+
+            Text(settings.anonymousTelemetrySuppressedByLocalOnlyMode
+                 ? "Off — local-only mode covers this too."
+                 : "Two facts, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, and whether it ever found a CLI to track. No file paths, project names, provider names, token counts or costs. The id is random and is deleted when you uninstall.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 2)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(10)
         .background(Color.gray.opacity(0.08))

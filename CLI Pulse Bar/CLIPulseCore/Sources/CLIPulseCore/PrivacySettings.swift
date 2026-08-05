@@ -34,6 +34,12 @@ public final class PrivacySettings: ObservableObject {
         // didSet→defaults plumbing). The `privacy.` namespace is in the
         // UnsandboxedDataMigration allowlist, so it survives the MAS→DEVID move.
         static let blockClaudeOnOutdatedHelper = "privacy.blockClaudeOnOutdatedHelper"
+        // v1.45: shared with UserDefaultsAnonymousTelemetryStore, which reads
+        // the same keys without importing this type (it must work before any
+        // UI exists). AnonymousTelemetryMigrationAllowlistTests pins them
+        // together, so a rename here fails there rather than silently
+        // detaching the switch from what it switches.
+        static let anonymousTelemetryEnabled = UserDefaultsAnonymousTelemetryStore.enabledKey
     }
 
     @Published public var skipClaudeKeychain: Bool {
@@ -62,6 +68,25 @@ public final class PrivacySettings: ObservableObject {
         }
     }
 
+    /// v1.45 — anonymous install telemetry. Two facts, no account, no PII:
+    /// the app ran for the first time, and it later found a CLI and had a
+    /// number to show. See `AnonymousInstallTelemetry`.
+    ///
+    /// Defaults ON, which is only defensible because first launch discloses it
+    /// before anything is sent. `localOnlyMode` overrides it regardless — that
+    /// check lives in the telemetry store so it also applies to code paths that
+    /// never construct this object.
+    @Published public var anonymousTelemetryEnabled: Bool {
+        didSet {
+            defaults.set(anonymousTelemetryEnabled, forKey: Keys.anonymousTelemetryEnabled)
+        }
+    }
+
+    /// True when `localOnlyMode` is already suppressing telemetry, so the UI can
+    /// show the switch as inactive instead of letting someone toggle a control
+    /// that does nothing.
+    public var anonymousTelemetrySuppressedByLocalOnlyMode: Bool { localOnlyMode }
+
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -71,5 +96,9 @@ public final class PrivacySettings: ObservableObject {
         self.localOnlyMode = storedMaster
         self.skipClaudeKeychain = storedMaster || storedSpecific
         self.blockClaudeOnOutdatedHelper = defaults.bool(forKey: Keys.blockClaudeOnOutdatedHelper)
+        // Absent means on. Reading it through `object(forKey:)` first keeps
+        // `bool(forKey:)`'s false-for-missing from reading as an opt-out.
+        self.anonymousTelemetryEnabled =
+            (defaults.object(forKey: Keys.anonymousTelemetryEnabled) as? Bool) ?? true
     }
 }
