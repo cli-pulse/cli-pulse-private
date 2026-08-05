@@ -164,6 +164,9 @@ public enum SentryLogger {
         }
 
         if let exceptions = event.exceptions {
+            if isBenignModalTrackingHang(exceptions) {
+                return nil
+            }
             for ex in exceptions {
                 if let v = ex.value {
                     ex.value = redact(v)
@@ -176,6 +179,66 @@ public enum SentryLogger {
         }
 
         return event
+    }
+
+    /// Drop app-hang reports that are AppKit waiting for the user to let go of
+    /// the mouse button.
+    ///
+    /// Clicking and holding the menu-bar item puts AppKit into
+    /// `-[NSStatusBarButtonCell trackMouse:inRect:ofView:untilMouseUp:]`, a
+    /// nested modal event loop that blocks the main thread **by design** until
+    /// mouseUp. Sentry's watchdog sees a main thread that hasn't returned to the
+    /// normal run loop and files a hang. A user who holds the button for three
+    /// seconds — or drags off it, or gets distracted mid-click — produces one
+    /// every time.
+    ///
+    /// This is not the App-Nap false positive `appHangTimeoutInterval` and
+    /// `BackgroundActivityAssertion` already address; those were about a
+    /// throttled idle run loop. Both mitigations are in place and neither
+    /// touches this path, which is why it is still the top macOS "hang":
+    /// 15 users on 1.44.0, ~196 events in fourteen days, against a 5k/month
+    /// free-tier budget. The cost is not the quota, it is that a real hang
+    /// would be indistinguishable from the noise.
+    ///
+    /// The predicate is deliberately narrow, because dropping a genuine hang is
+    /// far worse than keeping a false one. BOTH must hold:
+    ///
+    ///   1. the stack contains a modal mouse-tracking frame, and
+    ///   2. the topmost frame is a wait primitive — the thread is parked in the
+    ///      kernel waiting for an event, not executing anything.
+    ///
+    /// If our code is blocked *underneath* a tracking loop — a synchronous XPC
+    /// call in a click handler, the class of bug that produced three real
+    /// production hangs — the top frame is that call, not `mach_msg`, and the
+    /// event is kept.
+    static func isBenignModalTrackingHang(_ exceptions: [Exception]) -> Bool {
+        guard exceptions.contains(where: { isAppHangType($0.type) }) else {
+            return false
+        }
+        for ex in exceptions {
+            guard let frames = ex.stacktrace?.frames, !frames.isEmpty else { continue }
+            // Sentry orders frames oldest-first, so the running frame is last.
+            let functions = frames.compactMap(\.function)
+            if isBenignModalTrackingStack(functions) {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func isAppHangType(_ type: String?) -> Bool {
+        guard let type else { return false }
+        return type.localizedCaseInsensitiveContains("app hang")
+            || type.localizedCaseInsensitiveContains("app hanging")
+    }
+
+    /// Frame-name predicate, split out so it is testable without constructing
+    /// Sentry model objects. `functions` is oldest-first, as Sentry sends it.
+    static func isBenignModalTrackingStack(_ functions: [String]) -> Bool {
+        guard let top = functions.last else { return false }
+        let waiting = ["mach_msg", "_DPSNextEvent", "_BlockUntilNextEventMatchingList"]
+        guard waiting.contains(where: { top.contains($0) }) else { return false }
+        return functions.contains { $0.contains("trackMouse:") || $0.contains("NSControlTrackMouse") }
     }
 
     private static func scrub(breadcrumb: Breadcrumb) -> Breadcrumb? {
