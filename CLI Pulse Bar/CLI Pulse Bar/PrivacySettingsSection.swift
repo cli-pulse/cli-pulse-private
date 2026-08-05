@@ -88,11 +88,17 @@ struct PrivacySettingsSection: View {
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-            .disabled(settings.anonymousTelemetrySuppressedByLocalOnlyMode)
+            .disabled(settings.telemetrySuppressedByLocalOnly)
 
-            Text(settings.anonymousTelemetrySuppressedByLocalOnlyMode
+            Text(settings.telemetrySuppressedByLocalOnly
                  ? "Off — local-only mode covers this too."
-                 : "Two facts, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, and whether it ever found a CLI to track. No file paths, project names, provider names, token counts or costs. The id is random and is deleted when you uninstall.")
+                 : """
+                   Two facts, with no account and nothing that identifies you \
+                   or your machine: that CLI Pulse was installed, and whether \
+                   it ever found a CLI to track. No file paths, project names, \
+                   provider names, token counts or costs. The id is random and \
+                   is deleted when you uninstall.
+                   """)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 2)

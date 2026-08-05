@@ -85,7 +85,7 @@ public final class PrivacySettings: ObservableObject {
     /// True when `localOnlyMode` is already suppressing telemetry, so the UI can
     /// show the switch as inactive instead of letting someone toggle a control
     /// that does nothing.
-    public var anonymousTelemetrySuppressedByLocalOnlyMode: Bool { localOnlyMode }
+    public var telemetrySuppressedByLocalOnly: Bool { localOnlyMode }
 
     private let defaults: UserDefaults
 

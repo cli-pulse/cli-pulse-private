@@ -29,7 +29,12 @@ struct AnonymousTelemetryDisclosureCard: View {
                 Text("Anonymous install statistics")
                     .font(.headline)
 
-                Text("CLI Pulse reports two things: that it was installed, and whether it ever found a CLI to track. That's how we tell whether the app actually works for people — there's no account involved, so otherwise we can't.")
+                Text("""
+                     CLI Pulse reports two things: that it was installed, and \
+                     whether it ever found a CLI to track. That's how we tell \
+                     whether the app actually works for people — there's no \
+                     account involved, so otherwise we can't.
+                     """)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
