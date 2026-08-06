@@ -16,6 +16,10 @@ struct CLIPulseBarApp: App {
     /// false-positive Sentry app-hang reports. Held for the app's lifetime.
     private let backgroundActivity = BackgroundActivityAssertion()
 
+    /// v1.45 anonymous install telemetry. Nil whenever the runtime forbids
+    /// telemetry, so a QA or quarantine build simply has no sender.
+    private let anonymousTelemetry: AnonymousTelemetryCoordinator?
+
     init() {
         let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
         runtimeEnvironment.preconditionSafeLaunch()
@@ -32,12 +36,19 @@ struct CLIPulseBarApp: App {
         if runtimeEnvironment.capabilities.allowsUnsandboxedMigration {
             UnsandboxedDataMigration.runIfNeeded()
         }
-        _appState = StateObject(
-            wrappedValue: AppState(runtimeEnvironment: runtimeEnvironment)
-        )
+        let state = AppState(runtimeEnvironment: runtimeEnvironment)
+        _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {
             SentryLogger.start(platform: .macOS)
         }
+        // Subscribes to provider discovery rather than waiting for a view,
+        // because MenuBarExtra builds its content lazily — a hook in the UI
+        // would measure when the user opens the menu, not when the app first
+        // had a number to show.
+        anonymousTelemetry = AnonymousTelemetryCoordinator(
+            runtimeEnvironment: runtimeEnvironment
+        )
+        anonymousTelemetry?.start(observing: state.providerState)
         if runtimeEnvironment.capabilities.allowsBackgroundActivityAssertion {
             backgroundActivity.begin()
         }

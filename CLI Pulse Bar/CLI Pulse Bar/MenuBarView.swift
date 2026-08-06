@@ -23,6 +23,11 @@ struct MenuBarView: View {
     private let agentSetupStore: AgentSetupStateStore
     @State private var agentSetupState: AgentSetupState
     @State private var agentSetupDismissedForSession = false
+    /// Seeded from the persisted flag so the card does not reappear on every
+    /// menu open, and flips locally on acknowledgement so it disappears without
+    /// waiting for a relaunch.
+    @State private var telemetryDisclosureSeen =
+        UserDefaultsAnonymousTelemetryStore().hasSeenDisclosure
 
     init() {
         let store = AgentSetupStateStore()
@@ -77,6 +82,24 @@ struct MenuBarView: View {
                 VStack(spacing: 0) {
                     if !SupabaseConstants.isConfigured {
                         configurationErrorBanner
+                    }
+                    // v1.45: shown once, above whichever branch is taken below,
+                    // so it reaches onboarding / connected / not-connected
+                    // users alike. This is a menu bar app — there is no window
+                    // at launch — so the first time the menu is opened is the
+                    // earliest honest moment to say this. Nothing has been sent
+                    // before it: the telemetry gate refuses to send while
+                    // `hasSeenDisclosure` is false.
+                    if !telemetryDisclosureSeen {
+                        AnonymousTelemetryDisclosureCard {
+                            let store = UserDefaultsAnonymousTelemetryStore()
+                            store.hasSeenDisclosure = true
+                            telemetryDisclosureSeen = true
+                            AnonymousTelemetryCoordinator.shared?
+                                .disclosureAcknowledged(providerState: providerState)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.top, 10)
                     }
                     // iter17 (2026-04-29): route via `state.isLocalMode`
                     // even when unauthenticated — that's the new
