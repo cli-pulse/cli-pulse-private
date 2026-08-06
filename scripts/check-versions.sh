@@ -74,7 +74,18 @@ fi
 # origin/main baseline can't be read (offline / no remote), it skips rather than
 # emitting a false failure. (Play rejects non-incrementing codes anyway; this
 # just catches it in CI before an upload round-trip.)
-git -C "$repo_root" fetch --quiet --depth=1 origin main 2>/dev/null || true
+# `|| true` tolerates a fetch that FAILS; it does nothing about one that HANGS.
+# Locally `origin` is SSH, and a fetch that stalls on the agent or the network
+# blocks here forever — the substantive check above has already printed and
+# passed, so the script looks like it silently froze mid-run. Hit during the
+# v1.45 release, where it cost several minutes before `bash -x` found it.
+# A baseline we cannot fetch in 30s is a baseline we skip, which is exactly
+# what the comment above already promises.
+if command -v timeout >/dev/null 2>&1; then
+  timeout 30 git -C "$repo_root" fetch --quiet --depth=1 origin main 2>/dev/null || true
+else
+  git -C "$repo_root" fetch --quiet --depth=1 origin main 2>/dev/null || true
+fi
 base_gradle=$(git -C "$repo_root" show origin/main:android/app/build.gradle.kts 2>/dev/null || true)
 cur_code=$(grep -E '^[[:space:]]*versionCode[[:space:]]*=' "$gradle" | head -1 | grep -oE '[0-9]+' | head -1)
 if [[ -n "$base_gradle" && -n "$cur_code" ]]; then
