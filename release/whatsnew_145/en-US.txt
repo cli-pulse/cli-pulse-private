@@ -1,0 +1,9 @@
+Fixed: the in-app Privacy Policy and Terms links opened a missing page. They work again.
+
+New: a first-run setup flow, and support for multiple accounts per provider.
+
+New: an onboarding check that tells you why a CLI isn't being tracked, instead of just showing nothing.
+
+New: anonymous install statistics, so we can tell whether CLI Pulse works for people who use it without an account. Two counters, no account, nothing that identifies you or your machine. It's explained on first launch and you can switch it off there or in Settings > Privacy.
+
+Fixed: holding down the menu bar button no longer gets reported as the app freezing.
