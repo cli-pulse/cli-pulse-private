@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: April 22, 2026**
+**Last Updated: August 6, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -32,10 +32,44 @@ file, **the file wins** — please open an issue.
 | **Git commit messages, diffs, file paths, author identity** | — | ❌ Never | Explicitly excluded even when Yield Score is on |
 | **Alerts you resolve locally** (quota depletion alerts) | UserDefaults on this device | ❌ Never | Suppression list to prevent re-firing |
 | **Crash reports** (stack trace, app version, OS version, non-PII device model) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes (when a crash/error happens) | So crashes are visible to us without waiting for an App Store review |
+| **Anonymous install statistics** (random install id, install channel, app version, OS major.minor, and whether a CLI was ever found) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
 
 **The key point:** the two categories of data you'd be most worried about —
 provider API keys and raw session-log contents — never touch our servers, full
 stop.
+
+### About that last row
+
+Every other upload in this table happens only when you are signed in and is
+attached to your account. **Anonymous install statistics are the one exception**,
+so they get spelled out rather than buried in a table cell.
+
+Since v1.44 you can use CLI Pulse without an account. That means we cannot tell
+whether the app works for the people using it that way — whether it found their
+CLIs, whether they ever saw a number. Two counters, and nothing else:
+
+1. **CLI Pulse was installed** — recorded on first launch.
+2. **CLI Pulse found a CLI to track** — recorded the first time this happens,
+   and never updated afterwards.
+
+Sent with each: a **random** identifier generated on your Mac, which channel the
+app came from (App Store, direct download, or Homebrew), the app version, and
+your macOS version rounded to major.minor (`15.1`, never the full build string).
+
+Not sent, ever: your account or email (there is no account involved and no login
+token is attached to the request), your name, your device's name, serial number
+or hardware identifiers, your IP address, any file path or project name, which
+provider you use, or any token count or cost figure.
+
+The identifier is random — not derived from your hardware, and not a hash of
+anything about it. It is stored in the app's preferences, so **uninstalling CLI
+Pulse deletes it**; reinstalling produces a new, unrelated one. We cannot connect
+it to you, and we cannot connect two installs to each other.
+
+**Turning it off:** Settings → Privacy → "Send anonymous install statistics".
+Off means nothing is sent at all. **Local-only mode also turns it off** — you do
+not need to set both. The app tells you about this on first launch, before it
+sends anything.
 
 ---
 
@@ -58,6 +92,13 @@ stop.
 │  │ Token counts,   │─── HTTPS ───▶│ - Usage numbers  │
 │  │ costs (numbers) │    │         │ - Quota state    │
 │  └─────────────────┘    │         │ - Device list    │
+│                         │         └──────────────────┘
+│  ┌─────────────────┐    │         ┌──────────────────┐
+│  │ 2 counters:     │    │         │ Anonymous install│
+│  │ installed /     │─── HTTPS ───▶│ table            │
+│  │ found a CLI     │    │         │                  │
+│  │ (opt-out)       │    │         │ NO account, NO   │
+│  └─────────────────┘    │         │ link to the above│
 └─────────────────────────┘         └──────────────────┘
                                              │
                                              ▼
@@ -88,7 +129,10 @@ servers — it goes directly from your Keychain to the provider.
 - **No third-party analytics SDKs.** We do not ship Google Analytics,
   Firebase Analytics, Amplitude, Mixpanel, Crashlytics, or any similar
   product-analytics tool. There is no fingerprinting and no ad network
-  integration.
+  integration. This is a statement about SDKs, and we would rather over-explain
+  than let it read as more than it is: we do collect the two install counters
+  described above, ourselves, to our own database. They are opt-out, carry no
+  account, and go nowhere else.
 - **Sentry for crash reports only.** We ship the Sentry SDK in all four
   clients (macOS, iOS, watchOS, Android) strictly for crash and error
   reporting. PII is disabled (`sendDefaultPii = false`), IP addresses are
@@ -108,6 +152,9 @@ servers — it goes directly from your Keychain to the provider.
   → remove bookmark.
 - **Disable Yield Score / git tracking:** Settings → Privacy → "Track git
   activity" toggle. Off by default; the toggle stops uploads immediately.
+- **Disable anonymous install statistics:** Settings → Privacy → "Send
+  anonymous install statistics". On by default, disclosed on first launch
+  before anything is sent. Local-only mode disables it too.
 - **Delete API keys:** Remove any provider config in Settings → Providers;
   the Keychain entry is deleted.
 - **Delete your account:** Settings → Account → Delete Account purges the
@@ -133,6 +180,10 @@ servers — it goes directly from your Keychain to the provider.
   device snapshots (it overrides the 18-month default for those tables).
 - **Account deletion** removes all associated rows within 30 days
   (cascading deletes handled at the database level).
+- **Anonymous install rows** are deleted 400 days after they were last
+  touched. They are not attached to an account, so account deletion does not
+  reach them — there is no link to follow. Deleting the app deletes the only
+  copy of the identifier, which is on your Mac.
 
 ---
 
