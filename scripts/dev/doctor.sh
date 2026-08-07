@@ -130,19 +130,41 @@ if xcrun notarytool history --keychain-profile "${NOTARY_PROFILE:-AC_NOTARY_PROF
     ok "notarytool keychain profile '${NOTARY_PROFILE:-AC_NOTARY_PROFILE}' works"
 elif [[ -n "${APPLE_NOTARY_USER:-}" && -n "${APPLE_NOTARY_APP_PASSWORD:-}" && -n "${APPLE_TEAM_ID:-}" ]]; then
     ok "inline notary credentials present in env"
+elif [[ "$(ioreg -n Root -d1 -a 2>/dev/null | grep -c '<key>IOConsoleLocked</key>[[:space:]]*<true/>')" != "0" ]] \
+     || ioreg -n Root -d1 -a 2>/dev/null | grep -A1 'IOConsoleLocked' | grep -q '<true/>'; then
+    # THE SCREEN IS LOCKED, AND THAT IS THE WHOLE PROBLEM.
+    #
+    # notarytool's credential lives in the DATA-PROTECTION keychain, whose
+    # keybag locks with the console — independently of `security
+    # show-keychain-info`, which will happily report the login keychain as
+    # "no-timeout". When it is locked, secd fails to decrypt the item
+    # (OSStatus -25308, errSecInteractionNotAllowed) and returns
+    # "no matching items" to the caller. notarytool renders that as
+    #
+    #     Error: No Keychain password item found for profile: AC_NOTARY_PROFILE
+    #
+    # which is simply untrue: the item is there and intact.
+    #
+    # This misreading cost three separate investigations (2026-05-12,
+    # 2026-08-01, 2026-08-07) that all concluded the profile had "evaporated"
+    # and all "fixed" it by running store-credentials again — which works only
+    # because recreating it requires sitting at the machine, i.e. unlocking the
+    # screen. The unlock was the fix; the recreation was cargo cult, and it
+    # burned a one-time Apple password each round.
+    #
+    # Verified on 2026-08-07: while locked, `security` lists 465 generic-password
+    # items normally and only this one is unfindable. Nothing was deleted.
+    bad "cannot read the notarization profile — THE SCREEN IS LOCKED" 4 \
+        "Unlock the Mac and run this again. notarytool reports a locked keychain as 'No Keychain password item found', which is a lie — the credential is intact. Do NOT run store-credentials to 'fix' this; it wastes a one-time Apple password and hides the real cause. For unattended/agent builds, use the inline path instead (APPLE_NOTARY_USER / APPLE_NOTARY_APP_PASSWORD / APPLE_TEAM_ID from ~/Library/Application Support/CLI-Pulse-Secrets/notarytool-app-password-*.txt), which does not touch the keychain and is immune to screen lock."
 else
-    # This profile has now vanished from the login keychain TWICE with no
-    # apparent cause (2026-05-12 and 2026-08-01), while the certificate
-    # identities survived both times. It is not a sign that you set it up
-    # wrong. Check for a saved app-specific password before going to Apple:
-    # recovery from the file is one command, recovery from apple.com means a
-    # new password and re-saving it.
+    # Screen is unlocked and the profile still cannot be read, so this is a
+    # genuine absence — first setup, a different user, or an actual deletion.
     if compgen -G "$HOME/Library/Application Support/CLI-Pulse-Secrets/notarytool-app-password-*.txt" >/dev/null 2>&1; then
-        bad "notarization profile missing — but a saved password exists" 4 \
-            "Notarization (OWNER, fast path): the keychain profile is gone but ~/Library/Application Support/CLI-Pulse-Secrets/notarytool-app-password-*.txt exists. Recreate with: xcrun notarytool store-credentials AC_NOTARY_PROFILE --apple-id <owner-apple-id> --team-id KHMK6Q3L3K --password <from that file>. This profile has evaporated twice now; the file is the reason it is a 30-second fix."
+        bad "notarization profile genuinely missing — but a saved password exists" 4 \
+            "Screen is unlocked and the profile still is not readable, so it really is absent. Recreate with: xcrun notarytool store-credentials AC_NOTARY_PROFILE --apple-id <owner-apple-id> --team-id KHMK6Q3L3K --password <from ~/Library/Application Support/CLI-Pulse-Secrets/notarytool-app-password-*.txt>."
     else
         bad "no working notarization credential" 4 \
-            "Notarization: create an app-specific password at appleid.apple.com for YOUR OWN Apple ID, then: xcrun notarytool store-credentials AC_NOTARY_PROFILE --apple-id <you@example.com> --team-id KHMK6Q3L3K --password <app-specific-password>. Per-person — never share the owner's. SAVE the password to ~/Library/Application Support/CLI-Pulse-Secrets/ (chmod 600) immediately: Apple shows it exactly once, and this profile is known to vanish."
+            "Notarization: create an app-specific password at appleid.apple.com for YOUR OWN Apple ID, then: xcrun notarytool store-credentials AC_NOTARY_PROFILE --apple-id <you@example.com> --team-id KHMK6Q3L3K --password <app-specific-password>. Per-person — never share the owner's. SAVE the password to ~/Library/Application Support/CLI-Pulse-Secrets/ (chmod 600) immediately: Apple shows it exactly once."
     fi
 fi
 
