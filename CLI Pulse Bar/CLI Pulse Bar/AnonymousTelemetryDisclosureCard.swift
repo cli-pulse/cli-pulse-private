@@ -17,6 +17,14 @@ struct AnonymousTelemetryDisclosureCard: View {
     @ObservedObject private var settings = PrivacySettings.shared
     let onDismiss: () -> Void
 
+    /// `localOnlyMode` forces telemetry off inside the telemetry store, whatever
+    /// this switch says. Before v1.46 the card ignored that and stated, as
+    /// present-tense fact, that CLI Pulse reports two things — to a user for whom
+    /// it reports nothing, above a switch showing ON that did nothing. Settings ›
+    /// Privacy already got this right; a disclosure that is wrong about what is
+    /// being sent is worse than one that is merely terse.
+    private var suppressedByLocalOnly: Bool { settings.telemetrySuppressedByLocalOnly }
+
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "chart.bar.doc.horizontal")
@@ -29,12 +37,18 @@ struct AnonymousTelemetryDisclosureCard: View {
                 Text("Anonymous install statistics")
                     .font(.headline)
 
-                Text("""
-                     CLI Pulse reports two things: that it was installed, and \
-                     whether it ever found a CLI to track. That's how we tell \
-                     whether the app actually works for people — there's no \
-                     account involved, so otherwise we can't.
-                     """)
+                Text(suppressedByLocalOnly
+                     ? """
+                       Local-only mode is on, so CLI Pulse is sending nothing \
+                       at all. Without it, it would report two things: that it \
+                       was installed, and whether it ever found a CLI to track.
+                       """
+                     : """
+                       CLI Pulse reports two things: that it was installed, and \
+                       whether it ever found a CLI to track. That's how we tell \
+                       whether the app actually works for people — there's no \
+                       account involved, so otherwise we can't.
+                       """)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -44,12 +58,18 @@ struct AnonymousTelemetryDisclosureCard: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
+                // Disabled rather than hidden when local-only mode is on, so the
+                // master switch's effect is visible instead of a control that
+                // silently does nothing. Same treatment as PrivacySettingsSection.
                 Toggle(isOn: $settings.anonymousTelemetryEnabled) {
-                    Text("Send anonymous install statistics")
+                    Text(suppressedByLocalOnly
+                         ? "Off — local-only mode covers this too."
+                         : "Send anonymous install statistics")
                         .font(.callout)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
+                .disabled(suppressedByLocalOnly)
                 .padding(.top, 2)
 
                 HStack(spacing: 8) {
