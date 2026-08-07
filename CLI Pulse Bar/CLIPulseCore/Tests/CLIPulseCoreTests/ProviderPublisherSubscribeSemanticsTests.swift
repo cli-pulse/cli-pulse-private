@@ -15,9 +15,18 @@ import Combine
 /// because the whole point of the v1.45 telemetry is that we could not tell a
 /// broken counter from a broken product.
 ///
-/// These tests reproduce the exact chain used by AnonymousTelemetryCoordinator.
-/// That type lives in the app target and cannot be imported here, so the chain
-/// is duplicated — if it changes there, change it here too.
+/// These tests reproduce the operator chain used by
+/// AnonymousTelemetryCoordinator, to pin `@Published` subscribe semantics on
+/// their own.
+///
+/// v1.46: they used to be duplicated here because that type lived in the app
+/// target and could not be imported. It now lives in CLIPulseCore, and
+/// `AnonymousTelemetryCoordinatorTests` drives the real object — which is the
+/// file to change when the coordinator changes. These stay as a focused pin on
+/// Combine's behaviour, and as the record of a review claim that was settled
+/// empirically. Testing this replica was NOT sufficient: the chain below was a
+/// faithful copy and passed, while the shipped coordinator lost every
+/// first-launch activation to a latch that sits outside the chain.
 ///
 /// Worth recording while here: `ProviderState` is `@MainActor`-isolated, so
 /// `providers` can only be mutated on the main actor and the publisher always
@@ -97,9 +106,16 @@ final class ProviderPublisherSubscribeSemanticsTests: XCTestCase {
         XCTAssertEqual(fired, 1)
     }
 
-    /// Going empty and back again is one more activation edge. Harmless — the
-    /// persisted flag makes the second one a no-op — but assert the shape so a
-    /// future change to the operator chain is a visible decision.
+    /// Going empty and back again is one more activation edge. Harmless, but
+    /// assert the shape so a future change to the operator chain is a visible
+    /// decision.
+    ///
+    /// This used to say the second edge is "guarded downstream by the persisted
+    /// activation flag". It is not: the coordinator's in-process `activationSent`
+    /// latch is hit first and the actor is never reached. That mattered — the
+    /// v1.45 defect was that the latch could be set without anything having been
+    /// persisted, so "the persisted flag will catch it" was load-bearing and
+    /// wrong. See `AnonymousTelemetryCoordinatorTests`.
     func test_emptyingAndRefillingProducesASecondEdge() {
         let state = ProviderState()
         var fired = 0

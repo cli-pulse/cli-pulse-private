@@ -77,13 +77,23 @@ for the app as a whole.
 
 **macOS: yes.** The feature ships in the Mac app.
 
-**iOS / watchOS: no.** The counters are wired only into the macOS target —
-`AnonymousTelemetryCoordinator` exists in the Mac app, and nothing on iOS
-constructs it. The shared `CLIPulseCore` package contains the code, but code
-that is never called collects nothing, and App Privacy asks what the app
-collects.
+**iOS / watchOS: no.** Nothing on iOS or watchOS constructs the telemetry.
+`AnonymousTelemetryCoordinator` is the only thing that starts it, it is
+constructed in exactly one place — `CLIPulseBarApp.init`, in the macOS app —
+and no iOS or watchOS code path reaches it.
 
-If that ever changes, this file changes with it.
+Be precise about what that does and does not say. The coordinator now *lives*
+in the shared `CLIPulseCore` package (v1.46 moved it there so it could be
+tested; before that it sat in the macOS app target). So the type is compiled
+into the iOS and Watch binaries, and `nm` on the shipped artifact will show the
+symbol. That is not collection: the initializer is never called, no
+subscription is ever made, and no request is ever sent. App Privacy asks what
+the app collects, and code that never runs collects nothing.
+
+The load-bearing fact is therefore "nothing constructs it", not "it is absent
+from the binary" — the second was true when this was written and is not any
+more. If a call site is ever added on either platform, this file changes with
+it.
 
 ---
 

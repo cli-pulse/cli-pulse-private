@@ -1,6 +1,5 @@
 import Foundation
 import Combine
-import CLIPulseCore
 
 /// Owns the anonymous install telemetry for the app's lifetime and decides
 /// *when* the two events fire. `AnonymousInstallTelemetry` decides *whether*.
@@ -15,8 +14,16 @@ import CLIPulseCore
 /// builds its content lazily — a menu bar app has no window at launch — so a
 /// hook in a view would fire only when the user happens to open the menu, and
 /// "first value" would end up measuring menu-opening instead.
+///
+/// Lives in CLIPulseCore rather than the app target on purpose. It used to sit
+/// beside `CLIPulseBarApp`, which has no test bundle, and the v1.45 activation
+/// defect (see `reportActivation`) shipped through exactly that gap: nothing
+/// could exercise the latch, so `ProviderPublisherSubscribeSemanticsTests` had
+/// to re-implement this type's Combine chain and test the copy instead of the
+/// original. Both duplications are gone now — `AnonymousTelemetryCoordinatorTests`
+/// drives this class directly.
 @MainActor
-final class AnonymousTelemetryCoordinator {
+public final class AnonymousTelemetryCoordinator {
     /// Set once from `CLIPulseBarApp.init`. The disclosure card needs to reach
     /// this after the user acknowledges it, and it lives several levels down
     /// inside a lazily-built `MenuBarExtra` — threading it through as an
@@ -24,7 +31,7 @@ final class AnonymousTelemetryCoordinator {
     /// observable purely for delivery. Matches `PetPanelController.shared` and
     /// `BookmarkManager.shared`. Stays nil when telemetry is not permitted, so
     /// the card's callback is a no-op on a QA build rather than a special case.
-    static private(set) var shared: AnonymousTelemetryCoordinator?
+    public static private(set) var shared: AnonymousTelemetryCoordinator?
 
     private let telemetry: AnonymousInstallTelemetry
     private var cancellable: AnyCancellable?
@@ -35,7 +42,7 @@ final class AnonymousTelemetryCoordinator {
     /// exactly one reason in exactly one place. It also means a build that
     /// cannot be identified falls into quarantine and sends nothing, which is
     /// the correct failure direction.
-    init?(runtimeEnvironment: CLIPulseRuntimeEnvironment) {
+    public init?(runtimeEnvironment: CLIPulseRuntimeEnvironment) {
         guard runtimeEnvironment.capabilities.allowsTelemetry else { return nil }
         let info = Bundle.main.infoDictionary ?? [:]
         let version = ProcessInfo.processInfo.operatingSystemVersion
@@ -49,6 +56,14 @@ final class AnonymousTelemetryCoordinator {
         )
     }
 
+    /// Test seam. The production initializer reaches for `Bundle.main`, the real
+    /// UserDefaults and the live Supabase transport, none of which a test may
+    /// touch — but the thing worth testing is the latch in `reportActivation`,
+    /// which does not care where the telemetry came from.
+    init(telemetry: AnonymousInstallTelemetry) {
+        self.telemetry = telemetry
+    }
+
     /// Called at launch and again when the disclosure card is dismissed.
     ///
     /// At launch this is usually a no-op on a genuinely first run: nothing may
@@ -56,7 +71,7 @@ final class AnonymousTelemetryCoordinator {
     /// which the user has not opened yet. Calling it anyway is what makes every
     /// LATER launch settle the install, including one that was previously lost
     /// to a missing network.
-    func start(observing providerState: ProviderState) {
+    public func start(observing providerState: ProviderState) {
         Self.shared = self
         Task { await telemetry.recordInstallIfNeeded() }
 
@@ -81,7 +96,7 @@ final class AnonymousTelemetryCoordinator {
     /// The disclosure has been acknowledged, so the install can go out now
     /// rather than on the next launch — and if a provider was already found
     /// while the card was up, that counts too.
-    func disclosureAcknowledged(providerState: ProviderState) {
+    public func disclosureAcknowledged(providerState: ProviderState) {
         Task { await telemetry.recordInstallIfNeeded() }
         if !providerState.providers.isEmpty {
             reportActivation()
@@ -89,12 +104,22 @@ final class AnonymousTelemetryCoordinator {
     }
 
     private func reportActivation() {
-        // Cheap in-process guard so a provider list that churns does not queue
+        // Cheap in-process cache so a provider list that churns does not queue
         // a task per change. The durable "only once ever" guarantee is the
         // persisted flag inside AnonymousInstallTelemetry; this only avoids
         // pointless work within a single run.
+        //
+        // It is set from the RESULT, never from the attempt. Setting it up
+        // front is what broke v1.45: on a first launch the sink runs before the
+        // disclosure card has been acknowledged, `maySend` is false, nothing is
+        // sent — and a latch set on entry would then make the "Got it" callback
+        // below a no-op, losing activation for the entire launch on which the
+        // card is shown. Cache the outcome and a refusal stays retryable.
         guard !activationSent else { return }
-        activationSent = true
-        Task { await telemetry.recordFirstProviderDetectedIfNeeded() }
+        let telemetry = self.telemetry
+        Task { @MainActor [weak self] in
+            guard await telemetry.recordFirstProviderDetectedIfNeeded() else { return }
+            self?.activationSent = true
+        }
     }
 }
