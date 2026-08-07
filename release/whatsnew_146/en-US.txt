@@ -1,0 +1,3 @@
+Fixed: with local-only mode turned on, the first-run card about anonymous statistics said they were being sent. Nothing was — local-only mode already covers them. The card now says so, and shows the switch as inactive.
+
+Fixed: the counter for "CLI Pulse found a CLI on this machine" often wasn't recorded until a later launch, which made our own numbers read lower than reality. No change to what is collected or when you're asked about it.
