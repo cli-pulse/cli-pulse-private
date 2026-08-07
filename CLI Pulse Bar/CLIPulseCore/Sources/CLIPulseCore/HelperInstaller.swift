@@ -263,9 +263,11 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         )
     }
 
-    /// Reconcile the UI after a controlled helper swap (see
-    /// `HelperLifecycleManager.kickstartBundledHelperIfAppUpdated`). The swap
-    /// SIGKILLs the old helper; the KeepAlive LaunchAgent respawns the new one,
+    /// Reconcile the UI after a controlled helper swap (v1.46: see
+    /// `HelperLifecycleManager.reconcileBundledAgent`, which re-registers the
+    /// LaunchAgent when launchd reports it stale or failing — that supersedes
+    /// v1.43's `kickstartBundledHelperIfAppUpdated`). The swap tears down the
+    /// old helper; the KeepAlive LaunchAgent respawns the new one,
     /// which takes ~1–2s to rebind its socket. This waits for the respawn, then
     /// refreshes — so a `refresh()` that ran against the pre-swap helper can't
     /// leave a stale `.updateAvailable` nag on screen while Settings stays open.

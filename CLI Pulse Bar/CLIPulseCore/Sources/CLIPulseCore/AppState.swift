@@ -456,7 +456,19 @@ public final class AppState: ObservableObject {
     /// `ensureHelperAgentRegistered()` on app launch. macOS-only —
     /// `HelperLifecycleManager.Status` is itself `#if os(macOS)`
     /// because `SMAppService` only exists on macOS.
+    ///
+    /// ⚠️ `.registered` means "launchd accepted the plist", NOT "the helper is
+    /// running" — `SMAppService` reports `.enabled` for a job that has never
+    /// executed. For whether the agent is alive, read
+    /// `helperAgentReconcileOutcome`, which comes from launchd's own job record.
     @Published public var helperAgentStatus: HelperLifecycleManager.Status = .notRegistered
+
+    /// v1.46: what launch-time reconciliation found and did — the signal that
+    /// can tell "registered and running" apart from "registered and failing to
+    /// spawn". `.repairFailed` is the state worth putting in front of a user:
+    /// the helper is registered, was re-registered, and still will not start.
+    @Published public var helperAgentReconcileOutcome:
+        HelperLifecycleManager.ReconcileOutcome = .skipped("not yet checked")
     #endif
 
     #if os(macOS)
@@ -963,24 +975,37 @@ public final class AppState: ObservableObject {
                     self.helperAgentStatus = status
                 }
                 #if DEVID_BUILD
-                // v1.43 controlled helper swap: `ensureRegistered()` is a no-op for
-                // an already-registered KeepAlive agent, so after an in-place app
-                // update launchd keeps the OLD bundled helper process alive (old
-                // binary) until re-login — leaving an upgraded user nagged. Detect
-                // the app-binary change via a persisted sentinel and kickstart OUR
-                // LaunchAgent once per new app version so the new bundle's helper
-                // takes over now. This clears the nag even for users upgrading from
-                // a pre-v1.43 helper whose hello can't be identified as stale (dual
-                // review codex+agy P1). No-op on same-version launches; failure-soft.
-                let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-                let didSwap = await self.helperLifecycle.kickstartBundledHelperIfAppUpdated(
-                    currentAppVersion: "\(short)/\(build)"
+                // v1.46: `ensureRegistered()` above only proves launchd accepted
+                // the plist. It returns `.registered` — and `SMAppService.status`
+                // returns `.enabled` — for an agent that has never once executed;
+                // that is how a helper stayed dead for eleven days and 22,138
+                // failed spawns without any signal changing. Ask launchd what the
+                // job is actually doing, and rebuild the registration when the
+                // answer is bad. Also subsumes v1.43's version-change helper swap:
+                // an in-place update leaves the record pinned to the old build,
+                // which reads as `.staleRegistration`. See `HelperAgentHealth`.
+                // Deliberately optional, not `?? "?"`: a placeholder would
+                // never equal launchd's `parent bundle version`, so every
+                // launch would read as stale and re-register forever. nil
+                // skips the staleness comparison and leaves the spawn-failure
+                // check — the part that matters — intact.
+                let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+                let outcome = await self.helperLifecycle.reconcileBundledAgent(
+                    currentBundleVersion: build
                 )
-                if didSwap {
-                    // Reconcile the installer UI once the respawned helper is up, so
-                    // a refresh that ran against the pre-swap helper can't leave a
-                    // stale update nag on screen (codex round-2 P2).
+                await MainActor.run {
+                    self.helperAgentReconcileOutcome = outcome
+                    if case .repairFailed = outcome {
+                        self.helperAgentStatus = .registrationFailed(
+                            "The background helper is registered but will not start."
+                        )
+                    }
+                }
+                if case .repaired = outcome {
+                    // The repair restarted the helper, which takes ~1–2s to rebind
+                    // its socket. Reconcile the installer UI against the respawned
+                    // helper so a refresh that ran against the old one can't leave
+                    // a stale update nag on screen (codex round-2 P2, v1.43).
                     await self.helperInstaller.refreshAfterHelperRespawn()
                 }
                 #endif
