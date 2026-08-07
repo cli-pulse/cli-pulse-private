@@ -158,6 +158,15 @@ jobs:
       - run: bash scripts/check_helper_no_container_touch.sh
       - run: bash scripts/check_helper_version_sync.sh
       - run: bash scripts/check_helper_method_parity.sh
+      # v1.46. `privacy.localOnlyMode` overrides the telemetry switch inside the
+      # store, so the switch's value is not what the app does. Any surface that
+      # renders it must say so. v1.45's first-launch disclosure card did not,
+      # and told local-only users in the present tense that CLI Pulse "reports
+      # two things" above a switch reading ON that sent nothing — an untrue
+      # disclosure, in the one place the default-ON switch is justified. Both
+      # surfaces are SwiftUI views in the app target, which has no test bundle,
+      # so a grep guard is the only thing that can see this.
+      - run: bash scripts/check_telemetry_switch_discloses_suppression.sh
       # The app's Privacy Policy / Terms links, which App Review clicks under
       # Guideline 3.1.2. They broke silently for twelve days after the org move
       # — for LIVE users, not just the next build — because GitHub does not

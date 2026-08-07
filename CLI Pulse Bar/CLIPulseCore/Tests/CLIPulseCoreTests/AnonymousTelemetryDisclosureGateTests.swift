@@ -96,4 +96,50 @@ final class AnonymousTelemetryDisclosureGateTests: XCTestCase {
         let sends = await transport.sends()
         XCTAssertEqual(sends, 0, "the gate must be evaluated per send, not cached")
     }
+
+    /// THE HONESTY INVARIANT: whenever the gate is shut for a reason the user's
+    /// own switch does not show, `telemetrySuppressedByLocalOnly` must be true —
+    /// because that flag is the only way any surface can tell them.
+    ///
+    /// v1.46. The disclosure card did not consult it, and so told a local-only
+    /// user, in the present tense, that CLI Pulse "reports two things" — above a
+    /// switch reading ON that did nothing. Settings › Privacy consulted it and
+    /// said "Off"; two surfaces in the same app disagreed about whether data was
+    /// leaving the machine, and the wrong one was the one making the disclosure.
+    ///
+    /// Asserting the invariant rather than the wording keeps this from becoming
+    /// a copy-of-the-copy test: any future surface that renders the switch is
+    /// covered by the same rule.
+    func test_aShutGateAlwaysHasAUserVisibleReason() {
+        for localOnly in [false, true] {
+            for userSwitch in [false, true] {
+                let defaults = scratchDefaults()
+                defaults.set(localOnly, forKey: "privacy.localOnlyMode")
+                defaults.set(
+                    userSwitch,
+                    forKey: UserDefaultsAnonymousTelemetryStore.enabledKey
+                )
+
+                let store = UserDefaultsAnonymousTelemetryStore(defaults: defaults)
+                let settings = PrivacySettings(defaults: defaults)
+
+                // What the user is shown, versus what the gate actually does.
+                let shownAsOn = settings.anonymousTelemetryEnabled
+                    && !settings.telemetrySuppressedByLocalOnly
+                let label = "localOnly=\(localOnly) switch=\(userSwitch)"
+
+                XCTAssertEqual(
+                    shownAsOn, store.isEnabled,
+                    "the advertised state must match the real gate — \(label)"
+                )
+
+                if userSwitch && !store.isEnabled {
+                    XCTAssertTrue(
+                        settings.telemetrySuppressedByLocalOnly,
+                        "silently off with the switch on and no reason to show — \(label)"
+                    )
+                }
+            }
+        }
+    }
 }
