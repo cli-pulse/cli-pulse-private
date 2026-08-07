@@ -47,7 +47,12 @@ jobs:
           # The authoritative gate workflows. A PR that doesn't touch a given
           # workflow's paths simply won't have a run for it (→ N/A). Lint is
           # intentionally excluded (warning-only); CI Gate excludes itself.
-          GATES=("Swift CI" "Android CI" "Helper CI" "Supabase CI")
+          # "Repo Hygiene" is deliberately first: unlike the others it has NO
+          # path filter, so it always runs and can never be N/A. That matters,
+          # because the guard it carries (internal documents in this PUBLIC
+          # repo) is most needed on exactly the docs-only PRs that trigger none
+          # of the path-filtered workflows below.
+          GATES=("Repo Hygiene" "Swift CI" "Android CI" "Helper CI" "Supabase CI")
 
           # Give GitHub time to create the path-triggered runs for this SHA so
           # we don't race and call a still-uncreated run "N/A".

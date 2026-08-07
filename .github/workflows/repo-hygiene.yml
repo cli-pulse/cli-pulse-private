@@ -1,0 +1,67 @@
+name: Repo Hygiene
+
+# The repo-wide guards, on EVERY pull request, with no path filter.
+#
+# WHY THIS EXISTS
+# ---------------
+# These guards used to live only inside the "Helper guards" job in swift-ci.yml,
+# which is path-filtered to 'CLI Pulse Bar/**', 'HelperSwift/**' and a handful of
+# named scripts. So a pull request that touched nothing but documentation ran
+# NONE of them — and CI Gate correctly reported green, because a workflow that
+# never ran is N/A by design.
+#
+# That is precisely backwards for `check_no_internal_docs.sh`. The PR most likely
+# to add an internal engineering document to this PUBLIC repository is a
+# docs-only PR, and that is exactly the PR on which the guard did not run.
+#
+# It nearly cost us on 2026-08-07: a careless `git add -A` pushed 176 unintended
+# files, 141 of them internal documents. The guard caught it — but only because
+# the same commit happened to sweep in some `.swift` files and therefore matched
+# swift-ci's path filter. Had it been the documents alone, nothing would have run.
+#
+# Duplicating these invocations with swift-ci.yml is deliberate and safe: both
+# call the SAME scripts, so the scripts remain the single source of truth and
+# there is nothing to drift. The cost is a few seconds of grep.
+#
+# This workflow is in CI Gate's GATES list. Because it has no path filter it
+# always runs, so it is never N/A and can never silently pass by absence.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
+
+concurrency:
+  group: repo-hygiene-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  hygiene:
+    name: Repo-wide guards (internal docs + copyright + migrations + legal URLs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      # The repo is named `cli-pulse-private` and is PUBLIC. This is the guard
+      # that keeps internal engineering documents out of it.
+      - run: bash scripts/check_no_internal_docs.sh
+
+      # One number, one migration, forever. Also path-blind here: a PR touching
+      # only backend/supabase/ does not match swift-ci's filter either.
+      - run: bash scripts/check_migration_numbers.sh
+
+      - run: bash scripts/check_copyright.sh
+
+      # `privacy.localOnlyMode` overrides the telemetry switch inside the store,
+      # so any surface rendering that switch must disclose it. Both surfaces are
+      # SwiftUI views in the app target, which has no test bundle.
+      - run: bash scripts/check_telemetry_switch_discloses_suppression.sh
+
+      # The app's Privacy Policy / Terms links, which App Review clicks under
+      # Guideline 3.1.2. Needs network; they broke silently for twelve days once.
+      - run: bash scripts/check_legal_urls.sh
