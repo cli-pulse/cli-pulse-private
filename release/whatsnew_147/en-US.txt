@@ -1,0 +1,5 @@
+Fixed: the background helper could stop starting after an update and stay stopped, with nothing on screen saying so. When that happened CLI Pulse found no CLI activity at all and simply showed nothing. It now checks the helper's real state at every launch and re-registers it when it is registered but failing to start.
+
+Fixed: with local-only mode turned on, the first-run card about anonymous statistics said they were being sent. Nothing was — local-only mode already covers them.
+
+Fixed: the counter for "CLI Pulse found a CLI on this machine" often wasn't recorded until a later launch, which made our own numbers read lower than reality. No change to what is collected.
