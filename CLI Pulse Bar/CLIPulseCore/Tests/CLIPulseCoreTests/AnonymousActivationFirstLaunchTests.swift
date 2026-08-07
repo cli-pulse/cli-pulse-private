@@ -150,40 +150,13 @@ final class AnonymousActivationFirstLaunchTests: XCTestCase {
         )
     }
 
-    /// The coordinator's latch rule, encoded. `latchOnAttempt` is what v1.45
-    /// shipped; `latchOnOutcome` is what `reportActivation()` does now. The two
-    /// must not agree, or the pin is not pinning anything.
-    func test_latchPolicyMustCacheTheOutcomeNotTheAttempt() async {
-        func run(latchOnAttempt: Bool) async -> Bool {
-            let store = Store()
-            let transport = Transport()
-            let subject = makeSubject(store: store, transport: transport)
-            var latched = false
-
-            // Launch: sink fires, disclosure not yet seen.
-            if !latched {
-                if latchOnAttempt { latched = true }
-                let ok = await subject.recordFirstProviderDetectedIfNeeded()
-                if !latchOnAttempt, ok { latched = true }
-            }
-
-            // "Got it": disclosureAcknowledged -> reportActivation.
-            store.hasSeenDisclosure = true
-            if !latched {
-                if latchOnAttempt { latched = true }
-                let ok = await subject.recordFirstProviderDetectedIfNeeded()
-                if !latchOnAttempt, ok { latched = true }
-            }
-
-            return store.activationReported
-        }
-
-        let shipped = await run(latchOnAttempt: true)
-        let fixed = await run(latchOnAttempt: false)
-
-        XCTAssertFalse(shipped, "documents the v1.45 defect: the event was lost")
-        XCTAssertTrue(fixed, "latching on the outcome keeps the refusal retryable")
-    }
+    // A `test_latchPolicyMustCacheTheOutcomeNotTheAttempt` used to sit here. It
+    // re-implemented BOTH latch policies inside the test body and asserted they
+    // disagreed — so it passed with the production fix fully reverted, while its
+    // docstring claimed to pin production. Review caught it by mutation testing.
+    // A test that constrains only itself is worse than no test, because it reads
+    // like coverage. The real pin is `AnonymousTelemetryCoordinatorTests`, which
+    // drives the actual coordinator: reverting the latch fails 4 of its 4 tests.
 
     /// Install has the same contract, and the same first-launch shape: refused
     /// at launch, sent once the card is acknowledged.

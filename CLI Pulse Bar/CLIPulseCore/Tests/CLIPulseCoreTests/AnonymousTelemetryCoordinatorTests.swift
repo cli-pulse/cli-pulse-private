@@ -16,12 +16,50 @@ import Combine
 @MainActor
 final class AnonymousTelemetryCoordinatorTests: XCTestCase {
 
+    /// Counts entries into the actor's activation path by observing the first
+    /// thing `recordFirstProviderDetectedIfNeeded` reads.
+    ///
+    /// Needed because "nothing was sent" is satisfied both by the gate refusing
+    /// a delivered emission and by the Combine sink never delivering at all —
+    /// and the tests below are about the first. Review demonstrated the gap by
+    /// gutting the sink to `_ = hasProviders`: the headline test still passed,
+    /// because a dead subscription produces the same zero sends as a closed
+    /// gate. Counting the reads makes the sink's delivery observable.
     private final class Store: AnonymousTelemetryStore, @unchecked Sendable {
         var isEnabled = true
         var hasSeenDisclosure = false
         var installID = UUID(uuidString: "0BADCAFE-0000-4000-8000-0000000C0FFE")!
         var installReported = false
-        var activationReported = false
+
+        /// Incremented on every read. `recordFirstProviderDetectedIfNeeded`
+        /// reads this first, so the count is the number of times the activation
+        /// path was actually entered.
+        private let lock = NSLock()
+        private var storedActivationReported = false
+        private var reads = 0
+
+        var activationReported: Bool {
+            get {
+                lock.lock(); defer { lock.unlock() }
+                reads += 1
+                return storedActivationReported
+            }
+            set {
+                lock.lock(); defer { lock.unlock() }
+                storedActivationReported = newValue
+            }
+        }
+
+        /// Reads without counting, for assertions about the end state.
+        var activationReportedValue: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return storedActivationReported
+        }
+
+        var activationPathEntries: Int {
+            lock.lock(); defer { lock.unlock() }
+            return reads
+        }
     }
 
     private actor Transport: AnonymousTelemetryTransport {
@@ -81,11 +119,19 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
         coordinator.start(observing: providerState)
         await settle()
 
+        // The sink must have DELIVERED and been refused — not merely been
+        // silent. Without this, gutting the subscription passes the test, since
+        // a dead sink and a closed gate both produce zero sends.
+        XCTAssertGreaterThan(
+            store.activationPathEntries, 0,
+            "the Combine sink never delivered; this test would then prove nothing"
+        )
+
         // Gate was closed: nothing may have been sent, and nothing may be
         // recorded as sent.
         var count = await transport.payloads().count
         XCTAssertEqual(count, 0, "nothing may leave before the disclosure is acknowledged")
-        XCTAssertFalse(store.activationReported)
+        XCTAssertFalse(store.activationReportedValue)
         XCTAssertFalse(store.installReported)
 
         // The user opens the menu and taps "Got it".
@@ -98,7 +144,7 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
             activations, 1,
             "v1.45 sent 0 here: the sink had already burned the latch against a refusal"
         )
-        XCTAssertTrue(store.activationReported)
+        XCTAssertTrue(store.activationReportedValue)
         XCTAssertTrue(store.installReported)
         count = await transport.payloads().count
         XCTAssertEqual(count, 2, "one install, one activation")
@@ -128,11 +174,19 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
 
         activations = await transport.activations()
         XCTAssertEqual(activations, 1)
-        XCTAssertTrue(store.activationReported)
+        XCTAssertTrue(store.activationReportedValue)
     }
 
-    /// Once activation is durably recorded the latch holds: a churning provider
-    /// list must not re-send, and neither must an empty→non-empty round trip.
+    /// Once activation is DURABLY RECORDED, churn must not re-send.
+    ///
+    /// Scoped deliberately narrowly. Review showed this test stays green with
+    /// the in-process `activationSent` guard deleted outright — because the
+    /// persisted flag alone is enough once a send has succeeded. So it pins the
+    /// post-record invariant, NOT the latch, and not the in-flight window: the
+    /// stub transport returns instantly, so no second call can arrive while the
+    /// first is still on the wire. That window is a known, server-idempotent
+    /// redundancy (`install_id` is the PK and the activation timestamp is
+    /// coalesced), not something this test claims to cover.
     func test_activationIsSentOnlyOnce() async {
         let store = Store()
         store.hasSeenDisclosure = true
@@ -171,7 +225,7 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
 
         var count = await transport.payloads().count
         XCTAssertEqual(count, 0)
-        XCTAssertFalse(store.activationReported)
+        XCTAssertFalse(store.activationReportedValue)
 
         store.isEnabled = true
         coordinator.disclosureAcknowledged(providerState: providerState)
