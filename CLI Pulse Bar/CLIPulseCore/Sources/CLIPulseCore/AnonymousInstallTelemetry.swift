@@ -254,26 +254,50 @@ public actor AnonymousInstallTelemetry {
         store.isEnabled && store.hasSeenDisclosure && appVersion != nil
     }
 
-    public func recordInstallIfNeeded() async {
-        guard maySend, !store.installReported else { return }
-        await send(providerDetected: false) { [store] in store.installReported = true }
+    /// Returns whether the install is durably recorded once this call finishes.
+    ///
+    /// The return value is the whole contract, and it is deliberately "is it
+    /// recorded now?" rather than "did I send just now": callers cache it to
+    /// avoid repeating work, and a caller that caches *intent* instead of
+    /// *outcome* will silently drop the event. See the header on
+    /// `recordFirstProviderDetectedIfNeeded`.
+    @discardableResult
+    public func recordInstallIfNeeded() async -> Bool {
+        if store.installReported { return true }
+        guard maySend else { return false }
+        return await send(providerDetected: false) { [store] in store.installReported = true }
     }
 
     /// Called the first time any provider is detected. This is first value: the
     /// moment the app has an actual number to show.
-    public func recordFirstProviderDetectedIfNeeded() async {
-        guard maySend, !store.activationReported else { return }
+    ///
+    /// Returns whether activation is durably recorded once this call finishes —
+    /// `false` when the gate refused (no disclosure yet, opted out) or the send
+    /// failed, in both cases meaning "ask again later".
+    ///
+    /// v1.46: this used to return `Void`, which made a refusal indistinguishable
+    /// from a success at the call site. `AnonymousTelemetryCoordinator` latched
+    /// on having *called* this, so on the launch where the user acknowledges the
+    /// disclosure — the only launch that card is ever shown — the sink had
+    /// already burned the latch against a refusal and the activation event was
+    /// never sent. It surfaced a launch later, or not at all for anyone who
+    /// uninstalled first, which biased the v1.45 funnel pessimistically for
+    /// exactly the upgrade wave that dominated its first days.
+    @discardableResult
+    public func recordFirstProviderDetectedIfNeeded() async -> Bool {
+        if store.activationReported { return true }
+        guard maySend else { return false }
         // Reports the install too. The RPC upserts, and coalesces the
         // activation timestamp, so a user whose very first launch already finds
         // a CLI is counted once as installed and once as activated.
-        await send(providerDetected: true) { [store] in
+        return await send(providerDetected: true) { [store] in
             store.installReported = true
             store.activationReported = true
         }
     }
 
-    private func send(providerDetected: Bool, onSuccess: @Sendable () -> Void) async {
-        guard let appVersion else { return }
+    private func send(providerDetected: Bool, onSuccess: @Sendable () -> Void) async -> Bool {
+        guard let appVersion else { return false }
         let payload = AnonymousInstallPayload(
             installID: store.installID,
             channel: channel,
@@ -284,11 +308,13 @@ public actor AnonymousInstallTelemetry {
         do {
             try await transport.send(payload)
             onSuccess()
+            return true
         } catch {
             // Deliberately quiet, and deliberately not retried in-process. The
             // flag stays false, so the next launch tries again; a failure here
             // must never surface to a user who did not ask for this feature.
             telemetryLogger.debug("anonymous telemetry deferred to next launch")
+            return false
         }
     }
 }
