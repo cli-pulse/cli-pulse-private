@@ -63,6 +63,15 @@ final class AnonymousTelemetryCoordinator {
         cancellable = providerState.$providers
             .map { !$0.isEmpty }
             .removeDuplicates()
+            // `reportActivation` is MainActor-isolated, and this type is too, so
+            // the closure inherits that isolation — but Combine delivers on
+            // whatever thread mutated the @Published value, and provider lists
+            // are assigned from refresh work that does not promise to be on the
+            // main thread. Under Swift 5 language mode that mismatch is
+            // unchecked: it would not fail to compile, it would just be a data
+            // race nobody sees until it corrupts something. Hopping explicitly
+            // costs one dispatch per transition (at most two per launch).
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] hasProviders in
                 guard hasProviders else { return }
                 self?.reportActivation()
