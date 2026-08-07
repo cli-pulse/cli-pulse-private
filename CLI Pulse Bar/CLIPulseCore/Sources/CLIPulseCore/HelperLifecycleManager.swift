@@ -107,9 +107,16 @@ public actor HelperLifecycleManager {
     /// to `Contents/Library/LaunchAgents/`.
     public static let plistResourceName = "yyh.CLI-Pulse.helper.agent"
 
-    /// v1.43 — UserDefaults key recording the app version at which we last
-    /// completed a bundled-helper swap (see `kickstartBundledHelperIfAppUpdated`).
-    public static let lastHelperSwapAppVersionKey = "cli_pulse_last_helper_swap_app_version"
+    /// v1.43 — UserDefaults key that recorded the app version at which we last
+    /// completed a bundled-helper swap. **Retired in v1.46**: it was written
+    /// whenever `launchctl kickstart` exited 0, and that exit code says nothing
+    /// about whether the job then spawned — on the machine that surfaced this
+    /// bug it read `1.46.0/99` while the agent had failed to exec 22,138 times.
+    /// A sentinel that latches "done" off a signal that cannot fail is worse
+    /// than no sentinel: it disables the one retry path. Registration health is
+    /// now measured directly on every launch (`reconcileBundledAgent`), so
+    /// nothing needs remembering. Kept only so the key can be cleaned up.
+    public static let retiredHelperSwapAppVersionKey = "cli_pulse_last_helper_swap_app_version"
 
     private var lastKnownStatus: Status = .notRegistered
 
@@ -183,85 +190,145 @@ public actor HelperLifecycleManager {
 
     public func currentStatus() -> Status { lastKnownStatus }
 
-    // MARK: - Controlled helper swap (v1.43)
+    // MARK: - Registration reconciliation (v1.46, replaces the v1.43 kickstart)
 
-    /// Pure decision: does the app binary differ from the one at which we last
-    /// completed a bundled-helper swap? `nil` (never recorded) counts as
-    /// changed — that covers BOTH a fresh install AND, critically, an upgrade
-    /// from a pre-v1.43 app that never wrote the sentinel (e.g. v1.42), so the
-    /// one-time swap fires exactly when a new app bundle has been laid down.
-    static func shouldKickstartHelperForAppUpdate(
-        lastRecorded: String?,
-        current: String
-    ) -> Bool {
-        return lastRecorded != current
+    /// What `reconcileBundledAgent` did.
+    public enum ReconcileOutcome: Sendable, Equatable {
+        /// Nothing to reconcile on this build (no bundled agent / not DEVID),
+        /// or launchd could not be asked. Detail says which.
+        case skipped(String)
+        /// launchd says the agent is running and bound to this build.
+        case healthy
+        /// Registration was rebuilt, and the agent is running afterwards.
+        case repaired(was: HelperAgentHealth.Verdict)
+        /// Registration was rebuilt and the agent is *still* not running.
+        /// The helper is genuinely broken — this is the state worth surfacing.
+        case repairFailed(was: HelperAgentHealth.Verdict, now: HelperAgentHealth.Verdict)
     }
 
-    /// Complete a pending helper swap after an in-place app update.
+    /// Pure: given the verdict before repair and the verdict after (nil if we
+    /// could not re-measure), what happened? Split out so the decision is
+    /// testable without launchd.
+    static func reconcileOutcome(
+        before: HelperAgentHealth.Verdict,
+        after: HelperAgentHealth.Verdict?
+    ) -> ReconcileOutcome {
+        guard before.needsRepair else { return .healthy }
+        guard let after else {
+            return .repairFailed(was: before, now: .indeterminate("re-check unavailable"))
+        }
+        // A repaired job may legitimately not be `running` the instant we look
+        // (KeepAlive throttle, mid-exec). Only a verdict that still calls for
+        // repair counts as a failed repair.
+        return after.needsRepair
+            ? .repairFailed(was: before, now: after)
+            : .repaired(was: before)
+    }
+
+    /// Measure whether the registered LaunchAgent is actually running, and
+    /// rebuild the registration if it is not.
     ///
-    /// Why this is needed: `ensureRegistered()` is a no-op for an
-    /// already-registered agent, and the LaunchAgent is `KeepAlive`. So after
-    /// an in-place app update the OLD bundled-helper process keeps serving the
-    /// socket (old binary inode) until the user next logs in — which is exactly
-    /// what leaves an upgraded user staring at the stale "update available" nag.
+    /// This replaces v1.43's `kickstartBundledHelperIfAppUpdated`. That one
+    /// fired once per app version, restarted the job with
+    /// `launchctl kickstart -k`, and recorded success when `launchctl` exited
+    /// 0. All three parts were wrong for the failure it needed to catch:
     ///
-    /// Why an APP-VERSION sentinel and not the running helper's version/owner:
-    /// the pre-v1.43 bundled helper reports neither the additive `implementation`
-    /// field nor a reliably-bumped version (v1.42 shipped 1.23.0), so the socket
-    /// owner cannot be identified as "our stale bundled helper" from its hello
-    /// alone — dual review (codex + agy) proved the version/owner-gated approach
-    /// leaves those users nagged. Instead we detect the app-binary change via a
-    /// persisted sentinel and `launchctl kickstart -k` OUR OWN LaunchAgent label
-    /// (`yyh.CLI-Pulse.helper.agent`) exactly once per new app version. That is
-    /// safe regardless of who currently owns the socket: it only ever restarts
-    /// the bundled helper we manage, NEVER the separately-labelled
-    /// (`yyh.cli-pulse.helper`) `.pkg` Python helper. The KeepAlive respawn then
-    /// picks up the new binary from the updated bundle. On a same-version launch
-    /// it is a no-op.
+    ///   * `launchctl kickstart` exits 0 for a job that fails to exec
+    ///     milliseconds later — measured against a job that had failed 22,138
+    ///     times. So "success" was recorded for a helper that never ran.
+    ///   * The sentinel then latched, so the one retry path was disabled
+    ///     permanently.
+    ///   * `kickstart` restarts a job but never rebinds it. A registration
+    ///     bound to a bundle path that no longer exists (see
+    ///     `HelperAgentHealth` for how a user gets there — running the app once
+    ///     from the mounted DMG is enough) fails identically after a kickstart.
     ///
-    /// DEVID-only: MAS strips the bundled agent (nothing to kickstart) and its
-    /// sandbox cannot exec `launchctl`; the exec path is `#if DEVID_BUILD`-guarded
-    /// so it never compiles into the App Store build. The sentinel is written
-    /// only AFTER a successful kickstart, so a transient `launchctl` failure
-    /// retries on the next launch. Returns true iff a kickstart was issued.
+    /// Now: ask launchd on every launch, and when the answer is bad do the one
+    /// thing that actually fixes it — `unregister()` + `register()`, which
+    /// rebinds the parent bundle, picks up the current plist's
+    /// `ProgramArguments`, and restarts the helper from the new binary. That
+    /// subsumes the version-change swap: an in-place update leaves the record
+    /// pinned to the old build, which reads as `.staleRegistration` and repairs
+    /// on the next launch. No sentinel, so nothing can latch it off.
+    ///
+    /// Self-limiting: a successful repair sets `parent bundle version` to the
+    /// running build, so the next launch reads `.running` and does nothing.
+    ///
+    /// Effectively DEVID-only, but gated at **runtime** rather than with
+    /// `#if DEVID_BUILD`: MAS strips the bundled agent plist from the archive,
+    /// so the `bundledAgentPlistExists()` guard below returns `.skipped` before
+    /// anything execs, and a sandboxed build that somehow got past it just gets
+    /// `.skipped("launchctl unavailable")` from the failed spawn.
+    ///
+    /// The compile-time gate is deliberately *not* used here: `swift test` does
+    /// not define `DEVID_BUILD`, so a `#if DEVID_BUILD` body is never type-
+    /// checked by the test suite and can rot green (see
+    /// `feedback_guards_that_never_run.md`). The call site in `AppState` stays
+    /// DEVID-gated, so behaviour is unchanged.
     @discardableResult
-    public func kickstartBundledHelperIfAppUpdated(
-        currentAppVersion: String,
-        defaults: UserDefaults = .standard
-    ) async -> Bool {
-        let last = defaults.string(forKey: Self.lastHelperSwapAppVersionKey)
-        guard Self.shouldKickstartHelperForAppUpdate(lastRecorded: last, current: currentAppVersion) else {
-            return false
+    public func reconcileBundledAgent(
+        currentBundleVersion: String?,
+        settleDelay: Duration = .seconds(3)
+    ) async -> ReconcileOutcome {
+        guard Self.locateBundledHelperBinary() != nil, Self.bundledAgentPlistExists() else {
+            return .skipped("no bundled agent in this build")
         }
-        #if DEVID_BUILD
-        let target = "gui/\(getuid())/\(Self.agentLabel)"
-        logger.info(
-            "helper swap: app version changed (\(last ?? "none", privacy: .public) → \(currentAppVersion, privacy: .public)) — kickstarting \(target, privacy: .public) so the new bundle's helper takes over"
+        guard let health = await Self.inspectOffActor() else {
+            return .skipped("launchctl unavailable")
+        }
+        let before = HelperAgentHealth.verdict(for: health, currentBundleVersion: currentBundleVersion)
+        guard before.needsRepair else {
+            logger.info("helper agent healthy (\(before.description, privacy: .public), runs=\(health.runs ?? -1, privacy: .public))")
+            lastKnownStatus = .registered
+            return .healthy
+        }
+
+        logger.error(
+            "helper agent NOT running: \(before.description, privacy: .public) — launchd record says state=\(health.state ?? "?", privacy: .public) runs=\(health.runs ?? -1, privacy: .public) lastExit=\(health.lastExitCodeText ?? health.lastExitReason ?? "none", privacy: .public); rebuilding registration"
         )
-        let ok = await Task.detached { () -> Bool in
-            let proc = Process()
-            proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-            proc.arguments = ["kickstart", "-k", target]
-            do {
-                try proc.run()
-                proc.waitUntilExit()
-                return proc.terminationStatus == 0
-            } catch {
-                return false
-            }
-        }.value
-        if ok {
-            // Record only on success so a transient failure retries next launch.
-            defaults.set(currentAppVersion, forKey: Self.lastHelperSwapAppVersionKey)
-        } else {
-            logger.error("helper swap: launchctl kickstart failed or non-zero for \(target, privacy: .public); will retry next launch")
+
+        let service = SMAppService.agent(plistName: Self.agentPlistName)
+        // Ignore an unregister failure: a job launchd has never heard of
+        // (`.notRegistered`) throws here and the register below is the fix.
+        do { try await service.unregister() } catch let error as NSError {
+            logger.info("unregister during repair returned \(error.domain, privacy: .public)/\(error.code, privacy: .public) — continuing to register")
         }
-        return ok
-        #else
-        // MAS / non-DEVID: no bundled agent to swap. Not reached in practice
-        // (the AppState caller is DEVID-gated); no side effects.
-        return false
-        #endif
+        do {
+            try service.register()
+        } catch let error as NSError {
+            let detail = "re-register failed: \(error.domain)/\(error.code) \(error.localizedDescription)"
+            logger.error("\(detail, privacy: .public)")
+            lastKnownStatus = .registrationFailed(detail)
+            return .repairFailed(was: before, now: .indeterminate(detail))
+        }
+
+        // Give launchd a moment to exec before re-measuring, otherwise we read
+        // the `xpcproxy` transition and report a working repair as failed.
+        try? await Task.sleep(for: settleDelay)
+        let after = await Self.inspectOffActor().map {
+            HelperAgentHealth.verdict(for: $0, currentBundleVersion: currentBundleVersion)
+        }
+        let outcome = Self.reconcileOutcome(before: before, after: after)
+        switch outcome {
+        case .repaired:
+            logger.info("helper agent registration rebuilt; agent is running")
+            lastKnownStatus = .registered
+        case .repairFailed(_, let now):
+            logger.error("helper agent still not running after re-registration: \(now.description, privacy: .public)")
+            lastKnownStatus = .registrationFailed("LaunchAgent will not start: \(now.description)")
+        case .healthy, .skipped:
+            break
+        }
+        return outcome
+    }
+
+    /// `HelperAgentInspector.inspect` blocks its thread on `waitUntilExit()`.
+    /// Running it inline would hold this actor — and a cooperative-pool thread —
+    /// for the duration of a `launchctl` spawn, so it goes on a detached task.
+    private static func inspectOffActor() async -> HelperAgentHealth? {
+        await Task.detached(priority: .utility) {
+            HelperAgentInspector.inspect(label: Self.agentLabel)
+        }.value
     }
 
     // MARK: - Internals

@@ -108,37 +108,72 @@ final class HelperLifecycleManagerTests: XCTestCase {
         )
     }
 
-    // MARK: - Controlled helper swap decision (v1.43, app-version sentinel)
+    // MARK: - Reconciliation outcome (v1.46, replaces the v1.43 kickstart)
+    //
+    // The v1.43 `shouldKickstartHelperForAppUpdate` tests are gone with the
+    // function. They pinned a decision made from a persisted sentinel, and the
+    // sentinel was the bug: it was written whenever `launchctl kickstart`
+    // exited 0, which it does even when the job it kickstarted fails to exec.
+    // On the machine that surfaced this, the sentinel read `1.46.0/99` — a
+    // recorded successful swap — while the agent had failed 22,138 times. The
+    // replacement decides from launchd's live job record instead, so what needs
+    // pinning is how a before/after pair of verdicts maps to an outcome.
 
-    func testShouldKickstart_firesWhenAppVersionChanged() {
-        // The core case: an in-place app update laid down a new bundle. The
-        // running (old, KeepAlive) helper must be swapped in → kickstart.
-        XCTAssertTrue(HelperLifecycleManager.shouldKickstartHelperForAppUpdate(
-            lastRecorded: "1.42.0/95", current: "1.43.0/96"))
+    func testReconcileOutcome_healthyWhenNothingNeededRepair() {
+        // A running, current-build agent must not be torn down and rebuilt.
+        XCTAssertEqual(
+            HelperLifecycleManager.reconcileOutcome(before: .running, after: nil),
+            .healthy,
+            "a healthy agent must be left alone — re-registering restarts the helper for no reason"
+        )
     }
 
-    func testShouldKickstart_firesOnFirstEverRun() {
-        // nil (never recorded) counts as changed. This deliberately covers BOTH
-        // a fresh install AND — critically — an upgrade from a pre-v1.43 app
-        // (e.g. v1.42) that never wrote the sentinel, which is exactly the
-        // population whose old helper omits the fields needed to detect it as
-        // stale. A redundant kickstart on a fresh install is harmless.
-        XCTAssertTrue(HelperLifecycleManager.shouldKickstartHelperForAppUpdate(
-            lastRecorded: nil, current: "1.43.0/96"))
+    func testReconcileOutcome_indeterminateIsNotRepaired() {
+        // We do not tear down a registration on a signal we could not read.
+        XCTAssertEqual(
+            HelperLifecycleManager.reconcileOutcome(before: .indeterminate("xpcproxy"), after: nil),
+            .healthy
+        )
     }
 
-    func testShouldKickstart_noopOnSameVersionRelaunch() {
-        // Steady state: relaunching the same build must NOT restart the helper.
-        XCTAssertFalse(HelperLifecycleManager.shouldKickstartHelperForAppUpdate(
-            lastRecorded: "1.43.0/96", current: "1.43.0/96"))
+    func testReconcileOutcome_repairedWhenAgentRunsAfterwards() {
+        let before = HelperAgentHealth.Verdict.spawnFailing("78: EX_CONFIG")
+        XCTAssertEqual(
+            HelperLifecycleManager.reconcileOutcome(before: before, after: .running),
+            .repaired(was: before)
+        )
     }
 
-    func testShouldKickstart_firesOnBuildBumpEvenWithSameMarketingVersion() {
-        // The sentinel encodes shortVersion/build, so a build-only bump (helper
-        // binary changed without a marketing-version change) still triggers —
-        // this is what version-comparing the helper alone would have missed.
-        XCTAssertTrue(HelperLifecycleManager.shouldKickstartHelperForAppUpdate(
-            lastRecorded: "1.43.0/96", current: "1.43.0/97"))
+    func testReconcileOutcome_staleRegistrationCountsAsRepairedOnceRebound() {
+        // The in-place-update case: record pinned to the old build, agent fine.
+        // After re-registration the version matches, so the verdict is
+        // `.running` and this reports repaired — this is what replaces the
+        // v1.43 version-change kickstart.
+        let before = HelperAgentHealth.Verdict.staleRegistration(recorded: "96", current: "99")
+        XCTAssertEqual(
+            HelperLifecycleManager.reconcileOutcome(before: before, after: .running),
+            .repaired(was: before)
+        )
+    }
+
+    func testReconcileOutcome_repairFailedWhenStillBrokenAfterwards() {
+        // The state the old code could not represent at all: we tried, and the
+        // helper still will not start. Must NOT report success.
+        let before = HelperAgentHealth.Verdict.spawnFailing("78: EX_CONFIG")
+        let after = HelperAgentHealth.Verdict.spawnFailing("78: EX_CONFIG")
+        XCTAssertEqual(
+            HelperLifecycleManager.reconcileOutcome(before: before, after: after),
+            .repairFailed(was: before, now: after)
+        )
+    }
+
+    func testReconcileOutcome_repairFailedWhenRecheckUnavailable() {
+        // Unverifiable is not success. The v1.43 bug in one line: it recorded a
+        // completed swap from a signal (`launchctl` exit 0) that could not fail.
+        let before = HelperAgentHealth.Verdict.notRegistered
+        guard case .repairFailed = HelperLifecycleManager.reconcileOutcome(before: before, after: nil) else {
+            return XCTFail("an unverifiable repair must not be reported as repaired")
+        }
     }
 }
 
