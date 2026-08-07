@@ -44,6 +44,29 @@ PATTERNS=(
     'POSTMORTEM'
     'POST_MORTEM'
     'RUNBOOK'
+    # 2026-08-07. The list above missed a whole class: per-session AI artifacts.
+    # `CLAUDE_HANDOFF_v1.21_long_tail_2026-05-15.txt` sat TRACKED in this public
+    # repo while this gate reported it clean, because no pattern matched it and
+    # it never declares itself internal, so LAYER 2 could not see it either.
+    # These are hand-off notes, task prompts and review dumps written for one
+    # working session — exactly the material the 07-31 incident was about.
+    #
+    # Hyphen AND underscore variants are both listed on purpose: matching is a
+    # literal substring test, so 'REVIEW_TODO' does not match
+    # `gemini-review-todo.md`. Naming style is not a security boundary — the
+    # same reasoning that made this list case-insensitive.
+    'HANDOFF'
+    'NEXT_SESSION'
+    'KICKOFF'
+    'REVIEW_PROMPT'
+    'REVIEW-PROMPT'
+    'FIX_PROMPT'
+    'FIX-PROMPT'
+    'REVIEW_FEEDBACK'
+    'REVIEW-FEEDBACK'
+    'REVIEW_TODO'
+    'REVIEW-TODO'
+    'CHECKLIST'
 )
 
 # LAYER 2 — the document says so itself.
@@ -69,7 +92,18 @@ DECLARATIONS=(
 # Paths that match a rule above but are deliberately public. Each needs a
 # comment saying why — an unexplained entry is how a gate rots into a no-op.
 ALLOWLIST=(
-    # (empty)
+    # Reviewed 2026-07-31 and deliberately kept public. Its own header records
+    # the decision: it originally carried a private-source restriction written
+    # on the false premise that this repo is private, and "every value in the
+    # table below is already a literal in CLIPulseRuntimeEnvironment.swift,
+    # which ships in this repo". So it is a QA checklist containing nothing the
+    # source does not already publish.
+    #
+    # It is allowlisted rather than left unmatched because this gate's own
+    # header cites it as the example of a document that wrongly got through —
+    # yet no pattern actually matched it even after the case-insensitivity fix.
+    # 'CHECKLIST' now matches it, and this entry is the recorded decision.
+    "docs/qa/macos-onboarding-multi-account-checklist.md"
 )
 
 is_allowlisted() {
