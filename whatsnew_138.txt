@@ -1,0 +1,7 @@
+New in this version:
+
+• Machine — see your Mac's live CPU, memory, temperature, fan speed, and power draw at a glance, plus battery health and the processes using the most resources. (Detailed sensor readouts are available in the direct-download build.)
+
+• Provider Service Status — tap a provider to see its live service-component status and jump straight to its status page, so you can tell a provider outage apart from your own usage limits.
+
+• Security and reliability improvements, including a hardened Companion CLI installer and assorted fixes.
