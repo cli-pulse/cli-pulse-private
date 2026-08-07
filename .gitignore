@@ -96,17 +96,80 @@ HelperSwift/Package.resolved
 # Root-anchored so docs/ content is unaffected. Already-tracked files are
 # unaffected by gitignore (e.g. historical DEV_PLAN/PROJECT_FIX commits stay).
 /HANDOFF_*.md
-/DEV_PLAN_*.md
 /CODEX_*.md
 /PROJECT_REVIEW*.md
 /ART_ASSET_LIST*.md
 /CLI_PULSE_ACTION_CHECKLIST*.md
 /PLAN_*.md
 /PROJECT_PLAN_*.md
-/PROJECT_DEV_PLAN_*.md
 /PROJECT_AUDIT_*.md
 /PUBLIC_EXPOSURE_*.md
 /PUBLIC_REPO_*.md
 /R0_OWNER_*.md
 /REPO_VISIBILITY_STRATEGY.md
 /RELEASE_WORKFLOW.md
+
+# The same document names, at ANY depth — deliberately not root-anchored.
+#
+# The list above was written on 2026-07-31 with the note "root-anchored so
+# docs/ content is unaffected". On 2026-08-07 a single `git add -A` staged 141
+# internal documents and pushed them here (PR #421, closed): 91 at the root and
+# 50 that root-anchoring could never have caught — 49 under `docs/` and
+# `MachineRootHelper/SHIP_RUNBOOK.md`. The anchoring was the hole, and
+# `PROJECT_FIX_*` — the single largest class, and the one the habit still
+# produces — had no entry at all.
+#
+# These mirror LAYER 1 of scripts/check_no_internal_docs.sh so the two agree.
+# The gate catches what reaches the index; these keep it out of the index in
+# the first place. Only the gate matches case-insensitively on purpose: these
+# patterns inherit `core.ignorecase`, which is true on this macOS checkout
+# (so `postmortem_x.md` is caught here) and false on a case-sensitive
+# filesystem (where it is not). The gate is the layer that holds either way —
+# do not let these lull anyone into treating it as redundant.
+#
+# Nothing tracked matches (verify: `git ls-files | grep -iE 'PROJECT_FIX|...'`
+# returns nothing, which is also what the gate asserts on every CI run).
+*PROJECT_FIX*
+*DEV_PLAN*
+*DEVELOPMENT_PLAN*
+*FIX_PLAN*
+*SESSION_CHECKPOINT*
+*SHIP_CHECKLIST*
+*POSTMORTEM*
+*POST_MORTEM*
+*RUNBOOK*
+
+# ── iCloud Drive collision copies ──────────────────────────────────────────
+# This working tree lives in iCloud Drive, which resolves a same-name conflict
+# by silently writing a second file with " 2" (then " 3", …) appended — to any
+# name: sources, SQL migrations, whole directories. 21 of them rode along in
+# the 2026-08-07 `git add -A`, including `scripts/check_no_internal_docs 2.sh`
+# and duplicate `migrate_v0.72_provider_accounts` files. A duplicate migration
+# is the worst case: migrations are matched BY NUMBER and are the only record
+# of what has run against production, so a second `v0.72` turns "did v0.72
+# run?" into "which v0.72?" — see the migration-numbering rule in AGENTS.md.
+#
+# Masks nothing legitimate: `git ls-files | grep -E ' [2-9](\..*)?$'` is empty.
+# If a real file ever needs a name like `Figure 2.png`, `git add` refuses it
+# out loud ("paths are ignored by one of your .gitignore files") rather than
+# dropping it silently, and `git add -f` is the deliberate override.
+* [2-9]
+* [2-9].*
+
+# ── Local-only developer tooling (deliberately untracked) ──────────────────
+# Real files that belong on this machine and nowhere else. Listing them here
+# is what keeps `git status` honest: an untracked file nobody intends to commit
+# is indistinguishable from one somebody forgot to.
+#
+# xcode_devid_fan_embed.sh — a Developer-ID fan-embed build phase wired into
+#   the Xcode target by an uncommitted pbxproj edit; it mirrors step 4b of the
+#   tracked scripts/build_signed_app.sh and is useless without that local edit.
+# *_tmp.* — scratch prompts for AI review runs. They quote internal DEV_PLANs
+#   verbatim while carrying none of the names the gate greps for, so they are
+#   exactly the kind of file that slips past every other layer here.
+# submit_v1_10_7.py — a one-off App Store submission script from 2026-04,
+#   superseded by the tracked submit_v1_10_8.py / submit_v1_11_0.py. Ignored
+#   rather than deleted because it is nobody's duplicate; safe to delete.
+/scripts/dev/xcode_devid_fan_embed.sh
+/scripts/dev/*_tmp.*
+/CLI Pulse Bar/scripts/submit_v1_10_7.py
