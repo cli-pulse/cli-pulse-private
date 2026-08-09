@@ -327,8 +327,10 @@ enum ProviderSharedCredentialOwner {
         kind: ProviderKind,
         accountID: UUID
     ) -> Bool {
+        // Idempotent cleanup: providers without a shared compatibility source
+        // have no owner record to release.
         guard supportedKinds.contains(kind) else {
-            return false
+            return true
         }
         return withMutationLock(or: false) {
             lock.withLock {

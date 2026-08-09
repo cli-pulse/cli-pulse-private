@@ -698,6 +698,79 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         )
     }
 
+    #if os(macOS)
+    @MainActor
+    func testSharedOwnerReleaseFailureKeepsAccountRetryable() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B4B4B4B4-B4B4-44B4-84B4-B4B4B4B4B4B4"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let state = try makeIsolatedState(
+            store: store,
+            bundleIdentifier: "yyh.CLI-Pulse"
+        )
+        state.providerConfigs = [config]
+
+        let ownerSuiteName =
+            "ProviderAccountKeychainMigrationTests.Owner.\(UUID().uuidString)"
+        let ownerDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: ownerSuiteName)
+        )
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
+        ownerDefaults.set(accountID.uuidString, forKey: ownerKey)
+
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        let originalSynchronizeDefaults =
+            ProviderSharedCredentialOwner.synchronizeDefaults
+        let originalMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        let mutationLockPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(ownerSuiteName).lock")
+            .path
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            ProviderSharedCredentialOwner.synchronizeDefaults =
+                originalSynchronizeDefaults
+            ProviderSharedCredentialOwner.mutationLock =
+                originalMutationLock
+            ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+            try? FileManager.default.removeItem(
+                atPath: mutationLockPath
+            )
+        }
+        ProviderSharedCredentialOwner.defaults = ownerDefaults
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in false }
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: mutationLockPath
+            )
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertEqual(
+            ownerDefaults.string(forKey: ownerKey),
+            accountID.uuidString
+        )
+
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in true }
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(ownerDefaults.string(forKey: ownerKey))
+    }
+    #endif
+
     private func legacyKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
@@ -712,7 +785,9 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
 
     @MainActor
     private func makeIsolatedState(
-        store: InMemoryProviderSecretStore
+        store: InMemoryProviderSecretStore,
+        bundleIdentifier: String =
+            "tests.clipulse.provider-account-removal"
     ) throws -> AppState {
         let suiteName =
             "ProviderAccountKeychainMigrationTests.\(UUID().uuidString)"
@@ -727,7 +802,7 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
             CLIPulseRuntimeEnvironment.resolveForTesting(
                 infoDictionary: [
                     "CFBundleIdentifier":
-                        "tests.clipulse.provider-account-removal",
+                        bundleIdentifier,
                 ],
                 environment: [:]
             )

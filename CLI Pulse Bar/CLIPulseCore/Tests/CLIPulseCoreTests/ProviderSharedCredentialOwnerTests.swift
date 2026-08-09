@@ -211,6 +211,15 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         )
     }
 
+    func testReleaseForProviderWithoutSharedSourceIsSuccessfulNoOp() {
+        XCTAssertTrue(
+            ProviderSharedCredentialOwner.release(
+                kind: .codex,
+                accountID: UUID()
+            )
+        )
+    }
+
     func testOwnerCallIsReentrantInsideCredentialMutationLock()
         throws
     {

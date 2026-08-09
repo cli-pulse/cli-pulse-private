@@ -1658,10 +1658,14 @@ public final class AppState: ObservableObject {
         }
         #endif
         if runtimeEnvironment.capabilities.allowsHelperRegistration {
-            ProviderSharedCredentialOwner.release(
-                kind: config.kind,
-                accountID: config.accountID
-            )
+            guard
+                ProviderSharedCredentialOwner.release(
+                    kind: config.kind,
+                    accountID: config.accountID
+                )
+            else {
+                return false
+            }
         }
         return true
     }
