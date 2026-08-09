@@ -253,6 +253,47 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         return true
     }
 
+    /// Retire every credential entry owned by an explicitly deleted account.
+    ///
+    /// `deleteSecrets(using:)` intentionally retains migration markers so a
+    /// disconnected account cannot resurrect a legacy provider-scoped value.
+    /// Once the account itself is being removed, those markers would become
+    /// orphaned. The one account designated as the legacy migration owner must
+    /// also retire the provider-scoped entries before its retry anchor (the
+    /// account metadata) can be removed.
+    @discardableResult
+    func deleteSecretsForAccountRemoval(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        guard deleteSecrets(using: store) else {
+            return false
+        }
+
+        let group = Self.secretsAccessGroup
+        if legacySecretMigrationEligible == true {
+            for suffix in ["apiKey", "cookie"] {
+                guard deleteAndConfirmMissing(
+                    key: Self.legacyKeychainKey(kind, suffix),
+                    accessGroup: group,
+                    using: store
+                ) else {
+                    return false
+                }
+            }
+        }
+
+        for suffix in ["apiKey", "cookie"] {
+            guard deleteAndConfirmMissing(
+                key: Self.migrationMarkerKey(accountID, suffix),
+                accessGroup: group,
+                using: store
+            ) else {
+                return false
+            }
+        }
+        return true
+    }
+
     func makeSecretPersistenceCheckpoint(
         using store: any ProviderSecretStoring
     ) -> SecretPersistenceCheckpoint? {
@@ -395,6 +436,23 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
             key: markerKey,
             accessGroup: group
         ) == .value("1")
+    }
+
+    private func deleteAndConfirmMissing(
+        key: String,
+        accessGroup: String?,
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        guard store.delete(
+            key: key,
+            accessGroup: accessGroup
+        ) else {
+            return false
+        }
+        return store.read(
+            key: key,
+            accessGroup: accessGroup
+        ) == .missing
     }
 
     private func loadSecret(

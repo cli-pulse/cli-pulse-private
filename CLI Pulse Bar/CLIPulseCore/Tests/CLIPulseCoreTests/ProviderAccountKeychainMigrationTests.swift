@@ -380,12 +380,363 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testRemovingMigrationOwnerDeletesLegacySlotsAndOnlyItsAccountSecrets()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let ownerID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "AEAEAEAE-AEAE-4EAE-8EAE-AEAEAEAEAEAE"
+            )
+        )
+        let siblingID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "AFAFAFAF-AFAF-4FAF-8FAF-AFAFAFAFAFAF"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let owner = ProviderConfig(
+            kind: .claude,
+            accountID: ownerID,
+            apiKey: "owner-api-key",
+            manualCookieHeader: "owner-cookie",
+            legacySecretMigrationEligible: true
+        )
+        let sibling = ProviderConfig(
+            kind: .claude,
+            accountID: siblingID,
+            apiKey: "sibling-api-key",
+            manualCookieHeader: "sibling-cookie"
+        )
+        XCTAssertTrue(owner.saveSecrets(using: store))
+        XCTAssertTrue(sibling.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "cookie"),
+                value: "legacy-cookie",
+                accessGroup: group
+            )
+        )
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [owner, sibling]
+
+        XCTAssertTrue(state.removeProviderAccount(ownerID))
+
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [siblingID])
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(ownerID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(ownerID, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(siblingID, "apiKey"),
+                accessGroup: group
+            ),
+            "sibling-api-key"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(siblingID, "cookie"),
+                accessGroup: group
+            ),
+            "sibling-cookie"
+        )
+    }
+
+    @MainActor
+    func testLegacyDeleteFailureKeepsAccountRetryableUntilCleanupCompletes()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B0B0B0B0-B0B0-40B0-80B0-B0B0B0B0B0B0"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            manualCookieHeader: "account-cookie",
+            legacySecretMigrationEligible: true
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        let legacyCookie = legacyKey(.claude, "cookie")
+        XCTAssertTrue(
+            store.save(
+                key: legacyCookie,
+                value: "legacy-cookie",
+                accessGroup: group
+            )
+        )
+        store.failingDeleteKeys.insert(legacyCookie)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            ),
+            "completed deletion steps may remain monotonic while metadata stays retryable"
+        )
+        XCTAssertEqual(
+            store.load(key: legacyCookie, accessGroup: group),
+            "legacy-cookie"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            ),
+            "1",
+            "the marker must prevent retained legacy data from reappearing before retry"
+        )
+
+        store.failingDeleteKeys.remove(legacyCookie)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(store.load(key: legacyCookie, accessGroup: group))
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+    }
+
+    @MainActor
+    func testLegacyReadFailureCannotVerifyAccountRemoval() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B1B1B1B1-B1B1-41B1-81B1-B1B1B1B1B1B1"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            legacySecretMigrationEligible: true
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let legacyAPIKey = legacyKey(.claude, "apiKey")
+        XCTAssertTrue(
+            store.save(
+                key: legacyAPIKey,
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        store.failingLoadKeys.insert(legacyAPIKey)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+
+        store.failingLoadKeys.remove(legacyAPIKey)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+    }
+
+    @MainActor
+    func testMarkerDeleteFailureKeepsAccountRetryableUntilCleanupCompletes()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B2B2B2B2-B2B2-42B2-82B2-B2B2B2B2B2B2"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            manualCookieHeader: "account-cookie"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let cookieMarker = markerKey(accountID, "cookie")
+        store.failingDeleteKeys.insert(cookieMarker)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertNil(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertEqual(
+            store.load(key: cookieMarker, accessGroup: group),
+            "1"
+        )
+
+        store.failingDeleteKeys.remove(cookieMarker)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(store.load(key: cookieMarker, accessGroup: group))
+    }
+
+    @MainActor
+    func testRemovingNonMigrationSiblingPreservesLegacySlotsAndRemovesMarkers()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B3B3B3B3-B3B3-43B3-83B3-B3B3B3B3B3B3"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "sibling-api-key"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "migration-owner-legacy-key",
+                accessGroup: group
+            )
+        )
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+
+        XCTAssertEqual(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            ),
+            "migration-owner-legacy-key"
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+    }
+
     private func legacyKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
 
     private func accountKey(_ accountID: UUID, _ suffix: String) -> String {
         "cli_pulse_provider_account_\(accountID.uuidString)_\(suffix)"
+    }
+
+    private func markerKey(_ accountID: UUID, _ suffix: String) -> String {
+        "\(accountKey(accountID, suffix))_legacy_migrated"
+    }
+
+    @MainActor
+    private func makeIsolatedState(
+        store: InMemoryProviderSecretStore
+    ) throws -> AppState {
+        let suiteName =
+            "ProviderAccountKeychainMigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: suiteName)
+        )
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let runtime =
+            CLIPulseRuntimeEnvironment.resolveForTesting(
+                infoDictionary: [
+                    "CFBundleIdentifier":
+                        "tests.clipulse.provider-account-removal",
+                ],
+                environment: [:]
+            )
+        return AppState(
+            runtimeEnvironment: runtime,
+            defaults: defaults,
+            providerSecretStore: store,
+            performLaunchSetup: false
+        )
     }
 }
 

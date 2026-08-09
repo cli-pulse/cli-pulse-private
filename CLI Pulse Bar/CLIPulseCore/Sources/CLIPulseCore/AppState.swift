@@ -1641,7 +1641,9 @@ public final class AppState: ObservableObject {
     private func deleteLocalProviderAccountSecrets(
         _ config: ProviderConfig
     ) -> Bool {
-        guard config.deleteSecrets(using: providerSecretStore) else {
+        guard config.deleteSecretsForAccountRemoval(
+            using: providerSecretStore
+        ) else {
             return false
         }
         #if os(macOS)
