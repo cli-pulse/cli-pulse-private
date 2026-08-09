@@ -1778,10 +1778,7 @@ public final class AppState: ObservableObject {
                 // refresh instead of hammering the endpoint.
                 return
             }
-            providerAccountDeletionOutbox.markCompleted(
-                userID: expectedUserID,
-                accountID: intent.accountID
-            )
+            providerAccountDeletionOutbox.markCompleted(intent)
         }
     }
 

@@ -284,6 +284,69 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         )
     }
 
+    func testStaleSuccessfulDeleteDoesNotClearNewerIntentForSameAccount()
+        async throws
+    {
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "34343434-3434-4434-8434-343434343434"
+            )
+        )
+        let requestStarted = expectation(
+            description: "original delete request started"
+        )
+        let responseGate = DispatchSemaphore(value: 0)
+        AppStateProviderAccountStubProtocol.configure(
+            responses: [
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#,
+                    responseGate: responseGate
+                ),
+            ],
+            onRequest: { _ in requestStarted.fulfill() }
+        )
+        let outbox = makeOutbox()
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: accountID,
+                provider: .claude
+            )
+        )
+        let state = makeState(
+            api: await makeAuthenticatedAPI(),
+            outbox: outbox,
+            userID: "user-a"
+        )
+
+        let flush = Task { @MainActor in
+            await state.flushPendingProviderAccountDeletions(
+                for: "user-a"
+            )
+        }
+        await fulfillment(of: [requestStarted], timeout: 3)
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: accountID,
+                provider: .claude
+            ),
+            "a retry while the original request is in flight must create a new durable intent"
+        )
+        responseGate.signal()
+        await flush.value
+
+        let pending = outbox.pendingIntents(for: "user-a")
+        XCTAssertEqual(
+            pending.count,
+            1,
+            "an old response must not clear a newer retry authority"
+        )
+        XCTAssertEqual(pending.first?.accountID, accountID)
+        XCTAssertEqual(pending.first?.provider, .claude)
+    }
+
     func testStatusSyncFiltersCurrentOwnerAndDoesNotRetryStaleLeaseWithNewSession()
         async throws
     {
