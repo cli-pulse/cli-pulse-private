@@ -1,6 +1,19 @@
 import Foundation
 import Security
 
+enum ProviderSecretReadResult: Equatable {
+    case value(String)
+    case missing
+    case failure
+
+    var value: String? {
+        guard case let .value(value) = self else {
+            return nil
+        }
+        return value
+    }
+}
+
 protocol ProviderSecretStoring {
     @discardableResult
     func save(
@@ -9,8 +22,24 @@ protocol ProviderSecretStoring {
         accessGroup: String?
     ) -> Bool
     func load(key: String, accessGroup: String?) -> String?
+    func read(
+        key: String,
+        accessGroup: String?
+    ) -> ProviderSecretReadResult
     @discardableResult
     func delete(key: String, accessGroup: String?) -> Bool
+}
+
+extension ProviderSecretStoring {
+    func read(
+        key: String,
+        accessGroup: String?
+    ) -> ProviderSecretReadResult {
+        guard let value = load(key: key, accessGroup: accessGroup) else {
+            return .missing
+        }
+        return .value(value)
+    }
 }
 
 struct KeychainProviderSecretStore: ProviderSecretStoring {
@@ -29,6 +58,16 @@ struct KeychainProviderSecretStore: ProviderSecretStoring {
 
     func load(key: String, accessGroup: String?) -> String? {
         KeychainHelper.load(key: key, accessGroup: accessGroup)
+    }
+
+    func read(
+        key: String,
+        accessGroup: String?
+    ) -> ProviderSecretReadResult {
+        KeychainHelper.readResult(
+            key: key,
+            accessGroup: accessGroup
+        )
     }
 
     @discardableResult
@@ -174,7 +213,10 @@ public enum KeychainHelper {
         return false
     }
 
-    public static func load(key: String, accessGroup: String? = nil) -> String? {
+    static func readResult(
+        key: String,
+        accessGroup: String? = nil
+    ) -> ProviderSecretReadResult {
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -186,12 +228,35 @@ public enum KeychainHelper {
             query[kSecAttrAccessGroup as String] = group
         }
         if isRunningUnderXCTest {
-            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
+            guard
+                let value = inMemoryStoreForTesting[
+                    testStoreKey(key, accessGroup)
+                ]
+            else {
+                return .missing
+            }
+            return .value(value)
         }
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if status == errSecItemNotFound {
+            return .missing
+        }
+        guard
+            status == errSecSuccess,
+            let data = item as? Data,
+            let value = String(data: data, encoding: .utf8)
+        else {
+            return .failure
+        }
+        return .value(value)
+    }
+
+    public static func load(
+        key: String,
+        accessGroup: String? = nil
+    ) -> String? {
+        readResult(key: key, accessGroup: accessGroup).value
     }
 
     @discardableResult

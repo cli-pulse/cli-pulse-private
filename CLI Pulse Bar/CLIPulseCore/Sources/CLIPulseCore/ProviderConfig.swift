@@ -153,23 +153,64 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         saveSecrets(using: KeychainProviderSecretStore())
     }
 
+    /// Opaque rollback point for the account-scoped secret entries and their
+    /// migration markers. The values stay in memory only for the duration of
+    /// the editor save transaction.
+    public struct SecretPersistenceCheckpoint {
+        fileprivate let apiKey: String?
+        fileprivate let apiKeyMarker: String?
+        fileprivate let cookie: String?
+        fileprivate let cookieMarker: String?
+    }
+
+    public func makeSecretPersistenceCheckpoint()
+        -> SecretPersistenceCheckpoint?
+    {
+        makeSecretPersistenceCheckpoint(
+            using: KeychainProviderSecretStore()
+        )
+    }
+
+    @discardableResult
+    public func restoreSecrets(
+        from checkpoint: SecretPersistenceCheckpoint
+    ) -> Bool {
+        restoreSecrets(
+            from: checkpoint,
+            using: KeychainProviderSecretStore()
+        )
+    }
+
     @discardableResult
     func saveSecrets(
         using store: any ProviderSecretStoring
     ) -> Bool {
-        let apiKeySaved =
+        guard
+            let checkpoint = makeSecretPersistenceCheckpoint(
+                using: store
+            )
+        else {
+            return false
+        }
+        guard
             persistSecret(
                 apiKey,
                 suffix: "apiKey",
                 using: store
-            )
-        let cookieSaved =
+            ),
             persistSecret(
                 manualCookieHeader,
                 suffix: "cookie",
                 using: store
             )
-        return apiKeySaved && cookieSaved
+        else {
+            _ = restoreSecrets(
+                from: checkpoint,
+                using: store
+            )
+            return false
+        }
+        return true
     }
 
     /// Load secrets from Keychain into the in-memory fields.
@@ -192,11 +233,114 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     func deleteSecrets(
         using store: any ProviderSecretStoring
     ) -> Bool {
-        let apiKeyDeleted =
-            persistSecret(nil, suffix: "apiKey", using: store)
-        let cookieDeleted =
+        guard
+            let checkpoint = makeSecretPersistenceCheckpoint(
+                using: store
+            )
+        else {
+            return false
+        }
+        guard
+            persistSecret(nil, suffix: "apiKey", using: store),
             persistSecret(nil, suffix: "cookie", using: store)
-        return apiKeyDeleted && cookieDeleted
+        else {
+            _ = restoreSecrets(
+                from: checkpoint,
+                using: store
+            )
+            return false
+        }
+        return true
+    }
+
+    func makeSecretPersistenceCheckpoint(
+        using store: any ProviderSecretStoring
+    ) -> SecretPersistenceCheckpoint? {
+        let group = Self.secretsAccessGroup
+        let apiKey = store.read(
+            key: Self.accountKeychainKey(accountID, "apiKey"),
+            accessGroup: group
+        )
+        let apiKeyMarker = store.read(
+            key: Self.migrationMarkerKey(accountID, "apiKey"),
+            accessGroup: group
+        )
+        let cookie = store.read(
+            key: Self.accountKeychainKey(accountID, "cookie"),
+            accessGroup: group
+        )
+        let cookieMarker = store.read(
+            key: Self.migrationMarkerKey(accountID, "cookie"),
+            accessGroup: group
+        )
+        guard
+            apiKey != .failure,
+            apiKeyMarker != .failure,
+            cookie != .failure,
+            cookieMarker != .failure
+        else {
+            return nil
+        }
+        return SecretPersistenceCheckpoint(
+            apiKey: apiKey.value,
+            apiKeyMarker: apiKeyMarker.value,
+            cookie: cookie.value,
+            cookieMarker: cookieMarker.value
+        )
+    }
+
+    @discardableResult
+    func restoreSecrets(
+        from checkpoint: SecretPersistenceCheckpoint,
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let group = Self.secretsAccessGroup
+        let entries: [(String, String?)] = [
+            (
+                Self.accountKeychainKey(accountID, "apiKey"),
+                checkpoint.apiKey
+            ),
+            (
+                Self.migrationMarkerKey(accountID, "apiKey"),
+                checkpoint.apiKeyMarker
+            ),
+            (
+                Self.accountKeychainKey(accountID, "cookie"),
+                checkpoint.cookie
+            ),
+            (
+                Self.migrationMarkerKey(accountID, "cookie"),
+                checkpoint.cookieMarker
+            ),
+        ]
+        var restored = true
+        for (key, value) in entries {
+            let entryRestored: Bool
+            if let value {
+                entryRestored =
+                    store.save(
+                        key: key,
+                        value: value,
+                        accessGroup: group
+                    )
+                    && store.read(
+                        key: key,
+                        accessGroup: group
+                    ) == .value(value)
+            } else {
+                entryRestored =
+                    store.delete(
+                        key: key,
+                        accessGroup: group
+                    )
+                    && store.read(
+                        key: key,
+                        accessGroup: group
+                    ) == .missing
+            }
+            restored = entryRestored && restored
+        }
+        return restored
     }
 
     @discardableResult
@@ -217,7 +361,12 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
             ) else {
                 return false
             }
-            guard store.load(key: accountKey, accessGroup: group) == value else {
+            guard
+                store.read(
+                    key: accountKey,
+                    accessGroup: group
+                ) == .value(value)
+            else {
                 return false
             }
         } else {
@@ -226,10 +375,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
                     key: accountKey,
                     accessGroup: group
                 ),
-                store.load(
+                store.read(
                     key: accountKey,
                     accessGroup: group
-                ) == nil
+                ) == .missing
             else {
                 return false
             }
@@ -242,10 +391,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         ) else {
             return false
         }
-        return store.load(
+        return store.read(
             key: markerKey,
             accessGroup: group
-        ) == "1"
+        ) == .value("1")
     }
 
     private func loadSecret(

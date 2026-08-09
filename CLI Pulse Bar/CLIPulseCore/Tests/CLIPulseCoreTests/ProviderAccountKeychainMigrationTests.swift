@@ -247,6 +247,139 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         )
     }
 
+    func testSaveSecretsRestoresBothEntriesWhenSecondWriteFails()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ABABABAB-ABAB-4BAB-8BAB-ABABABABABAB"
+            )
+        )
+        let original = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "old-api-key",
+            manualCookieHeader: "old-cookie"
+        )
+        XCTAssertTrue(original.saveSecrets(using: store))
+        store.failingSaveAttemptsByKey[
+            accountKey(accountID, "cookie")
+        ] = 1
+        let edited = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "new-api-key",
+            manualCookieHeader: "new-cookie"
+        )
+
+        XCTAssertFalse(edited.saveSecrets(using: store))
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-api-key"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-cookie"
+        )
+    }
+
+    func testSaveSecretsFailsWithoutMutationWhenCheckpointReadFails()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ACACACAC-ACAC-4CAC-8CAC-ACACACACACAC"
+            )
+        )
+        let original = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "old-api-key",
+            manualCookieHeader: "old-cookie"
+        )
+        XCTAssertTrue(original.saveSecrets(using: store))
+        let apiKey = accountKey(accountID, "apiKey")
+        store.failingLoadKeys.insert(apiKey)
+        let edited = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "new-api-key",
+            manualCookieHeader: "new-cookie"
+        )
+
+        XCTAssertFalse(edited.saveSecrets(using: store))
+
+        store.failingLoadKeys.remove(apiKey)
+        XCTAssertEqual(
+            store.load(
+                key: apiKey,
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-api-key"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-cookie"
+        )
+    }
+
+    func testRestoreMissingSecretReportsReadFailureAfterDelete()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ADADADAD-ADAD-4DAD-8DAD-ADADADADADAD"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID
+        )
+        let checkpoint = try XCTUnwrap(
+            config.makeSecretPersistenceCheckpoint(using: store)
+        )
+        let apiKey = accountKey(accountID, "apiKey")
+        XCTAssertTrue(
+            store.save(
+                key: apiKey,
+                value: "must-be-removed",
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+        store.failingLoadKeys.insert(apiKey)
+
+        XCTAssertFalse(
+            config.restoreSecrets(
+                from: checkpoint,
+                using: store
+            ),
+            "a read failure must not verify deletion as successful"
+        )
+
+        store.failingLoadKeys.remove(apiKey)
+        XCTAssertNil(
+            store.load(
+                key: apiKey,
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+    }
+
     private func legacyKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
@@ -264,7 +397,9 @@ private final class InMemoryProviderSecretStore: ProviderSecretStoring {
 
     private var values: [Slot: String] = [:]
     var failingSaveKeys: Set<String> = []
+    var failingSaveAttemptsByKey: [String: Int] = [:]
     var failingDeleteKeys: Set<String> = []
+    var failingLoadKeys: Set<String> = []
 
     @discardableResult
     func save(
@@ -275,12 +410,38 @@ private final class InMemoryProviderSecretStore: ProviderSecretStoring {
         guard !failingSaveKeys.contains(key) else {
             return false
         }
+        if let remaining = failingSaveAttemptsByKey[key],
+           remaining > 0
+        {
+            failingSaveAttemptsByKey[key] = remaining - 1
+            return false
+        }
         values[Slot(key: key, accessGroup: accessGroup)] = value
         return true
     }
 
     func load(key: String, accessGroup: String?) -> String? {
-        values[Slot(key: key, accessGroup: accessGroup)]
+        guard !failingLoadKeys.contains(key) else {
+            return nil
+        }
+        return values[Slot(key: key, accessGroup: accessGroup)]
+    }
+
+    func read(
+        key: String,
+        accessGroup: String?
+    ) -> ProviderSecretReadResult {
+        guard !failingLoadKeys.contains(key) else {
+            return .failure
+        }
+        guard
+            let value = values[
+                Slot(key: key, accessGroup: accessGroup)
+            ]
+        else {
+            return .missing
+        }
+        return .value(value)
     }
 
     @discardableResult

@@ -74,6 +74,8 @@ public final class AppState: ObservableObject {
     // computed forwarders so setProviderEnabled/toggleProvider/DemoDataProvider/
     // DataRefreshManager-payload-assign compile unchanged.
     public let providerState = ProviderState()
+    private var pendingProviderAccountSaveRecoveries:
+        [UUID: ProviderAccountSaveRecovery] = [:]
 
     public var providers: [ProviderUsage] {
         get { providerState.providers }
@@ -1431,9 +1433,91 @@ public final class AppState: ObservableObject {
         return resolvedStore.save(providerConfigs)
     }
 
+    public func makeProviderAccountPersistenceCheckpoint(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore? = nil
+    ) -> ProviderAccountPersistenceCheckpoint? {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return nil
+        }
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        )
+        let ownerCheckpoint:
+            ProviderSharedCredentialOwner.PersistenceCheckpoint?
+        if allowsHelperMirror {
+            guard
+                let captured =
+                    ProviderSharedCredentialOwner
+                        .makePersistenceCheckpoint()
+            else {
+                return nil
+            }
+            ownerCheckpoint = captured
+        } else {
+            ownerCheckpoint = nil
+        }
+        return ProviderAccountPersistenceCheckpoint(
+            metadataStore: resolvedStore,
+            metadataCheckpoint:
+                resolvedStore.makePersistenceCheckpoint(),
+            ownerCheckpoint: ownerCheckpoint,
+            restoresOwner: allowsHelperMirror
+        )
+    }
+
+    public func withProviderAccountPersistenceLock<T>(
+        or failure: T,
+        _ body: () -> T
+    ) -> T {
+        ProviderSharedCredentialOwner.withPersistenceLock(
+            or: failure,
+            body
+        )
+    }
+
+    public func retainProviderAccountSaveRecovery(
+        _ recovery: ProviderAccountSaveRecovery,
+        for accountID: UUID
+    ) {
+        // Never replace the original baseline with one captured from a
+        // partially compensated state.
+        guard pendingProviderAccountSaveRecoveries[accountID] == nil else {
+            return
+        }
+        pendingProviderAccountSaveRecoveries[accountID] = recovery
+    }
+
+    /// Retry an incomplete compensation before the editor is allowed to
+    /// capture a fresh baseline. A failed recovery remains pending.
     @discardableResult
-    public func commitProviderAccountDraft(
+    public func recoverPendingProviderAccountSave(
         _ accountID: UUID
+    ) -> Bool {
+        guard
+            let recovery =
+                pendingProviderAccountSaveRecoveries[accountID]
+        else {
+            return true
+        }
+        guard recovery.recover() else {
+            return false
+        }
+        pendingProviderAccountSaveRecoveries[accountID] = nil
+        return true
+    }
+
+    @discardableResult
+    public func persistProviderAccountDraftMetadata(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore? = nil
     ) -> Bool {
         guard providerConfigs.contains(where: {
             $0.accountID == accountID
@@ -1442,11 +1526,42 @@ public final class AppState: ObservableObject {
         }
         // Persist final metadata while the in-memory draft marker still
         // exists. A failed write leaves the editor transaction retryable.
-        guard saveProviderConfigMetadata() else {
-            return false
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        if allowsHelperMirror {
+            guard ProviderSharedCredentialOwner.reconcile(configs: providerConfigs) else {
+                return false
+            }
+        }
+        let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        )
+        return resolvedStore.save(providerConfigs)
+    }
+
+    /// Complete the in-memory portion only after every fallible persistence
+    /// step, including provider-specific credential mutation, has succeeded.
+    public func finalizeProviderAccountDraft(_ accountID: UUID) {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return
         }
         _ = providerState.commitProviderAccountDraft(accountID)
         buildProviderDetails()
+    }
+
+    @discardableResult
+    public func commitProviderAccountDraft(
+        _ accountID: UUID
+    ) -> Bool {
+        guard persistProviderAccountDraftMetadata(accountID) else {
+            return false
+        }
+        finalizeProviderAccountDraft(accountID)
         return true
     }
 
