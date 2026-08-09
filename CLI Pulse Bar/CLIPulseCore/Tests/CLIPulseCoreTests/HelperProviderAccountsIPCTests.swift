@@ -33,13 +33,118 @@ final class HelperProviderAccountsIPCTests: XCTestCase {
         let snapshot = DataRefreshManager.parseHelperCollectorResults(
             data,
             providerConfigs: [config],
-            now: now
+            now: now,
+            sharedCredentialOwner: { _ in .unowned }
         )
 
         XCTAssertEqual(snapshot.providerResults.count, 1)
         XCTAssertEqual(snapshot.accountResults.count, 1)
         XCTAssertEqual(snapshot.accountResults.first?.accountID, accountID)
         XCTAssertEqual(snapshot.accountResults.first?.result.usage.remaining, 64)
+    }
+
+    func testV1SharedProviderMapsToPersistedOwnerInsteadOfFirstSortOrder() throws {
+        let firstID = try XCTUnwrap(UUID(uuidString: "12121212-1212-4212-8212-121212121212"))
+        let ownerID = try XCTUnwrap(UUID(uuidString: "34343434-3434-4434-8434-343434343434"))
+        let configs = [
+            ProviderConfig(kind: .claude, accountID: firstID, isEnabled: true, sortOrder: 0),
+            ProviderConfig(kind: .claude, accountID: ownerID, isEnabled: true, sortOrder: 1),
+        ]
+
+        let snapshot = DataRefreshManager.parseHelperCollectorResults(
+            makeV1Data(provider: .claude),
+            providerConfigs: configs,
+            now: now,
+            sharedCredentialOwner: { kind in
+                kind == .claude ? .owned(ownerID) : .unowned
+            }
+        )
+
+        XCTAssertEqual(snapshot.accountResults.count, 1)
+        XCTAssertEqual(snapshot.accountResults.first?.accountID, ownerID)
+    }
+
+    func testV1SharedProviderDoesNotGuessBetweenUnownedAccounts() throws {
+        let firstID = try XCTUnwrap(UUID(uuidString: "56565656-5656-4656-8656-565656565656"))
+        let secondID = try XCTUnwrap(UUID(uuidString: "78787878-7878-4878-8878-787878787878"))
+        let configs = [
+            ProviderConfig(kind: .claude, accountID: firstID, isEnabled: true, sortOrder: 0),
+            ProviderConfig(kind: .claude, accountID: secondID, isEnabled: true, sortOrder: 1),
+        ]
+
+        let snapshot = DataRefreshManager.parseHelperCollectorResults(
+            makeV1Data(provider: .claude),
+            providerConfigs: configs,
+            now: now,
+            sharedCredentialOwner: { _ in .unowned }
+        )
+
+        XCTAssertTrue(snapshot.accountResults.isEmpty)
+        XCTAssertEqual(snapshot.providerResults.count, 1)
+    }
+
+    func testV1SharedProviderFailsClosedForInvalidOwnerState() throws {
+        let accountID = try XCTUnwrap(UUID(uuidString: "89898989-8989-4989-8989-898989898989"))
+        let staleOwnerID = try XCTUnwrap(UUID(uuidString: "90909090-9090-4090-8090-909090909090"))
+        let config = ProviderConfig(kind: .claude, accountID: accountID, isEnabled: true)
+        let invalidStates: [ProviderSharedCredentialOwner.Lookup] = [
+            .unavailable,
+            .corrupt,
+            .owned(staleOwnerID),
+        ]
+
+        for ownerState in invalidStates {
+            let snapshot = DataRefreshManager.parseHelperCollectorResults(
+                makeV1Data(provider: .claude),
+                providerConfigs: [config],
+                now: now,
+                sharedCredentialOwner: { _ in ownerState }
+            )
+
+            XCTAssertTrue(
+                snapshot.accountResults.isEmpty,
+                "owner state \(ownerState) must not be guessed"
+            )
+            XCTAssertEqual(snapshot.providerResults.count, 1)
+        }
+    }
+
+    func testV1SharedProviderRejectsFallbackDisabledAccount() throws {
+        let accountID = try XCTUnwrap(UUID(uuidString: "93939393-9393-4393-8393-939393939393"))
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            isEnabled: true,
+            sharedCredentialFallbackDisabled: true
+        )
+
+        let snapshot = DataRefreshManager.parseHelperCollectorResults(
+            makeV1Data(provider: .claude),
+            providerConfigs: [config],
+            now: now,
+            sharedCredentialOwner: { _ in .owned(accountID) }
+        )
+
+        XCTAssertTrue(snapshot.accountResults.isEmpty)
+        XCTAssertEqual(snapshot.providerResults.count, 1)
+    }
+
+    func testV1NonSharedProviderDoesNotGuessBetweenAccounts() throws {
+        let firstID = try XCTUnwrap(UUID(uuidString: "91919191-9191-4191-8191-919191919191"))
+        let secondID = try XCTUnwrap(UUID(uuidString: "92929292-9292-4292-8292-929292929292"))
+        let configs = [
+            ProviderConfig(kind: .codex, accountID: firstID, isEnabled: true, sortOrder: 0),
+            ProviderConfig(kind: .codex, accountID: secondID, isEnabled: true, sortOrder: 1),
+        ]
+
+        let snapshot = DataRefreshManager.parseHelperCollectorResults(
+            makeV1Data(provider: .codex),
+            providerConfigs: configs,
+            now: now
+        )
+
+        XCTAssertTrue(snapshot.accountResults.isEmpty)
+        XCTAssertEqual(snapshot.providerResults.count, 1)
     }
 
     func testV1DisabledProviderProjectionIsRejected() throws {
@@ -505,6 +610,21 @@ final class HelperProviderAccountsIPCTests: XCTestCase {
             tiers: [],
             metadata: nil
         )
+    }
+
+    private func makeV1Data(provider: ProviderKind) -> Data {
+        Data("""
+        {
+          "timestamp": "2026-03-21T04:00:00Z",
+          "providers": {
+            "\(provider.rawValue)": {
+              "quota": 100,
+              "remaining": 64,
+              "tiers": []
+            }
+          }
+        }
+        """.utf8)
     }
 }
 #endif

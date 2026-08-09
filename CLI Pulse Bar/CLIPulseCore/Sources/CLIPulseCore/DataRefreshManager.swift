@@ -1470,7 +1470,10 @@ internal final class DataRefreshManager {
     nonisolated static func parseHelperCollectorResults(
         _ data: Data,
         providerConfigs: [ProviderConfig],
-        now: Date = Date()
+        now: Date = Date(),
+        sharedCredentialOwner: (ProviderKind) -> ProviderSharedCredentialOwner.Lookup = {
+            ProviderSharedCredentialOwner.lookup(kind: $0)
+        }
     ) -> HelperCollectorSnapshot {
         guard let decoded = try? HelperIPC.decodeCollectorResults(data, now: now) else {
             return .empty
@@ -1499,12 +1502,35 @@ internal final class DataRefreshManager {
                 )
             }
             let accountResults = providerResults.compactMap { result -> AccountScopedCollectorResult? in
-                guard let kind = ProviderKind(rawValue: result.usage.provider),
-                      let config = providerConfigs
-                        .filter({ $0.kind == kind && $0.isEnabled })
-                        .sorted(by: providerConfigComesBefore)
-                        .first
-                else { return nil }
+                guard let kind = ProviderKind(rawValue: result.usage.provider) else {
+                    return nil
+                }
+                let usesSharedCredentials = kind == .claude || kind == .gemini
+                let eligible = providerConfigs
+                    .filter {
+                        guard $0.kind == kind && $0.isEnabled else {
+                            return false
+                        }
+                        return !usesSharedCredentials
+                            || $0.sharedCredentialFallbackDisabled != true
+                    }
+                    .sorted(by: providerConfigComesBefore)
+                let config: ProviderConfig?
+
+                if usesSharedCredentials {
+                    switch sharedCredentialOwner(kind) {
+                    case let .owned(accountID):
+                        config = eligible.first { $0.accountID == accountID }
+                    case .unowned:
+                        config = eligible.count == 1 ? eligible[0] : nil
+                    case .unavailable, .corrupt:
+                        config = nil
+                    }
+                } else {
+                    config = eligible.count == 1 ? eligible[0] : nil
+                }
+
+                guard let config else { return nil }
                 return AccountScopedCollectorResult(
                     accountID: config.accountID,
                     config: config,
