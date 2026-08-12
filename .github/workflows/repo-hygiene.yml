@@ -55,6 +55,13 @@ jobs:
       # only backend/supabase/ does not match swift-ci's filter either.
       - run: bash scripts/check_migration_numbers.sh
 
+      # SwiftPM globs Sources/ and Tests/, so a stray "Foo 2.swift" next to
+      # "Foo.swift" is compiled and makes the type ambiguous. It killed an iOS
+      # archive on 2026-08-11 after ~20 minutes, with 25 such files present.
+      # .gitignore already matches them — which is exactly why a separate guard
+      # is needed: ignoring protects the index, not the compiler.
+      - run: bash scripts/check_no_duplicate_sources.sh
+
       - run: bash scripts/check_copyright.sh
 
       # `privacy.localOnlyMode` overrides the telemetry switch inside the store,
