@@ -1620,10 +1620,21 @@ public final class AppState: ObservableObject {
         guard deleteLocalProviderAccountSecrets(config) else {
             return false
         }
+        let remainingConfigs = providerConfigs.filter {
+            $0.accountID != accountID
+        }
+        guard saveProviderConfigMetadata(
+            remainingConfigs,
+            requireSharedCredentialOwnerReconciliation: true
+        ) else {
+            // Keep the in-memory account as the visible retry anchor. The
+            // durable outbox (when present) remains pending, and cloud
+            // deletion must not start until local metadata commits.
+            return false
+        }
         guard providerState.removeProviderAccount(accountID) != nil else {
             return false
         }
-        saveProviderConfigMetadata()
         buildProviderDetails()
         if let deletionOwnerID {
             Task { [weak self] in
@@ -1751,9 +1762,15 @@ public final class AppState: ObservableObject {
         else {
             return
         }
+        let locallyPresentAccountIDs = Set(
+            providerConfigs.map(\.accountID)
+        )
         let pending = providerAccountDeletionOutbox
             .pendingIntents(for: expectedUserID)
-            .filter { $0.provider != nil }
+            .filter {
+                $0.provider != nil
+                    && !locallyPresentAccountIDs.contains($0.accountID)
+            }
             .prefix(10)
         for intent in pending {
             guard
@@ -1765,6 +1782,14 @@ public final class AppState: ObservableObject {
             guard let provider = intent.provider else {
                 // Provider-less v1 development intents are retained until
                 // local metadata recovery can safely enrich them.
+                continue
+            }
+            guard !providerConfigs.contains(where: {
+                $0.accountID == intent.accountID
+            }) else {
+                // The preceding delete awaits, so MainActor can restore a
+                // later account while this batch is in progress. Recheck each
+                // intent at the last local gate before contacting the server.
                 continue
             }
             let deleted = await api.deleteProviderAccount(
@@ -2090,17 +2115,35 @@ public final class AppState: ObservableObject {
     /// for enable/order/label changes that must never mutate Keychain state.
     @discardableResult
     public func saveProviderConfigMetadata() -> Bool {
+        saveProviderConfigMetadata(
+            providerConfigs,
+            requireSharedCredentialOwnerReconciliation: false
+        )
+    }
+
+    private func saveProviderConfigMetadata(
+        _ configs: [ProviderConfig],
+        requireSharedCredentialOwnerReconciliation: Bool
+    ) -> Bool {
         let allowsHelperMirror =
             runtimeEnvironment.capabilities.allowsHelperRegistration
         if allowsHelperMirror {
-            ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+            let reconciled = ProviderSharedCredentialOwner.reconcile(
+                configs: configs
+            )
+            guard
+                reconciled
+                    || !requireSharedCredentialOwnerReconciliation
+            else {
+                return false
+            }
         }
         return ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
                 ? providerConfigHelperDefaults
                 : nil
-        ).save(providerConfigs)
+        ).save(configs)
     }
 
     public func buildProviderDetails() {
@@ -2280,7 +2323,10 @@ public final class AppState: ObservableObject {
     /// Finish a local deletion whose durable intent was committed before a
     /// previous process stopped. Owner matching is mandatory so a queued
     /// user-A intent can never remove a user-B account after an account switch.
-    private func recoverPendingLocalProviderAccountDeletions() {
+    /// Internal so deterministic composition tests can exercise the relaunch
+    /// recovery transaction without running AppState's production launch
+    /// migrations or touching the real Keychain.
+    func recoverPendingLocalProviderAccountDeletions() {
         let accountIDs =
             ProviderAccountDeletionRecovery.accountIDsToRemove(
                 from: providerConfigs,
@@ -2305,6 +2351,15 @@ public final class AppState: ObservableObject {
                 ),
                 deleteLocalProviderAccountSecrets(config)
             else {
+                continue
+            }
+            let remainingConfigs = providerConfigs.filter {
+                $0.accountID != accountID
+            }
+            guard saveProviderConfigMetadata(
+                remainingConfigs,
+                requireSharedCredentialOwnerReconciliation: true
+            ) else {
                 continue
             }
             _ = providerState.removeProviderAccount(accountID)

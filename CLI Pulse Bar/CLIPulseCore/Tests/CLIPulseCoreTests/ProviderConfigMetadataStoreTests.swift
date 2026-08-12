@@ -140,6 +140,184 @@ final class ProviderConfigMetadataStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testAccountRemovalMetadataFailureKeepsAccountRetryable()
+        throws
+    {
+        let suiteName =
+            "ProviderConfigMetadataStoreTests.remove-failure.\(UUID())"
+        let defaults = try XCTUnwrap(
+            DroppingUserDefaults(suiteName: suiteName)
+        )
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ABABABAB-ABAB-4BAB-8BAB-ABABABABABAB"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            syncOwnerUserID: "user-a"
+        )
+        let metadataStore = ProviderConfigMetadataStore(
+            defaults: defaults,
+            helperDefaults: nil
+        )
+        XCTAssertTrue(metadataStore.save([config]))
+
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey:
+                "ProviderConfigMetadataStoreTests.remove-failure.outbox"
+        )
+        let runtime =
+            CLIPulseRuntimeEnvironment.resolveForTesting(
+                infoDictionary: [
+                    "CFBundleIdentifier":
+                        "tests.clipulse.provider-metadata-removal",
+                ],
+                environment: [:]
+            )
+        XCTAssertFalse(
+            runtime.capabilities.allowsHelperRegistration
+        )
+        let secretStore = MemoryProviderSecretStore()
+        XCTAssertTrue(
+            config.deleteSecretsForAccountRemoval(
+                using: secretStore
+            )
+        )
+        let state = AppState(
+            runtimeEnvironment: runtime,
+            defaults: defaults,
+            providerSecretStore: secretStore,
+            providerAccountDeletionOutbox: outbox,
+            performLaunchSetup: false
+        )
+        state.providerConfigs = [config]
+        defaults.droppedSetKeys.insert(
+            ProviderAccountMigration.configsKey
+        )
+        XCTAssertFalse(
+            metadataStore.save([]),
+            "the fixture must reach the metadata write failure"
+        )
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(
+            state.providerConfigs.map(\.accountID),
+            [accountID],
+            "a failed metadata write must leave a visible retry anchor"
+        )
+        XCTAssertEqual(
+            outbox.pendingAccountIDs(for: "user-a"),
+            [accountID],
+            "the durable deletion intent must remain available for retry"
+        )
+        let persistedData = try XCTUnwrap(
+            defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                [ProviderConfig].self,
+                from: persistedData
+            ).map(\.accountID),
+            [accountID]
+        )
+    }
+
+    @MainActor
+    func testPendingDeletionRecoveryMetadataFailureKeepsAccountRetryable()
+        throws
+    {
+        let suiteName =
+            "ProviderConfigMetadataStoreTests.recovery-failure.\(UUID())"
+        let defaults = try XCTUnwrap(
+            DroppingUserDefaults(suiteName: suiteName)
+        )
+        defer {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "CDCDCDCD-CDCD-4DCD-8DCD-CDCDCDCDCDCD"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            syncOwnerUserID: "user-a"
+        )
+        XCTAssertTrue(
+            ProviderConfigMetadataStore(
+                defaults: defaults,
+                helperDefaults: nil
+            ).save([config])
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: defaults,
+            storageKey:
+                "ProviderConfigMetadataStoreTests.recovery-failure.outbox"
+        )
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: accountID,
+                provider: .claude
+            )
+        )
+        let runtime =
+            CLIPulseRuntimeEnvironment.resolveForTesting(
+                infoDictionary: [
+                    "CFBundleIdentifier":
+                        "tests.clipulse.provider-deletion-recovery",
+                ],
+                environment: [:]
+            )
+        let state = AppState(
+            runtimeEnvironment: runtime,
+            defaults: defaults,
+            providerSecretStore: MemoryProviderSecretStore(),
+            providerAccountDeletionOutbox: outbox,
+            performLaunchSetup: false
+        )
+        state.providerConfigs = [config]
+        defaults.droppedSetKeys.insert(
+            ProviderAccountMigration.configsKey
+        )
+
+        state.recoverPendingLocalProviderAccountDeletions()
+
+        XCTAssertEqual(
+            state.providerConfigs.map(\.accountID),
+            [accountID],
+            "relaunch recovery must keep the account visible when metadata cannot commit"
+        )
+        XCTAssertEqual(
+            outbox.pendingAccountIDs(for: "user-a"),
+            [accountID]
+        )
+        let persistedData = try XCTUnwrap(
+            defaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                [ProviderConfig].self,
+                from: persistedData
+            ).map(\.accountID),
+            [accountID]
+        )
+    }
+
+    @MainActor
     func testDraftRecoveryAnchorSurvivesRestartBeforeCredentialCommit()
         throws
     {
@@ -271,6 +449,108 @@ final class ProviderConfigMetadataStoreTests: XCTestCase {
     }
 
     #if os(macOS)
+    @MainActor
+    func testOwnerReconcileFailureBlocksDeletionButNotOrdinaryMetadataSave()
+        throws
+    {
+        let appSuiteName =
+            "ProviderConfigMetadataStoreTests.remove-owner.app.\(UUID())"
+        let helperSuiteName =
+            "ProviderConfigMetadataStoreTests.remove-owner.helper.\(UUID())"
+        let appDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: appSuiteName)
+        )
+        let helperDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: helperSuiteName)
+        )
+        let originalOwnerDefaults =
+            ProviderSharedCredentialOwner.defaults
+        let originalSynchronizeDefaults =
+            ProviderSharedCredentialOwner.synchronizeDefaults
+        let originalMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        let lockPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "ProviderConfigMetadataStoreTests.remove-owner.\(UUID()).lock"
+            )
+            .path
+        defer {
+            ProviderSharedCredentialOwner.defaults =
+                originalOwnerDefaults
+            ProviderSharedCredentialOwner.synchronizeDefaults =
+                originalSynchronizeDefaults
+            ProviderSharedCredentialOwner.mutationLock =
+                originalMutationLock
+            appDefaults.removePersistentDomain(
+                forName: appSuiteName
+            )
+            helperDefaults.removePersistentDomain(
+                forName: helperSuiteName
+            )
+            try? FileManager.default.removeItem(atPath: lockPath)
+        }
+        ProviderSharedCredentialOwner.defaults = helperDefaults
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in
+            false
+        }
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: lockPath
+            )
+
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "DEDEDEDE-DEDE-4EDE-8EDE-DEDEDEDEDEDE"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .codex,
+            accountID: accountID
+        )
+        let metadataStore = ProviderConfigMetadataStore(
+            defaults: appDefaults,
+            helperDefaults: helperDefaults
+        )
+        XCTAssertTrue(metadataStore.save([config]))
+        let state = AppState(
+            runtimeEnvironment: TestRuntimeFixtures.productionApp,
+            defaults: appDefaults,
+            helperDefaults: helperDefaults,
+            providerSecretStore: MemoryProviderSecretStore(),
+            providerAccountDeletionOutbox:
+                ProviderAccountDeletionOutbox(
+                    defaults: appDefaults,
+                    storageKey:
+                        "ProviderConfigMetadataStoreTests.remove-owner.outbox"
+                ),
+            performLaunchSetup: false
+        )
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(
+            state.providerConfigs.map(\.accountID),
+            [accountID]
+        )
+        let persistedData = try XCTUnwrap(
+            appDefaults.data(
+                forKey: ProviderAccountMigration.configsKey
+            )
+        )
+        XCTAssertEqual(
+            try JSONDecoder().decode(
+                [ProviderConfig].self,
+                from: persistedData
+            ).map(\.accountID),
+            [accountID]
+        )
+        XCTAssertTrue(
+            state.saveProviderConfigMetadata(),
+            "the deletion-only owner gate must not change legacy save callers that do not handle reconciliation failure"
+        )
+    }
+
     @MainActor
     func testFinalDraftMetadataPersistenceReconcilesSharedOwner() throws {
         let appDefaults = try XCTUnwrap(
@@ -555,7 +835,7 @@ final class ProviderConfigMetadataStoreTests: XCTestCase {
     }
 }
 
-private final class DroppingUserDefaults: UserDefaults {
+final class DroppingUserDefaults: UserDefaults {
     var droppedSetKeys: Set<String> = []
 
     override func set(_ value: Any?, forKey defaultName: String) {
@@ -563,5 +843,34 @@ private final class DroppingUserDefaults: UserDefaults {
             return
         }
         super.set(value, forKey: defaultName)
+    }
+}
+
+final class MemoryProviderSecretStore: ProviderSecretStoring {
+    private struct Slot: Hashable {
+        let key: String
+        let accessGroup: String?
+    }
+
+    private var values: [Slot: String] = [:]
+
+    func save(
+        key: String,
+        value: String,
+        accessGroup: String?
+    ) -> Bool {
+        values[Slot(key: key, accessGroup: accessGroup)] = value
+        return true
+    }
+
+    func load(key: String, accessGroup: String?) -> String? {
+        values[Slot(key: key, accessGroup: accessGroup)]
+    }
+
+    func delete(key: String, accessGroup: String?) -> Bool {
+        values.removeValue(
+            forKey: Slot(key: key, accessGroup: accessGroup)
+        )
+        return true
     }
 }
