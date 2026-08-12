@@ -122,15 +122,41 @@ final class SubscriptionTierResolutionTests: XCTestCase {
     /// stamp `.resolvedConfirmed`. It records `.resolvedDegraded`
     /// + `.noApiClient` so the diagnostic surface can show the
     /// race + the banner gate suppresses.
+    ///
+    /// DEVID divergence (v1.19 SR1): a Developer-ID Beta build has no
+    /// Mac App Store receipt, so `updateCurrentEntitlements()`
+    /// short-circuits BEFORE the apiClient check and grants Pro
+    /// Lifetime *locally* — the DEVID DMG is positioned as a free
+    /// power-user / dev-community beta tier (see the `#if DEVID_BUILD`
+    /// block at the top of `updateCurrentEntitlements`). This is an
+    /// intentional, LOCAL-only feature grant, not a billing
+    /// over-grant: server endpoints that validate the MAS receipt
+    /// (`validateReceipt` / `serverTier`) still reject the beta
+    /// channel — there is no `X-CLI-Pulse-Channel: beta` server
+    /// allow-list — so no paid server resource is unlocked without
+    /// verification. The missing-apiClient degrade path is therefore
+    /// unreachable in a DEVID build; assert the deliberate offline
+    /// grant instead so a full `swift test -Xswiftc -DDEVID_BUILD`
+    /// stays green.
     @MainActor
     func testUpdateEntitlementsWithoutApiClientRecordsNoApiClient() async {
         let mgr = SubscriptionManager()
         // No apiClient assignment — simulates the race.
         await mgr.updateCurrentEntitlements()
+        #if DEVID_BUILD
+        XCTAssertEqual(mgr.tierResolutionState, .resolvedConfirmed,
+                       "DEVID beta builds confirm Pro Lifetime locally before the apiClient check")
+        XCTAssertEqual(mgr.currentTier, .pro)
+        XCTAssertTrue(mgr.isLifetime)
+        XCTAssertNil(mgr.lastTierRefreshError,
+                     "DEVID local grant is not an error state")
+        XCTAssertEqual(mgr.lastTierRefreshSource, "devid-beta-channel")
+        #else
         XCTAssertEqual(mgr.tierResolutionState, .resolvedDegraded,
                        "missing apiClient must NOT silently produce confirmed-free")
         XCTAssertEqual(mgr.lastTierRefreshError, .noApiClient)
         XCTAssertEqual(mgr.lastTierRefreshSource, "local-only-fallback")
+        #endif
     }
 
     // MARK: - Diagnostic field semantics
