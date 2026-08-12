@@ -226,9 +226,27 @@ public enum ClaudeResultBuilder {
 
 /// Shared helpers for Claude credential resolution, used by multiple strategies.
 public enum ClaudeCredentials {
+    private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
+
+    static var isolatedTestHomeDirectory: String? {
+        guard isRunningUnderXCTest else { return nil }
+        if let fixedUserHome = ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !fixedUserHome.isEmpty
+        {
+            return fixedUserHome
+        }
+        return (NSTemporaryDirectory() as NSString).appendingPathComponent(
+            "clipulse-xctest-\(ProcessInfo.processInfo.processIdentifier)"
+        )
+    }
+
     /// Real home directory (not sandbox-remapped). Uses the thread-safe
-    /// `passwdHomeDirectory()` (`getpwuid_r`).
+    /// `passwdHomeDirectory()` (`getpwuid_r`). XCTest may opt into an isolated
+    /// home so offline tests never read or overwrite the developer's real
+    /// Claude credentials and helper snapshots.
     public static var realHomeDir: String {
+        if let isolatedTestHomeDirectory { return isolatedTestHomeDirectory }
         if let dir = passwdHomeDirectory() { return dir }
         let nsHome = NSHomeDirectory()
         if let range = nsHome.range(of: "/Library/Containers/") {

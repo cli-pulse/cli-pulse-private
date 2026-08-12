@@ -1,8 +1,63 @@
 #if os(macOS)
 import XCTest
 @testable import CLIPulseCore
+import Darwin
 
 final class ClaudeStrategyTests: XCTestCase {
+
+    func testRealHomeDirDefaultsToProcessIsolatedTemporaryHomeUnderXCTest() {
+        let key = "CFFIXED_USER_HOME"
+        let previousValue = getenv(key).map { String(cString: $0) }
+        _ = unsetenv(key)
+        defer {
+            if let previousValue {
+                _ = setenv(key, previousValue, 1)
+            }
+        }
+
+        let expectedSuffix = "clipulse-xctest-\(ProcessInfo.processInfo.processIdentifier)"
+        XCTAssertTrue(ClaudeCredentials.realHomeDir.hasPrefix(NSTemporaryDirectory()))
+        XCTAssertTrue(ClaudeCredentials.realHomeDir.hasSuffix(expectedSuffix))
+    }
+
+    func testRealHomeDirUsesExplicitFixedHomeUnderXCTest() {
+        let key = "CFFIXED_USER_HOME"
+        let previousValue = getenv(key).map { String(cString: $0) }
+        let isolatedHome = NSTemporaryDirectory()
+            + "clipulse-claude-home-\(UUID().uuidString)"
+
+        XCTAssertEqual(setenv(key, isolatedHome, 1), 0)
+        defer {
+            if let previousValue {
+                _ = setenv(key, previousValue, 1)
+            } else {
+                _ = unsetenv(key)
+            }
+        }
+
+        XCTAssertEqual(ClaudeCredentials.realHomeDir, isolatedHome)
+    }
+
+    func testFixedTestHomeExcludesTheRealAppGroupContainer() {
+        let key = "CFFIXED_USER_HOME"
+        let previousValue = getenv(key).map { String(cString: $0) }
+        let isolatedHome = NSTemporaryDirectory()
+            + "clipulse-claude-home-\(UUID().uuidString)"
+
+        XCTAssertEqual(setenv(key, isolatedHome, 1), 0)
+        defer {
+            if let previousValue {
+                _ = setenv(key, previousValue, 1)
+            } else {
+                _ = unsetenv(key)
+            }
+        }
+
+        XCTAssertEqual(
+            ClaudeHelperContract.helperDirCandidates,
+            [(isolatedHome as NSString).appendingPathComponent(".clipulse")]
+        )
+    }
 
     // MARK: - ClaudeSnapshot → CollectorResult
 
