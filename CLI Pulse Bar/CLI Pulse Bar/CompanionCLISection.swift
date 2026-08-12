@@ -137,16 +137,23 @@ struct CompanionCLISection: View {
             }
         case .bundled:
             // v1.43: the bundled helper updates with the app — say so instead
-            // of offering a (wrong, unclearable) `.pkg` update. No pairing hint
-            // here: the bundled Swift helper's hello does not emit `paired`
-            // (only the Python helper does), so `helperPaired` is always nil for
-            // a bundled owner — a conditional pairing hint would be dead code.
-            // (Wiring `paired` into the Swift hello to enable it is a separate
-            // wire-mirror follow-up.)
-            Text("Built into CLI Pulse — updates automatically when you update the app. No separate install needed.")
-                .font(.system(size: 10))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            // of offering a (wrong, unclearable) `.pkg` update.
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Built into CLI Pulse — updates automatically when you update the app. No separate install needed.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                // The bundled Swift helper now emits `paired` in its hello
+                // (LocalSessionServer.swift), so surface the same pairing hint
+                // the `.running` (`.pkg`) owner shows. `helperPaired == nil`
+                // (a pre-`paired` helper) shows nothing — same as before.
+                if installer.helperPaired == false {
+                    Text("Pair this Mac (above) to drive managed sessions.")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         case .updateAvailable(_, let latest):
             Text("A new helper version (\(latest)) is available. The update flow is identical to the install flow.")
                 .font(.system(size: 10))

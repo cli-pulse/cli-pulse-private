@@ -86,6 +86,16 @@ public final class LocalSessionServer: @unchecked Sendable {
         /// stalls only the client that asked. Returns (ok, error); the error text
         /// surfaces on the user's toggle.
         public var setWrappedSessionCloudShared: (@Sendable (String, Bool) -> (Bool, String))?
+        /// v1.30.2: whether this helper has a usable pairing config — surfaced in
+        /// the unauthenticated `hello` reply as `paired` so the macOS app can tell
+        /// "installed + running but not paired" apart from "not installed" and
+        /// prompt the user to pair instead of showing a misleading "not installed".
+        /// Wire-mirror of the Python helper's `get_paired` hook
+        /// (`local_session_server.py`), which reports `remote_agent_manager is not
+        /// None` (i.e. "did we build a cloud manager at startup"). Defaults to
+        /// `{ true }` so a caller/test that omits it keeps the pre-`paired`
+        /// behaviour, matching Python's `get_paired or (lambda: True)`.
+        public var getPaired: @Sendable () -> Bool
 
         public init(
             getAuthToken: @escaping @Sendable () -> String,
@@ -98,7 +108,8 @@ public final class LocalSessionServer: @unchecked Sendable {
             eventBroker: EventBroker? = nil,
             claudeSettingsPathOverride: @escaping @Sendable () -> URL? = { nil },
             codexSettingsPathOverride: @escaping @Sendable () -> URL? = { nil },
-            setWrappedSessionCloudShared: (@Sendable (String, Bool) -> (Bool, String))? = nil
+            setWrappedSessionCloudShared: (@Sendable (String, Bool) -> (Bool, String))? = nil,
+            getPaired: @escaping @Sendable () -> Bool = { true }
         ) {
             self.getAuthToken = getAuthToken
             self.isLocalControlEnabled = isLocalControlEnabled
@@ -111,6 +122,7 @@ public final class LocalSessionServer: @unchecked Sendable {
             self.claudeSettingsPathOverride = claudeSettingsPathOverride
             self.codexSettingsPathOverride = codexSettingsPathOverride
             self.setWrappedSessionCloudShared = setWrappedSessionCloudShared
+            self.getPaired = getPaired
         }
     }
 
@@ -516,6 +528,16 @@ public final class LocalSessionServer: @unchecked Sendable {
                 // field → the app falls back to the legacy `.pkg`-compare
                 // path. See Protocol.swift head comment (additive-only rule).
                 "implementation": "swift-bundled",
+                // v1.30.2 (additive): paired=false ⇒ installed + running but no
+                // usable pairing config yet, so the macOS app renders "installed
+                // — pair to activate" (and CompanionCLISection's bundled hint)
+                // instead of the misleading "not installed". Wire-mirror of the
+                // Python helper's `paired` (local_session_server.py). The getter
+                // is non-throwing and defaults to `{ true }`, so — like Python's
+                // try/except-guarded `_get_paired` — a missing/failing getter
+                // never breaks the handshake (which would regress the helper back
+                // to undetectable).
+                "paired": hooks.getPaired(),
                 "supported_methods": SupportedMethod.allCases.map(\.rawValue),
                 "helper_pid": Int(getpid()),
                 "capabilities": [

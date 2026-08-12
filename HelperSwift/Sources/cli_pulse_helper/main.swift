@@ -380,7 +380,16 @@ case "daemon":
             eventBroker: broker,
             setWrappedSessionCloudShared: { sid, shared in
                 cloudShareArm.setShared(sid, shared)
-            }
+            },
+            // v1.30.2 (RC-1): surface pairing state in `hello`. Boot-fixed to
+            // match the Python helper, whose `get_paired` reports
+            // `remote_agent_manager is not None` — a manager built ONCE at
+            // startup (only when paired) and never rebuilt. `bootCloudCfg` is the
+            // same snapshot that decided the broadcast publisher above, so a
+            // paired-at-launch helper reports paired and an unpaired one reports
+            // unpaired without re-reading config (which would also re-`warn` on
+            // every hello). `isPaired` is Sendable-safe: it's a captured Bool.
+            getPaired: { bootCloudCfg.isPaired }
         )
     )
     do {

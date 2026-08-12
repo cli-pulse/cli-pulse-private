@@ -29,7 +29,8 @@ final class LocalSessionServerTests: XCTestCase {
     private func makeServer(token: String = "T", enabled: Bool = true,
                             helperArgv0: String? = nil,
                             settingsPath: URL? = nil,
-                            codexSettingsPath: URL? = nil) throws -> LocalSessionServer {
+                            codexSettingsPath: URL? = nil,
+                            paired: Bool = true) throws -> LocalSessionServer {
         let sockPath = sockDir.appendingPathComponent("clipulse-helper.sock")
         let enabledBox = AtomicBool()
         enabledBox.set(enabled)
@@ -41,7 +42,8 @@ final class LocalSessionServerTests: XCTestCase {
                 setLocalControlEnabled: { enabledBox.set($0) },
                 getHelperArgv0: { helperArgv0 },
                 claudeSettingsPathOverride: { settingsPath },
-                codexSettingsPathOverride: { codexSettingsPath }
+                codexSettingsPathOverride: { codexSettingsPath },
+                getPaired: { paired }
             )
         )
         try s.start()
@@ -98,6 +100,14 @@ final class LocalSessionServerTests: XCTestCase {
         // instead of a (wrong, unclearable) `.pkg` update nag. Wire-mirror of
         // the Python helper's "python-pkg" (local_session_server.py).
         XCTAssertEqual(result?["implementation"] as? String, "swift-bundled")
+        // v1.30.2 (additive): hello must carry `paired` so the app can tell
+        // "installed + running but unpaired" apart from "not installed" and show
+        // the CompanionCLISection pairing hint. Wire-mirror of the Python helper,
+        // which returns `bool(self._get_paired())` in its hello reply
+        // (local_session_server.py). `makeServer` defaults the getter to true, so
+        // the field is present and true here; see testHelloReportsUnpaired for
+        // the false path.
+        XCTAssertEqual(result?["paired"] as? Bool, true)
         let supported = (result?["supported_methods"] as? [String])?.sorted() ?? []
         // hello SHOULD be in the supported list; pick a few
         // representative methods to pin without requiring the
@@ -109,6 +119,18 @@ final class LocalSessionServerTests: XCTestCase {
         XCTAssertEqual(caps?["send_input"] as? Bool, true)
         XCTAssertEqual(caps?["subscribe_events"] as? Bool, true)
         XCTAssertEqual(caps?["approvals"] as? Bool, true)
+    }
+
+    // v1.30.2: an unpaired helper (getPaired → false) must report `paired:false`
+    // so the app renders "installed — pair to activate" rather than "not
+    // installed". Mirrors the Python helper, whose hello returns whatever
+    // `_get_paired()` yields (local_session_server.py).
+    func testHelloReportsUnpaired() throws {
+        server = try makeServer(paired: false)
+        let reply = try clientCall(["id": "1", "method": "hello", "params": [:]])
+        XCTAssertEqual(reply["ok"] as? Bool, true)
+        let result = reply["result"] as? [String: Any]
+        XCTAssertEqual(result?["paired"] as? Bool, false)
     }
 
     func testPingRequiresAuth() throws {
