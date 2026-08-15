@@ -35,6 +35,21 @@ DerivedData/
 GoogleService-Info.plist
 google-services.json
 AuthKey_*
+# Loose password/credential scratch files. A 44-byte `pw5523.txt` sat untracked
+# at the repo root from 2026-08-07 to 2026-08-15 — the same day one `git add -A`
+# published 176 files here. Nothing above matched it: it is a .txt. These
+# patterns are deliberately NOT root-anchored, for the reason recorded further
+# down (root-anchoring is what let 49 files under docs/ through in the first
+# place). Any depth, any of these shapes.
+pw*.txt
+pw*.md
+password*.txt
+passwords*.txt
+*-password.txt
+*_password.txt
+*credentials*.txt
+*credentials*.json
+secrets*.txt
 # R0 realtime signing key material (the dedicated ES256 issuer key) — never commit.
 *.pem
 r0_private_pkcs8.pem
