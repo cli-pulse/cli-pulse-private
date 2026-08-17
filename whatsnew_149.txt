@@ -1,0 +1,7 @@
+CLI Pulse now introduces itself.
+
+• New: a welcome window on first launch. CLI Pulse lives in your menu bar and has no Dock icon, so until now the only sign it had started was a small icon appearing at the top of the screen — easy to miss entirely. New installs now get a short window pointing at it. It appears once, and never again.
+
+• Existing users are unaffected: if you have used CLI Pulse before, nothing changes and no window appears.
+
+• Reliability improvements and small fixes.
