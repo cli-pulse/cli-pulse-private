@@ -7,7 +7,6 @@ stretched body, head-tilt, keyboard-paws). One shared base cat + per-(form,state
 frame) parameter deltas → frame-to-frame consistency. Emits SVG; the export
 script rasterizes to PetAssets/ PNG @1x/@2x.
 """
-import math
 
 STROKE = 14
 VIEW = 512
@@ -63,16 +62,22 @@ def ears(c, cx, cy, spread=86, h=60, flop=None):
 def face(c, cx, cy, eyes='dot', mouth='smile', eye_r=12, teary=False):
     ex = 36
     if eyes == 'closed':
-        c.eye(cx-ex, cy-6, eye_r, closed=True); c.eye(cx+ex, cy-6, eye_r, closed=True)
+        c.eye(cx-ex, cy-6, eye_r, closed=True)
+        c.eye(cx+ex, cy-6, eye_r, closed=True)
     elif eyes == 'half':
-        c.stroke_path(f"M{cx-ex-16} {cy-6} h32"); c.stroke_path(f"M{cx+ex-16} {cy-6} h32")
+        c.stroke_path(f"M{cx-ex-16} {cy-6} h32")
+        c.stroke_path(f"M{cx+ex-16} {cy-6} h32")
     elif eyes == 'wide':
-        c.circles.append((cx-ex, cy-6, eye_r+8, False)); c.circles.append((cx+ex, cy-6, eye_r+8, False))
-        c.circles.append((cx-ex, cy-6, 5, True)); c.circles.append((cx+ex, cy-6, 5, True))
+        c.circles.append((cx-ex, cy-6, eye_r+8, False))
+        c.circles.append((cx+ex, cy-6, eye_r+8, False))
+        c.circles.append((cx-ex, cy-6, 5, True))
+        c.circles.append((cx+ex, cy-6, 5, True))
     else:  # dot
-        c.eye(cx-ex, cy-6, eye_r); c.eye(cx+ex, cy-6, eye_r)
+        c.eye(cx-ex, cy-6, eye_r)
+        c.eye(cx+ex, cy-6, eye_r)
     if teary:
-        c.stroke_path(f"M{cx-ex-6} {cy+8} q-8 20 4 24"); c.stroke_path(f"M{cx+ex+6} {cy+8} q8 20 -4 24")
+        c.stroke_path(f"M{cx-ex-6} {cy+8} q-8 20 4 24")
+        c.stroke_path(f"M{cx+ex+6} {cy+8} q8 20 -4 24")
     # nose
     c.fill_path(f"M{cx} {cy+18} l-8 10 h16 Z")
     my = cy+28
@@ -81,13 +86,16 @@ def face(c, cx, cy, eyes='dot', mouth='smile', eye_r=12, teary=False):
     elif mouth == 'flat':   # unsettlingly wide flat smile (polite)
         c.stroke_path(f"M{cx-58} {my} q58 30 116 0")
     elif mouth == 'open':   # effort (smash)
-        c.circles.append((cx, my+6, 12, False)); c.stroke_path(f"M{cx-14} {my-2} h28")
+        c.circles.append((cx, my+6, 12, False))
+        c.stroke_path(f"M{cx-14} {my-2} h28")
     elif mouth == 'tiny':
         c.circles.append((cx, my+4, 6, False))
     else:  # smile
-        c.stroke_path(f"M{cx} {my-4} q-16 14 -30 4"); c.stroke_path(f"M{cx} {my-4} q16 14 30 4")
+        c.stroke_path(f"M{cx} {my-4} q-16 14 -30 4")
+        c.stroke_path(f"M{cx} {my-4} q16 14 30 4")
     # whiskers
-    c.stroke_path(f"M{cx-106} {cy+10} h40"); c.stroke_path(f"M{cx+66} {cy+10} h40")
+    c.stroke_path(f"M{cx-106} {cy+10} h40")
+    c.stroke_path(f"M{cx+66} {cy+10} h40")
 
 
 def zzz(c, x, y):
@@ -97,7 +105,8 @@ def zzz(c, x, y):
 
 
 def emphasis(c, cx, cy):
-    c.stroke_path(f"M{cx-150} {cy-30} l-26 -10"); c.stroke_path(f"M{cx+150} {cy-30} l26 -10")
+    c.stroke_path(f"M{cx-150} {cy-30} l-26 -10")
+    c.stroke_path(f"M{cx+150} {cy-30} l26 -10")
 
 
 # ---- form drawers: (state, frame) -> Cat ----
@@ -121,16 +130,18 @@ def draw(form, state, frame):
             zzz(c, 372, 250)
         elif state == 'active':
             c.stroke_path("M232 224 q-10 -30 8 -48")
-            if frame == 1: c.stroke_path("M280 224 q10 -30 -8 -48")
+            if frame == 1:
+                c.stroke_path("M280 224 q10 -30 -8 -48")
 
     elif form == 'polite':
         base_cat(c, hx, hy, sleeping)
         if sleeping:
-            face(c, hx, hy, eyes='closed', mouth='flat'); zzz(c, 360, 150)
+            face(c, hx, hy, eyes='closed', mouth='flat')
+            zzz(c, 360, 150)
         else:
-            wider = 58 + (18 if frame == 1 else 0)
             face(c, hx, hy, eyes='dot', mouth='flat')
-            c.stroke_path("M226 452 q-6 -30 0 -50"); c.stroke_path("M286 452 q6 -30 0 -50")  # paws together
+            c.stroke_path("M226 452 q-6 -30 0 -50")
+            c.stroke_path("M286 452 q6 -30 0 -50")  # paws together
             if state == 'active':
                 py = 300 if frame == 1 else 340
                 c.stroke_path(f"M330 400 q60 -20 44 -{440-py}")  # raised wave paw
@@ -139,27 +150,33 @@ def draw(form, state, frame):
         base_cat(c, hx, hy-6, sleeping)
         if sleeping:
             c.stroke_path("M176 452 h160")  # slumped on keyboard
-            face(c, hx, hy+30, eyes='closed', mouth='tiny'); zzz(c, 360, 250)
+            face(c, hx, hy+30, eyes='closed', mouth='tiny')
+            zzz(c, 360, 250)
         else:
             m = 'open' if (state == 'active' and frame == 1) else 'smile'
             face(c, hx, hy-6, eyes='wide', mouth=m)
             # tiny keyboard
             c.stroke_path("M176 452 h160 v34 h-160 Z")
-            for gx in range(196, 330, 22): c.stroke_path(f"M{gx} 460 v18")
+            for gx in range(196, 330, 22):
+                c.stroke_path(f"M{gx} 460 v18")
             pl = 452 if frame == 0 else 470
-            c.stroke_path(f"M214 430 v{pl-430}"); c.stroke_path(f"M298 430 v{(470 if frame==0 else 452)-430}")
+            c.stroke_path(f"M214 430 v{pl-430}")
+            c.stroke_path(f"M298 430 v{(470 if frame==0 else 452)-430}")
             if state == 'active':
-                c.stroke_path("M196 420 l-14 -12"); c.stroke_path("M316 420 l14 -12")
+                c.stroke_path("M196 420 l-14 -12")
+                c.stroke_path("M316 420 l14 -12")
 
     elif form == 'pop':
         base_cat(c, hx, hy, sleeping)
         if sleeping:
-            face(c, hx, hy, eyes='closed', mouth='tiny'); zzz(c, 360, 150)
+            face(c, hx, hy, eyes='closed', mouth='tiny')
+            zzz(c, 360, 150)
         else:
             m = 'O' if (frame == 1 or state == 'active') else 'smile'
             eyes = 'wide' if m == 'O' else 'dot'
             face(c, hx, hy, eyes=eyes, mouth=m)
-            if state == 'active' and frame == 0: emphasis(c, hx, hy)
+            if state == 'active' and frame == 0:
+                emphasis(c, hx, hy)
 
     elif form == 'long':
         # comically elongated horizontal tube; normal head on the left.
@@ -167,7 +184,8 @@ def draw(form, state, frame):
             # coiled into a spiral (cinnamon-roll)
             c.stroke_path("M256 320 m-70 0 a70 70 0 1 1 140 0 a44 44 0 1 1 -88 0 a20 20 0 1 1 40 0")
             ears(c, 200, 268, spread=44, h=40)
-            face(c, 200, 300, eyes='closed', mouth='tiny'); zzz(c, 360, 250)
+            face(c, 200, 300, eyes='closed', mouth='tiny')
+            zzz(c, 360, 250)
         else:
             arch = 26 if (state == 'active' and frame == 1) else 0
             top = 292 - arch // 2
@@ -179,20 +197,24 @@ def draw(form, state, frame):
             face(c, 150, hy2 - 2, eyes='half', mouth='smile')
             # four legs
             legs = (214, 250, 322, 358) if state != 'active' else (206, 258, 314, 366)
-            for lx in legs: c.stroke_path(f"M{lx} {top+68} v38")
+            for lx in legs:
+                c.stroke_path(f"M{lx} {top+68} v38")
             c.stroke_path(f"M398 {top+30} c44 -6 58 -34 38 -60")  # tail
 
     elif form == 'huh':
         if sleeping:
             base_cat(c, hx, hy, True)
-            hd = Cat(); hd.circles.append((256, 300, 92, False)); ears(hd, 256, 300)
+            hd = Cat()
+            hd.circles.append((256, 300, 92, False))
+            ears(hd, 256, 300)
             face(hd, 256, 300, eyes='closed', mouth='tiny')
             c.raw(f'<g transform="rotate(8 256 320)">{hd.inner()}</g>')
             zzz(c, 372, 250)
         else:
             # upright body; the whole HEAD tilts (the classic "huh?").
             c.stroke_path("M176 268 C150 330 150 400 176 430 C210 452 302 452 336 430 C362 400 362 330 336 268")
-            c.stroke_path("M214 452 q-6 -26 0 -44"); c.stroke_path("M298 452 q6 -26 0 -44")
+            c.stroke_path("M214 452 q-6 -26 0 -44")
+            c.stroke_path("M298 452 q6 -26 0 -44")
             c.stroke_path("M336 420 c46 8 66 -26 44 -60")
             tilt = 18 if frame == 0 else -18
             hd = Cat()
@@ -215,7 +237,8 @@ def base_cat(c, cx, cy, sleeping, tilt=0):
     ears(c, cx, cy, flop='right' if tilt else None)
     c.circles.append((cx, cy, 96, False))                       # head
     c.stroke_path("M176 268 C150 330 150 400 176 430 C210 452 302 452 336 430 C362 400 362 330 336 268")
-    c.stroke_path("M214 452 q-6 -26 0 -44"); c.stroke_path("M298 452 q6 -26 0 -44")  # paws
+    c.stroke_path("M214 452 q-6 -26 0 -44")
+    c.stroke_path("M298 452 q6 -26 0 -44")  # paws
     c.stroke_path("M336 420 c46 8 66 -26 44 -60")              # tail
 
 
@@ -235,7 +258,8 @@ def draw_egg(state):
         egg_body(c)
     elif state == 'idle_1':
         # mid-wiggle: whole egg tilted ~8 degrees
-        e = Cat(); egg_body(e)
+        e = Cat()
+        egg_body(e)
         c.raw(f'<g transform="rotate(8 256 380)">{e.inner()}</g>')
     elif state == 'crack1':
         egg_body(c)
@@ -243,7 +267,8 @@ def draw_egg(state):
     elif state == 'crack2':
         egg_body(c)
         c.stroke_path("M206 210 l20 16 l-16 18 l22 14 l-14 18 l18 12")  # crack spreads down
-        c.circles.append((290, 250, 11, False)); c.circles.append((290, 250, 4, True))  # peeking eye
+        c.circles.append((290, 250, 11, False))
+        c.circles.append((290, 250, 4, True))  # peeking eye
     elif state == 'crack3':
         egg_body(c, lift=18, ear=True)
         # jagged separation line across the middle
@@ -266,7 +291,8 @@ FORMS = ['loaf', 'polite', 'smash', 'pop', 'long', 'huh']
 FRAMES = {'idle': [0, 1], 'active': [0, 1], 'sleep': [0]}
 
 if __name__ == '__main__':
-    import sys, os
+    import sys
+    import os
     outdir = sys.argv[1] if len(sys.argv) > 1 else '.'
     n = 0
     for form in FORMS:

@@ -61,21 +61,21 @@ jobs:
           python-version: '3.12'
 
       - name: Install dev tooling
-        # ruff is PINNED. Unpinned, `--upgrade` installs whatever shipped since
-        # the last run, and a release that enables new rules turns a PR red for
-        # code it never touched. That is not hypothetical: main was green on
-        # 2026-07-23, and the next PR to trigger this workflow (2026-07-30, and
-        # only because helper-ci watches Protocol.swift) drew 380 errors across
-        # files nobody had edited — UP045 and friends. Ten minutes went into
-        # proving the feature branch was innocent.
-        #
-        # Raising this pin is a deliberate task: bump it, run `ruff check .`,
-        # and fix or `# noqa` what the new rules find, in a PR that does only
-        # that. Never bump it as a side effect of unrelated work.
-        run: python -m pip install --upgrade pip && python -m pip install pytest 'ruff==0.15.11' cryptography
+        run: python -m pip install --upgrade pip && python -m pip install pytest cryptography
 
-      - name: Ruff lint
-        run: ruff check .
+      # Ruff used to run here, and that was the bug. This job has
+      # `working-directory: helper`, so `ruff check .` only ever linted
+      # `helper/` — and this workflow's `paths:` filter meant a change to
+      # `scripts/*.py` did not start it at all. Python outside `helper/` was
+      # unlinted for the life of the repo (91 errors when first measured,
+      # 2026-08-17).
+      #
+      # Linting now lives in `.github/workflows/python-lint.yml`, which runs
+      # `ruff check .` from the REPO ROOT on every `**/*.py` change — a strict
+      # superset of what this step covered, so removing it leaves no gap in
+      # helper/ coverage. Do not re-add a ruff step here: two pinned ruff
+      # versions in two workflows is the copied-constant drift this repo has
+      # been bitten by before. The pin and its rationale live in python-lint.yml.
 
       - name: Pytest
         run: pytest -q

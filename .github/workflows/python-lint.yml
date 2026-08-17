@@ -1,0 +1,86 @@
+name: Python Lint
+
+# Repo-wide ruff. This is a BLOCKING gate — unlike "Lint (warning-only)", which
+# is SwiftLint/ktlint and deliberately advisory. `ci-gate.yml` lists this
+# workflow in GATES; a failure here fails the required check.
+#
+# Why this workflow exists at all, given helper-ci.yml already ran ruff:
+# it did not lint what it appeared to lint. Two independent defects, either one
+# of which was sufficient to hide every non-helper Python file in the repo:
+#
+#   1. helper-ci's `paths:` filter is helper/**, three named scripts, and one
+#      Swift file. A change to `scripts/foo.py` matched none of them, so the
+#      workflow never started.
+#   2. Even when it DID start, its ruff step ran under
+#      `working-directory: helper`, so `ruff check .` resolved to `helper/`.
+#      Widening the path filter alone would have fixed nothing.
+#
+# Cost of the gap, measured 2026-08-17: 91 ruff errors across `scripts/`,
+# `CLI Pulse Bar/scripts/` and `archive/` — none of which any CI run had ever
+# reported. The proximate trigger was `scripts/acquisition_reconcile.py`, added
+# in PR #433 with two F541 errors that went straight to main.
+#
+# The path filter below is therefore `**/*.py` and nothing narrower. If you add
+# a Python file anywhere in this repo, this workflow lints it. Note `**/*.py`
+# also covers paths containing spaces (`CLI Pulse Bar/scripts/*.py`) — verified
+# on a scratch branch, not assumed, because that directory holds ~24 of the
+# repo's Python files and a glob that silently skipped it would recreate this
+# exact bug.
+
+on:
+  push:
+    paths:
+      - '**/*.py'
+      - 'ruff.toml'
+      - '.github/workflows/python-lint.yml'
+  pull_request:
+    paths:
+      - '**/*.py'
+      - 'ruff.toml'
+      - '.github/workflows/python-lint.yml'
+  # Mirrors the other workflows: manual retrigger for an Actions outage
+  # without needing an empty commit.
+  workflow_dispatch: {}
+
+concurrency:
+  group: python-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ruff:
+    name: ruff (repo-wide)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        # ruff is PINNED. Unpinned, `--upgrade` installs whatever shipped since
+        # the last run, and a release that enables new rules turns a PR red for
+        # code it never touched. That is not hypothetical: main was green on
+        # 2026-07-23, and the next PR to trigger the old helper-ci workflow
+        # (2026-07-30, and only because helper-ci watches Protocol.swift) drew
+        # 380 errors across files nobody had edited — UP045 and friends. Ten
+        # minutes went into proving the feature branch was innocent.
+        #
+        # Raising this pin is a deliberate task: bump it, run `ruff check .`,
+        # and fix or `# noqa` what the new rules find, in a PR that does only
+        # that. Never bump it as a side effect of unrelated work.
+        #
+        # `ruff.toml` states `select` explicitly, so a bump changes rule
+        # BEHAVIOUR but not the rule SET — that makes the diff reviewable.
+        # Keep this pin and helper-ci.yml's Python version in step.
+        run: python -m pip install --upgrade pip && python -m pip install 'ruff==0.15.11'
+
+      - name: Ruff lint (repo root)
+        # NO working-directory. This runs at the repo root on purpose — see the
+        # header comment. `ruff.toml` at the root supplies the config and the
+        # single `archive/` exclusion.
+        run: |
+          ruff --version
+          ruff check . --output-format=github

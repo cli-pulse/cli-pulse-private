@@ -8,7 +8,9 @@ and Ultra 3 sources), then fall back to other known Watch display types if
 the set creation is rejected.
 """
 from __future__ import annotations
-import hashlib, sys, os
+import hashlib
+import sys
+import os
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

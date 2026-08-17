@@ -2,7 +2,11 @@
 """
 CLI Pulse - Cancel review, update screenshots, select new build, resubmit.
 """
-import jwt, time, requests, os, hashlib, sys
+import jwt
+import time
+import requests
+import os
+import hashlib
 
 API_KEY_ID = "DMMFP6XTXX"
 API_ISSUER = "c5671c11-49ec-47d9-bd38-5e3c1a249416"
@@ -37,7 +41,7 @@ def post(path, data):
         try:
             for e in r.json().get("errors", []):
                 print(f"    {e.get('detail', e.get('title'))}")
-        except:
+        except Exception:
             print(f"    {r.text[:300]}")
         return None
     return r.json()
@@ -49,7 +53,7 @@ def patch(path, data):
         try:
             for e in r.json().get("errors", []):
                 print(f"    {e.get('detail', e.get('title'))}")
-        except:
+        except Exception:
             print(f"    {r.text[:300]}")
         return None
     return r.json()
@@ -75,9 +79,10 @@ def cancel_reviews():
             if result:
                 print(f"  Canceled: {sub_id}")
             else:
-                # Try legacy API
-                print(f"  Trying legacy appStoreVersionSubmissions...")
-                r2 = get(f"/appStoreVersionSubmissions")
+                # Try legacy API. The response is deliberately not inspected —
+                # the call is a probe and we proceed either way.
+                print("  Trying legacy appStoreVersionSubmissions...")
+                get("/appStoreVersionSubmissions")
                 # Just proceed - may already be canceled
 
 
@@ -113,7 +118,7 @@ def select_build(version_id, platform_label):
             print(f"  Waiting for build processing... ({attempt+1}/12)")
             time.sleep(30)
 
-    print(f"  WARNING: Could not find valid build 3. Proceeding with existing build.")
+    print("  WARNING: Could not find valid build 3. Proceeding with existing build.")
     return False
 
 
@@ -148,7 +153,7 @@ def upload_screenshots(loc_id, files, display_type):
             }
         })
         if not r:
-            print(f"    Failed to create screenshot set")
+            print("    Failed to create screenshot set")
             return
         set_id = r["data"]["id"]
 
@@ -174,7 +179,7 @@ def upload_screenshots(loc_id, files, display_type):
             }
         })
         if not r:
-            print(f"    Failed to reserve upload")
+            print("    Failed to reserve upload")
             continue
 
         ss_id = r["data"]["id"]
@@ -218,7 +223,7 @@ def submit_for_review():
             vr = get(f"/apps/{APP_ID}/appStoreVersions?filter[platform]={platform}")
             for v in vr.get("data", []):
                 if v["attributes"]["versionString"] == "1.0.0":
-                    post(f"/reviewSubmissionItems", {
+                    post("/reviewSubmissionItems", {
                         "data": {
                             "type": "reviewSubmissionItems",
                             "relationships": {
@@ -241,9 +246,9 @@ def submit_for_review():
             }
         })
         if result:
-            print(f"  Submitted for review!")
+            print("  Submitted for review!")
         else:
-            print(f"  Submit failed - may need manual submission")
+            print("  Submit failed - may need manual submission")
     else:
         print("  Could not create review submission")
 
@@ -341,7 +346,7 @@ Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
                         }
                     }
                 })
-                print(f"  Updated privacy policy URL")
+                print("  Updated privacy policy URL")
 
     # Try to select latest build
     if mac_vid:

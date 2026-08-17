@@ -1,0 +1,46 @@
+# Repo-wide Ruff configuration.
+#
+# Until 2026-08-17 there was no config file at all, and the only `ruff check .`
+# in CI ran from `working-directory: helper` inside a workflow whose `paths:`
+# filter listed `helper/**`. Two independent reasons the same Python never got
+# linted: the workflow did not trigger, and even when it did it only ever saw
+# `helper/`. Python under `scripts/`, `CLI Pulse Bar/scripts/` and
+# `backend/supabase/` was unlinted for the life of the repo — 91 errors had
+# accumulated by the time anyone checked.
+#
+# `.github/workflows/python-lint.yml` now runs ruff from the repo root on every
+# `**/*.py` change, and this file is what that run reads.
+
+# CI installs Python 3.12 (see python-lint.yml / helper-ci.yml). Pin the same
+# version here so a lint that passes locally cannot fail on the runner for a
+# syntax-version reason.
+target-version = "py312"
+
+# `archive/` is documented in AGENTS.md under "Archived or historical". Nothing
+# imports it, nothing ships it, and it carries 11 of the errors that were found
+# when linting was first turned on repo-wide. Linting it would mean editing dead
+# code to satisfy a gate that protects live code.
+#
+# This is the ONLY exclusion. Everything else that ships is linted. If you are
+# about to add a second entry here, fix the code instead — an exclusion is
+# permanent in practice, and this file exists because of what "we'll clean it up
+# later" cost the first time.
+exclude = [
+    "archive",
+]
+
+[lint]
+# These four groups are exactly ruff 0.15.11's defaults, written out on purpose.
+#
+# Leaving `select` implicit means the rule set is whatever the installed ruff
+# version happens to default to, so raising the pin can turn PRs red for code
+# they never touched. That is not hypothetical — see the comment above the
+# `ruff==0.15.11` pin in python-lint.yml for the 2026-07-30 incident. Stating
+# the set explicitly makes a version bump a mechanical change and a rule-set
+# change a deliberate, reviewable one.
+#
+#   E4 — import placement/formatting
+#   E7 — statement-level style (multiple statements per line, bare except, ...)
+#   E9 — syntax and IO errors
+#   F  — Pyflakes: undefined names, unused imports, unused locals
+select = ["E4", "E7", "E9", "F"]
