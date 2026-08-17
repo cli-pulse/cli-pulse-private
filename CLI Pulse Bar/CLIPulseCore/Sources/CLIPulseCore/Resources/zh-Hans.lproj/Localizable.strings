@@ -331,6 +331,11 @@
 "badge.ide" = "IDE";
 
 /* ── 引导 / 同步设置 ── */
+/* MARK: - First-run visibility (v1.49) */
+"first_run.title" = "CLI Pulse 已在运行";
+"first_run.body" = "请在屏幕顶部的菜单栏中找到 CLI Pulse 图标,点击即可查看你的 CLI 用量。";
+"first_run.dismiss" = "知道了";
+
 "onboarding.how_it_works" = "CLI Pulse 工作原理";
 "onboarding.cloud_sync_title" = "云同步";
 "onboarding.cloud_sync_desc" = "Mac 应用会在本地扫描 AI 工具使用情况并上传到你的账户。任何使用同一账户登录的设备（包括 iPhone）都会自动显示数据。";

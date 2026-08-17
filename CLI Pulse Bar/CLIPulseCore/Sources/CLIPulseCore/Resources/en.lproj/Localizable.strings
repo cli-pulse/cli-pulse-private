@@ -331,6 +331,11 @@
 "badge.ide" = "IDE";
 
 /* ── Onboarding / Sync Setup ── */
+/* MARK: - First-run visibility (v1.49) */
+"first_run.title" = "CLI Pulse is running";
+"first_run.body" = "Look for the CLI Pulse icon in your menu bar, at the top of the screen. Click it to see your CLI usage.";
+"first_run.dismiss" = "Got it";
+
 "onboarding.how_it_works" = "How CLI Pulse Works";
 "onboarding.cloud_sync_title" = "Cloud Sync";
 "onboarding.cloud_sync_desc" = "The Mac app scans your AI tool usage locally and uploads it to your account. Any device signed in with the same account — including this iPhone — shows the data automatically.";

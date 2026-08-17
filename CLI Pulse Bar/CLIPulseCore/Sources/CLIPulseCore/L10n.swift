@@ -875,6 +875,17 @@ public enum L10n {
         public static var footnote: String { tr("welcome_choice.footnote") }
     }
 
+    // MARK: - First-run visibility (v1.49)
+
+    /// The first-launch window that tells a new user the app is alive and where
+    /// it lives. See `FirstRunPresentation` for why silence here was costing
+    /// most of the funnel.
+    public enum firstRun {
+        public static var title: String { tr("first_run.title") }
+        public static var body: String { tr("first_run.body") }
+        public static var dismiss: String { tr("first_run.dismiss") }
+    }
+
     // MARK: - Onboarding / Sync Setup
 
     public enum onboarding {

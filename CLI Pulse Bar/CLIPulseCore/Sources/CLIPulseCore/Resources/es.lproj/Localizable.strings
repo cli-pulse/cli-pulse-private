@@ -338,6 +338,11 @@
 "badge.ide" = "IDE";
 
 /* ── Incorporación / Configuración de sincronización ── */
+/* MARK: - First-run visibility (v1.49) */
+"first_run.title" = "CLI Pulse está en ejecución";
+"first_run.body" = "Busca el icono de CLI Pulse en la barra de menús, en la parte superior de la pantalla. Haz clic para ver tu uso de CLI.";
+"first_run.dismiss" = "Entendido";
+
 "onboarding.how_it_works" = "Cómo funciona CLI Pulse";
 "onboarding.cloud_sync_title" = "Sincronización en la nube";
 "onboarding.cloud_sync_desc" = "La aplicación de Mac escanea localmente el uso de herramientas de IA y lo sube a su cuenta. Cualquier dispositivo con la misma cuenta — incluyendo este iPhone — muestra los datos automáticamente.";
