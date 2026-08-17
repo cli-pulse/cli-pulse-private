@@ -18,17 +18,48 @@ GitHub release/traffic reads and App Store Connect GETs. It creates no ASC
 resource -- the analytics report requests it reads must already exist (they do;
 both ONGOING and ONE_TIME_SNAPSHOT were already provisioned).
 
-THE TRAP THAT MATTERS MOST -- Apple suppresses small numbers
-------------------------------------------------------------
-App Store analytics apply a privacy threshold. Days below it are not reported
-at all, and what survives is rounded. Observed floor in this app's data: no
-value below 5 ever appears.
+THE TRAP THAT MATTERS MOST -- "Detailed" is the CENSORED report
+---------------------------------------------------------------
+Apple ships two variants of each analytics report and the names are actively
+misleading:
 
-So "0 first-time Mac downloads" DOES NOT MEAN ZERO. It means "never once
-crossed the threshold on any single day". That is still a strong statement over
-a long window, but it is a different statement, and reporting it as a hard zero
-would be exactly the confident-wrong-label failure this project keeps paying
-for. Every printed Apple figure below carries the caveat inline.
+    App Downloads DETAILED  -- more dimensions, PRIVACY-THRESHOLDED.
+                               Minimum reportable value 5. Cells below it are
+                               dropped entirely, not rounded down.
+    App Downloads STANDARD  -- fewer dimensions, NOT thresholded.
+                               Minimum reportable value 1.
+
+The threshold is applied PER CELL, where a cell is the full dimensional tuple
+(date x version x device x OS build x source x page x territory x ...). Adding
+dimensions therefore does not merely add detail -- it shatters the data into
+cells too small to survive, and the report silently returns less. Measured on
+this app, 2026-04-03..08-15:
+
+    Mac first-time downloads   DETAILED     0     STANDARD   108
+    Mac impressions            DETAILED 50,165    STANDARD 75,364
+    Mac product page views     DETAILED    44     STANDARD   641
+
+Until 2026-08-17 this script read DETAILED, and the numbers it printed were
+used to conclude that observable acquisition was "single digits across all
+channels" and that Mac first-time downloads had "never crossed Apple's
+threshold in 3.5 months". The mechanism was right; the conclusion was wrong by
+two orders of magnitude, because the loss is worst exactly where the numbers
+are smallest -- i.e. in every figure anyone cared about.
+
+Suppression is therefore NOT a uniform haircut. It is steeply biased toward
+small cells, so a RATIO built from a thresholded report is wrong in a
+predictable direction: numerators (page views, downloads) are censored far
+harder than denominators (impressions). Mac tap-through read 0.089% from
+DETAILED and 0.851% from STANDARD -- a 9.5x error, all of it manufactured by
+the instrument.
+
+This script now reads STANDARD everywhere and asserts, at runtime, that the
+report it received is not thresholded (see `assert_not_thresholded`). It also
+prints the DETAILED figure beside it so the gap stays visible instead of
+becoming folklore again.
+
+Residual caveat that STANDARD does NOT remove: days with genuinely zero events
+are absent rather than zero, and Apple may still restate recent days.
 
 GITHUB COUNTS HAVE THEIR OWN CONTAMINATION
 ------------------------------------------
@@ -76,8 +107,15 @@ DISTRIB_REPO = "cli-pulse/cli-pulse-distrib"
 SITE_REPO = "cli-pulse/cli-pulse"
 TAP_REPO = "cli-pulse/homebrew-tap"
 
-APPLE_CAVEAT = "(Apple suppresses days below ~5; 0 means 'never crossed threshold', NOT zero)"
+APPLE_CAVEAT = "(App Store only -- blind to Developer ID DMG and Homebrew)"
 GH_CAVEAT = "(includes CI, owner testing, bots -- UPPER BOUND on humans)"
+
+# The uncensored variants. Do not "improve" these to Detailed for the extra
+# dimensions: see the module docstring. Detailed is kept only as a contrast.
+RPT_DOWNLOADS = "App Downloads Standard"
+RPT_ENGAGEMENT = "App Store Discovery and Engagement Standard"
+RPT_DOWNLOADS_CENSORED = "App Downloads Detailed"
+RPT_ENGAGEMENT_CENSORED = "App Store Discovery and Engagement Detailed"
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +159,7 @@ def github_section(version: str | None) -> None:
     except SystemExit:
         print("\n  update feed: no `latest` tag found")
 
-    print(f"\n  traffic, last 14 days:")
+    print("\n  traffic, last 14 days:")
     for repo, label in [(TAP_REPO, "tap"), (DISTRIB_REPO, "distrib"), (SITE_REPO, "site repo")]:
         v = gh(f"repos/{repo}/traffic/views")
         c = gh(f"repos/{repo}/traffic/clones")
@@ -156,38 +194,83 @@ def asc_get(path: str, params: dict | None = None) -> dict:
     return r.json()
 
 
-def fetch_download_rows(request_id: str) -> list[dict]:
-    """All 'App Downloads Detailed' rows under one analytics report request."""
-    reports = asc_get(f"/analyticsReportRequests/{request_id}/reports",
-                      {"limit": 200, "filter[name]": "App Downloads Detailed"})
+def fetch_report(report_name: str, access_types: dict[str, str]) -> list[dict]:
+    """Every DAILY row of one named report, across all report requests.
+
+    Deduped on the DIMENSION key rather than the whole record, and ONGOING wins
+    over ONE_TIME_SNAPSHOT. That matters: Apple restates the most recent few
+    days, so the same cell can arrive twice with counts differing by 1-2.
+    Deduping on the whole record keeps both copies and quietly inflates every
+    total -- measured at 32 conflicting keys on the engagement report.
+    """
     rows: list[dict] = []
-    for rep in reports.get("data", []):
-        inst = asc_get(f"/analyticsReports/{rep['id']}/instances",
-                       {"limit": 200, "filter[granularity]": "DAILY"})
-        for i in inst.get("data", []):
-            segs = asc_get(f"/analyticsReportInstances/{i['id']}/segments", {"limit": 50})
-            for s in segs.get("data", []):
-                raw = requests.get(s["attributes"]["url"], timeout=180).content
-                try:
-                    text = gzip.decompress(raw).decode("utf-8")
-                except OSError:
-                    text = raw.decode("utf-8")
-                rows += list(csv.DictReader(io.StringIO(text), delimiter="\t"))
-    # Instances overlap and redeliver rows; dedupe on the whole record.
-    seen, uniq = set(), []
+    for access_type, rid in access_types.items():
+        reports = asc_get(f"/analyticsReportRequests/{rid}/reports",
+                          {"limit": 200, "filter[name]": report_name})
+        for rep in reports.get("data", []):
+            inst = asc_get(f"/analyticsReports/{rep['id']}/instances",
+                           {"limit": 200, "filter[granularity]": "DAILY"})
+            for i in inst.get("data", []):
+                segs = asc_get(f"/analyticsReportInstances/{i['id']}/segments",
+                               {"limit": 50})
+                for s in segs.get("data", []):
+                    raw = requests.get(s["attributes"]["url"], timeout=300).content
+                    try:
+                        text = gzip.decompress(raw).decode("utf-8")
+                    except OSError:
+                        text = raw.decode("utf-8")
+                    for r in csv.DictReader(io.StringIO(text), delimiter="\t"):
+                        r["_accessType"] = access_type
+                        rows.append(r)
+
+    value_cols = {"Counts", "Unique Counts", "Unique Devices", "Purchases",
+                  "Paying Users", "Proceeds in USD", "Sales in USD", "_accessType"}
+    best: dict[tuple, dict] = {}
     for r in rows:
-        k = tuple(sorted(r.items()))
-        if k not in seen:
-            seen.add(k)
-            uniq.append(r)
-    return uniq
+        key = tuple(sorted((k, v) for k, v in r.items() if k not in value_cols))
+        prev = best.get(key)
+        if prev is None or (r["_accessType"] == "ONGOING"
+                            and prev["_accessType"] != "ONGOING"):
+            best[key] = r
+    return list(best.values())
 
 
-def asc_section() -> None:
-    print("\n" + "=" * 74)
-    print("APP STORE CONNECT -- mas + ios denominators  " + APPLE_CAVEAT)
-    print("=" * 74)
+def count_of(row: dict, field: str = "Counts") -> int:
+    v = row.get(field, "")
+    return int(v) if str(v).isdigit() else 0
 
+
+def assert_not_thresholded(report_name: str, rows: list[dict]) -> None:
+    """Fail loudly if we were handed a privacy-thresholded report.
+
+    A thresholded report CANNOT emit a value below 5 -- cells that small are
+    dropped. So observing any 1..4 proves the report is uncensored, and never
+    observing one across thousands of rows is the signature of the floor.
+
+    This guard exists because the failure it catches is invisible: the censored
+    report returns valid-looking rows, sums cleanly, and is wrong by 100x. It is
+    exercised in both directions by `--self-test`.
+    """
+    if not rows:
+        sys.exit(f"\n{report_name}: NO ROWS. That is an empty result, not a zero.\n"
+                 "  Check the report requests are live before concluding anything.")
+    vals = [count_of(r) for r in rows]
+    vals = [v for v in vals if v > 0]
+    floor = min(vals) if vals else 0
+    if floor >= 5:
+        sys.exit(
+            f"\n*** REFUSING TO REPORT FROM A THRESHOLDED REPORT ***\n"
+            f"  {report_name}: {len(rows)} rows, smallest non-zero value = {floor}.\n"
+            f"  A report with no value below 5 is privacy-thresholded: cells under\n"
+            f"  the floor were DROPPED, not rounded. Small numbers -- every number\n"
+            f"  this script exists to produce -- are censored hardest.\n"
+            f"  Use the STANDARD variant of this report, not Detailed.\n"
+            f"  See the module docstring for the measured size of the error.")
+    print(f"    [guard] {report_name}: {len(rows)} rows, floor={floor} "
+          f"-> uncensored (a thresholded report cannot emit <5)")
+
+
+def report_requests() -> dict[str, str]:
     reqs = asc_get(f"/apps/{APP_ID}/analyticsReportRequests", {"limit": 20})
     by_type = {d["attributes"]["accessType"]: d["id"] for d in reqs.get("data", [])}
     if not by_type:
@@ -198,36 +281,26 @@ def asc_section() -> None:
                        for d in reqs["data"] if d["id"] == rid)
         flag = "  *** STOPPED DUE TO INACTIVITY ***" if stopped else ""
         print(f"  request {t:<20} {rid}{flag}")
+    return by_type
 
-    rows: list[dict] = []
-    for rid in by_type.values():
-        rows += fetch_download_rows(rid)
-    seen, uniq = set(), []
-    for r in rows:
-        k = tuple(sorted(r.items()))
-        if k not in seen:
-            seen.add(k)
-            uniq.append(r)
 
-    if not uniq:
-        print("\n  NO ROWS. That is not 'no downloads' -- check the report requests above\n"
-              "  are live, then check instance coverage. An empty result here is an\n"
-              "  empty conclusion, not a finding.")
-        return
+def asc_section(show_censored: bool = True) -> None:
+    print("\n" + "=" * 74)
+    print("APP STORE CONNECT -- mas + ios denominators  " + APPLE_CAVEAT)
+    print("=" * 74)
+    by_type = report_requests()
 
-    def count(r: dict) -> int:
-        try:
-            return int(r["Counts"])
-        except (ValueError, KeyError):
-            return 0
+    print(f"\n  fetching {RPT_DOWNLOADS!r} ...")
+    dl = fetch_report(RPT_DOWNLOADS, by_type)
+    assert_not_thresholded(RPT_DOWNLOADS, dl)
 
-    dates = sorted(r["Date"] for r in uniq)
-    print(f"\n  {len(uniq)} unique rows, event dates {dates[0]} .. {dates[-1]}")
+    dates = sorted(r["Date"] for r in dl)
+    print(f"  {len(dl)} unique rows, event dates {dates[0]} .. {dates[-1]}")
 
-    print("\n  Device x Download Type " + APPLE_CAVEAT)
+    print("\n  Device x Download Type")
     agg: dict = collections.defaultdict(int)
-    for r in uniq:
-        agg[(r["Device"], r["Download Type"])] += count(r)
+    for r in dl:
+        agg[(r["Device"], r["Download Type"])] += count_of(r)
     for k in sorted(agg):
         print(f"    {k[0]:<10} {k[1]:<24} {agg[k]}")
 
@@ -237,18 +310,151 @@ def asc_section() -> None:
                     if dev == "Desktop" and typ == "First-time download")
     ios_first = sum(c for (dev, typ), c in agg.items()
                     if dev in ("iPhone", "iPad") and typ == "First-time download")
-    print(f"\n  FIRST-TIME acquisition over the whole window:")
+    print("\n  FIRST-TIME acquisition over the whole window:")
     print(f"    Mac (Desktop) : {mac_first}   {APPLE_CAVEAT}")
     print(f"    iOS           : {ios_first}")
     print("    ^ auto-updates and redownloads are NOT acquisition -- they are people"
           "\n      who already had the app. Only first-time downloads enter the funnel.")
 
-    print("\n  by territory")
+    print("\n  first-time downloads by month")
+    per_month: dict = collections.defaultdict(lambda: collections.defaultdict(int))
+    for r in dl:
+        if r["Download Type"] == "First-time download":
+            per_month[r["Date"][:7]][r["Device"]] += count_of(r)
+    print(f"    {'month':<9} {'Mac':>6} {'iPhone':>8} {'iPad':>6}")
+    for mo in sorted(per_month):
+        m = per_month[mo]
+        print(f"    {mo:<9} {m['Desktop']:>6} {m['iPhone']:>8} {m['iPad']:>6}")
+
+    print("\n  first-time downloads by acquisition source")
+    src: dict = collections.defaultdict(int)
+    for r in dl:
+        if r["Download Type"] == "First-time download":
+            src[(r["Device"], r["Source Type"])] += count_of(r)
+    for dev in ("Desktop", "iPhone", "iPad"):
+        tot = sum(v for k, v in src.items() if k[0] == dev)
+        if not tot:
+            continue
+        print(f"    {dev} ({tot})")
+        for k in sorted((k for k in src if k[0] == dev), key=lambda k: -src[k]):
+            print(f"      {k[1]:<20} {src[k]:>5}  ({src[k]/tot*100:.1f}%)")
+    print("    ^ 'Web referrer' is the ONLY visible website->App Store path, and it")
+    print("      does not include Homebrew or the DMG at all: those never touch the")
+    print("      App Store, so no Apple report can ever see them.")
+
+    print("\n  by territory (all download types)")
     terr: dict = collections.defaultdict(int)
-    for r in uniq:
-        terr[r["Territory"]] += count(r)
-    for k, v in sorted(terr.items(), key=lambda x: -x[1]):
+    for r in dl:
+        terr[r["Territory"]] += count_of(r)
+    for k, v in sorted(terr.items(), key=lambda x: -x[1])[:12]:
         print(f"    {k:<6} {v}")
+
+    # ---- storefront funnel: impression -> product page -> tap ----------------
+    print(f"\n  fetching {RPT_ENGAGEMENT!r} ...")
+    eng = fetch_report(RPT_ENGAGEMENT, by_type)
+    assert_not_thresholded(RPT_ENGAGEMENT, eng)
+
+    print("\n  STOREFRONT FUNNEL -- impression -> product page view -> tap")
+    print("    Impressions and page views are independent event counts over the same")
+    print("    window; Apple does not attribute a page view to the impression that")
+    print("    caused it. Read the ratio as a rate, never as a per-user conversion.")
+    f: dict = collections.defaultdict(int)
+    for r in eng:
+        f[(r["Device"], r["Event"])] += count_of(r)
+    print(f"\n    {'device':<14} {'impressions':>12} {'page views':>11} {'taps':>7} {'imp->PV':>9}")
+    for dev in sorted({r["Device"] for r in eng}):
+        i, p, t = f[(dev, "Impression")], f[(dev, "Page view")], f[(dev, "Tap")]
+        print(f"    {dev:<14} {i:>12,} {p:>11,} {t:>7,} "
+              f"{p/i*100 if i else 0:>8.3f}%")
+
+    print("\n    by source type -- the same listing assets on different surfaces")
+    g: dict = collections.defaultdict(int)
+    for r in eng:
+        g[(r["Device"], r["Source Type"], r["Event"])] += count_of(r)
+    for dev in ("Desktop", "iPhone"):
+        print(f"      {dev}")
+        for s in sorted({k[1] for k in g if k[0] == dev},
+                        key=lambda s: -g[(dev, s, "Impression")]):
+            i, p = g[(dev, s, "Impression")], g[(dev, s, "Page view")]
+            rate = f"{p/i*100:>7.3f}%" if i else "      --"
+            print(f"        {s:<20} impressions={i:>8,}  page views={p:>5,}  {rate}")
+    print("      ^ icon, screenshots, subtitle and description are identical across")
+    print("        these rows. A gap between surfaces is about placement and intent,")
+    print("        NOT about the listing assets.")
+
+    if show_censored:
+        censored_contrast(by_type, dl, eng)
+
+
+def censored_contrast(by_type: dict[str, str], dl: list[dict],
+                      eng: list[dict]) -> None:
+    """Print the thresholded figures next to the real ones, every run.
+
+    Not decoration. The whole reason this error survived four months and two
+    adversarial plan reviews is that nobody had the two side by side.
+    """
+    print("\n" + "-" * 74)
+    print("  CONTRAST: what the thresholded 'Detailed' reports say instead")
+    print("-" * 74)
+    for label, real, name in ((RPT_DOWNLOADS, dl, RPT_DOWNLOADS_CENSORED),
+                              (RPT_ENGAGEMENT, eng, RPT_ENGAGEMENT_CENSORED)):
+        cen = fetch_report(name, by_type)
+        vals = [count_of(r) for r in cen if count_of(r) > 0]
+        print(f"\n    {name}: {len(cen)} rows, floor={min(vals) if vals else 0}")
+        if "Download Type" in (cen[0] if cen else {}):
+            for dev in ("Desktop", "iPhone"):
+                a = sum(count_of(r) for r in real if r["Device"] == dev
+                        and r["Download Type"] == "First-time download")
+                b = sum(count_of(r) for r in cen if r["Device"] == dev
+                        and r["Download Type"] == "First-time download")
+                print(f"      {dev:<9} first-time downloads: "
+                      f"uncensored={a:<6} thresholded={b:<6} hidden={a-b}")
+        else:
+            for dev in ("Desktop", "iPhone"):
+                for ev in ("Impression", "Page view"):
+                    a = sum(count_of(r) for r in real if r["Device"] == dev
+                            and r["Event"] == ev)
+                    b = sum(count_of(r) for r in cen if r["Device"] == dev
+                            and r["Event"] == ev)
+                    pct = (a - b) / a * 100 if a else 0
+                    print(f"      {dev:<9} {ev:<11} uncensored={a:<8,} "
+                          f"thresholded={b:<8,} hidden={pct:5.1f}%")
+    print("\n    The suppression gradient -- mild on impressions, severe on page")
+    print("    views and downloads -- is why every RATIO taken from the thresholded")
+    print("    reports was wrong in the same direction.")
+
+
+def self_test() -> int:
+    """Prove the guard fires, in both directions, with no network.
+
+    A guard that has only ever been observed passing is not known to work. This
+    is the negative control.
+    """
+    print("=" * 74)
+    print("SELF-TEST -- does assert_not_thresholded actually fire?")
+    print("=" * 74)
+    failures = 0
+
+    thresholded = [{"Counts": str(v)} for v in (5, 6, 12, 40, 5, 9)]
+    uncensored = [{"Counts": str(v)} for v in (1, 2, 5, 40, 3)]
+    empty: list[dict] = []
+
+    for label, rows, want_exit in (("thresholded (floor 5)", thresholded, True),
+                                   ("uncensored (has a 1)", uncensored, False),
+                                   ("empty result", empty, True)):
+        try:
+            assert_not_thresholded("synthetic:" + label, rows)
+            got_exit = False
+        except SystemExit:
+            got_exit = True
+        ok = got_exit == want_exit
+        failures += 0 if ok else 1
+        print(f"  {'PASS' if ok else 'FAIL':<5} {label:<24} "
+              f"expected {'reject' if want_exit else 'accept'}, "
+              f"got {'reject' if got_exit else 'accept'}")
+
+    print(f"\n  {'ALL PASS' if not failures else f'{failures} FAILURE(S)'}")
+    return 1 if failures else 0
 
 
 def main() -> None:
@@ -256,27 +462,37 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--version", help="current marketing version, e.g. 1.47.0")
     ap.add_argument("--skip-asc", action="store_true", help="GitHub only, no Apple creds")
+    ap.add_argument("--skip-github", action="store_true", help="ASC only")
+    ap.add_argument("--no-contrast", action="store_true",
+                    help="omit the thresholded-report contrast block")
+    ap.add_argument("--self-test", action="store_true",
+                    help="prove the anti-threshold guard fires; no network, no creds")
     args = ap.parse_args()
 
-    github_section(args.version)
+    if args.self_test:
+        sys.exit(self_test())
+
+    if not args.skip_github:
+        github_section(args.version)
     if not args.skip_asc:
-        asc_section()
+        asc_section(show_censored=not args.no_contrast)
 
     print("\n" + "=" * 74)
     print("HOW TO READ THIS")
     print("=" * 74)
     print("""
   Compare FIRST-TIME acquisition above against the row count from
-  backend/supabase/analysis/phase1_menu_open_to_provider.sql.
+  backend/supabase/analysis/phase1_menu_open_to_provider.sql -- but compare the
+  RIGHT windows. anonymous_installs cannot contain an install that predates the
+  backend going live (2026-08-06) or a build that predates the collector, and
+  `n_tup_ins` is the real numerator because deleted rows never come back.
+  Charging the telemetry for 4.5 months of downloads it could not have seen is
+  the same class of error as reading a thresholded report.
 
-  If external acquisition is itself in the single digits, the telemetry funnel
-  percentage is unreadable NO MATTER HOW LONG YOU WAIT, and the Phase 1 gate
-  (~100 mature rows) cannot be reached by waiting. That is a finding about
-  acquisition, not about activation, and it redirects the work.
-
-  Do not compute a ratio between an Apple figure and a telemetry figure. The
-  Apple numbers are thresholded and rounded; a ratio built on them carries a
-  precision they do not have.
+  Do not compute a ratio between an Apple figure and a telemetry figure without
+  saying what each side cannot see. Apple sees no Developer ID and no Homebrew
+  install, ever. The telemetry sees nobody who did not open the menu bar popover
+  and accept the disclosure card. Neither is the funnel; both are slices of it.
 """)
 
 
