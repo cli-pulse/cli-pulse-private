@@ -298,6 +298,10 @@ public enum ClaudeCredentials {
         bypassCooldown: Bool = false,
         cacheResult: Bool = true
     ) -> Creds? {
+        // XCTest uses an isolated Claude home and must not fall through to the
+        // developer's app cache or Claude Code's cross-app Keychain item.
+        if isolatedTestHomeDirectory != nil { return nil }
+
         // 1. Try the app's own keychain cache (never triggers a prompt)
         if let cached = KeychainHelper.load(key: keychainCacheKey),
            let data = cached.data(using: .utf8),
@@ -413,7 +417,10 @@ public enum ClaudeCredentials {
         return creds
     }
 
-    private static let keychainCacheKey = "claude-code-creds-cache"
+    // Internal so XCTest can seed the exact cache entry without duplicating a
+    // security-sensitive key name and accidentally falling through to the
+    // cross-app Keychain path when that name changes.
+    static let keychainCacheKey = "claude-code-creds-cache"
 
     enum TokenSource: Equatable {
         case accountConfig

@@ -59,6 +59,43 @@ final class ClaudeStrategyTests: XCTestCase {
         )
     }
 
+    func testKeychainCredentialReadIsDisabledUnderXCTest() {
+        let cacheKey = ClaudeCredentials.keychainCacheKey
+        let previousCachedCredentials = KeychainHelper.load(key: cacheKey)
+        let cachedCredentials = """
+        {
+          "claude_ai_oauth": {
+            "access_token": "sk-ant-oat-test",
+            "rate_limit_tier": "pro"
+          }
+        }
+        """
+
+        XCTAssertTrue(
+            KeychainHelper.save(key: cacheKey, value: cachedCredentials)
+        )
+        defer {
+            if let previousCachedCredentials {
+                XCTAssertTrue(
+                    KeychainHelper.save(
+                        key: cacheKey,
+                        value: previousCachedCredentials
+                    )
+                )
+            } else {
+                XCTAssertTrue(KeychainHelper.delete(key: cacheKey))
+            }
+        }
+
+        XCTAssertNil(
+            ClaudeCredentials.readKeychainCredentials(
+                bypassCooldown: true,
+                cacheResult: false
+            ),
+            "XCTest must not consult either the app cache or Claude Code's cross-app Keychain item"
+        )
+    }
+
     // MARK: - ClaudeSnapshot → CollectorResult
 
     func testResultBuilderFullSnapshot() {
