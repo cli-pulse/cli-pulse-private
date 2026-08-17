@@ -20,6 +20,11 @@ struct CLIPulseBarApp: App {
     /// telemetry, so a QA or quarantine build simply has no sender.
     private let anonymousTelemetry: AnonymousTelemetryCoordinator?
 
+    /// v1.49: whether THIS launch is a brand-new install that has never been
+    /// shown where the app lives. Computed once in `init` because the signal it
+    /// reads is destroyed by the app's own first writes — see the comment there.
+    private let firstRunWelcome: Bool
+
     init() {
         let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
         runtimeEnvironment.preconditionSafeLaunch()
@@ -36,6 +41,35 @@ struct CLIPulseBarApp: App {
         if runtimeEnvironment.capabilities.allowsUnsandboxedMigration {
             UnsandboxedDataMigration.runIfNeeded()
         }
+
+        // v1.49 first-run visibility. This exact position is load-bearing in
+        // BOTH directions, so neither line below may be reordered casually.
+        //
+        // AFTER the migration above: `FirstRunPresentation` recognises a new
+        // install by the ABSENCE of any app-owned preference. Before the
+        // migration a Mac App Store -> Developer ID mover still has an empty
+        // destination domain and would be misread as brand-new, greeted with a
+        // "here is where the app lives" window they do not need. (The migration
+        // writes its own done-flag unconditionally, which is why that one key is
+        // excluded — see `FirstRunPresentation.ignoredKeys`.)
+        //
+        // BEFORE `AppState` and the telemetry coordinator: both write app-owned
+        // defaults almost immediately — `UserDefaultsAnonymousTelemetryStore.init`
+        // sets `privacy.anonymousTelemetryEnabled`. Reading after them would see
+        // the app's own footprints, conclude every install was an upgrade, and
+        // the window would never appear for anyone. Silently. Which is precisely
+        // the class of defect this release exists to stop repeating.
+        //
+        // Quarantine builds are excluded: an unrecognised bundle identity must
+        // not open a window on a real user's screen.
+        let firstRunWelcome = runtimeEnvironment.isLaunchSafe
+            && FirstRunPresentation.evaluateAndRecordLaunch(
+                appVersion: (Bundle.main.infoDictionary?[
+                    "CFBundleShortVersionString"
+                ] as? String) ?? ""
+            )
+        self.firstRunWelcome = firstRunWelcome
+
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {
@@ -51,6 +85,22 @@ struct CLIPulseBarApp: App {
         anonymousTelemetry?.start(observing: state.providerState)
         if runtimeEnvironment.capabilities.allowsBackgroundActivityAssertion {
             backgroundActivity.begin()
+        }
+        // v1.49: present the first-run window off the synchronous init path, for
+        // the same reason bookmark restoration is deferred below — `init` runs
+        // before the app is done launching, and ordering a window front from
+        // inside it fights AppKit's own startup sequencing.
+        //
+        // `markShown` is wired to DISMISS rather than to presentation. If the app
+        // dies with the window up the user never read it; the version sentinel
+        // written above already stops a second attempt next launch, so the cost
+        // of that is one missed nudge rather than a window that returns forever.
+        if firstRunWelcome {
+            Task { @MainActor in
+                FirstRunWelcomeController.shared.present {
+                    FirstRunPresentation.markShown()
+                }
+            }
         }
         // Resolve stored security-scoped bookmarks shortly AFTER launch — off
         // the synchronous init path. Each resolution does slow sandbox XPC, so
