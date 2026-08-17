@@ -291,9 +291,22 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         )
     }
 
-    func testSaveSecretsFailsWithoutMutationWhenCheckpointReadFails()
-        throws
-    {
+    /// An unreadable entry must NOT collapse the checkpoint.
+    ///
+    /// Replaces `testSaveSecretsFailsWithoutMutationWhenCheckpointReadFails`,
+    /// which pinned the opposite promise — "if any entry cannot be read, refuse
+    /// to write at all". That promise was the bug. `readResult` maps every
+    /// OSStatus other than success/itemNotFound to `.failure`, so one denied
+    /// authorization prompt, ACL mismatch after a re-sign, missing entitlement
+    /// or non-UTF8 payload made `makeSecretPersistenceCheckpoint` return nil —
+    /// and both `saveSecrets` and `deleteSecrets` guarded on it, leaving the
+    /// account neither editable nor removable with no route back for the user.
+    /// Reproduced against the real Keychain by planting a non-UTF8 item.
+    ///
+    /// The trade this encodes: an entry we could never read cannot be rolled
+    /// back either, because its previous value was never observed. Readable
+    /// entries are still rolled back exactly as before.
+    func testCheckpointSurvivesAnUnreadableEntry() throws {
         let store = InMemoryProviderSecretStore()
         let accountID = try XCTUnwrap(
             UUID(
@@ -310,29 +323,78 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         XCTAssertTrue(original.saveSecrets(using: store))
         let apiKey = accountKey(accountID, "apiKey")
         store.failingLoadKeys.insert(apiKey)
+
+        XCTAssertNotNil(
+            original.makeSecretPersistenceCheckpoint(using: store),
+            "an unreadable entry must be recorded, not turned into a refusal"
+        )
+
         let edited = ProviderConfig(
             kind: .claude,
             accountID: accountID,
             apiKey: "new-api-key",
             manualCookieHeader: "new-cookie"
         )
-
+        // This double fails reads for that key permanently, so the write-back
+        // verification inside `persistSecret` can never succeed and the save
+        // still reports failure. What matters here is what happens to the OTHER
+        // entry while that is going on.
         XCTAssertFalse(edited.saveSecrets(using: store))
 
-        store.failingLoadKeys.remove(apiKey)
         XCTAssertEqual(
             store.load(
-                key: apiKey,
+                key: accountKey(accountID, "cookie"),
                 accessGroup: ProviderConfig.secretsAccessGroup
             ),
-            "old-api-key"
+            "old-cookie",
+            "the readable entry must still be rolled back"
+        )
+    }
+
+    /// The rollback path itself: a `.failure` entry is skipped rather than
+    /// invented or destroyed, and skipping it does not count as a failed
+    /// rollback — we end up no worse off than before the attempt.
+    func testRestoreSkipsUnreadableEntryAndStillReportsSuccess() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ADADADAD-ADAD-4DAD-8DAD-ADADADADADAD"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "seed-api-key",
+            manualCookieHeader: "seed-cookie"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+
+        store.failingLoadKeys.insert(accountKey(accountID, "apiKey"))
+        let checkpoint = try XCTUnwrap(
+            config.makeSecretPersistenceCheckpoint(using: store)
+        )
+        store.failingLoadKeys.removeAll()
+
+        XCTAssertTrue(
+            store.save(
+                key: accountKey(accountID, "cookie"),
+                value: "drifted-cookie",
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+
+        XCTAssertTrue(
+            config.restoreSecrets(from: checkpoint, using: store),
+            "skipping an unreadable entry must not be reported as a failed rollback"
         )
         XCTAssertEqual(
             store.load(
                 key: accountKey(accountID, "cookie"),
                 accessGroup: ProviderConfig.secretsAccessGroup
             ),
-            "old-cookie"
+            "seed-cookie",
+            "the readable entry is restored"
         )
     }
 
