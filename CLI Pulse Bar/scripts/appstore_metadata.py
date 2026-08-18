@@ -7,10 +7,8 @@ Uses App Store Connect API v1
 import jwt
 import time
 import requests
-import json
 import hashlib
 import os
-import sys
 
 # --- Config ---
 API_KEY_ID = "DMMFP6XTXX"
@@ -203,7 +201,7 @@ Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
             }
         }, raise_on_error=False)
         if result is None:
-            print(f"  (localization update skipped due to version state)")
+            print("  (localization update skipped due to version state)")
         # whatsNew only for updates, not first version - try separately
         api_patch(f"/appStoreVersionLocalizations/{loc_id}", {
             "data": {
@@ -213,7 +211,7 @@ Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
             }
         }, raise_on_error=False)
     else:
-        print(f"  Creating new localization...")
+        print("  Creating new localization...")
         loc_data["locale"] = locale
         r = api_post("/appStoreVersionLocalizations", {
             "data": {
@@ -272,7 +270,7 @@ def upload_screenshots(loc_id, screenshot_files, display_type):
             }
         }, raise_on_error=False)
         if r is None:
-            print(f"  Cannot create screenshot set (version state). Skipping.")
+            print("  Cannot create screenshot set (version state). Skipping.")
             return
         set_id = r["data"]["id"]
         print(f"  Created screenshot set: {set_id}")
@@ -283,7 +281,7 @@ def upload_screenshots(loc_id, screenshot_files, display_type):
         if existing:
             result = api_delete(f"/appScreenshots/{existing[0]['id']}")
             if result >= 400:
-                print(f"  Cannot modify screenshots (version state). Skipping.")
+                print("  Cannot modify screenshots (version state). Skipping.")
                 return
             for ss in existing[1:]:
                 api_delete(f"/appScreenshots/{ss['id']}")
@@ -317,14 +315,14 @@ def upload_screenshots(loc_id, screenshot_files, display_type):
         }, raise_on_error=False)
 
         if r is None:
-            print(f"    Failed to reserve. Skipping remaining screenshots.")
+            print("    Failed to reserve. Skipping remaining screenshots.")
             return
 
         screenshot_id = r["data"]["id"]
         upload_ops = r["data"]["attributes"].get("uploadOperations", [])
 
         if not upload_ops:
-            print(f"    No upload operations returned, skipping...")
+            print("    No upload operations returned, skipping...")
             continue
 
         # Upload parts
@@ -359,7 +357,7 @@ def upload_screenshots(loc_id, screenshot_files, display_type):
 # 4. Set App Info (category, etc.)
 # ============================================================
 def set_app_info():
-    print(f"\n  Setting app info (category)...")
+    print("\n  Setting app info (category)...")
     r = api_get(f"/apps/{APP_ID}/appInfos")
     infos = r.get("data", [])
     if not infos:
@@ -381,7 +379,7 @@ def set_app_info():
                 },
             }
         })
-        print(f"  Category set to Developer Tools")
+        print("  Category set to Developer Tools")
     except Exception as e:
         print(f"  Category update note: {e}")
 
@@ -400,7 +398,7 @@ def set_app_info():
                     }
                 }
             })
-            print(f"  App info localization updated")
+            print("  App info localization updated")
             break
 
 

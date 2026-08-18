@@ -194,8 +194,6 @@ def bind_build(version_id, platform_label):
         for b in r.get("data", []):
             bv = b["attributes"].get("version")
             proc = b["attributes"].get("processingState")
-            ver_rel = (b.get("relationships", {}).get("preReleaseVersion", {})
-                       .get("data") or {})
             states.append(f"{bv}/{proc}")
             if bv == TARGET_BUILD and proc == "VALID":
                 found = b["id"]

@@ -9,10 +9,11 @@ Preconditions (verified manually before running):
   - Build 30 is bound, What's New / all screenshots are in place.
 """
 from __future__ import annotations
-import sys, os
+import sys
+import os
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from submit_ios_v192 import get, post, patch, APP_ID, IOS_VERSION_ID, requests, H, BASE_URL
+from submit_ios_v192 import get, post, APP_ID, IOS_VERSION_ID, requests, H, BASE_URL
 
 
 def create_review_submission() -> str:

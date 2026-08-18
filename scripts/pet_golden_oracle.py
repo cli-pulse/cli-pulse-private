@@ -2,7 +2,8 @@
 # Independent spec oracle for the Pulse Cat M1 ruleset. Generates
 # PetGoldenVectors.json with computed expectations. If the Swift PetEngine
 # matches this, both match the plan §1.2 spec.
-import json, datetime
+import json
+import datetime
 
 RULESET_VERSION = 1
 WEIGHT_TABLE_VERSION = 1
@@ -35,9 +36,12 @@ def window_keys(today):
     return [dkey(t - datetime.timedelta(days=i)) for i in range(WINDOW_DAYS-1, -1, -1)]
 
 def resolve_form(dom, tempo):
-    if dom == "anthropic": return "loaf" if tempo == "steady" else "polite"
-    if dom == "openai":    return "smash" if tempo == "steady" else "pop"
-    if dom == "google":    return "long"
+    if dom == "anthropic":
+        return "loaf" if tempo == "steady" else "polite"
+    if dom == "openai":
+        return "smash" if tempo == "steady" else "pop"
+    if dom == "google":
+        return "long"
     return "huh"   # other / None
 
 def usable(u):
@@ -60,7 +64,8 @@ def profile(days, today):
     fam_score = {}
     for k in keys:
         for prov, u in days.get(k,{}).items():
-            if not usable(u): continue
+            if not usable(u):
+                continue
             fam, w = PROV.get(prov, ("other", 500_000))
             fam_score[fam] = fam_score.get(fam,0) + max(0,u.get("tokens",0))*w
     total = sum(fam_score.values())
@@ -76,7 +81,8 @@ def profile(days, today):
             dom = top[0]
     # tempo
     toks_sorted = sorted(day_tokens.values(), reverse=True)
-    top3 = sum(toks_sorted[:BURST_TOP]); tt = sum(toks_sorted)
+    top3 = sum(toks_sorted[:BURST_TOP])
+    tt = sum(toks_sorted)
     burst = tt > 0 and top3*100 >= tt*BURST_PCT
     tempo = "burst" if burst else "steady"
     form = resolve_form(dom, tempo)
@@ -85,7 +91,8 @@ def profile(days, today):
                resolvedForm=form, eggStage=egg, activeDays=len(active))
 
 def timing_allows(last, today):
-    if last is None: return True
+    if last is None:
+        return True
     return today >= shift(last, MIN_DAYS_BETWEEN)
 
 def evaluate(days, today, owned, last):
@@ -107,8 +114,10 @@ def spread(prov, daykeys, tokens, msgs=0, conf=None):
     out = {}
     for k in daykeys:
         u = {"tokens": tokens}
-        if msgs: u["messages"] = msgs
-        if conf: u["confidence"] = conf
+        if msgs:
+            u["messages"] = msgs
+        if conf:
+            u["confidence"] = conf
         out.setdefault(k, {})[prov] = u
     return out
 
@@ -121,7 +130,10 @@ def merge(*maps):
 
 T = "2026-07-11"
 W = window_keys(T)         # 07-05 .. 07-11
-d = lambda i: W[i]         # index into window, 0=oldest
+
+
+def d(i):                  # index into window, 0=oldest
+    return W[i]
 
 cases = []
 def add(name, days, today=T, owned=None, last=None):
@@ -158,7 +170,8 @@ add("timing_allows_exactly_7d", spread("Claude", W, 20_000), last=shift(T,-7))
 # 13 clock rollback (last hatch in the future)
 add("clock_rollback_no_hatch", spread("Claude", W, 20_000), last=shift(T,9))
 # 14 DST spring-forward window (ending 2026-03-09), 6 steady days
-Tdst = "2026-03-09"; Wd = window_keys(Tdst)
+Tdst = "2026-03-09"
+Wd = window_keys(Tdst)
 add("dst_spring_forward_loaf", spread("Claude", Wd[1:], 25_000), today=Tdst)  # 6 days
 # 15 messages-only (0 weighted tokens) -> NOT qualified even at 3 active days
 add("messages_only_not_qualified",
@@ -206,7 +219,8 @@ add("ollama_floor_other_huh", spread("Ollama", W, 30_000))
 # 25 timezone travel: window includes frozen keys on both sides of a UTC-midnight
 #   day boundary (same event bucketed to adjacent days in different TZs, per M0).
 #   Engine profiles the frozen keys as distinct active days — no merge, no gap.
-Ttrav = "2026-03-21"; Wt = window_keys(Ttrav)  # ...03-15..03-21
+Ttrav = "2026-03-21"
+Wt = window_keys(Ttrav)  # ...03-15..03-21
 add("timezone_travel_frozen_keys",
     merge(spread("Claude", [Wt[2],Wt[3],Wt[4],Wt[5],Wt[6]], 22_000)), today=Ttrav)  # 5 steady days
 # 26 steering: OpenAI-heavy first half, Anthropic-heavy second half — the whole

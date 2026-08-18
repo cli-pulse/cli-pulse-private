@@ -16,7 +16,9 @@ active_1/sleep_0 for cats, idle_0/idle_1/crack1/crack2/crack3/hatch_burst for eg
 Requires Pillow. IP: the AI-gen prompts must obey the §1.3 red lines (no meme
 names/likeness); this script only normalizes geometry, it does not create art.
 """
-import os, sys, re
+import os
+import sys
+import re
 
 try:
     from PIL import Image, ImageDraw, ImageFilter
@@ -155,7 +157,8 @@ def _selftest():
     for rel, expect in cases.items():
         got = parse_target(os.path.join("/in", rel), "/in")
         status = "ok" if got == expect else "FAIL"
-        if got != expect: ok = False
+        if got != expect:
+            ok = False
         print(f"  [{status}] {rel} -> {got} (expected {expect})")
     print("selftest passed" if ok else "selftest FAILED")
     return ok
