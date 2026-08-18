@@ -334,6 +334,10 @@ public enum ClaudeConversationPreviewFormatter {
     /// Only triggers when the punctuation is immediately followed by
     /// an uppercase ASCII letter (heuristic for sentence boundary).
     private static let sentencePunctPattern: NSRegularExpression = {
+        // The pattern is a compile-time string literal, so this cannot fail at
+        // runtime. Making the property optional would push a nil check onto every
+        // call site for no safety gain.
+        // swiftlint:disable:next force_try
         try! NSRegularExpression(pattern: "([\\.!?])([A-Z])", options: [])
     }()
 
@@ -399,6 +403,10 @@ public enum ClaudeConversationPreviewFormatter {
     /// consume `[1a` and leave a dangling `]`.
     private static let orphanCsiPattern: NSRegularExpression = {
         let pattern = "\\[[0-9;:?<>=]+[ -/]*[a-zA-Z](?!\\])"
+        // The pattern is a compile-time string literal, so this cannot fail at
+        // runtime. Making the property optional would push a nil check onto every
+        // call site for no safety gain.
+        // swiftlint:disable:next force_try
         return try! NSRegularExpression(pattern: pattern, options: [])
     }()
 

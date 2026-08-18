@@ -223,6 +223,10 @@ public enum GeminiConversationPreviewFormatter {
     /// optional leading whitespace.
     private static let numberedMenuPattern: NSRegularExpression = {
         let pattern = "^\\s*(?:\\(\\d+\\)|\\[\\d+\\]|\\d+\\.)\\s+\\S"
+        // The pattern is a compile-time string literal, so this cannot fail at
+        // runtime. Making the property optional would push a nil check onto every
+        // call site for no safety gain.
+        // swiftlint:disable:next force_try
         return try! NSRegularExpression(pattern: pattern, options: [])
     }()
 
@@ -309,6 +313,10 @@ public enum GeminiConversationPreviewFormatter {
         // covers every real-world CSI final byte, and the lookahead
         // catches the `[1a]`-style footnote false-positive class.
         let pattern = "\\[[0-9;:?<>=]+[ -/]*[a-zA-Z](?!\\])"
+        // The pattern is a compile-time string literal, so this cannot fail at
+        // runtime. Making the property optional would push a nil check onto every
+        // call site for no safety gain.
+        // swiftlint:disable:next force_try
         return try! NSRegularExpression(pattern: pattern, options: [])
     }()
 

@@ -26,10 +26,14 @@ concurrency:
 
 jobs:
   swiftlint:
-    name: SwiftLint (warning-only)
+    # No longer "warning-only". With a config in place the error-severity rules
+    # (force_try, force_cast, implicitly_unwrapped_optional) now BLOCK, because
+    # a red check that blocks nothing is what let 3,104 violations accumulate.
+    # The remaining ~33 are warning-severity and do not fail the job; zeroing
+    # them and adding --strict is the follow-up.
+    name: SwiftLint
     runs-on: macos-14
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 

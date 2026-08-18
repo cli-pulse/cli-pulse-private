@@ -38,11 +38,10 @@ only_rules:
   - redundant_void_return
   - unneeded_synthesized_initializer
   - unneeded_break_in_switch
-  - nsnumber_init_as_function_reference
 
   # Readability rules with no plausible false positive.
   - control_statement
-  - prefer_for_where
+  - for_where
   - syntactic_sugar
   - empty_count
   - empty_string
@@ -55,6 +54,12 @@ only_rules:
 
   # Non-negotiable regardless of style.
   - inclusive_language
+
+# force_try defaults to ERROR severity, which is why it — and only it — made
+# this job exit 2. Keeping it as an error is correct: an unjustified `try!` in
+# this codebase should stop a merge. The justified ones carry a reasoned
+# `swiftlint:disable:next` at the site, which is better documentation than
+# silence and better safety than a blanket downgrade.
 
 excluded:
   - CLIPulseCore/.build
