@@ -26,15 +26,31 @@ concurrency:
 
 jobs:
   swiftlint:
-    name: SwiftLint (warning-only)
+    # No longer "warning-only". With a config in place the error-severity rules
+    # (force_try, force_cast, implicitly_unwrapped_optional) now BLOCK, because
+    # a red check that blocks nothing is what let 3,104 violations accumulate.
+    # The remaining ~33 are warning-severity and do not fail the job; zeroing
+    # them and adding --strict is the follow-up.
+    name: SwiftLint
     runs-on: macos-14
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
 
-      - name: Install SwiftLint
-        run: brew install swiftlint
+      # PINNED, for the same reason ruff is pinned in helper-ci.yml: an
+      # unpinned linter turns PRs red for code they never touched the moment
+      # upstream enables a rule. `brew install swiftlint` was unpinned here
+      # while ruff carried a paragraph explaining why that is unacceptable.
+      # Raising this is a deliberate task — bump it, run the lint, fix or
+      # allowlist what the new version finds, in a PR that does only that.
+      - name: Install SwiftLint (pinned)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/swiftlint.zip \
+            https://github.com/realm/SwiftLint/releases/download/0.63.2/portable_swiftlint.zip
+          unzip -q -o /tmp/swiftlint.zip -d /tmp/swiftlint
+          sudo install -m 0755 /tmp/swiftlint/swiftlint /usr/local/bin/swiftlint
+          swiftlint version
 
       - name: Run SwiftLint on CLI Pulse Bar targets
         working-directory: CLI Pulse Bar
