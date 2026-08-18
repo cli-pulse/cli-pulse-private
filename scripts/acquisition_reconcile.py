@@ -114,6 +114,8 @@ GH_CAVEAT = "(includes CI, owner testing, bots -- UPPER BOUND on humans)"
 # dimensions: see the module docstring. Detailed is kept only as a contrast.
 RPT_DOWNLOADS = "App Downloads Standard"
 RPT_ENGAGEMENT = "App Store Discovery and Engagement Standard"
+RPT_INSTALL_DELETE = "App Store Installation and Deletion Standard"
+RPT_PURCHASES = "App Store Purchases Standard"
 RPT_DOWNLOADS_CENSORED = "App Downloads Detailed"
 RPT_ENGAGEMENT_CENSORED = "App Store Discovery and Engagement Detailed"
 
@@ -382,8 +384,148 @@ def asc_section(show_censored: bool = True) -> None:
     print("        these rows. A gap between surfaces is about placement and intent,")
     print("        NOT about the listing assets.")
 
+    retention_section(by_type, dl)
+    purchases_section(by_type)
+
     if show_censored:
         censored_contrast(by_type, dl, eng)
+
+
+def retention_section(by_type: dict[str, str], dl: list[dict]) -> None:
+    """Install -> deletion, from a report nobody had opened until 2026-08-17.
+
+    `App Store Installation and Deletion Standard` carries an `App Download
+    Date` on every row, which makes it the only Apple feed that yields a real
+    COHORT: how long after downloading did this install get removed. That is
+    the single most useful number about onboarding available anywhere, and it
+    costs nothing -- no client change, no new telemetry, no privacy delta.
+
+    It is also the reason v1.49 did NOT ship D1/D7/D30 retention pings. The
+    pings would have been conditioned on the user having already opened the
+    popover and accepted the disclosure card -- i.e. on having cleared the very
+    hurdle under investigation -- so they could only ever have described the
+    survivors. This report has no such conditioning.
+
+    WHAT IT CANNOT SEE, and this is the whole reason for the coverage line
+    below: it is a CONSENTING-USER SAMPLE, not a census. Only users who agreed
+    to share analytics with developers appear. Measured 2026-08-17 it held 19
+    Mac installs against 108 Mac first-time downloads in the download feed --
+    roughly a sixth. So:
+
+        the SHAPE of the latency distribution is usable
+        the RATE (deletes / installs) is NOT
+
+    Quoting a deletion percentage from here would be the same error as quoting
+    a ratio off a thresholded report: a numerator and denominator drawn from
+    different populations.
+    """
+    print(f"\n  fetching {RPT_INSTALL_DELETE!r} ...")
+    rows = fetch_report(RPT_INSTALL_DELETE, by_type)
+    if not rows:
+        print("    no rows -- an empty result, not a zero. Check the report "
+              "requests above are live before concluding anything.")
+        return
+    assert_not_thresholded(RPT_INSTALL_DELETE, rows)
+
+    dates = sorted(r["Date"] for r in rows)
+    print(f"    {len(rows)} rows, {len(set(dates))} distinct dates, "
+          f"{dates[0]} .. {dates[-1]}")
+
+    print("\n  INSTALL / DELETE counts")
+    # `Install` here spans EVERY Download Type -- first-time, redownload,
+    # auto-download and manual update. Comparing that total against first-time
+    # downloads is comparing two different events, and it shows: doing so
+    # reported iPad coverage of 114%, which is impossible for a subset. Coverage
+    # is therefore computed first-time-against-first-time only.
+    g: dict = collections.defaultdict(int)
+    for r in rows:
+        g[(r["Device"], r["Event"], r["Download Type"])] += count_of(r)
+    devices = sorted({r["Device"] for r in rows})
+    print(f"    {'device':<10} {'installs':>9} {'(first-time)':>13} {'deletes':>9}"
+          f"   first-time coverage of the download feed")
+    for dev in devices:
+        inst = sum(v for k, v in g.items() if k[0] == dev and k[1] == "Install")
+        inst_first = g[(dev, "Install", "First-time download")]
+        dele = sum(v for k, v in g.items() if k[0] == dev and k[1] == "Delete")
+        if not (inst or dele):
+            continue
+        first = sum(count_of(r) for r in dl if r["Device"] == dev
+                    and r["Download Type"] == "First-time download")
+        cov = (f"{inst_first}/{first} = {inst_first / first * 100:.0f}%"
+               if first else "n/a")
+        print(f"    {dev:<10} {inst:>9,} {inst_first:>13,} {dele:>9,}   {cov}")
+    print("    ^ that last column is the SAMPLE FRACTION. Only users who agreed")
+    print("      to share analytics with developers appear here at all, and it")
+    print("      lands around 5-15% of first-time downloads. So:")
+    print("        the SHAPE of the latency distribution below is usable;")
+    print("        deletes/installs is NOT a deletion rate and must not be quoted")
+    print("        as one -- it divides one population by another.")
+
+    # ---- the cohort: how long did an install survive? ----------------------
+    import datetime as _dt
+    latencies: list[int] = []
+    per_device: dict = collections.defaultdict(list)
+    for r in rows:
+        if r["Event"] != "Delete" or not r.get("App Download Date"):
+            continue
+        try:
+            born = _dt.date.fromisoformat(r["App Download Date"])
+            died = _dt.date.fromisoformat(r["Date"])
+        except ValueError:
+            continue
+        days = (died - born).days
+        if days < 0:
+            continue
+        latencies += [days] * count_of(r)
+        per_device[r["Device"]] += [days] * count_of(r)
+
+    print("\n  DELETION LATENCY -- days from download to deletion")
+    if not latencies:
+        print("    no deletion carries a download date in this window.")
+        print("    That is an absence of cohort rows, NOT evidence that nobody")
+        print("    deleted the app.")
+        return
+    latencies.sort()
+
+    def pct(xs: list[int], q: float) -> int:
+        return xs[min(int(len(xs) * q), len(xs) - 1)]
+
+    print(f"    n={len(latencies)}  min={latencies[0]}  p25={pct(latencies, .25)}  "
+          f"median={pct(latencies, .5)}  p75={pct(latencies, .75)}  max={latencies[-1]}")
+    for label, cutoff in (("same day (0)", 0), ("within 1 day", 1),
+                          ("within 7 days", 7), ("within 30 days", 30)):
+        n = sum(1 for x in latencies if x <= cutoff)
+        print(f"    {label:<16} {n:>4} / {len(latencies)}  ({n / len(latencies) * 100:.0f}%)")
+    for dev in sorted(per_device):
+        xs = sorted(per_device[dev])
+        print(f"      {dev:<9} n={len(xs):<4} median={pct(xs, .5)}")
+    print("""
+    A median at or near 0 is the signature of "opened it, did not get it" --
+    abandonment before the app ever proved itself, which no in-app counter can
+    observe because the counter only fires after the menu is opened and the
+    disclosure card accepted. Track this series across releases: it is the
+    readout for the v1.49 first-run window, and the honest one, because it is
+    measured outside the app rather than by the app.""")
+
+
+def purchases_section(by_type: dict[str, str]) -> None:
+    """Every App Store purchase, for a product where that is a countable list."""
+    print(f"\n  fetching {RPT_PURCHASES!r} ...")
+    rows = fetch_report(RPT_PURCHASES, by_type)
+    if not rows:
+        print("    no rows. For purchases specifically this is ambiguous between")
+        print("    'no purchases' and 'report not generating' -- check the")
+        print("    instance ledger before repeating it as zero.")
+        return
+    total = sum(int(r.get("Purchases", 0) or 0) for r in rows)
+    proceeds = sum(float(r.get("Proceeds in USD", 0) or 0) for r in rows)
+    print(f"    {len(rows)} rows, {total} purchase(s), "
+          f"${proceeds:.2f} proceeds")
+    for r in sorted(rows, key=lambda r: r["Date"]):
+        print(f"      {r['Date']}  {r.get('Content Name', '?'):<26} "
+              f"{r.get('Device', '?'):<8} {r.get('Territory', '?'):<4} "
+              f"{r.get('Payment Method', '?'):<10} "
+              f"${r.get('Proceeds in USD', '?')}")
 
 
 def censored_contrast(by_type: dict[str, str], dl: list[dict],
