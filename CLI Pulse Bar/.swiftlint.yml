@@ -1,0 +1,61 @@
+# SwiftLint configuration — opt-in, not opt-out.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# There was no config at all, so CI ran SwiftLint's DEFAULT rule set and
+# reported 3,104 violations across 248 files, every run, for months. A check
+# that is always red carries exactly as much information as one that is always
+# green: none. It cost real time too — v1.49's PR had to verify by hand that
+# its new files were clean, because the check itself could not say.
+#
+# The defaults were not wrong so much as not this project's. 1,734 of the
+# 3,104 — 56% — were `identifier_name` objecting to `s`, `v`, `c`, `k`, `d`
+# in closures and math. That is a house-style opinion this codebase has
+# declined 1,734 times. Another ~700 were size and line-length rules, which
+# measure "this file is big", something everyone already knows.
+#
+# So this is `only_rules`, an ALLOWLIST, rather than a long `disabled_rules`
+# list. Two reasons:
+#   * it states what we believe instead of what we tolerate, and
+#   * a SwiftLint upgrade cannot silently add a new rule and turn every PR
+#     red for code nobody touched. That failure has a precedent here: see the
+#     pinned-ruff comment in helper-ci.yml.
+#
+# Adding a rule is deliberate: add it, fix the fallout in a PR that does only
+# that, and it becomes load-bearing from then on.
+only_rules:
+  # Crashes waiting to happen.
+  - force_try
+  - force_cast
+  - implicitly_unwrapped_optional
+
+  # Code that says something other than what it does.
+  - unused_optional_binding
+  - unused_closure_parameter
+  - unused_control_flow_label
+  - redundant_discardable_let
+  - redundant_string_enum_value
+  - redundant_void_return
+  - unneeded_synthesized_initializer
+  - unneeded_break_in_switch
+  - nsnumber_init_as_function_reference
+
+  # Readability rules with no plausible false positive.
+  - control_statement
+  - prefer_for_where
+  - syntactic_sugar
+  - empty_count
+  - empty_string
+  - is_disjoint
+  - toggle_bool
+  - last_where
+  - first_where
+  - contains_over_filter_count
+  - contains_over_first_not_nil
+
+  # Non-negotiable regardless of style.
+  - inclusive_language
+
+excluded:
+  - CLIPulseCore/.build
+  - build
