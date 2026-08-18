@@ -428,15 +428,27 @@ fi
 #   CLI Pulse Bar.app: resource fork, Finder information, or similar
 #   detritus not allowed
 #
-# Cause: this repo lives under ~/Documents, which is an iCloud
-# Desktop & Documents container (`brctl status` showed an active
-# needs-sync-up at the time of the failure). The file provider re-stamps
-# `com.apple.FinderInfo` onto BUNDLE DIRECTORIES — the app itself, both
-# CLIPulseCore resource bundles, both Sentry.frameworks and the LoginItem
-# app — in the window between the strip and codesign reading them. The
-# nested-sign loop above already documents the same race for provenance;
-# this is the top-level instance of it, and provenance is tolerated by
-# codesign while FinderInfo is not.
+# Cause: the SAME mechanism the nested-sign loop above already documents,
+# now at the top level. Signing a nested bundle regenerates
+# `_CodeSignature/CodeResources` on its parent, and the parent picks up
+# `com.apple.provenance` + `com.apple.FinderInfo` from the macOS
+# file-creation path. Six bundle directories carried FinderInfo when this
+# failed: the app, both CLIPulseCore resource bundles, both
+# Sentry.frameworks and the LoginItem app. A single strip loses the race
+# because the signing machinery re-creates them; only provenance is
+# tolerated by codesign, which is why just the outer sign died.
+#
+# ⚠️ CORRECTION, 2026-08-18. An earlier version of this comment blamed
+# iCloud — "~/Documents is a Desktop & Documents container, the file
+# provider re-stamps the xattrs". That is WRONG and was asserted without
+# checking, against a `check_no_duplicate_sources.sh` comment that had
+# already investigated and rejected the same theory. Verified since:
+# Desktop & Documents sync is OFF (no Desktop/Documents under
+# com~apple~CloudDocs), ~/Documents is a plain directory and not a
+# symlink, and SOURCE files carry no `com.apple.fileprovider` at all —
+# only build output did. `brctl status` reporting one idle CloudDocs
+# container says nothing about this repo. Do not "fix" this by moving the
+# build out of ~/Documents; it would change nothing.
 #
 # So: strip and sign as one retried unit. A signature that took two
 # attempts is byte-identical to one that took one, so retrying costs
@@ -463,8 +475,11 @@ sign_app_stripping_detritus() {
     done
     echo "error: top-level codesign failed after 5 attempts. If the message is" >&2
     echo "       'resource fork, Finder information, or similar detritus not allowed'," >&2
-    echo "       an iCloud/file-provider sync is racing the signer. Pause iCloud sync" >&2
-    echo "       (or build from a directory outside ~/Documents) and retry." >&2
+    echo "       something is re-creating com.apple.FinderInfo on the bundle faster" >&2
+    echo "       than we strip it. Check which xattr is actually present --" >&2
+    echo "         xattr -r <app> | grep -E 'FinderInfo|ResourceFork'" >&2
+    echo "       -- because com.apple.provenance is TOLERATED by codesign and is" >&2
+    echo "       not the culprit, and raise the attempt count if it is a race." >&2
     return 1
 }
 sign_app_stripping_detritus
