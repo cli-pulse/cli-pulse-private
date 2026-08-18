@@ -36,7 +36,7 @@
 -- qualifier. `install` is reported before either choice exists. Conditioning
 -- those away would erase the onboarding failure this metric exists to reveal.
 --
--- FOUR TRAPS, ALL LOAD-BEARING
+-- FIVE TRAPS, ALL LOAD-BEARING
 -- ----------------------------
 --  1. `app_version` IS MUTABLE. The upsert does
 --     `app_version = excluded.app_version`, so a 1.45 install that later
@@ -55,6 +55,24 @@
 --     Developer ID install (id 01784A9A..., both latches still true on disk).
 --     DO NOT DELETE ROWS FROM THIS TABLE.
 --  4. A NON-ACTIVATED ROW IS NOT EVIDENCE OF ANYTHING ON ITS OWN. See 4c.
+--  5. `last_seen_at` IS NOT A LIVENESS SIGNAL, and for a non-activated install
+--     it is FROZEN AT INSTALL TIME FOREVER. It advances only on an upsert, an
+--     upsert happens only on a SEND, and the client sends exactly twice ever:
+--     `install`, then `first_provider_detected`. Both are latched in
+--     UserDefaults (trap 3). So an install that has relaunched a hundred times
+--     and never found a CLI is byte-identical to one that ran once and was
+--     deleted the same hour.
+--     Verified 2026-08-18: `count(*) where last_seen_at <> first_seen_at` is
+--     **0** across the whole table, and `AnonymousInstallTelemetry` has no code
+--     path that sends a third time.
+--     Consequence, which this file itself got wrong until then: any predicate
+--     of the form `last_seen_at = first_seen_at AND first_provider_detected_at
+--     IS NULL` is TAUTOLOGICAL -- it selects every non-activated row and
+--     discriminates nothing. Whether an install relaunched is simply NOT
+--     OBSERVABLE here. Do not write a query that claims otherwise, and do not
+--     add one to `prune_anonymous_installs()`' 400-day window either: that
+--     window is "400 days since we last heard from them", which for a
+--     non-activated install means 400 days since INSTALL.
 --
 -- CONSTRUCT VALIDITY -- what `providers.isEmpty == false` actually proves
 -- ----------------------------------------------------------------------
@@ -221,18 +239,26 @@ join (values ('devid', timestamptz '2026-08-08 00:00:00+00'),
 where i.first_seen_at >= a.available_from
   and (string_to_array(i.app_version, '.')::int[] || array[0,0,0])[1:3] < array[1,47,0];
 
--- 4c. Installs that have never relaunched. A non-activated row here is
---     AMBIGUOUS and must not be reported as a first-value failure: it is
---     equally consistent with #418 suppression on a 1.45 client and with a
---     genuine "no CLI on this machine". One telemetry-sending launch cannot
---     distinguish them, and both hypotheses predict identical rows. Only a
---     relaunch resolves it, and we cannot make a stranger relaunch.
-select 'single-launch, not activated' as control,
+-- 4c. Non-activated installs. A row here is AMBIGUOUS and must not be reported
+--     as a first-value failure: it is equally consistent with #418 suppression
+--     on a 1.45 client, with a genuine "no CLI on this machine", and with the
+--     app having been deleted within the hour. Nothing in this table separates
+--     them.
+--
+--     This used to be titled "installs that have never relaunched" and carried
+--     an extra `last_seen_at = first_seen_at` conjunct. Both were wrong: by
+--     trap 5 that conjunct is true for EVERY non-activated row, so it filtered
+--     nothing while asserting a fact about relaunch behaviour that this table
+--     cannot observe. The verdict (AMBIGUOUS) survived; the reasoning behind it
+--     did not, which is the more dangerous kind of error -- a reader would have
+--     acted on "never relaunched".
+select 'not activated' as control,
        install_id, channel, app_version, os_version, first_seen_at,
-       'AMBIGUOUS: #418 suppression vs genuine no-provider -- do not classify' as reading
+       'AMBIGUOUS: #418 suppression vs no-provider vs deleted -- do not classify'
+         as reading,
+       'relaunch behaviour is NOT observable here -- see trap 5' as caveat
 from public.anonymous_installs
-where last_seen_at = first_seen_at
-  and first_provider_detected_at is null;
+where first_provider_detected_at is null;
 
 -- 4d. Write history. Deletions are invisible in the table itself and
 --     permanently remove an install from all future reads (trap 3).
@@ -259,6 +285,14 @@ with synthetic(install_id, channel, app_version, first_seen_at, last_seen_at, fi
            ('44444444-4444-4444-8444-444444444444'::uuid, 'devid',   '1.47.0',
             now() - interval '9 days', now(),                    now())
 )
+-- NOTE ON THE SHAPES ABOVE. Rows 1 and 2 carry `last_seen_at = now()` with a
+-- NULL `first_provider_detected_at`. Trap 5 says production can never emit
+-- that: a non-activated install sends exactly once, so its `last_seen_at`
+-- equals `first_seen_at`. They are kept deliberately, as ILLEGAL shapes that
+-- exercise 4a and 4b, and they are the reason the old 4c control looked alive
+-- when it was tautological -- it "discriminated" only against rows reality
+-- does not produce. Never add a control whose only negative examples are
+-- impossible.
 select
   (select count(*) from synthetic
     where channel not in ('devid','brew','mas'))                            as ctl_4a_unlisted_channel,
@@ -271,6 +305,40 @@ select
       and (string_to_array(s.app_version,'.')::int[] || array[0,0,0])[1:3]
           < array[1,47,0])                                                  as ctl_4b_stale_artefact,
   (select count(*) from synthetic
-    where last_seen_at = first_seen_at
-      and first_provider_detected_at is null)                               as ctl_4c_single_launch,
+    where first_provider_detected_at is null)                               as ctl_4c_not_activated,
   'each must be >= 1, or that control is dead' as expectation;
+
+-- 4f. TAUTOLOGY GUARD, run against the LIVE table rather than synthetic rows.
+--
+--     A predicate that selects every row discriminates nothing, however
+--     confident its label. 4c carried exactly such a conjunct for months and
+--     the synthetic check above could not see it, because the synthetic rows
+--     included shapes production cannot emit.
+--
+--     This asks the only question that matters: does adding the
+--     `last_seen_at` conjunct change what is selected? If not, it is inert and
+--     any query using it is asserting something the data does not support.
+--     `resent_rows` is the same fact from the other side -- it must stay 0
+--     until the client is changed to send more than twice.
+select 'tautology guard: last_seen_at' as control,
+       (select count(*) from public.anonymous_installs
+         where first_provider_detected_at is null)                as without_conjunct,
+       (select count(*) from public.anonymous_installs
+         where first_provider_detected_at is null
+           and last_seen_at = first_seen_at)                      as with_conjunct,
+       (select count(*) from public.anonymous_installs
+         where last_seen_at <> first_seen_at)                     as resent_rows,
+       -- TWO outcomes, not three. A first draft had an `else 'UNEXPECTED -- the
+       -- conjunct filtered something'` arm; a negative control over synthetic
+       -- populations showed it is UNREACHABLE BY CONSTRUCTION. For the conjunct
+       -- to filter a non-activated row, that row must have
+       -- `last_seen_at <> first_seen_at`, which makes `resent_rows > 0` and
+       -- takes the first arm every time. A branch that can never fire is the
+       -- mirror image of the tautology this guard exists to catch, so it is
+       -- gone rather than left to reassure someone.
+       case
+         when (select count(*) from public.anonymous_installs
+                where last_seen_at <> first_seen_at) > 0
+           then 'CLIENT NOW RE-SENDS -- trap 5 is stale, re-read it before using last_seen_at'
+         else 'INERT as expected -- last_seen_at adds nothing, per trap 5'
+       end as verdict;
