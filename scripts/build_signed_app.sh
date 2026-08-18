@@ -421,11 +421,53 @@ fi
 # (.xcent file we located above). NOT --deep — that would re-sign
 # every nested binary with our top-level entitlements (overwriting
 # the helper's just-applied minimal set).
-xattr -cr "$APP_PATH" 2>/dev/null || true
-codesign --force --options runtime "$CODESIGN_TIMESTAMP_FLAG" \
-    --entitlements "$APP_ENTITLEMENTS_SAVED" \
-    --sign "$SIGN_IDENTITY" \
-    "$APP_PATH"
+# v1.49: the single `xattr -cr` here is NOT enough, and this is a real
+# failure rather than a theoretical one — it blocked the 1.49.0 DEVID build
+# twice in a row, deterministically, on a clean staging tree:
+#
+#   CLI Pulse Bar.app: resource fork, Finder information, or similar
+#   detritus not allowed
+#
+# Cause: this repo lives under ~/Documents, which is an iCloud
+# Desktop & Documents container (`brctl status` showed an active
+# needs-sync-up at the time of the failure). The file provider re-stamps
+# `com.apple.FinderInfo` onto BUNDLE DIRECTORIES — the app itself, both
+# CLIPulseCore resource bundles, both Sentry.frameworks and the LoginItem
+# app — in the window between the strip and codesign reading them. The
+# nested-sign loop above already documents the same race for provenance;
+# this is the top-level instance of it, and provenance is tolerated by
+# codesign while FinderInfo is not.
+#
+# So: strip and sign as one retried unit. A signature that took two
+# attempts is byte-identical to one that took one, so retrying costs
+# nothing but the wall-clock. Failing after the last attempt is loud and
+# non-zero — `set -e` is not relied on here because the retry needs to
+# inspect the exit code.
+sign_app_stripping_detritus() {
+    local attempt
+    for attempt in 1 2 3 4 5; do
+        # `-c` clears every xattr including FinderInfo; the app bundle is
+        # large, so this is the slow part, not codesign.
+        xattr -cr "$APP_PATH" 2>/dev/null || true
+        if codesign --force --options runtime "$CODESIGN_TIMESTAMP_FLAG" \
+            --entitlements "$APP_ENTITLEMENTS_SAVED" \
+            --sign "$SIGN_IDENTITY" \
+            "$APP_PATH"
+        then
+            [[ $attempt -gt 1 ]] && \
+                echo "    (top-level signature succeeded on attempt $attempt — iCloud re-stamped xattrs mid-sign)"
+            return 0
+        fi
+        echo "    top-level codesign attempt $attempt failed; re-stripping xattrs and retrying" >&2
+        sleep 2
+    done
+    echo "error: top-level codesign failed after 5 attempts. If the message is" >&2
+    echo "       'resource fork, Finder information, or similar detritus not allowed'," >&2
+    echo "       an iCloud/file-provider sync is racing the signer. Pause iCloud sync" >&2
+    echo "       (or build from a directory outside ~/Documents) and retry." >&2
+    return 1
+}
+sign_app_stripping_detritus
 
 # 7. Verify.
 echo "==> [7/7] Verifying bundle ..."
