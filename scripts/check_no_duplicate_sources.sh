@@ -41,12 +41,41 @@ cd "$ROOT"
 
 # Directories whose contents are COMPILED. SwiftPM globs Sources/ and Tests/;
 # a stray file there is a build failure, not a cosmetic wart.
-SEARCH_DIRS=(
-    "CLI Pulse Bar/CLIPulseCore/Sources"
-    "CLI Pulse Bar/CLIPulseCore/Tests"
-    "HelperSwift/Sources"
-    "SensorProbe/Sources"
+#
+# DISCOVERED, NOT HARDCODED — and that change is why this guard now works.
+# The list used to be four literal paths and it had gone stale: on 2026-08-18 a
+# `LocalSessionServer 2.swift` broke a QA build from HelperSwift/Sources (which
+# WAS listed, so that one was caught) while SIX more sat unnoticed in
+# HelperSwift/Tests, which was NOT. Enumerating the packages showed the guard
+# covered 4 of ~10 compiled directories: HelperSwift/Tests, SensorProbe/Tests,
+# both MachineRootHelper dirs and CLI Pulse Bar/codexbar were all unscanned.
+#
+# A hardcoded allowlist of build inputs is the same trap as the QA bundle-id
+# allowlist and the UserDefaults migration prefixes: adding a package silently
+# drops it out of coverage, and nothing says so. Deriving the list from
+# Package.swift means a new package is covered the day it is added.
+SEARCH_DIRS=()
+while IFS= read -r -d '' pkg; do
+    pkg_dir="$(dirname "$pkg")"
+    for sub in Sources Tests; do
+        [[ -d "$pkg_dir/$sub" ]] && SEARCH_DIRS+=("$pkg_dir/$sub")
+    done
+done < <(
+    find . -name Package.swift -maxdepth 4 \
+        -not -path "./.git/*" \
+        -not -path "*/.build/*" \
+        -not -path "./.claude/*" \
+        -not -path "./build/*" \
+        -print0 2>/dev/null
 )
+
+if [[ ${#SEARCH_DIRS[@]} -eq 0 ]]; then
+    # An empty search list would make this guard pass unconditionally, which is
+    # the failure mode it exists to prevent. Fail loudly instead.
+    echo "✗ no SwiftPM packages found — the guard would scan nothing." >&2
+    echo "  This is a guard failure, not a clean tree." >&2
+    exit 1
+fi
 
 # `<name> <digit>.<ext>` — what macOS and several sync clients produce on a
 # collision. Deliberately not anchored to .swift: a duplicated .h, .c or
