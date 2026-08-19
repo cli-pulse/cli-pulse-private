@@ -15,8 +15,8 @@ public enum SubscriptionPricing {
 
         for (provKey, plans) in table {
             guard provKey.lowercased() == normalizedProvider else { continue }
-            for (planKey, cost) in plans {
-                if planKey.lowercased() == normalizedPlan { return cost }
+            for (planKey, cost) in plans where planKey.lowercased() == normalizedPlan {
+                return cost
             }
         }
         return nil

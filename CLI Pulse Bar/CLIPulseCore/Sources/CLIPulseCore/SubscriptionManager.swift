@@ -2,10 +2,16 @@ import Foundation
 import StoreKit
 import SwiftUI
 
+// swiftlint:disable redundant_string_enum_value - these raw values are a WIRE
+// CONTRACT, not redundancy. The enum is Codable and its values are persisted
+// and exchanged with the backend; dropping the explicit strings would bind the
+// serialized form to the Swift case name, so a later rename would silently
+// change what is already stored. Explicit is the safe form here.
 public enum SubscriptionTier: String, Codable, Sendable {
     case free = "free"
     case pro = "pro"
     case team = "team"
+    // swiftlint:enable redundant_string_enum_value
 
     var tierRank: Int {
         switch self {

@@ -100,7 +100,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let initial = readCredentials(config: config),
-              (initial.accessToken != nil || initial.refreshToken != nil) else {
+              initial.accessToken != nil || initial.refreshToken != nil else {
             // v1.23.0 G3: dark/opt-in CLI-probe fallback for the
             // no-credentials gap. Returns nil instantly (probe never
             // constructed) unless explicitly opted in; any probe error
@@ -193,7 +193,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
                accountID: accountID
            ),
            let f = readFileCredentials(),
-           (f.accessToken != nil || f.refreshToken != nil) {
+           f.accessToken != nil || f.refreshToken != nil {
             candidates.append(f)
         }
         for creds in candidates {

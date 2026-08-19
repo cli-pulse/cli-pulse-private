@@ -997,7 +997,7 @@ public actor APIClient {
         let http = response as? HTTPURLResponse
         // Handle 401 by attempting token refresh (once only)
         if http?.statusCode == 401, !retried {
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             return try await me(retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -2664,7 +2664,12 @@ public actor APIClient {
         // for each provider since it's typically the freshest merged result.
         var seen: Set<String> = []
         var quotaResults: [CollectorResult] = []
+        // The condition MUTATES `seen`. A `where` clause reads as a predicate;
+        // burying an insert in one hides the side effect from anyone scanning
+        // the loop header. `for_where` reports at the `if`, not the `for`, so
+        // the directive has to sit directly above the `if`.
         for r in rawQuotaResults.reversed() {
+            // swiftlint:disable:next for_where
             if seen.insert(r.usage.provider).inserted {
                 quotaResults.append(r)
             }
@@ -2937,7 +2942,7 @@ public actor APIClient {
         let http = response as? HTTPURLResponse
         // Auto-retry on 401 with token refresh
         if http?.statusCode == 401, !retried {
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             return try await restGet(path, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -2958,7 +2963,7 @@ public actor APIClient {
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             return try await restPatch(path, body: body, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3002,7 +3007,7 @@ public actor APIClient {
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             return try await restPost(path, body: body, extraHeaders: extraHeaders, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3027,7 +3032,7 @@ public actor APIClient {
         let (data, response) = try await dataWithRetry(for: request)
         let http = response as? HTTPURLResponse
         if http?.statusCode == 401, !retried {
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             return try await rpcRaw(function, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
@@ -3086,7 +3091,7 @@ public actor APIClient {
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
-            let _ = try await refreshAccessToken()
+            _ = try await refreshAccessToken()
             try ensureAuthorizationLeaseIsCurrent(
                 requiredAuthorizationLease
             )
