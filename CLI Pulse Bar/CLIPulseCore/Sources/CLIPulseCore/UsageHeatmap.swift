@@ -73,7 +73,7 @@ public struct UsageHeatmapGrid: View {
     }
 
     private func tooltip(_ dayKey: String, isFuture: Bool) -> String {
-        guard !isFuture, let day = archive.days[dayKey], (day.tokens > 0 || day.messages > 0) else {
+        guard !isFuture, let day = archive.days[dayKey], day.tokens > 0 || day.messages > 0 else {
             return dayKey
         }
         return "\(dayKey): \(CostFormatter.formatUsage(day.tokens)) tokens · \(CostFormatter.format(day.cost))"
@@ -82,7 +82,7 @@ public struct UsageHeatmapGrid: View {
     @ViewBuilder
     private func monthLabels(_ columns: [[String]]) -> some View {
         HStack(spacing: gap) {
-            ForEach(Array(columns.enumerated()), id: \.offset) { idx, week in
+            ForEach(Array(columns.enumerated()), id: \.offset) { idx, _ in
                 let label = monthLabel(forColumn: idx, columns: columns)
                 Text(label)
                     .font(.system(size: 8))

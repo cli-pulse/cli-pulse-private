@@ -91,10 +91,10 @@ public final class PrivacySettings: ObservableObject {
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        let storedMaster = defaults.bool(forKey: Keys.localOnlyMode)
+        let storedLocalOnly = defaults.bool(forKey: Keys.localOnlyMode)
         let storedSpecific = defaults.bool(forKey: Keys.skipClaudeKeychain)
-        self.localOnlyMode = storedMaster
-        self.skipClaudeKeychain = storedMaster || storedSpecific
+        self.localOnlyMode = storedLocalOnly
+        self.skipClaudeKeychain = storedLocalOnly || storedSpecific
         self.blockClaudeOnOutdatedHelper = defaults.bool(forKey: Keys.blockClaudeOnOutdatedHelper)
         // Absent means on. Reading it through `object(forKey:)` first keeps
         // `bool(forKey:)`'s false-for-missing from reading as an opt-out.

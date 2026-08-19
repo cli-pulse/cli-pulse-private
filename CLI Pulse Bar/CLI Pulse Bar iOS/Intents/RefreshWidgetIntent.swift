@@ -17,8 +17,6 @@ struct RefreshWidgetIntent: AppIntent {
     static var openAppWhenRun: Bool = true
     static var isDiscoverable: Bool = false
 
-    init() {}
-
     func perform() async throws -> some IntentResult {
         CLIPulseIntentCache.requestRefresh()
         WidgetCenter.shared.reloadAllTimelines()

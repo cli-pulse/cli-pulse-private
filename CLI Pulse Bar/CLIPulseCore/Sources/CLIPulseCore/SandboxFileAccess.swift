@@ -41,7 +41,7 @@ public enum SandboxFileAccess {
 
         // Try resolving a bookmark for the parent directory
         let parentDir = (path as NSString).deletingLastPathComponent
-        if let _ = resolveBookmark(for: parentDir) {
+        if resolveBookmark(for: parentDir) != nil {
             // Bookmark resolved, try reading again
             let data = FileManager.default.contents(atPath: path)
             if data == nil {
@@ -53,7 +53,7 @@ public enum SandboxFileAccess {
         // Try walking up to find a matching bookmark
         var dir = parentDir
         while dir.count > 1 {
-            if let _ = resolveBookmark(for: dir) {
+            if resolveBookmark(for: dir) != nil {
                 return FileManager.default.contents(atPath: path)
             }
             dir = (dir as NSString).deletingLastPathComponent
@@ -68,7 +68,7 @@ public enum SandboxFileAccess {
         let parentDir = (path as NSString).deletingLastPathComponent
 
         // Ensure parent directory bookmark is resolved
-        let _ = resolveBookmark(for: parentDir)
+        _ = resolveBookmark(for: parentDir)
 
         // Try writing
         do {
@@ -95,7 +95,7 @@ public enum SandboxFileAccess {
         }
         // Try with bookmark
         let parentDir = (path as NSString).deletingLastPathComponent
-        if let _ = resolveBookmark(for: parentDir) {
+        if resolveBookmark(for: parentDir) != nil {
             return FileManager.default.fileExists(atPath: path)
         }
         return false

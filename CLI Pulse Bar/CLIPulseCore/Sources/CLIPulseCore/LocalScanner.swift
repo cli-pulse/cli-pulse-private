@@ -495,13 +495,12 @@ public final class LocalScanner: @unchecked Sendable {
         var best: (String, String)? = nil
         var bestRank = 0
         let range = NSRange(lower.startIndex..., in: lower)
-        for entry in Self.compiledProcessPatterns {
-            if entry.regex.firstMatch(in: lower, range: range) != nil {
-                let rank = Self.confidenceRank[entry.confidence] ?? 0
-                if rank > bestRank {
-                    best = (entry.provider, entry.confidence)
-                    bestRank = rank
-                }
+        for entry in Self.compiledProcessPatterns
+        where entry.regex.firstMatch(in: lower, range: range) != nil {
+            let rank = Self.confidenceRank[entry.confidence] ?? 0
+            if rank > bestRank {
+                best = (entry.provider, entry.confidence)
+                bestRank = rank
             }
         }
         return best
@@ -512,10 +511,9 @@ public final class LocalScanner: @unchecked Sendable {
     func shouldIgnore(_ command: String) -> Bool {
         let lower = command.lowercased()
         let range = NSRange(lower.startIndex..., in: lower)
-        for regex in Self.compiledIgnorePatterns {
-            if regex.firstMatch(in: lower, range: range) != nil {
-                return true
-            }
+        for regex in Self.compiledIgnorePatterns
+        where regex.firstMatch(in: lower, range: range) != nil {
+            return true
         }
         return false
     }

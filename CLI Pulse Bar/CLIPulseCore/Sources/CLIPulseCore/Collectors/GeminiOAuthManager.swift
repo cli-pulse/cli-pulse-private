@@ -4625,12 +4625,10 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
             return Darwin.errno == ENOENT
         }
         let kind = metadata.st_mode & S_IFMT
-        guard
+        guard 
             metadata.st_uid == Darwin.geteuid(),
-            (
-                kind == S_IFREG
-                    || kind == S_IFLNK
-            ),
+            kind == S_IFREG
+                    || kind == S_IFLNK,
             kind != S_IFREG
                 || metadata.st_nlink == 1,
             Darwin.unlink(path) == 0

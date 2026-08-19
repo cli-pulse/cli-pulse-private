@@ -33,6 +33,40 @@
 # having — deleting them is a reset, not a fix, and they have already come back
 # at least once (14 deleted 08-07, 25 present 08-11).
 #
+# 2026-08-19 — THE STRONGEST EVIDENCE SO FAR. 60 duplicates appeared in a tree
+# this guard had reported CLEAN twice earlier the same day. Their timestamps say
+# 07-27..08-03, in batches sharing one second exactly (26 files at 08-03
+# 01:26:48, 22 at 08-03 12:19:59, 7 at 07-30 17:13:57) — a bulk copy, not drift.
+#
+# The timestamps are a lie, and APFS proves it. Inode numbers are allocated
+# monotonically:
+#
+#     CollectorRunner.swift        birth 08-04   inode 250,454,865
+#     FirstRunPresentation.swift   birth 08-18   inode 261,235,600   (written that day)
+#     CollectorRunner 2.swift      birth "08-03" inode 263,212,836   <-- HIGHER
+#
+# A duplicate claiming to predate a file by two weeks has a HIGHER inode than
+# that file. So it was physically written to this volume AFTER it, i.e. during
+# the 2026-08-18 session, and its birth time is metadata carried over by a
+# copy that preserves it (`ditto`, `cp -p`, `rsync -a`, or a restore).
+#
+# What this narrows it to: a timestamp-preserving BULK COPY into the working
+# tree, running while a session is active. Two things it is NOT — both tested,
+# not assumed: not iCloud (no fileprovider xattr on any specimen; see the
+# correction in build_signed_app.sh), and not a git worktree (absent from all
+# four .claude/worktrees and from a scratch `git worktree add`).
+#
+# The copy also reaches INSIDE .git — `.git/refs/heads/main 2` (which breaks
+# `git pull` outright with "bad object", since a space is illegal in a ref name)
+# and `.git/logs/refs/heads/v1 2.15-multi-cli`. That last name is the signature:
+# " 2" inserted before the LAST DOT, treating `.15-multi-cli` as an extension.
+# That is macOS's own duplicate-resolution algorithm. No compiler, no SwiftPM
+# and no git names a file that way.
+#
+# So: something copies this entire directory, .git included, using macOS file
+# APIs, during sessions. Whoever picks this up next should start there rather
+# than re-testing iCloud.
+#
 # Usage: scripts/check_no_duplicate_sources.sh
 set -uo pipefail
 

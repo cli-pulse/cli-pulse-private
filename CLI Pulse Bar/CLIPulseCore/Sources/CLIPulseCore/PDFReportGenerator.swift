@@ -237,14 +237,14 @@ public enum PDFReportGenerator {
                 let barWidth = maxCost > 0 ? CGFloat(cost / maxCost) * (contentWidth - 130) : 0
 
                 // Date label
-                let _ = drawText(String(date.suffix(5)), at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
+                _ = drawText(String(date.suffix(5)), at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
 
                 // Bar
                 context.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 1.0, alpha: 0.7))
                 context.fill(CGRect(x: margin + 45, y: y - 2, width: barWidth, height: 8))
 
                 // Cost label
-                let _ = drawText(CostFormatter.format(cost), at: CGPoint(x: margin + 50 + (contentWidth - 130), y: y), fontSize: 8, context: context)
+                _ = drawText(CostFormatter.format(cost), at: CGPoint(x: margin + 50 + (contentWidth - 130), y: y), fontSize: 8, context: context)
                 y -= 12
             }
         }
@@ -260,7 +260,7 @@ public enum PDFReportGenerator {
         // (e.g. running this generator outside an app bundle in
         // tests / SPM contexts).
         let appVersion = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.15.0"
-        let _ = drawText(L10n.pdf.footer(appVersion, dateFormatter.string(from: generatedDate)), at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
+        _ = drawText(L10n.pdf.footer(appVersion, dateFormatter.string(from: generatedDate)), at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
 
         context.endPage()
         context.closePDF()
@@ -350,8 +350,8 @@ public enum PDFReportGenerator {
         fontSize: CGFloat,
         context: CGContext
     ) -> CGFloat {
-        let _ = drawText(key, at: CGPoint(x: x, y: y), fontSize: fontSize, color: .gray, context: context)
-        let _ = drawText(value, at: CGPoint(x: x + width * 0.5, y: y), fontSize: fontSize, bold: true, context: context)
+        _ = drawText(key, at: CGPoint(x: x, y: y), fontSize: fontSize, color: .gray, context: context)
+        _ = drawText(value, at: CGPoint(x: x + width * 0.5, y: y), fontSize: fontSize, bold: true, context: context)
         return y - fontSize - 6
     }
 
@@ -369,7 +369,7 @@ public enum PDFReportGenerator {
             let w = i < colWidths.count ? colWidths[i] : 80
             // Truncate if too long
             let truncated = value.count > 25 ? String(value.prefix(22)) + "..." : value
-            let _ = drawText(truncated, at: CGPoint(x: offsetX, y: y), fontSize: fontSize, bold: bold, context: context)
+            _ = drawText(truncated, at: CGPoint(x: offsetX, y: y), fontSize: fontSize, bold: bold, context: context)
             offsetX += w
         }
         return y - fontSize - 5

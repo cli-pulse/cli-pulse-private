@@ -119,8 +119,8 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
             (realHome as NSString).appendingPathComponent(".local/share/claude/cli/claude"),
             (realHome as NSString).appendingPathComponent(".claude/local/claude"),
         ]
-        for c in candidates {
-            if FileManager.default.isExecutableFile(atPath: c) { return c }
+        for c in candidates where FileManager.default.isExecutableFile(atPath: c) {
+            return c
         }
         // Fallback: search PATH via which (synchronous — completes in <1s)
         let task = Process()
