@@ -61,6 +61,22 @@ becoming folklore again.
 Residual caveat that STANDARD does NOT remove: days with genuinely zero events
 are absent rather than zero, and Apple may still restate recent days.
 
+A SECOND THING THIS FILE USED TO CLAIM, AND IT WAS ALSO WRONG
+------------------------------------------------------------
+"ASC is structurally blind to someone who reads the website and runs
+`brew install`." Partly false. `App Store Web Preview Engagement Standard`
+covers the apps.apple.com product page as viewed in a BROWSER, and it had 14
+ONGOING instances nobody had ever read -- 163 rows over 63 days, including a
+`View in Mac App Store` tap that is a measurable web -> store handoff.
+
+It narrows that gap without closing it, for a reason worth keeping in mind
+whenever a channel looks newly visible: its `Source Type` is entirely
+`Unavailable`, so it still cannot separate a visitor our own website sent from
+one a search engine did. See `web_preview_section`.
+
+The pattern by now is hard to miss: three separate "we are blind to X" claims in
+this project turned out to be "nobody opened the report about X".
+
 GITHUB COUNTS HAVE THEIR OWN CONTAMINATION
 ------------------------------------------
 `download_count` on a release asset includes CI, the owner's own testing, bots
@@ -116,6 +132,7 @@ RPT_DOWNLOADS = "App Downloads Standard"
 RPT_ENGAGEMENT = "App Store Discovery and Engagement Standard"
 RPT_INSTALL_DELETE = "App Store Installation and Deletion Standard"
 RPT_PURCHASES = "App Store Purchases Standard"
+RPT_WEB_PREVIEW = "App Store Web Preview Engagement Standard"
 RPT_DOWNLOADS_CENSORED = "App Downloads Detailed"
 RPT_ENGAGEMENT_CENSORED = "App Store Discovery and Engagement Detailed"
 
@@ -386,6 +403,7 @@ def asc_section(show_censored: bool = True) -> None:
 
     retention_section(by_type, dl)
     purchases_section(by_type)
+    web_preview_section(by_type)
 
     if show_censored:
         censored_contrast(by_type, dl, eng)
@@ -526,6 +544,75 @@ def purchases_section(by_type: dict[str, str]) -> None:
               f"{r.get('Device', '?'):<8} {r.get('Territory', '?'):<4} "
               f"{r.get('Payment Method', '?'):<10} "
               f"${r.get('Proceeds in USD', '?')}")
+
+
+def web_preview_section(by_type: dict[str, str]) -> None:
+    """The apps.apple.com product page, viewed in a BROWSER.
+
+    This one corrects a claim made repeatedly in the v1.49 plan and in this
+    file's own docstring: that ASC is "structurally blind to someone who reads
+    the website and runs `brew install`". Part of that path is visible after
+    all, and had simply never been read -- 14 ONGOING instances sitting there,
+    163 rows over 63 days.
+
+    What it shows is the WEB product page and, usefully, a measurable handoff:
+    `View in Mac App Store` is someone leaving the browser page for the store.
+
+    THREE THINGS IT STILL CANNOT DO, and none of them are optional to state:
+
+      * `Source Type` is entirely `Unavailable`, so it CANNOT distinguish a
+        visitor sent by our own site from one who arrived via a search engine.
+        The website-attribution gap is narrowed, not closed.
+      * It is crawler-contaminated -- `bingbot` shows up in the Browser column.
+      * A web page view is a far stronger intent signal than an in-store
+        impression. Do NOT compare this section's tap-through against the
+        storefront funnel's; the denominators are different animals.
+
+    And one unexplained discrepancy, printed rather than smoothed over: the taps
+    counted here are several times the Mac `Web referrer` page views in the
+    storefront report. Either the handoff loses most people or the two reports
+    attribute differently. Until someone establishes which, they are two
+    numbers, not one.
+    """
+    print(f"\n  fetching {RPT_WEB_PREVIEW!r} ...")
+    rows = fetch_report(RPT_WEB_PREVIEW, by_type)
+    if not rows:
+        print("    no rows -- an empty result, not a zero.")
+        return
+    assert_not_thresholded(RPT_WEB_PREVIEW, rows)
+
+    dates = sorted(r["Date"] for r in rows)
+    print(f"    {len(rows)} rows, {len(set(dates))} dates, {dates[0]} .. {dates[-1]}")
+
+    views = sum(count_of(r) for r in rows if r["Event"] == "Page view")
+    print("\n  WEB product page (apps.apple.com in a browser)")
+    print(f"    page views: {views:,}")
+    taps: dict = collections.defaultdict(int)
+    for r in rows:
+        if r["Event"] == "Tap":
+            taps[r["Engagement Type"] or "(unspecified)"] += count_of(r)
+    print(f"    {'engagement':<34} {'count':>6} {'% of page views':>16}")
+    for k in sorted(taps, key=lambda k: -taps[k]):
+        pct = taps[k] / views * 100 if views else 0
+        print(f"    {k:<34} {taps[k]:>6} {pct:>15.1f}%")
+
+    crawlers = sum(count_of(r) for r in rows
+                   if r["Event"] == "Page view" and "bot" in r.get("Browser", "").lower())
+    print(f"\n    of which browser looks like a crawler: {crawlers}"
+          f" -- contamination, small but real")
+
+    print("\n    top territories")
+    terr: dict = collections.defaultdict(int)
+    for r in rows:
+        if r["Event"] == "Page view":
+            terr[r["Territory"]] += count_of(r)
+    for k, v in sorted(terr.items(), key=lambda x: -x[1])[:6]:
+        print(f"      {k:<5} {v}")
+    print("""
+    Read this as its own channel, not as part of the storefront funnel. It
+    cannot tell our website's visitors from a search engine's (Source Type is
+    always 'Unavailable'), so it narrows the website-attribution gap without
+    closing it.""")
 
 
 def censored_contrast(by_type: dict[str, str], dl: list[dict],
