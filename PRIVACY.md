@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: August 6, 2026**
+**Last Updated: August 21, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -24,7 +24,7 @@ file, **the file wins** — please open an issue.
 | **Contents of your `~/.codex/sessions/` and `~/.claude/projects/` JSONL files** | Read on-device via security-scoped bookmarks you explicitly grant | ❌ Never | Scanner computes token counts locally |
 | **Aggregated usage metrics** (per-day token counts, cost estimate, model name, provider name, date) | Supabase, linked to your CLI Pulse account | ✅ Yes | So iPhone and Apple Watch show the same history as your Mac |
 | **Provider quota state** (remaining, limit, plan tier, reset time) | Supabase, linked to your CLI Pulse account | ✅ Yes | So mobile clients display current quotas without running the scanner themselves |
-| **Your CLI Pulse login email** | Supabase Auth | ✅ Yes | Required to authenticate you |
+| **Your CLI Pulse login email** | Supabase Auth | ✅ Yes | Required to authenticate you. We may also use it to email you **occasionally** about the product itself — a short survey, or notice of a change that affects you. Never marketing, never sold, never shared, and every such email carries a one-click opt out. See *Product email* below. |
 | **Apple / Google sign-in tokens** (during sign-in) | Not persisted — exchanged once for a Supabase session | ✅ Yes (during sign-in only) | Identity verification with the original OAuth provider |
 | **Supabase session access / refresh token** | macOS Keychain on this device | ❌ Never re-uploaded (only received) | Keeps you signed in |
 | **Device name, OS version, helper version** | Supabase | ✅ Yes | Shows which Macs/iPhones are reporting |
@@ -161,6 +161,40 @@ servers — it goes directly from your Keychain to the provider.
   Supabase row and all associated usage metrics.
 - **Export:** Use "Export Report" in the Overview tab to download a PDF or
   CSV of your own data.
+- **Stop product email:** every product email we send carries a one-click opt
+  out, and honouring it is immediate and permanent. You can also email
+  yyyyy.yeyuhe@gmail.com and ask. Opting out never affects your account, your
+  subscription, or anything the app does.
+
+---
+
+## Product email
+
+Your login email is collected to authenticate you. We may also use it, rarely,
+to contact you about CLI Pulse itself:
+
+- a short survey asking how the app is working for you, or why you stopped
+  using it;
+- notice of a change that materially affects you.
+
+What this is **not**, stated as commitments rather than intentions:
+
+- **Not marketing.** No newsletters, no feature announcements, no discounts as
+  a reason to write to you.
+- **Not shared.** Your address is never sold, rented, or handed to any third
+  party. The sub-processor list below is exhaustive.
+- **Not frequent.** As a working limit, at most a handful of such emails in a
+  year.
+- **Not a condition of anything.** Opting out costs you nothing — no feature,
+  no data, no support.
+
+Every product email carries a one-click opt out, honoured immediately and
+permanently. If you would rather not receive any, opt out of the first one and
+that is the end of it.
+
+If a survey ever offers something in return for your time, that offer is
+unconditional on what you say. We will not ask you to review the app in
+exchange for anything — the App Store forbids it and so do we.
 
 ---
 
