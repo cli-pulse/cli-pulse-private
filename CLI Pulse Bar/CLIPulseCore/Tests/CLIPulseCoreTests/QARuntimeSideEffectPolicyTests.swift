@@ -840,7 +840,10 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
             ownerFixture.defaults.string(forKey: ownerKey),
             draftID.uuidString
         )
-        XCTAssertEqual(secretStore.deletedKeys.count, 2)
+        XCTAssertEqual(
+            secretStore.deletedKeys,
+            expectedAccountDeletionKeys(draftID)
+        )
     }
 
     @MainActor
@@ -886,7 +889,23 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
             ownerFixture.defaults.string(forKey: ownerKey),
             accountID.uuidString
         )
-        XCTAssertEqual(secretStore.deletedKeys.count, 2)
+        XCTAssertEqual(
+            secretStore.deletedKeys,
+            expectedAccountDeletionKeys(accountID)
+        )
+    }
+
+    private func expectedAccountDeletionKeys(
+        _ accountID: UUID
+    ) -> [String] {
+        let prefix =
+            "cli_pulse_provider_account_\(accountID.uuidString)"
+        return [
+            "\(prefix)_apiKey",
+            "\(prefix)_cookie",
+            "\(prefix)_apiKey_legacy_migrated",
+            "\(prefix)_cookie_legacy_migrated",
+        ]
     }
 
     private func makeRuntime(

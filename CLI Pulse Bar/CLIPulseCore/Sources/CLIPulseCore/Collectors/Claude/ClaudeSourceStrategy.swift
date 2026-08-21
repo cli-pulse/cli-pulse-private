@@ -226,9 +226,27 @@ public enum ClaudeResultBuilder {
 
 /// Shared helpers for Claude credential resolution, used by multiple strategies.
 public enum ClaudeCredentials {
+    private static let isRunningUnderXCTest = NSClassFromString("XCTestCase") != nil
+
+    static var isolatedTestHomeDirectory: String? {
+        guard isRunningUnderXCTest else { return nil }
+        if let fixedUserHome = ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !fixedUserHome.isEmpty
+        {
+            return fixedUserHome
+        }
+        return (NSTemporaryDirectory() as NSString).appendingPathComponent(
+            "clipulse-xctest-\(ProcessInfo.processInfo.processIdentifier)"
+        )
+    }
+
     /// Real home directory (not sandbox-remapped). Uses the thread-safe
-    /// `passwdHomeDirectory()` (`getpwuid_r`).
+    /// `passwdHomeDirectory()` (`getpwuid_r`). XCTest may opt into an isolated
+    /// home so offline tests never read or overwrite the developer's real
+    /// Claude credentials and helper snapshots.
     public static var realHomeDir: String {
+        if let isolatedTestHomeDirectory { return isolatedTestHomeDirectory }
         if let dir = passwdHomeDirectory() { return dir }
         let nsHome = NSHomeDirectory()
         if let range = nsHome.range(of: "/Library/Containers/") {
@@ -280,6 +298,10 @@ public enum ClaudeCredentials {
         bypassCooldown: Bool = false,
         cacheResult: Bool = true
     ) -> Creds? {
+        // XCTest uses an isolated Claude home and must not fall through to the
+        // developer's app cache or Claude Code's cross-app Keychain item.
+        if isolatedTestHomeDirectory != nil { return nil }
+
         // 1. Try the app's own keychain cache (never triggers a prompt)
         if let cached = KeychainHelper.load(key: keychainCacheKey),
            let data = cached.data(using: .utf8),
@@ -395,7 +417,10 @@ public enum ClaudeCredentials {
         return creds
     }
 
-    private static let keychainCacheKey = "claude-code-creds-cache"
+    // Internal so XCTest can seed the exact cache entry without duplicating a
+    // security-sensitive key name and accidentally falling through to the
+    // cross-app Keychain path when that name changes.
+    static let keychainCacheKey = "claude-code-creds-cache"
 
     enum TokenSource: Equatable {
         case accountConfig

@@ -15,15 +15,21 @@ final class ProviderAccountDeletionOutbox {
         /// Every newly enqueued delete records the non-secret provider and
         /// provider-less legacy intents are never sent to the server.
         let provider: ProviderKind?
+        /// Identifies one enqueue operation so a stale in-flight response
+        /// cannot complete a newer retry for the same owner and account.
+        /// Optional only so existing v1 queue payloads remain decodable.
+        let generation: UUID?
 
         init(
             userID: String,
             accountID: UUID,
-            provider: ProviderKind?
+            provider: ProviderKind?,
+            generation: UUID? = UUID()
         ) {
             self.userID = userID
             self.accountID = accountID
             self.provider = provider
+            self.generation = generation
         }
     }
 
@@ -114,11 +120,10 @@ final class ProviderAccountDeletionOutbox {
     }
 
     @discardableResult
-    func markCompleted(
-        userID: String,
-        accountID: UUID
-    ) -> Bool {
-        guard let owner = normalizedUserID(userID) else {
+    func markCompleted(_ completedIntent: Intent) -> Bool {
+        guard
+            let owner = normalizedUserID(completedIntent.userID)
+        else {
             return false
         }
         guard case var .valid(records) =
@@ -127,9 +132,14 @@ final class ProviderAccountDeletionOutbox {
             preserveCorruptStorage()
             return false
         }
-        records = Set(records.filter {
-            $0.userID != owner || $0.accountID != accountID
-        })
+        records.remove(
+            Intent(
+                userID: owner,
+                accountID: completedIntent.accountID,
+                provider: completedIntent.provider,
+                generation: completedIntent.generation
+            )
+        )
         return saveRecords(records)
     }
 
@@ -242,8 +252,12 @@ final class ProviderAccountDeletionOutbox {
             return lhs.accountID.uuidString
                 < rhs.accountID.uuidString
         }
-        return (lhs.provider?.rawValue ?? "")
-            < (rhs.provider?.rawValue ?? "")
+        if lhs.provider != rhs.provider {
+            return (lhs.provider?.rawValue ?? "")
+                < (rhs.provider?.rawValue ?? "")
+        }
+        return (lhs.generation?.uuidString ?? "")
+            < (rhs.generation?.uuidString ?? "")
     }
 }
 

@@ -74,6 +74,8 @@ public final class AppState: ObservableObject {
     // computed forwarders so setProviderEnabled/toggleProvider/DemoDataProvider/
     // DataRefreshManager-payload-assign compile unchanged.
     public let providerState = ProviderState()
+    private var pendingProviderAccountSaveRecoveries:
+        [UUID: ProviderAccountSaveRecovery] = [:]
 
     public var providers: [ProviderUsage] {
         get { providerState.providers }
@@ -1431,9 +1433,91 @@ public final class AppState: ObservableObject {
         return resolvedStore.save(providerConfigs)
     }
 
+    public func makeProviderAccountPersistenceCheckpoint(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore? = nil
+    ) -> ProviderAccountPersistenceCheckpoint? {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return nil
+        }
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        )
+        let ownerCheckpoint:
+            ProviderSharedCredentialOwner.PersistenceCheckpoint?
+        if allowsHelperMirror {
+            guard
+                let captured =
+                    ProviderSharedCredentialOwner
+                        .makePersistenceCheckpoint()
+            else {
+                return nil
+            }
+            ownerCheckpoint = captured
+        } else {
+            ownerCheckpoint = nil
+        }
+        return ProviderAccountPersistenceCheckpoint(
+            metadataStore: resolvedStore,
+            metadataCheckpoint:
+                resolvedStore.makePersistenceCheckpoint(),
+            ownerCheckpoint: ownerCheckpoint,
+            restoresOwner: allowsHelperMirror
+        )
+    }
+
+    public func withProviderAccountPersistenceLock<T>(
+        or failure: T,
+        _ body: () -> T
+    ) -> T {
+        ProviderSharedCredentialOwner.withPersistenceLock(
+            or: failure,
+            body
+        )
+    }
+
+    public func retainProviderAccountSaveRecovery(
+        _ recovery: ProviderAccountSaveRecovery,
+        for accountID: UUID
+    ) {
+        // Never replace the original baseline with one captured from a
+        // partially compensated state.
+        guard pendingProviderAccountSaveRecoveries[accountID] == nil else {
+            return
+        }
+        pendingProviderAccountSaveRecoveries[accountID] = recovery
+    }
+
+    /// Retry an incomplete compensation before the editor is allowed to
+    /// capture a fresh baseline. A failed recovery remains pending.
     @discardableResult
-    public func commitProviderAccountDraft(
+    public func recoverPendingProviderAccountSave(
         _ accountID: UUID
+    ) -> Bool {
+        guard
+            let recovery =
+                pendingProviderAccountSaveRecoveries[accountID]
+        else {
+            return true
+        }
+        guard recovery.recover() else {
+            return false
+        }
+        pendingProviderAccountSaveRecoveries[accountID] = nil
+        return true
+    }
+
+    @discardableResult
+    public func persistProviderAccountDraftMetadata(
+        _ accountID: UUID,
+        using metadataStore: ProviderConfigMetadataStore? = nil
     ) -> Bool {
         guard providerConfigs.contains(where: {
             $0.accountID == accountID
@@ -1442,11 +1526,42 @@ public final class AppState: ObservableObject {
         }
         // Persist final metadata while the in-memory draft marker still
         // exists. A failed write leaves the editor transaction retryable.
-        guard saveProviderConfigMetadata() else {
-            return false
+        let allowsHelperMirror =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        if allowsHelperMirror {
+            guard ProviderSharedCredentialOwner.reconcile(configs: providerConfigs) else {
+                return false
+            }
+        }
+        let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
+            defaults: providerConfigDefaults,
+            helperDefaults: allowsHelperMirror
+                ? providerConfigHelperDefaults
+                : nil
+        )
+        return resolvedStore.save(providerConfigs)
+    }
+
+    /// Complete the in-memory portion only after every fallible persistence
+    /// step, including provider-specific credential mutation, has succeeded.
+    public func finalizeProviderAccountDraft(_ accountID: UUID) {
+        guard providerConfigs.contains(where: {
+            $0.accountID == accountID
+        }) else {
+            return
         }
         _ = providerState.commitProviderAccountDraft(accountID)
         buildProviderDetails()
+    }
+
+    @discardableResult
+    public func commitProviderAccountDraft(
+        _ accountID: UUID
+    ) -> Bool {
+        guard persistProviderAccountDraftMetadata(accountID) else {
+            return false
+        }
+        finalizeProviderAccountDraft(accountID)
         return true
     }
 
@@ -1505,10 +1620,21 @@ public final class AppState: ObservableObject {
         guard deleteLocalProviderAccountSecrets(config) else {
             return false
         }
+        let remainingConfigs = providerConfigs.filter {
+            $0.accountID != accountID
+        }
+        guard saveProviderConfigMetadata(
+            remainingConfigs,
+            requireSharedCredentialOwnerReconciliation: true
+        ) else {
+            // Keep the in-memory account as the visible retry anchor. The
+            // durable outbox (when present) remains pending, and cloud
+            // deletion must not start until local metadata commits.
+            return false
+        }
         guard providerState.removeProviderAccount(accountID) != nil else {
             return false
         }
-        saveProviderConfigMetadata()
         buildProviderDetails()
         if let deletionOwnerID {
             Task { [weak self] in
@@ -1526,7 +1652,9 @@ public final class AppState: ObservableObject {
     private func deleteLocalProviderAccountSecrets(
         _ config: ProviderConfig
     ) -> Bool {
-        guard config.deleteSecrets(using: providerSecretStore) else {
+        guard config.deleteSecretsForAccountRemoval(
+            using: providerSecretStore
+        ) else {
             return false
         }
         #if os(macOS)
@@ -1541,10 +1669,14 @@ public final class AppState: ObservableObject {
         }
         #endif
         if runtimeEnvironment.capabilities.allowsHelperRegistration {
-            ProviderSharedCredentialOwner.release(
-                kind: config.kind,
-                accountID: config.accountID
-            )
+            guard
+                ProviderSharedCredentialOwner.release(
+                    kind: config.kind,
+                    accountID: config.accountID
+                )
+            else {
+                return false
+            }
         }
         return true
     }
@@ -1630,9 +1762,15 @@ public final class AppState: ObservableObject {
         else {
             return
         }
+        let locallyPresentAccountIDs = Set(
+            providerConfigs.map(\.accountID)
+        )
         let pending = providerAccountDeletionOutbox
             .pendingIntents(for: expectedUserID)
-            .filter { $0.provider != nil }
+            .filter {
+                $0.provider != nil
+                    && !locallyPresentAccountIDs.contains($0.accountID)
+            }
             .prefix(10)
         for intent in pending {
             guard
@@ -1646,6 +1784,14 @@ public final class AppState: ObservableObject {
                 // local metadata recovery can safely enrich them.
                 continue
             }
+            guard !providerConfigs.contains(where: {
+                $0.accountID == intent.accountID
+            }) else {
+                // The preceding delete awaits, so MainActor can restore a
+                // later account while this batch is in progress. Recheck each
+                // intent at the last local gate before contacting the server.
+                continue
+            }
             let deleted = await api.deleteProviderAccount(
                 intent.accountID,
                 provider: provider,
@@ -1657,10 +1803,7 @@ public final class AppState: ObservableObject {
                 // refresh instead of hammering the endpoint.
                 return
             }
-            providerAccountDeletionOutbox.markCompleted(
-                userID: expectedUserID,
-                accountID: intent.accountID
-            )
+            providerAccountDeletionOutbox.markCompleted(intent)
         }
     }
 
@@ -1972,17 +2115,35 @@ public final class AppState: ObservableObject {
     /// for enable/order/label changes that must never mutate Keychain state.
     @discardableResult
     public func saveProviderConfigMetadata() -> Bool {
+        saveProviderConfigMetadata(
+            providerConfigs,
+            requireSharedCredentialOwnerReconciliation: false
+        )
+    }
+
+    private func saveProviderConfigMetadata(
+        _ configs: [ProviderConfig],
+        requireSharedCredentialOwnerReconciliation: Bool
+    ) -> Bool {
         let allowsHelperMirror =
             runtimeEnvironment.capabilities.allowsHelperRegistration
         if allowsHelperMirror {
-            ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
+            let reconciled = ProviderSharedCredentialOwner.reconcile(
+                configs: configs
+            )
+            guard
+                reconciled
+                    || !requireSharedCredentialOwnerReconciliation
+            else {
+                return false
+            }
         }
         return ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
                 ? providerConfigHelperDefaults
                 : nil
-        ).save(providerConfigs)
+        ).save(configs)
     }
 
     public func buildProviderDetails() {
@@ -2162,7 +2323,10 @@ public final class AppState: ObservableObject {
     /// Finish a local deletion whose durable intent was committed before a
     /// previous process stopped. Owner matching is mandatory so a queued
     /// user-A intent can never remove a user-B account after an account switch.
-    private func recoverPendingLocalProviderAccountDeletions() {
+    /// Internal so deterministic composition tests can exercise the relaunch
+    /// recovery transaction without running AppState's production launch
+    /// migrations or touching the real Keychain.
+    func recoverPendingLocalProviderAccountDeletions() {
         let accountIDs =
             ProviderAccountDeletionRecovery.accountIDsToRemove(
                 from: providerConfigs,
@@ -2187,6 +2351,15 @@ public final class AppState: ObservableObject {
                 ),
                 deleteLocalProviderAccountSecrets(config)
             else {
+                continue
+            }
+            let remainingConfigs = providerConfigs.filter {
+                $0.accountID != accountID
+            }
+            guard saveProviderConfigMetadata(
+                remainingConfigs,
+                requireSharedCredentialOwnerReconciliation: true
+            ) else {
                 continue
             }
             _ = providerState.removeProviderAccount(accountID)
