@@ -1121,3 +1121,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
 "machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › General」から再度ペアリングしてください。";
+
+/* v1.50 W-C — この Mac を読み取る前の選択 */
+"local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";
+"local_scan_consent.subtitle" = "まだ何も読み取っていません。スキャンを始めると有効になるのは以下です。";
+"local_scan_consent.files_title" = "直近 30 日のセッションログ";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
+"local_scan_consent.derived_title" = "そこから割り出すもの";
+"local_scan_consent.derived_detail" = "トークン数、コスト見積もり、モデル名、日付。加えて各会話のファイルパス、プロジェクトフォルダ、セッション ID — セッション一覧に名前が付くのはこれらがあるからです。";
+"local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
+"local_scan_consent.network_detail" = "残量をリアルタイムで表示するため、各 CLI がこの Mac に保存したトークンを使って提供元を呼び出します。期限切れのトークンを更新すると、その CLI の認証ファイルが書き換わります。";
+"local_scan_consent.keychain_title" = "キーチェーン内の Claude Code のトークン";
+"local_scan_consent.keychain_detail" = "macOS が最初に一度だけ確認します。拒否しても失われるのは Claude の残量表示だけです。";
+"local_scan_consent.telemetry_title" = "匿名の統計情報は別の話です";
+"local_scan_consent.telemetry_detail" = "この選択には含まれません。ファイルパスや提供元名は含まず、「設定 › プライバシー」でオフにできます。";
+"local_scan_consent.start" = "ローカルスキャンを開始";
+"local_scan_consent.not_now" = "今はしない";
+"local_scan_consent.change_later" = "どちらを選んでも、「設定 › プライバシー」でいつでも変更できます。";
+"local_scan_consent.declined_title" = "ローカルスキャンはオフです";
+"local_scan_consent.declined_body" = "CLI Pulse はこの Mac の何も読み取っていないため、表示できるものはまだありません。";

@@ -128,6 +128,23 @@ struct MenuBarView: View {
                             }
                         )
                         .environmentObject(state)
+                    } else if LocalCollectionPolicy.shouldPresentDisclosure(
+                        isAuthenticated: authState.isAuthenticated,
+                        isLocalMode: state.isLocalMode,
+                        consent: state.localScanConsent
+                    ) {
+                        // v1.50 W-C. `isLocalMode` is true, so the branch below
+                        // would otherwise render the dashboard — for someone who
+                        // arrived here by pressing the wizard's close button on
+                        // step 0 and has therefore been told nothing about what
+                        // the app reads. Ask first.
+                        //
+                        // The dashboard would in any case be empty: the gate at
+                        // the top of `refreshLocal` refuses to collect in this
+                        // state. This view is what turns that emptiness from a
+                        // broken-looking app into a question.
+                        LocalScanConsentView()
+                            .environmentObject(state)
                     } else if state.isLocalMode || authState.isPaired {
                         connectedView
                     } else {

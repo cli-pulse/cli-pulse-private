@@ -2062,7 +2062,11 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             maxProviders: 100,
             currentTierName: "Pro",
             tierResolutionState: .resolvedConfirmed,
-            isLocalMode: false
+            isLocalMode: false,
+            // These cases are about provider-account sync, not about consent.
+            // Stated explicitly rather than defaulted so the refresh gate can
+            // never be the silent reason one of them goes green.
+            localScanConsent: .granted
         )
     }
 

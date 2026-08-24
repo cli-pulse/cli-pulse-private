@@ -118,6 +118,23 @@ public final class AppState: ObservableObject {
     @Published public var lastRefresh: Date?
     @Published public var serverOnline = false
     @Published public var isLocalMode = false
+    /// v1.50 W-C: the user's answer to "may CLI Pulse read this Mac".
+    ///
+    /// Deliberately a separate published value from `isLocalMode`, which answers
+    /// "do you want an account". The wizard's close button sits on step 0 and
+    /// sets `isLocalMode`; the card describing what gets read is step 2. Folding
+    /// the two together would treat someone's choice about accounts as their
+    /// answer about data. See `LocalScanConsent`.
+    ///
+    /// Loaded from defaults at init and written only from an explicit user
+    /// action — the disclosure sheet's two buttons, or the Settings row.
+    @Published public var localScanConsent: LocalScanConsent =
+        LocalScanConsentStore.load() {
+        didSet {
+            guard localScanConsent != oldValue else { return }
+            LocalScanConsentStore.save(localScanConsent)
+        }
+    }
     /// Stable account targeted by the standalone provider editor.
     public var editingProviderAccountID: UUID? {
         get { providerState.editingProviderAccountID }

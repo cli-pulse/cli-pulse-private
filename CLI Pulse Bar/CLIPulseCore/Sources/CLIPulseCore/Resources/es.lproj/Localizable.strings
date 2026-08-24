@@ -853,3 +853,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "El estado de la máquina no está disponible con el helper integrado: no lee sensores. Todo lo demás en este Mac sigue funcionando; el soporte de sensores está en camino.";
 "machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › General.";
+
+/* v1.50 W-C — la decisión previa a cualquier lectura de este Mac */
+"local_scan_consent.title" = "Antes de que CLI Pulse lea este Mac";
+"local_scan_consent.subtitle" = "Todavía no se ha leído nada. Esto es lo que activa iniciar el análisis.";
+"local_scan_consent.files_title" = "Registros de sesión de los últimos 30 días";
+"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/ y ~/.config/claude/projects/. CLI Pulse extrae de ahí los registros de uso y guarda el resultado en caché en este Mac.";
+"local_scan_consent.derived_title" = "Lo que deduce de ellos";
+"local_scan_consent.derived_detail" = "Recuento de tokens, coste estimado, nombres de modelo y fechas, además de la ruta del archivo, la carpeta del proyecto y el id de sesión de cada conversación, que es como la lista de sesiones puede nombrarlas.";
+"local_scan_consent.network_title" = "Los proveedores, con credenciales que ya están en este Mac";
+"local_scan_consent.network_detail" = "Para mostrar la cuota en tiempo real, CLI Pulse llama a tus proveedores con los tokens que sus propias CLI guardaron aquí. Renovar un token caducado reescribe el archivo de credenciales de esa CLI.";
+"local_scan_consent.keychain_title" = "Tu Llavero, para el token de Claude Code";
+"local_scan_consent.keychain_detail" = "macOS te lo pregunta primero, una vez. Rechazarlo solo te cuesta las cifras de cuota de Claude.";
+"local_scan_consent.telemetry_title" = "Las estadísticas anónimas son otra cosa";
+"local_scan_consent.telemetry_detail" = "No forman parte de esta decisión, no llevan rutas de archivo ni nombres de proveedor, y se desactivan en Ajustes › Privacidad.";
+"local_scan_consent.start" = "Iniciar análisis local";
+"local_scan_consent.not_now" = "Ahora no";
+"local_scan_consent.change_later" = "Elijas lo que elijas, Ajustes › Privacidad lo cambia cuando quieras.";
+"local_scan_consent.declined_title" = "El análisis local está desactivado";
+"local_scan_consent.declined_body" = "CLI Pulse no está leyendo nada en este Mac, así que todavía no hay nada que mostrar.";

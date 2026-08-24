@@ -1173,3 +1173,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内置 helper 不读取传感器,所以机器健康暂时不可用。这台 Mac 上其他功能都正常;传感器支持正在做。";
 "machine.helper_unauthenticated" = "helper 拒绝了本应用的凭据。请在「设置 › General」重新配对。";
+
+/* v1.50 W-C — 在读取这台 Mac 之前的选择 */
+"local_scan_consent.title" = "在 CLI Pulse 读取这台 Mac 之前";
+"local_scan_consent.subtitle" = "目前还没有读取任何内容。开始扫描会启用以下这些。";
+"local_scan_consent.files_title" = "最近 30 天的会话日志";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。CLI Pulse 解析其中的用量记录，并把结果缓存在这台 Mac 上。";
+"local_scan_consent.derived_title" = "会从中得出什么";
+"local_scan_consent.derived_detail" = "token 数、费用估算、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID —— 会话列表就是靠这些来命名的。";
+"local_scan_consent.network_title" = "用这台 Mac 上已有的凭据访问服务商";
+"local_scan_consent.network_detail" = "为了显示实时额度，CLI Pulse 会用各家 CLI 自己存在本机的令牌去调用它们。续期一个过期的令牌会重写那个 CLI 的凭据文件。";
+"local_scan_consent.keychain_title" = "钥匙串里 Claude Code 的令牌";
+"local_scan_consent.keychain_detail" = "macOS 会先问你一次。拒绝只会少了 Claude 的额度数字，别的都不受影响。";
+"local_scan_consent.telemetry_title" = "匿名统计是另一回事";
+"local_scan_consent.telemetry_detail" = "它不属于这个选择，不含文件路径或服务商名称，在「设置 › 隐私」里可以关掉。";
+"local_scan_consent.start" = "开始本地扫描";
+"local_scan_consent.not_now" = "暂时不要";
+"local_scan_consent.change_later" = "无论选哪个，「设置 › 隐私」里随时可以改。";
+"local_scan_consent.declined_title" = "本地扫描已关闭";
+"local_scan_consent.declined_body" = "CLI Pulse 没有读取这台 Mac 上的任何内容，所以暂时没有可显示的数据。";
