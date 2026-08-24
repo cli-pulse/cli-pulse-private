@@ -77,6 +77,22 @@ one a search engine did. See `web_preview_section`.
 The pattern by now is hard to miss: three separate "we are blind to X" claims in
 this project turned out to be "nobody opened the report about X".
 
+MAC AND iOS ARE NOT TWO CHANNELS OF ONE PRODUCT -- NEVER SUM THEM
+-----------------------------------------------------------------
+This script has split downloads by Device since it was written, and write-ups
+kept quoting the total anyway. So the reason now prints next to the numbers.
+
+iOS builds no collectors. It has nothing to read on the device it runs on, its
+content sits behind a login, and it fills up only by cloud sync FROM a Mac that
+is already running CLI Pulse. An iPhone first-time download therefore does not
+enter the funnel a Mac download enters -- most of them meet a sign-in wall and
+an empty screen. A combined figure reads as reach and measures nothing: it moves
+when store appeal changes on a platform that delivers no value yet, and it hides
+the only number the Mac funnel is denominated in.
+
+The same caution applies to iPhone's tap-through rate, which has run far above
+Mac's. That is a measurement of the listing, not of anything delivered.
+
 GITHUB COUNTS HAVE THEIR OWN CONTAMINATION
 ------------------------------------------
 `download_count` on a release asset includes CI, the owner's own testing, bots
@@ -334,6 +350,19 @@ def asc_section(show_censored: bool = True) -> None:
     print(f"    iOS           : {ios_first}")
     print("    ^ auto-updates and redownloads are NOT acquisition -- they are people"
           "\n      who already had the app. Only first-time downloads enter the funnel.")
+    # v1.50 W3. This split has been printed since the report existed; the sum
+    # kept turning up in write-ups anyway, so the reason it is wrong is now
+    # printed next to the numbers rather than left in a memo.
+    print(f"\n    DO NOT ADD THESE TOGETHER. There is no {mac_first + ios_first}."
+          "\n      The two platforms are not two channels of one product. iOS builds no"
+          "\n      collectors: it has nothing to read on the device it runs on, its content"
+          "\n      sits behind a login, and it fills up only by cloud sync FROM a Mac that"
+          "\n      is already running CLI Pulse. An iPhone first-time download is therefore"
+          "\n      not an entry into the same funnel a Mac download enters -- most of them"
+          "\n      meet a sign-in wall and an empty screen."
+          "\n      A combined figure reads as reach and measures nothing: it moves when"
+          "\n      store appeal changes on a platform that delivers no value yet, and it"
+          "\n      hides the only number the Mac funnel is denominated in.")
 
     print("\n  first-time downloads by month")
     per_month: dict = collections.defaultdict(lambda: collections.defaultdict(int))

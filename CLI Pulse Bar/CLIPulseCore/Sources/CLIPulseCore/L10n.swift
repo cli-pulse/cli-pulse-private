@@ -1379,6 +1379,32 @@ public enum L10n {
             tr("usage_pace.summary_left_only", left)
         }
     }
+
+    // MARK: - Local scan consent (v1.50 W-C)
+
+    /// Localized in all six bundles rather than left as inline English like the
+    /// telemetry card. That card describes something already switched on; this
+    /// one asks a question and takes an answer, and an answer given to a
+    /// sentence somebody could not read is not an answer.
+    public enum localScanConsent {
+        public static var title: String { tr("local_scan_consent.title") }
+        public static var subtitle: String { tr("local_scan_consent.subtitle") }
+        public static var filesTitle: String { tr("local_scan_consent.files_title") }
+        public static var filesDetail: String { tr("local_scan_consent.files_detail") }
+        public static var derivedTitle: String { tr("local_scan_consent.derived_title") }
+        public static var derivedDetail: String { tr("local_scan_consent.derived_detail") }
+        public static var networkTitle: String { tr("local_scan_consent.network_title") }
+        public static var networkDetail: String { tr("local_scan_consent.network_detail") }
+        public static var keychainTitle: String { tr("local_scan_consent.keychain_title") }
+        public static var keychainDetail: String { tr("local_scan_consent.keychain_detail") }
+        public static var telemetryTitle: String { tr("local_scan_consent.telemetry_title") }
+        public static var telemetryDetail: String { tr("local_scan_consent.telemetry_detail") }
+        public static var start: String { tr("local_scan_consent.start") }
+        public static var notNow: String { tr("local_scan_consent.not_now") }
+        public static var changeLater: String { tr("local_scan_consent.change_later") }
+        public static var declinedTitle: String { tr("local_scan_consent.declined_title") }
+        public static var declinedBody: String { tr("local_scan_consent.declined_body") }
+    }
 }
 
 #if !SWIFT_PACKAGE

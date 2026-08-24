@@ -14,6 +14,7 @@ import CLIPulseCore
 /// enrichment data.
 struct PrivacySettingsSection: View {
     @ObservedObject private var settings = PrivacySettings.shared
+    @EnvironmentObject var state: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -24,6 +25,36 @@ struct PrivacySettingsSection: View {
                 Text("Privacy")
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
+            }
+
+            // v1.50 W-C. The promise the disclosure makes — "Settings › Privacy
+            // changes it at any time" — is kept here, and it is the only way
+            // back from "Not now". Shown to unauthenticated local-mode users
+            // only: for a signed-in user the answer is implied by the account,
+            // and a switch that reads as optional while cloud sync is running
+            // would be a lie about which one is in charge.
+            if !state.isAuthenticated && state.isLocalMode {
+                Toggle(
+                    isOn: Binding(
+                        get: { state.localScanConsent == .granted },
+                        set: { state.localScanConsent = $0 ? .granted : .declined }
+                    )
+                ) {
+                    Text("Scan this Mac for CLI usage")
+                        .font(.system(size: 11))
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+
+                Text("Reads the last 30 days of session logs under ~/.codex and ~/.claude, and asks the providers you use for live quota. Off means CLI Pulse reads nothing here.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+                    .padding(.bottom, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+                    .padding(.vertical, 2)
             }
 
             Toggle(isOn: $settings.localOnlyMode) {

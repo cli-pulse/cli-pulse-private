@@ -32,6 +32,7 @@
 		A10049 /* AdvancedSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10049 /* AdvancedSection.swift */; };
 		A10050 /* RemoteApprovalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10050 /* RemoteApprovalsSheet.swift */; };
 		A10051 /* LocalModeGuideCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10051 /* LocalModeGuideCard.swift */; };
+		A10102 /* LocalScanConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10102 /* LocalScanConsentView.swift */; };
 		A10052 /* WelcomeModeChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10052 /* WelcomeModeChoice.swift */; };
 		A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10053 /* AnonymousTelemetryDisclosureCard.swift */; };
 		A10100 /* AgentDiscoveryStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10100 /* AgentDiscoveryStepView.swift */; };
@@ -215,6 +216,7 @@
 		B10049 /* AdvancedSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedSection.swift; sourceTree = "<group>"; };
 		B10050 /* RemoteApprovalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteApprovalsSheet.swift; sourceTree = "<group>"; };
 		B10051 /* LocalModeGuideCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModeGuideCard.swift; sourceTree = "<group>"; };
+		B10102 /* LocalScanConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalScanConsentView.swift; sourceTree = "<group>"; };
 		B10052 /* WelcomeModeChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeModeChoice.swift; sourceTree = "<group>"; };
 		B10053 /* AnonymousTelemetryDisclosureCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymousTelemetryDisclosureCard.swift; sourceTree = "<group>"; };
 		B10100 /* AgentDiscoveryStepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDiscoveryStepView.swift; sourceTree = "<group>"; };
@@ -372,6 +374,7 @@
 				B10049 /* AdvancedSection.swift */,
 				B10050 /* RemoteApprovalsSheet.swift */,
 				B10051 /* LocalModeGuideCard.swift */,
+				B10102 /* LocalScanConsentView.swift */,
 				B10052 /* WelcomeModeChoice.swift */,
 				B10053 /* AnonymousTelemetryDisclosureCard.swift */,
 				B10020 /* ProviderConfigEditor.swift */,
@@ -732,6 +735,7 @@
 				A10049 /* AdvancedSection.swift in Sources */,
 				A10050 /* RemoteApprovalsSheet.swift in Sources */,
 				A10051 /* LocalModeGuideCard.swift in Sources */,
+				A10102 /* LocalScanConsentView.swift in Sources */,
 				A10052 /* WelcomeModeChoice.swift in Sources */,
 				A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */,
 				A10020 /* ProviderConfigEditor.swift in Sources */,

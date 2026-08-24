@@ -43,6 +43,15 @@ struct OverviewTab: View {
                         .environmentObject(state)
                 }
 
+                // v1.50 W-C: "Not now" is sticky, so it needs somewhere to live
+                // that is neither a re-shown sheet nor a silent nothing. This
+                // card is why an empty Overview reads as a choice the user made
+                // rather than as an app that failed to find anything.
+                if state.localScanConsent == .declined && !state.isAuthenticated {
+                    LocalScanDeclinedCard()
+                        .environmentObject(state)
+                }
+
                 // v1.44 W5: shown once, right after the app registers its own
                 // login item at first value. The registration is silent
                 // without this card, and a background app making itself

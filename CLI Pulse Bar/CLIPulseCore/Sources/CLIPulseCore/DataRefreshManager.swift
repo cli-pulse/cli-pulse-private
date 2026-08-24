@@ -50,6 +50,10 @@ internal final class DataRefreshManager {
         /// route unauthenticated macOS users into `refreshLocal` instead
         /// of bailing with no-op. Has no meaning on iOS / Watch.
         let isLocalMode: Bool
+        /// v1.50 W-C: the user's answer to "may CLI Pulse read this Mac".
+        /// Read by the gate at the top of `refreshLocal`, which runs before
+        /// collectors, before the JSONL scan, and before any durable write.
+        let localScanConsent: LocalScanConsent
     }
 
     struct RefreshPayload {
@@ -803,6 +807,34 @@ internal final class DataRefreshManager {
     #if os(macOS)
     private func refreshLocal(context: Context, callbacks: Callbacks) async {
         guard !context.isLoading else { return }
+        // v1.50 W-C — the consent gate, and it has to be HERE.
+        //
+        // Everything below this line touches the user's machine: the collector
+        // pass calls provider APIs, refreshes OAuth tokens and can rewrite
+        // `~/.codex/auth.json`; the Claude resolver can read another app's
+        // Keychain item and spawn `claude` in a PTY; `scanCostUsage` reads up to
+        // 30 days of JSONL and derives absolute paths, project roots and session
+        // ids; and the archive and pet ledger persist what it found.
+        //
+        // The pre-existing guard further down (~line 920) is NOT this. Its own
+        // comment says it decides whether to *apply* a payload, and it exists to
+        // stop a stale refresh landing after a sign-out. By the time it runs,
+        // every side effect above has already happened. rev1 and rev3 of the plan
+        // each mistook one of these for a collection gate; the observation on
+        // 2026-08-24 settled it — a fresh install rotated its owner's OpenAI
+        // credentials 1.5 s after the onboarding wizard's step-0 close button,
+        // with the wizard's privacy card never shown.
+        //
+        // Bail before `setLoading(true)` and `setServerOnline(true)`: an app that
+        // is deliberately not collecting should not render a spinner and a green
+        // "Online" dot while it does nothing.
+        guard LocalCollectionPolicy.allowsCollection(
+            isAuthenticated: context.isAuthenticated,
+            consent: context.localScanConsent
+        ) else {
+            callbacks.setLoading(false)
+            return
+        }
         callbacks.setLoading(true)
         callbacks.setLastError(nil)
         callbacks.setServerOnline(true)
@@ -3487,7 +3519,8 @@ extension AppState {
                 for: subscriptionManager.currentTier
             ),
             tierResolutionState: subscriptionManager.tierResolutionState,
-            isLocalMode: isLocalMode
+            isLocalMode: isLocalMode,
+            localScanConsent: localScanConsent
         )
     }
 
