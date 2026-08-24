@@ -69,6 +69,17 @@ jobs:
       # SwiftUI views in the app target, which has no test bundle.
       - run: bash scripts/check_telemetry_switch_discloses_suppression.sh
 
+      # .gitignore does not apply to files git already tracks, so an ignore rule
+      # becomes decorative the moment something slips past it — and stays that
+      # way silently. `CLI Pulse Bar/codexbar/` had been ignored for months
+      # while one 798-line file from steipete/CodexBar sat tracked inside it,
+      # committed by an unrelated PR, in a PUBLIC repo.
+      #
+      # Path-blind on purpose, same reasoning as the docs guard above: the PR
+      # most likely to sweep in a stray vendored file is the one that has
+      # nothing to do with vendoring.
+      - run: bash scripts/check_no_tracked_ignored_files.sh
+
       # The app's Privacy Policy / Terms links, which App Review clicks under
       # Guideline 3.1.2. Needs network; they broke silently for twelve days once.
       - run: bash scripts/check_legal_urls.sh
