@@ -37,6 +37,13 @@ public enum WatchSessionRestoreCredentialPolicy {
             return status == 401
         case .invalidResponse:
             return false
+        case .notAuthenticated:
+            // v1.50 W-A: raised locally by `requireUserID()` before any request,
+            // so the server has said nothing about these credentials. Most often
+            // it means a user-scoped call raced ahead of session restore. Wiping
+            // the Keychain on that would turn a transient ordering problem into a
+            // permanent sign-out — the exact failure this policy exists to avoid.
+            return false
         }
     }
 }
