@@ -1121,3 +1121,7 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
 "machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › General」から再度ペアリングしてください。";
+
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "アカウントなしで使う";
+"onboarding_wizard.use_locally_hint" = "あとから「設定」でサインインできます。";

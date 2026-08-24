@@ -1121,3 +1121,7 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "內建 helper 不讀取感測器,所以機器健康暫時不可用。這台 Mac 上其他功能都正常;感測器支援正在進行。";
 "machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › General」重新配對。";
+
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "本機使用 —— 不需要帳號";
+"onboarding_wizard.use_locally_hint" = "之後隨時可以在「設定」裡登入。";

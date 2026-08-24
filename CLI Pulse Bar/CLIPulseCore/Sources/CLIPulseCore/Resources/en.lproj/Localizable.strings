@@ -1171,3 +1171,7 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "Machine health isn't available with the built-in helper — it doesn't read sensors. Everything else on this Mac keeps working; sensor support is on the way.";
 "machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › General.";
+
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "Use locally — no account needed";
+"onboarding_wizard.use_locally_hint" = "You can sign in later from Settings.";

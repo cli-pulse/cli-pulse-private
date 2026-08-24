@@ -1230,6 +1230,44 @@ struct LegacyOnboardingWizardView: View {
             .tint(PulseTheme.accent)
             .controlSize(.large)
             .padding(.horizontal, 40)
+
+            // v1.50 W-B: the same action the × in the corner performs, with a
+            // name on it.
+            //
+            // v1.44 W1 already made the exit one click and put it on every step.
+            // What it did not do was let anyone see it: the button is an
+            // unlabeled glyph, styled `.plain` with a secondary tint, and its own
+            // comment says that was deliberate — "so it doesn't draw attention
+            // away from the step's primary CTA". A user who wants to try the app
+            // without an account has to guess that the close box means "continue
+            // without one" rather than "quit".
+            //
+            // So this is labeling, not architecture. Both controls call
+            // `continueWithoutAccount()`; the × stays for people who reach for
+            // it, and this is for everyone who would not.
+            //
+            // Deliberately secondary, not a second prominent button. Signing in
+            // is still the recommended path — this stops being a hidden door
+            // without becoming a nudge away from an account.
+            VStack(spacing: 2) {
+                Button {
+                    state.continueWithoutAccount()
+                    onboardingCompleted = true
+                } label: {
+                    Text(L10n.onboardingWizard.useLocally)
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+
+                Text(L10n.onboardingWizard.useLocallyHint)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 8)
             .padding(.bottom, 20)
         }
         .padding()

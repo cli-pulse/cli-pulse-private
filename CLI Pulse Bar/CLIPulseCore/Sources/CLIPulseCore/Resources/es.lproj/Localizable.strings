@@ -853,3 +853,7 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "El estado de la máquina no está disponible con el helper integrado: no lee sensores. Todo lo demás en este Mac sigue funcionando; el soporte de sensores está en camino.";
 "machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › General.";
+
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "Usar en local, sin cuenta";
+"onboarding_wizard.use_locally_hint" = "Puedes iniciar sesión más tarde desde Ajustes.";

@@ -1173,3 +1173,7 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内置 helper 不读取传感器,所以机器健康暂时不可用。这台 Mac 上其他功能都正常;传感器支持正在做。";
 "machine.helper_unauthenticated" = "helper 拒绝了本应用的凭据。请在「设置 › General」重新配对。";
+
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "本地使用 —— 不需要账号";
+"onboarding_wizard.use_locally_hint" = "以后随时可以在「设置」里登录。";
