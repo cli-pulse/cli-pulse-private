@@ -259,7 +259,14 @@ public enum HelperIPC {
                 throw CollectorResultsError.unsupportedVersion(version)
             }
             let envelope = try decoder.decode(CollectorResultsEnvelopeV2.self, from: data)
-            guard let timestamp = sharedISO8601Formatter.date(from: envelope.timestamp) else {
+            // v1.50: tolerant parse. This one already failed CLOSED (it
+            // throws, so a payload with an unreadable timestamp is dropped
+            // rather than trusted) and the current writer emits no fractional
+            // seconds — so this is not a live bug. Made tolerant anyway: the
+            // helper's other writers DO emit fractional seconds, and the day
+            // one of them starts writing this field, the failure would be an
+            // entire collector payload vanishing with no error the user sees.
+            guard let timestamp = sharedISO8601Parse(envelope.timestamp) else {
                 throw CollectorResultsError.invalidTimestamp
             }
             guard now.timeIntervalSince(timestamp) <= maxAge else {
@@ -270,7 +277,7 @@ public enum HelperIPC {
 
         if let envelope = try? decoder.decode(CollectorResultsEnvelopeV1.self, from: data) {
             if let timestampString = envelope.timestamp {
-                guard let timestamp = sharedISO8601Formatter.date(from: timestampString) else {
+                guard let timestamp = sharedISO8601Parse(timestampString) else {
                     throw CollectorResultsError.invalidTimestamp
                 }
                 guard now.timeIntervalSince(timestamp) <= maxAge else {

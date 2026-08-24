@@ -278,7 +278,7 @@ public struct ChutesCollector: ProviderCollector, Sendable {
         case let s as String:
             let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
             if let numeric = Double(t) { return epochDate(numeric) }
-            return sharedISO8601Formatter.date(from: t)
+            return sharedISO8601Parse(t)
         default:
             return nil
         }

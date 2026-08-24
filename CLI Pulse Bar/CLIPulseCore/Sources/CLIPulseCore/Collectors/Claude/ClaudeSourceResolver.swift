@@ -216,7 +216,13 @@ public struct ClaudeSourceResolver: Sendable {
             }
 
             let fetchedAtStr = json["fetched_at"] as? String ?? "missing"
-            let date = sharedISO8601Formatter.date(from: fetchedAtStr)
+            // v1.50: tolerant parse. Strict returned nil for the app-group
+            // helper's microsecond format, so this diagnostic reported every
+            // such snapshot as infinitely old while `readSnapshot` was treating
+            // the same file as fresh. `.infinity` stays the right answer for a
+            // genuinely unparseable value; the two now agree on which values
+            // those are.
+            let date = sharedISO8601Parse(fetchedAtStr)
             let age = date.map { Date().timeIntervalSince($0) } ?? .infinity
             let liveFresh = age <= ClaudeHelperContract.maxSnapshotAge
             let cacheFresh = age <= cacheMaxAge

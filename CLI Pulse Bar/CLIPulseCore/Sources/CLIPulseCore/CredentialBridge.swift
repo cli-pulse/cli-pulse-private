@@ -97,9 +97,15 @@ public enum CredentialBridge {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             return nil
         }
-        if let timestampStr = json["timestamp"] as? String,
-           let timestamp = sharedISO8601Formatter.date(from: timestampStr) {
-            if now.timeIntervalSince(timestamp) > maxAge {
+        // v1.50: the `if let` chain used to swallow a parse failure — an
+        // unparseable timestamp skipped the whole staleness check and the
+        // bridged credential was used regardless of age. Tolerant parse, and an
+        // age we cannot determine is treated as too old. A stale credential
+        // fails a provider call visibly; a silently-accepted one fails in ways
+        // the user cannot attribute.
+        if let timestampStr = json["timestamp"] as? String {
+            guard let timestamp = sharedISO8601Parse(timestampStr),
+                  now.timeIntervalSince(timestamp) <= maxAge else {
                 return nil
             }
         }
