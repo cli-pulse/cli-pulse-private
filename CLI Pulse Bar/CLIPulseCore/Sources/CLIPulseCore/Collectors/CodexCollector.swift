@@ -60,10 +60,79 @@ public struct CodexCollector: ProviderCollector, Sendable {
         var lastRefresh: Date?
 
         var needsRefresh: Bool {
-            guard lastRefresh != nil else { return true }
-            guard let lr = lastRefresh else { return true }
-            return Date().timeIntervalSince(lr) > 8 * 86400 // 8 days
+            CodexCollector.needsRefresh(
+                accessToken: accessToken,
+                lastRefresh: lastRefresh,
+                now: Date()
+            )
         }
+    }
+
+    /// Whether the OAuth tokens in `auth.json` should be rotated on this pass.
+    ///
+    /// v1.50 W-A — this decision writes to a file CLI Pulse does not own.
+    /// A "yes" means POSTing the user's refresh token to `auth.openai.com` and
+    /// overwriting `~/.codex/auth.json` with a new token triple. Getting it
+    /// wrong is not a display bug; it rotates someone else's credentials.
+    ///
+    /// It was wrong. The old rule was "refresh unless `lastRefresh` is less than
+    /// 8 days old", and `lastRefresh` came from
+    /// `sharedISO8601Formatter.date(from:)` — the strict formatter, with no
+    /// `.withFractionalSeconds`. The Codex CLI writes
+    /// `"last_refresh": "2026-08-23T05:57:04.859771Z"`. The strict formatter
+    /// returns nil for that, `lastRefresh` was nil, and nil meant "refresh".
+    /// So the 8-day guard never held once: every collector pass rotated the
+    /// user's OpenAI credentials. Observed on a fresh Developer ID install on
+    /// 2026-08-24 — 1.5 s after the onboarding wizard's close button, with the
+    /// wizard's privacy step never shown, `auth.json` came back with a new
+    /// access_token, refresh_token and id_token.
+    ///
+    /// Two changes. Parse with `sharedISO8601Parse`, which accepts both spellings.
+    /// And prefer the access token's own `exp` claim over a timestamp another
+    /// program maintains: the token says when it stops working, so we no longer
+    /// have to trust a sidecar field to answer a question the token already
+    /// answers. Codex access tokens are JWTs with a 240-hour lifetime, and
+    /// `renewalWindow` keeps the old intent — renew with slack in hand, not on
+    /// the cadence of the refresh loop.
+    ///
+    /// The unknown case still refreshes. When neither the token nor the
+    /// timestamp says anything, refusing to renew would strand every pass on an
+    /// expired token, and `fetchUsage` has no 401-retry to recover with. That
+    /// population is the reason this is `internal` and pinned by tests rather
+    /// than folded back into the caller.
+    static let renewalWindow: TimeInterval = 48 * 3600
+
+    static func needsRefresh(
+        accessToken: String?,
+        lastRefresh: Date?,
+        now: Date
+    ) -> Bool {
+        if let expiry = jwtExpiry(accessToken) {
+            return expiry.timeIntervalSince(now) <= renewalWindow
+        }
+        guard let lastRefresh else { return true }
+        return now.timeIntervalSince(lastRefresh) > 8 * 86400 // 8 days
+    }
+
+    /// The `exp` claim of a JWT access token, or nil for anything that is not a
+    /// readable JWT (an `OPENAI_API_KEY`, an opaque token, a malformed one).
+    /// Signature is deliberately NOT verified: this only decides whether to ask
+    /// for a fresh token, and a forged `exp` can at worst cost one extra refresh
+    /// — never a trust decision.
+    static func jwtExpiry(_ token: String?) -> Date? {
+        guard let token else { return nil }
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        var payload = String(parts[1])
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        // base64url drops the padding that Foundation's decoder requires.
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let exp = (json["exp"] as? NSNumber)?.doubleValue
+        else { return nil }
+        return Date(timeIntervalSince1970: exp)
     }
 
     private func codexHomePath() -> String {
@@ -91,7 +160,12 @@ public struct CodexCollector: ProviderCollector, Sendable {
         auth.accountId = tokens["account_id"] as? String
 
         if let lrStr = json["last_refresh"] as? String {
-            auth.lastRefresh = sharedISO8601Formatter.date(from: lrStr)
+            // v1.50 W-A: `sharedISO8601Parse` (tolerant), not
+            // `sharedISO8601Formatter.date(from:)` (strict). The Codex CLI writes
+            // fractional seconds, the strict formatter rejects them, and the nil
+            // that produced meant "rotate this user's credentials". See
+            // `needsRefresh(accessToken:lastRefresh:now:)`.
+            auth.lastRefresh = sharedISO8601Parse(lrStr)
         }
 
         // Fallback: check for direct API key

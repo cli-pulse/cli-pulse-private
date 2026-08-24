@@ -503,6 +503,31 @@ public actor APIClient {
         value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
     }
 
+    /// The percent-encoded signed-in user id, or a thrown error.
+    ///
+    /// v1.50 W-A. Every user-scoped REST path below interpolates the caller's
+    /// user id into a PostgREST filter, and each of them used to spell that
+    /// `userId ?? ""`. With no session that produces `user_id=eq.` — a request
+    /// that cannot match anything, and that PostgREST answers with HTTP 400.
+    ///
+    /// It is not hypothetical and it is not confined to the cloud path.
+    /// `refreshLocal` ends by calling `completeRefresh()`, which starts
+    /// `refreshYieldScore()`, which calls `settings()`. So an unauthenticated
+    /// Mac in local mode reaches this code on its refresh cadence. Production
+    /// edge logs for 2026-08-24 show a v1.49.0 install issuing
+    /// `GET /rest/v1/user_settings?user_id=eq.&select=*` → 400 about every two
+    /// minutes — a machine talking to our backend while the app tells its owner
+    /// it is running locally.
+    ///
+    /// Refusing before the request keeps "local" honest and costs nothing: the
+    /// callers are all user-scoped, so an empty id had no useful answer anyway.
+    private func requireUserID() throws -> String {
+        guard let userId, !userId.isEmpty else {
+            throw APIError.notAuthenticated
+        }
+        return Self.sanitizeParam(userId)
+    }
+
     private struct EmptyBody: Codable {}
 
     private struct RefreshTokenRequest: Encodable {
@@ -831,7 +856,7 @@ public actor APIClient {
     }
 
     private func fetchProfile(select: String) async throws -> SupabaseProfileRecord? {
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let profiles: [SupabaseProfileRecord] = try await restGet(
             "/rest/v1/profiles?id=eq.\(safeUserId)&select=\(select)"
         )
@@ -1352,7 +1377,7 @@ public actor APIClient {
     // MARK: - Sessions
 
     public func sessions() async throws -> [SessionRecord] {
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let rows: [SessionRecordPayload] = try await restGet(
             "/rest/v1/sessions?user_id=eq.\(safeUserId)&select=*,devices(name)&order=last_active_at.desc&limit=50"
         )
@@ -1379,7 +1404,7 @@ public actor APIClient {
     // MARK: - Devices
 
     public func devices() async throws -> [DeviceRecord] {
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let rows: [DeviceRecordPayload] = try await restGet(
             "/rest/v1/devices?user_id=eq.\(safeUserId)&select=*&order=last_seen_at.desc"
         )
@@ -1430,7 +1455,7 @@ public actor APIClient {
     // MARK: - Alerts
 
     public func alerts() async throws -> [AlertRecord] {
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let rows: [AlertRecordPayload] = try await restGet(
             "/rest/v1/alerts?user_id=eq.\(safeUserId)&select=*&order=created_at.desc&limit=50"
         )
@@ -1468,7 +1493,7 @@ public actor APIClient {
 
     public func acknowledgeAlert(id: String) async throws -> SuccessResponse {
         let safeId = Self.sanitizeParam(id)
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         try await restPatch(
             "/rest/v1/alerts?id=eq.\(safeId)&user_id=eq.\(safeUserId)",
             body: AcknowledgeAlertRequest(
@@ -1481,7 +1506,7 @@ public actor APIClient {
 
     public func resolveAlert(id: String) async throws -> SuccessResponse {
         let safeId = Self.sanitizeParam(id)
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         try await restPatch(
             "/rest/v1/alerts?id=eq.\(safeId)&user_id=eq.\(safeUserId)",
             body: ResolveAlertRequest(is_resolved: true)
@@ -1491,7 +1516,7 @@ public actor APIClient {
 
     public func snoozeAlert(id: String, minutes: Int) async throws -> SuccessResponse {
         let safeId = Self.sanitizeParam(id)
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let snoozeUntil = Self.isoFormatter.string(from: Date().addingTimeInterval(Double(minutes) * 60))
         try await restPatch(
             "/rest/v1/alerts?id=eq.\(safeId)&user_id=eq.\(safeUserId)",
@@ -1503,7 +1528,7 @@ public actor APIClient {
     // MARK: - Settings
 
     public func settings() async throws -> SettingsSnapshot {
-        let safeUserId = Self.sanitizeParam(userId ?? "")
+        let safeUserId = try requireUserID()
         let rows: [SettingsPayload] = try await restGet("/rest/v1/user_settings?user_id=eq.\(safeUserId)&select=*")
         let settings = rows.first
         return SettingsSnapshot(
@@ -3146,6 +3171,11 @@ public enum APIError: LocalizedError, Equatable {
     case invalidResponse
     case httpError(status: Int, body: String)
     case tokenExpired
+    /// v1.50 W-A: a user-scoped request was attempted with no signed-in user.
+    /// Raised by `requireUserID()` *before* any network call, so an
+    /// unauthenticated local-mode Mac never reaches the wire. Distinct from
+    /// `.tokenExpired`, which means we had a session and the server rejected it.
+    case notAuthenticated
 
     public var errorDescription: String? {
         switch self {
@@ -3155,6 +3185,8 @@ public enum APIError: LocalizedError, Equatable {
             return "HTTP \(status): \(body)"
         case .tokenExpired:
             return "Session expired. Please sign in again."
+        case .notAuthenticated:
+            return "Not signed in."
         }
     }
 }
