@@ -125,26 +125,43 @@ final class ClaudePricingOpus47Tests: XCTestCase {
             "opus-4-8 has an explicit entry and must keep its own name")
     }
 
-    func testNormalize_unknownFutureOpusFallsBackToHighestKnownMinor() {
-        // A still-unreleased minor (`claude-opus-4-9`) isn't priced. Without the
-        // family fallback, the next minor release silently regresses cost to $0
-        // the day it ships. It should fall back to the highest priced sibling,
-        // which is now opus-4-8.
-        let normalized = CostUsageScanner.Pricing.normalizeClaudeModel("claude-opus-4-9")
-        XCTAssertEqual(normalized, "claude-opus-4-8",
-            "unknown opus minor should fall back to the highest priced sibling in the same family")
+    // v1.50 — these three used to assert on `normalizeClaudeModel`, because
+    // normalization and pricing were the same function. They are now separate:
+    // `normalize` answers "what is this model called", `claudePricingKey`
+    // answers "what do we charge it". The thing these tests were protecting —
+    // an unreleased sibling must not silently cost $0 — is unchanged and is
+    // asserted on the pricing key. Each also now pins the half that was
+    // previously impossible: the model keeps its own name in the By-Model
+    // breakdown instead of being relabelled as the sibling it borrowed a rate
+    // from.
+
+    func testUnknownFutureOpusIsPricedFromHighestKnownSibling() {
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.claudePricingKey("claude-opus-4-9"),
+            "claude-opus-4-8",
+            "unknown opus minor should be priced from the highest priced sibling in the same family")
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.normalizeClaudeModel("claude-opus-4-9"),
+            "claude-opus-4-9",
+            "…without being relabelled as that sibling")
     }
 
-    func testNormalize_unknownFutureSonnetFallsBackToHighestKnownMinor() {
-        let normalized = CostUsageScanner.Pricing.normalizeClaudeModel("claude-sonnet-4-9")
-        XCTAssertEqual(normalized, "claude-sonnet-4-6",
-            "unknown sonnet minor should fall back to the highest priced sibling in the same family")
+    func testUnknownFutureSonnetIsPricedFromHighestKnownSibling() {
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.claudePricingKey("claude-sonnet-4-9"),
+            "claude-sonnet-4-6")
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.normalizeClaudeModel("claude-sonnet-4-9"),
+            "claude-sonnet-4-9")
     }
 
-    func testNormalize_unknownFutureHaikuFallsBackToHighestKnownMinor() {
-        let normalized = CostUsageScanner.Pricing.normalizeClaudeModel("claude-haiku-4-9")
-        XCTAssertEqual(normalized, "claude-haiku-4-5",
-            "unknown haiku minor should fall back to the highest priced sibling in the same family")
+    func testUnknownFutureHaikuIsPricedFromHighestKnownSibling() {
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.claudePricingKey("claude-haiku-4-9"),
+            "claude-haiku-4-5")
+        XCTAssertEqual(
+            CostUsageScanner.Pricing.normalizeClaudeModel("claude-haiku-4-9"),
+            "claude-haiku-4-9")
     }
 
     func testFamilyFallback_doesNotPickUpDateSuffixSibling() {

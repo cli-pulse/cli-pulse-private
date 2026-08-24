@@ -564,6 +564,45 @@ public enum CostUsageScanner {
             "claude-opus-4-20250514": .init(inputCostPerToken: 1.5e-5, outputCostPerToken: 7.5e-5, cacheCreationCostPerToken: 1.875e-5, cacheReadCostPerToken: 1.5e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
             "claude-opus-4-1": .init(inputCostPerToken: 1.5e-5, outputCostPerToken: 7.5e-5, cacheCreationCostPerToken: 1.875e-5, cacheReadCostPerToken: 1.5e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
             "claude-sonnet-4-20250514": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: 200_000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheCreationAbove: 7.5e-6, cacheReadAbove: 6e-7),
+            // ---- Claude 5 generation (Aug 2026) --------------------------
+            // Every model below read $0 before this. The generation bump from
+            // `claude-opus-4-8` to `claude-opus-5` dropped the fourth
+            // component, and `familyFallback`'s regex required
+            // `claude-(opus|sonnet|haiku)-N-M` — four parts, three families. So
+            // the guard built to stop exactly this ("Without this, the next
+            // minor release silently regresses Today/Week cost to $0 the day it
+            // ships") did not fire, because the next release was not a minor.
+            // Measured on the owner's own archive: 15.47 BILLION tokens priced
+            // at zero, every day since 2026-07-30.
+            //
+            // Rates are Anthropic's published first-party API prices. Cache
+            // rates follow the same convention as every entry above and are
+            // documented on the Opus 4.7 row: cache_read = 10% of input,
+            // cache_write = 1.25x input (the standard 5-minute cache-write
+            // multiplier).
+            //
+            // Opus 5 — $5 / 1M input, $25 / 1M output. Unchanged headline rate
+            // from the whole Opus 4.x line, so this row's numbers are identical
+            // to `claude-opus-4-8`.
+            "claude-opus-5": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
+            // Sonnet 5 — $3 / 1M input, $15 / 1M output standard.
+            // ⚠️ TWO deliberate omissions, both erring toward a wrong number we
+            // can explain rather than one we cannot:
+            //   * The $2 / $10 introductory rate running through 2026-08-31 is
+            //     NOT encoded. A date-windowed rate is a bigger change than a
+            //     pricing row, and this over-states cost by 33% for a few days
+            //     on a model that is 0.6% of this archive's tokens.
+            //   * `thresholdTokens` is nil. Sonnet 4.5 and 4.6 both carry a
+            //     200K long-context tier at 2x, and Sonnet 5 plausibly does
+            //     too — but "plausibly" is not a rate. Flat pricing under-
+            //     states >200K requests; inventing a tier would over-state
+            //     every one of them. Confirm against Anthropic's pricing page
+            //     and add the tier.
+            "claude-sonnet-5": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
+            // Fable 5 — $10 / 1M input, $50 / 1M output. Above Opus-tier, so a
+            // family fallback to any Opus row would have under-priced it by 2x
+            // even if "fable" had parsed as a family. It needs its own row.
+            "claude-fable-5": .init(inputCostPerToken: 1e-5, outputCostPerToken: 5e-5, cacheCreationCostPerToken: 1.25e-5, cacheReadCostPerToken: 1e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
         ]
 
         static func normalizeCodexModel(_ raw: String) -> String {
@@ -575,6 +614,68 @@ public enum CostUsageScanner {
                 if codexModels[base] != nil { return base }
             }
             return trimmed
+        }
+
+        /// Which priced row to charge a Codex model against.
+        ///
+        /// The Claude side has had a family fallback since May 2026. The Codex
+        /// side never had one, so an unrecognised OpenAI model read $0 with no
+        /// safety net at all — and it is currently reading $0 for
+        /// `gpt-5.6-sol` and `gpt-5.6-terra`, 940M tokens on the machine this
+        /// was found on.
+        ///
+        /// The precedent for what to do is already in the table above: when
+        /// `gpt-5.5` appeared with no published billing, it was priced by
+        /// mirroring `gpt-5.4`, with the reasoning written down —
+        /// *"Approximate-but-non-zero beats zero for cost-aware UX; replace when
+        /// official."* This generalises that from a hand-written row into a
+        /// rule, so the NEXT unrecognised model is approximate instead of free.
+        ///
+        /// Tier is matched before version, and that ordering carries the whole
+        /// risk: `gpt-5.4-pro` costs 12x `gpt-5.4`. Charging an unknown `-pro`
+        /// at base rates would under-report by an order of magnitude, so a
+        /// `-pro`/`-mini`/`-nano` suffix only ever falls back to the same
+        /// suffix. An unknown suffix (`-sol`, `-terra`, `-codex-max`) is treated
+        /// as base tier, which is where every non-suffixed Codex model has sat.
+        static func codexPricingKey(_ raw: String) -> String? {
+            let normalized = normalizeCodexModel(raw)
+            if codexModels[normalized] != nil { return normalized }
+            guard let (version, tier) = codexVersionTier(normalized) else { return nil }
+            var best: (key: String, version: (Int, Int))?
+            for key in codexModels.keys {
+                guard let (otherVersion, otherTier) = codexVersionTier(key),
+                      otherTier == tier,
+                      key != normalized,
+                      otherVersion <= version   // same never-fall-forward rule
+                else { continue }
+                if best == nil || isBetterFallback(
+                    candidate: (key, otherVersion), than: best!
+                ) {
+                    best = (key, otherVersion)
+                }
+            }
+            return best?.key
+        }
+
+        /// `gpt-<major>[.<minor>][-<suffix>…]` → ((major, minor), tier).
+        /// Tier is `pro` / `mini` / `nano` when the name ends in one of those,
+        /// otherwise `base`. Everything else about the suffix is ignored:
+        /// `gpt-5.1-codex-max` and `gpt-5.6-sol` are both base tier.
+        static func codexVersionTier(_ model: String) -> ((Int, Int), String)? {
+            guard model.hasPrefix("gpt-") else { return nil }
+            let parts = model.dropFirst("gpt-".count).split(separator: "-")
+            guard let versionPart = parts.first else { return nil }
+            let versionBits = versionPart.split(separator: ".")
+            guard let major = Int(versionBits[0]) else { return nil }
+            let minor = versionBits.count > 1 ? (Int(versionBits[1]) ?? 0) : 0
+            let tier: String
+            switch parts.last.map(String.init) {
+            case "pro": tier = "pro"
+            case "mini": tier = "mini"
+            case "nano": tier = "nano"
+            default: tier = "base"
+            }
+            return ((major, minor), tier)
         }
 
         static func normalizeClaudeModel(_ raw: String) -> String {
@@ -591,57 +692,121 @@ public enum CostUsageScanner {
                 let base = String(trimmed[..<baseRange.lowerBound])
                 if claudeModels[base] != nil { return base }
             }
-            if claudeModels[trimmed] != nil { return trimmed }
-            // Family fallback: when the exact version isn't priced (e.g.
-            // a freshly-released `claude-opus-4-8`), fall back to the
-            // highest-numbered known version of the same `claude-(opus|
-            // sonnet|haiku)-N-M` family. Without this, the next minor
-            // release silently regresses Today/Week cost to $0 the day
-            // it ships — exactly how iter1 of this fix discovered the
-            // missing `claude-opus-4-7` entry. Family pricing within an
-            // Anthropic generation is stable enough that the
-            // last-known-version's rate is a sane default until a
-            // dedicated entry can be added.
-            if let fallback = familyFallback(trimmed) {
-                return fallback
-            }
             return trimmed
         }
 
-        /// Return the latest known `claude-(opus|sonnet|haiku)-N-X` key
-        /// for an unknown `claude-(opus|sonnet|haiku)-N-Y` input where
-        /// X is the highest priced sibling. Returns nil if the family
-        /// stem can't be parsed or has no priced siblings.
+        /// Highest version wins; ties break deterministically.
+        ///
+        /// Swift dictionary iteration order is unspecified, so "highest version"
+        /// alone left ties to hash order — `gpt-5.6-sol` resolved to `gpt-5.5`
+        /// on one run and `gpt-5.5-codex` on the next. The rates happened to be
+        /// identical, so nothing visible moved, which is precisely why it would
+        /// have survived: a flaky pricing key that only shows up when two rows
+        /// at the same version disagree on price.
+        ///
+        /// Shortest key first, then lexicographic. Shortest prefers the plain
+        /// family row (`gpt-5.5`) over a specialised sibling (`gpt-5.5-codex`),
+        /// which is the more conservative base to borrow from.
+        static func isBetterFallback(
+            candidate: (key: String, version: (Int, Int)),
+            than best: (key: String, version: (Int, Int))
+        ) -> Bool {
+            if candidate.version != best.version { return candidate.version > best.version }
+            if candidate.key.count != best.key.count { return candidate.key.count < best.key.count }
+            return candidate.key < best.key
+        }
+
+        /// Which priced row to charge `model` against.
+        ///
+        /// v1.50: split out of `normalizeClaudeModel`, which used to apply the
+        /// family fallback itself. That conflated two different questions —
+        /// **what do we call this model** and **what do we charge it** — and the
+        /// conflation cost something both ways:
+        ///
+        ///   * `ScanEntry.model` stores whatever `normalize` returns, so a
+        ///     fallback silently RELABELLED events. `claude-opus-4-8` traffic
+        ///     showed up in the By-Model breakdown as `opus-4-7` until someone
+        ///     added a dedicated row — and the row was added for the label, not
+        ///     the rate, since the rates were identical.
+        ///   * Which meant every new model needed a hand-written row purely to
+        ///     keep its own name, and a missed row read $0.
+        ///
+        /// Now `normalize` answers only the first question and this answers only
+        /// the second. A model we have never seen keeps its real name in the UI
+        /// *and* gets a defensible non-zero rate.
+        static func claudePricingKey(_ raw: String) -> String? {
+            let normalized = normalizeClaudeModel(raw)
+            if claudeModels[normalized] != nil { return normalized }
+            return familyFallback(normalized)
+        }
+
+        /// The newest priced sibling in the same Claude family, or nil.
+        ///
+        /// Accepts both version shapes, which is the fix. It used to require
+        /// `claude-(opus|sonnet|haiku)-N-M`; `claude-opus-5` has no `-M` and
+        /// `claude-fable-5` is not one of the three families, so the Claude 5
+        /// generation matched nothing and fell through to "unpriced" — 15.47
+        /// billion tokens at $0 on the machine this was found on.
+        ///
+        /// Ordering is by (generation, minor) so a generation bump beats any
+        /// minor: for `claude-opus-6`, `claude-opus-5` outranks
+        /// `claude-opus-4-8`. Within-family rates have been stable across
+        /// Anthropic generations often enough that the newest sibling is a sane
+        /// default, and an approximate non-zero number is worth far more to a
+        /// cost display than a confident zero.
+        ///
+        /// A new FAMILY still gets nothing — `claude-fable-5` had no priced
+        /// sibling on release and would have read $0 regardless. There is no
+        /// honest way to guess the rate of a tier that has never existed, and
+        /// Fable's $10/$50 (2x Opus) is exactly why guessing would be wrong.
+        /// That case needs a row, which is why it has one above.
         static func familyFallback(_ model: String) -> String? {
-            // Match `claude-(opus|sonnet|haiku)-<gen>-<minor>` (no date
-            // suffix here — caller already stripped 8-digit dates). The
-            // major+minor form is what Claude Code emits today.
-            guard let match = model.range(
-                of: #"^claude-(opus|sonnet|haiku)-(\d+)-(\d+)$"#,
-                options: .regularExpression
-            ), match == model.startIndex..<model.endIndex else { return nil }
-            // Cheap parse: split on '-', expect exactly 4 components.
-            let parts = model.split(separator: "-")
-            guard parts.count == 4 else { return nil }
-            let family = "claude-\(parts[1])-\(parts[2])-"
-            // Pick the highest-numbered sibling that's actually priced.
-            // Cap minor < 100 so a legacy `claude-sonnet-4-20250514` row
-            // (where `20250514` is a date masquerading as a minor) does
-            // NOT win the comparison against real minors like 5, 6, 7.
-            var best: (key: String, minor: Int)?
-            for key in claudeModels.keys where key.hasPrefix(family) {
-                let tail = String(key.dropFirst(family.count))
-                guard let minor = Int(tail), minor < 100 else { continue }
-                if best == nil || minor > best!.minor {
-                    best = (key, minor)
+            guard let (family, version) = claudeFamilyVersion(model) else { return nil }
+            var best: (key: String, version: (Int, Int))?
+            for key in claudeModels.keys {
+                guard let (otherFamily, otherVersion) = claudeFamilyVersion(key),
+                      otherFamily == family,
+                      key != model
+                else { continue }
+                // Cap both components below 100 so a legacy dated key like
+                // `claude-sonnet-4-20250514` (where `20250514` is a date
+                // masquerading as a minor) cannot win against a real minor.
+                guard otherVersion.0 < 100, otherVersion.1 < 100 else { continue }
+                // Never fall "up" to something newer than the model being
+                // priced: an old `claude-opus-4-9` must not be charged at Opus
+                // 5 rates. Filter DURING selection, not after — rejecting the
+                // single highest sibling at the end throws away the valid older
+                // ones behind it, and `claude-opus-4-9` resolved to nil instead
+                // of `claude-opus-4-8`.
+                guard otherVersion <= version else { continue }
+                if best == nil || isBetterFallback(
+                    candidate: (key, otherVersion), than: best!
+                ) {
+                    best = (key, otherVersion)
                 }
             }
             return best?.key
         }
 
+        /// `claude-<family>-<gen>[-<minor>]` → (family, (gen, minor)).
+        /// Any family word, not a hardcoded three. Missing minor reads as 0, so
+        /// `claude-opus-5` sorts as (5, 0) — above every `claude-opus-4-N` and
+        /// below `claude-opus-5-1` when that ships.
+        static func claudeFamilyVersion(_ model: String) -> (String, (Int, Int))? {
+            let parts = model.split(separator: "-")
+            guard parts.count >= 3, parts[0] == "claude" else { return nil }
+            let family = String(parts[1])
+            guard !family.isEmpty, Int(family) == nil else { return nil }
+            guard let generation = Int(parts[2]) else { return nil }
+            if parts.count == 3 { return (family, (generation, 0)) }
+            guard parts.count == 4, let minor = Int(parts[3]) else { return nil }
+            return (family, (generation, minor))
+        }
+
+
         static func codexCostUSD(model: String, inputTokens: Int, cachedInputTokens: Int, outputTokens: Int) -> Double? {
-            let key = normalizeCodexModel(model)
-            guard let p = codexModels[key] else { return nil }
+            guard let key = codexPricingKey(model),
+                  let p = codexModels[key] else { return nil }
             let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
             let nonCached = max(0, inputTokens - cached)
             let cachedRate = p.cacheReadCostPerToken ?? p.inputCostPerToken
@@ -649,8 +814,8 @@ public enum CostUsageScanner {
         }
 
         static func claudeCostUSD(model: String, inputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, outputTokens: Int) -> Double? {
-            let key = normalizeClaudeModel(model)
-            guard let p = claudeModels[key] else { return nil }
+            guard let key = claudePricingKey(model),
+                  let p = claudeModels[key] else { return nil }
 
             func tiered(_ tokens: Int, base: Double, above: Double?, threshold: Int?) -> Double {
                 guard let threshold, let above else { return Double(tokens) * base }

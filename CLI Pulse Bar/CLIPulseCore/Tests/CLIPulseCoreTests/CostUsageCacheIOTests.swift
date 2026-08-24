@@ -195,12 +195,18 @@ final class CostUsageCacheIOTests: XCTestCase {
         XCTAssertEqual(loaded.lastScanUnixMs, 42, "save→load roundtrip should not be invalidated by the stamping policy")
     }
 
-    func testCurrentPricingVersionIsThree() {
+    func testCurrentPricingVersionIsFour() {
         // Pin the constant so future bumps land in this test as a
         // grep-able diff. When you change pricing, bump the constant
         // AND this expectation in the same commit so the diff makes
         // the cache-invalidation intent obvious in code review.
-        XCTAssertEqual(costUsageCachePricingVersion, 3)
+        //
+        // 4 — v1.50, Claude 5 generation priced. Every cache written under 3
+        // holds costNanos=0 for claude-opus-5 / claude-fable-5 /
+        // claude-sonnet-5 / gpt-5.6-*, so without the bump the fix would apply
+        // only to logs written from here on and every historical day would keep
+        // reading $0. This pairing is exactly what the pin is for.
+        XCTAssertEqual(costUsageCachePricingVersion, 4)
     }
 
     // MARK: - wipeAll

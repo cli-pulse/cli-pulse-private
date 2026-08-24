@@ -37,7 +37,18 @@ import Foundation
 ///       ~all current Claude Code traffic. The stored per-file model
 ///       key is the normalized name, so a bump is required to re-parse
 ///       existing logs under the correct `opus-4-8` label.
-let costUsageCachePricingVersion: Int = 3
+///   4 — Aug 2026: the Claude 5 generation priced, and the pricing key
+///       split away from the display name. Every cache written before
+///       this holds `costNanos=0` for every `claude-opus-5`,
+///       `claude-fable-5`, `claude-sonnet-5`, `gpt-5.6-sol` and
+///       `gpt-5.6-terra` event — 15.47 billion tokens at zero on the
+///       machine this was found on, every day since 2026-07-30. Same
+///       failure as bump 2, one generation later: the family fallback
+///       required a four-component `claude-opus-4-8` shape and the
+///       generation bump dropped the fourth component. Without this
+///       bump the fix would only apply to logs written from here on,
+///       and every historical day would keep reading $0.
+let costUsageCachePricingVersion: Int = 4
 
 struct CostUsageCache: Codable {
     var version: Int = 1
