@@ -185,7 +185,46 @@ public enum CostUsageScanner {
             options: options, cache: claudeCache, now: now
         ))
 
+        reportUnpricedModels(allEntries)
         return CostUsageScanResult(entries: allEntries, activeSessionCandidates: allCandidates)
+    }
+
+    /// Say out loud when tokens were counted but could not be priced.
+    ///
+    /// v1.50. `DailyEntry.costUSD` is optional and every consumer sums it with
+    /// `if let cost { total += cost }` — so an unpriced model contributes
+    /// nothing and leaves no trace. The total that reaches the UI looks
+    /// complete. It is not, and there was no way to tell.
+    ///
+    /// That is how `claude-opus-5` displayed $0 for 25 days across 15.47 billion
+    /// tokens: the scanner knew, at the moment it computed each entry, that it
+    /// had no rate — and threw the knowledge away. Nothing was wrong with the
+    /// number it printed; the number simply omitted most of the bill.
+    ///
+    /// Borrowed from CodexBar's framing of the same problem: *"estimates are
+    /// labeled, partial totals show their coverage, and nothing unpriced
+    /// masquerades as a real bill."* This is the smallest useful piece of that —
+    /// the diagnostic, in the log the repo already greps when costs look wrong.
+    /// Showing coverage in the UI is the better fix and is a product decision.
+    ///
+    /// Deliberately NOT a warning per entry: a new model produces one of these
+    /// per day per scan, and a line per entry would bury it.
+    static func reportUnpricedModels(
+        _ entries: [CostUsageScanResult.DailyEntry],
+        log: (String) -> Void = { scanLogger.warning("\($0, privacy: .public)") }
+    ) {
+        var unpriced: [String: Int] = [:]
+        for entry in entries where entry.costUSD == nil {
+            let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
+            unpriced[entry.model, default: 0] += tokens
+        }
+        guard !unpriced.isEmpty else { return }
+        let total = unpriced.values.reduce(0, +)
+        let detail = unpriced
+            .sorted { $0.value > $1.value }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+        log("[Pricing] \(unpriced.count) model(s) had no rate and contributed $0 to the totals: \(total) tokens — \(detail)")
     }
 
     // MARK: - Sandbox-aware entry point (v1.9.4)
