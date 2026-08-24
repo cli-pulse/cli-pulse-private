@@ -28,7 +28,13 @@ public struct FolderAccessView: View {
             // entry is flagged `alwaysShow` (sandbox hides session-log dirs
             // until a bookmark is granted → filter would strip the only way
             // to grant the bookmark → chicken-and-egg).
-            ForEach(statuses.filter({ $0.isInstalled || $0.directory.alwaysShow }), id: \.directory.id) { item in
+            //
+            // v1.50 W0: that filter asked `isInstalled`, which under the sandbox
+            // is false for every directory without a bookmark — including the
+            // ones that are right there on disk. Route both the filter and the
+            // trailing control through `FolderAccessRowPolicy` so "cannot see"
+            // stops being reported as "not installed".
+            ForEach(visibleRows, id: \.directory.id) { item in
                 HStack {
                     Image(systemName: item.hasAccess ? "checkmark.circle.fill" : "exclamationmark.circle")
                         .foregroundStyle(item.hasAccess ? .green : .orange)
@@ -44,19 +50,26 @@ public struct FolderAccessView: View {
 
                     Spacer()
 
-                    if item.hasAccess {
+                    switch rowState(for: item) {
+                    case .granted:
                         Text(L10n.folderAccess.granted)
                             .font(.caption)
                             .foregroundStyle(.green)
-                    } else if item.directory.alwaysShow && !item.isInstalled {
-                        // v1.9.4: alwaysShow dirs that don't exist on this Mac
-                        // (e.g. ~/.config/claude/projects when the user doesn't
-                        // use CLAUDE_CONFIG_DIR). Grant would fail; show a
-                        // subtle "Not installed" instead of a dead button.
+                    case .notInstalled:
+                        // An `alwaysShow` dir that genuinely is not on this Mac
+                        // (e.g. ~/.config/claude/projects when the user does not
+                        // set CLAUDE_CONFIG_DIR). Grant would fail; a subtle
+                        // label beats a dead button.
+                        //
+                        // v1.50 W0: reachable only when the app can actually see
+                        // the path. Under the sandbox with no bookmark this
+                        // branch used to swallow every ungranted row, so a user
+                        // whose Codex logs were sitting right there was told they
+                        // were not installed and given no way to say otherwise.
                         Text(L10n.folderAccess.notInstalled)
                             .font(.caption)
                             .foregroundStyle(.tertiary)
-                    } else {
+                    case .grantable:
                         Button(L10n.folderAccess.grant) {
                             let success = BookmarkManager.shared.requestAccessViaPanel(
                                 directory: item.directory
@@ -75,7 +88,7 @@ public struct FolderAccessView: View {
                 .padding(.vertical, 2)
             }
 
-            if statuses.filter({ ($0.isInstalled || $0.directory.alwaysShow) && !$0.hasAccess }).count > 1 {
+            if visibleRows.filter({ rowState(for: $0) == .grantable }).count > 1 {
                 Divider()
                 Button {
                     grantAll()
@@ -129,6 +142,30 @@ public struct FolderAccessView: View {
         .onAppear { refreshStatuses() }
     }
 
+    /// v1.50 W0: one place that turns a raw status tuple into the three-state
+    /// answer, so the row's label, the row's control and the "Grant All"
+    /// threshold cannot drift apart. They had: the filter said `isInstalled ||
+    /// alwaysShow` while the trailing control said `alwaysShow && !isInstalled`,
+    /// and their overlap was a row that appeared with nothing to press.
+    private func rowState(
+        for item: (directory: BookmarkManager.KnownDirectory, hasAccess: Bool, isInstalled: Bool)
+    ) -> FolderAccessRowState {
+        FolderAccessRowPolicy.state(
+            hasAccess: item.hasAccess,
+            existsOnDisk: item.isInstalled,
+            isSandboxed: MASSandboxGate.isSandboxed
+        )
+    }
+
+    private var visibleRows: [(directory: BookmarkManager.KnownDirectory, hasAccess: Bool, isInstalled: Bool)] {
+        statuses.filter {
+            FolderAccessRowPolicy.isVisible(
+                state: rowState(for: $0),
+                alwaysShow: $0.directory.alwaysShow
+            )
+        }
+    }
+
     private func refreshStatuses() {
         guard state.runtimeEnvironment.capabilities.allowsLiveCollection else {
             statuses = []
@@ -163,7 +200,14 @@ public struct FolderAccessView: View {
             let rootStarted = rootURL.startAccessingSecurityScopedResource()
             defer { if rootStarted { rootURL.stopAccessingSecurityScopedResource() } }
 
-            for status in statuses where status.isInstalled || status.directory.alwaysShow {
+            // v1.50 W0: iterate every known directory, not the `isInstalled ||
+            // alwaysShow` subset. `isInstalled` was computed BEFORE the root
+            // bookmark existed, so under the sandbox it was false for every
+            // directory including the ones sitting right there — and Grant All
+            // silently skipped them. The `fileExists` guard on the next line is
+            // the correct filter and, unlike the old one, it runs while the root
+            // bookmark is held, which is exactly when the answer is truthful.
+            for status in statuses {
                 let subURL = URL(fileURLWithPath: status.directory.expandedPath)
                 guard FileManager.default.fileExists(atPath: subURL.path) else {
                     continue
