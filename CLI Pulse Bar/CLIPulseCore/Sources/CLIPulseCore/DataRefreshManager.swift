@@ -1510,8 +1510,11 @@ internal final class DataRefreshManager {
 
         switch decoded {
         case let .v1(envelope):
+            // v1.50: tolerant parse. `observedAt` is what the freshness
+            // filter downstream compares against, so a strict-parse nil here
+            // silently ages every helper row out of the Sessions list.
             let envelopeObservedAt = envelope.timestamp.flatMap {
-                sharedISO8601Formatter.date(from: $0)
+                sharedISO8601Parse($0)
             }
             let providerResults: [CollectorResult] = envelope.providers.keys.sorted().compactMap {
                 providerName -> CollectorResult? in
@@ -1551,7 +1554,7 @@ internal final class DataRefreshManager {
             )
 
         case let .v2(envelope):
-            let envelopeObservedAt = sharedISO8601Formatter.date(from: envelope.timestamp)
+            let envelopeObservedAt = sharedISO8601Parse(envelope.timestamp)
             let accountResults = envelope.accounts.enumerated().compactMap {
                 index,
                 account -> AccountScopedCollectorResult? in

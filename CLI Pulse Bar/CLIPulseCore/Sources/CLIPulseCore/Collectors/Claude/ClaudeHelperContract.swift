@@ -323,16 +323,44 @@ public enum ClaudeHelperContract {
 
     /// Read a helper snapshot with a caller-provided TTL.
     /// Returns nil when the file is missing, malformed, or older than `maxAge`.
-    public static func readSnapshot(maxAge: TimeInterval, sourceLabel: String) -> ClaudeSnapshot? {
-        for path in snapshotCandidatePaths {
+    /// - Parameter candidatePaths: test seam. Defaults to the real search list;
+    ///   the freshness behaviour here decides whether stale provider data is
+    ///   served as live, and pinning that used to require writing into the
+    ///   user's actual app-group container.
+    public static func readSnapshot(
+        maxAge: TimeInterval,
+        sourceLabel: String,
+        candidatePaths: [String]? = nil
+    ) -> ClaudeSnapshot? {
+        for path in candidatePaths ?? snapshotCandidatePaths {
             guard let data = FileManager.default.contents(atPath: path),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 continue
             }
 
-            let fetchedDate = (json["fetched_at"] as? String).flatMap { sharedISO8601Formatter.date(from: $0) }
-            if let date = fetchedDate,
-               Date().timeIntervalSince(date) > maxAge {
+            // v1.50. This block did not do what the doc comment above says.
+            //
+            // `sharedISO8601Formatter` is the STRICT formatter — no fractional
+            // seconds. The app-group helper writes `fetched_at` as
+            // `2026-08-07T13:00:41.901114+00:00`, which it cannot parse. That
+            // made `fetchedDate` nil, which made the `if let` false, which
+            // skipped the `continue` — so an unparseable timestamp meant "this
+            // snapshot is fresh" and the age check was silently bypassed.
+            // Observed on a real machine: a 17-day-old snapshot served as live
+            // Claude quota data.
+            //
+            // Two changes. Parse with `sharedISO8601Parse`, which accepts both
+            // spellings. And treat an age we cannot determine as STALE rather
+            // than fresh — matching this function's own contract ("Returns nil
+            // when the file is missing, malformed, or older than maxAge"), and
+            // matching `ClaudeSourceResolver`, which already scored an
+            // unparseable `fetched_at` as `.infinity` and therefore disagreed
+            // with this line about the same field in the same file.
+            guard let fetchedDate = (json["fetched_at"] as? String)
+                .flatMap({ sharedISO8601Parse($0) }) else {
+                continue
+            }
+            if Date().timeIntervalSince(fetchedDate) > maxAge {
                 continue
             }
 
@@ -472,10 +500,11 @@ public enum ClaudeHelperContract {
     }()
 
     private static func parseISO8601(_ raw: String) -> Date? {
-        // Try default format first via shared (immutable) formatter
-        if let date = sharedISO8601Formatter.date(from: raw) {
-            return date
-        }
+        // v1.50: delegate to the package-wide tolerant parser rather than
+        // keeping a second implementation of the same fallback. This one was
+        // correct; the problem was that two other sites in this same file did
+        // not use it.
+        if let shared = sharedISO8601Parse(raw) { return shared }
         // Fall back to fractional seconds with a local formatter — do NOT mutate the shared one
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -493,7 +522,7 @@ public enum ClaudeHelperContract {
             if let data = FileManager.default.contents(atPath: diagnosticPath),
                let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                let fetchedAt = json["fetched_at"] as? String,
-               let fetched = sharedISO8601Formatter.date(from: fetchedAt) {
+               let fetched = sharedISO8601Parse(fetchedAt) {
                 let age = Int(Date().timeIntervalSince(fetched))
                 let liveFresh = age < Int(maxSnapshotAge)
                 let cacheFresh = age < Int(cacheSnapshotAge)

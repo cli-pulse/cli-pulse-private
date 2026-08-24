@@ -344,7 +344,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
             resetDate = Date(timeIntervalSince1970: resetAt)
         } else if let resetAtStr = d["reset_at"] as? String {
             // ISO 8601 string format
-            resetDate = sharedISO8601Formatter.date(from: resetAtStr)
+            resetDate = sharedISO8601Parse(resetAtStr)
         }
         let windowSecs: Int
         if let intSecs = d["limit_window_seconds"] as? Int {
