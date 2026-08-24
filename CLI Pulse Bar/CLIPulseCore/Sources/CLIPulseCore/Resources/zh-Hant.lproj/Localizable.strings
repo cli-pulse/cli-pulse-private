@@ -1121,3 +1121,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "內建 helper 不讀取感測器,所以機器健康暫時不可用。這台 Mac 上其他功能都正常;感測器支援正在進行。";
 "machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › General」重新配對。";
+
+/* v1.50 W-C — 在讀取這台 Mac 之前的選擇 */
+"local_scan_consent.title" = "在 CLI Pulse 讀取這台 Mac 之前";
+"local_scan_consent.subtitle" = "目前還沒有讀取任何內容。開始掃描會啟用以下這些。";
+"local_scan_consent.files_title" = "最近 30 天的工作階段紀錄";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。CLI Pulse 解析其中的用量紀錄，並把結果快取在這台 Mac 上。";
+"local_scan_consent.derived_title" = "會從中得出什麼";
+"local_scan_consent.derived_detail" = "token 數、費用估算、模型名稱和日期，以及每次工作階段的檔案路徑、專案資料夾和工作階段 ID —— 清單就是靠這些來命名的。";
+"local_scan_consent.network_title" = "用這台 Mac 上既有的憑證存取服務供應商";
+"local_scan_consent.network_detail" = "為了顯示即時額度，CLI Pulse 會用各家 CLI 自己存在本機的權杖去呼叫它們。續期一個過期的權杖會重寫那個 CLI 的憑證檔。";
+"local_scan_consent.keychain_title" = "鑰匙圈裡 Claude Code 的權杖";
+"local_scan_consent.keychain_detail" = "macOS 會先問你一次。拒絕只會少了 Claude 的額度數字，其他都不受影響。";
+"local_scan_consent.telemetry_title" = "匿名統計是另一回事";
+"local_scan_consent.telemetry_detail" = "它不屬於這個選擇，不含檔案路徑或服務供應商名稱，在「設定 › 隱私」裡可以關掉。";
+"local_scan_consent.start" = "開始本機掃描";
+"local_scan_consent.not_now" = "暫時不要";
+"local_scan_consent.change_later" = "無論選哪個，「設定 › 隱私」裡隨時可以改。";
+"local_scan_consent.declined_title" = "本機掃描已關閉";
+"local_scan_consent.declined_body" = "CLI Pulse 沒有讀取這台 Mac 上的任何內容，所以暫時沒有可顯示的資料。";

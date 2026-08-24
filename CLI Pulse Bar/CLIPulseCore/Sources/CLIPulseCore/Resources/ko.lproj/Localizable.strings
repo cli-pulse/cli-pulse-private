@@ -853,3 +853,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "내장 헬퍼는 센서를 읽지 않으므로 머신 상태는 현재 사용할 수 없습니다. 이 Mac의 다른 기능은 정상 작동하며, 센서 지원은 준비 중입니다.";
 "machine.helper_unauthenticated" = "헬퍼가 이 앱의 자격 증명을 거부했습니다. '설정 › General'에서 다시 페어링하세요.";
+
+/* v1.50 W-C — 이 Mac을 읽기 전의 선택 */
+"local_scan_consent.title" = "CLI Pulse가 이 Mac을 읽기 전에";
+"local_scan_consent.subtitle" = "아직 아무것도 읽지 않았습니다. 스캔을 시작하면 아래 항목이 켜집니다.";
+"local_scan_consent.files_title" = "최근 30일간의 세션 로그";
+"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
+"local_scan_consent.derived_title" = "여기서 알아내는 것";
+"local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID — 세션 목록에 이름이 붙는 건 이것 덕분입니다.";
+"local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 제공업체에 연결";
+"local_scan_consent.network_detail" = "실시간 사용 한도를 보여주기 위해 각 CLI가 이 Mac에 저장해 둔 토큰으로 해당 제공업체를 호출합니다. 만료된 토큰을 갱신하면 그 CLI의 자격 증명 파일이 다시 쓰입니다.";
+"local_scan_consent.keychain_title" = "키체인에 있는 Claude Code 토큰";
+"local_scan_consent.keychain_detail" = "macOS가 먼저 한 번 물어봅니다. 거부해도 잃는 것은 Claude의 한도 수치뿐입니다.";
+"local_scan_consent.telemetry_title" = "익명 통계는 별개입니다";
+"local_scan_consent.telemetry_detail" = "이 선택에 포함되지 않으며, 파일 경로나 제공업체 이름을 담지 않고, 설정 › 개인정보에서 끌 수 있습니다.";
+"local_scan_consent.start" = "로컬 스캔 시작";
+"local_scan_consent.not_now" = "지금은 안 함";
+"local_scan_consent.change_later" = "어느 쪽을 고르든 설정 › 개인정보에서 언제든 바꿀 수 있습니다.";
+"local_scan_consent.declined_title" = "로컬 스캔이 꺼져 있습니다";
+"local_scan_consent.declined_body" = "CLI Pulse가 이 Mac에서 아무것도 읽지 않고 있어 아직 보여줄 것이 없습니다.";

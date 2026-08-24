@@ -483,6 +483,13 @@ public final class AgentSetupStateStore {
     static func hasUsedThisAppBefore(_ defaults: UserDefaults) -> Bool {
         if defaults.bool(forKey: legacyCompletedKey) { return true }
         if defaults.bool(forKey: localModeEnabledKey) { return true }
+        // v1.50 W-C. Answering the local-scan disclosure — either way — is
+        // evidence of prior use, and it has to be read here for the same reason
+        // every other key on this list is: a returning user who looks new gets
+        // captured by the wizard on every launch. `object(forKey:)` rather than
+        // `string(forKey:)` because "declined" is as much of an answer as
+        // "granted", and a `.bool` read would call one of them absence.
+        if defaults.object(forKey: LocalScanConsentStore.key) != nil { return true }
         // Provider configs count as prior use ONLY if the v2 wizard did not
         // write them itself. Selecting an account mid-wizard persists a seeded
         // blob (`OnboardingWizardView.persistSeededProviderMetadataIfNeeded`),

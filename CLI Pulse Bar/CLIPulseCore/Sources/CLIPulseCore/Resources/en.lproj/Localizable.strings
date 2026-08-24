@@ -1171,3 +1171,22 @@
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "Machine health isn't available with the built-in helper — it doesn't read sensors. Everything else on this Mac keeps working; sensor support is on the way.";
 "machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › General.";
+
+/* v1.50 W-C — the choice that precedes any read of this Mac */
+"local_scan_consent.title" = "Before CLI Pulse reads this Mac";
+"local_scan_consent.subtitle" = "Nothing has been read yet. Here is what starting the scan turns on.";
+"local_scan_consent.files_title" = "Session logs, last 30 days";
+"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/ and ~/.config/claude/projects/. CLI Pulse parses them for usage records and caches the results on this Mac.";
+"local_scan_consent.derived_title" = "What it works out from them";
+"local_scan_consent.derived_detail" = "Token counts, cost estimates, model names and dates — plus each conversation's file path, project folder and session id, which is how the Sessions list can name them.";
+"local_scan_consent.network_title" = "Provider websites, using credentials already on this Mac";
+"local_scan_consent.network_detail" = "For live quota, CLI Pulse calls the providers you use with the tokens their own CLIs stored here. Renewing an expired token rewrites that CLI's credential file.";
+"local_scan_consent.keychain_title" = "Your Keychain, for Claude Code's token";
+"local_scan_consent.keychain_detail" = "macOS asks you first, once. Declining costs you Claude's quota numbers and nothing else.";
+"local_scan_consent.telemetry_title" = "Anonymous statistics are a separate thing";
+"local_scan_consent.telemetry_detail" = "They are not part of this choice, they carry no file paths or provider names, and Settings › Privacy turns them off.";
+"local_scan_consent.start" = "Start local scan";
+"local_scan_consent.not_now" = "Not now";
+"local_scan_consent.change_later" = "Either way, Settings › Privacy changes it at any time.";
+"local_scan_consent.declined_title" = "Local scan is off";
+"local_scan_consent.declined_body" = "CLI Pulse is not reading anything on this Mac, so there is nothing to show yet.";
