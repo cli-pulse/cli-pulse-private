@@ -872,3 +872,6 @@
 "local_scan_consent.change_later" = "어느 쪽을 고르든 설정 › 개인정보에서 언제든 바꿀 수 있습니다.";
 "local_scan_consent.declined_title" = "로컬 스캔이 꺼져 있습니다";
 "local_scan_consent.declined_body" = "CLI Pulse가 이 Mac에서 아무것도 읽지 않고 있어 아직 보여줄 것이 없습니다.";
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "계정 없이 사용하기";
+"onboarding_wizard.use_locally_hint" = "나중에 설정에서 로그인할 수 있습니다.";

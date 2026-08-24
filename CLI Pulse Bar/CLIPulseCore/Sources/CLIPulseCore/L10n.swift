@@ -1116,6 +1116,13 @@ public enum L10n {
         public static var helperHint: String { tr("onboarding_wizard.helper_hint") }
         public static var done: String { tr("onboarding_wizard.done") }
         public static var close: String { tr("onboarding_wizard.close") }
+        /// v1.50 W-B. The wizard's local-mode exit has existed since v1.44 and
+        /// has never had a name — it is the unlabeled X in the corner, styled
+        /// `.plain` with a secondary tint "so it doesn't draw attention away
+        /// from the step's primary CTA". The action was right; hiding it was
+        /// the part that measured badly.
+        public static var useLocally: String { tr("onboarding_wizard.use_locally") }
+        public static var useLocallyHint: String { tr("onboarding_wizard.use_locally_hint") }
         public static func stepProgress(
             current: Int,
             total: Int,

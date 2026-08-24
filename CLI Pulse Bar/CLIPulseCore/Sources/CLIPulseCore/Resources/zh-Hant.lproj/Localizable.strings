@@ -1140,3 +1140,6 @@
 "local_scan_consent.change_later" = "無論選哪個，「設定 › 隱私」裡隨時可以改。";
 "local_scan_consent.declined_title" = "本機掃描已關閉";
 "local_scan_consent.declined_body" = "CLI Pulse 沒有讀取這台 Mac 上的任何內容，所以暫時沒有可顯示的資料。";
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "本機使用 —— 不需要帳號";
+"onboarding_wizard.use_locally_hint" = "之後隨時可以在「設定」裡登入。";

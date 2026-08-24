@@ -1192,3 +1192,6 @@
 "local_scan_consent.change_later" = "无论选哪个，「设置 › 隐私」里随时可以改。";
 "local_scan_consent.declined_title" = "本地扫描已关闭";
 "local_scan_consent.declined_body" = "CLI Pulse 没有读取这台 Mac 上的任何内容，所以暂时没有可显示的数据。";
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "本地使用 —— 不需要账号";
+"onboarding_wizard.use_locally_hint" = "以后随时可以在「设置」里登录。";

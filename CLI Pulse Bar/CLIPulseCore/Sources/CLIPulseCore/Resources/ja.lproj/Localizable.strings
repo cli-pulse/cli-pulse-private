@@ -1140,3 +1140,6 @@
 "local_scan_consent.change_later" = "どちらを選んでも、「設定 › プライバシー」でいつでも変更できます。";
 "local_scan_consent.declined_title" = "ローカルスキャンはオフです";
 "local_scan_consent.declined_body" = "CLI Pulse はこの Mac の何も読み取っていないため、表示できるものはまだありません。";
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "アカウントなしで使う";
+"onboarding_wizard.use_locally_hint" = "あとから「設定」でサインインできます。";

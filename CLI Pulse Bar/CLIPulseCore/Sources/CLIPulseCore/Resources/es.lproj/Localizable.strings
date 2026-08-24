@@ -872,3 +872,6 @@
 "local_scan_consent.change_later" = "Elijas lo que elijas, Ajustes › Privacidad lo cambia cuando quieras.";
 "local_scan_consent.declined_title" = "El análisis local está desactivado";
 "local_scan_consent.declined_body" = "CLI Pulse no está leyendo nada en este Mac, así que todavía no hay nada que mostrar.";
+/* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
+"onboarding_wizard.use_locally" = "Usar en local, sin cuenta";
+"onboarding_wizard.use_locally_hint" = "Puedes iniciar sesión más tarde desde Ajustes.";
