@@ -142,7 +142,17 @@ public struct SubscriptionView: View {
             //   - user already owns Lifetime (paywall shows "Owned" pill on
             //     the Pro tile via the existing currentTier == tier branch;
             //     a duplicate Lifetime tile would just confuse)
-            if manager.currentTier != .team && !manager.isLifetime {
+            //   - v1.51: the store is not offering the product. An App Store
+            //     Connect audit found `com.clipulse.pro.lifetime` in
+            //     MISSING_METADATA with no localization, no price point and no
+            //     review screenshot — created and never configured. StoreKit
+            //     therefore omits it from every response and this tile has
+            //     rendered a dead "Not Available" button since v1.14. Showing
+            //     an unbuyable purchase option reads as a transient glitch the
+            //     user should retry; it never resolves. When the product is
+            //     configured in ASC the tile returns on its own.
+            if manager.currentTier != .team && !manager.isLifetime
+                && manager.isOffered(SubscriptionManager.proLifetimeID) {
                 lifetimeCard
             }
         }

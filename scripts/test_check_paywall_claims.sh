@@ -10,7 +10,7 @@
 # same: a check that has never been watched to FAIL is not known to work.
 #
 # So this builds a throwaway copy of only the files the guard reads, mutates it
-# five ways, and asserts the guard rejects each one. It also asserts the
+# seven ways, and asserts the guard rejects each one. It also asserts the
 # unmutated fixture PASSES — without that positive control, a guard that always
 # failed would sail through every case below.
 set -uo pipefail
@@ -22,6 +22,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PAYWALL_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionView.swift"
+INLINE_REL="CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
 STRINGS_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
@@ -37,6 +38,7 @@ build_fixture() {
     # every file the registry points at, plus the paywall and one catalog
     {
         echo "$PAYWALL_REL"
+        echo "$INLINE_REL"
         echo "$STRINGS_REL"
         grep -v '^[[:space:]]*#' "$ROOT/scripts/paywall_claims.allow" \
             | grep -v '^[[:space:]]*$' | cut -d'|' -f2 \
@@ -140,6 +142,25 @@ before="$(shasum "$TMP/case/$PAYWALL_REL" | cut -d' ' -f1)"
 perl -0pi -e 's/features: \[/featuresRenamed: [/g' "$TMP/case/$PAYWALL_REL"
 assert_changed "parser matches nothing" "$TMP/case/$PAYWALL_REL" "$before" \
     && expect_fail "parser matches nothing" "found no feature bullets"
+
+# ── 6. the second paywall surface pitches a hardcoded literal ───────────────
+# This is the case the first version of the guard did not have, which is why
+# "Unlimited providers, 5 devices" survived in Settings after being deleted from
+# the main paywall. The literal below is the exact one that shipped.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$INLINE_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/features: L10n\.subscription\.unlimitedProviders/features: "Unlimited providers, 5 devices"/' \
+    "$TMP/case/$INLINE_REL"
+assert_changed "inline card literal" "$TMP/case/$INLINE_REL" "$before" \
+    && expect_fail "inline card literal" "hardcoded string literals"
+
+# ── 7. the second surface pitches an unregistered bullet ────────────────────
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$INLINE_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/features: L10n\.subscription\.unlimitedProviders/features: L10n.subscription.quantumEntanglement/' \
+    "$TMP/case/$INLINE_REL"
+assert_changed "inline card unregistered bullet" "$TMP/case/$INLINE_REL" "$before" \
+    && expect_fail "inline card unregistered bullet" "quantumEntanglement"
 
 echo
 echo "test_check_paywall_claims: $pass passed, $fail failed."

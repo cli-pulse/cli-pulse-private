@@ -46,10 +46,22 @@ fi
 PAYWALL="$ROOT/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionView.swift"
 ALLOW="$ROOT/scripts/paywall_claims.allow"
 
-# `everythingInPro` points at the Pro card rather than naming a benefit, so it
-# has no enforcement site of its own. It is the only such bullet; anything else
-# that wants an exemption should have to argue for it here.
-POINTER_BULLETS="everythingInPro"
+# The SECOND paywall surface. `SubscriptionSection` renders inline buy cards in
+# macOS Settings with their own one-line pitch, and the first cut of this guard
+# did not read it — so while the main paywall was being cleaned up, these rows
+# still said "Unlimited providers, 5 devices" and "Unlimited everything, team
+# features" in hardcoded English. A guard that watches one of two surfaces
+# licenses the other.
+INLINE="$ROOT/CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
+
+# Bullets that describe the SHAPE of a purchase rather than a capability
+# withheld from free, so there is no enforcement site to name:
+#   everythingInPro     — points at the Pro card's bullets.
+#   lifetimeDescription — states the billing terms of the Lifetime SKU
+#                         ("one-time purchase, no recurring charges").
+# Anything else asking for an exemption should have to argue for it here; the
+# default answer is "then it is not a benefit, delete it".
+POINTER_BULLETS="everythingInPro lifetimeDescription"
 
 # Deleted in v1.51. Listed by localization key because that is the form that
 # survives in the .strings catalogs after the Swift symbol is gone.
@@ -65,7 +77,7 @@ subscription.data_retention_365"
 
 failed=0
 
-for required in "$PAYWALL" "$ALLOW"; do
+for required in "$PAYWALL" "$ALLOW" "$INLINE"; do
     if [ ! -f "$required" ]; then
         echo "ERROR: expected file is missing: ${required#"$ROOT"/}"
         echo "       This guard cannot verify the paywall it cannot find."
@@ -107,6 +119,43 @@ fi
 # the whole registry into one unmatchable token.
 registered="$(grep -v '^[[:space:]]*#' "$ALLOW" | grep -v '^[[:space:]]*$' \
     | cut -d'|' -f1 | sed 's/[[:space:]]//g' | sort -u)"
+
+# ── 1b. the inline Settings buy cards ────────────────────────────────────────
+# Their pitch text must come from a registered L10n bullet, not a literal. A
+# hardcoded string here is invisible to every check above and to the .strings
+# catalogs, which is exactly how "5 devices" survived the first cleanup.
+inline_literals="$(awk '
+    /inlineProductRow\(/ , /\)/ {
+        if (match($0, /features: "[^"]*"/)) {
+            print substr($0, RSTART + 11, RLENGTH - 12)
+        }
+    }
+' "$INLINE" | grep -v '^Save ' || true)"
+
+if [ -n "$inline_literals" ]; then
+    echo "ERROR: the inline buy cards in SubscriptionSection.swift pitch features"
+    echo "       with hardcoded string literals:"
+    echo "$inline_literals" | sed 's/^/         "/; s/$/"/'
+    echo
+    echo "       Use a registered L10n.subscription bullet instead. A literal here"
+    echo "       is invisible to the paywall-claims registry and to every"
+    echo "       localization catalog — which is how \"5 devices\" and \"team"
+    echo "       features\" survived after both were removed from the main"
+    echo "       paywall. (Price-only blurbs like \"Save 17%\" are exempt.)"
+    failed=1
+fi
+
+inline_bullets="$(grep -oE 'features: L10n\.subscription\.[A-Za-z0-9_]+' "$INLINE" \
+    | sed 's/.*L10n\.subscription\.//' | sort -u)"
+for sym in $inline_bullets; do
+    case " $POINTER_BULLETS " in *" $sym "*) continue ;; esac
+    if ! echo "$registered" | grep -qx "$sym"; then
+        echo "ERROR: the inline buy card in SubscriptionSection.swift pitches"
+        echo "       'L10n.subscription.$sym', which is not registered in"
+        echo "       scripts/paywall_claims.allow."
+        failed=1
+    fi
+done
 
 # ── 2. every bullet is registered ────────────────────────────────────────────
 for sym in $bullets; do
