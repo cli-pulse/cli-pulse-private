@@ -39,6 +39,10 @@ struct SubscriptionSection: View {
                 tierResolutionDiagnostic
             }
 
+            // v1.51 — renders only when the store did not hand us everything
+            // the app asks for. Silent in the healthy case.
+            productLoadDiagnostic
+
             HStack {
                 Text(L10n.settings.providers)
                     .font(.system(size: 10))
@@ -155,16 +159,59 @@ struct SubscriptionSection: View {
         }
     }
 
+    /// v1.51 — surfaces what the last `loadProducts()` actually did.
+    ///
+    /// Until now a store failure and "no plans configured" both rendered as
+    /// the same silent empty list, so "the buy button is broken" could never
+    /// be ruled in or out — it stayed a live explanation for every conversion
+    /// number the product has produced. This is the smallest change that lets
+    /// someone smoke-test the purchase path and get an answer.
+    ///
+    /// Strictly local. No network call, no telemetry, no new data collection —
+    /// deliberately, since behavioural funnel measurement is Analytics-purpose
+    /// and needs an App Store privacy-label change first.
+    @ViewBuilder
+    private var productLoadDiagnostic: some View {
+        if let label = subscriptionManager.lastProductLoadOutcome.diagnosticLabel {
+            HStack(spacing: 4) {
+                Image(systemName: "cart.badge.questionmark")
+                    .font(.system(size: 9))
+                Text("Store: \(label)")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button {
+                    Task { await subscriptionManager.loadProducts() }
+                } label: {
+                    Text(L10n.subscription.retry)
+                        .font(.system(size: 9))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(PulseTheme.accent)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.secondary.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+        }
+    }
+
     private var inlineIAPCards: some View {
         VStack(spacing: 6) {
+            // v1.51 — this is the SECOND paywall surface, and it carried the
+            // same fictions as the first in hardcoded English: "5 devices" for
+            // a limit nothing enforces, and "team features" for RPCs that are
+            // not deployed to production. `check_paywall_claims.sh` now reads
+            // this file too, so the strings below must stay backed.
             if let pro = subscriptionManager.proMonthly {
-                inlineProductRow(product: pro, label: "Pro Monthly", features: "Unlimited providers, 5 devices")
+                inlineProductRow(product: pro, label: "Pro Monthly", features: L10n.subscription.unlimitedProviders)
             }
             if let proY = subscriptionManager.proYearly {
                 inlineProductRow(product: proY, label: "Pro Yearly", features: "Save 17%")
             }
             if let team = subscriptionManager.teamMonthly {
-                inlineProductRow(product: team, label: "Team Monthly", features: "Unlimited everything, team features")
+                inlineProductRow(product: team, label: "Team Monthly", features: L10n.subscription.everythingInPro)
             }
             if let teamY = subscriptionManager.teamYearly {
                 inlineProductRow(product: teamY, label: "Team Yearly", features: "Save 17%")

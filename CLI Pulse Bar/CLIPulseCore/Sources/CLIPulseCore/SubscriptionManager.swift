@@ -143,8 +143,46 @@ public final class SubscriptionManager: ObservableObject {
         proMonthlyID, proYearlyID, teamMonthlyID, teamYearlyID, proLifetimeID
     ]
 
+    /// v1.51 — what the last `loadProducts()` actually did. See that method for
+    /// why an unexplained empty list was worth removing. Local diagnostic only;
+    /// never transmitted.
+    public enum ProductLoadOutcome: Equatable, Sendable {
+        /// `loadProducts()` has not run yet in this process.
+        case notAttempted
+        /// This runtime does not bootstrap StoreKit at all (QA / quarantine).
+        case storeKitDisabled
+        /// Every ID in `allProductIDs` came back.
+        case complete
+        /// Some came back, some did not. The store does not report *why* an ID
+        /// is absent, so the missing list is the whole signal available — but
+        /// it is enough to tell "misconfigured product" from "no network".
+        case partial(missing: [String])
+        /// The call succeeded and returned an empty set: every ID is unknown to
+        /// the store. Usually a bundle-id / storefront / agreement problem.
+        case returnedNothing
+        /// `Product.products(for:)` threw.
+        case failed
+
+        /// Short, PII-free category for the Settings diagnostic line.
+        public var diagnosticLabel: String? {
+            switch self {
+            case .notAttempted, .storeKitDisabled, .complete:
+                return nil
+            case .partial(let missing):
+                return "\(missing.count) plan(s) not offered by the store"
+            case .returnedNothing:
+                return "store returned no plans"
+            case .failed:
+                return "store request failed"
+            }
+        }
+    }
+
     @Published public var currentTier: SubscriptionTier = .free
     @Published public var products: [Product] = []
+    /// Result of the most recent `loadProducts()`. Drives the Settings
+    /// diagnostic; never leaves the device.
+    @Published public var lastProductLoadOutcome: ProductLoadOutcome = .notAttempted
     @Published public var purchasedSubscriptions: [StoreKit.Transaction] = []
     @Published public var isLoading = false
     /// v1.14: true when the user has redeemed `proLifetimeID` (Non-Consumable
@@ -250,9 +288,33 @@ public final class SubscriptionManager: ObservableObject {
 
     // MARK: - Load Products
 
+    /// v1.51 — this used to swallow every failure into `products = []`, with
+    /// the comment "Products not available yet (e.g., not configured in App
+    /// Store Connect)" standing in for a diagnosis nobody could make.
+    ///
+    /// That mattered more than it looks. An empty product list and a thrown
+    /// StoreKit error render identically — a paywall with no buy button — and
+    /// both are indistinguishable from "the offer was seen and declined". So
+    /// "checkout is broken" stayed a live, untestable explanation for every
+    /// conversion number the product has ever produced. You cannot smoke-test
+    /// a purchase path that reports the same thing whether it works or not.
+    ///
+    /// It also hid a real defect for months. An App Store Connect audit found
+    /// `com.clipulse.pro.lifetime` sitting in MISSING_METADATA with no
+    /// localization, no price point and no review screenshot — a product shell
+    /// that was created and never configured. StoreKit omits it from every
+    /// response, so the Lifetime tile has rendered "Not Available" since v1.14
+    /// and has never once been purchasable. Nothing anywhere said so.
+    ///
+    /// `lastProductLoadOutcome` is a LOCAL diagnostic only. It is rendered in
+    /// Settings and never transmitted — deliberately, because behavioural
+    /// funnel collection is Analytics-purpose and would require an App Store
+    /// privacy-label change (see `PairingSection.swift:237`). Keep it that way
+    /// unless that label change is actually made.
     public func loadProducts() async {
         guard isStoreKitBootstrapEnabled else {
             products = []
+            lastProductLoadOutcome = .storeKitDisabled
             isLoading = false
             return
         }
@@ -260,11 +322,28 @@ public final class SubscriptionManager: ObservableObject {
         do {
             let storeProducts = try await Product.products(for: Self.allProductIDs)
             products = storeProducts.sorted { $0.price < $1.price }
+            let returned = Set(storeProducts.map(\.id))
+            let missing = Self.allProductIDs.subtracting(returned)
+            if storeProducts.isEmpty {
+                lastProductLoadOutcome = .returnedNothing
+            } else if missing.isEmpty {
+                lastProductLoadOutcome = .complete
+            } else {
+                lastProductLoadOutcome = .partial(missing: missing.sorted())
+            }
         } catch {
-            // Products not available yet (e.g., not configured in App Store Connect)
             products = []
+            lastProductLoadOutcome = .failed
         }
         isLoading = false
+    }
+
+    /// Whether a given product ID came back from the store on the most recent
+    /// load. Used by the paywall to hide a tile for something the store will
+    /// not sell, rather than rendering a dead "Not Available" button that
+    /// looks like a transient glitch and never resolves.
+    public func isOffered(_ productID: String) -> Bool {
+        products.contains { $0.id == productID }
     }
 
     // MARK: - Purchase
