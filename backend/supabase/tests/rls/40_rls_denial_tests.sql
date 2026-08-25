@@ -227,6 +227,109 @@ begin
 end $$;
 rollback;
 
+-- ── 5) SELF-ESCALATION on profiles (migrate_v0.74) ──────────────────────────
+-- Distinct from every assertion above: those are CROSS-user (B reaches A's
+-- rows). This one is SAME-user, WRONG-column — a user editing their OWN row to
+-- change a column they must not control. The suite had no coverage of that
+-- shape, which is how the profiles hole survived: `Users can update own
+-- profile` omits with_check, so Postgres reuses `using` as the check, and the
+-- only rule on the new row is "it is still your row" — nothing pins the column.
+-- Fixed by revoking table-level UPDATE (a column-level revoke is a no-op
+-- against a table-level grant, and was measured to be one).
+
+-- 5a) a user cannot raise their own tier
+begin;
+select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare n int; t text;
+begin
+  begin
+    update public.profiles set tier = 'team'
+      where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    get diagnostics n = row_count;
+    if n <> 0 then
+      raise exception 'FAIL[self-grant]: user escalated own tier on % row(s)', n;
+    end if;
+  exception when insufficient_privilege then
+    null;  -- expected: no UPDATE privilege on profiles
+  end;
+  select tier into t from public.profiles where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  if t is distinct from 'free' then
+    raise exception 'FAIL[self-grant]: tier is now %', t;
+  end if;
+  raise notice 'PASS[self-grant]: user cannot raise own profiles.tier';
+end $$;
+rollback;
+
+-- 5b) …nor forge the receipt columns the entitlement is derived from
+begin;
+select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare n int; v timestamptz;
+begin
+  begin
+    update public.profiles
+       set receipt_verified_at = now(), last_transaction_id = 'forged'
+     where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    get diagnostics n = row_count;
+    if n <> 0 then
+      raise exception 'FAIL[forge receipt]: user wrote receipt columns on % row(s)', n;
+    end if;
+  exception when insufficient_privilege then
+    null;
+  end;
+  select receipt_verified_at into v from public.profiles
+    where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  if v is not null then
+    raise exception 'FAIL[forge receipt]: receipt_verified_at is now %', v;
+  end if;
+  raise notice 'PASS[forge receipt]: user cannot forge profiles receipt columns';
+end $$;
+rollback;
+
+-- 5c) …and the upsert vector is closed too. PostgREST's
+-- `Prefer: resolution=merge-duplicates` compiles to INSERT .. ON CONFLICT DO
+-- UPDATE, which needs the same UPDATE privilege — a fix that only blocked the
+-- plain UPDATE would leave this open.
+begin;
+select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare t text;
+begin
+  begin
+    insert into public.profiles (id, name, email, tier)
+      values ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'x', 'x', 'team')
+      on conflict (id) do update set tier = 'team';
+  exception when insufficient_privilege or unique_violation then
+    null;
+  end;
+  select tier into t from public.profiles where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  if t is distinct from 'free' then
+    raise exception 'FAIL[upsert-grant]: tier is now % via ON CONFLICT DO UPDATE', t;
+  end if;
+  raise notice 'PASS[upsert-grant]: merge-duplicates cannot raise own tier';
+end $$;
+rollback;
+
+-- 5d) POSITIVE control — the user can still READ their own profile. Without
+-- this, an over-broad revoke would look identical to a correct one.
+begin;
+select set_config('request.jwt.claims', '{"sub":"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare n int;
+begin
+  select count(*) into n from public.profiles where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  if n < 1 then
+    raise exception 'FAIL[self read profile]: user cannot see own profile (RLS over-blocks)';
+  end if;
+  raise notice 'PASS[self read profile]: user sees own profile row';
+end $$;
+rollback;
+
 \echo '========================================================================'
 \echo 'ALL CROSS-USER RLS DENIAL TESTS PASSED'
 \echo '========================================================================'

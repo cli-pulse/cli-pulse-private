@@ -26,6 +26,25 @@ create policy "Users can update own profile"
 create policy "Users can insert own profile"
   on public.profiles for insert with check (auth.uid() = id);
 
+-- migrate_v0.74 — entitlement columns are SERVICE-ROLE ONLY.
+--
+-- The UPDATE policy above omits `with check`, so Postgres reuses `using` as the
+-- check: the only rule on the new row is "it is still your row". RLS is
+-- row-level and cannot pin a column, so with a table-level UPDATE grant this
+-- row — which carries `tier`, `receipt_verified_at` and `last_transaction_id`
+-- next to the user's own editable fields — was self-servable:
+--
+--     PATCH /rest/v1/profiles?id=eq.<own-uid>   {"tier":"team"}
+--
+-- Revoked at TABLE level on purpose: a column-level revoke cannot subtract from
+-- a table-level grant and was measured to be a complete no-op here.
+--
+-- Nothing legitimate needs it: validate-receipt writes the entitlement columns
+-- as SERVICE_ROLE, `paired` is written by SECURITY DEFINER RPCs, and no client
+-- on any platform PATCHes this table. Do not re-grant table-level UPDATE to add
+-- a "user edits their display name" feature — grant only that column.
+revoke update on public.profiles from authenticated, anon;
+
 -- Auto-create profile on signup
 create or replace function public.handle_new_user()
 returns trigger as $$
