@@ -211,11 +211,23 @@ build_macos() {
 </plist>
 EOF
 
+        # 2026-08-25: `-allowProvisioningUpdates` needs somebody to authenticate
+        # AS. Without credentials it falls back to an Xcode-signed-in Apple ID,
+        # and on a machine with none it fails with
+        #     error: exportArchive No Accounts
+        #     error: exportArchive No signing certificate "Mac Installer Distribution" found
+        # which reads like a missing certificate and is really a missing login.
+        # `upload_to_appstore` below already passes the API key for exactly this
+        # reason; the export step did not, so `--upload` worked and a plain
+        # build did not. Same three flags, same key.
         xcodebuild -exportArchive \
             -archivePath "$ARCHIVE" \
             -exportOptionsPlist "$BUILD_DIR/ExportOptions-macOS.plist" \
             -exportPath "$EXPORT" \
             -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_KEY_PATH" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$API_ISSUER" \
             -quiet
 
         echo "  ✓ Export: $EXPORT"
@@ -386,6 +398,9 @@ EOF
             -exportOptionsPlist "$BUILD_DIR/ExportOptions-iOS.plist" \
             -exportPath "$EXPORT" \
             -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_KEY_PATH" \
+            -authenticationKeyID "$API_KEY_ID" \
+            -authenticationKeyIssuerID "$API_ISSUER" \
             -quiet
 
         echo "  ✓ Export: $EXPORT"

@@ -1,0 +1,13 @@
+Costs were reading $0, and local mode was not local. Both are fixed.
+
+• Fixed: cost showed $0 for the Claude 5 and GPT-5.6 generation. Token counts were right the whole time; only the price lookup was missing, so those models contributed nothing to your Today and Week totals. If you have been running Opus 5, Fable 5, Sonnet 5 or the newer Codex models, your cost figures have been badly understated since late July. Existing logs are re-priced automatically on the first launch after updating.
+
+• New: CLI Pulse asks before it reads your Mac. Choosing to use CLI Pulse without an account now shows exactly what starting the scan turns on — which folders, how far back, what gets worked out from them, which providers get contacted, and the one-time Keychain prompt — with "Start local scan" and "Not now". Until you answer, nothing is read and nothing is contacted. "Not now" is remembered, and Settings › Privacy changes it at any time.
+
+• Fixed: renewing a provider token no longer happens on every refresh. A date-parsing bug meant a check written as "renew if the token is more than 8 days old" ran essentially every time.
+
+• Fixed: CLI Tool Access could report tools you had installed as "Not installed", and hide the Grant button for exactly those rows.
+
+• Fixed: a stale helper snapshot could be shown as live quota.
+
+• The option to use CLI Pulse without an account now has a name instead of being an unlabelled × in the corner of the setup window.
