@@ -66,7 +66,7 @@ while [[ $# -gt 0 ]]; do
         --skip-notarize) SKIP_NOTARIZE=1; shift ;;
         --skip-sign) SKIP_SIGN=1; SKIP_NOTARIZE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
-        --output-dir) OUTPUT_DIR="$2"; shift 2 ;;
+        --output-dir) OUTPUT_DIR="$2"; OUTPUT_DIR_EXPLICIT=1; shift 2 ;;
         --help|-h)
             sed -n '2,50p' "$0" | sed 's/^# \?//'
             exit 0
@@ -85,6 +85,66 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_INFO_PLIST="$PROJECT_ROOT/CLI Pulse Bar/CLI Pulse Bar/Info.plist"
 BUILD_SIGNED_APP="$SCRIPT_DIR/build_signed_app.sh"
 : "${OUTPUT_DIR:=$PROJECT_ROOT/build/v1.19-dmg}"
+
+# === Refuse to sign inside a file-provider (cloud-sync) domain ===
+#
+# 2026-08-25: five consecutive `codesign` attempts on the top-level bundle
+# failed with "resource fork, Finder information, or similar detritus not
+# allowed", exhausting the strip+sign retry loop that #440 added for exactly
+# this error. The retries were not flaky — they were losing a race.
+#
+# Measured, side by side, on the same machine in the same minute:
+#
+#   ~/Documents/cli pulse/build/…/CLI Pulse Bar.app
+#       xattr -c  ->  com.apple.FinderInfo AND com.apple.fileprovider.fpfs#P
+#                     are both back within 2 seconds, with nothing else running
+#   /private/tmp/…/CLIPulseBar.app  (ditto of the same bundle)
+#       xattr -c  ->  still clean after 12 seconds, and codesign succeeds
+#                     first try with the real Developer ID identity
+#
+# The cause is the location, not the nesting. `~/Documents` on this machine
+# carries `com.apple.file-provider-domain-id =
+# com.apple.CloudDocs.iCloudDriveFileProvider/…`, and that provider re-stamps
+# FinderInfo faster than any strip+sign loop can win.
+#
+# ⚠️ This CONTRADICTS the note in `feedback_icloud_finderinfo_breaks_codesign`
+# that said iCloud had been "ruled out — do not move the build out of
+# ~/Documents". That correction was right that signing nested bundles also
+# regrows FinderInfo; it was wrong that the file provider is uninvolved. The
+# controlled comparison above is the evidence, and it is reproducible in ten
+# seconds with `xattr -c` and a `sleep`.
+#
+# So: detect the domain and relocate rather than fight it. Deterministic
+# (an xattr lookup, no sleep) and a no-op on a machine whose build path is not
+# provider-managed — nothing changes there. `--output-dir` still wins if you
+# pass it explicitly, because an explicit choice should not be second-guessed.
+file_provider_domain_for() {
+    local dir="$1"
+    while [[ "$dir" != "/" && -n "$dir" ]]; do
+        if xattr -p com.apple.file-provider-domain-id "$dir" >/dev/null 2>&1; then
+            printf '%s' "$dir"
+            return 0
+        fi
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+if [[ -z "${OUTPUT_DIR_EXPLICIT:-}" ]]; then
+    mkdir -p "$OUTPUT_DIR"
+    if managed_root="$(file_provider_domain_for "$OUTPUT_DIR")"; then
+        SAFE_OUTPUT_DIR="$HOME/Library/Caches/CLIPulse/devid-build"
+        echo "warning: $OUTPUT_DIR sits inside a file-provider (cloud-sync) domain"
+        echo "         rooted at: $managed_root"
+        echo "         Its daemon re-stamps com.apple.FinderInfo on the app bundle"
+        echo "         within ~2s, which makes 'codesign' fail with 'resource fork,"
+        echo "         Finder information, or similar detritus not allowed' no matter"
+        echo "         how many times the signing step retries."
+        echo "         -> building in $SAFE_OUTPUT_DIR instead."
+        echo "         Pass --output-dir to override this and build wherever you like."
+        OUTPUT_DIR="$SAFE_OUTPUT_DIR"
+    fi
+fi
 mkdir -p "$OUTPUT_DIR"
 
 # === Detect arch ===
