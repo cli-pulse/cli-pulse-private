@@ -50,7 +50,8 @@
 -- SELECT and INSERT policies are deliberately left alone; DELETE has no policy
 -- and is already denied.
 
-begin;
+-- (apply_migration wraps this in its own transaction; existing migrations in
+-- this repo do not open one explicitly.)
 
 revoke update on public.profiles from authenticated, anon;
 
@@ -62,8 +63,6 @@ comment on table public.profiles is
   'edge function). `authenticated` has no UPDATE on this table at all — see '
   'migrate_v0.74. Do not re-grant table-level UPDATE to add a "user edits their '
   'display name" feature; grant only the specific column.';
-
-commit;
 
 -- ── Verification (run after applying; expects BLOCKED / BLOCKED / ok / ok) ──
 --
