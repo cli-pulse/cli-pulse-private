@@ -70,7 +70,6 @@
     <string name="subscription_processing">Procesando pago…</string>
     <string name="subscription_plan_features">Características del plan</string>
     <string name="subscription_providers">Proveedores</string>
-    <string name="subscription_devices">Dispositivos</string>
     <string name="subscription_data_retention">Retención de datos</string>
     <string name="subscription_available_plans">Planes disponibles</string>
     <string name="subscription_restore">Restaurar compras</string>
@@ -79,9 +78,6 @@
     <string name="subscription_current">Actual</string>
     <string name="subscription_subscribe">Suscribirse</string>
     <string name="subscription_unlimited">Ilimitado</string>
-    <string name="subscription_7_days">7 días</string>
-    <string name="subscription_90_days">90 días</string>
-    <string name="subscription_365_days">365 días</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">Análisis de costos</string>

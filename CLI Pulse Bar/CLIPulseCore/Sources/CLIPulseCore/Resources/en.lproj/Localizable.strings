@@ -212,16 +212,8 @@
 "subscription.pro_description" = "Advanced monitoring with extended history";
 "subscription.team_description" = "Full-featured monitoring for teams";
 "subscription.everything_in_pro" = "Everything in Pro";
-"subscription.unlimited_devices" = "Unlimited devices";
-"subscription.data_retention_365" = "365-day data retention";
-"subscription.team_dashboards" = "Team dashboards";
-"subscription.shared_alerts" = "Shared alerts & rules";
-"subscription.admin_controls" = "Admin controls";
 "subscription.unlimited_providers" = "Unlimited providers";
-"subscription.up_to_5_devices" = "Up to 5 devices";
-"subscription.data_retention_90" = "90-day data retention";
-"subscription.priority_alerts" = "Priority alerts";
-"subscription.cost_analytics" = "Cost analytics";
+"subscription.home_screen_widgets" = "Home & Lock Screen widgets (iPhone)";
 "subscription.per_year" = "/year";
 "subscription.per_month" = "/month";
 "subscription.upgrade_pro" = "Upgrade to Pro";
@@ -679,6 +671,8 @@
 
 /* ── Menu bar additions ── */
 "menu_bar.tier_migration" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings → Providers.";
+"menu_bar.over_plan_limits" = "Over CLI Pulse %1$@ plan limits — Providers: %2$d/%3$d. Upgrade or reduce usage.";
+"menu_bar.provider_limit_reached" = "Your CLI Pulse %1$@ plan allows up to %2$d providers. Upgrade to enable more.";
 "menu_bar.edit" = "Edit";
 "menu_bar.app_version" = "CLI Pulse v%@";
 "menu_bar.quit" = "Quit CLI Pulse";

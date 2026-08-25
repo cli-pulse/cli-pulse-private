@@ -212,16 +212,8 @@
 "subscription.team" = "Equipo";
 "subscription.team_description" = "Monitoreo con todas las funciones para equipos";
 "subscription.everything_in_pro" = "Todo lo de Pro";
-"subscription.unlimited_devices" = "Dispositivos ilimitados";
-"subscription.data_retention_365" = "365 días de retención";
-"subscription.team_dashboards" = "Paneles de equipo";
-"subscription.shared_alerts" = "Alertas y reglas compartidas";
-"subscription.admin_controls" = "Controles de administrador";
 "subscription.unlimited_providers" = "Proveedores ilimitados";
-"subscription.up_to_5_devices" = "Hasta 5 dispositivos";
-"subscription.data_retention_90" = "90 días de retención";
-"subscription.priority_alerts" = "Alertas prioritarias";
-"subscription.cost_analytics" = "Análisis de costos";
+"subscription.home_screen_widgets" = "Widgets de pantalla de inicio y bloqueo (iPhone)";
 "subscription.per_year" = "/año";
 "subscription.per_month" = "/mes";
 "subscription.upgrade_pro" = "Actualizar a Pro";
@@ -875,3 +867,7 @@
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "Usar en local, sin cuenta";
 "onboarding_wizard.use_locally_hint" = "Puedes iniciar sesión más tarde desde Ajustes.";
+
+/* v1.51 — upgrade prompts, previously hardcoded English in AppState / DataRefreshManager */
+"menu_bar.over_plan_limits" = "Has superado los límites del plan %1$@ de CLI Pulse — Proveedores: %2$d/%3$d. Mejora tu plan o reduce el uso.";
+"menu_bar.provider_limit_reached" = "Tu plan %1$@ de CLI Pulse permite hasta %2$d proveedores. Mejora tu plan para activar más.";

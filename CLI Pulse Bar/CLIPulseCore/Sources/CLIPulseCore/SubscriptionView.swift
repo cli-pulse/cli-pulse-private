@@ -92,32 +92,46 @@ public struct SubscriptionView: View {
 
     private var planCards: some View {
         VStack(spacing: 12) {
+            // v1.51 — every bullet below names a benefit that some code
+            // actually withholds from free. See
+            // `scripts/check_paywall_claims.sh`, which fails CI if a bullet
+            // appears here without a registered enforcement site.
+            //
+            // Five bullets were removed here because nothing implemented
+            // them: priority_alerts, cost_analytics, shared_alerts,
+            // admin_controls, team_dashboards. Three more were removed
+            // because the limit they name is not enforced anywhere:
+            // up_to_5_devices / unlimited_devices (every tier can pair 20 —
+            // `migrate_v0.36_desktop_otp.sql:66`) and data_retention_90 /
+            // data_retention_365 (the nightly cleanup is tier-blind and
+            // reads `user_settings.data_retention_days`, which defaults to 7
+            // for everyone and is never written from the tier —
+            // `migrate_v0.21_cleanup_cron.sql:41`).
             planCard(
                 name: L10n.subscription.pro,
                 tier: .pro,
                 product: isYearly ? manager.proYearly : manager.proMonthly,
                 features: [
                     L10n.subscription.unlimitedProviders,
-                    L10n.subscription.upTo5Devices,
-                    L10n.subscription.dataRetention90,
-                    L10n.subscription.priorityAlerts,
-                    L10n.subscription.costAnalytics
+                    L10n.subscription.homeScreenWidgets
                 ],
                 color: PulseTheme.accent,
                 isPopular: true
             )
 
+            // Team currently has NO exclusive benefit: `TeamView` gates on
+            // `isProOrAbove`, so Pro already gets every team feature, and
+            // Team's two nominal differentiators (unlimited devices,
+            // 365-day retention) are the unenforced ones deleted above.
+            // Listing only "Everything in Pro" is the honest description of
+            // what a Team subscription buys today. What Team *should* be is
+            // an open product question — see the monetization plan §6.
             planCard(
                 name: L10n.subscription.team,
                 tier: .team,
                 product: isYearly ? manager.teamYearly : manager.teamMonthly,
                 features: [
-                    L10n.subscription.everythingInPro,
-                    L10n.subscription.unlimitedDevices,
-                    L10n.subscription.dataRetention365,
-                    L10n.subscription.teamDashboards,
-                    L10n.subscription.sharedAlerts,
-                    L10n.subscription.adminControls
+                    L10n.subscription.everythingInPro
                 ],
                 color: PulseTheme.secondaryAccent,
                 isPopular: false

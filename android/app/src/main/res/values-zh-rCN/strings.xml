@@ -70,7 +70,6 @@
     <string name="subscription_processing">支付处理中…</string>
     <string name="subscription_plan_features">方案功能</string>
     <string name="subscription_providers">服务商</string>
-    <string name="subscription_devices">设备</string>
     <string name="subscription_data_retention">数据保留</string>
     <string name="subscription_available_plans">可用方案</string>
     <string name="subscription_restore">恢复购买</string>
@@ -79,9 +78,6 @@
     <string name="subscription_current">当前</string>
     <string name="subscription_subscribe">订阅</string>
     <string name="subscription_unlimited">不限</string>
-    <string name="subscription_7_days">7 天</string>
-    <string name="subscription_90_days">90 天</string>
-    <string name="subscription_365_days">365 天</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">费用分析</string>

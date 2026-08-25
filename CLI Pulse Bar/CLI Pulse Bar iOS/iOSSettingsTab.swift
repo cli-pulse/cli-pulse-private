@@ -111,19 +111,17 @@ struct iOSSettingsTab: View {
                                 .foregroundStyle(.secondary)
                         }
 
-                        HStack {
-                            Text(L10n.settings.devices)
-                            Spacer()
-                            Text(subscriptionManager.maxDevices < 0 ? L10n.account.unlimited : "\(subscriptionManager.maxDevices)")
-                                .foregroundStyle(.secondary)
-                        }
-
-                        HStack {
-                            Text(L10n.settings.dataRetention)
-                            Spacer()
-                            Text("\(subscriptionManager.dataRetentionDays) \(L10n.settings.days)")
-                                .foregroundStyle(.secondary)
-                        }
+                        // v1.51 — the "Devices" and "Data retention" rows used
+                        // to print `maxDevices` (2/5/∞) and
+                        // `dataRetentionDays` (7/90/365). Neither number is
+                        // enforced: device pairing caps at a flat 20 for every
+                        // tier (`migrate_v0.36_desktop_otp.sql:66`), and the
+                        // nightly cleanup reads
+                        // `user_settings.data_retention_days` — default 7 for
+                        // everyone, never written from the tier
+                        // (`migrate_v0.21_cleanup_cron.sql:41`). Printing them
+                        // told a paying user they had 90 days while the server
+                        // was deleting at 7. Removed rather than left to lie.
 
                         NavigationLink {
                             SubscriptionView(manager: subscriptionManager)

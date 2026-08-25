@@ -7,7 +7,9 @@ import XCTest
 ///
 /// Background: a CLI Pulse Pro-entitled account was seeing the
 /// `Over free plan limits — Devices: 4/1` banner at the top of the
-/// popover after sign-in. Root cause was a singleton
+/// popover after sign-in. (v1.51 removed the Devices half of that
+/// banner entirely — see `testTierLimitWarningNeverFiresOnDeviceCountAlone`.)
+/// Root cause was a singleton
 /// `SubscriptionManager.shared` init race + active sign-in paths
 /// that didn't `await subscriptionManager.updateCurrentEntitlements()`
 /// before kicking off `refreshAll()`. The fix lives in three places:
@@ -29,9 +31,7 @@ final class SubscriptionTierResolutionTests: XCTestCase {
     /// positive as the original bug.
     func testTierLimitWarningSuppressedWhenUnresolved() {
         let warning = DataRefreshManager.tierLimitWarning(
-            deviceCount: 4,
-            activeProviderCount: 0,
-            maxDevices: 1,
+            activeProviderCount: 4,
             maxProviders: 3,
             currentTierName: "Free",
             tierResolutionState: .unresolved
@@ -44,9 +44,7 @@ final class SubscriptionTierResolutionTests: XCTestCase {
     /// free-plan limit.
     func testTierLimitWarningSuppressedWhenDegraded() {
         let warning = DataRefreshManager.tierLimitWarning(
-            deviceCount: 4,
-            activeProviderCount: 0,
-            maxDevices: 1,
+            activeProviderCount: 4,
             maxProviders: 3,
             currentTierName: "Free",
             tierResolutionState: .resolvedDegraded
@@ -54,14 +52,12 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         XCTAssertNil(warning, "degraded tier MUST suppress the limit banner")
     }
 
-    /// Confirmed-free with 4 devices vs maxDevices=1 → banner fires
-    /// AND the copy explicitly mentions "CLI Pulse Free" so it's
+    /// Confirmed-free with 4 active providers vs maxProviders=3 → banner
+    /// fires AND the copy explicitly mentions "CLI Pulse Free" so it's
     /// not confused with a Claude/Codex Pro provider banner.
     func testTierLimitWarningFiresForConfirmedFreeWithCliPulsePrefix() {
         let warning = DataRefreshManager.tierLimitWarning(
-            deviceCount: 4,
-            activeProviderCount: 0,
-            maxDevices: 1,
+            activeProviderCount: 4,
             maxProviders: 3,
             currentTierName: "Free",
             tierResolutionState: .resolvedConfirmed
@@ -69,32 +65,57 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         XCTAssertNotNil(warning)
         XCTAssertTrue(warning?.contains("CLI Pulse Free plan limits") ?? false,
                       "banner copy must mention the CLI Pulse plan, not just 'free plan': \(String(describing: warning))")
-        XCTAssertTrue(warning?.contains("Devices: 4/1") ?? false)
+        XCTAssertTrue(warning?.contains("4/3") ?? false,
+                      "banner must name the provider count that tripped it: \(String(describing: warning))")
     }
 
-    /// Confirmed Pro with 4 devices and maxDevices=5 → no banner.
+    /// v1.51 NEGATIVE CONTROL — the device half of this banner is gone.
+    ///
+    /// It used to fire on `deviceCount > maxDevices` (free = 2). Nothing has
+    /// ever enforced a per-tier device limit: `register_helper` caps every
+    /// tier at a flat 20 (`migrate_v0.36_desktop_otp.sql:66`). So the app was
+    /// telling free users they had exceeded a limit that did not exist, and
+    /// offering to sell them a fix.
+    ///
+    /// This test would have failed before the change — it is the check that
+    /// the removal actually took effect rather than being papered over.
+    func testTierLimitWarningNeverFiresOnDeviceCountAlone() {
+        let warning = DataRefreshManager.tierLimitWarning(
+            activeProviderCount: 0,
+            maxProviders: 3,
+            currentTierName: "Free",
+            tierResolutionState: .resolvedConfirmed
+        )
+        XCTAssertNil(
+            warning,
+            """
+            A free account under the provider limit must produce NO banner, \
+            no matter how many devices it has paired. If this fails, a \
+            per-tier device limit has been reintroduced into the warning — \
+            do not do that unless something now enforces it.
+            """
+        )
+    }
+
+    /// Confirmed Pro with unlimited providers → no banner.
     /// Pin the bug surface that motivated the PR — a CLI Pulse Pro
     /// account at 4/5 devices was being told it was over the free
     /// plan limit because the upstream tier resolution hadn't
     /// finished by the time the warning was computed.
     func testTierLimitWarningNoBannerForProTierUnderLimit() {
         let warning = DataRefreshManager.tierLimitWarning(
-            deviceCount: 4,
-            activeProviderCount: 0,
-            maxDevices: 5,
+            activeProviderCount: 4,
             maxProviders: -1,
             currentTierName: "Pro",
             tierResolutionState: .resolvedConfirmed
         )
-        XCTAssertNil(warning, "Pro account at 4/5 devices must not produce a limit warning")
+        XCTAssertNil(warning, "Pro account with unlimited providers must not produce a limit warning")
     }
 
     /// Confirmed Team with -1 caps → no banner regardless of count.
     func testTierLimitWarningNoBannerForTeamTier() {
         let warning = DataRefreshManager.tierLimitWarning(
-            deviceCount: 99,
             activeProviderCount: 99,
-            maxDevices: -1,
             maxProviders: -1,
             currentTierName: "Team",
             tierResolutionState: .resolvedConfirmed

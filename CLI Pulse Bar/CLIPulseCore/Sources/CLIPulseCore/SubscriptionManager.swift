@@ -173,22 +173,41 @@ public final class SubscriptionManager: ObservableObject {
     public var isProOrAbove: Bool { currentTier == .pro || currentTier == .team }
     public var isTeam: Bool { currentTier == .team }
 
-    // Tier limits
+    // Tier limits.
+    //
+    // Only ONE of the three historical limits is real. `maxProviders` is
+    // enforced: `AppState.setProviderAccountEnabled` refuses to enable a 4th
+    // distinct ProviderKind, and `migrateProviderLimitsIfNeeded` prunes an
+    // over-limit free account down to its 3 most-used providers on sign-in.
+    //
+    // The other two were removed in v1.51 because they were numbers with no
+    // mechanism, printed in Settings and sold on the paywall:
+    //
+    //   maxDevices (2 / 5 / unlimited) — nothing consults tier when pairing.
+    //     `register_helper` caps every tier at a flat 20
+    //     (`migrate_v0.36_desktop_otp.sql:66`). The only consumer was a
+    //     warning banner accusing free users of exceeding a limit that does
+    //     not exist.
+    //
+    //   dataRetentionDays (7 / 90 / 365) — the nightly cleanup is tier-blind.
+    //     It loops over `user_settings.data_retention_days`
+    //     (`migrate_v0.21_cleanup_cron.sql:41`), a column that defaults to 7
+    //     for every account and that NO Swift code path ever writes from the
+    //     tier. So a Pro subscriber was told "90-day data retention" while
+    //     the server deleted their sessions at 7 days — the claim was not
+    //     merely unenforced, it was wrong in the direction that hurt the
+    //     people who paid.
+    //
+    // They are `unavailable` rather than deleted so that reintroducing either
+    // one is a compile error that arrives with this explanation attached.
+    // Restore a property here only together with the code that enforces it.
     public var maxProviders: Int { currentTier == .free ? 3 : -1 }
-    public var maxDevices: Int {
-        switch currentTier {
-        case .free: return 2
-        case .pro: return 5
-        case .team: return -1
-        }
-    }
-    public var dataRetentionDays: Int {
-        switch currentTier {
-        case .free: return 7
-        case .pro: return 90
-        case .team: return 365
-        }
-    }
+
+    @available(*, unavailable, message: "Device count is not tier-limited: every tier caps at a flat 20 in register_helper. Do not advertise or display a per-tier device limit until one is actually enforced.")
+    public var maxDevices: Int { fatalError("unavailable") }
+
+    @available(*, unavailable, message: "Cloud retention is not tier-derived: the nightly cleanup reads user_settings.data_retention_days, which defaults to 7 for every tier and is never written from the tier. Do not advertise or display a per-tier retention window until one is actually enforced.")
+    public var dataRetentionDays: Int { fatalError("unavailable") }
 
     // Convenience product accessors
     public var proMonthly: Product? { products.first { $0.id == Self.proMonthlyID } }

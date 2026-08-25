@@ -27,7 +27,9 @@ internal final class DataRefreshManager {
         /// fine because plan-limit gating doesn't need real-time freshness.
         /// (See `activeProviderCount` doc for the dedup rule.)
         let providers: [ProviderUsage]
-        let maxDevices: Int
+        // v1.51: `maxDevices` removed. Its only consumer was the
+        // "Devices: 4/2" half of `tierLimitWarning`, which warned about a
+        // limit nothing enforces. See that function's doc comment.
         let maxProviders: Int
         /// Display-form tier name — "Free", "Pro", "Team" (localized).
         /// Used in the banner copy. NOT the lowercase rawValue, which
@@ -458,12 +460,10 @@ internal final class DataRefreshManager {
             }
 
             let warning = Self.tierLimitWarning(
-                deviceCount: deviceData.count,
                 activeProviderCount: Self.activeProviderCount(
                     providers: context.providers,
                     providerConfigs: context.providerConfigs
                 ),
-                maxDevices: context.maxDevices,
                 maxProviders: context.maxProviders,
                 currentTierName: context.currentTierName,
                 tierResolutionState: context.tierResolutionState
@@ -2022,10 +2022,17 @@ internal final class DataRefreshManager {
     /// directly without juggling `@MainActor` ceremony. Pure function —
     /// no side effects, no AppState observation, no StoreKit / network
     /// access — keeps the test surface tight.
+    ///
+    /// v1.51: `deviceCount` / `maxDevices` were removed from this signature.
+    /// They produced a "Devices: 4/2" warning for a limit that does not
+    /// exist — nothing consults tier when pairing a device, and the only
+    /// real cap is a flat 20 applied to every tier
+    /// (`migrate_v0.36_desktop_otp.sql:66`). Accusing a free user of
+    /// exceeding a limit we never enforce is a false claim in the same
+    /// family as the paywall bullets deleted in `SubscriptionView`. Do not
+    /// reintroduce the parameters without a real enforcement site.
     nonisolated static func tierLimitWarning(
-        deviceCount: Int,
         activeProviderCount: Int,
-        maxDevices: Int,
         maxProviders: Int,
         currentTierName: String,
         tierResolutionState: TierResolutionState
@@ -2041,14 +2048,9 @@ internal final class DataRefreshManager {
         guard tierResolutionState == .resolvedConfirmed else {
             return nil
         }
-        var warnings: [String] = []
-        if maxDevices >= 0, deviceCount > maxDevices {
-            warnings.append("Devices: \(deviceCount)/\(maxDevices)")
+        guard maxProviders >= 0, activeProviderCount > maxProviders else {
+            return nil
         }
-        if maxProviders >= 0, activeProviderCount > maxProviders {
-            warnings.append("Providers: \(activeProviderCount)/\(maxProviders)")
-        }
-        guard !warnings.isEmpty else { return nil }
         // Copy explicitly says "CLI Pulse" + the localized tier name
         // ("Free", "Pro", "Team"). The pre-fix copy used the
         // lowercase rawValue ("Over free plan limits"), which is
@@ -2059,7 +2061,15 @@ internal final class DataRefreshManager {
         // subscription tier — the banner must make clear that this
         // limit refers to the **CLI Pulse app** plan, not whatever
         // provider plan the user is enrolled in for code generation.
-        return "Over CLI Pulse \(currentTierName) plan limits — \(warnings.joined(separator: ", ")). Upgrade or reduce usage."
+        //
+        // v1.51: was a hardcoded English literal, which meant the app's
+        // highest-intent copy was English-only for the five non-English
+        // localizations the paywall itself ships.
+        return L10n.menuBar.overPlanLimits(
+            currentTierName,
+            activeProviderCount,
+            maxProviders
+        )
     }
 
     /// "Active providers" for plan-limit gating purposes. Counts distinct
@@ -3511,7 +3521,6 @@ extension AppState {
             authenticatedUserID: userId,
             providerConfigs: providerConfigs,
             providers: providers,
-            maxDevices: subscriptionManager.maxDevices,
             maxProviders: subscriptionManager.maxProviders,
             // Display-form name (localized "Free"/"Pro"/"Team") so
             // the banner reads "Over CLI Pulse Pro plan limits…"
