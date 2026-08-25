@@ -212,16 +212,8 @@
 "subscription.team" = "팀";
 "subscription.team_description" = "팀을 위한 모든 기능의 모니터링";
 "subscription.everything_in_pro" = "Pro의 모든 기능 포함";
-"subscription.unlimited_devices" = "무제한 기기";
-"subscription.data_retention_365" = "365일 데이터 보존";
-"subscription.team_dashboards" = "팀 대시보드";
-"subscription.shared_alerts" = "공유 알림 및 규칙";
-"subscription.admin_controls" = "관리자 제어";
 "subscription.unlimited_providers" = "무제한 공급자";
-"subscription.up_to_5_devices" = "최대 5대 기기";
-"subscription.data_retention_90" = "90일 데이터 보존";
-"subscription.priority_alerts" = "우선 알림";
-"subscription.cost_analytics" = "비용 분석";
+"subscription.home_screen_widgets" = "홈 화면 및 잠금 화면 위젯(iPhone)";
 "subscription.per_year" = "/년";
 "subscription.per_month" = "/월";
 "subscription.upgrade_pro" = "Pro로 업그레이드";
@@ -875,3 +867,7 @@
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "계정 없이 사용하기";
 "onboarding_wizard.use_locally_hint" = "나중에 설정에서 로그인할 수 있습니다.";
+
+/* v1.51 — upgrade prompts, previously hardcoded English in AppState / DataRefreshManager */
+"menu_bar.over_plan_limits" = "CLI Pulse %1$@ 플랜 한도를 초과했습니다 — 공급자: %2$d/%3$d. 업그레이드하거나 사용을 줄이세요.";
+"menu_bar.provider_limit_reached" = "CLI Pulse %1$@ 플랜에서는 공급자를 최대 %2$d개까지 사용할 수 있습니다. 더 사용하려면 업그레이드하세요.";

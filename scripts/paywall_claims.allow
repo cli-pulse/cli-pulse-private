@@ -1,0 +1,29 @@
+# Registry of paid benefits the paywall is allowed to advertise.
+#
+# Every bullet in `SubscriptionView.planCard(features:)` must appear here, and
+# every entry here must still point at code that withholds the benefit from the
+# free tier. `scripts/check_paywall_claims.sh` enforces both directions.
+#
+# Format — four pipe-separated fields:
+#   <L10n symbol> | <file that enforces it> | <pattern that must still be there> | <what a free user loses>
+#
+# TWO tests, not one. A bullet earns its place only if BOTH hold:
+#   (1) WITHHELD — some code refuses the benefit to a free user. That is what
+#       the pattern field pins, and what this script can check mechanically.
+#   (2) DELIVERED — a paying user actually receives it. This script CANNOT
+#       check that, so it is on you, and it is the one that has already caught
+#       something: `teamWorkspaces` passed test (1) — `TeamView` genuinely gates
+#       on `isProOrAbove` — and failed test (2), because a production check
+#       found that only `my_teams` of the eight team RPCs the client calls is
+#       deployed. A Pro subscriber tapping "Create Team" hits a function that
+#       does not exist. It was drafted into this file and pulled before merge.
+#
+# So: before adding a line, go look at the thing working for a paid account.
+# "I found the gate" is half an answer.
+#
+# `everythingInPro` is deliberately absent: it is a pointer to the Pro card, not
+# a benefit of its own. It is exempted by name in the checker.
+
+unlimitedProviders | CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift | if currentEnabled >= maxProviders { | free tier cannot enable a 4th distinct provider kind; over-limit accounts are pruned to 3 on sign-in
+homeScreenWidgets  | CLI Pulse Bar/CLI Pulse Widgets/UsageOverviewWidget.swift      | entry.data.isPro == false            | free tier gets WidgetProLockedView instead of the home-screen widget
+homeScreenWidgets  | CLI Pulse Bar/CLI Pulse Widgets/LockScreenWidget.swift         | entry.data.isPro == false            | free tier gets the locked lock-screen widget

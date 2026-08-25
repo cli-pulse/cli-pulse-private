@@ -646,16 +646,31 @@ public enum L10n {
         public static var proDescription: String { tr("subscription.pro_description") }
         public static var teamDescription: String { tr("subscription.team_description") }
         public static var everythingInPro: String { tr("subscription.everything_in_pro") }
-        public static var unlimitedDevices: String { tr("subscription.unlimited_devices") }
-        public static var dataRetention365: String { tr("subscription.data_retention_365") }
-        public static var teamDashboards: String { tr("subscription.team_dashboards") }
-        public static var sharedAlerts: String { tr("subscription.shared_alerts") }
-        public static var adminControls: String { tr("subscription.admin_controls") }
         public static var unlimitedProviders: String { tr("subscription.unlimited_providers") }
-        public static var upTo5Devices: String { tr("subscription.up_to_5_devices") }
-        public static var dataRetention90: String { tr("subscription.data_retention_90") }
-        public static var priorityAlerts: String { tr("subscription.priority_alerts") }
-        public static var costAnalytics: String { tr("subscription.cost_analytics") }
+        // v1.51 — the one paid benefit that a code path both withholds from
+        // free AND can actually deliver to a payer:
+        // `UsageOverviewWidget:30`, `ProviderUsageWidget:28`,
+        // `LockScreenWidget:32`.
+        //
+        // `subscription.team_workspaces` was drafted here and pulled before
+        // merge. `TeamView` really does gate on `isProOrAbove`, so it passed
+        // the "is it withheld from free?" test — but a production check found
+        // that of the eight team RPCs the client calls, only `my_teams` is
+        // deployed. `create_team`, `invite_member`, `accept_invite`,
+        // `team_members_list`, `update_member_role`, `remove_member` and
+        // `team_usage_summary` do not exist in the live database, so a Pro
+        // subscriber who tapped "Create Team" would get an error. Withheld
+        // from free is not the same as delivered to paid, and only the second
+        // one makes a bullet honest.
+        public static var homeScreenWidgets: String { tr("subscription.home_screen_widgets") }
+        // REMOVED in v1.51 — `subscription.priority_alerts`,
+        // `subscription.cost_analytics`, `subscription.shared_alerts`,
+        // `subscription.admin_controls`, `subscription.team_dashboards`
+        // named features that do not exist, and
+        // `subscription.up_to_5_devices`, `subscription.unlimited_devices`,
+        // `subscription.data_retention_90`, `subscription.data_retention_365`
+        // named limits that nothing enforces. Do not reintroduce a key here
+        // without a matching entry in `scripts/paywall_claims.allow`.
         public static var perYear: String { tr("subscription.per_year") }
         public static var perMonth: String { tr("subscription.per_month") }
         public static var upgradePro: String { tr("subscription.upgrade_pro") }
@@ -1294,6 +1309,23 @@ public enum L10n {
     public enum menuBar {
         public static func tierMigration(kept: Int, disabled: Int) -> String {
             tr("menu_bar.tier_migration", kept, disabled)
+        }
+        // v1.51 — the two upgrade prompts. Both were hardcoded English
+        // literals until now, in an app whose paywall ships six languages,
+        // so the highest-intent copy in the product was the only copy a
+        // ja/ko/es/zh user could not read.
+        public static func overPlanLimits(
+            _ tierName: String,
+            _ activeProviders: Int,
+            _ maxProviders: Int
+        ) -> String {
+            tr("menu_bar.over_plan_limits", tierName, activeProviders, maxProviders)
+        }
+        public static func providerLimitReached(
+            _ tierName: String,
+            _ maxProviders: Int
+        ) -> String {
+            tr("menu_bar.provider_limit_reached", tierName, maxProviders)
         }
         public static var edit: String { tr("menu_bar.edit") }
         public static func appVersion(_ version: String) -> String { tr("menu_bar.app_version", version) }

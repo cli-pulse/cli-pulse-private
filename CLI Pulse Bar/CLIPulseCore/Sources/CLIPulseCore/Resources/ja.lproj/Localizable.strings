@@ -212,16 +212,8 @@
 "subscription.team" = "チーム";
 "subscription.team_description" = "チーム向けフル機能モニタリング";
 "subscription.everything_in_pro" = "Proのすべての機能を含む";
-"subscription.unlimited_devices" = "無制限のデバイス";
-"subscription.data_retention_365" = "365日間データ保持";
-"subscription.team_dashboards" = "チームダッシュボード";
-"subscription.shared_alerts" = "共有アラートとルール";
-"subscription.admin_controls" = "管理者コントロール";
 "subscription.unlimited_providers" = "無制限のプロバイダー";
-"subscription.up_to_5_devices" = "最大5台のデバイス";
-"subscription.data_retention_90" = "90日間データ保持";
-"subscription.priority_alerts" = "優先アラート";
-"subscription.cost_analytics" = "コスト分析";
+"subscription.home_screen_widgets" = "ホーム画面・ロック画面ウィジェット（iPhone）";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "Proにアップグレード";
@@ -627,6 +619,8 @@
 
 /* ── メニューバー ── */
 "menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 設定 → プロバイダー で編集してください。";
+"menu_bar.over_plan_limits" = "CLI Pulse %1$@ プランの上限を超えています — プロバイダー: %2$d/%3$d。アップグレードするか使用を減らしてください。";
+"menu_bar.provider_limit_reached" = "CLI Pulse %1$@ プランで使えるプロバイダーは %2$d 個までです。さらに有効にするにはアップグレードしてください。";
 "menu_bar.edit" = "編集";
 "menu_bar.app_version" = "CLI Pulse v%@";
 "menu_bar.quit" = "CLI Pulse を終了";

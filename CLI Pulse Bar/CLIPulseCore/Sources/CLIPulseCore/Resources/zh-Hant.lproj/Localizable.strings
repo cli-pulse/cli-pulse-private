@@ -212,16 +212,8 @@
 "subscription.pro_description" = "高階監控與擴充套件歷史";
 "subscription.team_description" = "團隊全功能監控";
 "subscription.everything_in_pro" = "包含 Pro 的所有功能";
-"subscription.unlimited_devices" = "無限裝置";
-"subscription.data_retention_365" = "365天資料保留";
-"subscription.team_dashboards" = "團隊儀表盤";
-"subscription.shared_alerts" = "共享告警和規則";
-"subscription.admin_controls" = "管理員控制";
 "subscription.unlimited_providers" = "無限服務商";
-"subscription.up_to_5_devices" = "最多 5 臺裝置";
-"subscription.data_retention_90" = "90天資料保留";
-"subscription.priority_alerts" = "優先告警";
-"subscription.cost_analytics" = "費用分析";
+"subscription.home_screen_widgets" = "主畫面與鎖定畫面小工具（iPhone）";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "升級到 Pro";
@@ -627,6 +619,8 @@
 
 /* ── 選單欄 ── */
 "menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以適配免費方案。已禁用 %d 個——可在「設定 → 服務商」中編輯。";
+"menu_bar.over_plan_limits" = "已超出 CLI Pulse %1$@ 方案限制——服務商：%2$d/%3$d。請升級或減少使用。";
+"menu_bar.provider_limit_reached" = "你的 CLI Pulse %1$@ 方案最多支援 %2$d 個服務商。升級後可啟用更多。";
 "menu_bar.edit" = "編輯";
 "menu_bar.app_version" = "CLI Pulse v%@";
 "menu_bar.quit" = "退出 CLI Pulse";

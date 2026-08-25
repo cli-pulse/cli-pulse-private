@@ -281,7 +281,6 @@ final class LocalScanConsentTests: XCTestCase {
             authenticatedUserID: "",
             providerConfigs: [],
             providers: [],
-            maxDevices: 100,
             maxProviders: 100,
             currentTierName: "Free",
             tierResolutionState: .resolvedConfirmed,

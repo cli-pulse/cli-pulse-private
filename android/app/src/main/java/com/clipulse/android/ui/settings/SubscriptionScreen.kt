@@ -83,9 +83,22 @@ fun SubscriptionScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(stringResource(R.string.subscription_plan_features), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(12.dp))
+                    // v1.51 — this table used to claim three per-tier limits.
+                    // Two were fiction and one disagreed with the Apple client:
+                    //
+                    //   Devices "1 / 5 / Unlimited" — nothing consults tier when
+                    //     pairing; every tier caps at a flat 20
+                    //     (migrate_v0.36_desktop_otp.sql:66). It also said the
+                    //     free tier gets ONE device while the Apple paywall said
+                    //     two, so whichever a user read, the other lied.
+                    //   Data Retention "7 / 90 / 365" — the nightly cleanup is
+                    //     tier-blind and reads user_settings.data_retention_days,
+                    //     which this very app lets the user edit by hand
+                    //     (SettingsScreen.kt:226).
+                    //
+                    // Providers stays because it is really enforced — though only
+                    // by the Apple client; Android does not gate on tier at all.
                     FeatureRow(stringResource(R.string.subscription_providers), "3", stringResource(R.string.subscription_unlimited), stringResource(R.string.subscription_unlimited))
-                    FeatureRow(stringResource(R.string.subscription_devices), "1", "5", stringResource(R.string.subscription_unlimited))
-                    FeatureRow(stringResource(R.string.subscription_data_retention), stringResource(R.string.subscription_7_days), stringResource(R.string.subscription_90_days), stringResource(R.string.subscription_365_days))
                 }
             }
 

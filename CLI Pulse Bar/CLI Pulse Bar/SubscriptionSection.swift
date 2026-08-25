@@ -49,25 +49,11 @@ struct SubscriptionSection: View {
                     .foregroundStyle(.tertiary)
             }
 
-            HStack {
-                Text(L10n.settings.devices)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(subscriptionManager.maxDevices < 0 ? "Unlimited" : "\(subscriptionManager.maxDevices)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
-
-            HStack {
-                Text(L10n.settings.dataRetention)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(subscriptionManager.dataRetentionDays) \(L10n.settings.days)")
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
-            }
+            // v1.51 — "Devices" and "Data retention" rows removed here for the
+            // same reason as `iOSSettingsTab`: `maxDevices` (2/5/∞) and
+            // `dataRetentionDays` (7/90/365) are printed numbers with no
+            // mechanism behind them, and the retention one was actively
+            // misleading paying users (server deletes at 7 days regardless).
 
             if subscriptionManager.isProOrAbove {
                 Button {

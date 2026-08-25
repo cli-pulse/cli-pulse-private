@@ -2058,7 +2058,6 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             authenticatedUserID: "user-a",
             providerConfigs: [],
             providers: [],
-            maxDevices: 100,
             maxProviders: 100,
             currentTierName: "Pro",
             tierResolutionState: .resolvedConfirmed,

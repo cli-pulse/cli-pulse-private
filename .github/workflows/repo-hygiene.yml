@@ -83,3 +83,15 @@ jobs:
       # The app's Privacy Policy / Terms links, which App Review clicks under
       # Guideline 3.1.2. Needs network; they broke silently for twelve days once.
       - run: bash scripts/check_legal_urls.sh
+
+      # The paywall sold five features that did not exist and four limits that
+      # nothing enforced, for months, because a feature bullet is a string and a
+      # string compiles either way. This makes each bullet name the code that
+      # withholds it. Path-blind for the usual reason: the PR most likely to add
+      # a bullet is a localization or copy PR that touches no Swift at all.
+      - run: bash scripts/check_paywall_claims.sh
+
+      # And its negative control — the guard above is only evidence if it has
+      # been watched to fail. This mutates a throwaway copy five ways and
+      # asserts a rejection each time, plus a positive control.
+      - run: bash scripts/test_check_paywall_claims.sh

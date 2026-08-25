@@ -1374,7 +1374,10 @@ public final class AppState: ObservableObject {
                     let tierLabel = subscriptionManager.tierName(
                         for: subscriptionManager.currentTier
                     )
-                    tierLimitWarning = "Your CLI Pulse \(tierLabel) plan allows up to \(maxProviders) providers. Upgrade to enable more."
+                    tierLimitWarning = L10n.menuBar.providerLimitReached(
+                        tierLabel,
+                        maxProviders
+                    )
                     return
                 }
             }
