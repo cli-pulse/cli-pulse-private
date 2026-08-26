@@ -139,6 +139,22 @@ public struct CostCoverage: Sendable, Equatable {
         var unpricedByModel: [String: Int] = [:]
 
         for entry in entries {
+            // Skip the synthetic `__claude_msg__` bucket. It carries raw
+            // message-event counts, not model usage: zero tokens, no cost, and
+            // therefore `costUSD == nil` — which made it look like an unpriced
+            // model. `APIClient.uploadDailyMetrics` already filters it for the
+            // same reason ("would pollute the server-side per-model analytics
+            // with a fake model row").
+            //
+            // Harmless for the percentage, since it contributes zero tokens on
+            // both sides of the ratio. NOT harmless for the count: it would
+            // make a card with one genuinely unpriced model say "2 model(s)
+            // had no rate", and put an internal identifier in the tooltip
+            // where a user expects a model name. Caught in the launch smoke
+            // test for 1.51.0, from a real archive.
+            if entry.model == ScanEntry.messageBucketModel {
+                continue
+            }
             let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
             if entry.costUSD == nil {
                 unpricedByModel[entry.model, default: 0] += tokens

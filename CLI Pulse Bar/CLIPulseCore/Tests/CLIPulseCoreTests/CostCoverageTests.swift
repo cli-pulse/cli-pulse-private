@@ -164,6 +164,45 @@ final class CostCoverageTests: XCTestCase {
         XCTAssertEqual(coverage.unpricedModels, ["alpha", "zeta"])
     }
 
+    /// REGRESSION, caught by the 1.51.0 launch smoke test on a real archive.
+    ///
+    /// `__claude_msg__` is a synthetic bucket carrying message-event counts, not
+    /// model usage: zero tokens, no cost, and therefore `costUSD == nil` — which
+    /// made it read as an unpriced model. It never moved the percentage, because
+    /// it contributes zero tokens to both sides of the ratio. It did corrupt the
+    /// COUNT, which is the part the user reads.
+    func testSyntheticMessageBucketIsNotCountedAsAnUnpricedModel() {
+        let coverage = CostCoverage.from(entries: [
+            entry(model: "claude-sonnet-5", input: 500, output: 100, cost: 0.05),
+            entry(model: ScanEntry.messageBucketModel, cost: nil),
+            entry(model: "genuinely-unpriced", input: 400, cost: nil)
+        ])
+        XCTAssertEqual(
+            coverage.unpricedModels, ["genuinely-unpriced"],
+            """
+            The card must say "1 model had no rate", not 2, and must never put \
+            an internal identifier where a user expects a model name.
+            """
+        )
+        XCTAssertEqual(coverage.pricedTokens, 600)
+        XCTAssertEqual(coverage.unpricedTokens, 400)
+    }
+
+    /// The live case exactly as it appeared in the smoke-test log: the bucket is
+    /// the ONLY thing without a rate. That must stay silent — before the fix it
+    /// left a one-element `unpricedModels` behind, ready to surface the moment
+    /// anything else went unpriced.
+    func testMessageBucketAloneDisclosesNothing() {
+        let coverage = CostCoverage.from(entries: [
+            entry(model: "claude-sonnet-5", input: 1_000, output: 200, cost: 0.4),
+            entry(model: ScanEntry.messageBucketModel, cost: nil)
+        ])
+        XCTAssertTrue(coverage.unpricedModels.isEmpty)
+        XCTAssertTrue(coverage.isFullyPriced)
+        XCTAssertFalse(coverage.shouldDisclose)
+        XCTAssertEqual(coverage.pricedPercent, 100)
+    }
+
     // MARK: - The badge (CostSummary.fidelity)
 
     /// THE CASE THIS WAS BUILT FOR. A local scan that priced 20% of its tokens
