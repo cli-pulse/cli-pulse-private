@@ -682,6 +682,8 @@
 "cost.tokens_value" = "%@ I/O tokens";
 "cost.day_progress" = "%d/%d 天";
 "cost.by_model" = "按模型";
+"cost.coverage_summary" = "已計價 %1$d%% 的 token · %2$d 個模型沒有單價";
+"cost.coverage_help" = "這些模型沒有價格條目,其 token 在上面的合計裡按 $0 計入:%@";
 "watch.unread_count" = "%d 條未讀";
 "watch.snooze_15" = "15 分鐘";
 "watch.snooze_30" = "30 分鐘";

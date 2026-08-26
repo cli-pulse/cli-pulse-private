@@ -541,6 +541,38 @@ struct OverviewTab: View {
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(.green)
                     }
+
+                    // v1.51 — say how much of that number we could actually
+                    // price. An unpriced model contributes $0 and leaves no
+                    // trace, so the total above looks complete whether or not
+                    // it is; `claude-opus-5` was missing from it for 25 days
+                    // across 15.47 billion tokens and nothing said so.
+                    //
+                    // Renders ONLY when we scanned locally AND something was
+                    // unpriced. A cloud-estimate figure reports nothing rather
+                    // than "100%" — we cannot see its composition, and a
+                    // confident wrong label is worse than silence.
+                    //
+                    // Not gated on tier: the app already says "NOT a real bill"
+                    // right below, so admitting which part of it is unpriced is
+                    // baseline honesty, not a paid feature.
+                    if providerState.costSummary.coverage.shouldDisclose,
+                       let percent = providerState.costSummary.coverage.pricedPercent {
+                        let coverage = providerState.costSummary.coverage
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.orange)
+                            Text(L10n.cost.coverageSummary(percent, coverage.unpricedModels.count))
+                                .font(.system(size: 9))
+                                .foregroundStyle(.orange)
+                            Spacer()
+                        }
+                        .help(L10n.cost.coverageHelp(
+                            coverage.unpricedModels.prefix(6).joined(separator: ", ")
+                        ))
+                    }
+
                     HStack {
                         Text("Subscriptions")
                             .font(.system(size: 9))

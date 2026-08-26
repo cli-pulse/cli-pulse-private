@@ -1013,6 +1013,14 @@ public enum L10n {
         public static func tokensValue(_ value: String) -> String { tr("cost.tokens_value", value) }
         public static func dayProgress(_ current: Int, _ total: Int) -> String { tr("cost.day_progress", current, total) }
         public static var byModel: String { tr("cost.by_model") }
+        // v1.51 — pricing coverage. Rendered only when a local scan found
+        // tokens it had no rate for; see `CostCoverage`.
+        public static func coverageSummary(_ percent: Int, _ modelCount: Int) -> String {
+            tr("cost.coverage_summary", percent, modelCount)
+        }
+        public static func coverageHelp(_ models: String) -> String {
+            tr("cost.coverage_help", models)
+        }
     }
 
     // MARK: - PDF Report (CLIPulseCore shared generator)

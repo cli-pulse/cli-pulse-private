@@ -682,6 +682,8 @@
 "cost.tokens_value" = "%@ I/O トークン";
 "cost.day_progress" = "%d/%d 日";
 "cost.by_model" = "モデル別";
+"cost.coverage_summary" = "トークンの %1$d%% を価格計算 · %2$d 個のモデルに単価がありません";
+"cost.coverage_help" = "これらのモデルには単価が登録されていないため、トークンは上の合計に $0 として計上されています: %@";
 "watch.unread_count" = "%d 件未読";
 "watch.snooze_15" = "15分";
 "watch.snooze_30" = "30分";

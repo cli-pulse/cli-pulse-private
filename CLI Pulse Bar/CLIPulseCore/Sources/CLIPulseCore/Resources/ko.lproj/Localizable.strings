@@ -871,3 +871,7 @@
 /* v1.51 — upgrade prompts, previously hardcoded English in AppState / DataRefreshManager */
 "menu_bar.over_plan_limits" = "CLI Pulse %1$@ 플랜 한도를 초과했습니다 — 공급자: %2$d/%3$d. 업그레이드하거나 사용을 줄이세요.";
 "menu_bar.provider_limit_reached" = "CLI Pulse %1$@ 플랜에서는 공급자를 최대 %2$d개까지 사용할 수 있습니다. 더 사용하려면 업그레이드하세요.";
+
+/* v1.51 — pricing coverage: how much of the cost figure we could actually price */
+"cost.coverage_summary" = "토큰의 %1$d%%에 가격 적용 · %2$d개 모델에 단가 없음";
+"cost.coverage_help" = "이 모델들은 단가가 없어 토큰이 위 합계에 $0으로 계산되었습니다: %@";
