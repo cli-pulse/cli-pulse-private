@@ -320,12 +320,17 @@ struct iOSOverviewTab: View {
                 Text(L10n.dashboard.costSummary)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Text(providerState.costSummary.isPrecise ? L10n.cost.exact : L10n.cost.estimated)
+                // v1.51 — three states, not two. See `CostSummary.fidelity`:
+                // `isPrecise` says where the number came from, and the old badge
+                // used it to make a claim about how accurate the number is.
+                let fidelity = providerState.costSummary.fidelity
+                let fidelityColor: Color = fidelity == .exact ? .green : .orange
+                Text(L10n.cost.fidelityLabel(fidelity))
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(providerState.costSummary.isPrecise ? .green : .orange)
+                    .foregroundStyle(fidelityColor)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background((providerState.costSummary.isPrecise ? Color.green : Color.orange).opacity(0.15))
+                    .background(fidelityColor.opacity(0.15))
                     .clipShape(Capsule())
             }
 

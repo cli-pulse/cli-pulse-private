@@ -726,12 +726,15 @@
 "common.no_provider_selected" = "No provider selected";
 "cost.exact" = "Exact";
 "cost.estimated" = "Estimated";
+"cost.partial" = "Partial";
 "cost.tokens_suffix" = "· %@ I/O tokens";
 "cost.tokens_short_suffix" = "· %@";
 "cost.thirty_day_precise" = "30 Day";
 "cost.tokens_value" = "%@ I/O tokens";
 "cost.day_progress" = "%d/%d days";
 "cost.by_model" = "By Model";
+"cost.coverage_summary" = "Priced %1$d%% of tokens · %2$d model(s) had no rate";
+"cost.coverage_help" = "These models had no price entry, so their tokens counted as $0 toward the total above: %@";
 "watch.unread_count" = "%d unread";
 "watch.snooze_15" = "15 minutes";
 "watch.snooze_30" = "30 minutes";

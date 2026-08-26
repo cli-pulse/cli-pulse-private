@@ -359,12 +359,19 @@ struct OverviewTab: View {
             HStack {
                 SectionHeader(title: L10n.dashboard.costSummary, icon: "dollarsign.circle")
                 Spacer()
-                Text(providerState.costSummary.isPrecise ? L10n.cost.exact : L10n.cost.estimated)
+                // v1.51 — three states, not two. `isPrecise` says where the
+                // number came from; the old badge used it to make a claim about
+                // how accurate the number is. A local scan that priced 20% of
+                // its tokens is still a local scan, and this said "Exact"
+                // directly above the line admitting it was 20%.
+                let fidelity = providerState.costSummary.fidelity
+                let fidelityColor: Color = fidelity == .exact ? .green : .orange
+                Text(L10n.cost.fidelityLabel(fidelity))
                     .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(providerState.costSummary.isPrecise ? .green : .orange)
+                    .foregroundStyle(fidelityColor)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background((providerState.costSummary.isPrecise ? Color.green : Color.orange).opacity(0.15))
+                    .background(fidelityColor.opacity(0.15))
                     .clipShape(Capsule())
             }
 
@@ -541,6 +548,38 @@ struct OverviewTab: View {
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(.green)
                     }
+
+                    // v1.51 — say how much of that number we could actually
+                    // price. An unpriced model contributes $0 and leaves no
+                    // trace, so the total above looks complete whether or not
+                    // it is; `claude-opus-5` was missing from it for 25 days
+                    // across 15.47 billion tokens and nothing said so.
+                    //
+                    // Renders ONLY when we scanned locally AND something was
+                    // unpriced. A cloud-estimate figure reports nothing rather
+                    // than "100%" — we cannot see its composition, and a
+                    // confident wrong label is worse than silence.
+                    //
+                    // Not gated on tier: the app already says "NOT a real bill"
+                    // right below, so admitting which part of it is unpriced is
+                    // baseline honesty, not a paid feature.
+                    if providerState.costSummary.coverage.shouldDisclose,
+                       let percent = providerState.costSummary.coverage.pricedPercent {
+                        let coverage = providerState.costSummary.coverage
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.circle")
+                                .font(.system(size: 8))
+                                .foregroundStyle(.orange)
+                            Text(L10n.cost.coverageSummary(percent, coverage.unpricedModels.count))
+                                .font(.system(size: 9))
+                                .foregroundStyle(.orange)
+                            Spacer()
+                        }
+                        .help(L10n.cost.coverageHelp(
+                            coverage.unpricedModels.prefix(6).joined(separator: ", ")
+                        ))
+                    }
+
                     HStack {
                         Text("Subscriptions")
                             .font(.system(size: 9))

@@ -871,3 +871,10 @@
 /* v1.51 — upgrade prompts, previously hardcoded English in AppState / DataRefreshManager */
 "menu_bar.over_plan_limits" = "Has superado los límites del plan %1$@ de CLI Pulse — Proveedores: %2$d/%3$d. Mejora tu plan o reduce el uso.";
 "menu_bar.provider_limit_reached" = "Tu plan %1$@ de CLI Pulse permite hasta %2$d proveedores. Mejora tu plan para activar más.";
+
+/* v1.51 — pricing coverage: how much of the cost figure we could actually price */
+"cost.coverage_summary" = "Se tarificó el %1$d%% de los tokens · %2$d modelo(s) sin tarifa";
+"cost.coverage_help" = "Estos modelos no tienen precio, así que sus tokens contaron como $0 en el total anterior: %@";
+
+/* v1.51 — cost-card badge third state */
+"cost.partial" = "Parcial";

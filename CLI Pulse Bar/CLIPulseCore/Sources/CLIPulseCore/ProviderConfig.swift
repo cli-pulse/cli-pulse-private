@@ -1018,6 +1018,13 @@ public struct CostSummary: Sendable {
     public let utilization: [SubscriptionUtilization]
     /// Per-model cost breakdown for 30-day period
     public let costByModel: [ModelCostDetail]
+    /// v1.51: how much of the cost figure above the app could actually price.
+    ///
+    /// Defaults to `.unknown` on purpose. Every call site that does not set it
+    /// is one whose composition we cannot see — the cloud-estimate path, tests,
+    /// and the empty state — and for those the UI must say nothing rather than
+    /// imply full coverage. See `CostCoverage`.
+    public let coverage: CostCoverage
 
     public init(
         todayTotal: Double = 0,
@@ -1031,7 +1038,8 @@ public struct CostSummary: Sendable {
         todayTokens: Int = 0,
         thirtyDayTokens: Int = 0,
         utilization: [SubscriptionUtilization] = [],
-        costByModel: [ModelCostDetail] = []
+        costByModel: [ModelCostDetail] = [],
+        coverage: CostCoverage = .unknown
     ) {
         self.todayTotal = todayTotal
         self.todayByProvider = todayByProvider
@@ -1045,6 +1053,23 @@ public struct CostSummary: Sendable {
         self.thirtyDayTokens = thirtyDayTokens
         self.utilization = utilization
         self.costByModel = costByModel
+        self.coverage = coverage
+    }
+
+    /// v1.51 — what the badge above the cost card should say.
+    ///
+    /// `isPrecise` alone drove a two-state badge ("Exact" / "Estimated"), but it
+    /// describes PROVENANCE — did we count this ourselves — while "Exact" makes
+    /// a claim about ACCURACY. They come apart as soon as a model has no rate:
+    /// a scan that priced 20% of its tokens is still a local scan, and the card
+    /// called it Exact anyway, directly above the line now admitting it is 20%.
+    ///
+    /// Lives here rather than in the view so it can be tested. Two views render
+    /// this badge (macOS `OverviewTab`, iOS `iOSOverviewTab`) and neither target
+    /// has a test bundle.
+    public var fidelity: CostCoverage.Fidelity {
+        guard isPrecise else { return .estimated }
+        return coverage.shouldDisclose ? .partial : .exact
     }
 }
 
