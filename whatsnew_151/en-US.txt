@@ -1,0 +1,15 @@
+The subscription screen described features that do not exist. It no longer does.
+
+• Fixed: nine paid claims were removed because nothing behind them was real. Five named features that were never built — priority alerts, cost analytics, shared alerts, admin controls, team dashboards. Four more named limits that nothing enforces: the per-plan device counts, and the per-plan data-retention figures.
+
+• Fixed: the data-retention numbers were wrong in the direction that mattered. Settings showed 7 / 90 / 365 days by plan. Nothing ever applied that: cloud history is governed by the data-retention setting on your account — 7 days unless you change it — the same for every plan, and local history on this Mac keeps 400 days regardless of plan. The per-plan figure is gone rather than left to mislead.
+
+• New: the one thing Pro actually adds is finally named. Home and Lock Screen widgets on iPhone have been Pro-only since 1.30, and the subscription screen had never mentioned them once.
+
+• New: the cost card now says how much of the total it could actually price. A model with no price entry contributes $0 and leaves no trace, which is how the Claude 5 generation went missing from costs for 25 days while the total still looked complete. When that happens you now see how much was priced, and the badge reads "Partial" instead of "Exact".
+
+• Fixed: a warning that accused you of exceeding a device limit that does not exist. Nothing has ever capped devices per plan.
+
+• Fixed: the Pro Lifetime tile offered a purchase the store was not serving, and had done since 1.14. It stays hidden until the store actually offers it.
+
+• Upgrade prompts are translated. They were English-only in an app whose subscription screen ships six languages.
