@@ -1,6 +1,15 @@
 import Foundation
 import StoreKit
 import SwiftUI
+import os
+
+/// v1.51 — product-load outcomes go to the log as well as to the Settings
+/// diagnostic, because that diagnostic is unreachable for most of the people
+/// who need it: `SubscriptionSection` renders only inside `authenticatedSection`
+/// AND behind `isPaired`, so a signed-out or local-mode user cannot see it at
+/// all. "The buy button is broken" has to be answerable from a log the way
+/// pricing coverage already is (see `CostUsageScanner.reportUnpricedModels`).
+private let storeLogger = Logger(subsystem: "com.clipulse", category: "SubscriptionManager")
 
 // swiftlint:disable redundant_string_enum_value - these raw values are a WIRE
 // CONTRACT, not redundancy. The enum is Codable and its values are persisted
@@ -336,6 +345,21 @@ public final class SubscriptionManager: ObservableObject {
             lastProductLoadOutcome = .failed
         }
         isLoading = false
+
+        // Public-safe: product IDs are compile-time constants already visible in
+        // the App Store listing, and no user identifier is involved.
+        switch lastProductLoadOutcome {
+        case .complete:
+            storeLogger.info("[StoreKit] loaded all \(Self.allProductIDs.count, privacy: .public) products")
+        case .partial(let missing):
+            storeLogger.warning("[StoreKit] store did not offer \(missing.count, privacy: .public) of \(Self.allProductIDs.count, privacy: .public) products: \(missing.joined(separator: " "), privacy: .public)")
+        case .returnedNothing:
+            storeLogger.warning("[StoreKit] store returned NO products for \(Self.allProductIDs.count, privacy: .public) requested IDs — bundle id, storefront or Paid Applications agreement")
+        case .failed:
+            storeLogger.warning("[StoreKit] Product.products(for:) threw; no plans can be shown")
+        case .notAttempted, .storeKitDisabled:
+            break
+        }
     }
 
     /// Whether a given product ID came back from the store on the most recent
