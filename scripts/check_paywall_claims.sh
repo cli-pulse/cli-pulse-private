@@ -243,6 +243,67 @@ done <<EOF
 $RETIRED_KEYS
 EOF
 
+# ── 5. App Store screenshot captions ─────────────────────────────────────────
+# The THIRD purchase surface, and the least forgiving one: caption text is baked
+# into an uploaded PNG, so a false claim there cannot be fixed by shipping an app
+# update — someone has to regenerate and re-upload the screenshot. It shipped
+# "Unlimited providers, devices, and priority support", of which two thirds were
+# untrue: nothing enforces a per-tier device limit, and "priority support" exists
+# nowhere in the product, the docs or TERMS.md.
+#
+# Phrase matching, not key matching — these are prose, so there is no symbol to
+# register. Deliberately narrow: only the specific claims we retired.
+RETIRED_PHRASES="priority support
+priority alert
+cost analytic
+shared alert
+admin control
+team dashboard
+unlimited device
+day retention
+day data retention"
+
+caption_files="$(find "$ROOT/CLI Pulse Bar/scripts" -maxdepth 1 \
+    -name 'compose_appstore*screenshots.py' -print 2>/dev/null)"
+
+if [ -z "$caption_files" ]; then
+    echo "ERROR: found no App Store screenshot caption sources to scan."
+    echo "       They used to be CLI Pulse Bar/scripts/compose_appstore*.py."
+    echo "       A scan that looks at nothing always passes; refusing to."
+    failed=1
+else
+    # Strip `#` comments before matching. The comment above the caption table
+    # NAMES the retired phrases in order to explain why they were removed, and a
+    # naive grep flags that as a violation — a guard that cannot tell a claim
+    # from a note about a claim would force the next person to delete the
+    # explanation in order to get CI green.
+    while IFS= read -r phrase; do
+        [ -z "$phrase" ] && continue
+        hits=""
+        while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            if sed 's/#.*$//' "$f" | grep -qie "$phrase"; then
+                hits="$hits$f
+"
+            fi
+        done <<CAPTIONFILES
+$caption_files
+CAPTIONFILES
+        hits="$(printf '%s' "$hits" | sed '/^$/d')"
+        if [ -n "$hits" ]; then
+            echo "ERROR: an App Store screenshot caption claims '$phrase', which was"
+            echo "       retired because nothing implements or enforces it:"
+            echo "$hits" | sed "s|^$ROOT/|         |"
+            echo "       Caption text is baked into an uploaded PNG — it cannot be"
+            echo "       fixed later by an app update. Fix the caption here, and"
+            echo "       regenerate + re-upload the screenshot."
+            failed=1
+        fi
+    done <<EOF
+$RETIRED_PHRASES
+EOF
+fi
+
 if [ "$failed" -ne 0 ]; then
     echo
     echo "Paywall claim check FAILED."
