@@ -45,7 +45,22 @@ COPY = {
     "06_settings":          ("Tune every detail",          "Per-provider credentials, cadence, and notifications"),
     "07_provider_settings": ("Configure any provider",     "API keys, cookies, OAuth — with one-click test"),
     "08_about":             ("Built for CLI pros",         "Privacy-first — all data stays on your Mac"),
-    "09_subscription":      ("CLI Pulse Pro",              "Unlimited providers, devices, and priority support"),
+    # v1.51 — was "Unlimited providers, devices, and priority support". Two of
+    # those three were not true. Nothing enforces a per-tier device limit
+    # (every tier caps at a flat 20 in `register_helper`), and "priority
+    # support" appears nowhere in the product, the docs or TERMS.md — it was a
+    # support commitment that existed only in this caption.
+    #
+    # A screenshot caption is a purchase surface like any other, and a worse one
+    # than the paywall: the text is baked into an uploaded PNG, so it cannot be
+    # fixed by shipping an app update. Changing this line fixes the NEXT
+    # generated screenshot; replacing what is already live in App Store Connect
+    # is a separate owner action.
+    #
+    # Note this is the macOS store listing, so it must not pitch widgets — the
+    # widget extension is iOS-only and there is no macOS widget target at all.
+    # On macOS the provider cap is genuinely the only paid difference.
+    "09_subscription":      ("CLI Pulse Pro",              "Unlimited providers — track every tool you use"),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent

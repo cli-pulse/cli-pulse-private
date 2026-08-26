@@ -10,7 +10,7 @@
 # same: a check that has never been watched to FAIL is not known to work.
 #
 # So this builds a throwaway copy of only the files the guard reads, mutates it
-# seven ways, and asserts the guard rejects each one. It also asserts the
+# nine ways, and asserts the guard rejects each one (plus two positive controls). It also asserts the
 # unmutated fixture PASSES — without that positive control, a guard that always
 # failed would sail through every case below.
 set -uo pipefail
@@ -23,6 +23,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 PAYWALL_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionView.swift"
 INLINE_REL="CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
+CAPTION_REL="CLI Pulse Bar/scripts/compose_appstore_screenshots.py"
 STRINGS_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
@@ -40,6 +41,10 @@ build_fixture() {
         echo "$PAYWALL_REL"
         echo "$INLINE_REL"
         echo "$STRINGS_REL"
+        # every App Store screenshot caption source — the guard refuses to run
+        # if it finds none, so the fixture must carry them all
+        (cd "$ROOT" && find "CLI Pulse Bar/scripts" -maxdepth 1 \
+            -name 'compose_appstore*screenshots.py' -print)
         grep -v '^[[:space:]]*#' "$ROOT/scripts/paywall_claims.allow" \
             | grep -v '^[[:space:]]*$' | cut -d'|' -f2 \
             | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'
@@ -161,6 +166,44 @@ perl -0pi -e 's/features: L10n\.subscription\.unlimitedProviders/features: L10n.
     "$TMP/case/$INLINE_REL"
 assert_changed "inline card unregistered bullet" "$TMP/case/$INLINE_REL" "$before" \
     && expect_fail "inline card unregistered bullet" "quantumEntanglement"
+
+# ── 8. a retired claim comes back in a screenshot caption ──────────────────
+# The third purchase surface, and the least forgiving: caption text is baked
+# into an uploaded PNG, so a false claim there survives every app update. The
+# string below is the one that actually shipped.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$CAPTION_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/"Unlimited providers — track every tool you use"/"Unlimited providers, devices, and priority support"/' \
+    "$TMP/case/$CAPTION_REL"
+assert_changed "screenshot caption claim" "$TMP/case/$CAPTION_REL" "$before" \
+    && expect_fail "screenshot caption claim" "screenshot caption claims"
+
+# ── 9. the caption scan silently matches nothing ───────────────────────────
+# Same failure mode as case 5, one surface over: if the compose scripts move or
+# get renamed, a phrase scan over zero files passes forever.
+build_fixture "$TMP/case"
+rm -f "$TMP/case/CLI Pulse Bar/scripts/"compose_appstore*screenshots.py
+expect_fail "caption scan matches nothing" "found no App Store screenshot caption sources"
+
+# ── 10. the caption check must not trip over a comment ABOUT a claim ────────
+# The caption table carries a comment naming the retired phrases to explain why
+# they went. A guard that cannot tell a claim from a note about a claim would
+# force the next person to delete the explanation to get CI green. This is a
+# POSITIVE case: the guard must still pass.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$CAPTION_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/^(COPY = \{)/# note: we deliberately no longer promise priority support or unlimited devices\n$1/m' \
+    "$TMP/case/$CAPTION_REL"
+if assert_changed "comment mentioning retired claims" "$TMP/case/$CAPTION_REL" "$before"; then
+    if out="$(bash "$GUARD" --root "$TMP/case" 2>&1)"; then
+        echo "ok:   [comment mentioning retired claims] guard correctly ignored a comment."
+        pass=$((pass + 1))
+    else
+        echo "FAIL: [comment mentioning retired claims] guard flagged a COMMENT as a claim."
+        echo "$out" | sed 's/^/        /'
+        fail=$((fail + 1))
+    fi
+fi
 
 echo
 echo "test_check_paywall_claims: $pass passed, $fail failed."
