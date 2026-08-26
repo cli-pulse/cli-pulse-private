@@ -79,8 +79,43 @@ def _headers() -> dict[str, str]:
     return {"Authorization": "Bearer " + _token(), "Content-Type": "application/json"}
 
 
+# The ASC API is routinely slower than 30s, and a read timeout mid-submit is
+# the worst possible failure here: `submit()` creates the version row, then
+# PATCHes whatsNew per locale, then attaches the build. A timeout between those
+# steps leaves a half-configured version in App Store Connect that the next run
+# has to reconcile.
+#
+# Measured 2026-08-27 submitting 1.51.0: two consecutive runs died on
+# `read timeout=30` — the first on the very first GET, the second after
+# creating the version and setting en-US but before zh-Hans. The operation is
+# idempotent by design (find-or-create, then overwrite), so retrying is safe;
+# it just should not have needed three attempts.
+_TIMEOUT = 120
+_RETRIES = 3
+
+
+def _with_retry(fn, what: str):
+    """Retry only on transport timeouts. An HTTP error response is returned to
+    the caller untouched — those are the caller's business, and retrying a 4xx
+    would just repeat a rejected write."""
+    last = None
+    for attempt in range(1, _RETRIES + 1):
+        try:
+            return fn()
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last = exc
+            print(f"  ASC {what}: {type(exc).__name__} "
+                  f"(attempt {attempt}/{_RETRIES})", file=sys.stderr)
+            if attempt < _RETRIES:
+                time.sleep(5 * attempt)
+    raise last
+
+
 def _get(path: str) -> dict:
-    r = requests.get(BASE + path, headers=_headers(), timeout=30)
+    r = _with_retry(
+        lambda: requests.get(BASE + path, headers=_headers(), timeout=_TIMEOUT),
+        f"GET {path}",
+    )
     if r.status_code >= 300:
         # Fail LOUDLY — a silent {} here made --list-builds print nothing and
         # exit 0 on auth/API failures (2026-07-03 review).
@@ -89,11 +124,19 @@ def _get(path: str) -> dict:
 
 
 def _post(path: str, body: dict):
-    return requests.post(BASE + path, headers=_headers(), json=body, timeout=30)
+    return _with_retry(
+        lambda: requests.post(BASE + path, headers=_headers(), json=body,
+                              timeout=_TIMEOUT),
+        f"POST {path}",
+    )
 
 
 def _patch(path: str, body: dict):
-    return requests.patch(BASE + path, headers=_headers(), json=body, timeout=30)
+    return _with_retry(
+        lambda: requests.patch(BASE + path, headers=_headers(), json=body,
+                               timeout=_TIMEOUT),
+        f"PATCH {path}",
+    )
 
 
 def list_builds(platform_key: str) -> None:
