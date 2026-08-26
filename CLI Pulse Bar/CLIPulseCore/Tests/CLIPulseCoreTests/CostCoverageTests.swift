@@ -164,6 +164,70 @@ final class CostCoverageTests: XCTestCase {
         XCTAssertEqual(coverage.unpricedModels, ["alpha", "zeta"])
     }
 
+    // MARK: - The badge (CostSummary.fidelity)
+
+    /// THE CASE THIS WAS BUILT FOR. A local scan that priced 20% of its tokens
+    /// is still a local scan, so `isPrecise` is true — and the old two-state
+    /// badge therefore said "Exact", directly above the new line admitting the
+    /// figure covers 20% of tokens. The card contradicted itself.
+    func testPartiallyPricedLocalScanIsNotLabelledExact() {
+        let summary = CostSummary(
+            isPrecise: true,
+            coverage: CostCoverage.from(entries: [
+                entry(model: "priced", input: 200, cost: 0.05),
+                entry(model: "unpriced", input: 800, cost: nil)
+            ])
+        )
+        XCTAssertEqual(
+            summary.fidelity, .partial,
+            """
+            A scan missing most of its prices must not be badged "Exact". \
+            If this fails, the cost card is again claiming accuracy it does \
+            not have, one row above the line that admits it.
+            """
+        )
+    }
+
+    /// A complete local scan keeps the strong label — the point is not to
+    /// downgrade everything, it is to stop over-claiming.
+    func testFullyPricedLocalScanStaysExact() {
+        let summary = CostSummary(
+            isPrecise: true,
+            coverage: CostCoverage.from(entries: [
+                entry(model: "priced", input: 1_000, cost: 0.5)
+            ])
+        )
+        XCTAssertEqual(summary.fidelity, .exact)
+    }
+
+    /// Provenance still wins when we did not count it ourselves: a cloud figure
+    /// is `.estimated` no matter what coverage says, because coverage says
+    /// nothing there by construction.
+    func testServerFigureIsEstimatedRegardlessOfCoverage() {
+        XCTAssertEqual(CostSummary(isPrecise: false).fidelity, .estimated)
+        XCTAssertEqual(
+            CostSummary(isPrecise: false, coverage: .unknown).fidelity, .estimated
+        )
+    }
+
+    /// A brand-new local scan with no entries yet must not be badged "Partial"
+    /// — there is nothing missing, there is nothing at all.
+    func testEmptyLocalScanIsExactNotPartial() {
+        let summary = CostSummary(
+            isPrecise: true,
+            coverage: CostCoverage.from(entries: [])
+        )
+        XCTAssertEqual(summary.fidelity, .exact,
+                       "an empty scan has nothing unpriced; Partial would be a false alarm")
+    }
+
+    /// The three states must be distinguishable, or the badge collapses back
+    /// into the two-state one this replaced.
+    func testThreeFidelityStatesAreDistinct() {
+        let states: Set<CostCoverage.Fidelity> = [.exact, .partial, .estimated]
+        XCTAssertEqual(states.count, 3)
+    }
+
     // MARK: - Rounding
 
     /// Rounds DOWN. 99.6% priced must not render as "100%", which would restate

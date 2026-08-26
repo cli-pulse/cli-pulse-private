@@ -676,6 +676,7 @@
 "common.no_provider_selected" = "プロバイダーが選択されていません";
 "cost.exact" = "正確";
 "cost.estimated" = "推定";
+"cost.partial" = "一部";
 "cost.tokens_suffix" = "· %@ I/O トークン";
 "cost.tokens_short_suffix" = "· %@";
 "cost.thirty_day_precise" = "30日";

@@ -1055,6 +1055,22 @@ public struct CostSummary: Sendable {
         self.costByModel = costByModel
         self.coverage = coverage
     }
+
+    /// v1.51 — what the badge above the cost card should say.
+    ///
+    /// `isPrecise` alone drove a two-state badge ("Exact" / "Estimated"), but it
+    /// describes PROVENANCE — did we count this ourselves — while "Exact" makes
+    /// a claim about ACCURACY. They come apart as soon as a model has no rate:
+    /// a scan that priced 20% of its tokens is still a local scan, and the card
+    /// called it Exact anyway, directly above the line now admitting it is 20%.
+    ///
+    /// Lives here rather than in the view so it can be tested. Two views render
+    /// this badge (macOS `OverviewTab`, iOS `iOSOverviewTab`) and neither target
+    /// has a test bundle.
+    public var fidelity: CostCoverage.Fidelity {
+        guard isPrecise else { return .estimated }
+        return coverage.shouldDisclose ? .partial : .exact
+    }
 }
 
 /// Formats token counts into compact human-readable strings: 81M, 8.6B, 12.3K

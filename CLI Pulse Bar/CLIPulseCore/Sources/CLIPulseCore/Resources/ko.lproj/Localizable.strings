@@ -875,3 +875,6 @@
 /* v1.51 — pricing coverage: how much of the cost figure we could actually price */
 "cost.coverage_summary" = "토큰의 %1$d%%에 가격 적용 · %2$d개 모델에 단가 없음";
 "cost.coverage_help" = "이 모델들은 단가가 없어 토큰이 위 합계에 $0으로 계산되었습니다: %@";
+
+/* v1.51 — cost-card badge third state */
+"cost.partial" = "부분";

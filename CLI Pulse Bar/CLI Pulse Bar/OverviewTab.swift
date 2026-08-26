@@ -359,12 +359,19 @@ struct OverviewTab: View {
             HStack {
                 SectionHeader(title: L10n.dashboard.costSummary, icon: "dollarsign.circle")
                 Spacer()
-                Text(providerState.costSummary.isPrecise ? L10n.cost.exact : L10n.cost.estimated)
+                // v1.51 — three states, not two. `isPrecise` says where the
+                // number came from; the old badge used it to make a claim about
+                // how accurate the number is. A local scan that priced 20% of
+                // its tokens is still a local scan, and this said "Exact"
+                // directly above the line admitting it was 20%.
+                let fidelity = providerState.costSummary.fidelity
+                let fidelityColor: Color = fidelity == .exact ? .green : .orange
+                Text(L10n.cost.fidelityLabel(fidelity))
                     .font(.system(size: 8, weight: .medium))
-                    .foregroundStyle(providerState.costSummary.isPrecise ? .green : .orange)
+                    .foregroundStyle(fidelityColor)
                     .padding(.horizontal, 5)
                     .padding(.vertical, 2)
-                    .background((providerState.costSummary.isPrecise ? Color.green : Color.orange).opacity(0.15))
+                    .background(fidelityColor.opacity(0.15))
                     .clipShape(Capsule())
             }
 

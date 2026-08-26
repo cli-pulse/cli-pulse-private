@@ -726,6 +726,7 @@
 "common.no_provider_selected" = "No provider selected";
 "cost.exact" = "Exact";
 "cost.estimated" = "Estimated";
+"cost.partial" = "Partial";
 "cost.tokens_suffix" = "· %@ I/O tokens";
 "cost.tokens_short_suffix" = "· %@";
 "cost.thirty_day_precise" = "30 Day";

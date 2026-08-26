@@ -98,6 +98,28 @@ public struct CostCoverage: Sendable, Equatable {
         return Int((fraction * 100).rounded(.down))
     }
 
+    // MARK: - Fidelity
+
+    /// How much a cost figure deserves to be trusted, combining where it came
+    /// from with how much of it we could price.
+    ///
+    /// The badge above the cost card used to be two-state, driven by
+    /// `CostSummary.isPrecise` alone: "Exact" for a local scan, "Estimated" for
+    /// a cloud figure. But `isPrecise` describes PROVENANCE — did we count this
+    /// ourselves — while the word "Exact" makes a claim about ACCURACY. Those
+    /// came apart the moment a model had no rate: a scan that priced 20% of its
+    /// tokens is still a local scan, and the card called it Exact.
+    ///
+    /// Three states, because there are three situations.
+    public enum Fidelity: Sendable, Equatable, Hashable {
+        /// Counted locally, and every token had a rate.
+        case exact
+        /// Counted locally, but some tokens had no rate and contributed $0.
+        case partial
+        /// Came pre-summed from the backend; composition unknown.
+        case estimated
+    }
+
     // MARK: - Derivation
 
     /// Compute coverage from scanned entries.

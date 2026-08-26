@@ -676,6 +676,7 @@
 "common.no_provider_selected" = "未選擇服務商";
 "cost.exact" = "精確";
 "cost.estimated" = "估算";
+"cost.partial" = "部分";
 "cost.tokens_suffix" = "· %@ I/O tokens";
 "cost.tokens_short_suffix" = "· %@";
 "cost.thirty_day_precise" = "30 天";
