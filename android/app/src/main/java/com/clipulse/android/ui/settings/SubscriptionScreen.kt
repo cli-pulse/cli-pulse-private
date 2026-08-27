@@ -1,6 +1,5 @@
 package com.clipulse.android.ui.settings
 
-import android.app.Activity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -11,12 +10,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.android.billingclient.api.ProductDetails
 import com.clipulse.android.R
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,8 +23,6 @@ fun SubscriptionScreen(
     onBack: () -> Unit,
 ) {
     val state by viewModel.state.collectAsState()
-    val context = LocalContext.current
-    val activity = context as? Activity
 
     Scaffold(
         topBar = {
@@ -98,33 +93,37 @@ fun SubscriptionScreen(
                     //
                     // Providers stays because it is really enforced — though only
                     // by the Apple client; Android does not gate on tier at all.
-                    FeatureRow(stringResource(R.string.subscription_providers), "3", stringResource(R.string.subscription_unlimited), stringResource(R.string.subscription_unlimited))
+                    // v1.52: the Team column is gone with the tier itself.
+                    FeatureRow(stringResource(R.string.subscription_providers), "3", stringResource(R.string.subscription_unlimited))
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // Available products
-            if (state.products.isNotEmpty()) {
-                Text(
-                    stringResource(R.string.subscription_available_plans),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                state.products.forEach { product ->
-                    ProductCard(
-                        product = product,
-                        currentTier = state.tier,
-                        onPurchase = { activity?.let { viewModel.purchase(it, product) } },
+            // v1.52 — the purchase flow is removed from Android.
+            //
+            // Google Play Billing here was fully wired and fully real: a live
+            // BillingClient, four real subscription SKUs, a real purchase flow,
+            // and real server-side receipt validation writing an active
+            // `subscriptions` row. What was missing is the other half — NO
+            // Kotlin code reads the resulting entitlement. `SubscriptionState
+            // .isActive` is written and never read; not one code path on
+            // Android changes behaviour based on tier.
+            //
+            // So Play would charge the card and the app would do nothing
+            // differently. That is the one item in this codebase with actual
+            // refund exposure, and both external reviewers independently said
+            // the fix is to stop taking the money rather than to build Android
+            // tier gates for a tier nobody has validated.
+            //
+            // Restore stays below on purpose: anyone who already paid must
+            // still be able to recover their entitlement.
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        stringResource(R.string.subscription_unavailable_android),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    Spacer(Modifier.height(8.dp))
-                }
-            } else if (state.isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(32.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CircularProgressIndicator()
                 }
             }
 
@@ -144,7 +143,7 @@ fun SubscriptionScreen(
 }
 
 @Composable
-private fun FeatureRow(label: String, free: String, pro: String, team: String) {
+private fun FeatureRow(label: String, free: String, pro: String) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,61 +151,6 @@ private fun FeatureRow(label: String, free: String, pro: String, team: String) {
         Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         Text(free, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         Text(pro, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-        Text(team, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
     }
 }
 
-@Composable
-private fun ProductCard(
-    product: ProductDetails,
-    currentTier: String,
-    onPurchase: () -> Unit,
-) {
-    val offer = product.subscriptionOfferDetails?.firstOrNull()
-    val price = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.formattedPrice ?: ""
-    val period = offer?.pricingPhases?.pricingPhaseList?.firstOrNull()?.billingPeriod ?: ""
-    val periodLabel = when {
-        period.contains("Y") -> stringResource(R.string.subscription_per_year)
-        period.contains("M") -> stringResource(R.string.subscription_per_month)
-        else -> ""
-    }
-
-    val productTier = when {
-        product.productId.contains("team") -> "team"
-        product.productId.contains("pro") -> "pro"
-        else -> "free"
-    }
-    val isCurrentPlan = productTier == currentTier
-
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    product.name,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    "$price$periodLabel",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
-            if (isCurrentPlan) {
-                AssistChip(
-                    onClick = {},
-                    label = { Text(stringResource(R.string.subscription_current)) },
-                    leadingIcon = { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                )
-            } else {
-                Button(onClick = onPurchase) {
-                    Text(stringResource(R.string.subscription_subscribe))
-                }
-            }
-        }
-    }
-}

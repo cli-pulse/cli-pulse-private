@@ -264,4 +264,5 @@
     <string name="thermal_fair">보통</string>
     <string name="thermal_serious">심각</string>
     <string name="thermal_critical">위험</string>
+    <string name="subscription_unavailable_android">현재 Android에서는 구독을 제공하지 않습니다. 이 앱의 기능에는 잠금이 없으며 모두 그대로 사용할 수 있습니다. 이전에 구독하셨다면 아래 복원을 사용하세요.</string>
 </resources>
