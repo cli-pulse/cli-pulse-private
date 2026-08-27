@@ -1,0 +1,11 @@
+We were selling three things we cannot deliver. They are gone.
+
+• Removed: the Team plan. It never had a feature Pro did not already include, and it did not work — the server functions behind creating a team, inviting members and viewing team usage are not deployed, so pressing "Create Team" returned an error. If you already have Team, nothing changes: your plan and access are untouched.
+
+• Removed: Pro Lifetime. It has been incompletely configured in the App Store since it was introduced, which means the store never offered it and the button never worked — for over thirty releases. Rather than leave a purchase option that cannot complete, it is withdrawn. Existing Lifetime purchases are unaffected.
+
+• Removed on Android: the option to subscribe. Payment was wired up correctly, but nothing in the Android app actually changes based on your plan — so a subscription would have charged you and given you nothing. Every feature in the Android app is available to you as it is. "Restore purchases" stays, so anyone who already paid can recover their plan.
+
+• New: if your Pro came with the direct-download or Homebrew build, the app now says so. That version has included Pro since v1.19 as a gift for the channel. You were never told, which meant there was no way to tell it apart from something you had bought. Nothing to pay, nothing to cancel.
+
+• Fixed: when a purchase could not be confirmed with our server, the app kept working but said nothing, and the purchase went unrecorded on our side. It now reports the failure clearly so it can be found and fixed rather than sitting silent.
