@@ -22,6 +22,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
 PAYWALL_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionView.swift"
+OFFER_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift"
 INLINE_REL="CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
 CAPTION_REL="CLI Pulse Bar/scripts/compose_appstore_screenshots.py"
 STRINGS_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"
@@ -40,6 +41,7 @@ build_fixture() {
     {
         echo "$PAYWALL_REL"
         echo "$INLINE_REL"
+        echo "$OFFER_REL"
         echo "$STRINGS_REL"
         # every App Store screenshot caption source — the guard refuses to run
         # if it finds none, so the fixture must carry them all
@@ -204,6 +206,26 @@ if assert_changed "comment mentioning retired claims" "$TMP/case/$CAPTION_REL" "
         fail=$((fail + 1))
     fi
 fi
+
+# ── 11. a withdrawn tier goes back on sale ─────────────────────────────────
+# v1.52 withdrew Team and Lifetime. The ID constants stay (existing holders
+# must keep their entitlement), so the only thing standing between "withdrawn"
+# and "on sale again" is one line of `allProductIDs` — exactly the kind of
+# one-token reversal that slips through review.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$OFFER_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/^(\s*)proMonthlyID, proYearlyID$/$1proMonthlyID, proYearlyID, proLifetimeID/m' \
+    "$TMP/case/$OFFER_REL"
+assert_changed "withdrawn tier back on sale" "$TMP/case/$OFFER_REL" "$before" \
+    && expect_fail "withdrawn tier back on sale" "back in allProductIDs"
+
+# ── 12. the offer list stops being parseable ───────────────────────────────
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$OFFER_REL" | cut -d' ' -f1)"
+perl -0pi -e 's/private static let allProductIDs/private static let offeredProductIDs/' \
+    "$TMP/case/$OFFER_REL"
+assert_changed "offer list unparseable" "$TMP/case/$OFFER_REL" "$before" \
+    && expect_fail "offer list unparseable" "could not find"
 
 echo
 echo "test_check_paywall_claims: $pass passed, $fail failed."

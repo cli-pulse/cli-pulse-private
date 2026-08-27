@@ -210,25 +210,15 @@ struct SubscriptionSection: View {
             if let proY = subscriptionManager.proYearly {
                 inlineProductRow(product: proY, label: "Pro Yearly", features: "Save 17%")
             }
-            if let team = subscriptionManager.teamMonthly {
-                inlineProductRow(product: team, label: "Team Monthly", features: L10n.subscription.everythingInPro)
-            }
-            if let teamY = subscriptionManager.teamYearly {
-                inlineProductRow(product: teamY, label: "Team Yearly", features: "Save 17%")
-            }
-            // v1.14: Pro Lifetime tile — surfaced at the bottom because it's
-            // the largest single payment. Hidden when the user already owns
-            // it (covered by the isProOrAbove branch above for Team users
-            // which never see this card; explicit isLifetime guard for the
-            // edge where a free user just bought lifetime mid-session).
-            if let lifetime = subscriptionManager.proLifetime,
-               !subscriptionManager.isLifetime {
-                inlineProductRow(
-                    product: lifetime,
-                    label: L10n.subscription.lifetime,
-                    features: L10n.subscription.lifetimeDescription
-                )
-            }
+            // v1.52 — Team rows removed. The tier is withdrawn from sale:
+            // it has no exclusive benefit (TeamView gates on isProOrAbove) and
+            // does not function (7 of its 8 RPCs are absent from production).
+            // Existing Team entitlements still resolve; see
+            // `SubscriptionManager.allProductIDs`.
+            // v1.52 — Lifetime row removed. `com.clipulse.pro.lifetime` has
+            // been MISSING_METADATA in App Store Connect since v1.14, so
+            // StoreKit never returned it and this row never rendered anyway.
+            // Withdrawn from sale rather than left as a permanent no-op.
         }
     }
 

@@ -210,6 +210,39 @@ while IFS='|' read -r sym file pattern _note; do
     fi
 done < "$ALLOW"
 
+# ── 3b. withdrawn tiers stay withdrawn ───────────────────────────────────────
+# v1.52 withdrew Team and Lifetime from sale. Team has no exclusive benefit and
+# 7 of its 8 RPCs are absent from production; Lifetime has been MISSING_METADATA
+# in App Store Connect since v1.14 and StoreKit never returned it.
+#
+# The ID CONSTANTS stay (entitlement resolution needs them so existing holders
+# keep their tier). What must not come back silently is the OFFER — putting them
+# back into `allProductIDs` starts selling them again, and that is a product
+# decision, not a refactor.
+OFFER_FILE="$ROOT/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift"
+if [ -f "$OFFER_FILE" ]; then
+    offer_block="$(awk '/private static let allProductIDs/,/\]/' "$OFFER_FILE")"
+    if [ -z "$offer_block" ]; then
+        echo "ERROR: could not find 'allProductIDs' in SubscriptionManager.swift."
+        echo "       This guard cannot check an offer list it cannot parse."
+        failed=1
+    else
+        for withdrawn in teamMonthlyID teamYearlyID proLifetimeID; do
+            if echo "$offer_block" | grep -q "$withdrawn"; then
+                echo "ERROR: '$withdrawn' is back in allProductIDs — that puts a withdrawn"
+                echo "       tier back on sale."
+                echo
+                echo "       Team was withdrawn because it has no exclusive benefit and 7 of"
+                echo "       its 8 RPCs do not exist in production. Lifetime was withdrawn"
+                echo "       because it has been MISSING_METADATA in App Store Connect since"
+                echo "       v1.14. If either has genuinely changed, say so in the commit and"
+                echo "       remove it from this guard deliberately."
+                failed=1
+            fi
+        done
+    fi
+fi
+
 # ── 4. the retired claims stay retired ───────────────────────────────────────
 # Scan source files only. `CLI Pulse Bar/CLIPulseCore/.build` alone is ~4 GB of
 # compiler artifacts and a naive `grep -r` over it runs for minutes; it also
