@@ -148,8 +148,30 @@ public final class SubscriptionManager: ObservableObject {
     /// ASC: com.clipulse.pro.lifetime / Apple ID 6767441323 / ¥128 CNY base.
     public static let proLifetimeID = "com.clipulse.pro.lifetime"
 
+    /// What the app OFFERS for sale. Deliberately smaller than the set of IDs
+    /// the app can still RECOGNISE — see the note below.
+    ///
+    /// v1.52 removed Team and Lifetime from sale:
+    ///
+    ///   Team — `TeamView` gates on `isProOrAbove`, so Pro already receives
+    ///   every team feature and the tier has no exclusive benefit. Worse, of
+    ///   the eight team RPCs the client calls, production has exactly one
+    ///   (`my_teams`); `create_team` and the rest do not exist in the live
+    ///   database, so a Team subscriber pressing "Create Team" gets an error.
+    ///   One team has ever been created.
+    ///
+    ///   Lifetime — `com.clipulse.pro.lifetime` has been `MISSING_METADATA` in
+    ///   App Store Connect since v1.14: no localization, no price point, no
+    ///   review screenshot. StoreKit omits it from every response, so the tile
+    ///   rendered a dead "Not Available" button for 37 versions.
+    ///
+    /// CRITICAL: the ID constants above are intentionally KEPT. Entitlement
+    /// resolution reads `Transaction.currentEntitlements` and compares against
+    /// them directly (see `scanStoreKitEntitlements`), which does not consult
+    /// this set. Anyone who already holds Team or Lifetime keeps their tier;
+    /// they simply are not sold to anyone new.
     private static let allProductIDs: Set<String> = [
-        proMonthlyID, proYearlyID, teamMonthlyID, teamYearlyID, proLifetimeID
+        proMonthlyID, proYearlyID
     ]
 
     /// v1.51 — what the last `loadProducts()` actually did. See that method for

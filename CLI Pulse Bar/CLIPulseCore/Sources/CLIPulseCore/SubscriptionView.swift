@@ -119,114 +119,36 @@ public struct SubscriptionView: View {
                 isPopular: true
             )
 
-            // Team currently has NO exclusive benefit: `TeamView` gates on
-            // `isProOrAbove`, so Pro already gets every team feature, and
-            // Team's two nominal differentiators (unlimited devices,
-            // 365-day retention) are the unenforced ones deleted above.
-            // Listing only "Everything in Pro" is the honest description of
-            // what a Team subscription buys today. What Team *should* be is
-            // an open product question — see the monetization plan §6.
-            planCard(
-                name: L10n.subscription.team,
-                tier: .team,
-                product: isYearly ? manager.teamYearly : manager.teamMonthly,
-                features: [
-                    L10n.subscription.everythingInPro
-                ],
-                color: PulseTheme.secondaryAccent,
-                isPopular: false
-            )
+            // v1.52 — the Team card is GONE, not merely honest.
+            //
+            // v1.51 reduced it to one bullet ("Everything in Pro") because that
+            // was literally all it bought. A production check then showed the
+            // tier does not work either: of the eight team RPCs the client
+            // calls, only `my_teams` exists in the live database. A Team
+            // subscriber pressing "Create Team" gets an error. One team has
+            // ever been created, by anyone, ever.
+            //
+            // Selling a tier with no exclusive benefit that also does not
+            // function is the thing this whole workstream exists to stop, so it
+            // is withdrawn from sale. Existing Team entitlements are untouched:
+            // `scanStoreKitEntitlements` still recognises the Team product IDs.
 
-            // v1.14: Lifetime tile. Hidden when:
-            //   - user is on Team (Team strictly outranks Pro Lifetime)
-            //   - user already owns Lifetime (paywall shows "Owned" pill on
-            //     the Pro tile via the existing currentTier == tier branch;
-            //     a duplicate Lifetime tile would just confuse)
-            //   - v1.51: the store is not offering the product. An App Store
-            //     Connect audit found `com.clipulse.pro.lifetime` in
-            //     MISSING_METADATA with no localization, no price point and no
-            //     review screenshot — created and never configured. StoreKit
-            //     therefore omits it from every response and this tile has
-            //     rendered a dead "Not Available" button since v1.14. Showing
-            //     an unbuyable purchase option reads as a transient glitch the
-            //     user should retry; it never resolves. When the product is
-            //     configured in ASC the tile returns on its own.
-            if manager.currentTier != .team && !manager.isLifetime
-                && manager.isOffered(SubscriptionManager.proLifetimeID) {
-                lifetimeCard
-            }
+            // v1.52 — the Lifetime tile is withdrawn from sale.
+            //
+            // `com.clipulse.pro.lifetime` has been MISSING_METADATA in App
+            // Store Connect since v1.14 — no localization, no price point, no
+            // review schedule, no review screenshot. StoreKit omits it from
+            // every response, so for 37 versions this rendered a dead "Not
+            // Available" button on the largest single payment in the app, and
+            // nobody noticed. The one purchase this product has ever recorded
+            // was a monthly subscription, so there is no evidence of demand for
+            // a one-time price either.
+            //
+            // Anyone who somehow already owns it keeps it: `isLifetime` and the
+            // entitlement scan are unchanged.
         }
     }
 
-    /// v1.14 Lifetime tile. Visually distinct from monthly/yearly: gold-ish
-    /// accent, "One-time" badge instead of "save XX%". Tap → purchase.
-    private var lifetimeCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text(L10n.subscription.lifetime)
-                    .font(.title3.bold())
-                Text(L10n.subscription.oneTimeBadge)
-                    .font(.system(size: 9, weight: .bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.orange.opacity(0.2))
-                    .foregroundStyle(Color.orange)
-                    .clipShape(Capsule())
-                Spacer()
-                if let product = manager.proLifetime {
-                    VStack(alignment: .trailing) {
-                        Text(product.displayPrice)
-                            .font(.title3.bold())
-                        Text(L10n.subscription.oneTime)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("--")
-                        .font(.title3)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            Divider()
-
-            Text(L10n.subscription.lifetimeDescription)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            if let product = manager.proLifetime {
-                Button {
-                    Task { await purchaseProduct(product) }
-                } label: {
-                    HStack {
-                        if isPurchasing {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text(L10n.subscription.buyLifetime)
-                            .font(.subheadline.bold())
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.orange)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(.plain)
-                .disabled(isPurchasing)
-            } else {
-                Text(L10n.subscription.notAvailable)
-                    .font(.subheadline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.gray.opacity(0.15))
-                    .foregroundStyle(.secondary)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-            }
-        }
-        .padding()
-        .background(PulseTheme.cardBackground.opacity(0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
 
     private func planCard(
         name: String,

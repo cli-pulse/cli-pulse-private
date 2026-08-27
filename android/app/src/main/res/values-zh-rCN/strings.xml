@@ -269,4 +269,5 @@
     <string name="thermal_fair">一般</string>
     <string name="thermal_serious">偏高</string>
     <string name="thermal_critical">严重</string>
+    <string name="subscription_unavailable_android">目前 Android 上不提供订阅。这个 app 里没有任何功能被锁住,现在就可以全部使用。如果你之前订阅过,请使用下面的「恢复购买」。</string>
 </resources>

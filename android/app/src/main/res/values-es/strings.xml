@@ -265,4 +265,5 @@
     <string name="thermal_fair">Moderado</string>
     <string name="thermal_serious">Alto</string>
     <string name="thermal_critical">Crítico</string>
+    <string name="subscription_unavailable_android">Las suscripciones no están disponibles en Android por ahora. Nada en esta app está bloqueado: todas las funciones están disponibles tal cual. Si te suscribiste antes, usa Restaurar.</string>
 </resources>
