@@ -663,6 +663,9 @@ public enum L10n {
         // from free is not the same as delivered to paid, and only the second
         // one makes a bullet honest.
         public static var homeScreenWidgets: String { tr("subscription.home_screen_widgets") }
+        // v1.52 — shown to Developer ID / Homebrew installs, which are granted
+        // Pro Lifetime by the channel rather than by a purchase.
+        public static var channelGrant: String { tr("subscription.channel_grant") }
         // REMOVED in v1.51 — `subscription.priority_alerts`,
         // `subscription.cost_analytics`, `subscription.shared_alerts`,
         // `subscription.admin_controls`, `subscription.team_dashboards`

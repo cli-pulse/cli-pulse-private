@@ -9,6 +9,7 @@
 import { assert, assertEquals } from "jsr:@std/assert";
 import {
   isLifetimeProduct,
+  isUsableAppAppleId,
   peekJWSEnvironment,
   shouldPersistEntitlement,
   tierForProduct,
@@ -73,4 +74,46 @@ Deno.test("peekJWSEnvironment: undecodable payload → error", () => {
   const r = peekJWSEnvironment("aaa.@@@@.ccc");
   assertEquals(r.ok, false);
   if (!r.ok) assertEquals(r.error, "Cannot decode JWS payload");
+});
+
+// ── v1.52: the App Apple ID config guard ────────────────────────────────────
+//
+// THE CASE THIS EXISTS FOR. `index.ts` reads the id as
+// `Number(Deno.env.get("APPLE_APP_APPLE_ID") ?? "0")`. An unset secret becomes
+// 0, Apple's SignedDataVerifier then rejects every PRODUCTION receipt, and the
+// old code reported that as a generic 400 "JWS verification failed" — the same
+// answer it gives for a genuinely bad receipt.
+//
+// The client treats a failed validation as transient and keeps the local
+// StoreKit tier, so the buyer still sees Pro and nothing looks wrong, while the
+// backend records nothing. That is consistent with what production shows: no
+// row in `subscriptions` has ever carried an apple_transaction_id, not even for
+// the real Pro Monthly purchase Apple reports on 2026-06-24.
+
+Deno.test("isUsableAppAppleId: an unset secret is NOT usable", () => {
+  // The exact shape of the bug: `Deno.env.get` returns undefined.
+  assertEquals(isUsableAppAppleId(undefined), false);
+  assertEquals(isUsableAppAppleId(null), false);
+  assertEquals(isUsableAppAppleId(""), false);
+  assertEquals(isUsableAppAppleId("   "), false);
+});
+
+Deno.test("isUsableAppAppleId: zero is NOT usable", () => {
+  // `?? "0"` is the literal default in index.ts, so this is the value that
+  // actually reached SignedDataVerifier.
+  assertEquals(isUsableAppAppleId("0"), false);
+  assertEquals(isUsableAppAppleId("-1"), false);
+});
+
+Deno.test("isUsableAppAppleId: garbage is NOT usable", () => {
+  assertEquals(isUsableAppAppleId("not-a-number"), false);
+  assertEquals(isUsableAppAppleId("12.5"), false);
+  assertEquals(isUsableAppAppleId("NaN"), false);
+  assertEquals(isUsableAppAppleId("Infinity"), false);
+});
+
+Deno.test("isUsableAppAppleId: the real app id IS usable", () => {
+  // CLI Pulse's actual App Apple ID. Not a secret — it is in every store URL.
+  assert(isUsableAppAppleId("6761163709"));
+  assert(isUsableAppAppleId(" 6761163709 "));
 });

@@ -66,3 +66,28 @@ export function peekJWSEnvironment(jws: string): JWSEnvResult {
 export function shouldPersistEntitlement(environment: ReceiptEnvironment): boolean {
   return environment === "Production";
 }
+
+/// v1.52 — is the configured App Apple ID usable for PRODUCTION verification?
+///
+/// Apple's `SignedDataVerifier` requires a correct numeric app id when
+/// verifying a production transaction. `index.ts` reads it as
+/// `Number(Deno.env.get("APPLE_APP_APPLE_ID") ?? "0")`, so an unset secret
+/// silently becomes `0` — and every production receipt then fails verification
+/// with a generic "JWS verification failed", indistinguishable from a genuinely
+/// bad receipt.
+///
+/// That mattered: the client treats a failed validation as transient and keeps
+/// the locally-verified StoreKit tier, so a buyer still gets Pro on their device
+/// and nothing looks broken — while the backend records nothing. No row in
+/// `subscriptions` has ever carried an `apple_transaction_id`, including for a
+/// real Pro Monthly purchase Apple's own reports show on 2026-06-24.
+///
+/// Pure and exported so the distinction is unit-testable without a live
+/// StoreKit round-trip.
+export function isUsableAppAppleId(raw: string | undefined | null): boolean {
+  if (raw === undefined || raw === null) return false;
+  const trimmed = raw.trim();
+  if (trimmed === "") return false;
+  const n = Number(trimmed);
+  return Number.isFinite(n) && Number.isInteger(n) && n > 0;
+}

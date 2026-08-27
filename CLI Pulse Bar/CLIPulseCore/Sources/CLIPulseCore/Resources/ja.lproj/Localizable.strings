@@ -214,6 +214,7 @@
 "subscription.everything_in_pro" = "Proのすべての機能を含む";
 "subscription.unlimited_providers" = "無制限のプロバイダー";
 "subscription.home_screen_widgets" = "ホーム画面・ロック画面ウィジェット（iPhone）";
+"subscription.channel_grant" = "あなたの Pro プランは直接ダウンロード版 / Homebrew 版に付属するものです。購入ではなくこのチャネルへの贈り物なので、支払いも解約もありません。";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "Proにアップグレード";

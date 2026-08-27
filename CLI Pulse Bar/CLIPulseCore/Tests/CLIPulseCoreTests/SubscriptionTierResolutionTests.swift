@@ -467,3 +467,51 @@ final class SubscriptionTierResolutionTests: XCTestCase {
 }
 
 #endif
+
+// MARK: - v1.52: the channel grant must announce itself
+
+/// Developer ID / Homebrew installs are granted Pro Lifetime unconditionally by
+/// the `#if DEVID_BUILD` short-circuit, deliberately, since v1.19 — and the app
+/// never told those users. They saw a Pro badge with no way to know it was a
+/// channel grant rather than something they bought.
+///
+/// `isChannelGrantedPro` keys off the source string that short-circuit already
+/// sets, so there is one source of truth rather than a second `#if` to keep in
+/// sync. These pin both directions of that.
+final class ChannelGrantDisclosureTests: XCTestCase {
+
+    @MainActor
+    func testChannelGrantIsRecognisedFromTheSourceTheShortCircuitSets() {
+        let manager = SubscriptionManager(runtimeEnvironment: .current)
+        manager.lastTierRefreshSource = "devid-beta-channel"
+        XCTAssertTrue(
+            manager.isChannelGrantedPro,
+            """
+            The DEVID short-circuit sets lastTierRefreshSource to \
+            "devid-beta-channel". If this fails, that string changed and the \
+            in-app disclosure silently stopped rendering — leaving those users \
+            unable to tell a gift from a purchase again.
+            """
+        )
+    }
+
+    /// NEGATIVE CONTROL. A real purchase, a server grant, and an unresolved
+    /// state must all report false — otherwise the app would tell a paying
+    /// customer their subscription was a free gift, which is worse than saying
+    /// nothing at all.
+    @MainActor
+    func testRealEntitlementsAreNeverLabelledAsAChannelGrant() {
+        let manager = SubscriptionManager(runtimeEnvironment: .current)
+        for source in ["store-jws-server-verified", "server-tier",
+                       "local-only-fallback", "store-jws-server-rejected"] {
+            manager.lastTierRefreshSource = source
+            XCTAssertFalse(
+                manager.isChannelGrantedPro,
+                "'\(source)' is not a channel grant and must not be labelled one"
+            )
+        }
+        manager.lastTierRefreshSource = nil
+        XCTAssertFalse(manager.isChannelGrantedPro,
+                       "an unresolved tier must not claim to be a channel grant")
+    }
+}

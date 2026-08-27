@@ -214,6 +214,7 @@
 "subscription.everything_in_pro" = "包含 Pro 的所有功能";
 "subscription.unlimited_providers" = "無限服務商";
 "subscription.home_screen_widgets" = "主畫面與鎖定畫面小工具（iPhone）";
+"subscription.channel_grant" = "你的 Pro 來自直接下載 / Homebrew 版本 —— 這是給這個管道的贈送,不是購買。無需付費,也無需取消。";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "升級到 Pro";

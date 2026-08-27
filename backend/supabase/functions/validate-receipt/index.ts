@@ -27,6 +27,7 @@ import {
 } from "npm:@apple/app-store-server-library@3";
 import {
   isLifetimeProduct,
+  isUsableAppAppleId,
   peekJWSEnvironment,
   shouldPersistEntitlement,
   tierForProduct,
@@ -374,6 +375,35 @@ Deno.serve(async (req: Request) => {
       }
 
       const appAppleId = Number(Deno.env.get("APPLE_APP_APPLE_ID") ?? "0");
+
+      // v1.52 — fail LOUDLY and DISTINCTLY on a misconfiguration.
+      //
+      // Apple's `SignedDataVerifier` requires a correct numeric app id when
+      // verifying a PRODUCTION transaction. If the `APPLE_APP_APPLE_ID` secret
+      // is unset this silently becomes 0, every production receipt throws, and
+      // the catch below reports it as a generic 400 "JWS verification failed" —
+      // indistinguishable from a genuinely bad receipt.
+      //
+      // That distinction matters more than it looks. The client treats a failed
+      // validation as transient, keeps the locally-verified StoreKit tier, and
+      // moves on. The buyer gets Pro on their device, so nothing looks wrong —
+      // while the backend records nothing at all. No row in `subscriptions` has
+      // ever carried an `apple_transaction_id`, including for a real Pro
+      // Monthly purchase Apple's own reports show on 2026-06-24. A universal,
+      // silent, config-shaped failure looks exactly like that.
+      //
+      // So: name it. A receipt problem is the user's; this one is ours.
+      if (!isUsableAppAppleId(Deno.env.get("APPLE_APP_APPLE_ID"))) {
+        console.error(
+          "validate-receipt CONFIG ERROR: APPLE_APP_APPLE_ID is unset or not a " +
+            "positive number. Every production receipt will fail verification " +
+            "and no purchase can be recorded.",
+        );
+        return jsonResponse({
+          verified: false,
+          error: "server_misconfigured_app_apple_id",
+        }, 500);
+      }
       // v1.21 F6: pass every supported Apple Root CA (G3 + G2 + the
       // original 2006 Apple Inc. Root). SignedDataVerifier picks
       // whichever one the receipt's intermediate chains up to.

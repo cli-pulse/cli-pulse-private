@@ -214,6 +214,7 @@
 "subscription.everything_in_pro" = "Pro의 모든 기능 포함";
 "subscription.unlimited_providers" = "무제한 공급자";
 "subscription.home_screen_widgets" = "홈 화면 및 잠금 화면 위젯(iPhone)";
+"subscription.channel_grant" = "회원님의 Pro 플랜은 직접 다운로드 / Homebrew 빌드에 포함된 것입니다. 구매가 아니라 이 채널에 드리는 선물이므로 결제도 해지도 없습니다.";
 "subscription.per_year" = "/년";
 "subscription.per_month" = "/월";
 "subscription.upgrade_pro" = "Pro로 업그레이드";
