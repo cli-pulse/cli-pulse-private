@@ -214,6 +214,7 @@
 "subscription.everything_in_pro" = "包含 Pro 的所有功能";
 "subscription.unlimited_providers" = "无限服务商";
 "subscription.home_screen_widgets" = "主屏幕与锁定屏幕小组件（iPhone）";
+"subscription.channel_grant" = "你的 Pro 来自直接下载 / Homebrew 版本 —— 这是给这个渠道的赠送,不是购买。无需付费,也无需取消。";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "升级到 Pro";

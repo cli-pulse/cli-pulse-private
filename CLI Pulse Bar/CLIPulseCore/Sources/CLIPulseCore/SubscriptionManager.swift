@@ -239,6 +239,26 @@ public final class SubscriptionManager: ObservableObject {
     /// authoritative. See `TierRefreshErrorCategory` doc.
     @Published public var lastTierRefreshError: TierRefreshErrorCategory?
 
+    /// v1.52 — true when this install's Pro came from the distribution channel
+    /// rather than from a purchase.
+    ///
+    /// Developer ID and Homebrew builds are granted Pro Lifetime unconditionally
+    /// by the `#if DEVID_BUILD` short-circuit in `updateCurrentEntitlements()`,
+    /// deliberately, since v1.19. The app has never told those users that. They
+    /// see a Pro badge and cannot know it is a channel grant rather than
+    /// something they bought — and they can never be asked to convert, because
+    /// nothing ever frames it as a gift.
+    ///
+    /// It also quietly corrupts every conversion denominator: those installs
+    /// cannot buy anything, so counting them as failed conversions is wrong.
+    /// Naming the grant is what makes it honest to exclude them.
+    ///
+    /// Keyed on the source string the short-circuit already sets, so there is
+    /// one source of truth rather than a second `#if` to keep in sync.
+    public var isChannelGrantedPro: Bool {
+        lastTierRefreshSource == "devid-beta-channel"
+    }
+
     public var isProOrAbove: Bool { currentTier == .pro || currentTier == .team }
     public var isTeam: Bool { currentTier == .team }
 
@@ -632,6 +652,41 @@ public final class SubscriptionManager: ObservableObject {
             tierResolutionState = resolved.state
             lastTierRefreshSource = resolved.source
             lastTierRefreshError = resolved.error
+
+            // v1.52 — say out loud when a real receipt did not reach the
+            // backend.
+            //
+            // This is the failure that hid an actual paying customer. Apple's
+            // records show a Pro Monthly subscription bought on iPhone on
+            // 2026-06-24 and cancelled on 2026-07-24. No row in `subscriptions`
+            // corresponds to it, and no row in that table has ever carried an
+            // `apple_transaction_id` — so the write path has never once
+            // recorded a real purchase.
+            //
+            // The client behaves reasonably when validation fails: it keeps the
+            // locally-verified StoreKit tier, so the buyer still gets Pro on
+            // their device. That is exactly why nobody noticed. The user is
+            // fine; the backend is blind, which breaks server-side entitlement,
+            // support, and every conversion number the product will ever
+            // produce.
+            //
+            // `lastTierRefreshError` already carried this, but it renders only
+            // in `SubscriptionSection`, which sits behind BOTH `isAuthenticated`
+            // and `isPaired` — invisible to most of the people it concerns, and
+            // absent from iOS entirely. A log line is readable from a support
+            // thread and from `log show` on any machine.
+            //
+            // Public-safe: category strings only, no receipt, no identifiers.
+            switch resolved.state {
+            case .resolvedConfirmed where resolved.error == nil:
+                storeLogger.info("[Receipt] verified by server; tier=\(resolved.tier.rawValue, privacy: .public)")
+            case .resolvedConfirmed:
+                // Authoritative reject — refunded, revoked or invalid. Correct
+                // behaviour, worth a line so a support case can see it.
+                storeLogger.notice("[Receipt] server REJECTED the receipt (\(resolved.error?.rawValue ?? "unknown", privacy: .public)); tier=\(resolved.tier.rawValue, privacy: .public)")
+            case .resolvedDegraded, .unresolved:
+                storeLogger.error("[Receipt] validation did NOT reach the backend (\(resolved.error?.rawValue ?? "unknown", privacy: .public)). The device keeps its local StoreKit tier \(resolved.tier.rawValue, privacy: .public), but the server has no record of this purchase.")
+            }
             return
         }
 

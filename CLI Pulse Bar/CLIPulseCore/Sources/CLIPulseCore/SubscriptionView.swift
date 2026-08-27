@@ -66,6 +66,16 @@ public struct SubscriptionView: View {
                         .font(.headline)
                     SubscriptionBadge(tier: manager.currentTier)
                 }
+                // v1.52 — a Developer ID / Homebrew install is granted Pro by
+                // the channel, not by a purchase, and until now the app never
+                // said so. Those users could not tell a gift from something
+                // they had bought.
+                if manager.isChannelGrantedPro {
+                    Text(L10n.subscription.channelGrant)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer()
         }

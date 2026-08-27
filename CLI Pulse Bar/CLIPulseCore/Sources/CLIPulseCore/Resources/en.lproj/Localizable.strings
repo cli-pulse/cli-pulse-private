@@ -214,6 +214,7 @@
 "subscription.everything_in_pro" = "Everything in Pro";
 "subscription.unlimited_providers" = "Unlimited providers";
 "subscription.home_screen_widgets" = "Home & Lock Screen widgets (iPhone)";
+"subscription.channel_grant" = "Your Pro plan comes with the direct-download / Homebrew build — it is a gift for this channel, not a purchase. Nothing to pay, nothing to cancel.";
 "subscription.per_year" = "/year";
 "subscription.per_month" = "/month";
 "subscription.upgrade_pro" = "Upgrade to Pro";

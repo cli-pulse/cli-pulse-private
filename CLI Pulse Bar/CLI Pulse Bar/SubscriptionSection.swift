@@ -26,6 +26,15 @@ struct SubscriptionSection: View {
                 SubscriptionBadge(tier: subscriptionManager.currentTier)
             }
 
+            // v1.52 — say where a channel-granted Pro came from. See
+            // `SubscriptionManager.isChannelGrantedPro`.
+            if subscriptionManager.isChannelGrantedPro {
+                Text(L10n.subscription.channelGrant)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             // Diagnostic line — only renders when the tier hasn't been
             // confirmed yet (cold launch race) or the most recent
             // refresh fell into the degraded path (server / receipt
