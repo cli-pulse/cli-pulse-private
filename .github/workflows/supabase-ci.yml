@@ -125,6 +125,30 @@ jobs:
       - name: Run edge-function deno tests
         run: deno test backend/supabase/functions/
 
+      # v1.52.1 — type-check the ENTRYPOINTS, not just what tests import.
+      #
+      # `deno test` only type-checks modules reachable from a test file.
+      # `receipt_test.ts` imports `./receipt.ts` and never `./index.ts`, so
+      # index.ts had NEVER been type-checked by anything — in CI or locally.
+      #
+      # That is precisely how the receipt outage survived three months and
+      # eight deploys: the root certificates were passed as `ArrayBuffer`,
+      # `deno check` reports it as
+      #   TS2345: Argument of type 'ArrayBuffer[]' is not assignable to
+      #           parameter of type 'Buffer<ArrayBufferLike>[]'
+      # and nothing was running `deno check`. Every Apple receipt 500'd before
+      # any database write, and zero purchases were recorded.
+      #
+      # Verified 2026-08-28 that this step FAILS when `.buffer` is restored and
+      # PASSES on the fixed tree — a gate nobody has watched fail is not known
+      # to work.
+      - name: Type-check edge function entrypoints
+        run: |
+          set -euo pipefail
+          # Every function's entrypoint, including ones no test imports.
+          find backend/supabase/functions -name 'index.ts' -print0 \
+            | xargs -0 -n1 deno check
+
   rls-cross-user:
     # C-3 (DEV_PLAN 2026-06-27 PR3): cross-user RLS denial tests. Decoupled from
     # the schema.sql double-apply blocker below — instead of replaying

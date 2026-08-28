@@ -31,6 +31,7 @@ import {
   peekJWSEnvironment,
   shouldPersistEntitlement,
   tierForProduct,
+  toRootCertificates,
 } from "./receipt.ts";
 
 // v1.21 F6: multi-root Apple CA hardcode.
@@ -378,21 +379,30 @@ Deno.serve(async (req: Request) => {
 
       // v1.52 — fail LOUDLY and DISTINCTLY on a misconfiguration.
       //
-      // Apple's `SignedDataVerifier` requires a correct numeric app id when
-      // verifying a PRODUCTION transaction. If the `APPLE_APP_APPLE_ID` secret
-      // is unset this silently becomes 0, every production receipt throws, and
-      // the catch below reports it as a generic 400 "JWS verification failed" —
-      // indistinguishable from a genuinely bad receipt.
+      // ⚠️ CORRECTION (v1.52.1). This guard was written believing an unset
+      // `APPLE_APP_APPLE_ID` was the cause of the missing purchase records.
+      // IT WAS NOT, and the original comment here stated that guess as fact.
+      // Two independent refutations, both measured 2026-08-28:
       //
-      // That distinction matters more than it looks. The client treats a failed
-      // validation as transient, keeps the locally-verified StoreKit tier, and
-      // moves on. The buyer gets Pro on their device, so nothing looks wrong —
-      // while the backend records nothing at all. No row in `subscriptions` has
-      // ever carried an `apple_transaction_id`, including for a real Pro
-      // Monthly purchase Apple's own reports show on 2026-06-24. A universal,
-      // silent, config-shaped failure looks exactly like that.
+      //   1. The secret IS set, and set correctly. `supabase secrets list`
+      //      reports digest 3047c8d6…852f, and sha256("6761163709") — the real
+      //      App Apple ID — matches it exactly. (sha256("0") and sha256("")
+      //      do not.) So this guard never fired in production.
+      //   2. Even unset it would not matter: `verifyAndDecodeTransaction`
+      //      reads only `bundleId` and `environment`. It never touches
+      //      `appAppleId`. The constructor's own guard tests
+      //      `appAppleId === undefined`, and `Number(x ?? "0")` is 0, not
+      //      undefined — so that never fired either.
       //
-      // So: name it. A receipt problem is the user's; this one is ours.
+      // The real cause was one word, `.buffer`, thirty lines below. Had this
+      // guard shipped alone it would have changed nothing except replacing
+      // silence with a confident, wrong error string — and sent the next
+      // investigation to the wrong line.
+      //
+      // The guard is KEPT because `APPLE_APP_APPLE_ID` is genuinely required
+      // for App Store Server Notifications and `verifyAndDecodeAppTransaction`,
+      // so a missing value is still a real misconfiguration worth naming. It is
+      // simply not, and never was, the diagnosis for the missing rows.
       if (!isUsableAppAppleId(Deno.env.get("APPLE_APP_APPLE_ID"))) {
         console.error(
           "validate-receipt CONFIG ERROR: APPLE_APP_APPLE_ID is unset or not a " +
@@ -407,9 +417,40 @@ Deno.serve(async (req: Request) => {
       // v1.21 F6: pass every supported Apple Root CA (G3 + G2 + the
       // original 2006 Apple Inc. Root). SignedDataVerifier picks
       // whichever one the receipt's intermediate chains up to.
-      const rootCerts = APPLE_ROOT_CA_PEMS.map((pem) =>
-        new TextEncoder().encode(pem).buffer
-      );
+      //
+      // ⚠️ MUST BE `Buffer`. This one line is the entire reason no Apple
+      // receipt has ever been recorded.
+      //
+      // It used to read `new TextEncoder().encode(pem).buffer`. `encode()`
+      // returns a Uint8Array; `.buffer` unwraps it to a bare ArrayBuffer. The
+      // library feeds each element straight to `new X509Certificate(cert)`,
+      // and both Node and Deno reject an ArrayBuffer there:
+      //
+      //   The "buffer" argument must be of type string or an instance of
+      //   Buffer, TypedArray, or DataView. Received an instance of ArrayBuffer
+      //
+      // That TypeError is thrown by the SignedDataVerifier *constructor*, which
+      // sits OUTSIDE the try/catch guarding verifyAndDecodeTransaction, so it
+      // escaped to the handler's outer catch and became a bare HTTP 500 —
+      // before the profiles UPDATE and before the subscriptions upsert. Every
+      // Apple request, Sandbox and Production alike, since v1.21 (2026-05-15).
+      //
+      // Proof it was never reached rather than merely failing late:
+      // `profiles.receipt_verified_at` is non-null in 0 of 210 rows, and that
+      // column is written first.
+      //
+      // `Buffer`, not plain `Uint8Array`: both construct fine at runtime, but
+      // the library's declared parameter type is `Buffer[]`, so Uint8Array
+      // leaves `deno check` red — and a permanently-red gate is one nobody
+      // reads. Buffer satisfies the type checker and the runtime together.
+      // Both facts measured 2026-08-28 on Deno 2.7.5 against the real npm
+      // package with these exact PEM constants.
+      //
+      // Built via `toRootCertificates` in receipt.ts rather than inline, so
+      // that `receipt_test.ts` can construct a real SignedDataVerifier from
+      // the same code path that ships. Inline, it was untestable — which is
+      // how it stayed broken for three months.
+      const rootCerts = toRootCertificates(APPLE_ROOT_CA_PEMS);
 
       // v1.20.1 C2: peek the JWS payload (unauthenticated) for the `environment`
       // claim so we pick PRODUCTION vs SANDBOX correctly before constructing the
@@ -521,8 +562,23 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Anti-replay for Google — check both orderId and purchaseToken
-      const replayCheckField = result.orderId ? "play_order_id" : "play_purchase_token";
+      // Anti-replay for Google — `play_order_id` only.
+      //
+      // This used to fall back to a `play_purchase_token` column when Google
+      // returned no order id. THAT COLUMN DOES NOT EXIST in production: the
+      // live `subscriptions` table is user_id, tier, status,
+      // current_period_{start,end}, trial_end, cancel_at_period_end,
+      // apple_{transaction_id,original_transaction_id,product_id},
+      // created_at, updated_at, play_order_id, platform (verified against
+      // information_schema 2026-08-28). It was introduced by
+      // `migrate_v0.7.sql`, which was never applied — none of its three
+      // anti-replay UNIQUE indexes exist either.
+      //
+      // Querying a non-existent column returns PGRST204, and writing one made
+      // the upsert fail with a 500 that the Android client treats as retryable,
+      // so it retried forever. Android purchasing is withdrawn as of v1.52, but
+      // this stays correct rather than merely unreachable.
+      const replayCheckField = "play_order_id";
       const replayCheckValue = result.orderId ?? purchaseToken;
       const { data: existingSub } = await adminClient
         .from("subscriptions")
@@ -604,8 +660,10 @@ Deno.serve(async (req: Request) => {
       subRecord.apple_transaction_id = transactionId;
       subRecord.apple_original_transaction_id = originalTransactionId;
     } else if (platform === "google") {
+      // No `play_purchase_token` — see the anti-replay note above. The column
+      // does not exist in production, and writing it made every Play purchase
+      // fail with a 500.
       subRecord.play_order_id = playOrderId;
-      subRecord.play_purchase_token = body.purchaseToken ?? null;
     }
 
     const { error: subError } = await adminClient
