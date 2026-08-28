@@ -108,7 +108,9 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         XCTAssertTrue(state.serverOnline)
         XCTAssertEqual(state.selectedTab, .overview)
         XCTAssertFalse(state.providers.isEmpty)
-        XCTAssertEqual(state.subscriptionManager.currentTier, .team)
+        // v1.52.1 — `.pro`, not `.team`: the QA bootstrap seed moved off the
+        // withdrawn Team tier. See SubscriptionBootstrapPolicy.resolve.
+        XCTAssertEqual(state.subscriptionManager.currentTier, .pro)
         XCTAssertNil(state.lastPublishedWidgetData)
     }
 
@@ -791,7 +793,9 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
         XCTAssertTrue(state.isPaired)
         XCTAssertTrue(state.serverOnline)
         XCTAssertFalse(state.providers.isEmpty)
-        XCTAssertEqual(state.subscriptionManager.currentTier, .team)
+        // v1.52.1 — `.pro`, not `.team`: the QA bootstrap seed moved off the
+        // withdrawn Team tier. See SubscriptionBootstrapPolicy.resolve.
+        XCTAssertEqual(state.subscriptionManager.currentTier, .pro)
         XCTAssertNil(
             state.lastPublishedWidgetData,
             "QA demo rendering must not advance widget dedupe state"
