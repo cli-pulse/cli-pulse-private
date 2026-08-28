@@ -102,6 +102,88 @@ final class UnpricedCoverageTests: XCTestCase {
         XCTAssertTrue(lines.first?.contains("claude-opus-6=350") ?? false)
     }
 
+    /// The synthetic `__claude_msg__` bucket is not a model, and a scan whose
+    /// only unpriced entry is that bucket has nothing wrong with it.
+    ///
+    /// It carries raw message-event counts: zero tokens, no rate, therefore
+    /// `costUSD == nil` — which is exactly the discriminator this diagnostic
+    /// keys on. So every healthy machine logged, at error level, on every
+    /// scan: "1 model(s) had no rate ... 0 tokens — __claude_msg__=0". That is
+    /// a false statement about a correctly priced scan, from the one line
+    /// people are supposed to trust when costs look wrong.
+    ///
+    /// `CostCoverage.from` was fixed for the same reason in #468 and the log
+    /// line was missed — which is why this test lives next to
+    /// `CostCoverageTests.testSyntheticMessageBucketIsNotCountedAsAnUnpricedModel`
+    /// rather than replacing it: two call sites, one rule, two gates.
+    func testMessageBucketAloneIsNotReportedAsUnpriced() {
+        var lines: [String] = []
+        var quiet: [String] = []
+        CostUsageScanner.reportUnpricedModels(
+            [
+                entry(model: ScanEntry.messageBucketModel, tokens: 0, cost: nil),
+                entry(model: "claude-opus-5", tokens: 1_000, cost: 5.0),
+            ],
+            log: { lines.append($0) },
+            logQuiet: { quiet.append($0) }
+        )
+
+        XCTAssertTrue(
+            lines.isEmpty,
+            "the message bucket is not a model and must not raise the error-level diagnostic"
+        )
+        XCTAssertEqual(quiet.count, 1, "a healthy scan still says so, at a level nobody has to act on")
+        XCTAssertFalse(
+            quiet.first?.contains("had no rate") ?? true,
+            "the quiet line must not repeat the claim the error line makes"
+        )
+    }
+
+    /// The bucket must not inflate a real finding either. With one genuinely
+    /// unpriced model present, the count is 1 and the detail names only it —
+    /// otherwise the line reads "2 model(s)" and puts an internal identifier
+    /// where a reader expects a model name.
+    func testMessageBucketDoesNotInflateARealFinding() {
+        var lines: [String] = []
+        CostUsageScanner.reportUnpricedModels(
+            [
+                entry(model: ScanEntry.messageBucketModel, tokens: 0, cost: nil),
+                entry(model: "claude-opus-6", tokens: 4_200, cost: nil),
+            ],
+            log: { lines.append($0) }
+        )
+
+        XCTAssertEqual(lines.count, 1)
+        let line = lines.first ?? ""
+        XCTAssertTrue(line.contains("1 model(s)"), "the bucket must not be counted: \(line)")
+        XCTAssertTrue(line.contains("claude-opus-6=4200"))
+        XCTAssertFalse(
+            line.contains(ScanEntry.messageBucketModel),
+            "an internal bucket key has no business in a diagnostic people read"
+        )
+    }
+
+    /// A scan with no entries at all stays silent at every level. The quiet
+    /// line exists to explain a skipped bucket, not to narrate empty work.
+    func testAnEmptyScanIsSilentAtEveryLevel() {
+        var lines: [String] = []
+        var quiet: [String] = []
+        CostUsageScanner.reportUnpricedModels(
+            [], log: { lines.append($0) }, logQuiet: { quiet.append($0) }
+        )
+        XCTAssertTrue(lines.isEmpty)
+        XCTAssertTrue(quiet.isEmpty)
+    }
+
+    /// Drift gate. The scanner writes the bucket rows under
+    /// `CostUsageScanner.claudeMsgBucketModel`; this diagnostic and
+    /// `CostCoverage.from` skip them under `ScanEntry.messageBucketModel`.
+    /// Two spellings of one string: if they ever diverge, both filters go
+    /// silently dead and the false "1 model(s) had no rate" comes back.
+    func testMessageBucketKeysAgree() {
+        XCTAssertEqual(CostUsageScanner.claudeMsgBucketModel, ScanEntry.messageBucketModel)
+    }
+
     /// The real table, as a live check rather than a fixture: every model this
     /// build ships a row for must actually price. Catches a typo'd key, which
     /// would otherwise present as a silent $0 for exactly one model.

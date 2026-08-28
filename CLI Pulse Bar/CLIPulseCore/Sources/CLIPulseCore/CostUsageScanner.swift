@@ -209,16 +209,47 @@ public enum CostUsageScanner {
     ///
     /// Deliberately NOT a warning per entry: a new model produces one of these
     /// per day per scan, and a line per entry would bury it.
+    ///
+    /// 2026-08-28 (post-1.52): the synthetic `__claude_msg__` bucket is
+    /// excluded, exactly as `CostCoverage.from` excludes it (#468). It is not
+    /// a model — it carries raw message-event counts, so it has zero tokens,
+    /// no rate, and therefore `costUSD == nil`. That made every healthy
+    /// machine log, at error level, on every scan: "1 model(s) had no rate and
+    /// contributed $0 to the totals: 0 tokens — __claude_msg__=0". Nothing was
+    /// unpriced; the diagnostic that exists to be believed when costs look
+    /// wrong was making a false statement on every correct scan. #468 fixed
+    /// the UI half of this and missed the log line.
+    ///
+    /// With the bucket removed the count can now be zero where it used to be
+    /// one, and a zero count is a healthy scan — so it drops to `debug`.
+    /// "Everything priced" is worth something to whoever is streaming the log
+    /// on purpose, and worth nothing at error level.
     static func reportUnpricedModels(
         _ entries: [CostUsageScanResult.DailyEntry],
-        log: (String) -> Void = { scanLogger.warning("\($0, privacy: .public)") }
+        log: (String) -> Void = { scanLogger.warning("\($0, privacy: .public)") },
+        logQuiet: (String) -> Void = { scanLogger.debug("\($0, privacy: .public)") }
     ) {
         var unpriced: [String: Int] = [:]
+        var skippedMessageBucket = false
         for entry in entries where entry.costUSD == nil {
+            // `ScanEntry.messageBucketModel` — the same key `CostCoverage.from`
+            // skips, so the log line and the coverage card can never disagree
+            // about one scan. (`Self.claudeMsgBucketModel` is the scanner-side
+            // spelling of the same string; `testMessageBucketKeysAgree` pins
+            // the two together.)
+            guard entry.model != ScanEntry.messageBucketModel else {
+                skippedMessageBucket = true
+                continue
+            }
             let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
             unpriced[entry.model, default: 0] += tokens
         }
-        guard !unpriced.isEmpty else { return }
+        guard !unpriced.isEmpty else {
+            if skippedMessageBucket {
+                logQuiet("[Pricing] every model had a rate; skipped the synthetic \(ScanEntry.messageBucketModel) message-count bucket")
+            }
+            return
+        }
         let total = unpriced.values.reduce(0, +)
         let detail = unpriced
             .sorted { $0.value > $1.value }
