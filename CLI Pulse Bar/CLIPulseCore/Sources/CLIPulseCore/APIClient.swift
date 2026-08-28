@@ -837,6 +837,13 @@ public actor APIClient {
     }
 
     private struct ValidateReceiptRequest: Encodable {
+        // v1.52.1 — sent explicitly. The server reads
+        // `body.platform ?? "apple"`, so omitting it worked purely by virtue of
+        // that default: the Apple client was relying on a server-side fallback
+        // it never declared. If the default ever changes — or a second Apple
+        // platform needs distinguishing — the omission becomes a silent
+        // misroute rather than a compile error.
+        let platform: String = "apple"
         let transactionJWS: String
         let productId: String
     }
@@ -2391,6 +2398,22 @@ public actor APIClient {
         public let verified: Bool
         public let tier: String
         public let error: TierRefreshErrorCategory?
+        /// v1.52.1 — the HTTP status when there was one, for diagnostics only.
+        /// `nil` for transport failures, where no response ever arrived. Never
+        /// used to decide entitlement; `error` carries that.
+        public let httpStatus: Int?
+
+        public init(
+            verified: Bool,
+            tier: String,
+            error: TierRefreshErrorCategory?,
+            httpStatus: Int? = nil
+        ) {
+            self.verified = verified
+            self.tier = tier
+            self.error = error
+            self.httpStatus = httpStatus
+        }
     }
 
     public func validateReceipt(transactionJWS: String, productId: String) async -> ValidateReceiptResult {
@@ -2405,8 +2428,35 @@ public actor APIClient {
                 ValidateReceiptRequest(transactionJWS: transactionJWS, productId: productId)
             )
             let (data, response) = try await dataWithRetry(for: request)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            guard let http = response as? HTTPURLResponse else {
                 return ValidateReceiptResult(verified: false, tier: "free", error: .receiptValidatorError)
+            }
+            guard (200...299).contains(http.statusCode) else {
+                // v1.52.1 — classify instead of collapsing.
+                //
+                // Every non-2xx used to become `.receiptValidatorError`, the
+                // same value a network failure produces. So when
+                // validate-receipt returned 500 on EVERY receipt for three
+                // months (PR #476), it was indistinguishable from a flaky
+                // connection — and since the local StoreKit tier is kept in
+                // both cases, nothing visible changed and nobody looked.
+                let category: TierRefreshErrorCategory
+                switch http.statusCode {
+                case 401, 403:
+                    category = .receiptValidatorUnauthorized
+                case 500...599:
+                    category = .receiptValidatorServerError
+                default:
+                    // 4xx other than auth: the server looked at the receipt and
+                    // refused it. Distinct from "we never got an answer".
+                    category = .receiptValidatorRejected
+                }
+                apiLogger.error(
+                    "validate-receipt HTTP \(http.statusCode, privacy: .public) -> \(category.rawValue, privacy: .public)"
+                )
+                return ValidateReceiptResult(
+                    verified: false, tier: "free", error: category, httpStatus: http.statusCode
+                )
             }
             let result = try decode(ValidateReceiptResponse.self, from: data)
             return ValidateReceiptResult(

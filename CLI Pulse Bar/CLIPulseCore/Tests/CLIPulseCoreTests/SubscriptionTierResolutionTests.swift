@@ -167,6 +167,52 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         XCTAssertEqual(TierRefreshErrorCategory.receiptValidatorError.rawValue, "receipt-validator-error")
         XCTAssertEqual(TierRefreshErrorCategory.receiptValidatorRejected.rawValue, "receipt-validator-rejected")
         XCTAssertEqual(TierRefreshErrorCategory.serverTierError.rawValue, "server-tier-error")
+        // v1.52.1 — split out of receiptValidatorError so a broken validator is
+        // tellable apart from a flaky network.
+        XCTAssertEqual(
+            TierRefreshErrorCategory.receiptValidatorUnauthorized.rawValue,
+            "receipt-validator-unauthorized")
+        XCTAssertEqual(
+            TierRefreshErrorCategory.receiptValidatorServerError.rawValue,
+            "receipt-validator-server-error")
+    }
+
+    /// v1.52.1 — every failure category must survive `resolveJWSReceipt`.
+    ///
+    /// It used to overwrite whatever came in with `.receiptValidatorError`, so
+    /// a 500 from a validator that was broken for EVERY receipt looked exactly
+    /// like intermittent network trouble. The entitlement outcome is
+    /// deliberately the same for all of them — the user paid, StoreKit says so,
+    /// they keep their tier — but the CATEGORY must survive, because it is the
+    /// only evidence of which failure happened.
+    func testReceiptResolution_preservesTheSpecificFailureCategory() {
+        for category: TierRefreshErrorCategory in [
+            .receiptValidatorError,
+            .receiptValidatorUnauthorized,
+            .receiptValidatorServerError,
+        ] {
+            let r = SubscriptionManager.resolveJWSReceipt(
+                .init(verified: false, tier: "free", error: category),
+                localHighestTier: .pro
+            )
+            XCTAssertEqual(r.error, category,
+                           "category \(category.rawValue) was flattened away")
+            XCTAssertEqual(r.tier, .pro,
+                           "\(category.rawValue) must still keep the local StoreKit tier")
+            XCTAssertEqual(r.state, .resolvedDegraded)
+        }
+    }
+
+    /// Negative control for the test above: the categories must be DISTINCT.
+    /// If two collapsed to the same value the loop would pass vacuously.
+    func testFailureCategoriesAreDistinct() {
+        let all: [TierRefreshErrorCategory] = [
+            .noApiClient, .receiptValidatorError, .receiptValidatorRejected,
+            .serverTierError, .receiptValidatorUnauthorized,
+            .receiptValidatorServerError,
+        ]
+        XCTAssertEqual(Set(all.map(\.rawValue)).count, all.count,
+                       "two categories share a rawValue — the split is not real")
     }
 
     // MARK: - v1.14 Pro Lifetime IAP
@@ -381,7 +427,7 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         )
 
         XCTAssertFalse(manager.isStoreKitBootstrapEnabled)
-        XCTAssertEqual(manager.currentTier, .team)
+        XCTAssertEqual(manager.currentTier, .pro)  // v1.52.1: Team is withdrawn
         XCTAssertEqual(manager.tierResolutionState, .resolvedConfirmed)
         XCTAssertEqual(manager.lastTierRefreshSource, "qa-in-memory")
         XCTAssertNil(manager.lastTierRefreshError)
@@ -393,7 +439,7 @@ final class SubscriptionTierResolutionTests: XCTestCase {
         await manager.updateCurrentEntitlements()
         await manager.restorePurchases()
 
-        XCTAssertEqual(manager.currentTier, .team)
+        XCTAssertEqual(manager.currentTier, .pro)  // v1.52.1: Team is withdrawn
         XCTAssertEqual(manager.tierResolutionState, .resolvedConfirmed)
         XCTAssertEqual(manager.lastTierRefreshSource, "qa-in-memory")
         XCTAssertFalse(manager.isLoading)
