@@ -38,6 +38,26 @@ COPY = {
     "03_sessions":  ("Every CLI run tracked",   "Real-time session monitoring in your pocket"),
     "04_alerts":    ("Never miss a quota limit","Smart alerts before you hit the wall"),
     "05_settings":  ("Tune every detail",       "Per-provider credentials, cadence, and display"),
+
+    # v1.52.1 — the real Settings/Subscription capture, replacing the 4th live
+    # App Store screenshot.
+    #
+    # The one it replaces (live as `04_IMG_6589_1290x2796.png`) was captioned
+    # "Unlimited providers, longer history, more devices" over a screenshot
+    # showing "Devices 5" and "Data Retention 90 days". None of those three
+    # claims was ever true: device pairing caps at a flat 20 for every tier
+    # (migrate_v0.36_desktop_otp.sql:66), and every one of the 210 accounts has
+    # data_retention_days = 7 while the nightly cleanup reads that column. v1.51
+    # deleted both rows from iOSSettingsTab and marked `maxDevices` /
+    # `dataRetentionDays` @available(*, unavailable) — but nobody re-shot the
+    # screenshot, so the store kept selling all three for another two releases.
+    #
+    # The subtitle now names the two benefits iOS Pro actually delivers, both
+    # with a real enforcement site registered in scripts/paywall_claims.allow:
+    # unlimited providers, and the Home/Lock Screen widgets (the widget targets
+    # read `isPro` out of the app-group blob and render locked on false).
+    "04_subscription": ("Tuned for power users",
+                        "Unlimited providers and Home Screen widgets"),
 }
 
 SCRIPT_DIR = Path(__file__).resolve().parent
