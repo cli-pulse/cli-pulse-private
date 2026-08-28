@@ -3,6 +3,8 @@
 // app-store-server-library + real receipts); everything decidable without a
 // live signature/network lives here so it can be deno-tested.
 
+import { Buffer } from "node:buffer";
+
 export const PRODUCT_TIER_MAP: Record<string, string> = {
   "com.clipulse.pro.monthly": "pro",
   "com.clipulse.pro.yearly": "pro",
@@ -67,20 +69,25 @@ export function shouldPersistEntitlement(environment: ReceiptEnvironment): boole
   return environment === "Production";
 }
 
-/// v1.52 — is the configured App Apple ID usable for PRODUCTION verification?
+/// v1.52 — is the configured App Apple ID usable at all?
 ///
-/// Apple's `SignedDataVerifier` requires a correct numeric app id when
-/// verifying a production transaction. `index.ts` reads it as
-/// `Number(Deno.env.get("APPLE_APP_APPLE_ID") ?? "0")`, so an unset secret
-/// silently becomes `0` — and every production receipt then fails verification
-/// with a generic "JWS verification failed", indistinguishable from a genuinely
-/// bad receipt.
+/// ⚠️ CORRECTION (v1.52.1). This helper was introduced on the theory that an
+/// unset `APPLE_APP_APPLE_ID` was why no purchase was ever recorded. That was
+/// a guess, it was wrong, and the original text here asserted it as fact.
+/// Measured 2026-08-28: the secret is set to the correct value (its digest
+/// matches sha256 of the real App Apple ID), AND `verifyAndDecodeTransaction`
+/// never reads `appAppleId` in the first place — only `bundleId` and
+/// `environment`. So this could not have been the cause on either count.
 ///
-/// That mattered: the client treats a failed validation as transient and keeps
-/// the locally-verified StoreKit tier, so a buyer still gets Pro on their device
-/// and nothing looks broken — while the backend records nothing. No row in
-/// `subscriptions` has ever carried an `apple_transaction_id`, including for a
-/// real Pro Monthly purchase Apple's own reports show on 2026-06-24.
+/// The actual cause was in `index.ts`: the root certificates were passed as
+/// `ArrayBuffer` instead of `Buffer`, which makes the `SignedDataVerifier`
+/// constructor throw before any verification or database write happens.
+/// See `toRootCertificates` below.
+///
+/// This helper is kept because `APPLE_APP_APPLE_ID` *is* required for App Store
+/// Server Notifications and `verifyAndDecodeAppTransaction`, so an unset value
+/// remains a genuine misconfiguration worth reporting distinctly — just not the
+/// explanation for the missing rows.
 ///
 /// Pure and exported so the distinction is unit-testable without a live
 /// StoreKit round-trip.
@@ -90,4 +97,31 @@ export function isUsableAppAppleId(raw: string | undefined | null): boolean {
   if (trimmed === "") return false;
   const n = Number(trimmed);
   return Number.isFinite(n) && Number.isInteger(n) && n > 0;
+}
+
+/// Convert PEM-encoded root certificates into the exact type Apple's
+/// `SignedDataVerifier` accepts.
+///
+/// This function exists because of a real, three-month production outage.
+/// `index.ts` used to build the roots inline as
+/// `new TextEncoder().encode(pem).buffer` — an `ArrayBuffer`, which
+/// `new X509Certificate()` rejects on both Node and Deno. The resulting
+/// TypeError was thrown by the `SignedDataVerifier` CONSTRUCTOR, which sits
+/// outside the try/catch around `verifyAndDecodeTransaction`, so every single
+/// Apple receipt — sandbox and production — died as an unexplained HTTP 500
+/// before any database write. Zero purchases were recorded between v1.21
+/// (2026-05-15) and 2026-08-28, including three real paid transactions.
+///
+/// It went unnoticed for so long because nothing ever type-checked `index.ts`
+/// (`deno test` only checks modules a test file imports, and no test imported
+/// it) and nothing ever constructed a verifier in a test.
+///
+/// Extracted here so both of those are now false: it is type-checked, and
+/// `receipt_test.ts` builds a real `SignedDataVerifier` from its output.
+///
+/// `Buffer` specifically — a plain `Uint8Array` runs fine but fails the
+/// library's declared `Buffer[]` parameter type, which would leave `deno check`
+/// permanently red.
+export function toRootCertificates(pems: readonly string[]): Buffer[] {
+  return pems.map((pem) => Buffer.from(pem, "utf-8"));
 }

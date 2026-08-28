@@ -8,10 +8,15 @@
 
 import { assert, assertEquals } from "jsr:@std/assert";
 import {
+  SignedDataVerifier,
+  Environment,
+} from "npm:@apple/app-store-server-library@3";
+import {
   isLifetimeProduct,
   isUsableAppAppleId,
   peekJWSEnvironment,
   shouldPersistEntitlement,
+  toRootCertificates,
   tierForProduct,
 } from "./receipt.ts";
 
@@ -117,3 +122,66 @@ Deno.test("isUsableAppAppleId: the real app id IS usable", () => {
   assert(isUsableAppAppleId("6761163709"));
   assert(isUsableAppAppleId(" 6761163709 "));
 });
+
+// ── The regression that cost three months of purchases ────────────────────────
+//
+// From v1.21 (2026-05-15) to 2026-08-28, `index.ts` built the Apple root certs
+// as `new TextEncoder().encode(pem).buffer`. That is an ArrayBuffer, which
+// `new X509Certificate()` rejects, so the `SignedDataVerifier` CONSTRUCTOR threw
+// — outside the try/catch around verifyAndDecodeTransaction — and every Apple
+// receipt became an unexplained HTTP 500 before any DB write. Zero rows were
+// ever recorded, including for three real paid transactions.
+//
+// Nothing caught it: `deno test` only type-checks what a test file imports, and
+// no test imported `index.ts`; no test had ever constructed a verifier. This
+// test does exactly that, so the failure mode cannot return silently.
+Deno.test("toRootCertificates output actually constructs a SignedDataVerifier", () => {
+  const roots = toRootCertificates([APPLE_ROOT_CA_G3_PEM_FOR_TEST]);
+  assertEquals(roots.length, 1);
+  assert(roots[0].length > 0, "cert buffer must not be empty");
+
+  // The real assertion: the library accepts it. Pre-fix this threw
+  // 'The "buffer" argument must be of type string or an instance of Buffer,
+  // TypedArray, or DataView. Received an instance of ArrayBuffer'.
+  const verifier = new SignedDataVerifier(
+    roots,
+    true,
+    Environment.PRODUCTION,
+    "yyh.CLI-Pulse",
+    6761163709,
+  );
+  assert(verifier, "verifier must construct");
+});
+
+Deno.test("an ArrayBuffer root cert is rejected — the exact shipped defect", () => {
+  // Negative control. If this ever stops throwing, the assertion above has
+  // become vacuous and this whole test file is no longer proving anything.
+  const bad = [new TextEncoder().encode(APPLE_ROOT_CA_G3_PEM_FOR_TEST).buffer];
+  let threw = false;
+  try {
+    // deno-lint-ignore no-explicit-any
+    new SignedDataVerifier(bad as any, true, Environment.PRODUCTION, "yyh.CLI-Pulse", 6761163709);
+  } catch (_) {
+    threw = true;
+  }
+  assert(threw, "ArrayBuffer roots must still be rejected by the library");
+});
+
+// Apple Root CA - G3, copied from index.ts. Duplicated deliberately: the point
+// of this test is to validate the CONVERSION, and importing index.ts would pull
+// in `Deno.serve` and stand up the whole handler.
+const APPLE_ROOT_CA_G3_PEM_FOR_TEST = `-----BEGIN CERTIFICATE-----
+MIICQzCCAcmgAwIBAgIILcX8iNLFS5UwCgYIKoZIzj0EAwMwZzEbMBkGA1UEAwwS
+QXBwbGUgUm9vdCBDQSAtIEczMSYwJAYDVQQLDB1BcHBsZSBDZXJ0aWZpY2F0aW9u
+IEF1dGhvcml0eTETMBEGA1UECgwKQXBwbGUgSW5jLjELMAkGA1UEBhMCVVMwHhcN
+MTQwNDMwMTgxOTA2WhcNMzkwNDMwMTgxOTA2WjBnMRswGQYDVQQDDBJBcHBsZSBS
+b290IENBIC0gRzMxJjAkBgNVBAsMHUFwcGxlIENlcnRpZmljYXRpb24gQXV0aG9y
+aXR5MRMwEQYDVQQKDApBcHBsZSBJbmMuMQswCQYDVQQGEwJVUzB2MBAGByqGSM49
+AgEGBSuBBAAiA2IABJjpLz1AcqTtkyJygRMc3RCV8cWjTnHcFBbZDuWmBSp3ZHtf
+TjjTuxxEtX/1H7YyYl3J6YRbTzBPEVoA/VhYDKX1DyxNB0cTddqXl5dvMVztK517
+IDvYuVTZXpmkOlEKMaNCMEAwHQYDVR0OBBYEFLuw3qFYM4iapIqZ3r6966/ayySr
+MA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMAoGCCqGSM49BAMDA2gA
+MGUCMQCD6cHEFl4aXTQY2e3v9GwOAEZLuN+yRhHFD/3meoyhpmvOwgPUnPWTxnS4
+at+qIxUCMG1mihDK1A3UT82NQz60imOlM27jbdoXt2QfyFMm+YhidDkLF1vLUagM
+6BgD56KyKA==
+-----END CERTIFICATE-----`;
