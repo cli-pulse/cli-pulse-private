@@ -120,7 +120,22 @@ jobs:
       - name: Set up Deno
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
-          deno-version: v2.x
+          # PINNED, deliberately. This was `v2.x`, which floats — so CI could
+          # (and did) go red with no code change, purely because a new Deno
+          # shipped stricter lib typings. A gate that fails for reasons absent
+          # from the diff is a gate people learn to ignore.
+          #
+          # It also made local and CI disagree silently: 2.7.5 accepted a
+          # `Uint8Array` fetch body that 2.9.6 rejects, so `deno check` passed
+          # locally and failed in CI with nothing to explain the difference.
+          #
+          # Bumping this is a deliberate, reviewable act. Do it on purpose, and
+          # fix whatever the newer typings surface in the same PR.
+          deno-version: "2.9.6"
+
+      # So a future version mismatch is diagnosable from the log alone.
+      - name: Report Deno version
+        run: deno --version
 
       - name: Run edge-function deno tests
         run: deno test backend/supabase/functions/

@@ -178,7 +178,18 @@ async function dispatchToTokens(
   apnsHost: string,
   apnsTopicDefault: string,
   jwt: string,
-  payloadBytes: Uint8Array,
+  // v1.52.1 — a JSON string, not a Uint8Array.
+  //
+  // This was `payloadBytes: Uint8Array` passed straight to `fetch`'s `body`.
+  // That runs fine, but newer TypeScript lib definitions type `Uint8Array` as
+  // `Uint8Array<ArrayBufferLike>`, which does not satisfy `BodyInit` (it wants
+  // `ArrayBufferView<ArrayBuffer>`) — so the file type-checked on Deno 2.7.5
+  // and failed on the newer 2.x that CI resolves. Surfaced the moment CI began
+  // type-checking entrypoints at all.
+  //
+  // A string is unambiguously valid `BodyInit` on every version, `fetch` UTF-8
+  // encodes it identically, and the content-type is already application/json.
+  payloadJSON: string,
 ): Promise<DispatchResult> {
   let successCount = 0;
   let tokensRevoked = 0;
@@ -202,7 +213,7 @@ async function dispatchToTokens(
           "apns-push-type": "alert",
           "content-type": "application/json",
         },
-        body: payloadBytes,
+        body: payloadJSON,
       });
     } catch (e) {
       errors.push("network");
@@ -334,14 +345,14 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ error: "jwt" }), { status: 500 });
   }
 
-  const payloadBytes = new TextEncoder().encode(JSON.stringify(payload));
+  const payloadJSON = JSON.stringify(payload);
   const result = await dispatchToTokens(
     supabase,
     tokens,
     apnsHost,
     topicDefault,
     jwt,
-    payloadBytes,
+    payloadJSON,
   );
 
   // Update remote_permission_requests:
