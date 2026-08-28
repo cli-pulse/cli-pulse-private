@@ -55,13 +55,22 @@ ALLOW="$ROOT/scripts/paywall_claims.allow"
 INLINE="$ROOT/CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
 
 # Bullets that describe the SHAPE of a purchase rather than a capability
-# withheld from free, so there is no enforcement site to name:
-#   everythingInPro     — points at the Pro card's bullets.
-#   lifetimeDescription — states the billing terms of the Lifetime SKU
-#                         ("one-time purchase, no recurring charges").
-# Anything else asking for an exemption should have to argue for it here; the
-# default answer is "then it is not a benefit, delete it".
-POINTER_BULLETS="everythingInPro lifetimeDescription"
+# withheld from free, so there is no enforcement site to name. Anything asking
+# for an exemption has to argue for it here; the default answer is "then it is
+# not a benefit, delete it".
+#
+# v1.52.1 — EMPTY, on purpose.
+#
+# Held "everythingInPro lifetimeDescription" until v1.52 withdrew the Team card
+# and the Lifetime tile, taking both bullets with them. The exemptions outlived
+# the bullets, and the guard's success line went on naming them on every green
+# run — describing a paywall that no longer existed.
+#
+# A pointer bullet is one that pitches no benefit of its own ("Everything in
+# Pro", or a statement of billing terms), so there is nothing to enforce and
+# nothing to register. If one is reintroduced, add it back here WITH the reason,
+# and the stale-exemption check below will tell you when it stops being needed.
+POINTER_BULLETS=""
 
 # Deleted in v1.51. Listed by localization key because that is the form that
 # survives in the .strings catalogs after the Swift symbol is gone.
@@ -260,14 +269,28 @@ if [ -z "$sources" ]; then
     exit 1
 fi
 
+# Each retired claim is searched in BOTH key conventions.
+#
+# This scan has included `android/`, `*.kt` and `*.xml` since it was written,
+# which made it look cross-platform. It was not: RETIRED_KEYS are in Apple's
+# dotted form (`subscription.up_to_5_devices`) while Android resources use
+# underscores (`subscription_up_to_5_devices`, see
+# android/app/src/main/res/values/strings.xml). The literal `grep -F` could
+# therefore never match an Android file — the coverage was entirely cosmetic,
+# and a retired claim could reappear on Android with the guard staying green.
+#
+# `subscription.` -> `subscription_` is the whole of the transform; Android
+# flattens the namespace separator and keeps the rest verbatim.
 while IFS= read -r key; do
     [ -z "$key" ] && continue
+    android_key="$(printf '%s' "$key" | tr '.' '_')"
     hits="$(printf '%s\n' "$sources" | tr '\n' '\0' \
-        | xargs -0 grep -lF -- "\"$key\"" 2>/dev/null || true)"
+        | xargs -0 grep -lF -e "\"$key\"" -e "\"$android_key\"" 2>/dev/null || true)"
     if [ -n "$hits" ]; then
         echo "ERROR: '$key' was deleted in v1.51 because nothing implemented or"
         echo "       enforced it, and it has come back in:"
         echo "$hits" | sed "s|^$ROOT/|         |"
+        echo "       (searched as \"$key\" and \"$android_key\")"
         echo "       If the feature now exists, rename the key and register it in"
         echo "       scripts/paywall_claims.allow with its enforcement site."
         failed=1
@@ -343,9 +366,44 @@ if [ "$failed" -ne 0 ]; then
     exit 1
 fi
 
-advertised="$(echo "$bullets" | wc -l | tr -d ' ')"
-backed="$(echo "$registered" | wc -l | tr -d ' ')"
-echo "check_paywall_claims: OK — $advertised bullets advertised, $backed of them" \
-     "registered against a live enforcement site (the rest are pointer bullets:" \
-     "$POINTER_BULLETS)."
+# ── 6. report what was actually checked ──────────────────────────────────────
+#
+# The old success line counted `advertised` from the paywall bullets and
+# `backed` from the allow-file entries — two DIFFERENT sets — and then said
+# "$backed of them", which is only true when the counts happen to coincide. It
+# also always printed "the rest are pointer bullets: everythingInPro
+# lifetimeDescription", including when there was no rest and when neither
+# symbol appeared on any paywall (both were removed with the Team card and the
+# Lifetime tile in v1.52).
+#
+# A green line that describes a paywall which no longer exists is how a guard
+# stops being read. Both numbers now come from the SAME parsed bullet set.
+advertised=0
+exempt_seen=""
+backed_seen=""
+for sym in $bullets; do
+    advertised=$((advertised + 1))
+    case " $POINTER_BULLETS " in
+        *" $sym "*) exempt_seen="$exempt_seen $sym"; continue ;;
+    esac
+    backed_seen="$backed_seen $sym"
+done
+backed="$(printf '%s' "$backed_seen" | wc -w | tr -d ' ')"
+exempt="$(printf '%s' "$exempt_seen" | wc -w | tr -d ' ')"
+
+echo "check_paywall_claims: OK — $advertised paywall bullet(s); $backed registered" \
+     "against a live enforcement site, $exempt exempt as pointer bullets."
+[ "$exempt" -gt 0 ] && echo "  pointer bullets in use:$exempt_seen"
+
+# Dead exemptions are how the old message went stale: a symbol stays on the
+# exemption list long after it leaves the paywall, and the list quietly becomes
+# a description of the past. Advisory, not fatal — an unused exemption is untidy,
+# not unsafe.
+for sym in $POINTER_BULLETS; do
+    case " $bullets " in
+        *" $sym "*) ;;
+        *) echo "  note: '$sym' is exempted in POINTER_BULLETS but appears on no" \
+                "paywall surface — stale exemption, consider removing it." ;;
+    esac
+done
 exit 0

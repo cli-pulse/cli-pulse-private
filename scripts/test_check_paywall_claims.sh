@@ -26,6 +26,11 @@ OFFER_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.s
 INLINE_REL="CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
 CAPTION_REL="CLI Pulse Bar/scripts/compose_appstore_screenshots.py"
 STRINGS_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"
+# The Android catalog. Until v1.52.1 this suite exercised only the Apple side,
+# so the guard's Android coverage was never tested — and it turned out to be
+# inert: RETIRED_KEYS are dotted (subscription.up_to_5_devices) while Android
+# resources use underscores, so the literal grep could never match.
+ANDROID_STRINGS_REL="android/app/src/main/res/values/strings.xml"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
 # registered enforcement files, and any .swift/.strings/.kt/.xml under the two
@@ -43,6 +48,7 @@ build_fixture() {
         echo "$INLINE_REL"
         echo "$OFFER_REL"
         echo "$STRINGS_REL"
+        echo "$ANDROID_STRINGS_REL"
         # every App Store screenshot caption source — the guard refuses to run
         # if it finds none, so the fixture must carry them all
         (cd "$ROOT" && find "CLI Pulse Bar/scripts" -maxdepth 1 \
@@ -142,6 +148,28 @@ printf '\n"subscription.priority_alerts" = "Priority alerts";\n' \
     >> "$TMP/case/$STRINGS_REL"
 assert_changed "retired key resurrected" "$TMP/case/$STRINGS_REL" "$before" \
     && expect_fail "retired key resurrected" "has come back"
+
+# ── 4b. the same claim comes back on ANDROID, in Android's key form ─────────
+# The regression this catches: the guard scanned android/, *.kt and *.xml from
+# the start, which made it look cross-platform, but it compared only the dotted
+# Apple key. A retired claim could reappear in Android resources and the guard
+# would stay green. Verified 2026-08-28 that this case FAILS against the
+# pre-fix guard and passes after.
+build_fixture "$TMP/case"
+before="$(shasum "$TMP/case/$ANDROID_STRINGS_REL" | cut -d' ' -f1)"
+python3 - "$TMP/case/$ANDROID_STRINGS_REL" <<'PLANT'
+import sys
+p = sys.argv[1]; s = open(p).read()
+anchor = '<string name="subscription_title">'
+assert anchor in s, "fixture lost the anchor string"
+open(p, "w").write(s.replace(
+    anchor,
+    '<string name="subscription_up_to_5_devices">Up to 5 devices</string>\n    ' + anchor,
+    1))
+PLANT
+assert_changed "retired key resurrected on Android" \
+    "$TMP/case/$ANDROID_STRINGS_REL" "$before" \
+    && expect_fail "retired key resurrected on Android" "has come back"
 
 # ── 5. the parser stops matching (the guard-that-never-runs failure mode) ────
 build_fixture "$TMP/case"
