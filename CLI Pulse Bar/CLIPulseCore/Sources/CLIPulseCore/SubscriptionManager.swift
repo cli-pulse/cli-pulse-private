@@ -83,6 +83,31 @@ public enum TierRefreshErrorCategory: String, Sendable, Equatable, Codable {
     case receiptValidatorError = "receipt-validator-error"
     case receiptValidatorRejected = "receipt-validator-rejected"
     case serverTierError = "server-tier-error"
+
+    // v1.52.1 — split out of `receiptValidatorError`, which used to absorb
+    // every non-2xx AND every transport failure into one value.
+    //
+    // That single bucket is the reason a total outage looked like ordinary
+    // flakiness for three months. `validate-receipt` returned HTTP 500 on
+    // EVERY Apple receipt (the root certs were an ArrayBuffer, so the verifier
+    // constructor threw — see PR #476), the client filed it under
+    // "transport error", kept the locally-verified StoreKit tier, and said
+    // nothing. The buyer saw Pro and nothing looked wrong; the server recorded
+    // nothing and nothing reported it.
+    //
+    // These are diagnostic categories, not new behaviour: the entitlement
+    // outcome for all three is still "keep the local tier, stay degraded",
+    // because on-device StoreKit remains authoritative for what the user paid
+    // for. What changes is that the three become tellable apart in the
+    // diagnostic surface and in a log line.
+
+    /// HTTP 401 — no Supabase session, or the access token expired. The
+    /// purchase is fine; we simply could not prove who is asking.
+    case receiptValidatorUnauthorized = "receipt-validator-unauthorized"
+
+    /// HTTP 5xx — the validator itself is broken. NOT the user's problem and
+    /// NOT transient flakiness. This is the one that was invisible.
+    case receiptValidatorServerError = "receipt-validator-server-error"
 }
 
 enum SubscriptionManagerError: LocalizedError, Equatable {
@@ -119,7 +144,16 @@ struct SubscriptionBootstrapPolicy: Equatable, Sendable {
         {
             return SubscriptionBootstrapPolicy(
                 allowsStoreKit: false,
-                initialTier: .team,
+                // v1.52.1 — `.pro`, not `.team`.
+                //
+                // QA seeded the highest tier so screenshots and demo rendering
+                // showed everything unlocked. v1.52 withdrew Team from sale, so
+                // seeding it means QA runs, demo captures and any screenshot
+                // taken from this build exercise a tier no customer can buy —
+                // which is how a withdrawn tier ends up back in a store asset.
+                // `.pro` is now the highest purchasable tier and unlocks the
+                // same feature set (TeamView always gated on `isProOrAbove`).
+                initialTier: .pro,
                 resolutionState: .resolvedConfirmed,
                 source: "qa-in-memory"
             )
@@ -520,14 +554,29 @@ public final class SubscriptionManager: ObservableObject {
                 error: .receiptValidatorRejected
             )
         }
-        // Transport / decode error — not a confirmed answer. Keep the local
-        // StoreKit highest tier (Apple still surfaces the entitlement on-device)
-        // but mark degraded so the banner stays silent.
+        // Not a confirmed answer: transport failure, auth failure, an explicit
+        // reject, or a broken validator. Keep the local StoreKit highest tier
+        // (Apple still surfaces the entitlement on-device) and mark degraded.
+        //
+        // v1.52.1 — PRESERVE the specific category rather than overwriting it
+        // with `.receiptValidatorError`.
+        //
+        // The entitlement outcome is deliberately identical for all of them:
+        // whatever went wrong server-side, the user paid and StoreKit says so,
+        // so they keep their tier. But flattening the category here threw away
+        // the only evidence of WHICH failure occurred — and that is exactly how
+        // a validator returning 500 on every single receipt for three months
+        // stayed indistinguishable from intermittent network trouble.
+        //
+        // `source` deliberately stays the literal "local-only-fallback": it is
+        // a small closed vocabulary asserted against elsewhere, and the
+        // distinction belongs in `error`, which exists precisely to carry it.
+        let category = result.error ?? .receiptValidatorError
         return ReceiptResolution(
             tier: localHighestTier,
             state: .resolvedDegraded,
             source: "local-only-fallback",
-            error: .receiptValidatorError
+            error: category
         )
     }
 
@@ -735,6 +784,31 @@ public final class SubscriptionManager: ObservableObject {
             applyDisabledRuntimePolicy()
             return
         }
+
+        // v1.52.1 — the same channel grant `updateCurrentEntitlements()` applies.
+        //
+        // Without this, signing out of a Developer ID / Homebrew build dropped
+        // the user to `.free` and then re-scanned StoreKit — which on that
+        // channel holds no purchase, because the Pro is granted by the build,
+        // not bought. So they silently lost every premium feature until the
+        // next launch, when the short-circuit in `updateCurrentEntitlements()`
+        // granted it back.
+        //
+        // Worse for diagnosis: the sign-out path stamped `.resolvedConfirmed`
+        // with no error, so the diagnostic line stayed silent and there was
+        // nothing on screen to explain the change.
+        //
+        // Sign-out cannot revoke a grant that never depended on an account.
+        #if DEVID_BUILD
+        currentTier = .pro
+        isLifetime = true
+        purchasedSubscriptions = []
+        tierResolutionState = .resolvedConfirmed
+        lastTierRefreshSource = "devid-beta-channel"
+        lastTierRefreshError = nil
+        return
+        #endif
+
         currentTier = .free
         isLifetime = false
         purchasedSubscriptions = []
