@@ -146,7 +146,7 @@ Perfect for developers who use multiple AI coding tools and want to understand t
 
 SUBSCRIPTION INFORMATION
 
-CLI Pulse Pro is available as a monthly ($4.99/month) or yearly ($49.99/year) auto-renewable subscription. CLI Pulse Team is available as a monthly ($9.99/month) or yearly ($99.99/year) auto-renewable subscription.
+CLI Pulse Pro is available as an auto-renewing subscription. Available plans, pricing, and billing periods are shown in the App Store and in the app at the time of purchase.
 
 Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
 
