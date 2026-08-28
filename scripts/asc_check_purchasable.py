@@ -41,6 +41,7 @@ Exit status: 0 if every ID the client asks for is sellable, 1 otherwise —
 so it can be wired into a release checklist.
 """
 import os
+import re
 import sys
 import time
 
@@ -55,16 +56,80 @@ ISSUER = "c5671c11-49ec-47d9-bd38-5e3c1a249416"
 APP_ID = "6761163709"
 BASE = "https://api.appstoreconnect.apple.com/v1"
 
-# Must stay in sync with SubscriptionManager.allProductIDs. If they drift, this
-# tool reports on products the app does not sell and stays silent about ones it
-# does — which is worse than not running it.
-WANTED = [
-    "com.clipulse.pro.monthly",
-    "com.clipulse.pro.yearly",
-    "com.clipulse.team.monthly",
-    "com.clipulse.team.yearly",
-    "com.clipulse.pro.lifetime",
-]
+# The offered set is PARSED from SubscriptionManager.swift, not restated here.
+#
+# It used to be a hardcoded list, directly above a comment warning that it
+# "must stay in sync with SubscriptionManager.allProductIDs" — and by
+# 2026-08-28 it had drifted exactly as predicted: five IDs here, two in the
+# app. The guard failed on `com.clipulse.pro.lifetime`, a product v1.52
+# deliberately withdrew, while printing the header "the IDs
+# SubscriptionManager.allProductIDs asks for". It was reporting on a set it
+# never read.
+#
+# A guard that is red for a reason absent from the diff is one people stop
+# reading, so this now derives the set instead of asserting it.
+SUBSCRIPTION_MANAGER = (
+    "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift"
+)
+
+# Products withdrawn from sale but still HONORED for existing owners. These are
+# expected to be unsellable; reporting them is useful, failing on them is not.
+# Keep in step with the withdrawal comments in SubscriptionView/SubscriptionSection.
+WITHDRAWN_BUT_HONORED = {
+    "com.clipulse.pro.lifetime": "withdrawn v1.52 (MISSING_METADATA since v1.14)",
+    "com.clipulse.team.monthly": "withdrawn v1.52 (tier has no exclusive benefit)",
+    "com.clipulse.team.yearly": "withdrawn v1.52 (tier has no exclusive benefit)",
+}
+
+
+def offered_product_ids(repo_root: str) -> list[str]:
+    """The IDs `allProductIDs` actually contains, read from the Swift source.
+
+    `allProductIDs` lists constant NAMES (`proMonthlyID`), not literals, so this
+    resolves each name through its `let <name> = "<literal>"` declaration.
+    Raises rather than returning a partial set: silently checking fewer products
+    than the app sells is the failure mode this function exists to prevent.
+    """
+    path = os.path.join(repo_root, SUBSCRIPTION_MANAGER)
+    try:
+        src = open(path, encoding="utf-8").read()
+    except OSError as exc:
+        raise SystemExit(f"cannot read {SUBSCRIPTION_MANAGER}: {exc}")
+
+    block = re.search(
+        r"allProductIDs\s*:\s*Set<String>\s*=\s*\[(.*?)\]", src, re.S
+    )
+    if not block:
+        raise SystemExit(
+            "could not find `allProductIDs: Set<String> = [...]` in\n"
+            f"  {SUBSCRIPTION_MANAGER}\n"
+            "The declaration moved or changed shape. Fix this parser — do NOT\n"
+            "fall back to a hardcoded list, which is what drifted last time."
+        )
+
+    literals = {
+        name: value
+        for name, value in re.findall(
+            r'let\s+(\w+)\s*=\s*"([^"]+)"', src
+        )
+    }
+
+    ids: list[str] = []
+    for token in (t.strip() for t in block.group(1).split(",")):
+        if not token or token.startswith("//"):
+            continue
+        if token.startswith('"') and token.endswith('"'):
+            ids.append(token.strip('"'))
+        elif token in literals:
+            ids.append(literals[token])
+        else:
+            raise SystemExit(
+                f"`allProductIDs` names `{token}`, but no `let {token} = \"...\"`\n"
+                "was found. Refusing to check a partial set."
+            )
+    if not ids:
+        raise SystemExit("`allProductIDs` parsed as empty — refusing to pass vacuously.")
+    return ids
 
 # States in which the store will actually serve the product to StoreKit.
 SELLABLE = {"APPROVED", "READY_FOR_SALE"}
@@ -101,6 +166,9 @@ def get(url: str, headers: dict, **params) -> dict:
 
 
 def main() -> int:
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    wanted = offered_product_ids(repo_root)
+
     H = _headers()
     found: dict[str, str] = {}
 
@@ -154,10 +222,11 @@ def main() -> int:
 
     print()
     print("=" * 74)
-    print("VERDICT — the IDs SubscriptionManager.allProductIDs asks for")
+    print(f"VERDICT — the {len(wanted)} ID(s) parsed from "
+          f"SubscriptionManager.allProductIDs")
     print("=" * 74)
     bad = []
-    for pid in WANTED:
+    for pid in wanted:
         state = found.get(pid)
         if state is None:
             mark, reason = "NOT IN ASC", "absent from App Store Connect entirely"
@@ -169,12 +238,33 @@ def main() -> int:
             bad.append((pid, reason))
         print(f"  {pid:32s} {str(state):22s} {mark}")
 
-    extra = sorted(set(found) - set(WANTED))
+    # Advisory only — never fails the run.
+    #
+    # Two distinct things live in ASC but not in `allProductIDs`, and conflating
+    # them is how the old version got stuck red:
+    #   * WITHDRAWN_BUT_HONORED — retired on purpose, existing owners keep them.
+    #     Unsellable is the CORRECT state.
+    #   * everything else — genuinely dead catalogue entries.
+    #
+    # A withdrawn product that is still SELLABLE is worth shouting about: it
+    # means the app stopped offering it while the store will still charge for
+    # it. That is the live Team situation as of 2026-08-28.
+    extra = sorted(set(found) - set(wanted))
     if extra:
-        print("\n  In ASC but never requested by the app "
-              "(dead catalogue entries):")
+        print("\n  In ASC but not offered by the app:")
         for pid in extra:
-            print(f"    {pid:32s} {found[pid]}")
+            note = WITHDRAWN_BUT_HONORED.get(pid)
+            state = found[pid]
+            if note and state in SELLABLE:
+                print(f"    {pid:32s} {state:22s} ⚠️  {note}")
+                print(f"    {'':32s} {'':22s}    STILL PURCHASABLE — the app no "
+                      f"longer offers it, but the")
+                print(f"    {'':32s} {'':22s}    store will still take money. "
+                      f"Remove from sale in ASC.")
+            elif note:
+                print(f"    {pid:32s} {state:22s} withdrawn as intended — {note}")
+            else:
+                print(f"    {pid:32s} {state:22s} dead catalogue entry")
 
     print()
     if bad:
