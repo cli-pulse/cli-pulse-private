@@ -91,9 +91,14 @@ class BillingManager(
             )
             .build()
 
-        billingClient.queryProductDetailsAsync(params) { result, productDetailsList ->
+        // Billing 8 changed this callback's second argument from
+        // `List<ProductDetails>` to `QueryProductDetailsResult`, which wraps the
+        // list alongside a separate list of product ids the Play Store could not
+        // resolve. Unwrap it; the unfetched ids are not actionable here because
+        // the paywall is withdrawn on Android (see SubscriptionScreen).
+        billingClient.queryProductDetailsAsync(params) { result, queryResult ->
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                _state.value = _state.value.copy(products = productDetailsList)
+                _state.value = _state.value.copy(products = queryResult.productDetailsList)
             }
         }
     }
