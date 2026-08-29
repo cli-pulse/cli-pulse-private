@@ -95,3 +95,13 @@ jobs:
       # been watched to fail. This mutates a throwaway copy five ways and
       # asserts a rejection each time, plus a positive control.
       - run: bash scripts/test_check_paywall_claims.sh
+
+      # App Store release notes may not describe third-party platforms —
+      # Guideline 2.3.10. macOS 1.52.0 (build 104) was REJECTED on 2026-08-28
+      # for a bullet reading "Removed on Android: the option to subscribe."
+      #
+      # The identical text PASSED review on iOS the same week, so "it got
+      # approved last time" is not evidence of compliance — hence a mechanical
+      # check rather than a habit.
+      - run: bash scripts/check_release_notes_platforms.sh
+      - run: bash scripts/test_check_release_notes_platforms.sh
