@@ -17,7 +17,10 @@ val localProps = Properties().apply {
 
 android {
     namespace = "com.clipulse.android"
-    compileSdk = 35
+    // Google Play requires targetSdk 36 (Android 16) for updates released after
+    // 2026-08-31. compileSdk must be >= targetSdk. Play Console flagged this on
+    // 2026-08-28 with a hard deadline of 2026-08-31.
+    compileSdk = 36
 
     signingConfigs {
         create("release") {
@@ -31,7 +34,7 @@ android {
     defaultConfig {
         applicationId = "com.clipulse.android"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 70
         versionName = "1.52.0"
 
