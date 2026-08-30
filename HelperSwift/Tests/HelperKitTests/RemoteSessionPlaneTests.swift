@@ -47,3 +47,42 @@ final class RemoteSessionPlaneTests: XCTestCase {
                       "an operator must not read this as machine controls going away too")
     }
 }
+
+/// `CloudShareArm` is always unattached now — the daemon never builds a
+/// `RemoteAgentCloud` — so the verb it backs must say WHY correctly.
+final class CloudShareArmRetirementTests: XCTestCase {
+
+    /// An unattached arm must refuse, not crash and not hang. This was already
+    /// true (it guards on `current()`), but the retirement makes the unattached
+    /// path the ONLY path, so it stops being an edge case and becomes the
+    /// contract.
+    func test_anUnattachedArmRefusesRatherThanHanging() {
+        let arm = CloudShareArm()
+        let (ok, message) = arm.setShared("session-1", true)
+
+        XCTAssertFalse(ok)
+        XCTAssertFalse(message.isEmpty)
+    }
+
+    /// "Retired" and "not paired" are different facts. Reporting the second for
+    /// the first sends the user to re-pair a Mac that is already paired — the
+    /// confidently-wrong-status class this project keeps paying for.
+    func test_theRefusalNamesTheRetirementNotPairing() {
+        let (_, message) = CloudShareArm().setShared("session-1", true)
+
+        XCTAssertTrue(message.contains("withdrawn"),
+                      "expected the retirement to be named; got: \(message)")
+        XCTAssertFalse(message.contains("not paired"),
+                       "blaming pairing for a retirement sends the user to fix the wrong thing")
+    }
+
+    /// `unshareAllBlocking` on an unattached arm must return immediately. It is
+    /// wired to the local-control OFF switch, and a wedged 10-second wait there
+    /// would make turning the feature off feel broken.
+    func test_unshareAllReturnsImmediatelyWhenUnattached() {
+        let start = Date()
+        CloudShareArm().unshareAllBlocking(timeout: 10)
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1.0,
+                          "an unattached arm must not wait on a semaphore that nothing will signal")
+    }
+}

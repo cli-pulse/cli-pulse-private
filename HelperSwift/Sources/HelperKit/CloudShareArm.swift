@@ -18,7 +18,10 @@ import Foundation
 ///     cloud row actually exists.
 ///
 /// While unpaired, `cloud` stays nil and the verb reports `not_implemented`
-/// rather than flipping a local flag nothing would act on.
+/// rather than flipping a local flag nothing would act on. Since the session
+/// plane was retired the arm is ALWAYS unattached — the daemon never builds a
+/// `RemoteAgentCloud` — so `setShared` reports the retirement rather than
+/// blaming pairing for it.
 public final class CloudShareArm: @unchecked Sendable {
     private let lock = NSLock()
     private var cloud: RemoteAgentCloud?
@@ -59,7 +62,12 @@ public final class CloudShareArm: @unchecked Sendable {
     /// completes — see the type doc for why that's the right trade here.
     public func setShared(_ sessionId: String, _ shared: Bool) -> (Bool, String) {
         guard let cloud = current() else {
-            return (false, "cloud sharing is unavailable — this Mac is not paired with an account")
+            // Two ways to be unattached now, and they are different facts.
+            // Blaming pairing for a retirement is the confidently-wrong-status
+            // class this project keeps paying for.
+            return (false, RemoteSessionPlane.isEnabled
+                    ? "cloud sharing is unavailable — this Mac is not paired with an account"
+                    : "cloud sharing is unavailable — remote sessions have been withdrawn")
         }
         final class ResultBox: @unchecked Sendable {
             private let lock = NSLock()
