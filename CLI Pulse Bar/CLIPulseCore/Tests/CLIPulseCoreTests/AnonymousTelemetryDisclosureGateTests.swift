@@ -12,7 +12,10 @@ final class AnonymousTelemetryDisclosureGateTests: XCTestCase {
 
     private actor CountingTransport: AnonymousTelemetryTransport {
         private(set) var count = 0
-        func send(_ payload: AnonymousInstallPayload) async throws { count += 1 }
+        func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
+            count += 1
+            return payload.wireVersion
+        }
         func sends() -> Int { count }
     }
 

@@ -61,23 +61,29 @@ ALLOW = Path("scripts/telemetry_disclosure.allow")
 
 # Every place the app tells a user what it sends, and the L10n accessor each
 # one must render. A guard that watches one of two surfaces licenses the other.
+# path -> (accessor it must render, the catalogue keys it actually shows).
+#
+# The phrase check runs PER SURFACE against that surface's own keys. An earlier
+# version concatenated every key and searched the union, which passed a tree
+# where Settings > Privacy had quietly dropped a field the first-run card still
+# mentioned — the exact "one of two surfaces" hole this guard exists to close,
+# reintroduced by the move to localized strings. (Codex review, 2026-08-30.)
 SURFACES = {
-    Path("CLI Pulse Bar/CLI Pulse Bar/AnonymousTelemetryDisclosureCard.swift"):
+    Path("CLI Pulse Bar/CLI Pulse Bar/AnonymousTelemetryDisclosureCard.swift"): (
         "L10n.telemetry.disclosureBody",
-    Path("CLI Pulse Bar/CLI Pulse Bar/PrivacySettingsSection.swift"):
+        ["telemetry.disclosure_body", "telemetry.not_collected"],
+    ),
+    Path("CLI Pulse Bar/CLI Pulse Bar/PrivacySettingsSection.swift"): (
         "L10n.telemetry.settingsBody",
+        ["telemetry.settings_body"],
+    ),
 }
 
 # The shipped English copy the phrases must appear in. `en` specifically: the
 # registry phrases are English, and the parity gate is what guarantees the
 # other five catalogues carry the same keys.
 CATALOGUE = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings")
-DISCLOSURE_KEYS = [
-    "telemetry.disclosure_body",
-    "telemetry.disclosure_body_local_only",
-    "telemetry.not_collected",
-    "telemetry.settings_body",
-]
+
 
 # Described as "the id is random and is deleted when you uninstall" rather than
 # by name, on every surface. Exempted here so the registry does not need a row
@@ -91,7 +97,21 @@ EXEMPT = {"installID"}
 CODING_KEYS_RE = re.compile(
     r"enum CodingKeys\s*:[^{]*\{(.*?)\n    \}", re.DOTALL
 )
-CASE_RE = re.compile(r"case\s+(\w+)\s*=")
+# `case foo = "p_foo"`, `case foo` (raw value defaults to the case name) and
+# `case a, b`. An earlier version required the `=`, so a perfectly valid
+# implicit case was INVISIBLE — a new payload field could ship undisclosed
+# while the guard stayed green. (Codex review, 2026-08-30.)
+CASE_RE = re.compile(r"^\s*case\s+(.+?)\s*$", re.MULTILINE)
+
+
+def parse_cases(block: str) -> list[str]:
+    names: list[str] = []
+    for raw in CASE_RE.findall(block):
+        for part in raw.split(","):
+            name = part.split("=", 1)[0].strip()
+            if name.isidentifier():
+                names.append(name)
+    return names
 
 
 def collapse(text: str) -> str:
@@ -116,7 +136,7 @@ def main() -> int:
     if not block:
         print(f"FATAL: no AnonymousInstallPayload CodingKeys block in {payload}", file=sys.stderr)
         return 2
-    fields = [m.group(1) for m in CASE_RE.finditer(block.group(1))]
+    fields = parse_cases(block.group(1))
     if len(fields) < 3:
         print(f"FATAL: parsed only {fields} from CodingKeys — the parser is broken, "
               "not the payload", file=sys.stderr)
@@ -135,7 +155,7 @@ def main() -> int:
 
     # Check 3: each surface must still render its localized copy.
     unrendered: list[str] = []
-    for rel, accessor in SURFACES.items():
+    for rel, (accessor, _keys) in SURFACES.items():
         path = root / rel
         if not path.is_file():
             print(f"FATAL: disclosure surface missing at {path}", file=sys.stderr)
@@ -148,18 +168,23 @@ def main() -> int:
         print(f"FATAL: catalogue missing at {catalogue}", file=sys.stderr)
         return 2
     cat_text = catalogue.read_text(encoding="utf-8")
-    values: list[str] = []
-    for key in DISCLOSURE_KEYS:
-        m = re.search(r'^"' + re.escape(key) + r'"\s*=\s*"(.*?)";$', cat_text, re.M | re.S)
-        if m is None:
-            print(f"FATAL: {key} is not in {CATALOGUE.name} — the copy moved again", file=sys.stderr)
+
+    # The copy EACH surface shows, kept separate on purpose.
+    per_surface: dict[Path, str] = {}
+    for rel, (_accessor, keys) in SURFACES.items():
+        values: list[str] = []
+        for key in keys:
+            m = re.search(r'^"' + re.escape(key) + r'"\s*=\s*"(.*?)";$', cat_text, re.M | re.S)
+            if m is None:
+                print(f"FATAL: {key} is not in {CATALOGUE.name} — the copy moved again", file=sys.stderr)
+                return 2
+            values.append(m.group(1))
+        text = collapse(" ".join(values))
+        if len(text) < 120:
+            print(f"FATAL: {rel.name}'s copy parsed to {len(text)} chars — "
+                  "the parser is broken, not the copy", file=sys.stderr)
             return 2
-        values.append(m.group(1))
-    disclosed = collapse(" ".join(values))
-    if len(disclosed) < 200:
-        print(f"FATAL: the disclosure copy parsed to {len(disclosed)} chars — "
-              "the parser is broken, not the copy", file=sys.stderr)
-        return 2
+        per_surface[rel] = text
 
     failed = False
 
@@ -194,19 +219,23 @@ def main() -> int:
         phrase = registry.get(field)
         if phrase is None:
             continue
-        if phrase.lower() not in disclosed.lower():
+        missing = [str(rel) for rel, text in per_surface.items()
+                   if phrase.lower() not in text.lower()]
+        if missing:
             failed = True
             print(f"FAIL — {field} is registered as disclosed by \"{phrase}\", but that", file=sys.stderr)
-            print(f"       phrase is absent from the shipped copy in {CATALOGUE.name}.\n", file=sys.stderr)
-            print("    The telemetry switch defaults ON, so a field the disclosure does", file=sys.stderr)
-            print("    not mention is a field collected without consent.\n", file=sys.stderr)
+            print("       phrase is absent from the shipped copy shown by:\n", file=sys.stderr)
+            for m in missing:
+                print(f"    {m}", file=sys.stderr)
+            print("\n    EVERY surface must say it — checking the union would pass a tree", file=sys.stderr)
+            print("    where one screen quietly dropped a field. The switch defaults ON,", file=sys.stderr)
+            print("    so a field a screen does not mention is collected without consent.\n", file=sys.stderr)
 
     if failed:
         return 1
 
     print(f"check_telemetry_disclosure_claims: OK — {len(fields)} payload field(s); "
-          f"{len(registry)} disclosed in {len(DISCLOSURE_KEYS)} localized string(s), "
-          f"rendered by {len(SURFACES)} surface(s), "
+          f"{len(registry)} disclosed on every one of {len(SURFACES)} surface(s), "
           f"{len(EXEMPT & set(fields))} exempt by name.")
     return 0
 

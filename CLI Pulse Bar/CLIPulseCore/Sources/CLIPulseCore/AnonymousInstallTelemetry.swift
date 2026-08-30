@@ -318,7 +318,13 @@ public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore,
 }
 
 public protocol AnonymousTelemetryTransport: Sendable {
-    func send(_ payload: AnonymousInstallPayload) async throws
+    /// Returns the wire shape the server actually ACCEPTED, which is not
+    /// always the one that was offered: a pre-v0.76 database rejects the
+    /// current shape and the transport retries in `.legacy`, which carries
+    /// none of the v0.76 fields. Callers latch against the return value, never
+    /// against "the call did not throw".
+    @discardableResult
+    func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion
 }
 
 /// Decides whether anything is sent at all, and reports each fact once.
@@ -373,7 +379,12 @@ public actor AnonymousInstallTelemetry {
     public func recordInstallIfNeeded() async -> Bool {
         if store.installReported { return true }
         guard maySend else { return false }
-        return await send(providerDetected: false) { [store] in store.installReported = true }
+        // The install itself is carried by BOTH wire shapes, so either
+        // acceptance settles it.
+        return await send(providerDetected: false) { [store] _ in
+            store.installReported = true
+            return true
+        }
     }
 
     /// Called the first time any provider is detected. This is first value: the
@@ -398,9 +409,12 @@ public actor AnonymousInstallTelemetry {
         // Reports the install too. The RPC upserts, and coalesces the
         // activation timestamp, so a user whose very first launch already finds
         // a CLI is counted once as installed and once as activated.
-        return await send(providerDetected: true) { [store] in
+        return await send(providerDetected: true) { [store] _ in
+            // `p_provider_detected` exists in the v0.73 shape too, so a legacy
+            // fallback still records activation.
             store.installReported = true
             store.activationReported = true
+            return true
         }
     }
 
@@ -419,9 +433,18 @@ public actor AnonymousInstallTelemetry {
     public func recordHelperConnectedIfNeeded() async -> Bool {
         if store.helperConnectedReported { return true }
         guard maySend else { return false }
-        return await send(helperConnected: true) { [store] in
+        return await send(helperConnected: true) { [store] accepted in
             store.installReported = true
+            // ONLY latch when the shape that landed actually carried the
+            // field. A legacy fallback omits `p_helper_connected`, so latching
+            // here would tell every future launch "already reported" for a
+            // milestone the server never received — and the latch is
+            // persisted, so it would be lost for the life of the install.
+            // This is the v1.45 activation defect (latch on attempt, not
+            // outcome) in its newer disguise.
+            guard accepted == .current else { return false }
             store.helperConnectedReported = true
+            return true
         }
     }
 
@@ -436,9 +459,11 @@ public actor AnonymousInstallTelemetry {
     public func recordFirstCostIfNeeded() async -> Bool {
         if store.costReported { return true }
         guard maySend else { return false }
-        return await send(costShown: true) { [store] in
+        return await send(costShown: true) { [store] accepted in
             store.installReported = true
+            guard accepted == .current else { return false }
             store.costReported = true
+            return true
         }
     }
 
@@ -449,11 +474,15 @@ public actor AnonymousInstallTelemetry {
     /// single successful send backfills whatever earlier sends lost to a missing
     /// network. Sending only the triggering milestone would make the funnel
     /// depend on the app having been online at four separate moments.
+    /// `onSuccess` receives the wire shape the server ACCEPTED and returns
+    /// whether the milestone the caller asked about is now durably recorded.
+    /// Returning `false` leaves the persisted latch clear so the next launch
+    /// retries — which is the whole point of threading the shape through.
     private func send(
         providerDetected: Bool = false,
         helperConnected: Bool = false,
         costShown: Bool = false,
-        onSuccess: @Sendable () -> Void
+        onSuccess: @Sendable (AnonymousInstallPayload.WireVersion) -> Bool
     ) async -> Bool {
         guard let appVersion else { return false }
         let payload = AnonymousInstallPayload(
@@ -467,9 +496,8 @@ public actor AnonymousInstallTelemetry {
             uiLanguage: uiLanguage()
         )
         do {
-            try await transport.send(payload)
-            onSuccess()
-            return true
+            let accepted = try await transport.send(payload)
+            return onSuccess(accepted)
         } catch {
             // Deliberately quiet, and deliberately not retried in-process. The
             // flag stays false, so the next launch tries again; a failure here

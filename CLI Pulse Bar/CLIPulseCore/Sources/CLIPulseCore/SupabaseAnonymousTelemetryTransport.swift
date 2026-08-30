@@ -15,9 +15,18 @@ import Foundation
 /// key only. `AnonymousTelemetryTransportTests` asserts there is no
 /// Authorization header carrying anything else.
 public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
-    public enum TransportError: Error {
+    public enum TransportError: Error, Equatable {
         case notConfigured
         case rejected(status: Int)
+        /// PostgREST could not find a function matching the parameter names in
+        /// the body — `PGRST202`, served as HTTP 404.
+        ///
+        /// Distinguished from a plain 404 on purpose. A mistyped project URL
+        /// is also a 404, and downgrading to the legacy shape on that would
+        /// silently reduce fidelity for a configuration bug rather than
+        /// surfacing it. Only the code PostgREST uses for "no such function"
+        /// justifies the retry.
+        case unknownFunctionSignature
     }
 
     private let endpoint: URL?
@@ -62,11 +71,20 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
     /// One retry, not a loop, and only from `.current` to `.legacy`. The
     /// milestone latches are set from the RESULT, so a legacy send simply
     /// leaves the new milestones unreported and the next launch tries again.
-    public func send(_ payload: AnonymousInstallPayload) async throws {
+    @discardableResult
+    public func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
         do {
             try await post(payload)
-        } catch TransportError.rejected(status: 404) where payload.wireVersion == .current {
+            return payload.wireVersion
+        } catch TransportError.unknownFunctionSignature where payload.wireVersion == .current {
             try await post(payload.legacyShaped())
+            // The caller MUST see which shape landed. A legacy send omits
+            // `p_helper_connected`, `p_cost_shown` and `p_ui_language`
+            // entirely, so a caller that treated this as a full success would
+            // latch milestones the server never received — and the latch is
+            // persisted, so the next launch would return early and the
+            // milestone would be lost for the life of the install.
+            return .legacy
         }
     }
 
@@ -89,11 +107,26 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
         // waiting on it.
         request.timeoutInterval = 10
 
-        let (_, response) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw TransportError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
+            if http.statusCode == 404, Self.isUnknownFunctionSignature(data) {
+                throw TransportError.unknownFunctionSignature
+            }
             throw TransportError.rejected(status: http.statusCode)
         }
+    }
+}
+
+extension SupabaseAnonymousTelemetryTransport {
+    /// `{"code":"PGRST202", ...}` — PostgREST's "could not find the function
+    /// with those parameter names". Parsed rather than assumed from the 404,
+    /// so a wrong URL stays a wrong URL instead of becoming a silent
+    /// downgrade.
+    static func isUnknownFunctionSignature(_ body: Data) -> Bool {
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+              let code = json["code"] as? String else { return false }
+        return code == "PGRST202"
     }
 }
 

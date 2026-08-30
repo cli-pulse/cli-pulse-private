@@ -15,14 +15,22 @@ private actor FunnelTransport: AnonymousTelemetryTransport {
     private(set) var sent: [AnonymousInstallPayload] = []
     /// Statuses to throw, one per attempt, before succeeding.
     private var scripted: [Int]
+    /// The shape the fake server "accepts". `.legacy` simulates a database
+    /// that has not had migrate_v0.76 applied: the transport downgrades and
+    /// the v0.76 fields never arrive.
+    private let accepts: AnonymousInstallPayload.WireVersion
 
-    init(rejectWith: [Int] = []) { self.scripted = rejectWith }
+    init(rejectWith: [Int] = [], accepts: AnonymousInstallPayload.WireVersion = .current) {
+        self.scripted = rejectWith
+        self.accepts = accepts
+    }
 
-    func send(_ payload: AnonymousInstallPayload) async throws {
+    func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
         if !scripted.isEmpty {
             throw SupabaseAnonymousTelemetryTransport.TransportError.rejected(status: scripted.removeFirst())
         }
-        sent.append(payload)
+        sent.append(accepts == .legacy ? payload.legacyShaped() : payload)
+        return accepts
     }
 
     func payloads() -> [AnonymousInstallPayload] { sent }
@@ -131,6 +139,68 @@ final class ActivationFunnelTelemetryTests: XCTestCase {
         XCTAssertTrue(sent.isEmpty, "off is off — not a reduced payload")
         XCTAssertFalse(store.helperConnectedReported)
         XCTAssertFalse(store.costReported)
+    }
+
+    /// CODEX REVIEW, 2026-08-30. The legacy fallback used to be treated as a
+    /// full success: `send` did not throw, so the milestone latched — even
+    /// though the legacy shape omits `p_helper_connected` entirely. The latch
+    /// is PERSISTED, so once v0.76 landed the next launch would return early
+    /// and the milestone was lost for the life of the install. Exactly the
+    /// v1.45 activation defect (latch on attempt, not outcome) in a new
+    /// disguise, in code whose own comments warn about it.
+    func test_aLegacyFallbackDoesNotLatchTheV076Milestones() async {
+        let store = FunnelStore()
+        let transport = FunnelTransport(accepts: .legacy)
+        let subject = makeSubject(store: store, transport: transport)
+
+        let recorded = await subject.recordHelperConnectedIfNeeded()
+
+        XCTAssertFalse(recorded, "a legacy send did not carry the milestone")
+        XCTAssertFalse(store.helperConnectedReported,
+                       "latching here loses the milestone permanently once v0.76 lands")
+        // The install IS in the legacy shape, so that much is settled and the
+        // next launch does not re-send it.
+        XCTAssertTrue(store.installReported)
+
+        let sent = await transport.payloads()
+        XCTAssertEqual(sent.count, 1)
+        XCTAssertEqual(sent[0].wireVersion, .legacy)
+    }
+
+    /// …and the same send against a migrated server DOES latch, so the test
+    /// above is about the wire shape and not about the milestone never
+    /// latching at all.
+    func test_aCurrentShapeSendDoesLatch() async {
+        let store = FunnelStore()
+        let subject = makeSubject(store: store, transport: FunnelTransport(accepts: .current))
+
+        let recorded = await subject.recordHelperConnectedIfNeeded()
+
+        XCTAssertTrue(recorded)
+        XCTAssertTrue(store.helperConnectedReported)
+    }
+
+    /// Cost has the same shape-dependence, and is a separate latch.
+    func test_costAlsoWaitsForAServerThatCanStoreIt() async {
+        let store = FunnelStore()
+        let subject = makeSubject(store: store, transport: FunnelTransport(accepts: .legacy))
+
+        let recorded = await subject.recordFirstCostIfNeeded()
+
+        XCTAssertFalse(recorded)
+        XCTAssertFalse(store.costReported)
+    }
+
+    /// Activation IS carried by the v0.73 shape, so a legacy fallback still
+    /// settles it — the fix must not over-correct into never latching.
+    func test_activationStillLatchesOnALegacyFallback() async {
+        let store = FunnelStore()
+        let subject = makeSubject(store: store, transport: FunnelTransport(accepts: .legacy))
+
+        let recorded = await subject.recordFirstProviderDetectedIfNeeded()
+
+        XCTAssertTrue(recorded, "p_provider_detected exists in the legacy shape")
+        XCTAssertTrue(store.activationReported)
     }
 
     // MARK: - UI language
@@ -261,6 +331,9 @@ private final class SequencedProtocol: URLProtocol {
     /// Status per attempt, consumed in order; the last one repeats.
     nonisolated(unsafe) static var statuses: [Int] = []
     nonisolated(unsafe) static var bodies: [Data] = []
+    /// Whether a 404 carries PostgREST's `PGRST202`. `false` simulates the
+    /// other 404 — a mistyped project URL — which must NOT downgrade.
+    nonisolated(unsafe) static var serveUnknownFunctionBody = true
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -287,6 +360,12 @@ private final class SequencedProtocol: URLProtocol {
             url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        // A real PostgREST "no function with those parameter names" is a 404
+        // whose BODY carries `PGRST202`. The transport keys off that code, not
+        // off the status, so the stub has to serve it.
+        if status == 404 && Self.serveUnknownFunctionBody {
+            client?.urlProtocol(self, didLoad: Data(#"{"code":"PGRST202","message":"no function"}"#.utf8))
+        }
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -314,17 +393,20 @@ final class ActivationFunnelTransportTests: XCTestCase {
         super.setUp()
         SequencedProtocol.statuses = [204]
         SequencedProtocol.bodies = []
+        SequencedProtocol.serveUnknownFunctionBody = true
     }
 
     /// A database without v0.76 answers 404/PGRST202 for the new parameter
     /// set. Without the retry every install goes silent — and silent here is
     /// indistinguishable from "nobody installed the app", the exact confusion
     /// this telemetry exists to end.
-    func test_a404FallsBackToTheLegacyShapeExactlyOnce() async throws {
+    func test_aPGRST202FallsBackToTheLegacyShapeExactlyOnce() async throws {
         SequencedProtocol.statuses = [404, 204]
 
-        try await makeTransport().send(payload)
+        let accepted = try await makeTransport().send(payload)
 
+        XCTAssertEqual(accepted, .legacy,
+                       "the caller must be told the v0.76 fields never landed")
         XCTAssertEqual(SequencedProtocol.bodies.count, 2, "one retry, not a loop")
         let first = try XCTUnwrap(JSONSerialization.jsonObject(with: SequencedProtocol.bodies[0]) as? [String: Any])
         let second = try XCTUnwrap(JSONSerialization.jsonObject(with: SequencedProtocol.bodies[1]) as? [String: Any])
@@ -333,6 +415,21 @@ final class ActivationFunnelTransportTests: XCTestCase {
         XCTAssertNil(second["p_helper_connected"])
         XCTAssertNil(second["p_cost_shown"])
         XCTAssertEqual(second["p_install_id"] as? String, "12345678-1234-1234-1234-123456789012")
+    }
+
+    /// A 404 that is NOT `PGRST202` — a mistyped project URL, say — must
+    /// propagate. Downgrading on it would silently reduce fidelity for a
+    /// configuration bug instead of surfacing it. (Codex review, 2026-08-30:
+    /// the first cut retried every 404.)
+    func test_aPlain404DoesNotDowngrade() async {
+        SequencedProtocol.statuses = [404, 204]
+        SequencedProtocol.serveUnknownFunctionBody = false
+        do {
+            _ = try await makeTransport().send(payload)
+            XCTFail("a 404 without PGRST202 must not be treated as a signature mismatch")
+        } catch {
+            XCTAssertEqual(SequencedProtocol.bodies.count, 1, "no retry on a plain 404")
+        }
     }
 
     /// The retry is for an unknown-parameter 404 only. Anything else must
@@ -353,7 +450,7 @@ final class ActivationFunnelTransportTests: XCTestCase {
     func test_aLegacyPayloadDoesNotRetry() async {
         SequencedProtocol.statuses = [404, 204]
         do {
-            try await makeTransport().send(payload.legacyShaped())
+            _ = try await makeTransport().send(payload.legacyShaped())
             XCTFail("a 404 on the legacy shape has no lower gear to drop into")
         } catch {
             XCTAssertEqual(SequencedProtocol.bodies.count, 1)

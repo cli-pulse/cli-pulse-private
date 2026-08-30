@@ -66,7 +66,10 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
 
     private actor Transport: AnonymousTelemetryTransport {
         private(set) var sent: [AnonymousInstallPayload] = []
-        func send(_ payload: AnonymousInstallPayload) async throws { sent.append(payload) }
+        func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
+            sent.append(payload)
+            return payload.wireVersion
+        }
         func payloads() -> [AnonymousInstallPayload] { sent }
         func activations() -> Int { sent.filter(\.providerDetected).count }
     }

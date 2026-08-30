@@ -53,9 +53,10 @@ final class AnonymousActivationFirstLaunchTests: XCTestCase {
 
         func setFailEverything(_ value: Bool) { failEverything = value }
 
-        func send(_ payload: AnonymousInstallPayload) async throws {
+        func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
             if failEverything { throw URLError(.notConnectedToInternet) }
             sent.append(payload)
+            return payload.wireVersion
         }
 
         func payloads() -> [AnonymousInstallPayload] { sent }

@@ -20,10 +20,11 @@ private actor RecordingTransport: AnonymousTelemetryTransport {
 
     init(failFirst: Int = 0) { self.failures = failFirst }
 
-    func send(_ payload: AnonymousInstallPayload) async throws {
+    func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
         attempts += 1
         if attempts <= failures { throw URLError(.notConnectedToInternet) }
         sent.append(payload)
+        return payload.wireVersion
     }
 
     func payloads() -> [AnonymousInstallPayload] { sent }
