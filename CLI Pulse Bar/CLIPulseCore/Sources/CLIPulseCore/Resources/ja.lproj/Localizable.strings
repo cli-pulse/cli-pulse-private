@@ -219,7 +219,6 @@
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "Proにアップグレード";
 "subscription.switch_pro" = "Proに切り替え";
-"subscription.switch_team" = "チームに切り替え";
 
 /* ── について ── */
 "about.title" = "CLI Pulse Barについて";
@@ -350,22 +349,6 @@
 "onboarding.helper_not_connected_yet" = "ヘルパーがまだ接続されていません。上記のコマンドを実行してから、もう一度お試しください。";
 
 /* ── チーム ── */
-"team.title" = "チーム";
-"team.requires_pro_hint" = "チーム機能にはProまたはTeamサブスクリプションが必要です";
-"team.no_teams" = "チームはまだありません。作成して始めましょう。";
-"team.members" = "メンバー";
-"team.pending_invites" = "保留中の招待";
-"team.pending" = "保留中";
-"team.invite" = "招待";
-"team.make_admin" = "管理者にする";
-"team.make_member" = "メンバーにする";
-"team.remove" = "削除";
-"team.create_team" = "チームを作成";
-"team.team_name" = "チーム名";
-"team.create" = "作成";
-"team.invite_member" = "メンバーを招待";
-"team.email_address" = "メールアドレス";
-"team.send_invite" = "招待を送信";
 
 /* ── 連携 ── */
 "integrations.title" = "連携";
@@ -711,9 +694,6 @@
 "widget.percent_left" = "%@ 残り %d%%";
 "widget.quota_fallback" = "クォータ";
 "dashboard.pending_approval_count" = "保留中の承認 %d 件";
-"team.members_count" = "%d メンバー";
-"team.tokens_count" = "%d トークン";
-"team.error_loading" = "チームを読み込めませんでした。後ほど再試行してください。";
 "providers.quota_data_unavailable" = "クォータデータを取得できません";
 "advanced.sync_just_now" = "たった今同期";
 "advanced.sync_minutes_ago" = "%d 分前に同期";
@@ -791,7 +771,6 @@
 "subscription.buy_lifetime" = "ライフタイムを購入";
 
 /* ── v1.18.2 D-2: Claude プロバイダーカードのピーク時間表示 ── */
-
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
@@ -1079,7 +1058,6 @@
 "pet.form_huff" = "ぷんぷんそっぽ猫";
 "pet.form_ouch" = "いてっ痛い猫";
 "pet.form_flop" = "ばたんぐったり猫";
-
 
 /* v1.44 W3 — per-provider collector outcome labels + next steps */
 "collector_status.ok" = "正常";

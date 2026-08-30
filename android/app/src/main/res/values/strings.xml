@@ -38,7 +38,6 @@
     <string name="settings_tier">Tier: %1$s</string>
     <string name="settings_subscription">Subscription</string>
     <string name="settings_devices">Devices</string>
-    <string name="settings_teams">Teams</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_enabled">Enabled</string>
     <string name="settings_thresholds">Thresholds</string>
@@ -57,21 +56,11 @@
     <string name="settings_save">Save</string>
 
     <!-- Team -->
-    <string name="team_no_members">No members yet.</string>
-    <string name="team_no_teams">No teams yet</string>
-    <string name="team_no_teams_hint">Create a team to share usage monitoring with your colleagues.</string>
-    <string name="team_role">Role: %1$s</string>
-    <string name="team_create">Create Team</string>
-    <string name="team_name_hint">Team Name</string>
-    <string name="team_invite_member">Invite Member</string>
-    <string name="team_email_hint">Email address</string>
 
     <!-- Subscription -->
     <string name="subscription_title">Subscription</string>
     <string name="subscription_current_plan">Current Plan: %1$s</string>
     <string name="subscription_processing">Payment processing…</string>
-    <string name="subscription_plan_features">Plan Features</string>
-    <string name="subscription_providers">Providers</string>
     <string name="subscription_data_retention">Data Retention</string>
     <string name="subscription_available_plans">Available Plans</string>
     <string name="subscription_restore">Restore Purchases</string>
@@ -79,7 +68,6 @@
     <string name="subscription_per_month">/month</string>
     <string name="subscription_current">Current</string>
     <string name="subscription_subscribe">Subscribe</string>
-    <string name="subscription_unlimited">Unlimited</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">Cost Analysis</string>
@@ -107,17 +95,9 @@
     <string name="export_pdf_report">Export PDF Report</string>
 
     <!-- Team (extended) -->
-    <string name="team_pending_invites">Pending Invites</string>
-    <string name="team_pending">Pending</string>
-    <string name="team_make_admin">Make Admin</string>
-    <string name="team_make_member">Make Member</string>
-    <string name="team_manage_member">Manage member</string>
 
     <!-- Common -->
     <string name="cancel">Cancel</string>
-    <string name="create">Create</string>
-    <string name="invite">Invite</string>
-    <string name="remove">Remove</string>
     <string name="back">Back</string>
     <string name="save">Save</string>
     <string name="delete">Delete</string>

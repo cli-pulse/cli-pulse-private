@@ -468,12 +468,6 @@ struct iOSSettingsTab: View {
                         .disabled(state.isLoading)
                     }
 
-                    // Teams
-                    Section(L10n.team.title) {
-                        TeamView()
-                            .environmentObject(state)
-                    }
-
                     // About
                     Section(L10n.settings.about) {
                         HStack {

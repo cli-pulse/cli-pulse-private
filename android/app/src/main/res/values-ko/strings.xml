@@ -36,7 +36,6 @@
     <string name="settings_tier">등급: %1$s</string>
     <string name="settings_subscription">구독</string>
     <string name="settings_devices">기기</string>
-    <string name="settings_teams">팀</string>
     <string name="settings_notifications">알림</string>
     <string name="settings_enabled">활성화</string>
     <string name="settings_thresholds">임계값</string>
@@ -55,21 +54,11 @@
     <string name="settings_save">저장</string>
 
     <!-- Team -->
-    <string name="team_no_members">아직 멤버가 없습니다.</string>
-    <string name="team_no_teams">아직 팀이 없습니다</string>
-    <string name="team_no_teams_hint">팀을 만들어 동료와 사용 현황을 공유하세요.</string>
-    <string name="team_role">역할: %1$s</string>
-    <string name="team_create">팀 만들기</string>
-    <string name="team_name_hint">팀 이름</string>
-    <string name="team_invite_member">멤버 초대</string>
-    <string name="team_email_hint">이메일 주소</string>
 
     <!-- Subscription -->
     <string name="subscription_title">구독</string>
     <string name="subscription_current_plan">현재 플랜: %1$s</string>
     <string name="subscription_processing">결제 처리 중…</string>
-    <string name="subscription_plan_features">플랜 기능</string>
-    <string name="subscription_providers">제공자</string>
     <string name="subscription_data_retention">데이터 보존</string>
     <string name="subscription_available_plans">이용 가능한 플랜</string>
     <string name="subscription_restore">구매 복원</string>
@@ -77,7 +66,6 @@
     <string name="subscription_per_month">/월</string>
     <string name="subscription_current">현재</string>
     <string name="subscription_subscribe">구독하기</string>
-    <string name="subscription_unlimited">무제한</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">비용 분석</string>
@@ -105,17 +93,9 @@
     <string name="export_pdf_report">PDF 보고서 내보내기</string>
 
     <!-- Team (extended) -->
-    <string name="team_pending_invites">대기 중인 초대</string>
-    <string name="team_pending">대기 중</string>
-    <string name="team_make_admin">관리자로 변경</string>
-    <string name="team_make_member">멤버로 변경</string>
-    <string name="team_manage_member">멤버 관리</string>
 
     <!-- Common -->
     <string name="cancel">취소</string>
-    <string name="create">만들기</string>
-    <string name="invite">초대</string>
-    <string name="remove">삭제</string>
     <string name="back">뒤로</string>
     <string name="save">저장</string>
     <string name="delete">삭제</string>

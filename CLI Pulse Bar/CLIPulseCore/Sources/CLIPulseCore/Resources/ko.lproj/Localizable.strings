@@ -219,7 +219,6 @@
 "subscription.per_month" = "/월";
 "subscription.upgrade_pro" = "Pro로 업그레이드";
 "subscription.switch_pro" = "Pro로 전환";
-"subscription.switch_team" = "팀으로 전환";
 
 /* ── v1.14 평생 IAP ── */
 "subscription.lifetime" = "Pro 평생";
@@ -357,22 +356,6 @@
 "onboarding.helper_not_connected_yet" = "도우미가 아직 연결되지 않았습니다. 위의 명령을 실행한 후 다시 시도해 주세요.";
 
 /* ── 팀 ── */
-"team.title" = "팀";
-"team.requires_pro_hint" = "팀 기능에는 Pro 또는 Team 구독이 필요합니다";
-"team.no_teams" = "아직 팀이 없습니다. 하나를 만들어 시작하세요.";
-"team.members" = "멤버";
-"team.pending_invites" = "대기 중인 초대";
-"team.pending" = "대기 중";
-"team.invite" = "초대";
-"team.make_admin" = "관리자로 변경";
-"team.make_member" = "멤버로 변경";
-"team.remove" = "삭제";
-"team.create_team" = "팀 만들기";
-"team.team_name" = "팀 이름";
-"team.create" = "만들기";
-"team.invite_member" = "멤버 초대";
-"team.email_address" = "이메일 주소";
-"team.send_invite" = "초대 보내기";
 
 /* ── 연동 ── */
 "integrations.title" = "연동";
@@ -445,7 +428,6 @@
 "account.delete_session_expired" = "계정을 삭제하기 전에 세션이 만료되었습니다. 계정은 아직 활성 상태입니다. 다시 로그인한 후 설정에서 '계정 삭제'를 다시 시도해 주세요.";
 
 /* ── v1.18.2 D-2: Claude 카드의 Anthropic 피크 시간 표시기 ── */
-
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";

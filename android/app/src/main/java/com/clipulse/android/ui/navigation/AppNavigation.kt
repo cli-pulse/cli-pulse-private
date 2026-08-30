@@ -31,7 +31,6 @@ import com.clipulse.android.ui.sessions.SessionsScreen
 import com.clipulse.android.ui.devices.DevicesScreen
 import com.clipulse.android.ui.settings.SettingsScreen
 import com.clipulse.android.ui.settings.SubscriptionScreen
-import com.clipulse.android.ui.team.TeamScreen
 import com.clipulse.android.ui.usage.CostAnalysisScreen
 
 val LocalSnackbarHostState = compositionLocalOf<SnackbarHostState> {
@@ -189,7 +188,6 @@ fun AppNavigation(
                     onSignOut = { isLoggedIn = false },
                     onManageSubscription = { navController.navigate("subscription") },
                     onViewDevices = { navController.navigate("devices") },
-                    onViewTeams = { navController.navigate("teams") },
                 )
             }
             composable("subscription") {
@@ -197,9 +195,6 @@ fun AppNavigation(
             }
             composable("devices") {
                 DevicesScreen()
-            }
-            composable("teams") {
-                TeamScreen(onBack = { navController.popBackStack() })
             }
             composable("cost_analysis") {
                 CostAnalysisScreen(onBack = { navController.popBackStack() })

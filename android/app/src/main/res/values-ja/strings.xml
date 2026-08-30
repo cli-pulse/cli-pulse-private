@@ -36,7 +36,6 @@
     <string name="settings_tier">プラン: %1$s</string>
     <string name="settings_subscription">サブスクリプション</string>
     <string name="settings_devices">デバイス</string>
-    <string name="settings_teams">チーム</string>
     <string name="settings_notifications">通知</string>
     <string name="settings_enabled">有効</string>
     <string name="settings_thresholds">閾値</string>
@@ -55,21 +54,11 @@
     <string name="settings_save">保存</string>
 
     <!-- Team -->
-    <string name="team_no_members">メンバーはまだいません。</string>
-    <string name="team_no_teams">チームはまだありません</string>
-    <string name="team_no_teams_hint">チームを作成して、同僚と使用状況の監視を共有しましょう。</string>
-    <string name="team_role">役割: %1$s</string>
-    <string name="team_create">チームを作成</string>
-    <string name="team_name_hint">チーム名</string>
-    <string name="team_invite_member">メンバーを招待</string>
-    <string name="team_email_hint">メールアドレス</string>
 
     <!-- Subscription -->
     <string name="subscription_title">サブスクリプション</string>
     <string name="subscription_current_plan">現在のプラン: %1$s</string>
     <string name="subscription_processing">支払い処理中…</string>
-    <string name="subscription_plan_features">プラン機能</string>
-    <string name="subscription_providers">プロバイダー</string>
     <string name="subscription_data_retention">データ保持期間</string>
     <string name="subscription_available_plans">利用可能なプラン</string>
     <string name="subscription_restore">購入を復元</string>
@@ -77,7 +66,6 @@
     <string name="subscription_per_month">/月</string>
     <string name="subscription_current">現在</string>
     <string name="subscription_subscribe">購読する</string>
-    <string name="subscription_unlimited">無制限</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">コスト分析</string>
@@ -105,17 +93,9 @@
     <string name="export_pdf_report">PDF レポートをエクスポート</string>
 
     <!-- Team (extended) -->
-    <string name="team_pending_invites">保留中の招待</string>
-    <string name="team_pending">保留中</string>
-    <string name="team_make_admin">管理者にする</string>
-    <string name="team_make_member">メンバーにする</string>
-    <string name="team_manage_member">メンバーを管理</string>
 
     <!-- Common -->
     <string name="cancel">キャンセル</string>
-    <string name="create">作成</string>
-    <string name="invite">招待</string>
-    <string name="remove">削除</string>
     <string name="back">戻る</string>
     <string name="save">保存</string>
     <string name="delete">削除</string>

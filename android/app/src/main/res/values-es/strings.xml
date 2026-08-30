@@ -36,7 +36,6 @@
     <string name="settings_tier">Nivel: %1$s</string>
     <string name="settings_subscription">Suscripción</string>
     <string name="settings_devices">Dispositivos</string>
-    <string name="settings_teams">Equipos</string>
     <string name="settings_notifications">Notificaciones</string>
     <string name="settings_enabled">Activado</string>
     <string name="settings_thresholds">Umbrales</string>
@@ -55,21 +54,11 @@
     <string name="settings_save">Guardar</string>
 
     <!-- Team -->
-    <string name="team_no_members">Sin miembros aún.</string>
-    <string name="team_no_teams">Sin equipos aún</string>
-    <string name="team_no_teams_hint">Crea un equipo para compartir el monitoreo de uso con tus colegas.</string>
-    <string name="team_role">Rol: %1$s</string>
-    <string name="team_create">Crear equipo</string>
-    <string name="team_name_hint">Nombre del equipo</string>
-    <string name="team_invite_member">Invitar miembro</string>
-    <string name="team_email_hint">Dirección de email</string>
 
     <!-- Subscription -->
     <string name="subscription_title">Suscripción</string>
     <string name="subscription_current_plan">Plan actual: %1$s</string>
     <string name="subscription_processing">Procesando pago…</string>
-    <string name="subscription_plan_features">Características del plan</string>
-    <string name="subscription_providers">Proveedores</string>
     <string name="subscription_data_retention">Retención de datos</string>
     <string name="subscription_available_plans">Planes disponibles</string>
     <string name="subscription_restore">Restaurar compras</string>
@@ -77,7 +66,6 @@
     <string name="subscription_per_month">/mes</string>
     <string name="subscription_current">Actual</string>
     <string name="subscription_subscribe">Suscribirse</string>
-    <string name="subscription_unlimited">Ilimitado</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">Análisis de costos</string>
@@ -105,17 +93,9 @@
     <string name="export_pdf_report">Exportar informe PDF</string>
 
     <!-- Team (extended) -->
-    <string name="team_pending_invites">Invitaciones pendientes</string>
-    <string name="team_pending">Pendiente</string>
-    <string name="team_make_admin">Hacer admin</string>
-    <string name="team_make_member">Hacer miembro</string>
-    <string name="team_manage_member">Gestionar miembro</string>
 
     <!-- Common -->
     <string name="cancel">Cancelar</string>
-    <string name="create">Crear</string>
-    <string name="invite">Invitar</string>
-    <string name="remove">Eliminar</string>
     <string name="back">Atrás</string>
     <string name="save">Guardar</string>
     <string name="delete">Eliminar</string>

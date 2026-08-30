@@ -36,7 +36,6 @@
     <string name="settings_tier">等级: %1$s</string>
     <string name="settings_subscription">订阅</string>
     <string name="settings_devices">设备</string>
-    <string name="settings_teams">团队</string>
     <string name="settings_notifications">通知</string>
     <string name="settings_enabled">已启用</string>
     <string name="settings_thresholds">阈值</string>
@@ -55,21 +54,11 @@
     <string name="settings_save">保存</string>
 
     <!-- Team -->
-    <string name="team_no_members">暂无成员。</string>
-    <string name="team_no_teams">暂无团队</string>
-    <string name="team_no_teams_hint">创建团队，与同事共享使用监控。</string>
-    <string name="team_role">角色: %1$s</string>
-    <string name="team_create">创建团队</string>
-    <string name="team_name_hint">团队名称</string>
-    <string name="team_invite_member">邀请成员</string>
-    <string name="team_email_hint">邮箱地址</string>
 
     <!-- Subscription -->
     <string name="subscription_title">订阅</string>
     <string name="subscription_current_plan">当前方案: %1$s</string>
     <string name="subscription_processing">支付处理中…</string>
-    <string name="subscription_plan_features">方案功能</string>
-    <string name="subscription_providers">服务商</string>
     <string name="subscription_data_retention">数据保留</string>
     <string name="subscription_available_plans">可用方案</string>
     <string name="subscription_restore">恢复购买</string>
@@ -77,7 +66,6 @@
     <string name="subscription_per_month">/月</string>
     <string name="subscription_current">当前</string>
     <string name="subscription_subscribe">订阅</string>
-    <string name="subscription_unlimited">不限</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">费用分析</string>
@@ -105,17 +93,9 @@
     <string name="export_pdf_report">导出 PDF 报告</string>
 
     <!-- Team (extended) -->
-    <string name="team_pending_invites">待处理邀请</string>
-    <string name="team_pending">待处理</string>
-    <string name="team_make_admin">设为管理员</string>
-    <string name="team_make_member">设为成员</string>
-    <string name="team_manage_member">管理成员</string>
 
     <!-- Common -->
     <string name="cancel">取消</string>
-    <string name="create">创建</string>
-    <string name="invite">邀请</string>
-    <string name="remove">移除</string>
     <string name="back">返回</string>
     <string name="save">保存</string>
     <string name="delete">删除</string>

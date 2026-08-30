@@ -76,8 +76,6 @@
 		A30021 /* PhoneSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30021 /* PhoneSessionManager.swift */; };
 		A30022 /* OnboardingWizardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30022 /* OnboardingWizardView.swift */; };
 		A30023 /* WatchComplicationWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30023 /* WatchComplicationWidget.swift */; };
-		A30024 /* TeamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30024 /* TeamView.swift */; };
-		A30025 /* TeamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B30024 /* TeamView.swift */; };
 		A40001 /* CLIPulseWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40001 /* CLIPulseWidgets.swift */; };
 		A40002 /* WidgetDataProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40002 /* WidgetDataProvider.swift */; };
 		A40003 /* UsageOverviewWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B40003 /* UsageOverviewWidget.swift */; };
@@ -264,7 +262,6 @@
 		B30021 /* PhoneSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSessionManager.swift; sourceTree = "<group>"; };
 		B30022 /* OnboardingWizardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingWizardView.swift; sourceTree = "<group>"; };
 		B30023 /* WatchComplicationWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchComplicationWidget.swift; sourceTree = "<group>"; };
-		B30024 /* TeamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeamView.swift; sourceTree = "<group>"; };
 		B40001 /* CLIPulseWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CLIPulseWidgets.swift; sourceTree = "<group>"; };
 		B40002 /* WidgetDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataProvider.swift; sourceTree = "<group>"; };
 		B40003 /* UsageOverviewWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UsageOverviewWidget.swift; sourceTree = "<group>"; };
@@ -351,7 +348,6 @@
 			children = (
 				B10001 /* CLIPulseBarApp.swift */,
 				B10006 /* MenuBarView.swift */,
-				B30024 /* TeamView.swift */,
 				B30022 /* OnboardingWizardView.swift */,
 				B10100 /* AgentDiscoveryStepView.swift */,
 				B10101 /* ProviderAccountSetupCard.swift */,
@@ -712,7 +708,6 @@
 			files = (
 				A10001 /* CLIPulseBarApp.swift in Sources */,
 				A10006 /* MenuBarView.swift in Sources */,
-				A30024 /* TeamView.swift in Sources */,
 				A30022 /* OnboardingWizardView.swift in Sources */,
 				A10100 /* AgentDiscoveryStepView.swift in Sources */,
 				A10101 /* ProviderAccountSetupCard.swift in Sources */,
@@ -769,7 +764,6 @@
 				A20023 /* RefreshWidgetIntent.swift in Sources */,
 				A20024 /* CLIPulseShortcuts.swift in Sources */,
 				A30021 /* PhoneSessionManager.swift in Sources */,
-				A30025 /* TeamView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

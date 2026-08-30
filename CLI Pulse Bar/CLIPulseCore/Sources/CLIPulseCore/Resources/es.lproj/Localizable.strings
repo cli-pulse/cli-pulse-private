@@ -219,7 +219,6 @@
 "subscription.per_month" = "/mes";
 "subscription.upgrade_pro" = "Actualizar a Pro";
 "subscription.switch_pro" = "Cambiar a Pro";
-"subscription.switch_team" = "Cambiar a Equipo";
 
 /* ── v1.14 IAP de por vida ── */
 "subscription.lifetime" = "Pro de por Vida";
@@ -357,22 +356,6 @@
 "onboarding.helper_not_connected_yet" = "El auxiliar aún no se ha conectado. Ejecute el comando anterior y vuelva a intentarlo.";
 
 /* ── Equipo ── */
-"team.title" = "Equipos";
-"team.requires_pro_hint" = "Las funciones de equipo requieren suscripción Pro o Team";
-"team.no_teams" = "Sin equipos aún. Cree uno para empezar.";
-"team.members" = "Miembros";
-"team.pending_invites" = "Invitaciones pendientes";
-"team.pending" = "Pendiente";
-"team.invite" = "Invitar";
-"team.make_admin" = "Hacer admin";
-"team.make_member" = "Hacer miembro";
-"team.remove" = "Eliminar";
-"team.create_team" = "Crear equipo";
-"team.team_name" = "Nombre del equipo";
-"team.create" = "Crear";
-"team.invite_member" = "Invitar miembro";
-"team.email_address" = "Dirección de email";
-"team.send_invite" = "Enviar invitación";
 
 /* ── Integraciones ── */
 "integrations.title" = "Integraciones";
@@ -445,7 +428,6 @@
 "account.delete_session_expired" = "Tu sesión expiró antes de que pudiéramos eliminar tu cuenta. Tu cuenta sigue activa — vuelve a iniciar sesión y prueba de nuevo Eliminar cuenta desde Ajustes.";
 
 /* ── v1.18.2 D-2: Indicador de horario pico de Anthropic en la tarjeta Claude ── */
-
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";

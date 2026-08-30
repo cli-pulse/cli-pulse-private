@@ -152,7 +152,8 @@ struct SubscriptionBootstrapPolicy: Equatable, Sendable {
                 // taken from this build exercise a tier no customer can buy —
                 // which is how a withdrawn tier ends up back in a store asset.
                 // `.pro` is now the highest purchasable tier and unlocks the
-                // same feature set (TeamView always gated on `isProOrAbove`).
+                // same feature set (the old `TeamView` always gated on
+                // `isProOrAbove`; v1.52.1 deleted it).
                 initialTier: .pro,
                 resolutionState: .resolvedConfirmed,
                 source: "qa-in-memory"
@@ -187,12 +188,16 @@ public final class SubscriptionManager: ObservableObject {
     ///
     /// v1.52 removed Team and Lifetime from sale:
     ///
-    ///   Team — `TeamView` gates on `isProOrAbove`, so Pro already receives
-    ///   every team feature and the tier has no exclusive benefit. Worse, of
-    ///   the eight team RPCs the client calls, production has exactly one
-    ///   (`my_teams`); `create_team` and the rest do not exist in the live
-    ///   database, so a Team subscriber pressing "Create Team" gets an error.
-    ///   One team has ever been created.
+    ///   Team — the old `TeamView` gated on `isProOrAbove`, so Pro already
+    ///   received every team feature and the tier had no exclusive benefit.
+    ///   Worse, of the nine team RPCs the client called, production had
+    ///   exactly one (`my_teams`); `create_team` and the rest did not exist
+    ///   in the live database, so a Team subscriber pressing "Create Team"
+    ///   got an error. Measured 2026-08-30: `teams`, `team_members` and
+    ///   `team_invites` all hold zero rows — no team was ever created — and
+    ///   no profile carries `tier = 'team'`. v1.52.1 deleted the UI; the two
+    ///   product IDs stay recognised below so a legacy entitlement still
+    ///   resolves.
     ///
     ///   Lifetime — `com.clipulse.pro.lifetime` has been `MISSING_METADATA` in
     ///   App Store Connect since v1.14: no localization, no price point, no
