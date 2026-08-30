@@ -117,7 +117,7 @@ struct SessionsTab: View {
                         }
                     }
                 }
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
                 } else {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -196,7 +196,7 @@ struct SessionsTab: View {
             // having to read logs (Codex review on PR #17).
             localFastPathStatusPill
             Spacer()
-            let canStartRemote = state.remoteControlEnabled && targetDeviceForStart != nil
+            let canStartRemote = state.remoteSessionsEnabled && targetDeviceForStart != nil
             let canStartLocal = state.canStartLocalManagedSession
             if canStartRemote || canStartLocal {
                 // v1.15: pickable Menu for Claude / Codex / Gemini.
@@ -353,7 +353,7 @@ struct SessionsTab: View {
         // ForStart` — the local transport implicitly targets THIS Mac.
         let displayed = state.displayedManagedSessions
         let localStartAvailable = state.canStartLocalManagedSession
-        let remoteUsable = state.remoteControlEnabled
+        let remoteUsable = state.remoteSessionsEnabled
 
         if localUIAvailable {
             if !state.localHelperReachable {
@@ -1503,7 +1503,7 @@ struct SessionsTab: View {
                 ? "No output yet…"
                 : "This helper doesn't advertise streaming output."
         }
-        return state.remoteControlEnabled
+        return state.remoteSessionsEnabled
             ? "No output yet…"
             : "Remote Control is off — output won't stream."
     }
@@ -1609,7 +1609,7 @@ struct SessionsTab: View {
             }
         }
 
-        if newSessionId == nil, state.remoteControlEnabled, let device = targetDeviceForStart {
+        if newSessionId == nil, state.remoteSessionsEnabled, let device = targetDeviceForStart {
             guard device.supportsManagedSessionProvider(provider) else {
                 state.remoteSessionsError = unsupportedRemoteProviderMessage(provider: provider, device: device)
                 return
@@ -1647,7 +1647,7 @@ struct SessionsTab: View {
 
     private var managedProviderUpgradeHint: String? {
         guard !state.canStartLocalManagedSession,
-              state.remoteControlEnabled,
+              state.remoteSessionsEnabled,
               let device = targetDeviceForStart,
               !device.supportsMultiCLIManagedSessions
         else { return nil }
@@ -1658,7 +1658,7 @@ struct SessionsTab: View {
 
     @MainActor
     private func refreshDisappearedRemoteStartInfo() async {
-        guard state.remoteControlEnabled, !pendingRemoteStartIds.isEmpty else { return }
+        guard state.remoteSessionsEnabled, !pendingRemoteStartIds.isEmpty else { return }
         let activeIds = Set(state.displayedManagedSessions.map(\.id))
         for id in pendingRemoteStartIds where !activeIds.contains(id) {
             let cached = state.remoteSessionEvents[id] ?? []

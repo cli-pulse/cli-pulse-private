@@ -374,31 +374,35 @@ struct iOSSettingsTab: View {
                         // flight so re-entrant taps can't race the request.
                         .disabled(state.remoteControlSaving)
 
-                        // Remote Control diagnostics — a collapsible health
-                        // panel so the user (and support) can see why RC isn't
-                        // working. Label carries the overall status icon.
-                        let rcReport = RemoteControlHealth.evaluate(.from(
-                            isPaired: state.isPaired,
-                            remoteControlEnabled: state.remoteControlEnabled,
-                            devices: state.devices,
-                            notificationsAuthorized: rcDiagNotifAuthorized))
-                        DisclosureGroup {
-                            VStack(alignment: .leading, spacing: 10) {
-                                RemoteControlHealthView(report: rcReport)
-                                Button(L10n.diagnostics.copy) {
-                                    UIPasteboard.general.string = rcReport.supportText()
+                        // Hidden with the session plane, same as the macOS
+                        // panel in AdvancedSection: every check it runs — a Mac
+                        // matching the target filter, a helper version,
+                        // notification authorization for approval pushes —
+                        // describes the retired plane.
+                        if RemoteSessionPlane.isEnabled {
+                            let rcReport = RemoteControlHealth.evaluate(.from(
+                                isPaired: state.isPaired,
+                                remoteControlEnabled: state.remoteControlEnabled,
+                                devices: state.devices,
+                                notificationsAuthorized: rcDiagNotifAuthorized))
+                            DisclosureGroup {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    RemoteControlHealthView(report: rcReport)
+                                    Button(L10n.diagnostics.copy) {
+                                        UIPasteboard.general.string = rcReport.supportText()
+                                    }
+                                    .font(.caption)
                                 }
-                                .font(.caption)
-                            }
-                            .padding(.vertical, 4)
-                            .task {
-                                rcDiagNotifAuthorized = await RemoteControlHealth.currentNotificationAuthorization()
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: rcReport.overall.iconName)
-                                    .foregroundStyle(rcReport.overall.tint)
-                                Text(L10n.diagnostics.title)
+                                .padding(.vertical, 4)
+                                .task {
+                                    rcDiagNotifAuthorized = await RemoteControlHealth.currentNotificationAuthorization()
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: rcReport.overall.iconName)
+                                        .foregroundStyle(rcReport.overall.tint)
+                                    Text(L10n.diagnostics.title)
+                                }
                             }
                         }
 
@@ -408,7 +412,7 @@ struct iOSSettingsTab: View {
                         // RemoteApprovalsEntryState helper docstring in
                         // CLIPulseCore for the dead-loop bug this prevents.
                         let pendingEntry = RemoteApprovalsEntryState.footer(
-                            remoteControlEnabled: state.remoteControlEnabled,
+                            remoteSessionsEnabled: state.remoteSessionsEnabled,
                             pendingCount: state.remotePendingApprovals.count
                         )
                         if pendingEntry.isVisible {

@@ -619,9 +619,9 @@
 "advanced.git_consent_title" = "启用 git 活动追踪？";
 "advanced.enable" = "启用";
 "advanced.git_consent_body" = "CLI Pulse 会扫描有 AI 会话活动的项目的 git 日志。仅会上传提交哈希、项目路径的 HMAC、提交时间戳以及合并提交标记。提交消息、diff、文件路径和作者身份永远不会上传。";
-"advanced.remote_control" = "远程控制（阶段 1：Claude 审批）";
-"advanced.remote_control_hint" = "通过 iPhone 或 Mac 审批 Claude 工具调用 · 默认关闭";
-"advanced.remote_consent_title" = "启用远程控制？";
+"advanced.remote_control" = "来自其他设备的机器请求";
+"advanced.remote_control_hint" = "允许已登录的设备请求 Mac 提升风扇转速、进入低电量模式或防休眠 · 默认关闭";
+"advanced.remote_consent_title" = "允许机器请求?";
 "advanced.token" = "令牌";
 "advanced.providers_loaded" = "已加载服务商";
 "advanced.last_refresh" = "上次刷新";
@@ -825,7 +825,21 @@
 /* ── v1.18.2 D-2: Anthropic 高峰窗口指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "开启远程控制后,CLI Pulse 可以:\n• 上传每次 Claude 权限请求的脱敏摘要(工具名、简短描述、风险等级)\n• 上传终端输出的末尾片段及会话状态\n• 将您的远程「同意 / 拒绝」转发回本地 helper\n\n永远不会离开您设备的内容:\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 完整对话内容或会话日志文件\n• 完整项目路径(仅上传 basename 加 HMAC)\n\n此处的「同意」仅对当前请求生效,不会添加 Claude Code 的「Always Allow」规则。下次 Claude 需要使用同一工具时仍会再次询问。如需设置长期规则,请在 Mac 上使用 Claude Code 自带的「Always Allow」界面。\n\n同意请求即表示在您的 Mac 上执行该工具调用。请仅同意您能够理解的请求。";
+"advanced.remote_consent_body" = "打开后,你其他已登录的设备可以向本账号的 Mac 发送四类请求,仅此四类:
+• 设置风扇转速目标,或恢复风扇自动控制
+• 开启或关闭低电量模式
+• 开启或关闭防休眠
+
+服务器会拒绝其他任何类型,每分钟最多 6 次,且只允许操作你自己账号下的设备。
+
+始终不会离开你设备的内容:
+• 服务商 API 密钥、Cookie、OAuth 令牌
+• 会话记录、日志、终端输出
+• 完整项目路径
+
+请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行;每次风扇保持都会自动恢复;这里无法执行命令,也无法控制进程。
+
+此开关过去还会启用远程 CLI 会话与权限审批,这两项已经下线。";
 
 /* ── Swarm View (v1.22 P0 — 智能体集群总控) ── */
 "tab.swarm" = "集群";

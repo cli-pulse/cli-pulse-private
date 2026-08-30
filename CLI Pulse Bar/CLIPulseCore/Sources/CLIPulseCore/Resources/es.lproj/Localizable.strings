@@ -430,7 +430,21 @@
 /* ── v1.18.2 D-2: Indicador de horario pico de Anthropic en la tarjeta Claude ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
+"advanced.remote_consent_body" = "Cuando está activado, tus otros dispositivos con sesión iniciada pueden enviar a los Mac de esta cuenta cuatro tipos de solicitud, y nada más:
+• fijar una velocidad objetivo del ventilador, o devolverlo a automático
+• activar o desactivar el Modo de bajo consumo
+• activar o desactivar Mantener activo
+
+El servidor rechaza cualquier otro tipo, admite como máximo 6 solicitudes por minuto y solo para dispositivos de tu propia cuenta.
+
+Lo que nunca sale de tu dispositivo:
+• claves de API, cookies y tokens OAuth de los proveedores
+• transcripciones, registros de sesión y salida del terminal
+• rutas completas de proyectos
+
+Una solicitud es solo una solicitud. El Mac que la recibe la atiende únicamente si allí también está activado «Control remoto de la máquina»; cada retención del ventilador se revierte sola, y desde aquí no se puede ejecutar ningún comando ni controlar ningún proceso.
+
+Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos. Ambas se han retirado.";
 
 /* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
 "tab.swarm" = "Enjambre";

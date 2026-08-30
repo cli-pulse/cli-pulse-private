@@ -12,7 +12,7 @@ import Foundation
 /// the sheet, so the active 3s polling never started, so the hook
 /// timed out into deny+message. Always-on entry breaks that cycle.
 public enum RemoteApprovalsEntryState: Equatable, Sendable {
-    /// Hide the entry. Used when Remote Control is disabled.
+    /// Hide the entry. Used when the remote session plane is off.
     case hidden
 
     /// Show the entry without a count badge. Tapping opens the sheet,
@@ -43,10 +43,14 @@ public enum RemoteApprovalsEntryState: Equatable, Sendable {
     }
 
     /// Always-visible entry (footer pill on Mac, NavigationLink in iOS
-    /// Settings). Visible whenever Remote Control is enabled, with an
-    /// optional pending-count badge.
-    public static func footer(remoteControlEnabled: Bool, pendingCount: Int) -> RemoteApprovalsEntryState {
-        guard remoteControlEnabled else { return .hidden }
+    /// Settings), with an optional pending-count badge.
+    ///
+    /// The parameter is the SESSION plane, not the `remote_control_enabled`
+    /// setting. Approvals are tool-permission prompts from a remotely-driven
+    /// CLI session; with that plane retired there is nothing to approve. The
+    /// setting itself lives on — it still authorises machine controls.
+    public static func footer(remoteSessionsEnabled: Bool, pendingCount: Int) -> RemoteApprovalsEntryState {
+        guard remoteSessionsEnabled else { return .hidden }
         if pendingCount > 0 {
             return .visibleWithBadge(count: pendingCount)
         }
@@ -56,8 +60,8 @@ public enum RemoteApprovalsEntryState: Equatable, Sendable {
     /// Pending-only banner (iOS Overview). Visible only when there is
     /// something to act on. The footer entry handles the always-visible
     /// affordance separately.
-    public static func banner(remoteControlEnabled: Bool, pendingCount: Int) -> RemoteApprovalsEntryState {
-        guard remoteControlEnabled, pendingCount > 0 else { return .hidden }
+    public static func banner(remoteSessionsEnabled: Bool, pendingCount: Int) -> RemoteApprovalsEntryState {
+        guard remoteSessionsEnabled, pendingCount > 0 else { return .hidden }
         return .visibleWithBadge(count: pendingCount)
     }
 }

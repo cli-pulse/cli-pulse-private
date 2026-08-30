@@ -601,7 +601,7 @@ struct MenuBarView: View {
             // RemoteApprovalsEntryState.footer doc comment for the
             // dead-loop bug it exists to prevent.
             let approvalsEntry = RemoteApprovalsEntryState.footer(
-                remoteControlEnabled: state.remoteControlEnabled,
+                remoteSessionsEnabled: state.remoteSessionsEnabled,
                 pendingCount: state.remotePendingApprovals.count
             )
             if approvalsEntry.isVisible {

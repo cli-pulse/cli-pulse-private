@@ -3167,7 +3167,7 @@ extension AppState {
     /// when Remote Control is disabled, so the UI stops looking like the
     /// feature is live after the user has opted out.
     public func refreshRemoteApprovals() async {
-        guard remoteControlEnabled else {
+        guard remoteSessionsEnabled else {
             remotePendingApprovals = []
             remoteApprovalsLastRefresh = Date()
             return
@@ -3180,7 +3180,7 @@ extension AppState {
             // disabled (Gemini review P2 #8). v0.29 also gates the server
             // RPC, but the client check is the immediate fix and works
             // against older server versions during rollout.
-            guard remoteControlEnabled else {
+            guard remoteSessionsEnabled else {
                 remotePendingApprovals = []
                 remoteApprovalsLastRefresh = Date()
                 return
@@ -3193,7 +3193,7 @@ extension AppState {
             // was in flight, swallow the error — the failed list call is
             // irrelevant once the feature is disabled, and surfacing a stale
             // error banner would just confuse them (Codex review iter4 P2).
-            guard remoteControlEnabled else {
+            guard remoteSessionsEnabled else {
                 return
             }
             remoteApprovalsError = error.localizedDescription
@@ -3207,7 +3207,7 @@ extension AppState {
         requestId: String,
         decision: RemotePermissionDecisionAction
     ) async {
-        guard remoteControlEnabled else { return }
+        guard remoteSessionsEnabled else { return }
         // Snapshot the failed row only — NOT the whole list. Restoring the
         // entire list on failure would silently wipe new pending requests
         // that arrived during the in-flight decide call (Gemini review P1 #3).
@@ -3242,7 +3242,7 @@ extension AppState {
     /// invoke it because there's no Sessions UI in the menu-bar
     /// approvals popover.
     public func refreshRemoteSessions() async {
-        guard remoteControlEnabled else {
+        guard remoteSessionsEnabled else {
             remoteSessions = []
             remoteSessionsLastRefresh = Date()
             return
@@ -3252,7 +3252,7 @@ extension AppState {
             // Re-check the gate AFTER the await: if the user toggled
             // Remote Control off mid-flight, drop the response. Same
             // pattern as `refreshRemoteApprovals` (Gemini review P2 #8).
-            guard remoteControlEnabled else {
+            guard remoteSessionsEnabled else {
                 remoteSessions = []
                 remoteSessionsLastRefresh = Date()
                 return
@@ -3261,7 +3261,7 @@ extension AppState {
             remoteSessionsLastRefresh = Date()
             remoteSessionsError = nil
         } catch {
-            guard remoteControlEnabled else { return }
+            guard remoteSessionsEnabled else { return }
             remoteSessionsError = error.localizedDescription
         }
     }
@@ -3275,14 +3275,14 @@ extension AppState {
     /// keeps `stale` devices (they render greyed) — the server already
     /// dropped anything past the 10-min outer window.
     public func refreshRemoteSwarms() async {
-        guard remoteControlEnabled else {
+        guard remoteSessionsEnabled else {
             remoteSwarms = []
             remoteSwarmsLastRefresh = Date()
             return
         }
         do {
             let pulled = try await api.remoteListSwarms()
-            guard remoteControlEnabled else {
+            guard remoteSessionsEnabled else {
                 remoteSwarms = []
                 remoteSwarmsLastRefresh = Date()
                 return
@@ -3291,7 +3291,7 @@ extension AppState {
             remoteSwarmsLastRefresh = Date()
             remoteSwarmsError = nil
         } catch {
-            guard remoteControlEnabled else { return }
+            guard remoteSessionsEnabled else { return }
             remoteSwarmsError = error.localizedDescription
         }
     }
@@ -3311,7 +3311,7 @@ extension AppState {
         cwdHmac: String? = nil,
         clientLabel: String? = nil
     ) async -> String? {
-        guard remoteControlEnabled else {
+        guard remoteSessionsEnabled else {
             remoteSessionsError = "Remote Control is disabled"
             return nil
         }
@@ -3340,7 +3340,7 @@ extension AppState {
         sessionId: String,
         text: String
     ) async -> Bool {
-        guard remoteControlEnabled else { return false }
+        guard remoteSessionsEnabled else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         do {
@@ -3365,7 +3365,7 @@ extension AppState {
     /// a phone keyboard is already best-effort. Requires backend
     /// migration v0.50 + helper v1.25+.
     public func sendRemoteSessionInputRaw(sessionId: String, bytes: Data) async {
-        guard remoteControlEnabled else { return }
+        guard remoteSessionsEnabled else { return }
         if bytes.isEmpty { return }
         do {
             _ = try await api.remoteSendCommand(
@@ -3391,7 +3391,7 @@ extension AppState {
     public func resizeRemoteSession(
         sessionId: String, cols: UInt16, rows: UInt16
     ) async {
-        guard remoteControlEnabled else { return }
+        guard remoteSessionsEnabled else { return }
         if cols == 0 || rows == 0 { return }
         do {
             _ = try await api.remoteSendCommand(
@@ -3418,7 +3418,7 @@ extension AppState {
     /// Requires backend migration v0.51 + helper v1.26+; older
     /// helpers reject the kind, error swallowed.
     public func requestRemoteSessionTailSnapshot(sessionId: String, maxBytes: Int) async {
-        guard remoteControlEnabled else { return }
+        guard remoteSessionsEnabled else { return }
         if sessionId.isEmpty { return }
         do {
             _ = try await api.remoteSendCommand(
@@ -3439,7 +3439,7 @@ extension AppState {
     /// it (terminal `status` filter in `remote_app_list_sessions` keeps
     /// it out of the active list immediately).
     public func stopRemoteSession(sessionId: String) async {
-        guard remoteControlEnabled else { return }
+        guard remoteSessionsEnabled else { return }
         do {
             _ = try await api.remoteSendCommand(
                 sessionId: sessionId, kind: .stop, payload: ""
@@ -3468,7 +3468,7 @@ extension AppState {
     /// during the network round-trip doesn't repopulate state.
     public func refreshRemoteSessionEvents(sessionId: String) async {
         guard !sessionId.isEmpty else { return }
-        guard remoteControlEnabled else {
+        guard remoteSessionsEnabled else {
             remoteSessionEvents[sessionId] = nil
             return
         }
@@ -3482,7 +3482,7 @@ extension AppState {
             // Re-check the gate AFTER the await — if RC was flipped
             // off mid-flight we drop the response. Same pattern as
             // `refreshRemoteApprovals` (Gemini review P2 #8).
-            guard remoteControlEnabled else {
+            guard remoteSessionsEnabled else {
                 remoteSessionEvents[sessionId] = nil
                 return
             }

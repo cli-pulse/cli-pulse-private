@@ -567,9 +567,9 @@
 "advanced.git_consent_title" = "Git アクティビティ追跡を有効にしますか？";
 "advanced.enable" = "有効化";
 "advanced.git_consent_body" = "CLI Pulse は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
-"advanced.remote_control" = "リモートコントロール (フェーズ1: Claude 承認)";
-"advanced.remote_control_hint" = "iPhone や Mac から Claude ツール呼び出しを承認 ・ 既定はオフ";
-"advanced.remote_consent_title" = "リモートコントロールを有効にしますか？";
+"advanced.remote_control" = "他のデバイスからのマシンリクエスト";
+"advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます · 既定はオフ";
+"advanced.remote_consent_title" = "マシンリクエストを許可しますか?";
 "advanced.token" = "トークン";
 "advanced.providers_loaded" = "プロバイダー読み込み済み";
 "advanced.last_refresh" = "最終更新";
@@ -773,7 +773,21 @@
 /* ── v1.18.2 D-2: Claude プロバイダーカードのピーク時間表示 ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
+"advanced.remote_consent_body" = "オンにすると、サインイン済みの他のデバイスから、このアカウントの Mac に次の4種類のリクエストだけを送れます:
+• ファンの目標回転数を指定する、またはファンを自動制御に戻す
+• 低電力モードのオン / オフ
+• スリープ防止のオン / オフ
+
+サーバーはこれ以外の種類を拒否し、1分あたり最大6件まで、自分のアカウントのデバイスに限って許可します。
+
+デバイスから決して送信されないもの:
+• プロバイダーの API キー、Cookie、OAuth トークン
+• 会話ログ、セッションログ、ターミナル出力
+• プロジェクトの完全なパス
+
+リクエストはあくまでリクエストです。受け取る Mac 側でも「リモートマシン制御」がオンの場合のみ実行され、ファンの保持は必ず自動で解除されます。ここからコマンドを実行したりプロセスを操作したりすることはできません。
+
+このスイッチは以前、リモート CLI セッションと権限承認も有効にしていました。どちらも提供を終了しました。";
 
 /* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
 "tab.swarm" = "スウォーム";

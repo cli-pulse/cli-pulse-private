@@ -362,6 +362,27 @@ public final class AppState: ObservableObject {
     /// the UI affordance.
     @Published public var remoteControlEnabled: Bool = false
 
+    /// Whether the remote **session** plane is offered: starting a CLI session
+    /// from another device, streaming its terminal, and approving its
+    /// tool-permission prompts.
+    ///
+    /// Retired — `RemoteSessionPlane.isEnabled` is `false`, so this is always
+    /// `false` regardless of the user setting. See that type for the
+    /// production measurements.
+    ///
+    /// Deliberately a CONJUNCTION rather than a bare `false`: if the plane is
+    /// ever re-enabled, the user's own opt-in still governs. A flag that
+    /// short-circuits the consent check would be a different and worse change
+    /// than the one being made here.
+    ///
+    /// `remoteControlEnabled` keeps its own meaning and its own call sites —
+    /// it still authorises **machine controls** (fan, low-power mode,
+    /// keep-awake), which work, have been used, and are enforced against the
+    /// same column server-side.
+    public var remoteSessionsEnabled: Bool {
+        RemoteSessionPlane.isEnabled && remoteControlEnabled
+    }
+
     /// True while a `setRemoteControlEnabled` PATCH is in flight. UI binds
     /// `disabled(state.remoteControlSaving)` on the Toggle so the user can't
     /// fire a second toggle on top of the first; periodic settings refreshes

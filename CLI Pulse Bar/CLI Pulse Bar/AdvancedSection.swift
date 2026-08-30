@@ -232,7 +232,15 @@ struct AdvancedSection: View {
                 remoteControlConsentCard
             }
 
-            remoteControlDiagnostics
+            // Hidden with the session plane. Every check it runs — a Mac
+            // matching the target filter, a helper version, notification
+            // authorization for approval pushes — describes the retired
+            // plane, so with that gone the panel would be diagnosing nothing
+            // that exists. Machine controls surface their own reachability in
+            // the Machine tab.
+            if RemoteSessionPlane.isEnabled {
+                remoteControlDiagnostics
+            }
 
             // Machine controls M1 (DEVID-only). Off by default. Purely local:
             // gates the Machine tab's "End Process" affordance for the user's
