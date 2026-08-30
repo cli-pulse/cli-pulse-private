@@ -537,9 +537,9 @@
 "advanced.git_consent_title" = "Enable git activity tracking?";
 "advanced.enable" = "Enable";
 "advanced.git_consent_body" = "CLI Pulse will scan git logs in projects where AI sessions are active. Only the commit hash, an HMAC of the project path, the commit timestamp, and a merge-commit flag leave your device. Commit messages, diffs, file paths, and author identity are never uploaded.";
-"advanced.remote_control" = "Remote Control (Phase 1: Claude approvals)";
-"advanced.remote_control_hint" = "Approve Claude tool calls from your iPhone or Mac · default off";
-"advanced.remote_consent_title" = "Enable Remote Control?";
+"advanced.remote_control" = "Machine requests from your other devices";
+"advanced.remote_control_hint" = "Let your signed-in devices ask a Mac for fan boost, Low Power Mode or Keep Awake · default off";
+"advanced.remote_consent_title" = "Allow machine requests?";
 "advanced.token" = "Token";
 "advanced.providers_loaded" = "Providers loaded";
 "advanced.last_refresh" = "Last refresh";
@@ -834,7 +834,21 @@
 "usage_pace.summary_left_only" = "Pace: %@";
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
+"advanced.remote_consent_body" = "When this is on, your other signed-in devices can send this account's Macs four kinds of request, and nothing else:
+• set a fan target, or revert the fan to automatic
+• turn Low Power Mode on or off
+• turn Keep Awake on or off
+
+The server rejects any other kind, allows at most 6 requests a minute, and only for devices on your own account.
+
+What never leaves your device:
+• provider API keys, cookies, OAuth tokens
+• transcripts, session logs, terminal output
+• full project paths
+
+A request is only a request. The receiving Mac honours it only if \"Remote machine control\" is also on there, every fan hold reverts on its own, and nothing here can run a command or control a process.
+
+This switch used to also enable remote CLI sessions and permission approvals. Those have been withdrawn.";
 
 /* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
 "tab.swarm" = "Swarm";

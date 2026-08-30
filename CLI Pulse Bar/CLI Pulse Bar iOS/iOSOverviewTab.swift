@@ -41,7 +41,7 @@ struct iOSOverviewTab: View {
                     // pending=0 case so users can still open the screen and
                     // start active polling.
                     let bannerState = RemoteApprovalsEntryState.banner(
-                        remoteControlEnabled: state.remoteControlEnabled,
+                        remoteSessionsEnabled: state.remoteSessionsEnabled,
                         pendingCount: state.remotePendingApprovals.count
                     )
                     if let bannerCount = bannerState.badgeCount {

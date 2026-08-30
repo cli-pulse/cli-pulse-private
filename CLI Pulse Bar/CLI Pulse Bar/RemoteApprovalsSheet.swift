@@ -44,7 +44,7 @@ struct RemoteApprovalsSheet: View {
         VStack(spacing: 0) {
             header
 
-            if !state.remoteControlEnabled {
+            if !state.remoteSessionsEnabled {
                 disabledState
             } else if state.remotePendingApprovals.isEmpty {
                 emptyState
@@ -60,7 +60,7 @@ struct RemoteApprovalsSheet: View {
             // so a remote toggle-off is honored on the next slow tick.
             while !Task.isCancelled {
                 await state.refreshRemoteApprovals()
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
                 } else {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -76,7 +76,7 @@ struct RemoteApprovalsSheet: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(L10n.remoteApprovals.title)
                     .font(.system(size: 13, weight: .semibold))
-                if state.remoteControlEnabled {
+                if state.remoteSessionsEnabled {
                     Text(L10n.remoteApprovals.pendingCount(state.remotePendingApprovals.count))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
@@ -87,7 +87,7 @@ struct RemoteApprovalsSheet: View {
                 }
             }
             Spacer()
-            if state.remoteControlEnabled {
+            if state.remoteSessionsEnabled {
                 Button {
                     Task { await state.refreshRemoteApprovals() }
                 } label: {

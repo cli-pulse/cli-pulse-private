@@ -29,7 +29,7 @@ struct iOSSessionsTab: View {
                 async let _sessions: () = state.refreshRemoteSessions()
                 async let _approvals: () = state.refreshRemoteApprovals()
                 _ = await (_sessions, _approvals)
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
                 } else {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -136,7 +136,7 @@ struct iOSSessionsTab: View {
                 Text(ProviderDisplay.managedSectionHeader)
                     .font(.headline)
                 Spacer()
-                if state.remoteControlEnabled {
+                if state.remoteSessionsEnabled {
                     // v1.15: provider picker so iOS users can spawn
                     // Codex / Gemini in addition to Claude.
                     Menu {
@@ -167,7 +167,7 @@ struct iOSSessionsTab: View {
                 }
             }
 
-            if !state.remoteControlEnabled {
+            if !state.remoteSessionsEnabled {
                 hint(icon: "lock.shield",
                      text: "Remote Control is off. Turn it on in Settings → Privacy.")
             } else {
@@ -324,7 +324,7 @@ struct iOSSessionsTab: View {
 
     private var sessionList: some View {
         List {
-            if state.remoteControlEnabled || !state.remoteSessions.isEmpty {
+            if state.remoteSessionsEnabled || !state.remoteSessions.isEmpty {
                 Section(ProviderDisplay.managedSectionHeader) {
                     // Error banner (when RC is on) — render regardless
                     // of whether the list is empty. Without this, a
@@ -333,7 +333,7 @@ struct iOSSessionsTab: View {
                     // looks identical to the legitimate empty-state
                     // hint and the user can't tell whether the polling
                     // is succeeding.
-                    if state.remoteControlEnabled,
+                    if state.remoteSessionsEnabled,
                        let err = state.remoteSessionsError {
                         Label(err, systemImage: "exclamationmark.triangle.fill")
                             .font(.caption)
@@ -425,7 +425,7 @@ struct iOSSessionsTab: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                if state.remoteControlEnabled {
+                if state.remoteSessionsEnabled {
                     // v1.15: provider picker, mirrors managedSection.
                     Menu {
                         Button {
@@ -672,7 +672,7 @@ struct ManagedSessionDetailView: View {
     /// across one-off failures.
     private var sessionEnded: Bool {
         hasRefreshedAtLeastOnce
-            && state.remoteControlEnabled
+            && state.remoteSessionsEnabled
             && !state.remoteSessions.contains(where: { $0.id == session.id })
     }
 
@@ -815,7 +815,7 @@ struct ManagedSessionDetailView: View {
                 // Hidden in cold/ended states so the toggle doesn't
                 // mislead the user into thinking there's something
                 // to subscribe to.
-                if state.remoteControlEnabled
+                if state.remoteSessionsEnabled
                     && realtimeConfig != nil
                     && (isRunning || isPending) {
                     showLiveTerminalToggle
@@ -913,7 +913,7 @@ struct ManagedSessionDetailView: View {
                     let fresh = await state.api.realtimeConfiguration()
                     if fresh != realtimeConfig { realtimeConfig = fresh }
                 }
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     try? await Task.sleep(nanoseconds: 10_000_000_000)
                 } else {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -1159,7 +1159,7 @@ struct ManagedSessionDetailView: View {
                     VStack(alignment: .leading, spacing: 0) {
                         if events.isEmpty {
                             Text(
-                                state.remoteControlEnabled
+                                state.remoteSessionsEnabled
                                     ? "No output yet…"
                                     : "Remote Control is off — output won't stream."
                             )

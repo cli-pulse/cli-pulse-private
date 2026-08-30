@@ -55,7 +55,7 @@ struct SwarmTab: View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 14) {
                 header
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     EmptyStateView(
                         icon: "lock.shield",
                         title: L10n.swarm.title,

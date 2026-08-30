@@ -84,7 +84,7 @@ struct iOSSwarmTab: View {
                 if #available(iOS 16.2, *) {
                     SwarmLiveActivityController.reconcile(
                         devices: state.remoteSwarms,
-                        remoteControlOn: state.remoteControlEnabled
+                        remoteControlOn: state.remoteSessionsEnabled
                     )
                 }
                 #endif
@@ -95,7 +95,7 @@ struct iOSSwarmTab: View {
 
     @ViewBuilder
     private var content: some View {
-        if !state.remoteControlEnabled {
+        if !state.remoteSessionsEnabled {
             swarmEmpty(icon: "lock.shield", title: L10n.swarm.title,
                        subtitle: L10n.swarm.disabledHint)
         } else if let err = state.remoteSwarmsError, entries.isEmpty {

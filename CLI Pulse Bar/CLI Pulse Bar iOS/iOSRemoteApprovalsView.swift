@@ -18,7 +18,7 @@ struct iOSRemoteApprovalsView: View {
 
     var body: some View {
         Group {
-            if !state.remoteControlEnabled {
+            if !state.remoteSessionsEnabled {
                 disabledState
             } else if state.remotePendingApprovals.isEmpty {
                 emptyState
@@ -29,7 +29,7 @@ struct iOSRemoteApprovalsView: View {
         .navigationTitle(L10n.remoteApprovals.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if state.remoteControlEnabled {
+            if state.remoteSessionsEnabled {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         Task { await state.refreshRemoteApprovals() }
@@ -49,7 +49,7 @@ struct iOSRemoteApprovalsView: View {
             // — so toggling off is honored on the next 3s tick.
             while !Task.isCancelled {
                 await state.refreshRemoteApprovals()
-                if !state.remoteControlEnabled {
+                if !state.remoteSessionsEnabled {
                     // Idle the loop entirely when the gate is off — wait a
                     // longer interval before re-checking. No request is
                     // issued on this slow path because of the inner guard.

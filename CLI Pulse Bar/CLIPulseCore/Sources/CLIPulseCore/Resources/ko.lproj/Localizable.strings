@@ -430,7 +430,21 @@
 /* ── v1.18.2 D-2: Claude 카드의 Anthropic 피크 시간 표시기 ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
+"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:
+• 팬 목표 회전수 설정 또는 팬을 자동으로 되돌리기
+• 저전력 모드 켜기 / 끄기
+• 절전 방지 켜기 / 끄기
+
+서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.
+
+기기를 절대 벗어나지 않는 것:
+• 제공업체 API 키, 쿠키, OAuth 토큰
+• 대화 기록, 세션 로그, 터미널 출력
+• 전체 프로젝트 경로
+
+요청은 요청일 뿐입니다. 받는 Mac에서도 「원격 머신 제어」가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.
+
+이 스위치는 예전에 원격 CLI 세션과 권한 승인도 활성화했습니다. 두 기능 모두 종료되었습니다.";
 
 /* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
 "tab.swarm" = "스웜";
