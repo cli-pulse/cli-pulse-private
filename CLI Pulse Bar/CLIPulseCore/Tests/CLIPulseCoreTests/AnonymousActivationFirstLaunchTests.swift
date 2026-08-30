@@ -43,6 +43,8 @@ final class AnonymousActivationFirstLaunchTests: XCTestCase {
         var installID = UUID(uuidString: "0BADCAFE-0000-4000-8000-00000000FEED")!
         var installReported = false
         var activationReported = false
+        var helperConnectedReported = false
+        var costReported = false
     }
 
     private actor Transport: AnonymousTelemetryTransport {

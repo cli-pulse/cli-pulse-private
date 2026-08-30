@@ -1,0 +1,32 @@
+# Registry binding every field of `AnonymousInstallPayload` to the words that
+# disclose it to the user.
+#
+# The switch defaults ON. That is only defensible because the app states what it
+# sends before it sends anything -- so the disclosure is not documentation, it is
+# the consent basis, and a field that no disclosure mentions is a field being
+# collected without consent.
+#
+# Nothing mechanical connected the two until now. v0.76 added three fields, and
+# BOTH disclosure surfaces still said "two things": the first-run card and
+# Settings > Privacy, hardcoded separately, saying the same wrong thing twice.
+# This repo has already paid for that shape once -- one predicate, two call
+# sites, only the UI one fixed (#468/#475).
+#
+# Format -- three pipe-separated fields:
+#   <CodingKeys case> | <phrase that must appear in EVERY disclosure surface> | <what it is>
+#
+# The phrase is matched after whitespace collapsing, so a line-wrapped Swift
+# string literal still matches. Keep phrases short and quotable; a long one just
+# breaks on the next copy edit without catching anything more.
+#
+# Exempt by name in the checker, not here: `installID`, which every surface
+# describes as "the id is random and is deleted when you uninstall" rather than
+# by parameter name.
+
+channel           | installed                | which distribution channel this copy came from
+appVersion        | installed                | marketing version only, no build number
+osVersion         | installed                | major.minor, coarsened on the client
+providerDetected  | found a                  | whether it ever found a CLI to track
+helperConnected   | helper connected         | whether the local helper answered over its socket
+costShown         | cost to show             | whether the app ever had a non-zero cost for today
+uiLanguage        | language it is displaying | which .lproj catalogue the app resolved

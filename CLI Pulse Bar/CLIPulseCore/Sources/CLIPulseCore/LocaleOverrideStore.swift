@@ -70,6 +70,42 @@ public final class LocaleOverrideStore: ObservableObject {
         return nil
     }
 
+    /// The `.lproj` catalogue the app is actually reading, by name.
+    ///
+    /// Not `Locale.current.identifier` and not `Bundle.preferredLocalizations`
+    /// of the main bundle: both answer "what does the user prefer", and the
+    /// question the activation funnel asks is "what did they SEE". A French
+    /// user prefers `fr` and reads `en`, and it is the English they read that
+    /// the funnel needs to know about.
+    ///
+    /// Returns the canonical `.lproj` name (`zh-Hans`, not `zh-hans`) —
+    /// SwiftPM lowercases resource-bundle directory names, so the value coming
+    /// back from `preferredLocalizations` cannot be used as-is. Anything
+    /// unrecognised becomes `nil` rather than being reported verbatim; the
+    /// telemetry column is a closed set and the server rejects the rest.
+    public static var resolvedLocalization: String? {
+        if let override = shared.override,
+           let canonical = canonicalLocalization(override),
+           bundle(forLocalization: override) != nil {
+            return canonical
+        }
+        for candidate in resourceBundle().preferredLocalizations {
+            if let canonical = canonicalLocalization(candidate) {
+                return canonical
+            }
+        }
+        return nil
+    }
+
+    /// The catalogues this app ships. Kept here rather than in the telemetry
+    /// layer because it is a fact about the resource bundle, and
+    /// `L10nFallbackTests` already pins the same list against what is on disk.
+    public static let shippedLocalizations = ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"]
+
+    private static func canonicalLocalization(_ raw: String) -> String? {
+        shippedLocalizations.first { $0.caseInsensitiveCompare(raw) == .orderedSame }
+    }
+
     /// The `en.lproj` bundle, resolved once.
     ///
     /// `L10n.tr` uses this as a last-resort fallback so a key that is

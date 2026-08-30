@@ -95,7 +95,10 @@ final class AnonymousTelemetryTransportTests: XCTestCase {
         let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
         XCTAssertEqual(
             Set(json.keys),
-            ["p_install_id", "p_channel", "p_app_version", "p_os_version", "p_provider_detected"]
+            [
+                "p_install_id", "p_channel", "p_app_version", "p_os_version",
+                "p_provider_detected", "p_helper_connected", "p_cost_shown", "p_ui_language",
+            ]
         )
     }
 

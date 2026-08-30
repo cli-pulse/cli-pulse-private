@@ -40,14 +40,18 @@ struct AnonymousTelemetryDisclosureCard: View {
                 Text(suppressedByLocalOnly
                      ? """
                        Local-only mode is on, so CLI Pulse is sending nothing \
-                       at all. Without it, it would report two things: that it \
-                       was installed, and whether it ever found a CLI to track.
+                       at all. Without it, it would report four steps: that it \
+                       was installed, whether the helper connected, whether it \
+                       ever found a CLI to track, and whether it ever had a \
+                       cost to show — plus which language it is displaying in.
                        """
                      : """
-                       CLI Pulse reports two things: that it was installed, and \
-                       whether it ever found a CLI to track. That's how we tell \
-                       whether the app actually works for people — there's no \
-                       account involved, so otherwise we can't.
+                       CLI Pulse reports how far it got: that it was installed, \
+                       whether the helper connected, whether it ever found a \
+                       CLI to track, and whether it ever had a cost to show. It \
+                       also reports which language it is displaying in. That's \
+                       how we tell where the app stops working for people — \
+                       there's no account involved, so otherwise we can't.
                        """)
                     .font(.callout)
                     .foregroundStyle(.secondary)

@@ -34,8 +34,10 @@ public final class AnonymousTelemetryCoordinator {
     public static private(set) var shared: AnonymousTelemetryCoordinator?
 
     private let telemetry: AnonymousInstallTelemetry
-    private var cancellable: AnyCancellable?
+    private var cancellables: Set<AnyCancellable> = []
     private var activationSent = false
+    private var helperConnectedSent = false
+    private var costSent = false
 
     /// Returns nil when the runtime forbids telemetry. Same `allowsTelemetry`
     /// capability that gates Sentry, so a QA or quarantine build is silent for
@@ -75,7 +77,7 @@ public final class AnonymousTelemetryCoordinator {
         Self.shared = self
         Task { await telemetry.recordInstallIfNeeded() }
 
-        cancellable = providerState.$providers
+        providerState.$providers
             .map { !$0.isEmpty }
             .removeDuplicates()
             // `reportActivation` is MainActor-isolated, and this type is too, so
@@ -91,7 +93,67 @@ public final class AnonymousTelemetryCoordinator {
                 guard hasProviders else { return }
                 self?.reportActivation()
             }
+            .store(in: &cancellables)
     }
+
+    /// Step 4 of the funnel: the app has a number to show.
+    ///
+    /// Subscribed rather than hooked to a view, for the same reason as
+    /// activation — `MenuBarExtra` builds its content lazily, so a signal
+    /// taken from a view would measure menu-opening instead of the event.
+    public func observeCost(appState: AppState) {
+        appState.$dashboard
+            .map { ($0?.total_estimated_cost_today ?? 0) > 0 }
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] hasCost in
+                guard hasCost else { return }
+                self?.reportFirstCost()
+            }
+            .store(in: &cancellables)
+    }
+
+#if os(macOS)
+    /// Step 2 of the funnel: the local helper answered.
+    ///
+    /// macOS-only because `HelperInstaller` is — it is the UDS handshake, and
+    /// there is no local helper on iOS or watchOS. Kept as a separate
+    /// subscription from `observeCost` because the two come from different
+    /// owners, and folding them into one publisher would make either source's
+    /// silence look like the other's.
+    ///
+    /// The `#if` is load-bearing, not tidiness: CLIPulseCore compiles for
+    /// macOS, iOS and watchOS, and `swift test` on a Mac only ever builds the
+    /// first. CI's five-scheme matrix caught the unguarded version.
+    public func observeHelper(helperInstaller: HelperInstaller) {
+        helperInstaller.$state
+            .map(Self.isHelperConnected)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] connected in
+                guard connected else { return }
+                self?.reportHelperConnected()
+            }
+            .store(in: &cancellables)
+    }
+
+    /// An OBSERVED round trip, not a registration claim.
+    ///
+    /// Both of these states are only reachable after the helper answered a
+    /// `hello` over the socket and named its version. `.registered` from
+    /// `HelperLifecycleManager` would have been the easy signal and the wrong
+    /// one: it means launchd accepted the plist, which is true in every one of
+    /// the failure modes this milestone exists to separate.
+    static func isHelperConnected(_ state: HelperInstaller.State) -> Bool {
+        switch state {
+        case .running, .bundled:
+            return true
+        case .checking, .notInstalled, .unreachable, .downloading,
+             .installing, .updateAvailable, .error:
+            return false
+        }
+    }
+#endif
 
     /// The disclosure has been acknowledged, so the install can go out now
     /// rather than on the next launch — and if a provider was already found
@@ -100,6 +162,24 @@ public final class AnonymousTelemetryCoordinator {
         Task { await telemetry.recordInstallIfNeeded() }
         if !providerState.providers.isEmpty {
             reportActivation()
+        }
+    }
+
+    private func reportHelperConnected() {
+        guard !helperConnectedSent else { return }
+        let telemetry = self.telemetry
+        Task { @MainActor [weak self] in
+            guard await telemetry.recordHelperConnectedIfNeeded() else { return }
+            self?.helperConnectedSent = true
+        }
+    }
+
+    private func reportFirstCost() {
+        guard !costSent else { return }
+        let telemetry = self.telemetry
+        Task { @MainActor [weak self] in
+            guard await telemetry.recordFirstCostIfNeeded() else { return }
+            self?.costSent = true
         }
     }
 
