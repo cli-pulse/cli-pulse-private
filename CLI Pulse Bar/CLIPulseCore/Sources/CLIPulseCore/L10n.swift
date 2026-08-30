@@ -21,9 +21,35 @@ public enum L10n {
     /// `.lproj` bundle at runtime. When `override == nil` the store
     /// returns the same default bundle, preserving prior behavior.
     private static func tr(_ key: String, _ args: CVarArg...) -> String {
+        let format = resolve(key)
+        return args.isEmpty ? format : String(format: format, arguments: args)
+    }
+
+    /// Looks a key up in the active locale, falling back to **English
+    /// copy** when that locale does not carry it.
+    ///
+    /// `NSLocalizedString` takes no `value:` here, so a missing key makes
+    /// it echo the key back — which is how es/ko users came to see raw
+    /// dotted identifiers such as `onboarding_wizard.step_progress` on the
+    /// first-run screen. CFBundle does not fall back per-key: it picks one
+    /// `.lproj` and a key absent from it is simply absent. This restores
+    /// the fallback for every locale at once, so an untranslated string
+    /// degrades to English instead of to debug output.
+    ///
+    /// Deliberately keyed off `format == key`: that is precisely
+    /// `NSLocalizedString`'s "not found" signal, and no shipped value is
+    /// ever equal to its own dotted key.
+    ///
+    /// Internal rather than private so `L10nFallbackTests` can sweep every
+    /// key in every locale through the real production path.
+    static func resolve(_ key: String) -> String {
         let activeBundle = LocaleOverrideStore.shared.bundle
         let format = NSLocalizedString(key, bundle: activeBundle, comment: "")
-        return args.isEmpty ? format : String(format: format, arguments: args)
+        guard format == key else { return format }
+        guard let english = LocaleOverrideStore.englishBundle, english !== activeBundle else {
+            return format
+        }
+        return NSLocalizedString(key, bundle: english, comment: "")
     }
 
     // MARK: - Tabs

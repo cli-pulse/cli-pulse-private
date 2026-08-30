@@ -49,19 +49,37 @@ public final class LocaleOverrideStore: ObservableObject {
     public var bundle: Bundle {
         let base = Self.resourceBundle()
         guard let override else { return base }
-        // Try the canonical name first (e.g. "zh-Hans"), then a
-        // lowercased variant (SwiftPM rewrites resource bundle
-        // directory names to all-lowercase, e.g. "zh-hans.lproj"),
-        // then fall back to the base bundle for unknown values so
-        // callers don't crash on typos.
-        for candidate in Self.resolutionCandidates(for: override) {
+        return Self.bundle(forLocalization: override) ?? base
+    }
+
+    /// Resolves a single `.lproj` directory inside the resource bundle.
+    ///
+    /// Tries the canonical name first (e.g. `"zh-Hans"`), then a
+    /// lowercased variant, because SwiftPM rewrites resource-bundle
+    /// directory names to all-lowercase (`zh-hans.lproj`). Returns `nil`
+    /// for unknown values so callers can decide their own fallback
+    /// instead of crashing on a typo.
+    public static func bundle(forLocalization localization: String) -> Bundle? {
+        let base = resourceBundle()
+        for candidate in resolutionCandidates(for: localization) {
             if let path = base.path(forResource: candidate, ofType: "lproj"),
                let bundle = Bundle(path: path) {
                 return bundle
             }
         }
-        return base
+        return nil
     }
+
+    /// The `en.lproj` bundle, resolved once.
+    ///
+    /// `L10n.tr` uses this as a last-resort fallback so a key that is
+    /// missing from the active locale renders **English copy** rather
+    /// than the raw dotted identifier. See `L10n.resolve(_:)`.
+    ///
+    /// Resolved eagerly into a `static let` because the miss path runs
+    /// inside SwiftUI `body` evaluation; a `nil` here (bundle failed to
+    /// load entirely) simply restores the pre-fallback behaviour.
+    public static let englishBundle: Bundle? = bundle(forLocalization: "en")
 
     private static func resolutionCandidates(for override: String) -> [String] {
         var candidates = [override]
