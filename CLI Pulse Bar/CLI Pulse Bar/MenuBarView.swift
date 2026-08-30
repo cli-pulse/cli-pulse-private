@@ -492,7 +492,11 @@ struct MenuBarView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            ForEach(AppState.Tab.allCases, id: \.self) { tab in
+            // `visibleCases`, not `allCases`: the Swarm tab can never hold
+            // anything (no shipped helper writes a swarm heartbeat). v1.22.0's
+            // notes claimed it was dark-shipped; iterating `allCases` here is
+            // why it was not.
+            ForEach(AppState.Tab.visibleCases, id: \.self) { tab in
                 tabButton(tab)
             }
         }
