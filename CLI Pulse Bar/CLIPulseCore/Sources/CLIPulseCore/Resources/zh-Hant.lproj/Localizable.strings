@@ -219,7 +219,6 @@
 "subscription.per_month" = "/月";
 "subscription.upgrade_pro" = "升級到 Pro";
 "subscription.switch_pro" = "切換到 Pro";
-"subscription.switch_team" = "切換到團隊版";
 
 /* ── 關於 ── */
 "about.title" = "關於 CLI Pulse Bar";
@@ -350,22 +349,6 @@
 "onboarding.helper_not_connected_yet" = "助手尚未連線。請執行上方命令後重試。";
 
 /* ── 團隊 ── */
-"team.title" = "團隊";
-"team.requires_pro_hint" = "團隊功能需要 Pro 或 Team 訂閱";
-"team.no_teams" = "暫無團隊。建立一個開始使用。";
-"team.members" = "成員";
-"team.pending_invites" = "待處理邀請";
-"team.pending" = "待處理";
-"team.invite" = "邀請";
-"team.make_admin" = "設為管理員";
-"team.make_member" = "設為成員";
-"team.remove" = "移除";
-"team.create_team" = "建立團隊";
-"team.team_name" = "團隊名稱";
-"team.create" = "建立";
-"team.invite_member" = "邀請成員";
-"team.email_address" = "郵箱地址";
-"team.send_invite" = "傳送邀請";
 
 /* ── 整合 ── */
 "integrations.title" = "整合";
@@ -711,9 +694,6 @@
 "widget.percent_left" = "%@ 剩餘 %d%%";
 "widget.quota_fallback" = "配額";
 "dashboard.pending_approval_count" = "%d 項待審批";
-"team.members_count" = "%d 位成員";
-"team.tokens_count" = "%d tokens";
-"team.error_loading" = "無法載入團隊，請稍後重試。";
 "providers.quota_data_unavailable" = "配額資料不可用";
 "advanced.sync_just_now" = "剛剛同步";
 "advanced.sync_minutes_ago" = "%d 分鐘前同步";
@@ -791,7 +771,6 @@
 "subscription.buy_lifetime" = "購買終身版";
 
 /* ── v1.18.2 D-2: Anthropic 高峰視窗指示器(Claude 卡片) ── */
-
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "開啟遠端控制後,CLI Pulse 可以:\n• 上傳每次 Claude 權限請求的脫敏摘要(工具名、簡短描述、風險等級)\n• 上傳終端輸出的末尾片段及會話狀態\n• 將您的遠端「同意 / 拒絕」轉發回本地 helper\n\n永遠不會離開您裝置的內容:\n• 服務商 API 金鑰、Cookie、OAuth 令牌\n• 完整對話內容或會話日誌檔案\n• 完整專案路徑(僅上傳 basename 加 HMAC)\n\n此處的「同意」僅對當前請求生效,不會新增 Claude Code 的「Always Allow」規則。下次 Claude 需要使用同一工具時仍會再次詢問。如需設定長期規則,請在 Mac 上使用 Claude Code 自帶的「Always Allow」介面。\n\n同意請求即表示在您的 Mac 上執行該工具呼叫。請僅同意您能夠理解的請求。";
@@ -1079,7 +1058,6 @@
 "pet.form_huff" = "哼哼扭頭貓";
 "pet.form_ouch" = "哎喲喊疼貓";
 "pet.form_flop" = "癱倒放空貓";
-
 
 /* v1.44 W3 — per-provider collector outcome labels + next steps */
 "collector_status.ok" = "正常";

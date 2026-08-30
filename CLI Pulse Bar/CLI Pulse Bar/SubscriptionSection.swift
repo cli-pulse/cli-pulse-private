@@ -219,10 +219,11 @@ struct SubscriptionSection: View {
             if let proY = subscriptionManager.proYearly {
                 inlineProductRow(product: proY, label: "Pro Yearly", features: "Save 17%")
             }
-            // v1.52 — Team rows removed. The tier is withdrawn from sale:
-            // it has no exclusive benefit (TeamView gates on isProOrAbove) and
-            // does not function (7 of its 8 RPCs are absent from production).
-            // Existing Team entitlements still resolve; see
+            // v1.52 — Team rows removed. The tier is withdrawn from sale;
+            // v1.52.1 deleted the UI behind it. It had no exclusive benefit
+            // (the old `TeamView` gated on `isProOrAbove`) and did not
+            // function: 8 of the 9 team RPCs the client called were absent
+            // from production. Existing Team entitlements still resolve; see
             // `SubscriptionManager.allProductIDs`.
             // v1.52 — Lifetime row removed. `com.clipulse.pro.lifetime` has
             // been MISSING_METADATA in App Store Connect since v1.14, so

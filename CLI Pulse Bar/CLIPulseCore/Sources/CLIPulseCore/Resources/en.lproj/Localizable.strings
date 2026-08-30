@@ -219,7 +219,6 @@
 "subscription.per_month" = "/month";
 "subscription.upgrade_pro" = "Upgrade to Pro";
 "subscription.switch_pro" = "Switch to Pro";
-"subscription.switch_team" = "Switch to Team";
 
 /* ── About ── */
 "about.title" = "About CLI Pulse Bar";
@@ -348,24 +347,6 @@
 "onboarding.synced_mode" = "Cloud Sync — data syncing across devices";
 "onboarding.not_synced_hint" = "Sign in to sync usage data to your account. Any other device with the same account — including iPhone — sees the data automatically.";
 "onboarding.helper_not_connected_yet" = "Helper hasn't connected yet. Run the command above, then try again.";
-
-/* ── Team ── */
-"team.title" = "Teams";
-"team.requires_pro_hint" = "Team features require Pro or Team subscription";
-"team.no_teams" = "No teams yet. Create one to get started.";
-"team.members" = "Members";
-"team.pending_invites" = "Pending Invites";
-"team.pending" = "Pending";
-"team.invite" = "Invite";
-"team.make_admin" = "Make Admin";
-"team.make_member" = "Make Member";
-"team.remove" = "Remove";
-"team.create_team" = "Create Team";
-"team.team_name" = "Team Name";
-"team.create" = "Create";
-"team.invite_member" = "Invite Member";
-"team.email_address" = "Email Address";
-"team.send_invite" = "Send Invite";
 
 /* ── Integrations ── */
 "integrations.title" = "Integrations";
@@ -761,9 +742,6 @@
 "widget.percent_left" = "%@ %d%% left";
 "widget.quota_fallback" = "Quota";
 "dashboard.pending_approval_count" = "%d pending approvals";
-"team.members_count" = "%d members";
-"team.tokens_count" = "%d tokens";
-"team.error_loading" = "Unable to load teams. Please try again later.";
 "providers.quota_data_unavailable" = "Quota data unavailable";
 "advanced.sync_just_now" = "Synced just now";
 "advanced.sync_minutes_ago" = "Synced %dm ago";
@@ -854,7 +832,6 @@
 "usage_pace.run_out_risk" = "≈ %@%% run-out risk";
 "usage_pace.summary_with_right" = "Pace: %@ · %@";
 "usage_pace.summary_left_only" = "Pace: %@";
-
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "When Remote Control is on, CLI Pulse can:\n• upload a redacted summary of each Claude permission request (tool name, short summary, risk badge)\n• upload a short tail of terminal output and the session status\n• relay your remote Approve / Deny to the local helper\n\nWhat never leaves your device:\n• provider API keys, cookies, OAuth tokens\n• full transcripts or session log files\n• full project paths (only basename + HMAC)\n\nApprove here is per-request only — it does NOT add a Claude Code Always-Allow rule. Claude will ask again next time it needs the same tool. To set persistent rules, use Claude Code's own \"Always Allow\" UI on your Mac.\n\nApproving a request executes the tool call on your Mac. Only approve requests you understand.";
@@ -1129,7 +1106,6 @@
 "pet.form_huff" = "Hmph Huff";
 "pet.form_ouch" = "Ouch Wince";
 "pet.form_flop" = "Dramatic Flop";
-
 
 /* v1.44 W3 — per-provider collector outcome labels + next steps */
 "collector_status.ok" = "Working";

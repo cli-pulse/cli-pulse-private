@@ -679,15 +679,16 @@ public enum L10n {
         // `LockScreenWidget:32`.
         //
         // `subscription.team_workspaces` was drafted here and pulled before
-        // merge. `TeamView` really does gate on `isProOrAbove`, so it passed
+        // merge. `TeamView` really did gate on `isProOrAbove`, so it passed
         // the "is it withheld from free?" test — but a production check found
-        // that of the eight team RPCs the client calls, only `my_teams` is
+        // that of the nine team RPCs the client called, only `my_teams` was
         // deployed. `create_team`, `invite_member`, `accept_invite`,
-        // `team_members_list`, `update_member_role`, `remove_member` and
-        // `team_usage_summary` do not exist in the live database, so a Pro
+        // `team_details`, `update_member_role`, `remove_member` and
+        // `team_usage_summary` did not exist in the live database, so a Pro
         // subscriber who tapped "Create Team" would get an error. Withheld
         // from free is not the same as delivered to paid, and only the second
-        // one makes a bullet honest.
+        // one makes a bullet honest. v1.52.1 deleted the view; the lesson is
+        // why this comment stays.
         public static var homeScreenWidgets: String { tr("subscription.home_screen_widgets") }
         // v1.52 — shown to Developer ID / Homebrew installs, which are granted
         // Pro Lifetime by the channel rather than by a purchase.
@@ -704,7 +705,6 @@ public enum L10n {
         public static var perMonth: String { tr("subscription.per_month") }
         public static var upgradePro: String { tr("subscription.upgrade_pro") }
         public static var switchPro: String { tr("subscription.switch_pro") }
-        public static var switchTeam: String { tr("subscription.switch_team") }
         public static var loadingPlans: String { tr("subscription.loading_plans") }
         public static var unavailable: String { tr("subscription.unavailable") }
         public static var retry: String { tr("subscription.retry") }
@@ -955,30 +955,6 @@ public enum L10n {
     }
 
     // MARK: - Common
-
-    // MARK: - Team
-
-    public enum team {
-        public static var title: String { tr("team.title") }
-        public static var requiresProHint: String { tr("team.requires_pro_hint") }
-        public static var noTeams: String { tr("team.no_teams") }
-        public static var members: String { tr("team.members") }
-        public static var pendingInvites: String { tr("team.pending_invites") }
-        public static var pending: String { tr("team.pending") }
-        public static var invite: String { tr("team.invite") }
-        public static var makeAdmin: String { tr("team.make_admin") }
-        public static var makeMember: String { tr("team.make_member") }
-        public static var remove: String { tr("team.remove") }
-        public static var createTeam: String { tr("team.create_team") }
-        public static var teamName: String { tr("team.team_name") }
-        public static var create: String { tr("team.create") }
-        public static var inviteMember: String { tr("team.invite_member") }
-        public static var emailAddress: String { tr("team.email_address") }
-        public static var sendInvite: String { tr("team.send_invite") }
-        public static func membersCount(_ count: Int) -> String { tr("team.members_count", count) }
-        public static func tokensCount(_ count: Int) -> String { tr("team.tokens_count", count) }
-        public static var errorLoading: String { tr("team.error_loading") }
-    }
 
     // MARK: - Integrations
 

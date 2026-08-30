@@ -35,7 +35,6 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     onManageSubscription: () -> Unit = {},
     onViewDevices: () -> Unit = {},
-    onViewTeams: () -> Unit = {},
 ) {
     val state by viewModel.state.collectAsState()
     val context = LocalContext.current
@@ -97,10 +96,6 @@ fun SettingsScreen(
                     OutlinedButton(onClick = onViewDevices, modifier = Modifier.weight(1f)) {
                         Text(stringResource(R.string.settings_devices))
                     }
-                }
-                Spacer(Modifier.height(4.dp))
-                OutlinedButton(onClick = onViewTeams, modifier = Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.settings_teams))
                 }
             }
         }

@@ -100,7 +100,7 @@ public final class AppState: ObservableObject {
     // MARK: - Subscription
     //
     // v1.10 P2-3 slice 2: exposed as `let`, not `@Published`. Views that read
-    // subscription state (SubscriptionSection, TeamView, iOSSettingsTab) now
+    // subscription state (SubscriptionSection, iOSSettingsTab) now
     // observe `SubscriptionManager` directly via `@ObservedObject`, so tier /
     // product changes re-render only those views instead of invalidating the
     // entire AppState tree via a blanket `objectWillChange.sink` forwarder.

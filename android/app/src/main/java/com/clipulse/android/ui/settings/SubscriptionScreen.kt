@@ -48,7 +48,6 @@ fun SubscriptionScreen(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor = when (state.tier) {
-                        "team" -> MaterialTheme.colorScheme.primaryContainer
                         "pro" -> MaterialTheme.colorScheme.secondaryContainer
                         else -> MaterialTheme.colorScheme.surfaceVariant
                     },
@@ -73,32 +72,23 @@ fun SubscriptionScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            // Feature comparison
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(stringResource(R.string.subscription_plan_features), style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(12.dp))
-                    // v1.51 — this table used to claim three per-tier limits.
-                    // Two were fiction and one disagreed with the Apple client:
-                    //
-                    //   Devices "1 / 5 / Unlimited" — nothing consults tier when
-                    //     pairing; every tier caps at a flat 20
-                    //     (migrate_v0.36_desktop_otp.sql:66). It also said the
-                    //     free tier gets ONE device while the Apple paywall said
-                    //     two, so whichever a user read, the other lied.
-                    //   Data Retention "7 / 90 / 365" — the nightly cleanup is
-                    //     tier-blind and reads user_settings.data_retention_days,
-                    //     which this very app lets the user edit by hand
-                    //     (SettingsScreen.kt:226).
-                    //
-                    // Providers stays because it is really enforced — though only
-                    // by the Apple client; Android does not gate on tier at all.
-                    // v1.52: the Team column is gone with the tier itself.
-                    FeatureRow(stringResource(R.string.subscription_providers), "3", stringResource(R.string.subscription_unlimited))
-                }
-            }
-
-            Spacer(Modifier.height(16.dp))
+            // v1.52.1 — the Free-vs-Pro comparison table is gone.
+            //
+            // It rendered "Providers · 3 · Unlimited" directly above a card
+            // reading "Nothing in this app is locked — every feature is
+            // available to you as it is." Both were on screen at once and only
+            // one of them could be true.
+            //
+            // The card is the true one. The 3-provider cap is enforced by the
+            // Apple client alone (`AppState.swift`, `if currentEnabled >=
+            // maxProviders`); no Kotlin code path on Android consults tier for
+            // anything. The previous cleanup pass fixed the two rows it could
+            // prove were fiction and kept this one because it is "really
+            // enforced" — true of the product, false of this app. A limit that
+            // this binary does not apply is not a limit this screen may claim.
+            //
+            // Nothing replaces it: with no purchase flow on Android there is no
+            // decision for a comparison table to inform.
 
             // v1.52 — the purchase flow is removed from Android.
             //
@@ -141,16 +131,3 @@ fun SubscriptionScreen(
         }
     }
 }
-
-@Composable
-private fun FeatureRow(label: String, free: String, pro: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-        Text(free, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-        Text(pro, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-    }
-}
-
