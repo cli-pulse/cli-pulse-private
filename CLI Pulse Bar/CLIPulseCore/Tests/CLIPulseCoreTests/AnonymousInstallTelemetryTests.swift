@@ -9,6 +9,8 @@ private final class StubStore: AnonymousTelemetryStore, @unchecked Sendable {
     var installID = UUID(uuidString: "12345678-1234-1234-1234-123456789012")!
     var installReported = false
     var activationReported = false
+    var helperConnectedReported = false
+    var costReported = false
 }
 
 private actor RecordingTransport: AnonymousTelemetryTransport {
@@ -119,20 +121,31 @@ final class AnonymousInstallTelemetryTests: XCTestCase {
     /// The payload has no free-text field and no dictionary. This asserts the
     /// exact wire keys, so adding one becomes a deliberate act with a failing
     /// test attached rather than a quiet edit.
-    func test_payloadCarriesExactlyTheFiveExpectedKeys() throws {
+    ///
+    /// It did exactly that for v0.76: this test and its twin in
+    /// `AnonymousTelemetryTransportTests` both failed on the three new fields,
+    /// which is the point — and `check_telemetry_disclosure_claims.py` then
+    /// required each of them to be named in both disclosure surfaces before
+    /// the build could go green.
+    func test_payloadCarriesExactlyTheExpectedKeys() throws {
         let payload = AnonymousInstallPayload(
             installID: UUID(uuidString: "12345678-1234-1234-1234-123456789012")!,
-            channel: .brew, appVersion: "1.45.0", osVersion: "15.1", providerDetected: true
+            channel: .brew, appVersion: "1.45.0", osVersion: "15.1", providerDetected: true,
+            helperConnected: true, costShown: false, uiLanguage: .ja
         )
         let json = try JSONSerialization.jsonObject(
             with: JSONEncoder().encode(payload)
         ) as? [String: Any]
         XCTAssertEqual(
             Set(json.map { Array($0.keys) } ?? []),
-            ["p_install_id", "p_channel", "p_app_version", "p_os_version", "p_provider_detected"]
+            [
+                "p_install_id", "p_channel", "p_app_version", "p_os_version",
+                "p_provider_detected", "p_helper_connected", "p_cost_shown", "p_ui_language",
+            ]
         )
         XCTAssertEqual(json?["p_install_id"] as? String, "12345678-1234-1234-1234-123456789012")
         XCTAssertEqual(json?["p_channel"] as? String, "brew")
+        XCTAssertEqual(json?["p_ui_language"] as? String, "ja")
     }
 
     /// A build whose version cannot be shaped into something the server accepts

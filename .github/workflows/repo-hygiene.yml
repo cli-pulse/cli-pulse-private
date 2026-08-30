@@ -120,3 +120,19 @@ jobs:
       # en-only key is a Swift PR that touches no `.strings` file at all.
       - run: python3 scripts/check_apple_strings_parity.py
       - run: bash scripts/test_check_apple_strings_parity.sh
+
+      # The anonymous-telemetry switch defaults ON, which is only defensible
+      # because the app states what it sends before it sends anything. So the
+      # disclosure is not documentation, it is the consent basis, and a payload
+      # field no disclosure mentions is a field collected without consent.
+      #
+      # Nothing connected the two until v0.76 added three fields and BOTH
+      # surfaces still said "two things" — the first-run card and
+      # Settings > Privacy, hardcoded separately, saying the same wrong thing
+      # twice. One predicate, two call sites, and this repo has already paid
+      # for fixing only the one someone happened to open.
+      #
+      # Path-blind for the usual reason: the PR most likely to add a payload
+      # field touches no disclosure file at all.
+      - run: python3 scripts/check_telemetry_disclosure_claims.py
+      - run: bash scripts/test_check_telemetry_disclosure_claims.sh

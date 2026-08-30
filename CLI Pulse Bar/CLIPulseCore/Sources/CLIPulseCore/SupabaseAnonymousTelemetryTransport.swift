@@ -48,7 +48,29 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
         )
     }
 
+    /// Sends, and retries ONCE in the pre-v0.76 shape if the server does not
+    /// know the new parameters.
+    ///
+    /// `migrate_v0.76` is owner-gated and deploys independently of the app, so
+    /// a build carrying the new fields can meet a database that has not had it
+    /// applied. PostgREST answers an unrecognised parameter set with 404 and
+    /// `PGRST202`; without this retry every install would go silent until
+    /// someone applied the migration — and silent here is indistinguishable
+    /// from "nobody installed the app", which is the exact confusion this
+    /// telemetry exists to end.
+    ///
+    /// One retry, not a loop, and only from `.current` to `.legacy`. The
+    /// milestone latches are set from the RESULT, so a legacy send simply
+    /// leaves the new milestones unreported and the next launch tries again.
     public func send(_ payload: AnonymousInstallPayload) async throws {
+        do {
+            try await post(payload)
+        } catch TransportError.rejected(status: 404) where payload.wireVersion == .current {
+            try await post(payload.legacyShaped())
+        }
+    }
+
+    private func post(_ payload: AnonymousInstallPayload) async throws {
         guard let endpoint, !anonKey.isEmpty else { throw TransportError.notConfigured }
 
         var request = URLRequest(url: endpoint)

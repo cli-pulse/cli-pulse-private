@@ -124,11 +124,13 @@ struct PrivacySettingsSection: View {
             Text(settings.telemetrySuppressedByLocalOnly
                  ? "Off — local-only mode covers this too."
                  : """
-                   Two facts, with no account and nothing that identifies you \
-                   or your machine: that CLI Pulse was installed, and whether \
-                   it ever found a CLI to track. No file paths, project names, \
-                   provider names, token counts or costs. The id is random and \
-                   is deleted when you uninstall.
+                   How far the app got, with no account and nothing that \
+                   identifies you or your machine: that CLI Pulse was \
+                   installed, whether the helper connected, whether it ever \
+                   found a CLI to track, and whether it ever had a cost to \
+                   show — plus which language it is displaying in. No file \
+                   paths, project names, provider names, token counts or cost \
+                   amounts. The id is random and is deleted when you uninstall.
                    """)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)

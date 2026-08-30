@@ -58,23 +58,107 @@ public enum DistributionChannel: String, Sendable, CaseIterable {
     }
 }
 
+/// The one thing a user's UI language is allowed to be reported as.
+///
+/// A closed set, coarsened on the client, because `migrate_v0.76` rejects
+/// anything else outright rather than storing it — the same posture as
+/// `channel`. `other` covers a locale we do not ship a catalogue for; those
+/// users read English, and the funnel needs to know they did.
+public enum ReportedUILanguage: String, Sendable, CaseIterable, Equatable {
+    case en, es, ja, ko
+    case zhHans = "zh-Hans"
+    case zhHant = "zh-Hant"
+    case other
+
+    /// Which catalogue the app is actually reading. See
+    /// `LocaleOverrideStore.resolvedLocalization` for why this is the resolved
+    /// `.lproj` and not the user's preferred languages.
+    public static func current() -> ReportedUILanguage {
+        guard let resolved = LocaleOverrideStore.resolvedLocalization else { return .other }
+        return ReportedUILanguage(rawValue: resolved) ?? .other
+    }
+}
+
 /// Exactly what leaves the machine. There is no `extra` dictionary and no
 /// free-text field on purpose: a payload that cannot carry an unplanned value
 /// cannot leak one by accident later.
 public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
+    /// Which server contract this payload is shaped for.
+    ///
+    /// `migrate_v0.76` adds three parameters, and the client may reach a
+    /// database that has not had it applied yet — the migration is owner-gated
+    /// and deploys independently of the app. PostgREST answers an unknown
+    /// parameter set with 404/`PGRST202`, so the transport retries once in
+    /// `.legacy` shape rather than letting every install go silent. Silent is
+    /// the worst outcome available here: it is indistinguishable from "nobody
+    /// installed the app", which is the exact confusion this telemetry exists
+    /// to end.
+    public enum WireVersion: Sendable, Equatable {
+        /// v0.76 and later: milestones and UI language included.
+        case current
+        /// The v0.73 five-parameter shape. Nothing new is sent, and nothing is
+        /// lost that the next launch cannot re-send once the migration lands —
+        /// the milestone latches only set on a successful send.
+        case legacy
+    }
+
     public let installID: UUID
     public let channel: DistributionChannel
     public let appVersion: String
     public let osVersion: String
     public let providerDetected: Bool
+    public let helperConnected: Bool
+    public let costShown: Bool
+    public let uiLanguage: ReportedUILanguage
+    public let wireVersion: WireVersion
 
-    enum CodingKeys: String, CodingKey {
+    public init(
+        installID: UUID,
+        channel: DistributionChannel,
+        appVersion: String,
+        osVersion: String,
+        providerDetected: Bool,
+        helperConnected: Bool = false,
+        costShown: Bool = false,
+        uiLanguage: ReportedUILanguage = .other,
+        wireVersion: WireVersion = .current
+    ) {
+        self.installID = installID
+        self.channel = channel
+        self.appVersion = appVersion
+        self.osVersion = osVersion
+        self.providerDetected = providerDetected
+        self.helperConnected = helperConnected
+        self.costShown = costShown
+        self.uiLanguage = uiLanguage
+        self.wireVersion = wireVersion
+    }
+
+    /// The same facts, shaped for a database that has not had v0.76 applied.
+    public func legacyShaped() -> AnonymousInstallPayload {
+        AnonymousInstallPayload(
+            installID: installID, channel: channel, appVersion: appVersion,
+            osVersion: osVersion, providerDetected: providerDetected,
+            helperConnected: helperConnected, costShown: costShown,
+            uiLanguage: uiLanguage, wireVersion: .legacy
+        )
+    }
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case installID = "p_install_id"
         case channel = "p_channel"
         case appVersion = "p_app_version"
         case osVersion = "p_os_version"
         case providerDetected = "p_provider_detected"
+        case helperConnected = "p_helper_connected"
+        case costShown = "p_cost_shown"
+        case uiLanguage = "p_ui_language"
     }
+
+    /// Keys a `.legacy` payload must never carry. PostgREST binds by the names
+    /// present in the body, so one stray key is the whole difference between
+    /// the fallback working and 404-ing a second time.
+    static let v076OnlyKeys: [CodingKeys] = [.helperConnected, .costShown, .uiLanguage]
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -83,6 +167,10 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
         try c.encode(appVersion, forKey: .appVersion)
         try c.encode(osVersion, forKey: .osVersion)
         try c.encode(providerDetected, forKey: .providerDetected)
+        guard wireVersion == .current else { return }
+        try c.encode(helperConnected, forKey: .helperConnected)
+        try c.encode(costShown, forKey: .costShown)
+        try c.encode(uiLanguage.rawValue, forKey: .uiLanguage)
     }
 }
 
@@ -139,6 +227,8 @@ public protocol AnonymousTelemetryStore: AnyObject, Sendable {
     var installID: UUID { get }
     var installReported: Bool { get set }
     var activationReported: Bool { get set }
+    var helperConnectedReported: Bool { get set }
+    var costReported: Bool { get set }
 }
 
 public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore, @unchecked Sendable {
@@ -157,6 +247,8 @@ public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore,
     static let installIDKey = "cli_pulse_anonymous_install_id"
     static let installReportedKey = "cli_pulse_anonymous_install_reported"
     static let activationReportedKey = "cli_pulse_anonymous_activation_reported"
+    static let helperConnectedReportedKey = "cli_pulse_anonymous_helper_connected_reported"
+    static let costReportedKey = "cli_pulse_anonymous_cost_reported"
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -200,6 +292,16 @@ public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore,
         set { defaults.set(newValue, forKey: Self.activationReportedKey) }
     }
 
+    public var helperConnectedReported: Bool {
+        get { defaults.bool(forKey: Self.helperConnectedReportedKey) }
+        set { defaults.set(newValue, forKey: Self.helperConnectedReportedKey) }
+    }
+
+    public var costReported: Bool {
+        get { defaults.bool(forKey: Self.costReportedKey) }
+        set { defaults.set(newValue, forKey: Self.costReportedKey) }
+    }
+
     /// Generated once, lazily, and never derived from anything about the
     /// machine — not the serial, not the hardware UUID, not a hash of either.
     public var installID: UUID {
@@ -237,7 +339,8 @@ public actor AnonymousInstallTelemetry {
         channel: DistributionChannel = .unknown,
         rawAppVersion: String,
         osMajor: Int,
-        osMinor: Int
+        osMinor: Int,
+        uiLanguage: @escaping @Sendable () -> ReportedUILanguage = { ReportedUILanguage.current() }
     ) {
         self.store = store
         self.transport = transport
@@ -246,7 +349,12 @@ public actor AnonymousInstallTelemetry {
         self.osVersion = AnonymousTelemetryVersionShaping.coarsenedOSVersion(
             major: osMajor, minor: osMinor
         )
+        self.uiLanguage = uiLanguage
     }
+
+    /// Injected rather than read inline so a test can pin it without swapping
+    /// the process's resource bundle. Defaults to the real resolution.
+    private let uiLanguage: @Sendable () -> ReportedUILanguage
 
     /// The single gate. Every send goes through it, so there is exactly one
     /// place to audit when someone asks "can this app phone home?".
@@ -296,14 +404,67 @@ public actor AnonymousInstallTelemetry {
         }
     }
 
-    private func send(providerDetected: Bool, onSuccess: @Sendable () -> Void) async -> Bool {
+    /// Called the first time the local helper answers a `hello` over UDS.
+    ///
+    /// v0.76 step 2, and the reason the funnel needed more than two points.
+    /// "No providers" is what the user sees whether they have no CLI installed
+    /// or the helper never came up — a stale SMAppService bundle path, a socket
+    /// shadowed by an old `.pkg`, a LaunchAgent that died quietly, a TCC prompt
+    /// that never returned. Until now those were the same row.
+    ///
+    /// Same contract as the others: the return value is "is it recorded now?",
+    /// not "did I send just now", so a caller that caches it cannot lose the
+    /// event by caching intent instead of outcome.
+    @discardableResult
+    public func recordHelperConnectedIfNeeded() async -> Bool {
+        if store.helperConnectedReported { return true }
+        guard maySend else { return false }
+        return await send(helperConnected: true) { [store] in
+            store.installReported = true
+            store.helperConnectedReported = true
+        }
+    }
+
+    /// Called the first time the app has a non-zero cost for today.
+    ///
+    /// Distinct from provider detection on purpose: a provider can be found and
+    /// still price at zero, which is what happened when `claude-opus-5` shipped
+    /// against a fallback price table and 15.4 billion tokens valued at $0. The
+    /// product's whole claim is the number, so "found a CLI" and "had a number"
+    /// have to be separable.
+    @discardableResult
+    public func recordFirstCostIfNeeded() async -> Bool {
+        if store.costReported { return true }
+        guard maySend else { return false }
+        return await send(costShown: true) { [store] in
+            store.installReported = true
+            store.costReported = true
+        }
+    }
+
+    /// Every send carries the CURRENT state of all milestones, not just the one
+    /// that triggered it.
+    ///
+    /// The RPC coalesces, so re-asserting a milestone is free — and it means any
+    /// single successful send backfills whatever earlier sends lost to a missing
+    /// network. Sending only the triggering milestone would make the funnel
+    /// depend on the app having been online at four separate moments.
+    private func send(
+        providerDetected: Bool = false,
+        helperConnected: Bool = false,
+        costShown: Bool = false,
+        onSuccess: @Sendable () -> Void
+    ) async -> Bool {
         guard let appVersion else { return false }
         let payload = AnonymousInstallPayload(
             installID: store.installID,
             channel: channel,
             appVersion: appVersion,
             osVersion: osVersion,
-            providerDetected: providerDetected
+            providerDetected: providerDetected || store.activationReported,
+            helperConnected: helperConnected || store.helperConnectedReported,
+            costShown: costShown || store.costReported,
+            uiLanguage: uiLanguage()
         )
         do {
             try await transport.send(payload)

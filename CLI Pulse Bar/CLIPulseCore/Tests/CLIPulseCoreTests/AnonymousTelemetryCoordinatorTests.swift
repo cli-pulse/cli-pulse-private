@@ -30,6 +30,8 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
         var hasSeenDisclosure = false
         var installID = UUID(uuidString: "0BADCAFE-0000-4000-8000-0000000C0FFE")!
         var installReported = false
+        var helperConnectedReported = false
+        var costReported = false
 
         /// Incremented on every read. `recordFirstProviderDetectedIfNeeded`
         /// reads this first, so the count is the number of times the activation
