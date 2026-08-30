@@ -128,14 +128,34 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 printf 'costShown | cost to show | removed field\n' >> "$F"
 assert_changed "stale registry row" "$F" "$B" && expect_fail "stale registry row" "costShown"
 
-# ── 5. a broken parse must not be a silent pass ────────────────────────────
+# ── 5. an extra conformance must NOT look like a missing block ─────────────
+#    The first version of the guard pinned `String, CodingKey {` exactly and
+#    went FATAL the moment `CaseIterable` was added. A guard that mistakes its
+#    own parser breaking for a verdict is worse than no guard: it fails loudly
+#    on a correct tree and teaches people to ignore it.
+build_fixture "$TMP/case"
+F="$TMP/case/$CORE/AnonymousInstallTelemetry.swift"
+B="$(shasum "$F" | cut -d' ' -f1)"
+perl -pi -e 's/enum CodingKeys: String, CodingKey \{/enum CodingKeys: String, CodingKey, CaseIterable {/' "$F"
+if assert_changed "extra conformance" "$F" "$B"; then
+    if python3 "$GUARD" --root "$TMP/case" >/dev/null 2>&1; then
+        echo "ok:   [extra conformance] guard still parses the block."
+        pass=$((pass + 1))
+    else
+        echo "FAIL: [extra conformance] guard broke on its own parser."
+        python3 "$GUARD" --root "$TMP/case" 2>&1 | sed 's/^/      /'
+        fail=$((fail + 1))
+    fi
+fi
+
+# ── 6. a broken parse must not be a silent pass ────────────────────────────
 build_fixture "$TMP/case"
 cat > "$TMP/case/$CORE/AnonymousInstallTelemetry.swift" <<'SWIFT'
 public struct AnonymousInstallPayload: Encodable {}
 SWIFT
 expect_fail "no CodingKeys block" "no AnonymousInstallPayload CodingKeys block"
 
-# ── 6. a disclosure surface going missing must not be a silent pass ────────
+# ── 7. a disclosure surface going missing must not be a silent pass ────────
 build_fixture "$TMP/case"
 rm "$TMP/case/$APP/PrivacySettingsSection.swift"
 expect_fail "surface deleted" "disclosure surface missing"

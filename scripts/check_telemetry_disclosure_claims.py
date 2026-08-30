@@ -61,8 +61,12 @@ SURFACES = [
 # whose phrase is really about deletion.
 EXEMPT = {"installID"}
 
+# Tolerant of extra conformances. The first version pinned the exact
+# `String, CodingKey {` spelling and went FATAL the moment `CaseIterable` was
+# added — a guard that mistakes its own parser breaking for a verdict. CI caught
+# it; the local run had been made before that edit.
 CODING_KEYS_RE = re.compile(
-    r"enum CodingKeys: String, CodingKey \{(.*?)\n    \}", re.DOTALL
+    r"enum CodingKeys\s*:[^{]*\{(.*?)\n    \}", re.DOTALL
 )
 CASE_RE = re.compile(r"case\s+(\w+)\s*=")
 
