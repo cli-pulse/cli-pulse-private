@@ -111,16 +111,6 @@ struct iOSMainView: View {
                 }
                 .tag(AppState.Tab.sessions)
 
-            iOSSwarmTab()
-                .environmentObject(state)
-                .environmentObject(authState)
-                .environmentObject(alertState)
-                .environmentObject(providerState)
-                .tabItem {
-                    Label(L10n.tab.swarm, systemImage: "square.grid.3x3.fill")
-                }
-                .tag(AppState.Tab.swarm)
-
             iOSAlertsTab()
                 .environmentObject(state)
                 .environmentObject(authState)
@@ -189,7 +179,6 @@ struct iPadSplitView: View {
                         : providerState.providerAccounts.count
                 )
                 sidebarButton(.sessions)
-                sidebarButton(.swarm)
             }
             Section(L10n.dashboard.manage) {
                 sidebarButton(.alerts, badge: alertState.alerts.filter { !$0.is_resolved }.count)
@@ -277,7 +266,11 @@ struct iPadSplitView: View {
         case .sessions:
             iOSSessionsTab()
         case .swarm:
-            iOSSwarmTab()
+            // Hidden since A4 — no shipped helper writes a swarm heartbeat, so
+            // the tab could never hold anything. `AppState.Tab.isVisible`
+            // returns false and `selectedTab` coerces away from it, making
+            // this arm unreachable in the same way `.machine` and `.pet` are.
+            iOSOverviewTab()
         case .alerts:
             iOSAlertsTab()
         case .pet:

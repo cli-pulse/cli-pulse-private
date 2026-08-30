@@ -107,7 +107,18 @@ public final class AppState: ObservableObject {
     public let subscriptionManager: SubscriptionManager
 
     // MARK: - UI State
-    @Published public var selectedTab: Tab = .overview
+    /// Coerced to `.overview` if anything selects a tab that is not offered.
+    ///
+    /// Without this, a hidden tab is a blank screen rather than a missing
+    /// one: SwiftUI's `TabView` renders nothing when `selection` matches no
+    /// child's `.tag`. Nothing sets `.swarm` any more, which is exactly why
+    /// the guard belongs here — a future deep link, notification route or
+    /// restored state would fail silently and far from this file.
+    @Published public var selectedTab: Tab = .overview {
+        didSet {
+            if !selectedTab.isVisible { selectedTab = .overview }
+        }
+    }
     @Published public var isLoading = false
     @Published public var lastError: String?
     @Published public var tierLimitWarning: String?
@@ -827,6 +838,41 @@ public final class AppState: ObservableObject {
             case .settings: return L10n.tab.settings
             }
         }
+
+        /// Whether this tab is offered to the user.
+        ///
+        /// A4 (2026-08-30) — `.swarm` is hidden. It is a top-level tab on
+        /// macOS and iOS that can never contain anything: swarm rows come
+        /// from `remote_helper_swarm_heartbeat`, and NO shipped helper calls
+        /// it. `grep -rn swarm HelperSwift/Sources/` returns two comment
+        /// lines and no producer; the only caller anywhere is
+        /// `helper/cli_pulse_helper.py:483`, behind a `swarm_enabled = False`
+        /// that nothing sets. Production `remote_swarms` is 0 rows, and its
+        /// 1-day retention means that is "no heartbeat in 24 h", not "never"
+        /// — but with no writer, no heartbeat can ever arrive.
+        ///
+        /// v1.22.0's release notes said this was dark-shipped. It was not:
+        /// the macOS tab bar iterated `allCases`, so the tab shipped visible
+        /// for every release since. This property is what `allCases` should
+        /// have been, and it lives here in CLIPulseCore precisely so a test
+        /// can assert against it — a predicate in an app-target SwiftUI view
+        /// has no test bundle to catch it.
+        ///
+        /// The switch arms in `MenuBarView` and `iOSMainView` stay: the
+        /// enum case still exists, the switches are exhaustive, and those
+        /// arms are now unreachable in the same way `.machine` and `.pet`
+        /// already are on iOS.
+        public var isVisible: Bool {
+            switch self {
+            case .swarm: return false
+            case .overview, .machine, .providers, .sessions, .alerts, .pet, .settings:
+                return true
+            }
+        }
+
+        /// `allCases` minus the tabs that are not offered. Tab bars and
+        /// sidebars must iterate this, never `allCases`.
+        public static var visibleCases: [Tab] { allCases.filter(\.isVisible) }
     }
 
     public let api: APIClient
