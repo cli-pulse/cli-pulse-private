@@ -34,30 +34,17 @@ struct AnonymousTelemetryDisclosureCard: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 5) {
-                Text("Anonymous install statistics")
+                Text(L10n.telemetry.disclosureTitle)
                     .font(.headline)
 
                 Text(suppressedByLocalOnly
-                     ? """
-                       Local-only mode is on, so CLI Pulse is sending nothing \
-                       at all. Without it, it would report four steps: that it \
-                       was installed, whether the helper connected, whether it \
-                       ever found a CLI to track, and whether it ever had a \
-                       cost to show — plus which language it is displaying in.
-                       """
-                     : """
-                       CLI Pulse reports how far it got: that it was installed, \
-                       whether the helper connected, whether it ever found a \
-                       CLI to track, and whether it ever had a cost to show. It \
-                       also reports which language it is displaying in. That's \
-                       how we tell where the app stops working for people — \
-                       there's no account involved, so otherwise we can't.
-                       """)
+                     ? L10n.telemetry.disclosureBodyLocalOnly
+                     : L10n.telemetry.disclosureBody)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Text("No file paths, project names, provider names, token counts or costs. Nothing that identifies you or your machine. The id is random and is deleted when you uninstall.")
+                Text(L10n.telemetry.notCollected)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -67,8 +54,8 @@ struct AnonymousTelemetryDisclosureCard: View {
                 // silently does nothing. Same treatment as PrivacySettingsSection.
                 Toggle(isOn: $settings.anonymousTelemetryEnabled) {
                     Text(suppressedByLocalOnly
-                         ? "Off — local-only mode covers this too."
-                         : "Send anonymous install statistics")
+                         ? L10n.telemetry.toggleLocalOnly
+                         : L10n.telemetry.toggle)
                         .font(.callout)
                 }
                 .toggleStyle(.switch)
@@ -77,12 +64,12 @@ struct AnonymousTelemetryDisclosureCard: View {
                 .padding(.top, 2)
 
                 HStack(spacing: 8) {
-                    Button("Got it", action: onDismiss)
+                    Button(L10n.telemetry.gotIt, action: onDismiss)
                         .buttonStyle(.borderedProminent)
                         .tint(PulseTheme.accent)
                         .controlSize(.small)
 
-                    Text("You can change this any time in Settings › Privacy.")
+                    Text(L10n.telemetry.changeLater)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

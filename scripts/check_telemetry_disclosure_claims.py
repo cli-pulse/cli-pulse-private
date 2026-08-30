@@ -20,20 +20,30 @@ WHAT IT CHECKS
 --------------
   1. every `CodingKeys` case in `AnonymousInstallPayload` is registered in
      `scripts/telemetry_disclosure.allow`;
-  2. every registered phrase appears in EVERY disclosure surface, not just the
-     one someone happened to open;
-  3. every registered field still exists in `CodingKeys` -- a stale entry is as
+  2. every registered phrase appears in the SHIPPED English copy of EVERY
+     disclosure surface -- not in the source prose, and not in just the one
+     someone happened to open;
+  3. every disclosure surface still RENDERS its localized copy, so a surface
+     cannot quietly stop showing the disclosure while the strings sit unused
+     in the catalogue;
+  4. every registered field still exists in `CodingKeys` -- a stale entry is as
      misleading as a missing one, because it reads as coverage.
 
-Check 2 is the one with teeth: a registry that only matched names would be
-satisfied by inventing a name, which is the failure mode it exists to stop.
+Checks 2 and 3 are the ones with teeth, and they need each other. Reading only
+the catalogue would pass a build where neither view renders it; reading only
+the views would pass a view that renders an empty key.
+
+v1.52.1 moved this copy out of hardcoded Swift string literals and into
+`Localizable.strings`, because a Spanish, Korean or Japanese user was being
+shown an ENGLISH explanation of what the app sends and then opted in by
+default. So the phrases now live in `en.lproj` and the guard follows them
+there; the six-locale parity gate is what keeps the other catalogues carrying
+the same keys.
 
 WHAT IT CANNOT CHECK
 --------------------
-That the phrase is TRUE, or that a user understood it. Both disclosure
-surfaces are also hardcoded English, so a Spanish user reads this in English
-regardless -- a real defect, tracked separately, and not one a string match can
-find.
+That the phrase is TRUE, that the translations say the same thing as the
+English, or that a user understood any of it.
 
 Usage:
   python3 scripts/check_telemetry_disclosure_claims.py
@@ -49,11 +59,24 @@ from pathlib import Path
 PAYLOAD = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AnonymousInstallTelemetry.swift")
 ALLOW = Path("scripts/telemetry_disclosure.allow")
 
-# Every place the app tells a user what it sends. A guard that watches one of
-# two surfaces licenses the other.
-SURFACES = [
-    Path("CLI Pulse Bar/CLI Pulse Bar/AnonymousTelemetryDisclosureCard.swift"),
-    Path("CLI Pulse Bar/CLI Pulse Bar/PrivacySettingsSection.swift"),
+# Every place the app tells a user what it sends, and the L10n accessor each
+# one must render. A guard that watches one of two surfaces licenses the other.
+SURFACES = {
+    Path("CLI Pulse Bar/CLI Pulse Bar/AnonymousTelemetryDisclosureCard.swift"):
+        "L10n.telemetry.disclosureBody",
+    Path("CLI Pulse Bar/CLI Pulse Bar/PrivacySettingsSection.swift"):
+        "L10n.telemetry.settingsBody",
+}
+
+# The shipped English copy the phrases must appear in. `en` specifically: the
+# registry phrases are English, and the parity gate is what guarantees the
+# other five catalogues carry the same keys.
+CATALOGUE = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings")
+DISCLOSURE_KEYS = [
+    "telemetry.disclosure_body",
+    "telemetry.disclosure_body_local_only",
+    "telemetry.not_collected",
+    "telemetry.settings_body",
 ]
 
 # Described as "the id is random and is deleted when you uninstall" rather than
@@ -110,13 +133,33 @@ def main() -> int:
             return 2
         registry[parts[0]] = parts[1]
 
-    surfaces: dict[Path, str] = {}
-    for rel in SURFACES:
+    # Check 3: each surface must still render its localized copy.
+    unrendered: list[str] = []
+    for rel, accessor in SURFACES.items():
         path = root / rel
         if not path.is_file():
             print(f"FATAL: disclosure surface missing at {path}", file=sys.stderr)
             return 2
-        surfaces[rel] = collapse(path.read_text(encoding="utf-8"))
+        if accessor not in path.read_text(encoding="utf-8"):
+            unrendered.append(f"{rel} no longer renders {accessor}")
+
+    catalogue = root / CATALOGUE
+    if not catalogue.is_file():
+        print(f"FATAL: catalogue missing at {catalogue}", file=sys.stderr)
+        return 2
+    cat_text = catalogue.read_text(encoding="utf-8")
+    values: list[str] = []
+    for key in DISCLOSURE_KEYS:
+        m = re.search(r'^"' + re.escape(key) + r'"\s*=\s*"(.*?)";$', cat_text, re.M | re.S)
+        if m is None:
+            print(f"FATAL: {key} is not in {CATALOGUE.name} — the copy moved again", file=sys.stderr)
+            return 2
+        values.append(m.group(1))
+    disclosed = collapse(" ".join(values))
+    if len(disclosed) < 200:
+        print(f"FATAL: the disclosure copy parsed to {len(disclosed)} chars — "
+              "the parser is broken, not the copy", file=sys.stderr)
+        return 2
 
     failed = False
 
@@ -139,24 +182,31 @@ def main() -> int:
             print(f"    {f}", file=sys.stderr)
         print("", file=sys.stderr)
 
+    if unrendered:
+        failed = True
+        print("FAIL — a disclosure surface stopped rendering its copy. The strings", file=sys.stderr)
+        print("       would sit in the catalogue while the user is shown nothing:\n", file=sys.stderr)
+        for u in unrendered:
+            print(f"    {u}", file=sys.stderr)
+        print("", file=sys.stderr)
+
     for field in fields:
         phrase = registry.get(field)
         if phrase is None:
             continue
-        missing = [str(rel) for rel, text in surfaces.items() if phrase.lower() not in text.lower()]
-        if missing:
+        if phrase.lower() not in disclosed.lower():
             failed = True
             print(f"FAIL — {field} is registered as disclosed by \"{phrase}\", but that", file=sys.stderr)
-            print("       phrase is absent from:\n", file=sys.stderr)
-            for m in missing:
-                print(f"    {m}", file=sys.stderr)
-            print("\n    Both surfaces must say it. A guard watching one licenses the other.\n", file=sys.stderr)
+            print(f"       phrase is absent from the shipped copy in {CATALOGUE.name}.\n", file=sys.stderr)
+            print("    The telemetry switch defaults ON, so a field the disclosure does", file=sys.stderr)
+            print("    not mention is a field collected without consent.\n", file=sys.stderr)
 
     if failed:
         return 1
 
     print(f"check_telemetry_disclosure_claims: OK — {len(fields)} payload field(s); "
-          f"{len(registry)} disclosed across {len(surfaces)} surface(s), "
+          f"{len(registry)} disclosed in {len(DISCLOSURE_KEYS)} localized string(s), "
+          f"rendered by {len(SURFACES)} surface(s), "
           f"{len(EXEMPT & set(fields))} exempt by name.")
     return 0
 

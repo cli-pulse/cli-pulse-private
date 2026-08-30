@@ -1133,3 +1133,14 @@
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "アカウントなしで使う";
 "onboarding_wizard.use_locally_hint" = "あとから「設定」でサインインできます。";
+
+/* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
+"telemetry.disclosure_title" = "匿名インストール統計";
+"telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。";
+"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は次の4段階を報告します:インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。";
+"telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。id はランダムで、アンインストールすると削除されます。";
+"telemetry.toggle" = "匿名インストール統計を送信";
+"telemetry.toggle_local_only" = "オフ — ローカルのみモードがこれも対象にしています。";
+"telemetry.got_it" = "了解";
+"telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
+"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します:インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。id はランダムで、アンインストールすると削除されます。";

@@ -1133,3 +1133,14 @@
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "本機使用 —— 不需要帳號";
 "onboarding_wizard.use_locally_hint" = "之後隨時可以在「設定」裡登入。";
+
+/* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
+"telemetry.disclosure_title" = "匿名安裝統計";
+"telemetry.disclosure_body" = "CLI Pulse 只回報它走到了哪一步:是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字,以及目前顯示的語言。我們靠這個判斷 app 在哪一步卡住了 —— 這裡不涉及帳號,否則我們無從得知。";
+"telemetry.disclosure_body_local_only" = "本機模式已開啟,CLI Pulse 什麼都不會傳送。若關閉本機模式,它會回報四個步驟:是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字,以及目前顯示的語言。";
+"telemetry.not_collected" = "不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額,也不含任何能識別你或你機器的資訊。該 id 是隨機產生的,解除安裝即刪除。";
+"telemetry.toggle" = "傳送匿名安裝統計";
+"telemetry.toggle_local_only" = "已關閉 —— 本機模式已經涵蓋了這一項。";
+"telemetry.got_it" = "知道了";
+"telemetry.change_later" = "你隨時可以在「設定 › 隱私」中變更。";
+"telemetry.settings_body" = "只回報 app 走到了哪一步,不涉及帳號,也不含任何能識別你或你機器的資訊:是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字,以及目前顯示的語言。不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額。該 id 是隨機產生的,解除安裝即刪除。";

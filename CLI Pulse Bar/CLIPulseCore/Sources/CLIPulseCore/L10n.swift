@@ -956,6 +956,30 @@ public enum L10n {
 
     // MARK: - Common
 
+    // MARK: - Telemetry disclosure
+
+    /// The consent basis for a switch that defaults ON.
+    ///
+    /// These lived as hardcoded English string literals in two SwiftUI views
+    /// until v1.52.1 — so a Spanish, Korean or Japanese user was shown an
+    /// English explanation of what the app sends, and then opted in by default.
+    /// The app ships six catalogues; the one screen that has to be understood
+    /// was the one that ignored them.
+    ///
+    /// `check_telemetry_disclosure_claims.py` binds every field of
+    /// `AnonymousInstallPayload` to a phrase that must appear here.
+    public enum telemetry {
+        public static var disclosureTitle: String { tr("telemetry.disclosure_title") }
+        public static var disclosureBody: String { tr("telemetry.disclosure_body") }
+        public static var disclosureBodyLocalOnly: String { tr("telemetry.disclosure_body_local_only") }
+        public static var notCollected: String { tr("telemetry.not_collected") }
+        public static var toggle: String { tr("telemetry.toggle") }
+        public static var toggleLocalOnly: String { tr("telemetry.toggle_local_only") }
+        public static var gotIt: String { tr("telemetry.got_it") }
+        public static var changeLater: String { tr("telemetry.change_later") }
+        public static var settingsBody: String { tr("telemetry.settings_body") }
+    }
+
     // MARK: - Integrations
 
     public enum integrations {
