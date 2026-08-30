@@ -450,8 +450,17 @@ case "daemon":
     // managed-session port — the cloud-sync layer of
     // helper/remote_agent.py.
     let cloudCfg = configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
+    // The session plane is retired — see `RemoteSessionPlane` for the
+    // measurements. Not starting this task is the whole retirement on the
+    // helper side: it is the only caller of `remote_helper_pull_commands` and
+    // the only driver of the event upload pump, whose retry leaves a failing
+    // event at the front of the queue and re-posts it every tick (default 1 s)
+    // forever, on every paired Mac.
+    //
+    // Machine controls are NOT affected. They never went through here —
+    // `RemoteMachineExecutor` pulls them over the UDS socket from the app.
     let cloudTask: Task<Void, Never>?
-    if cloudCfg.isPaired {
+    if RemoteSessionPlane.shouldStartCloudTask(isPaired: cloudCfg.isPaired) {
         let rpcCaller = SupabaseRPCCaller(
             configProvider: { configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer) }
         )
@@ -487,7 +496,7 @@ case "daemon":
     } else {
         cloudTask = nil
         FileHandle.standardError.write(Data(
-            "cli_pulse_helper (Swift): unpaired — cloud sync skipped\n".utf8
+            "cli_pulse_helper (Swift): \(RemoteSessionPlane.startupNotice(isPaired: cloudCfg.isPaired))\n".utf8
         ))
     }
 
