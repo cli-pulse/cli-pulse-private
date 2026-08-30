@@ -420,3 +420,76 @@ final class ActivationFunnelTransportTests: XCTestCase {
                        "the client's language set has drifted from what the migration accepts")
     }
 }
+
+/// The telemetry disclosure is the consent basis for a switch that defaults ON.
+/// Until v1.52.1 it was hardcoded English in two SwiftUI views, so a Spanish,
+/// Korean or Japanese user was shown an English explanation of what the app
+/// sends and then opted in by default. The app ships six catalogues; the one
+/// screen that has to be understood was the one that ignored them.
+final class TelemetryDisclosureLocalizationTests: XCTestCase {
+
+    private static let shipped = ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"]
+
+    private var saved: String?
+    override func setUp() { super.setUp(); saved = LocaleOverrideStore.shared.override }
+    override func tearDown() { LocaleOverrideStore.shared.set(saved); super.tearDown() }
+
+    /// Every locale renders real copy — not the raw key, not English, not empty.
+    func test_theDisclosureIsTranslatedInEveryShippedLocale() {
+        var english: [String: String] = [:]
+        LocaleOverrideStore.shared.set("en")
+        english["body"] = L10n.telemetry.disclosureBody
+        english["settings"] = L10n.telemetry.settingsBody
+        english["notCollected"] = L10n.telemetry.notCollected
+
+        for locale in Self.shipped {
+            LocaleOverrideStore.shared.set(locale)
+            let strings = [
+                "title": L10n.telemetry.disclosureTitle,
+                "body": L10n.telemetry.disclosureBody,
+                "bodyLocalOnly": L10n.telemetry.disclosureBodyLocalOnly,
+                "notCollected": L10n.telemetry.notCollected,
+                "toggle": L10n.telemetry.toggle,
+                "toggleLocalOnly": L10n.telemetry.toggleLocalOnly,
+                "gotIt": L10n.telemetry.gotIt,
+                "changeLater": L10n.telemetry.changeLater,
+                "settings": L10n.telemetry.settingsBody,
+            ]
+            for (name, value) in strings {
+                XCTAssertFalse(value.isEmpty, "\(locale).\(name) is empty")
+                XCTAssertFalse(value.hasPrefix("telemetry."),
+                               "\(locale).\(name) renders the raw key: \(value)")
+            }
+            guard locale != "en" else { continue }
+            // The whole point: a non-English user must not be reading English.
+            // Falling back would be the pre-v1.52.1 defect wearing the
+            // fallback's clothes.
+            for name in ["body", "settings", "notCollected"] {
+                XCTAssertNotEqual(strings[name], english[name],
+                                  "\(locale).\(name) is still the English string")
+            }
+        }
+    }
+
+    /// The consent text must name the milestones the payload actually carries.
+    /// `check_telemetry_disclosure_claims.py` enforces this for English against
+    /// the registry; this pins the two newest fields in the CJK catalogues,
+    /// where a translator working from the older copy would silently drop them.
+    func test_everyTranslationNamesTheNewMilestones() {
+        let helperWord = ["es": "helper", "ja": "ヘルパー", "ko": "헬퍼",
+                          "zh-Hans": "helper", "zh-Hant": "helper"]
+        let costWord = ["es": "coste", "ja": "コスト", "ko": "비용",
+                        "zh-Hans": "费用", "zh-Hant": "費用"]
+
+        for (locale, needle) in helperWord {
+            LocaleOverrideStore.shared.set(locale)
+            XCTAssertTrue(L10n.telemetry.disclosureBody.contains(needle),
+                          "\(locale) disclosure does not mention the helper milestone")
+        }
+        for (locale, needle) in costWord {
+            LocaleOverrideStore.shared.set(locale)
+            XCTAssertTrue(L10n.telemetry.disclosureBody.contains(needle),
+                          "\(locale) disclosure does not mention the cost milestone")
+        }
+    }
+}

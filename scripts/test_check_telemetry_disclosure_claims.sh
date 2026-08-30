@@ -21,6 +21,7 @@ pass=0
 fail=0
 
 CORE="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore"
+RES="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources"
 APP="CLI Pulse Bar/CLI Pulse Bar"
 
 build_fixture() {
@@ -39,19 +40,21 @@ public struct AnonymousInstallPayload: Encodable {
 }
 SWIFT
 
+    mkdir -p "$dest/$RES/en.lproj"
     cat > "$dest/$APP/AnonymousTelemetryDisclosureCard.swift" <<'SWIFT'
-Text("""
-     CLI Pulse reports that it was installed, whether the helper connected, \
-     and whether it ever found a CLI to track. The id is random.
-     """)
+Text(L10n.telemetry.disclosureBody)
 SWIFT
 
     cat > "$dest/$APP/PrivacySettingsSection.swift" <<'SWIFT'
-Text("""
-     That CLI Pulse was installed, whether the helper connected, and whether \
-     it ever found a CLI to track. The id is random.
-     """)
+Text(L10n.telemetry.settingsBody)
 SWIFT
+
+    cat > "$dest/$RES/en.lproj/Localizable.strings" <<'STRINGS'
+"telemetry.disclosure_body" = "CLI Pulse reports how far it got: that it was installed, whether the helper connected, and whether it ever found a CLI to track. That is how we tell where the app stops working for people, with no account involved anywhere at all.";
+"telemetry.disclosure_body_local_only" = "Local-only mode is on, so nothing is sent at all right now.";
+"telemetry.not_collected" = "No file paths, project names or provider names. The id is random and is deleted when you uninstall.";
+"telemetry.settings_body" = "How far the app got, with no account: that it was installed, whether the helper connected, and whether it ever found a CLI to track.";
+STRINGS
 
     cat > "$dest/scripts/telemetry_disclosure.allow" <<'ALLOW'
 # fixture registry
@@ -106,20 +109,24 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 perl -0pi -e 's/(case helperConnected = "p_helper_connected"\n)/$1        case uiLanguage = "p_ui_language"\n/' "$F"
 assert_changed "unregistered field" "$F" "$B" && expect_fail "unregistered field" "uiLanguage"
 
-# ── 2. registered, but ONE surface forgot to say it ────────────────────────
-#    This is the real 2026-08-30 defect: both surfaces said "two things", and
-#    fixing only the card would have left Settings > Privacy lying.
+# ── 2. the shipped copy stopped disclosing a field ─────────────────────────
+#    The real 2026-08-30 defect: both surfaces said "two things" while the
+#    payload carried more. Now that the copy lives in one catalogue, dropping
+#    the phrase there is that same defect in its new home.
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/en.lproj/Localizable.strings"
+B="$(shasum "$F" | cut -d' ' -f1)"
+perl -pi -e 's/whether the helper connected, and //g' "$F"
+assert_changed "copy dropped a field" "$F" "$B" && expect_fail "copy dropped a field" "helperConnected"
+
+# ── 3. a surface stopped RENDERING the copy ────────────────────────────────
+#    The failure the catalogue check ALONE cannot see: every string is present
+#    and correct, and the user is shown none of them.
 build_fixture "$TMP/case"
 F="$TMP/case/$APP/PrivacySettingsSection.swift"
 B="$(shasum "$F" | cut -d' ' -f1)"
-perl -pi -e 's/whether the helper connected, and //' "$F"
-assert_changed "one surface drifted" "$F" "$B" && expect_fail "one surface drifted" "PrivacySettingsSection.swift"
-
-# ── 3. BOTH surfaces forgot — must still fail, and name both ───────────────
-build_fixture "$TMP/case"
-perl -pi -e 's/whether the helper connected, and //' "$TMP/case/$APP/PrivacySettingsSection.swift"
-perl -pi -e 's/whether the helper connected, //' "$TMP/case/$APP/AnonymousTelemetryDisclosureCard.swift"
-expect_fail "both surfaces drifted" "AnonymousTelemetryDisclosureCard.swift"
+printf 'Text("hardcoded English again")\n' > "$F"
+assert_changed "surface stopped rendering" "$F" "$B" && expect_fail "surface stopped rendering" "no longer renders"
 
 # ── 4. a stale registry row reads as coverage ──────────────────────────────
 build_fixture "$TMP/case"
@@ -154,6 +161,11 @@ cat > "$TMP/case/$CORE/AnonymousInstallTelemetry.swift" <<'SWIFT'
 public struct AnonymousInstallPayload: Encodable {}
 SWIFT
 expect_fail "no CodingKeys block" "no AnonymousInstallPayload CodingKeys block"
+
+# ── 6b. the catalogue going missing must not be a silent pass ─────────────
+build_fixture "$TMP/case"
+rm "$TMP/case/$RES/en.lproj/Localizable.strings"
+expect_fail "catalogue deleted" "catalogue missing"
 
 # ── 7. a disclosure surface going missing must not be a silent pass ────────
 build_fixture "$TMP/case"

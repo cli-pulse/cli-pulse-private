@@ -114,7 +114,7 @@ struct PrivacySettingsSection: View {
             // when local-only mode is on, so the master switch's effect is
             // visible instead of a control that silently does nothing.
             Toggle(isOn: $settings.anonymousTelemetryEnabled) {
-                Text("Send anonymous install statistics")
+                Text(L10n.telemetry.toggle)
                     .font(.system(size: 11))
             }
             .toggleStyle(.switch)
@@ -122,16 +122,8 @@ struct PrivacySettingsSection: View {
             .disabled(settings.telemetrySuppressedByLocalOnly)
 
             Text(settings.telemetrySuppressedByLocalOnly
-                 ? "Off — local-only mode covers this too."
-                 : """
-                   How far the app got, with no account and nothing that \
-                   identifies you or your machine: that CLI Pulse was \
-                   installed, whether the helper connected, whether it ever \
-                   found a CLI to track, and whether it ever had a cost to \
-                   show — plus which language it is displaying in. No file \
-                   paths, project names, provider names, token counts or cost \
-                   amounts. The id is random and is deleted when you uninstall.
-                   """)
+                 ? L10n.telemetry.toggleLocalOnly
+                 : L10n.telemetry.settingsBody)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 2)
