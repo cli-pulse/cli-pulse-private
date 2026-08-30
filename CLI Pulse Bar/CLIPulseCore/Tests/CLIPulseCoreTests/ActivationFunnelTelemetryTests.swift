@@ -234,6 +234,10 @@ final class ActivationFunnelTelemetryTests: XCTestCase {
     /// signal and the wrong one: it means launchd accepted the plist, which is
     /// true in every failure mode this milestone exists to separate. Only
     /// `.running` / `.bundled` follow an answered `hello` over the socket.
+    ///
+    /// macOS-only, like `HelperInstaller` itself — there is no local helper on
+    /// iOS or watchOS.
+    #if os(macOS)
     @MainActor
     func test_onlyAnAnsweredHandshakeCountsAsConnected() {
         XCTAssertTrue(AnonymousTelemetryCoordinator.isHelperConnected(.running(version: "1.30.0")))
@@ -248,6 +252,7 @@ final class ActivationFunnelTelemetryTests: XCTestCase {
                            "\(state) is not an answered handshake")
         }
     }
+    #endif
 }
 
 /// The transport's one retry, and the drift guard that keeps the client's

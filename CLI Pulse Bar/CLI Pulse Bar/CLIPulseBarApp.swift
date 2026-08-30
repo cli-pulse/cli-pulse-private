@@ -86,10 +86,8 @@ struct CLIPulseBarApp: App {
         // v0.76 funnel steps 2 and 4. Subscribed here for the same reason as
         // activation above: both sources are model state, and a hook in a view
         // inside the lazily-built MenuBarExtra would measure menu-opening.
-        anonymousTelemetry?.observeFunnel(
-            helperInstaller: state.helperInstaller,
-            appState: state
-        )
+        anonymousTelemetry?.observeCost(appState: state)
+        anonymousTelemetry?.observeHelper(helperInstaller: state.helperInstaller)
         if runtimeEnvironment.capabilities.allowsBackgroundActivityAssertion {
             backgroundActivity.begin()
         }

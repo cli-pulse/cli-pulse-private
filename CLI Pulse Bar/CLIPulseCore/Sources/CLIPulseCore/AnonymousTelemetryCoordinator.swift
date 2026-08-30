@@ -96,26 +96,12 @@ public final class AnonymousTelemetryCoordinator {
             .store(in: &cancellables)
     }
 
-    /// Step 2 and step 4 of the funnel, subscribed the same way and for the
-    /// same reason as activation: `MenuBarExtra` builds its content lazily, so
-    /// anything hooked to a view would measure menu-opening instead of the
-    /// event.
+    /// Step 4 of the funnel: the app has a number to show.
     ///
-    /// Two separate observables because they come from two different owners —
-    /// `HelperInstaller` owns the UDS handshake and `AppState` owns the
-    /// dashboard — and folding them into one publisher would make either
-    /// source's silence look like the other's.
-    public func observeFunnel(helperInstaller: HelperInstaller, appState: AppState) {
-        helperInstaller.$state
-            .map(Self.isHelperConnected)
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] connected in
-                guard connected else { return }
-                self?.reportHelperConnected()
-            }
-            .store(in: &cancellables)
-
+    /// Subscribed rather than hooked to a view, for the same reason as
+    /// activation — `MenuBarExtra` builds its content lazily, so a signal
+    /// taken from a view would measure menu-opening instead of the event.
+    public func observeCost(appState: AppState) {
         appState.$dashboard
             .map { ($0?.total_estimated_cost_today ?? 0) > 0 }
             .removeDuplicates()
@@ -123,6 +109,30 @@ public final class AnonymousTelemetryCoordinator {
             .sink { [weak self] hasCost in
                 guard hasCost else { return }
                 self?.reportFirstCost()
+            }
+            .store(in: &cancellables)
+    }
+
+#if os(macOS)
+    /// Step 2 of the funnel: the local helper answered.
+    ///
+    /// macOS-only because `HelperInstaller` is — it is the UDS handshake, and
+    /// there is no local helper on iOS or watchOS. Kept as a separate
+    /// subscription from `observeCost` because the two come from different
+    /// owners, and folding them into one publisher would make either source's
+    /// silence look like the other's.
+    ///
+    /// The `#if` is load-bearing, not tidiness: CLIPulseCore compiles for
+    /// macOS, iOS and watchOS, and `swift test` on a Mac only ever builds the
+    /// first. CI's five-scheme matrix caught the unguarded version.
+    public func observeHelper(helperInstaller: HelperInstaller) {
+        helperInstaller.$state
+            .map(Self.isHelperConnected)
+            .removeDuplicates()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] connected in
+                guard connected else { return }
+                self?.reportHelperConnected()
             }
             .store(in: &cancellables)
     }
@@ -143,6 +153,7 @@ public final class AnonymousTelemetryCoordinator {
             return false
         }
     }
+#endif
 
     /// The disclosure has been acknowledged, so the install can go out now
     /// rather than on the next launch — and if a provider was already found
