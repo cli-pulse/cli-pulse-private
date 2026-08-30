@@ -105,3 +105,18 @@ jobs:
       # check rather than a habit.
       - run: bash scripts/check_release_notes_platforms.sh
       - run: bash scripts/test_check_release_notes_platforms.sh
+
+      # Apple `.lproj` parity. Android has had this guard since v1.21; the
+      # Apple catalogues never got one and drifted to 670 untranslated keys
+      # across four shipped locales — es and ko carried 3 of the 80 first-run
+      # wizard keys — every one of which rendered as its raw dotted identifier
+      # until `L10n.resolve` gained an English fallback.
+      #
+      # A ratchet rather than a bar: the 670 are baselined, NEW drift fails.
+      # A permanently-red gate gets `continue-on-error`'d, which is the same
+      # failure as a green gate that guards nothing.
+      #
+      # Path-blind for the usual reason: the PR most likely to add an
+      # en-only key is a Swift PR that touches no `.strings` file at all.
+      - run: python3 scripts/check_apple_strings_parity.py
+      - run: bash scripts/test_check_apple_strings_parity.sh
