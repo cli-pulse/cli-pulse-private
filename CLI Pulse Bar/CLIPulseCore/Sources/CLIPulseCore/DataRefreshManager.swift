@@ -3462,7 +3462,7 @@ extension AppState {
     /// (no local rows) sends `afterId=0` and the server returns up to
     /// `limit` of the oldest active rows.
     ///
-    /// Gated on `remoteControlEnabled` (clears the cache on OFF, same
+    /// Gated on `remoteSessionsEnabled` (clears the cache on OFF, same
     /// posture as `refreshRemoteSessions`) and a non-empty
     /// `sessionId`. Re-checks the gate AFTER the await so a flip
     /// during the network round-trip doesn't repopulate state.

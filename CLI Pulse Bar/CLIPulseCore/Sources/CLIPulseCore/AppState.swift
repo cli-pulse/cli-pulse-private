@@ -412,8 +412,10 @@ public final class AppState: ObservableObject {
     /// Pending remote permission requests pulled from
     /// `remote_app_list_pending_approvals`. Refreshed lazily — only when the
     /// approvals sheet is open or the menu-bar popover is visible AND
-    /// `remoteControlEnabled` is true. We do NOT poll while the feature is
+    /// `remoteSessionsEnabled` is true. We do NOT poll while the feature is
     /// disabled; that's both wasted bandwidth and an inadvertent leak signal.
+    /// Retired since v1.52.1, so that predicate is constant-false and this
+    /// never populates.
     @Published public var remotePendingApprovals: [RemotePermissionRequest] = []
     @Published public var remoteApprovalsLastRefresh: Date?
     @Published public var remoteApprovalsError: String?
@@ -421,9 +423,9 @@ public final class AppState: ObservableObject {
     // MARK: - Remote Sessions (Sessions Input iter 1)
     /// Managed Claude sessions the helper has spawned (or is about to
     /// spawn). Pulled from `remote_app_list_sessions`. Refreshed only
-    /// while the Sessions UI is on screen AND `remoteControlEnabled`
+    /// while the Sessions UI is on screen AND `remoteSessionsEnabled`
     /// — same gating discipline as `remotePendingApprovals`. Cleared
-    /// when Remote Control toggles off and on logout.
+    /// when the gate closes and on logout. Retired since v1.52.1.
     @Published public var remoteSessions: [RemoteSession] = []
     @Published public var remoteSessionsLastRefresh: Date?
     @Published public var remoteSessionsError: String?
@@ -432,7 +434,8 @@ public final class AppState: ObservableObject {
     /// Per-device edge-aggregated swarm rollups from
     /// `remote_app_list_swarms`. Same gating discipline as
     /// `remoteSessions` (refreshed only while the Swarm UI is on screen
-    /// AND `remoteControlEnabled`; cleared on RC-off and logout).
+    /// AND `remoteSessionsEnabled`; cleared on gate-close and logout).
+    /// Retired since v1.52.1; the Swarm tab is hidden besides.
     @Published public var remoteSwarms: [RemoteSwarmDevice] = []
     @Published public var remoteSwarmsLastRefresh: Date?
     @Published public var remoteSwarmsError: String?
@@ -445,9 +448,9 @@ public final class AppState: ObservableObject {
     /// app memory unbounded.
     ///
     /// Populated only while a detail view has the user-explicit
-    /// "Show output" toggle on AND `remoteControlEnabled` is true —
-    /// same default-off privacy posture as the rest of Remote
-    /// Control. Cleared when Remote Control toggles off and on
+    /// "Show output" toggle on AND `remoteSessionsEnabled` is true —
+    /// same default-off privacy posture as the rest of the session
+    /// plane. Cleared when the gate closes and on
     /// logout.
     ///
     /// Pagination: callers track the largest event `id` they've

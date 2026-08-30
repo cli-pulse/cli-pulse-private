@@ -22,9 +22,11 @@ struct iOSSessionsTab: View {
             // the user open the separate approvals screen.
             //
             // `refreshRemoteApprovals` / `refreshRemoteSessions` each
-            // guard on `remoteControlEnabled` internally, so when RC is
-            // off, neither hits the network and both clear local caches
-            // (the desired no-network posture).
+            // guard on `remoteSessionsEnabled` internally, so neither
+            // hits the network and both clear local caches (the desired
+            // no-network posture). Since the session plane was retired
+            // that predicate is constant-false, so this loop is now a
+            // cache-clearing no-op rather than a poll.
             while !Task.isCancelled {
                 async let _sessions: () = state.refreshRemoteSessions()
                 async let _approvals: () = state.refreshRemoteApprovals()

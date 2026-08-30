@@ -64,10 +64,11 @@ struct SessionsTab: View {
             // Remote Control is on, 10s when off. The disabled-state
             // calls are still issued, but `refreshRemoteSessions` /
             // `refreshRemoteApprovals` / `refreshRemoteSessionEvents`
-            // each guard on `remoteControlEnabled` internally — so
-            // when RC is off, none hit the network and all clear
-            // their local caches as a side effect, which is the
-            // desired no-network posture.
+            // each guard on `remoteSessionsEnabled` internally — so
+            // none hit the network and all clear their local caches as
+            // a side effect, which is the desired no-network posture.
+            // With the session plane retired that predicate is
+            // constant-false, so this is now a cache-clearing no-op.
             while !Task.isCancelled {
                 async let _sessions: () = state.refreshRemoteSessions()
                 async let _approvals: () = state.refreshRemoteApprovals()
