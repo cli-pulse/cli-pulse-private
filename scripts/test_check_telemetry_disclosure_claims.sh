@@ -53,7 +53,7 @@ SWIFT
 "telemetry.disclosure_body" = "CLI Pulse reports how far it got: that it was installed, whether the helper connected, and whether it ever found a CLI to track. That is how we tell where the app stops working for people, with no account involved anywhere at all.";
 "telemetry.disclosure_body_local_only" = "Local-only mode is on, so nothing is sent at all right now.";
 "telemetry.not_collected" = "No file paths, project names or provider names. The id is random and is deleted when you uninstall.";
-"telemetry.settings_body" = "How far the app got, with no account: that it was installed, whether the helper connected, and whether it ever found a CLI to track.";
+"telemetry.settings_body" = "How far the app got, with no account: that it was installed, whether the helper connected, and whether it ever found a CLI to track. No file paths or project names.";
 STRINGS
 
     cat > "$dest/scripts/telemetry_disclosure.allow" <<'ALLOW'
@@ -161,6 +161,27 @@ cat > "$TMP/case/$CORE/AnonymousInstallTelemetry.swift" <<'SWIFT'
 public struct AnonymousInstallPayload: Encodable {}
 SWIFT
 expect_fail "no CodingKeys block" "no AnonymousInstallPayload CodingKeys block"
+
+# ── 3b. ONE surface drops a field while the other still names it ──────────
+#    The union check passed this: concatenating every string hid that Settings
+#    > Privacy had quietly stopped disclosing a collected field. That is the
+#    "one of two surfaces" hole this guard exists to close, reintroduced by the
+#    move to localized strings. (Codex review, 2026-08-30.)
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/en.lproj/Localizable.strings"
+B="$(shasum "$F" | cut -d' ' -f1)"
+perl -pi -e 's/whether the helper connected, and // if /settings_body/' "$F"
+assert_changed "one surface dropped a field" "$F" "$B" \
+  && expect_fail "one surface dropped a field" "PrivacySettingsSection.swift"
+
+# ── 3c. an IMPLICIT CodingKeys case must still be seen ────────────────────
+#    `case foo` without a raw value is valid Swift; the parser required `=`,
+#    so a new payload field was invisible and shipped undisclosed.
+build_fixture "$TMP/case"
+F="$TMP/case/$CORE/AnonymousInstallTelemetry.swift"
+B="$(shasum "$F" | cut -d' ' -f1)"
+perl -0pi -e 's/(case helperConnected = "p_helper_connected"\n)/$1        case deviceModel\n/' "$F"
+assert_changed "implicit case" "$F" "$B" && expect_fail "implicit case" "deviceModel"
 
 # ── 6b. the catalogue going missing must not be a silent pass ─────────────
 build_fixture "$TMP/case"

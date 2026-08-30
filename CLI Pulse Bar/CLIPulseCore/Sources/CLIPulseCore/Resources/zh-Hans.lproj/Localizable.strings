@@ -446,8 +446,8 @@
 "settings.reset" = "重置";
 "settings.privacy" = "隐私";
 "settings.test_webhook" = "测试 Webhook";
-"settings.remote_control" = "远程控制";
-"settings.remote_control_iphone_hint" = "通过此 iPhone 审批 Claude 的工具调用";
+"settings.remote_control" = "来自其他设备的机器请求";
+"settings.remote_control_iphone_hint" = "用这台 iPhone 请求 Mac 提升风扇转速、进入低电量模式或防休眠";
 "settings.pending_approvals" = "待审批";
 "settings.privacy_redacted_hint" = "CLI Pulse 仅上传每个请求的脱敏摘要——绝不上传 API 密钥、Cookie 或完整的对话内容。";
 

@@ -85,8 +85,19 @@ struct iOSSessionsTab: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 12) {
-                    managedSection
-                    Divider().padding(.vertical, 4)
+                    // Hidden with the session plane. On iPhone this section IS
+                    // the remote plane — there is no local helper here — so
+                    // with the plane retired it rendered a header and a hint
+                    // reading "Remote Control is off. Turn it on in Settings →
+                    // Privacy", which a user could never satisfy: the toggle
+                    // they were sent to now gates machine controls only, and
+                    // `remoteSessionsEnabled` is constant-false regardless.
+                    // Telling someone to flip a switch that cannot change the
+                    // outcome is worse than showing them nothing.
+                    if RemoteSessionPlane.isEnabled {
+                        managedSection
+                        Divider().padding(.vertical, 4)
+                    }
                     analyticsSection
                 }
                 .padding()

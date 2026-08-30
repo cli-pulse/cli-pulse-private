@@ -446,8 +446,8 @@
 "settings.reset" = "リセット";
 "settings.privacy" = "プライバシー";
 "settings.test_webhook" = "Webhookをテスト";
-"settings.remote_control" = "リモートコントロール";
-"settings.remote_control_iphone_hint" = "この iPhone から Claude のツール呼び出しを承認";
+"settings.remote_control" = "他のデバイスからのマシンリクエスト";
+"settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
 "settings.pending_approvals" = "保留中の承認";
 "settings.privacy_redacted_hint" = "CLI Pulse は各リクエストの編集済み概要のみをアップロードします — API キー、Cookie、完全なトランスクリプトは送信しません。";
 

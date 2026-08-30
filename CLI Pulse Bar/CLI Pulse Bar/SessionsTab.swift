@@ -400,9 +400,16 @@ struct SessionsTab: View {
         }
 
         if !remoteUsable && !localStartAvailable && displayed.isEmpty {
+            // The "turn it on in Settings" half is gone with the session
+            // plane: `remoteUsable` is now constant-false, so that sentence
+            // would fire for everyone and point at a toggle that cannot
+            // change the outcome. The local-helper half is still true and
+            // still actionable, so it is what remains.
             inlineHint(
                 icon: "lock.shield",
-                text: "Remote Control is disabled. Turn it on in Settings → Privacy, or start the local helper to drive a Claude session through the local fast path."
+                text: RemoteSessionPlane.isEnabled
+                    ? "Remote Control is disabled. Turn it on in Settings → Privacy, or start the local helper to drive a Claude session through the local fast path."
+                    : "Start the local helper to drive a Claude session through the local fast path."
             )
         } else {
             if let err = state.remoteSessionsError {

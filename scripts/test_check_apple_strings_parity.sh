@@ -26,7 +26,9 @@ RES="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources"
 build_fixture() {
     local dest="$1"
     rm -rf "$dest"
-    mkdir -p "$dest/$RES/en.lproj" "$dest/$RES/es.lproj" "$dest/$RES/ja.lproj" "$dest/scripts"
+    mkdir -p "$dest/$RES/en.lproj" "$dest/$RES/es.lproj" "$dest/$RES/ja.lproj" \
+             "$dest/$RES/ko.lproj" "$dest/$RES/zh-Hans.lproj" "$dest/$RES/zh-Hant.lproj" \
+             "$dest/scripts"
 
     cat > "$dest/$RES/en.lproj/Localizable.strings" <<'STRINGS'
 /* CLI Pulse — English (Base) */
@@ -48,6 +50,16 @@ STRINGS
 "tab.settings" = "設定";
 "wizard.welcome" = "ようこそ";
 STRINGS
+
+    # The three locales the shipped-locale manifest also requires. Full parity
+    # so they are inert to every case below except the "locale deleted" one.
+    for loc in ko zh-Hans zh-Hant; do
+        cat > "$dest/$RES/$loc.lproj/Localizable.strings" <<'STRINGS'
+"tab.overview" = "X";
+"tab.settings" = "Y";
+"wizard.welcome" = "Z";
+STRINGS
+    done
 
     cat > "$dest/scripts/apple_strings_parity_baseline.json" <<'JSON'
 {
@@ -132,6 +144,37 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 printf '"tab.overview" = "概要(2)";\n' >> "$F"
 assert_changed "duplicate key" "$F" "$B" && expect_fail "duplicate key" "declared more than once"
 
+# ── 5b. an entire SHIPPED locale disappearing ──────────────────────────────
+#    Discovery by glob simply stopped iterating the deleted locale, so a whole
+#    translation could vanish with the gate green. (Codex review, 2026-08-30.)
+build_fixture "$TMP/case"
+rm -rf "$TMP/case/$RES/zh-Hans.lproj"
+expect_fail "shipped locale deleted" "zh-Hans.lproj"
+
+# ── 5c. --update-baseline must not launder new debt ────────────────────────
+#    The baseline is a ratchet; regenerating it was a way to grow it silently.
+build_fixture "$TMP/case"
+printf '"wizard.finish" = "Finish";\n' >> "$TMP/case/$RES/en.lproj/Localizable.strings"
+out="$(python3 "$GUARD" --root "$TMP/case" --update-baseline 2>&1)"; rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "FAIL: [baseline growth] --update-baseline silently grew the debt."
+    fail=$((fail + 1))
+elif ! printf '%s' "$out" | grep -qF "may only shrink"; then
+    echo "FAIL: [baseline growth] refused, but not for the expected reason: $out"
+    fail=$((fail + 1))
+else
+    echo "ok:   [baseline growth] --update-baseline refused to grow the debt."
+    pass=$((pass + 1))
+fi
+#    …and --allow-growth is the explicit, reviewable escape hatch.
+if python3 "$GUARD" --root "$TMP/case" --update-baseline --allow-growth >/dev/null 2>&1; then
+    echo "ok:   [baseline growth] --allow-growth permits it explicitly."
+    pass=$((pass + 1))
+else
+    echo "FAIL: [baseline growth] --allow-growth did not work."
+    fail=$((fail + 1))
+fi
+
 # ── 6. the baseline itself going missing must not be a silent pass ─────────
 build_fixture "$TMP/case"
 rm "$TMP/case/scripts/apple_strings_parity_baseline.json"
@@ -139,7 +182,8 @@ expect_fail "absent baseline" "baseline missing"
 
 # ── 7. an empty resources tree must not be a silent pass ──────────────────
 build_fixture "$TMP/case"
-rm -rf "$TMP/case/$RES/es.lproj" "$TMP/case/$RES/ja.lproj"
+rm -rf "$TMP/case/$RES/es.lproj" "$TMP/case/$RES/ja.lproj" \
+       "$TMP/case/$RES/ko.lproj" "$TMP/case/$RES/zh-Hans.lproj" "$TMP/case/$RES/zh-Hant.lproj"
 expect_fail "single locale" "nothing to compare"
 
 echo
