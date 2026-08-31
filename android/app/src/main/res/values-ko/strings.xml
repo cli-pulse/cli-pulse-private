@@ -214,7 +214,6 @@
     <plurals name="devices_registered_count">
         <item quantity="other">%d개 등록됨</item>
     </plurals>
-    <string name="swarm_widget_description">실시간 에이전트 스웜 — 에이전트와 차단 현황을 한눈에</string>
     <!-- Managed sessions (v1.27 E2) -->
     <string name="managed_sessions_header">관리형 세션</string>
     <string name="managed_new">새로 만들기</string>

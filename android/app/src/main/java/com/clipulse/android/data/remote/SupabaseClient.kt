@@ -334,17 +334,6 @@ class SupabaseClient(
         return out
     }
 
-    // ── Swarm View (v1.22 P0 S5 / backend v0.48) ─────────
-
-    /**
-     * `remote_app_list_swarms` → per-device edge-aggregated swarm
-     * rollups. JWT-gated + RC-gated server-side (returns `[]` when
-     * Remote Control is off). Parses the nested `swarms` array the
-     * same way `providers()` parses `tiers`.
-     */
-    suspend fun remoteListSwarms(): List<RemoteSwarmDevice> = withContext(Dispatchers.IO) {
-        parseRemoteSwarms(rpcArray("remote_app_list_swarms"))
-    }
 
     // ── Remote managed sessions (v1.27 E1) ───────────────
     // Android mirror of the iOS APIClient `remote_app_*` calls. JWT-gated +
@@ -1223,47 +1212,8 @@ sealed class ApiError : Exception() {
 }
 
 /**
- * v1.22 P0 S5 — pure `remote_app_list_swarms` JSON → model parser,
- * extracted from [SupabaseClient.remoteListSwarms] so it's unit-
- * testable without mocking OkHttp (mirrors the OAuthCallbackParser
- * testability posture). Lenient `opt*` reads tolerate an older server.
- */
-internal fun parseRemoteSwarms(arr: JSONArray): List<RemoteSwarmDevice> =
-    (0 until arr.length()).map { i ->
-        val d = arr.getJSONObject(i)
-        val swarmsArr = d.optJSONArray("swarms")
-        val swarms = if (swarmsArr != null) {
-            (0 until swarmsArr.length()).map { j ->
-                val s = swarmsArr.getJSONObject(j)
-                val provArr = s.optJSONArray("providers")
-                val provs = if (provArr != null) {
-                    (0 until provArr.length()).map { k -> provArr.optString(k) }
-                } else emptyList()
-                RemoteSwarm(
-                    swarmKey = s.optString("swarm_key"),
-                    handle = s.optString("handle"),
-                    isLinkedWorktree = s.optBoolean("is_linked_worktree", false),
-                    providers = provs,
-                    agents = s.optInt("agents"),
-                    blocked = s.optInt("blocked"),
-                    oldestBlockedAgeS = s.optDouble("oldest_blocked_age_s", 0.0),
-                    lastSeenSAgo = s.optDouble("last_seen_s_ago", 0.0),
-                )
-            }
-        } else emptyList()
-        RemoteSwarmDevice(
-            deviceId = d.optString("device_id"),
-            updatedAt = d.optString("updated_at"),
-            ageS = d.optDouble("age_s", 0.0),
-            stale = d.optBoolean("stale", false),
-            swarms = swarms,
-        )
-    }
-
-/**
  * v1.27 E1 — pure `remote_app_list_sessions` JSON → model parser, extracted
- * from [SupabaseClient.remoteListSessions] for unit-testability (mirrors
- * parseRemoteSwarms). Lenient `opt*` reads; nullable fields decode an absent
+ * from [SupabaseClient.remoteListSessions] for unit-testability. Lenient `opt*` reads; nullable fields decode an absent
  * key or SQL/JSON null to `null`, a present value (incl. "") to the string.
  */
 internal fun parseRemoteSessions(arr: JSONArray): List<RemoteSession> =

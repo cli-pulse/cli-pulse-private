@@ -172,9 +172,16 @@ If a task is specifically about the public repo, keep it distribution-only.
 Run these before shipping collector or helper changes:
 
 ```bash
-python3 -m pytest -q helper/test_system_collector.py
+(cd helper && python3 -m pytest -q)   # the WHOLE directory — see below
 swift test --package-path "CLI Pulse Bar/CLIPulseCore"
 ```
+
+Run the whole `helper/` suite, not one file. Helper CI's step is bare
+`pytest -q` under `working-directory: helper`, so any single-file command is
+weaker than the gate. This line used to name `helper/test_system_collector.py`
+alone, and on 2026-08-31 that cost a red CI on PR #500: deleting `helper/swarm.py`
+broke `helper/test_remote_hook.py`, which imports it — a file the documented
+command never collected.
 
 When touching `backend/supabase/` SQL, app/helper/Android RPC call sites,
 or edge functions, also run the static contract smoke (no network, no

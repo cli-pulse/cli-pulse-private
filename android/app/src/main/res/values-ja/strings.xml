@@ -220,7 +220,6 @@
     <plurals name="devices_registered_count">
         <item quantity="other">%d 台登録済み</item>
     </plurals>
-    <string name="swarm_widget_description">リアルタイムのエージェントスウォーム — エージェント数とブロック数をひと目で</string>
     <!-- Managed sessions (v1.27 E2) -->
     <string name="managed_sessions_header">管理対象セッション</string>
     <string name="managed_new">新規</string>
