@@ -143,6 +143,41 @@ If a task is specifically about the public repo, keep it distribution-only.
 - If a release tag must be recreated, ensure it is recreated on a
   distribution-only commit.
 
+## App Store listing preflight — run before every ASC submission
+
+```bash
+python3 scripts/asc_listing_preflight.py
+```
+
+`scripts/check_paywall_claims.sh` guards the repo *sources*. It cannot see what
+App Store Connect is actually serving, and the gap between those two has bitten
+three times:
+
+| date | source | what the store served |
+|---|---|---|
+| 2026-08-28 | caption fixed in v1.51 | 1.52.0 screenshots still sold Team + Lifetime |
+| 2026-08-30 | PR #484 re-shot the paywall screenshot | never uploaded |
+| 2026-08-31 | description fixed in v1.52.1 | live macOS copy still sold Team at $9.99/$99.99 |
+
+The preflight reads ASC (read-only, GETs only) and checks three things the repo
+cannot answer:
+
+1. **SKU-vs-copy** — the description must not name a tier whose SKU is not
+   `APPROVED`. This compares the store's words against the store's own product
+   catalogue, so it needs no repo source and cannot go stale.
+2. **Description drift** — live en-US vs both repo pushers
+   (`appstore_metadata.py`, `resubmit.py`).
+3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
+   same name, compared on decoded pixels because ASC re-encodes on ingest.
+
+⚠️ **Drift runs in both directions.** On 2026-08-31 the store was stale on the
+subscription paragraph *and* newer than the repo on the privacy section.
+Pushing either side verbatim would have regressed the other. Read both lists the
+script prints before acting.
+
+It needs the ASC key, so it cannot run in CI — it is a release-time step on the
+owner's machine. Exit 2 means it could not check, which is not a pass.
+
 ## Active vs Archived
 
 ### Active
