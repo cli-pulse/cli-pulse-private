@@ -668,6 +668,69 @@ final class SessionControlIter2BTests: XCTestCase {
             "remote-routed pending must trigger the same lockout as local"
         )
     }
+
+    // MARK: - unreachable helper (2026-08-31)
+
+    /// `isStaleLocal` does NOT cover a dead helper. `isStaleLocalSession`
+    /// returns false the instant `localHelperReachable` goes false — that is
+    /// its FIRST guard — so a helper crash left Send and Stop enabled. They
+    /// then ran the retired plane's `sendRemoteSessionPrompt` /
+    /// `stopRemoteSession`, which are no-ops: the user typed, pressed Send,
+    /// and nothing happened, with the prompt text still sitting there.
+    func testPromptInputDisabled_unreachableHelperIsNotCoveredByIsStaleLocal() {
+        // The exact state a helper crash produces: running row, nothing stale,
+        // no pending approval — every existing flag says "enabled".
+        XCTAssertFalse(
+            SessionControlPredicates.promptInputDisabled(
+                isRunning: true,
+                localSendUnsupported: false,
+                isStaleLocal: false,
+                hasPendingApproval: false
+            ),
+            "precondition: without the new flag this state reads as enabled"
+        )
+        XCTAssertTrue(
+            SessionControlPredicates.promptInputDisabled(
+                isRunning: true,
+                localSendUnsupported: false,
+                isStaleLocal: false,
+                hasPendingApproval: false,
+                helperUnreachable: true
+            ),
+            "a row whose helper cannot be reached must not offer Send"
+        )
+    }
+
+    /// The flag defaults to false, so every existing call site keeps its
+    /// behaviour. This is what makes the change additive rather than a
+    /// silent tightening of unrelated screens.
+    func testPromptInputDisabled_unreachableDefaultsFalse() {
+        XCTAssertEqual(
+            SessionControlPredicates.promptInputDisabled(
+                isRunning: true, localSendUnsupported: false,
+                isStaleLocal: false, hasPendingApproval: false
+            ),
+            SessionControlPredicates.promptInputDisabled(
+                isRunning: true, localSendUnsupported: false,
+                isStaleLocal: false, hasPendingApproval: false,
+                helperUnreachable: false
+            )
+        )
+    }
+
+    /// Reachable helper stays enabled — otherwise the assertion above would
+    /// be satisfied by a predicate that simply returns true.
+    func testPromptInputDisabled_reachableHelperStillSends() {
+        XCTAssertFalse(
+            SessionControlPredicates.promptInputDisabled(
+                isRunning: true,
+                localSendUnsupported: false,
+                isStaleLocal: false,
+                hasPendingApproval: false,
+                helperUnreachable: false
+            )
+        )
+    }
 }
 
 #endif
