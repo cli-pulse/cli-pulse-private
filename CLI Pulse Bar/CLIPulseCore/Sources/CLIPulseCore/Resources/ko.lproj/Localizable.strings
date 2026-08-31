@@ -152,7 +152,6 @@
 "settings.cost_tracking" = "비용 추적";
 "settings.display" = "표시";
 "settings.show_cost_estimates" = "비용 추정 표시";
-"settings.compact_mode" = "컴팩트 모드";
 "settings.menu_bar_mode" = "메뉴 바 모드";
 "settings.reorder_providers" = "공급자 순서 변경";
 "settings.reorder_hint" = "드래그하여 순서 변경, 탭하여 활성/비활성";

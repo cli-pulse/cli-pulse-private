@@ -2055,6 +2055,7 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             isPaired: isPaired,
             isLoading: false,
             notificationsEnabled: notificationsEnabled,
+            sessionQuotaNotificationsEnabled: true,
             authenticatedUserID: "user-a",
             providerConfigs: [],
             providers: [],

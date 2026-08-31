@@ -278,6 +278,7 @@ final class LocalScanConsentTests: XCTestCase {
             isPaired: false,
             isLoading: false,
             notificationsEnabled: false,
+            sessionQuotaNotificationsEnabled: true,
             authenticatedUserID: "",
             providerConfigs: [],
             providers: [],

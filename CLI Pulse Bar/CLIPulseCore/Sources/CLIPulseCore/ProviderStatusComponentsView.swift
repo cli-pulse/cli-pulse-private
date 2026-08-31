@@ -23,6 +23,8 @@ public struct ProviderStatusComponentsView: View {
     /// Monotonic request id — only the LATEST load may commit state, so a
     /// superseded (rapid re-expand) or cancelled (collapse) result is dropped.
     @State private var loadGeneration = 0
+    /// Same defaults key the Settings toggle writes — see ServiceStatusBadge.
+    @AppStorage("cli_pulse_check_provider_status") private var checkProviderStatus = true
     /// When the currently-shown component list was fetched, for the stale-TTL.
     @State private var loadedAt: Date?
 
@@ -50,7 +52,11 @@ public struct ProviderStatusComponentsView: View {
             // on-appear false-state doesn't fetch, and a successful load is
             // cached across re-expands). `.task` runs in the view's MainActor
             // context and auto-cancels on disappear/collapse.
-            .task(id: isExpanded) { await load() }
+            .task(id: isExpanded) {
+                // Second outbound path for provider status; same guard.
+                guard checkProviderStatus else { return }
+                await load()
+            }
         }
     }
 

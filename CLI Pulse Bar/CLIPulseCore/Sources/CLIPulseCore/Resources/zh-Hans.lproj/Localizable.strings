@@ -153,7 +153,6 @@
 "settings.cost_tracking" = "费用追踪";
 "settings.display" = "显示";
 "settings.show_cost_estimates" = "显示费用预估";
-"settings.compact_mode" = "紧凑模式";
 "settings.menu_bar_mode" = "菜单栏模式";
 "settings.reorder_providers" = "排序服务商";
 "settings.reorder_hint" = "拖拽排序，点按启用/禁用";
@@ -453,7 +452,6 @@
 "display.mode" = "显示模式";
 "display.merge_menu_bar_icons" = "合并菜单栏图标";
 "display.merge_menu_bar_hint" = "单图标 + 服务商切换器";
-"display.content_mode" = "内容模式";
 "display.reorder_hint" = "选择要在「概览」标签页显示的服务商，拖动可重新排序。";
 
 /* ── 订阅补充 (i18n sweep) ── */

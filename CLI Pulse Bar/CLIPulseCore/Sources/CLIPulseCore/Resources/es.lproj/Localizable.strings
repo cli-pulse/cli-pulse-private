@@ -152,7 +152,6 @@
 "settings.cost_tracking" = "Seguimiento de costos";
 "settings.display" = "Pantalla";
 "settings.show_cost_estimates" = "Mostrar estimaciones de costo";
-"settings.compact_mode" = "Modo compacto";
 "settings.menu_bar_mode" = "Modo barra de menú";
 "settings.reorder_providers" = "Reordenar proveedores";
 "settings.reorder_hint" = "Arrastre para reordenar, toque para habilitar/deshabilitar";
