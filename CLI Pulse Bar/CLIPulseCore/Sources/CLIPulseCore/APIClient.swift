@@ -185,25 +185,19 @@ public actor APIClient {
         }
     }
 
-    /// v1.25 Phase 4 slice 1: expose Supabase URL + anon key so
-    /// `RemoteTerminalViewRepresentable` can build a
-    /// `RemoteSessionEventStream` without duplicating the
-    /// Bundle.main / env-var resolution that the iOS app's
-    /// APIClient owns.
+    /// The Supabase endpoint this client actually resolved, after channel
+    /// policy has been applied. `supabaseURL` / `supabaseAnonKey` are private,
+    /// so this is the only public window onto the resolved pair.
     ///
-    /// R0 (B3): also plumbs the signed-in user's access_token. It is attached
-    /// to the Realtime WS ONLY for PRIVATE (`pterm:`) joins (the public
-    /// `term:` path ignores it), so this is safe while the R0 flag is off —
-    /// nothing reads `accessToken` until a session is `realtime_private`.
-    /// Re-fetch after a token refresh and push it via
-    /// `Cancellable.updateAccessToken` to keep a long-lived private join
-    /// authorized.
-    public func realtimeConfiguration() -> RemoteSessionEventStream.Configuration {
-        RemoteSessionEventStream.Configuration(
-            supabaseURL: supabaseURL,
-            supabaseAnonKey: supabaseAnonKey,
-            accessToken: accessToken
-        )
+    /// It exists for the **QA isolation contract**: a QA build must ignore
+    /// explicit cloud overrides and stay pinned to the local invalid endpoint,
+    /// never production (`RuntimeCloudConfigurationTests`). `realtimeConfiguration()`
+    /// used to serve that role incidentally — it was the remote terminal's
+    /// config factory that happened to expose the same two values — and it went
+    /// with the session plane in v1.52.1. Naming the accessor for the contract
+    /// it actually serves means the next deletion cannot take it by accident.
+    public var resolvedCloudEndpoint: (url: String, anonKey: String) {
+        (supabaseURL, supabaseAnonKey)
     }
 
     public func updateToken(_ token: String?) {

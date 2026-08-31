@@ -4,7 +4,7 @@ import XCTest
 /// Phase 3 Iter 1 — protocol-level tests for SessionControlClient.
 ///
 /// These cover the wire-code → typed-error mapping AND the parity
-/// surface between RemoteSessionControlClient (existing Supabase
+/// surface between the retired Supabase session client (existing
 /// path) and a fake LocalSessionControlClient stand-in. We don't
 /// stand up a real UDS socket here — that lives in the helper-side
 /// pytest suite (test_local_session_server.py end-to-end test). The
@@ -179,12 +179,6 @@ final class SessionControlClientTests: XCTestCase {
         XCTAssertFalse(caps.approvals)
     }
 
-    func testSupabaseFullCapabilities_matchExistingProductSurface() {
-        let caps = SessionControlCapabilities.supabaseFull
-        XCTAssertTrue(caps.sendInput)
-        XCTAssertTrue(caps.subscribeEvents)
-        XCTAssertTrue(caps.approvals)
-    }
 
     // MARK: - Parity through a fake conformance
 

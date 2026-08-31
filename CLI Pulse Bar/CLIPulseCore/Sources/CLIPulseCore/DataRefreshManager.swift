@@ -3365,7 +3365,7 @@ extension AppState {
     /// v1.26 Phase B2: request the helper publish a redacted
     /// tail snapshot of the session's PTY ring buffer on the
     /// Realtime broadcast channel (event `tail_snapshot_result`).
-    /// Fired by `RemoteTerminalViewRepresentable.Coordinator` on
+    /// Was fired by the retired iOS remote terminal on
     /// a warm subscribe (resubscribe after we've seen chunks for
     /// this session before — background→foreground / auto-reconnect).
     /// Fire-and-forget: failures are silently dropped — the iOS

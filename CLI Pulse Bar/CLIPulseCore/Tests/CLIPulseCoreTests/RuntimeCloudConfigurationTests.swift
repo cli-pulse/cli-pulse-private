@@ -158,13 +158,13 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
             supabaseURL: "https://explicit.example",
             runtimeEnvironment: runtime
         )
-        let explicitURLConfiguration = await explicitURL.realtimeConfiguration()
+        let explicitURLConfiguration = await explicitURL.resolvedCloudEndpoint
         XCTAssertEqual(
-            explicitURLConfiguration.supabaseURL,
+            explicitURLConfiguration.url,
             "http://127.0.0.1:0"
         )
         XCTAssertEqual(
-            explicitURLConfiguration.supabaseAnonKey,
+            explicitURLConfiguration.anonKey,
             "qa-local-invalid-anon-key"
         )
 
@@ -172,13 +172,13 @@ final class RuntimeCloudConfigurationTests: XCTestCase {
             supabaseAnonKey: "explicit-key",
             runtimeEnvironment: runtime
         )
-        let explicitKeyConfiguration = await explicitKey.realtimeConfiguration()
+        let explicitKeyConfiguration = await explicitKey.resolvedCloudEndpoint
         XCTAssertEqual(
-            explicitKeyConfiguration.supabaseURL,
+            explicitKeyConfiguration.url,
             "http://127.0.0.1:0"
         )
         XCTAssertEqual(
-            explicitKeyConfiguration.supabaseAnonKey,
+            explicitKeyConfiguration.anonKey,
             "qa-local-invalid-anon-key"
         )
     }
