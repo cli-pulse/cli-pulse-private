@@ -82,7 +82,7 @@
 "diagnostics.fix_remote_control" = "在“设置 → 隐私”中开启远程控制。";
 "diagnostics.fix_mac" = "请确保你的 Mac 处于唤醒、联网状态并正在运行 CLI Pulse。";
 "diagnostics.fix_helper" = "请在你的 Mac 上安装或更新 CLI Pulse 助手。";
-"diagnostics.fix_notifications" = "允许通知以接收审批请求。";
+"diagnostics.fix_notifications" = "允许通知，用量告警才能送达。";
 "diagnostics.fix_realtime" = "正在重新连接，请检查你的网络连接。";
 "providers.this_week" = "本周";
 "providers.quota" = "配额";

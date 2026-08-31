@@ -22,7 +22,7 @@ public enum RemoteControlHealth {
         case remoteControl    // Remote Control toggle enabled
         case mac              // a Mac is connected and syncing
         case helper           // the CLI Pulse helper is installed on the Mac
-        case notifications    // notifications allowed (for approval prompts)
+        case notifications    // notifications allowed (for usage alerts)
         case realtime         // live realtime channel connected
     }
 

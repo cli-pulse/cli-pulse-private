@@ -2440,6 +2440,27 @@ extension AppState {
         !hasExplicitInterval && !onboardingCompleted
     }
 
+    /// Called when the user opens the Alerts tab.
+    ///
+    /// This is the trigger for notification authorization. It is deliberately
+    /// *not* app launch (iter8: prompting pre-auth printed "Session expired"
+    /// onto the login screen) and no longer the Remote Control switch (which,
+    /// since approvals were retired, sends no notification of any kind).
+    ///
+    /// Opening Alerts is the moment that satisfies every constraint at once:
+    /// the app is foreground, the user is signed in, and they are looking at
+    /// precisely the thing the notifications would be about. Consulting it on
+    /// every appearance is safe — `requestNotificationPermission()` only calls
+    /// through on `.notDetermined`, so a user who has already answered is
+    /// never asked twice.
+    public func alertsTabDidAppear() {
+        guard AlertNotificationPolicy.shouldRequestAuthorization(
+            isAuthenticated: isAuthenticated,
+            notificationsEnabled: notificationsEnabled
+        ) else { return }
+        requestNotificationPermission()
+    }
+
     /// Ask the user for local notification permission and (on iOS) trigger
     /// APNs registration on grant.
     ///
@@ -2448,12 +2469,12 @@ extension AppState {
     /// registration that follows here would race the JWT and fail.
     /// We now refuse to even prompt unless the user is signed in, so
     /// the system permission alert never appears for unauthenticated
-    /// launches. Callers (toggling Remote Control on, post-auth replay
-    /// from `applyAuthenticatedState`) gate on the right product moment.
+    /// launches. Callers (`alertsTabDidAppear`, post-auth replay from
+    /// `applyAuthenticatedState`) gate on the right product moment.
     public func requestNotificationPermission() {
         guard isAuthenticated else {
-            // Don't prompt unauthenticated users — they have no use for
-            // remote approvals yet, and the downstream
+            // Don't prompt unauthenticated users — alerts are a
+            // server-side feature they have no rows for yet, and the downstream
             // registerForRemoteNotifications → syncPushToken chain would
             // otherwise hit the server without a JWT. The
             // pendingPushTokenRegistration cache covers users who DID
@@ -3097,17 +3118,22 @@ extension AppState {
                 try await api.updateSettings(APIClient.SettingsPatch(
                     remote_control_enabled: desired
                 ))
-                if desired {
-                    // First-time enable: now is the right product moment to
-                    // ask for notification permission. If the user has
-                    // already granted (e.g. previous install), this is a
-                    // no-op; the permission grant chain triggers
-                    // registerForRemoteNotifications which delivers the
-                    // APNs token via didRegister → syncPushToken. iter8
-                    // hotfix: this replaces the previous behaviour where
-                    // iOSMainView prompted unconditionally on launch.
-                    requestNotificationPermission()
-                } else {
+                // v1.52.1: deliberately NO requestNotificationPermission()
+                // here any more. This switch used to be the opt-in for
+                // remote approvals, which pushed — so asking here was the
+                // right product moment. Approvals are retired; the switch
+                // now gates machine controls (fan target, low-power mode,
+                // keep-awake) and raises no notification of any kind.
+                //
+                // Leaving the prompt attached was worse than useless. iOS
+                // shows the system dialog exactly once, ever. Spending it
+                // on "CLI Pulse would like to send you notifications"
+                // immediately after the user enabled *fan control* invites
+                // a denial — and a denial here is permanent and silently
+                // kills alert notifications, the one notification consumer
+                // that is actually live. The ask now happens in
+                // `alertsTabDidAppear()`, where it is about alerts.
+                if !desired {
                     // Successful toggle off — clear cached pending requests
                     // so the UI doesn't briefly show stale rows after the
                     // gate trips. Only on confirmed success; revert-after-

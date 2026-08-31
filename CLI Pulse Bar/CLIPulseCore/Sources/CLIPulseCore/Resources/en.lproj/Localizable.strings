@@ -82,7 +82,7 @@
 "diagnostics.fix_remote_control" = "Turn on Remote Control in Settings → Privacy.";
 "diagnostics.fix_mac" = "Make sure your Mac is awake, online, and running CLI Pulse.";
 "diagnostics.fix_helper" = "Install or update the CLI Pulse helper on your Mac.";
-"diagnostics.fix_notifications" = "Allow notifications to get approval prompts.";
+"diagnostics.fix_notifications" = "Allow notifications so usage alerts can reach you.";
 "diagnostics.fix_realtime" = "Reconnecting — check your network connection.";
 "providers.this_week" = "This Week";
 "providers.quota" = "Quota";

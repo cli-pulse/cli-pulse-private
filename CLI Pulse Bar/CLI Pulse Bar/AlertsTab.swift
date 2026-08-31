@@ -29,6 +29,16 @@ struct AlertsTab: View {
     }
 
     var body: some View {
+        alertsContent
+            // Notification authorization is asked for here, and only here.
+            // Opening Alerts is the one moment that is foreground, post
+            // sign-in, and unambiguously *about* the thing the notification
+            // would carry. See `AppState.alertsTabDidAppear()` for why it is
+            // no longer attached to the Remote Control switch.
+            .task { state.alertsTabDidAppear() }
+    }
+
+    private var alertsContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 10) {
                 // Header
