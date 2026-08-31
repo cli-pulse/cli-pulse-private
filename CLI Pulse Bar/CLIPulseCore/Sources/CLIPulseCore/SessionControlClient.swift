@@ -9,14 +9,10 @@ import Foundation
 /// adds a same-machine Unix domain socket fast path. iOS / iPad / Watch
 /// and cross-device Mac control keep using the existing remote path.
 ///
-/// `SessionControlClient` is the small protocol that lets the Sessions
-/// UI talk to either transport without branching on `if isSelfDevice`
-/// in three places. Two conformers ship:
+/// `SessionControlClient` is the small protocol the Sessions UI talks to.
+/// It had two conformers until v1.52.1 retired the Supabase session plane;
+/// one ships today:
 ///
-///   * `RemoteSessionControlClient` — wraps the existing APIClient
-///     session-control methods (`remoteListSessions`,
-///     `remoteRequestSessionStart`, `remoteSendCommand`). Thin adapter,
-///     no behaviour change.
 ///   * `LocalSessionControlClient` (macOS only) — talks to the helper
 ///     UDS server inside the app group container. Implements
 ///     `hello / ping / get_local_control_status / set_local_control
@@ -227,14 +223,6 @@ public struct SessionControlCapabilities: Sendable, Equatable {
         approvals: true
     )
 
-    /// What the RemoteSessionControlClient advertises today — the
-    /// Supabase path supports the full surface that shipped in
-    /// PR #10 + PR #11.
-    public static let supabaseFull = SessionControlCapabilities(
-        sendInput: true,
-        subscribeEvents: true,
-        approvals: true
-    )
 }
 
 /// Result of a successful `startClaudeSession`. The remote transport
