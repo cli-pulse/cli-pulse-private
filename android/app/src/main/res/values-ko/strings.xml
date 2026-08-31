@@ -215,23 +215,6 @@
         <item quantity="other">%d개 등록됨</item>
     </plurals>
     <!-- Managed sessions (v1.27 E2) -->
-    <string name="managed_sessions_header">관리형 세션</string>
-    <string name="managed_new">새로 만들기</string>
-    <string name="managed_empty_tap_new">활성 관리형 세션이 없습니다. 새로 만들기를 눌러 시작하세요.</string>
-    <string name="managed_empty_no_device">헬퍼가 설치된 페어링된 Mac이 없습니다.</string>
-    <string name="managed_upgrade_hint">Codex와 Gemini는 %1$s에서 CLI Pulse Helper 1.15 이상이 필요합니다. Claude는 계속 사용할 수 있습니다.</string>
-    <string name="managed_stop">세션 중지</string>
-    <string name="managed_cancel">세션 취소</string>
-    <string name="managed_ended_body">이 관리형 세션은 더 이상 활성 상태가 아닙니다. 계속하려면 세션 탭에서 새 세션을 시작하세요.</string>
-    <string name="managed_terminal_soon_title">라이브 터미널</string>
-    <string name="managed_terminal_soon_body">이 세션의 출력을 실시간으로 표시하고 바로 입력할 수 있습니다. 키 입력과 키 바 내용은 Mac으로 전송됩니다.</string>
-    <string name="managed_pending_note">헬퍼가 이 세션을 시작할 때까지 기다리는 중입니다.</string>
-    <string name="managed_terminal_readonly_note">이 화면을 벗어나면 스트림이 끊기며, 다시 열면 재연결되어 최근 출력을 복원합니다.</string>
-    <string name="managed_approval_title">대기 중인 권한</string>
-    <string name="managed_approval_high_risk">높은 위험</string>
-    <string name="managed_approval_approve">승인</string>
-    <string name="managed_approval_deny">거부</string>
-    <string name="managed_approval_high_risk_note">높은 위험 요청은 Mac에서 승인해야 합니다.</string>
     <!-- System Monitor v0.63 device health -->
     <string name="card_cpu_temp">CPU %1$d°C</string>
     <string name="card_fan_rpm">%1$d rpm</string>
