@@ -11,18 +11,13 @@
 
     <!-- Auth -->
     <string name="sign_in_google">Google로 로그인</string>
-    <string name="sign_in_email">이메일로 로그인</string>
     <string name="sign_in_password">비밀번호로 로그인</string>
-    <string name="enter_otp">인증 코드 입력</string>
-    <string name="send_code">코드 전송</string>
     <string name="verify">확인</string>
     <string name="sign_out">로그아웃</string>
     <string name="delete_account">계정 삭제</string>
     <string name="try_demo">데모 사용</string>
 
     <!-- Dashboard -->
-    <string name="loading">로딩 중…</string>
-    <string name="error_generic">문제가 발생했습니다</string>
     <string name="today_usage">오늘 사용량</string>
     <string name="estimated_cost">예상 비용</string>
     <string name="active_sessions">활성 세션</string>
@@ -51,18 +46,11 @@
     <string name="settings_exit_demo">데모 모드 종료</string>
     <string name="settings_delete_title">계정을 삭제하시겠습니까?</string>
     <string name="settings_delete_message">모든 데이터가 영구적으로 삭제됩니다. 이 작업은 되돌릴 수 없습니다.</string>
-    <string name="settings_save">저장</string>
 
     <!-- Team -->
 
     <!-- Subscription -->
     <string name="subscription_title">구독</string>
-    <string name="subscription_data_retention">데이터 보존</string>
-    <string name="subscription_available_plans">이용 가능한 플랜</string>
-    <string name="subscription_per_year">/년</string>
-    <string name="subscription_per_month">/월</string>
-    <string name="subscription_current">현재</string>
-    <string name="subscription_subscribe">구독하기</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">비용 분석</string>

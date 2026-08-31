@@ -11,18 +11,13 @@
 
     <!-- Auth -->
     <string name="sign_in_google">Iniciar sesión con Google</string>
-    <string name="sign_in_email">Iniciar sesión con email</string>
     <string name="sign_in_password">Iniciar sesión con contraseña</string>
-    <string name="enter_otp">Introducir código de verificación</string>
-    <string name="send_code">Enviar código</string>
     <string name="verify">Verificar</string>
     <string name="sign_out">Cerrar sesión</string>
     <string name="delete_account">Eliminar cuenta</string>
     <string name="try_demo">Probar demo</string>
 
     <!-- Dashboard -->
-    <string name="loading">Cargando…</string>
-    <string name="error_generic">Algo salió mal</string>
     <string name="today_usage">Uso de hoy</string>
     <string name="estimated_cost">Costo est.</string>
     <string name="active_sessions">Sesiones activas</string>
@@ -51,18 +46,11 @@
     <string name="settings_exit_demo">Salir del modo demo</string>
     <string name="settings_delete_title">¿Eliminar cuenta?</string>
     <string name="settings_delete_message">Esto eliminará permanentemente todos tus datos. Esta acción no se puede deshacer.</string>
-    <string name="settings_save">Guardar</string>
 
     <!-- Team -->
 
     <!-- Subscription -->
     <string name="subscription_title">Suscripción</string>
-    <string name="subscription_data_retention">Retención de datos</string>
-    <string name="subscription_available_plans">Planes disponibles</string>
-    <string name="subscription_per_year">/año</string>
-    <string name="subscription_per_month">/mes</string>
-    <string name="subscription_current">Actual</string>
-    <string name="subscription_subscribe">Suscribirse</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">Análisis de costos</string>

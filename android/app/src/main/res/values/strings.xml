@@ -11,18 +11,13 @@
 
     <!-- Auth -->
     <string name="sign_in_google">Sign in with Google</string>
-    <string name="sign_in_email">Sign in with Email</string>
     <string name="sign_in_password">Sign in with Password</string>
-    <string name="enter_otp">Enter verification code</string>
-    <string name="send_code">Send Code</string>
     <string name="verify">Verify</string>
     <string name="sign_out">Sign Out</string>
     <string name="delete_account">Delete Account</string>
     <string name="try_demo">Try Demo</string>
 
     <!-- Dashboard -->
-    <string name="loading">Loading…</string>
-    <string name="error_generic">Something went wrong</string>
     <string name="today_usage">Today\'s Usage</string>
     <string name="estimated_cost">Est. Cost</string>
     <string name="active_sessions">Active Sessions</string>
@@ -51,18 +46,11 @@
     <string name="settings_exit_demo">Exit Demo Mode</string>
     <string name="settings_delete_title">Delete Account?</string>
     <string name="settings_delete_message">This will permanently delete all your data. This action cannot be undone.</string>
-    <string name="settings_save">Save</string>
 
     <!-- Team -->
 
     <!-- Subscription -->
     <string name="subscription_title">Subscription</string>
-    <string name="subscription_data_retention">Data Retention</string>
-    <string name="subscription_available_plans">Available Plans</string>
-    <string name="subscription_per_year">/year</string>
-    <string name="subscription_per_month">/month</string>
-    <string name="subscription_current">Current</string>
-    <string name="subscription_subscribe">Subscribe</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">Cost Analysis</string>

@@ -11,18 +11,13 @@
 
     <!-- Auth -->
     <string name="sign_in_google">使用 Google 登录</string>
-    <string name="sign_in_email">使用邮箱登录</string>
     <string name="sign_in_password">使用密码登录</string>
-    <string name="enter_otp">输入验证码</string>
-    <string name="send_code">发送验证码</string>
     <string name="verify">验证</string>
     <string name="sign_out">退出登录</string>
     <string name="delete_account">删除账户</string>
     <string name="try_demo">试用演示</string>
 
     <!-- Dashboard -->
-    <string name="loading">加载中…</string>
-    <string name="error_generic">出了点问题</string>
     <string name="today_usage">今日用量</string>
     <string name="estimated_cost">预估费用</string>
     <string name="active_sessions">活跃会话</string>
@@ -51,18 +46,11 @@
     <string name="settings_exit_demo">退出演示模式</string>
     <string name="settings_delete_title">删除账户？</string>
     <string name="settings_delete_message">这将永久删除您的所有数据，此操作无法撤销。</string>
-    <string name="settings_save">保存</string>
 
     <!-- Team -->
 
     <!-- Subscription -->
     <string name="subscription_title">订阅</string>
-    <string name="subscription_data_retention">数据保留</string>
-    <string name="subscription_available_plans">可用方案</string>
-    <string name="subscription_per_year">/年</string>
-    <string name="subscription_per_month">/月</string>
-    <string name="subscription_current">当前</string>
-    <string name="subscription_subscribe">订阅</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">费用分析</string>

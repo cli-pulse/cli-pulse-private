@@ -11,18 +11,13 @@
 
     <!-- Auth -->
     <string name="sign_in_google">使用 Google 登入</string>
-    <string name="sign_in_email">使用電子郵件登入</string>
     <string name="sign_in_password">使用密碼登入</string>
-    <string name="enter_otp">輸入驗證碼</string>
-    <string name="send_code">傳送驗證碼</string>
     <string name="verify">驗證</string>
     <string name="sign_out">登出</string>
     <string name="delete_account">刪除帳號</string>
     <string name="try_demo">試用示範</string>
 
     <!-- Dashboard -->
-    <string name="loading">載入中…</string>
-    <string name="error_generic">發生錯誤</string>
     <string name="today_usage">今日用量</string>
     <string name="estimated_cost">預估費用</string>
     <string name="active_sessions">活躍工作階段</string>
@@ -51,18 +46,11 @@
     <string name="settings_exit_demo">離開示範模式</string>
     <string name="settings_delete_title">刪除帳號？</string>
     <string name="settings_delete_message">這將永久刪除您的所有資料，此操作無法復原。</string>
-    <string name="settings_save">儲存</string>
 
     <!-- Team -->
 
     <!-- Subscription -->
     <string name="subscription_title">訂閱</string>
-    <string name="subscription_data_retention">資料保留</string>
-    <string name="subscription_available_plans">可用方案</string>
-    <string name="subscription_per_year">/年</string>
-    <string name="subscription_per_month">/月</string>
-    <string name="subscription_current">目前</string>
-    <string name="subscription_subscribe">訂閱</string>
 
     <!-- Cost Analysis -->
     <string name="cost_analysis_title">費用分析</string>
