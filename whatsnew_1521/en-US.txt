@@ -1,4 +1,4 @@
-Alerts you had switched on were never reaching you, and nothing said so.
+If you never turned on Remote Control, the alerts you had switched on were never reaching you — and nothing said so.
 
 • Fixed: alert notifications. The app only ever asked for notification permission when you turned on Remote Control — a switch that now controls fan speed, low-power mode and keep-awake, and sends no notifications at all. If you never touched it, permission was never requested, so every alert notification was discarded by the system while Settings showed alerts switched on the whole time. The app now asks when you open Alerts, which is where the notifications come from.
 
