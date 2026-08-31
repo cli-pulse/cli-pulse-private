@@ -841,21 +841,6 @@
 
 此开关过去还会启用远程 CLI 会话与权限审批,这两项已经下线。";
 
-/* ── Swarm View (v1.22 P0 — 智能体集群总控) ── */
-"tab.swarm" = "集群";
-"swarm.title" = "集群";
-"swarm.no_swarms" = "暂无活跃集群";
-"swarm.empty_hint" = "在 git worktree 中运行 agent,它们会按仓库和分支分组显示在这里。";
-"swarm.disabled_hint" = "开启远程控制以查看你的 agent 集群。";
-"swarm.stale" = "已过期";
-"swarm.worktree" = "worktree";
-"swarm.blocked_badge" = "已阻塞";
-"swarm.agents" = "%d 个 agent";
-"swarm.blocked" = "%d 个阻塞";
-"swarm.last_seen" = "%@前活跃";
-"swarm.oldest_blocked" = "已阻塞 %@";
-"swarm.summary" = "%d 个集群 · %d 个 agent · %d 个阻塞";
-
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "节奏正常";
 "usage_pace.in_deficit" = "超出 %@%%";

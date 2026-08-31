@@ -111,7 +111,7 @@ public final class AppState: ObservableObject {
     ///
     /// Without this, a hidden tab is a blank screen rather than a missing
     /// one: SwiftUI's `TabView` renders nothing when `selection` matches no
-    /// child's `.tag`. Nothing sets `.swarm` any more, which is exactly why
+    /// child's `.tag`. Nothing sets a hidden tab today, which is exactly why
     /// the guard belongs here — a future deep link, notification route or
     /// restored state would fail silently and far from this file.
     @Published public var selectedTab: Tab = .overview {
@@ -430,15 +430,6 @@ public final class AppState: ObservableObject {
     @Published public var remoteSessionsLastRefresh: Date?
     @Published public var remoteSessionsError: String?
 
-    // MARK: - Remote Swarms (v1.22 P0 — Swarm View / v0.48)
-    /// Per-device edge-aggregated swarm rollups from
-    /// `remote_app_list_swarms`. Same gating discipline as
-    /// `remoteSessions` (refreshed only while the Swarm UI is on screen
-    /// AND `remoteSessionsEnabled`; cleared on gate-close and logout).
-    /// Retired since v1.52.1; the Swarm tab is hidden besides.
-    @Published public var remoteSwarms: [RemoteSwarmDevice] = []
-    @Published public var remoteSwarmsLastRefresh: Date?
-    @Published public var remoteSwarmsError: String?
 
     // MARK: - Remote Session Events (Sessions Input iter 2 — live tail)
     /// Live output tail per managed session, keyed by `RemoteSession.id`.
@@ -832,7 +823,6 @@ public final class AppState: ObservableObject {
         case machine = "Machine"
         case providers = "Providers"
         case sessions = "Sessions"
-        case swarm = "Swarm"
         case alerts = "Alerts"
         case pet = "Pet"
         case settings = "Settings"
@@ -843,7 +833,6 @@ public final class AppState: ObservableObject {
             case .machine: return "memorychip"
             case .providers: return "cpu"
             case .sessions: return "terminal"
-            case .swarm: return "square.grid.3x3.fill"
             case .alerts: return "bell.badge"
             case .pet: return "pawprint.fill"
             case .settings: return "gear"
@@ -856,7 +845,6 @@ public final class AppState: ObservableObject {
             case .machine: return L10n.tab.machine
             case .providers: return L10n.tab.providers
             case .sessions: return L10n.tab.sessions
-            case .swarm: return L10n.tab.swarm
             case .alerts: return L10n.tab.alerts
             case .pet: return L10n.tab.pet
             case .settings: return L10n.tab.settings
@@ -865,30 +853,18 @@ public final class AppState: ObservableObject {
 
         /// Whether this tab is offered to the user.
         ///
-        /// A4 (2026-08-30) — `.swarm` is hidden. It is a top-level tab on
-        /// macOS and iOS that can never contain anything: swarm rows come
-        /// from `remote_helper_swarm_heartbeat`, and NO shipped helper calls
-        /// it. `grep -rn swarm HelperSwift/Sources/` returns two comment
-        /// lines and no producer; the only caller anywhere is
-        /// `helper/cli_pulse_helper.py:483`, behind a `swarm_enabled = False`
-        /// that nothing sets. Production `remote_swarms` is 0 rows, and its
-        /// 1-day retention means that is "no heartbeat in 24 h", not "never"
-        /// — but with no writer, no heartbeat can ever arrive.
+        /// Whether this tab is offered to the user.
         ///
-        /// v1.22.0's release notes said this was dark-shipped. It was not:
-        /// the macOS tab bar iterated `allCases`, so the tab shipped visible
-        /// for every release since. This property is what `allCases` should
-        /// have been, and it lives here in CLIPulseCore precisely so a test
-        /// can assert against it — a predicate in an app-target SwiftUI view
-        /// has no test bundle to catch it.
-        ///
-        /// The switch arms in `MenuBarView` and `iOSMainView` stay: the
-        /// enum case still exists, the switches are exhaustive, and those
-        /// arms are now unreachable in the same way `.machine` and `.pet`
-        /// already are on iOS.
+        /// Currently every case is offered — `.swarm` was the one hidden tab
+        /// and its source is gone as of v1.52.1. The mechanism stays because
+        /// it cost thirty releases to learn it was needed: the macOS tab bar
+        /// used to iterate `allCases`, so a tab believed to be dark-shipped
+        /// was in fact visible in every build. Tab bars and sidebars must
+        /// iterate `visibleCases`, and this predicate lives in CLIPulseCore
+        /// so a test can reach it — one inside an app-target SwiftUI view has
+        /// no test bundle to catch it.
         public var isVisible: Bool {
             switch self {
-            case .swarm: return false
             case .overview, .machine, .providers, .sessions, .alerts, .pet, .settings:
                 return true
             }

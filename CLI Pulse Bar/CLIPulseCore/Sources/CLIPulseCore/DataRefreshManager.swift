@@ -2684,16 +2684,6 @@ extension AppState {
             )
         }
 
-        // v1.22 S5 — at-a-glance swarm totals across non-stale devices.
-        // Best-effort: `remoteSwarms` is only fresh while the Swarm UI
-        // is on-screen (RC-gated, like remoteSessions), so the
-        // complication shows last-known counts — honest for an
-        // at-a-glance surface, same freshness model as the other
-        // published widget metrics.
-        let liveSwarms = remoteSwarms.filter { !$0.stale }.flatMap { $0.swarms }
-        let swarmAgentsTotal = liveSwarms.reduce(0) { $0 + $1.agents }
-        let swarmBlockedTotal = liveSwarms.reduce(0) { $0 + $1.blocked }
-
         let data = PublishedWidgetData(
             totalUsageToday: dashboard?.total_usage_today ?? 0,
             totalCostToday: dashboard?.total_estimated_cost_today ?? 0,
@@ -2701,8 +2691,6 @@ extension AppState {
             unresolvedAlerts: alerts.filter { !$0.is_resolved }.count,
             providers: Array(widgetProviders),
             lastUpdated: Date(),
-            swarmAgents: swarmAgentsTotal,
-            swarmBlocked: swarmBlockedTotal,
             isPro: subscriptionManager.isProOrAbove
         )
 
@@ -3128,11 +3116,6 @@ extension AppState {
                     remoteSessions = []
                     remoteSessionsLastRefresh = nil
                     remoteSessionsError = nil
-                    // v1.22 Swarm View: same optimistic-clear posture so
-                    // the grid doesn't show stale swarms after RC-off.
-                    remoteSwarms = []
-                    remoteSwarmsLastRefresh = nil
-                    remoteSwarmsError = nil
                     // Sessions Input iter 2: drop the cached event tail
                     // for every session. Without this, a "Show output"
                     // panel that was open at toggle-off would briefly
@@ -3266,35 +3249,7 @@ extension AppState {
         }
     }
 
-    // MARK: - Remote Swarms (v1.22 P0 — Swarm View)
 
-    /// Refresh `remoteSwarms` from `remote_app_list_swarms`. Identical
-    /// gating discipline to `refreshRemoteSessions`: no-op + cache clear
-    /// when Remote Control is off, post-await re-check so a mid-flight
-    /// RC-off drops the response (Gemini review P2 #8 pattern). The grid
-    /// keeps `stale` devices (they render greyed) — the server already
-    /// dropped anything past the 10-min outer window.
-    public func refreshRemoteSwarms() async {
-        guard remoteSessionsEnabled else {
-            remoteSwarms = []
-            remoteSwarmsLastRefresh = Date()
-            return
-        }
-        do {
-            let pulled = try await api.remoteListSwarms()
-            guard remoteSessionsEnabled else {
-                remoteSwarms = []
-                remoteSwarmsLastRefresh = Date()
-                return
-            }
-            remoteSwarms = pulled
-            remoteSwarmsLastRefresh = Date()
-            remoteSwarmsError = nil
-        } catch {
-            guard remoteSessionsEnabled else { return }
-            remoteSwarmsError = error.localizedDescription
-        }
-    }
 
     /// Request that the helper paired with `deviceId` spawn a new managed
     /// session. Returns the freshly-created session row's id (so the UI
@@ -3653,8 +3608,6 @@ struct PublishedWidgetData: Codable, Equatable {
     let lastUpdated: Date
     // v1.22 S5 — keys must match the widget-extension's WidgetData so the
     // watch complication / Glance parity reads them.
-    let swarmAgents: Int?
-    let swarmBlocked: Int?
     // v1.30 — iOS home/lock-screen widgets are Pro-only. Key must match
     // WidgetData.isPro. The watch complication reads the same blob but
     // ignores this flag.
@@ -3669,8 +3622,6 @@ struct PublishedWidgetData: Codable, Equatable {
             && activeSessions == other.activeSessions
             && unresolvedAlerts == other.unresolvedAlerts
             && providers == other.providers
-            && swarmAgents == other.swarmAgents
-            && swarmBlocked == other.swarmBlocked
             && isPro == other.isPro
     }
 }

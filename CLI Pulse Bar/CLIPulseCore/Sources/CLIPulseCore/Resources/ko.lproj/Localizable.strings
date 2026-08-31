@@ -446,21 +446,6 @@
 
 이 스위치는 예전에 원격 CLI 세션과 권한 승인도 활성화했습니다. 두 기능 모두 종료되었습니다.";
 
-/* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
-"tab.swarm" = "스웜";
-"swarm.title" = "스웜";
-"swarm.no_swarms" = "활성 스웜 없음";
-"swarm.empty_hint" = "git worktree에서 에이전트를 실행하면 저장소와 브랜치별로 그룹화되어 여기에 표시됩니다.";
-"swarm.disabled_hint" = "원격 제어를 활성화하면 에이전트 스웜을 확인할 수 있습니다.";
-"swarm.stale" = "오래됨";
-"swarm.worktree" = "worktree";
-"swarm.blocked_badge" = "차단됨";
-"swarm.agents" = "에이전트 %d개";
-"swarm.blocked" = "%d개 차단";
-"swarm.last_seen" = "%@ 전 확인";
-"swarm.oldest_blocked" = "%@ 차단됨";
-"swarm.summary" = "%d 스웜 · %d 에이전트 · %d 차단";
-
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "정상 페이스";
 "usage_pace.in_deficit" = "%@%% 초과";

@@ -1,43 +1,35 @@
 import XCTest
 @testable import CLIPulseCore
 
-/// A4 (2026-08-30) — the Swarm tab is hidden.
+/// A4 (2026-08-30) hid the Swarm tab; v1.52.1 deleted its source outright.
 ///
-/// It was a top-level tab on macOS and iOS that could never contain
-/// anything. Swarm rows arrive via `remote_helper_swarm_heartbeat`, and no
-/// shipped helper calls it: `HelperSwift/Sources/` has two comment mentions
-/// and no producer, and the only caller anywhere is
-/// `helper/cli_pulse_helper.py:483`, behind a `swarm_enabled = False` that
-/// nothing sets. Production `remote_swarms` is 0 rows.
+/// It was a top-level tab on macOS and iOS that could never contain anything —
+/// swarm rows arrived via `remote_helper_swarm_heartbeat`, which no shipped
+/// helper ever called, and production `remote_swarms` was 0 rows.
 ///
-/// v1.22.0's release notes said it was dark-shipped. It was not — the macOS
-/// tab bar iterated `Tab.allCases`, so it shipped visible in every release
-/// since. These tests exist because that claim went unchecked: the predicate
-/// now lives in CLIPulseCore, where a test can reach it, rather than inside
-/// an app-target SwiftUI view with no test bundle.
+/// v1.22.0's release notes said it was dark-shipped. It was not: the macOS tab
+/// bar iterated `Tab.allCases`, so it shipped visible in every release for
+/// thirty versions. That is why the visibility mechanism survives the tab it
+/// was built for — and why these tests live in CLIPulseCore, where they can
+/// reach the predicate. The claim went unchecked precisely because it lived
+/// inside an app-target SwiftUI view with no test bundle.
 final class TabVisibilityTests: XCTestCase {
 
-    func test_swarmIsNotOffered() {
-        XCTAssertFalse(AppState.Tab.swarm.isVisible)
-        XCTAssertFalse(AppState.Tab.visibleCases.contains(.swarm),
-                       "the Swarm tab has no producer on any shipped helper — it cannot be offered")
+    /// The tab is gone from the model entirely, not merely hidden.
+    func test_swarmIsNotATabAnyMore() {
+        XCTAssertNil(AppState.Tab(rawValue: "Swarm"))
+        XCTAssertFalse(AppState.Tab.allCases.contains { $0.rawValue == "Swarm" })
     }
 
-    /// The vacuity guard. A `visibleCases` that returned `[]` — or an
-    /// `isVisible` that returned false for everything — would satisfy the
-    /// test above while hiding the entire app.
-    func test_everyOtherTabIsStillOffered() {
-        let hidden = AppState.Tab.allCases.filter { !$0.isVisible }
-        XCTAssertEqual(hidden, [.swarm],
-                       "exactly one tab is meant to be hidden; found \(hidden)")
-        XCTAssertEqual(AppState.Tab.visibleCases.count, AppState.Tab.allCases.count - 1)
-        for tab in [AppState.Tab.overview, .machine, .providers, .sessions, .alerts, .pet, .settings] {
-            XCTAssertTrue(AppState.Tab.visibleCases.contains(tab), "\(tab) must still be offered")
-        }
+    /// Every tab that exists is offered. This is the state the mechanism is
+    /// *supposed* to be in — and it is an assertion, not a tautology: it fails
+    /// the moment someone adds a case without deciding whether users see it.
+    func test_everyTabIsOffered() {
+        XCTAssertEqual(AppState.Tab.visibleCases, AppState.Tab.allCases)
+        XCTAssertFalse(AppState.Tab.visibleCases.isEmpty)
     }
 
-    /// `visibleCases` must preserve declaration order — the tab bar renders
-    /// it directly, so a reordering here silently reshuffles the UI.
+    /// Tab bars render `visibleCases` directly, so its order IS the UI order.
     func test_visibleCasesKeepsDeclarationOrder() {
         XCTAssertEqual(
             AppState.Tab.visibleCases,
@@ -45,21 +37,20 @@ final class TabVisibilityTests: XCTestCase {
         )
     }
 
-    /// SwiftUI's `TabView` renders nothing when `selection` matches no
-    /// child's `.tag`, so selecting a hidden tab would be a blank screen
-    /// rather than a missing one. Nothing sets `.swarm` any more, which is
-    /// exactly why this guard exists: a future deep link or restored state
-    /// would fail silently and far from `AppState`.
+    /// SwiftUI's `TabView` renders nothing when `selection` matches no child's
+    /// `.tag`, so a hidden tab would be a blank screen rather than a missing
+    /// one. Nothing can select a hidden tab today — which is exactly why the
+    /// guard stays: a future hidden tab reached by a deep link or restored
+    /// state would fail silently and far from `AppState`.
     @MainActor
-    func test_selectingAHiddenTabFallsBackToOverview() {
+    func test_selectingAHiddenTabWouldFallBackToOverview() {
         let state = AppState()
-
-        state.selectedTab = .swarm
-        XCTAssertEqual(state.selectedTab, .overview,
-                       "a hidden tab must coerce to the dashboard, not render blank")
-
-        // Control: a visible tab is left alone, so the coercion is not just
-        // pinning everything to .overview.
+        for tab in AppState.Tab.allCases where !tab.isVisible {
+            state.selectedTab = tab
+            XCTAssertEqual(state.selectedTab, .overview, "\(tab) must coerce to the dashboard")
+        }
+        // Control: a visible tab is left alone, so the coercion is not pinning
+        // everything to .overview.
         state.selectedTab = .alerts
         XCTAssertEqual(state.selectedTab, .alerts)
     }

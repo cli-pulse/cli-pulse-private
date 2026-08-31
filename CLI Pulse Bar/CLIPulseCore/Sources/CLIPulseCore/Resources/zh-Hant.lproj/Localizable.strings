@@ -789,21 +789,6 @@
 
 此開關過去還會啟用遠端 CLI 工作階段與權限核准,這兩項已經下線。";
 
-/* ── Swarm View (v1.22 P0 — 智慧體叢集總控) ── */
-"tab.swarm" = "叢集";
-"swarm.title" = "叢集";
-"swarm.no_swarms" = "暫無活躍叢集";
-"swarm.empty_hint" = "在 git worktree 中執行 agent,它們會按倉庫和分支分組顯示在這裡。";
-"swarm.disabled_hint" = "開啟遠端控制以檢視你的 agent 叢集。";
-"swarm.stale" = "已過期";
-"swarm.worktree" = "worktree";
-"swarm.blocked_badge" = "已阻塞";
-"swarm.agents" = "%d 個 agent";
-"swarm.blocked" = "%d 個阻塞";
-"swarm.last_seen" = "%@前活躍";
-"swarm.oldest_blocked" = "已阻塞 %@";
-"swarm.summary" = "%d 個叢集 · %d 個 agent · %d 個阻塞";
-
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "節奏正常";
 "usage_pace.in_deficit" = "超出 %@%%";

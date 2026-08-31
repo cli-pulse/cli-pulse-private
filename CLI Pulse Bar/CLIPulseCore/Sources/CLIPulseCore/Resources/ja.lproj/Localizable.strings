@@ -789,21 +789,6 @@
 
 このスイッチは以前、リモート CLI セッションと権限承認も有効にしていました。どちらも提供を終了しました。";
 
-/* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
-"tab.swarm" = "スウォーム";
-"swarm.title" = "スウォーム";
-"swarm.no_swarms" = "アクティブなスウォームなし";
-"swarm.empty_hint" = "git の worktree でエージェントを実行すると、リポジトリとブランチごとにグループ化されてここに表示されます。";
-"swarm.disabled_hint" = "リモートコントロールを有効にすると、エージェントのスウォームを監視できます。";
-"swarm.stale" = "古い";
-"swarm.worktree" = "worktree";
-"swarm.blocked_badge" = "ブロック中";
-"swarm.agents" = "%d エージェント";
-"swarm.blocked" = "%d 件ブロック";
-"swarm.last_seen" = "最終確認 %@ 前";
-"swarm.oldest_blocked" = "%@ ブロック中";
-"swarm.summary" = "%d スウォーム · %d エージェント · %d ブロック";
-
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "ペース通り";
 "usage_pace.in_deficit" = "%@%% 超過ペース";
