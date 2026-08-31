@@ -228,4 +228,52 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
             XCTAssertTrue(mentionsFan, "\(locale) consent body does not describe machine requests")
         }
     }
+
+    /// Copy that outlived the feature it described.
+    ///
+    /// `SessionsTab` branches on `shouldRouteSessionLocally`. That predicate
+    /// used to separate "local row" from "remote row"; with the plane retired
+    /// `remoteSessions` is permanently empty, so every rendered row is local
+    /// and the false branch means only one thing: **the helper stopped
+    /// answering**. `refreshLocalSessionControlState` returns early on a
+    /// `hello()` failure WITHOUT clearing `localManagedSessions` (the clear is
+    /// in the gate-off branch, reached only when hello succeeded), so those
+    /// stale rows keep rendering and land there.
+    ///
+    /// The copy had not caught up. It told that user "Remote Control is off —
+    /// output won't stream" and offered "⌘↩ to approve pending" — a switch that
+    /// could not help and an action that could not run.
+    ///
+    /// This is a source scan for the same reason as the test above: the strings
+    /// live in an app target with no test bundle.
+    func test_theDeadHelperStateDoesNotBlameRemoteControl() throws {
+        let file = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("CLI Pulse Bar/SessionsTab.swift")
+        let text = try String(contentsOf: file, encoding: .utf8)
+
+        // Scan CODE only. The first version of this test matched comments too
+        // and failed on the comment that documents the very change it guards —
+        // a guard cannot forbid explaining itself.
+        let code = text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+
+        for dead in ["Remote Control is off — output won't stream",
+                     "⌘↩ to approve pending"] {
+            XCTAssertFalse(code.contains(dead),
+                           "SessionsTab still tells a helper-down user: \(dead)")
+        }
+
+        // Positive controls. Without these a renamed file or a bad path would
+        // make both absences vacuous — the failure mode this repo keeps hitting.
+        XCTAssertTrue(code.contains("can't reach the helper"),
+                      "the replacement copy is missing — wrong file?")
+        XCTAssertTrue(code.contains("shouldRouteSessionLocally"),
+                      "this is not SessionsTab; the scan path is wrong")
+        // …and the comment-stripping must not have eaten the file.
+        XCTAssertGreaterThan(code.count, text.count / 2,
+                             "comment filter removed too much to be a real scan")
+    }
 }
