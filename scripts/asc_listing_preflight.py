@@ -208,7 +208,20 @@ def repo_descriptions() -> dict[str, str]:
                 f"Both pushers must read {canonical.name}; two copies is how "
                 "the store ended up being told the app was self-hosted.")
 
-    return {"appstore/description_en-US.txt": text}
+    out = {"en-US": text}
+    # Every other locale the repo carries a canonical file for. The store has a
+    # zh-Hans description too, and on 2026-09-01 it was STILL selling the
+    # withdrawn Team tier and carried a broken "¥/月" price placeholder with no
+    # number in it — long after en-US had been cleaned up — because nothing
+    # ever read anything but en-US.
+    for extra in sorted((REPO / "CLI Pulse Bar/appstore").glob("description_*.txt")):
+        locale = extra.stem[len("description_"):]
+        if locale == "en-US":
+            continue
+        body = extra.read_text(encoding="utf-8").strip()
+        if body:
+            out[locale] = body
+    return out
 
 
 def sha(data: bytes) -> str:
@@ -231,10 +244,11 @@ def main() -> int:
         print(f"   {mark}  {st:<28} {pid}")
 
     repo_descs = repo_descriptions()
-    print("repo description sources: " +
-          ", ".join(f"{n} ({len(d)} chars)" for n, d in repo_descs.items()))
-    if len(set(repo_descs.values())) > 1:
-        print("  note  the repo's own pushers disagree with each other")
+    print("repo canonical descriptions: " +
+          ", ".join(f"{n} ({len(d)} chars)" for n, d in sorted(repo_descs.items())))
+    # The old "the pushers disagree with each other" note is gone: there is now
+    # exactly one file per locale and the pushers read them, so the only way to
+    # disagree is an inline literal — which `repo_descriptions` refuses outright.
 
     failed = False
     checked_any = False
@@ -247,63 +261,77 @@ def main() -> int:
             limit=20,
             **{"fields[appStoreVersionLocalizations]": "locale,description"},
         )
-        en = [x for x in locs["data"] if x["attributes"].get("locale") == "en-US"]
-        if not en:
-            die(f"{plat} v{vs} has no en-US localization; cannot check.")
-        loc = en[0]
-        desc = (loc["attributes"].get("description") or "").strip()
-        if not desc:
-            die(f"{plat} v{vs} en-US description is empty; cannot check.")
+        by_locale = {}
+        for row in locs["data"]:
+            lc = row["attributes"].get("locale")
+            body = (row["attributes"].get("description") or "").strip()
+            if lc and body:
+                by_locale[lc] = body
+        if "en-US" not in by_locale:
+            die(f"{plat} v{vs} has no en-US localization with a description; cannot check.")
         checked_any = True
 
-        # ── 1. SKU-vs-copy ────────────────────────────────────────────────
-        for word, fragment in TIER_CLAIMS.items():
-            if not re.search(rf"\b{re.escape(word)}\b", desc):
-                continue
-            matching = {p for p in products if fragment in p.lower()}
-            sellable = matching & buyable
-            if not sellable:
-                states = ", ".join(f"{p}={products[p]}" for p in sorted(matching)) or "no such SKU"
-                print(f"  FAIL  description sells '{word}', which cannot be bought ({states})")
-                for line in desc.splitlines():
-                    if re.search(rf"\b{re.escape(word)}\b", line):
-                        print(f"          > {line.strip()[:160]}")
-                failed = True
-            else:
-                print(f"  ok    description mentions '{word}' and it is purchasable")
+        # EVERY localization, not just en-US. Checking one and printing a pass
+        # is how the Chinese listing went on selling the withdrawn Team tier —
+        # and showing a price placeholder with no number in it — for months
+        # after en-US had been fixed.
+        for locale in sorted(by_locale):
+            desc = by_locale[locale]
 
-        # ── 2. description drift ──────────────────────────────────────────
-        if any(desc == d for d in repo_descs.values()):
-            match = next(n for n, d in repo_descs.items() if d == desc)
-            print(f"  ok    live description matches the repo source ({match})")
-        else:
-            best = min(repo_descs.items(), key=lambda kv: abs(len(kv[1]) - len(desc)))
-            name, repo_desc = best
-            print(f"  FAIL  live description matches NO repo source "
-                  f"(live {len(desc)} chars; closest is {name} at {len(repo_desc)})")
-            live_only = [ln.strip() for ln in desc.splitlines()
-                         if ln.strip() and ln.strip() not in repo_desc]
-            repo_only = [ln.strip() for ln in repo_desc.splitlines()
-                         if ln.strip() and ln.strip() not in desc]
-            for line in live_only[:6]:
-                print(f"          only on the STORE: {line[:150]}")
-            for line in repo_only[:6]:
-                print(f"          only in the REPO:  {line[:150]}")
-            # Do NOT tell anyone to blind-push. Measured 2026-08-31: the two had
-            # drifted in OPPOSITE directions — the store was stale on the
-            # subscription paragraph (still selling withdrawn Team, prices 4-5x
-            # over) while the store was NEWER on the privacy section than the
-            # repo was. Pushing the repo verbatim would have fixed the first and
-            # regressed the second.
-            print("          Drift can run in BOTH directions. Read both lists above"
-                  " before acting;")
-            print("          do not blind-push either side over the other.")
-            failed = True
+            # ── 1. SKU-vs-copy ────────────────────────────────────────────
+            for word, fragment in TIER_CLAIMS.items():
+                if not re.search(rf"\b{re.escape(word)}\b", desc):
+                    continue
+                matching = {p for p in products if fragment in p.lower()}
+                sellable = matching & buyable
+                if not sellable:
+                    states = ", ".join(f"{p}={products[p]}" for p in sorted(matching)) or "no such SKU"
+                    print(f"  FAIL  [{locale}] description sells '{word}', "
+                          f"which cannot be bought ({states})")
+                    for line in desc.splitlines():
+                        if re.search(rf"\b{re.escape(word)}\b", line):
+                            print(f"          > {line.strip()[:160]}")
+                    failed = True
+                else:
+                    print(f"  ok    [{locale}] mentions '{word}' and it is purchasable")
+
+            # ── 2. description drift, against THIS locale's canonical text ──
+            canon = repo_descs.get(locale)
+            if canon is None:
+                print(f"  note  [{locale}] no canonical repo text — not compared. "
+                      f"Add CLI Pulse Bar/appstore/description_{locale}.txt to cover it.")
+            elif desc == canon:
+                print(f"  ok    [{locale}] live description matches the repo source")
+            else:
+                print(f"  FAIL  [{locale}] live description differs from the repo source "
+                      f"(live {len(desc)} chars; repo {len(canon)})")
+                live_only = [ln.strip() for ln in desc.splitlines()
+                             if ln.strip() and ln.strip() not in canon]
+                repo_only = [ln.strip() for ln in canon.splitlines()
+                             if ln.strip() and ln.strip() not in desc]
+                for line in live_only[:6]:
+                    print(f"          only on the STORE: {line[:150]}")
+                for line in repo_only[:6]:
+                    print(f"          only in the REPO:  {line[:150]}")
+                # Do NOT tell anyone to blind-push. Measured 2026-08-31: the two
+                # had drifted in OPPOSITE directions — the store was stale on the
+                # subscription paragraph (still selling withdrawn Team, prices
+                # 4-5x over) and NEWER than the repo on the privacy section.
+                # Pushing the repo verbatim would have fixed one and regressed
+                # the other.
+                print("          Drift can run in BOTH directions. Read both lists"
+                      " above before acting;")
+                print("          do not blind-push either side over the other.")
+                failed = True
 
         # ── 3. screenshot drift ───────────────────────────────────────────
+        # Screenshots hang off the en-US localization; the other locales
+        # inherit them, so one pass over en-US covers the set.
         if args.skip_screenshots:
             continue
-        sets = asc.get(f"/appStoreVersionLocalizations/{loc['id']}/appScreenshotSets", limit=20)
+        en_loc = next(x for x in locs["data"]
+                      if x["attributes"].get("locale") == "en-US")
+        sets = asc.get(f"/appStoreVersionLocalizations/{en_loc['id']}/appScreenshotSets", limit=20)
         for st in sets["data"]:
             dtype = st["attributes"].get("screenshotDisplayType")
             local_dir = LOCAL_SHOTS.get(dtype)
