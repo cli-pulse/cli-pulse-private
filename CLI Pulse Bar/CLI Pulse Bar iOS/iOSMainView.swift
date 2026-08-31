@@ -265,12 +265,6 @@ struct iPadSplitView: View {
             iOSProvidersTab()
         case .sessions:
             iOSSessionsTab()
-        case .swarm:
-            // Hidden since A4 — no shipped helper writes a swarm heartbeat, so
-            // the tab could never hold anything. `AppState.Tab.isVisible`
-            // returns false and `selectedTab` coerces away from it, making
-            // this arm unreachable in the same way `.machine` and `.pet` are.
-            iOSOverviewTab()
         case .alerts:
             iOSAlertsTab()
         case .pet:

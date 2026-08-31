@@ -30,8 +30,6 @@ final class WidgetPublishDedupeTests: XCTestCase {
             unresolvedAlerts: 1,
             providers: providers ?? [provider("claude"), provider("codex")],
             lastUpdated: date,
-            swarmAgents: 3,
-            swarmBlocked: 0,
             isPro: isPro)
     }
 
@@ -89,9 +87,20 @@ final class WidgetPublishDedupeTests: XCTestCase {
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let keys = Set(obj?.keys ?? [:].keys)
         for k in ["totalUsageToday", "totalCostToday", "activeSessions",
-                  "unresolvedAlerts", "providers", "lastUpdated",
-                  "swarmAgents", "swarmBlocked", "isPro"] {
+                  "unresolvedAlerts", "providers", "lastUpdated", "isPro"] {
             XCTAssertTrue(keys.contains(k), "missing widget key \(k)")
+        }
+        // v1.52.1 — the swarm counts left the contract when the feature was
+        // deleted. Asserted ABSENT rather than just dropped from the list
+        // above, so re-adding a field on one side of the app/widget boundary
+        // is a failing test rather than a silently half-wired payload.
+        //
+        // Safe in both directions: the widget declared them Optional so an old
+        // blob without the keys decodes, and a new blob's missing keys decode
+        // as nil in an old extension — which coalesced to 0 and drew nothing,
+        // because the complication only rendered the line when agents > 0.
+        for k in ["swarmAgents", "swarmBlocked"] {
+            XCTAssertFalse(keys.contains(k), "\(k) is back in the widget payload")
         }
         let first = (obj?["providers"] as? [[String: Any]])?.first
         for k in ["name", "usage", "quota", "costToday", "iconName", "percent", "weeklyPercent"] {

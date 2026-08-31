@@ -326,7 +326,6 @@ struct MenuBarView: View {
                             case .machine:     MachineHealthView()
                             case .providers:   ProvidersTab()
                             case .sessions:    SessionsTab()
-                            case .swarm:       SwarmTab()
                             case .alerts:      AlertsTab()
                             case .pet:         PetTab()
                             case .settings:
@@ -467,8 +466,6 @@ struct MenuBarView: View {
                     ProvidersTab()
                 case .sessions:
                     SessionsTab()
-                case .swarm:
-                    SwarmTab()
                 case .alerts:
                     AlertsTab()
                 case .pet:
@@ -492,10 +489,10 @@ struct MenuBarView: View {
 
     private var tabBar: some View {
         HStack(spacing: 0) {
-            // `visibleCases`, not `allCases`: the Swarm tab can never hold
-            // anything (no shipped helper writes a swarm heartbeat). v1.22.0's
-            // notes claimed it was dark-shipped; iterating `allCases` here is
-            // why it was not.
+            // `visibleCases`, not `allCases`. The Swarm tab is gone entirely
+            // now, but the distinction stays: iterating `allCases` here is why
+            // a tab believed to be dark-shipped was visible for thirty
+            // releases.
             ForEach(AppState.Tab.visibleCases, id: \.self) { tab in
                 tabButton(tab)
             }

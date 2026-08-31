@@ -446,21 +446,6 @@ Una solicitud es solo una solicitud. El Mac que la recibe la atiende únicamente
 
 Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos. Ambas se han retirado.";
 
-/* ── Swarm View (v1.22 P0 — Mission Control for the agent swarm) ── */
-"tab.swarm" = "Enjambre";
-"swarm.title" = "Enjambre";
-"swarm.no_swarms" = "Sin enjambres activos";
-"swarm.empty_hint" = "Ejecuta agentes en worktrees de git y aparecerán aquí, agrupados por repositorio y rama.";
-"swarm.disabled_hint" = "Activa el Control remoto para ver tus enjambres de agentes.";
-"swarm.stale" = "obsoleto";
-"swarm.worktree" = "worktree";
-"swarm.blocked_badge" = "BLOQUEADO";
-"swarm.agents" = "%d agentes";
-"swarm.blocked" = "%d bloqueados";
-"swarm.last_seen" = "visto hace %@";
-"swarm.oldest_blocked" = "bloqueado hace %@";
-"swarm.summary" = "%d enjambres · %d agentes · %d bloqueados";
-
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "Al ritmo previsto";
 "usage_pace.in_deficit" = "%@%% por encima";

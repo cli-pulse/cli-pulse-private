@@ -10,13 +10,6 @@ struct WidgetData: Codable {
     let unresolvedAlerts: Int
     let providers: [WidgetProviderData]
     let lastUpdated: Date
-    // v1.22 P0 S5 — at-a-glance swarm counts for the watch
-    // complication / Android Glance parity. Optional so an OLD
-    // persisted App-Group blob (no swarm keys) still decodes
-    // (synthesized Codable uses decodeIfPresent for optionals);
-    // read sites coalesce nil → 0.
-    let swarmAgents: Int?
-    let swarmBlocked: Int?
     /// v1.30 — iOS home-screen + lock-screen widgets are a Pro perk. The
     /// host app writes the resolved entitlement here; those widgets render a
     /// locked placeholder when this is `false`. Optional + fail-open: a
@@ -30,9 +23,7 @@ struct WidgetData: Codable {
         activeSessions: 0,
         unresolvedAlerts: 0,
         providers: [],
-        lastUpdated: Date(),
-        swarmAgents: 0,
-        swarmBlocked: 0
+        lastUpdated: Date()
     )
 
     static let preview = WidgetData(
@@ -46,8 +37,6 @@ struct WidgetData: Codable {
             WidgetProviderData(name: "Gemini", usage: 40_000, quota: 300_000, costToday: 0.40, iconName: "sparkles"),
         ],
         lastUpdated: Date(),
-        swarmAgents: 5,
-        swarmBlocked: 2
     )
 }
 
