@@ -846,11 +846,6 @@ extension AppState {
         // session's rows. The server-side gate also returns [] for
         // unauthenticated callers but the optimistic clear is cheap.
         remoteSessions = []
-        remoteSessionsLastRefresh = nil
-        remoteSessionsError = nil
-        // Sessions Input iter 2: same posture for the live event tail.
-        // No cross-user leakage of stdout fragments, even briefly.
-        remoteSessionEvents = [:]
         registeredPushToken = nil
         pendingPushTokenRegistration = nil
     }
