@@ -546,21 +546,6 @@
 "advanced.never" = "Never";
 
 /* ── Remote Approvals (macOS sheet + iOS view) ── */
-"remote_approvals.title" = "Remote Approvals";
-"remote_approvals.disabled_hint" = "Disabled · Settings → Privacy";
-"remote_approvals.refresh" = "Refresh";
-"remote_approvals.close" = "Close";
-"remote_approvals.off_title" = "Remote Control is off";
-"remote_approvals.off_body_mac" = "Turn on Remote Control in Settings → Privacy to approve Claude tool calls from your iPhone or Mac. CLI Pulse only uploads a redacted summary, never your transcripts or API keys.";
-"remote_approvals.off_body_ios" = "Turn on Remote Control in Settings → Privacy to approve Claude tool calls running on your Mac. CLI Pulse only uploads a redacted summary, never your transcripts or API keys.";
-"remote_approvals.open_settings" = "Open Settings";
-"remote_approvals.no_pending" = "No pending approvals";
-"remote_approvals.updated_prefix" = "Updated ";
-"remote_approvals.per_request_note_mac" = "Approve here is per-request only — it does NOT add a Claude Code Always-Allow rule. The next time Claude needs the same tool, you'll see another request. Use Claude Code's own Always Allow for persistent rules.";
-"remote_approvals.per_request_note_ios" = "Approve is per-request only — it does NOT create a Claude Code Always-Allow rule. The next time Claude needs the same tool you'll see another request here. To set persistent rules, use Claude Code's own \"Always Allow\" UI on the Mac. Approving executes the tool call on your Mac.";
-"remote_approvals.deny" = "Deny";
-"remote_approvals.approve" = "Approve";
-"remote_approvals.high_risk_warning" = "High risk — approve locally on the Mac instead.";
 
 /* ── Yield Score Card ── */
 "yield.title" = "Yield Score";
@@ -581,7 +566,6 @@
 "dashboard.subscription_utilization" = "Subscription Utilization";
 "dashboard.total_monthly" = "Total Monthly";
 "dashboard.no_enabled_with_data" = "No enabled providers with data";
-"dashboard.tap_review_claude" = "Tap to review Claude tool calls running on your Mac";
 
 /* ── Settings additions ── */
 "settings.show_cost_summary" = "Show cost summary";
@@ -599,7 +583,6 @@
 "settings.test_webhook" = "Test Webhook";
 "settings.remote_control" = "Machine requests from your other devices";
 "settings.remote_control_iphone_hint" = "Ask a Mac for fan boost, Low Power Mode or Keep Awake from this iPhone";
-"settings.pending_approvals" = "Pending Approvals";
 "settings.privacy_redacted_hint" = "CLI Pulse uploads only a redacted summary of each request — never API keys, cookies, or full transcripts.";
 
 /* ── Display Mode additions ── */
@@ -683,14 +666,6 @@
 "language.system_default" = "System Default";
 
 /* ── Remote Approvals i18n leftovers (director review) ── */
-"remote_approvals.pending_count" = "%d pending";
-"remote_approvals.entry_label_none" = "Open Remote Approvals (none pending)";
-"remote_approvals.entry_label_with_count" = "Open Remote Approvals (%d pending)";
-"remote_approvals.entry_help_none" = "Open Remote Approvals — currently no pending requests";
-"remote_approvals.entry_help_with_count" = "%d pending Remote Approvals";
-"remote_approvals.unknown_tool" = "Unknown tool";
-"remote_approvals.no_summary" = "(no summary)";
-"remote_approvals.expires" = "expires %@";
 
 /* ── Other director-review leftovers ── */
 "alerts.resolve_all" = "Resolve All";
@@ -741,7 +716,6 @@
 "widget.alerts_summary" = "%d alerts • CLI Pulse";
 "widget.percent_left" = "%@ %d%% left";
 "widget.quota_fallback" = "Quota";
-"dashboard.pending_approval_count" = "%d pending approvals";
 "providers.quota_data_unavailable" = "Quota data unavailable";
 "advanced.sync_just_now" = "Synced just now";
 "advanced.sync_minutes_ago" = "Synced %dm ago";

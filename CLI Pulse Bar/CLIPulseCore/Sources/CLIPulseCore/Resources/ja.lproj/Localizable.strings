@@ -430,7 +430,6 @@
 "dashboard.subscription_utilization" = "サブスクリプション使用率";
 "dashboard.total_monthly" = "月額合計";
 "dashboard.no_enabled_with_data" = "データを持つ有効なプロバイダーがありません";
-"dashboard.tap_review_claude" = "Mac で実行中の Claude ツール呼び出しを確認するにはタップ";
 
 /* ── 設定追加 (i18n sweep) ── */
 "settings.show_cost_summary" = "コスト概要を表示";
@@ -448,7 +447,6 @@
 "settings.test_webhook" = "Webhookをテスト";
 "settings.remote_control" = "他のデバイスからのマシンリクエスト";
 "settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
-"settings.pending_approvals" = "保留中の承認";
 "settings.privacy_redacted_hint" = "CLI Pulse は各リクエストの編集済み概要のみをアップロードします — API キー、Cookie、完全なトランスクリプトは送信しません。";
 
 /* ── 表示追加 (i18n sweep) ── */
@@ -576,21 +574,6 @@
 "advanced.never" = "なし";
 
 /* ── リモート承認 ── */
-"remote_approvals.title" = "リモート承認";
-"remote_approvals.disabled_hint" = "無効 ・ 設定 → プライバシー";
-"remote_approvals.refresh" = "更新";
-"remote_approvals.close" = "閉じる";
-"remote_approvals.off_title" = "リモートコントロールはオフです";
-"remote_approvals.off_body_mac" = "iPhone や Mac から Claude のツール呼び出しを承認するには、設定 → プライバシーでリモートコントロールをオンにしてください。CLI Pulse は編集済み概要のみをアップロードし、トランスクリプトや API キーは送信しません。";
-"remote_approvals.off_body_ios" = "Mac で実行中の Claude ツール呼び出しを承認するには、設定 → プライバシーでリモートコントロールをオンにしてください。CLI Pulse は編集済み概要のみをアップロードし、トランスクリプトや API キーは送信しません。";
-"remote_approvals.open_settings" = "設定を開く";
-"remote_approvals.no_pending" = "保留中の承認はありません";
-"remote_approvals.updated_prefix" = "更新: ";
-"remote_approvals.per_request_note_mac" = "ここでの承認はリクエスト単位のみで、Claude Code の「常に許可」ルールは追加されません。同じツールを次回 Claude が必要とすると再度リクエストが届きます。永続的なルールには Claude Code 自体の「常に許可」を使ってください。";
-"remote_approvals.per_request_note_ios" = "承認はリクエスト単位のみで、Claude Code の「常に許可」ルールは作成されません。同じツールを次回 Claude が必要とすると、ここに再度リクエストが届きます。永続的なルールを設定するには、Mac 上の Claude Code 自体の「常に許可」UI を使ってください。承認すると、Mac でツール呼び出しが実行されます。";
-"remote_approvals.deny" = "拒否";
-"remote_approvals.approve" = "承認";
-"remote_approvals.high_risk_warning" = "高リスク — 代わりに Mac でローカル承認してください。";
 
 /* ── Yield Score ── */
 "yield.title" = "Yield Score";
@@ -635,14 +618,6 @@
 "language.system_default" = "システム既定";
 
 /* ── リモート承認 i18n leftovers ── */
-"remote_approvals.pending_count" = "%d 件保留中";
-"remote_approvals.entry_label_none" = "リモート承認を開く (保留中なし)";
-"remote_approvals.entry_label_with_count" = "リモート承認を開く (%d 件保留中)";
-"remote_approvals.entry_help_none" = "リモート承認を開く — 現在、保留中のリクエストはありません";
-"remote_approvals.entry_help_with_count" = "リモート承認 %d 件保留中";
-"remote_approvals.unknown_tool" = "不明なツール";
-"remote_approvals.no_summary" = "(概要なし)";
-"remote_approvals.expires" = "%@ に期限切れ";
 
 /* ── その他 i18n leftovers ── */
 "alerts.resolve_all" = "すべて解決";
@@ -693,7 +668,6 @@
 "widget.alerts_summary" = "アラート %d 件 • CLI Pulse";
 "widget.percent_left" = "%@ 残り %d%%";
 "widget.quota_fallback" = "クォータ";
-"dashboard.pending_approval_count" = "保留中の承認 %d 件";
 "providers.quota_data_unavailable" = "クォータデータを取得できません";
 "advanced.sync_just_now" = "たった今同期";
 "advanced.sync_minutes_ago" = "%d 分前に同期";

@@ -60,7 +60,7 @@ struct SessionsTab: View {
             // though the helper uploads events while RC is on, the
             // app doesn't fetch + render them unless asked.
             //
-            // Mirrors the RemoteApprovalsSheet cadence: 3s tick when
+            // 3s tick when
             // Remote Control is on, 10s when off. The disabled-state
             // calls are still issued, but `refreshRemoteSessions` /
             // `refreshRemoteApprovals` / `refreshRemoteSessionEvents`
@@ -1528,7 +1528,7 @@ struct SessionsTab: View {
     private func approveMatchingPending(for session: RemoteSession) async {
         guard let pending = pendingApproval(for: session) else { return }
         // High-risk approvals always require local confirmation, even
-        // inline. Mirrors the RemoteApprovalsSheet posture.
+        // inline.
         if RemotePermissionRisk(rawValue: pending.risk) == .high { return }
         await state.decideRemoteApproval(requestId: pending.id, decision: .approve)
     }

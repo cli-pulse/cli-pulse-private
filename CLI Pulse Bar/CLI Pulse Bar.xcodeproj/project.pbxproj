@@ -29,7 +29,6 @@
 		A10047 /* DisplaySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10047 /* DisplaySection.swift */; };
 		A10048 /* ProviderSettingsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10048 /* ProviderSettingsSection.swift */; };
 		A10049 /* AdvancedSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10049 /* AdvancedSection.swift */; };
-		A10050 /* RemoteApprovalsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10050 /* RemoteApprovalsSheet.swift */; };
 		A10051 /* LocalModeGuideCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10051 /* LocalModeGuideCard.swift */; };
 		A10102 /* LocalScanConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10102 /* LocalScanConsentView.swift */; };
 		A10052 /* WelcomeModeChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10052 /* WelcomeModeChoice.swift */; };
@@ -48,7 +47,6 @@
 		A20011 /* iOSAlertsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20007 /* iOSAlertsTab.swift */; };
 		A20012 /* iOSSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20008 /* iOSSettingsTab.swift */; };
 		A20013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B20009 /* Assets.xcassets */; };
-		A20014 /* iOSRemoteApprovalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20012 /* iOSRemoteApprovalsView.swift */; };
 		A20016 /* iOSMachineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20014 /* iOSMachineView.swift */; };
 		A20030 /* iOSUsageHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20030 /* iOSUsageHeatmapView.swift */; };
 		A20015 /* iOSAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20013 /* iOSAppDelegate.swift */; };
@@ -207,7 +205,6 @@
 		B10047 /* DisplaySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisplaySection.swift; sourceTree = "<group>"; };
 		B10048 /* ProviderSettingsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProviderSettingsSection.swift; sourceTree = "<group>"; };
 		B10049 /* AdvancedSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedSection.swift; sourceTree = "<group>"; };
-		B10050 /* RemoteApprovalsSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteApprovalsSheet.swift; sourceTree = "<group>"; };
 		B10051 /* LocalModeGuideCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModeGuideCard.swift; sourceTree = "<group>"; };
 		B10102 /* LocalScanConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalScanConsentView.swift; sourceTree = "<group>"; };
 		B10052 /* WelcomeModeChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeModeChoice.swift; sourceTree = "<group>"; };
@@ -228,7 +225,6 @@
 		B20009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B20010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B20011 /* CLI_Pulse_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLI_Pulse_iOS.entitlements; sourceTree = "<group>"; };
-		B20012 /* iOSRemoteApprovalsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSRemoteApprovalsView.swift; sourceTree = "<group>"; };
 		B20014 /* iOSMachineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSMachineView.swift; sourceTree = "<group>"; };
 		B20030 /* iOSUsageHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSUsageHeatmapView.swift; sourceTree = "<group>"; };
 		B20013 /* iOSAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSAppDelegate.swift; sourceTree = "<group>"; };
@@ -359,7 +355,6 @@
 				B10047 /* DisplaySection.swift */,
 				B10048 /* ProviderSettingsSection.swift */,
 				B10049 /* AdvancedSection.swift */,
-				B10050 /* RemoteApprovalsSheet.swift */,
 				B10051 /* LocalModeGuideCard.swift */,
 				B10102 /* LocalScanConsentView.swift */,
 				B10052 /* WelcomeModeChoice.swift */,
@@ -400,7 +395,6 @@
 				B20006 /* iOSSessionsTab.swift */,
 				B20007 /* iOSAlertsTab.swift */,
 				B20008 /* iOSSettingsTab.swift */,
-				B20012 /* iOSRemoteApprovalsView.swift */,
 				B20014 /* iOSMachineView.swift */,
 				B20030 /* iOSUsageHeatmapView.swift */,
 				B20013 /* iOSAppDelegate.swift */,
@@ -715,7 +709,6 @@
 				A10047 /* DisplaySection.swift in Sources */,
 				A10048 /* ProviderSettingsSection.swift in Sources */,
 				A10049 /* AdvancedSection.swift in Sources */,
-				A10050 /* RemoteApprovalsSheet.swift in Sources */,
 				A10051 /* LocalModeGuideCard.swift in Sources */,
 				A10102 /* LocalScanConsentView.swift in Sources */,
 				A10052 /* WelcomeModeChoice.swift in Sources */,
@@ -739,7 +732,6 @@
 				A20010 /* iOSSessionsTab.swift in Sources */,
 				A20011 /* iOSAlertsTab.swift in Sources */,
 				A20012 /* iOSSettingsTab.swift in Sources */,
-				A20014 /* iOSRemoteApprovalsView.swift in Sources */,
 				A20016 /* iOSMachineView.swift in Sources */,
 				A20030 /* iOSUsageHeatmapView.swift in Sources */,
 				A20015 /* iOSAppDelegate.swift in Sources */,

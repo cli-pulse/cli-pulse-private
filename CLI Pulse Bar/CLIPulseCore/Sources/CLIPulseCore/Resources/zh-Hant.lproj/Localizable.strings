@@ -430,7 +430,6 @@
 "dashboard.subscription_utilization" = "訂閱使用率";
 "dashboard.total_monthly" = "月度合計";
 "dashboard.no_enabled_with_data" = "沒有已啟用且包含資料的服務商";
-"dashboard.tap_review_claude" = "點按可檢視 Mac 上正在執行的 Claude 工具呼叫";
 
 /* ── 設定補充 (i18n sweep) ── */
 "settings.show_cost_summary" = "顯示成本摘要";
@@ -448,7 +447,6 @@
 "settings.test_webhook" = "測試 Webhook";
 "settings.remote_control" = "來自其他裝置的機器請求";
 "settings.remote_control_iphone_hint" = "用這台 iPhone 請求 Mac 提升風扇轉速、進入低耗電模式或防休眠";
-"settings.pending_approvals" = "待審批";
 "settings.privacy_redacted_hint" = "CLI Pulse 僅上傳每個請求的脫敏摘要——絕不上傳 API 金鑰、Cookie 或完整的對話內容。";
 
 /* ── 顯示補充 (i18n sweep) ── */
@@ -576,21 +574,6 @@
 "advanced.never" = "從未";
 
 /* ── 遠端審批 ── */
-"remote_approvals.title" = "遠端審批";
-"remote_approvals.disabled_hint" = "已禁用 · 設定 → 隱私";
-"remote_approvals.refresh" = "重新整理";
-"remote_approvals.close" = "關閉";
-"remote_approvals.off_title" = "遠端控制已關閉";
-"remote_approvals.off_body_mac" = "在「設定 → 隱私」中開啟遠端控制，即可透過 iPhone 或 Mac 審批 Claude 的工具呼叫。CLI Pulse 僅上傳脫敏摘要，絕不會上傳對話內容或 API 金鑰。";
-"remote_approvals.off_body_ios" = "在「設定 → 隱私」中開啟遠端控制，即可審批 Mac 上執行的 Claude 工具呼叫。CLI Pulse 僅上傳脫敏摘要，絕不會上傳對話內容或 API 金鑰。";
-"remote_approvals.open_settings" = "開啟「設定」";
-"remote_approvals.no_pending" = "暫無待審批請求";
-"remote_approvals.updated_prefix" = "更新於 ";
-"remote_approvals.per_request_note_mac" = "此處的「批准」僅對當前請求生效——不會新增 Claude Code 的「始終允許」規則。下次 Claude 需要相同工具時還會再次請求。要設定長期規則，請使用 Claude Code 自帶的「Always Allow」。";
-"remote_approvals.per_request_note_ios" = "「批准」僅對當前請求生效——不會建立 Claude Code 的「始終允許」規則。下次 Claude 需要相同工具時仍會在此再次請求。要設定長期規則，請在 Mac 上使用 Claude Code 自帶的「Always Allow」。批准後會在 Mac 上執行該工具呼叫。";
-"remote_approvals.deny" = "拒絕";
-"remote_approvals.approve" = "批准";
-"remote_approvals.high_risk_warning" = "高風險——請在 Mac 上本地審批。";
 
 /* ── Yield Score ── */
 "yield.title" = "Yield Score";
@@ -635,14 +618,6 @@
 "language.system_default" = "系統預設";
 
 /* ── 遠端審批 i18n leftovers ── */
-"remote_approvals.pending_count" = "%d 項待審批";
-"remote_approvals.entry_label_none" = "開啟遠端審批（無待審批）";
-"remote_approvals.entry_label_with_count" = "開啟遠端審批（%d 項待審批）";
-"remote_approvals.entry_help_none" = "開啟遠端審批——當前無待審批請求";
-"remote_approvals.entry_help_with_count" = "%d 項遠端審批待處理";
-"remote_approvals.unknown_tool" = "未知工具";
-"remote_approvals.no_summary" = "（無摘要）";
-"remote_approvals.expires" = "%@ 過期";
 
 /* ── 其他 i18n 收尾 ── */
 "alerts.resolve_all" = "全部解決";
@@ -693,7 +668,6 @@
 "widget.alerts_summary" = "%d 條告警 • CLI Pulse";
 "widget.percent_left" = "%@ 剩餘 %d%%";
 "widget.quota_fallback" = "配額";
-"dashboard.pending_approval_count" = "%d 項待審批";
 "providers.quota_data_unavailable" = "配額資料不可用";
 "advanced.sync_just_now" = "剛剛同步";
 "advanced.sync_minutes_ago" = "%d 分鐘前同步";

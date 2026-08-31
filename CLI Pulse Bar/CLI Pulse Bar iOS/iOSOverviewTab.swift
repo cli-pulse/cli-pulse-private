@@ -34,50 +34,6 @@ struct iOSOverviewTab: View {
                     }
                     .padding(.horizontal)
 
-                    // Pending Remote Approvals banner. Banner visibility uses
-                    // the shared RemoteApprovalsEntryState helper (tested in
-                    // CLIPulseCore) — pending-only by design. The Settings
-                    // tab has the always-visible NavigationLink for the
-                    // pending=0 case so users can still open the screen and
-                    // start active polling.
-                    let bannerState = RemoteApprovalsEntryState.banner(
-                        remoteSessionsEnabled: state.remoteSessionsEnabled,
-                        pendingCount: state.remotePendingApprovals.count
-                    )
-                    if let bannerCount = bannerState.badgeCount {
-                        NavigationLink {
-                            iOSRemoteApprovalsView()
-                                .environmentObject(state)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "checkmark.shield.fill")
-                                    .font(.body)
-                                    .foregroundStyle(.white)
-                                    .padding(8)
-                                    .background(Circle().fill(PulseTheme.accent))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(L10n.dashboard.pendingApprovalCount(bannerCount))
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                    Text(L10n.dashboard.tapReviewClaude)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(12)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .fill(PulseTheme.accent.opacity(0.08))
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal)
-                    }
-
                     // System Monitor S5: read-only device-health summary for any
                     // paired Mac that reports sensors. Independent of the cost
                     // dashboard so it shows even before/without dashboard data.

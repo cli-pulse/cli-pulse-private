@@ -188,8 +188,8 @@ struct AdvancedSection: View {
             // moved from a system `.alert` to an inline card rendered
             // beneath the toggle. SwiftUI's `.alert` doesn't capture
             // clicks reliably inside `MenuBarExtra(.window)` — the same
-            // class of bug `RemoteApprovalsSheet` already documented for
-            // `.sheet`. Inline buttons in the popover's own SwiftUI tree
+            // class of bug that forced the retired remote-approvals view
+            // out of a `.sheet`. Inline buttons in the popover's own tree
             // get clicks every time and don't dismiss the popover.
             Toggle(isOn: Binding(
                 get: { state.remoteControlEnabled },
@@ -384,8 +384,8 @@ struct AdvancedSection: View {
     /// when the user flips it on. Replaces the previous `.alert(...)`
     /// usage which was unreliable inside `MenuBarExtra(.window)` —
     /// `.alert` and `.sheet` both have a known click-capture issue
-    /// in that context (RemoteApprovalsSheet documents the same bug
-    /// for the approval surface).
+    /// in that context (the retired remote-approvals view hit the same
+    /// bug and had to be rendered inline for the same reason).
     ///
     /// Cancel / Enable are plain SwiftUI Buttons. They dispatch on
     /// the popover's own runloop without causing MenuBarExtra
