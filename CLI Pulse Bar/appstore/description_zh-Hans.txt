@@ -1,0 +1,31 @@
+CLI Pulse 实时监控你在 Claude、Codex、Gemini、OpenRouter、Ollama 等 20+ 平台上的 AI 编程工具用量。
+
+功能亮点:
+· 主流 AI 编程助手用量实时监控
+· 跨平台追踪 API 花费与成本
+· 会话历史 + 详细指标
+· 速率限制、报错、异常活动的智能提醒
+· 按提供商的用量分解分析
+· 机器视图:实时查看已配对 Mac 的系统状态、传感器与电池
+· 保持唤醒与远程风扇控制(到时自动恢复)
+· 全年活动热力图 + 连续使用天数、峰值日
+
+多平台:
+· macOS 菜单栏 App,随手可查
+· iPhone 与 iPad App,自适应布局
+· Apple Watch App,一目了然
+· 主屏幕与锁屏小组件
+
+隐私:
+· 连接你自己账户下的 CLI Pulse 后端;远程/同步功能通过加密通道传输
+· 无第三方广告分析
+
+适合同时使用多个 AI 编程工具、想看清用量规律、控制成本、随时掌握 AI 助手状态的开发者。
+
+订阅信息
+
+CLI Pulse Pro 提供自动续期订阅。可选方案、价格与计费周期以 App Store 和 App 内购买时显示的为准。
+付款将在确认购买时记入你的 Apple ID 账户。除非在当前周期结束前至少 24 小时关闭自动续期,否则订阅将自动续期。账户将在当前周期结束前 24 小时内被扣费续期。购买后可在 App Store 账户设置中管理和取消订阅。
+
+使用条款:https://cli-pulse.github.io/cli-pulse/terms.html
+隐私政策:https://cli-pulse.github.io/cli-pulse/privacy.html
