@@ -219,7 +219,6 @@
     <plurals name="devices_registered_count">
         <item quantity="other">已注册 %d 台设备</item>
     </plurals>
-    <string name="swarm_widget_description">实时 agent 集群 — 一览 agent 数与阻塞数</string>
     <!-- Managed sessions (v1.27 E2) -->
     <string name="managed_sessions_header">托管会话</string>
     <string name="managed_new">新建</string>

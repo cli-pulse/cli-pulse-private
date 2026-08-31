@@ -7,7 +7,7 @@ package com.clipulse.android.data.model
  * `remote_app_list_sessions` payload (snake_case JSON keys) in
  * [com.clipulse.android.data.remote.parseRemoteSessions]. Plain data class —
  * org.json hand-parsing is the house style (no Moshi adapter), matching
- * RemoteSwarm.
+ * remote session models.
  */
 data class RemoteSession(
     val id: String,
