@@ -406,10 +406,11 @@ def diagnose(home: Path | None = None, cwd: Path | None = None) -> DiagnoseRepor
         findings.append(Finding(
             severity="info",
             code="cli-pulse-hook-not-installed",
-            title="CLI Pulse remote-approval hook not configured",
+            title="CLI Pulse permission hook not configured",
             detail=("None of your Claude settings.json files have a "
-                    "PermissionRequest hook. CLI Pulse Remote Approvals only "
-                    "fires when this hook is wired in."),
+                    "PermissionRequest hook. CLI Pulse can only surface "
+                    "approvals for its managed sessions when this hook is "
+                    "wired in."),
             suggestion="See helper/REMOTE_APPROVAL_SETUP.md for the JSON "
                        "snippet to add to ~/.claude/settings.json. Run "
                        "`remote-approvals print-claude-hook-config` for the "

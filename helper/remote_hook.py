@@ -26,7 +26,6 @@ import json
 import logging
 import os
 import sys
-import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -322,12 +321,6 @@ def _run_hook_inner(
         _emit(adapter.emit_local_fallback(parsed, "High-risk action requires local approval"))
         return 0
 
-    request_id = str(uuid.uuid4())
-    session_id_str = str(raw.get("session_id") or "")
-    session_uuid = _resolve_managed_session_id(session_id_str)
-
-    sleep = sleep_fn or time.sleep
-
     # Phase 3 Iter 2B local-first fast path. When the helper spawned this
     # Claude session, it set three env vars on the child:
     #
@@ -363,69 +356,21 @@ def _run_hook_inner(
         _emit(adapter.emit_hook_output(local_outcome, parsed))
         return 0
 
-    try:
-        rpc_caller(
-            "remote_helper_create_permission_request",
-            {
-                "p_device_id": helper_config.device_id,
-                "p_helper_secret": helper_config.helper_secret,
-                "p_request_id": request_id,
-                "p_session_id": session_uuid,
-                "p_provider": parsed.provider,
-                "p_tool_name": parsed.tool_name,
-                "p_summary": parsed.summary,
-                "p_payload": parsed.payload,
-                "p_risk": parsed.risk,
-                "p_ttl_seconds": int(cfg.ttl_seconds),
-            },
-            timeout=cfg.request_timeout_s,
-        )
-    except Exception as exc:
-        logger.warning("create_permission_request failed: %s", exc)
-        _emit(adapter.emit_local_fallback(parsed, "Remote approval channel unavailable"))
-        return 0
-
-    deadline = time.monotonic() + cfg.timeout_s
-    decision_obj: dict[str, Any] | None = None
-    while time.monotonic() < deadline:
-        try:
-            result = rpc_caller(
-                "remote_helper_poll_permission_decision",
-                {
-                    "p_device_id": helper_config.device_id,
-                    "p_helper_secret": helper_config.helper_secret,
-                    "p_request_id": request_id,
-                },
-                timeout=cfg.request_timeout_s,
-            )
-        except Exception as exc:
-            logger.warning("poll_permission_decision failed: %s", exc)
-            _emit(adapter.emit_local_fallback(parsed, "Remote approval channel unavailable"))
-            return 0
-
-        if isinstance(result, dict):
-            status = result.get("status")
-            if status in ("approved", "denied"):
-                decision_obj = result
-                break
-            if status in ("expired", "not_found"):
-                logger.info("remote request %s ended early: %s", request_id, status)
-                break
-        sleep(cfg.poll_interval_s)
-
-    if decision_obj is None:
-        _emit(adapter.emit_local_fallback(parsed, "Remote approval timed out"))
-        return 0
-
-    from provider_adapters.base import AdapterDecision
-    raw_decision = "approve" if decision_obj.get("status") == "approved" else "deny"
-    raw_scope = str(decision_obj.get("scope") or "once")
-    if raw_scope not in ("once", "alwaysSession"):
-        raw_scope = "once"
-    # Phase 1: silently downgrade alwaysSession (we don't emit permissionUpdates).
-    scope = "once"
-    decision = AdapterDecision(decision=raw_decision, scope=scope, reason="")
-    _emit(adapter.emit_hook_output(decision, parsed))
+    # v1.52.1: the remote (Supabase) arm is retired, matching the Swift
+    # HookAdapter (PR #507). Reaching here means the LOCAL UDS arm found no
+    # pending row, so no CLI Pulse surface can answer this request — defer to
+    # the provider's own prompt.
+    #
+    # `emit_local_fallback` resolves that per session kind exactly as every
+    # remote failure path already did: an EXTERNAL session abstains / asks, a
+    # MANAGED one denies. Measured against pg_stat_statements on 2026-08-31,
+    # `remote_helper_create_permission_request` had ZERO calls in the 58 days
+    # since stats were reset (with zero entries evicted), so this round-trip
+    # never once completed in production.
+    _emit(adapter.emit_local_fallback(
+        parsed,
+        "CLI Pulse helper not reachable; restart the helper and retry.",
+    ))
     return 0
 
 
@@ -463,35 +408,6 @@ def _coerce_uuid(value: str) -> str | None:
         return None
 
 
-def _resolve_managed_session_id(raw_session_id: str) -> str | None:
-    """Pick the session_id we should attach to a permission request.
-
-    iter 1 of Sessions Input introduced managed sessions: when the helper
-    spawns the provider CLI itself, it sets `CLI_PULSE_REMOTE_SESSION_ID`
-    on the child env so the hook can bind permission requests to the
-    managed session instead of Claude's internal hook session_id. That
-    binding is what lets the iOS/Mac Sessions UI inline-approve a
-    pending request — the request's `session_id` is exactly the one
-    the user has selected in the UI.
-
-    Order of precedence:
-      1. `CLI_PULSE_REMOTE_SESSION_ID` env var, if set AND a valid UUID.
-      2. Hook input's `session_id` field, if a valid UUID.
-      3. None — request is created unbound.
-
-    SQL safety: even if a malformed env var somehow points at a session
-    not owned by this device, `remote_helper_create_permission_request`
-    in v0.27 / v0.30 zeroes out a mismatched session_id rather than
-    raising, so the request is still produced (just unbound) and the
-    user's hand-opened Terminal Claude flow still falls through to the
-    standard pending-approvals sheet.
-    """
-    env_id = os.environ.get(REMOTE_SESSION_ID_ENV, "").strip()
-    if env_id:
-        validated = _coerce_uuid(env_id)
-        if validated:
-            return validated
-    return _coerce_uuid(raw_session_id)
 
 
 # ── local UDS fast path ──────────────────────────────────

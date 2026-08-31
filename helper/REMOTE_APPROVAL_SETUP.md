@@ -1,21 +1,31 @@
-# Remote Approval Hook — Setup (preview feature)
+# Claude Code permission hook — setup and diagnosis
 
-Wires Claude Code's `PermissionRequest` hook on a paired Mac so that
-permission requests can be approved / denied from the user's iPhone or
-another Mac via CLI Pulse.
+Wires Claude Code's `PermissionRequest` / `PreToolUse` hooks so that permission
+requests raised by a **CLI Pulse-managed session on this Mac** can be approved
+or denied from the CLI Pulse UI, instead of only from the terminal that Claude
+is running in.
 
-> **Audience.** Developers and trusted testers running the preview. This file
-> stays in this repository on purpose: `helper/permissions_diagnose.py` sends
-> users here by path when it detects a misconfigured hook, so moving it would
-> point a shipped diagnostic at nothing.
+> **The filename is historical.** This was "Remote Approval Setup", describing a
+> flow where a permission request travelled to Supabase and you approved it from
+> your iPhone. **That flow is retired** (v1.52.1) and the sections describing it
+> have been removed rather than left to mislead. The file keeps its name because
+> `helper/permissions_diagnose.py` sends users here **by path** when it detects a
+> misconfigured hook — renaming it would point a shipped diagnostic at nothing.
 >
-> It was previously headed "private internal guide" and told the reader not to
-> publish it. That instruction is about the public **website / marketing** repo
-> and still holds — it was never about this repository, which is public despite
-> being named `cli-pulse-private`. Nothing here is a credential.
->
-> **Requires.** CLI Pulse v1.11.0+ on iOS and macOS, helper paired, Supabase
-> migrations v0.26 through v0.31 applied.
+> **Audience.** Developers and trusted testers. This repository is public despite
+> being named `cli-pulse-private`; nothing here is a credential.
+
+## What the hook does now
+
+| | |
+|---|---|
+| **Does** | Lets a CLI Pulse-**managed** session (one CLI Pulse spawned, so the helper owns its PTY) surface its permission requests in the app's Sessions tab, where you Approve / Reject. Transport is a Unix-domain socket on this machine. |
+| **Does NOT** | Send anything to Supabase, your phone, or any server. There is no remote approval path any more, and nothing is uploaded when the hook fires. |
+
+A **hand-launched** Claude session — one you started yourself in a terminal —
+has no managed row, so the hook defers to Claude's own prompt and gets out of
+the way. That is deliberate: an external session must never be blocked by CLI
+Pulse being unavailable.
 
 ## Prerequisites
 
@@ -25,31 +35,25 @@ another Mac via CLI Pulse.
    ```
    The output should mention a `device_id` matching your Mac's row in
    `public.devices`. If not, run `pair` first per the main README.
-2. **Remote Control toggle ON.** This is **opt-in and default OFF**.
-   Open CLI Pulse → Settings → Privacy → toggle "Remote Control" on,
-   read the consent dialog, click **Enable**. Mirror the toggle on iOS
-   if you also want to approve from the phone.
-3. **Server-side gate.** Backed by `user_settings.remote_control_enabled`
-   on Supabase. Toggling the UI off severs the helper end of the channel
-   (every `remote_helper_*` RPC raises `Device not found or unauthorized`),
-   so the hook auto-falls-back to a local Claude prompt the user has to
-   handle on the Mac.
+2. **Local session control on.** The helper's local control gate must be
+   enabled — the Sessions tab shows its state, and `hello` reports the
+   `approvals` capability when the helper can serve them.
+
+You do **not** need the Remote Control toggle. That switch now gates machine
+controls (fan target, low-power mode, keep-awake) and has no effect here.
 
 ## Wire the hook into Claude Code
 
-The helper can print a copy-pasteable JSON snippet tailored to this
-machine's absolute path (no manual editing needed):
+The helper prints a copy-pasteable JSON snippet tailored to this machine's
+absolute path:
 
 ```bash
 python3 helper/cli_pulse_helper.py remote-approvals print-claude-hook-config
 ```
 
-The command does **not** write anywhere — it just prints. Copy the
-`hooks` block into `~/.claude/settings.json` (create the file if it
-doesn't exist). If the file already has a `hooks` section, MERGE
-rather than replace.
-
-A typical snippet looks like:
+It does **not** write anywhere. Copy the `hooks` block into
+`~/.claude/settings.json` (create the file if it doesn't exist). If the file
+already has a `hooks` section, MERGE rather than replace.
 
 ```json
 {
@@ -64,121 +68,65 @@ A typical snippet looks like:
 }
 ```
 
-* `/absolute/path/to/cli pulse/` is wherever the cli-pulse-private repo
-  lives on this Mac. Replace verbatim — Claude Code does not expand `~`
-  inside `command`.
-* If the helper is not on the system PATH, point at the python3 binary
-  too (`/usr/bin/python3` or `/opt/homebrew/bin/python3`).
-* The hook reads JSON from stdin and writes a single line of JSON to
-  stdout. Logging goes to stderr; do **not** add `> /dev/null` or `2>&1`
-  redirection to the command — the hook needs a clean stdout pipe.
+* Replace the absolute path verbatim — Claude Code does not expand `~` inside
+  `command`.
+* If the helper is not on `PATH`, point at the python3 binary too
+  (`/usr/bin/python3` or `/opt/homebrew/bin/python3`).
+* The hook reads JSON on stdin and writes one line of JSON to stdout. Logging
+  goes to stderr; do **not** add `> /dev/null` or `2>&1` — the hook needs a
+  clean stdout pipe.
 
-After saving, restart Claude Code so it picks up the new hook entry.
+Restart Claude Code after saving.
 
-## Hook flags worth knowing
+> The **app** installs its own hook entry pointing at the bundled Swift helper
+> (`<helper-path> remote-approval-hook --provider claude`). The snippet above is
+> the manual equivalent for the Python helper. Both share the same wire
+> contract; do not install both for the same event.
 
-The subcommand exposes three knobs (defaults are sensible — only change
-when debugging):
+## What the user sees
 
-| Flag                  | Default | Effect                                                |
-| --------------------- | ------- | ----------------------------------------------------- |
-| `--timeout`           | `10`    | Max seconds to wait for a remote decision.            |
-| `--poll-interval`     | `1`     | Seconds between polls of `remote_helper_poll_permission_decision`. |
-| `--allow-high-risk`   | OFF     | Off by default → high-risk shell commands (`rm -rf`, `sudo`, `curl`, …) fail-closed locally and never round-trip. ONLY set if you're explicitly testing the remote-approval flow for those. |
-
-## What gets uploaded
-
-Every time the hook fires, Supabase receives:
-
-* a redacted `summary` (e.g. `$ ls -la` or `Read hosts`, ≤ 256 chars)
-* a redacted `tool_input` snapshot (sk-ant- / AIza / ghp / Bearer / JWT
-  / long-hex tokens stripped to `«REDACTED»`, every string ≤ 1024)
-* `risk` (`low` / `medium` / `high`)
-* `cwd_basename` (last path component only) and an HMAC of the full path
-  (HMAC key is the user-secret on the Mac, not the helper secret)
-* `tool_name`, `provider`, `session_id` (when the helper has registered
-  the session)
-
-Never uploaded:
-
-* Provider API keys, OAuth tokens, cookies (Keychain-only)
-* Full transcripts or session log files
-* Full project paths
-* The original tool_input strings (only the redacted versions)
-
-## States the user might see
-
-| Scenario                                                    | What Claude shows                    |
-| ----------------------------------------------------------- | ------------------------------------ |
-| Remote Control OFF (and `pg_cron` retention scheduled)      | The hook silently raises 'unauthorized' inside Supabase, the helper catches and emits `behavior: deny` with a message asking to disable Remote Control if the issue persists; the user then re-runs and the local Claude prompt fires. |
-| Remote Control ON, helper paired, network up                | Pending request appears on iPhone / Mac sheet within seconds. Approve → `behavior: allow`. Deny → `behavior: deny` + message. |
-| High-risk shell command (`rm -rf`, `sudo`, …)               | Hook short-circuits to local prompt without ever uploading. (Set `--allow-high-risk` to override; not recommended.) |
-| Helper crash / network blip / poll timeout                  | Hardcoded fallback `behavior: deny` with explainer message. User reruns. |
+| Scenario | What Claude shows |
+|---|---|
+| Managed session, helper reachable, approvals advertised | Approve / Reject appear on that row in the Sessions tab. Approve → the tool call proceeds. |
+| Managed session, helper down | Fail-closed: `deny` with an explainer. A broken helper never auto-approves. |
+| Hand-launched (external) session | The hook abstains and Claude's own prompt runs. Never blocked by CLI Pulse. |
+| High-risk shell command (`rm -rf`, `sudo`, …) | Short-circuits to the local prompt. High-risk actions are always decided in front of you. |
 
 ## Diagnose "Always Allow keeps re-prompting"
 
-Three read-only subcommands surface common Claude Code permission
-gotchas without rewriting any of your settings files:
+Three read-only subcommands surface common Claude Code permission gotchas
+without rewriting any settings file:
 
 ```bash
-# At-a-glance state of helper pairing + Claude hook + Remote Control flag
+# At-a-glance state of helper pairing + Claude hook wiring
 python3 helper/cli_pulse_helper.py remote-approvals status
 
 # Print the JSON snippet for ~/.claude/settings.json (does NOT write)
 python3 helper/cli_pulse_helper.py remote-approvals print-claude-hook-config
 
-# Walk all 4 settings scopes (managed/local/project/user), merge rules,
-# and report findings: parse errors, deny-overrides-allow, ask-overrides-
-# allow, narrow Bash patterns, allow-only-in-local-scope, missing hook.
+# Walk all 4 settings scopes (managed/local/project/user), apply the merge
+# rules, and report: parse errors, deny-overrides-allow, ask-overrides-allow,
+# narrow Bash patterns, allow-only-in-local-scope, missing hook.
 python3 helper/cli_pulse_helper.py remote-approvals diagnose-claude-permissions
 
-# Same diagnosis as JSON for tooling.
+# Same diagnosis as JSON, for tooling.
 python3 helper/cli_pulse_helper.py remote-approvals diagnose-claude-permissions --json
 ```
 
 **Privacy note on `diagnose` output.** It prints local file paths
-(e.g. `~/.claude/settings.json`, project cwd) and the raw text of
-your `permissions.allow` / `ask` / `deny` rules (which can include
-file paths and command patterns from your Always-Allow history).
-**Do not paste the diagnose output into a public bug report or chat
-verbatim** — redact paths and rules first if you need to share it.
-The diagnose itself is read-only and never uploads anything to
-Supabase, our backend, or any third party.
-
-## Verifying the loop end-to-end
-
-1. Open CLI Pulse on iPhone with Remote Control on.
-2. On the Mac, run a Claude Code command that needs permission, e.g.:
-   ```
-   claude "show me the contents of /etc/hosts"
-   ```
-3. iPhone Overview tab should show a "1 pending approval" banner within
-   ~2 seconds. Tap → Approve.
-4. Claude on the Mac proceeds with the tool call.
-5. (Optional) `select * from public.remote_permission_requests order by
-   created_at desc limit 1;` from Supabase Dashboard should show a row
-   with `status='approved'`, `decision_at=<just now>`, and a redacted
-   `summary`/`payload`.
+(`~/.claude/settings.json`, project cwd) and the raw text of your
+`permissions.allow` / `ask` / `deny` rules — which can include paths and command
+patterns from your Always-Allow history. **Do not paste it into a public bug
+report verbatim**; redact first. The diagnose is read-only and uploads nothing.
 
 ## Disabling
 
-Either:
+Remove the `PermissionRequest` / `PreToolUse` block from
+`~/.claude/settings.json` and restart Claude Code. Claude then handles every
+permission prompt itself, exactly as it does without CLI Pulse installed.
 
-* Toggle Remote Control off in CLI Pulse (Mac or iOS — they're the same
-  server-side flag). Helper hook will start emitting deny+fallback.
-* Remove the `PermissionRequest` block from `~/.claude/settings.json`.
+## Limits
 
-Both are safe; the first is reversible without restarting Claude Code.
-
-## Phase 1 limits (intentional)
-
-* No Always-Allow / persistent-rule remote shape — Approve is `once`
-  per request.
-* No Codex support yet (adapter is a stub; raises on first invocation
-  and the hook's defensive wrapper translates it to a local-prompt deny).
-* No PTY managed session, no remote prompt-sending, no remote stop /
-  interrupt of running tools.
-* Polling is refresh-based — no push notifications.
-
-These are tracked in `PROJECT_DEV_PLAN_2026-04-29_remote_agent_sessions.md` (moved to cli-pulse-internal/private-repo-root-docs/, 2026-07-21)
-for Phase 2 follow-up.
+* Approve is `once` per request — there is no persistent Always-Allow shape.
+* Managed sessions only. A hand-launched session is deliberately never gated.
+* macOS only; the transport is a local Unix-domain socket.

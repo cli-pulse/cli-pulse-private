@@ -311,45 +311,6 @@ def test_local_first_approve_skips_supabase(monkeypatch):
     assert out["hookSpecificOutput"]["decision"]["behavior"] == "allow"
 
 
-def test_local_first_none_falls_through_to_supabase(monkeypatch):
-    """When the local UDS path returns None (helper down / not
-    started locally), run_hook falls through to Supabase exactly as
-    the iter-2A behaviour did.
-    """
-    buf = _capture_stdout(monkeypatch)
-    monkeypatch.setattr(
-        remote_hook, "_try_local_uds_hook",
-        lambda *args, **kwargs: None,
-    )
-    rpc_calls = []
-
-    def fake_rpc(name, _params, **_kwargs):
-        rpc_calls.append(name)
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": "x", "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "approved", "decision": "approve", "scope": "once"}
-        return {}
-
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload={
-            "tool_name": "Read",
-            "tool_input": {"file_path": "/etc/hosts"},
-            "cwd": "/Users/dev/x",
-        },
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    assert "remote_helper_create_permission_request" in rpc_calls
-    out = json.loads(buf.getvalue())
-    assert out["hookSpecificOutput"]["decision"]["behavior"] == "allow"
-
-
 def test_run_hook_high_risk_short_circuits_to_local_fallback(monkeypatch):
     buf = _capture_stdout(monkeypatch)
     _mark_managed(monkeypatch)  # managed session → high-risk fails CLOSED (deny)
@@ -381,107 +342,6 @@ def test_run_hook_high_risk_short_circuits_to_local_fallback(monkeypatch):
     assert out["hookSpecificOutput"]["decision"]["message"]
 
 
-def test_run_hook_timeout_emits_fallback(monkeypatch):
-    buf = _capture_stdout(monkeypatch)
-    _mark_managed(monkeypatch)  # managed session → timeout fails CLOSED (deny)
-    rpc_calls = []
-
-    def fake_rpc(name, params, **_kwargs):
-        rpc_calls.append(name)
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "pending"}
-        return {}
-
-    payload = {
-        "tool_name": "Read",
-        "tool_input": {"file_path": "/etc/hosts"},
-        "cwd": "/Users/dev/x",
-    }
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=0.05, poll_interval_s=0.01),
-        stdin_payload=payload,
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    assert "remote_helper_create_permission_request" in rpc_calls
-    assert "remote_helper_poll_permission_decision" in rpc_calls
-    out = json.loads(buf.getvalue())
-    assert out["hookSpecificOutput"]["decision"]["behavior"] == "deny"
-    assert out["hookSpecificOutput"]["decision"]["message"]
-
-
-def test_run_hook_approve_round_trip(monkeypatch):
-    buf = _capture_stdout(monkeypatch)
-
-    def fake_rpc(name, params, **_kwargs):
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "approved", "decision": "approve", "scope": "once"}
-        return {}
-
-    payload = {
-        "tool_name": "Read",
-        "tool_input": {"file_path": "/etc/hosts"},
-        "cwd": "/Users/dev/x",
-    }
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload=payload,
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    out = json.loads(buf.getvalue())
-    decision = out["hookSpecificOutput"]["decision"]
-    assert decision["behavior"] == "allow"
-    # Allow responses must not carry a `message` (docs: "For deny only").
-    assert "message" not in decision, (
-        f"allow output leaked a message field: {decision!r}"
-    )
-
-
-def test_run_hook_deny_round_trip(monkeypatch):
-    buf = _capture_stdout(monkeypatch)
-
-    def fake_rpc(name, params, **_kwargs):
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "denied", "decision": "deny", "scope": "once"}
-        return {}
-
-    payload = {
-        "tool_name": "Edit",
-        "tool_input": {"file_path": "/Users/dev/x/foo.py", "old_string": "a", "new_string": "b"},
-        "cwd": "/Users/dev/x",
-    }
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload=payload,
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    out = json.loads(buf.getvalue())
-    decision = out["hookSpecificOutput"]["decision"]
-    assert decision["behavior"] == "deny"
-    # Deny responses include a non-empty message.
-    assert isinstance(decision.get("message"), str) and len(decision["message"]) > 0
-
-
 def test_run_hook_create_failure_falls_back(monkeypatch):
     buf = _capture_stdout(monkeypatch)
     _mark_managed(monkeypatch)  # managed session → create failure fails CLOSED
@@ -509,35 +369,6 @@ def test_run_hook_create_failure_falls_back(monkeypatch):
     out = json.loads(buf.getvalue())
     assert out["hookSpecificOutput"]["decision"]["behavior"] == "deny"
     assert out["hookSpecificOutput"]["decision"]["message"]
-
-
-def test_run_hook_codex_permission_request_approve_allows(monkeypatch):
-    # M2: the codex provider now flows through the normal path (no longer a
-    # NotImplementedError stub). A managed codex PermissionRequest the remote
-    # user approves emits the Claude-compatible PermissionRequest allow shape.
-    buf = _capture_stdout(monkeypatch)
-    _mark_managed(monkeypatch)
-
-    def fake_rpc(name, params, **_kwargs):
-        if name == "remote_helper_create_permission_request":
-            assert params["p_provider"] == "codex"
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        return {"status": "approved", "decision": "approve", "scope": "once"}
-
-    rc = remote_hook.run_hook(
-        "codex",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload={"tool_name": "Bash", "tool_input": {"command": "ls"},
-                       "cwd": "/Users/dev/x"},
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "x",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    out = json.loads(buf.getvalue())
-    assert out["hookSpecificOutput"]["hookEventName"] == "PermissionRequest"
-    assert out["hookSpecificOutput"]["decision"]["behavior"] == "allow"
 
 
 def test_run_hook_unexpected_crash_emits_raw_deny_fallback(monkeypatch):
@@ -606,79 +437,6 @@ def test_claude_redacts_jwt_token():
         str(v) for v in parsed.payload.get("tool_input", {}).values()
     )
     assert "«REDACTED»" in flat_values
-
-
-def test_resolve_managed_session_prefers_env_var_when_valid_uuid(monkeypatch):
-    # iter 1 of Sessions Input: helper-spawned managed Claude sessions
-    # set CLI_PULSE_REMOTE_SESSION_ID on the child env so the hook can
-    # bind permission requests to the managed session id (visible in the
-    # iOS / Mac Sessions UI) instead of Claude's internal hook session_id.
-    env_id = "12345678-1234-1234-1234-123456789abc"
-    raw_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    monkeypatch.setenv(remote_hook.REMOTE_SESSION_ID_ENV, env_id)
-    resolved = remote_hook._resolve_managed_session_id(raw_id)
-    assert resolved == str(__import__("uuid").UUID(env_id))
-
-
-def test_resolve_managed_session_falls_back_when_env_var_invalid(monkeypatch):
-    # A malformed env var must not corrupt the binding — fall through to
-    # the hook's own session_id rather than dropping the request.
-    raw_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    monkeypatch.setenv(remote_hook.REMOTE_SESSION_ID_ENV, "not-a-uuid")
-    resolved = remote_hook._resolve_managed_session_id(raw_id)
-    assert resolved == str(__import__("uuid").UUID(raw_id))
-
-
-def test_resolve_managed_session_uses_raw_when_env_unset(monkeypatch):
-    raw_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    monkeypatch.delenv(remote_hook.REMOTE_SESSION_ID_ENV, raising=False)
-    resolved = remote_hook._resolve_managed_session_id(raw_id)
-    assert resolved == str(__import__("uuid").UUID(raw_id))
-
-
-def test_resolve_managed_session_returns_none_when_both_invalid(monkeypatch):
-    monkeypatch.setenv(remote_hook.REMOTE_SESSION_ID_ENV, "")
-    resolved = remote_hook._resolve_managed_session_id("")
-    assert resolved is None
-
-
-def test_run_hook_uses_env_session_id_in_create_request(monkeypatch):
-    # Integration check: when CLI_PULSE_REMOTE_SESSION_ID is set, the
-    # hook must pass that uuid as p_session_id to the create request,
-    # not the raw session_id from Claude's input. This is what actually
-    # binds an inline approve to the selected managed session.
-    monkeypatch.setattr(sys, "stdout", io.StringIO())
-    env_id = "abcdef01-2345-6789-abcd-ef0123456789"
-    monkeypatch.setenv(remote_hook.REMOTE_SESSION_ID_ENV, env_id)
-    captured: dict[str, object] = {}
-
-    def fake_rpc(name, params, **_kwargs):
-        if name == "remote_helper_create_permission_request":
-            captured.update(params)
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "approved", "decision": "approve", "scope": "once"}
-        return {}
-
-    payload = {
-        "tool_name": "Read",
-        "tool_input": {"file_path": "/etc/hosts"},
-        "session_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-        "cwd": "/Users/dev/x",
-    }
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload=payload,
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "x",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    assert captured.get("p_session_id") == str(__import__("uuid").UUID(env_id)), (
-        f"expected p_session_id={env_id}, got {captured.get('p_session_id')!r}"
-    )
 
 
 def test_claude_redaction_does_not_corrupt_ordinary_short_commands():
@@ -765,45 +523,6 @@ def test_supabase_rpc_default_timeout_is_30s(monkeypatch):
 
     cli_pulse_helper.supabase_rpc("noop", {})  # no timeout kwarg
     assert captured["timeout"] == 30.0
-
-
-def test_run_hook_create_passes_request_timeout_to_rpc(monkeypatch):
-    # The create call should carry `timeout=cfg.request_timeout_s`. We
-    # capture every kwargs dict the fake_rpc sees and assert the create
-    # request specifically has timeout=2.5 (default).
-    captured_kwargs: list[dict[str, object]] = []
-
-    def fake_rpc(name, params, **kwargs):
-        captured_kwargs.append({"name": name, **kwargs})
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        if name == "remote_helper_poll_permission_decision":
-            return {"status": "approved", "decision": "approve", "scope": "once"}
-        return {}
-
-    payload = {
-        "tool_name": "Read",
-        "tool_input": {"file_path": "/etc/hosts"},
-        "cwd": "/Users/dev/x",
-    }
-    _capture_stdout(monkeypatch)
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload=payload,
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    create_calls = [c for c in captured_kwargs if c["name"] == "remote_helper_create_permission_request"]
-    poll_calls = [c for c in captured_kwargs if c["name"] == "remote_helper_poll_permission_decision"]
-    assert create_calls, "create RPC was not called"
-    assert poll_calls, "poll RPC was not called"
-    # Default request_timeout_s is 2.5s; both create and poll carry it.
-    assert all(c.get("timeout") == 2.5 for c in create_calls), create_calls
-    assert all(c.get("timeout") == 2.5 for c in poll_calls), poll_calls
 
 
 def test_run_hook_request_timeout_is_configurable(monkeypatch):
@@ -1165,30 +884,6 @@ def test_run_hook_permission_request_external_timeout_defers(monkeypatch):
     assert buf.getvalue() == ""
 
 
-def test_run_hook_pretooluse_external_approve_allows(monkeypatch):
-    # External PreToolUse the remote user APPROVES → permissionDecision allow.
-    buf = _capture_stdout(monkeypatch)
-    _mark_external(monkeypatch)
-
-    def fake_rpc(name, params, **_kwargs):
-        if name == "remote_helper_create_permission_request":
-            return {"request_id": params["p_request_id"], "status": "pending"}
-        return {"status": "approved", "decision": "approve", "scope": "once"}
-
-    rc = remote_hook.run_hook(
-        "claude",
-        config=remote_hook.HookConfig(timeout_s=1.0, poll_interval_s=0.01),
-        stdin_payload=_ptu(),
-        helper_config=_StubHelperConfig(),
-        rpc_caller=fake_rpc,
-        user_secret_loader=lambda: "user-hmac-secret",
-        sleep_fn=lambda _s: None,
-    )
-    assert rc == 0
-    out = json.loads(buf.getvalue())
-    assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
-
-
 def test_fail_open_external_config_off_denies(monkeypatch):
     # With fail_open_external=False, even an external session fails CLOSED.
     buf = _capture_stdout(monkeypatch)
@@ -1479,3 +1174,84 @@ def test_crash_fallback_managed_codex_pretooluse_denies(monkeypatch):
     assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
     # provider-neutral reason (no "Claude" mention)
     assert "Claude" not in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+
+# ── remote-approval arm retirement (v1.52.1) ──────────────────────────────
+#
+# The Supabase round-trip is gone, matching the Swift HookAdapter (PR #507).
+# What matters is that its REMOVAL changed no posture: every remote failure
+# path already emitted the local fallback, and that is what the hook emits now.
+# These pin the two session kinds so a later edit cannot turn an external
+# abstain into a deny (which would brick a hand-launched terminal) or a
+# managed deny into an approve.
+
+
+def test_no_local_row_external_session_abstains(monkeypatch):
+    """EXTERNAL + PermissionRequest → empty stdout, so Claude's own prompt runs."""
+    buf = _capture_stdout(monkeypatch)
+    _mark_external(monkeypatch)
+
+    def no_rpc(name, params, **_kwargs):  # must never be called
+        raise AssertionError(f"the retired remote arm called {name}")
+
+    rc = remote_hook.run_hook(
+        "claude",
+        stdin_payload={"tool_name": "Read", "tool_input": {"file_path": "/x"},
+                       "cwd": "/Users/dev/x"},
+        helper_config=_StubHelperConfig(),
+        rpc_caller=no_rpc,
+        user_secret_loader=lambda: "user-hmac-secret",
+        sleep_fn=lambda _s: None,
+    )
+    assert rc == 0
+    assert buf.getvalue() == ""
+
+
+def test_no_local_row_managed_session_denies(monkeypatch):
+    """MANAGED + PreToolUse → deny. A broken helper never auto-approves."""
+    buf = _capture_stdout(monkeypatch)
+    _mark_managed(monkeypatch)
+
+    def no_rpc(name, params, **_kwargs):
+        raise AssertionError(f"the retired remote arm called {name}")
+
+    rc = remote_hook.run_hook(
+        "claude",
+        stdin_payload={"tool_name": "Read", "tool_input": {"file_path": "/x"},
+                       "cwd": "/Users/dev/x", "hook_event_name": "PreToolUse"},
+        helper_config=_StubHelperConfig(),
+        rpc_caller=no_rpc,
+        user_secret_loader=lambda: "user-hmac-secret",
+        sleep_fn=lambda _s: None,
+    )
+    assert rc == 0
+    out = json.loads(buf.getvalue())
+    assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+def test_the_hook_makes_no_network_call_at_all(monkeypatch):
+    """The point of the retirement: zero RPCs on the no-local-row path.
+
+    `rpc_caller` raises on ANY name, so this fails loudly if a future edit
+    reintroduces a round-trip — including a well-meaning "just one status
+    check". Both tests above rely on it too; this one states it as the claim.
+    """
+    _capture_stdout(monkeypatch)
+    _mark_external(monkeypatch)
+    calls = []
+
+    def recording_rpc(name, params, **_kwargs):
+        calls.append(name)
+        return {}
+
+    remote_hook.run_hook(
+        "claude",
+        stdin_payload={"tool_name": "Bash", "tool_input": {"command": "ls"},
+                       "cwd": "/Users/dev/x", "hook_event_name": "PreToolUse"},
+        helper_config=_StubHelperConfig(),
+        rpc_caller=recording_rpc,
+        user_secret_loader=lambda: "user-hmac-secret",
+        sleep_fn=lambda _s: None,
+    )
+    assert calls == [], f"hook still calls RPCs: {calls}"
+
