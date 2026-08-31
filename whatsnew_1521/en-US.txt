@@ -6,6 +6,8 @@ If you never turned on Remote Control, the alerts you had switched on were never
 
 • Fixed: Send and Stop stayed clickable in a session whose helper had stopped, and silently did nothing when pressed. They are now disabled, and the banner names the real cause instead of pointing at a switch that cannot fix it.
 
+• Fixed: the yearly plan advertised a discount it does not offer everywhere. "Save 17%" was written for prices we no longer charge; the figure is now computed from the live App Store prices for your region, so it shows a real number or no badge at all.
+
 • Removed: starting CLI sessions from your phone, streaming their terminal output, and approving tool permissions remotely. None of it had worked for some time. The screens, buttons and setup instructions describing it are gone rather than left promising something the app could not do. Machine controls — fan target, low-power mode, keep-awake — are unaffected.
 
 • Fixed: four settings that saved your choice and were then read by nothing, including one that claimed to silence quota notifications while they kept arriving.
