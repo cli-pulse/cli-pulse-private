@@ -76,6 +76,7 @@
       "folder_access.title",
       "language.system_default",
       "language.title",
+      "machine.helper_unauthenticated",
       "menu_bar.app_version",
       "menu_bar.edit",
       "menu_bar.quit",
@@ -221,6 +222,7 @@
       "provider_config.test_connection",
       "provider_config.testing",
       "providers.configure_hint",
+      "providers.empty_hint",
       "settings.auto_poll_status",
       "settings.critical_pct",
       "settings.critical_threshold_pct",
@@ -263,6 +265,7 @@
       "yield.view_detail"
     ],
     "ja": [
+      "machine.helper_unauthenticated",
       "onboarding_wizard.check_accounts",
       "onboarding_wizard.connect",
       "onboarding_wizard.connection_optional",
@@ -314,7 +317,9 @@
       "onboarding_wizard.sync_mode_title",
       "onboarding_wizard.undetected_providers",
       "onboarding_wizard.upgrade_body",
-      "onboarding_wizard.upgrade_title"
+      "onboarding_wizard.upgrade_title",
+      "providers.empty_hint",
+      "settings.privacy_redacted_hint"
     ],
     "ko": [
       "advanced.background_sync",
@@ -386,6 +391,7 @@
       "folder_access.title",
       "language.system_default",
       "language.title",
+      "machine.helper_unauthenticated",
       "menu_bar.app_version",
       "menu_bar.edit",
       "menu_bar.quit",
@@ -531,6 +537,7 @@
       "provider_config.test_connection",
       "provider_config.testing",
       "providers.configure_hint",
+      "providers.empty_hint",
       "settings.auto_poll_status",
       "settings.critical_pct",
       "settings.critical_threshold_pct",

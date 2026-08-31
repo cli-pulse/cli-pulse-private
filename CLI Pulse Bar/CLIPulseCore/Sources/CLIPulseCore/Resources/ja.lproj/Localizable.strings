@@ -61,7 +61,6 @@
 "providers.tracked" = "追跡中";
 "providers.no_providers" = "プロバイダーなし";
 "providers.no_data" = "プロバイダーデータなし";
-"providers.empty_hint" = "Macでヘルパーを実行するとプロバイダーデータが表示されます";
 "providers.all_hidden" = "すべてのプロバイダーが非表示";
 "providers.show_all_hint" = "「すべて表示」をタップして無効なプロバイダーを表示";
 "providers.search_placeholder" = "プロバイダーを検索";
@@ -447,7 +446,6 @@
 "settings.test_webhook" = "Webhookをテスト";
 "settings.remote_control" = "他のデバイスからのマシンリクエスト";
 "settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
-"settings.privacy_redacted_hint" = "CLI Pulse は各リクエストの編集済み概要のみをアップロードします — API キー、Cookie、完全なトランスクリプトは送信しません。";
 
 /* ── 表示追加 (i18n sweep) ── */
 "display.mode" = "表示モード";
@@ -1069,7 +1067,6 @@
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
-"machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › General」から再度ペアリングしてください。";
 
 /* v1.50 W-C — この Mac を読み取る前の選択 */
 "local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";

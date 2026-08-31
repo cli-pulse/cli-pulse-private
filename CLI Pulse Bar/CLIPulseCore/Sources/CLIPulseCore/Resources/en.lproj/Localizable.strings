@@ -61,7 +61,7 @@
 "providers.tracked" = "tracked";
 "providers.no_providers" = "No Providers";
 "providers.no_data" = "No provider data";
-"providers.empty_hint" = "Provider data appears once the helper is running on your Mac";
+"providers.empty_hint" = "Use Claude Code, Codex or another CLI on this Mac and your usage appears here. Already used one? Check that CLI Pulse has folder access.";
 "providers.all_hidden" = "All providers hidden";
 "providers.show_all_hint" = "Tap \"Show All\" to see disabled providers";
 "providers.search_placeholder" = "Search providers";
@@ -583,7 +583,7 @@
 "settings.test_webhook" = "Test Webhook";
 "settings.remote_control" = "Machine requests from your other devices";
 "settings.remote_control_iphone_hint" = "Ask a Mac for fan boost, Low Power Mode or Keep Awake from this iPhone";
-"settings.privacy_redacted_hint" = "CLI Pulse uploads only a redacted summary of each request — never API keys, cookies, or full transcripts.";
+"settings.privacy_redacted_hint" = "Your Macs accept four kinds of request from your other devices — fan target, revert fan to auto, Low Power Mode, Keep Awake. Nothing else leaves your device: no transcripts, session logs, or terminal output.";
 
 /* ── Display Mode additions ── */
 "display.mode" = "Display mode";
@@ -1117,7 +1117,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "Machine health isn't available with the built-in helper — it doesn't read sensors. Everything else on this Mac keeps working; sensor support is on the way.";
-"machine.helper_unauthenticated" = "The helper rejected this app's credentials. Re-pair from Settings › General.";
+"machine.helper_unauthenticated" = "The helper rejected this app's credentials. Restart the helper from Settings › Advanced.";
 
 /* v1.50 W-C — the choice that precedes any read of this Mac */
 "local_scan_consent.title" = "Before CLI Pulse reads this Mac";
