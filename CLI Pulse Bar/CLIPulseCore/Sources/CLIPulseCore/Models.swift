@@ -779,7 +779,10 @@ public struct DeviceRecord: Codable, Identifiable, Sendable {
     /// could never have worked, and it is ALSO why `RemoteControlHealth`
     /// reported `mac: FAIL` to users whose Mac was reachable and had a helper.
     ///
-    /// `"Mac"` is kept because 3 legacy rows still carry it.
+    /// `"Mac"` is kept because 3 legacy rows still carry it. `"darwin"` is
+    /// defensive tolerance, NOT an observed value — nothing in the repo writes
+    /// it today; it is here so a client reporting raw `uname` would not repeat
+    /// this bug. Do not read it as part of the measurement above.
     public var isMac: Bool {
         Self.isMacType(type)
     }
