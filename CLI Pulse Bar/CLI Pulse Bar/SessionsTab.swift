@@ -374,7 +374,6 @@ struct SessionsTab: View {
                         ManagedSessionRow(
                             session: session,
                             isSelected: selectedManagedSessionId == session.id,
-                            pendingApproval: pendingApproval(for: session),
                             routesLocally: state.shouldRouteSessionLocally(session),
                             isStaleLocal: state.isStaleLocalSession(session),
                             onSelect: {
@@ -831,7 +830,6 @@ struct SessionsTab: View {
     // MARK: - Command bar
 
     private func commandBar(for session: RemoteSession) -> some View {
-        let pending = pendingApproval(for: session)
         let localPending = localPendingApproval(for: session)
         let isRunning = session.status.caseInsensitiveCompare("running") == .orderedSame
         let isPending = session.status.caseInsensitiveCompare("pending") == .orderedSame
@@ -905,14 +903,6 @@ struct SessionsTab: View {
         // Local Sessions surface here doesn't render kind=='info'
         // payloads from the broker yet, so showing them in this banner
         // would be misleading).
-        let latestInfoMessage: String? = {
-            guard !routesLocally else { return nil }
-            guard let payload = (state.remoteSessionEvents[session.id] ?? [])
-                .last(where: { $0.kind == "info" })?
-                .payload else { return nil }
-            let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
-        }()
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 TextField(
@@ -1074,24 +1064,6 @@ struct SessionsTab: View {
             // failed: codex binary not on PATH" without expanding
             // live output, and on macOS a remote-routed row can drop
             // off the active list before the user thinks to expand it.
-            if let info = latestInfoMessage {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(info.lowercased().contains("fail")
-                                         || info.lowercased().contains("error")
-                                         ? Color.red : Color.blue)
-                    Text(info)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(.vertical, 3)
-                .padding(.horizontal, 6)
-                .background(Color.secondary.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-            }
             if showOutput {
                 outputPanel(for: session)
             }
@@ -1107,17 +1079,6 @@ struct SessionsTab: View {
         // session.status)` re-fires whenever the status keying value
         // changes; we only fetch when entering a terminal state and
         // the cache is empty so we don't trample fresh polled data.
-        .task(id: session.status) {
-            let lower = session.status.lowercased()
-            let isTerminal = lower == "errored"
-                || lower == "stopped"
-                || lower == "ended"
-            guard isTerminal, !routesLocally else { return }
-            let cached = state.remoteSessionEvents[session.id] ?? []
-            if cached.isEmpty {
-                await state.refreshRemoteSessionEvents(sessionId: session.id)
-            }
-        }
     }
 
     // MARK: - Helpers
@@ -1177,15 +1138,11 @@ struct SessionsTab: View {
     @ViewBuilder
     private func liveOutputPreview(for session: RemoteSession) -> some View {
         let routesLocally = state.shouldRouteSessionLocally(session)
-        // Iter 2B: local-routed rows take their preview from the
-        // live UDS stream (subscribeToLocalEvents). Remote-routed
-        // rows continue to use the existing remoteSessionEvents
-        // tail which the helper uploads to Supabase.
+        // Previews come from the live UDS stream (subscribeToLocalEvents).
+        // The Supabase tail that served non-local rows is gone with the
+        // session plane; a row that is not local-routed is one whose helper
+        // is unreachable, and there is nothing to show for it.
         let localPreviewRaw = state.localOutputPreview[session.id] ?? ""
-        let events = routesLocally ? [] : (state.remoteSessionEvents[session.id] ?? [])
-        let stdoutPayloads = events
-            .filter { $0.kind == "stdout" || $0.kind == "stderr" }
-            .map { $0.payload }
         // v1.15: route by `session.provider` so Codex / Gemini sessions
         // get their own marker recognition + chrome filter. Pre-v1.15
         // claude-only call sites used `ClaudeConversationPreviewFormatter`
@@ -1203,20 +1160,15 @@ struct SessionsTab: View {
         // redacted output_delta payloads. IIFE because the outer
         // function is `@ViewBuilder` and an if-else assignment
         // statement would be misinterpreted as a View-producing branch.
-        let transcript: String = {
-            if routesLocally {
-                return localPreviewRaw.isEmpty
-                    ? transcriptFallback
-                    : ConversationPreviewRouter.format(
-                        provider: providerKey,
-                        eventPayloads: [localPreviewRaw]
-                    )
-            }
-            return ConversationPreviewRouter.format(
-                provider: providerKey, eventPayloads: stdoutPayloads
+        let transcript: String = localPreviewRaw.isEmpty
+            ? transcriptFallback
+            : ConversationPreviewRouter.format(
+                provider: providerKey,
+                eventPayloads: [localPreviewRaw]
             )
-        }()
-        let hasContent = routesLocally ? !localPreviewRaw.isEmpty : !events.isEmpty
+        // An unreachable helper shows the empty state rather than a stale
+        // transcript from before it died.
+        let hasContent = routesLocally && !localPreviewRaw.isEmpty
         // Note: round-2 added a kind=='info' banner here, but round-3
         // moved it to the parent `commandBar(for:)` so the banner is
         // visible without expanding Show output. The duplicate copy
@@ -1251,29 +1203,24 @@ struct SessionsTab: View {
                                 )
                                 .textSelection(.enabled)
                                 .fixedSize(horizontal: false, vertical: true)
-                                .id(routesLocally
-                                    ? "claude-transcript-local-\(localPreviewRaw.count)"
-                                    : "claude-transcript-\(events.last?.id ?? 0)")
+                                .id("claude-transcript-local-\(localPreviewRaw.count)")
                                 .padding(6)
                         }
                     }
                 }
                 .frame(maxHeight: 200)
-                // 2026-05-08: parity with iOS — use the latest event id
-                // (monotonic, ever-growing) as the scroll trigger for the
-                // remote path. With `events.count` the trigger silently
-                // froze once the ring buffer hit cap and old events were
-                // trimmed; auto-scroll then stopped following fresh
-                // arrivals. Local path still uses byte count because
-                // there's no event-id equivalent on that branch.
-                .onChange(of: routesLocally
-                          ? localPreviewRaw.count
-                          : (events.last?.id ?? 0)) { _ in
-                    let anchor = routesLocally
-                        ? "claude-transcript-local-\(localPreviewRaw.count)"
-                        : "claude-transcript-\(events.last?.id ?? 0)"
+                // Byte count is the scroll trigger. The remote arm keyed on
+                // the latest Supabase event id — monotonic, so it survived the
+                // ring-buffer trimming that had frozen an earlier
+                // `events.count` trigger. Both are gone with the tail they
+                // read; the local path never had an event-id equivalent and
+                // does not need one.
+                .onChange(of: localPreviewRaw.count) { _ in
                     withAnimation(.linear(duration: 0.1)) {
-                        proxy.scrollTo(anchor, anchor: .bottom)
+                        proxy.scrollTo(
+                            "claude-transcript-local-\(localPreviewRaw.count)",
+                            anchor: .bottom
+                        )
                     }
                 }
             }
@@ -1463,9 +1410,6 @@ struct SessionsTab: View {
     }
 
 
-    private func pendingApproval(for session: RemoteSession) -> RemotePermissionRequest? {
-        state.remotePendingApprovals.first { $0.session_id == session.id }
-    }
 
     /// Iter 2B: structured local pending approval bound to this
     /// row's session id. Always nil for remote-routed rows. The
@@ -1973,7 +1917,6 @@ struct SessionsTab: View {
 private struct ManagedSessionRow: View {
     let session: RemoteSession
     let isSelected: Bool
-    let pendingApproval: RemotePermissionRequest?
     /// True when the row's actions (prompt/stop) route through the
     /// local UDS path rather than Supabase. Drives the "Local"
     /// badge so the user can see at a glance which transport they
@@ -2055,11 +1998,6 @@ private struct ManagedSessionRow: View {
                         Text(session.status)
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(statusColor)
-                        if pendingApproval != nil {
-                            Text("· pending approval")
-                                .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.orange)
-                        }
                         // Affordance hint so the chevron isn't the
                         // only indication that a row expands into
                         // controls. Stale rows replace the affordance
