@@ -893,9 +893,14 @@ struct SessionsTab: View {
             isRunning: isRunning,
             localSendUnsupported: localSendUnsupported,
             isStaleLocal: isStaleLocal,
-            hasPendingApproval: hasPendingApproval
+            hasPendingApproval: hasPendingApproval,
+            helperUnreachable: helperUnreachable
         )
-        let stopDisabled = isStaleLocal
+        // Stop gets the same treatment. It used to fall through to
+        // `stopRemoteSession` when the row was not local-routed — a no-op
+        // since the plane was retired, so the button looked live and did
+        // nothing. Disabling it matches the hint the bar already shows.
+        let stopDisabled = isStaleLocal || helperUnreachable
         // v1.15 codex review (round 3): pull the latest helper info
         // event for THIS row so we can surface the spawn-failure
         // detail above the showOutput gate. Local-routed rows skip
@@ -989,13 +994,12 @@ struct SessionsTab: View {
                 }
                 Button {
                     if showOutput {
-                        // Collapsing — drop both caches so the next
-                        // reveal pulls fresh rather than from the
-                        // previous run's tail. Local subscription
-                        // teardown happens in `.onChange(of:
-                        // showOutput)` above so toggling is the
-                        // single point of truth.
-                        state.clearRemoteSessionEventsCache(sessionId: session.id)
+                        // Collapsing — drop the cache so the next reveal
+                        // pulls fresh rather than from the previous run's
+                        // tail. Local subscription teardown happens in
+                        // `.onChange(of: showOutput)` above so toggling is
+                        // the single point of truth. (There were two caches;
+                        // the Supabase one went with the session plane.)
                         state.localOutputPreview.removeValue(forKey: session.id)
                     }
                     showOutput.toggle()
@@ -1036,13 +1040,10 @@ struct SessionsTab: View {
                             _ = await state.stopLocalSession(sessionId: session.id)
                             state.localOutputPreview.removeValue(forKey: session.id)
                             state.localPendingApprovals.removeValue(forKey: session.id)
-                        } else {
-                            await state.stopRemoteSession(sessionId: session.id)
                         }
                         if selectedManagedSessionId == session.id {
                             selectedManagedSessionId = nil
                         }
-                        state.clearRemoteSessionEventsCache(sessionId: session.id)
                     }
                 } label: {
                     Label(isPending ? "Cancel" : "Stop",
@@ -1230,46 +1231,6 @@ struct SessionsTab: View {
     }
 
     @ViewBuilder
-    private func outputRow(_ event: RemoteSessionEvent) -> some View {
-        let kindColor: Color = {
-            switch event.kind {
-            case "stderr": return .orange
-            case "status": return event.payload == "errored" ? .red : .secondary
-            case "info":   return .blue
-            default:       return .primary // stdout
-            }
-        }()
-        // Claude's TUI emits ANSI CSI / OSC sequences for cursor
-        // moves, colors, and bracketed-paste — rendering them as raw
-        // text reads as `[2D[3B…` gibberish. After stripping escapes
-        // we still get TUI chrome (box borders, status bar, spinner
-        // fragments). TerminalOutputPreviewFormatter drops obvious
-        // chrome lines and keeps the substantive prose so the
-        // preview reads naturally without a full terminal emulator.
-        // Status / info rows are synthesized by the helper and don't
-        // need either pass, but running both is harmless.
-        let display = TerminalOutputPreviewFormatter.format(event.payload)
-        if display.isEmpty {
-            // 100% TUI chrome event — collapse to nothing so the
-            // user doesn't see a gap with just a 'stdout' label.
-            EmptyView()
-        } else {
-            HStack(alignment: .top, spacing: 6) {
-                Text(event.kind)
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(kindColor)
-                    .frame(width: 38, alignment: .leading)
-                Text(display)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-        }
-    }
 
     private func sendPrompt(for session: RemoteSession) async {
         let text = promptText
@@ -1283,15 +1244,12 @@ struct SessionsTab: View {
         // routes helper-owned sessions through Supabase by mistake.
         let routesLocally = state.shouldRouteSessionLocally(session)
         let ok: Bool
-        if routesLocally {
-            guard state.localCapabilities?.sendInput == true else {
-                // No silent cloud fallback for local-routed rows.
-                return
-            }
-            ok = await state.sendLocalSessionInput(sessionId: session.id, payload: text)
-        } else {
-            ok = await state.sendRemoteSessionPrompt(sessionId: session.id, text: text)
-        }
+        // Not local-routed means the helper is unreachable; there is no
+        // transport left. Send is disabled in that state, so this is a
+        // defensive guard rather than a reachable path.
+        guard routesLocally else { return }
+        guard state.localCapabilities?.sendInput == true else { return }
+        ok = await state.sendLocalSessionInput(sessionId: session.id, payload: text)
         if ok { promptText = "" }
     }
 

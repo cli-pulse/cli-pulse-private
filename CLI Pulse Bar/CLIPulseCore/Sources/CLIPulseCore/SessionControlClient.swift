@@ -500,12 +500,20 @@ public enum SessionControlPredicates {
         isRunning: Bool,
         localSendUnsupported: Bool,
         isStaleLocal: Bool,
-        hasPendingApproval: Bool
+        hasPendingApproval: Bool,
+        helperUnreachable: Bool = false
     ) -> Bool {
         if !isRunning { return true }
         if localSendUnsupported { return true }
         if isStaleLocal { return true }
         if hasPendingApproval { return true }
+        // An unreachable helper is NOT covered by `isStaleLocal`:
+        // `isStaleLocalSession` returns false the moment
+        // `localHelperReachable` goes false (its first guard), so a dead
+        // helper left Send and Stop ENABLED. They then ran the retired
+        // plane's RPCs, which are no-ops — the user typed, pressed send,
+        // and nothing happened with no explanation.
+        if helperUnreachable { return true }
         return false
     }
 }
