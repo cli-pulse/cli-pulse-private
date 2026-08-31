@@ -1,5 +1,8 @@
 package com.clipulse.android.ui.navigation
 
+import androidx.annotation.StringRes
+import androidx.compose.ui.res.stringResource
+import com.clipulse.android.R
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
@@ -36,12 +39,23 @@ val LocalSnackbarHostState = compositionLocalOf<SnackbarHostState> {
     error("No SnackbarHostState provided")
 }
 
-enum class Screen(val route: String, val label: String, val icon: ImageVector) {
-    Overview("overview", "Overview", Icons.Default.Dashboard),
-    Providers("providers", "Providers", Icons.Default.Dns),
-    Sessions("sessions", "Sessions", Icons.AutoMirrored.Filled.List),
-    Alerts("alerts", "Alerts", Icons.Default.Notifications),
-    Settings("settings", "Settings", Icons.Default.Settings),
+/// Bottom-nav destinations.
+///
+/// `labelRes`, not a hardcoded String: the labels used to be English literals
+/// here, so the navigation bar rendered in English for every locale while the
+/// translated `tab_*` strings sat in all six `values-*` files, referenced by
+/// nothing. That is why an unused-string scan flagged them — they were unused
+/// because the bar never asked for them.
+enum class Screen(
+    val route: String,
+    @StringRes val labelRes: Int,
+    val icon: ImageVector,
+) {
+    Overview("overview", R.string.tab_overview, Icons.Default.Dashboard),
+    Providers("providers", R.string.tab_providers, Icons.Default.Dns),
+    Sessions("sessions", R.string.tab_sessions, Icons.AutoMirrored.Filled.List),
+    Alerts("alerts", R.string.tab_alerts, Icons.Default.Notifications),
+    Settings("settings", R.string.tab_settings, Icons.Default.Settings),
 }
 
 @Composable
@@ -127,8 +141,10 @@ fun AppNavigation(
         navigationSuiteItems = {
             tabs.forEach { screen ->
                 item(
-                    icon = { Icon(screen.icon, contentDescription = screen.label) },
-                    label = { Text(screen.label) },
+                    icon = {
+                        Icon(screen.icon, contentDescription = stringResource(screen.labelRes))
+                    },
+                    label = { Text(stringResource(screen.labelRes)) },
                     selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
                     onClick = {
                         navController.navigate(screen.route) {
