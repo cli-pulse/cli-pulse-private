@@ -68,7 +68,7 @@ public extension RemoteControlHealth.Inputs {
         realtimeConnected: Bool? = nil,
         now: Date = Date()
     ) -> RemoteControlHealth.Inputs {
-        let macs = devices.filter { $0.type.caseInsensitiveCompare("Mac") == .orderedSame }
+        let macs = devices.filter(\.isMac)
         let target = macs.max {
             (sharedISO8601Parse($0.last_sync_at ?? "") ?? .distantPast)
                 < (sharedISO8601Parse($1.last_sync_at ?? "") ?? .distantPast)

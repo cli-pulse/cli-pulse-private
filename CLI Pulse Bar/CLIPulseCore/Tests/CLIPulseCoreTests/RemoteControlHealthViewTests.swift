@@ -75,4 +75,61 @@ final class RemoteControlHealthViewTests: XCTestCase {
         ))
         XCTAssertTrue(report.supportText().contains("helper: ok (1.16.0)"))
     }
+
+    // MARK: - "Mac" vs "macOS" (2026-08-31)
+
+    /// THE REGRESSION THIS FILE MISSED. Every fixture above says `type: "Mac"`.
+    /// The app registers `"macOS"` — `DataRefreshManager.registerDevice`,
+    /// `HelperAPIClient`'s `deviceType` default and `APIClient`'s decode
+    /// fallback all use that string — and the filter was an exact match on
+    /// `"Mac"`. Production, measured 2026-08-31: macOS 70 devices / 70 users,
+    /// Mac 3 devices / 2 users. So the tests passed against the spelling that
+    /// covers 3 of 73 machines.
+    func testInputsAcceptTheStringTheAppActuallyRegisters() {
+        let inputs = RCH.Inputs.from(
+            isPaired: true, remoteControlEnabled: true,
+            devices: [device("mac", type: "macOS", sync: "2026-06-04T00:00:00Z", helper: "1.30.0")],
+            notificationsAuthorized: nil,
+            now: Date(timeIntervalSince1970: 2_000_000))
+        XCTAssertTrue(inputs.hasMac, "a device registered as \"macOS\" is a Mac")
+        XCTAssertEqual(inputs.helperVersion, "1.30.0")
+    }
+
+    /// The predicate accepts both spellings and nothing else. The negative half
+    /// matters as much as the positive: a predicate that returned true for
+    /// everything would satisfy the test above.
+    func testMacPredicateAcceptsBothSpellingsAndRejectsTheRest() {
+        for yes in ["macOS", "Mac", "mac", "MACOS", " macOS ", "darwin"] {
+            XCTAssertTrue(DeviceRecord.isMacType(yes), "\(yes) should count as a Mac")
+        }
+        for no in ["Windows", "Android", "iPhone", "iPad", "Linux", "", "macbook"] {
+            XCTAssertFalse(DeviceRecord.isMacType(no), "\(no) must NOT count as a Mac")
+        }
+    }
+
+    /// End-to-end: the user-visible consequence. With Remote Control on and a
+    /// reachable Mac carrying a helper, the diagnostics screen must not show a
+    /// red FAIL on "Mac reachable" — which is exactly what 70 of 73 Macs saw.
+    func testAReachableMacOSMacIsNotReportedAsFailing() {
+        let sync = "2026-06-04T00:00:00Z"
+        let now = (sharedISO8601Parse(sync) ?? Date()).addingTimeInterval(60)
+        let report = RCH.evaluate(RCH.Inputs.from(
+            isPaired: true, remoteControlEnabled: true,
+            devices: [device("mac", type: "macOS", sync: sync, helper: "1.30.0")],
+            notificationsAuthorized: true, now: now))
+
+        let mac = report.checks.first { $0.id == .mac }
+        XCTAssertEqual(mac?.status, .ok, "a reachable macOS Mac must not report FAIL")
+        let helper = report.checks.first { $0.id == .helper }
+        XCTAssertEqual(helper?.status, .ok, "the helper check must not be skipped as N/A")
+
+        // Control: a user with only a phone SHOULD still fail the mac check, so
+        // the assertion above is about the spelling and not about a check that
+        // can no longer fail at all.
+        let noMac = RCH.evaluate(RCH.Inputs.from(
+            isPaired: true, remoteControlEnabled: true,
+            devices: [device("phone", type: "iPhone", sync: sync, helper: "")],
+            notificationsAuthorized: true, now: now))
+        XCTAssertEqual(noMac.checks.first { $0.id == .mac }?.status, .fail)
+    }
 }
