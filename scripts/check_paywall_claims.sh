@@ -379,7 +379,21 @@ fi
 # number that lives in ASC and changes there. So the rule is not "keep them in
 # sync", it is "do not state them here at all" — the pattern TERMS.md already
 # uses ("shown in the App Store and in the app at the time of purchase").
-description_sources="$(find "$ROOT/CLI Pulse Bar/scripts" -maxdepth 1 \
+# v1.52.1 moved the text itself into one canonical file; the two pushers now
+# read it. Scanning only the pushers would have quietly turned this check into
+# a no-op the moment that happened — it would have found two description-free
+# Python files and reported a pass. So the canonical file is scanned, is
+# REQUIRED to exist, and the pushers are still scanned so that an inline copy
+# growing back is caught here as well as by asc_listing_preflight.py.
+canonical_desc="$ROOT/CLI Pulse Bar/appstore/description_en-US.txt"
+if [ ! -f "$canonical_desc" ]; then
+    echo "ERROR: canonical App Store description missing:"
+    echo "       CLI Pulse Bar/appstore/description_en-US.txt"
+    echo "       Refusing to pass — this check would be scanning nothing."
+    exit 1
+fi
+description_sources="$canonical_desc
+$(find "$ROOT/CLI Pulse Bar/scripts" -maxdepth 1 \
     \( -name 'appstore_metadata.py' -o -name 'resubmit.py' \) -print 2>/dev/null)"
 
 if [ -z "$description_sources" ]; then

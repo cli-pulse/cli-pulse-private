@@ -36,6 +36,11 @@ ANDROID_STRINGS_REL="android/app/src/main/res/values/strings.xml"
 # v1.52.1, live on the store and on the version then in review.
 METADATA_REL="CLI Pulse Bar/scripts/appstore_metadata.py"
 RESUBMIT_REL="CLI Pulse Bar/scripts/resubmit.py"
+# v1.52.1: the description itself moved here and both pushers read it. Cases
+# 4c/4d plant into THIS file — planting into the pushers now changes a file
+# that no longer contains a description, which is precisely the no-op mutation
+# `assert_changed` exists to reject (and did, on the first run after the move).
+DESCRIPTION_REL="CLI Pulse Bar/appstore/description_en-US.txt"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
 # registered enforcement files, and any .swift/.strings/.kt/.xml under the two
@@ -56,6 +61,7 @@ build_fixture() {
         echo "$ANDROID_STRINGS_REL"
         echo "$METADATA_REL"
         echo "$RESUBMIT_REL"
+        echo "$DESCRIPTION_REL"
         # every App Store screenshot caption source — the guard refuses to run
         # if it finds none, so the fixture must carry them all
         (cd "$ROOT" && find "CLI Pulse Bar/scripts" -maxdepth 1 \
@@ -265,8 +271,8 @@ assert_changed "offer list unparseable" "$TMP/case/$OFFER_REL" "$before" \
 echo
 # ── 4c. a hardcoded price returns to the App Store description ──────────────
 build_fixture "$TMP/case"
-before="$(shasum "$TMP/case/$METADATA_REL" | cut -d' ' -f1)"
-python3 - "$TMP/case/$METADATA_REL" <<'PLANT'
+before="$(shasum "$TMP/case/$DESCRIPTION_REL" | cut -d' ' -f1)"
+python3 - "$TMP/case/$DESCRIPTION_REL" <<'PLANT'
 import sys
 p = sys.argv[1]; s = open(p).read()
 anchor = "CLI Pulse Pro is available as an auto-renewing subscription."
@@ -275,13 +281,13 @@ open(p, "w").write(s.replace(
     anchor, "CLI Pulse Pro is available for $4.99/month.", 1))
 PLANT
 assert_changed "hardcoded price in store description" \
-    "$TMP/case/$METADATA_REL" "$before" \
+    "$TMP/case/$DESCRIPTION_REL" "$before" \
     && expect_fail "hardcoded price in store description" "hardcodes a price"
 
 # ── 4d. the withdrawn Team tier returns to the App Store description ─────────
 build_fixture "$TMP/case"
-before="$(shasum "$TMP/case/$RESUBMIT_REL" | cut -d' ' -f1)"
-python3 - "$TMP/case/$RESUBMIT_REL" <<'PLANT'
+before="$(shasum "$TMP/case/$DESCRIPTION_REL" | cut -d' ' -f1)"
+python3 - "$TMP/case/$DESCRIPTION_REL" <<'PLANT'
 import sys
 p = sys.argv[1]; s = open(p).read()
 anchor = "CLI Pulse Pro is available as an auto-renewing subscription."
@@ -290,7 +296,7 @@ open(p, "w").write(s.replace(
     anchor, anchor + " CLI Pulse Team is also available.", 1))
 PLANT
 assert_changed "withdrawn Team tier in store description" \
-    "$TMP/case/$RESUBMIT_REL" "$before" \
+    "$TMP/case/$DESCRIPTION_REL" "$before" \
     && expect_fail "withdrawn Team tier in store description" "withdrawn from sale"
 
 echo "test_check_paywall_claims: $pass passed, $fail failed."
