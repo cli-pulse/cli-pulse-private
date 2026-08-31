@@ -61,7 +61,7 @@
 "providers.tracked" = "跟蹤中";
 "providers.no_providers" = "無服務商";
 "providers.no_data" = "無服務商資料";
-"providers.empty_hint" = "Mac 上的助手執行後將顯示服務商資料";
+"providers.empty_hint" = "在這台 Mac 上使用 Claude Code、Codex 或其他 CLI,用量就會顯示在這裡。已經用過了?請檢查 CLI Pulse 是否已取得資料夾存取權限。";
 "providers.all_hidden" = "所有服務商已隱藏";
 "providers.show_all_hint" = "點按「顯示全部」檢視已禁用的服務商";
 "providers.search_placeholder" = "搜尋服務商";
@@ -447,7 +447,7 @@
 "settings.test_webhook" = "測試 Webhook";
 "settings.remote_control" = "來自其他裝置的機器請求";
 "settings.remote_control_iphone_hint" = "用這台 iPhone 請求 Mac 提升風扇轉速、進入低耗電模式或防休眠";
-"settings.privacy_redacted_hint" = "CLI Pulse 僅上傳每個請求的脫敏摘要——絕不上傳 API 金鑰、Cookie 或完整的對話內容。";
+"settings.privacy_redacted_hint" = "你的 Mac 只接受來自其他裝置的四類請求——設定風扇轉速目標、恢復風扇自動控制、低耗電模式、防休眠。除此之外沒有任何內容離開你的裝置:不含工作階段記錄、日誌或終端機輸出。";
 
 /* ── 顯示補充 (i18n sweep) ── */
 "display.mode" = "顯示模式";
@@ -1069,7 +1069,7 @@
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "內建 helper 不讀取感測器,所以機器健康暫時不可用。這台 Mac 上其他功能都正常;感測器支援正在進行。";
-"machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › General」重新配對。";
+"machine.helper_unauthenticated" = "helper 拒絕了本應用程式的憑證。請在「設定 › 高階」中重新啟動 helper。";
 
 /* v1.50 W-C — 在讀取這台 Mac 之前的選擇 */
 "local_scan_consent.title" = "在 CLI Pulse 讀取這台 Mac 之前";

@@ -61,7 +61,6 @@
 "providers.tracked" = "추적 중";
 "providers.no_providers" = "공급자 없음";
 "providers.no_data" = "공급자 데이터 없음";
-"providers.empty_hint" = "Mac에서 도우미가 실행되면 공급자 데이터가 표시됩니다";
 "providers.all_hidden" = "모든 공급자가 숨겨짐";
 "providers.show_all_hint" = "\"모두 보기\"를 탭하여 비활성 공급자 표시";
 "providers.search_placeholder" = "공급자 검색";
@@ -826,7 +825,6 @@
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "내장 헬퍼는 센서를 읽지 않으므로 머신 상태는 현재 사용할 수 없습니다. 이 Mac의 다른 기능은 정상 작동하며, 센서 지원은 준비 중입니다.";
-"machine.helper_unauthenticated" = "헬퍼가 이 앱의 자격 증명을 거부했습니다. '설정 › General'에서 다시 페어링하세요.";
 
 /* v1.50 W-C — 이 Mac을 읽기 전의 선택 */
 "local_scan_consent.title" = "CLI Pulse가 이 Mac을 읽기 전에";

@@ -1506,7 +1506,15 @@ struct SessionsTab: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Helper not running")
                         .font(.system(size: 11, weight: .semibold))
-                    Text("CLI Pulse can't reach the local helper on this Mac. Same-device session control falls back to the slower remote path until the helper is started.")
+                    // Was: "…falls back to the slower remote path until the
+                    // helper is started." There is no remote path — the
+                    // Supabase session plane is retired, and while this banner
+                    // is up Send and Stop are DISABLED and New is absent. So
+                    // control is gone, not slower, and "falls back … until"
+                    // told the user to wait out a degradation that never
+                    // resolves. That made it worse than the siblings fixed in
+                    // #508: it actively suppressed the one action that works.
+                    Text("CLI Pulse can't reach the local helper on this Mac, so managed sessions can't start, send, or stream. Start the helper to restore control.")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1765,9 +1773,16 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Approve terminal Claude remotely")
+                    Text("Approve terminal Claude from CLI Pulse")
                         .font(.system(size: 11, weight: .semibold))
-                    Text("Install the approval hook so a Claude you launch in any Terminal routes its tool permissions through CLI Pulse — Approve / Reject from here or your phone. Writes ~/.claude/settings.json (both events); reversible any time. Restart Claude after installing.")
+                    // The sibling banner 60 lines up (the INSTALLED variant)
+                    // already dropped "or from your phone" and carries the
+                    // receipt. This one — the variant that PITCHES the feature
+                    // and owns the CTA — was missed, so the false promise
+                    // showed exactly while the user was deciding, then flipped
+                    // to honest copy the moment they installed. One predicate,
+                    // two call sites, only one fixed.
+                    Text("Install the approval hook so a Claude you launch in any Terminal routes its tool permissions through CLI Pulse — Approve / Reject them here on this Mac. Writes ~/.claude/settings.json (both events); reversible any time. Restart Claude after installing.")
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -61,7 +61,6 @@
 "providers.tracked" = "rastreados";
 "providers.no_providers" = "Sin proveedores";
 "providers.no_data" = "Sin datos de proveedores";
-"providers.empty_hint" = "Los datos aparecen cuando el auxiliar está ejecutándose en su Mac";
 "providers.all_hidden" = "Todos los proveedores ocultos";
 "providers.show_all_hint" = "Toque \"Mostrar todo\" para ver proveedores deshabilitados";
 "providers.search_placeholder" = "Buscar proveedores";
@@ -826,7 +825,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "El estado de la máquina no está disponible con el helper integrado: no lee sensores. Todo lo demás en este Mac sigue funcionando; el soporte de sensores está en camino.";
-"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Vuelve a emparejar en Ajustes › General.";
 
 /* v1.50 W-C — la decisión previa a cualquier lectura de este Mac */
 "local_scan_consent.title" = "Antes de que CLI Pulse lea este Mac";
