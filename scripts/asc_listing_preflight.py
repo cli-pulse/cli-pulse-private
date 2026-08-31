@@ -343,6 +343,20 @@ def main() -> int:
             if local_dir is None or not local_dir.is_dir():
                 print(f"  note  {dtype}: {len(shots['data'])} live shot(s), no local dir mapped — not compared")
                 continue
+
+            # Drift also runs the other way: a composed screenshot that exists
+            # in the repo and is NOT on the store. Reported as a note, not a
+            # failure — 1.52.1 deliberately ships 8 of the 9 macOS shots,
+            # leaving out the paywall one because the only machine available to
+            # re-shoot it is on a non-USD storefront and the en-US set is the
+            # fallback every storefront without its own screenshots sees. A
+            # permanently-red gate gets `continue-on-error`'d, which is the
+            # same failure as a green gate that guards nothing.
+            live_names = {(x["attributes"].get("fileName") or "") for x in shots["data"]}
+            for extra in sorted(local_dir.glob("*.png")):
+                if extra.name not in live_names:
+                    print(f"  note  {extra.name}: in the repo, not on the store "
+                          f"(never uploaded, or deliberately withheld)")
             for shot in shots["data"]:
                 a = shot["attributes"]
                 name = a.get("fileName") or "?"
