@@ -42,18 +42,27 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
                        RemoteSessionPlane.isEnabled && state.remoteControlEnabled)
     }
 
-    /// Approvals were tool-permission prompts from a remotely-driven session.
-    /// With that plane gone there is nothing to approve, so v1.52.1 deleted the
-    /// surfaces outright rather than hiding them: `RemoteApprovalsSheet` (macOS
-    /// popover), `iOSRemoteApprovalsView` (iOS screen) and the shared
-    /// `RemoteApprovalsEntryState` predicate.
+    /// v1.52.1 deleted the remote session plane's surfaces outright rather than
+    /// hiding them: the approvals UI (`RemoteApprovalsSheet`,
+    /// `iOSRemoteApprovalsView`, `RemoteApprovalsEntryState`) and then the iOS
+    /// terminal + managed-session UI (`RemoteTerminalView` and its
+    /// representable and key bar, `RemoteSessionEventStream`,
+    /// `RemoteSessionControlClient`, `ManagedSessionDetailView`).
     ///
     /// This has to be a source scan. The deleted types cannot be named in Swift
-    /// — the test would not compile — and two of the three lived in app targets
-    /// that have no test bundle at all, which is exactly how the Swarm tab
-    /// shipped visible for thirty versions while its release notes called it
-    /// dark. A grep is the only assertion that reaches them.
-    func test_theApprovalsSurfacesAreGoneFromEverySource() throws {
+    /// — the test would not compile — and several lived in app targets that have
+    /// no test bundle at all, which is exactly how the Swarm tab shipped visible
+    /// for thirty versions while its release notes called it dark. A grep is the
+    /// only assertion that reaches them.
+    ///
+    /// NOTE the near-misses this list is written around. `TerminalView`,
+    /// `TerminalAttachView`, `TerminalSessionAdapter` and
+    /// `TerminalNavigationGuard` are the LIVE macOS local in-app terminal and
+    /// must never appear below — `TerminalNavigationGuard` in particular is the
+    /// control that stops a crafted escape sequence navigating that WebView off
+    /// its bundle. Matching on "Terminal" instead of the full symbol names would
+    /// have deleted a security control from a working feature.
+    func test_theRetiredPlanesSurfacesAreGoneFromEverySource() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()   // CLIPulseCoreTests
             .deletingLastPathComponent()   // Tests
@@ -73,8 +82,7 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
                 let text = try String(contentsOf: file, encoding: .utf8)
                 scanned += 1
                 if text.contains("RemoteSessionPlane") { sawLivingSymbol = true }
-                for dead in ["RemoteApprovalsSheet", "iOSRemoteApprovalsView",
-                             "RemoteApprovalsEntryState"] {
+                for dead in Self.deletedSymbols {
                     XCTAssertFalse(
                         text.contains(dead),
                         "\(file.lastPathComponent) still references \(dead)"
@@ -90,6 +98,65 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
         XCTAssertTrue(sawLivingSymbol,
                       "the scanner never matched a symbol that DOES exist, so its "
                       + "negative findings prove nothing")
+    }
+
+    /// Every symbol the retirement removed. Kept as one list so the scan above
+    /// and the file check below cannot drift apart.
+    static let deletedSymbols = [
+        // approvals (PR #501)
+        "RemoteApprovalsSheet", "iOSRemoteApprovalsView", "RemoteApprovalsEntryState",
+        // iOS terminal + managed sessions (PR #502)
+        "RemoteTerminalViewRepresentable", "RemoteTerminalKeyBar", "RemoteTerminalView",
+        "RemoteSessionEventStream", "RemoteSessionControlClient", "ManagedSessionDetailView",
+    ]
+
+    /// The symbol scan cannot see Kotlin, and it cannot see a file that has been
+    /// re-added but not yet referenced. This checks the paths directly, so a
+    /// revert shows up as a failure the moment the file lands.
+    func test_theDeletedFilesAreStillDeleted() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()   // repo root
+
+        let gone = [
+            "CLI Pulse Bar/CLI Pulse Bar/RemoteApprovalsSheet.swift",
+            "CLI Pulse Bar/CLI Pulse Bar iOS/iOSRemoteApprovalsView.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteApprovalsEntryState.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalView.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalViewRepresentable.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalKeyBar.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteSessionEventStream.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteSessionControlClient.swift",
+            // Android (PR #503) — unreachable from any Swift symbol scan.
+            "android/app/src/main/java/com/clipulse/android/terminal/RemoteTerminalPanel.kt",
+            "android/app/src/main/java/com/clipulse/android/ui/sessions/ManagedSessionsScreen.kt",
+            "android/app/src/main/java/com/clipulse/android/ui/sessions/ManagedSessionsViewModel.kt",
+            "android/app/src/main/java/com/clipulse/android/data/model/RemoteSession.kt",
+            "android/app/src/main/assets/terminal/xterm.js",
+        ]
+        for path in gone {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(path).path),
+                "\(path) is back — the retirement was reverted"
+            )
+        }
+
+        // Positive controls, one per platform, so a wrong repo root cannot make
+        // every path "absent" and pass. These are the LIVE local terminal and a
+        // live Android source: if either is missing, the root is wrong (or
+        // something far worse happened) and the absences above prove nothing.
+        for alive in [
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/TerminalView.swift",
+            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/TerminalNavigationGuard.swift",
+            "android/app/src/main/java/com/clipulse/android/ui/sessions/SessionsScreen.kt",
+        ] {
+            XCTAssertTrue(
+                FileManager.default.fileExists(atPath: root.appendingPathComponent(alive).path),
+                "\(alive) is missing — the repo root is wrong, so the absence "
+                + "assertions above are vacuous"
+            )
+        }
     }
 
     /// DRIFT GUARD. `RemoteSessionPlane` is duplicated in HelperKit because the
