@@ -81,7 +81,7 @@
 "diagnostics.fix_remote_control" = "設定 → プライバシーでリモートコントロールをオンにしてください。";
 "diagnostics.fix_mac" = "Mac がスリープせず、オンラインで CLI Pulse が動作していることを確認してください。";
 "diagnostics.fix_helper" = "Mac に CLI Pulse ヘルパーをインストールまたは更新してください。";
-"diagnostics.fix_notifications" = "承認リクエストを受け取るには通知を許可してください。";
+"diagnostics.fix_notifications" = "使用状況のアラートを受け取るには通知を許可してください。";
 "diagnostics.fix_realtime" = "再接続中です。ネットワーク接続を確認してください。";
 "providers.this_week" = "今週";
 "providers.quota" = "クォータ";

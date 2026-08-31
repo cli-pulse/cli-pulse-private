@@ -82,7 +82,7 @@
 "diagnostics.fix_remote_control" = "在「設定 → 隱私權」中開啟遠端控制。";
 "diagnostics.fix_mac" = "請確保你的 Mac 處於喚醒、連線狀態並正在執行 CLI Pulse。";
 "diagnostics.fix_helper" = "請在你的 Mac 上安裝或更新 CLI Pulse 助手。";
-"diagnostics.fix_notifications" = "允許通知以接收審批請求。";
+"diagnostics.fix_notifications" = "允許通知，用量告警才能送達。";
 "diagnostics.fix_realtime" = "正在重新連線，請檢查你的網路連線。";
 "providers.this_week" = "本週";
 "providers.quota" = "配額";

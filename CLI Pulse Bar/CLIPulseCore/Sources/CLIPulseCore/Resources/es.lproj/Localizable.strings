@@ -81,7 +81,7 @@
 "diagnostics.fix_remote_control" = "Activa el control remoto en Configuración → Privacidad.";
 "diagnostics.fix_mac" = "Asegúrate de que tu Mac esté activo, en línea y ejecutando CLI Pulse.";
 "diagnostics.fix_helper" = "Instala o actualiza el auxiliar de CLI Pulse en tu Mac.";
-"diagnostics.fix_notifications" = "Permite las notificaciones para recibir solicitudes de aprobación.";
+"diagnostics.fix_notifications" = "Permite las notificaciones para recibir alertas de uso.";
 "diagnostics.fix_realtime" = "Reconectando: comprueba tu conexión de red.";
 "providers.this_week" = "Esta semana";
 "providers.quota" = "Cuota";
