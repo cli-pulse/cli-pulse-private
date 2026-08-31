@@ -136,13 +136,22 @@ private fun DeviceCard(device: com.clipulse.android.data.model.DeviceRecord) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                AssistChip(
-                    onClick = {},
-                    label = { Text(device.status) },
-                    colors = AssistChipDefaults.assistChipColors(
-                        labelColor = statusColor,
-                    ),
-                )
+                // Was an AssistChip with `onClick = {}` — the only one in the
+                // Android source. Material3 gives AssistChip Role.Button
+                // semantics and ripple by default, so TalkBack announced
+                // "button" and activating it did nothing. A status readout is
+                // not an action; render it as one.
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                ) {
+                    Text(
+                        device.status,
+                        color = statusColor,
+                        style = MaterialTheme.typography.labelMedium,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
             }
 
             if (device.helperVersion.isNotBlank()) {

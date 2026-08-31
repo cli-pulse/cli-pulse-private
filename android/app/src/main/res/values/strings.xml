@@ -57,11 +57,8 @@
 
     <!-- Subscription -->
     <string name="subscription_title">Subscription</string>
-    <string name="subscription_current_plan">Current Plan: %1$s</string>
-    <string name="subscription_processing">Payment processing…</string>
     <string name="subscription_data_retention">Data Retention</string>
     <string name="subscription_available_plans">Available Plans</string>
-    <string name="subscription_restore">Restore Purchases</string>
     <string name="subscription_per_year">/year</string>
     <string name="subscription_per_month">/month</string>
     <string name="subscription_current">Current</string>
@@ -209,10 +206,6 @@
     <string name="pdf_confidence_range">Confidence Range</string>
 
     <!-- Notification permission (v1.20.1 C7) -->
-    <string name="notification_permission_title">Enable notifications?</string>
-    <string name="notification_permission_body">CLI Pulse uses notifications to alert you about quota thresholds, remote approvals from your other devices, and other important events. You can change this later in system settings.</string>
-    <string name="notification_permission_continue">Continue</string>
-    <string name="notification_permission_not_now">Not now</string>
 
 
     <!-- v1.21 E6: plurals for DevicesScreen header -->
@@ -232,5 +225,5 @@
     <string name="thermal_fair">Fair</string>
     <string name="thermal_serious">Serious</string>
     <string name="thermal_critical">Critical</string>
-    <string name="subscription_unavailable_android">Subscriptions are not available on Android right now. Nothing in this app is locked — every feature is available to you as it is. If you subscribed previously, use Restore below.</string>
+    <string name="subscription_unavailable_android">Subscriptions are not available on Android right now. Nothing in this app is locked — every feature is available to you as it is.</string>
 </resources>

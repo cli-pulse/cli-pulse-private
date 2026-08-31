@@ -57,11 +57,8 @@
 
     <!-- Subscription -->
     <string name="subscription_title">サブスクリプション</string>
-    <string name="subscription_current_plan">現在のプラン: %1$s</string>
-    <string name="subscription_processing">支払い処理中…</string>
     <string name="subscription_data_retention">データ保持期間</string>
     <string name="subscription_available_plans">利用可能なプラン</string>
-    <string name="subscription_restore">購入を復元</string>
     <string name="subscription_per_year">/年</string>
     <string name="subscription_per_month">/月</string>
     <string name="subscription_current">現在</string>
@@ -210,10 +207,6 @@
 
 
     <!-- v1.21 E6: gap-fill (translated 2026-05-15) -->
-    <string name="notification_permission_title">通知を有効にしますか？</string>
-    <string name="notification_permission_body">CLI Pulse は、クォータのしきい値、他のデバイスからのリモート承認、その他の重要なイベントを通知でお知らせします。この設定は後でシステム設定から変更できます。</string>
-    <string name="notification_permission_continue">続ける</string>
-    <string name="notification_permission_not_now">今はしない</string>
 
 
     <!-- v1.21 E6: plurals for DevicesScreen header -->
@@ -232,5 +225,5 @@
     <string name="thermal_fair">注意</string>
     <string name="thermal_serious">警告</string>
     <string name="thermal_critical">重大</string>
-    <string name="subscription_unavailable_android">現在、Android では購読を提供していません。このアプリの機能に制限はなく、すべてそのままお使いいただけます。以前に購読された方は下の「復元」をお使いください。</string>
+    <string name="subscription_unavailable_android">現在、Android では購読を提供していません。このアプリの機能に制限はなく、すべてそのままお使いいただけます。</string>
 </resources>
