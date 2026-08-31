@@ -1,0 +1,30 @@
+CLI Pulse monitors your AI coding tool usage across Claude, Codex, Gemini, OpenRouter, Ollama, and 20+ providers in real-time.
+
+FEATURES:
+- Real-time usage monitoring for all major AI coding assistants
+- Track API costs and spending across providers
+- Session history with detailed metrics
+- Smart alerts for rate limits, errors, and unusual activity
+- Provider-level analytics with usage breakdowns
+
+MULTI-PLATFORM:
+- macOS menu bar app for quick access
+- iPhone & iPad app with adaptive layouts
+- Apple Watch app with quick glance dashboard
+- Home Screen & Lock Screen widgets
+
+PRIVACY:
+- Your usage data syncs to your own CLI Pulse account over an encrypted connection
+- No third-party ad or analytics SDKs
+- Remote control and cloud sharing are off by default, opt-in per feature, and revocable at any time
+
+Perfect for developers who use multiple AI coding tools and want to understand their usage patterns, control costs, and stay informed about their AI assistant activity.
+
+SUBSCRIPTION INFORMATION
+
+CLI Pulse Pro is available as an auto-renewing subscription. Available plans, pricing, and billing periods are shown in the App Store and in the app at the time of purchase.
+
+Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
+
+Terms of Use: https://cli-pulse.github.io/cli-pulse/terms.html
+Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html

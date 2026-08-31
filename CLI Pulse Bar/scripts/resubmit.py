@@ -3,6 +3,7 @@
 CLI Pulse - Cancel review, update screenshots, select new build, resubmit.
 """
 import jwt
+import pathlib
 import time
 import requests
 import os
@@ -18,6 +19,28 @@ BASE = "https://api.appstoreconnect.apple.com/v1"
 
 with open(API_KEY_PATH) as f:
     _key = f.read()
+
+# ── App Store description ─────────────────────────────────────────────────
+# Single source of truth: `CLI Pulse Bar/appstore/description_en-US.txt`.
+#
+# This used to be a literal here AND a second literal in the sibling pusher,
+# and the two drifted. On 2026-09-01 this file said "Optional cloud sync via
+# your CLI Pulse account" while `resubmit.py` said "All data stays on your
+# local network / No cloud sync or third-party analytics / Connects to your
+# self-hosted CLI Pulse backend" — three claims that are false about the
+# shipping app. Whichever script ran last decided what the App Store said
+# about our privacy posture.
+#
+# `scripts/asc_listing_preflight.py` now fails if either pusher regrows an
+# inline description literal.
+def _load_description() -> str:
+    path = (pathlib.Path(__file__).resolve().parent.parent
+            / "appstore" / "description_en-US.txt")
+    text = path.read_text(encoding="utf-8").strip()
+    if not text:
+        raise SystemExit(f"empty App Store description at {path}")
+    return text
+
 
 def token():
     now = int(time.time())
@@ -285,36 +308,7 @@ def main():
                     ios_vid = v["id"]
 
     # Update description with subscription info for each version
-    DESCRIPTION = """CLI Pulse monitors your AI coding tool usage across Claude, Codex, Gemini, OpenRouter, Ollama, and 20+ providers in real-time.
-
-FEATURES:
-- Real-time usage monitoring for all major AI coding assistants
-- Track API costs and spending across providers
-- Session history with detailed metrics
-- Smart alerts for rate limits, errors, and unusual activity
-- Provider-level analytics with usage breakdowns
-
-MULTI-PLATFORM:
-- macOS menu bar app for quick access
-- iPhone & iPad app with adaptive layouts
-- Apple Watch app with quick glance dashboard
-- Home Screen & Lock Screen widgets
-
-PRIVACY-FIRST:
-- All data stays on your local network
-- No cloud sync or third-party analytics
-- Connects to your self-hosted CLI Pulse backend
-
-Perfect for developers who use multiple AI coding tools and want to understand their usage patterns, control costs, and stay informed about their AI assistant activity.
-
-SUBSCRIPTION INFORMATION
-
-CLI Pulse Pro is available as an auto-renewing subscription. Available plans, pricing, and billing periods are shown in the App Store and in the app at the time of purchase.
-
-Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
-
-Terms of Use: https://cli-pulse.github.io/cli-pulse/terms.html
-Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html"""
+    DESCRIPTION = _load_description()
 
     for vid in [mac_vid, ios_vid]:
         if not vid:
