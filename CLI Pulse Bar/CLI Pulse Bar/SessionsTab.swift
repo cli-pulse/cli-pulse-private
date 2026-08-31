@@ -895,8 +895,6 @@ struct SessionsTab: View {
     private func commandBar(for session: RemoteSession) -> some View {
         let pending = pendingApproval(for: session)
         let localPending = localPendingApproval(for: session)
-        let isHighRisk = pending.flatMap { RemotePermissionRisk(rawValue: $0.risk) } == .high
-        let canApproveRemote = pending != nil && !isHighRisk
         let isRunning = session.status.caseInsensitiveCompare("running") == .orderedSame
         let isPending = session.status.caseInsensitiveCompare("pending") == .orderedSame
         let routesLocally = state.shouldRouteSessionLocally(session)
@@ -919,7 +917,19 @@ struct SessionsTab: View {
         //   button surface (gated on remote pending).
         let localApprovalsAvailable = routesLocally
             && state.localCapabilities?.approvals == true
-        let remoteApprovalsAvailable = !routesLocally
+        // `!routesLocally` USED to mean "this row streams from Supabase". It
+        // does not any more. `remoteSessions` is permanently empty since the
+        // session plane was retired, so every row on screen is a LOCAL one
+        // synthesised from `localManagedSessions` (see
+        // `displayedManagedSessions`), and `shouldRouteSessionLocally` returns
+        // false only when `localHelperReachable` / `localControlEnabled` drop.
+        //
+        // A helper death is the reachable case: `refreshLocalSessionControlState`
+        // returns early on a `hello()` failure WITHOUT clearing
+        // `localManagedSessions` — the clear lives in the gate-off branch,
+        // which is only reached when hello SUCCEEDED. So stale rows keep
+        // rendering, and they land here.
+        let helperUnreachable = !routesLocally
         // Codex iter6/iter7 finding: while a Claude PermissionRequest
         // is in flight — through EITHER routing path — its PTY shows
         // the native `1. Yes / 2. Yes, allow / 3. No` numbered prompt
@@ -935,8 +945,9 @@ struct SessionsTab: View {
         // remote *Approve* button, sending more input keeps the
         // race window open. Same lockout applies.
         let hasLocalPendingApproval = localApprovalsAvailable && localPending != nil
-        let hasRemotePendingApproval = remoteApprovalsAvailable && pending != nil
-        let hasPendingApproval = hasLocalPendingApproval || hasRemotePendingApproval
+        // The remote term is gone, not merely false: `pending` reads
+        // `state.remotePendingApprovals`, which nothing can fill now.
+        let hasPendingApproval = hasLocalPendingApproval
         // PR #18 follow-up: stale same-Mac rows (helper restart) have
         // no PTY in the current helper. Send / Stop / Approve all
         // have to fail closed against this id. Disable inputs in the
@@ -1015,16 +1026,8 @@ struct SessionsTab: View {
                     .controlSize(.small)
                     .help("Reject the pending Claude permission request. Claude will continue waiting for a different decision or fall back to its own prompt.")
                 }
-                if remoteApprovalsAvailable {
-                    Button(canApproveRemote ? "Approve pending" : (pending != nil ? "Approve (high-risk)" : "Approve")) {
-                        Task { await approveMatchingPending(for: session) }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(!canApproveRemote)
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .help(approveTooltip(pending: pending, isHighRisk: isHighRisk))
-                }
+            }
+            HStack(spacing: 8) {
             }
             HStack(spacing: 8) {
                 Text(commandBarHintText(
@@ -1032,8 +1035,7 @@ struct SessionsTab: View {
                     routesLocally: routesLocally,
                     localApprovalsAvailable: localApprovalsAvailable,
                     hasLocalPending: localPending != nil,
-                    remoteApprovalsAvailable: remoteApprovalsAvailable,
-                    hasRemotePending: pending != nil,
+                    helperUnreachable: helperUnreachable,
                     isStaleLocal: isStaleLocal
                 ))
                     .font(.system(size: 9))
@@ -1466,8 +1468,7 @@ struct SessionsTab: View {
         routesLocally: Bool,
         localApprovalsAvailable: Bool,
         hasLocalPending: Bool,
-        remoteApprovalsAvailable: Bool,
-        hasRemotePending: Bool,
+        helperUnreachable: Bool,
         isStaleLocal: Bool = false
     ) -> String {
         if isStaleLocal {
@@ -1499,39 +1500,30 @@ struct SessionsTab: View {
             // missing broker / registry, etc.
             return "Enter to send · approvals not advertised by this helper"
         }
-        if remoteApprovalsAvailable {
-            // Codex iter7: same lockout copy as the local pending
-            // case so the user sees a consistent "you must resolve
-            // the pending approval first" cue regardless of
-            // routing. ⌘↩ binds to the existing remote Approve
-            // button; the iteration didn't change that shortcut.
-            return hasRemotePending
-                ? "Resolve approval first · ⌘↩ to approve"
-                : "Enter to send · ⌘↩ to approve pending"
+        if helperUnreachable {
+            // This used to offer "Enter to send · ⌘↩ to approve pending" —
+            // two actions that cannot work when the helper is the thing that
+            // is down. Say what is true, and what fixes it.
+            return "CLI Pulse can't reach the helper — restart it to control this session"
         }
         return "Enter to send"
     }
 
-    /// Empty-state copy for the output panel. Branches on whether
-    /// the row pulls output from local UDS or remote Supabase.
+    /// Empty-state copy for the output panel.
+    ///
+    /// The non-local branch used to read "Remote Control is off — output won't
+    /// stream", which sent the user to a switch that could not fix it: a row
+    /// only stops routing locally when the HELPER stops answering, and Remote
+    /// Control now gates machine controls alone.
     private func emptyOutputText(routesLocally: Bool) -> String {
         if routesLocally {
             return state.localCapabilities?.subscribeEvents == true
                 ? "No output yet…"
                 : "This helper doesn't advertise streaming output."
         }
-        return state.remoteSessionsEnabled
-            ? "No output yet…"
-            : "Remote Control is off — output won't stream."
+        return "CLI Pulse can't reach the helper, so output isn't streaming. Restart it to reconnect."
     }
 
-    private func approveMatchingPending(for session: RemoteSession) async {
-        guard let pending = pendingApproval(for: session) else { return }
-        // High-risk approvals always require local confirmation, even
-        // inline.
-        if RemotePermissionRisk(rawValue: pending.risk) == .high { return }
-        await state.decideRemoteApproval(requestId: pending.id, decision: .approve)
-    }
 
     private func pendingApproval(for session: RemoteSession) -> RemotePermissionRequest? {
         state.remotePendingApprovals.first { $0.session_id == session.id }
@@ -1546,11 +1538,6 @@ struct SessionsTab: View {
         state.localPendingApprovals[session.id]?.first
     }
 
-    private func approveTooltip(pending: RemotePermissionRequest?, isHighRisk: Bool) -> String {
-        if pending == nil { return "No pending Claude permission request for this session." }
-        if isHighRisk { return "High-risk permission requests must be approved on the Mac directly." }
-        return "Approve the pending Claude permission request bound to this session (⌘↩)."
-    }
 
     /// Pick the most recently online Mac with the helper installed.
     /// iter 1 only spawns Claude on macOS helpers; the desktop-track
