@@ -338,13 +338,13 @@ final class HookAdapterTests: XCTestCase {
     /// can't easily capture stdout in a unit test without a fork,
     /// but we CAN pin the in-memory outcome branches.
     ///
-    /// Remote-arm port: a managed session whose local helper socket is GONE is
-    /// a PRE-create failure → `.notAttempted` (Python parity: `_try_local_uds_hook`
-    /// returns None at exactly these sites so the REMOTE arm can still resolve
-    /// the approval — the phone approves while the local helper is down). If
-    /// the remote arm also fails, the shared `.fallback` resolves managed →
-    /// fail-closed deny; a broken helper still NEVER auto-approves.
-    func testTryLocalUdsHookSocketMissingFallsThroughToRemoteArm() {
+    /// A managed session whose local helper socket is GONE is a PRE-create
+    /// failure → `.notAttempted`. That used to mean "let the REMOTE arm try";
+    /// since v1.52.1 there is no remote arm, so it means "emit the shared
+    /// `.fallback`", which for a managed session resolves to a fail-closed
+    /// deny. The outcome is unchanged — a broken helper still NEVER
+    /// auto-approves — but the reason is now one hop shorter.
+    func testTryLocalUdsHookSocketMissingIsNotAttempted() {
         // Set env vars to a guaranteed-missing socket path.
         let bogusSocket = "/tmp/clipulse-helper-does-not-exist-\(UUID().uuidString).sock"
         setenv("CLI_PULSE_LOCAL_HELPER_SOCK", bogusSocket, 1)
@@ -533,5 +533,66 @@ final class HookAdapterTests: XCTestCase {
         XCTAssertTrue(HookAdapter.unavailableMessage(provider: "claude").contains("Claude"))
         // Unknown providers get the generic claude wording, never crash.
         XCTAssertFalse(HookAdapter.unavailableMessage(provider: "other").isEmpty)
+    }
+
+    // MARK: - remote-approval arm retirement (v1.52.1)
+
+    /// The arm that used to run after the local one is gone. What matters is
+    /// that its REMOVAL changed no posture: every remote failure path already
+    /// ended in `.fallback`, and `.fallback` is what the hook emits now. These
+    /// pin the four combinations so a future edit cannot quietly turn an
+    /// external abstain into a deny (bricking a hand-launched terminal) or a
+    /// managed deny into an approve.
+    func testRetiredRemoteArmFallbackKeepsExternalSessionsOpen() {
+        let d = decision(.fallback, HookAdapter.helperUnreachableMessage)
+
+        // EXTERNAL + PermissionRequest → abstain entirely (nil = empty stdout),
+        // so the provider's own prompt runs.
+        XCTAssertNil(HookAdapter.permissionRequestOutput(d, failOpen: true))
+
+        // EXTERNAL + PreToolUse → "ask", never "deny": PreToolUse has no
+        // abstain, and denying here would brick the user's terminal.
+        let pre = HookAdapter.preToolUseOutput(d, failOpen: true)!
+        let hso = pre["hookSpecificOutput"] as! [String: Any]
+        XCTAssertEqual(hso["permissionDecision"] as? String, "ask")
+    }
+
+    func testRetiredRemoteArmFallbackKeepsManagedSessionsClosed() {
+        let d = decision(.fallback, HookAdapter.helperUnreachableMessage)
+
+        let req = HookAdapter.permissionRequestOutput(d, failOpen: false)!
+        let inner = (req["hookSpecificOutput"] as! [String: Any])["decision"] as! [String: Any]
+        XCTAssertEqual(inner["behavior"] as? String, "deny")
+
+        let pre = HookAdapter.preToolUseOutput(d, failOpen: false)!
+        let hso = pre["hookSpecificOutput"] as! [String: Any]
+        XCTAssertEqual(hso["permissionDecision"] as? String, "deny")
+    }
+
+    /// The copy has to survive the feature it described. The old message told a
+    /// managed user their device "is not paired for remote approvals" — advice
+    /// that can no longer be acted on, since pairing now buys them nothing
+    /// here. It must name the one thing that IS actionable: the helper.
+    func testTheFallbackCopyDoesNotSendUsersAfterARetiredFeature() {
+        // EVERY message a managed user can see on this path, not just the new
+        // one. `unavailableMessage` is the older of the two and was the worse
+        // offender: it said "Remote approval unavailable … turn off Remote
+        // Control; the local prompt will then run", so its single instruction
+        // could not help — the switch it named no longer affects approvals.
+        let messages = [
+            HookAdapter.helperUnreachableMessage,
+            HookAdapter.unavailableMessage(provider: "claude"),
+            HookAdapter.unavailableMessage(provider: "codex"),
+        ]
+        for m in messages {
+            for gone in ["pair", "remote", "cloud", "phone"] {
+                XCTAssertFalse(m.lowercased().contains(gone),
+                               "copy still points at the retired plane: \(m)")
+            }
+            // …and each still says something actionable, so none can pass by
+            // having been emptied.
+            XCTAssertTrue(m.lowercased().contains("helper"), "not actionable: \(m)")
+            XCTAssertTrue(m.lowercased().contains("restart"), "not actionable: \(m)")
+        }
     }
 }

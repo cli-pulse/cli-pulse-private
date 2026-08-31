@@ -71,21 +71,27 @@ public enum HookAdapter {
     }
 
     /// Managed fail-closed message (external sessions never see it — they defer
-    /// to the local prompt). Mirrors the Python `_UNAVAILABLE_MSG`.
+    /// to the local prompt).
+    ///
+    /// Rewritten in v1.52.1. It used to read "Remote approval unavailable …
+    /// turn off Remote Control; the local prompt will then run" — which after
+    /// the session plane's retirement was wrong twice over: there is no remote
+    /// approval to be unavailable, and turning off Remote Control does nothing
+    /// for approvals, so the one instruction it gave could not help. It now
+    /// names the only thing that can actually be acted on.
     static let unavailableMessage =
-        "Remote approval unavailable. If this keeps happening, open CLI Pulse → "
-        + "Settings → Privacy and turn off Remote Control; the local Claude "
-        + "permission prompt will then run on your next attempt."
+        "CLI Pulse could not reach its local helper, so it could not offer an "
+        + "approval. Restart the helper from CLI Pulse; the local Claude "
+        + "permission prompt runs on your next attempt either way."
 
-    /// M2 codex-Swift port: provider-worded fallback. The claude constant names
-    /// "the local Claude permission prompt" — wrong provider for a Codex session
-    /// (mirrors the Python `CodexAdapter._UNAVAILABLE_MSG`, review: codex).
+    /// Provider-worded variant — the claude constant names "the local Claude
+    /// permission prompt", which is the wrong provider for a Codex session.
     static func unavailableMessage(provider: String) -> String {
         if provider == "codex" {
-            return "Remote approval unavailable. If this keeps happening, "
-                + "open CLI Pulse → Settings → Privacy and turn off "
-                + "Remote Control; Codex's local approval prompt will then "
-                + "run on your next attempt."
+            return "CLI Pulse could not reach its local helper, so it could "
+                + "not offer an approval. Restart the helper from CLI Pulse; "
+                + "Codex's local approval prompt runs on your next attempt "
+                + "either way."
         }
         return unavailableMessage
     }
@@ -156,19 +162,16 @@ public enum HookAdapter {
             break  // no local row exists → the remote arm may run
         }
 
-        // Remote (Supabase) arm — the transport that lets an EXTERNAL
-        // (hand-launched) session reach CLI Pulse approve/deny at all, and the
-        // recovery path for a managed session whose local helper is down.
-        // Ports Python remote_hook.py's create + poll round-trip.
+        // High-risk shortcut. Kept deliberately after the remote arm's
+        // retirement: it emits a SPECIFIC, still-true message instead of the
+        // generic one below, so the retirement changed no wording a user could
+        // see. Both paths now end in the same fallback — this is a message
+        // distinction, not a gate.
         //
-        // High-risk fail-closed shortcut (Phase 1 invariant): a high-risk
-        // action must NEVER be approvable from the remote plane — do not even
-        // create the remote request. NOTE deliberate divergence from Python,
-        // which gates BEFORE the local arm too: the shipped Swift managed-local
-        // flow has always allowed high-risk approval from the Mac app's local
-        // surface (same-user, same-machine trust) and this port must not
-        // silently change shipped behavior. The gate here covers exactly the
-        // NEW surface this arm opens.
+        // Note the divergence from Python, which gates before the LOCAL arm
+        // too: the shipped Swift managed-local flow has always allowed
+        // high-risk approval from the Mac app's local surface (same-user,
+        // same-machine trust), and that is unchanged.
         if parsed.risk == "high" {
             emit(Decision(behavior: .fallback,
                           message: "High-risk action requires local approval"),
@@ -176,22 +179,20 @@ public enum HookAdapter {
             return 0
         }
 
-        var decision = tryRemoteApproval(parsed: parsed, provider: provider)
-        // UX repair (review: agy): a MANAGED session whose local helper is down
-        // AND whose device is unpaired would otherwise fail-close with the
-        // bare "helper not paired" — a confusing cloud-auth error for a
-        // local-only user whose daemon simply crashed. Restore the actionable
-        // local guidance the pre-remote-arm code gave them.
-        if decision.behavior == .fallback,
-           decision.message == remoteNotPairedMessage,
-           !failOpen {
-            decision = Decision(
-                behavior: .fallback,
-                message: "CLI Pulse helper not reachable and this device is not "
-                    + "paired for remote approvals; restart the helper and retry."
-            )
-        }
-        emit(decision, eventName: parsed.eventName, failOpen: failOpen, provider: provider)
+        // v1.52.1: the remote (Supabase) approval arm was retired with the rest
+        // of the session plane. Reaching here means the local UDS arm found no
+        // pending row, so no CLI Pulse surface can answer this request — defer
+        // to the provider's own prompt.
+        //
+        // `emit` resolves that per session kind exactly as every remote failure
+        // path already did: an EXTERNAL session abstains / asks, a MANAGED one
+        // denies. That was the outcome in practice every time — measured
+        // against pg_stat_statements on 2026-08-31,
+        // `remote_helper_create_permission_request` had ZERO calls in the 58
+        // days since stats were reset, with zero entries evicted. This arm
+        // never once completed a round-trip in production.
+        emit(Decision(behavior: .fallback, message: helperUnreachableMessage),
+             eventName: parsed.eventName, failOpen: failOpen, provider: provider)
         return 0
     }
 
@@ -295,12 +296,13 @@ public enum HookAdapter {
         /// the always-present lever) or "PermissionRequest". Drives the output
         /// SHAPE. From the stdin `hook_event_name`.
         public let eventName: String
-        /// Remote-arm port: the provider's own `session_id` from stdin ("" when
-        /// absent). Feeds `resolveManagedSessionId` for the Supabase
-        /// `p_session_id` binding — mirrors Python `raw.get("session_id")`.
+        /// The provider's own `session_id` from stdin ("" when absent) —
+        /// mirrors Python `raw.get("session_id")`. Bound the Supabase
+        /// `p_session_id` until v1.52.1 retired that arm; kept because it is
+        /// part of the parsed hook input, not of the transport.
         public let sessionId: String
-        /// Remote-arm port: count of Claude `permission_suggestions` (0 when
-        /// absent) — carried in the remote `p_payload` (Python parity).
+        /// Count of Claude `permission_suggestions` (0 when absent). Read by
+        /// the LOCAL UDS arm's payload; also rode the retired remote one.
         public let permissionSuggestionsCount: Int
 
         public init(toolName: String, toolInput: [String: Any], summary: String,
@@ -340,23 +342,6 @@ public enum HookAdapter {
             eventName: eventName, sessionId: sessionId,
             permissionSuggestionsCount: suggestionsCount
         )
-    }
-
-    /// Remote-arm port of Python `_resolve_managed_session_id`: the Supabase
-    /// `p_session_id` binding. Preference order — `CLI_PULSE_REMOTE_SESSION_ID`
-    /// env if it parses as a UUID (helper-spawned remote sessions), else the
-    /// provider's own stdin session_id if it parses as a UUID, else nil (the
-    /// server accepts an unbound request; it also NULLs a session it can't
-    /// verify for this device rather than raising — v0.27).
-    static func resolveManagedSessionId(rawSessionId: String) -> String? {
-        if let env = ProcessInfo.processInfo.environment["CLI_PULSE_REMOTE_SESSION_ID"],
-           !env.isEmpty, UUID(uuidString: env) != nil {
-            return env.lowercased()
-        }
-        if !rawSessionId.isEmpty, UUID(uuidString: rawSessionId) != nil {
-            return rawSessionId.lowercased()
-        }
-        return nil
     }
 
     /// M1: a MANAGED session carries the helper-injected session env; a hand-
@@ -731,193 +716,10 @@ public enum HookAdapter {
         }
     }
 
-    // MARK: - remote (Supabase) approval arm
-    //
-    // Port of Python remote_hook.py's second arm: the transport that lets an
-    // EXTERNAL (hand-launched) claude/codex session reach CLI Pulse
-    // approve/deny (hook → Supabase pending row → phone/Mac app → decision),
-    // and the recovery path for a managed session whose local helper is down.
-    // Two RPCs: `remote_helper_create_permission_request` (idempotent on
-    // p_request_id; `on conflict do nothing`) then a
-    // `remote_helper_poll_permission_decision` loop.
-
-    /// Mirrors Python `HookConfig` defaults (remote_hook.py:50-75 + CLI):
-    /// 10s total budget, 1s poll, 2.5s per-RPC cap, ttl = max(timeout+30, 60).
-    public struct RemoteApprovalConfig: Sendable {
-        public var timeoutS: Double = 10.0
-        public var pollIntervalS: Double = 1.0
-        public var requestTimeoutS: Double = 2.5
-        public var ttlSeconds: Int = 60
-        public init() {}
-    }
-
-    /// Python parity messages (remote_hook.py) — the fallback deny copy a
-    /// MANAGED session sees; EXTERNAL sessions resolve fail-open instead.
-    static let remoteUnavailableMessage = "Remote approval channel unavailable"
-    static let remoteTimedOutMessage = "Remote approval timed out"
-    static let remoteNotPairedMessage = "helper not paired"
-
-    /// Run the remote round-trip. Returns a `Decision` for `emit(...)`:
-    ///   - `.allow` / `.deny` — definitive user decision from the remote plane.
-    ///   - `.fallback` + message — unpaired / transport failure / timeout /
-    ///     expired / not_found. `emit` resolves it per failOpen: external →
-    ///     ask/abstain (a network blip never bricks a terminal session),
-    ///     managed → deny with the message. NEVER auto-approves.
-    ///
-    /// Injectable seams (`rpc`, `config`, `now`, `sleeper`) exist for tests;
-    /// production callers use the defaults. Synchronous by design — the hook
-    /// is a one-shot CLI; the async actor RPC is bridged with a detached Task
-    /// + semaphore (the cooperative pool runs off-main, so waiting here can't
-    /// deadlock it).
-    static func tryRemoteApproval(
-        parsed: ClaudeHookInput,
-        provider: String,
-        rpc: RPCCallable? = nil,
-        pairingOverride: (deviceId: String, helperSecret: String)? = nil,
-        config: RemoteApprovalConfig = RemoteApprovalConfig(),
-        now: () -> Double = { ProcessInfo.processInfo.systemUptime },
-        sleeper: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }
-    ) -> Decision {
-        // Device identity is invariant across external/managed — only the
-        // session binding differs. `SupabaseRPCCaller` supplies the transport
-        // headers; the DEVICE identity rides in the RPC body (Python parity).
-        let caller: RPCCallable
-        let deviceId: String
-        let helperSecret: String
-        if let rpc {
-            // Test seam: injected transport + deterministic identity.
-            caller = rpc
-            deviceId = pairingOverride?.deviceId ?? ""
-            helperSecret = pairingOverride?.helperSecret ?? ""
-        } else {
-            // One-shot credential resolution: same three-layer fallback the
-            // daemon uses (app-group UserDefaults+Keychain → legacy
-            // ~/.cli-pulse-helper.json → unpaired) + plist/env Supabase keys.
-            let snapshot = HelperConfigStore().cloudConfigSnapshot()
-            guard snapshot.isPaired else {
-                // Unpaired: nothing to call — fall back (external stays OPEN,
-                // matching Python's "helper not paired" early exit).
-                return Decision(behavior: .fallback, message: remoteNotPairedMessage)
-            }
-            caller = SupabaseRPCCaller(
-                configProvider: { snapshot },
-                requestTimeout: config.requestTimeoutS
-            )
-            deviceId = snapshot.deviceId
-            helperSecret = snapshot.helperSecret
-        }
-
-        let requestId = UUID().uuidString.lowercased()
-        // p_payload = the EXACT Python `payload` shape (review: codex P2):
-        // {tool_name, tool_input (redacted), permission_suggestions_count} —
-        // NOT the bare redacted input dict, so the app treats the Python and
-        // Swift helpers' remote rows identically.
-        let payload: [String: Any] = [
-            "tool_name": parsed.toolName,
-            "tool_input": redactedToolInput(parsed.toolInput),
-            "permission_suggestions_count": parsed.permissionSuggestionsCount,
-        ]
-        var createParams: [String: Any] = [
-            "p_device_id": deviceId,
-            "p_helper_secret": helperSecret,
-            "p_request_id": requestId,
-            "p_provider": provider,
-            "p_tool_name": parsed.toolName,
-            "p_summary": parsed.summary,
-            "p_payload": payload,
-            "p_risk": parsed.risk,
-            "p_ttl_seconds": config.ttlSeconds,
-        ]
-        createParams["p_session_id"] =
-            resolveManagedSessionId(rawSessionId: parsed.sessionId) ?? NSNull()
-
-        // RPC 1: create. Any failure → fallback, no retry (Python :439-442).
-        switch rpcSync(caller, "remote_helper_create_permission_request",
-                       createParams, capS: config.requestTimeoutS) {
-        case .failure:
-            return Decision(behavior: .fallback, message: remoteUnavailableMessage)
-        case .success:
-            break  // return body ignored — only success matters (Python parity)
-        }
-
-        // RPC 2: poll until decision / expiry / budget exhaustion.
-        let pollParams: [String: Any] = [
-            "p_device_id": deviceId,
-            "p_helper_secret": helperSecret,
-            "p_request_id": requestId,
-        ]
-        let deadline = now() + config.timeoutS
-        while now() < deadline {
-            let reply: Any
-            switch rpcSync(caller, "remote_helper_poll_permission_decision",
-                           pollParams, capS: config.requestTimeoutS) {
-            case .failure:
-                // Poll error → fallback (Python :457-460). The per-RPC cap has
-                // already bounded the stall; don't burn the rest of the budget.
-                return Decision(behavior: .fallback, message: remoteUnavailableMessage)
-            case .success(let value):
-                reply = value
-            }
-            let status = ((reply as? [String: Any])?["status"] as? String) ?? ""
-            switch status {
-            case "approved":
-                // Server `decision`/`scope` fields are read but scope is ALWAYS
-                // downgraded to once (Phase 1: no permissionUpdates), so only
-                // status drives the outcome. allow carries NO message.
-                return Decision(behavior: .allow, message: nil)
-            case "denied":
-                // nil message → emit supplies "Denied remotely via CLI Pulse".
-                return Decision(behavior: .deny, message: nil)
-            case "expired", "not_found":
-                // Terminal non-decisions → same timeout fallback as budget
-                // exhaustion (Python breaks with decision_obj=None).
-                return Decision(behavior: .fallback, message: remoteTimedOutMessage)
-            default:
-                // "pending" (or unrecognized) → keep polling.
-                sleeper(config.pollIntervalS)
-            }
-        }
-        return Decision(behavior: .fallback, message: remoteTimedOutMessage)
-    }
-
-    /// Bridge one async actor RPC into this synchronous one-shot CLI. A
-    /// detached task runs the call on the cooperative pool; we block THIS
-    /// thread on a semaphore with a hard cap slightly above the per-request
-    /// timeout so even a wedged URLSession can't hang the hook past its
-    /// budget (Claude/Codex would otherwise stall the user's tool call).
-    private static func rpcSync(
-        _ rpc: RPCCallable, _ name: String, _ params: [String: Any], capS: Double
-    ) -> Result<Any, Error> {
-        final class ResultBox: @unchecked Sendable {
-            private let lock = NSLock()
-            private var value: Result<Any, Error> =
-                .failure(SupabaseRPCError.transport("rpc bridge: no result"))
-            func set(_ v: Result<Any, Error>) { lock.lock(); value = v; lock.unlock() }
-            func get() -> Result<Any, Error> { lock.lock(); defer { lock.unlock() }; return value }
-        }
-        // Params/results are JSON-plist values; the closure is @Sendable-safe
-        // in practice but the compiler can't prove [String: Any] Sendable —
-        // confine BOTH directions through @unchecked Sendable boxes (review:
-        // agy — the bare capture trips Swift 6 strict concurrency).
-        final class ParamBox: @unchecked Sendable {
-            let params: [String: Any]
-            init(_ p: [String: Any]) { self.params = p }
-        }
-        let box = ResultBox()
-        let sem = DispatchSemaphore(value: 0)
-        let paramBox = ParamBox(params)
-        Task.detached {
-            do {
-                let out = try await rpc.call(name, params: paramBox.params)
-                box.set(.success(out))
-            } catch {
-                box.set(.failure(error))
-            }
-            sem.signal()
-        }
-        if sem.wait(timeout: .now() + capS + 1.5) == .timedOut {
-            return .failure(SupabaseRPCError.transport("rpc bridge timeout"))
-        }
-        return box.get()
-    }
+    /// Emitted when no CLI Pulse surface can answer a request: the local UDS
+    /// arm found no pending row and, since v1.52.1, there is no remote arm to
+    /// fall through to. EXTERNAL sessions never see it (they abstain); a
+    /// MANAGED session shows it as the fallback deny copy.
+    static let helperUnreachableMessage =
+        "CLI Pulse helper not reachable; restart the helper and retry."
 }
