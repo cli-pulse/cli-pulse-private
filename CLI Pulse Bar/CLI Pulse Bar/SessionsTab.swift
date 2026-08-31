@@ -47,34 +47,13 @@ struct SessionsTab: View {
             .padding(12)
         }
         .task {
-            // Active polling while the Sessions tab is on screen. Refresh
-            // BOTH `remoteSessions` and `remotePendingApprovals` so the
-            // inline-approve button's matching pending request appears
-            // within the 10s Claude hook window without the user having
-            // to open the separate approvals sheet.
-            //
-            // Live event tail (`refreshRemoteSessionEvents`) only fires
-            // when the user has explicitly toggled "Show output" on for
-            // the currently-selected managed session. Keeping it
-            // conditional preserves the privacy-visible posture: even
-            // though the helper uploads events while RC is on, the
-            // app doesn't fetch + render them unless asked.
-            //
-            // 3s tick when
-            // Remote Control is on, 10s when off. The disabled-state
-            // calls are still issued, but `refreshRemoteSessions` /
-            // `refreshRemoteApprovals` / `refreshRemoteSessionEvents`
-            // each guard on `remoteSessionsEnabled` internally — so
-            // none hit the network and all clear their local caches as
-            // a side effect, which is the desired no-network posture.
-            // With the session plane retired that predicate is
-            // constant-false, so this is now a cache-clearing no-op.
+            // Active polling while the Sessions tab is on screen. Everything
+            // here now serves the LOCAL helper; the remote-plane calls that
+            // used to share the tick were removed once `remoteSessionsEnabled`
+            // became constant-false, because each of them guarded on it and
+            // returned immediately. They were costing a wakeup to do nothing.
             while !Task.isCancelled {
-                async let _sessions: () = state.refreshRemoteSessions()
-                async let _approvals: () = state.refreshRemoteApprovals()
-                async let _local: () = state.refreshLocalSessionControlState()
-                _ = await (_sessions, _approvals, _local)
-                await refreshDisappearedRemoteStartInfo()
+                await state.refreshLocalSessionControlState()
                 // Iter 2B: snapshot poll of local pending approvals
                 // is the recovery path when a stream disconnects or
                 // the user wakes the app with the Sessions tab
@@ -89,40 +68,28 @@ struct SessionsTab: View {
                 // list fresh (best-effort; self-guards on reachable/enabled).
                 await state.refreshWrappedSessionState()
                 if showOutput, let sid = selectedManagedSessionId {
-                    // Remote-routed rows pull events from the Supabase
-                    // tail. Local-routed rows are driven exclusively
-                    // by `subscribeToLocalEvents` (kicked off in
-                    // .onChange(of: showOutput) below) — calling the
-                    // remote-events refresh on a local row would
-                    // (a) issue a Supabase RPC for data we don't render
-                    // anyway and (b) repopulate `remoteSessionEvents`
-                    // for an id whose preview already comes from
-                    // `localOutputPreview`, double-rendering noise.
-                    // Codex review on PR #18: gate on
-                    // `shouldRouteSessionLocally` first.
-                    if let row = state.displayedManagedSessions.first(where: { $0.id == sid }) {
-                        if state.shouldRouteSessionLocally(row) {
-                            // v1.16 hotfix: .onChange(of: showOutput)
-                            // only fires ONCE when the user toggles.
-                            // If `shouldRouteSessionLocally` was false
-                            // at that moment (because list_sessions
-                            // hadn't populated localManagedSessions
-                            // yet), no subscribe was ever kicked off.
-                            // Recovery: every poll tick, if the row
-                            // is now local-routed AND no active
-                            // subscription, start one. subscribeToLocal
-                            // Events is idempotent.
-                            state.subscribeToLocalEvents(sessionId: sid)
-                        } else {
-                            await state.refreshRemoteSessionEvents(sessionId: sid)
-                        }
+                    // Output comes from `subscribeToLocalEvents` only. The
+                    // Supabase tail that used to serve non-local rows is gone
+                    // with the session plane; a row that is not local-routed is
+                    // now a row whose helper is unreachable, and there is
+                    // nothing to fetch for it.
+                    //
+                    // v1.16 hotfix, still load-bearing: .onChange(of:
+                    // showOutput) fires ONCE when the user toggles. If
+                    // `shouldRouteSessionLocally` was false at that moment
+                    // (list_sessions had not populated `localManagedSessions`
+                    // yet), no subscribe was ever kicked off. So re-check every
+                    // tick and start one if the row is local-routed now;
+                    // `subscribeToLocalEvents` is idempotent.
+                    if let row = state.displayedManagedSessions.first(where: { $0.id == sid }),
+                       state.shouldRouteSessionLocally(row) {
+                        state.subscribeToLocalEvents(sessionId: sid)
                     }
                 }
-                if !state.remoteSessionsEnabled {
-                    try? await Task.sleep(nanoseconds: 10_000_000_000)
-                } else {
-                    try? await Task.sleep(nanoseconds: 3_000_000_000)
-                }
+                // One cadence. The 3s arm was reachable only with the session
+                // plane on, so every user has been on the 10s path since it was
+                // retired — collapsing this changes nothing that ships.
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
             }
         }
         .onChange(of: selectedManagedSessionId) { newId in
@@ -1661,19 +1628,6 @@ struct SessionsTab: View {
     }
 
     @MainActor
-    private func refreshDisappearedRemoteStartInfo() async {
-        guard state.remoteSessionsEnabled, !pendingRemoteStartIds.isEmpty else { return }
-        let activeIds = Set(state.displayedManagedSessions.map(\.id))
-        for id in pendingRemoteStartIds where !activeIds.contains(id) {
-            let cached = state.remoteSessionEvents[id] ?? []
-            if cached.isEmpty {
-                await state.refreshRemoteSessionEvents(sessionId: id)
-            }
-        }
-        pendingRemoteStartIds = pendingRemoteStartIds.filter { id in
-            activeIds.contains(id) || latestRemoteInfoMessage(sessionId: id) != nil
-        }
-    }
 
     private func latestRemoteInfoMessage(sessionId: String) -> String? {
         guard let payload = (state.remoteSessionEvents[sessionId] ?? [])
