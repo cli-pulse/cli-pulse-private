@@ -215,23 +215,6 @@
         <item quantity="other">已註冊 %d 台裝置</item>
     </plurals>
     <!-- Managed sessions (v1.27 E2) -->
-    <string name="managed_sessions_header">受管工作階段</string>
-    <string name="managed_new">新增</string>
-    <string name="managed_empty_tap_new">沒有進行中的受管工作階段。點選「新增」即可啟動。</string>
-    <string name="managed_empty_no_device">沒有安裝 Helper 的已配對 Mac。</string>
-    <string name="managed_upgrade_hint">Codex 與 Gemini 需要 %1$s 上的 CLI Pulse Helper 1.15+。Claude 仍可使用。</string>
-    <string name="managed_stop">停止工作階段</string>
-    <string name="managed_cancel">取消工作階段</string>
-    <string name="managed_ended_body">此受管工作階段已不再進行。請在「工作階段」分頁中新增一個以繼續。</string>
-    <string name="managed_terminal_soon_title">即時終端機</string>
-    <string name="managed_terminal_soon_body">即時檢視此工作階段的輸出,並可直接輸入 — 鍵盤與按鍵列的內容會傳送到 Mac。</string>
-    <string name="managed_pending_note">正在等待 Helper 啟動此工作階段。</string>
-    <string name="managed_terminal_readonly_note">離開此頁面會中斷串流;重新開啟會重新連線並復原最近的輸出。</string>
-    <string name="managed_approval_title">待處理權限</string>
-    <string name="managed_approval_high_risk">高風險</string>
-    <string name="managed_approval_approve">核准</string>
-    <string name="managed_approval_deny">拒絕</string>
-    <string name="managed_approval_high_risk_note">高風險請求必須在 Mac 上核准。</string>
     <!-- System Monitor v0.63 device health -->
     <string name="card_cpu_temp">CPU %1$d°C</string>
     <string name="card_fan_rpm">%1$d 轉</string>

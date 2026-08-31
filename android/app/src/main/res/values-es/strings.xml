@@ -216,23 +216,6 @@
         <item quantity="other">%d dispositivos registrados</item>
     </plurals>
     <!-- Managed sessions (v1.27 E2) -->
-    <string name="managed_sessions_header">Sesiones gestionadas</string>
-    <string name="managed_new">Nueva</string>
-    <string name="managed_empty_tap_new">No hay sesiones gestionadas activas. Toca Nueva para iniciar una.</string>
-    <string name="managed_empty_no_device">No hay ningún Mac emparejado con el Helper instalado.</string>
-    <string name="managed_upgrade_hint">Codex y Gemini necesitan CLI Pulse Helper 1.15+ en %1$s. Claude sigue funcionando.</string>
-    <string name="managed_stop">Detener sesión</string>
-    <string name="managed_cancel">Cancelar sesión</string>
-    <string name="managed_ended_body">Esta sesión gestionada ya no está activa. Inicia una nueva desde la pestaña Sesiones para seguir trabajando.</string>
-    <string name="managed_terminal_soon_title">Terminal en vivo</string>
-    <string name="managed_terminal_soon_body">Transmite la salida en vivo y escribe directamente en esta sesión: las pulsaciones y la barra de teclas envían la entrada al Mac.</string>
-    <string name="managed_pending_note">Esperando a que el Helper inicie esta sesión.</string>
-    <string name="managed_terminal_readonly_note">Salir de esta pantalla desconecta la transmisión; al volver se reconecta y recupera la salida reciente.</string>
-    <string name="managed_approval_title">Permiso pendiente</string>
-    <string name="managed_approval_high_risk">riesgo alto</string>
-    <string name="managed_approval_approve">Aprobar</string>
-    <string name="managed_approval_deny">Rechazar</string>
-    <string name="managed_approval_high_risk_note">Las solicitudes de alto riesgo deben aprobarse en el Mac.</string>
     <!-- System Monitor v0.63 device health -->
     <string name="card_cpu_temp">CPU %1$d°C</string>
     <string name="card_fan_rpm">%1$d rpm</string>

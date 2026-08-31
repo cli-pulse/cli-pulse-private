@@ -26,54 +26,25 @@ import com.clipulse.android.ui.theme.providerColor
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsScreen(
-    onOpenManagedSession: (String) -> Unit = {},
     viewModel: SessionsViewModel = hiltViewModel(),
-    managedViewModel: ManagedSessionsViewModel = hiltViewModel(),
 ) {
-    // Two independent polling loops share this tab — the historical usage log
-    // and the live managed sessions — each lifecycle-gated like the rest of
-    // the app (v1.27 E2; mirrors the iOS iOSSessionsTab managed + analytics split).
     LifecyclePollingEffect(viewModel::setPolling)
-    LifecyclePollingEffect(managedViewModel::setPolling)
     val state by viewModel.state.collectAsState()
-    val managedState by managedViewModel.state.collectAsState()
     val snackbar = LocalSnackbarHostState.current
     LaunchedEffect(state.error) {
         state.error?.let { snackbar.showSnackbar(it) }
     }
 
-    // After starting a managed session, jump straight to its detail (one-shot).
-    LaunchedEffect(managedState.startedSessionId) {
-        managedState.startedSessionId?.let { id ->
-            onOpenManagedSession(id)
-            managedViewModel.consumeStartedSession()
-        }
-    }
-
     PullToRefreshBox(
-        isRefreshing = state.isLoading || managedState.isLoading,
-        onRefresh = {
-            viewModel.refresh()
-            managedViewModel.refresh()
-        },
+        isRefreshing = state.isLoading,
+        onRefresh = { viewModel.refresh() },
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            // ── Managed sessions (live remote-control surface, E2) ──
-            managedSessionsSection(
-                state = managedState,
-                onStart = managedViewModel::start,
-                onOpen = onOpenManagedSession,
-            )
-
-            item(key = "sessions-divider") {
-                HorizontalDivider(Modifier.padding(vertical = 4.dp))
-            }
-
-            // ── Historical usage / analytics log (unchanged) ──
+            // ── Historical usage / analytics log ──
             item(key = "sessions-history-header") {
                 Text(
                     stringResource(R.string.screen_sessions),
