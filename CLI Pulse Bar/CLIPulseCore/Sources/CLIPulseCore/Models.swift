@@ -760,6 +760,39 @@ public struct DeviceRecord: Codable, Identifiable, Sendable {
     /// {"remote_fan":true,"remote_lpm":true}). Absent/false = hide the control.
     public let machine_controls: [String: Bool]
 
+    /// Whether this device is a Mac.
+    ///
+    /// **Do not compare `type` to a single literal.** The app registers Macs as
+    /// `"macOS"` (`DataRefreshManager.registerDevice`, `HelperAPIClient`'s
+    /// `deviceType` default, and `APIClient`'s decode fallback all use that
+    /// string), while callers were written against `"Mac"`. Measured in
+    /// production on 2026-08-31:
+    ///
+    ///     type      devices  users  with_helper
+    ///     macOS          70     70           70
+    ///     Android        10      5           10
+    ///     Windows         4      1            4
+    ///     Mac             3      2            3
+    ///
+    /// So an exact `"Mac"` match sees 3 of 73 Macs — 70 users' machines are
+    /// invisible before any network call. That is why the remote session plane
+    /// could never have worked, and it is ALSO why `RemoteControlHealth`
+    /// reported `mac: FAIL` to users whose Mac was reachable and had a helper.
+    ///
+    /// `"Mac"` is kept because 3 legacy rows still carry it. `"darwin"` is
+    /// defensive tolerance, NOT an observed value — nothing in the repo writes
+    /// it today; it is here so a client reporting raw `uname` would not repeat
+    /// this bug. Do not read it as part of the measurement above.
+    public var isMac: Bool {
+        Self.isMacType(type)
+    }
+
+    /// Free function form, for callers holding a raw type string.
+    public static func isMacType(_ type: String) -> Bool {
+        let t = type.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return t == "mac" || t == "macos" || t == "darwin"
+    }
+
     public var deviceStatus: DeviceStatus? {
         DeviceStatus(rawValue: status)
     }

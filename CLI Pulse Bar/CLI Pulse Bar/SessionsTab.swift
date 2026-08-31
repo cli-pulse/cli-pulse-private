@@ -1557,7 +1557,7 @@ struct SessionsTab: View {
     /// Tauri helper will plug into the same RPC later.
     private var targetDeviceForStart: DeviceRecord? {
         state.devices
-            .filter { $0.type.caseInsensitiveCompare("Mac") == .orderedSame }
+            .filter(\.isMac)
             .filter { !$0.helper_version.isEmpty }
             .sorted { lhs, rhs in
                 let lt = lhs.last_sync_at ?? ""
