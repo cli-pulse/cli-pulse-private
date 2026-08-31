@@ -74,9 +74,21 @@ fun AppNavigation(
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // v1.20.1 C7: ask for POST_NOTIFICATIONS once on first authenticated launch.
-    // No-op below Android 13 and after the user has answered once.
-    com.clipulse.android.ui.permission.NotificationPermissionEffect()
+    // The POST_NOTIFICATIONS pre-prompt was removed: Android cannot receive a
+    // notification from this backend at all, so asking was a system permission
+    // request that could never pay off.
+    //
+    //   * `app_push_tokens` is the ONLY table either push sender reads, and its
+    //     platform column is `CHECK (platform IN ('ios','macos'))` — verified
+    //     against production 2026-08-31, so an Android row cannot exist.
+    //   * `send-approval-push` rejects anything else explicitly
+    //     (`unknown_platform`), and there is no FCM sender anywhere in backend/.
+    //   * Android's token goes to `devices.push_token`, a column no backend
+    //     code reads.
+    //
+    // The receiver (`fcm/PushService.kt`) and the manifest declaration are left
+    // in place: if a sender ever ships, restoring the prompt is one line here.
+    // Do not restore it before then.
 
     // If a link-flow OAuth deep link arrived while the user wasn't on the Settings
     // tab, auto-navigate there so SettingsScreen's LaunchedEffects can consume the
