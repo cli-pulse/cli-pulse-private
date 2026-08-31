@@ -413,12 +413,6 @@ public enum MenuBarDisplayMode: String, Codable, CaseIterable, Sendable {
 
 // MARK: - Menu Bar Content Mode
 
-public enum MenuBarContentMode: String, Codable, CaseIterable, Sendable {
-    case usageAsUsed = "Usage (Used)"
-    case resetTime = "Reset Time"
-    case credits = "Credits"
-    case allAccounts = "All Accounts"
-}
 
 // MARK: - Provider Descriptor (metadata + capabilities)
 

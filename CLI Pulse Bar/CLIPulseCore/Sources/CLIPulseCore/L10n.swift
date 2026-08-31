@@ -543,7 +543,6 @@ public enum L10n {
         public static var costTracking: String { tr("settings.cost_tracking") }
         public static var display: String { tr("settings.display") }
         public static var showCostEstimates: String { tr("settings.show_cost_estimates") }
-        public static var compactMode: String { tr("settings.compact_mode") }
         public static var menuBarMode: String { tr("settings.menu_bar_mode") }
         public static var reorderProviders: String { tr("settings.reorder_providers") }
         public static var reorderHint: String { tr("settings.reorder_hint") }
@@ -808,7 +807,6 @@ public enum L10n {
         public static var mode: String { tr("display.mode") }
         public static var mergeMenuBarIcons: String { tr("display.merge_menu_bar_icons") }
         public static var mergeMenuBarHint: String { tr("display.merge_menu_bar_hint") }
-        public static var contentMode: String { tr("display.content_mode") }
         public static var reorderHint: String { tr("display.reorder_hint") }
     }
 

@@ -740,7 +740,6 @@ public final class AppState: ObservableObject {
     }
     @AppStorage("cli_pulse_show_cost") public var showCost = true
     @AppStorage("cli_pulse_notifications") public var notificationsEnabled = true
-    @AppStorage("cli_pulse_compact_mode") public var compactMode = false
     @AppStorage("cli_pulse_check_provider_status") public var checkProviderStatus = true
     @AppStorage("cli_pulse_session_quota_notifications") public var sessionQuotaNotifications = true
     @AppStorage("cli_pulse_hide_personal_info") public var hidePersonalInfo = false
@@ -773,7 +772,6 @@ public final class AppState: ObservableObject {
 
     // MARK: - Settings - Display
     @AppStorage("cli_pulse_menubar_display_mode") public var menuBarDisplayModeRaw = MenuBarDisplayMode.icon.rawValue
-    @AppStorage("cli_pulse_menubar_content_mode") public var menuBarContentModeRaw = MenuBarContentMode.usageAsUsed.rawValue
     @AppStorage("cli_pulse_merge_icons") public var mergeMenuBarIcons = true
 
     public var menuBarDisplayMode: MenuBarDisplayMode {
@@ -781,10 +779,6 @@ public final class AppState: ObservableObject {
         set { menuBarDisplayModeRaw = newValue.rawValue }
     }
 
-    public var menuBarContentMode: MenuBarContentMode {
-        get { MenuBarContentMode(rawValue: menuBarContentModeRaw) ?? .usageAsUsed }
-        set { menuBarContentModeRaw = newValue.rawValue }
-    }
 
     public enum Tab: String, CaseIterable {
         case overview = "Overview"

@@ -48,36 +48,8 @@ struct DisplaySection: View {
 
             Divider()
 
-            SectionHeader(title: "Menu Content", icon: "list.bullet")
-
-            HStack {
-                Text(L10n.display.contentMode)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Picker("", selection: Binding(
-                    get: { state.menuBarContentMode },
-                    set: { state.menuBarContentMode = $0 }
-                )) {
-                    ForEach(MenuBarContentMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .frame(width: 140)
-            }
-
-            Divider()
-
             SectionHeader(title: "Appearance", icon: "paintbrush")
 
-            Toggle(isOn: $state.compactMode) {
-                Text(L10n.settings.compactMode)
-                    .font(.system(size: 11))
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
 
             Divider()
 

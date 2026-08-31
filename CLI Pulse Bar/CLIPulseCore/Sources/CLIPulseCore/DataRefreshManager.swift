@@ -19,6 +19,13 @@ internal final class DataRefreshManager {
         let isPaired: Bool
         let isLoading: Bool
         let notificationsEnabled: Bool
+        /// Per-type opt-out for the 5-hour quota alerts. Had NO reader until
+        /// 2026-08-31: the Settings toggle and its hint ("Notify when 5-hour
+        /// session quota is depleted") were live and persisted, while the
+        /// dispatch below consulted only the master switch. Turning it off
+        /// changed nothing, so the only way to stop quota banners was to
+        /// silence every notification.
+        let sessionQuotaNotificationsEnabled: Bool
         let authenticatedUserID: String
         let providerConfigs: [ProviderConfig]
         /// Snapshot of `state.providers` from the END of the previous refresh
@@ -606,7 +613,11 @@ internal final class DataRefreshManager {
             )
             #endif
             if context.notificationsEnabled {
-                for alert in newAlerts {
+                for alert in newAlerts where AlertNotificationPolicy.shouldNotify(
+                    alertType: alert.type,
+                    notificationsEnabled: true,
+                    sessionQuotaNotificationsEnabled: context.sessionQuotaNotificationsEnabled
+                ) {
                     callbacks.sendNotification(alert)
                 }
             }
@@ -3157,6 +3168,7 @@ extension AppState {
             isPaired: isPaired,
             isLoading: isLoading,
             notificationsEnabled: notificationsEnabled,
+            sessionQuotaNotificationsEnabled: sessionQuotaNotifications,
             authenticatedUserID: userId,
             providerConfigs: providerConfigs,
             providers: providers,

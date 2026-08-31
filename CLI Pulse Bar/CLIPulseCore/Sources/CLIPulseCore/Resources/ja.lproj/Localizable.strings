@@ -152,7 +152,6 @@
 "settings.cost_tracking" = "コスト追跡";
 "settings.display" = "表示";
 "settings.show_cost_estimates" = "コスト見積もりを表示";
-"settings.compact_mode" = "コンパクトモード";
 "settings.menu_bar_mode" = "メニューバーモード";
 "settings.reorder_providers" = "プロバイダーの並べ替え";
 "settings.reorder_hint" = "ドラッグで並べ替え、タップで有効/無効";
@@ -451,7 +450,6 @@
 "display.mode" = "表示モード";
 "display.merge_menu_bar_icons" = "メニューバーアイコンを統合";
 "display.merge_menu_bar_hint" = "プロバイダー切替付きの単一アイコン";
-"display.content_mode" = "コンテンツモード";
 "display.reorder_hint" = "概要タブに表示するプロバイダーを選択。ドラッグで並び替え。";
 
 /* ── サブスクリプション追加 (i18n sweep) ── */

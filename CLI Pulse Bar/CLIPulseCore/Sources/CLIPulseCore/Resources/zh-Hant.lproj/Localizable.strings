@@ -153,7 +153,6 @@
 "settings.cost_tracking" = "費用追蹤";
 "settings.display" = "顯示";
 "settings.show_cost_estimates" = "顯示費用預估";
-"settings.compact_mode" = "緊湊模式";
 "settings.menu_bar_mode" = "選單欄模式";
 "settings.reorder_providers" = "排序服務商";
 "settings.reorder_hint" = "拖拽排序，點按啟用/禁用";
@@ -453,7 +452,6 @@
 "display.mode" = "顯示模式";
 "display.merge_menu_bar_icons" = "合併選單欄圖示";
 "display.merge_menu_bar_hint" = "單圖示 + 服務商切換器";
-"display.content_mode" = "內容模式";
 "display.reorder_hint" = "選擇要在「概覽」標籤頁顯示的服務商，拖動可重新排序。";
 
 /* ── 訂閱補充 (i18n sweep) ── */
