@@ -3109,14 +3109,6 @@ extension AppState {
                     // anyway, but the optimistic clear avoids a one-frame
                     // flicker until the next refresh.
                     remoteSessions = []
-                    remoteSessionsLastRefresh = nil
-                    remoteSessionsError = nil
-                    // Sessions Input iter 2: drop the cached event tail
-                    // for every session. Without this, a "Show output"
-                    // panel that was open at toggle-off would briefly
-                    // keep rendering live events the helper has already
-                    // stopped uploading.
-                    remoteSessionEvents = [:]
                 }
             } catch {
                 // PATCH failed — revert to keep the UI honest about server

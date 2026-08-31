@@ -427,42 +427,10 @@ public final class AppState: ObservableObject {
     /// — same gating discipline as `remotePendingApprovals`. Cleared
     /// when the gate closes and on logout. Retired since v1.52.1.
     @Published public var remoteSessions: [RemoteSession] = []
-    @Published public var remoteSessionsLastRefresh: Date?
-    @Published public var remoteSessionsError: String?
 
 
     // MARK: - Remote Session Events (Sessions Input iter 2 — live tail)
-    /// Live output tail per managed session, keyed by `RemoteSession.id`.
-    /// Each list is the appended history of `stdout` / `stderr` /
-    /// `status` / `info` events the helper has posted, capped at
-    /// `remoteSessionEventsCap` rows so a chatty Claude run can't grow
-    /// app memory unbounded.
-    ///
-    /// Populated only while a detail view has the user-explicit
-    /// "Show output" toggle on AND `remoteSessionsEnabled` is true —
-    /// same default-off privacy posture as the rest of the session
-    /// plane. Cleared when the gate closes and on
-    /// logout.
-    ///
-    /// Pagination: callers track the largest event `id` they've
-    /// stored locally and pass it as `afterId` on the next refresh,
-    /// so we never re-fetch unbounded history.
-    @Published public var remoteSessionEvents: [String: [RemoteSessionEvent]] = [:]
 
-    /// Per-session ring-buffer cap. 500 events × ≤ 4 KB / event = ~2 MB
-    /// worst case per session (in practice much less because the
-    /// helper's batcher targets ~3.5 KB chunks and redaction shrinks
-    /// most output).
-    ///
-    /// Bumped from 200 to 500 on 2026-05-08 to address a user-reported
-    /// "3rd-turn output stops displaying" symptom. Claude's TUI emits
-    /// many chrome / repaint events between user prompts (Processing
-    /// spinners, token counters, status bar). At cap=200 a chatty Claude
-    /// run could push the conversational `❯` / `⏺` markers out of the
-    /// trimmed window before the user finished reading earlier turns.
-    /// 500 events covers ≥ 5 minutes of typical activity at the helper's
-    /// 3.5 KB / 0.5 s flush cadence.
-    public static let remoteSessionEventsCap: Int = 500
 
     // MARK: - Local Session Control (Phase 3 Iter 1, macOS-only)
     #if os(macOS)
