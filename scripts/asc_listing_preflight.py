@@ -175,32 +175,40 @@ DESCRIPTION_SOURCES = ("appstore_metadata.py", "resubmit.py")
 
 
 def repo_descriptions() -> dict[str, str]:
-    """Every description text the repo claims to push, by source filename.
+    """The description the repo would push, plus a check that there is only one.
 
-    There are two pushers and they can disagree with each other as well as with
-    the store, so both are reported rather than picking one and calling it the
-    source of truth.
+    There used to be two: a literal in `appstore_metadata.py` and another in
+    `resubmit.py`. They drifted, and not cosmetically — on 2026-09-01 the
+    second one claimed "All data stays on your local network", "No cloud sync
+    or third-party analytics" and "Connects to your self-hosted CLI Pulse
+    backend", none of which is true of the shipping app. Whichever script ran
+    last decided what the App Store said about our privacy posture.
+
+    Both now read `CLI Pulse Bar/appstore/description_en-US.txt`, and this
+    refuses to pass if either one regrows an inline copy.
     """
-    out: dict[str, str] = {}
+    canonical = REPO / "CLI Pulse Bar/appstore/description_en-US.txt"
+    if not canonical.exists():
+        die(f"canonical App Store description missing: {canonical}")
+    text = canonical.read_text(encoding="utf-8").strip()
+    if not text:
+        die(f"canonical App Store description is empty: {canonical}")
+
+    # Ratchet: an inline literal in a pusher is how the drift happened. The
+    # marker is the description's own first sentence, so a copy-paste is
+    # caught no matter what variable it is assigned to.
+    MARKER = "CLI Pulse monitors your AI coding tool usage"
     for name in DESCRIPTION_SOURCES:
         src = REPO / "CLI Pulse Bar/scripts" / name
         if not src.exists():
-            die(f"repo description source missing: {src}")
-        text = src.read_text()
-        m = re.search(r'DESCRIPTION\s*=\s*(?:r?"""|\'\'\')(.*?)(?:"""|\'\'\')', text, re.S)
-        if m:
-            out[name] = m.group(1).strip()
-            continue
-        blocks = re.findall(r'(?:"""|\'\'\')(.*?)(?:"""|\'\'\')', text, re.S)
-        cands = [b.strip() for b in blocks
-                 if "CLI Pulse monitors your AI coding tool usage" in b]
-        if cands:
-            out[name] = max(cands, key=len)
-    if not out:
-        die("could not extract a description from any source in "
-            f"{DESCRIPTION_SOURCES} — the parser needs updating; refusing to "
-            "report a pass it did not verify.")
-    return out
+            die(f"repo description pusher missing: {src}")
+        body = src.read_text(encoding="utf-8")
+        if MARKER in body:
+            die(f"{name} carries an inline App Store description again. "
+                f"Both pushers must read {canonical.name}; two copies is how "
+                "the store ended up being told the app was self-hosted.")
+
+    return {"appstore/description_en-US.txt": text}
 
 
 def sha(data: bytes) -> str:

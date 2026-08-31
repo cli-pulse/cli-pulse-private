@@ -199,7 +199,8 @@
 "subscription.pro_title" = "CLI Pulse Pro";
 "subscription.unlock" = "CLI Pulseのフルパワーを解放";
 "subscription.monthly" = "月額";
-"subscription.yearly_save" = "年額（17%お得）";
+"subscription.yearly" = "年額";
+"subscription.yearly_save" = "年額（%@お得）";
 "subscription.popular" = "人気";
 "subscription.not_available" = "利用不可";
 "subscription.restore" = "購入を復元";

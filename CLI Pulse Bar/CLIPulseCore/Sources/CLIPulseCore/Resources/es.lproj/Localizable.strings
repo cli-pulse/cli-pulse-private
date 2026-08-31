@@ -199,7 +199,8 @@
 "subscription.pro_title" = "CLI Pulse Pro";
 "subscription.unlock" = "Desbloquea todo el poder de CLI Pulse";
 "subscription.monthly" = "Mensual";
-"subscription.yearly_save" = "Anual (Ahorra 17%)";
+"subscription.yearly" = "Anual";
+"subscription.yearly_save" = "Anual (Ahorra %@)";
 "subscription.popular" = "POPULAR";
 "subscription.not_available" = "No disponible";
 "subscription.restore" = "Restaurar compras";

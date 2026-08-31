@@ -86,10 +86,21 @@ public struct SubscriptionView: View {
 
     // MARK: - Billing Toggle
 
+    /// The yearly tab's label. Shows a saving only when the live StoreKit
+    /// prices actually contain one — see `SubscriptionPricing` for the
+    /// hardcoded "17%" that survived the price change it described.
+    private var yearlyTabLabel: String {
+        guard let m = manager.proMonthly?.price,
+              let y = manager.proYearly?.price,
+              let pct = PaywallPricing.yearlySavingPercent(monthly: m, yearly: y)
+        else { return L10n.subscription.yearly }
+        return L10n.subscription.yearlySave(pct)
+    }
+
     private var billingToggle: some View {
         Picker(L10n.subscription.billing, selection: $isYearly) {
             Text(L10n.subscription.monthly).tag(false)
-            Text(L10n.subscription.yearlySave).tag(true)
+            Text(yearlyTabLabel).tag(true)
         }
         #if os(watchOS)
         .pickerStyle(.wheel)

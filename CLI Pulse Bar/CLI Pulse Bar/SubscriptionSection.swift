@@ -217,7 +217,11 @@ struct SubscriptionSection: View {
                 inlineProductRow(product: pro, label: "Pro Monthly", features: L10n.subscription.unlimitedProviders)
             }
             if let proY = subscriptionManager.proYearly {
-                inlineProductRow(product: proY, label: "Pro Yearly", features: "Save 17%")
+                // Computed, never written down: the literal "Save 17%" that
+                // used to live here was correct for $4.99/$49.99 and became a
+                // lie — an inverted one — when the prices changed.
+                inlineProductRow(product: proY, label: "Pro Yearly",
+                                 features: yearlySavingText ?? L10n.subscription.yearly)
             }
             // v1.52 — Team rows removed. The tier is withdrawn from sale;
             // v1.52.1 deleted the UI behind it. It had no exclusive benefit
@@ -262,5 +266,14 @@ struct SubscriptionSection: View {
         .padding(6)
         .background(PulseTheme.cardBackground.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// "Save N%" for the yearly row, or nil when there is nothing to claim.
+    private var yearlySavingText: String? {
+        guard let m = subscriptionManager.proMonthly?.price,
+              let y = subscriptionManager.proYearly?.price,
+              let pct = PaywallPricing.yearlySavingPercent(monthly: m, yearly: y)
+        else { return nil }
+        return L10n.subscription.yearlySave(pct)
     }
 }

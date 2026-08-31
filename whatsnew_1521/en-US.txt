@@ -1,0 +1,11 @@
+Alerts you had switched on were never reaching you, and nothing said so.
+
+• Fixed: alert notifications. The app only ever asked for notification permission when you turned on Remote Control — a switch that now controls fan speed, low-power mode and keep-awake, and sends no notifications at all. If you never touched it, permission was never requested, so every alert notification was discarded by the system while Settings showed alerts switched on the whole time. The app now asks when you open Alerts, which is where the notifications come from.
+
+• Fixed: diagnostics reported "Mac reachable: FAIL" for Macs that were connected and working. The check compared your Mac's type against "Mac" while the app registers Macs as "macOS", so it failed on almost every machine it was asked about.
+
+• Fixed: Send and Stop stayed clickable in a session whose helper had stopped, and silently did nothing when pressed. They are now disabled, and the banner names the real cause instead of pointing at a switch that cannot fix it.
+
+• Removed: starting CLI sessions from your phone, streaming their terminal output, and approving tool permissions remotely. None of it had worked for some time. The screens, buttons and setup instructions describing it are gone rather than left promising something the app could not do. Machine controls — fan target, low-power mode, keep-awake — are unaffected.
+
+• Fixed: four settings that saved your choice and were then read by nothing, including one that claimed to silence quota notifications while they kept arriving.
