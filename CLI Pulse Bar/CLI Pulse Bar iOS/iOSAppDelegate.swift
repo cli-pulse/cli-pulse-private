@@ -6,8 +6,13 @@ import os
 private let pushLogger = Logger(subsystem: "com.clipulse", category: "iOSPush")
 
 /// SwiftUI `@UIApplicationDelegateAdaptor` for the iOS app. Owns the APNs
-/// registration handshake and the foreground / tap routing for Remote
-/// Approvals push notifications.
+/// registration handshake and the foreground / tap routing for notifications.
+///
+/// It used to say "Remote Approvals push notifications". That description
+/// invited deleting this class along with the retired session plane, which
+/// would have been wrong: `DataRefreshManager.sendNotification(for:)` schedules
+/// LOCAL notifications for ALERTS with no `#if os()` guard, so alert banners
+/// and alert taps land here too. Alerts are live — 2302 rows across 44 users.
 ///
 /// Why this file exists at all (the iOS app is otherwise pure SwiftUI):
 /// SwiftUI has no first-class hook for
@@ -118,21 +123,20 @@ final class iOSAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationC
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        // Spec: "确保 app foreground / notification tap 后会 refresh pending approvals"
-        // The Settings tab houses the always-visible "Pending Approvals"
-        // NavigationLink (count badge included). Routing there gives the
-        // user one tap to drill in. We deliberately don't try to deep-
-        // link straight into the approvals view — the navigation stack
-        // shape varies (iPad split, iPhone tabs, no-iPhone-Mac on
-        // Mac Catalyst) and the badge already makes the destination
-        // visually obvious.
+        // This routed to `.settings` because that tab housed the
+        // always-visible "Pending Approvals" NavigationLink. PR #501 deleted
+        // that link, so the destination outlived its reason — tapping an alert
+        // notification landed the user on Settings, which has nothing to do
+        // with alerts (`grep -c Approvals iOSSettingsTab.swift` is now 0).
+        //
+        // Alert notifications are the only kind that can arrive now, so route
+        // to the tab that shows them.
         Task { @MainActor in
             guard let state = Self.sharedAppState else {
                 completionHandler()
                 return
             }
-            state.selectedTab = .settings
-            await state.refreshRemoteApprovals()
+            state.selectedTab = .alerts
             completionHandler()
         }
     }

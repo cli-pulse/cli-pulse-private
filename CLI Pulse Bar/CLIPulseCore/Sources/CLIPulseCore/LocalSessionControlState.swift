@@ -592,11 +592,6 @@ extension AppState {
             // surfaces it via list_sessions.
             self.localOptimisticAppendedAt[result.sessionId] = Date()
             Self.localStateLogger.info("[stream-debug] requestLocalClaudeSessionStart appended sessionId=\(result.sessionId, privacy: .public) provider=\(provider, privacy: .public) optimisticTimestamped=true")
-            // Refresh the remote list so iOS / Watch viewers see the
-            // session as soon as the helper's register_session RPC
-            // lands. Best effort — failure here doesn't change the
-            // "local start succeeded" outcome.
-            await refreshRemoteSessions()
             return .started(result.sessionId)
         } catch {
             Self.localStateLogger.warning(
@@ -619,7 +614,14 @@ extension AppState {
             // doesn't resurrect this id during the grace window when
             // list_sessions correctly reports it as gone.
             self.localOptimisticAppendedAt.removeValue(forKey: sessionId)
-            await refreshRemoteSessions()
+            // NOTE for whoever edits the caller: `localOptimisticAppendedAt` is
+            // `internal var`, NOT `@Published` (AppState.swift:659), so this
+            // function no longer emits `objectWillChange` on its own — the
+            // removed `refreshRemoteSessions()` was its last emission. The sole
+            // caller republishes immediately after the await
+            // (`localOutputPreview` / `localPendingApprovals`, both @Published,
+            // SessionsTab.swift:1041-1042). Keep that coupling or restore an
+            // explicit publish here.
             return true
         } catch {
             Self.localStateLogger.warning(
