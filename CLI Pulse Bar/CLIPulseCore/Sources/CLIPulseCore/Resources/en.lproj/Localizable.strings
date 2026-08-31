@@ -200,7 +200,8 @@
 "subscription.pro_title" = "CLI Pulse Pro";
 "subscription.unlock" = "Unlock the full power of CLI Pulse";
 "subscription.monthly" = "Monthly";
-"subscription.yearly_save" = "Yearly (Save 17%)";
+"subscription.yearly" = "Yearly";
+"subscription.yearly_save" = "Yearly (Save %@)";
 "subscription.popular" = "POPULAR";
 "subscription.not_available" = "Not Available";
 "subscription.restore" = "Restore Purchases";

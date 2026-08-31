@@ -638,7 +638,12 @@ public enum L10n {
         public static var proTitle: String { tr("subscription.pro_title") }
         public static var unlock: String { tr("subscription.unlock") }
         public static var monthly: String { tr("subscription.monthly") }
-        public static var yearlySave: String { tr("subscription.yearly_save") }
+        public static var yearly: String { tr("subscription.yearly") }
+        /// `percent` comes from `PaywallPricing.yearlySavingPercent`,
+        /// never from a literal — see that type for what a literal cost.
+        public static func yearlySave(_ percent: Int) -> String {
+            tr("subscription.yearly_save", "\(percent)%")
+        }
         public static var popular: String { tr("subscription.popular") }
         public static var notAvailable: String { tr("subscription.not_available") }
         public static var restore: String { tr("subscription.restore") }

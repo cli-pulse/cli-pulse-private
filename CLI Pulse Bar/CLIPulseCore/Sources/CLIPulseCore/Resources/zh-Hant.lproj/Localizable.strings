@@ -200,7 +200,8 @@
 "subscription.pro_title" = "CLI Pulse Pro";
 "subscription.unlock" = "解鎖 CLI Pulse 的全部功能";
 "subscription.monthly" = "月付";
-"subscription.yearly_save" = "年付（省 17%）";
+"subscription.yearly" = "年付";
+"subscription.yearly_save" = "年付（省 %@）";
 "subscription.popular" = "熱門";
 "subscription.not_available" = "暫不可用";
 "subscription.restore" = "恢復購買";
