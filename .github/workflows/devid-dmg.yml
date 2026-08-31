@@ -102,6 +102,31 @@ jobs:
         # SENTRY_AUTH_TOKEN secret it skips cleanly anyway.
         run: brew install getsentry/tools/sentry-cli || true
 
+      - name: Build the bundled tmux
+        # `build_devid_dmg.sh` step 3 refuses to build a distributable without
+        # `CLI Pulse Bar/Resources/bin/tmux`, because tmux-wrap (shipped in
+        # 1.42.0) silently does nothing on a Mac with no Homebrew tmux. That
+        # binary is a git-ignored build artifact, so it exists on the
+        # maintainer's machine and has never existed on a runner.
+        #
+        # Nobody noticed because every DEVID release since 1.42.0 was cut
+        # locally. This workflow last succeeded on app-v1.41.2 — before tmux
+        # was required — so it has been unable to produce a DMG for eleven
+        # releases while still reporting "active".
+        #
+        # Runs after the signing keychain is set up: the script codesigns tmux
+        # with the Developer ID identity. Sources are version- and SHA-pinned
+        # inside the script.
+        env:
+          TMUX_SIGN_IDENTITY: ${{ secrets.DEV_ID_APP }}
+        run: |
+          set -euo pipefail
+          bash "CLI Pulse Bar/scripts/build-tmux-universal.sh"
+          test -x "CLI Pulse Bar/Resources/bin/tmux"
+          file "CLI Pulse Bar/Resources/bin/tmux"
+          # Fail loudly here rather than 200 lines later inside the DMG build.
+          lipo -archs "CLI Pulse Bar/Resources/bin/tmux" | tee /dev/stderr | grep -q arm64
+
       - name: Build + notarize DMG
         env:
           DEV_ID_APP: ${{ secrets.DEV_ID_APP }}
