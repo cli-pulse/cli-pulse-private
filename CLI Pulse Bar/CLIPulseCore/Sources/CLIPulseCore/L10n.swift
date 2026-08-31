@@ -288,8 +288,6 @@ public enum L10n {
         public static var subscriptionUtilization: String { tr("dashboard.subscription_utilization") }
         public static var totalMonthly: String { tr("dashboard.total_monthly") }
         public static var noEnabledWithData: String { tr("dashboard.no_enabled_with_data") }
-        public static var tapReviewClaude: String { tr("dashboard.tap_review_claude") }
-        public static func pendingApprovalCount(_ count: Int) -> String { tr("dashboard.pending_approval_count", count) }
     }
 
     // MARK: - Usage Dashboard (v1.40)
@@ -584,7 +582,6 @@ public enum L10n {
         public static var testWebhook: String { tr("settings.test_webhook") }
         public static var remoteControl: String { tr("settings.remote_control") }
         public static var remoteControlIPhoneHint: String { tr("settings.remote_control_iphone_hint") }
-        public static var pendingApprovals: String { tr("settings.pending_approvals") }
         public static var privacyRedactedHint: String { tr("settings.privacy_redacted_hint") }
     }
 
@@ -1279,31 +1276,6 @@ public enum L10n {
 
     // MARK: - Remote Approvals
 
-    public enum remoteApprovals {
-        public static var title: String { tr("remote_approvals.title") }
-        public static var disabledHint: String { tr("remote_approvals.disabled_hint") }
-        public static var refresh: String { tr("remote_approvals.refresh") }
-        public static var close: String { tr("remote_approvals.close") }
-        public static var offTitle: String { tr("remote_approvals.off_title") }
-        public static var offBodyMac: String { tr("remote_approvals.off_body_mac") }
-        public static var offBodyIos: String { tr("remote_approvals.off_body_ios") }
-        public static var openSettings: String { tr("remote_approvals.open_settings") }
-        public static var noPending: String { tr("remote_approvals.no_pending") }
-        public static var updatedPrefix: String { tr("remote_approvals.updated_prefix") }
-        public static var perRequestNoteMac: String { tr("remote_approvals.per_request_note_mac") }
-        public static var perRequestNoteIos: String { tr("remote_approvals.per_request_note_ios") }
-        public static var deny: String { tr("remote_approvals.deny") }
-        public static var approve: String { tr("remote_approvals.approve") }
-        public static var highRiskWarning: String { tr("remote_approvals.high_risk_warning") }
-        public static func pendingCount(_ count: Int) -> String { tr("remote_approvals.pending_count", count) }
-        public static var unknownTool: String { tr("remote_approvals.unknown_tool") }
-        public static var noSummary: String { tr("remote_approvals.no_summary") }
-        public static func expires(_ value: String) -> String { tr("remote_approvals.expires", value) }
-        public static var entryLabelNone: String { tr("remote_approvals.entry_label_none") }
-        public static func entryLabelWithCount(_ count: Int) -> String { tr("remote_approvals.entry_label_with_count", count) }
-        public static var entryHelpNone: String { tr("remote_approvals.entry_help_none") }
-        public static func entryHelpWithCount(_ count: Int) -> String { tr("remote_approvals.entry_help_with_count", count) }
-    }
 
     // MARK: - Language Switcher (iter22)
 

@@ -7,7 +7,6 @@ struct MenuBarView: View {
     @EnvironmentObject var alertState: AlertState
     @EnvironmentObject var providerState: ProviderState
     @AppStorage("cli_pulse_menubar_height") private var storedHeight: Double = 580
-    @State private var showRemoteApprovals = false
     /// iter22: observed so SwiftUI re-evaluates the body (and every
     /// `Text(L10n.*)` inside it) whenever the user picks a new
     /// language from the footer picker.
@@ -56,100 +55,76 @@ struct MenuBarView: View {
 
     var body: some View {
         Group {
-            // iter1 / iter2 review fix: previously the Remote Approvals
-            // surface was presented via `.sheet(isPresented:)` attached
-            // to the connected-view footer. Inside a
-            // `MenuBarExtra(...).menuBarExtraStyle(.window)` popover,
-            // SwiftUI renders that sheet but every click inside it —
-            // including refresh / X buttons and even empty area —
-            // propagated to the popover's click-outside handler,
-            // dismissing the entire menubar popover before the sheet's
-            // button actions could fire. The user could open the sheet
-            // but couldn't interact with it.
-            //
-            // Render INLINE instead. The approvals view becomes a
-            // full-popover replacement (taking over the same 380 ×
-            // effectiveHeight frame as the main content) with normal
-            // button click handling. The X button calls back through
-            // the explicit `onDismiss` closure to flip our state
-            // variable, which restores the main menubar content.
-            if showRemoteApprovals {
-                RemoteApprovalsSheet(onDismiss: {
-                    showRemoteApprovals = false
-                })
-                .environmentObject(state)
-            } else {
-                VStack(spacing: 0) {
-                    if !SupabaseConstants.isConfigured {
-                        configurationErrorBanner
+            VStack(spacing: 0) {
+                if !SupabaseConstants.isConfigured {
+                    configurationErrorBanner
+                }
+                // v1.45: shown once, above whichever branch is taken below,
+                // so it reaches onboarding / connected / not-connected
+                // users alike. This is a menu bar app — there is no window
+                // at launch — so the first time the menu is opened is the
+                // earliest honest moment to say this. Nothing has been sent
+                // before it: the telemetry gate refuses to send while
+                // `hasSeenDisclosure` is false.
+                if !telemetryDisclosureSeen {
+                    AnonymousTelemetryDisclosureCard {
+                        let store = UserDefaultsAnonymousTelemetryStore()
+                        store.hasSeenDisclosure = true
+                        telemetryDisclosureSeen = true
+                        AnonymousTelemetryCoordinator.shared?
+                            .disclosureAcknowledged(providerState: providerState)
                     }
-                    // v1.45: shown once, above whichever branch is taken below,
-                    // so it reaches onboarding / connected / not-connected
-                    // users alike. This is a menu bar app — there is no window
-                    // at launch — so the first time the menu is opened is the
-                    // earliest honest moment to say this. Nothing has been sent
-                    // before it: the telemetry gate refuses to send while
-                    // `hasSeenDisclosure` is false.
-                    if !telemetryDisclosureSeen {
-                        AnonymousTelemetryDisclosureCard {
-                            let store = UserDefaultsAnonymousTelemetryStore()
-                            store.hasSeenDisclosure = true
-                            telemetryDisclosureSeen = true
-                            AnonymousTelemetryCoordinator.shared?
-                                .disclosureAcknowledged(providerState: providerState)
+                    .padding(.horizontal, 10)
+                    .padding(.top, 10)
+                }
+                // iter17 (2026-04-29): route via `state.isLocalMode`
+                // even when unauthenticated — that's the new
+                // user-opt-in flag set by
+                // `AppState.continueWithoutAccount()`. Pre-iter17
+                // the very first check was `!authState.isAuthenticated
+                // → notConnectedView`, which made `isLocalMode`
+                // meaningful only for signed-in unpaired Mac users
+                // (a flow that's mostly obsolete post-iter9). Now
+                // any user — signed in or not — who has
+                // `isLocalMode = true` lands in the full tab shell
+                // and sees their local Mac collector data. The
+                // signed-in-but-unpaired-non-local-mode branch
+                // (PairingSection flow) stays in `notConnectedView`.
+                if shouldPresentAgentSetup {
+                    OnboardingWizardView(
+                        setupState: $agentSetupState,
+                        onStateChange: { updatedState in
+                            agentSetupStore.save(updatedState)
+                        },
+                        onClose: {
+                            agentSetupDismissedForSession = true
+                        },
+                        onFinished: {
+                            agentSetupDismissedForSession = false
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.top, 10)
-                    }
-                    // iter17 (2026-04-29): route via `state.isLocalMode`
-                    // even when unauthenticated — that's the new
-                    // user-opt-in flag set by
-                    // `AppState.continueWithoutAccount()`. Pre-iter17
-                    // the very first check was `!authState.isAuthenticated
-                    // → notConnectedView`, which made `isLocalMode`
-                    // meaningful only for signed-in unpaired Mac users
-                    // (a flow that's mostly obsolete post-iter9). Now
-                    // any user — signed in or not — who has
-                    // `isLocalMode = true` lands in the full tab shell
-                    // and sees their local Mac collector data. The
-                    // signed-in-but-unpaired-non-local-mode branch
-                    // (PairingSection flow) stays in `notConnectedView`.
-                    if shouldPresentAgentSetup {
-                        OnboardingWizardView(
-                            setupState: $agentSetupState,
-                            onStateChange: { updatedState in
-                                agentSetupStore.save(updatedState)
-                            },
-                            onClose: {
-                                agentSetupDismissedForSession = true
-                            },
-                            onFinished: {
-                                agentSetupDismissedForSession = false
-                            }
-                        )
+                    )
+                    .environmentObject(state)
+                } else if LocalCollectionPolicy.shouldPresentDisclosure(
+                    isAuthenticated: authState.isAuthenticated,
+                    isLocalMode: state.isLocalMode,
+                    consent: state.localScanConsent
+                ) {
+                    // v1.50 W-C. `isLocalMode` is true, so the branch below
+                    // would otherwise render the dashboard — for someone who
+                    // arrived here by pressing the wizard's close button on
+                    // step 0 and has therefore been told nothing about what
+                    // the app reads. Ask first.
+                    //
+                    // The dashboard would in any case be empty: the gate at
+                    // the top of `refreshLocal` refuses to collect in this
+                    // state. This view is what turns that emptiness from a
+                    // broken-looking app into a question.
+                    LocalScanConsentView()
                         .environmentObject(state)
-                    } else if LocalCollectionPolicy.shouldPresentDisclosure(
-                        isAuthenticated: authState.isAuthenticated,
-                        isLocalMode: state.isLocalMode,
-                        consent: state.localScanConsent
-                    ) {
-                        // v1.50 W-C. `isLocalMode` is true, so the branch below
-                        // would otherwise render the dashboard — for someone who
-                        // arrived here by pressing the wizard's close button on
-                        // step 0 and has therefore been told nothing about what
-                        // the app reads. Ask first.
-                        //
-                        // The dashboard would in any case be empty: the gate at
-                        // the top of `refreshLocal` refuses to collect in this
-                        // state. This view is what turns that emptiness from a
-                        // broken-looking app into a question.
-                        LocalScanConsentView()
-                            .environmentObject(state)
-                    } else if state.isLocalMode || authState.isPaired {
-                        connectedView
-                    } else {
-                        notConnectedView
-                    }
+                } else if state.isLocalMode || authState.isPaired {
+                    connectedView
+                } else {
+                    notConnectedView
                 }
             }
         }
@@ -591,46 +566,6 @@ struct MenuBarView: View {
 
             Spacer()
 
-            // Remote Approvals entry. Visibility logic lives in
-            // CLIPulseCore.RemoteApprovalsEntryState so it can be unit-
-            // tested in isolation (see RemoteApprovalsEntryStateTests).
-            // Always-on entry when Remote Control is enabled — see
-            // RemoteApprovalsEntryState.footer doc comment for the
-            // dead-loop bug it exists to prevent.
-            let approvalsEntry = RemoteApprovalsEntryState.footer(
-                remoteSessionsEnabled: state.remoteSessionsEnabled,
-                pendingCount: state.remotePendingApprovals.count
-            )
-            if approvalsEntry.isVisible {
-                Button {
-                    showRemoteApprovals = true
-                } label: {
-                    HStack(spacing: 3) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 9))
-                        if let count = approvalsEntry.badgeCount {
-                            Text("\(count)")
-                                .font(.system(size: 9, weight: .semibold))
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(
-                        approvalsEntry.badgeCount == nil
-                            ? PulseTheme.accent.opacity(0.55)
-                            : PulseTheme.accent
-                    ))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(approvalsEntry.badgeCount == nil
-                    ? L10n.remoteApprovals.entryLabelNone
-                    : L10n.remoteApprovals.entryLabelWithCount(approvalsEntry.badgeCount!))
-                .help(approvalsEntry.badgeCount == nil
-                    ? L10n.remoteApprovals.entryHelpNone
-                    : L10n.remoteApprovals.entryHelpWithCount(approvalsEntry.badgeCount!))
-            }
-
             // iter22: in-app language switcher placed immediately
             // left of the refresh button per director request.
             languagePicker
@@ -658,13 +593,13 @@ struct MenuBarView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
         .background(Color(nsColor: .separatorColor).opacity(0.1))
-        // NOTE: `.sheet(isPresented: $showRemoteApprovals) { ... }`
-        // used to live here. Removed because clicks inside the sheet
-        // didn't capture event-wise inside a MenuBarExtra(.window)
-        // popover — they were treated as "outside the popover" and
-        // dismissed the whole menubar window. The approvals view is
-        // now rendered INLINE at the top level of the body's Group;
-        // see the `if showRemoteApprovals { ... }` branch in `body`.
+        // NOTE: do not attach `.sheet` / `.alert` here. Clicks inside
+        // either do not capture event-wise inside a MenuBarExtra(.window)
+        // popover — they are treated as "outside the popover" and dismiss
+        // the whole menubar window. Render such surfaces INLINE at the top
+        // level of the body's Group instead. (The remote-approvals view
+        // was the original case; it was retired in v1.52.1, but the
+        // constraint is a property of MenuBarExtra, not of that view.)
     }
 
     // MARK: - Resize Handle

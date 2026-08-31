@@ -42,24 +42,54 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
                        RemoteSessionPlane.isEnabled && state.remoteControlEnabled)
     }
 
-    /// Approvals are tool-permission prompts from a remotely-driven session.
-    /// With that plane gone there is nothing to approve, so the entry must be
-    /// hidden even with pending rows in the cache.
-    func test_theApprovalsEntryIsHiddenEvenWithPendingRows() {
-        XCTAssertEqual(
-            RemoteApprovalsEntryState.footer(remoteSessionsEnabled: false, pendingCount: 7),
-            .hidden
-        )
-        XCTAssertEqual(
-            RemoteApprovalsEntryState.banner(remoteSessionsEnabled: false, pendingCount: 7),
-            .hidden
-        )
-        // Vacuity guard: the helper still works when the plane is on, so the
-        // assertions above are about the flag and not about a broken helper.
-        XCTAssertEqual(
-            RemoteApprovalsEntryState.footer(remoteSessionsEnabled: true, pendingCount: 7),
-            .visibleWithBadge(count: 7)
-        )
+    /// Approvals were tool-permission prompts from a remotely-driven session.
+    /// With that plane gone there is nothing to approve, so v1.52.1 deleted the
+    /// surfaces outright rather than hiding them: `RemoteApprovalsSheet` (macOS
+    /// popover), `iOSRemoteApprovalsView` (iOS screen) and the shared
+    /// `RemoteApprovalsEntryState` predicate.
+    ///
+    /// This has to be a source scan. The deleted types cannot be named in Swift
+    /// — the test would not compile — and two of the three lived in app targets
+    /// that have no test bundle at all, which is exactly how the Swarm tab
+    /// shipped visible for thirty versions while its release notes called it
+    /// dark. A grep is the only assertion that reaches them.
+    func test_theApprovalsSurfacesAreGoneFromEverySource() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+            .deletingLastPathComponent()   // CLI Pulse Bar
+        let dirs = ["CLI Pulse Bar", "CLI Pulse Bar iOS", "CLIPulseCore/Sources/CLIPulseCore"]
+
+        var scanned = 0
+        var sawLivingSymbol = false
+        for dir in dirs {
+            let base = root.appendingPathComponent(dir)
+            let files = try FileManager.default
+                .contentsOfDirectory(at: base, includingPropertiesForKeys: nil)
+                .filter { $0.pathExtension == "swift" }
+            XCTAssertFalse(files.isEmpty, "no sources under \(dir) — the scan path is wrong")
+            for file in files {
+                let text = try String(contentsOf: file, encoding: .utf8)
+                scanned += 1
+                if text.contains("RemoteSessionPlane") { sawLivingSymbol = true }
+                for dead in ["RemoteApprovalsSheet", "iOSRemoteApprovalsView",
+                             "RemoteApprovalsEntryState"] {
+                    XCTAssertFalse(
+                        text.contains(dead),
+                        "\(file.lastPathComponent) still references \(dead)"
+                    )
+                }
+            }
+        }
+
+        // Positive controls. Without these a mistyped path, an empty directory
+        // or a scanner that reads nothing would pass silently — the failure
+        // mode this repo has already shipped four times.
+        XCTAssertGreaterThan(scanned, 50, "scanned too few files to be believable")
+        XCTAssertTrue(sawLivingSymbol,
+                      "the scanner never matched a symbol that DOES exist, so its "
+                      + "negative findings prove nothing")
     }
 
     /// DRIFT GUARD. `RemoteSessionPlane` is duplicated in HelperKit because the

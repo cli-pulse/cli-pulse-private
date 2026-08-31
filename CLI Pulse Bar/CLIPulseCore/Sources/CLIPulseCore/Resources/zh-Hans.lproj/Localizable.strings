@@ -430,7 +430,6 @@
 "dashboard.subscription_utilization" = "订阅使用率";
 "dashboard.total_monthly" = "月度合计";
 "dashboard.no_enabled_with_data" = "没有已启用且包含数据的服务商";
-"dashboard.tap_review_claude" = "点按可查看 Mac 上正在运行的 Claude 工具调用";
 
 /* ── 设置补充 (i18n sweep) ── */
 "settings.show_cost_summary" = "显示成本摘要";
@@ -448,7 +447,6 @@
 "settings.test_webhook" = "测试 Webhook";
 "settings.remote_control" = "来自其他设备的机器请求";
 "settings.remote_control_iphone_hint" = "用这台 iPhone 请求 Mac 提升风扇转速、进入低电量模式或防休眠";
-"settings.pending_approvals" = "待审批";
 "settings.privacy_redacted_hint" = "CLI Pulse 仅上传每个请求的脱敏摘要——绝不上传 API 密钥、Cookie 或完整的对话内容。";
 
 /* ── 显示补充 (i18n sweep) ── */
@@ -628,21 +626,6 @@
 "advanced.never" = "从未";
 
 /* ── 远程审批 ── */
-"remote_approvals.title" = "远程审批";
-"remote_approvals.disabled_hint" = "已禁用 · 设置 → 隐私";
-"remote_approvals.refresh" = "刷新";
-"remote_approvals.close" = "关闭";
-"remote_approvals.off_title" = "远程控制已关闭";
-"remote_approvals.off_body_mac" = "在「设置 → 隐私」中开启远程控制，即可通过 iPhone 或 Mac 审批 Claude 的工具调用。CLI Pulse 仅上传脱敏摘要，绝不会上传对话内容或 API 密钥。";
-"remote_approvals.off_body_ios" = "在「设置 → 隐私」中开启远程控制，即可审批 Mac 上运行的 Claude 工具调用。CLI Pulse 仅上传脱敏摘要，绝不会上传对话内容或 API 密钥。";
-"remote_approvals.open_settings" = "打开「设置」";
-"remote_approvals.no_pending" = "暂无待审批请求";
-"remote_approvals.updated_prefix" = "更新于 ";
-"remote_approvals.per_request_note_mac" = "此处的「批准」仅对当前请求生效——不会添加 Claude Code 的「始终允许」规则。下次 Claude 需要相同工具时还会再次请求。要设置长期规则，请使用 Claude Code 自带的「Always Allow」。";
-"remote_approvals.per_request_note_ios" = "「批准」仅对当前请求生效——不会创建 Claude Code 的「始终允许」规则。下次 Claude 需要相同工具时仍会在此再次请求。要设置长期规则，请在 Mac 上使用 Claude Code 自带的「Always Allow」。批准后会在 Mac 上执行该工具调用。";
-"remote_approvals.deny" = "拒绝";
-"remote_approvals.approve" = "批准";
-"remote_approvals.high_risk_warning" = "高风险——请在 Mac 上本地审批。";
 
 /* ── Yield Score ── */
 "yield.title" = "Yield Score";
@@ -687,14 +670,6 @@
 "language.system_default" = "系统默认";
 
 /* ── 远程审批 i18n leftovers ── */
-"remote_approvals.pending_count" = "%d 项待审批";
-"remote_approvals.entry_label_none" = "打开远程审批（无待审批）";
-"remote_approvals.entry_label_with_count" = "打开远程审批（%d 项待审批）";
-"remote_approvals.entry_help_none" = "打开远程审批——当前无待审批请求";
-"remote_approvals.entry_help_with_count" = "%d 项远程审批待处理";
-"remote_approvals.unknown_tool" = "未知工具";
-"remote_approvals.no_summary" = "（无摘要）";
-"remote_approvals.expires" = "%@ 过期";
 
 /* ── 其他 i18n 收尾 ── */
 "alerts.resolve_all" = "全部解决";
@@ -745,7 +720,6 @@
 "widget.alerts_summary" = "%d 条告警 • CLI Pulse";
 "widget.percent_left" = "%@ 剩余 %d%%";
 "widget.quota_fallback" = "配额";
-"dashboard.pending_approval_count" = "%d 项待审批";
 "providers.quota_data_unavailable" = "配额数据不可用";
 "advanced.sync_just_now" = "刚刚同步";
 "advanced.sync_minutes_ago" = "%d 分钟前同步";

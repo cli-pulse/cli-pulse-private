@@ -406,35 +406,6 @@ struct iOSSettingsTab: View {
                             }
                         }
 
-                        // Always-visible NavigationLink when Remote Control
-                        // is on, even at zero pending — that's how the user
-                        // opens the screen to start active polling. See the
-                        // RemoteApprovalsEntryState helper docstring in
-                        // CLIPulseCore for the dead-loop bug this prevents.
-                        let pendingEntry = RemoteApprovalsEntryState.footer(
-                            remoteSessionsEnabled: state.remoteSessionsEnabled,
-                            pendingCount: state.remotePendingApprovals.count
-                        )
-                        if pendingEntry.isVisible {
-                            NavigationLink {
-                                iOSRemoteApprovalsView()
-                                    .environmentObject(state)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "checkmark.shield")
-                                    Text(L10n.settings.pendingApprovals)
-                                    Spacer()
-                                    if let count = pendingEntry.badgeCount {
-                                        Text("\(count)")
-                                            .font(.caption.weight(.semibold))
-                                            .foregroundStyle(.white)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 2)
-                                            .background(Capsule().fill(PulseTheme.accent))
-                                    }
-                                }
-                            }
-                        }
                     } header: {
                         Text(L10n.settings.privacy)
                     } footer: {
