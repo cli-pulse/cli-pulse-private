@@ -2057,7 +2057,12 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             notificationsEnabled: notificationsEnabled,
             sessionQuotaNotificationsEnabled: true,
             authenticatedUserID: "user-a",
-            providerConfigs: [],
+            // These synchronization tests exercise an explicitly authorized
+            // Claude collector. An empty provider set now correctly skips all
+            // collectors, which would make the gate-based cases wait forever
+            // instead of testing their account-switch boundary.
+            providerConfigs: [ProviderConfig(kind: .claude)],
+            providerCollectionAuthorized: true,
             providers: [],
             maxProviders: 100,
             currentTierName: "Pro",
@@ -2243,7 +2248,7 @@ private extension DataRefreshManager.LocalRefreshRuntime {
             ProviderAccountWriteOrderRecorder? = nil
     ) -> Self {
         Self(
-            prepareCredentials: {},
+            prepareCredentials: { _ in },
             collectAccountPass: { _ in
                 if let collectorGate {
                     await collectorGate.wait()
@@ -2251,7 +2256,7 @@ private extension DataRefreshManager.LocalRefreshRuntime {
                 return .empty
             },
             readHelperSnapshot: { _ in .empty },
-            scanLocal: {
+            scanLocal: { _ in
                 LocalScanResult(
                     sessions: [],
                     providers: [],
@@ -2260,8 +2265,8 @@ private extension DataRefreshManager.LocalRefreshRuntime {
                     activeSessionCount: 0
                 )
             },
-            scanCostUsage: { CostUsageScanResult(entries: []) },
-            needsFolderAccessNudge: { _ in false },
+            scanCostUsage: { _ in CostUsageScanResult(entries: []) },
+            needsFolderAccessNudge: { _, _ in false },
             syncLegacyQuotas: { _, _ in
                 if let syncGate { await syncGate.wait() }
                 if let writeOrderRecorder {

@@ -1,37 +1,21 @@
 import Foundation
+import Security
 
-/// Async wrapper over `security find-generic-password -s <service> -w`
-/// for reading credentials from the macOS Keychain. Used by Slice 2c's
+/// Async wrapper over a non-interactive native Security.framework query for
+/// reading credentials from the macOS Keychain. Used by Slice 2c's
 /// `ClaudeQuotaFetcher` to load `Claude Code-credentials` (the JSON
 /// blob the Claude CLI persists with the OAuth access/refresh tokens
 /// + plan info).
 ///
-/// **Phase 4E v2.1 P1 — Chromium Safe Storage prompt resilience.**
-/// The first time the new Swift binary signs differently than the
-/// Python launcher and tries to read a generic-password item that the
-/// Python helper had previously authorized, macOS surfaces a dialog
-/// asking the user to "Always Allow" or "Deny". `security
-/// find-generic-password` blocks indefinitely waiting for that click.
+/// The helper has no foreground authorization surface. It must therefore fail
+/// closed when an item needs user interaction; launching `/usr/bin/security`
+/// is deliberately avoided because that child process owns a separate
+/// interaction policy and can display a password sheet despite the parent
+/// helper disabling Keychain UI.
 ///
-/// Mitigations baked in here:
-///
-///   1. **5-second watchdog timeout** via `SubprocessRunner`. If the
-///      user is AFK, we fall through to the next provenance path
-///      (web cookie / CLI legacy) rather than freezing the entire
-///      `SystemCollector.collectAll` task group.
-///
-///   2. **24-hour denial cache** (`KeychainConsentCache`) — when the
-///      `security` invocation returns a non-zero exit indicating the
-///      user clicked "Deny" (or the watchdog tripped), the service
-///      name is marked as denied for 24 h. Subsequent collection
-///      cycles within that window skip the Keychain fetch entirely
-///      so we don't re-prompt every minute.
-///
-///   3. **Explicit-refresh override.** When the macOS app's Settings
-///      panel calls "Refresh quota" via UDS, the helper passes
-///      `forceRetry: true` which clears the denial cache for the
-///      requested service before invoking `security`. Gives the user
-///      a path to flip their decision without restarting anything.
+/// A short denial cache remains as backoff for inaccessible items. Explicit
+/// refresh can clear that cache, but it still performs a non-interactive read;
+/// only the main app's foreground Connect/Test Connection actions may prompt.
 ///
 public actor KeychainReader {
 
@@ -40,8 +24,8 @@ public actor KeychainReader {
 
     public typealias Clock = @Sendable () -> TimeInterval
 
-    /// Async hook: invokes `security find-generic-password -s <service> -w`
-    /// (or a test fake) and returns the granular `RunResult` so the
+    /// Async hook for the native read (or a test fake). It returns the granular
+    /// `RunResult` so the
     /// reader can distinguish "service not found" (exit 44 —
     /// `errSecItemNotFound`, the user simply hasn't paired with this
     /// service yet) from "user denied" (the prompt → Deny path) and
@@ -65,16 +49,48 @@ public actor KeychainReader {
 
     public init(
         clock: @escaping Clock = { Date().timeIntervalSince1970 },
-        fetch: @escaping FetchHook = { service in
-            await SubprocessRunner.runCapturingExit(
-                executable: URL(fileURLWithPath: "/usr/bin/security"),
-                arguments: ["find-generic-password", "-s", service, "-w"],
-                timeoutSeconds: KeychainReader.watchdogTimeoutSeconds
-            )
-        }
+        fetch: FetchHook? = nil
     ) {
         self.clock = clock
-        self.fetch = fetch
+        self.fetch = fetch ?? { service in
+            Self.fetchGenericPasswordWithoutInteraction(service: service)
+        }
+    }
+
+    /// Exposed to tests so the production fail-closed policy is pinned without
+    /// touching a real user's Keychain.
+    static func noInteractionQuery(service: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseAuthenticationUI as String: kSecUseAuthenticationUIFail,
+        ]
+    }
+
+    private static func fetchGenericPasswordWithoutInteraction(
+        service: String
+    ) -> SubprocessRunner.RunResult {
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(
+            noInteractionQuery(service: service) as CFDictionary,
+            &item
+        )
+        guard status == errSecSuccess else {
+            // Preserve the legacy hook's two semantic exit codes so existing
+            // tests and denial-cache behavior remain stable.
+            let code: Int32 = status == Security.errSecItemNotFound
+                ? Self.errSecItemNotFound
+                : 51
+            return .nonZeroExit(code: code, stdout: "")
+        }
+        guard let data = item as? Data,
+              let value = String(data: data, encoding: .utf8)
+        else {
+            return .nonZeroExit(code: Self.errSecItemNotFound, stdout: "")
+        }
+        return .success(stdout: value)
     }
 
     /// Result of a Keychain read.
@@ -83,9 +99,10 @@ public actor KeychainReader {
         /// to stdout, trimmed of trailing newline. Caller is responsible
         /// for parsing it (often as JSON).
         case success(value: String)
-        /// User clicked Deny on the prompt, OR the watchdog tripped, OR
-        /// the service simply doesn't exist. The reader caches this
-        /// state for 24 h to avoid re-prompting every collection cycle.
+        /// The non-interactive read was denied, an injected legacy test hook
+        /// timed out, or the service simply doesn't exist. The reader caches
+        /// denial/timeout state for 24 h to avoid repeating inaccessible reads
+        /// every collection cycle.
         case unavailable(reason: Reason)
     }
 
@@ -130,17 +147,14 @@ public actor KeychainReader {
             return .unavailable(reason: .userDenied)
 
         case .timedOut:
-            // The 5 s watchdog tripped — likely the user is AFK while
-            // the prompt is up. Cache for 24 h to avoid spamming the
-            // prompt every collection cycle.
+            // Retained for injected/legacy fetch hooks. The production native
+            // query cannot wait on UI because authentication UI is disabled.
             deniedUntil[service] = clock() + Self.denialCacheTTLSeconds
             return .unavailable(reason: .watchdogTimeout)
 
         case .spawnError, .cancelled:
-            // `/usr/bin/security` can't spawn (sandbox blocking? SIP
-            // weirdness?) OR our task got cancelled. Don't cache —
-            // these are transient / environment issues, not user
-            // intent.
+            // Retained for injected/legacy fetch hooks. Don't cache transient
+            // failures as user intent.
             return .unavailable(reason: .userDenied)
         }
     }

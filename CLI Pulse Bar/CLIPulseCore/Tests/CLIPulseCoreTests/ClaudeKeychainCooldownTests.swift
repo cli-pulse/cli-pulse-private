@@ -77,6 +77,44 @@ final class ClaudeKeychainCooldownTests: XCTestCase {
         ClaudeCredentials.clearKeychainReadCooldown()   // success-path reset
         XCTAssertFalse(ClaudeCredentials.isKeychainReadOnCooldown())
     }
+
+    func test_backgroundAccessNeverInvokesClaudeCodeKeychain() {
+        var externalReadCount = 0
+        let externalData = """
+        {"claudeAiOauth":{"accessToken":"external-test-token"}}
+        """.data(using: .utf8)!
+
+        let credentials = ClaudeCredentials.resolveKeychainCredentials(
+            access: .backgroundRefresh,
+            cachedJSON: nil,
+            externalReader: {
+                externalReadCount += 1
+                return externalData
+            }
+        )
+
+        XCTAssertNil(credentials)
+        XCTAssertEqual(externalReadCount, 0)
+    }
+
+    func test_userInitiatedAccessMayReadClaudeCodeKeychain() {
+        var externalReadCount = 0
+        let externalData = """
+        {"claudeAiOauth":{"accessToken":"external-test-token"}}
+        """.data(using: .utf8)!
+
+        let credentials = ClaudeCredentials.resolveKeychainCredentials(
+            access: .userInitiated,
+            cachedJSON: nil,
+            externalReader: {
+                externalReadCount += 1
+                return externalData
+            }
+        )
+
+        XCTAssertEqual(credentials?.accessToken, "external-test-token")
+        XCTAssertEqual(externalReadCount, 1)
+    }
 }
 
 #endif

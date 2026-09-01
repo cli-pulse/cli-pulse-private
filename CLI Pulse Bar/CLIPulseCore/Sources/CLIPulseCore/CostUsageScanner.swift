@@ -143,17 +143,22 @@ public enum CostUsageScanner {
         public var refreshMinIntervalSeconds: TimeInterval = 60
         public var forceRescan: Bool = false
         public var daysToScan: Int = 30
+        /// nil preserves the legacy all-provider utility behavior. Shipping
+        /// refresh paths pass the user's explicitly authorized provider set.
+        public var allowedProviders: Set<ProviderKind>?
 
         public init(
             codexSessionsRoot: URL? = nil,
             claudeProjectsRoots: [URL]? = nil,
             cacheRoot: URL? = nil,
-            daysToScan: Int = 30
+            daysToScan: Int = 30,
+            allowedProviders: Set<ProviderKind>? = nil
         ) {
             self.codexSessionsRoot = codexSessionsRoot
             self.claudeProjectsRoots = claudeProjectsRoots
             self.cacheRoot = cacheRoot
             self.daysToScan = daysToScan
+            self.allowedProviders = allowedProviders
         }
     }
 
@@ -171,19 +176,39 @@ public enum CostUsageScanner {
         var allEntries: [CostUsageScanResult.DailyEntry] = []
         var allCandidates: [CostUsageScanResult.ActiveSessionCandidate] = []
 
-        // Scan Codex
-        let codexCache = scanCodexProvider(range: range, now: now, options: options)
-        allEntries.append(contentsOf: entriesFromCodexCache(codexCache, range: range))
-        allCandidates.append(contentsOf: buildCodexCandidates(
-            options: options, range: range, cache: codexCache, now: now
-        ))
+        if options.allowedProviders?.contains(.codex) != false {
+            let codexCache = scanCodexProvider(
+                range: range,
+                now: now,
+                options: options
+            )
+            allEntries.append(
+                contentsOf: entriesFromCodexCache(
+                    codexCache,
+                    range: range
+                )
+            )
+            allCandidates.append(contentsOf: buildCodexCandidates(
+                options: options, range: range, cache: codexCache, now: now
+            ))
+        }
 
-        // Scan Claude
-        let claudeCache = scanClaudeProvider(range: range, now: now, options: options)
-        allEntries.append(contentsOf: entriesFromClaudeCache(claudeCache, range: range))
-        allCandidates.append(contentsOf: buildClaudeCandidates(
-            options: options, cache: claudeCache, now: now
-        ))
+        if options.allowedProviders?.contains(.claude) != false {
+            let claudeCache = scanClaudeProvider(
+                range: range,
+                now: now,
+                options: options
+            )
+            allEntries.append(
+                contentsOf: entriesFromClaudeCache(
+                    claudeCache,
+                    range: range
+                )
+            )
+            allCandidates.append(contentsOf: buildClaudeCandidates(
+                options: options, cache: claudeCache, now: now
+            ))
+        }
 
         reportUnpricedModels(allEntries)
         return CostUsageScanResult(entries: allEntries, activeSessionCandidates: allCandidates)
@@ -263,14 +288,18 @@ public enum CostUsageScanner {
     /// Cost-scan roots that must be accessible for Codex / Claude token data.
     /// Listed in priority order — callers that want to prompt the user should
     /// walk this list and check `BookmarkManager.hasAccess(to:)` for each.
-    public static let sandboxScanRoots: [String] = [
+    private static let codexSandboxScanRoots: [String] = [
         // Codex
         "~/.codex/sessions/",
         "~/.codex/archived_sessions/",
+    ]
+    private static let claudeSandboxScanRoots: [String] = [
         // Claude (both root variants codexbar supports via CLAUDE_CONFIG_DIR)
         "~/.claude/projects/",
         "~/.config/claude/projects/",
     ]
+    public static let sandboxScanRoots: [String] =
+        codexSandboxScanRoots + claudeSandboxScanRoots
 
     /// v1.9.4: sandbox-aware version of `scan()` that resolves bookmarks for
     /// each scan root before running. Delegate to `BookmarkManager` — it
@@ -287,7 +316,9 @@ public enum CostUsageScanner {
         // sees the paths as readable.
         _ = await MainActor.run { () -> [URL?] in
             let home = realUserHome()
-            return sandboxScanRoots.map { template -> URL? in
+            return sandboxScanRoots(
+                allowedProviders: options.allowedProviders
+            ).map { template -> URL? in
                 let expanded = (home as NSString).appendingPathComponent(String(template.dropFirst(2)))
                 return BookmarkManager.shared.resolveBookmark(for: expanded)
             }
@@ -299,10 +330,15 @@ public enum CostUsageScanner {
     /// rescan on the next call. Use after granting a new bookmark, since
     /// prior sandbox-blocked runs may have stored negative deltas that a
     /// normal incremental scan won't unwind.
-    public static func forceRescanAsync() async -> CostUsageScanResult {
-        CostUsageCacheIO.wipeAll()
+    public static func forceRescanAsync(
+        allowedProviders: Set<ProviderKind>? = nil
+    ) async -> CostUsageScanResult {
+        CostUsageCacheIO.wipe(
+            providers: allowedProviders
+        )
         var opts = Options()
         opts.forceRescan = true
+        opts.allowedProviders = allowedProviders
         return await scanAsync(options: opts)
     }
 
@@ -310,12 +346,30 @@ public enum CostUsageScanner {
     /// AND are expected to hold data (at minimum `~/.codex/sessions/` OR
     /// `~/.claude/projects/`). Use to drive the first-run folder-access banner.
     @MainActor
-    public static func missingScanRoots() -> [String] {
+    public static func missingScanRoots(
+        allowedProviders: Set<ProviderKind>? = nil
+    ) -> [String] {
         let home = realUserHome()
-        return sandboxScanRoots.compactMap { template in
+        return sandboxScanRoots(
+            allowedProviders: allowedProviders
+        ).compactMap { template in
             let expanded = (home as NSString).appendingPathComponent(String(template.dropFirst(2)))
             return BookmarkManager.shared.hasAccess(to: expanded) ? nil : expanded
         }
+    }
+
+    private static func sandboxScanRoots(
+        allowedProviders: Set<ProviderKind>?
+    ) -> [String] {
+        guard let allowedProviders else { return sandboxScanRoots }
+        var roots: [String] = []
+        if allowedProviders.contains(.codex) {
+            roots.append(contentsOf: codexSandboxScanRoots)
+        }
+        if allowedProviders.contains(.claude) {
+            roots.append(contentsOf: claudeSandboxScanRoots)
+        }
+        return roots
     }
 
     // MARK: - Convert cache to result entries

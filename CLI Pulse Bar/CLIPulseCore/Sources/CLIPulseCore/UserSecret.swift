@@ -84,7 +84,9 @@ public enum UserSecret {
             kSecMatchLimit: kSecMatchLimitOne
         ]
         var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &result)
+        }
         switch status {
         case errSecSuccess:
             return result as? Data
@@ -104,7 +106,9 @@ public enum UserSecret {
             // v1.21 D3: tighter than AfterFirstUnlock; never iCloud-syncs
             kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         ]
-        let status = SecItemAdd(attrs as CFDictionary, nil)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemAdd(attrs as CFDictionary, nil)
+        }
         if status != errSecSuccess && status != errSecDuplicateItem {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }

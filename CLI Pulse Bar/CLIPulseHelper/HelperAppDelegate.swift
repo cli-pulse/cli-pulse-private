@@ -8,6 +8,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
     private let logger = Logger(subsystem: "yyh.CLI-Pulse.helper", category: "lifecycle")
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        LegacyKeychainUIGate.disableProcessWideUI()
         let runtimeEnvironment = CLIPulseRuntimeEnvironment.current
         guard runtimeEnvironment.allowsLoginItemHelperStartup else {
             logger.fault(

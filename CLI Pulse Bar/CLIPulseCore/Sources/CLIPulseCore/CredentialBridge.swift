@@ -19,11 +19,39 @@ public enum CredentialBridge {
 
     /// Read credential files via bookmarks and write tokens to app group.
     /// Called during each refresh cycle in DataRefreshManager.
-    public static func syncCredentialsToAppGroup() {
+    public static func syncCredentialsToAppGroup(
+        configs: [ProviderConfig]
+    ) {
+        let credentials = collectCredentials(
+            configs: configs,
+            read: { SandboxFileAccess.read(path: $0) }
+        )
+
+        // Always replace CLIPulse's cache. If the user disables a provider (or
+        // every provider), retaining the previous token snapshot would violate
+        // the same consent boundary even though the source credential remains
+        // untouched.
+        if let jsonData = try? JSONSerialization.data(withJSONObject: [
+            "timestamp": sharedISO8601Formatter.string(from: Date()),
+            "credentials": credentials,
+        ]) {
+            saveToKeychain(data: jsonData)
+            logger.debug("Bridged \(credentials.count, privacy: .public) credential sets to Keychain")
+        }
+    }
+
+    static func collectCredentials(
+        configs: [ProviderConfig],
+        read: (String) -> Data?
+    ) -> [String: [String: Any]] {
         var credentials: [String: [String: Any]] = [:]
+        let authorizedKinds = Set(
+            configs.filter(\.isEnabled).map(\.kind)
+        )
 
         // Codex: ~/.codex/auth.json
-        if let data = SandboxFileAccess.read(path: expandPath("~/.codex/auth.json")),
+        if authorizedKinds.contains(.codex),
+           let data = read(expandPath("~/.codex/auth.json")),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             let tokens = json["tokens"] as? [String: Any] ?? [:]
             credentials["Codex"] = [
@@ -36,7 +64,8 @@ public enum CredentialBridge {
         }
 
         // Gemini: ~/.gemini/oauth_creds.json
-        if let data = SandboxFileAccess.read(path: expandPath("~/.gemini/oauth_creds.json")),
+        if authorizedKinds.contains(.gemini),
+           let data = read(expandPath("~/.gemini/oauth_creds.json")),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             credentials["Gemini"] = [
                 "access_token": json["access_token"] as? String ?? "",
@@ -47,7 +76,8 @@ public enum CredentialBridge {
         }
 
         // Claude: ~/.claude/.credentials.json
-        if let data = SandboxFileAccess.read(path: expandPath("~/.claude/.credentials.json")),
+        if authorizedKinds.contains(.claude),
+           let data = read(expandPath("~/.claude/.credentials.json")),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             credentials["Claude"] = [
                 "accessToken": json["accessToken"] as? String ?? "",
@@ -58,23 +88,15 @@ public enum CredentialBridge {
         }
 
         // Kilo: ~/.local/share/kilo/auth.json
-        if let data = SandboxFileAccess.read(path: expandPath("~/.local/share/kilo/auth.json")),
+        if authorizedKinds.contains(.kilo),
+           let data = read(expandPath("~/.local/share/kilo/auth.json")),
            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             credentials["Kilo"] = [
                 "access": json["kilo.access"] as? String ?? json["access_token"] as? String ?? "",
             ]
         }
 
-        // Write to Keychain (shared via access group) instead of UserDefaults
-        if !credentials.isEmpty {
-            if let jsonData = try? JSONSerialization.data(withJSONObject: [
-                "timestamp": sharedISO8601Formatter.string(from: Date()),
-                "credentials": credentials,
-            ]) {
-                saveToKeychain(data: jsonData)
-                logger.debug("Bridged \(credentials.count, privacy: .public) credential sets to Keychain")
-            }
-        }
+        return credentials
     }
 
     // MARK: - Read (called by helper or collectors)
@@ -136,13 +158,20 @@ public enum CredentialBridge {
         let updateAttrs: [String: Any] = [
             kSecValueData as String: data,
         ]
-        let status = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemUpdate(
+                query as CFDictionary,
+                updateAttrs as CFDictionary
+            )
+        }
         if status == errSecItemNotFound {
             var addQuery = query
             addQuery[kSecValueData as String] = data
             // v1.21 D3: tighter than AfterFirstUnlock — see KeychainHelper.swift
             addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            let addStatus = LegacyKeychainUIGate.withInteractionDisabled {
+                SecItemAdd(addQuery as CFDictionary, nil)
+            }
             if addStatus != errSecSuccess {
                 logger.error("Keychain save failed: \(addStatus, privacy: .public)")
             }
@@ -156,7 +185,9 @@ public enum CredentialBridge {
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &item)
+        }
         guard status == errSecSuccess, let data = item as? Data else { return nil }
         return data
     }

@@ -12,13 +12,9 @@
 // gated `#if DEVID_BUILD`. The descriptor stays present on all builds so the
 // registry-coverage invariant holds; on MAS the provider is simply never
 // available. Keychain queries pass the no-UI flag (`kSecUseAuthenticationUIFail`)
-// so a Touch-ID/passcode-protected item fails fast instead of prompting — but a
-// Zed item with a restrictive cross-app ACL can STILL make macOS show a one-time
-// SecurityAgent "allow access" dialog (upstream docs/zed.md notes the same). To
-// avoid re-triggering that dialog every refresh (the prompt-spam class this
-// codebase already fixed for Claude — [[feedback_claude_oauth_keychain_prompt_spam]],
-// [[feedback_keychain_agent_bug_macos26]]), an interaction-denied read arms a
-// 30-min cooldown during which `isAvailable` returns false.
+// so a Touch-ID/passcode-protected item fails fast. The process-wide legacy
+// Keychain gate also suppresses ACL password sheets; an interaction-denied read
+// still arms a 30-min cooldown to avoid repeating inaccessible reads.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -117,7 +113,13 @@ public struct ZedCollector: ProviderCollector, Sendable {
                 kSecReturnData as String: false,
             ]
             noUI(&query)
+            #if os(macOS)
+            let status = LegacyKeychainUIGate.withInteractionDisabled {
+                SecItemCopyMatching(query as CFDictionary, nil)
+            }
+            #else
             let status = SecItemCopyMatching(query as CFDictionary, nil)
+            #endif
             if status == errSecSuccess { return true }
             if status == errSecInteractionNotAllowed { ZedKeychainGate.noteInteractionDenied() }
         }
@@ -141,7 +143,13 @@ public struct ZedCollector: ProviderCollector, Sendable {
         ]
         noUI(&query)
         var result: AnyObject?
+        #if os(macOS)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &result)
+        }
+        #else
         let status = SecItemCopyMatching(query as CFDictionary, &result)
+        #endif
         switch status {
         case errSecSuccess: break
         case errSecItemNotFound: return nil

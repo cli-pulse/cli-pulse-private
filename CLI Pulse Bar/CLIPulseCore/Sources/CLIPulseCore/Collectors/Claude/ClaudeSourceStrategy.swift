@@ -242,6 +242,11 @@ public enum ClaudeCredentials {
         public let rateLimitTier: String?
     }
 
+    enum KeychainAccessIntent {
+        case backgroundRefresh
+        case userInitiated
+    }
+
     /// Parse credentials from JSON data (supports both snake_case and camelCase).
     public static func parseCredentialsJSON(_ data: Data) -> Creds? {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
@@ -256,6 +261,24 @@ public enum ClaudeCredentials {
         return nil
     }
 
+    /// Pure authorization seam: an external cross-app Keychain reader is
+    /// unreachable from background work.
+    static func resolveKeychainCredentials(
+        access: KeychainAccessIntent,
+        cachedJSON: String?,
+        externalReader: () -> Data?
+    ) -> Creds? {
+        if let cachedJSON,
+           let data = cachedJSON.data(using: .utf8),
+           let creds = parseCredentialsJSON(data) {
+            return creds
+        }
+        guard access == .userInitiated,
+              let data = externalReader()
+        else { return nil }
+        return parseCredentialsJSON(data)
+    }
+
     /// Read credentials from ~/.claude/.credentials.json file.
     public static func readCredentialsFile() -> Creds? {
         let path = (realHomeDir as NSString).appendingPathComponent(".claude/.credentials.json")
@@ -265,14 +288,13 @@ public enum ClaudeCredentials {
 
     /// Read credentials from macOS Keychain (Claude Code's keychain item).
     ///
-    /// The sandboxed app cannot access cross-app keychain items without
-    /// triggering a macOS authorization dialog. To avoid prompting the
-    /// user on every launch, we cache the credentials in the app's own
-    /// keychain after the first successful read.
+    /// The sandboxed app cannot access cross-app keychain items without a
+    /// macOS authorization dialog. This API reads outside CLIPulse storage
+    /// only when `bypassCooldown` marks the explicit Connect action.
     /// - Parameter bypassCooldown: pass `true` for USER-initiated reads
     ///   (the Settings "Connect Claude Code" button) so a cooldown armed by a
     ///   background 401 never blocks an explicit reconnect/re-auth. Background
-    ///   refreshers leave it `false`.
+    ///   callers leave it `false` and can consume only CLIPulse's own cache.
     /// - Parameter cacheResult: pass `false` when importing into one account's
     ///   staged editor state. This avoids creating a provider-global cache when
     ///   the user may still cancel the account draft.
@@ -280,45 +302,38 @@ public enum ClaudeCredentials {
         bypassCooldown: Bool = false,
         cacheResult: Bool = true
     ) -> Creds? {
-        // 1. Try the app's own keychain cache (never triggers a prompt)
-        if let cached = KeychainHelper.load(key: keychainCacheKey),
-           let data = cached.data(using: .utf8),
-           let creds = parseCredentialsJSON(data) {
+        if let creds = resolveKeychainCredentials(
+            access: .backgroundRefresh,
+            cachedJSON: KeychainHelper.load(key: keychainCacheKey),
+            externalReader: { nil }
+        ) {
             return creds
         }
 
-        // 1b. Cross-app read cooldown (v1.30.x — keychain prompt-spam fix).
-        // The cross-app read below shows a macOS authorization dialog
-        // ("CLIPulseHelper wants to use Claude Code-credentials"). The cache
-        // above normally means we prompt once and never again — BUT a recurring
-        // OAuth 401 calls clearCachedKeychainCredentials() every refresh, wiping
-        // the cache and forcing a re-read here on every ~3-4 min cycle, so the
-        // user is prompted forever (and "Always Allow" doesn't stick on macOS 26
-        // / when `claude` rewrites the item). When the cache was cleared due to
-        // a bad token we install a cooldown: skip the cross-app read (return nil
-        // → the resolver falls back to cli-pty/JSONL/web, no prompt) until it
-        // expires, capping prompts to ≤1 per cooldown window. See
-        // feedback_claude_oauth_keychain_prompt_spam.
-        if !bypassCooldown, isKeychainReadOnCooldown() {
-            return nil
-        }
+        // Default/background access ends here. Only the explicit Settings
+        // button passes true and may leave CLIPulse-owned storage.
+        guard bypassCooldown else { return nil }
 
-        // 2. Read from Claude Code's keychain (may trigger one-time prompt)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        guard let creds = parseCredentialsJSON(data) else { return nil }
+        CredentialAccessDecisionStore.clearDenial(scope: .claudeCodeImport)
+        var importedData: Data?
+        guard let creds = resolveKeychainCredentials(
+            access: .userInitiated,
+            cachedJSON: nil,
+            externalReader: {
+                let result = LegacyKeychainUIGate.withUserInteractionAllowed {
+                    readClaudeCodeKeychainDataWithStatus()
+                }
+                if CredentialAccessDecisionStore.statusIndicatesDenial(result.status) {
+                    CredentialAccessDecisionStore.recordDenial(scope: .claudeCodeImport)
+                }
+                importedData = result.data
+                return result.data
+            }
+        ) else { return nil }
 
-        // 3. Cache in the app's own keychain so the prompt never recurs, and
-        //    clear any cooldown — a successful read means we're back to normal.
         if cacheResult,
-           let jsonStr = String(data: data, encoding: .utf8) {
+           let importedData,
+           let jsonStr = String(data: importedData, encoding: .utf8) {
             KeychainHelper.save(key: keychainCacheKey, value: jsonStr)
         }
         clearKeychainReadCooldown()
@@ -395,6 +410,21 @@ public enum ClaudeCredentials {
         return creds
     }
 
+    private static func readClaudeCodeKeychainDataWithStatus()
+        -> (status: OSStatus, data: Data?)
+    {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &item)
+        guard status == errSecSuccess else { return (status, nil) }
+        return (status, item as? Data)
+    }
+
     private static let keychainCacheKey = "claude-code-creds-cache"
 
     enum TokenSource: Equatable {
@@ -467,7 +497,7 @@ public enum ClaudeCredentials {
             )
         }
         if !PrivacySettings.shared.skipClaudeKeychain,
-           let keychainCreds = readKeychainCredentials()
+           let keychainCreds = readCachedKeychainCredentials()
         {
             return ResolvedToken(
                 token: keychainCreds.accessToken,

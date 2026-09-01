@@ -40,7 +40,10 @@ final class KeychainGroupMigrationTests: XCTestCase {
     /// group after migration.
     func testMigrateCopiesLegacyValueIntoGroup() {
         KeychainHelper.save(key: key, value: "legacy-secret") // no access group
-        KeychainHelper.migrateToSharedGroup(key: key)
+        XCTAssertEqual(
+            KeychainHelper.migrateToSharedGroup(key: key),
+            .complete
+        )
         XCTAssertEqual(
             KeychainHelper.load(key: key, accessGroup: group),
             "legacy-secret",
@@ -50,7 +53,10 @@ final class KeychainGroupMigrationTests: XCTestCase {
 
     /// Nothing stored ⇒ migration is a harmless no-op that creates no item.
     func testMigrateIsNoOpWhenNothingStored() {
-        KeychainHelper.migrateToSharedGroup(key: key)
+        XCTAssertEqual(
+            KeychainHelper.migrateToSharedGroup(key: key),
+            .complete
+        )
         XCTAssertNil(
             KeychainHelper.load(key: key, accessGroup: group),
             "migration must not invent an item when there is nothing to migrate"

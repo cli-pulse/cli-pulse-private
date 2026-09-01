@@ -28,6 +28,10 @@ internal final class DataRefreshManager {
         let sessionQuotaNotificationsEnabled: Bool
         let authenticatedUserID: String
         let providerConfigs: [ProviderConfig]
+        /// Whether the user has explicitly reviewed a provider selection.
+        /// False means collectors receive an empty authorization set even if
+        /// legacy metadata still carries all-enabled defaults.
+        let providerCollectionAuthorized: Bool
         /// Snapshot of `state.providers` from the END of the previous refresh
         /// cycle. Used by `activeProviderCount` to compute the plan-limit
         /// warning at the START of THIS refresh — i.e. one cycle stale, but
@@ -107,16 +111,22 @@ internal final class DataRefreshManager {
     /// inject metadata-only results so they never touch Keychain, bookmarks,
     /// process enumeration, user files, or the network beyond their URL stub.
     struct LocalRefreshRuntime: Sendable {
-        let prepareCredentials: @MainActor @Sendable () -> Void
+        let prepareCredentials:
+            @MainActor @Sendable ([ProviderConfig]) -> Void
         let collectAccountPass:
             @Sendable ([ProviderConfig]) async
                 -> AccountCollectorPass
         let readHelperSnapshot:
             @Sendable ([ProviderConfig]) -> HelperCollectorSnapshot
-        let scanLocal: @Sendable () async -> LocalScanResult
-        let scanCostUsage: @Sendable () async -> CostUsageScanResult
+        let scanLocal:
+            @Sendable (Set<ProviderKind>) async -> LocalScanResult
+        let scanCostUsage:
+            @Sendable (Set<ProviderKind>) async -> CostUsageScanResult
         let needsFolderAccessNudge:
-            @MainActor @Sendable (_ scanIsEmpty: Bool) -> Bool
+            @MainActor @Sendable (
+                _ scanIsEmpty: Bool,
+                _ providers: Set<ProviderKind>
+            ) -> Bool
         let syncLegacyQuotas:
             @Sendable (
                 _ results: [CollectorResult],
@@ -135,8 +145,10 @@ internal final class DataRefreshManager {
 
         static func live(api: APIClient) -> LocalRefreshRuntime {
             LocalRefreshRuntime(
-                prepareCredentials: {
-                    CredentialBridge.syncCredentialsToAppGroup()
+                prepareCredentials: { configs in
+                    CredentialBridge.syncCredentialsToAppGroup(
+                        configs: configs
+                    )
                 },
                 collectAccountPass: { configs in
                     await DataRefreshManager.runCollectorPass(
@@ -153,17 +165,24 @@ internal final class DataRefreshManager {
                         providerConfigs: configs
                     )
                 },
-                scanLocal: {
+                scanLocal: { providers in
                     await Task.detached {
-                        LocalScanner.shared.scan()
+                        LocalScanner.shared.scan(
+                            allowedProviders: providers
+                        )
                     }.value
                 },
-                scanCostUsage: {
-                    await CostUsageScanner.scanAsync()
+                scanCostUsage: { providers in
+                    await CostUsageScanner.scanAsync(
+                        options: .init(
+                            allowedProviders: providers
+                        )
+                    )
                 },
-                needsFolderAccessNudge: { scanIsEmpty in
+                needsFolderAccessNudge: { scanIsEmpty, providers in
                     DataRefreshManager.needsFolderAccessNudge(
-                        scanIsEmpty: scanIsEmpty
+                        scanIsEmpty: scanIsEmpty,
+                        allowedProviders: providers
                     )
                 },
                 syncLegacyQuotas: { results, lease in
@@ -353,22 +372,32 @@ internal final class DataRefreshManager {
                 providerSummaryData.providerAccounts
 
             #if os(macOS)
-            // Sync credentials from bookmarked directories to app group
-            // so both main app collectors and helper can use them
-            localRuntime.prepareCredentials()
-
-            let mainPass = await localRuntime.collectAccountPass(
-                context.providerConfigs
+            let authorizedConfigs = ProviderCollectionConsent
+                .collectibleConfigs(
+                    context.providerConfigs,
+                    consentRecorded: context.providerCollectionAuthorized
+                )
+            // Sync only credentials for providers the user selected. An empty
+            // set also clears CLIPulse's own stale bridge cache.
+            localRuntime.prepareCredentials(authorizedConfigs)
+            let authorizedProviderKinds = Set(
+                authorizedConfigs.map(\.kind)
             )
+
+            let mainPass = authorizedConfigs.isEmpty
+                ? AccountCollectorPass.empty
+                : await localRuntime.collectAccountPass(
+                    authorizedConfigs
+                )
             // A cancelled pass can contain cancellation-shaped network
             // failures. Never publish those outcomes or any stale payload.
             guard !Task.isCancelled else {
                 callbacks.setLoading(false)
                 return
             }
-            let helperSnapshot = localRuntime.readHelperSnapshot(
-                context.providerConfigs
-            )
+            let helperSnapshot = authorizedConfigs.isEmpty
+                ? HelperCollectorSnapshot.empty
+                : localRuntime.readHelperSnapshot(authorizedConfigs)
             let collectorSources = Self.combineCollectorSources(
                 mainAccountResults: mainPass.accountResults,
                 helperSnapshot: helperSnapshot
@@ -421,12 +450,17 @@ internal final class DataRefreshManager {
             // Scan local JSONL logs for precise token counts and costs.
             // v1.9.4: uses the sandbox-aware entry point so bookmarks are
             // resolved on the main actor before the enumerator runs.
-            let costScanData = await localRuntime.scanCostUsage()
+            let costScanData = authorizedProviderKinds.isEmpty
+                ? CostUsageScanResult(entries: [])
+                : await localRuntime.scanCostUsage(
+                    authorizedProviderKinds
+                )
             let scanResult: CostUsageScanResult? = costScanData.entries.isEmpty ? nil : costScanData
             // Surface the "grant folder access" banner when a scan came back
             // empty AND at least one core scan root still lacks a bookmark.
             let needsAccess = localRuntime.needsFolderAccessNudge(
-                scanResult == nil
+                scanResult == nil,
+                authorizedProviderKinds
             )
             await callbacks.setNeedsFolderAccess(needsAccess)
 
@@ -437,7 +471,10 @@ internal final class DataRefreshManager {
             if let scanResult {
                 Task {
                     await DailyUsageArchiveManager.shared.record(scanResult)
-                    await DailyUsageArchiveManager.shared.runBackfillIfNeeded()
+                    await DailyUsageArchiveManager.shared
+                        .runBackfillIfNeeded(
+                            allowedProviders: authorizedProviderKinds
+                        )
                 }
                 // v1.42 Pulse Cat M0: fold the same local scan into the pet
                 // ledger (high-confidence token history for the hatch engine).
@@ -859,18 +896,26 @@ internal final class DataRefreshManager {
             return
         }
 
-        let mainPass = await localRuntime.collectAccountPass(
-            context.providerConfigs
+        let authorizedConfigs = ProviderCollectionConsent.collectibleConfigs(
+                context.providerConfigs,
+                consentRecorded: context.providerCollectionAuthorized
+            )
+        localRuntime.prepareCredentials(authorizedConfigs)
+        let authorizedProviderKinds = Set(
+            authorizedConfigs.map(\.kind)
         )
+        let mainPass = authorizedConfigs.isEmpty
+            ? AccountCollectorPass.empty
+            : await localRuntime.collectAccountPass(authorizedConfigs)
         // A cancelled pass can contain cancellation-shaped network failures.
         // Never publish those outcomes or any stale local payload.
         guard !Task.isCancelled else {
             callbacks.setLoading(false)
             return
         }
-        let helperSnapshot = localRuntime.readHelperSnapshot(
-            context.providerConfigs
-        )
+        let helperSnapshot = authorizedConfigs.isEmpty
+            ? HelperCollectorSnapshot.empty
+            : localRuntime.readHelperSnapshot(authorizedConfigs)
         let collectorSources = Self.combineCollectorSources(
             mainAccountResults: mainPass.accountResults,
             helperSnapshot: helperSnapshot
@@ -895,14 +940,27 @@ internal final class DataRefreshManager {
             Self.providerCompatibilityResults(
                 from: cloudOwnedAccountResults
             )
-        let scanResult = await localRuntime.scanLocal()
+        let scanResult = authorizedProviderKinds.isEmpty
+            ? LocalScanResult(
+                sessions: [],
+                providers: [],
+                totalUsage: 0,
+                totalCost: 0,
+                activeSessionCount: 0
+            )
+            : await localRuntime.scanLocal(authorizedProviderKinds)
 
         // Scan local JSONL logs for precise token counts and costs.
         // v1.9.4: sandbox-aware (resolves bookmarks on main actor first).
-        let costScanData = await localRuntime.scanCostUsage()
+        let costScanData = authorizedProviderKinds.isEmpty
+            ? CostUsageScanResult(entries: [])
+            : await localRuntime.scanCostUsage(
+                authorizedProviderKinds
+            )
         let costScanResult: CostUsageScanResult? = costScanData.entries.isEmpty ? nil : costScanData
         let needsAccess = localRuntime.needsFolderAccessNudge(
-            costScanResult == nil
+            costScanResult == nil,
+            authorizedProviderKinds
         )
         await callbacks.setNeedsFolderAccess(needsAccess)
 
@@ -912,7 +970,9 @@ internal final class DataRefreshManager {
         if let costScanResult {
             Task {
                 await DailyUsageArchiveManager.shared.record(costScanResult)
-                await DailyUsageArchiveManager.shared.runBackfillIfNeeded()
+                await DailyUsageArchiveManager.shared.runBackfillIfNeeded(
+                    allowedProviders: authorizedProviderKinds
+                )
             }
             // v1.42 Pulse Cat M0: local-mode users feed the pet ledger too.
             let scanAt = PetLedgerManager.nowMs()
@@ -1711,10 +1771,19 @@ internal final class DataRefreshManager {
     @MainActor
     static func needsFolderAccessNudge(
         scanIsEmpty: Bool,
+        allowedProviders: Set<ProviderKind> = [.codex, .claude],
         isSandboxed: Bool = MASSandboxGate.isSandboxed,
-        missingRoots: @MainActor () -> [String] = { CostUsageScanner.missingScanRoots() }
+        missingRoots: @MainActor (Set<ProviderKind>) -> [String] = {
+            CostUsageScanner.missingScanRoots(
+                allowedProviders: $0
+            )
+        }
     ) -> Bool {
         guard scanIsEmpty else { return false }
+        guard !allowedProviders.intersection([.codex, .claude]).isEmpty
+        else {
+            return false
+        }
         // v1.44 W1: bookmarks are an App Sandbox mechanism. An unsandboxed
         // Developer ID build reads `~/.codex` and `~/.claude` directly and
         // never stores one, so `missingScanRoots()` reports every root as
@@ -1736,7 +1805,7 @@ internal final class DataRefreshManager {
         // nudge the user if ANY key root is unbookmarked (they only need one
         // to start getting data, but the banner drives them to Settings
         // where all four are listed).
-        return !missingRoots().isEmpty
+        return !missingRoots(allowedProviders).isEmpty
     }
     #endif
 
@@ -2195,16 +2264,21 @@ extension AppState {
         guard runtimeEnvironment.capabilities.allowsLiveCollection else {
             return
         }
-        // Re-activate stored security-scoped bookmarks BEFORE scanning. The
-        // folder-access grant only persists a bookmark; the cost scan reads via
-        // FileManager and needs an ACTIVE security-scoped resource, else
-        // fileExists(~/.claude/projects) returns false in the sandbox and
-        // scanClaudeRoot silently bails → 0 usage. Resolving here makes a
-        // same-session "grant + force re-scan" work without an app relaunch
-        // (the user report: data present in ~/.claude/projects, authorized,
-        // re-scanned, still nothing — because no resource was active).
-        await BookmarkManager.shared.resolveAllBookmarks()
-        let fresh = await CostUsageScanner.forceRescanAsync()
+        let authorizedProviders = Set(
+            ProviderCollectionConsent.collectibleConfigs(
+                providerConfigs,
+                consentRecorded: providerCollectionAuthorized
+            ).map(\.kind)
+        )
+        guard !authorizedProviders.isEmpty else {
+            costUsageScanResult = nil
+            return
+        }
+        // `scanAsync` resolves only the bookmarks corresponding to this
+        // authorized set before enumerating logs.
+        let fresh = await CostUsageScanner.forceRescanAsync(
+            allowedProviders: authorizedProviders
+        )
         costUsageScanResult = fresh.entries.isEmpty ? nil : fresh
         // Kick a full refresh so provider cards pick up the new data.
         await refreshAll()
@@ -3197,6 +3271,7 @@ extension AppState {
             sessionQuotaNotificationsEnabled: sessionQuotaNotifications,
             authenticatedUserID: userId,
             providerConfigs: providerConfigs,
+            providerCollectionAuthorized: providerCollectionAuthorized,
             providers: providers,
             maxProviders: subscriptionManager.maxProviders,
             // Display-form name (localized "Free"/"Pro"/"Team") so

@@ -86,14 +86,40 @@ public actor DailyUsageArchiveManager {
     /// this only after a normal scan succeeded, so folder access is confirmed —
     /// then a successful backfill (even one that finds little history) marks the
     /// flag done. Uses a throwaway temp cacheRoot; NEVER the production cache.
-    public func runBackfillIfNeeded() async {
-        guard !defaults.bool(forKey: backfillKey), !backfillRunning else { return }
+    public func runBackfillIfNeeded(
+        allowedProviders: Set<ProviderKind>? = nil
+    ) async {
+        let supportedProviders = allowedProviders?
+            .intersection([.codex, .claude])
+        if supportedProviders?.isEmpty == true { return }
+        let scopedBackfillKey: String
+        if let supportedProviders {
+            let suffix = supportedProviders
+                .map(\.rawValue)
+                .sorted()
+                .joined(separator: "-")
+                .lowercased()
+            scopedBackfillKey = "\(backfillKey).\(suffix)"
+        } else {
+            scopedBackfillKey = backfillKey
+        }
+        // A legacy global marker means both providers were already scanned.
+        guard !defaults.bool(forKey: backfillKey),
+              !defaults.bool(forKey: scopedBackfillKey),
+              !backfillRunning
+        else {
+            return
+        }
         backfillRunning = true
         defer { backfillRunning = false }
 
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("cli-pulse-backfill-\(UUID().uuidString)", isDirectory: true)
-        var options = CostUsageScanner.Options(cacheRoot: tmp, daysToScan: Self.backfillDays)
+        var options = CostUsageScanner.Options(
+            cacheRoot: tmp,
+            daysToScan: Self.backfillDays,
+            allowedProviders: supportedProviders
+        )
         options.forceRescan = true   // not an init param — set after construction
 
         let result = await CostUsageScanner.scanAsync(options: options)
@@ -106,7 +132,7 @@ public actor DailyUsageArchiveManager {
             NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
         }
         try? FileManager.default.removeItem(at: tmp)   // discard the throwaway cache
-        defaults.set(true, forKey: backfillKey)        // access was confirmed by caller — done
+        defaults.set(true, forKey: scopedBackfillKey)  // access was confirmed by caller — done
     }
 
     // MARK: - Adapters

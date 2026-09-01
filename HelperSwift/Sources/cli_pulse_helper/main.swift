@@ -1,5 +1,6 @@
 import Foundation
 import HelperKit
+import Security
 
 /// `cli_pulse_helper` executable entry. Iter 1 of the Swift port:
 /// minimal CLI with `daemon` (UDS server only — no Supabase
@@ -48,6 +49,11 @@ private final class StopOnce: @unchecked Sendable {
 
 let args = Array(CommandLine.arguments.dropFirst())
 if args.isEmpty { usage() }
+
+// The standalone helper has no foreground authorization UI. A stale login-
+// Keychain ACL must fail rather than interrupting daemon work with a password
+// sheet. Explicit credential grants live in the main app only.
+_ = SecKeychainSetUserInteractionAllowed(false)
 
 switch args[0] {
 case "version":

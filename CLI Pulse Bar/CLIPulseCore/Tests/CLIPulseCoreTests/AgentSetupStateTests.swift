@@ -481,6 +481,16 @@ final class AgentSetupStateTests: XCTestCase {
         )
     }
 
+    func testFeatureFlagDefaultsEnableNewUsersWithoutForcingExistingUsers() {
+        let defaults = makeDefaults()
+        defer { remove(defaults) }
+
+        XCTAssertEqual(
+            AgentSetupFeatureFlags.load(from: defaults),
+            .init(newUsersV2: true, existingUsersV2: false)
+        )
+    }
+
     private func makeDefaults() -> UserDefaults {
         let name = "AgentSetupStateTests.\(UUID().uuidString)"
         return UserDefaults(suiteName: name)!

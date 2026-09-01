@@ -156,7 +156,19 @@ public final class LocalScanner: @unchecked Sendable {
     /// Scan running processes and return detected AI sessions + provider summary.
     /// - Parameter costRateLookup: Optional closure to look up cost rate per 1K tokens by provider name.
     ///   Falls back to `ProviderKind.defaultCostRate` if nil or if the closure returns nil.
-    public func scan(costRateLookup: ((String) -> Double?)? = nil) -> LocalScanResult {
+    public func scan(
+        costRateLookup: ((String) -> Double?)? = nil,
+        allowedProviders: Set<ProviderKind>? = nil
+    ) -> LocalScanResult {
+        if allowedProviders?.isEmpty == true {
+            return LocalScanResult(
+                sessions: [],
+                providers: [],
+                totalUsage: 0,
+                totalCost: 0,
+                activeSessionCount: 0
+            )
+        }
         let rows = listProcesses()
         var sessions: [SessionRecord] = []
         var sessionCPU: [String: Double] = [:]
@@ -170,6 +182,14 @@ public final class LocalScanner: @unchecked Sendable {
         for row in rows {
             guard !shouldIgnore(row.command) else { continue }
             guard let (provider, confidence) = detectProvider(row.command) else { continue }
+            if let allowedProviders {
+                guard
+                    let kind = ProviderKind(rawValue: provider),
+                    allowedProviders.contains(kind)
+                else {
+                    continue
+                }
+            }
 
             if let existing = bestByPID[row.pid] {
                 let existingRank = Self.confidenceRank[existing.confidence] ?? 0

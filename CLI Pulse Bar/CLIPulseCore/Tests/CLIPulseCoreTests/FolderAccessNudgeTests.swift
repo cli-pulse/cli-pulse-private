@@ -33,7 +33,7 @@ final class FolderAccessNudgeTests: XCTestCase {
                 isSandboxed: false,
                 // Worst case for the guard: every root reads as unbookmarked,
                 // which is exactly what an unsandboxed build always reports.
-                missingRoots: { Self.allRootsMissing }
+                missingRoots: { _ in Self.allRootsMissing }
             ),
             "an unsandboxed build needs no bookmarks — an empty scan there means no CLI usage, not blocked access"
         )
@@ -49,7 +49,7 @@ final class FolderAccessNudgeTests: XCTestCase {
             DataRefreshManager.needsFolderAccessNudge(
                 scanIsEmpty: true,
                 isSandboxed: true,
-                missingRoots: { Self.allRootsMissing }
+                missingRoots: { _ in Self.allRootsMissing }
             ),
             "a sandboxed build with no bookmarks and an empty scan is exactly who the banner is for"
         )
@@ -64,7 +64,7 @@ final class FolderAccessNudgeTests: XCTestCase {
             DataRefreshManager.needsFolderAccessNudge(
                 scanIsEmpty: true,
                 isSandboxed: true,
-                missingRoots: { [] }
+                missingRoots: { _ in [] }
             ),
             "access is already granted — an empty scan here means no CLI usage, not blocked access"
         )
@@ -78,11 +78,22 @@ final class FolderAccessNudgeTests: XCTestCase {
                 DataRefreshManager.needsFolderAccessNudge(
                     scanIsEmpty: false,
                     isSandboxed: sandboxed,
-                    missingRoots: { Self.allRootsMissing }
+                    missingRoots: { _ in Self.allRootsMissing }
                 ),
                 "data is flowing (isSandboxed=\(sandboxed)) — asking for folder access here would be noise"
             )
         }
+    }
+
+    func testNoSelectedCostProviderNeverRequestsFolderAccess() {
+        XCTAssertFalse(
+            DataRefreshManager.needsFolderAccessNudge(
+                scanIsEmpty: true,
+                allowedProviders: [],
+                isSandboxed: true,
+                missingRoots: { _ in Self.allRootsMissing }
+            )
+        )
     }
 
     /// Stand-in for "no bookmark covers any scan root". Injected rather than

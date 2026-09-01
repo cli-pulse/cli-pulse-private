@@ -12,7 +12,6 @@
 #if os(macOS)
 import CommonCrypto
 import Foundation
-import LocalAuthentication
 import Security
 import SQLite3
 
@@ -228,13 +227,52 @@ enum ChromeCookieImporter {
 
         let labels = Self.safeStorageLabels(for: browser)
 
-        if let context = Self.preflightSafeStoragePrompt(labels: labels, passwordLookup: passwordLookup) {
-            BrowserCookieKeychainPromptHandler.handler?(context)
-        }
-
+        let interactionContext = BrowserCookieKeychainAccessGate.allowsInteraction
+            ? Self.preflightSafeStoragePrompt(
+                labels: labels,
+                passwordLookup: passwordLookup
+            )
+            : nil
         var password: String?
         for label in labels {
-            let result = passwordLookup(label.service, label.account, true)
+            let denyScope = CredentialAccessScope.safeStorageService(label.service)
+            let wasDenied = CredentialAccessDecisionStore.isDenied(
+                scope: denyScope
+            )
+            let isForegroundRetryTarget =
+                interactionContext?.service == label.service
+                    && interactionContext?.account == label.account
+            let interactionAllowedForLabel = isForegroundRetryTarget
+                && BrowserCookieKeychainAccessGate
+                    .consumeInteractionPermit()
+
+            if interactionAllowedForLabel {
+                // Bind permit consumption, exact-scope denial clearing, and
+                // the single interactive read into one foreground operation.
+                CredentialAccessDecisionStore.clearDenial(
+                    scope: denyScope
+                )
+                if let interactionContext {
+                    BrowserCookieKeychainPromptHandler.handler?(
+                        interactionContext
+                    )
+                }
+            } else if wasDenied {
+                // A durable refusal suppresses the lookup itself, not merely
+                // its UI. Even a later silently-readable ACL must remain
+                // unavailable until this exact scope is explicitly retried.
+                continue
+            }
+
+            let result = passwordLookup(
+                label.service,
+                label.account,
+                interactionAllowedForLabel
+            )
+            if interactionAllowedForLabel,
+               CredentialAccessDecisionStore.statusIndicatesDenial(result.status) {
+                CredentialAccessDecisionStore.recordDenial(scope: denyScope)
+            }
             if let p = result.password {
                 password = p
                 break
@@ -339,6 +377,19 @@ enum ChromeCookieImporter {
         passwordLookup: SafeStoragePasswordLookup) -> BrowserCookieKeychainPromptContext?
     {
         for label in labels {
+            let denyScope = CredentialAccessScope.safeStorageService(
+                label.service
+            )
+            if CredentialAccessDecisionStore.isDenied(scope: denyScope) {
+                // A foreground permit represents an explicit retry. Select
+                // the denied service without probing it first; the caller
+                // consumes the permit before clearing and reading this scope.
+                return BrowserCookieKeychainPromptContext(
+                    service: label.service,
+                    account: label.account,
+                    label: label.service
+                )
+            }
             let result = passwordLookup(label.service, label.account, false)
             switch result.status {
             case errSecSuccess:
@@ -366,21 +417,25 @@ enum ChromeCookieImporter {
         account: String,
         allowInteraction: Bool) -> (status: OSStatus, password: String?)
     {
-        var query: [CFString: Any] = [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrService: service,
-            kSecAttrAccount: account,
-            kSecMatchLimit: kSecMatchLimitOne,
-            kSecReturnData: true,
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecReturnData as String: true,
         ]
         if !allowInteraction {
-            let context = LAContext()
-            context.interactionNotAllowed = true
-            query[kSecUseAuthenticationContext] = context
+            BackgroundKeychainAccess.apply(to: &query)
         }
 
         var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        let status = allowInteraction
+            ? LegacyKeychainUIGate.withUserInteractionAllowed {
+                SecItemCopyMatching(query as CFDictionary, &result)
+            }
+            : LegacyKeychainUIGate.withInteractionDisabled {
+                SecItemCopyMatching(query as CFDictionary, &result)
+            }
         guard status == errSecSuccess else { return (status, nil) }
         guard let data = result as? Data else { return (status, nil) }
         let password = String(data: data, encoding: .utf8)

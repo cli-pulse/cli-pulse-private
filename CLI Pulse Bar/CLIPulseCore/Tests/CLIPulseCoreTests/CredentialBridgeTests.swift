@@ -19,6 +19,41 @@ final class CredentialBridgeTests: XCTestCase {
         return try! JSONSerialization.data(withJSONObject: obj)
     }
 
+    func testNoSelectedProviderReadsNoCredentialFiles() {
+        var paths: [String] = []
+        let credentials = CredentialBridge.collectCredentials(
+            configs: [],
+            read: { path in
+                paths.append(path)
+                return nil
+            }
+        )
+
+        XCTAssertTrue(paths.isEmpty)
+        XCTAssertTrue(credentials.isEmpty)
+    }
+
+    func testCredentialFilesAreReadOnlyForEnabledSelectedProviders() {
+        let configs = [
+            ProviderConfig(kind: .codex, isEnabled: true),
+            ProviderConfig(kind: .gemini, isEnabled: false),
+            ProviderConfig(kind: .claude, isEnabled: false),
+            ProviderConfig(kind: .kilo, isEnabled: false),
+        ]
+        var paths: [String] = []
+
+        _ = CredentialBridge.collectCredentials(
+            configs: configs,
+            read: { path in
+                paths.append(path)
+                return nil
+            }
+        )
+
+        XCTAssertEqual(paths.count, 1)
+        XCTAssertTrue(paths[0].hasSuffix("/.codex/auth.json"))
+    }
+
     func test_fresh_returns_provider_creds() {
         let out = CredentialBridge.decodeBridgedCredentials(blob(ageSeconds: 100, creds: claudeCreds),
                                                             provider: "Claude", now: now)

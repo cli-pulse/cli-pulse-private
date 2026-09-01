@@ -1,8 +1,21 @@
 import XCTest
 @testable import HelperKit
 import Foundation
+import Security
 
 final class KeychainReaderTests: XCTestCase {
+
+    func testProductionQueryFailsInsteadOfShowingAuthenticationUI() {
+        let query = KeychainReader.noInteractionQuery(service: "TestService")
+        XCTAssertEqual(
+            query[kSecUseAuthenticationUI as String] as? String,
+            kSecUseAuthenticationUIFail as String
+        )
+        XCTAssertEqual(
+            query[kSecAttrService as String] as? String,
+            "TestService"
+        )
+    }
 
     private final class MockClock: @unchecked Sendable {
         var t: TimeInterval = 0

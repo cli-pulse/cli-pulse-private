@@ -65,12 +65,14 @@ public struct AgentSetupFeatureFlags: Equatable, Sendable {
         from defaults: UserDefaults = .standard
     ) -> AgentSetupFeatureFlags {
         AgentSetupFeatureFlags(
-            newUsersV2: defaults.bool(
-                forKey: newUsersDefaultsKey
-            ),
-            existingUsersV2: defaults.bool(
-                forKey: existingUsersDefaultsKey
-            )
+            // New installs now use the reviewed account-first flow by
+            // default. Existing installs remain on their current dashboard
+            // until the separate upgrade rollout flag is explicitly enabled.
+            newUsersV2: defaults.object(forKey: newUsersDefaultsKey) == nil
+                ? true
+                : defaults.bool(forKey: newUsersDefaultsKey),
+            existingUsersV2:
+                defaults.bool(forKey: existingUsersDefaultsKey)
         )
     }
 }

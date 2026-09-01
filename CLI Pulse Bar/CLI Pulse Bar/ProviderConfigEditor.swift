@@ -402,14 +402,6 @@ struct ProviderConfigEditor: View {
         #if os(macOS)
         sharedCredentialFallbackDisabled =
             config.sharedCredentialFallbackDisabled ?? false
-        // Cursor auto-imports its browser session cookie by default. Surface
-        // that as an explicit `.automatic` selection when the user has never
-        // chosen a source, so the picker, the auto-import note, and Test
-        // Connection all reflect the real (default-ON) behavior. The user can
-        // still pick Manual/Safari/etc. to turn auto-import off.
-        if kind == .cursor, config.cookieSource == nil {
-            cookieSource = .automatic
-        }
         if kind == .gemini && allowsLiveProviderActions {
             geminiCredentialDraft = GeminiCredentialDraft(
                 isConnected:
@@ -799,11 +791,19 @@ struct ProviderConfigEditor: View {
 
         let start = Date()
         do {
-            let gatedResult =
-                try await RuntimeProtectedProviderAction.perform(
-                    runtimeEnvironment: state.runtimeEnvironment
-                ) {
-                    try await collector.collect(config: probeConfig)
+            // This explicit click is the only browser-cookie path allowed to
+            // request one Safe Storage authorization. The importer clears only
+            // the exact service selected for this one-shot retry.
+            let interactionPermit = cookieSource == .automatic
+                ? BrowserCredentialInteractionPermit()
+                : nil
+            let gatedResult = try await BrowserCookieKeychainAccessGate
+                .$interactionPermit.withValue(interactionPermit) {
+                    try await RuntimeProtectedProviderAction.perform(
+                        runtimeEnvironment: state.runtimeEnvironment
+                    ) {
+                        try await collector.collect(config: probeConfig)
+                    }
                 }
             guard let result = gatedResult else {
                 testState = .failure(
@@ -909,6 +909,10 @@ struct ProviderConfigEditor: View {
                 return false
             }
         }
+        // Saving account details is not consent to collect from the current
+        // provider set. In onboarding this editor can open before the user
+        // confirms their selection, so only provider toggles and onboarding
+        // completion may record provider-collection consent.
         guard state.commitProviderAccountDraft(accountID) else {
             #if os(macOS)
             testState = .failure(

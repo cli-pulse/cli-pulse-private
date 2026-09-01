@@ -137,6 +137,55 @@ final class CostUsageScannerSessionSynthTests: XCTestCase {
         XCTAssertGreaterThan(c.messageCount, 0, "Claude assistant event contributes a message count")
     }
 
+    func testCodexOnlyScopeDoesNotReturnClaudeLogData() throws {
+        let now = Date()
+        try writeCodexFixture(
+            sessionId: "codex-allowed",
+            date: now,
+            mtime: now
+        )
+        try writeClaudeFixture(
+            encodedProject: "-Users-test-private-claude-project",
+            sessionId: "claude-not-authorized",
+            date: now,
+            mtime: now
+        )
+        var options = makeScanOptions()
+        options.allowedProviders = [.codex]
+
+        let result = CostUsageScanner.scan(options: options)
+
+        XCTAssertFalse(result.entries.isEmpty)
+        XCTAssertTrue(result.entries.allSatisfy { $0.provider == "Codex" })
+        XCTAssertTrue(
+            result.activeSessionCandidates.allSatisfy {
+                $0.provider == "Codex"
+            }
+        )
+    }
+
+    func testEmptyProviderScopeReadsNoLogProvider() throws {
+        let now = Date()
+        try writeCodexFixture(
+            sessionId: "codex-not-authorized",
+            date: now,
+            mtime: now
+        )
+        try writeClaudeFixture(
+            encodedProject: "-Users-test-private-claude-project",
+            sessionId: "claude-not-authorized",
+            date: now,
+            mtime: now
+        )
+        var options = makeScanOptions()
+        options.allowedProviders = []
+
+        let result = CostUsageScanner.scan(options: options)
+
+        XCTAssertTrue(result.entries.isEmpty)
+        XCTAssertTrue(result.activeSessionCandidates.isEmpty)
+    }
+
     // MARK: - humanReadableClaudeProject heuristic
 
     func testHumanReadableClaudeProjectKeepsHyphenatedRepoName() {

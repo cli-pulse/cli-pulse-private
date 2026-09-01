@@ -146,6 +146,34 @@ enum CostUsageCacheIO {
         guard FileManager.default.fileExists(atPath: root.path) else { return }
         try? FileManager.default.removeItem(at: root)
     }
+
+    /// Remove only CLIPulse-owned caches for providers the user authorized.
+    /// nil retains the legacy utility behavior of wiping the whole cache root.
+    static func wipe(
+        providers: Set<ProviderKind>?,
+        cacheRoot: URL? = nil
+    ) {
+        guard let providers else {
+            wipeAll(cacheRoot: cacheRoot)
+            return
+        }
+        if providers.contains(.codex) {
+            try? FileManager.default.removeItem(
+                at: cacheFileURL(
+                    provider: "codex",
+                    cacheRoot: cacheRoot
+                )
+            )
+        }
+        if providers.contains(.claude) {
+            try? FileManager.default.removeItem(
+                at: cacheFileURL(
+                    provider: "claude",
+                    cacheRoot: cacheRoot
+                )
+            )
+        }
+    }
 }
 
 #endif

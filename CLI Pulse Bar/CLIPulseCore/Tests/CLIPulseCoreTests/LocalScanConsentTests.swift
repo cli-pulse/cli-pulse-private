@@ -234,14 +234,14 @@ final class LocalScanConsentTests: XCTestCase {
             context: Self.localModeContext(consent: .undecided),
             callbacks: Self.inertCallbacks()
         )
-        var counts = await recorder.counts
+        var counts = recorder.counts
         XCTAssertEqual(counts, [:], "undecided must read nothing at all")
 
         await manager.refreshAll(
             context: Self.localModeContext(consent: .declined),
             callbacks: Self.inertCallbacks()
         )
-        counts = await recorder.counts
+        counts = recorder.counts
         XCTAssertEqual(counts, [:], "declined must read nothing at all")
     }
 
@@ -263,14 +263,47 @@ final class LocalScanConsentTests: XCTestCase {
             callbacks: Self.inertCallbacks()
         )
 
-        let counts = await recorder.counts
+        let counts = recorder.counts
+        XCTAssertEqual(counts["prepareCredentials"], 1)
         XCTAssertEqual(counts["collectAccountPass"], 1)
+        XCTAssertEqual(counts["readHelperSnapshot"], 1)
         XCTAssertEqual(counts["scanCostUsage"], 1)
         XCTAssertEqual(counts["scanLocal"], 1)
+        let scopes = recorder.providerScopes
+        XCTAssertEqual(scopes["scanLocal"], [.codex])
+        XCTAssertEqual(scopes["scanCostUsage"], [.codex])
+    }
+
+    @MainActor
+    func testProviderConsentBlocksEveryProviderDataSource() async {
+        let recorder = LocalRuntimeRecorder()
+        let manager = DataRefreshManager(
+            api: APIClient(
+                supabaseURL: "https://stub.cli-pulse.test",
+                supabaseAnonKey: "anon"
+            ),
+            localRuntime: .recording(recorder)
+        )
+
+        await manager.refreshAll(
+            context: Self.localModeContext(
+                consent: .granted,
+                providerCollectionAuthorized: false
+            ),
+            callbacks: Self.inertCallbacks()
+        )
+
+        let counts = recorder.counts
+        XCTAssertEqual(
+            counts,
+            ["prepareCredentials": 1],
+            "revoked provider consent may clear app-owned bridge state but must not read collectors, helper, processes, or logs"
+        )
     }
 
     private static func localModeContext(
-        consent: LocalScanConsent
+        consent: LocalScanConsent,
+        providerCollectionAuthorized: Bool = true
     ) -> DataRefreshManager.Context {
         DataRefreshManager.Context(
             isAuthenticated: false,
@@ -280,7 +313,10 @@ final class LocalScanConsentTests: XCTestCase {
             notificationsEnabled: false,
             sessionQuotaNotificationsEnabled: true,
             authenticatedUserID: "",
-            providerConfigs: [],
+            providerConfigs: [
+                ProviderConfig(kind: .codex, isEnabled: true),
+            ],
+            providerCollectionAuthorized: providerCollectionAuthorized,
             providers: [],
             maxProviders: 100,
             currentTierName: "Free",
@@ -311,25 +347,56 @@ final class LocalScanConsentTests: XCTestCase {
 /// something that touches the user's machine — provider APIs and OAuth token
 /// rewrites, another app's Keychain, up to 30 days of JSONL — so "the recorder
 /// is empty" is the same sentence as "nothing was read".
-actor LocalRuntimeRecorder {
-    private(set) var counts: [String: Int] = [:]
+final class LocalRuntimeRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedCounts: [String: Int] = [:]
+    private var storedProviderScopes:
+        [String: Set<ProviderKind>] = [:]
 
-    func record(_ name: String) {
-        counts[name, default: 0] += 1
+    var counts: [String: Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedCounts
+    }
+
+    var providerScopes: [String: Set<ProviderKind>] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storedProviderScopes
+    }
+
+    func record(
+        _ name: String,
+        providers: Set<ProviderKind>? = nil
+    ) {
+        lock.lock()
+        defer { lock.unlock() }
+        storedCounts[name, default: 0] += 1
+        if let providers {
+            storedProviderScopes[name] = providers
+        }
     }
 }
 
 extension DataRefreshManager.LocalRefreshRuntime {
     static func recording(_ recorder: LocalRuntimeRecorder) -> Self {
         Self(
-            prepareCredentials: {},
+            prepareCredentials: { _ in
+                recorder.record("prepareCredentials")
+            },
             collectAccountPass: { _ in
-                await recorder.record("collectAccountPass")
+                recorder.record("collectAccountPass")
                 return .empty
             },
-            readHelperSnapshot: { _ in .empty },
-            scanLocal: {
-                await recorder.record("scanLocal")
+            readHelperSnapshot: { _ in
+                recorder.record("readHelperSnapshot")
+                return .empty
+            },
+            scanLocal: { providers in
+                recorder.record(
+                    "scanLocal",
+                    providers: providers
+                )
                 return LocalScanResult(
                     sessions: [],
                     providers: [],
@@ -338,14 +405,17 @@ extension DataRefreshManager.LocalRefreshRuntime {
                     activeSessionCount: 0
                 )
             },
-            scanCostUsage: {
-                await recorder.record("scanCostUsage")
+            scanCostUsage: { providers in
+                recorder.record(
+                    "scanCostUsage",
+                    providers: providers
+                )
                 return CostUsageScanResult(entries: [])
             },
-            needsFolderAccessNudge: { _ in false },
-            syncLegacyQuotas: { _, _ in await recorder.record("syncLegacyQuotas") },
-            syncDailyUsage: { _, _ in await recorder.record("syncDailyUsage") },
-            syncAccountQuotas: { _, _ in await recorder.record("syncAccountQuotas") }
+            needsFolderAccessNudge: { _, _ in false },
+            syncLegacyQuotas: { _, _ in recorder.record("syncLegacyQuotas") },
+            syncDailyUsage: { _, _ in recorder.record("syncDailyUsage") },
+            syncAccountQuotas: { _, _ in recorder.record("syncAccountQuotas") }
         )
     }
 }

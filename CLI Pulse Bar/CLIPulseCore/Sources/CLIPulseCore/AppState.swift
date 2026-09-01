@@ -846,11 +846,15 @@ public final class AppState: ObservableObject {
     private let providerAccountDeletionOutbox:
         ProviderAccountDeletionOutbox
 
+    var providerCollectionAuthorized: Bool {
+        ProviderCollectionConsent.isCollectionAuthorized(
+            defaults: providerConfigDefaults
+        )
+    }
+
     private static let secretsMigratedKey = "cli_pulse_provider_secrets_migrated"
-    /// v1.33 keychain-access-group migration flag. One-shot: re-homes
-    /// pre-existing provider secrets into the shared app-group keychain so the
-    /// LoginItem helper stops firing the recurring consent prompt.
-    private static let keychainGroupMigratedKey = "cli_pulse_keychain_group_migrated"
+    private static let keychainGroupProviderMigrationPrefix =
+        "cli_pulse_keychain_group_migrated_v2"
     /// Main-actor logical ordering for status mutations. The revision travels
     /// with each unstructured sync Task so Task scheduling cannot reverse two
     /// rapid user toggles.
@@ -886,6 +890,19 @@ public final class AppState: ObservableObject {
             ProviderAccountDeletionOutbox? = nil,
         performLaunchSetup: Bool = true
     ) {
+        #if os(macOS)
+        // Launch, timers, and helper refreshes must fail closed on obsolete
+        // Keychain ACLs instead of summoning SecurityAgent password sheets.
+        LegacyKeychainUIGate.disableProcessWideUI()
+        #endif
+        if performLaunchSetup {
+            // Freeze fresh/existing classification before any launch migration
+            // or QA/setup write can create evidence that did not exist when
+            // this process started.
+            ProviderCollectionConsent.captureInstallationCohort(
+                defaults: defaults
+            )
+        }
         if runtime.isQA {
             runtime.preconditionSafeLaunch()
             let seedOutcome = QAExperienceSeed.prepareForTesting(
@@ -1349,6 +1366,34 @@ public final class AppState: ObservableObject {
         )
     }
 
+    /// Persist an explicit provider selection before making its consent marker
+    /// authoritative. The first write forces an empty helper projection; only
+    /// the matching read-back snapshot may authorize the second helper write.
+    @discardableResult
+    public func confirmProviderCollectionSelection() -> Bool {
+        guard saveProviderConfigMetadata(
+            helperCollectionAuthorized: false
+        ) else {
+            return false
+        }
+        return recordPersistedProviderCollectionSelection()
+    }
+
+    /// Finalize a selection that has already been persisted with an empty
+    /// helper projection. Used by account deletion after the credential
+    /// recovery anchor has safely been retired.
+    private func recordPersistedProviderCollectionSelection() -> Bool {
+        guard ProviderCollectionConsent.record(
+            configs: providerConfigs,
+            defaults: providerConfigDefaults
+        ) else {
+            return false
+        }
+        return saveProviderConfigMetadata(
+            helperCollectionAuthorized: true
+        )
+    }
+
     /// Enable or disable one stable provider account. Subscription limits are
     /// provider-kind limits: enabling a second account for an already-enabled
     /// provider does not consume another provider slot.
@@ -1390,13 +1435,30 @@ public final class AppState: ObservableObject {
                 }
             }
         }
+        let previousEnabled = config.isEnabled
         guard providerState.setProviderAccountEnabled(
             accountID,
             isEnabled: isEnabled
         ) else {
             return
         }
-        saveProviderConfigMetadata()
+        // A foreground toggle is an explicit review of the provider set.
+        guard confirmProviderCollectionSelection() else {
+            _ = providerState.setProviderAccountEnabled(
+                accountID,
+                isEnabled: previousEnabled
+            )
+            // Restore the previous durable selection fail-closed, then refresh
+            // its helper projection only if the old consent snapshot matches.
+            _ = saveProviderConfigMetadata(
+                helperCollectionAuthorized: false
+            )
+            _ = saveProviderConfigMetadata()
+            lastError =
+                "Could not safely save the provider selection. Please retry."
+            buildProviderDetails()
+            return
+        }
         // v1.9.3: rebuild provider details synchronously so the SwiftUI
         // Toggle bound to `detail.config.isEnabled` flips in the same frame
         // instead of waiting for the next data refresh cycle.
@@ -1513,6 +1575,11 @@ public final class AppState: ObservableObject {
         }) else {
             return false
         }
+        // Deletion may narrow an already-authorized selection, but it is not
+        // an affirmative review of every account that remains. Freeze the
+        // authority before any metadata mutation so an unreviewed selection
+        // cannot become authorized merely because one account was removed.
+        let wasCollectionAuthorized = providerCollectionAuthorized
         let deletionOwnerID =
             ProviderAccountSyncOwnership.ownerForDeletion(
                 config
@@ -1530,13 +1597,43 @@ public final class AppState: ObservableObject {
             }
         }
 
+        // Stop the helper before retiring this account's credential anchor.
+        // If any later persistence step fails, stale helper state cannot keep
+        // collecting the deleted provider selection.
+        guard saveProviderConfigMetadata(
+            helperCollectionAuthorized: false
+        ) else {
+            return false
+        }
+
         guard deleteLocalProviderAccountSecrets(config) else {
+            _ = saveProviderConfigMetadata()
             return false
         }
         guard providerState.removeProviderAccount(accountID) != nil else {
+            _ = saveProviderConfigMetadata()
             return false
         }
-        saveProviderConfigMetadata()
+        // Persist the reduced set before recording its new snapshot. A failed
+        // first phase leaves the helper empty and reports a non-durable delete.
+        guard saveProviderConfigMetadata(
+            helperCollectionAuthorized: false
+        ) else {
+            buildProviderDetails()
+            lastError =
+                "Could not safely save the provider selection. Please retry."
+            return false
+        }
+        if wasCollectionAuthorized,
+           !recordPersistedProviderCollectionSelection() {
+            // The account removal is already durable, but remaining providers
+            // must stay fail-closed until the user confirms a selection again.
+            _ = saveProviderConfigMetadata(
+                helperCollectionAuthorized: false
+            )
+            lastError =
+                "Could not safely confirm the remaining providers. Please review your provider selection."
+        }
         buildProviderDetails()
         if let deletionOwnerID {
             Task { [weak self] in
@@ -1999,7 +2096,9 @@ public final class AppState: ObservableObject {
     /// Persist only ProviderConfig's Codable, non-sensitive fields. Use this
     /// for enable/order/label changes that must never mutate Keychain state.
     @discardableResult
-    public func saveProviderConfigMetadata() -> Bool {
+    public func saveProviderConfigMetadata(
+        helperCollectionAuthorized authorizationOverride: Bool? = nil
+    ) -> Bool {
         let allowsHelperMirror =
             runtimeEnvironment.capabilities.allowsHelperRegistration
         if allowsHelperMirror {
@@ -2010,7 +2109,10 @@ public final class AppState: ObservableObject {
             helperDefaults: allowsHelperMirror
                 ? providerConfigHelperDefaults
                 : nil
-        ).save(providerConfigs)
+        ).save(
+            providerConfigs,
+            helperCollectionAuthorized: authorizationOverride
+        )
     }
 
     public func buildProviderDetails() {
@@ -2148,12 +2250,6 @@ public final class AppState: ObservableObject {
             defaults.set(true, forKey: Self.secretsMigratedKey)
         }
 
-        // Must run BEFORE the loadSecrets() loop below: on macOS loadSecrets()
-        // now reads from the shared app-group keychain, so any secrets still
-        // living in the legacy no-group ACL must be re-homed first or the first
-        // hydrate would return nil for existing users.
-        migrateProviderSecretsToSharedGroup()
-
         do {
             guard let migration = try ProviderAccountMigration.migrateIfNeeded(
                 defaults: defaults
@@ -2166,23 +2262,31 @@ public final class AppState: ObservableObject {
             return
         }
 
+        // Metadata migration establishes the user's account set first. A
+        // disabled or unreviewed provider is not permission to inspect even
+        // CLIPulse-owned legacy Keychain slots.
+        migrateProviderSecretsToSharedGroup(
+            configs: providerConfigs,
+            defaults: defaults
+        )
+
         recoverPendingLocalProviderAccountDeletions()
 
-        if let migratedData = try? JSONEncoder().encode(providerConfigs) {
-            defaults.set(
-                migratedData,
-                forKey: ProviderAccountMigration.configsKey
-            )
-            if runtimeEnvironment.capabilities.allowsHelperRegistration {
-                UserDefaults(suiteName: HelperIPC.suiteName)?.set(
-                    migratedData,
-                    forKey: HelperIPC.providerConfigsKey
-                )
-            }
-        }
+        _ = ProviderConfigMetadataStore(
+            defaults: defaults,
+            helperDefaults:
+                runtimeEnvironment.capabilities.allowsHelperRegistration
+                ? providerConfigHelperDefaults
+                : nil
+        ).save(providerConfigs)
 
-        for index in providerConfigs.indices {
-            providerConfigs[index].loadSecrets()
+        for index in ProviderCollectionAuthorization.secretHydrationIndices(
+            in: providerConfigs,
+            consentRecorded: ProviderCollectionConsent.isCollectionAuthorized(
+                defaults: defaults
+            )
+        ) {
+            providerConfigs[index].loadSecrets(using: providerSecretStore)
         }
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }
@@ -2244,17 +2348,42 @@ public final class AppState: ObservableObject {
     /// app-group keychain. This is what stops the LoginItem helper's recurring
     /// "wants to use information stored by ... in your keychain" consent prompt:
     /// once the secrets live in the shared group, the helper reads them
-    /// prompt-free. Runs in the MAIN APP on its own items, so the migration
-    /// reads themselves never prompt. iOS/watchOS keep secrets in the no-group
-    /// keychain (no cross-process helper there), so this is macOS-only.
-    private func migrateProviderSecretsToSharedGroup() {
+    /// prompt-free. Migration is limited to explicitly authorized providers;
+    /// an obsolete ACL is skipped rather than turning launch into a password
+    /// flow. iOS/watchOS keep secrets in the no-group keychain.
+    private func migrateProviderSecretsToSharedGroup(
+        configs: [ProviderConfig],
+        defaults: UserDefaults
+    ) {
         #if os(macOS)
-        guard !UserDefaults.standard.bool(forKey: Self.keychainGroupMigratedKey) else { return }
-        for kind in ProviderKind.allCases {
-            KeychainHelper.migrateToSharedGroup(key: "cli_pulse_provider_\(kind.rawValue)_apiKey")
-            KeychainHelper.migrateToSharedGroup(key: "cli_pulse_provider_\(kind.rawValue)_cookie")
+        // Do not trust the legacy all-or-nothing migration marker: older code
+        // set it even when one provider read was denied. Per-provider v2
+        // markers are the only completion evidence; rechecking is idempotent
+        // and remains non-interactive.
+        let enabledKinds = Set(
+            ProviderCollectionAuthorization.secretHydrationIndices(
+                in: configs,
+                consentRecorded: ProviderCollectionConsent.isCollectionAuthorized(
+                    defaults: defaults
+                )
+            ).map { configs[$0].kind }
+        )
+        for kind in ProviderKind.allCases where enabledKinds.contains(kind) {
+            let marker =
+                "\(Self.keychainGroupProviderMigrationPrefix).\(kind.rawValue)"
+            guard !defaults.bool(forKey: marker) else { continue }
+            let outcomes = [
+                KeychainHelper.migrateToSharedGroup(
+                    key: "cli_pulse_provider_\(kind.rawValue)_apiKey"
+                ),
+                KeychainHelper.migrateToSharedGroup(
+                    key: "cli_pulse_provider_\(kind.rawValue)_cookie"
+                ),
+            ]
+            if outcomes.allSatisfy({ $0 == .complete }) {
+                defaults.set(true, forKey: marker)
+            }
         }
-        UserDefaults.standard.set(true, forKey: Self.keychainGroupMigratedKey)
         #endif
     }
 }

@@ -57,14 +57,13 @@ final class CursorCollectorTests: XCTestCase {
         XCTAssertEqual(c.planUsedCents, 0)
     }
 
-    // Cursor auto-imports by DEFAULT: a browser-logged-in user is detected
-    // without first flipping a settings toggle. `nil` (never configured) is
-    // now available; an explicit non-automatic source disables auto-import.
-    func testAvailability_defaultOn_whenSourceNil() {
+    // A nil source means the user has never selected browser import. It must
+    // stay unavailable so launch/background refresh cannot open Keychain UI.
+    func testAvailability_false_whenSourceNil() {
         let c = CursorCollector()
-        XCTAssertTrue(
+        XCTAssertFalse(
             c.isAvailable(config: ProviderConfig(kind: .cursor)),
-            "Cursor must be available by default (nil cookieSource) so a browser-logged-in user is detected without opting in")
+            "Cursor browser import requires an explicit .automatic selection")
     }
 
     func testAvailability_true_whenAutomatic() {
@@ -86,7 +85,7 @@ final class CursorCollectorTests: XCTestCase {
     }
 
     func testAutoImportEligibleMatrix() {
-        XCTAssertTrue(CursorCollector.autoImportEligible(nil))
+        XCTAssertFalse(CursorCollector.autoImportEligible(nil))
         XCTAssertTrue(CursorCollector.autoImportEligible(.automatic))
         XCTAssertFalse(CursorCollector.autoImportEligible(.manual))
         XCTAssertFalse(CursorCollector.autoImportEligible(.safari))

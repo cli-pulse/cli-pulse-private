@@ -25,16 +25,11 @@ public struct CursorCollector: ProviderCollector, Sendable {
         "authjs.session-token", "__Secure-authjs.session-token"
     ]
 
-    /// Cursor auto-imports its browser session cookie by DEFAULT. A user who
-    /// is logged into cursor.com in any browser is detected without first
-    /// digging into settings to flip a toggle. `nil` (never configured) and an
-    /// explicit `.automatic` both opt in; an explicit *other* source
-    /// (`.manual`/`.safari`/`.chrome`/`.firefox`) is the user turning
-    /// auto-import OFF and is honored. This default-ON behavior is scoped to
-    /// Cursor — every other cookie provider keeps the byte-for-byte opt-in gate
-    /// in `CookieResolver`.
+    /// Browser import is an explicit permission boundary. `nil` means the user
+    /// has never selected a browser source; only `.automatic` opts in to
+    /// cross-browser discovery and Safe Storage access.
     static func autoImportEligible(_ source: CookieSource?) -> Bool {
-        source == nil || source == .automatic
+        source == .automatic
     }
 
     public func isAvailable(config: ProviderConfig) -> Bool {
@@ -50,12 +45,8 @@ public struct CursorCollector: ProviderCollector, Sendable {
     }
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
-        // Mirror the default-ON gate at resolution time: CookieResolver only
-        // attempts the browser importer when `cookieSource == .automatic`, so
-        // for an eligible Cursor config with no manual cookie we normalize a
-        // `nil` source to `.automatic` *locally* (the shared resolver — and
-        // thus every other provider's opt-in gate — is left untouched). We
-        // never override an explicit `.manual`/`.safari`/etc. choice.
+        // Preserve the explicit opt-in boundary at resolution time. Never
+        // normalize an unconfigured nil source to automatic.
         var resolveConfig = config
         if Self.autoImportEligible(config.cookieSource),
            config.manualCookieHeader?.isEmpty ?? true {

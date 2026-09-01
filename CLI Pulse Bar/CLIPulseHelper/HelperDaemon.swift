@@ -149,8 +149,23 @@ final class HelperDaemon {
         let device = DeviceMetrics.collect()
         logger.debug("Device: cpu=\(device.cpuUsage)%, mem=\(device.memoryUsage)%")
 
-        // Step 2: Sessions via LocalScanner
-        let scanResult = LocalScanner.shared.scan()
+        // Resolve the app's authorized helper projection before touching any
+        // provider process, credential, or local-session surface. Missing or
+        // unreadable state is an empty authorization, never the full catalog.
+        let persistedProviderData = UserDefaults(
+            suiteName: HelperIPC.suiteName
+        )?.data(forKey: HelperIPC.providerConfigsKey)
+        let providerAuthorization = ProviderCollectionAuthorization.resolve(
+            persistedData: persistedProviderData
+        )
+        let allowedProviderKinds =
+            providerAuthorization.enabledProviderKinds
+
+        // Step 2: Sessions via a provider-scoped LocalScanner. The helper seam
+        // returns before invoking LocalScanner when the projection is empty.
+        let scanResult = providerAuthorization.scanLocalProcesses {
+            LocalScanner.shared.scan(allowedProviders: $0)
+        }
         logger.debug("Scanned \(scanResult.sessions.count) sessions")
 
         // Step 3: Alerts.
@@ -170,7 +185,9 @@ final class HelperDaemon {
         )
 
         // Step 4: Provider quotas via collectors
-        let providerCollection = await collectProviderQuotas()
+        let providerCollection = await collectProviderQuotas(
+            authorization: providerAuthorization
+        )
         let collectorStatus = providerCollection.collectorStatus
 
         // Step 4.5: Write collector results to app group for main app
@@ -186,32 +203,22 @@ final class HelperDaemon {
         }
 
         // Step 5-6: Sync to Supabase
-        // Respect the user's enabled-set here too: sessions for providers the
-        // user (or the tier-migration) disabled are local observations only,
-        // not shipped to Supabase. When no config suite is readable (very
-        // first launch before main app has written), pass sessions through
-        // unfiltered rather than losing data silently.
-        let savedProviderConfigs: [ProviderConfig]? = {
-            guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
-                  let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
-                  let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
-            else { return nil }
-            return saved
-        }()
-        let enabledProviderNames = savedProviderConfigs.map {
-            Set($0.filter(\.isEnabled).map(\.kind.rawValue))
+        // Apply the same allowlist again at the sync boundary as defense in
+        // depth. There is no legacy pass-through when shared state is missing.
+        let savedProviderConfigs = providerAuthorization.configs
+        let enabledProviderNames = Set(
+            allowedProviderKinds.map(\.rawValue)
+        )
+        let filteredSessions = scanResult.sessions.filter {
+            enabledProviderNames.contains($0.provider)
         }
-        let filteredSessions: [SessionRecord] = {
-            guard let enabled = enabledProviderNames else { return scanResult.sessions }
-            return scanResult.sessions.filter { enabled.contains($0.provider) }
-        }()
         if filteredSessions.count != scanResult.sessions.count {
             logger.info("Filtered \(scanResult.sessions.count - filteredSessions.count) sessions from disabled providers")
         }
         let sessionDicts = filteredSessions.map { sessionToDict($0) }
         let syncableAccountIDs =
             ProviderAccountSyncOwnership.accountIDs(
-                in: savedProviderConfigs ?? [],
+                in: savedProviderConfigs,
                 ownedBy: config.userId
             )
         let syncableAccounts =
@@ -220,7 +227,7 @@ final class HelperDaemon {
             }
         let providerTiers = HelperAPIClient.legacyProviderTiers(
             from: providerCollection.accounts,
-            configs: savedProviderConfigs ?? [],
+            configs: savedProviderConfigs,
             ownedBy: config.userId
         )
         let providerRemaining: [String: Int] = providerTiers.compactMapValues { dict in
@@ -234,8 +241,18 @@ final class HelperDaemon {
         // if no local helper is listening, pass nil → the RPC omits the param → the
         // server preserves the last-known value (never clobbers to {}).
         let providerPlanStatus: [String: String]? = await {
-            do { return try await LocalSessionControlClient().hello().providerPlanStatus }
-            catch { return nil }
+            guard !allowedProviderKinds.isEmpty else { return nil }
+            let allowedNames = Set(
+                allowedProviderKinds.map { $0.rawValue.lowercased() }
+            )
+            do {
+                return try await LocalSessionControlClient()
+                    .hello()
+                    .providerPlanStatus
+                    .filter { allowedNames.contains($0.key.lowercased()) }
+            } catch {
+                return nil
+            }
         }()
 
         do {
@@ -349,24 +366,22 @@ final class HelperDaemon {
     /// projection for the existing helper_sync RPC and old main apps. Collector
     /// status remains a provider-level diagnostic, using a deterministic
     /// worst-account projection when two accounts share a provider.
-    private func collectProviderQuotas() async -> ProviderQuotaCollection {
+    private func collectProviderQuotas(
+        authorization: ProviderCollectionAuthorization
+    ) async -> ProviderQuotaCollection {
         var accountResults: [HelperIPC.CollectorAccountPayload] = []
         var providerProjection: [String: HelperIPC.CollectorUsagePayload] = [:]
         var status: [String: String] = [:]
         var disabledCount = 0
         var unavailableCount = 0
 
-        // Read provider configs from shared app group (written by main app)
-        var configs: [ProviderConfig] = ProviderConfig.defaults()
-        var hasPersistentAccountIDs = false
-        if let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
-           let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
-           let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
-            configs = saved
-            hasPersistentAccountIDs = true
-            // Hydrate secrets from Keychain
-            for i in configs.indices {
-                configs[i].loadSecrets()
+        var configs = authorization.configs
+        let hasPersistentAccountIDs = authorization.hasPersistentSelection
+        if hasPersistentAccountIDs {
+            for index in ProviderCollectionAuthorization
+                .secretHydrationIndices(in: configs)
+            {
+                configs[index].loadSecrets()
             }
         }
 

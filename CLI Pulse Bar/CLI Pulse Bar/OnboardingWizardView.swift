@@ -811,7 +811,8 @@ struct OnboardingWizardView: View {
         defaults.set(true, forKey: Self.seededConfigsKey)
     }
 
-    private func applySelectedAccounts() {
+    @discardableResult
+    private func applySelectedAccounts() -> Bool {
         let selectedIDs =
             setupState.progress?.selectedAccountIDs ?? []
         let candidateIDs = Set(accountOptions.map(\.id))
@@ -829,10 +830,15 @@ struct OnboardingWizardView: View {
             }
         }
         providerState.providerConfigs = configs
-        state.saveProviderConfigMetadata()
+        // Completing the provider picker is the user's explicit authorization
+        // decision, including the valid choice to select none.
+        guard state.confirmProviderCollectionSelection() else {
+            return false
+        }
         UserDefaults.standard.removeObject(
             forKey: Self.seededConfigsKey
         )
+        return true
     }
 
     private func openAccountSettings(_ accountID: UUID) {
@@ -857,7 +863,11 @@ struct OnboardingWizardView: View {
     }
 
     private func finishSetup() {
-        applySelectedAccounts()
+        guard applySelectedAccounts() else {
+            state.lastError =
+                "Could not safely save the provider selection. Please retry."
+            return
+        }
 
         if selectedMode == .local {
             state.continueWithoutAccount()

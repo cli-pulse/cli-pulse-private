@@ -1,6 +1,15 @@
 import Foundation
 import Security
 
+#if os(macOS)
+enum BackgroundKeychainAccess {
+    static func apply(to query: inout [String: Any]) {
+        query[kSecUseAuthenticationUI as String] =
+            kSecUseAuthenticationUIFail
+    }
+}
+#endif
+
 protocol ProviderSecretStoring {
     @discardableResult
     func save(
@@ -38,6 +47,11 @@ struct KeychainProviderSecretStore: ProviderSecretStoring {
 }
 
 public enum KeychainHelper {
+    public enum SharedGroupMigrationOutcome: Equatable, Sendable {
+        case complete
+        case retryNeeded
+    }
+
     static var service: String {
         CLIPulseRuntimeEnvironment.current.keychainService
     }
@@ -97,22 +111,69 @@ public enum KeychainHelper {
     /// `sharedAccessGroup`, so the LoginItem helper can read it without the
     /// recurring "wants to use information stored by ... in your keychain"
     /// consent prompt. Safe to call on every launch — idempotent and
-    /// prompt-free, because it runs in the MAIN APP reading its OWN item.
+    /// non-interactive. A stale ACL or locked item returns `retryNeeded`
+    /// instead of displaying SecurityAgent UI or being marked complete.
     ///
     /// We intentionally do NOT delete the legacy no-group copy afterward: a
     /// `SecItemDelete` that omits `kSecAttrAccessGroup` is not reliably
     /// scoped once the app declares `keychain-access-groups`, so deleting it
     /// could wipe the group value we just wrote. A lingering no-group
     /// duplicate is harmless — every reader now queries the group explicitly.
-    public static func migrateToSharedGroup(key: String) {
+    @discardableResult
+    public static func migrateToSharedGroup(
+        key: String
+    ) -> SharedGroupMigrationOutcome {
         // Already present in the shared group (migrated earlier, or written
         // there by a newer build) ⇒ nothing to do. Guard also prevents
         // clobbering a fresher in-group value with a stale legacy copy.
-        if load(key: key, accessGroup: sharedAccessGroup) != nil { return }
-        // Read the legacy (no access group) item. The main app reading its
-        // own item never triggers a consent prompt.
-        guard let legacy = load(key: key), !legacy.isEmpty else { return }
-        save(key: key, value: legacy, accessGroup: sharedAccessGroup)
+        let shared = loadResult(
+            key: key,
+            accessGroup: sharedAccessGroup
+        )
+        if shared.status == errSecSuccess, shared.value != nil {
+            return .complete
+        }
+        guard shared.status == errSecItemNotFound else {
+            return .retryNeeded
+        }
+        // Read the legacy (no access group) item without UI. A locked or stale
+        // ACL remains retryable instead of being mistaken for absence.
+        let legacy = loadResult(key: key, accessGroup: nil)
+        if legacy.status == errSecItemNotFound {
+            return .complete
+        }
+        guard legacy.status == errSecSuccess,
+              let value = legacy.value,
+              !value.isEmpty
+        else {
+            return .retryNeeded
+        }
+        return save(
+            key: key,
+            value: value,
+            accessGroup: sharedAccessGroup
+        ) ? .complete : .retryNeeded
+    }
+
+    /// Builds the non-interactive query shared by every app-owned read.
+    static func loadQuery(
+        key: String,
+        accessGroup: String? = nil
+    ) -> [String: Any] {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        if let group = accessGroup {
+            query[kSecAttrAccessGroup as String] = group
+        }
+        #if os(macOS)
+        BackgroundKeychainAccess.apply(to: &query)
+        #endif
+        return query
     }
 
     @discardableResult
@@ -141,7 +202,15 @@ public enum KeychainHelper {
         let updateAttrs: [String: Any] = [
             kSecValueData as String: data,
         ]
-        let status = SecItemUpdate(query as CFDictionary, updateAttrs as CFDictionary)
+        var updateQuery = query
+        #if os(macOS)
+        BackgroundKeychainAccess.apply(to: &updateQuery)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
+        }
+        #else
+        let status = SecItemUpdate(updateQuery as CFDictionary, updateAttrs as CFDictionary)
+        #endif
         if status == errSecSuccess {
             return true
         }
@@ -159,39 +228,66 @@ public enum KeychainHelper {
             // in SecItemUpdate with errSecParam, so the safe path is just
             // new writes = tighter, old items continue to work as-is).
             addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-            let addStatus =
+            #if os(macOS)
+            let addStatus = LegacyKeychainUIGate.withInteractionDisabled {
                 SecItemAdd(addQuery as CFDictionary, nil)
+            }
+            #else
+            let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+            #endif
             if addStatus == errSecSuccess {
                 return true
             }
             if addStatus == errSecDuplicateItem {
+                #if os(macOS)
+                return LegacyKeychainUIGate.withInteractionDisabled {
+                    SecItemUpdate(
+                        updateQuery as CFDictionary,
+                        updateAttrs as CFDictionary
+                    ) == errSecSuccess
+                }
+                #else
                 return SecItemUpdate(
-                    query as CFDictionary,
+                    updateQuery as CFDictionary,
                     updateAttrs as CFDictionary
                 ) == errSecSuccess
+                #endif
             }
         }
         return false
     }
 
     public static func load(key: String, accessGroup: String? = nil) -> String? {
-        var query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: key,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        if let group = accessGroup {
-            query[kSecAttrAccessGroup as String] = group
-        }
+        let result = loadResult(key: key, accessGroup: accessGroup)
+        guard result.status == errSecSuccess else { return nil }
+        return result.value
+    }
+
+    private static func loadResult(
+        key: String,
+        accessGroup: String?
+    ) -> (status: OSStatus, value: String?) {
         if isRunningUnderXCTest {
-            return inMemoryStoreForTesting[testStoreKey(key, accessGroup)]
+            guard let value = inMemoryStoreForTesting[
+                testStoreKey(key, accessGroup)
+            ] else {
+                return (errSecItemNotFound, nil)
+            }
+            return (errSecSuccess, value)
         }
+        let query = loadQuery(key: key, accessGroup: accessGroup)
         var item: CFTypeRef?
+        #if os(macOS)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemCopyMatching(query as CFDictionary, &item)
+        }
+        #else
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        #endif
+        guard status == errSecSuccess, let data = item as? Data else {
+            return (status, nil)
+        }
+        return (status, String(data: data, encoding: .utf8))
     }
 
     @discardableResult
@@ -211,7 +307,14 @@ public enum KeychainHelper {
             inMemoryStoreForTesting[testStoreKey(key, accessGroup)] = nil
             return true
         }
+        #if os(macOS)
+        BackgroundKeychainAccess.apply(to: &query)
+        let status = LegacyKeychainUIGate.withInteractionDisabled {
+            SecItemDelete(query as CFDictionary)
+        }
+        #else
         let status = SecItemDelete(query as CFDictionary)
+        #endif
         return status == errSecSuccess || status == errSecItemNotFound
     }
 }
