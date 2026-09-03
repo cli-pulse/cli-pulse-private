@@ -144,8 +144,17 @@ struct LANPairingSheet: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
-                Button("Cancel") { isPresented = false }
-                    .keyboardShortcut(.cancelAction)
+                HStack(spacing: 12) {
+                    Button("Cancel") { isPresented = false }
+                        .keyboardShortcut(.cancelAction)
+                    // For a phone with no camera to hand (or the Simulator):
+                    // the same link, pasted into the iPhone's pairing screen.
+                    // It is only good for 60 s and only from this Wi-Fi.
+                    Button("Copy link") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(url, forType: .string)
+                    }
+                }
 
             case let .awaitingApproval(sas, peerName):
                 Text("Pair with \(peerName)?")
