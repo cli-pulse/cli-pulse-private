@@ -216,7 +216,7 @@ public struct LANPairingFlowView: View {
                 // The Mac advertises a pairing service for this QR. Wait
                 // for Bonjour to surface it (it may already be there).
                 var endpoint: NWEndpoint?
-                for _ in 0..<40 {   // ~4 s
+                for _ in 0..<100 {   // ~10 s — mDNS can take a few seconds to surface a new service
                     if let m = browser.pairingService(for: payload.deviceID) { endpoint = m.endpoint; break }
                     try await Task.sleep(nanoseconds: 100_000_000)
                 }
