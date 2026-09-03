@@ -177,7 +177,7 @@ public struct UninstallCodexHookResult: Sendable, Equatable {
 /// perspective). When iter 2A introduces a streaming `subscribe_events`
 /// surface, that path will hold a connection open for the lifetime of
 /// the subscription — but iter 1 does NOT need that.
-public final class LocalSessionControlClient: SessionControlClient, MachineControlRelaying {
+public final class LocalSessionControlClient: SessionEventStreaming, MachineControlRelaying {
     public static let appGroupID = "group.yyh.CLI-Pulse"
     public static let socketFilename = "clipulse-helper.sock"
     public static let authTokenFilename = "helper-auth-token"
@@ -715,6 +715,23 @@ public final class LocalSessionControlClient: SessionControlClient, MachineContr
     /// background→foreground recovery; the Mac TerminalView calls
     /// this when an existing session is being attached to a fresh
     /// view (e.g. window re-opened).
+    // MARK: - SessionEventStreaming witnesses (remote-control M0)
+    //
+    // `subscribeEvents(sessionId:raw:)` below has a defaulted `raw`, but a
+    // defaulted parameter does NOT let a method witness a requirement with
+    // fewer parameters — the protocol needs this exact arity, and without
+    // it the conformance would fail to compile rather than silently
+    // misdispatch. Keeping it as a one-line forwarder means the streaming
+    // invariants (single outstanding receive, `timeout: nil`) stay in one
+    // implementation.
+    public func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error> {
+        subscribeEvents(sessionId: sessionId, raw: false)
+    }
+
+    public func isLocalControlEnabled() async throws -> Bool {
+        try await getLocalControlStatus().localControlEnabled
+    }
+
     public func getTailSnapshot(sessionId: String, maxBytes: Int = 8192) async throws -> Data {
         let result = try await send(
             method: "get_tail_snapshot",

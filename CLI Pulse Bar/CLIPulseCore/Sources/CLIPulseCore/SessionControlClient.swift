@@ -76,6 +76,32 @@ public protocol SessionControlClient: Sendable {
     func sendInput(sessionId: String, payload: String) async throws
 }
 
+/// The read surface a terminal needs on top of `SessionControlClient`:
+/// a live event stream and a catch-up snapshot.
+///
+/// Added for remote-control M0 so the LAN agent can be written against a
+/// protocol and tested with a fake backend, and so the phone-side LAN
+/// client and the Mac-side UDS client present one shape to a terminal
+/// view. Every requirement is declared IN the protocol body — a
+/// requirement that exists only in an extension dispatches statically
+/// and a conformer's own implementation is silently ignored.
+public protocol SessionEventStreaming: SessionControlClient {
+    /// Live events. Yields `.subscribed` first (the catch-up snapshot),
+    /// then events until the stream ends. `sessionId == nil` means all.
+    func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error>
+
+    /// Last `maxBytes` of the session's output — the frame the phone
+    /// paints BEFORE live events start flowing, so it does not open on
+    /// an empty screen.
+    func getTailSnapshot(sessionId: String, maxBytes: Int) async throws -> Data
+
+    /// Whether the user currently permits session control. The LAN agent
+    /// re-checks this on every heartbeat, because the helper checks it
+    /// only once per subscription and would otherwise keep streaming
+    /// after the user turns it off.
+    func isLocalControlEnabled() async throws -> Bool
+}
+
 extension SessionControlClient {
     public func sendInput(sessionId: String, payload: String) async throws {
         throw SessionControlError.notImplemented
