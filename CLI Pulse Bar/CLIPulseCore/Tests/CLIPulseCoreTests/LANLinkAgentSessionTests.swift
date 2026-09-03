@@ -6,63 +6,6 @@ import XCTest
 /// that say what a phone can and cannot get out of a Mac.
 final class LANLinkAgentSessionTests: XCTestCase {
 
-    // MARK: - Scripted backend
-
-    class FakeBackend: SessionEventStreaming, @unchecked Sendable {
-        let lock = NSLock()
-        var helperReachable = true
-        var localControl = true
-        var sessions: [SessionControlSummary] = [
-            SessionControlSummary(id: "s1", provider: "claude", clientLabel: "proj", status: "running"),
-        ]
-        var tail = Data("$ echo hi\nhi\n".utf8)
-        var continuations: [AsyncThrowingStream<LocalSessionEvent, Error>.Continuation] = []
-        var localControlChecks = 0
-
-        func hello() async throws -> SessionControlHello {
-            guard helperReachable else { throw SessionControlError.helperNotRunning }
-            return SessionControlHello(protocolVersion: 1, supportedMethods: [],
-                                       capabilities: .iter2bLocal, helperVersion: "1.30.0",
-                                       implementation: "swift-bundled")
-        }
-        func startManagedSession(provider: String, clientLabel: String?, cwdBasename: String?, cwdHmac: String?) async throws -> SessionControlStartResult {
-            XCTFail("M0 must never reach startManagedSession"); throw SessionControlError.notImplemented
-        }
-        func listSessions() async throws -> [SessionControlSummary] {
-            guard helperReachable else { throw SessionControlError.helperNotRunning }
-            return sessions
-        }
-        func stopSession(sessionId: String) async throws {
-            XCTFail("M0 must never reach stopSession"); throw SessionControlError.notImplemented
-        }
-        func sendInput(sessionId: String, payload: String) async throws {
-            XCTFail("M0 must never reach sendInput"); throw SessionControlError.notImplemented
-        }
-        func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error> {
-            AsyncThrowingStream { c in
-                lock.lock(); continuations.append(c); lock.unlock()
-                c.yield(.subscribed(sessionId: sessionId, managedSessions: sessions, pendingApprovals: []))
-            }
-        }
-        func getTailSnapshot(sessionId: String, maxBytes: Int) async throws -> Data {
-            guard sessions.contains(where: { $0.id == sessionId }) else { throw SessionControlError.sessionNotFound }
-            return tail
-        }
-        func isLocalControlEnabled() async throws -> Bool {
-            lock.lock(); localControlChecks += 1; let v = localControl; lock.unlock()
-            return v
-        }
-
-        func push(_ e: LocalSessionEvent) {
-            lock.lock(); let cs = continuations; lock.unlock()
-            for c in cs { c.yield(e) }
-        }
-        func finishStreams() {
-            lock.lock(); let cs = continuations; continuations = []; lock.unlock()
-            for c in cs { c.finish() }
-        }
-    }
-
     // MARK: - Test phone
 
     /// Collects every frame the agent sends and lets a test send requests.
@@ -136,14 +79,25 @@ final class LANLinkAgentSessionTests: XCTestCase {
 
         var allFrames: [LANLinkFrame] { lock.lock(); defer { lock.unlock() }; return frames }
         var ended: Bool { lock.lock(); defer { lock.unlock() }; return inboundEnded }
+
+        /// The agent's `run()` returns after it calls `channel.close()`,
+        /// but this end observes the close on its own pump task. Asserting
+        /// `ended` synchronously raced under full-suite load; wait for it.
+        func waitEnded(timeout: TimeInterval = 2) async -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !ended, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return ended
+        }
     }
 
     private func makeSession(
-        backend: FakeBackend = FakeBackend(),
+        backend: FakeStreamingBackend = FakeStreamingBackend(),
         heartbeat: TimeInterval = 0.05,
         silence: TimeInterval = 10,
         idleFlush: TimeInterval = 0.05
-    ) -> (session: LANLinkAgentSession, phone: Phone, backend: FakeBackend, run: Task<LANLinkAgentSession.EndReason, Never>) {
+    ) -> (session: LANLinkAgentSession, phone: Phone, backend: FakeStreamingBackend, run: Task<LANLinkAgentSession.EndReason, Never>) {
         let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
         let session = LANLinkAgentSession(
             channel: macEnd, backend: backend,
@@ -180,7 +134,7 @@ final class LANLinkAgentSessionTests: XCTestCase {
     }
 
     func testHelloSucceedsWhenHelperIsDownAndReportsIt() async throws {
-        let b = FakeBackend(); b.helperReachable = false
+        let b = FakeStreamingBackend(); b.helperReachable = false
         let (session, phone, _, run) = makeSession(backend: b)
         let r = try unwrapOK(try await phone.request(.hello))
         XCTAssertEqual(r["helper"]?.objectValue?["reachable"]?.boolValue, false)
@@ -205,7 +159,7 @@ final class LANLinkAgentSessionTests: XCTestCase {
     }
 
     func testTailIsRedactedAtEgressEvenIfHelperForgot() async throws {
-        let b = FakeBackend()
+        let b = FakeStreamingBackend()
         b.tail = Data("token: sk-ant-api03-AAAABBBBCCCCDDDDEEEE\n".utf8)
         let (session, phone, _, run) = makeSession(backend: b)
         let r = try unwrapOK(try await phone.request(.sessionTail, ["session_id": .string("s1")]))
@@ -250,7 +204,8 @@ final class LANLinkAgentSessionTests: XCTestCase {
         try await phone.channel.send(try LANLinkFrame.event(kind: "output", subscription: "x", seq: 1, data: [:]).encode())
         let reason = await run.value
         guard case .protocolViolation = reason else { return XCTFail("expected protocolViolation, got \(reason)") }
-        XCTAssertTrue(phone.ended)
+        let phoneEnded = await phone.waitEnded()
+        XCTAssertTrue(phoneEnded)
     }
 
     // MARK: - subscriptions
@@ -361,12 +316,13 @@ final class LANLinkAgentSessionTests: XCTestCase {
         XCTAssertEqual(d["reason"]?.stringValue, "local_control_disabled")
         let reason = await run.value
         XCTAssertEqual(reason, .localControlDisabled)
-        XCTAssertTrue(phone.ended, "connection must be closed, not just the stream")
+        let phoneEnded = await phone.waitEnded()
+        XCTAssertTrue(phoneEnded, "connection must be closed, not just the stream")
     }
 
     func testBackendThatCannotAnswerTheGateIsTreatedAsOff() async throws {
         // Fail closed: if we cannot ask, the answer is no.
-        final class Flaky: FakeBackend {
+        final class Flaky: FakeStreamingBackend {
             override func isLocalControlEnabled() async throws -> Bool { throw SessionControlError.timeout }
         }
         let (_, _, _, run) = makeSession(backend: Flaky(), heartbeat: 0.03)
@@ -389,7 +345,8 @@ final class LANLinkAgentSessionTests: XCTestCase {
         // Send nothing.
         let reason = await run.value
         XCTAssertEqual(reason, .peerSilent)
-        XCTAssertTrue(phone.ended)
+        let phoneEnded = await phone.waitEnded()
+        XCTAssertTrue(phoneEnded)
     }
 
     func testHeartbeatsKeepAChattyPhoneAlive() async throws {

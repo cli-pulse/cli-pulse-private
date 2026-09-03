@@ -70,9 +70,13 @@ public enum LANPairing {
     /// What the QR encodes. Serialised as a `clipulse://pair` URL so the
     /// stock Camera app can hand it to the iOS app (the scheme is already
     /// registered in the iOS Info.plist for OAuth).
-    public struct QRPayload: Equatable, Sendable {
+    public struct QRPayload: Equatable, Sendable, Identifiable {
         public static let scheme = "clipulse"
         public static let host = "pair"
+
+        /// One id per minted code — the nonce is unique per mint, so this
+        /// is what lets SwiftUI present a sheet per payload.
+        public var id: String { deviceID + ":" + nonce.base64URLEncoded }
 
         public let version: Int
         public let deviceID: String
@@ -168,25 +172,30 @@ public enum LANPairing {
     /// each side computes the same key regardless of which role it
     /// played, and so the key is bound to exactly this pair of
     /// identities.
-    public static func sessionPSK(
+    public static func sessionKey(
         myPrivateKey: Curve25519.KeyAgreement.PrivateKey,
         peerPublicKey: Curve25519.KeyAgreement.PublicKey,
         macPublicKey: Curve25519.KeyAgreement.PublicKey,
         phonePublicKey: Curve25519.KeyAgreement.PublicKey,
-        nonce: Data,
-        peerIdentity: String
-    ) throws -> LANTransportSecurity.PresharedKey {
+        nonce: Data
+    ) throws -> SymmetricKey {
         let shared = try myPrivateKey.sharedSecretFromKeyAgreement(with: peerPublicKey)
         var info = Info.sessionPSK
         info.append(macPublicKey.rawRepresentation)
         info.append(phonePublicKey.rawRepresentation)
-        let key = shared.hkdfDerivedSymmetricKey(
+        return shared.hkdfDerivedSymmetricKey(
             using: SHA256.self,
             salt: nonce,
             sharedInfo: info,
             outputByteCount: LANTransportSecurity.pskByteCount)
-        return try LANTransportSecurity.PresharedKey(identity: "peer:" + peerIdentity, key: key)
     }
+
+    /// The TLS-PSK identity a pairing produces. It names the PHONE on
+    /// both ends: the Mac's listener registers it, the phone presents
+    /// it. A record's own `id` is the other party, which on the phone
+    /// side is the Mac — so the identity cannot be derived from `id`,
+    /// and both sides store it explicitly.
+    public static func pskIdentity(phoneID: String) -> String { "peer:" + phoneID }
 
     /// Short authentication string from the TLS exporter. Deterministic
     /// on both ends of ONE handshake; different for any other handshake.
@@ -254,32 +263,35 @@ public enum LANPairing {
     /// A peer this device has paired with. The Mac stores one per phone;
     /// the phone stores one per Mac.
     public struct PairedPeer: Equatable, Sendable, Identifiable {
-        public let id: String              // the peer's deviceID
+        public let id: String              // the OTHER party's deviceID
         public let displayName: String
+        /// `peer:<phoneID>` on both ends — see `pskIdentity(phoneID:)`.
+        public let pskIdentity: String
         public let sessionKey: SymmetricKey
         public let peerPublicKey: Curve25519.KeyAgreement.PublicKey
         public let pairedAt: Date
 
-        public init(id: String, displayName: String, sessionKey: SymmetricKey,
+        public init(id: String, displayName: String, pskIdentity: String, sessionKey: SymmetricKey,
                     peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date) {
             self.id = id
             self.displayName = displayName
+            self.pskIdentity = pskIdentity
             self.sessionKey = sessionKey
             self.peerPublicKey = peerPublicKey
             self.pairedAt = pairedAt
         }
 
-        /// The PSK this peer presents / is accepted under on the steady
-        /// listener.
+        /// The PSK the phone presents and the Mac's listener accepts.
         public var presharedKey: LANTransportSecurity.PresharedKey {
-            // Force-try is safe: `id` was non-empty at pairing and the key
-            // was derived at the fixed length. A throw here would mean the
-            // Keychain record was tampered with, which `deserialize` guards.
-            try! LANTransportSecurity.PresharedKey(identity: "peer:" + id, key: sessionKey)
+            // Force-try is safe: identity was non-empty and the key was
+            // derived at the fixed length when this was created, and
+            // `deserialize` refuses any record where that is not so.
+            try! LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
         }
 
         public static func == (a: PairedPeer, b: PairedPeer) -> Bool {
             a.id == b.id && a.displayName == b.displayName
+                && a.pskIdentity == b.pskIdentity
                 && a.sessionKey == b.sessionKey
                 && a.peerPublicKey.rawRepresentation == b.peerPublicKey.rawRepresentation
                 && a.pairedAt == b.pairedAt
@@ -288,6 +300,7 @@ public enum LANPairing {
         struct Wire: Codable {
             var id: String
             var name: String
+            var pid: String
             var psk: String
             var pk: String
             var at: TimeInterval
@@ -295,7 +308,7 @@ public enum LANPairing {
 
         public func serialized() throws -> String {
             let psk = sessionKey.withUnsafeBytes { Data($0).base64EncodedString() }
-            let w = Wire(id: id, name: displayName, psk: psk,
+            let w = Wire(id: id, name: displayName, pid: pskIdentity, psk: psk,
                          pk: peerPublicKey.rawRepresentation.base64EncodedString(),
                          at: pairedAt.timeIntervalSince1970)
             return String(decoding: try JSONEncoder().encode(w), as: UTF8.self)
@@ -304,14 +317,14 @@ public enum LANPairing {
         /// See `LocalIdentity.deserialize` — every failure mode is `.corrupt`.
         public static func deserialize(_ s: String) throws -> PairedPeer {
             guard let w = try? JSONDecoder().decode(Wire.self, from: Data(s.utf8)),
-                  !w.id.isEmpty,
+                  !w.id.isEmpty, !w.pid.isEmpty,
                   let psk = Data(base64Encoded: w.psk), psk.count == LANTransportSecurity.pskByteCount,
                   let pk = Data(base64Encoded: w.pk),
                   let pub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: pk) else {
                 throw PairingStoreError.corrupt
             }
-            return PairedPeer(id: w.id, displayName: w.name, sessionKey: SymmetricKey(data: psk),
-                              peerPublicKey: pub,
+            return PairedPeer(id: w.id, displayName: w.name, pskIdentity: w.pid,
+                              sessionKey: SymmetricKey(data: psk), peerPublicKey: pub,
                               pairedAt: Date(timeIntervalSince1970: w.at))
         }
     }

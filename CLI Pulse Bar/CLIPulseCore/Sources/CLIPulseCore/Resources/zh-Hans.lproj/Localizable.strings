@@ -1154,3 +1154,31 @@
 "telemetry.got_it" = "知道了";
 "telemetry.change_later" = "你随时可以在「设置 › 隐私」里更改。";
 "telemetry.settings_body" = "只上报 app 走到了哪一步,不涉及账号,也不含任何能识别你或你机器的信息:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。不含文件路径、项目名、服务商名称、token 数或费用金额。该 id 是随机生成的,卸载即删除。";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "远程控制";
+"remote.nearby_macs" = "附近的 Mac";
+"remote.pair_with_mac" = "与 Mac 配对";
+"remote.scan_hint" = "在 Mac 上打开「设置 › 远程控制」,点「配对 iPhone」,然后扫描屏幕上的二维码。";
+"remote.paste_hint" = "或粘贴配对链接";
+"remote.compare_code" = "请核对此代码与 Mac 上显示的是否一致";
+"remote.approve_on_mac" = "代码一致时,在 Mac 上点「批准」。";
+"remote.paired" = "已配对";
+"remote.not_paired" = "未配对";
+"remote.ready_to_pair" = "可配对";
+"remote.forget" = "忘记";
+"remote.read_only" = "只读";
+"remote.connecting" = "连接中…";
+"remote.connected" = "已连接";
+"remote.disconnected" = "已断开";
+"remote.no_sessions" = "没有会话。请在 Mac 的「会话」标签页启动一个。";
+"remote.no_macs" = "此 Wi-Fi 上未找到 Mac。请在 Mac 上打开「设置 › 远程控制」。";
+"remote.local_network_denied" = "本地网络权限已关闭。请在「设置」中打开以查找 Mac。";
+"remote.open_settings" = "打开设置";
+"remote.pairing_succeeded" = "配对成功";
+"remote.pairing_failed" = "配对失败";
+"remote.qr_expired" = "二维码已过期,请在 Mac 上重新显示。";
+"remote.helper_down" = "Mac 可达,但其 helper 未运行。";
+"remote.sessions" = "会话";
+"remote.done" = "完成";
+"remote.cancel" = "取消";

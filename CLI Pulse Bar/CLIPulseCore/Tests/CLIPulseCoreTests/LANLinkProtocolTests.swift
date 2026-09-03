@@ -84,6 +84,24 @@ final class LANLinkProtocolTests: XCTestCase {
         XCTAssertEqual(try LANLinkFrame.decode(try f.encode()), f)
     }
 
+    func testZeroOneTrueFalseSurviveTheRoundTripDistinctly() throws {
+        // `NSNumber as? Bool` succeeds for 0 and 1. A wrapper that checks
+        // Bool first turns `"v": 1` into `true` and `exit_code: 0` into
+        // `false`; the loopback tests found it, this pins it.
+        let f = LANLinkFrame.request(id: "r", method: "x", params: [
+            "zero": .int(0), "one": .int(1), "t": .bool(true), "f": .bool(false), "two": .int(2),
+        ])
+        guard case let .request(_, _, p) = try LANLinkFrame.decode(try f.encode()) else { return XCTFail() }
+        XCTAssertEqual(p["zero"], .int(0))
+        XCTAssertEqual(p["one"], .int(1))
+        XCTAssertEqual(p["two"], .int(2))
+        XCTAssertEqual(p["t"], .bool(true))
+        XCTAssertEqual(p["f"], .bool(false))
+        XCTAssertEqual(p["one"]?.intValue, 1)
+        XCTAssertNil(p["one"]?.boolValue)
+        XCTAssertNil(p["t"]?.intValue)
+    }
+
     // MARK: - Classification is by key presence
 
     func testClassifyRefusesWrongVersion() {

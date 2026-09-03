@@ -684,6 +684,17 @@ public final class AppState: ObservableObject {
     )
     #endif
 
+    // MARK: - Remote-control M0: LAN agent
+    /// The Mac-side remote-control agent (listeners, Bonjour, pairing).
+    /// Present on every macOS build; it decides at runtime whether it can
+    /// run (`LANLinkAgent.unavailabilityReason` — the App Store build has
+    /// no session-control helper to relay) and says so in Settings rather
+    /// than binding a port with nothing behind it. Started from Settings
+    /// when the user's persisted toggle is on; never at launch.
+    #if os(macOS)
+    public let lanAgent: LANLinkAgent
+    #endif
+
     // MARK: - v1.19 G1 permission migration checker
     /// Detects TCC permission revocations on the MAS → DEVID migration
     /// path and surfaces a banner for re-granting. Snapshot writer runs
@@ -902,6 +913,9 @@ public final class AppState: ObservableObject {
         self.runtimeEnvironment = runtime
         #if os(macOS)
         self.helperInstaller = HelperInstaller(runtimeEnvironment: runtime)
+        self.lanAgent = LANLinkAgent(
+            backend: LocalSessionControlClient(),
+            cloudDeviceID: { HelperConfig.load(runtimeEnvironment: runtime)?.deviceId })
         #endif
         self._isDemoMode = AppStorage(
             wrappedValue: false,

@@ -16,8 +16,11 @@
 
   Single-file bundle: no external network deps. xterm.js / addon-fit
   / addon-web-links / xterm.css are vendored sibling files loaded
-  via relative paths (SPM `.process("Resources")` keeps the whole
-  Terminal/ folder structure intact in the resource bundle).
+  via relative paths. NOTE: SPM `.process("Resources")` FLATTENS the
+  bundle — index.html and xterm.js land at the bundle root, there is
+  no Terminal/ subdirectory in the product (TerminalViewTests pins
+  this). Relative sibling paths still resolve because the siblings are
+  flattened alongside.
 
   Vendoring (MIT, see LICENSE.xterm in the same folder):
     @xterm/xterm           5.5.0
@@ -148,6 +151,7 @@
 
       // ── JS → native: keystrokes ───────────────────────────────
       term.onData(function (d) {
+        if (readOnly) return;
         try {
           window.webkit.messageHandlers.terminal.postMessage({ kind: 'stdin', data: d });
         } catch (e) {
@@ -189,6 +193,23 @@
       try {
         window.webkit.messageHandlers.terminal.postMessage({ kind: 'ready' });
       } catch (e) { /* preview mode */ }
+
+      // ── Read-only mode (remote-control M0) ─────────────────────
+      // The phone can WATCH a session before it can drive one. A
+      // terminal that blinks a cursor and raises the soft keyboard on
+      // tap, then discards every keystroke, is a control that outlived
+      // the feature it implies. In read-only mode: no stdin is posted,
+      // the cursor does not blink, and taps do not focus the terminal.
+      // The Mac side never calls this, so its default is unchanged.
+      var readOnly = false;
+      window.setReadOnly = function (flag) {
+        readOnly = !!flag;
+        try {
+          term.options.disableStdin = readOnly;
+          term.options.cursorBlink = !readOnly;
+          if (readOnly) { term.blur(); }
+        } catch (e) { reportJsError('set_read_only', e); }
+      };
 
       // Expose minimal control surface to tests / DevTools.
       window.__CLIPulseTerminal = {

@@ -1,7 +1,7 @@
 // TerminalNavigationGuard — shared, pure navigation policy for the in-app
-// terminal WebView (macOS TerminalView). The iOS remote terminal that
-// shared it was retired in v1.52.1; the guard stays because the macOS
-// local terminal still loads the vendored xterm.js bundle.
+// terminal WebView: the macOS TerminalView AND the iOS RemoteTerminalView
+// (retired in v1.52.1, restored for remote-control M0). Both load the
+// vendored xterm.js bundle and nothing else; this is what enforces it.
 //
 // The terminal WebView only ever loads the vendored local xterm.js bundle via
 // `loadFileURL(...)`. Nothing should ever navigate it anywhere else. Without a

@@ -103,19 +103,17 @@ final class LANPairingTests: XCTestCase {
         let phone = LANPairing.LocalIdentity.generate()
         let nonce = Data(repeating: 7, count: 32)
 
-        let macSide = try LANPairing.sessionPSK(
+        let macSide = try LANPairing.sessionKey(
             myPrivateKey: mac.privateKey, peerPublicKey: phone.publicKey,
-            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey,
-            nonce: nonce, peerIdentity: phone.deviceID)
-        let phoneSide = try LANPairing.sessionPSK(
+            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey, nonce: nonce)
+        let phoneSide = try LANPairing.sessionKey(
             myPrivateKey: phone.privateKey, peerPublicKey: mac.publicKey,
-            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey,
-            nonce: nonce, peerIdentity: mac.deviceID)
+            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey, nonce: nonce)
 
-        XCTAssertEqual(macSide.key, phoneSide.key)
-        // Identities differ by design: each side names the OTHER.
-        XCTAssertEqual(macSide.identity, "peer:" + phone.deviceID)
-        XCTAssertEqual(phoneSide.identity, "peer:" + mac.deviceID)
+        XCTAssertEqual(macSide, phoneSide)
+        // The PSK identity names the PHONE on both ends — it is what the
+        // Mac's listener registers and what the phone presents.
+        XCTAssertEqual(LANPairing.pskIdentity(phoneID: phone.deviceID), "peer:" + phone.deviceID)
     }
 
     func testSessionPSKIsNotAFunctionOfTheQRAlone() throws {
@@ -126,15 +124,13 @@ final class LANPairingTests: XCTestCase {
         let mac = LANPairing.LocalIdentity.generate()
         let phone1 = LANPairing.LocalIdentity.generate()
         let phone2 = LANPairing.LocalIdentity.generate()
-        let k1 = try LANPairing.sessionPSK(
+        let k1 = try LANPairing.sessionKey(
             myPrivateKey: mac.privateKey, peerPublicKey: phone1.publicKey,
-            macPublicKey: mac.publicKey, phonePublicKey: phone1.publicKey,
-            nonce: nonce, peerIdentity: "p1")
-        let k2 = try LANPairing.sessionPSK(
+            macPublicKey: mac.publicKey, phonePublicKey: phone1.publicKey, nonce: nonce)
+        let k2 = try LANPairing.sessionKey(
             myPrivateKey: mac.privateKey, peerPublicKey: phone2.publicKey,
-            macPublicKey: mac.publicKey, phonePublicKey: phone2.publicKey,
-            nonce: nonce, peerIdentity: "p2")
-        XCTAssertNotEqual(k1.key, k2.key)
+            macPublicKey: mac.publicKey, phonePublicKey: phone2.publicKey, nonce: nonce)
+        XCTAssertNotEqual(k1, k2)
     }
 
     func testPairingAndSessionKeysNeverCollideEvenWithSharedInputs() throws {
@@ -144,11 +140,10 @@ final class LANPairingTests: XCTestCase {
         let mac = LANPairing.LocalIdentity.generate()
         let phone = LANPairing.LocalIdentity.generate()
         let pairing = try LANPairing.pairingPSK(for: p)
-        let session = try LANPairing.sessionPSK(
+        let session = try LANPairing.sessionKey(
             myPrivateKey: mac.privateKey, peerPublicKey: phone.publicKey,
-            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey,
-            nonce: p.nonce, peerIdentity: phone.deviceID)
-        XCTAssertNotEqual(pairing.key, session.key)
+            macPublicKey: mac.publicKey, phonePublicKey: phone.publicKey, nonce: p.nonce)
+        XCTAssertNotEqual(pairing.key, session)
     }
 
     // MARK: - SAS
@@ -181,7 +176,7 @@ final class LANPairingTests: XCTestCase {
 
     func testPairedPeerRoundTripsAndRejectsCorruption() throws {
         let peer = LANPairing.PairedPeer(
-            id: "phone-1", displayName: "Jason's iPhone",
+            id: "phone-1", displayName: "Jason's iPhone", pskIdentity: "peer:phone-1",
             sessionKey: SymmetricKey(size: .bits256),
             peerPublicKey: LANPairing.LocalIdentity.generate().publicKey,
             pairedAt: Date(timeIntervalSince1970: 1_700_000_000))
@@ -201,11 +196,12 @@ final class LANPairingTests: XCTestCase {
         let goodPSK = peer.sessionKey.withUnsafeBytes { Data($0).base64EncodedString() }
 
         let cases: [(String, String)] = [
-            ("short key",   record(["id": "p", "name": "n", "at": 0,
+            ("short key",   record(["id": "p", "name": "n", "pid": "peer:p", "at": 0,
                                     "psk": Data(repeating: 1, count: 16).base64EncodedString(), "pk": goodPK])),
-            ("empty id",    record(["id": "", "name": "n", "at": 0, "psk": goodPSK, "pk": goodPK])),
-            ("bad base64",  record(["id": "p", "name": "n", "at": 0, "psk": "!!!", "pk": goodPK])),
-            ("bad pubkey",  record(["id": "p", "name": "n", "at": 0, "psk": goodPSK,
+            ("empty id",    record(["id": "", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK, "pk": goodPK])),
+            ("empty pid",   record(["id": "p", "name": "n", "pid": "", "at": 0, "psk": goodPSK, "pk": goodPK])),
+            ("bad base64",  record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": "!!!", "pk": goodPK])),
+            ("bad pubkey",  record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK,
                                     "pk": Data(repeating: 9, count: 5).base64EncodedString()])),
             ("missing field", record(["id": "p", "psk": goodPSK])),
             ("not json",    "not json"),

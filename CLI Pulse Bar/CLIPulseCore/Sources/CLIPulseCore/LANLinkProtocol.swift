@@ -55,6 +55,16 @@ public enum LANLinkProtocol {
     public enum TXTKey {
         public static let deviceID = "did"
         public static let protocolVersion = "pv"
+        /// Present ONLY on the short-lived pairing service, with value
+        /// `TXTMode.pairing`. The steady service omits it. This is the one
+        /// addition to the "did + version only" rule, and it reveals
+        /// nothing the existence of a second service does not already:
+        /// "this Mac has a QR on screen right now".
+        public static let mode = "m"
+    }
+
+    public enum TXTMode {
+        public static let pairing = "pair"
     }
 
     /// 1 MiB — identical to HelperKit's `Framing.maxPayload`, so a frame
@@ -317,16 +327,22 @@ public enum AnySendableJSON: Equatable, Sendable {
     public init(_ any: Any) {
         switch any {
         case let s as String: self = .string(s)
-        case let b as Bool: self = .bool(b)
         case let n as NSNumber:
-            // NSNumber is also Bool-bridged; the Bool case above wins for
-            // genuine booleans, and JSONSerialization hands us NSNumber
-            // for every numeric literal.
-            if n.doubleValue == n.doubleValue.rounded(), abs(n.doubleValue) < 9e15 {
+            // JSONSerialization hands back NSNumber for booleans AND
+            // numbers, and `NSNumber as? Bool` SUCCEEDS for 0 and 1 — so
+            // a `case let b as Bool` ahead of this turned `"v": 1` into
+            // `true` and `exit_code: 0` into `false`. The loopback tests
+            // caught it; the round-trip tests had not, because none of
+            // their values happened to be 0 or 1. The only reliable
+            // discriminator is the underlying CF type.
+            if CFGetTypeID(n) == CFBooleanGetTypeID() {
+                self = .bool(n.boolValue)
+            } else if n.doubleValue == n.doubleValue.rounded(), abs(n.doubleValue) < 9e15 {
                 self = .int(n.intValue)
             } else {
                 self = .double(n.doubleValue)
             }
+        case let b as Bool: self = .bool(b)
         case let i as Int: self = .int(i)
         case let d as Double: self = .double(d)
         case let a as [Any]: self = .array(a.map(AnySendableJSON.init))

@@ -6,6 +6,10 @@ import AppIntents
 struct CLIPulseApp: App {
     @StateObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
+    /// A `clipulse://pair?…` URL from the stock Camera app (remote-control
+    /// M0). Nil until one arrives; presents the pairing flow.
+    @State private var pendingPairing: LANPairing.QRPayload?
+    @StateObject private var pairingBrowser = LANMacBrowser()
     private let phoneSession = PhoneSessionManager.shared
 
     // SwiftUI is otherwise pure but the APNs registration + tap routing
@@ -46,6 +50,16 @@ struct CLIPulseApp: App {
                     if phase == .active {
                         handleWidgetRefreshRequest()
                     }
+                }
+                .onOpenURL { url in
+                    // Only the pairing URL is routed here; the OAuth
+                    // callback is consumed by ASWebAuthenticationSession.
+                    if let payload = try? LANPairing.QRPayload.parse(url.absoluteString) {
+                        pendingPairing = payload
+                    }
+                }
+                .sheet(item: $pendingPairing) { payload in
+                    LANPairingFlowView(browser: pairingBrowser, initialPayload: payload)
                 }
         }
         .commands {
