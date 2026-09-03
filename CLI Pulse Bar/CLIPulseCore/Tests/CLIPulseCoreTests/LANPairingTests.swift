@@ -175,7 +175,7 @@ final class LANPairingTests: XCTestCase {
     }
 
     func testPairedPeerRoundTripsAndRejectsCorruption() throws {
-        let peer = LANPairing.PairedPeer(
+        let peer = try LANPairing.PairedPeer(
             id: "phone-1", displayName: "Jason's iPhone", pskIdentity: "peer:phone-1",
             sessionKey: SymmetricKey(size: .bits256),
             peerPublicKey: LANPairing.LocalIdentity.generate().publicKey,
@@ -189,21 +189,21 @@ final class LANPairingTests: XCTestCase {
         // editing encoder output, because JSONEncoder escapes `/` as `\/`
         // and a random key's base64 may or may not contain one; a test
         // that flips on the RNG is not a test.
-        func record(_ fields: [String: Any]) -> String {
-            String(decoding: try! JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
+        func record(_ fields: [String: Any]) throws -> String {
+            String(decoding: try JSONSerialization.data(withJSONObject: fields), as: UTF8.self)
         }
         let goodPK = peer.peerPublicKey.rawRepresentation.base64EncodedString()
         let goodPSK = peer.sessionKey.withUnsafeBytes { Data($0).base64EncodedString() }
 
         let cases: [(String, String)] = [
-            ("short key",   record(["id": "p", "name": "n", "pid": "peer:p", "at": 0,
+            ("short key",   try record(["id": "p", "name": "n", "pid": "peer:p", "at": 0,
                                     "psk": Data(repeating: 1, count: 16).base64EncodedString(), "pk": goodPK])),
-            ("empty id",    record(["id": "", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK, "pk": goodPK])),
-            ("empty pid",   record(["id": "p", "name": "n", "pid": "", "at": 0, "psk": goodPSK, "pk": goodPK])),
-            ("bad base64",  record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": "!!!", "pk": goodPK])),
-            ("bad pubkey",  record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK,
+            ("empty id",    try record(["id": "", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK, "pk": goodPK])),
+            ("empty pid",   try record(["id": "p", "name": "n", "pid": "", "at": 0, "psk": goodPSK, "pk": goodPK])),
+            ("bad base64",  try record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": "!!!", "pk": goodPK])),
+            ("bad pubkey",  try record(["id": "p", "name": "n", "pid": "peer:p", "at": 0, "psk": goodPSK,
                                     "pk": Data(repeating: 9, count: 5).base64EncodedString()])),
-            ("missing field", record(["id": "p", "psk": goodPSK])),
+            ("missing field", try record(["id": "p", "psk": goodPSK])),
             ("not json",    "not json"),
         ]
         for (label, raw) in cases {

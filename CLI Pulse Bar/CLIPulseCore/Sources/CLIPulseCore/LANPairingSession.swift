@@ -130,7 +130,7 @@ public enum LANPairingSession {
                     myPrivateKey: identity.privateKey, peerPublicKey: phonePub,
                     macPublicKey: identity.publicKey, phonePublicKey: phonePub,
                     nonce: payload.nonce)
-                let peer = LANPairing.PairedPeer(
+                let peer = try LANPairing.PairedPeer(
                     id: phoneID, displayName: phoneName,
                     pskIdentity: LANPairing.pskIdentity(phoneID: phoneID),
                     sessionKey: key, peerPublicKey: phonePub, pairedAt: clock())
@@ -274,7 +274,7 @@ public enum LANPairingSession {
                 myPrivateKey: identity.privateKey, peerPublicKey: macPub,
                 macPublicKey: macPub, phonePublicKey: identity.publicKey,
                 nonce: payload.nonce)
-            return LANPairing.PairedPeer(
+            return try LANPairing.PairedPeer(
                 id: macID, displayName: macName,
                 pskIdentity: LANPairing.pskIdentity(phoneID: identity.deviceID),
                 sessionKey: key, peerPublicKey: macPub, pairedAt: clock())

@@ -58,8 +58,12 @@ public final class NWConnectionChannel: LANLinkChannel, @unchecked Sendable {
     public init(connection: NWConnection, queue: DispatchQueue) {
         self.connection = connection
         self.queue = queue
-        var cont: AsyncThrowingStream<Data, Error>.Continuation!
-        self.inbound = AsyncThrowingStream { cont = $0 }
+        var captured: AsyncThrowingStream<Data, Error>.Continuation?
+        self.inbound = AsyncThrowingStream { captured = $0 }
+        // The builder closure runs synchronously inside the initializer, so
+        // the continuation is always set here; the optional is for the
+        // linter, not for a path that can happen.
+        guard let cont = captured else { preconditionFailure("AsyncThrowingStream did not hand back its continuation") }
         self.continuation = cont
         cont.onTermination = { [weak self] _ in self?.close() }
         connection.stateUpdateHandler = { [weak self] st in
@@ -157,8 +161,9 @@ public final class InMemoryLANLinkChannel: LANLinkChannel, @unchecked Sendable {
     public private(set) var sent: [Data] = []
 
     private init(exporter: Data) {
-        var cont: AsyncThrowingStream<Data, Error>.Continuation!
-        self.inbound = AsyncThrowingStream { cont = $0 }
+        var captured: AsyncThrowingStream<Data, Error>.Continuation?
+        self.inbound = AsyncThrowingStream { captured = $0 }
+        guard let cont = captured else { preconditionFailure("AsyncThrowingStream did not hand back its continuation") }
         self.inboundContinuation = cont
         self.exporter = exporter
     }

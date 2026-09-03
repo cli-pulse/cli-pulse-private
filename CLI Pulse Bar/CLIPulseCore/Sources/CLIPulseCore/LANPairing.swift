@@ -270,23 +270,20 @@ public enum LANPairing {
         public let sessionKey: SymmetricKey
         public let peerPublicKey: Curve25519.KeyAgreement.PublicKey
         public let pairedAt: Date
+        /// The PSK the phone presents and the Mac's listener accepts.
+        /// Built once here, so a record that cannot yield a valid PSK
+        /// cannot exist — `init` throws instead of a later force-unwrap.
+        public let presharedKey: LANTransportSecurity.PresharedKey
 
         public init(id: String, displayName: String, pskIdentity: String, sessionKey: SymmetricKey,
-                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date) {
+                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date) throws {
             self.id = id
             self.displayName = displayName
             self.pskIdentity = pskIdentity
             self.sessionKey = sessionKey
             self.peerPublicKey = peerPublicKey
             self.pairedAt = pairedAt
-        }
-
-        /// The PSK the phone presents and the Mac's listener accepts.
-        public var presharedKey: LANTransportSecurity.PresharedKey {
-            // Force-try is safe: identity was non-empty and the key was
-            // derived at the fixed length when this was created, and
-            // `deserialize` refuses any record where that is not so.
-            try! LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
+            self.presharedKey = try LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
         }
 
         public static func == (a: PairedPeer, b: PairedPeer) -> Bool {
@@ -323,9 +320,12 @@ public enum LANPairing {
                   let pub = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: pk) else {
                 throw PairingStoreError.corrupt
             }
-            return PairedPeer(id: w.id, displayName: w.name, pskIdentity: w.pid,
-                              sessionKey: SymmetricKey(data: psk), peerPublicKey: pub,
-                              pairedAt: Date(timeIntervalSince1970: w.at))
+            guard let peer = try? PairedPeer(id: w.id, displayName: w.name, pskIdentity: w.pid,
+                                             sessionKey: SymmetricKey(data: psk), peerPublicKey: pub,
+                                             pairedAt: Date(timeIntervalSince1970: w.at)) else {
+                throw PairingStoreError.corrupt
+            }
+            return peer
         }
     }
 

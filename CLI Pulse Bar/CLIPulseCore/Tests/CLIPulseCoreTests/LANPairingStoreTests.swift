@@ -15,8 +15,8 @@ final class LANPairingStoreTests: XCTestCase {
         KeychainHelper.inMemoryStoreForTesting = [:]
     }
 
-    private func peer(_ id: String) -> LANPairing.PairedPeer {
-        LANPairing.PairedPeer(
+    private func peer(_ id: String) throws -> LANPairing.PairedPeer {
+        try LANPairing.PairedPeer(
             id: id, displayName: "Phone \(id)", pskIdentity: "peer:\(id)",
             sessionKey: SymmetricKey(size: .bits256),
             peerPublicKey: LANPairing.LocalIdentity.generate().publicKey,
@@ -32,12 +32,12 @@ final class LANPairingStoreTests: XCTestCase {
 
     func testPeersSaveListReplaceAndRemove() throws {
         XCTAssertTrue(LANPairingStore.peers().isEmpty)
-        try LANPairingStore.save(peer("a"))
-        try LANPairingStore.save(peer("b"))
+        try LANPairingStore.save(try peer("a"))
+        try LANPairingStore.save(try peer("b"))
         XCTAssertEqual(Set(LANPairingStore.peers().map(\.id)), ["a", "b"])
 
         // Re-pairing replaces, does not duplicate.
-        let a2 = peer("a")
+        let a2 = try peer("a")
         try LANPairingStore.save(a2)
         XCTAssertEqual(LANPairingStore.peers().count, 2)
         XCTAssertEqual(LANPairingStore.peer(id: "a"), a2)
@@ -51,7 +51,7 @@ final class LANPairingStoreTests: XCTestCase {
     }
 
     func testCorruptIdentityIsRegeneratedAndPeersDropped() throws {
-        try LANPairingStore.save(peer("x"))
+        try LANPairingStore.save(try peer("x"))
         _ = KeychainHelper.save(key: LANPairingStore.identityKey, value: "garbage")
         let fresh = try LANPairingStore.loadOrCreateIdentity()
         XCTAssertFalse(fresh.deviceID.isEmpty)
@@ -60,7 +60,7 @@ final class LANPairingStoreTests: XCTestCase {
     }
 
     func testCorruptPeerRecordIsSkippedNotFatal() throws {
-        try LANPairingStore.save(peer("good"))
+        try LANPairingStore.save(try peer("good"))
         _ = KeychainHelper.save(key: LANPairingStore.peerKey("bad"), value: "{}")
         // Force "bad" into the index.
         _ = KeychainHelper.save(key: LANPairingStore.peerIndexKey, value: "[\"good\",\"bad\"]")

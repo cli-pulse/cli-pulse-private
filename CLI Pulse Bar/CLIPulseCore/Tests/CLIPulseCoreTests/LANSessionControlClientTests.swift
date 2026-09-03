@@ -100,7 +100,7 @@ final class LANSessionControlClientTests: XCTestCase {
         backend.lock.lock(); backend.localControl = false; backend.lock.unlock()
 
         do {
-            while let _ = try await it.next() {}
+            while try await it.next() != nil {}
             XCTFail("stream ended cleanly; expected localControlOff")
         } catch {
             XCTAssertEqual(error as? SessionControlError, .localControlOff)
