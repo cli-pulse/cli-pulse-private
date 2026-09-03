@@ -105,8 +105,15 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
     static let deletedSymbols = [
         // approvals (PR #501)
         "RemoteApprovalsSheet", "iOSRemoteApprovalsView", "RemoteApprovalsEntryState",
-        // iOS terminal + managed sessions (PR #502)
-        "RemoteTerminalViewRepresentable", "RemoteTerminalKeyBar", "RemoteTerminalView",
+        // iOS terminal + managed sessions (PR #502).
+        //
+        // `RemoteTerminalView` itself is NOT here any more: remote-control M0
+        // restored it, byte-for-byte from e067c4fb1^, as the WKWebView host
+        // for the LAN transport. It never touched the cloud plane — only its
+        // Representable did, which stays listed. A WebView that renders
+        // xterm.js is transport-agnostic; the retirement deleted it for lack
+        // of a consumer, not because it was part of the plane.
+        "RemoteTerminalViewRepresentable", "RemoteTerminalKeyBar",
         "RemoteSessionEventStream", "RemoteSessionControlClient", "ManagedSessionDetailView",
     ]
 
@@ -123,7 +130,7 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
             "CLI Pulse Bar/CLI Pulse Bar/RemoteApprovalsSheet.swift",
             "CLI Pulse Bar/CLI Pulse Bar iOS/iOSRemoteApprovalsView.swift",
             "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteApprovalsEntryState.swift",
-            "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalView.swift",
+            // RemoteTerminalView.swift is deliberately absent — see deletedSymbols.
             "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalViewRepresentable.swift",
             "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteTerminalKeyBar.swift",
             "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteSessionEventStream.swift",

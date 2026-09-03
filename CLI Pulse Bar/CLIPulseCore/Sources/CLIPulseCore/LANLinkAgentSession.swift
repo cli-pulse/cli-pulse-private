@@ -232,8 +232,14 @@ public actor LANLinkAgentSession {
                 }
                 let sub = UUID().uuidString.lowercased()
                 subscriptions[sub] = Subscription(sessionID: sid)
-                await reply(id, result: ["sub": .string(sub)])
+                // Subscribe to the backend BEFORE replying. The reply is
+                // the phone's signal that events may now arrive; if the
+                // backend subscription happened after it, anything emitted
+                // in that gap would be lost. Found as a 5-minute hang under
+                // full-suite load: the test pushed events between the reply
+                // and the subscription and then waited for them forever.
                 startSubscription(sub, sessionID: sid)
+                await reply(id, result: ["sub": .string(sub)])
             case .sessionUnsubscribe:
                 guard let sub = params["sub"]?.stringValue, subscriptions[sub] != nil else {
                     await reply(id, error: LANLinkProtocol.ErrorCode.subscriptionNotFound, "no such subscription")

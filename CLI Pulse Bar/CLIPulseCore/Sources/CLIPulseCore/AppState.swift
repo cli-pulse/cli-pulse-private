@@ -1083,6 +1083,13 @@ public final class AppState: ObservableObject {
         }
         #endif
         #endif
+        #if os(macOS)
+        // Remote-control M0: a persisted opt-in IS the user asking. Start the
+        // agent at launch when the toggle is already on, so remote control
+        // survives a relaunch without a trip to Settings. Off by default, and
+        // `start()` self-gates on the App Store build.
+        if lanAgent.isEnabled { lanAgent.start() }
+        #endif
     }
 
     /// Narrow composition-test seam. Production continues through the public

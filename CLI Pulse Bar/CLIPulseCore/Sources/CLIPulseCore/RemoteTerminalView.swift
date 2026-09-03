@@ -1,7 +1,7 @@
 // v1.25 Phase 4 slice 1 — RemoteTerminalView (iOS-side WKWebView host).
-// Mirrors the Mac-side TerminalView but uses UIView; consumes
-// `RemoteSessionEventStream.subscribeTerminal` to display stdout
-// from a remote Mac helper's PTY in xterm.js.
+// Mirrors the Mac-side TerminalView but uses UIView; fed by any
+// `SessionEventStreaming` conformer (remote-control M0: the LAN client)
+// to display stdout from a Mac helper's PTY in xterm.js.
 //
 // Restored verbatim in remote-control M0 from the v1.52.1 deletion
 // (e067c4fb1^) — it never depended on the cloud path; only the
