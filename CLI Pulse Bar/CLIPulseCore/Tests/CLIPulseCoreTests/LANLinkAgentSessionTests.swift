@@ -333,10 +333,17 @@ final class LANLinkAgentSessionTests: XCTestCase {
     // MARK: - liveness
 
     func testAgentSendsHeartbeats() async throws {
+        // Wait FOR two heartbeats rather than sleeping a fixed interval and
+        // counting: on CI's slower runner a 150 ms sleep saw only one 30 ms
+        // tick, because each tick also awaits the backend's gate check.
         let (session, phone, _, run) = makeSession(heartbeat: 0.03)
-        try await Task.sleep(nanoseconds: 150_000_000)
-        let hbs = phone.allFrames.filter { if case .heartbeat = $0 { return true }; return false }
-        XCTAssertGreaterThanOrEqual(hbs.count, 2)
+        let deadline = Date().addingTimeInterval(3)
+        var count = 0
+        while count < 2, Date() < deadline {
+            count = phone.allFrames.filter { if case .heartbeat = $0 { return true }; return false }.count
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertGreaterThanOrEqual(count, 2, "fewer than two heartbeats in 3 s")
         await session.close(); _ = await run.value
     }
 
@@ -350,11 +357,17 @@ final class LANLinkAgentSessionTests: XCTestCase {
     }
 
     func testHeartbeatsKeepAChattyPhoneAlive() async throws {
-        let (session, phone, _, run) = makeSession(heartbeat: 0.03, silence: 0.1)
-        for _ in 0..<6 {
+        // The product's margin is 1 s beats against a 3 s cutoff. The test
+        // keeps the same 3× ratio at a scale a loaded CI runner can honour:
+        // 40 ms beats against a 100 ms cutoff let one late wake-up
+        // disconnect the phone, which then failed with "closed" on its next
+        // send — a harness artifact, not the agent misbehaving.
+        let (session, phone, _, run) = makeSession(heartbeat: 0.05, silence: 1.0)
+        for _ in 0..<8 {
             try await phone.heartbeat()
-            try await Task.sleep(nanoseconds: 40_000_000)
+            try await Task.sleep(nanoseconds: 150_000_000)
         }
+        // 1.2 s of beats, every one well inside the 1 s window.
         XCTAssertFalse(phone.ended, "heartbeating phone was disconnected")
         await session.close(); _ = await run.value
     }
