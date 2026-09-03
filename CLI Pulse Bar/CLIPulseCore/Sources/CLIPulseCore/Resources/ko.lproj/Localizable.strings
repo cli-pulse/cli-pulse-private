@@ -869,3 +869,31 @@
 "telemetry.got_it" = "확인";
 "telemetry.change_later" = "「설정 › 개인정보」에서 언제든지 변경할 수 있습니다.";
 "telemetry.settings_body" = "앱이 어디까지 진행됐는지만, 계정 없이 그리고 당신이나 기기를 식별할 수 있는 정보 없이 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지 — 그리고 현재 표시 중인 언어입니다. 파일 경로, 프로젝트 이름, 제공업체 이름, 토큰 수, 금액은 포함하지 않습니다. id는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "원격 제어";
+"remote.nearby_macs" = "근처의 Mac";
+"remote.pair_with_mac" = "Mac과 페어링";
+"remote.scan_hint" = "Mac에서 설정 › 원격 제어를 열고 \"iPhone 페어링\"을 탭한 다음, 표시된 코드를 스캔하세요.";
+"remote.paste_hint" = "또는 페어링 링크 붙여넣기";
+"remote.compare_code" = "이 코드가 Mac에 표시된 코드와 같은지 확인하세요";
+"remote.approve_on_mac" = "코드가 같으면 Mac에서 승인을 탭하세요.";
+"remote.paired" = "페어링됨";
+"remote.not_paired" = "페어링 안 됨";
+"remote.ready_to_pair" = "페어링 가능";
+"remote.forget" = "지우기";
+"remote.read_only" = "읽기 전용";
+"remote.connecting" = "연결 중…";
+"remote.connected" = "연결됨";
+"remote.disconnected" = "연결 끊김";
+"remote.no_sessions" = "세션이 없습니다. Mac의 세션 탭에서 시작하세요.";
+"remote.no_macs" = "이 Wi-Fi에서 Mac을 찾을 수 없습니다. Mac에서 설정 › 원격 제어를 켜세요.";
+"remote.local_network_denied" = "로컬 네트워크 접근이 꺼져 있습니다. Mac을 찾으려면 설정에서 켜세요.";
+"remote.open_settings" = "설정 열기";
+"remote.pairing_succeeded" = "페어링 완료";
+"remote.pairing_failed" = "페어링 실패";
+"remote.qr_expired" = "코드가 만료되었습니다. Mac에서 새 코드를 표시하세요.";
+"remote.helper_down" = "Mac에 연결할 수 있지만 헬퍼가 실행되고 있지 않습니다.";
+"remote.sessions" = "세션";
+"remote.done" = "완료";
+"remote.cancel" = "취소";

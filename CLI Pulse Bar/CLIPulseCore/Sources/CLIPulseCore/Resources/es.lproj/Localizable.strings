@@ -869,3 +869,31 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "telemetry.got_it" = "Entendido";
 "telemetry.change_later" = "Puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
 "telemetry.settings_body" = "Hasta dónde llegó la app, sin ninguna cuenta y sin nada que te identifique a ti ni a tu equipo: que CLI Pulse se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un coste que mostrar — además del idioma en que se muestra. Sin rutas de archivos, nombres de proyectos, nombres de proveedores, recuentos de tokens ni importes. El id es aleatorio y se elimina al desinstalar.";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "Control remoto";
+"remote.nearby_macs" = "Macs cercanos";
+"remote.pair_with_mac" = "Vincular con un Mac";
+"remote.scan_hint" = "En el Mac, abre Ajustes › Control remoto, toca “Vincular un iPhone” y escanea el código que muestra.";
+"remote.paste_hint" = "O pega el enlace de vinculación";
+"remote.compare_code" = "Compara este código con el que aparece en tu Mac";
+"remote.approve_on_mac" = "Si los códigos coinciden, toca Aprobar en el Mac.";
+"remote.paired" = "Vinculado";
+"remote.not_paired" = "Sin vincular";
+"remote.ready_to_pair" = "Listo para vincular";
+"remote.forget" = "Olvidar";
+"remote.read_only" = "Solo lectura";
+"remote.connecting" = "Conectando…";
+"remote.connected" = "Conectado";
+"remote.disconnected" = "Desconectado";
+"remote.no_sessions" = "No hay sesiones. Inicia una desde la pestaña Sesiones del Mac.";
+"remote.no_macs" = "No se encontraron Macs en esta Wi-Fi. En el Mac, activa Ajustes › Control remoto.";
+"remote.local_network_denied" = "El acceso a la red local está desactivado. Actívalo en Ajustes para encontrar tu Mac.";
+"remote.open_settings" = "Abrir Ajustes";
+"remote.pairing_succeeded" = "Vinculado";
+"remote.pairing_failed" = "Error al vincular";
+"remote.qr_expired" = "El código caducó. Muestra uno nuevo en el Mac.";
+"remote.helper_down" = "El Mac está accesible, pero su asistente no se está ejecutando.";
+"remote.sessions" = "Sesiones";
+"remote.done" = "Listo";
+"remote.cancel" = "Cancelar";

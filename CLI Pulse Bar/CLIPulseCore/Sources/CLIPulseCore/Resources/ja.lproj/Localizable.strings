@@ -1099,3 +1099,31 @@
 "telemetry.got_it" = "了解";
 "telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
 "telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します:インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。id はランダムで、アンインストールすると削除されます。";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "リモート操作";
+"remote.nearby_macs" = "近くの Mac";
+"remote.pair_with_mac" = "Mac とペアリング";
+"remote.scan_hint" = "Mac で「設定 › リモート操作」を開き、「iPhone をペアリング」をタップして、表示されたコードをスキャンしてください。";
+"remote.paste_hint" = "またはペアリングリンクを貼り付け";
+"remote.compare_code" = "このコードが Mac に表示されているものと一致するか確認してください";
+"remote.approve_on_mac" = "コードが一致したら、Mac で「承認」をタップしてください。";
+"remote.paired" = "ペアリング済み";
+"remote.not_paired" = "未ペアリング";
+"remote.ready_to_pair" = "ペアリング可能";
+"remote.forget" = "削除";
+"remote.read_only" = "読み取り専用";
+"remote.connecting" = "接続中…";
+"remote.connected" = "接続済み";
+"remote.disconnected" = "切断されました";
+"remote.no_sessions" = "セッションがありません。Mac の「セッション」タブから開始してください。";
+"remote.no_macs" = "この Wi-Fi に Mac が見つかりません。Mac で「設定 › リモート操作」をオンにしてください。";
+"remote.local_network_denied" = "ローカルネットワークへのアクセスがオフです。Mac を見つけるには「設定」でオンにしてください。";
+"remote.open_settings" = "設定を開く";
+"remote.pairing_succeeded" = "ペアリング完了";
+"remote.pairing_failed" = "ペアリングに失敗しました";
+"remote.qr_expired" = "コードの有効期限が切れました。Mac で新しいコードを表示してください。";
+"remote.helper_down" = "Mac には接続できますが、ヘルパーが実行されていません。";
+"remote.sessions" = "セッション";
+"remote.done" = "完了";
+"remote.cancel" = "キャンセル";

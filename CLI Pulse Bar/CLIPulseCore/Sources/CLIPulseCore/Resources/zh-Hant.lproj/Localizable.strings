@@ -1102,3 +1102,31 @@
 "telemetry.got_it" = "知道了";
 "telemetry.change_later" = "你隨時可以在「設定 › 隱私」中變更。";
 "telemetry.settings_body" = "只回報 app 走到了哪一步,不涉及帳號,也不含任何能識別你或你機器的資訊:是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字,以及目前顯示的語言。不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額。該 id 是隨機產生的,解除安裝即刪除。";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "遠端控制";
+"remote.nearby_macs" = "附近的 Mac";
+"remote.pair_with_mac" = "與 Mac 配對";
+"remote.scan_hint" = "在 Mac 上打開「設定 › 遠端控制」,點「配對 iPhone」,然後掃描螢幕上的 QR Code。";
+"remote.paste_hint" = "或貼上配對連結";
+"remote.compare_code" = "請核對此代碼與 Mac 上顯示的是否一致";
+"remote.approve_on_mac" = "代碼一致時,請在 Mac 上點「核准」。";
+"remote.paired" = "已配對";
+"remote.not_paired" = "未配對";
+"remote.ready_to_pair" = "可配對";
+"remote.forget" = "忘記";
+"remote.read_only" = "唯讀";
+"remote.connecting" = "連線中…";
+"remote.connected" = "已連線";
+"remote.disconnected" = "已中斷";
+"remote.no_sessions" = "沒有工作階段。請在 Mac 的「工作階段」分頁啟動一個。";
+"remote.no_macs" = "此 Wi-Fi 上找不到 Mac。請在 Mac 上開啟「設定 › 遠端控制」。";
+"remote.local_network_denied" = "區域網路權限已關閉。請在「設定」中開啟以尋找 Mac。";
+"remote.open_settings" = "打開設定";
+"remote.pairing_succeeded" = "配對成功";
+"remote.pairing_failed" = "配對失敗";
+"remote.qr_expired" = "QR Code 已過期,請在 Mac 上重新顯示。";
+"remote.helper_down" = "Mac 可連線,但其輔助程式未執行。";
+"remote.sessions" = "工作階段";
+"remote.done" = "完成";
+"remote.cancel" = "取消";
