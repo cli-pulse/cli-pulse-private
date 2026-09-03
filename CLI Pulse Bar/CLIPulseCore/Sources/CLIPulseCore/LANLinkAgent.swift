@@ -266,8 +266,12 @@ public final class LANLinkAgent: ObservableObject {
             pairing = .failed("\(error)")
             return
         }
+        // A distinct name: two services with the same name and type make
+        // Bonjour rename the second one "(2)", which is what the phone would
+        // show. The phone matches pairing services by TXT `did` + `m`, never
+        // by name, so the suffix is purely for humans and dns-sd transcripts.
         listener.service = NWListener.Service(
-            name: displayName,
+            name: displayName + " (pairing)",
             type: LANLinkProtocol.bonjourServiceType,
             txtRecord: NWTXTRecord([
                 LANLinkProtocol.TXTKey.deviceID: identity.deviceID,

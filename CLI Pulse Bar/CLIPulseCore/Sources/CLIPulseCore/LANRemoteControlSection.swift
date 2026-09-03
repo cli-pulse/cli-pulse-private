@@ -11,7 +11,6 @@ import CoreImage.CIFilterBuiltins
 /// so the app target needs a one-line reference and no pbxproj entry.
 public struct LANRemoteControlSection: View {
     @ObservedObject private var agent: LANLinkAgent
-    @State private var showPairing = false
 
     public init(agent: LANLinkAgent) {
         self.agent = agent
@@ -55,18 +54,28 @@ public struct LANRemoteControlSection: View {
                 }
 
                 if case .listening = agent.state {
-                    HStack {
-                        Button {
-                            agent.beginPairing()
-                            showPairing = true
-                        } label: {
-                            Label("Pair an iPhone…", systemImage: "qrcode")
-                                .font(.system(size: 11))
+                    // Pairing is presented INLINE, never as a sheet: this card
+                    // lives in the menu-bar popover, and a sheet is a separate
+                    // window — clicking it counts as clicking outside the
+                    // popover, which dismisses the popover and the sheet with
+                    // it. The first real run found that; nobody could reach
+                    // "Copy link".
+                    if case .idle = agent.pairing {
+                        HStack {
+                            Button {
+                                agent.beginPairing()
+                            } label: {
+                                Label("Pair an iPhone…", systemImage: "qrcode")
+                                    .font(.system(size: 11))
+                            }
+                            .controlSize(.small)
+                            Spacer()
                         }
-                        .controlSize(.small)
-                        Spacer()
+                        .padding(.top, 2)
+                    } else {
+                        Divider().padding(.vertical, 2)
+                        LANPairingInline(agent: agent)
                     }
-                    .padding(.top, 2)
                 }
 
                 if !agent.peers.isEmpty {
@@ -93,10 +102,8 @@ public struct LANRemoteControlSection: View {
         .padding(10)
         .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 6))
-        .sheet(isPresented: $showPairing, onDismiss: { agent.cancelPairing(); agent.dismissPairingResult() }) {
-            LANPairingSheet(agent: agent, isPresented: $showPairing)
-        }
         .onAppear { if agent.isEnabled { agent.start() } }
+        .onDisappear { agent.cancelPairing(); agent.dismissPairingResult() }
     }
 
     @ViewBuilder
@@ -121,88 +128,83 @@ public struct LANRemoteControlSection: View {
     }
 }
 
-/// The QR + approval sheet. One pairing at a time.
-struct LANPairingSheet: View {
+/// The QR / code / result, rendered inside the Settings card. One pairing
+/// at a time. Compact on purpose: the popover is narrow.
+struct LANPairingInline: View {
     @ObservedObject var agent: LANLinkAgent
-    @Binding var isPresented: Bool
     @State private var now = Date()
+    @State private var copied = false
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(alignment: .leading, spacing: 8) {
             switch agent.pairing {
             case let .showingQR(url, expiresAt):
-                Text("Scan with CLI Pulse on your iPhone")
-                    .font(.headline)
-                if let image = Self.qrImage(for: url) {
-                    Image(nsImage: image)
-                        .interpolation(.none)
-                        .resizable()
-                        .frame(width: 220, height: 220)
-                }
-                Text("Expires in \(max(0, Int(expiresAt.timeIntervalSince(now)))) s")
-                    .font(.caption)
+                Text("Scan with CLI Pulse on your iPhone, or copy the link into it.")
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                HStack(spacing: 12) {
-                    Button("Cancel") { isPresented = false }
-                        .keyboardShortcut(.cancelAction)
-                    // For a phone with no camera to hand (or the Simulator):
-                    // the same link, pasted into the iPhone's pairing screen.
-                    // It is only good for 60 s and only from this Wi-Fi.
-                    Button("Copy link") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(url, forType: .string)
+                HStack(alignment: .top, spacing: 12) {
+                    if let image = Self.qrImage(for: url) {
+                        Image(nsImage: image)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 132, height: 132)
+                    }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Expires in \(max(0, Int(expiresAt.timeIntervalSince(now)))) s")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                        Button(copied ? "Copied" : "Copy link") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(url, forType: .string)
+                            copied = true
+                        }
+                        .controlSize(.small)
+                        Button("Cancel") { agent.cancelPairing() }
+                            .controlSize(.small)
                     }
                 }
 
             case let .awaitingApproval(sas, peerName):
-                Text("Pair with \(peerName)?")
-                    .font(.headline)
-                Text("Approve only if this code matches the one on the iPhone.")
-                    .font(.caption)
+                Text("Pair with \(peerName)? Approve only if this code matches the one on the iPhone.")
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(sas)
-                    .font(.system(size: 40, weight: .semibold, design: .monospaced))
-                    .tracking(6)
-                HStack(spacing: 12) {
-                    Button("Decline") { agent.rejectPairing() }
-                        .keyboardShortcut(.cancelAction)
+                    .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                    .tracking(4)
+                HStack(spacing: 8) {
                     Button("Approve") { agent.approvePairing() }
-                        .keyboardShortcut(.defaultAction)
                         .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                    Button("Decline") { agent.rejectPairing() }
+                        .controlSize(.small)
                 }
 
             case let .succeeded(peerName):
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.green)
-                Text("\(peerName) is paired")
-                    .font(.headline)
-                Button("Done") { isPresented = false }
-                    .keyboardShortcut(.defaultAction)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text("\(peerName) is paired").font(.system(size: 11))
+                    Spacer()
+                    Button("Done") { agent.dismissPairingResult() }.controlSize(.small)
+                }
 
             case let .failed(why):
-                Image(systemName: "xmark.circle")
-                    .font(.system(size: 44))
-                    .foregroundStyle(.secondary)
-                Text(why)
-                    .font(.callout)
-                    .multilineTextAlignment(.center)
-                HStack(spacing: 12) {
-                    Button("Close") { isPresented = false }
-                    Button("Try again") { agent.beginPairing() }
-                        .buttonStyle(.borderedProminent)
+                HStack(spacing: 6) {
+                    Image(systemName: "xmark.circle").foregroundStyle(.secondary)
+                    Text(why).font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Try again") { agent.beginPairing() }.controlSize(.small)
+                    Button("Close") { agent.dismissPairingResult() }.controlSize(.small)
                 }
 
             case .idle:
-                ProgressView()
+                EmptyView()
             }
         }
-        .padding(24)
-        .frame(width: 320)
         .onReceive(tick) { now = $0 }
+        .onChange(of: agent.pairing) { _ in copied = false }
     }
 
     static func qrImage(for string: String) -> NSImage? {
