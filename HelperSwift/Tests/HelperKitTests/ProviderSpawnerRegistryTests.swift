@@ -38,10 +38,9 @@ final class ProviderSpawnerRegistryTests: XCTestCase {
     // MARK: - argv resolution
 
     func test_codex_argv_default() {
-        XCTAssertEqual(
-            CodexSpawner().argv(extraEnv: [:], helperArgv0: nil),
-            ["codex"]
-        )
+        let argv = CodexSpawner().argv(extraEnv: [:], helperArgv0: nil)
+        XCTAssertEqual(argv.count, 1)
+        XCTAssertEqual(binaryName(argv[0]), "codex")
     }
 
     // v1.35: managed Gemini routes through the `agy` wrapper (runs on the user's plan),
@@ -79,12 +78,19 @@ final class ProviderSpawnerRegistryTests: XCTestCase {
 
     // MARK: - claude inline-settings injection
 
+    // M1a: argv[0] is now resolved to an absolute path when the binary is
+    // installed (see SpawnPathResolutionTests), so these pin the BINARY
+    // NAME, not the literal string — a machine with `claude` on its
+    // augmented PATH and a CI runner without it must both pass.
+    private func binaryName(_ argv0: String) -> String {
+        URL(fileURLWithPath: argv0).lastPathComponent
+    }
+
     func test_claude_argv_default_no_settings_when_no_argv0() {
         let spawner = ClaudeSpawner(buildInlineSettings: { _ in "{}" })
-        XCTAssertEqual(
-            spawner.argv(extraEnv: [:], helperArgv0: nil),
-            ["claude"]
-        )
+        let argv = spawner.argv(extraEnv: [:], helperArgv0: nil)
+        XCTAssertEqual(argv.count, 1)
+        XCTAssertEqual(binaryName(argv[0]), "claude")
     }
 
     func test_claude_argv_appends_settings_json_when_argv0_provided() {
@@ -96,7 +102,7 @@ final class ProviderSpawnerRegistryTests: XCTestCase {
             helperArgv0: "/path/to/cli_pulse_helper"
         )
         XCTAssertEqual(argv.count, 3)
-        XCTAssertEqual(argv[0], "claude")
+        XCTAssertEqual(binaryName(argv[0]), "claude")
         XCTAssertEqual(argv[1], "--settings")
         XCTAssertTrue(argv[2].contains("/path/to/cli_pulse_helper"))
     }
@@ -106,10 +112,9 @@ final class ProviderSpawnerRegistryTests: XCTestCase {
         // spawn must still go ahead without the hook (degraded mode
         // — terminal-style approval prompts).
         let spawner = ClaudeSpawner(buildInlineSettings: { _ in nil })
-        XCTAssertEqual(
-            spawner.argv(extraEnv: [:], helperArgv0: "/path"),
-            ["claude"]
-        )
+        let argv = spawner.argv(extraEnv: [:], helperArgv0: "/path")
+        XCTAssertEqual(argv.count, 1)
+        XCTAssertEqual(binaryName(argv[0]), "claude")
     }
 
     // MARK: - approval surface contract
