@@ -26,6 +26,14 @@ import CryptoKit
 /// the race to connect would simply display what the Mac sent, and the
 /// user would see matching codes on an attacker's phone and their own
 /// Mac. Each side derives it from its own end of the handshake.
+/// First-caller-wins flag for `withDeadline`'s race. File scope because a
+/// type cannot be nested in a generic function.
+private final class DeadlineOnce: @unchecked Sendable {
+    private let lock = NSLock()
+    private var done = false
+    func first() -> Bool { lock.lock(); defer { lock.unlock() }; if done { return false }; done = true; return true }
+}
+
 public enum LANPairingSession {
 
     public enum Method: String, Sendable {
@@ -190,18 +198,32 @@ public enum LANPairingSession {
         }
 
         /// Run `op` but give up at `deadline`. Nil on timeout.
+        ///
+        /// NOT a task group. `withTaskGroup` does not return until every
+        /// child has finished, and the child that matters here — the
+        /// user's decision — sits on a CheckedContinuation that
+        /// cancellation cannot interrupt. Found on hardware: a pairing
+        /// nobody answered kept the pairing listener up indefinitely.
+        /// Instead, two independent tasks race to resume one outer
+        /// continuation; the first wins, the other's late resume is
+        /// ignored, and an uninterruptible `op` simply finishes later,
+        /// when the agent finally resolves it.
         private func withDeadline<T: Sendable>(_ deadline: Date, _ op: @escaping @Sendable () async -> T?) async -> T? {
             let remaining = deadline.timeIntervalSince(clock())
             guard remaining > 0 else { return nil }
-            return await withTaskGroup(of: T?.self) { group in
-                group.addTask { await op() }
-                group.addTask {
-                    try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
-                    return nil
+            let once = DeadlineOnce()
+            return await withCheckedContinuation { (k: CheckedContinuation<T?, Never>) in
+                let opTask = Task {
+                    let v = await op()
+                    if once.first() { k.resume(returning: v) }
                 }
-                let first = await group.next() ?? nil
-                group.cancelAll()
-                return first
+                Task {
+                    try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+                    if once.first() {
+                        opTask.cancel()
+                        k.resume(returning: nil)
+                    }
+                }
             }
         }
     }

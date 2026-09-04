@@ -103,7 +103,12 @@ public struct LANRemoteControlSection: View {
         .background(Color.secondary.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .onAppear { if agent.isEnabled { agent.start() } }
-        .onDisappear { agent.cancelPairing(); agent.dismissPairingResult() }
+        // Deliberately NO cancel on disappear. This card lives in the
+        // menu-bar popover, which disappears whenever the user clicks
+        // anywhere else — including the app they are copying the link
+        // INTO. Cancelling there killed the pairing listener between
+        // "Copy link" and the phone's first look. The QR's own 60 s
+        // lifetime is the cancel; reopening Settings shows the same code.
     }
 
     @ViewBuilder

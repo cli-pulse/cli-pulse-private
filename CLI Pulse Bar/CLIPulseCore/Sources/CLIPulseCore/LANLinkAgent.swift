@@ -294,9 +294,23 @@ public final class LANLinkAgent: ObservableObject {
             try? await Task.sleep(nanoseconds: UInt64(LANPairing.qrLifetime * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await MainActor.run { [weak self] in
-                guard let self, case .showingQR = self.pairing else { return }
-                self.cancelPairing()
-                self.pairing = .failed("QR code expired")
+                guard let self else { return }
+                switch self.pairing {
+                case .showingQR:
+                    // Nobody connected. Tear it all down here.
+                    self.cancelPairing()
+                    self.pairing = .failed("QR code expired")
+                case .awaitingApproval:
+                    // Someone connected and the user never answered. The
+                    // session is parked on `askUser`; answer "no" for it,
+                    // and let the session finish through `pairingFinished`
+                    // (which sees the expired payload, reports `.expired`,
+                    // and cancels the listener). Found on hardware: without
+                    // this arm the pairing listener stayed up for good.
+                    self.rejectPairing()
+                default:
+                    break
+                }
             }
         }
     }

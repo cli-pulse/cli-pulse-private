@@ -185,3 +185,57 @@ final class LockedBox<T>: @unchecked Sendable {
     func get() -> T { lock.lock(); defer { lock.unlock() }; return value }
     func set(_ v: T) { lock.lock(); value = v; lock.unlock() }
 }
+
+/// Found on hardware: a pairing that reached "awaiting approval" and was
+/// never answered left the PAIRING LISTENER up indefinitely, past the QR's
+/// expiry. The card's expiry guard only fires from `.showingQR`, and the
+/// session's own deadline could not return — `withTaskGroup` waits for all
+/// children, and the `decide` child sits on a CheckedContinuation that
+/// cancellation cannot interrupt.
+final class LANPairingSessionExpiryTests: XCTestCase {
+
+    func testAnUnansweredApprovalStillEndsAtTheQRDeadline() async throws {
+        let macID = LANPairing.LocalIdentity.generate()
+        let minted = Date()
+        // A code with 1.5 s left. The decide closure NEVER returns —
+        // exactly what a user who walked away looks like.
+        let payload = LANPairing.QRPayload(
+            deviceID: macID.deviceID,
+            nonce: Data(repeating: 3, count: 32),
+            expiresAt: minted.addingTimeInterval(1.5))
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let agent = LANPairingSession.Agent(
+            channel: macEnd, identity: macID, displayName: "M", payload: payload,
+            decide: { _, _ in
+                await withCheckedContinuation { (_: CheckedContinuation<Bool, Never>) in
+                    // parked forever, on purpose
+                }
+            })
+        let run = Task { await agent.run() }
+
+        // The phone does its half and then waits for the answer.
+        let phone = Task {
+            try await LANPairingSession.Client.pair(
+                channel: phoneEnd, identity: .generate(), displayName: "P", payload: payload,
+                onSAS: { _ in })
+        }
+
+        // The Mac side must give up by the deadline, not hang. An
+        // expectation with a timeout, NOT a task group racing a sleep —
+        // a task group waits for all its children, which is the very
+        // defect under test, and the first version of this test hung
+        // for ten minutes proving it.
+        let finished = expectation(description: "agent.run() returns by the QR deadline")
+        let box = LockedBox<LANPairingSession.Agent.Outcome?>(nil)
+        Task {
+            let o = await run.value
+            box.set(o)
+            finished.fulfill()
+        }
+        await fulfillment(of: [finished], timeout: 6)
+        XCTAssertEqual(box.get(), .expired,
+                       "agent must report .expired at the QR deadline even when nobody ever answers")
+        phone.cancel()
+        macEnd.close(); phoneEnd.close()
+    }
+}
