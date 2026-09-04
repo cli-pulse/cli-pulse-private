@@ -86,8 +86,77 @@ public enum LANTransportSecurity {
     /// exactly one. The same call, so the two ends cannot be configured
     /// differently by accident.
     public static func parameters(presharedKeys: [PresharedKey]) throws -> NWParameters {
+        try makeParameters(presharedKeys: presharedKeys, registry: nil)
+    }
+
+    /// Remote-control M1: which paired phone is on which accepted
+    /// connection.
+    ///
+    /// The M0 design note said Apple's TLS-PSK API gives a server no way
+    /// to learn WHICH registered identity a client authenticated with.
+    /// The M1 design review measured otherwise: a SERVER-side
+    /// `sec_protocol_options_set_pre_shared_key_selection_block` is
+    /// invoked with the client's presented identity, answering
+    /// `complete(hint)` lets the handshake finish with that key (a wrong
+    /// key still fails with bad MAC, an unknown identity with -9864), and
+    /// the metadata object handed to the block is the same object the
+    /// accepted `NWConnection` reports after `.ready`. So the identity is
+    /// authenticated by the handshake itself and needs no extra wire
+    /// field — an M0 phone is attributed exactly like an M1 phone.
+    /// `LANTransportSecurityTests` pins this live, with negative controls,
+    /// because the SDK header words the block for the client side.
+    public final class IdentityRegistry: @unchecked Sendable {
+        private let lock = NSLock()
+        private var byMetadata: [ObjectIdentifier: String] = [:]
+        private let known: Set<String>
+
+        init(known: Set<String>) { self.known = known }
+
+        func record(_ metadata: sec_protocol_metadata_t, hint: String?) -> Bool {
+            guard let hint, known.contains(hint) else { return false }
+            lock.lock()
+            byMetadata[ObjectIdentifier(metadata)] = hint
+            // A registry lives as long as its listener; handshakes that never
+            // reach `.ready` would otherwise pile up. Anything beyond a few
+            // hundred is not a real Wi-Fi.
+            if byMetadata.count > 512 { byMetadata.removeAll() }
+            lock.unlock()
+            return true
+        }
+
+        /// The identity the peer on `connection` authenticated with, or nil
+        /// for a connection this registry never saw (or one whose
+        /// handshake never completed). Read once after `.ready`.
+        public func identity(for connection: NWConnection) -> String? {
+            guard let md = connection.metadata(definition: NWProtocolTLS.definition)
+                    as? NWProtocolTLS.Metadata else { return nil }
+            let key = ObjectIdentifier(md.securityProtocolMetadata)
+            lock.lock(); defer { lock.unlock() }
+            return byMetadata[key]
+        }
+    }
+
+    /// Listener parameters that also attribute each accepted connection to
+    /// the PSK identity it presented. Same suite, same version pinning as
+    /// `parameters(presharedKeys:)`.
+    public static func listenerParameters(presharedKeys: [PresharedKey]) throws -> (NWParameters, IdentityRegistry) {
+        let registry = IdentityRegistry(known: Set(presharedKeys.map(\.identity)))
+        return (try makeParameters(presharedKeys: presharedKeys, registry: registry), registry)
+    }
+
+    private static func makeParameters(presharedKeys: [PresharedKey], registry: IdentityRegistry?) throws -> NWParameters {
         let tls = NWProtocolTLS.Options()
         let sec = tls.securityProtocolOptions
+
+        if let registry {
+            sec_protocol_options_set_pre_shared_key_selection_block(sec, { metadata, hint, complete in
+                let presented = hint.map { String(decoding: Data($0 as DispatchData), as: UTF8.self) }
+                // Only a registered identity completes; anything else fails
+                // the handshake as "unknown PSK identity" — the same answer
+                // the stack gives without a block.
+                complete(registry.record(metadata, hint: presented) ? hint : nil)
+            }, DispatchQueue.global(qos: .userInitiated))
+        }
 
         for psk in presharedKeys {
             psk.key.withUnsafeBytes { (keyBytes: UnsafeRawBufferPointer) in

@@ -146,6 +146,72 @@ final class LANTransportSecurityTests: XCTestCase {
                        "unknown identity must fail even with a valid key")
     }
 
+    // MARK: - Listener-side identity attribution (remote-control M1)
+
+    /// Which paired phone is on a given accepted connection? The design
+    /// review measured that a SERVER-side `pre_shared_key_selection_block`
+    /// is invoked with the client's presented PSK identity and that the
+    /// metadata object it receives is the same one the accepted
+    /// `NWConnection` reports after `.ready` — attribution authenticated by
+    /// the handshake itself, no extra wire fields. The SDK header words the
+    /// block for the client side, so this pins the server-side behaviour
+    /// the way the ciphersuite is pinned: live, with negative controls.
+    func testListenerAttributesEachConnectionToThePresentedIdentity() throws {
+        let a = try psk("phone-a", identity: "peer:a")
+        let b = try psk("phone-b", identity: "peer:b")
+        let (params, registry) = try LANTransportSecurity.listenerParameters(presharedKeys: [a, b])
+        let q = DispatchQueue(label: "lan.attr.test")
+        let listener = try NWListener(using: params)
+        let accepted = NSLock(); var identities: [String] = []
+        listener.newConnectionHandler = { conn in
+            conn.stateUpdateHandler = { st in
+                if case .ready = st {
+                    accepted.lock(); identities.append(registry.identity(for: conn) ?? "<none>"); accepted.unlock()
+                    conn.send(content: Data("ok".utf8), completion: .contentProcessed { _ in })
+                }
+            }
+            conn.start(queue: q)
+        }
+        let ready = DispatchSemaphore(value: 0)
+        listener.stateUpdateHandler = { if case .ready = $0 { ready.signal() } }
+        listener.start(queue: q)
+        XCTAssertEqual(ready.wait(timeout: .now() + 5), .success)
+        defer { listener.cancel() }
+        let port = try XCTUnwrap(listener.port)
+
+        func connect(_ key: LANTransportSecurity.PresharedKey) throws -> Bool {
+            let done = DispatchSemaphore(value: 0)
+            var delivered = false
+            let c = NWConnection(host: .ipv4(.loopback), port: port,
+                                 using: try LANTransportSecurity.parameters(presharedKeys: [key]))
+            c.stateUpdateHandler = { st in
+                switch st {
+                case .ready:
+                    c.receive(minimumIncompleteLength: 1, maximumLength: 8) { d, _, _, _ in
+                        delivered = (d?.isEmpty == false); done.signal()
+                    }
+                case .failed, .waiting: done.signal()
+                default: break
+                }
+            }
+            c.start(queue: q)
+            _ = done.wait(timeout: .now() + 4)
+            c.cancel()
+            return delivered
+        }
+
+        XCTAssertTrue(try connect(b), "B/B")
+        XCTAssertTrue(try connect(a), "A/A")
+        XCTAssertTrue(try connect(b), "B/B again")
+        // Negative controls: a wrong key under a known identity, and an
+        // unknown identity, must not be attributed to anyone.
+        XCTAssertFalse(try connect(try LANTransportSecurity.PresharedKey(identity: "peer:a", key: b.key)), "A id, B key")
+        XCTAssertFalse(try connect(try LANTransportSecurity.PresharedKey(identity: "peer:z", key: a.key)), "unknown id")
+        usleep(200_000)
+        accepted.lock(); let seen = identities; accepted.unlock()
+        XCTAssertEqual(seen, ["peer:b", "peer:a", "peer:b"], "one identity per accepted connection, in order")
+    }
+
     func testExporterSecretIsPerHandshake() throws {
         // Two handshakes with the SAME PSK must yield DIFFERENT exporter
         // secrets — that is what makes the pairing SAS bind to one
