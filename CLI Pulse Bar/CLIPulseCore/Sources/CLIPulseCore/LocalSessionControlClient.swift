@@ -177,7 +177,7 @@ public struct UninstallCodexHookResult: Sendable, Equatable {
 /// perspective). When iter 2A introduces a streaming `subscribe_events`
 /// surface, that path will hold a connection open for the lifetime of
 /// the subscription — but iter 1 does NOT need that.
-public final class LocalSessionControlClient: SessionEventStreaming, MachineControlRelaying {
+public final class LocalSessionControlClient: SessionEventStreaming, MachineControlRelaying, SessionControlling {
     public static let appGroupID = "group.yyh.CLI-Pulse"
     public static let socketFilename = "clipulse-helper.sock"
     public static let authTokenFilename = "helper-auth-token"
@@ -459,6 +459,18 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
         // back to the legacy `.pkg`-manifest compare. Decoded as a raw String
         // so an unknown future value passes through untouched.
         let implementation = result["implementation"] as? String
+        // Remote-control M1a (additive): stringify the helper's dict so the
+        // shared hello type stays scalar-only.
+        var claudeRemoteControl: [String: String]? = nil
+        if let rc = result["claude_remote_control"] as? [String: Any] {
+            var d: [String: String] = [:]
+            for (k, v) in rc {
+                if let n = v as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() { d[k] = n.boolValue ? "true" : "false" }
+                else if let sv = v as? String { d[k] = sv }
+                else if let n = v as? NSNumber { d[k] = n.stringValue }
+            }
+            claudeRemoteControl = d
+        }
         return SessionControlHello(
             protocolVersion: version,
             supportedMethods: Set(methods),
@@ -467,7 +479,8 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
             helperVersion: helperVersion,
             paired: paired,
             providerPlanStatus: providerPlanStatus,
-            implementation: implementation
+            implementation: implementation,
+            claudeRemoteControl: claudeRemoteControl
         )
     }
 
@@ -493,6 +506,27 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
         cwdHmac: String?,
         cwd: String?
     ) async throws -> SessionControlStartResult {
+        try await startManagedSession(
+            provider: provider, clientLabel: clientLabel, cwdBasename: cwdBasename,
+            cwdHmac: cwdHmac, cwd: cwd, claudeRemoteControl: false)
+    }
+
+    /// `SessionControlling` witness (remote-control M1).
+    public func startManagedSession(provider: String, clientLabel: String?, cwd: String?, claudeRemoteControl: Bool) async throws -> SessionControlStartResult {
+        try await startManagedSession(
+            provider: provider, clientLabel: clientLabel,
+            cwdBasename: cwd.map { ($0 as NSString).lastPathComponent }, cwdHmac: nil,
+            cwd: cwd, claudeRemoteControl: claudeRemoteControl)
+    }
+
+    public func startManagedSession(
+        provider: String,
+        clientLabel: String?,
+        cwdBasename: String?,
+        cwdHmac: String?,
+        cwd: String?,
+        claudeRemoteControl: Bool
+    ) async throws -> SessionControlStartResult {
         var params: [String: Any] = ["provider": provider]
         if let clientLabel { params["client_label"] = clientLabel }
         if let cwdBasename { params["cwd_basename"] = cwdBasename }
@@ -501,6 +535,8 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
         // the child in. Local UDS only (same-Mac); the helper validates it
         // (absolute + existing dir). Omitted ⇒ helper inherits its own dir.
         if let cwd { params["cwd"] = cwd }
+        // Remote-control M1a (additive): only ever sent as JSON true.
+        if claudeRemoteControl { params["claude_remote_control"] = true }
         let result = try await send(method: "start_session", params: params)
         guard let sid = result["session_id"] as? String, !sid.isEmpty else {
             throw SessionControlError.invalidResponse("start_session: missing session_id")
@@ -553,7 +589,12 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
                 clientLabel: row["client_label"] as? String,
                 status: (row["status"] as? String) ?? "running",
                 controllable: (row["controllable"] as? Bool) ?? true,
-                source: .managed
+                source: .managed,
+                remoteControl: (row["remote_control"] as? [String: Any]).flatMap { rc in
+                    (rc["status"] as? String).map { RemoteControlInfo(status: $0, url: rc["url"] as? String, reason: rc["reason"] as? String) }
+                },
+                attached: (row["attached"] as? Bool) ?? false,
+                localOnly: (row["local_only"] as? Bool) ?? false
             ))
         }
         for row in detectedRaw {

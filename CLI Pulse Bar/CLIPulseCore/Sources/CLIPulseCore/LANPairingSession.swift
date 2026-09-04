@@ -138,10 +138,13 @@ public enum LANPairingSession {
                     myPrivateKey: identity.privateKey, peerPublicKey: phonePub,
                     macPublicKey: identity.publicKey, phonePublicKey: phonePub,
                     nonce: payload.nonce)
+                // M1: a phone paired now is paired for CONTROL — the Approve
+                // card says so. The Settings card can turn it off per phone.
                 let peer = try LANPairing.PairedPeer(
                     id: phoneID, displayName: phoneName,
                     pskIdentity: LANPairing.pskIdentity(phoneID: phoneID),
-                    sessionKey: key, peerPublicKey: phonePub, pairedAt: clock())
+                    sessionKey: key, peerPublicKey: phonePub, pairedAt: clock(),
+                    controlAllowed: true)
                 await reply(awID, result: ["approved": .bool(true)])
                 return .paired(peer)
             } catch let f as Failure {

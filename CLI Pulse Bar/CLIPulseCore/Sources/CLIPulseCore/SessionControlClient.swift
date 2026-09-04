@@ -102,6 +102,42 @@ public protocol SessionEventStreaming: SessionControlClient {
     func isLocalControlEnabled() async throws -> Bool
 }
 
+/// The control surface a terminal needs on top of `SessionEventStreaming`
+/// — what the phone drives over the LAN link in remote-control M1 and what
+/// the Mac's own terminal has always driven over UDS. Declared in the
+/// protocol body for the same reason as `SessionEventStreaming`: an
+/// extension-only requirement dispatches statically and a conformer's
+/// implementation is silently ignored.
+public protocol SessionControlling: SessionEventStreaming {
+    /// Raw bytes to the session's stdin — control bytes intact, no CR
+    /// appended.
+    func sendInputRaw(sessionId: String, bytes: Data) async throws
+    /// Window size; the helper clamps to 1…1000 on both axes.
+    func resize(sessionId: String, cols: Int, rows: Int) async throws
+    /// Spawn with the real working directory and (Claude only) the
+    /// per-session opt-in to `--remote-control`.
+    func startManagedSession(provider: String, clientLabel: String?, cwd: String?, claudeRemoteControl: Bool) async throws -> SessionControlStartResult
+    func getPendingApprovals(sessionId: String?) async throws -> [PendingApproval]
+    func approveAction(sessionId: String, approvalId: String, decision: ApprovalDecision, comment: String?) async throws
+}
+
+/// Remote-control M1: the delegation outcome the helper reports on a
+/// session row (`remote_control`). `status` ∈ requested / ready /
+/// unavailable; `url` with ready, `reason` with unavailable.
+public struct RemoteControlInfo: Sendable, Equatable {
+    public let status: String
+    public let url: String?
+    public let reason: String?
+
+    public init(status: String, url: String?, reason: String?) {
+        self.status = status
+        self.url = url
+        self.reason = reason
+    }
+
+    public var isReady: Bool { status == "ready" && url != nil }
+}
+
 extension SessionControlClient {
     public func sendInput(sessionId: String, payload: String) async throws {
         throw SessionControlError.notImplemented
@@ -176,6 +212,11 @@ public struct SessionControlHello: Sendable, Equatable {
     /// app, so it must never be compared against the standalone `.pkg`
     /// manifest.
     public let implementation: String?
+    /// Remote-control M1 (additive): the helper's `claude_remote_control`
+    /// hello field, values stringified — `supported` ("true"/"false"),
+    /// `policy` ("allowed"/"disabled"), `auth` ("oauth"/"none"). nil on a
+    /// helper that predates it, which the readers treat as unsupported.
+    public let claudeRemoteControl: [String: String]?
 
     public init(
         protocolVersion: Int,
@@ -185,7 +226,8 @@ public struct SessionControlHello: Sendable, Equatable {
         helperVersion: String = "",
         paired: Bool? = nil,
         providerPlanStatus: [String: String] = [:],
-        implementation: String? = nil
+        implementation: String? = nil,
+        claudeRemoteControl: [String: String]? = nil
     ) {
         self.protocolVersion = protocolVersion
         self.supportedMethods = supportedMethods
@@ -195,6 +237,14 @@ public struct SessionControlHello: Sendable, Equatable {
         self.paired = paired
         self.providerPlanStatus = providerPlanStatus
         self.implementation = implementation
+        self.claudeRemoteControl = claudeRemoteControl
+    }
+
+    /// The phone may offer "also open in the Claude app" only when the
+    /// helper can add the flag AND Claude's own policy allows it.
+    public var claudeRemoteControlOfferable: Bool {
+        guard let rc = claudeRemoteControl else { return false }
+        return rc["supported"] == "true" && rc["policy"] != "disabled"
     }
 
     /// True when the socket owner is the app-bundled Swift helper — the one
@@ -284,16 +334,28 @@ public struct SessionControlSummary: Sendable, Identifiable, Equatable {
     public let status: String
     public let controllable: Bool
     public let source: SessionControlSource
+    /// Remote-control M1 (additive): delegation outcome, when the session
+    /// asked for `--remote-control`.
+    public let remoteControl: RemoteControlInfo?
+    /// M4.4a/M4.4d, surfaced in M1: a hand-launched session parked in
+    /// tmux, and whether it is still local-only (never leaves the Mac).
+    public let attached: Bool
+    public let localOnly: Bool
 
     public init(id: String, provider: String, clientLabel: String?,
                 status: String, controllable: Bool = true,
-                source: SessionControlSource = .managed) {
+                source: SessionControlSource = .managed,
+                remoteControl: RemoteControlInfo? = nil,
+                attached: Bool = false, localOnly: Bool = false) {
         self.id = id
         self.provider = provider
         self.clientLabel = clientLabel
         self.status = status
         self.controllable = controllable
         self.source = source
+        self.remoteControl = remoteControl
+        self.attached = attached
+        self.localOnly = localOnly
     }
 }
 

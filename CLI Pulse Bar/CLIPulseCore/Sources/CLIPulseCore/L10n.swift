@@ -992,6 +992,26 @@ public enum L10n {
         public static var sessions: String { tr("remote.sessions") }
         public static var done: String { tr("remote.done") }
         public static var cancel: String { tr("remote.cancel") }
+        public static var newSession: String { tr("remote.new_session") }
+        public static var noSessionsControl: String { tr("remote.no_sessions_control") }
+        public static var noProviders: String { tr("remote.no_providers") }
+        public static var provider: String { tr("remote.provider") }
+        public static var workingDirectory: String { tr("remote.working_directory") }
+        public static var recentDirectories: String { tr("remote.recent_directories") }
+        public static var alsoOpenOnClaude: String { tr("remote.also_open_on_claude") }
+        public static var claudeTranscriptNotice: String { tr("remote.claude_transcript_notice") }
+        public static var openOnClaude: String { tr("remote.open_on_claude") }
+        public static var claudeSignInHint: String { tr("remote.claude_sign_in_hint") }
+        public static var start: String { tr("remote.start") }
+        public static var stop: String { tr("remote.stop") }
+        public static var approve: String { tr("remote.approve") }
+        public static var reject: String { tr("remote.reject") }
+        public static var awaitingApproval: String { tr("remote.awaiting_approval") }
+        public static var approvalExpired: String { tr("remote.approval_expired") }
+        public static var controlOffOnMac: String { tr("remote.control_off_on_mac") }
+        public static var watchOnlyLink: String { tr("remote.watch_only_link") }
+        public static var startFailed: String { tr("remote.start_failed") }
+        public static var sessionEnded: String { tr("remote.session_ended") }
     }
 
     public enum integrations {

@@ -103,23 +103,41 @@ public enum LANLinkProtocol {
         case sessionSubscribe = "session.subscribe"
         case sessionUnsubscribe = "session.unsubscribe"
 
-        // ── M1: control (declared, refused until M1) ──
+        // ── M1: control ──
         case sessionInput = "session.input"
         case sessionResize = "session.resize"
         case sessionStart = "session.start"
         case sessionStop = "session.stop"
         case approvalDecide = "approval.decide"
+        /// Pending approvals for one session (or all). A read, but an
+        /// approval payload is a control surface, so it needs control
+        /// permission like the verbs above.
+        case approvalsList = "approvals.list"
 
-        /// Verbs the agent honours today. Anything else in the enum is
-        /// refused with `not_implemented`. This set — not the enum — is
-        /// the M0 allowlist, and `LANLinkProtocolTests` pins it.
+        /// What a peer WITHOUT control permission gets — exactly M0's
+        /// surface. `LANLinkProtocolTests` pins it.
         public static let readOnly: Set<Method> = [
             .hello, .ping, .sessionsList, .sessionTail,
             .sessionSubscribe, .sessionUnsubscribe,
         ]
 
+        /// Verbs that change something on the Mac. Permitted per peer
+        /// (`PairedPeer.controlAllowed`), re-checked on every request.
+        public static let control: Set<Method> = [
+            .sessionInput, .sessionResize, .sessionStart, .sessionStop, .approvalDecide,
+        ]
+
+        /// Everything M1 added: the control verbs plus the approval read.
+        public static let m1: Set<Method> = control.union([.approvalsList])
+
         public var isReadOnly: Bool { Self.readOnly.contains(self) }
+        public var isM1: Bool { Self.m1.contains(self) }
     }
+
+    /// Largest decoded `session.input` payload per frame. xterm's onData
+    /// chunks are bytes; a paste is chunked by the phone. Keeps one frame
+    /// from pinning the PTY writer for the write deadline.
+    public static let maxInputBytesPerFrame = 8192
 
     // MARK: - Event kinds
 
@@ -136,6 +154,15 @@ public enum LANLinkProtocol {
         /// The agent is tearing the subscription down and says why.
         /// `d.reason` ∈ `SubscriptionEndReason`.
         case subscriptionEnded = "subscription_ended"
+        // ── M1 ──
+        /// `d.approval` = the pending approval (summary and metadata
+        /// redacted at egress). Only sent to a control-permitted peer.
+        case approvalRequested = "approval_requested"
+        /// `d.session_id`, `d.approval_id`, `d.decision`, `d.status`.
+        case approvalResolved = "approval_resolved"
+        /// `d.session_id`, `d.status`, `d.url?`, `d.reason?` — the
+        /// helper's delegation outcome for a `--remote-control` session.
+        case sessionRemoteControl = "session_remote_control"
     }
 
     /// Why a subscription ended, as sent in `subscription_ended`.
@@ -173,6 +200,15 @@ public enum LANLinkProtocol {
         public static let subscriptionNotFound = "subscription_not_found"
         /// Too many concurrent subscriptions from one connection.
         public static let subscriptionLimit = "subscription_limit"
+        // ── M1 ──
+        /// The peer on this connection may not control sessions (not
+        /// attributed, or the user turned its control off). Read verbs
+        /// still work.
+        public static let controlNotAllowed = "control_not_allowed"
+        /// A hand-launched session the helper does not own and the user
+        /// has not opted into sharing. Not listed, not readable, not
+        /// controllable over the link.
+        public static let sessionLocalOnly = "session_local_only"
     }
 
     /// A connection may hold at most this many live subscriptions. One
@@ -305,6 +341,9 @@ public struct LANLinkWireError: Equatable, Sendable {
         case LANLinkProtocol.ErrorCode.subscriptionNotFound,
              LANLinkProtocol.ErrorCode.subscriptionLimit:
             return .invalidResponse("\(code): \(message)")
+        case LANLinkProtocol.ErrorCode.controlNotAllowed,
+             LANLinkProtocol.ErrorCode.sessionLocalOnly:
+            return .notControllable
         default:
             return SessionControlErrorMapping.error(forWireCode: code, message: message)
         }
@@ -365,6 +404,23 @@ public enum AnySendableJSON: Equatable, Sendable {
         case .null: return NSNull()
         case let .array(a): return a.map { $0.value }
         case let .object(o): return o.mapValues { $0.value }
+        }
+    }
+
+    /// Like `value`, but numbers and booleans come back as `NSNumber`, the
+    /// way `JSONSerialization` hands them to the Mac's UDS decoders. A
+    /// Swift `Int` does not `as? Double`, so `PendingApproval.decode`
+    /// (written against JSONSerialization output) dropped every approval
+    /// whose `created_at` had round-tripped as an integer.
+    public var foundationValue: Any {
+        switch self {
+        case let .string(s): return s
+        case let .int(i): return NSNumber(value: i)
+        case let .double(d): return NSNumber(value: d)
+        case let .bool(b): return NSNumber(value: b)
+        case .null: return NSNull()
+        case let .array(a): return a.map { $0.foundationValue }
+        case let .object(o): return o.mapValues { $0.foundationValue }
         }
     }
 

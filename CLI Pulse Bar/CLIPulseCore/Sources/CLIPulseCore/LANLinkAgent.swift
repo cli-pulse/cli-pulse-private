@@ -12,13 +12,16 @@ private let agentLog = Logger(subsystem: "com.cli-pulse.bar", category: "lan-age
 ///
 /// ── Two listeners, on purpose ──
 ///
-/// Apple's TLS-PSK API gives a server no documented way to learn WHICH
-/// registered identity a client authenticated with. So the agent does
-/// not try: the STEADY listener's key set is exactly the paired phones,
-/// and the PAIRING listener's key set is exactly the current QR's key,
-/// and "which listener accepted it" is the identity. A phone that only
-/// holds a QR nonce reaches a listener that cannot serve sessions,
-/// whatever it claims to be.
+/// The STEADY listener's key set is exactly the paired phones, and the
+/// PAIRING listener's key set is exactly the current QR's key, so a phone
+/// that only holds a QR nonce reaches a listener that cannot serve
+/// sessions, whatever it claims to be. Since M1 each connection also
+/// proves WHICH phone it is: in `hello` the phone sends its `did` and an
+/// HMAC over the connection's exporter keyed by the shared per-peer key
+/// (`LANPairing.peerBindingProof`), which the agent verifies against the
+/// stored key for that `did`. Portable (documented CryptoKit + exporter,
+/// no version-specific TLS introspection) and it is what per-phone
+/// control permission and "Forget closes the live link" rest on.
 ///
 /// The steady listener is recreated whenever the peer set changes —
 /// `NWParameters` are fixed at start.
@@ -74,21 +77,24 @@ public final class LANLinkAgent: ObservableObject {
 
     public private(set) var identity: LANPairing.LocalIdentity?
 
-    private let backend: any SessionEventStreaming
+    private let backend: any SessionControlling
     private let displayName: String
     private let cloudDeviceID: @Sendable () -> String?
     private let queue = DispatchQueue(label: "cli-pulse.lan.agent")
 
     private var steadyListener: NWListener?
     private var pairingListener: NWListener?
-    private var sessions: [ObjectIdentifier: (LANLinkAgentSession, Task<Void, Never>)] = [:]
+    private var sessions: [ObjectIdentifier: (session: LANLinkAgentSession, task: Task<Void, Never>, peerID: Box)] = [:]
+    /// A mutable holder so the session's own hello handler can report the
+    /// peer it proved back to the agent (for Forget-closes-links).
+    final class Box: @unchecked Sendable { var id: String?; init() {} }
     private var pairingTask: Task<Void, Never>?
     private var pairingDecision: CheckedContinuation<Bool, Never>?
     private var pairingExpiryTask: Task<Void, Never>?
     private var currentQR: LANPairing.QRPayload?
 
     public init(
-        backend: any SessionEventStreaming,
+        backend: any SessionControlling,
         displayName: String = Host.current().localizedName ?? "Mac",
         cloudDeviceID: @escaping @Sendable () -> String? = { nil }
     ) {
@@ -130,9 +136,10 @@ public final class LANLinkAgent: ObservableObject {
         cancelPairing()
         steadyListener?.cancel()
         steadyListener = nil
-        for (_, (session, task)) in sessions {
-            Task { await session.close() }
-            task.cancel()
+        for (_, entry) in sessions {
+            let s = entry.session
+            Task { await s.close() }
+            entry.task.cancel()
         }
         sessions = [:]
         state = .off
@@ -141,13 +148,42 @@ public final class LANLinkAgent: ObservableObject {
     public func forget(peerID: String) {
         LANPairingStore.remove(peerID: peerID)
         peers = LANPairingStore.peers()
+        // Cancelling the listener does NOT close accepted connections
+        // (measured: they stay `.ready` with data flowing). Close this
+        // phone's live links explicitly — AND every still-unattributed
+        // connection (one that never sent a valid hello binding proof, so
+        // `box.id` is nil). A forgotten phone that only ever watched
+        // read-only never proved a peer id, so matching on the id alone
+        // would leave its covert stream running past Forget. An innocent
+        // phone caught mid-handshake just reconnects.
+        closeSessions { $0 == peerID || $0 == nil }
         if steadyListener != nil { restartSteadyListener() }
     }
 
     public func forgetAll() {
         LANPairingStore.removeAllPeers()
         peers = []
+        closeSessions { _ in true }
         if steadyListener != nil { restartSteadyListener() }
+    }
+
+    /// M1: allow or withdraw CONTROL for one phone without cutting its
+    /// link. Live connections ask on every control frame, so this applies
+    /// to the very next keystroke.
+    public func setControlAllowed(peerID: String, _ allowed: Bool) {
+        do {
+            try LANPairingStore.setControlAllowed(peerID: peerID, allowed)
+        } catch {
+            agentLog.error("setControlAllowed(\(peerID, privacy: .public)) failed: \(String(describing: error))")
+        }
+        peers = LANPairingStore.peers()
+    }
+
+    private func closeSessions(where match: (String?) -> Bool) {
+        for (_, entry) in sessions where match(entry.peerID.id) {
+            let s = entry.session
+            Task { await s.close() }
+        }
     }
 
     // MARK: - Steady listener
@@ -207,7 +243,9 @@ public final class LANLinkAgent: ObservableObject {
                     return
                 }
                 Task { @MainActor [weak self] in
-                    self?.startSession(over: NWConnectionChannel(connection: conn, queue: queue))
+                    guard let self else { return }
+                    // Which phone is proven in `hello`, not here.
+                    self.startSession(over: NWConnectionChannel(connection: conn, queue: queue))
                 }
             case .failed(let e):
                 agentLog.notice("inbound connection failed before ready: \(String(describing: e))")
@@ -219,18 +257,44 @@ public final class LANLinkAgent: ObservableObject {
 
     private func startSession(over channel: any LANLinkChannel) {
         guard let identity else { channel.close(); return }
+        // Filled in when the session proves a peer in hello; read by
+        // `closeSessions` so Forget can drop a specific phone's links.
+        let box = Box()
         let session = LANLinkAgentSession(
             channel: channel, backend: backend,
             identity: LANAgentIdentity(deviceID: identity.deviceID,
                                        displayName: displayName,
-                                       cloudDeviceID: cloudDeviceID()))
+                                       cloudDeviceID: cloudDeviceID(),
+                                       home: UnsandboxedDataMigration.realUserHome().path),
+            // Verify the phone's binding proof against the stored key for
+            // the did it claims. Runs on the agent's actor; hops to the
+            // main actor to read the live peer list.
+            authenticatePeer: { [weak self] did, proof, exporter in
+                guard let self else { return nil }
+                let match: LANAgentPeer? = await MainActor.run {
+                    guard let stored = self.peers.first(where: { $0.id == did }),
+                          LANPairing.verifyPeerBinding(sessionKey: stored.sessionKey, exporter: exporter, proof: proof)
+                    else { return nil }
+                    box.id = stored.id
+                    return LANAgentPeer(id: stored.id, displayName: stored.displayName, controlAllowed: stored.controlAllowed)
+                }
+                return match
+            },
+            // The live permission: the stored record, re-read on every
+            // control frame so the Settings toggle applies immediately.
+            controlPermitted: { [weak self] in
+                await MainActor.run {
+                    guard let self, let id = box.id else { return false }
+                    return self.peers.first(where: { $0.id == id })?.controlAllowed ?? false
+                }
+            })
         let key = ObjectIdentifier(session)
         let task = Task { [weak self] in
             let reason = await session.run()
             agentLog.notice("session ended: \(String(describing: reason))")
             await MainActor.run { self?.sessionEnded(key) }
         }
-        sessions[key] = (session, task)
+        sessions[key] = (session, task, box)
         refreshListeningState()
     }
 

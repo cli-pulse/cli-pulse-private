@@ -35,13 +35,13 @@ public struct LANRemoteControlSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Toggle(isOn: Binding(get: { agent.isEnabled }, set: { agent.isEnabled = $0 })) {
-                    Text("Let paired iPhones on this Wi-Fi watch sessions")
+                    Text("Let paired iPhones on this Wi-Fi watch and control sessions")
                         .font(.system(size: 11))
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                Text("Read-only in this version. Output is redacted before it leaves this Mac, the connection is encrypted with a key that only exists on the two devices, and nothing goes through a server.")
+                Text("Output is redacted before it leaves this Mac, and the connection is encrypted with a key that only exists on the two devices. A phone with Control on can type into sessions, start and stop them, and answer approvals — while Session control is on in the Sessions tab. Only sessions you choose to open on claude.ai go through Anthropic.")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -91,6 +91,15 @@ public struct LANRemoteControlSection: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                             Spacer()
+                            // Per-phone permission. Read on every control
+                            // frame, so flipping it applies to the next key.
+                            Toggle("Control", isOn: Binding(
+                                get: { peer.controlAllowed },
+                                set: { agent.setControlAllowed(peerID: peer.id, $0) }))
+                                .toggleStyle(.switch)
+                                .controlSize(.mini)
+                                .font(.system(size: 10))
+                                .help("Off: this iPhone can only watch. On: it can type into sessions, start and stop them, and answer approvals.")
                             Button("Forget") { agent.forget(peerID: peer.id) }
                                 .font(.system(size: 10))
                                 .controlSize(.mini)
@@ -172,7 +181,7 @@ struct LANPairingInline: View {
                 }
 
             case let .awaitingApproval(sas, peerName):
-                Text("Pair with \(peerName)? Approve only if this code matches the one on the iPhone.")
+                Text("Pair with \(peerName)? It will be able to watch AND control your sessions (you can turn Control off per phone below). Approve only if this code matches the one on the iPhone.")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

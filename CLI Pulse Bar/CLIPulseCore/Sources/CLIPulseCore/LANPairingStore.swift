@@ -65,6 +65,12 @@ public enum LANPairingStore {
         }
     }
 
+    /// M1: flip a stored phone's control permission in place.
+    public static func setControlAllowed(peerID: String, _ allowed: Bool) throws {
+        guard let peer = peer(id: peerID) else { return }
+        try save(peer.withControlAllowed(allowed))
+    }
+
     public static func remove(peerID: String) {
         _ = KeychainHelper.delete(key: peerKey(peerID))
         _ = writeIndex(peerIDs().filter { $0 != peerID })

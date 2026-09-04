@@ -153,6 +153,30 @@ public enum LANPairing {
 
     // MARK: - Derivations
 
+    /// Remote-control M1 peer binding.
+    ///
+    /// A steady connection authenticates that the client holds SOME paired
+    /// phone's key (the TLS-PSK handshake), but Apple's stack gives the
+    /// SERVER no portable way to read WHICH identity was used — a
+    /// listener-side selection block reads it on macOS 26.5 and returns
+    /// nothing on the CI runner's older macOS (measured 2026-09-05, that
+    /// is why this exists). So the phone proves which paired peer it is at
+    /// the application layer: an HMAC over the connection's own RFC 5705
+    /// exporter, keyed by the per-peer session key only that phone and
+    /// this Mac share. The exporter is unique per handshake (replay-proof)
+    /// and the key is secret to the pair (unforgeable) — both things this
+    /// code already relies on for the pairing SAS. Documented APIs only.
+    public static let peerBindingExporterLabel = "clipulse-lan-peer-binding-v1"
+
+    public static func peerBindingProof(sessionKey: SymmetricKey, exporter: Data) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: exporter, using: sessionKey))
+    }
+
+    /// Constant-time verify.
+    public static func verifyPeerBinding(sessionKey: SymmetricKey, exporter: Data, proof: Data) -> Bool {
+        HMAC<SHA256>.isValidAuthenticationCode(proof, authenticating: exporter, using: sessionKey)
+    }
+
     /// PSK for the pairing channel — a pure function of the QR, valid
     /// only while the QR is. Identity is prefixed so a pairing key can
     /// never be confused with a session key on the steady listener.
@@ -270,20 +294,52 @@ public enum LANPairing {
         public let sessionKey: SymmetricKey
         public let peerPublicKey: Curve25519.KeyAgreement.PublicKey
         public let pairedAt: Date
+        /// Remote-control M1: may this peer control sessions (type, resize,
+        /// start, stop, decide approvals)? Meaningful on the Mac's records
+        /// only. A record written by M0 has no such field and reads back
+        /// as false — M0's promise to the user was "watch".
+        public let controlAllowed: Bool
         /// The PSK the phone presents and the Mac's listener accepts.
         /// Built once here, so a record that cannot yield a valid PSK
         /// cannot exist — `init` throws instead of a later force-unwrap.
         public let presharedKey: LANTransportSecurity.PresharedKey
 
         public init(id: String, displayName: String, pskIdentity: String, sessionKey: SymmetricKey,
-                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date) throws {
+                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date,
+                    controlAllowed: Bool = false) throws {
             self.id = id
             self.displayName = displayName
             self.pskIdentity = pskIdentity
             self.sessionKey = sessionKey
             self.peerPublicKey = peerPublicKey
             self.pairedAt = pairedAt
+            self.controlAllowed = controlAllowed
             self.presharedKey = try LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
+        }
+
+        /// The PHONE's device id, taken from `pskIdentity` ("peer:<phoneID>"),
+        /// which both ends store identically.
+        ///
+        /// The records are ASYMMETRIC: on the Mac `id` is the phone's did,
+        /// on the phone `id` is the MAC's did. The Mac keys its stored
+        /// peers by the phone's did, so this — not `id` — is what the
+        /// phone must send as the binding `did` in hello. Sending `id`
+        /// from the phone made every lookup miss and silently downgraded
+        /// the link to read-only (caught on hardware 2026-09-05).
+        public var phoneDeviceID: String {
+            pskIdentity.hasPrefix("peer:") ? String(pskIdentity.dropFirst("peer:".count)) : id
+        }
+
+        /// Same peer, different permission. The PSK was validated when
+        /// `self` was built, so re-validation cannot fail; a failure here
+        /// would be memory corruption, not input.
+        public func withControlAllowed(_ allowed: Bool) -> PairedPeer {
+            guard let p = try? PairedPeer(id: id, displayName: displayName, pskIdentity: pskIdentity,
+                                          sessionKey: sessionKey, peerPublicKey: peerPublicKey,
+                                          pairedAt: pairedAt, controlAllowed: allowed) else {
+                preconditionFailure("PairedPeer.withControlAllowed: a validated key failed to re-validate")
+            }
+            return p
         }
 
         public static func == (a: PairedPeer, b: PairedPeer) -> Bool {
@@ -292,6 +348,7 @@ public enum LANPairing {
                 && a.sessionKey == b.sessionKey
                 && a.peerPublicKey.rawRepresentation == b.peerPublicKey.rawRepresentation
                 && a.pairedAt == b.pairedAt
+                && a.controlAllowed == b.controlAllowed
         }
 
         struct Wire: Codable {
@@ -301,13 +358,15 @@ public enum LANPairing {
             var psk: String
             var pk: String
             var at: TimeInterval
+            /// Absent on M0 records ⇒ false.
+            var ctl: Bool?
         }
 
         public func serialized() throws -> String {
             let psk = sessionKey.withUnsafeBytes { Data($0).base64EncodedString() }
             let w = Wire(id: id, name: displayName, pid: pskIdentity, psk: psk,
                          pk: peerPublicKey.rawRepresentation.base64EncodedString(),
-                         at: pairedAt.timeIntervalSince1970)
+                         at: pairedAt.timeIntervalSince1970, ctl: controlAllowed)
             return String(decoding: try JSONEncoder().encode(w), as: UTF8.self)
         }
 
@@ -322,7 +381,8 @@ public enum LANPairing {
             }
             guard let peer = try? PairedPeer(id: w.id, displayName: w.name, pskIdentity: w.pid,
                                              sessionKey: SymmetricKey(data: psk), peerPublicKey: pub,
-                                             pairedAt: Date(timeIntervalSince1970: w.at)) else {
+                                             pairedAt: Date(timeIntervalSince1970: w.at),
+                                             controlAllowed: w.ctl ?? false) else {
                 throw PairingStoreError.corrupt
             }
             return peer

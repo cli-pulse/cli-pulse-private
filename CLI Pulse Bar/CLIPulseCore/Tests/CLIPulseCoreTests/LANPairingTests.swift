@@ -174,6 +174,27 @@ final class LANPairingTests: XCTestCase {
         XCTAssertEqual(back.publicKey.rawRepresentation, id.publicKey.rawRepresentation)
     }
 
+    func testPairedPeerControlFlagRoundTripsAndDefaultsToFalseForLegacyRecords() throws {
+        // M1: the Mac remembers per phone whether it may control sessions.
+        // A record written by M0 has no such field and must read back as
+        // NOT allowed — the promise M0 made was "watch".
+        let allowed = try LANPairing.PairedPeer(
+            id: "phone-1", displayName: "P", pskIdentity: "peer:phone-1",
+            sessionKey: SymmetricKey(size: .bits256),
+            peerPublicKey: LANPairing.LocalIdentity.generate().publicKey,
+            pairedAt: Date(timeIntervalSince1970: 1_700_000_000), controlAllowed: true)
+        XCTAssertTrue(try LANPairing.PairedPeer.deserialize(try allowed.serialized()).controlAllowed)
+        XCTAssertNotEqual(allowed, allowed.withControlAllowed(false))
+        XCTAssertFalse(allowed.withControlAllowed(false).controlAllowed)
+
+        let legacy = try allowed.serialized().replacingOccurrences(of: "\"ctl\":true", with: "")
+            .replacingOccurrences(of: ",}", with: "}").replacingOccurrences(of: ",,", with: ",")
+        XCTAssertFalse(legacy.contains("ctl"), legacy)
+        let back = try LANPairing.PairedPeer.deserialize(legacy)
+        XCTAssertFalse(back.controlAllowed)
+        XCTAssertEqual(back.id, "phone-1")
+    }
+
     func testPairedPeerRoundTripsAndRejectsCorruption() throws {
         let peer = try LANPairing.PairedPeer(
             id: "phone-1", displayName: "Jason's iPhone", pskIdentity: "peer:phone-1",

@@ -146,7 +146,36 @@ final class LANTransportSecurityTests: XCTestCase {
                        "unknown identity must fail even with a valid key")
     }
 
-    func testExporterSecretIsPerHandshake() throws {
+    // MARK: - Peer binding (remote-control M1)
+
+    /// The phone proves which paired peer it is with an HMAC over the
+    /// connection's exporter, keyed by the shared per-peer session key.
+    /// The listener-side PSK identity that M0 could not portably read is
+    /// no longer needed: this is CryptoKit + the exporter, both already
+    /// used for the pairing SAS, and it verifies on every macOS.
+    func testPeerBindingProofVerifiesAndRejects() {
+        let exporter = Data((0..<32).map { UInt8($0) })
+        let key = SymmetricKey(size: .bits256)
+        let proof = LANPairing.peerBindingProof(sessionKey: key, exporter: exporter)
+        XCTAssertTrue(LANPairing.verifyPeerBinding(sessionKey: key, exporter: exporter, proof: proof))
+        // Wrong key, wrong exporter, truncated proof: all rejected.
+        XCTAssertFalse(LANPairing.verifyPeerBinding(sessionKey: SymmetricKey(size: .bits256), exporter: exporter, proof: proof))
+        XCTAssertFalse(LANPairing.verifyPeerBinding(sessionKey: key, exporter: Data(repeating: 9, count: 32), proof: proof))
+        XCTAssertFalse(LANPairing.verifyPeerBinding(sessionKey: key, exporter: exporter, proof: proof.dropLast()))
+    }
+
+    /// The proof binds to the HANDSHAKE, not the key: two connections with
+    /// the same peer key produce different proofs (different exporters), so
+    /// a proof captured on one connection cannot be replayed on another.
+    func testPeerBindingProofIsPerHandshake() {
+        let key = SymmetricKey(size: .bits256)
+        let a = LANPairing.peerBindingProof(sessionKey: key, exporter: Data(repeating: 1, count: 32))
+        let b = LANPairing.peerBindingProof(sessionKey: key, exporter: Data(repeating: 2, count: 32))
+        XCTAssertNotEqual(a, b)
+        XCTAssertFalse(LANPairing.verifyPeerBinding(sessionKey: key, exporter: Data(repeating: 2, count: 32), proof: a))
+    }
+
+        func testExporterSecretIsPerHandshake() throws {
         // Two handshakes with the SAME PSK must yield DIFFERENT exporter
         // secrets — that is what makes the pairing SAS bind to one
         // connection rather than to the key.
