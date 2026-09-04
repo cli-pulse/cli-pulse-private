@@ -294,6 +294,14 @@ case "daemon":
     let socketPath = RuntimeRoot.path().appendingPathComponent("clipulse-helper.sock")
     let broker = EventBroker()
     let registry = ApprovalRegistry(broker: broker)
+    // Remote-control M1a: nothing called `expireOld` before — a pending
+    // approval outlived Claude's own 60 s fallback-to-deny and a late
+    // Approve "succeeded". Sweep every 5 s; `decide`/`waitForDecision`
+    // also expire on their own paths, this covers rows nobody touches.
+    let approvalSweep = DispatchSource.makeTimerSource(queue: DispatchQueue(label: "yyh.CLI-Pulse.approval-sweep"))
+    approvalSweep.schedule(deadline: .now() + 5, repeating: 5, leeway: .seconds(1))
+    approvalSweep.setEventHandler { [registry] in _ = registry.expireOld() }
+    approvalSweep.resume()
     // Phase 4D iter10 (Codex P1③.A): managed sessions inject the
     // PermissionRequest hook via `claude --settings` at spawn time.
     // The hook command refs the running daemon's own absolute path

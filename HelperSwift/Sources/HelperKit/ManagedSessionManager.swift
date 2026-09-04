@@ -23,8 +23,31 @@ public final class ManagedSessionManager: @unchecked Sendable {
         /// Python implementation; sized to fit a typical Supabase
         /// event row's redacted body.
         public var drainChunkBytes: Int = 4096
+        /// Remote-control M1a: how long after spawn a `--remote-control`
+        /// session may take to print its banner (URL or refusal) before
+        /// the outcome is recorded as `unavailable(timeout)`. Claude
+        /// registers the session with Anthropic first, so this is
+        /// generous; the phone hides the entry either way.
+        public var remoteControlBannerDeadlineSeconds: TimeInterval = 90
 
         public init() {}
+    }
+
+    /// Remote-control M1a: the delegation outcome carried on a session
+    /// row. `status` ∈ `requested` (still scanning) / `ready` (`url` set) /
+    /// `unavailable` (`reason` set, see `RemoteControlBannerScanner.Reason`).
+    /// Absent on sessions that never asked.
+    public struct RemoteControlSummary: Sendable, Equatable {
+        public let status: String
+        public let url: String?
+        public let reason: String?
+
+        public var wireDict: [String: Any] {
+            var d: [String: Any] = ["status": status]
+            if let url { d["url"] = url }
+            if let reason { d["reason"] = reason }
+            return d
+        }
     }
 
     public struct Summary: Sendable, Equatable {
@@ -34,6 +57,13 @@ public final class ManagedSessionManager: @unchecked Sendable {
         public let pid: pid_t
         public let spawnedAtMono: TimeInterval
         public var status: String   // "running" / "stopped" / "errored"
+        public var remoteControl: RemoteControlSummary? = nil
+        /// M4.4a/M4.4d, surfaced for remote-control M1: an ATTACHED
+        /// (hand-launched, tmux-parked) session and whether it is still
+        /// local-only. A phone must not be handed a session the helper
+        /// does not own unless the user opted it in.
+        public var attached: Bool = false
+        public var localOnly: Bool = false
     }
 
     private let config: Config
@@ -139,6 +169,9 @@ public final class ManagedSessionManager: @unchecked Sendable {
         // it is effectively immutable.
         var status: String = "running"
         var drainThread: Thread?
+        /// Remote-control M1a. Governed by `ManagedSessionManager.lock`.
+        /// nil for sessions that did not ask for `--remote-control`.
+        var remoteControl: RemoteControlState?
         /// v1.24 Phase 2c slice 1: fixed-capacity tail buffer for
         /// `get_tail_snapshot` (Gemini HIGH from in-app-terminal plan).
         /// When an iOS WKWebView returns from background, the client
@@ -176,6 +209,23 @@ public final class ManagedSessionManager: @unchecked Sendable {
             self.attachEpoch = attachEpoch
             self.spawnedAtMono = spawnedAtMono
             self.realtimePrivate = realtimePrivate
+        }
+    }
+
+    /// Remote-control M1a: per-session delegation state machine. Only
+    /// `requested` is mutable in effect — the drain loop moves it to one of
+    /// the two terminal states exactly once and publishes that transition.
+    enum RemoteControlState {
+        case requested(scanner: RemoteControlBannerScanner, deadlineMono: TimeInterval)
+        case ready(url: String)
+        case unavailable(reason: String)
+
+        var summary: RemoteControlSummary {
+            switch self {
+            case .requested: return RemoteControlSummary(status: "requested", url: nil, reason: nil)
+            case .ready(let url): return RemoteControlSummary(status: "ready", url: url, reason: nil)
+            case .unavailable(let reason): return RemoteControlSummary(status: "unavailable", url: nil, reason: reason)
+            }
         }
     }
 
@@ -382,8 +432,18 @@ public final class ManagedSessionManager: @unchecked Sendable {
         cwd: String? = nil,
         extraEnv: [String: String] = [:],
         forcedSessionId: String? = nil,
-        realtimePrivate: Bool? = nil
+        realtimePrivate: Bool? = nil,
+        claudeRemoteControl: Bool = false
     ) throws -> Summary {
+        // Remote-control M1a: opt-in, per session, Claude only. The flag
+        // rides in `extraEnv` (the established per-spawn channel) so the
+        // spawner appends `--remote-control`; the record remembers the
+        // request so the drain loop knows to scan for the banner.
+        var extraEnv = extraEnv
+        let remoteControlRequested = claudeRemoteControl && provider.lowercased() == "claude"
+        if remoteControlRequested {
+            extraEnv[ClaudeSpawner.remoteControlEnvKey] = "1"
+        }
         // v1.15 multi-CLI dispatch: resolve provider → spawner via
         // the registry. Pre-v1.15 this was a hardcoded
         // `switch provider { case "claude": ... default: throw }`
@@ -464,6 +524,11 @@ public final class ManagedSessionManager: @unchecked Sendable {
             spawnedAtMono: ProcessInfo.processInfo.systemUptime,
             realtimePrivate: realtimePrivate
         )
+        if remoteControlRequested {
+            record.remoteControl = .requested(
+                scanner: RemoteControlBannerScanner(),
+                deadlineMono: record.spawnedAtMono + config.remoteControlBannerDeadlineSeconds)
+        }
 
         // Build the drain thread and stash its handle on the record
         // BEFORE the record is published into `sessions`. Once it's in
@@ -501,7 +566,10 @@ public final class ManagedSessionManager: @unchecked Sendable {
             clientLabel: clientLabel,
             pid: handle.pid,
             spawnedAtMono: record.spawnedAtMono,
-            status: "running"
+            status: "running",
+            remoteControl: record.remoteControl?.summary,
+            attached: false,
+            localOnly: false
         )
     }
 
@@ -514,9 +582,70 @@ public final class ManagedSessionManager: @unchecked Sendable {
                 clientLabel: rec.clientLabel,
                 pid: rec.handle.pid,
                 spawnedAtMono: rec.spawnedAtMono,
-                status: rec.status
+                status: rec.status,
+                remoteControl: rec.remoteControl?.summary,
+                attached: rec.attached,
+                localOnly: isLocalOnly(rec)
             )
         }
+    }
+
+    /// Remote-control M1a: the first byte of user input closes the banner
+    /// scan window. A URL printed after that is whatever the session was
+    /// asked to print, not Claude's start-up banner.
+    private func closeRemoteControlWindowOnInput(_ record: ManagedSessionRecord) {
+        lock.lock()
+        guard case .requested? = record.remoteControl else { lock.unlock(); return }
+        let next = RemoteControlState.unavailable(reason: RemoteControlBannerScanner.Reason.inputBeforeBanner.rawValue)
+        record.remoteControl = next
+        lock.unlock()
+        var event: [String: Any] = [
+            "event": "session_remote_control",
+            "session_id": record.sessionId,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        for (k, v) in next.summary.wireDict { event[k] = v }
+        broker?.publish(event)
+    }
+
+    // MARK: - Remote-control M1a: banner outcome
+
+    /// Called from the drain loop with every chunk (and with nil on idle
+    /// ticks so the deadline is honoured even when the child is silent).
+    /// Moves `requested` to a terminal state at most once and publishes
+    /// `session_remote_control` for that one transition.
+    private func observeRemoteControl(record: ManagedSessionRecord, chunk: Data?) {
+        lock.lock()
+        guard case let .requested(scanner, deadlineMono)? = record.remoteControl else {
+            lock.unlock(); return
+        }
+        lock.unlock()
+        // Scanning happens outside the lock — it is regex work over up to
+        // 16 KB and must not hold up listSessions / stopSession.
+        var outcome: RemoteControlBannerScanner.Outcome? = nil
+        if let chunk { outcome = scanner.feed(chunk) }
+        if outcome == nil, ProcessInfo.processInfo.systemUptime >= deadlineMono {
+            outcome = .unavailable(.timeout)
+        }
+        guard let outcome else { return }
+        let next: RemoteControlState
+        switch outcome {
+        case .ready(let url): next = .ready(url: url)
+        case .unavailable(let reason): next = .unavailable(reason: reason.rawValue)
+        }
+        lock.lock()
+        // Re-check under the lock: another observer (there is only the
+        // drain thread today, but this is the invariant) may have moved it.
+        guard case .requested? = record.remoteControl else { lock.unlock(); return }
+        record.remoteControl = next
+        lock.unlock()
+        var event: [String: Any] = [
+            "event": "session_remote_control",
+            "session_id": record.sessionId,
+            "ts": Date().timeIntervalSince1970,
+        ]
+        for (k, v) in next.summary.wireDict { event[k] = v }
+        broker?.publish(event)
     }
 
     // MARK: - M4.4a: attach an externally-launched wrapped tmux session
@@ -814,6 +943,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
         let rec = sessions[sessionId]
         lock.unlock()
         guard let rec else { return false }
+        closeRemoteControlWindowOnInput(rec)
         var body = Data(payload.utf8)
         if body.last == 0x0a {                              // LF
             // Replace trailing \n with \r.
@@ -835,6 +965,10 @@ public final class ManagedSessionManager: @unchecked Sendable {
         if n == 0 {
             return false   // child gone
         }
+        // Remote-control M1a: a short write is lost input — say so.
+        if n < body.count {
+            throw ManagerError.writeFailed("short write: \(n)/\(body.count) bytes accepted by the pty")
+        }
         return true
     }
 
@@ -852,13 +986,19 @@ public final class ManagedSessionManager: @unchecked Sendable {
         lock.unlock()
         guard let rec else { return false }
         guard !bytes.isEmpty else { return true }
+        closeRemoteControlWindowOnInput(rec)
         let n: Int
         do {
             n = try sessTransport(rec).writeStdin(rec.handle, bytes)
         } catch {
             throw ManagerError.writeFailed("\(error)")
         }
-        return n > 0
+        // A short write is lost input. Say so instead of returning true —
+        // the caller (a phone, the Mac terminal) can retry or tell the user.
+        if n < bytes.count {
+            throw ManagerError.writeFailed("short write: \(n)/\(bytes.count) bytes accepted by the pty")
+        }
+        return true
     }
 
     /// Forward a window-size update to the underlying PTY for the
@@ -968,6 +1108,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
                     // for get_tail_snapshot foreground-recovery.
                     // Stored verbatim; redaction at read time.
                     record.tailBuffer.append(chunk)
+                    observeRemoteControl(record: record, chunk: chunk)
                     // v1.24 Phase 2c slice 2: also hand off to the
                     // terminal Broadcast publisher when configured.
                     // Publisher redacts + ships to sink; this call
@@ -1009,6 +1150,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
                 // Drain errors typically mean the child went away
                 // mid-read; let the next isAlive check confirm.
             }
+            observeRemoteControl(record: record, chunk: nil)
             if !t.isAlive(record.handle) {
                 // Phase 4E Slice 3: capture exit code so
                 // RemoteAgentCloud can decide stopped vs errored

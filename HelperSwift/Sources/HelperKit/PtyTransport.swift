@@ -74,7 +74,15 @@ public final class PtyTransport: @unchecked Sendable {
     public static let defaultCols: UInt16 = 80
     public static let defaultRows: UInt16 = 24
 
-    public init() {}
+    /// Remote-control M1a: how long `writeStdin` keeps pushing bytes into
+    /// a full tty input queue while the child drains it. The queue holds
+    /// about 1 KiB on Darwin; a paste from the phone is bigger, and a
+    /// short write reported as success used to lose its tail silently.
+    private let writeDeadlineSeconds: TimeInterval
+
+    public init(writeDeadlineSeconds: TimeInterval = 2.0) {
+        self.writeDeadlineSeconds = writeDeadlineSeconds
+    }
 
     // MARK: - environment
 
@@ -337,20 +345,38 @@ public final class PtyTransport: @unchecked Sendable {
     @discardableResult
     public func writeStdin(_ handle: Handle, _ data: Data) throws -> Int {
         if data.isEmpty { return 0 }
-        handle.ioLock.lock(); defer { handle.ioLock.unlock() }
-        if handle.isClosed { return 0 }
-        let n: Int = data.withUnsafeBytes { ptr -> Int in
-            guard let base = ptr.baseAddress else { return 0 }
-            return Darwin.write(handle.masterFD, base, data.count)
-        }
-        if n < 0 {
-            switch errno {
-            case EPIPE, EBADF, EIO: return 0
+        // The master is O_NONBLOCK, so a full tty input queue answers with
+        // a short count or EAGAIN. Keep writing as the child drains, up to
+        // the deadline, and return how much was actually accepted — the
+        // caller decides what a short count means. `ioLock` is held only
+        // around each write, never across a wait, so the drain loop keeps
+        // reading output (which is what lets the child make progress).
+        let deadline = Date().addingTimeInterval(writeDeadlineSeconds)
+        var offset = 0
+        while offset < data.count {
+            handle.ioLock.lock()
+            if handle.isClosed { handle.ioLock.unlock(); return offset }
+            let n: Int = data.withUnsafeBytes { ptr -> Int in
+                guard let base = ptr.baseAddress else { return 0 }
+                return Darwin.write(handle.masterFD, base + offset, data.count - offset)
+            }
+            let err = errno
+            handle.ioLock.unlock()
+            if n > 0 { offset += n; continue }
+            if n == 0 { return offset }
+            switch err {
+            case EAGAIN, EINTR:
+                let remainingMs = Int32(max(0, deadline.timeIntervalSinceNow * 1000))
+                if remainingMs == 0 { return offset }
+                var pfd = pollfd(fd: handle.masterFD, events: Int16(POLLOUT), revents: 0)
+                _ = poll(&pfd, 1, min(remainingMs, 50))
+            case EPIPE, EBADF, EIO:
+                return offset
             default:
-                throw TransportError.writeFailed(String(cString: strerror(errno)))
+                throw TransportError.writeFailed(String(cString: strerror(err)))
             }
         }
-        return n
+        return offset
     }
 
     /// Non-blocking read from the PTY master. Returns up to

@@ -25,6 +25,10 @@ public final class RemoteControlBannerScanner: @unchecked Sendable {
         /// The manager's wall-clock deadline passed (set by the manager,
         /// never by the scanner itself).
         case timeout
+        /// The user typed before a banner was seen (set by the manager).
+        /// Output after user input is not a start-up banner; a URL there
+        /// could be anything the session was asked to print.
+        case inputBeforeBanner = "input_before_banner"
     }
 
     public enum Outcome: Equatable, Sendable {

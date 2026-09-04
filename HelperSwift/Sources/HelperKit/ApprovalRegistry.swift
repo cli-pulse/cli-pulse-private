@@ -257,12 +257,46 @@ public final class ApprovalRegistry: @unchecked Sendable {
             lock.unlock()
 
             let now = Date()
-            if now >= deadline { throw RegistryError.waitTimeout }
+            if now >= deadline {
+                expireIfPastTTL(sessionId: sessionId, approvalId: approvalId)
+                throw RegistryError.waitTimeout
+            }
             // condition.wait(until:) returns false on timeout.
             if !condition.wait(until: deadline) {
+                expireIfPastTTL(sessionId: sessionId, approvalId: approvalId)
                 throw RegistryError.waitTimeout
             }
         }
+    }
+
+    /// Remote-control M1a: when the hook's wait gives up and the row's
+    /// own TTL has passed, flip it to expired right now so the registry
+    /// agrees with the deny the hook is about to return. Nested inside the
+    /// caller's condition lock exactly like the recheck above.
+    private func expireIfPastTTL(sessionId: String, approvalId: String) {
+        let now = Date().timeIntervalSince1970
+        lock.lock()
+        guard var bucket = pendingBySession[sessionId], var row = bucket[approvalId],
+              row.status == .pending, let exp = row.expiresAtWall, now >= exp else {
+            lock.unlock(); return
+        }
+        row.status = .expired
+        bucket[approvalId] = row
+        pendingBySession[sessionId] = bucket
+        lock.unlock()
+        publishExpired(row, now: now)
+    }
+
+    private func publishExpired(_ row: PendingApproval, now: TimeInterval) {
+        broker?.publish([
+            "event": "approval_resolved",
+            "session_id": row.sessionId,
+            "approval_id": row.approvalId,
+            "decision": "expired",
+            "status": "expired",
+            "approval": row.toDictSafe(),
+            "ts": now,
+        ])
     }
 
     // MARK: - pending approval lifecycle
@@ -376,6 +410,20 @@ public final class ApprovalRegistry: @unchecked Sendable {
             let s = row.status.rawValue
             lock.unlock()
             throw RegistryError.approvalAlreadyResolved(currentStatus: s)
+        }
+        // Remote-control M1a: the TTL is a promise to the user, not a hint.
+        // Claude's hook falls back to deny when nobody answers in time; a
+        // decision that arrives after that must not "succeed" for a tool
+        // that was already refused. Expire the row here — the periodic
+        // sweep may not have run yet — and report it as resolved.
+        if let exp = row.expiresAtWall, now >= exp {
+            row.status = .expired
+            bucket[approvalId] = row
+            pendingBySession[sessionId] = bucket
+            let expiredRow = row
+            lock.unlock()
+            publishExpired(expiredRow, now: now)
+            throw RegistryError.approvalAlreadyResolved(currentStatus: PendingApproval.Status.expired.rawValue)
         }
         row.status = (decision == "approve") ? .approved : .rejected
         row.decidedDecision = (decision == "approve") ? "approved" : "rejected"

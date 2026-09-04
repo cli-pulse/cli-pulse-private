@@ -18,11 +18,23 @@ public struct ClaudeSpawner: ProviderSpawner {
     /// receives the helper's absolute path so the hook's `command`
     /// field points at the right binary.
     private let buildInlineSettings: (@Sendable (String) -> String?)?
+    /// Process environment used to resolve argv[0] (`CLI_PULSE_CLAUDE_ARGV0`,
+    /// PATH). nil ⇒ the real one. Injectable so tests can point "claude" at
+    /// a script without touching the process environment.
+    private let environment: [String: String]?
+
+    /// Remote-control M1a: the per-spawn request to start this Claude
+    /// session with `--remote-control`. Travels in `extraEnv` like the
+    /// Gemini YOLO flag. Exactly "1" — a stray value inherited from the
+    /// user's shell must not ship a transcript to Anthropic.
+    public static let remoteControlEnvKey = "CLI_PULSE_CLAUDE_REMOTE_CONTROL"
 
     public init(
-        buildInlineSettings: (@Sendable (String) -> String?)? = nil
+        buildInlineSettings: (@Sendable (String) -> String?)? = nil,
+        environment: [String: String]? = nil
     ) {
         self.buildInlineSettings = buildInlineSettings
+        self.environment = environment
     }
 
     public func isAvailable() -> Bool { defaultIsAvailable() }
@@ -31,7 +43,10 @@ public struct ClaudeSpawner: ProviderSpawner {
         extraEnv: [String: String],
         helperArgv0: String?
     ) -> [String] {
-        var argv = defaultArgv0()
+        var argv = defaultArgv0(env: environment ?? ProcessInfo.processInfo.environment)
+        if extraEnv[Self.remoteControlEnvKey] == "1" {
+            argv.append("--remote-control")
+        }
         if let helperArgv0,
            let builder = buildInlineSettings,
            let inlineJson = builder(helperArgv0) {

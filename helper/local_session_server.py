@@ -1025,6 +1025,10 @@ class LocalSessionServer:
                 # provider-spawner registry). UI uses this to disable menu
                 # items for providers whose binary is missing.
                 "provider_availability": provider_availability,
+                # Remote-control M1a (additive, lock-step with the Swift
+                # helper's hello): this helper cannot start a Claude session
+                # with `--remote-control`, so the phone never offers it here.
+                "claude_remote_control": {"supported": False},
                 # v1.35: per-provider plan-auth status ("on_plan"/
                 # "off_plan"); omits "unknown". The picker warns before
                 # launching an off-plan (billed) managed session. Mirrors
