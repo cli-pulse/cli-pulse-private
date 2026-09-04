@@ -22,11 +22,11 @@ public struct LANAgentIdentity: Sendable, Equatable {
     }
 }
 
-/// M1: the paired phone on the other end of one connection, as attributed
-/// by the TLS handshake (`LANTransportSecurity.IdentityRegistry`). nil
-/// means "authenticated by a key this agent holds, but not a stored peer"
-/// — a pairing-key connection, or a record that vanished mid-flight — and
-/// such a connection is read-only.
+/// M1: the paired phone on the other end of one connection, as proven in
+/// `hello` (the phone sends its `did` plus an HMAC over the connection's
+/// exporter, keyed by the per-peer session key — see
+/// `LANPairing.peerBindingProof`). nil means "not proven yet, or proof
+/// failed", and such a connection is read-only.
 public struct LANAgentPeer: Sendable, Equatable {
     public let id: String
     public let displayName: String
@@ -95,7 +95,12 @@ public actor LANLinkAgentSession {
     private let channel: any LANLinkChannel
     private let backend: any SessionControlling
     private let identity: LANAgentIdentity
-    private let peer: LANAgentPeer?
+    /// The proven peer, or nil until a valid binding arrives in `hello`.
+    /// Set once, inside the actor, from the hello handler.
+    private var peer: LANAgentPeer?
+    /// Given (did, proof, exporter), returns the peer if the proof matches
+    /// the stored key for `did`. The agent calls this once, in hello.
+    private let authenticatePeer: @Sendable (String, Data, Data) async -> LANAgentPeer?
     private let controlPermitted: @Sendable () async -> Bool
     private let heartbeatInterval: TimeInterval
     private let silenceTimeout: TimeInterval
@@ -134,6 +139,7 @@ public actor LANLinkAgentSession {
         backend: any SessionControlling,
         identity: LANAgentIdentity,
         peer: LANAgentPeer? = nil,
+        authenticatePeer: (@Sendable (String, Data, Data) async -> LANAgentPeer?)? = nil,
         controlPermitted: (@Sendable () async -> Bool)? = nil,
         heartbeatInterval: TimeInterval = LANLinkProtocol.heartbeatInterval,
         silenceTimeout: TimeInterval = LANLinkProtocol.peerSilenceTimeout,
@@ -143,7 +149,11 @@ public actor LANLinkAgentSession {
         self.channel = channel
         self.backend = backend
         self.identity = identity
+        // Tests inject a pre-proven `peer`; production leaves it nil and it
+        // is set by the hello proof. `authenticatePeer` nil ⇒ no binding
+        // path (the injected peer, or read-only).
         self.peer = peer
+        self.authenticatePeer = authenticatePeer ?? { _, _, _ in nil }
         let stored = peer?.controlAllowed ?? false
         self.controlPermitted = controlPermitted ?? { stored }
         self.heartbeatInterval = heartbeatInterval
@@ -279,6 +289,7 @@ public actor LANLinkAgentSession {
         do {
             switch m {
             case .hello:
+                await authenticateFromHello(params)
                 await reply(id, result: await helloResult())
             case .ping:
                 await reply(id, result: ["ts": .double(clock().timeIntervalSince1970)])
@@ -406,6 +417,20 @@ public actor LANLinkAgentSession {
             await reply(id, error: Self.wireCode(for: e), e.description)
         } catch {
             await reply(id, error: LANLinkProtocol.ErrorCode.internalError, "\(error)")
+        }
+    }
+
+    /// The binding proof, if the phone sent one and it matches a stored
+    /// peer for the claimed `did`. Sets `self.peer` once. A phone that
+    /// sends nothing, or a bad proof, stays read-only.
+    private func authenticateFromHello(_ params: [String: AnySendableJSON]) async {
+        guard peer == nil,
+              let did = params["did"]?.stringValue, !did.isEmpty,
+              let proofB64 = params["proof"]?.stringValue, let proof = Data(base64Encoded: proofB64),
+              let exporter = channel.exporterSecret(label: LANPairing.peerBindingExporterLabel)
+        else { return }
+        if let authed = await authenticatePeer(did, proof, exporter) {
+            peer = authed
         }
     }
 

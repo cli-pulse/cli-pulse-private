@@ -153,6 +153,30 @@ public enum LANPairing {
 
     // MARK: - Derivations
 
+    /// Remote-control M1 peer binding.
+    ///
+    /// A steady connection authenticates that the client holds SOME paired
+    /// phone's key (the TLS-PSK handshake), but Apple's stack gives the
+    /// SERVER no portable way to read WHICH identity was used — a
+    /// listener-side selection block reads it on macOS 26.5 and returns
+    /// nothing on the CI runner's older macOS (measured 2026-09-05, that
+    /// is why this exists). So the phone proves which paired peer it is at
+    /// the application layer: an HMAC over the connection's own RFC 5705
+    /// exporter, keyed by the per-peer session key only that phone and
+    /// this Mac share. The exporter is unique per handshake (replay-proof)
+    /// and the key is secret to the pair (unforgeable) — both things this
+    /// code already relies on for the pairing SAS. Documented APIs only.
+    public static let peerBindingExporterLabel = "clipulse-lan-peer-binding-v1"
+
+    public static func peerBindingProof(sessionKey: SymmetricKey, exporter: Data) -> Data {
+        Data(HMAC<SHA256>.authenticationCode(for: exporter, using: sessionKey))
+    }
+
+    /// Constant-time verify.
+    public static func verifyPeerBinding(sessionKey: SymmetricKey, exporter: Data, proof: Data) -> Bool {
+        HMAC<SHA256>.isValidAuthenticationCode(proof, authenticating: exporter, using: sessionKey)
+    }
+
     /// PSK for the pairing channel — a pure function of the QR, valid
     /// only while the QR is. Identity is prefixed so a pairing key can
     /// never be confused with a session key on the steady listener.

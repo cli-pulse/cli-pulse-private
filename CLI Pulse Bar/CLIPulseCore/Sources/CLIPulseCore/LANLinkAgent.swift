@@ -15,11 +15,13 @@ private let agentLog = Logger(subsystem: "com.cli-pulse.bar", category: "lan-age
 /// The STEADY listener's key set is exactly the paired phones, and the
 /// PAIRING listener's key set is exactly the current QR's key, so a phone
 /// that only holds a QR nonce reaches a listener that cannot serve
-/// sessions, whatever it claims to be. Since M1 the steady listener also
-/// knows WHICH phone is on each connection: the handshake's PSK identity
-/// is recorded per connection (`LANTransportSecurity.IdentityRegistry`),
-/// which is what per-phone control permission and "Forget closes the
-/// live link" rest on.
+/// sessions, whatever it claims to be. Since M1 each connection also
+/// proves WHICH phone it is: in `hello` the phone sends its `did` and an
+/// HMAC over the connection's exporter keyed by the shared per-peer key
+/// (`LANPairing.peerBindingProof`), which the agent verifies against the
+/// stored key for that `did`. Portable (documented CryptoKit + exporter,
+/// no version-specific TLS introspection) and it is what per-phone
+/// control permission and "Forget closes the live link" rest on.
 ///
 /// The steady listener is recreated whenever the peer set changes —
 /// `NWParameters` are fixed at start.
@@ -82,9 +84,10 @@ public final class LANLinkAgent: ObservableObject {
 
     private var steadyListener: NWListener?
     private var pairingListener: NWListener?
-    private var sessions: [ObjectIdentifier: (session: LANLinkAgentSession, task: Task<Void, Never>, peerID: String?)] = [:]
-    /// Attribution for the current steady listener's connections.
-    private var steadyRegistry: LANTransportSecurity.IdentityRegistry?
+    private var sessions: [ObjectIdentifier: (session: LANLinkAgentSession, task: Task<Void, Never>, peerID: Box)] = [:]
+    /// A mutable holder so the session's own hello handler can report the
+    /// peer it proved back to the agent (for Forget-closes-links).
+    final class Box: @unchecked Sendable { var id: String?; init() {} }
     private var pairingTask: Task<Void, Never>?
     private var pairingDecision: CheckedContinuation<Bool, Never>?
     private var pairingExpiryTask: Task<Void, Never>?
@@ -172,7 +175,7 @@ public final class LANLinkAgent: ObservableObject {
     }
 
     private func closeSessions(where match: (String?) -> Bool) {
-        for (_, entry) in sessions where match(entry.peerID) {
+        for (_, entry) in sessions where match(entry.peerID.id) {
             let s = entry.session
             Task { await s.close() }
         }
@@ -187,8 +190,7 @@ public final class LANLinkAgent: ObservableObject {
 
         let listener: NWListener
         do {
-            let (params, registry) = try LANTransportSecurity.listenerParameters(presharedKeys: peers.map(\.presharedKey))
-            steadyRegistry = registry
+            let params = try LANTransportSecurity.parameters(presharedKeys: peers.map(\.presharedKey))
             listener = try NWListener(using: params)
         } catch {
             state = .failed("Listener setup failed: \(error)")
@@ -237,17 +239,8 @@ public final class LANLinkAgent: ObservableObject {
                 }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    // Which phone? The handshake says; a connection whose
-                    // identity is not a stored peer is read-only.
-                    var peer: LANAgentPeer? = nil
-                    if let ident = self.steadyRegistry?.identity(for: conn),
-                       ident.hasPrefix("peer:"),
-                       let p = self.peers.first(where: { $0.id == String(ident.dropFirst("peer:".count)) }) {
-                        peer = LANAgentPeer(id: p.id, displayName: p.displayName, controlAllowed: p.controlAllowed)
-                    } else {
-                        agentLog.notice("accepted connection without a stored peer identity — read-only")
-                    }
-                    self.startSession(over: NWConnectionChannel(connection: conn, queue: queue), peer: peer)
+                    // Which phone is proven in `hello`, not here.
+                    self.startSession(over: NWConnectionChannel(connection: conn, queue: queue))
                 }
             case .failed(let e):
                 agentLog.notice("inbound connection failed before ready: \(String(describing: e))")
@@ -257,21 +250,38 @@ public final class LANLinkAgent: ObservableObject {
         conn.start(queue: queue)
     }
 
-    private func startSession(over channel: any LANLinkChannel, peer: LANAgentPeer?) {
+    private func startSession(over channel: any LANLinkChannel) {
         guard let identity else { channel.close(); return }
-        let peerID = peer?.id
+        // Filled in when the session proves a peer in hello; read by
+        // `closeSessions` so Forget can drop a specific phone's links.
+        let box = Box()
         let session = LANLinkAgentSession(
             channel: channel, backend: backend,
             identity: LANAgentIdentity(deviceID: identity.deviceID,
                                        displayName: displayName,
                                        cloudDeviceID: cloudDeviceID(),
                                        home: UnsandboxedDataMigration.realUserHome().path),
-            peer: peer,
+            // Verify the phone's binding proof against the stored key for
+            // the did it claims. Runs on the agent's actor; hops to the
+            // main actor to read the live peer list.
+            authenticatePeer: { [weak self] did, proof, exporter in
+                guard let self else { return nil }
+                let match: LANAgentPeer? = await MainActor.run {
+                    guard let stored = self.peers.first(where: { $0.id == did }),
+                          LANPairing.verifyPeerBinding(sessionKey: stored.sessionKey, exporter: exporter, proof: proof)
+                    else { return nil }
+                    box.id = stored.id
+                    return LANAgentPeer(id: stored.id, displayName: stored.displayName, controlAllowed: stored.controlAllowed)
+                }
+                return match
+            },
             // The live permission: the stored record, re-read on every
             // control frame so the Settings toggle applies immediately.
             controlPermitted: { [weak self] in
-                guard let peerID else { return false }
-                return await MainActor.run { self?.peers.first(where: { $0.id == peerID })?.controlAllowed ?? false }
+                await MainActor.run {
+                    guard let self, let id = box.id else { return false }
+                    return self.peers.first(where: { $0.id == id })?.controlAllowed ?? false
+                }
             })
         let key = ObjectIdentifier(session)
         let task = Task { [weak self] in
@@ -279,7 +289,7 @@ public final class LANLinkAgent: ObservableObject {
             agentLog.notice("session ended: \(String(describing: reason))")
             await MainActor.run { self?.sessionEnded(key) }
         }
-        sessions[key] = (session, task, peerID)
+        sessions[key] = (session, task, box)
         refreshListeningState()
     }
 

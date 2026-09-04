@@ -1,4 +1,5 @@
 import XCTest
+import CryptoKit
 @testable import CLIPulseCore
 
 /// Remote-control M0 — the per-connection router, driven end to end over
@@ -142,6 +143,69 @@ final class LANLinkAgentSessionTests: XCTestCase {
 
     private func errorCode(_ phone: Phone, _ m: LANLinkProtocol.Method, _ p: [String: AnySendableJSON] = [:]) async throws -> String {
         try unwrapError(try await phone.request(m, p)).code
+    }
+
+    // MARK: - peer binding (proof path)
+
+    func testHelloProofAuthenticatesThePeerAndGrantsControl() async throws {
+        // The production path: no injected peer; the phone proves its did
+        // with an HMAC over the channel exporter, and only then is control
+        // granted. Uses the in-memory pair's fixed exporter.
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let key = SymmetricKey(size: .bits256)
+        let backend = FakeStreamingBackend()
+        let session = LANLinkAgentSession(
+            channel: macEnd, backend: backend,
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "M", cloudDeviceID: nil, home: nil),
+            authenticatePeer: { did, proof, exporter in
+                guard did == "phone-1",
+                      LANPairing.verifyPeerBinding(sessionKey: key, exporter: exporter, proof: proof)
+                else { return nil }
+                return LANAgentPeer(id: "phone-1", displayName: "P", controlAllowed: true)
+            },
+            controlPermitted: { true },
+            heartbeatInterval: 0.05, silenceTimeout: 10, redactionIdleFlush: 0.05)
+        let phone = Phone(channel: phoneEnd)
+        let run = Task { await session.run() }
+
+        // Before hello: no proof yet ⇒ control refused.
+        let c0 = try await errorCode(phone, .sessionResize, ["session_id": .string("s1"), "cols": .int(90), "rows": .int(30)])
+        XCTAssertEqual(c0, "control_not_allowed")
+
+        // A correct proof in hello grants control.
+        let exporter = try XCTUnwrap(phoneEnd.exporterSecret(label: LANPairing.peerBindingExporterLabel))
+        let proof = LANPairing.peerBindingProof(sessionKey: key, exporter: exporter)
+        let h = try unwrapOK(try await phone.request(.hello, ["did": .string("phone-1"), "proof": .string(proof.base64EncodedString())]))
+        XCTAssertEqual(h["capabilities"]?.objectValue?["control"]?.boolValue, true)
+        _ = try unwrapOK(try await phone.request(.sessionResize, ["session_id": .string("s1"), "cols": .int(90), "rows": .int(30)]))
+        XCTAssertEqual(backend.recordedControlCalls, ["resize s1 90x30"])
+        await session.close(); _ = await run.value
+    }
+
+    func testHelloWithABadProofStaysReadOnly() async throws {
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let key = SymmetricKey(size: .bits256)
+        let backend = FakeStreamingBackend()
+        let session = LANLinkAgentSession(
+            channel: macEnd, backend: backend,
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "M", cloudDeviceID: nil, home: nil),
+            authenticatePeer: { did, proof, exporter in
+                LANPairing.verifyPeerBinding(sessionKey: key, exporter: exporter, proof: proof)
+                    ? LANAgentPeer(id: did, displayName: "P", controlAllowed: true) : nil
+            },
+            controlPermitted: { true },
+            heartbeatInterval: 0.05, silenceTimeout: 10, redactionIdleFlush: 0.05)
+        let phone = Phone(channel: phoneEnd)
+        let run = Task { await session.run() }
+        // A proof made with the WRONG key.
+        let exporter = try XCTUnwrap(phoneEnd.exporterSecret(label: LANPairing.peerBindingExporterLabel))
+        let bad = LANPairing.peerBindingProof(sessionKey: SymmetricKey(size: .bits256), exporter: exporter)
+        let h = try unwrapOK(try await phone.request(.hello, ["did": .string("phone-1"), "proof": .string(bad.base64EncodedString())]))
+        XCTAssertEqual(h["capabilities"]?.objectValue?["read_only"]?.boolValue, true)
+        let c1 = try await errorCode(phone, .sessionInput, ["session_id": .string("s1"), "bytes_b64": .string("QQ==")])
+        XCTAssertEqual(c1, "control_not_allowed")
+        XCTAssertEqual(backend.recordedControlCalls, [])
+        await session.close(); _ = await run.value
     }
 
     // MARK: - hello

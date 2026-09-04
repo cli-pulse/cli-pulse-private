@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import CryptoKit
 
 /// What the Mac said in its `hello`, kept for the UI.
 public struct LANHelloInfo: Equatable, Sendable {
@@ -75,13 +76,20 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
     /// Fires once, when the link ends. nil = clean close.
     public var onDisconnect: (@Sendable (Error?) -> Void)?
 
+    /// (did, sessionKey) for the paired peer, used to prove which phone
+    /// this is in `hello`. nil for a link with no binding (the in-memory
+    /// test pair, or an M0-style read-only probe).
+    private let binding: (did: String, sessionKey: SymmetricKey)?
+
     public init(
         channel: any LANLinkChannel,
+        binding: (did: String, sessionKey: SymmetricKey)? = nil,
         heartbeatInterval: TimeInterval = LANLinkProtocol.heartbeatInterval,
         silenceTimeout: TimeInterval = LANLinkProtocol.peerSilenceTimeout,
         requestTimeout: TimeInterval = 5
     ) {
         self.channel = channel
+        self.binding = binding
         self.heartbeatInterval = heartbeatInterval
         self.silenceTimeout = silenceTimeout
         self.requestTimeout = requestTimeout
@@ -110,7 +118,11 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
             throw ConnectError.unexpectedNegotiation(
                 "\(LANTransportSecurity.negotiated(on: conn).map { "0x\(String($0.ciphersuite, radix: 16))" } ?? "none")")
         }
-        return LANSessionControlClient(channel: NWConnectionChannel(connection: conn, queue: queue))
+        // M1: prove which paired phone this is to the Mac, so it can grant
+        // control per phone. The proof is bound to THIS handshake's
+        // exporter, so it cannot be replayed on another connection.
+        return LANSessionControlClient(channel: NWConnectionChannel(connection: conn, queue: queue),
+                                       binding: (did: peer.id, sessionKey: peer.sessionKey))
     }
 
     /// Open a TLS-PSK connection with the PAIRING key, for
@@ -163,7 +175,12 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
     // MARK: - SessionControlClient
 
     public func hello() async throws -> SessionControlHello {
-        let r = try await request(.hello)
+        var p: [String: AnySendableJSON] = [:]
+        if let binding, let exporter = channel.exporterSecret(label: LANPairing.peerBindingExporterLabel) {
+            p["did"] = .string(binding.did)
+            p["proof"] = .string(LANPairing.peerBindingProof(sessionKey: binding.sessionKey, exporter: exporter).base64EncodedString())
+        }
+        let r = try await request(.hello, p)
         guard let v = r["v"]?.intValue, v == LANLinkProtocol.version else {
             throw SessionControlError.versionMismatch
         }
