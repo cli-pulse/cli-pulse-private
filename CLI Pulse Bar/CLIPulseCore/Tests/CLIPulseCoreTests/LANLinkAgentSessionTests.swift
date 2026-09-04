@@ -63,25 +63,29 @@ final class LANLinkAgentSessionTests: XCTestCase {
         }
 
         /// Await the reply to a request sent by hand on the channel.
+        ///
+        /// The buffer check and the waiter registration happen under ONE
+        /// lock hold. Unlocking between them opened a window in which the
+        /// reply landed in the buffer and the waiter was parked after it —
+        /// a lost wake-up that hung `testRequestsAreAnsweredInOrder` under
+        /// full-suite load and never in isolation.
         func reply(for id: String) async -> LANLinkFrame {
-            lock.lock()
-            if let i = frames.firstIndex(where: { if case let .reply(rid, _, _, _) = $0 { return rid == id }; return false }) {
-                let f = frames.remove(at: i); lock.unlock(); return f
-            }
-            lock.unlock()
-            return await withCheckedContinuation { k in
-                lock.lock(); waiters.append((id, k)); lock.unlock()
+            await withCheckedContinuation { k in
+                lock.lock()
+                if let i = frames.firstIndex(where: { if case let .reply(rid, _, _, _) = $0 { return rid == id }; return false }) {
+                    let f = frames.remove(at: i); lock.unlock(); k.resume(returning: f); return
+                }
+                waiters.append((id, k)); lock.unlock()
             }
         }
 
         func nextEvent() async -> LANLinkFrame {
-            lock.lock()
-            if let i = frames.firstIndex(where: { if case .event = $0 { return true }; return false }) {
-                let f = frames.remove(at: i); lock.unlock(); return f
-            }
-            lock.unlock()
-            return await withCheckedContinuation { k in
-                lock.lock(); eventWaiters.append(k); lock.unlock()
+            await withCheckedContinuation { k in
+                lock.lock()
+                if let i = frames.firstIndex(where: { if case .event = $0 { return true }; return false }) {
+                    let f = frames.remove(at: i); lock.unlock(); k.resume(returning: f); return
+                }
+                eventWaiters.append(k); lock.unlock()
             }
         }
 

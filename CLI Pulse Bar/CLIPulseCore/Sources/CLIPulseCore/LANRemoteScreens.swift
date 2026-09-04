@@ -9,8 +9,9 @@ import Network
 //
 //   LANNearbyMacsView   — browses Bonjour, lists Macs, routes to pair/sessions
 //   LANPairingFlowView  — scan (or paste) → connect → compare code → done
-//   LANMacSessionsView  — connected to one Mac, lists its sessions
-//   LANTerminalScreen   — one session, watch-only, xterm.js
+//   LANMacSessionsView  — connected to one Mac, lists its sessions, starts/stops (M1)
+//   LANNewSessionSheet  — provider, working directory, the claude.ai opt-in (M1)
+//   LANTerminalScreen   — one session, xterm.js; input and approvals when the Mac allows (M1)
 //
 // Browsing starts when Nearby Macs APPEARS, not at launch — that is what
 // triggers the local-network prompt, and a prompt before the user asked
@@ -307,11 +308,16 @@ public struct LANMacSessionsView: View {
     @State private var hello: LANHelloInfo?
     @State private var status: String = ""
     @State private var error: String?
+    @State private var pendingBySession: [String: Int] = [:]
+    @State private var showNewSession = false
+    @State private var eventsTask: Task<Void, Never>?
 
     public init(mac: LANMacBrowser.DiscoveredMac, peer: LANPairing.PairedPeer) {
         self.mac = mac
         self.peer = peer
     }
+
+    private var controlAllowed: Bool { hello?.controlAllowed ?? false }
 
     public var body: some View {
         List {
@@ -320,10 +326,18 @@ public struct LANMacSessionsView: View {
                     Circle().fill(client == nil ? Color.secondary : Color.green).frame(width: 8, height: 8)
                     Text(status)
                     Spacer()
-                    Text(L10n.remote.readOnly).font(.caption).foregroundStyle(.secondary)
+                    if hello != nil, !controlAllowed {
+                        Text(L10n.remote.readOnly).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 if let hello, !hello.helperReachable {
                     Text(L10n.remote.helperDown).foregroundStyle(.orange)
+                }
+                if let hello, !hello.controlAllowed {
+                    Text(L10n.remote.watchOnlyLink).font(.footnote).foregroundStyle(.secondary)
+                }
+                if let hello, hello.claudeRemoteControlOfferable, hello.claudeRemoteControl?["auth"] == "none" {
+                    Text(L10n.remote.claudeSignInHint).font(.footnote).foregroundStyle(.secondary)
                 }
                 if let error { Text(error).foregroundStyle(.red) }
             }
@@ -333,12 +347,34 @@ public struct LANMacSessionsView: View {
                 }
                 ForEach(sessions) { s in
                     if let client {
-                        NavigationLink {
-                            LANTerminalScreen(client: client, session: s)
-                        } label: {
-                            VStack(alignment: .leading) {
-                                Text(s.clientLabel ?? s.id).lineLimit(1)
-                                Text("\(s.provider) · \(s.status)").font(.caption).foregroundStyle(.secondary)
+                        HStack {
+                            NavigationLink {
+                                LANTerminalScreen(client: client, session: s, controlAllowed: controlAllowed)
+                            } label: {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(s.clientLabel ?? s.id).lineLimit(1)
+                                    Text("\(s.provider) · \(s.status)").font(.caption).foregroundStyle(.secondary)
+                                    if let n = pendingBySession[s.id], n > 0 {
+                                        Label("\(n) · \(L10n.remote.awaitingApproval)", systemImage: "hand.raised.fill")
+                                            .font(.caption).foregroundStyle(.orange)
+                                    }
+                                }
+                            }
+                            if let rc = s.remoteControl, rc.isReady, let url = rc.url.flatMap(URL.init(string:)) {
+                                Button {
+                                    UIApplication.shared.open(url)
+                                } label: {
+                                    Image(systemName: "arrow.up.forward.app")
+                                }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(L10n.remote.openOnClaude)
+                            }
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            if controlAllowed {
+                                Button(role: .destructive) {
+                                    Task { await stop(s.id) }
+                                } label: { Label(L10n.remote.stop, systemImage: "stop.fill") }
                             }
                         }
                     }
@@ -346,9 +382,22 @@ public struct LANMacSessionsView: View {
             }
         }
         .navigationTitle(peer.displayName)
+        .toolbar {
+            if controlAllowed, let client, let hello {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showNewSession = true } label: { Image(systemName: "plus") }
+                        .accessibilityLabel(L10n.remote.newSession)
+                        .sheet(isPresented: $showNewSession) {
+                            LANNewSessionSheet(client: client, hello: hello, macID: peer.id) {
+                                Task { await refresh() }
+                            }
+                        }
+                }
+            }
+        }
         .refreshable { await refresh() }
         .task { await connect() }
-        .onDisappear { client?.close(); client = nil }
+        .onDisappear { eventsTask?.cancel(); client?.close(); client = nil }
     }
 
     private func connect() async {
@@ -361,6 +410,7 @@ public struct LANMacSessionsView: View {
             hello = c.helloInfo
             status = L10n.remote.connected
             await refresh()
+            watchEvents(c)
         } catch {
             status = L10n.remote.disconnected
             self.error = "\(error)"
@@ -369,32 +419,189 @@ public struct LANMacSessionsView: View {
 
     private func refresh() async {
         guard let client else { return }
-        do { sessions = try await client.listSessions(); error = nil }
+        do {
+            sessions = try await client.listSessions()
+            error = nil
+            if controlAllowed {
+                let pending = try await client.getPendingApprovals(sessionId: nil)
+                pendingBySession = Dictionary(grouping: pending, by: \.sessionId).mapValues(\.count)
+            }
+        } catch { self.error = "\(error)" }
+    }
+
+    private func stop(_ id: String) async {
+        guard let client else { return }
+        do { try await client.stopSession(sessionId: id); await refresh() }
         catch { self.error = "\(error)" }
+    }
+
+    /// No polling: the list changes when the Mac says so.
+    private func watchEvents(_ c: LANSessionControlClient) {
+        eventsTask?.cancel()
+        eventsTask = Task {
+            do {
+                for try await ev in c.subscribeEvents(sessionId: nil) {
+                    if Task.isCancelled { return }
+                    switch ev {
+                    case .sessionStarted, .sessionStopped, .sessionStatus, .sessionRemoteControl:
+                        await refresh()
+                    case let .approvalRequested(a):
+                        pendingBySession[a.sessionId, default: 0] += 1
+                    case let .approvalResolved(sid, _, _, _):
+                        pendingBySession[sid] = max(0, (pendingBySession[sid] ?? 1) - 1)
+                    default:
+                        break
+                    }
+                }
+            } catch {
+                // The link's own disconnect handling covers this.
+            }
+        }
     }
 }
 
-// MARK: - Terminal (watch-only)
+// MARK: - New session
+
+struct LANNewSessionSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let client: LANSessionControlClient
+    let hello: LANHelloInfo
+    let macID: String
+    let onStarted: () -> Void
+
+    @State private var provider: String
+    @State private var cwd: String
+    @State private var openOnClaude: Bool
+    @State private var recent: [String]
+    @State private var starting = false
+    @State private var error: String?
+
+    private static let optInKey = "cli_pulse_lan_claude_remote_control"
+    private static func recentKey(_ macID: String) -> String { "cli_pulse_lan_recent_cwd_" + macID }
+
+    init(client: LANSessionControlClient, hello: LANHelloInfo, macID: String, onStarted: @escaping () -> Void) {
+        self.client = client
+        self.hello = hello
+        self.macID = macID
+        self.onStarted = onStarted
+        let providers = hello.providerAvailability.isEmpty ? ["claude", "codex", "gemini"] : hello.providerAvailability
+        _provider = State(initialValue: providers.first ?? "claude")
+        let recents = UserDefaults.standard.stringArray(forKey: Self.recentKey(macID)) ?? []
+        _recent = State(initialValue: recents)
+        _cwd = State(initialValue: recents.first ?? hello.home ?? "/")
+        _openOnClaude = State(initialValue: UserDefaults.standard.bool(forKey: Self.optInKey))
+    }
+
+    private var providers: [String] {
+        hello.providerAvailability.isEmpty ? ["claude", "codex", "gemini"] : hello.providerAvailability
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Picker(L10n.remote.provider, selection: $provider) {
+                    ForEach(providers, id: \.self) { Text(ProviderDisplay.displayName(for: $0)).tag($0) }
+                }
+                Section(L10n.remote.workingDirectory) {
+                    TextField("/", text: $cwd)
+                        .font(.system(.body, design: .monospaced))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                    if !recent.isEmpty {
+                        ForEach(recent, id: \.self) { path in
+                            Button { cwd = path } label: {
+                                Text(path).font(.system(.footnote, design: .monospaced)).lineLimit(1).truncationMode(.head)
+                            }
+                        }
+                    }
+                }
+                if provider == "claude", hello.claudeRemoteControlOfferable {
+                    Section {
+                        Toggle(L10n.remote.alsoOpenOnClaude, isOn: $openOnClaude)
+                        Text(L10n.remote.claudeTranscriptNotice).font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                if let error {
+                    Section { Text(error).foregroundStyle(.red) }
+                }
+            }
+            .navigationTitle(L10n.remote.newSession)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button(L10n.remote.cancel) { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L10n.remote.start) { start() }
+                        .disabled(starting || cwd.isEmpty || !cwd.hasPrefix("/"))
+                }
+            }
+        }
+    }
+
+    private func start() {
+        starting = true
+        error = nil
+        let rc = provider == "claude" && hello.claudeRemoteControlOfferable && openOnClaude
+        Task {
+            do {
+                _ = try await client.startManagedSession(provider: provider, clientLabel: UIDevice.current.name,
+                                                         cwd: cwd, claudeRemoteControl: rc)
+                var r = recent.filter { $0 != cwd }
+                r.insert(cwd, at: 0)
+                UserDefaults.standard.set(Array(r.prefix(5)), forKey: Self.recentKey(macID))
+                UserDefaults.standard.set(openOnClaude, forKey: Self.optInKey)
+                onStarted()
+                dismiss()
+            } catch {
+                self.error = "\(L10n.remote.startFailed): \(error)"
+                starting = false
+            }
+        }
+    }
+}
+
+// MARK: - Terminal
 
 public struct LANTerminalScreen: View {
     let client: LANSessionControlClient
     let session: SessionControlSummary
+    let controlAllowed: Bool
     @State private var status: String = ""
     @State private var latencyMs: Int?
+    @State private var approvals: [PendingApproval] = []
+    @State private var expired: Set<String> = []
+    @State private var controlRefused: String?
 
-    public init(client: LANSessionControlClient, session: SessionControlSummary) {
+    public init(client: LANSessionControlClient, session: SessionControlSummary, controlAllowed: Bool = false) {
         self.client = client
         self.session = session
+        self.controlAllowed = controlAllowed
     }
+
+    private var canType: Bool { controlAllowed && controlRefused == nil }
 
     public var body: some View {
         VStack(spacing: 0) {
-            LANTerminalHost(client: client, sessionID: session.id, status: $status, latencyMs: $latencyMs)
+            if !approvals.isEmpty {
+                LANApprovalsBanner(approvals: approvals, expired: expired, decide: decide)
+            }
+            LANTerminalHost(client: client, sessionID: session.id, canType: canType,
+                            status: $status, latencyMs: $latencyMs,
+                            onApprovalRequested: { a in
+                                if !approvals.contains(where: { $0.approvalId == a.approvalId }) { approvals.append(a) }
+                            },
+                            onApprovalResolved: { aid, resolvedStatus in
+                                if resolvedStatus == "expired" { expired.insert(aid) } else { approvals.removeAll { $0.approvalId == aid } }
+                            },
+                            onControlRefused: { why in controlRefused = why })
             HStack {
                 Text(status).font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if let latencyMs { Text("\(latencyMs) ms").font(.caption.monospacedDigit()).foregroundStyle(.secondary) }
-                Text(L10n.remote.readOnly).font(.caption).foregroundStyle(.secondary)
+                if let controlRefused {
+                    Text(controlRefused).font(.caption).foregroundStyle(.orange)
+                } else if !controlAllowed {
+                    Text(L10n.remote.readOnly).font(.caption).foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(.bar)
@@ -402,35 +609,104 @@ public struct LANTerminalScreen: View {
         .navigationTitle(session.clientLabel ?? session.id)
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.keyboard)
+        .task {
+            guard controlAllowed else { return }
+            approvals = (try? await client.getPendingApprovals(sessionId: session.id)) ?? []
+        }
+    }
+
+    private func decide(_ a: PendingApproval, _ d: ApprovalDecision) {
+        Task {
+            do {
+                try await client.approveAction(sessionId: a.sessionId, approvalId: a.approvalId, decision: d, comment: nil)
+                approvals.removeAll { $0.approvalId == a.approvalId }
+            } catch let e as SessionControlError where e == .approvalAlreadyResolved || e == .approvalExpired {
+                expired.insert(a.approvalId)
+            } catch {
+                status = "\(error)"
+            }
+        }
+    }
+}
+
+/// Pending approvals for the session, above the terminal. A row whose
+/// approval expired says so and loses its buttons: the helper already
+/// told Claude "no".
+struct LANApprovalsBanner: View {
+    let approvals: [PendingApproval]
+    let expired: Set<String>
+    let decide: (PendingApproval, ApprovalDecision) -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(approvals) { a in
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: "hand.raised.fill").foregroundStyle(.orange)
+                        Text(a.title).font(.subheadline.weight(.semibold))
+                        Spacer()
+                        if let exp = a.expiresAt, !expired.contains(a.approvalId) {
+                            Text(exp, style: .relative).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !a.summary.isEmpty {
+                        Text(a.summary).font(.system(.footnote, design: .monospaced)).lineLimit(4)
+                    }
+                    if expired.contains(a.approvalId) {
+                        Text(L10n.remote.approvalExpired).font(.footnote).foregroundStyle(.secondary)
+                    } else {
+                        HStack {
+                            Button(L10n.remote.approve) { decide(a, .approve) }.buttonStyle(.borderedProminent)
+                            Button(L10n.remote.reject, role: .destructive) { decide(a, .reject) }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+                .padding(10)
+                Divider()
+            }
+        }
+        .background(Color.orange.opacity(0.08))
     }
 }
 
 /// Hosts `RemoteTerminalView`, paints the tail snapshot, then streams
-/// live output. Read-only. The latency shown is RTT/2 of an
-/// application-level ping — two devices do not share a clock, so a
-/// one-way timestamp would be a guess.
+/// live output. Input (M1) goes the way the Mac's own terminal sends it:
+/// every keystroke is queued and one drain loop sends them FIFO, so two
+/// quick keys cannot cross on the wire; resizes are last-wins. The
+/// latency shown is RTT/2 of an application-level ping — two devices do
+/// not share a clock, so a one-way timestamp would be a guess.
 struct LANTerminalHost: UIViewRepresentable {
     let client: LANSessionControlClient
     let sessionID: String
+    let canType: Bool
     @Binding var status: String
     @Binding var latencyMs: Int?
+    let onApprovalRequested: (PendingApproval) -> Void
+    let onApprovalResolved: (String, String) -> Void
+    let onControlRefused: (String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(client: client, sessionID: sessionID,
+        Coordinator(client: client, sessionID: sessionID, canType: canType,
                     setStatus: { s in Task { @MainActor in status = s } },
-                    setLatency: { ms in Task { @MainActor in latencyMs = ms } })
+                    setLatency: { ms in Task { @MainActor in latencyMs = ms } },
+                    onApprovalRequested: { a in Task { @MainActor in onApprovalRequested(a) } },
+                    onApprovalResolved: { aid, st in Task { @MainActor in onApprovalResolved(aid, st) } },
+                    onControlRefused: { why in Task { @MainActor in onControlRefused(why) } })
     }
 
     func makeUIView(context: Context) -> RemoteTerminalView {
         let v = RemoteTerminalView(frame: .zero)
-        v.setReadOnly(true)
+        v.setReadOnly(!canType)
         v.delegate = context.coordinator
         context.coordinator.view = v
         context.coordinator.start()
         return v
     }
 
-    func updateUIView(_ uiView: RemoteTerminalView, context: Context) {}
+    func updateUIView(_ uiView: RemoteTerminalView, context: Context) {
+        context.coordinator.canType = canType
+        uiView.setReadOnly(!canType)
+    }
 
     static func dismantleUIView(_ uiView: RemoteTerminalView, coordinator: Coordinator) {
         coordinator.stop()
@@ -439,19 +715,33 @@ struct LANTerminalHost: UIViewRepresentable {
     final class Coordinator: NSObject, RemoteTerminalViewDelegate {
         let client: LANSessionControlClient
         let sessionID: String
+        var canType: Bool
         let setStatus: (String) -> Void
         let setLatency: (Int?) -> Void
+        let onApprovalRequested: (PendingApproval) -> Void
+        let onApprovalResolved: (String, String) -> Void
+        let onControlRefused: (String) -> Void
         weak var view: RemoteTerminalView?
         private var task: Task<Void, Never>?
         private var pingTask: Task<Void, Never>?
         private var paint = ReattachPaintBuffer()
+        private var pendingStdin = Data()
+        private var stdinDraining = false
+        private var resizeTask: Task<Void, Never>?
 
-        init(client: LANSessionControlClient, sessionID: String,
-             setStatus: @escaping (String) -> Void, setLatency: @escaping (Int?) -> Void) {
+        init(client: LANSessionControlClient, sessionID: String, canType: Bool,
+             setStatus: @escaping (String) -> Void, setLatency: @escaping (Int?) -> Void,
+             onApprovalRequested: @escaping (PendingApproval) -> Void,
+             onApprovalResolved: @escaping (String, String) -> Void,
+             onControlRefused: @escaping (String) -> Void) {
             self.client = client
             self.sessionID = sessionID
+            self.canType = canType
             self.setStatus = setStatus
             self.setLatency = setLatency
+            self.onApprovalRequested = onApprovalRequested
+            self.onApprovalResolved = onApprovalResolved
+            self.onControlRefused = onControlRefused
         }
 
         /// `ReattachPaintBuffer` order, verbatim from the Mac terminal:
@@ -465,8 +755,6 @@ struct LANTerminalHost: UIViewRepresentable {
                 guard let self else { return }
                 let stream = client.subscribeEvents(sessionId: sessionID)
 
-                // Snapshot fetch runs alongside the stream; the buffer keeps
-                // the order right regardless of which finishes first.
                 Task { [weak self] in
                     guard let self else { return }
                     let tail = (try? await client.getTailSnapshot(sessionId: sessionID, maxBytes: 65536)) ?? Data()
@@ -485,7 +773,11 @@ struct LANTerminalHost: UIViewRepresentable {
                                 if let now = self.paint.intake(chunk) { self.view?.pushStdout(now) }
                             }
                         case .sessionStopped:
-                            setStatus("Session ended")
+                            setStatus(L10n.remote.sessionEnded)
+                        case let .approvalRequested(a):
+                            onApprovalRequested(a)
+                        case let .approvalResolved(_, aid, _, st):
+                            onApprovalResolved(aid, st)
                         case let .other(name, _) where name == "seq_gap":
                             // Lost frames: repaint from the snapshot.
                             if let tail = try? await client.getTailSnapshot(sessionId: sessionID, maxBytes: 65536) {
@@ -495,6 +787,8 @@ struct LANTerminalHost: UIViewRepresentable {
                         }
                     }
                     setStatus(L10n.remote.disconnected)
+                } catch let e as SessionControlError where e == .localControlOff {
+                    setStatus(L10n.remote.controlOffOnMac)
                 } catch {
                     setStatus("\(L10n.remote.disconnected): \(error)")
                 }
@@ -513,11 +807,45 @@ struct LANTerminalHost: UIViewRepresentable {
         func stop() {
             task?.cancel(); task = nil
             pingTask?.cancel(); pingTask = nil
+            resizeTask?.cancel(); resizeTask = nil
         }
 
-        func remoteTerminalViewDidBecomeReady(_ view: RemoteTerminalView) { view.setReadOnly(true) }
-        func remoteTerminalView(_ view: RemoteTerminalView, didReceiveStdin data: String) { /* read-only */ }
-        func remoteTerminalView(_ view: RemoteTerminalView, didResizeTo cols: Int, rows: Int) { /* M1 */ }
+        func remoteTerminalViewDidBecomeReady(_ view: RemoteTerminalView) { view.setReadOnly(!canType) }
+
+        func remoteTerminalView(_ view: RemoteTerminalView, didReceiveStdin data: String) {
+            guard canType else { return }
+            pendingStdin.append(Data(data.utf8))
+            guard !stdinDraining else { return }
+            stdinDraining = true
+            Task { @MainActor [weak self] in await self?.drainStdin() }
+        }
+
+        @MainActor
+        private func drainStdin() async {
+            defer { stdinDraining = false }
+            while !pendingStdin.isEmpty {
+                let chunk = pendingStdin
+                pendingStdin.removeAll(keepingCapacity: true)
+                do {
+                    try await client.sendInputRaw(sessionId: sessionID, bytes: chunk)
+                } catch let e as SessionControlError where e == .notControllable || e == .localControlOff {
+                    canType = false
+                    view?.setReadOnly(true)
+                    onControlRefused(e == .localControlOff ? L10n.remote.controlOffOnMac : L10n.remote.watchOnlyLink)
+                    pendingStdin.removeAll()
+                } catch {
+                    setStatus("\(error)")
+                }
+            }
+        }
+
+        func remoteTerminalView(_ view: RemoteTerminalView, didResizeTo cols: Int, rows: Int) {
+            guard canType else { return }
+            resizeTask?.cancel()
+            resizeTask = Task { [client, sessionID] in
+                try? await client.resize(sessionId: sessionID, cols: cols, rows: rows)
+            }
+        }
     }
 }
 #endif
