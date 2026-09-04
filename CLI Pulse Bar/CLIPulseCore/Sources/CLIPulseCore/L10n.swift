@@ -963,6 +963,37 @@ public enum L10n {
 
     // MARK: - Integrations
 
+    /// Remote-control M0 (LAN, read-only). en + zh-Hans shipped; the
+    /// other four locales fall back to English per key until translated.
+    public enum remote {
+        public static var title: String { tr("remote.title") }
+        public static var nearbyMacs: String { tr("remote.nearby_macs") }
+        public static var pairWithMac: String { tr("remote.pair_with_mac") }
+        public static var scanHint: String { tr("remote.scan_hint") }
+        public static var pasteHint: String { tr("remote.paste_hint") }
+        public static var compareCode: String { tr("remote.compare_code") }
+        public static var approveOnMac: String { tr("remote.approve_on_mac") }
+        public static var paired: String { tr("remote.paired") }
+        public static var notPaired: String { tr("remote.not_paired") }
+        public static var readyToPair: String { tr("remote.ready_to_pair") }
+        public static var forget: String { tr("remote.forget") }
+        public static var readOnly: String { tr("remote.read_only") }
+        public static var connecting: String { tr("remote.connecting") }
+        public static var connected: String { tr("remote.connected") }
+        public static var disconnected: String { tr("remote.disconnected") }
+        public static var noSessions: String { tr("remote.no_sessions") }
+        public static var noMacs: String { tr("remote.no_macs") }
+        public static var localNetworkDenied: String { tr("remote.local_network_denied") }
+        public static var openSettings: String { tr("remote.open_settings") }
+        public static var pairingSucceeded: String { tr("remote.pairing_succeeded") }
+        public static var pairingFailed: String { tr("remote.pairing_failed") }
+        public static var qrExpired: String { tr("remote.qr_expired") }
+        public static var helperDown: String { tr("remote.helper_down") }
+        public static var sessions: String { tr("remote.sessions") }
+        public static var done: String { tr("remote.done") }
+        public static var cancel: String { tr("remote.cancel") }
+    }
+
     public enum integrations {
         public static var title: String { tr("integrations.title") }
         public static var webhookNotifications: String { tr("integrations.webhook_notifications") }

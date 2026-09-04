@@ -268,6 +268,8 @@ struct SettingsTab: View {
                 // since the underlying keychain bug affects both.
                 Divider()
                 PrivacySettingsSection()
+                // Remote-control M0: view lives in CLIPulseCore (no pbxproj entry).
+                LANRemoteControlSection(agent: state.lanAgent)
 
                 Divider()
 

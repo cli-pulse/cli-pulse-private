@@ -1150,3 +1150,31 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "telemetry.got_it" = "Got it";
 "telemetry.change_later" = "You can change this any time in Settings › Privacy.";
 "telemetry.settings_body" = "How far the app got, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in. No file paths, project names, provider names, token counts or cost amounts. The id is random and is deleted when you uninstall.";
+
+/* Remote control (LAN, M0) */
+"remote.title" = "Remote Control";
+"remote.nearby_macs" = "Nearby Macs";
+"remote.pair_with_mac" = "Pair with a Mac";
+"remote.scan_hint" = "On the Mac, open Settings › Remote Control and tap “Pair an iPhone”, then scan the code it shows.";
+"remote.paste_hint" = "Or paste the pairing link";
+"remote.compare_code" = "Compare this code with the one on your Mac";
+"remote.approve_on_mac" = "Tap Approve on the Mac if the codes match.";
+"remote.paired" = "Paired";
+"remote.not_paired" = "Not paired";
+"remote.ready_to_pair" = "Ready to pair";
+"remote.forget" = "Forget";
+"remote.read_only" = "Read-only";
+"remote.connecting" = "Connecting…";
+"remote.connected" = "Connected";
+"remote.disconnected" = "Disconnected";
+"remote.no_sessions" = "No sessions. Start one from the Mac’s Sessions tab.";
+"remote.no_macs" = "No Macs found on this Wi-Fi. On the Mac, turn on Settings › Remote Control.";
+"remote.local_network_denied" = "Local network access is off. Turn it on in Settings to find your Mac.";
+"remote.open_settings" = "Open Settings";
+"remote.pairing_succeeded" = "Paired";
+"remote.pairing_failed" = "Pairing failed";
+"remote.qr_expired" = "The code expired. Show a new one on the Mac.";
+"remote.helper_down" = "Mac reachable, but its helper is not running.";
+"remote.sessions" = "Sessions";
+"remote.done" = "Done";
+"remote.cancel" = "Cancel";

@@ -38,6 +38,7 @@ struct iOSOverviewTab: View {
                     // paired Mac that reports sensors. Independent of the cost
                     // dashboard so it shows even before/without dashboard data.
                     deviceHealthSection
+                    nearbyMacsSection
 
                     if !accountGroups.isEmpty {
                         providerAccountSummary
@@ -263,6 +264,32 @@ struct iOSOverviewTab: View {
             }
             .padding(.horizontal)
         }
+    }
+
+    // MARK: - Nearby Macs (remote-control M0)
+
+    /// Entry to the LAN remote-control list. A NavigationLink, not an
+    /// auto-started browser: Bonjour starts when the destination appears,
+    /// which is when the local-network prompt is allowed to fire.
+    private var nearbyMacsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeader(title: L10n.remote.nearbyMacs, icon: "desktopcomputer")
+            NavigationLink {
+                LANNearbyMacsView()
+            } label: {
+                HStack {
+                    Image(systemName: "iphone.and.arrow.forward")
+                    Text(L10n.remote.title)
+                    Spacer()
+                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.secondary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal)
     }
 
     // MARK: - Cost Section

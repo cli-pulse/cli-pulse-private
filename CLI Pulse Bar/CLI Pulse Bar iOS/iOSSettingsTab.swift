@@ -306,6 +306,15 @@ struct iOSSettingsTab: View {
                         }
                     }
 
+                    // Remote control (LAN, M0) — the pairing entry point.
+                    Section(L10n.remote.title) {
+                        NavigationLink {
+                            LANNearbyMacsView()
+                        } label: {
+                            Label(L10n.remote.pairWithMac, systemImage: "qrcode.viewfinder")
+                        }
+                    }
+
                     // Integrations (Webhook)
                     Section(L10n.integrations.title) {
                         Toggle(L10n.integrations.webhookNotifications, isOn: Binding(

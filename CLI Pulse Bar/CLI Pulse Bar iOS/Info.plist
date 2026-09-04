@@ -52,6 +52,22 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Remote-control M0. iOS 14+ blocks local-network traffic without
+	     NSLocalNetworkUsageDescription, and silently returns NO Bonjour
+	     results for a service type absent from NSBonjourServices — there is
+	     no error, the list is just empty. NSAllowsLocalNetworking below is
+	     an unrelated, older ATS key and does not satisfy either. The
+	     camera is for scanning the pairing QR shown on the Mac. All three
+	     prompts fire on first USE (tapping Nearby Macs / Pair), never at
+	     launch. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>CLI Pulse looks for your Mac on this Wi-Fi so you can watch its CLI sessions from your iPhone.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_clipulse._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>CLI Pulse uses the camera to scan the pairing code shown on your Mac.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

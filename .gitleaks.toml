@@ -31,6 +31,13 @@ paths = [
 regexes = [
     # Redacted placeholders left in docs after PR #104.
     '''<[A-Z0-9_]+_REDACTED>''',
+    # A Swift DECLARATION, not a value: `public let privateKey:
+    # Curve25519.KeyAgreement.PrivateKey` in LANPairing.swift trips the
+    # generic-api-key rule on the identifier alone. Allowlist regexes are
+    # matched against the CAPTURED secret, which here is the type name —
+    # a CryptoKit type is never a credential, and a literal assigned to a
+    # `privateKey` would still fire because its captured text differs.
+    '''Curve25519\.KeyAgreement\.PrivateKey''',
     # CI stub anon key used by the Swift test job.
     '''ci-stub-anon-key''',
 ]
