@@ -227,6 +227,42 @@ final class M1aHelperHardeningTests: XCTestCase {
         _ = manager.stopSession(sid)
     }
 
+    // MARK: - rows say what the helper owns
+
+    func testRowsCarryAttachedAndLocalOnly() throws {
+        // A hand-launched session the shell integration parked in tmux is
+        // ATTACHED and local-only until the user opts it in; a session the
+        // helper spawned is neither. Before this, every managed row said
+        // `controllable: true` and nothing else — a phone could not tell.
+        let tmux = ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux"].first { FileManager.default.isExecutableFile(atPath: $0) }
+        guard let tmux else { throw XCTSkip("tmux not available") }
+        struct Sleeper: ProviderSpawner {
+            let name = "claude"
+            func isAvailable() -> Bool { true }
+            func argv(extraEnv: [String: String], helperArgv0: String?) -> [String] { ["/bin/sh", "-c", "sleep 5"] }
+            func supportsRemoteApproval() -> Bool { false }
+        }
+        let manager = ManagedSessionManager(transport: PtyTransport(), providerRegistry: ProviderSpawnerRegistry(spawners: [Sleeper()]))
+        defer { manager.shutdown() }
+        let tmuxSock = dir.appendingPathComponent("t.sock").path
+        let owner = TmuxTransport(socketPath: tmuxSock, tmuxBin: tmux)
+        let oh = try owner.start(sessionId: "clipulse-claude-77", argv: ["cat"])
+        defer { owner.close(oh) }
+        XCTAssertTrue(manager.attachWrappedSession(sessionId: "att-77", tmuxSessionName: "clipulse-claude-77",
+                                                   tmuxBin: tmux, socketPath: tmuxSock))
+        let spawned = try manager.startSession(provider: "claude", clientLabel: "mine")
+
+        let sock = try startServer(manager: manager)
+        let listed = try call(sock, ["id": "1", "method": "list_sessions", "auth_token": "T", "params": [:]])
+        let rows = try XCTUnwrap((listed["result"] as? [String: Any])?["managed"] as? [[String: Any]])
+        let att = try XCTUnwrap(rows.first { ($0["session_id"] as? String) == "att-77" })
+        XCTAssertEqual(att["attached"] as? Bool, true)
+        XCTAssertEqual(att["local_only"] as? Bool, true)
+        let own = try XCTUnwrap(rows.first { ($0["session_id"] as? String) == spawned.sessionId })
+        XCTAssertEqual(own["attached"] as? Bool, false)
+        XCTAssertEqual(own["local_only"] as? Bool, false)
+    }
+
     // MARK: - hello auth
 
     func testHelloAuthReflectsTheOAuthObjectNotTheFile() throws {
