@@ -1196,3 +1196,5 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "remote.watch_only_link" = "This Mac lets this iPhone watch only";
 "remote.start_failed" = "Could not start the session";
 "remote.session_ended" = "Session ended";
+"remote.no_sessions_control" = "No sessions yet. Tap + to start one.";
+"remote.no_providers" = "This Mac has no CLI tools available.";

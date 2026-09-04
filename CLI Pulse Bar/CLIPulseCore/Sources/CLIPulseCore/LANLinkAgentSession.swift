@@ -123,7 +123,12 @@ public actor LANLinkAgentSession {
         let sessionID: String?
         var task: Task<Void, Never>?
         var flushTask: Task<Void, Never>?
-        var redactor = LANEgressRedactor.Streaming()
+        /// One redactor PER session, not per subscription. An all-sessions
+        /// subscription carries several sessions' output; a single shared
+        /// redactor would concatenate their bytes — misattributing output
+        /// and, worse, letting a secret split across two different
+        /// sessions' chunks slip past the chunk-boundary carry.
+        var redactors: [String: LANEgressRedactor.Streaming] = [:]
         var seq: UInt64 = 0
     }
     private var subscriptions: [String: Subscription] = [:]
@@ -226,15 +231,31 @@ public actor LANLinkAgentSession {
             return
         }
 
-        // Beat first: a slow helper must not stop the phone from seeing
-        // that this end is alive.
+        // Beat, and do NOT await the backend before the next beat: the
+        // revocation check is a full UDS round trip and a slow helper
+        // would otherwise stretch the inter-beat gap past the phone's 3 s
+        // silence cutoff. Run the gate check on its own task; a definite
+        // "disabled" ends the session, an error is ignored (the NEXT tick
+        // fails closed only if it can actually reach the helper). A
+        // check is skipped while one is still in flight.
         try? await send(.heartbeat(ts: clock().timeIntervalSince1970))
-
-        // Revocation check — fail closed.
-        let enabled = (try? await backend.isLocalControlEnabled()) ?? false
-        if !enabled {
-            await end(.localControlDisabled)
+        if gateCheckInFlight { return }
+        gateCheckInFlight = true
+        Task { [weak self] in
+            let enabled = (try? await self?.backend.isLocalControlEnabled()) ?? nil
+            await self?.finishGateCheck(enabled: enabled)
         }
+    }
+
+    private var gateCheckInFlight = false
+    /// Fail closed, exactly as M0 did: `false` (off) OR nil (could not ask
+    /// the helper) both end the session — revocation must never silently
+    /// fail. The difference from M0 is only that this runs OFF the beat
+    /// loop, so a slow gate RPC can no longer stretch the heartbeat gap
+    /// past the phone's silence cutoff. Only a clean `true` keeps it up.
+    private func finishGateCheck(enabled: Bool?) async {
+        gateCheckInFlight = false
+        if enabled != true { await end(.localControlDisabled) }
     }
 
     private func startWorker() {
@@ -295,9 +316,11 @@ public actor LANLinkAgentSession {
                 await reply(id, result: ["ts": .double(clock().timeIntervalSince1970)])
             case .sessionsList:
                 try await refreshRows()
+                let permitted = await controlPermitted()
+                let mayControl = peer != nil && permitted
                 let rows = knownRows.values.filter { !$0.localOnly }
                     .sorted { $0.id < $1.id }
-                await reply(id, result: ["sessions": .array(rows.map(Self.encode))])
+                await reply(id, result: ["sessions": .array(rows.map { Self.encode($0, includeRemoteControl: mayControl) })])
             case .sessionTail:
                 guard let sid = params["session_id"]?.stringValue, !sid.isEmpty else {
                     await reply(id, error: LANLinkProtocol.ErrorCode.badRequest, "'session_id' required")
@@ -452,7 +475,11 @@ public actor LANLinkAgentSession {
     /// just spawned is usable — the helper itself still refuses ids it
     /// does not own.
     private func isLocalOnly(_ sid: String) async throws -> Bool {
-        if !rowsLoaded || knownRows[sid] == nil { try await refreshRows() }
+        // List only when THIS id is unknown — not on every event's
+        // `rowsLoaded = false`. Otherwise a control verb behind a fresh
+        // start/event would drag a multi-second `list_sessions` onto the
+        // ordered request worker and head-of-line-block the phone's input.
+        if knownRows[sid] == nil { try await refreshRows() }
         return knownRows[sid]?.localOnly ?? false
     }
 
@@ -538,27 +565,32 @@ public actor LANLinkAgentSession {
             if let label { d["client_label"] = .string(label) }
             await emit(sub, kind: .sessionStarted, data: d)
         case let .sessionStatus(sid, status):
-            if knownRows[sid]?.localOnly ?? false { return }
+            if (try? await isLocalOnly(sid)) ?? false { return }
             await emit(sub, kind: .sessionStatus, data: ["session_id": .string(sid), "status": .string(status)])
         case let .sessionStopped(sid, code):
-            if knownRows[sid]?.localOnly ?? false { return }
+            if (try? await isLocalOnly(sid)) ?? false { return }
             var d: [String: AnySendableJSON] = ["session_id": .string(sid)]
             if let code { d["exit_code"] = .int(code) }
-            await flushOutput(sub)
+            await flushSession(sub, sid)
             await emit(sub, kind: .sessionStopped, data: d)
         case let .approvalRequested(approval):
             // A control surface: only a peer that may decide sees it.
             guard peer != nil, await controlPermitted() else { return }
-            if knownRows[approval.sessionId]?.localOnly ?? false { return }
+            if (try? await isLocalOnly(approval.sessionId)) ?? false { return }
             await emit(sub, kind: .approvalRequested, data: ["session_id": .string(approval.sessionId), "approval": Self.encode(approval)])
         case let .approvalResolved(sid, aid, decision, status):
             guard peer != nil, await controlPermitted() else { return }
+            if (try? await isLocalOnly(sid)) ?? false { return }
             await emit(sub, kind: .approvalResolved, data: [
                 "session_id": .string(sid), "approval_id": .string(aid),
                 "decision": .string(decision), "status": .string(status),
             ])
         case let .sessionRemoteControl(sid, status, url, reason):
-            if knownRows[sid]?.localOnly ?? false { return }
+            // The delegation URL is a capability to open (and drive) the
+            // session on claude.ai — a control surface, gated like an
+            // approval. A watch-only peer sees nothing.
+            guard peer != nil, await controlPermitted() else { return }
+            if (try? await isLocalOnly(sid)) ?? false { return }
             rowsLoaded = false   // the row's remote_control changed
             var d: [String: AnySendableJSON] = ["session_id": .string(sid), "status": .string(status)]
             if let url { d["url"] = .string(url) }
@@ -577,8 +609,12 @@ public actor LANLinkAgentSession {
     /// promptly — a chunk-boundary split arrives microseconds apart, so
     /// a 150 ms idle window does not reopen that hole.
     private func emitOutput(_ sub: String, sessionID: String, text: String, ts: TimeInterval) async {
-        guard var s = subscriptions[sub] else { return }
-        let ready = s.redactor.submit(text)
+        guard var s = subscriptions[sub], !sessionID.isEmpty else { return }
+        var red = s.redactors[sessionID] ?? LANEgressRedactor.Streaming()
+        let ready = red.submit(text)
+        s.redactors[sessionID] = red
+        // One idle timer per subscription is fine — it flushes whichever
+        // sessions still hold bytes — but restart it on each chunk.
         s.flushTask?.cancel()
         s.flushTask = Task { [weak self, idle = redactionIdleFlush] in
             try? await Task.sleep(nanoseconds: UInt64(idle * 1_000_000_000))
@@ -596,13 +632,33 @@ public actor LANLinkAgentSession {
     }
 
     private func flushOutput(_ sub: String) async {
-        guard var s = subscriptions[sub], s.redactor.hasPendingBytes else { return }
-        let tail = s.redactor.flush()
-        s.flushTask = nil
-        subscriptions[sub] = s
+        guard subscriptions[sub] != nil else { return }
+        // Flush every session that holds bytes, each to its own session id.
+        for (sid, red) in (subscriptions[sub]?.redactors ?? [:]) where red.hasPendingBytes {
+            var r = red
+            let tail = r.flush()
+            subscriptions[sub]?.redactors[sid] = r
+            if !tail.isEmpty {
+                await emit(sub, kind: .output, data: [
+                    "session_id": .string(sid),
+                    "bytes_b64": .string(Data(tail.utf8).base64EncodedString()),
+                    "ts": .double(clock().timeIntervalSince1970),
+                ])
+            }
+        }
+        subscriptions[sub]?.flushTask = nil
+    }
+
+    /// Flush and drop one session's redactor (on session_stopped).
+    private func flushSession(_ sub: String, _ sid: String) async {
+        guard var red = subscriptions[sub]?.redactors[sid], red.hasPendingBytes else {
+            subscriptions[sub]?.redactors[sid] = nil; return
+        }
+        let tail = red.flush()
+        subscriptions[sub]?.redactors[sid] = nil
         if !tail.isEmpty {
             await emit(sub, kind: .output, data: [
-                "session_id": .string(s.sessionID ?? ""),
+                "session_id": .string(sid),
                 "bytes_b64": .string(Data(tail.utf8).base64EncodedString()),
                 "ts": .double(clock().timeIntervalSince1970),
             ])
@@ -613,15 +669,12 @@ public actor LANLinkAgentSession {
         guard var s = subscriptions[sub] else { return }
         s.task?.cancel()
         s.flushTask?.cancel()
-        // Flush whatever the redactor holds before saying goodbye.
-        let tail = s.redactor.flush()
         subscriptions[sub] = s
-        if !tail.isEmpty, ended == nil {
-            await emit(sub, kind: .output, data: [
-                "session_id": .string(s.sessionID ?? ""),
-                "bytes_b64": .string(Data(tail.utf8).base64EncodedString()),
-                "ts": .double(clock().timeIntervalSince1970),
-            ])
+        // Flush whatever each session holds before saying goodbye.
+        if ended == nil {
+            for sid in (subscriptions[sub]?.redactors.keys).map(Array.init) ?? [] {
+                await flushSession(sub, sid)
+            }
         }
         if notify, ended == nil || reason == .localControlDisabled || reason == .helperGone {
             await emit(sub, kind: .subscriptionEnded, data: ["reason": .string(reason.rawValue)])
@@ -654,7 +707,7 @@ public actor LANLinkAgentSession {
 
     // MARK: - Encoding helpers
 
-    static func encode(_ row: SessionControlSummary) -> AnySendableJSON {
+    static func encode(_ row: SessionControlSummary, includeRemoteControl: Bool = true) -> AnySendableJSON {
         var d: [String: AnySendableJSON] = [
             "id": .string(row.id),
             "provider": .string(row.provider),
@@ -664,7 +717,9 @@ public actor LANLinkAgentSession {
             "attached": .bool(row.attached),
         ]
         if let l = row.clientLabel { d["client_label"] = .string(l) }
-        if let rc = row.remoteControl {
+        // The delegation URL is a control surface: a watch-only peer does
+        // not receive it (nor the status — it cannot act on it).
+        if includeRemoteControl, let rc = row.remoteControl {
             var r: [String: AnySendableJSON] = ["status": .string(rc.status)]
             if let u = rc.url { r["url"] = .string(u) }
             if let why = rc.reason { r["reason"] = .string(why) }

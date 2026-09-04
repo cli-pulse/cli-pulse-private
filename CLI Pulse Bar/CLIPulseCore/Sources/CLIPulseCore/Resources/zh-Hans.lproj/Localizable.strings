@@ -1200,3 +1200,5 @@
 "remote.watch_only_link" = "这台 Mac 只允许此 iPhone 观看";
 "remote.start_failed" = "无法启动会话";
 "remote.session_ended" = "会话已结束";
+"remote.no_sessions_control" = "还没有会话。点 + 开一个。";
+"remote.no_providers" = "这台 Mac 没有可用的 CLI 工具。";

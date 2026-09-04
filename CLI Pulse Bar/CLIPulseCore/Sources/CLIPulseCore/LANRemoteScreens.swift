@@ -343,7 +343,8 @@ public struct LANMacSessionsView: View {
             }
             Section(L10n.remote.sessions) {
                 if sessions.isEmpty, client != nil {
-                    Text(L10n.remote.noSessions).foregroundStyle(.secondary)
+                    Text(controlAllowed ? L10n.remote.noSessionsControl : L10n.remote.noSessions)
+                        .foregroundStyle(.secondary)
                 }
                 ForEach(sessions) { s in
                     if let client {
@@ -383,7 +384,7 @@ public struct LANMacSessionsView: View {
         }
         .navigationTitle(peer.displayName)
         .toolbar {
-            if controlAllowed, let client, let hello {
+            if controlAllowed, let client, let hello, hello.helperReachable {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showNewSession = true } label: { Image(systemName: "plus") }
                         .accessibilityLabel(L10n.remote.newSession)
@@ -418,7 +419,9 @@ public struct LANMacSessionsView: View {
     }
 
     private func refresh() async {
-        guard let client else { return }
+        // A dropped link left `client == nil`; pull-to-refresh is how the
+        // user gets back, so reconnect here rather than no-op.
+        guard let client else { await connect(); return }
         do {
             sessions = try await client.listSessions()
             error = nil
@@ -484,23 +487,27 @@ struct LANNewSessionSheet: View {
         self.hello = hello
         self.macID = macID
         self.onStarted = onStarted
-        let providers = hello.providerAvailability.isEmpty ? ["claude", "codex", "gemini"] : hello.providerAvailability
-        _provider = State(initialValue: providers.first ?? "claude")
+        // Empty availability means the Mac advertised no spawnable CLI —
+        // do NOT substitute a hardcoded trio and let Start fail; show the
+        // real (empty) list and disable Start.
+        _provider = State(initialValue: hello.providerAvailability.first ?? "")
         let recents = UserDefaults.standard.stringArray(forKey: Self.recentKey(macID)) ?? []
         _recent = State(initialValue: recents)
         _cwd = State(initialValue: recents.first ?? hello.home ?? "/")
         _openOnClaude = State(initialValue: UserDefaults.standard.bool(forKey: Self.optInKey))
     }
 
-    private var providers: [String] {
-        hello.providerAvailability.isEmpty ? ["claude", "codex", "gemini"] : hello.providerAvailability
-    }
+    private var providers: [String] { hello.providerAvailability }
 
     var body: some View {
         NavigationStack {
             Form {
-                Picker(L10n.remote.provider, selection: $provider) {
-                    ForEach(providers, id: \.self) { Text(ProviderDisplay.displayName(for: $0)).tag($0) }
+                if providers.isEmpty {
+                    Text(L10n.remote.noProviders).foregroundStyle(.secondary)
+                } else {
+                    Picker(L10n.remote.provider, selection: $provider) {
+                        ForEach(providers, id: \.self) { Text(ProviderDisplay.displayName(for: $0)).tag($0) }
+                    }
                 }
                 Section(L10n.remote.workingDirectory) {
                     TextField("/", text: $cwd)
@@ -531,7 +538,7 @@ struct LANNewSessionSheet: View {
                 ToolbarItem(placement: .cancellationAction) { Button(L10n.remote.cancel) { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L10n.remote.start) { start() }
-                        .disabled(starting || cwd.isEmpty || !cwd.hasPrefix("/"))
+                        .disabled(starting || cwd.isEmpty || !cwd.hasPrefix("/") || providers.isEmpty)
                 }
             }
         }

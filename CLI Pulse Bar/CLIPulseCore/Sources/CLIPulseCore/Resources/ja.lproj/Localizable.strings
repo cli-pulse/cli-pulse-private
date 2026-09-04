@@ -1145,3 +1145,5 @@
 "remote.watch_only_link" = "この Mac ではこの iPhone は閲覧のみです";
 "remote.start_failed" = "セッションを開始できません";
 "remote.session_ended" = "セッションが終了しました";
+"remote.no_sessions_control" = "セッションがありません。+ で開始できます。";
+"remote.no_providers" = "この Mac に利用できる CLI ツールがありません。";

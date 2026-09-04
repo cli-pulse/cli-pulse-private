@@ -257,13 +257,19 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
         let r = try await request(.sessionsList)
         return (r["sessions"]?.arrayValue ?? []).compactMap { row -> SessionControlSummary? in
             guard let o = row.objectValue, let id = o["id"]?.stringValue else { return nil }
+            let rc = o["remote_control"]?.objectValue.flatMap { r in
+                r["status"]?.stringValue.map { RemoteControlInfo(status: $0, url: r["url"]?.stringValue, reason: r["reason"]?.stringValue) }
+            }
             return SessionControlSummary(
                 id: id,
                 provider: o["provider"]?.stringValue ?? "claude",
                 clientLabel: o["client_label"]?.stringValue,
                 status: o["status"]?.stringValue ?? "running",
                 controllable: o["controllable"]?.boolValue ?? false,
-                source: SessionControlSource(rawValue: o["source"]?.stringValue ?? "") ?? .managed)
+                source: SessionControlSource(rawValue: o["source"]?.stringValue ?? "") ?? .managed,
+                remoteControl: rc,
+                attached: o["attached"]?.boolValue ?? false,
+                localOnly: false)
         }
     }
 

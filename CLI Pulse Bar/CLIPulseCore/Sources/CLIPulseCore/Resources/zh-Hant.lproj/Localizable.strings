@@ -1148,3 +1148,5 @@
 "remote.watch_only_link" = "這台 Mac 只允許此 iPhone 觀看";
 "remote.start_failed" = "無法啟動工作階段";
 "remote.session_ended" = "工作階段已結束";
+"remote.no_sessions_control" = "還沒有工作階段。點 + 開一個。";
+"remote.no_providers" = "這台 Mac 沒有可用的 CLI 工具。";

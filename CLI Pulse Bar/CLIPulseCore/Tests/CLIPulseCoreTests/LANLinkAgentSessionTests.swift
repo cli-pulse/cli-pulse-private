@@ -503,6 +503,109 @@ final class LANLinkAgentSessionTests: XCTestCase {
         await session.close(); _ = await run.value
     }
 
+    // MARK: - review fixes (M1b)
+
+    func testDelegationURLIsWithheldFromAReadOnlyPeer() async throws {
+        // A watch-only peer must not receive the claude.ai URL — it is a
+        // capability to open and drive the session there.
+        let b = FakeStreamingBackend()
+        b.sessions = [SessionControlSummary(id: "s1", provider: "claude", clientLabel: "p", status: "running",
+                                            remoteControl: RemoteControlInfo(status: "ready", url: "https://claude.ai/code/SECRET123", reason: nil))]
+        let (session, phone, _, run) = makeSession(backend: b, peer: nil)
+        let r = try unwrapOK(try await phone.request(.sessionsList))
+        let row = try XCTUnwrap(r["sessions"]?.arrayValue?.first?.objectValue)
+        XCTAssertNil(row["remote_control"], "a read-only peer must not see the delegation URL")
+        // And the event is not forwarded either.
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe))
+        b.push(.sessionRemoteControl(sessionId: "s1", status: "ready", url: "https://claude.ai/code/SECRET123", reason: nil))
+        b.push(.outputDelta(sessionId: "s1", payload: "marker\n", ts: 1))
+        let f = await phone.nextEvent()
+        guard case let .event(kind, _, _, d) = f else { return XCTFail() }
+        XCTAssertEqual(kind, "output", "session_remote_control leaked to a read-only peer")
+        XCTAssertFalse((d["bytes_b64"]?.stringValue).map { Data(base64Encoded: $0).map { String(decoding: $0, as: UTF8.self) } ?? "" }?.contains("SECRET123") ?? false)
+        await session.close(); _ = await run.value
+    }
+
+    func testControlPeerStillSeesTheDelegationURL() async throws {
+        // Negative control for the test above.
+        let b = FakeStreamingBackend()
+        b.sessions = [SessionControlSummary(id: "s1", provider: "claude", clientLabel: "p", status: "running",
+                                            remoteControl: RemoteControlInfo(status: "ready", url: "https://claude.ai/code/OK123456", reason: nil))]
+        let (session, phone, _, run) = makeSession(backend: b)
+        let r = try unwrapOK(try await phone.request(.sessionsList))
+        let rc = try XCTUnwrap(r["sessions"]?.arrayValue?.first?.objectValue?["remote_control"]?.objectValue)
+        XCTAssertEqual(rc["url"]?.stringValue, "https://claude.ai/code/OK123456")
+        await session.close(); _ = await run.value
+    }
+
+    func testAllSessionsSubscriptionRedactsEachSessionIndependently() async throws {
+        // Two sessions interleave output through ONE all-sessions
+        // subscription. A secret split so its halves land in DIFFERENT
+        // sessions' chunks must still not appear — a shared redactor would
+        // concatenate them and leak. Each half alone is not a secret.
+        let (session, phone, backend, run) = makeSession()
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe))   // nil = all sessions
+        let secret = "sk-ant-api03-AAAABBBBCCCCDDDD"
+        backend.push(.outputRaw(sessionId: "s1", payload: "prefix " + String(secret.prefix(12)), ts: 1))
+        backend.push(.outputRaw(sessionId: "att-other", payload: String(secret.dropFirst(12)) + " suffix\n", ts: 1))
+        backend.push(.outputRaw(sessionId: "s1", payload: " done\n", ts: 1))
+        // Let the redactor's 50 ms idle flush fire, then read the buffered
+        // frames (no waiting — the frame count is not fixed). Bucket by
+        // session id: neither session's stream, nor the two joined, may
+        // contain the whole secret.
+        try await Task.sleep(nanoseconds: 400_000_000)
+        var bucket: [String: String] = [:]
+        for f in phone.allFrames {
+            guard case let .event(kind, _, _, d) = f, kind == "output",
+                  let sid = d["session_id"]?.stringValue,
+                  let b64 = d["bytes_b64"]?.stringValue, let data = Data(base64Encoded: b64) else { continue }
+            bucket[sid, default: ""] += String(decoding: data, as: UTF8.self)
+        }
+        for (sid, text) in bucket {
+            XCTAssertFalse(text.contains(secret), "session \(sid) stream leaked the secret: \(text)")
+        }
+        XCTAssertFalse(bucket.values.joined().contains(secret), "a shared redactor concatenated two sessions and leaked a secret")
+        await session.close(); _ = await run.value
+    }
+
+    func testLocalOnlyApprovalIsWithheldEvenBeforeAnyList() async throws {
+        // knownRows is empty until a sessions.list. An approval/status for
+        // a local-only session that arrives first must still fail closed.
+        let b = FakeStreamingBackend()
+        b.sessions = [SessionControlSummary(id: "att", provider: "claude", clientLabel: "mine", status: "running",
+                                            attached: true, localOnly: true)]
+        let (session, phone, backend, run) = makeSession(backend: b)
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe))   // all sessions, no list first
+        backend.push(.approvalRequested(approval: .fixture(id: "ax", session: "att", summary: "rm -rf")))
+        backend.push(.approvalResolved(sessionId: "att", approvalId: "ax", decision: "expired", status: "expired"))
+        backend.push(.sessionStatus(sessionId: "att", status: "waiting"))
+        backend.push(.outputDelta(sessionId: "s0", payload: "visible\n", ts: 1))
+        // The only event that should come through is the s0 output (s0 is
+        // not local-only). But s0 isn't in `sessions`, so it's unknown ⇒
+        // isLocalOnly refreshes and finds it absent ⇒ treated not-local.
+        let f = await phone.nextEvent()
+        guard case let .event(kind, _, _, d) = f else { return XCTFail() }
+        XCTAssertEqual(kind, "output")
+        XCTAssertEqual(d["session_id"]?.stringValue, "s0")
+        await session.close(); _ = await run.value
+    }
+
+    func testInputForAKnownSessionDoesNotListEvenAfterAStart() async throws {
+        // isLocalOnly must not drag a list_sessions onto the request path
+        // for a session it already knows, even after an event flipped the
+        // "rows changed" flag — that was the head-of-line-blocking bug.
+        let b = FakeStreamingBackend()
+        let (session, phone, backend, run) = makeSession(backend: b)
+        _ = try unwrapOK(try await phone.request(.sessionsList))   // learns s1
+        backend.listCalls = 0
+        // A start flips the internal "rows changed" flag.
+        _ = try unwrapOK(try await phone.request(.sessionStart, ["provider": .string("claude")]))
+        // Input for the ALREADY-KNOWN s1 must not trigger a fresh list.
+        _ = try unwrapOK(try await phone.request(.sessionInput, ["session_id": .string("s1"), "bytes_b64": .string("QQ==")]))
+        XCTAssertEqual(backend.listCalls, 0, "input on a known session re-listed (head-of-line block)")
+        await session.close(); _ = await run.value
+    }
+
     // MARK: - liveness under a slow helper
 
     func testASlowBackendCallDoesNotGetThePhoneDisconnected() async throws {

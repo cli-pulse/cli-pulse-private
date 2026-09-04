@@ -993,6 +993,8 @@ public enum L10n {
         public static var done: String { tr("remote.done") }
         public static var cancel: String { tr("remote.cancel") }
         public static var newSession: String { tr("remote.new_session") }
+        public static var noSessionsControl: String { tr("remote.no_sessions_control") }
+        public static var noProviders: String { tr("remote.no_providers") }
         public static var provider: String { tr("remote.provider") }
         public static var workingDirectory: String { tr("remote.working_directory") }
         public static var recentDirectories: String { tr("remote.recent_directories") }

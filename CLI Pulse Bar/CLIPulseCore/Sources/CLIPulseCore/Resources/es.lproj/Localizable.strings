@@ -915,3 +915,5 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "remote.watch_only_link" = "Este Mac solo permite ver desde este iPhone";
 "remote.start_failed" = "No se pudo iniciar la sesión";
 "remote.session_ended" = "Sesión finalizada";
+"remote.no_sessions_control" = "No hay sesiones. Toca + para iniciar una.";
+"remote.no_providers" = "Este Mac no tiene herramientas CLI disponibles.";

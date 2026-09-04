@@ -150,8 +150,13 @@ public final class LANLinkAgent: ObservableObject {
         peers = LANPairingStore.peers()
         // Cancelling the listener does NOT close accepted connections
         // (measured: they stay `.ready` with data flowing). Close this
-        // phone's live links explicitly.
-        closeSessions { $0 == peerID }
+        // phone's live links explicitly — AND every still-unattributed
+        // connection (one that never sent a valid hello binding proof, so
+        // `box.id` is nil). A forgotten phone that only ever watched
+        // read-only never proved a peer id, so matching on the id alone
+        // would leave its covert stream running past Forget. An innocent
+        // phone caught mid-handshake just reconnects.
+        closeSessions { $0 == peerID || $0 == nil }
         if steadyListener != nil { restartSteadyListener() }
     }
 

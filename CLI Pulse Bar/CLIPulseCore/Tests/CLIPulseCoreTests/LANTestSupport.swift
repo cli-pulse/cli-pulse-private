@@ -16,6 +16,7 @@ class FakeStreamingBackend: SessionControlling, @unchecked Sendable {
     var tail = Data("$ echo hi\nhi\n".utf8)
     var continuations: [AsyncThrowingStream<LocalSessionEvent, Error>.Continuation] = []
     var localControlChecks = 0
+    var listCalls = 0
     var controlCalls: [String] = []
     var pendingApprovals: [PendingApproval] = []
     var approveError: Error?
@@ -44,6 +45,7 @@ class FakeStreamingBackend: SessionControlling, @unchecked Sendable {
     }
     func listSessions() async throws -> [SessionControlSummary] {
         guard helperReachable else { throw SessionControlError.helperNotRunning }
+        lock.lock(); listCalls += 1; lock.unlock()
         if listDelay > 0 { try await Task.sleep(nanoseconds: UInt64(listDelay * 1_000_000_000)) }
         return sessions
     }
