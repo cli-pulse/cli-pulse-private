@@ -729,6 +729,7 @@ extension AppState {
                     case .sessionStopped: kind = "sessionStopped"
                     case .approvalRequested: kind = "approvalRequested"
                     case .approvalResolved: kind = "approvalResolved"
+                    case .sessionRemoteControl: kind = "sessionRemoteControl"
                     case .heartbeat: kind = "heartbeat"
                     case .error(let c, _): kind = "error(\(c))"
                     case .other(let n, _): kind = "other(\(n))"
@@ -829,6 +830,10 @@ extension AppState {
                 bucket.append(approval)
                 self.localPendingApprovals[sessionId] = bucket
             }
+        case .sessionRemoteControl:
+            // Remote-control M1: the delegation URL is read by the phone off
+            // the session row; the Mac's preview does not render it.
+            break
         case .approvalResolved(_, let approvalId, _, _):
             if var bucket = self.localPendingApprovals[sessionId] {
                 bucket.removeAll { $0.approvalId == approvalId }

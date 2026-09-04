@@ -8,15 +8,43 @@ final class LANLinkProtocolTests: XCTestCase {
 
     func testM0ReadOnlySetIsExactlyTheSixReadVerbs() {
         // If someone adds a verb to `readOnly` without meaning to, this
-        // is the line that goes red. The M1 verbs must NOT be here.
+        // is the line that goes red. The M1 verbs must NOT be here: a
+        // peer without control permission gets exactly this set.
         XCTAssertEqual(
             LANLinkProtocol.Method.readOnly,
             [.hello, .ping, .sessionsList, .sessionTail, .sessionSubscribe, .sessionUnsubscribe]
         )
         for m in [LANLinkProtocol.Method.sessionInput, .sessionResize, .sessionStart,
-                  .sessionStop, .approvalDecide] {
+                  .sessionStop, .approvalDecide, .approvalsList] {
             XCTAssertFalse(m.isReadOnly, "\(m.rawValue) is an M1 verb and must not be read-only")
         }
+    }
+
+    func testM1SetsPartitionTheVerbs() {
+        // `control` is what a peer needs permission for; `approvalsList`
+        // is a read that only a control-capable peer gets (an approval
+        // payload is a control surface). Together with `readOnly` they
+        // cover every verb exactly once.
+        XCTAssertEqual(LANLinkProtocol.Method.control,
+                       [.sessionInput, .sessionResize, .sessionStart, .sessionStop, .approvalDecide])
+        XCTAssertEqual(LANLinkProtocol.Method.m1, LANLinkProtocol.Method.control.union([.approvalsList]))
+        XCTAssertTrue(LANLinkProtocol.Method.readOnly.isDisjoint(with: LANLinkProtocol.Method.m1))
+        XCTAssertEqual(LANLinkProtocol.Method.readOnly.union(LANLinkProtocol.Method.m1),
+                       Set(LANLinkProtocol.Method.allCases))
+        XCTAssertEqual(LANLinkProtocol.maxInputBytesPerFrame, 8192)
+    }
+
+    func testM1EventKindsAndCodesAreSpelledLikeTheHelperEvents() {
+        // Approval events keep the helper's names so `LocalSessionEvent`
+        // decoding on the phone is the same table as on the Mac.
+        XCTAssertEqual(LANLinkProtocol.EventKind.approvalRequested.rawValue, "approval_requested")
+        XCTAssertEqual(LANLinkProtocol.EventKind.approvalResolved.rawValue, "approval_resolved")
+        XCTAssertEqual(LANLinkProtocol.EventKind.sessionRemoteControl.rawValue, "session_remote_control")
+        XCTAssertEqual(LANLinkProtocol.ErrorCode.controlNotAllowed, "control_not_allowed")
+        XCTAssertEqual(LANLinkProtocol.ErrorCode.sessionLocalOnly, "session_local_only")
+        XCTAssertEqual(LANLinkWireError(code: "control_not_allowed", message: "").asSessionControlError, .notControllable)
+        XCTAssertEqual(LANLinkWireError(code: "session_local_only", message: "").asSessionControlError, .notControllable)
+        XCTAssertEqual(LANLinkWireError(code: "approval_already_resolved", message: "").asSessionControlError, .approvalAlreadyResolved)
     }
 
     func testEveryMethodSpellingIsStable() {
@@ -27,7 +55,7 @@ final class LANLinkProtocolTests: XCTestCase {
             .sessionSubscribe: "session.subscribe", .sessionUnsubscribe: "session.unsubscribe",
             .sessionInput: "session.input", .sessionResize: "session.resize",
             .sessionStart: "session.start", .sessionStop: "session.stop",
-            .approvalDecide: "approval.decide",
+            .approvalDecide: "approval.decide", .approvalsList: "approvals.list",
         ]
         XCTAssertEqual(Set(expected.keys), Set(LANLinkProtocol.Method.allCases))
         for (m, s) in expected { XCTAssertEqual(m.rawValue, s) }
@@ -41,7 +69,7 @@ final class LANLinkProtocolTests: XCTestCase {
         let helperSpellings: Set<String> = [
             "start_session", "list_sessions", "stop_session", "send_input",
             "send_input_raw", "resize", "get_tail_snapshot", "subscribe_events",
-            "approve_action", "get_pending_approvals", "attach_wrapped_session",
+            "approve_action", "get_pending_approvals", "attach_wrapped_session", "list_pending_approvals",
             "attach",   // does not exist on the helper either; pinned so nobody adds it
         ]
         for m in LANLinkProtocol.Method.allCases {

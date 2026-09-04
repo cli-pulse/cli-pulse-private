@@ -62,6 +62,18 @@ final class LANLinkAgentSessionTests: XCTestCase {
             return await reply
         }
 
+        /// Await the reply to a request sent by hand on the channel.
+        func reply(for id: String) async -> LANLinkFrame {
+            lock.lock()
+            if let i = frames.firstIndex(where: { if case let .reply(rid, _, _, _) = $0 { return rid == id }; return false }) {
+                let f = frames.remove(at: i); lock.unlock(); return f
+            }
+            lock.unlock()
+            return await withCheckedContinuation { k in
+                lock.lock(); waiters.append((id, k)); lock.unlock()
+            }
+        }
+
         func nextEvent() async -> LANLinkFrame {
             lock.lock()
             if let i = frames.firstIndex(where: { if case .event = $0 { return true }; return false }) {
@@ -92,8 +104,12 @@ final class LANLinkAgentSessionTests: XCTestCase {
         }
     }
 
+    /// The default peer is attributed AND permitted — M1's happy path.
+    /// Pass `peer: nil` for an unattributed connection (M0 phone, or a
+    /// pairing-key connection), or a peer with `controlAllowed: false`.
     private func makeSession(
         backend: FakeStreamingBackend = FakeStreamingBackend(),
+        peer: LANAgentPeer? = LANAgentPeer(id: "phone-1", displayName: "Probe", controlAllowed: true),
         heartbeat: TimeInterval = 0.05,
         silence: TimeInterval = 10,
         idleFlush: TimeInterval = 0.05
@@ -101,7 +117,8 @@ final class LANLinkAgentSessionTests: XCTestCase {
         let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
         let session = LANLinkAgentSession(
             channel: macEnd, backend: backend,
-            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Test Mac", cloudDeviceID: "cloud-9"),
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Test Mac", cloudDeviceID: "cloud-9", home: "/Users/t"),
+            peer: peer,
             heartbeatInterval: heartbeat, silenceTimeout: silence, redactionIdleFlush: idleFlush)
         let phone = Phone(channel: phoneEnd)
         let run = Task { await session.run() }
@@ -119,6 +136,10 @@ final class LANLinkAgentSessionTests: XCTestCase {
         return e
     }
 
+    private func errorCode(_ phone: Phone, _ m: LANLinkProtocol.Method, _ p: [String: AnySendableJSON] = [:]) async throws -> String {
+        try unwrapError(try await phone.request(m, p)).code
+    }
+
     // MARK: - hello
 
     func testHelloReportsIdentityCapabilitiesAndHelperState() async throws {
@@ -127,10 +148,32 @@ final class LANLinkAgentSessionTests: XCTestCase {
         XCTAssertEqual(r["did"]?.stringValue, "mac-1")
         XCTAssertEqual(r["name"]?.stringValue, "Test Mac")
         XCTAssertEqual(r["cloud_device_id"]?.stringValue, "cloud-9")
-        XCTAssertEqual(r["capabilities"]?.objectValue?["read_only"]?.boolValue, true)
+        XCTAssertEqual(r["capabilities"]?.objectValue?["read_only"]?.boolValue, false)
+        XCTAssertEqual(r["capabilities"]?.objectValue?["control"]?.boolValue, true)
+        XCTAssertEqual(r["capabilities"]?.objectValue?["approvals"]?.boolValue, true)
         XCTAssertEqual(r["helper"]?.objectValue?["reachable"]?.boolValue, true)
         XCTAssertEqual(r["helper"]?.objectValue?["implementation"]?.stringValue, "swift-bundled")
+        XCTAssertEqual(r["home"]?.stringValue, "/Users/t")
+        XCTAssertEqual(r["peer"]?.objectValue?["id"]?.stringValue, "phone-1")
+        XCTAssertEqual(r["peer"]?.objectValue?["control_allowed"]?.boolValue, true)
+        XCTAssertEqual(Set(r["methods"]?.arrayValue?.compactMap(\.stringValue) ?? []),
+                       Set(LANLinkProtocol.Method.allCases.map(\.rawValue)))
+        XCTAssertEqual(r["helper"]?.objectValue?["provider_availability"]?.arrayValue?.compactMap(\.stringValue), ["claude", "gemini"])
+        XCTAssertEqual(r["helper"]?.objectValue?["claude_remote_control"]?.objectValue?["policy"]?.stringValue, "allowed")
         await session.close(); _ = await run.value
+    }
+
+    func testHelloForAnUnpermittedOrUnattributedPeerIsReadOnly() async throws {
+        for peer in [LANAgentPeer(id: "phone-2", displayName: "Old", controlAllowed: false), nil] {
+            let (session, phone, _, run) = makeSession(peer: peer)
+            let r = try unwrapOK(try await phone.request(.hello))
+            XCTAssertEqual(r["capabilities"]?.objectValue?["read_only"]?.boolValue, true, "\(String(describing: peer))")
+            XCTAssertEqual(r["capabilities"]?.objectValue?["control"]?.boolValue, false)
+            XCTAssertEqual(Set(r["methods"]?.arrayValue?.compactMap(\.stringValue) ?? []),
+                           Set(LANLinkProtocol.Method.readOnly.map(\.rawValue)))
+            if peer == nil { XCTAssertNil(r["peer"]) }
+            await session.close(); _ = await run.value
+        }
     }
 
     func testHelloSucceedsWhenHelperIsDownAndReportsIt() async throws {
@@ -179,16 +222,250 @@ final class LANLinkAgentSessionTests: XCTestCase {
         await session.close(); _ = await run.value
     }
 
-    // MARK: - the M0 boundary
+    // MARK: - the permission boundary
 
-    func testEveryM1VerbIsRefusedWithNotImplemented() async throws {
-        // THE M0 boundary. The backend's control methods XCTFail if
-        // reached, so this proves refusal happens BEFORE the helper.
-        let (session, phone, _, run) = makeSession()
-        for m in LANLinkProtocol.Method.allCases where !m.isReadOnly {
-            let e = try unwrapError(try await phone.request(m, ["session_id": .string("s1"), "payload": .string("rm -rf /")]))
-            XCTAssertEqual(e.code, "not_implemented", m.rawValue)
+    func testEveryM1VerbIsRefusedForAnUnpermittedOrUnattributedPeer() async throws {
+        // THE M1 boundary. Refusal must happen BEFORE the helper: the
+        // backend records every control call, and the record stays empty.
+        for peer in [LANAgentPeer(id: "phone-2", displayName: "Old", controlAllowed: false), nil] {
+            let (session, phone, backend, run) = makeSession(peer: peer)
+            for m in LANLinkProtocol.Method.m1 {
+                let e = try unwrapError(try await phone.request(m, [
+                    "session_id": .string("s1"), "bytes_b64": .string(Data("rm -rf /\n".utf8).base64EncodedString()),
+                    "cols": .int(80), "rows": .int(24), "provider": .string("claude"),
+                    "approval_id": .string("a1"), "decision": .string("approve"),
+                ]))
+                XCTAssertEqual(e.code, "control_not_allowed", "\(m.rawValue) for \(String(describing: peer))")
+            }
+            XCTAssertEqual(backend.recordedControlCalls, [], "the helper must never see a refused verb")
+            await session.close(); _ = await run.value
         }
+    }
+
+    func testPermissionIsReCheckedPerRequestNotCachedAtHello() async throws {
+        // The Mac user flips the per-phone toggle off mid-session: the
+        // very next control frame is refused, no reconnect needed.
+        let permitted = LockedBox<Bool>(true)
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let backend = FakeStreamingBackend()
+        let session = LANLinkAgentSession(
+            channel: macEnd, backend: backend,
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "M", cloudDeviceID: nil, home: nil),
+            peer: LANAgentPeer(id: "phone-1", displayName: "P", controlAllowed: true),
+            controlPermitted: { permitted.get() },
+            heartbeatInterval: 0.05, silenceTimeout: 10, redactionIdleFlush: 0.05)
+        let phone = Phone(channel: phoneEnd)
+        let run = Task { await session.run() }
+        _ = try unwrapOK(try await phone.request(.sessionResize, ["session_id": .string("s1"), "cols": .int(100), "rows": .int(30)]))
+        permitted.set(false)
+        let e = try unwrapError(try await phone.request(.sessionResize, ["session_id": .string("s1"), "cols": .int(100), "rows": .int(30)]))
+        XCTAssertEqual(e.code, "control_not_allowed")
+        XCTAssertEqual(backend.recordedControlCalls, ["resize s1 100x30"])
+        await session.close(); _ = await run.value
+    }
+
+    // MARK: - control verbs
+
+    func testInputResizeStartStopReachTheBackendWithTheRightArguments() async throws {
+        let (session, phone, backend, run) = makeSession()
+        _ = try unwrapOK(try await phone.request(.sessionInput, ["session_id": .string("s1"), "bytes_b64": .string(Data("ls\r".utf8).base64EncodedString())]))
+        _ = try unwrapOK(try await phone.request(.sessionResize, ["session_id": .string("s1"), "cols": .int(120), "rows": .int(40)]))
+        let started = try unwrapOK(try await phone.request(.sessionStart, ["provider": .string("claude"), "client_label": .string("phone"), "cwd": .string("/Users/t/proj"), "claude_remote_control": .bool(true)]))
+        XCTAssertEqual(started["session_id"]?.stringValue, "new-1")
+        _ = try unwrapOK(try await phone.request(.sessionStop, ["session_id": .string("s1")]))
+        XCTAssertEqual(backend.recordedControlCalls, [
+            "input s1 ls\r", "resize s1 120x40", "start claude label=phone cwd=/Users/t/proj rc=true", "stop s1",
+        ])
+        await session.close(); _ = await run.value
+    }
+
+    func testControlArgumentsAreValidatedBeforeTheHelper() async throws {
+        let (session, phone, backend, run) = makeSession()
+        let big = Data(repeating: 0x41, count: LANLinkProtocol.maxInputBytesPerFrame + 1).base64EncodedString()
+        let c1 = try await errorCode(phone, .sessionInput, ["session_id": .string("s1"), "bytes_b64": .string(big)])
+        XCTAssertEqual(c1, "bad_request")
+        let c2 = try await errorCode(phone, .sessionInput, ["session_id": .string("s1"), "bytes_b64": .string("!!!")])
+        XCTAssertEqual(c2, "bad_request")
+        let c3 = try await errorCode(phone, .sessionInput, ["bytes_b64": .string("QQ==")])
+        XCTAssertEqual(c3, "bad_request")
+        let c4 = try await errorCode(phone, .sessionResize, ["session_id": .string("s1"), "cols": .int(0), "rows": .int(24)])
+        XCTAssertEqual(c4, "bad_request")
+        let c5 = try await errorCode(phone, .sessionResize, ["session_id": .string("s1"), "cols": .int(80), "rows": .int(5000)])
+        XCTAssertEqual(c5, "bad_request")
+        let c6 = try await errorCode(phone, .sessionStart, ["provider": .string("")])
+        XCTAssertEqual(c6, "bad_request")
+        let c7 = try await errorCode(phone, .sessionStart, ["provider": .string("claude"), "cwd": .string("relative")])
+        XCTAssertEqual(c7, "bad_request")
+        let c8 = try await errorCode(phone, .sessionStart, ["provider": .string("claude"), "client_label": .string(String(repeating: "x", count: 300))])
+        XCTAssertEqual(c8, "bad_request")
+        let c9 = try await errorCode(phone, .sessionStop, [:])
+        XCTAssertEqual(c9, "bad_request")
+        let c10 = try await errorCode(phone, .approvalDecide, ["session_id": .string("s1"), "approval_id": .string("a1"), "decision": .string("maybe")])
+        XCTAssertEqual(c10, "bad_request")
+        XCTAssertEqual(backend.recordedControlCalls, [])
+        // Exactly the cap is fine.
+        let max = Data(repeating: 0x41, count: LANLinkProtocol.maxInputBytesPerFrame).base64EncodedString()
+        _ = try unwrapOK(try await phone.request(.sessionInput, ["session_id": .string("s1"), "bytes_b64": .string(max)]))
+        XCTAssertEqual(backend.recordedControlCalls.count, 1)
+        await session.close(); _ = await run.value
+    }
+
+    func testHelperErrorsOnControlVerbsAreTyped() async throws {
+        let (session, phone, _, run) = makeSession()
+        let e = try unwrapError(try await phone.request(.sessionInput, ["session_id": .string("nope"), "bytes_b64": .string("QQ==")]))
+        XCTAssertEqual(e.asSessionControlError, .sessionNotFound)
+        let e2 = try unwrapError(try await phone.request(.sessionStop, ["session_id": .string("nope")]))
+        XCTAssertEqual(e2.asSessionControlError, .sessionNotFound)
+        await session.close(); _ = await run.value
+    }
+
+    // MARK: - approvals
+
+    func testApprovalsListIsRedactedAndDecideRoundTrips() async throws {
+        let b = FakeStreamingBackend()
+        b.pendingApprovals = [.fixture(id: "a1", summary: "curl -H 'Authorization: Bearer sk-ant-api03-AAAABBBBCCCCDDDD'",
+                                        meta: ["command": "export ANTHROPIC_API_KEY=sk-ant-api03-EEEEFFFFGGGGHHHH"])]
+        let (session, phone, backend, run) = makeSession(backend: b)
+        let r = try unwrapOK(try await phone.request(.approvalsList, ["session_id": .string("s1")]))
+        let rows = try XCTUnwrap(r["approvals"]?.arrayValue)
+        XCTAssertEqual(rows.count, 1)
+        let row = try XCTUnwrap(rows[0].objectValue)
+        XCTAssertEqual(row["approval_id"]?.stringValue, "a1")
+        XCTAssertEqual(row["session_id"]?.stringValue, "s1")
+        XCTAssertEqual(row["title"]?.stringValue, "Bash")
+        XCTAssertEqual(row["status"]?.stringValue, "pending")
+        XCTAssertEqual(row["created_at"]?.intValue, 1_700_000_000)
+        XCTAssertEqual(row["expires_at"]?.intValue, 1_700_000_060)
+        let summary = try XCTUnwrap(row["summary"]?.stringValue)
+        XCTAssertFalse(summary.contains("sk-ant-api03"), summary)
+        XCTAssertTrue(summary.contains(LANEgressRedactor.redactionMarker))
+        let meta = try XCTUnwrap(row["tool_metadata"]?.objectValue?["command"]?.stringValue)
+        XCTAssertFalse(meta.contains("sk-ant-api03"), meta)
+
+        _ = try unwrapOK(try await phone.request(.approvalDecide, ["session_id": .string("s1"), "approval_id": .string("a1"), "decision": .string("reject"), "comment": .string("no")]))
+        XCTAssertEqual(backend.recordedControlCalls, ["decide s1 a1 reject no"])
+
+        backend.approveError = SessionControlError.approvalAlreadyResolved
+        let e = try unwrapError(try await phone.request(.approvalDecide, ["session_id": .string("s1"), "approval_id": .string("a1"), "decision": .string("approve")]))
+        XCTAssertEqual(e.code, "approval_already_resolved")
+        XCTAssertEqual(e.asSessionControlError, .approvalAlreadyResolved)
+        await session.close(); _ = await run.value
+    }
+
+    func testApprovalEventsAreForwardedRedactedToAPermittedPeer() async throws {
+        let (session, phone, backend, run) = makeSession()
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.approvalRequested(approval: .fixture(id: "a2", summary: "token sk-ant-api03-AAAABBBBCCCCDDDD here")))
+        backend.push(.approvalResolved(sessionId: "s1", approvalId: "a2", decision: "expired", status: "expired"))
+        let f1 = await phone.nextEvent()
+        guard case let .event(k1, _, _, d1) = f1 else { return XCTFail() }
+        XCTAssertEqual(k1, "approval_requested")
+        let a = try XCTUnwrap(d1["approval"]?.objectValue)
+        XCTAssertEqual(a["approval_id"]?.stringValue, "a2")
+        XCTAssertFalse(try XCTUnwrap(a["summary"]?.stringValue).contains("sk-ant-api03"))
+        let f2 = await phone.nextEvent()
+        guard case let .event(k2, _, _, d2) = f2 else { return XCTFail() }
+        XCTAssertEqual(k2, "approval_resolved")
+        XCTAssertEqual(d2["approval_id"]?.stringValue, "a2")
+        XCTAssertEqual(d2["status"]?.stringValue, "expired")
+        XCTAssertEqual(d2["session_id"]?.stringValue, "s1")
+        await session.close(); _ = await run.value
+    }
+
+    func testApprovalEventsAreNotForwardedToAReadOnlyPeer() async throws {
+        // An approval payload is a control surface; a peer that may not
+        // decide does not get to see it.
+        let (session, phone, backend, run) = makeSession(peer: nil)
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.approvalRequested(approval: .fixture()))
+        backend.push(.outputDelta(sessionId: "s1", payload: "marker\n", ts: 1))
+        let f = await phone.nextEvent()
+        guard case let .event(kind, _, _, _) = f else { return XCTFail() }
+        XCTAssertEqual(kind, "output", "an approval event leaked to a read-only peer")
+        await session.close(); _ = await run.value
+    }
+
+    // MARK: - what the helper owns
+
+    func testLocalOnlySessionsAreHiddenAndRefused() async throws {
+        let b = FakeStreamingBackend()
+        b.sessions = [
+            SessionControlSummary(id: "s1", provider: "claude", clientLabel: "proj", status: "running"),
+            SessionControlSummary(id: "att", provider: "claude", clientLabel: "my terminal", status: "running",
+                                  attached: true, localOnly: true),
+            SessionControlSummary(id: "shared", provider: "claude", clientLabel: "opted in", status: "running",
+                                  attached: true, localOnly: false),
+        ]
+        let (session, phone, backend, run) = makeSession(backend: b)
+        let r = try unwrapOK(try await phone.request(.sessionsList))
+        let ids = r["sessions"]?.arrayValue?.compactMap { $0.objectValue?["id"]?.stringValue } ?? []
+        XCTAssertEqual(ids, ["s1", "shared"], "a local-only attached session must not be listed")
+        XCTAssertEqual(r["sessions"]?.arrayValue?[1].objectValue?["attached"]?.boolValue, true)
+        for m: LANLinkProtocol.Method in [.sessionTail, .sessionSubscribe, .sessionInput, .sessionStop] {
+            let e = try unwrapError(try await phone.request(m, ["session_id": .string("att"), "bytes_b64": .string("QQ==")]))
+            XCTAssertEqual(e.code, "session_local_only", m.rawValue)
+        }
+        XCTAssertEqual(backend.recordedControlCalls, [])
+        // An all-sessions subscription never carries the local-only session's bytes.
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe))
+        backend.push(.outputDelta(sessionId: "att", payload: "secret terminal\n", ts: 1))
+        backend.push(.outputDelta(sessionId: "s1", payload: "visible\n", ts: 1))
+        let f = await phone.nextEvent()
+        guard case let .event(_, _, _, d) = f else { return XCTFail() }
+        XCTAssertEqual(d["session_id"]?.stringValue, "s1")
+        await session.close(); _ = await run.value
+    }
+
+    func testRemoteControlOutcomeIsOnTheRowAndForwardedAsAnEvent() async throws {
+        let b = FakeStreamingBackend()
+        b.sessions = [SessionControlSummary(id: "s1", provider: "claude", clientLabel: "proj", status: "running",
+                                            remoteControl: RemoteControlInfo(status: "ready", url: "https://claude.ai/code/abc123DEF", reason: nil))]
+        let (session, phone, backend, run) = makeSession(backend: b)
+        let r = try unwrapOK(try await phone.request(.sessionsList))
+        let rc = try XCTUnwrap(r["sessions"]?.arrayValue?[0].objectValue?["remote_control"]?.objectValue)
+        XCTAssertEqual(rc["status"]?.stringValue, "ready")
+        XCTAssertEqual(rc["url"]?.stringValue, "https://claude.ai/code/abc123DEF")
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.sessionRemoteControl(sessionId: "s1", status: "unavailable", url: nil, reason: "disabled_by_policy"))
+        let f = await phone.nextEvent()
+        guard case let .event(kind, _, _, d) = f else { return XCTFail() }
+        XCTAssertEqual(kind, "session_remote_control")
+        XCTAssertEqual(d["status"]?.stringValue, "unavailable")
+        XCTAssertEqual(d["reason"]?.stringValue, "disabled_by_policy")
+        await session.close(); _ = await run.value
+    }
+
+    // MARK: - liveness under a slow helper
+
+    func testASlowBackendCallDoesNotGetThePhoneDisconnected() async throws {
+        // Requests are processed off the inbound loop: while the helper
+        // takes 0.6 s to answer `sessions.list`, the phone's heartbeats
+        // must still count as inbound traffic against a 0.25 s cutoff.
+        let b = FakeStreamingBackend()
+        b.listDelay = 0.6
+        let (session, phone, _, run) = makeSession(backend: b, heartbeat: 0.05, silence: 0.25)
+        let beats = Task {
+            for _ in 0..<12 { try await phone.heartbeat(); try await Task.sleep(nanoseconds: 60_000_000) }
+        }
+        let r = try unwrapOK(try await phone.request(.sessionsList))
+        XCTAssertEqual(r["sessions"]?.arrayValue?.count, 1)
+        _ = try? await beats.value
+        XCTAssertFalse(phone.ended, "phone was dropped as silent while the helper was slow")
+        await session.close(); _ = await run.value
+    }
+
+    func testRequestsAreAnsweredInOrder() async throws {
+        // Input frames must reach the helper in the order sent even
+        // though they are processed off the inbound loop.
+        let (session, phone, backend, run) = makeSession()
+        var ids: [String] = []
+        for i in 0..<20 {
+            let id = UUID().uuidString; ids.append(id)
+            try await phone.channel.send(try LANLinkFrame.request(id: id, method: "session.input",
+                params: ["session_id": .string("s1"), "bytes_b64": .string(Data("k\(i)".utf8).base64EncodedString())]).encode())
+        }
+        for id in ids { _ = try unwrapOK(await phone.reply(for: id)) }
+        XCTAssertEqual(backend.recordedControlCalls, (0..<20).map { "input s1 k\($0)" })
         await session.close(); _ = await run.value
     }
 
@@ -249,19 +526,6 @@ final class LANLinkAgentSessionTests: XCTestCase {
             return XCTFail("expected an output event, got \(f)")
         }
         XCTAssertEqual(String(decoding: data, as: UTF8.self), "Do you want to proceed? (y/n) ")
-        await session.close(); _ = await run.value
-    }
-
-    func testApprovalEventsAreNotForwardedInM0() async throws {
-        let (session, phone, backend, run) = makeSession()
-        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
-        backend.push(.approvalRequested(approval: PendingApproval(
-            approvalId: "a1", sessionId: "s1", type: "PermissionRequest", title: "t", summary: "s",
-            toolMetadata: [:], status: "pending", createdAt: Date(), expiresAt: nil)))
-        backend.push(.outputDelta(sessionId: "s1", payload: "marker\n", ts: 1))
-        let f = await phone.nextEvent()
-        guard case let .event(kind, _, _, _) = f else { return XCTFail() }
-        XCTAssertEqual(kind, "output", "an approval event leaked to a read-only client")
         await session.close(); _ = await run.value
     }
 

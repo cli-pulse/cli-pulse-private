@@ -141,6 +141,9 @@ public enum LocalSessionEvent: Sendable, Equatable {
     case sessionStopped(sessionId: String, exitCode: Int?)
     case approvalRequested(approval: PendingApproval)
     case approvalResolved(sessionId: String, approvalId: String, decision: String, status: String)
+    /// Remote-control M1: the helper's delegation outcome for a session
+    /// started with `claude_remote_control`.
+    case sessionRemoteControl(sessionId: String, status: String, url: String?, reason: String?)
     case heartbeat(ts: TimeInterval)
     case error(code: String, message: String)
     case other(name: String, raw: [String: Any])
@@ -163,6 +166,8 @@ public enum LocalSessionEvent: Sendable, Equatable {
             return a == b
         case (.approvalResolved(let a, let b, let c, let d),
               .approvalResolved(let e, let f, let g, let h)):
+            return a == e && b == f && c == g && d == h
+        case (.sessionRemoteControl(let a, let b, let c, let d), .sessionRemoteControl(let e, let f, let g, let h)):
             return a == e && b == f && c == g && d == h
         case (.heartbeat, .heartbeat):
             return true
@@ -224,6 +229,13 @@ public enum LocalSessionEvent: Sendable, Equatable {
                 approvalId: (raw["approval_id"] as? String) ?? "",
                 decision: (raw["decision"] as? String) ?? "",
                 status: (raw["status"] as? String) ?? ""
+            )
+        case "session_remote_control":
+            return .sessionRemoteControl(
+                sessionId: sessionId,
+                status: (raw["status"] as? String) ?? "",
+                url: raw["url"] as? String,
+                reason: raw["reason"] as? String
             )
         case "heartbeat":
             return .heartbeat(ts: ts)

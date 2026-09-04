@@ -270,20 +270,39 @@ public enum LANPairing {
         public let sessionKey: SymmetricKey
         public let peerPublicKey: Curve25519.KeyAgreement.PublicKey
         public let pairedAt: Date
+        /// Remote-control M1: may this peer control sessions (type, resize,
+        /// start, stop, decide approvals)? Meaningful on the Mac's records
+        /// only. A record written by M0 has no such field and reads back
+        /// as false — M0's promise to the user was "watch".
+        public let controlAllowed: Bool
         /// The PSK the phone presents and the Mac's listener accepts.
         /// Built once here, so a record that cannot yield a valid PSK
         /// cannot exist — `init` throws instead of a later force-unwrap.
         public let presharedKey: LANTransportSecurity.PresharedKey
 
         public init(id: String, displayName: String, pskIdentity: String, sessionKey: SymmetricKey,
-                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date) throws {
+                    peerPublicKey: Curve25519.KeyAgreement.PublicKey, pairedAt: Date,
+                    controlAllowed: Bool = false) throws {
             self.id = id
             self.displayName = displayName
             self.pskIdentity = pskIdentity
             self.sessionKey = sessionKey
             self.peerPublicKey = peerPublicKey
             self.pairedAt = pairedAt
+            self.controlAllowed = controlAllowed
             self.presharedKey = try LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
+        }
+
+        /// Same peer, different permission. The PSK was validated when
+        /// `self` was built, so re-validation cannot fail; a failure here
+        /// would be memory corruption, not input.
+        public func withControlAllowed(_ allowed: Bool) -> PairedPeer {
+            guard let p = try? PairedPeer(id: id, displayName: displayName, pskIdentity: pskIdentity,
+                                          sessionKey: sessionKey, peerPublicKey: peerPublicKey,
+                                          pairedAt: pairedAt, controlAllowed: allowed) else {
+                preconditionFailure("PairedPeer.withControlAllowed: a validated key failed to re-validate")
+            }
+            return p
         }
 
         public static func == (a: PairedPeer, b: PairedPeer) -> Bool {
@@ -292,6 +311,7 @@ public enum LANPairing {
                 && a.sessionKey == b.sessionKey
                 && a.peerPublicKey.rawRepresentation == b.peerPublicKey.rawRepresentation
                 && a.pairedAt == b.pairedAt
+                && a.controlAllowed == b.controlAllowed
         }
 
         struct Wire: Codable {
@@ -301,13 +321,15 @@ public enum LANPairing {
             var psk: String
             var pk: String
             var at: TimeInterval
+            /// Absent on M0 records ⇒ false.
+            var ctl: Bool?
         }
 
         public func serialized() throws -> String {
             let psk = sessionKey.withUnsafeBytes { Data($0).base64EncodedString() }
             let w = Wire(id: id, name: displayName, pid: pskIdentity, psk: psk,
                          pk: peerPublicKey.rawRepresentation.base64EncodedString(),
-                         at: pairedAt.timeIntervalSince1970)
+                         at: pairedAt.timeIntervalSince1970, ctl: controlAllowed)
             return String(decoding: try JSONEncoder().encode(w), as: UTF8.self)
         }
 
@@ -322,7 +344,8 @@ public enum LANPairing {
             }
             guard let peer = try? PairedPeer(id: w.id, displayName: w.name, pskIdentity: w.pid,
                                              sessionKey: SymmetricKey(data: psk), peerPublicKey: pub,
-                                             pairedAt: Date(timeIntervalSince1970: w.at)) else {
+                                             pairedAt: Date(timeIntervalSince1970: w.at),
+                                             controlAllowed: w.ctl ?? false) else {
                 throw PairingStoreError.corrupt
             }
             return peer

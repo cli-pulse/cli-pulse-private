@@ -8,13 +8,15 @@ final class LANSessionControlClientTests: XCTestCase {
 
     private func loopback(
         backend: FakeStreamingBackend = FakeStreamingBackend(),
+        peer: LANAgentPeer? = LANAgentPeer(id: "phone-1", displayName: "Probe", controlAllowed: true),
         heartbeat: TimeInterval = 0.05,
         silence: TimeInterval = 10
     ) -> (client: LANSessionControlClient, backend: FakeStreamingBackend, agentRun: Task<LANLinkAgentSession.EndReason, Never>) {
         let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
         let agent = LANLinkAgentSession(
             channel: macEnd, backend: backend,
-            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Studio", cloudDeviceID: "cloud-9"),
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Studio", cloudDeviceID: "cloud-9", home: "/Users/s"),
+            peer: peer,
             heartbeatInterval: heartbeat, silenceTimeout: silence, redactionIdleFlush: 0.05)
         let run = Task { await agent.run() }
         let client = LANSessionControlClient(channel: phoneEnd, heartbeatInterval: heartbeat, silenceTimeout: silence)
@@ -26,16 +28,134 @@ final class LANSessionControlClientTests: XCTestCase {
         let h = try await client.hello()
         XCTAssertEqual(h.protocolVersion, 1)
         XCTAssertTrue(h.supportedMethods.contains("sessions.list"))
-        XCTAssertFalse(h.capabilities.sendInput, "M0 is read-only")
+        XCTAssertTrue(h.supportedMethods.contains("session.input"))
+        XCTAssertTrue(h.capabilities.sendInput)
         XCTAssertTrue(h.capabilities.subscribeEvents)
-        XCTAssertFalse(h.capabilities.approvals)
+        XCTAssertTrue(h.capabilities.approvals)
         XCTAssertEqual(h.implementation, "swift-bundled")
+        XCTAssertEqual(h.providerAvailability, ["claude", "gemini"])
+        XCTAssertEqual(h.claudeRemoteControl?["policy"], "allowed")
         let info = try XCTUnwrap(client.helloInfo)
         XCTAssertEqual(info.deviceID, "mac-1")
         XCTAssertEqual(info.displayName, "Studio")
         XCTAssertEqual(info.cloudDeviceID, "cloud-9")
         XCTAssertTrue(info.helperReachable)
-        XCTAssertTrue(info.readOnly)
+        XCTAssertFalse(info.readOnly)
+        XCTAssertTrue(info.controlAllowed)
+        XCTAssertEqual(info.home, "/Users/s")
+        client.close(); _ = await run.value
+    }
+
+    func testHelloFromAReadOnlyLinkSaysSo() async throws {
+        let (client, _, run) = loopback(peer: nil)
+        let h = try await client.hello()
+        XCTAssertFalse(h.capabilities.sendInput)
+        XCTAssertFalse(h.capabilities.approvals)
+        XCTAssertFalse(h.supportedMethods.contains("session.input"))
+        XCTAssertTrue(try XCTUnwrap(client.helloInfo).readOnly)
+        client.close(); _ = await run.value
+    }
+
+    func testControlMethodsRoundTripToTheBackend() async throws {
+        let (client, backend, run) = loopback()
+        try await client.sendInputRaw(sessionId: "s1", bytes: Data("\u{03}".utf8))
+        try await client.resize(sessionId: "s1", cols: 100, rows: 30)
+        let started = try await client.startManagedSession(provider: "gemini", clientLabel: "phone", cwd: "/Users/s/x", claudeRemoteControl: false)
+        XCTAssertEqual(started.sessionId, "new-1")
+        try await client.stopSession(sessionId: "s1")
+        backend.pendingApprovals = [.fixture(id: "a1")]
+        let pending = try await client.getPendingApprovals(sessionId: "s1")
+        XCTAssertEqual(pending.map(\.approvalId), ["a1"])
+        let first = try XCTUnwrap(pending.first, "the approval was dropped on decode")
+        XCTAssertEqual(first.title, "Bash")
+        XCTAssertEqual(first.expiresAt, Date(timeIntervalSince1970: 1_700_000_060))
+        try await client.approveAction(sessionId: "s1", approvalId: "a1", decision: .approve, comment: nil)
+        XCTAssertEqual(backend.recordedControlCalls, [
+            "input s1 \u{03}", "resize s1 100x30", "start gemini label=phone cwd=/Users/s/x rc=false", "stop s1", "decide s1 a1 approve",
+        ])
+        client.close(); _ = await run.value
+    }
+
+    func testControlErrorsAreTypedOnThePhone() async throws {
+        let (client, backend, run) = loopback()
+        backend.approveError = SessionControlError.approvalAlreadyResolved
+        do { try await client.approveAction(sessionId: "s1", approvalId: "a1", decision: .approve, comment: nil); XCTFail() }
+        catch { XCTAssertEqual(error as? SessionControlError, .approvalAlreadyResolved) }
+        do { try await client.sendInputRaw(sessionId: "nope", bytes: Data("x".utf8)); XCTFail() }
+        catch { XCTAssertEqual(error as? SessionControlError, .sessionNotFound) }
+        do { try await client.resize(sessionId: "s1", cols: 0, rows: 0); XCTFail() }
+        catch { guard case .invalidResponse = (error as? SessionControlError) else { return XCTFail("\(error)") } }
+        client.close(); _ = await run.value
+    }
+
+    func testAReadOnlyLinkRefusesControlWithATypedErrorBeforeTheWire() async throws {
+        let (client, backend, run) = loopback(peer: nil)
+        _ = try await client.hello()
+        do { try await client.sendInputRaw(sessionId: "s1", bytes: Data("x".utf8)); XCTFail() }
+        catch { XCTAssertEqual(error as? SessionControlError, .notControllable) }
+        XCTAssertEqual(backend.recordedControlCalls, [])
+        client.close(); _ = await run.value
+    }
+
+    func testAnM0MacRefusingAnM1VerbSurfacesAsNotImplemented() async throws {
+        // Hand-crafted M0 replies: control verbs answer `not_implemented`,
+        // an unknown verb (`approvals.list`) answers `bad_request`. Both
+        // mean "this Mac cannot do M1" on the phone.
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let client = LANSessionControlClient(channel: phoneEnd, heartbeatInterval: 10, silenceTimeout: 10)
+        let answer = Task {
+            var it = macEnd.inbound.makeAsyncIterator()
+            for _ in 0..<2 {
+                guard let body = try await it.next(), case let .request(id, m, _) = try LANLinkFrame.decode(body) else { return }
+                let code = m == "approvals.list" ? "bad_request" : "not_implemented"
+                try await macEnd.send(try LANLinkFrame.reply(id: id, ok: false, result: [:],
+                    error: LANLinkWireError(code: code, message: "unknown method: \(m)")).encode())
+            }
+        }
+        do { try await client.sendInputRaw(sessionId: "s1", bytes: Data("x".utf8)); XCTFail() }
+        catch { XCTAssertEqual(error as? SessionControlError, .notImplemented) }
+        do { _ = try await client.getPendingApprovals(sessionId: nil); XCTFail() }
+        catch { XCTAssertEqual(error as? SessionControlError, .notImplemented) }
+        _ = try? await answer.value
+        client.close()
+    }
+
+    func testApprovalAndRemoteControlEventsDecodeOnThePhone() async throws {
+        let (client, backend, run) = loopback()
+        let stream = client.subscribeEvents(sessionId: "s1")
+        var it = stream.makeAsyncIterator()
+        _ = try await it.next()
+        backend.push(.approvalRequested(approval: .fixture(id: "a9", summary: "plain")))
+        backend.push(.approvalResolved(sessionId: "s1", approvalId: "a9", decision: "approved", status: "approved"))
+        backend.push(.sessionRemoteControl(sessionId: "s1", status: "ready", url: "https://claude.ai/code/abc123DEF", reason: nil))
+        var got: [LocalSessionEvent] = []
+        while got.count < 3, let e = try await it.next() { got.append(e) }
+        guard case let .approvalRequested(a) = got[0] else { return XCTFail("\(got[0])") }
+        XCTAssertEqual(a.approvalId, "a9"); XCTAssertEqual(a.summary, "plain"); XCTAssertEqual(a.title, "Bash")
+        XCTAssertEqual(got[1], .approvalResolved(sessionId: "s1", approvalId: "a9", decision: "approved", status: "approved"))
+        XCTAssertEqual(got[2], .sessionRemoteControl(sessionId: "s1", status: "ready", url: "https://claude.ai/code/abc123DEF", reason: nil))
+        client.close(); _ = await run.value
+    }
+
+    func testCancellingASubscriptionBeforeTheReplyStillUnsubscribes() async throws {
+        // The screen was dismissed while `session.subscribe` was in
+        // flight. The agent-side subscription must still be released, or
+        // four such dismissals hit the per-connection cap for good.
+        let (client, _, run) = loopback()
+        for _ in 0..<(LANLinkProtocol.maxSubscriptionsPerConnection + 2) {
+            let stream = client.subscribeEvents(sessionId: "s1")
+            let consumer = Task { for try await _ in stream {} }
+            consumer.cancel()
+            _ = try? await consumer.value
+            // The release happens when the in-flight reply lands; give it
+            // that moment. The property is "eventually released", not
+            // "released before the next subscribe is on the wire".
+            try await Task.sleep(nanoseconds: 60_000_000)
+        }
+        // If any leaked, this one is over the cap and throws.
+        let stream = client.subscribeEvents(sessionId: "s1")
+        var it = stream.makeAsyncIterator()
+        guard case .subscribed = try await it.next() else { return XCTFail("subscription cap was exhausted by cancelled subscribes") }
         client.close(); _ = await run.value
     }
 
@@ -57,17 +177,6 @@ final class LANSessionControlClientTests: XCTestCase {
         let text = String(decoding: data, as: UTF8.self)
         XCTAssertFalse(text.contains("sk-ant-api03"))
         XCTAssertTrue(text.contains(LANEgressRedactor.redactionMarker))
-        client.close(); _ = await run.value
-    }
-
-    func testControlMethodsThrowNotImplementedWithoutTouchingTheWire() async throws {
-        let (client, _, run) = loopback()
-        do { _ = try await client.startManagedSession(provider: "claude", clientLabel: nil, cwdBasename: nil, cwdHmac: nil); XCTFail() }
-        catch { XCTAssertEqual(error as? SessionControlError, .notImplemented) }
-        do { try await client.stopSession(sessionId: "s1"); XCTFail() }
-        catch { XCTAssertEqual(error as? SessionControlError, .notImplemented) }
-        do { try await client.sendInput(sessionId: "s1", payload: "x"); XCTFail() }
-        catch { XCTAssertEqual(error as? SessionControlError, .notImplemented) }
         client.close(); _ = await run.value
     }
 

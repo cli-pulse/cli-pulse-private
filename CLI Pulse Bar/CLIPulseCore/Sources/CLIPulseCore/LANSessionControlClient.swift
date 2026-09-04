@@ -11,21 +11,43 @@ public struct LANHelloInfo: Equatable, Sendable {
     public let helperVersion: String?
     public let localControlEnabled: Bool
     public let readOnly: Bool
+    // ── M1 ──
+    /// This phone may control sessions on that Mac (attributed by the
+    /// handshake, permitted by the Mac user). Same as `!readOnly`.
+    public let controlAllowed: Bool
+    /// The Mac user's home directory, for prefilling a working directory.
+    public let home: String?
+    /// Verbs the Mac advertises. An M0 Mac sends none; the read-only set
+    /// is assumed then.
+    public let methods: Set<String>
+    /// Providers the helper can spawn.
+    public let providerAvailability: [String]
+    /// The helper's `claude_remote_control` hello field (stringified).
+    public let claudeRemoteControl: [String: String]?
+
+    public var claudeRemoteControlOfferable: Bool {
+        guard let rc = claudeRemoteControl else { return false }
+        return rc["supported"] == "true" && rc["policy"] != "disabled"
+    }
 }
 
 /// The phone's end of the LAN link — a `SessionEventStreaming` conformer,
 /// so the terminal screen and the session list are written once against
 /// the same protocol the Mac app already uses for its own helper.
 ///
-/// M0 is read-only: `startManagedSession`, `stopSession` and `sendInput`
-/// throw `.notImplemented` here AND are refused by the agent, so the
-/// boundary holds even if one side forgets.
+/// M1 adds control. Whether THIS link may control is what the Mac said in
+/// `hello` (`capabilities.control`): a control call on a read-only link
+/// throws `.notControllable` before touching the wire, and the agent
+/// refuses it anyway (`control_not_allowed`), so the boundary holds even
+/// if one side forgets. An M0 Mac answers M1 verbs with `not_implemented`
+/// (or `bad_request` for a verb it never heard of) — both surface as
+/// `.notImplemented` here.
 ///
 /// Written against `LANLinkChannel`; `connect(to:peer:)` is the
 /// convenience that opens the TLS-PSK connection, waits for `.ready`,
 /// verifies the negotiated suite, and wraps it. Tests use the in-memory
 /// channel and never touch a socket.
-public final class LANSessionControlClient: SessionEventStreaming, @unchecked Sendable {
+public final class LANSessionControlClient: SessionControlling, @unchecked Sendable {
 
     public enum ConnectError: Error, Equatable {
         case handshakeFailed(String)
@@ -147,6 +169,17 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
         }
         let helper = r["helper"]?.objectValue ?? [:]
         let caps = r["capabilities"]?.objectValue ?? [:]
+        let control = caps["control"]?.boolValue ?? false
+        let advertised = Set(r["methods"]?.arrayValue?.compactMap(\.stringValue) ?? [])
+        let methods = advertised.isEmpty ? Set(LANLinkProtocol.Method.readOnly.map(\.rawValue)) : advertised
+        var rc: [String: String]? = nil
+        if let o = helper["claude_remote_control"]?.objectValue {
+            rc = o.compactMapValues { v in
+                if let s = v.stringValue { return s }
+                if let b = v.boolValue { return b ? "true" : "false" }
+                return nil
+            }
+        }
         let info = LANHelloInfo(
             deviceID: r["did"]?.stringValue ?? "",
             displayName: r["name"]?.stringValue ?? "Mac",
@@ -155,24 +188,52 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
             helperImplementation: helper["implementation"]?.stringValue,
             helperVersion: helper["version"]?.stringValue,
             localControlEnabled: helper["local_control"]?.boolValue ?? false,
-            readOnly: caps["read_only"]?.boolValue ?? true)
+            readOnly: !control,
+            controlAllowed: control,
+            home: r["home"]?.stringValue,
+            methods: methods,
+            providerAvailability: helper["provider_availability"]?.arrayValue?.compactMap(\.stringValue) ?? [],
+            claudeRemoteControl: rc)
         lock.lock(); helloInfo = info; lock.unlock()
         return SessionControlHello(
             protocolVersion: v,
-            supportedMethods: Set(LANLinkProtocol.Method.readOnly.map(\.rawValue)),
+            supportedMethods: methods,
             capabilities: SessionControlCapabilities(
-                sendInput: false,
+                sendInput: control,
                 subscribeEvents: caps["subscribe"]?.boolValue ?? false,
-                approvals: false),
-            providerAvailability: [],
+                approvals: control),
+            providerAvailability: info.providerAvailability,
             helperVersion: info.helperVersion ?? "",
             paired: info.helperReachable,
             providerPlanStatus: [:],
-            implementation: info.helperImplementation)
+            implementation: info.helperImplementation,
+            claudeRemoteControl: rc)
+    }
+
+    /// Before any control verb: what the last hello said. No hello yet ⇒
+    /// let the wire answer (the agent refuses if it must).
+    private func requireControl(_ m: LANLinkProtocol.Method) throws {
+        lock.lock(); let info = helloInfo; lock.unlock()
+        guard let info else { return }
+        if info.readOnly { throw SessionControlError.notControllable }
+        if !info.methods.contains(m.rawValue) { throw SessionControlError.notImplemented }
     }
 
     public func startManagedSession(provider: String, clientLabel: String?, cwdBasename: String?, cwdHmac: String?) async throws -> SessionControlStartResult {
-        throw SessionControlError.notImplemented
+        try await startManagedSession(provider: provider, clientLabel: clientLabel, cwd: nil, claudeRemoteControl: false)
+    }
+
+    public func startManagedSession(provider: String, clientLabel: String?, cwd: String?, claudeRemoteControl: Bool) async throws -> SessionControlStartResult {
+        try requireControl(.sessionStart)
+        var p: [String: AnySendableJSON] = ["provider": .string(provider)]
+        if let clientLabel { p["client_label"] = .string(clientLabel) }
+        if let cwd { p["cwd"] = .string(cwd) }
+        if claudeRemoteControl { p["claude_remote_control"] = .bool(true) }
+        let r = try await request(.sessionStart, p)
+        guard let sid = r["session_id"]?.stringValue, !sid.isEmpty else {
+            throw SessionControlError.invalidResponse("session.start reply missing session_id")
+        }
+        return SessionControlStartResult(sessionId: sid)
     }
 
     public func listSessions() async throws -> [SessionControlSummary] {
@@ -190,11 +251,64 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
     }
 
     public func stopSession(sessionId: String) async throws {
-        throw SessionControlError.notImplemented
+        try requireControl(.sessionStop)
+        _ = try await request(.sessionStop, ["session_id": .string(sessionId)])
     }
 
+    /// The CR-append convenience: same bytes as the Mac's `send_input`
+    /// (trailing newline becomes CR, otherwise CR appended).
     public func sendInput(sessionId: String, payload: String) async throws {
-        throw SessionControlError.notImplemented
+        var body = Data(payload.utf8)
+        if body.last == 0x0a {
+            body[body.count - 1] = 0x0d
+            if body.count >= 2, body[body.count - 2] == 0x0d { body.removeLast() }
+        } else if body.last != 0x0d {
+            body.append(0x0d)
+        }
+        try await sendInputRaw(sessionId: sessionId, bytes: body)
+    }
+
+    // MARK: - SessionControlling (M1)
+
+    /// Sent in frames of at most `maxInputBytesPerFrame`, in order. A
+    /// paste from the phone is many frames; a keystroke is one.
+    public func sendInputRaw(sessionId: String, bytes: Data) async throws {
+        try requireControl(.sessionInput)
+        var offset = 0
+        repeat {
+            let end = min(bytes.count, offset + LANLinkProtocol.maxInputBytesPerFrame)
+            let chunk = bytes.subdata(in: offset..<end)
+            _ = try await request(.sessionInput, ["session_id": .string(sessionId),
+                                                  "bytes_b64": .string(chunk.base64EncodedString())])
+            offset = end
+        } while offset < bytes.count
+    }
+
+    public func resize(sessionId: String, cols: Int, rows: Int) async throws {
+        guard (1...1000).contains(cols), (1...1000).contains(rows) else {
+            throw SessionControlError.invalidResponse("resize: cols/rows must be 1…1000 (got \(cols)×\(rows))")
+        }
+        try requireControl(.sessionResize)
+        _ = try await request(.sessionResize, ["session_id": .string(sessionId), "cols": .int(cols), "rows": .int(rows)])
+    }
+
+    public func getPendingApprovals(sessionId: String?) async throws -> [PendingApproval] {
+        try requireControl(.approvalsList)
+        var p: [String: AnySendableJSON] = [:]
+        if let sessionId { p["session_id"] = .string(sessionId) }
+        let r = try await request(.approvalsList, p)
+        return (r["approvals"]?.arrayValue ?? []).compactMap { row in
+            row.objectValue.flatMap { PendingApproval.decode(from: $0.mapValues { $0.foundationValue }) }
+        }
+    }
+
+    public func approveAction(sessionId: String, approvalId: String, decision: ApprovalDecision, comment: String?) async throws {
+        try requireControl(.approvalDecide)
+        var p: [String: AnySendableJSON] = [
+            "session_id": .string(sessionId), "approval_id": .string(approvalId), "decision": .string(decision.rawValue),
+        ]
+        if let comment, !comment.isEmpty { p["comment"] = .string(comment) }
+        _ = try await request(.approvalDecide, p)
     }
 
     // MARK: - SessionEventStreaming
@@ -213,8 +327,28 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
         return v
     }
 
+    /// Tracks a subscription from the moment the stream exists, so a
+    /// consumer that goes away while `session.subscribe` is still in
+    /// flight releases the agent-side subscription once the reply lands
+    /// — otherwise a few dismissed screens exhaust the per-connection cap.
+    private final class SubscribeState: @unchecked Sendable {
+        private let lock = NSLock()
+        private var terminated = false
+        private var sub: String?
+        /// Returns the sub to release NOW if the consumer already left.
+        func attach(_ s: String) -> String? { lock.lock(); defer { lock.unlock() }; sub = s; return terminated ? s : nil }
+        /// Returns the sub to release NOW if the reply already landed.
+        func terminate() -> String? { lock.lock(); defer { lock.unlock() }; terminated = true; return sub }
+    }
+
     public func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error> {
         AsyncThrowingStream { continuation in
+            let state = SubscribeState()
+            continuation.onTermination = { [weak self] _ in
+                guard let self, let sub = state.terminate() else { return }
+                self.lock.lock(); self.subscriptions[sub] = nil; self.lock.unlock()
+                Task { _ = try? await self.request(.sessionUnsubscribe, ["sub": .string(sub)]) }
+            }
             let task = Task { [self] in
                 do {
                     var p: [String: AnySendableJSON] = [:]
@@ -223,13 +357,12 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
                     guard let sub = r["sub"]?.stringValue else {
                         throw SessionControlError.invalidResponse("subscribe reply missing sub")
                     }
+                    if let orphan = state.attach(sub) {
+                        _ = try? await request(.sessionUnsubscribe, ["sub": .string(orphan)])
+                        return
+                    }
                     lock.lock(); subscriptions[sub] = (continuation, 0); lock.unlock()
                     continuation.yield(.subscribed(sessionId: sessionId, managedSessions: [], pendingApprovals: []))
-                    continuation.onTermination = { [weak self] _ in
-                        guard let self else { return }
-                        self.lock.lock(); self.subscriptions[sub] = nil; self.lock.unlock()
-                        Task { _ = try? await self.request(.sessionUnsubscribe, ["sub": .string(sub)]) }
-                    }
                 } catch {
                     continuation.finish(throwing: error)
                 }
@@ -272,7 +405,15 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
         }
         guard case let .reply(_, ok, r, e) = frame else { throw SessionControlError.invalidResponse("not a reply") }
         if ok { return r }
-        throw e?.asSessionControlError ?? SessionControlError.internalError("unknown")
+        guard let e else { throw SessionControlError.internalError("unknown") }
+        // An M0 Mac: control verbs answer `not_implemented`; a verb it
+        // never heard of answers `bad_request` "unknown method". Either
+        // way: this Mac cannot do M1.
+        if m.isM1, e.code == LANLinkProtocol.ErrorCode.notImplemented
+            || (e.code == LANLinkProtocol.ErrorCode.badRequest && e.message.hasPrefix("unknown method")) {
+            throw SessionControlError.notImplemented
+        }
+        throw e.asSessionControlError
     }
 
     // MARK: - Inbound pump
@@ -335,6 +476,16 @@ public final class LANSessionControlClient: SessionEventStreaming, @unchecked Se
             cont.yield(.sessionStatus(sessionId: sid, status: d["status"]?.stringValue ?? ""))
         case .sessionStopped:
             cont.yield(.sessionStopped(sessionId: sid, exitCode: d["exit_code"]?.intValue))
+        case .approvalRequested:
+            guard let raw = d["approval"]?.objectValue,
+                  let a = PendingApproval.decode(from: raw.mapValues { $0.foundationValue }) else { return }
+            cont.yield(.approvalRequested(approval: a))
+        case .approvalResolved:
+            cont.yield(.approvalResolved(sessionId: sid, approvalId: d["approval_id"]?.stringValue ?? "",
+                                         decision: d["decision"]?.stringValue ?? "", status: d["status"]?.stringValue ?? ""))
+        case .sessionRemoteControl:
+            cont.yield(.sessionRemoteControl(sessionId: sid, status: d["status"]?.stringValue ?? "",
+                                             url: d["url"]?.stringValue, reason: d["reason"]?.stringValue))
         case .subscriptionEnded:
             lock.lock(); subscriptions[sub] = nil; lock.unlock()
             switch LANLinkProtocol.SubscriptionEndReason(rawValue: d["reason"]?.stringValue ?? "") {
