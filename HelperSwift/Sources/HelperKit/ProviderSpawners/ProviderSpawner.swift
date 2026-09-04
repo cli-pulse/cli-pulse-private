@@ -94,13 +94,25 @@ public extension ProviderSpawner {
     /// (if set, whitespace-tokenized so multi-token argv0 like
     /// `/opt/local/bin/codex --theme=dark` work) else `[name]`.
     /// Mirrors Python's `_argv0_from_env_or_default`.
-    func defaultArgv0() -> [String] {
+    ///
+    /// M1a (2026-09-04): the bare name is resolved to an ABSOLUTE path
+    /// through the same augmented search `defaultIsAvailable()` uses.
+    /// The child is exec'd with `posix_spawnp`, which searches the
+    /// PARENT's PATH — the LaunchAgent's `/usr/bin:/bin:/usr/sbin:/sbin`
+    /// — not the augmented PATH the child inherits. So a `claude` in
+    /// `~/.local/bin` was reported available and then failed to spawn.
+    /// Unresolvable ⇒ the bare name, unchanged, so the spawn error still
+    /// names the binary. `env`/`home` are injectable for tests.
+    func defaultArgv0(
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        home: String? = HelperEnvironment.resolvedUserHome()
+    ) -> [String] {
         let envKey = "CLI_PULSE_\(name.uppercased())_ARGV0"
-        if let raw = ProcessInfo.processInfo.environment[envKey],
+        if let raw = env[envKey],
            !raw.trimmingCharacters(in: .whitespaces).isEmpty {
             return raw.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         }
-        return [name]
+        return [Self.findOnPath(name, env: env, home: home) ?? name]
     }
 
     /// PATH lookup helper. Returns true when an executable named
@@ -123,9 +135,12 @@ public extension ProviderSpawner {
     /// local bin dirs) so the picker doesn't gray out a `claude`/`codex`/`agy` that
     /// lives in `/opt/homebrew/bin` outside the sparse launchd PATH — the same PATH
     /// the spawned child gets (see `HelperEnvironment`/`PtyTransport.buildChildEnv`).
-    static func findOnPath(_ name: String) -> String? {
-        let base = ProcessInfo.processInfo.environment["PATH"]
-        let path = HelperEnvironment.augmentedPATH(base: base, home: HelperEnvironment.resolvedUserHome())
+    static func findOnPath(
+        _ name: String,
+        env: [String: String] = ProcessInfo.processInfo.environment,
+        home: String? = HelperEnvironment.resolvedUserHome()
+    ) -> String? {
+        let path = HelperEnvironment.augmentedPATH(base: env["PATH"], home: home)
         for dir in path.split(separator: ":") {
             let candidate = "\(dir)/\(name)"
             if FileManager.default.isExecutableFile(atPath: candidate) {

@@ -76,6 +76,10 @@ public final class LocalSessionServer: @unchecked Sendable {
         /// M2p2: same seam for the codex verbs' ~/.codex/hooks.json target.
         /// Helper-side only; the socket peer can never pass a path.
         public var codexSettingsPathOverride: @Sendable () -> URL?
+        /// Remote-control M1a: where `~/.claude/.credentials.json` lives.
+        /// nil ⇒ the resolved user home. Helper-side seam for tests only;
+        /// the socket peer can never pass a path.
+        public var claudeCredentialsPathOverride: @Sendable () -> URL?
         /// M4.4d: opt an ATTACHED wrapped session into / out of the cloud plane.
         /// Wired to `RemoteAgentCloud.share/unshareAttachedSession` by the daemon.
         /// `nil` ⇒ no cloud arm (unpaired helper, or a test) → the verb reports
@@ -98,7 +102,8 @@ public final class LocalSessionServer: @unchecked Sendable {
             eventBroker: EventBroker? = nil,
             claudeSettingsPathOverride: @escaping @Sendable () -> URL? = { nil },
             codexSettingsPathOverride: @escaping @Sendable () -> URL? = { nil },
-            setWrappedSessionCloudShared: (@Sendable (String, Bool) -> (Bool, String))? = nil
+            setWrappedSessionCloudShared: (@Sendable (String, Bool) -> (Bool, String))? = nil,
+            claudeCredentialsPathOverride: @escaping @Sendable () -> URL? = { nil }
         ) {
             self.getAuthToken = getAuthToken
             self.isLocalControlEnabled = isLocalControlEnabled
@@ -110,6 +115,7 @@ public final class LocalSessionServer: @unchecked Sendable {
             self.eventBroker = eventBroker
             self.claudeSettingsPathOverride = claudeSettingsPathOverride
             self.codexSettingsPathOverride = codexSettingsPathOverride
+            self.claudeCredentialsPathOverride = claudeCredentialsPathOverride
             self.setWrappedSessionCloudShared = setWrappedSessionCloudShared
         }
     }
@@ -534,6 +540,14 @@ public final class LocalSessionServer: @unchecked Sendable {
                 // warn before silently launching an off-plan (billed) managed session
                 // (e.g. Codex with an api-key login). Omits "unknown" providers.
                 "provider_plan_status": providerPlanStatus,
+                // Remote-control M1a (additive): can this helper start a Claude
+                // session with `--remote-control`, and would Claude let it?
+                // `policy` comes from Claude Code's own settings files
+                // (disableRemoteControl); `auth` says whether the
+                // subscription credentials file exists — Remote Control needs
+                // a claude.ai login, not an API key. The Python helper
+                // advertises `{"supported": false}` (lock-step, honest).
+                "claude_remote_control": claudeRemoteControlHello(),
             ])
         case .ping:
             return .ok(id: request.id, result: ["pong": true])
@@ -595,6 +609,39 @@ public final class LocalSessionServer: @unchecked Sendable {
         }
     }
 
+    // MARK: - Remote-control M1a
+
+    private func claudeRemoteControlHello() -> [String: Any] {
+        let home = HelperEnvironment.resolvedUserHome()
+        let files: [URL]
+        if let override = hooks.claudeSettingsPathOverride() {
+            files = [override]
+        } else {
+            files = ClaudeRemoteControlPolicy.defaultSettingsFiles(home: home)
+        }
+        let policy = ClaudeRemoteControlPolicy.evaluate(settingsFiles: files)
+        let credentials: URL
+        if let override = hooks.claudeCredentialsPathOverride() {
+            credentials = override
+        } else if let home, home.hasPrefix("/") {
+            credentials = ClaudeOAuthInjector.credentialsFileURL(home: URL(fileURLWithPath: home))
+        } else {
+            credentials = ClaudeOAuthInjector.credentialsFileURL()
+        }
+        // "oauth" means the claude.ai OAuth object is present with a token;
+        // the file existing is not enough (an API-key user has the file
+        // too). Nothing from the file is logged or returned.
+        var auth = "none"
+        if let data = try? Data(contentsOf: credentials),
+           let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           let oauth = root["claudeAiOauth"] as? [String: Any] {
+            let access = (oauth["accessToken"] as? String) ?? ""
+            let refresh = (oauth["refreshToken"] as? String) ?? ""
+            if !access.isEmpty || !refresh.isEmpty { auth = "oauth" }
+        }
+        return ["supported": true, "policy": policy.rawValue, "auth": auth]
+    }
+
     // MARK: - v1.44 machine health
 
     /// Machine health for the Machine tab.
@@ -616,12 +663,33 @@ public final class LocalSessionServer: @unchecked Sendable {
         let provider = (request.params["provider"] as? String) ?? "claude"
         let clientLabel = request.params["client_label"] as? String
         let cwd = request.params["cwd"] as? String
+        // Remote-control M1a: validate what a phone can now send. The
+        // Python helper always checked `cwd` (absolute + existing dir);
+        // this port did not, so a typo became an `internal` spawn error
+        // indistinguishable from "claude is not installed".
+        if let clientLabel, clientLabel.utf8.count > 256 {
+            return .err(id: request.id, code: .badRequest, message: "'client_label' must be at most 256 bytes")
+        }
+        if let cwd {
+            var isDir: ObjCBool = false
+            guard cwd.hasPrefix("/"), cwd.utf8.count <= 1024,
+                  FileManager.default.fileExists(atPath: cwd, isDirectory: &isDir), isDir.boolValue else {
+                return .err(id: request.id, code: .badRequest, message: "'cwd' must be an absolute path to an existing directory")
+            }
+        }
+        // Remote-control M1a (additive): opt-in per session; only a JSON
+        // boolean true counts. Ignored for providers other than claude.
+        let claudeRemoteControl = (request.params["claude_remote_control"] as? Bool) ?? false
         do {
-            let summary = try mgr.startSession(provider: provider, clientLabel: clientLabel, cwd: cwd)
-            return .ok(id: request.id, result: [
+            let summary = try mgr.startSession(
+                provider: provider, clientLabel: clientLabel, cwd: cwd,
+                claudeRemoteControl: claudeRemoteControl)
+            var result: [String: Any] = [
                 "session_id": summary.sessionId,
                 "ok": true,
-            ])
+            ]
+            if let rc = summary.remoteControl { result["remote_control"] = rc.wireDict }
+            return .ok(id: request.id, result: result)
         } catch ManagedSessionManager.ManagerError.unsupportedProvider(let p) {
             return .err(id: request.id, code: .badRequest, message: "unsupported provider: \(p)")
         } catch ManagedSessionManager.ManagerError.spawnFailed(let m) {
@@ -633,7 +701,7 @@ public final class LocalSessionServer: @unchecked Sendable {
 
     private func handleListSessions(request: WireRequest) -> WireResponse {
         let managed: [[String: Any]] = hooks.sessionManager?.listSessions().map { s in
-            return [
+            var row: [String: Any] = [
                 "session_id": s.sessionId,
                 "provider": s.provider,
                 "client_label": s.clientLabel ?? NSNull(),
@@ -642,6 +710,16 @@ public final class LocalSessionServer: @unchecked Sendable {
                 "controllable": true,
                 "source": "managed",
             ]
+            // Remote-control M1a (additive): present only on sessions that
+            // asked for `--remote-control`.
+            if let rc = s.remoteControl { row["remote_control"] = rc.wireDict }
+            // Remote-control M1a (additive): an attached (hand-launched)
+            // session that is still local-only must not be offered to a
+            // phone as controllable. The rows said `controllable: true`
+            // for every managed session; now the reader can tell.
+            row["attached"] = s.attached
+            row["local_only"] = s.localOnly
+            return row
         } ?? []
         let detected = hooks.listDetectedSessions()
         return .ok(id: request.id, result: [
