@@ -317,6 +317,19 @@ public enum LANPairing {
             self.presharedKey = try LANTransportSecurity.PresharedKey(identity: pskIdentity, key: sessionKey)
         }
 
+        /// The PHONE's device id, taken from `pskIdentity` ("peer:<phoneID>"),
+        /// which both ends store identically.
+        ///
+        /// The records are ASYMMETRIC: on the Mac `id` is the phone's did,
+        /// on the phone `id` is the MAC's did. The Mac keys its stored
+        /// peers by the phone's did, so this — not `id` — is what the
+        /// phone must send as the binding `did` in hello. Sending `id`
+        /// from the phone made every lookup miss and silently downgraded
+        /// the link to read-only (caught on hardware 2026-09-05).
+        public var phoneDeviceID: String {
+            pskIdentity.hasPrefix("peer:") ? String(pskIdentity.dropFirst("peer:".count)) : id
+        }
+
         /// Same peer, different permission. The PSK was validated when
         /// `self` was built, so re-validation cannot fail; a failure here
         /// would be memory corruption, not input.

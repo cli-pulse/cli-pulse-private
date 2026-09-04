@@ -49,6 +49,23 @@ final class LANPairingSessionTests: XCTestCase {
         XCTAssertEqual(macPeer.peerPublicKey.rawRepresentation, phoneID.publicKey.rawRepresentation)
         XCTAssertEqual(phonePeer.peerPublicKey.rawRepresentation, macID.publicKey.rawRepresentation)
 
+        // M1 binding: the `did` the PHONE puts in hello must be the id the
+        // MAC keys its records by. The records are asymmetric (each `id` is
+        // the OTHER party), so sending `phonePeer.id` sent the Mac its own
+        // id, every lookup missed, and the link silently fell back to
+        // read-only — found on hardware, not by a unit test, because both
+        // agent-side tests used one symmetric id.
+        XCTAssertEqual(phonePeer.phoneDeviceID, macPeer.id,
+                       "the phone's binding did must match the Mac's stored peer id")
+        XCTAssertEqual(phonePeer.phoneDeviceID, phoneID.deviceID)
+        XCTAssertNotEqual(phonePeer.phoneDeviceID, phonePeer.id, "…and it is NOT the record's own id")
+
+        // A proof built the way `connect(to:peer:)` builds it verifies with
+        // the key the Mac stored for that did.
+        let exporter = try XCTUnwrap(phoneEnd.exporterSecret(label: LANPairing.peerBindingExporterLabel))
+        let proof = LANPairing.peerBindingProof(sessionKey: phonePeer.sessionKey, exporter: exporter)
+        XCTAssertTrue(LANPairing.verifyPeerBinding(sessionKey: macPeer.sessionKey, exporter: exporter, proof: proof))
+
         // Both screens showed the same code, and nobody sent it.
         XCTAssertNotNil(macSAS.get()); XCTAssertEqual(macSAS.get(), phoneSAS.get())
         XCTAssertEqual(macSAS.get()?.count, 6)

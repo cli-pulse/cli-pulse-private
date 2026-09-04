@@ -122,7 +122,7 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
         // control per phone. The proof is bound to THIS handshake's
         // exporter, so it cannot be replayed on another connection.
         return LANSessionControlClient(channel: NWConnectionChannel(connection: conn, queue: queue),
-                                       binding: (did: peer.id, sessionKey: peer.sessionKey))
+                                       binding: (did: peer.phoneDeviceID, sessionKey: peer.sessionKey))
     }
 
     /// Open a TLS-PSK connection with the PAIRING key, for
