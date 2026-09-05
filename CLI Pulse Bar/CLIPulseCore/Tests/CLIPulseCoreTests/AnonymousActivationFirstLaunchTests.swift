@@ -45,6 +45,10 @@ final class AnonymousActivationFirstLaunchTests: XCTestCase {
         var activationReported = false
         var helperConnectedReported = false
         var costReported = false
+    var remoteLANReported = false
+    var remoteTailnetReported = false
+    var remoteDelegateReported = false
+    var remoteNonClaudeReported = false
     }
 
     private actor Transport: AnonymousTelemetryTransport {

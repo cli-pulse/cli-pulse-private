@@ -32,6 +32,10 @@ final class AnonymousTelemetryCoordinatorTests: XCTestCase {
         var installReported = false
         var helperConnectedReported = false
         var costReported = false
+    var remoteLANReported = false
+    var remoteTailnetReported = false
+    var remoteDelegateReported = false
+    var remoteNonClaudeReported = false
 
         /// Incremented on every read. `recordFirstProviderDetectedIfNeeded`
         /// reads this first, so the count is the number of times the activation

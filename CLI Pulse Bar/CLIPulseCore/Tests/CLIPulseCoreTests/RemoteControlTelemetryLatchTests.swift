@@ -96,4 +96,66 @@ final class RemoteControlTelemetryLatchTests: XCTestCase {
         // And it must not have been applied by an agent: the file says so.
         XCTAssertTrue(sql.contains("OWNER GATE"), "the owner-gate notice was removed from the migration")
     }
+
+    // MARK: - the wiring, which is what actually failed
+
+    /// THE test that was missing. The first cut of this feature added the
+    /// four payload fields, the migration and the disclosure — and nothing
+    /// ever set them, so every install would have reported `false` forever
+    /// against a schema that could never receive a `true`. Encoding tests
+    /// passed the whole time. This asserts the emitters exist and that the
+    /// source actually calls them.
+    private func coreSource(_ name: String) throws -> String {
+        let dir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/CLIPulseCore")
+        return try String(contentsOf: dir.appendingPathComponent(name), encoding: .utf8)
+    }
+
+    func testTheAgentActuallyEmitsEachLatch() throws {
+        let agent = try coreSource("LANLinkAgent.swift")
+        XCTAssertTrue(agent.contains("remoteTransportUsed("),
+                      "nothing reports which address class a phone arrived on")
+        XCTAssertTrue(agent.contains("LANDirectAddress.classify("),
+                      "the transport class must be DERIVED, not taken from the wire")
+
+        let session = try coreSource("LANLinkAgentSession.swift")
+        XCTAssertTrue(session.contains("remoteDelegateRequested()"),
+                      "nothing reports that a session asked for the Claude hand-off")
+        XCTAssertTrue(session.contains("remoteNonClaudeDriven()"),
+                      "nothing reports that a non-Claude session was driven")
+    }
+
+    func testTheSinkHasAnEmitterForEveryLatch() throws {
+        let sink = try coreSource("AnonymousInstallTelemetry.swift")
+        for fn in ["recordRemoteTransportIfNeeded", "recordRemoteDelegateIfNeeded",
+                   "recordRemoteNonClaudeIfNeeded"] {
+            XCTAssertTrue(sink.contains("public func \(fn)"), "\(fn) is missing")
+        }
+        // Each must latch ONLY on `.current`: a `.v076` or `.legacy` send
+        // omits these parameters, so latching on any other outcome would
+        // mark a milestone the server never received — for the life of the
+        // install, because the latch is persisted.
+        let emitters = sink.components(separatedBy: "recordRemote").dropFirst()
+        XCTAssertEqual(emitters.count, 3, "unexpected number of remote emitters")
+        for body in emitters {
+            let scope = String(body.prefix(1200))
+            XCTAssertTrue(scope.contains("accepted == .current"),
+                          "a remote emitter latches without checking the shape that landed")
+        }
+    }
+
+    func testTheStoreKeysAreNamespacedSoAnUpgradeCannotDropThem() throws {
+        // Every telemetry key must start with `privacy.` or `cli_pulse_`:
+        // `UnsandboxedDataMigration.appOwnedKeyPrefixes` is a strict
+        // allowlist and anything outside it is dropped when a user moves
+        // from the App Store build to the Developer ID one.
+        for key in [UserDefaultsAnonymousTelemetryStore.remoteLANReportedKey,
+                    UserDefaultsAnonymousTelemetryStore.remoteTailnetReportedKey,
+                    UserDefaultsAnonymousTelemetryStore.remoteDelegateReportedKey,
+                    UserDefaultsAnonymousTelemetryStore.remoteNonClaudeReportedKey] {
+            XCTAssertTrue(key.hasPrefix("cli_pulse_") || key.hasPrefix("privacy."), key)
+        }
+    }
 }
