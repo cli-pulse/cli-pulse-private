@@ -1198,3 +1198,11 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "remote.session_ended" = "Session ended";
 "remote.no_sessions_control" = "No sessions yet. Tap + to start one.";
 "remote.no_providers" = "This Mac has no CLI tools available.";
+"remote.connect_by_address" = "Connect by address";
+"remote.address_hint" = "Reach this Mac over Tailscale or a VPN when it is not on this Wi-Fi.";
+"remote.address_placeholder" = "host or host:port";
+"remote.address_invalid" = "That is not an address this app can use.";
+"remote.saved_address" = "Saved address";
+"remote.reachable_at" = "Reachable at";
+"remote.tailnet_hint" = "This is your Tailscale address — a paired iPhone can use it from anywhere on your tailnet.";
+"remote.lan_only_hint" = "This address works on this network. Install Tailscale on both devices to reach this Mac from anywhere.";

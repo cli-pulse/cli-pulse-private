@@ -40,7 +40,7 @@ public struct LANNearbyMacsView: View {
                 }
             }
 
-            let steady = browser.macs.filter { !$0.isPairingService }
+            let steady = browser.macs.filter { !$0.isPairingService }   // also used by the paired section below
             if steady.isEmpty, browser.state == .browsing {
                 Section { Text(L10n.remote.noMacs).foregroundStyle(.secondary) }
             }
@@ -69,18 +69,35 @@ public struct LANNearbyMacsView: View {
             if !peers.isEmpty {
                 Section(L10n.remote.paired) {
                     ForEach(peers) { peer in
-                        HStack {
-                            Image(systemName: "desktopcomputer")
-                            VStack(alignment: .leading) {
-                                Text(peer.displayName)
-                                Text(peer.pairedAt, style: .date).font(.caption).foregroundStyle(.secondary)
+                        let discovered = steady.contains { $0.id == peer.id }
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Image(systemName: "desktopcomputer")
+                                VStack(alignment: .leading) {
+                                    Text(peer.displayName)
+                                    Text(peer.pairedAt, style: .date).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button(L10n.remote.forget, role: .destructive) {
+                                    LANPairingStore.remove(peerID: peer.id)
+                                    LANPeerAddressStore.remove(for: peer.id)
+                                    peers = LANPairingStore.peers()
+                                }
+                                .buttonStyle(.borderless)
                             }
-                            Spacer()
-                            Button(L10n.remote.forget, role: .destructive) {
-                                LANPairingStore.remove(peerID: peer.id)
-                                peers = LANPairingStore.peers()
+                            // M2a: Bonjour does not cross a tailnet, so a Mac
+                            // that is reachable can still be undiscoverable.
+                            // Offer the address route only when discovery
+                            // failed — when it worked, it is the better path.
+                            if !discovered {
+                                NavigationLink {
+                                    LANDirectConnectView(peer: peer)
+                                } label: {
+                                    Label(savedAddress(peer) ?? L10n.remote.connectByAddress,
+                                          systemImage: "globe")
+                                        .font(.caption)
+                                }
                             }
-                            .buttonStyle(.borderless)
                         }
                     }
                 }
@@ -99,6 +116,10 @@ public struct LANNearbyMacsView: View {
         }
     }
 
+    private func savedAddress(_ peer: LANPairing.PairedPeer) -> String? {
+        LANPeerAddressStore.address(for: peer.id)?.displayString
+    }
+
     private func row(_ mac: LANMacBrowser.DiscoveredMac, subtitle: String, color: Color) -> some View {
         HStack {
             Image(systemName: "desktopcomputer").foregroundStyle(color)
@@ -107,6 +128,85 @@ public struct LANNearbyMacsView: View {
                 Text(subtitle).font(.caption).foregroundStyle(color)
             }
             Spacer()
+        }
+    }
+}
+
+// MARK: - Connect by address (M2a, tailnet)
+
+/// Reach a paired Mac that Bonjour cannot see — over Tailscale, a VPN, or
+/// any route the two devices share. The address is a convenience, not a
+/// credential: the same TLS-PSK handshake decides whether the connection
+/// happens at all, so a wrong address fails to connect and tells the
+/// stranger at that address nothing.
+public struct LANDirectConnectView: View {
+    let peer: LANPairing.PairedPeer
+    @State private var typed: String = ""
+    @State private var error: String?
+    @State private var connecting = false
+    @State private var client: LANSessionControlClient?
+    @State private var mac: LANMacBrowser.DiscoveredMac?
+
+    public init(peer: LANPairing.PairedPeer) { self.peer = peer }
+
+    public var body: some View {
+        Form {
+            Section {
+                TextField(L10n.remote.addressPlaceholder, text: $typed)
+                    .font(.system(.body, design: .monospaced))
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                Text(L10n.remote.addressHint).font(.footnote).foregroundStyle(.secondary)
+                if let error { Text(error).foregroundStyle(.red).font(.footnote) }
+            }
+            Section {
+                Button {
+                    connect()
+                } label: {
+                    HStack {
+                        Text(L10n.remote.connectByAddress)
+                        if connecting { Spacer(); ProgressView() }
+                    }
+                }
+                .disabled(connecting || typed.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+        .navigationTitle(peer.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if typed.isEmpty, let saved = LANPeerAddressStore.address(for: peer.id) {
+                typed = saved.displayString
+            }
+        }
+        .navigationDestination(item: $mac) { m in
+            if let client {
+                LANMacSessionsView(mac: m, peer: peer, existingClient: client)
+            }
+        }
+    }
+
+    private func connect() {
+        error = nil
+        guard let parsed = try? LANDirectAddress.parse(typed) else {
+            error = L10n.remote.addressInvalid
+            return
+        }
+        connecting = true
+        Task {
+            do {
+                let c = try await LANSessionControlClient.connect(toAddress: parsed, peer: peer)
+                _ = try await c.hello()
+                // Only remember an address that actually reached the Mac.
+                LANPeerAddressStore.save(parsed, for: peer.id)
+                client = c
+                mac = LANMacBrowser.DiscoveredMac(
+                    id: peer.id, name: peer.displayName, endpoint: parsed.endpoint,
+                    protocolVersion: LANLinkProtocol.version, isPairingService: false)
+            } catch {
+                self.error = "\(error)"
+            }
+            connecting = false
         }
     }
 }
@@ -312,9 +412,16 @@ public struct LANMacSessionsView: View {
     @State private var showNewSession = false
     @State private var eventsTask: Task<Void, Never>?
 
-    public init(mac: LANMacBrowser.DiscoveredMac, peer: LANPairing.PairedPeer) {
+    /// `existingClient` is the connection a direct (address) connect
+    /// already established — reusing it avoids a second handshake and keeps
+    /// the peer binding from the attempt the user just watched succeed.
+    private let existingClient: LANSessionControlClient?
+
+    public init(mac: LANMacBrowser.DiscoveredMac, peer: LANPairing.PairedPeer,
+                existingClient: LANSessionControlClient? = nil) {
         self.mac = mac
         self.peer = peer
+        self.existingClient = existingClient
     }
 
     private var controlAllowed: Bool { hello?.controlAllowed ?? false }
@@ -404,7 +511,14 @@ public struct LANMacSessionsView: View {
     private func connect() async {
         status = L10n.remote.connecting
         do {
-            let c = try await LANSessionControlClient.connect(to: mac.endpoint, peer: peer)
+            // `??` takes an autoclosure, which cannot be async — spell the
+            // reuse out so the direct-connect path skips a second handshake.
+            let c: LANSessionControlClient
+            if let existingClient {
+                c = existingClient
+            } else {
+                c = try await LANSessionControlClient.connect(to: mac.endpoint, peer: peer)
+            }
             c.onDisconnect = { _ in Task { @MainActor in status = L10n.remote.disconnected; client = nil } }
             client = c
             _ = try await c.hello()

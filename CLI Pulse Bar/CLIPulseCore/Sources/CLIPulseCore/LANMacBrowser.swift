@@ -19,7 +19,7 @@ import Combine
 @MainActor
 public final class LANMacBrowser: ObservableObject {
 
-    public struct DiscoveredMac: Identifiable, Equatable, Sendable {
+    public struct DiscoveredMac: Identifiable, Equatable, Hashable, Sendable {
         /// The Mac's local pairing identity (`did` in TXT).
         public let id: String
         /// Bonjour service name — human-readable, chosen by the Mac.

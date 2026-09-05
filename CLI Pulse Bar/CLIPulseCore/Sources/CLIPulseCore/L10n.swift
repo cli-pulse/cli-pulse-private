@@ -993,6 +993,14 @@ public enum L10n {
         public static var done: String { tr("remote.done") }
         public static var cancel: String { tr("remote.cancel") }
         public static var newSession: String { tr("remote.new_session") }
+        public static var connectByAddress: String { tr("remote.connect_by_address") }
+        public static var addressHint: String { tr("remote.address_hint") }
+        public static var addressPlaceholder: String { tr("remote.address_placeholder") }
+        public static var addressInvalid: String { tr("remote.address_invalid") }
+        public static var savedAddress: String { tr("remote.saved_address") }
+        public static var reachableAt: String { tr("remote.reachable_at") }
+        public static var tailnetHint: String { tr("remote.tailnet_hint") }
+        public static var lanOnlyHint: String { tr("remote.lan_only_hint") }
         public static var noSessionsControl: String { tr("remote.no_sessions_control") }
         public static var noProviders: String { tr("remote.no_providers") }
         public static var provider: String { tr("remote.provider") }

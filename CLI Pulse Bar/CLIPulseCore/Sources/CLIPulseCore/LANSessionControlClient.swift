@@ -125,6 +125,20 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
                                        binding: (did: peer.phoneDeviceID, sessionKey: peer.sessionKey))
     }
 
+    /// M2a: reach a paired Mac by ADDRESS instead of by Bonjour — over a
+    /// tailnet, a VPN, or any route the two devices share. Authentication
+    /// is unchanged: the same TLS-PSK handshake, so an address that points
+    /// at the wrong machine simply fails to connect and nothing is
+    /// disclosed to it.
+    public static func connect(
+        toAddress address: LANDirectAddress.Parsed,
+        peer: LANPairing.PairedPeer,
+        queue: DispatchQueue = DispatchQueue(label: "cli-pulse.lan.direct"),
+        timeout: TimeInterval = 8
+    ) async throws -> LANSessionControlClient {
+        try await connect(to: address.endpoint, peer: peer, queue: queue, timeout: timeout)
+    }
+
     /// Open a TLS-PSK connection with the PAIRING key, for
     /// `LANPairingSession.Client`.
     public static func connectForPairing(

@@ -1147,3 +1147,11 @@
 "remote.session_ended" = "セッションが終了しました";
 "remote.no_sessions_control" = "セッションがありません。+ で開始できます。";
 "remote.no_providers" = "この Mac に利用できる CLI ツールがありません。";
+"remote.connect_by_address" = "アドレスで接続";
+"remote.address_hint" = "同じ Wi-Fi にないときは、Tailscale や VPN 経由でこの Mac に接続します。";
+"remote.address_placeholder" = "ホスト または ホスト:ポート";
+"remote.address_invalid" = "このアプリが使えるアドレスではありません。";
+"remote.saved_address" = "保存済みのアドレス";
+"remote.reachable_at" = "接続先";
+"remote.tailnet_hint" = "これは Tailscale のアドレスです。ペアリング済みの iPhone は tailnet のどこからでも接続できます。";
+"remote.lan_only_hint" = "このアドレスはこのネットワーク内でのみ有効です。両方の端末に Tailscale を入れると、どこからでも接続できます。";

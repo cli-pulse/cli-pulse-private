@@ -917,3 +917,11 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "remote.session_ended" = "Sesión finalizada";
 "remote.no_sessions_control" = "No hay sesiones. Toca + para iniciar una.";
 "remote.no_providers" = "Este Mac no tiene herramientas CLI disponibles.";
+"remote.connect_by_address" = "Conectar por dirección";
+"remote.address_hint" = "Conecta con este Mac por Tailscale o VPN cuando no esté en esta Wi-Fi.";
+"remote.address_placeholder" = "host o host:puerto";
+"remote.address_invalid" = "Esa no es una dirección que esta app pueda usar.";
+"remote.saved_address" = "Dirección guardada";
+"remote.reachable_at" = "Accesible en";
+"remote.tailnet_hint" = "Esta es tu dirección de Tailscale: un iPhone emparejado puede usarla desde cualquier punto de tu tailnet.";
+"remote.lan_only_hint" = "Esta dirección funciona en esta red. Instala Tailscale en ambos dispositivos para llegar a este Mac desde cualquier lugar.";

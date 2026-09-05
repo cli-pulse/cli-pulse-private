@@ -1150,3 +1150,11 @@
 "remote.session_ended" = "工作階段已結束";
 "remote.no_sessions_control" = "還沒有工作階段。點 + 開一個。";
 "remote.no_providers" = "這台 Mac 沒有可用的 CLI 工具。";
+"remote.connect_by_address" = "按位址連線";
+"remote.address_hint" = "不在同一 Wi-Fi 時,透過 Tailscale 或 VPN 連線這台 Mac。";
+"remote.address_placeholder" = "主機或 主機:連接埠";
+"remote.address_invalid" = "這不是本 App 可用的位址。";
+"remote.saved_address" = "已儲存的位址";
+"remote.reachable_at" = "可連線位址";
+"remote.tailnet_hint" = "這是你的 Tailscale 位址 —— 已配對的 iPhone 在你的 tailnet 內任何地方都能用它連線。";
+"remote.lan_only_hint" = "這個位址只在本網路內可用。兩台裝置都安裝 Tailscale 後,就能在任何地方連線這台 Mac。";
