@@ -68,15 +68,31 @@ public struct SupabaseAnonymousTelemetryTransport: AnonymousTelemetryTransport {
     /// from "nobody installed the app", which is the exact confusion this
     /// telemetry exists to end.
     ///
-    /// One retry, not a loop, and only from `.current` to `.legacy`. The
-    /// milestone latches are set from the RESULT, so a legacy send simply
-    /// leaves the new milestones unreported and the next launch tries again.
+    /// v0.80 adds the remote-control latches the same way, so the degrade is
+    /// now a LADDER — `.current` → `.v076` → `.legacy` — walked one rung per
+    /// refusal. A database with v0.76 but not v0.80 (the state every install
+    /// is in until the owner applies it) lands on the middle rung and keeps
+    /// reporting everything it can.
+    ///
+    /// Bounded, not a loop: at most two retries, and each rung strictly drops
+    /// parameters. The milestone latches are set from the RESULT, so a rung
+    /// below `.current` simply leaves the newest milestones unreported and the
+    /// next launch tries the top rung again.
     @discardableResult
     public func send(_ payload: AnonymousInstallPayload) async throws -> AnonymousInstallPayload.WireVersion {
         do {
             try await post(payload)
             return payload.wireVersion
         } catch TransportError.unknownFunctionSignature where payload.wireVersion == .current {
+            // v0.80 not applied. Try the v0.76 shape before giving up on it.
+            do {
+                try await post(payload.v076Shaped())
+                return .v076
+            } catch TransportError.unknownFunctionSignature {
+                try await post(payload.legacyShaped())
+                return .legacy
+            }
+        } catch TransportError.unknownFunctionSignature where payload.wireVersion == .v076 {
             try await post(payload.legacyShaped())
             // The caller MUST see which shape landed. A legacy send omits
             // `p_helper_connected`, `p_cost_shown` and `p_ui_language`

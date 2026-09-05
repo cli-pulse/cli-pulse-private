@@ -98,6 +98,8 @@ final class AnonymousTelemetryTransportTests: XCTestCase {
             [
                 "p_install_id", "p_channel", "p_app_version", "p_os_version",
                 "p_provider_detected", "p_helper_connected", "p_cost_shown", "p_ui_language",
+                // v0.80 latches (migrate_v0.80_remote_control_usage_latches).
+                "p_remote_lan", "p_remote_tailnet", "p_remote_delegate", "p_remote_nonclaude",
             ]
         )
     }

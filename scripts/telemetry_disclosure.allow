@@ -30,3 +30,7 @@ providerDetected  | found a                  | whether it ever found a CLI to tr
 helperConnected   | helper connected         | whether the local helper answered over its socket
 costShown         | cost to show             | whether the app ever had a non-zero cost for today
 uiLanguage        | language it is displaying | which .lproj catalogue the app resolved
+remoteLAN         | over your Wi-Fi          | whether a paired phone reached this Mac on the local network
+remoteTailnet     | your own private network | whether it reached this Mac over Tailscale/VPN instead
+remoteDelegate    | handed off to claude.ai  | whether a session asked for the Claude --remote-control hand-off
+remoteNonClaude   | a tool other than Claude | whether a remote-controlled session was codex/gemini/etc
