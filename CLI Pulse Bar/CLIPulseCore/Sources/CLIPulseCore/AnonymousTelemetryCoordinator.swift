@@ -38,6 +38,11 @@ public final class AnonymousTelemetryCoordinator {
     private var activationSent = false
     private var helperConnectedSent = false
     private var costSent = false
+    /// In-process guards so a busy link does not queue one task per frame.
+    /// The durable latch is the store's; these only stop repeat work.
+    private var remoteTransportSent: Set<String> = []
+    private var remoteDelegateSent = false
+    private var remoteNonClaudeSent = false
 
     /// Returns nil when the runtime forbids telemetry. Same `allowsTelemetry`
     /// capability that gates Sentry, so a QA or quarantine build is silent for
@@ -158,6 +163,32 @@ public final class AnonymousTelemetryCoordinator {
     /// The disclosure has been acknowledged, so the install can go out now
     /// rather than on the next launch — and if a provider was already found
     /// while the card was up, that counts too.
+    // MARK: - Remote control (plan §8)
+    //
+    // Called from `LANLinkAgent`, which is the only place that knows these
+    // facts: it sees which address class a phone arrived on and what the
+    // sessions it drives are. Each is a once-ever latch; the coordinator is
+    // nil on a build that may not send, so these are no-ops there.
+
+    public func remoteTransportUsed(_ kind: LANDirectAddress.Kind) {
+        let key = kind == .tailnet ? "tailnet" : "lan"
+        guard !remoteTransportSent.contains(key) else { return }
+        remoteTransportSent.insert(key)
+        Task { [telemetry] in await telemetry.recordRemoteTransportIfNeeded(kind) }
+    }
+
+    public func remoteDelegateRequested() {
+        guard !remoteDelegateSent else { return }
+        remoteDelegateSent = true
+        Task { [telemetry] in await telemetry.recordRemoteDelegateIfNeeded() }
+    }
+
+    public func remoteNonClaudeDriven() {
+        guard !remoteNonClaudeSent else { return }
+        remoteNonClaudeSent = true
+        Task { [telemetry] in await telemetry.recordRemoteNonClaudeIfNeeded() }
+    }
+
     public func disclosureAcknowledged(providerState: ProviderState) {
         Task { await telemetry.recordInstallIfNeeded() }
         if !providerState.providers.isEmpty {

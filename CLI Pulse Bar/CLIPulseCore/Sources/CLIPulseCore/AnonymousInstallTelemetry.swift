@@ -271,6 +271,12 @@ public protocol AnonymousTelemetryStore: AnyObject, Sendable {
     var activationReported: Bool { get set }
     var helperConnectedReported: Bool { get set }
     var costReported: Bool { get set }
+    // Remote-control latches (plan §8, migrate_v0.80). Same contract as the
+    // milestones above: set only when a shape that CARRIED the field landed.
+    var remoteLANReported: Bool { get set }
+    var remoteTailnetReported: Bool { get set }
+    var remoteDelegateReported: Bool { get set }
+    var remoteNonClaudeReported: Bool { get set }
 }
 
 public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore, @unchecked Sendable {
@@ -291,6 +297,10 @@ public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore,
     static let activationReportedKey = "cli_pulse_anonymous_activation_reported"
     static let helperConnectedReportedKey = "cli_pulse_anonymous_helper_connected_reported"
     static let costReportedKey = "cli_pulse_anonymous_cost_reported"
+    static let remoteLANReportedKey = "cli_pulse_anonymous_remote_lan_reported"
+    static let remoteTailnetReportedKey = "cli_pulse_anonymous_remote_tailnet_reported"
+    static let remoteDelegateReportedKey = "cli_pulse_anonymous_remote_delegate_reported"
+    static let remoteNonClaudeReportedKey = "cli_pulse_anonymous_remote_nonclaude_reported"
 
     private let defaults: UserDefaults
     private let lock = NSLock()
@@ -337,6 +347,22 @@ public final class UserDefaultsAnonymousTelemetryStore: AnonymousTelemetryStore,
     public var helperConnectedReported: Bool {
         get { defaults.bool(forKey: Self.helperConnectedReportedKey) }
         set { defaults.set(newValue, forKey: Self.helperConnectedReportedKey) }
+    }
+    public var remoteLANReported: Bool {
+        get { defaults.bool(forKey: Self.remoteLANReportedKey) }
+        set { defaults.set(newValue, forKey: Self.remoteLANReportedKey) }
+    }
+    public var remoteTailnetReported: Bool {
+        get { defaults.bool(forKey: Self.remoteTailnetReportedKey) }
+        set { defaults.set(newValue, forKey: Self.remoteTailnetReportedKey) }
+    }
+    public var remoteDelegateReported: Bool {
+        get { defaults.bool(forKey: Self.remoteDelegateReportedKey) }
+        set { defaults.set(newValue, forKey: Self.remoteDelegateReportedKey) }
+    }
+    public var remoteNonClaudeReported: Bool {
+        get { defaults.bool(forKey: Self.remoteNonClaudeReportedKey) }
+        set { defaults.set(newValue, forKey: Self.remoteNonClaudeReportedKey) }
     }
 
     public var costReported: Bool {
@@ -490,6 +516,61 @@ public actor AnonymousInstallTelemetry {
         }
     }
 
+    /// Remote control, plan §8. Four once-ever facts, each latched only when
+    /// a `.current` shape landed — a `.v076` or `.legacy` fallback omits these
+    /// parameters entirely, so latching on anything else would tell every
+    /// future launch "already reported" for something the server never saw.
+    /// That is the v1.45 activation defect (latch on attempt, not outcome).
+    @discardableResult
+    public func recordRemoteTransportIfNeeded(_ kind: LANDirectAddress.Kind) async -> Bool {
+        switch kind {
+        case .lan:
+            if store.remoteLANReported { return true }
+            guard maySend else { return false }
+            return await send(remoteLAN: true) { [store] accepted in
+                store.installReported = true
+                guard accepted == .current else { return false }
+                store.remoteLANReported = true
+                return true
+            }
+        case .tailnet:
+            if store.remoteTailnetReported { return true }
+            guard maySend else { return false }
+            return await send(remoteTailnet: true) { [store] accepted in
+                store.installReported = true
+                guard accepted == .current else { return false }
+                store.remoteTailnetReported = true
+                return true
+            }
+        }
+    }
+
+    /// A session was started asking for the Claude `--remote-control` hand-off.
+    @discardableResult
+    public func recordRemoteDelegateIfNeeded() async -> Bool {
+        if store.remoteDelegateReported { return true }
+        guard maySend else { return false }
+        return await send(remoteDelegate: true) { [store] accepted in
+            store.installReported = true
+            guard accepted == .current else { return false }
+            store.remoteDelegateReported = true
+            return true
+        }
+    }
+
+    /// A session driven over the remote-control link was not Claude.
+    @discardableResult
+    public func recordRemoteNonClaudeIfNeeded() async -> Bool {
+        if store.remoteNonClaudeReported { return true }
+        guard maySend else { return false }
+        return await send(remoteNonClaude: true) { [store] accepted in
+            store.installReported = true
+            guard accepted == .current else { return false }
+            store.remoteNonClaudeReported = true
+            return true
+        }
+    }
+
     /// Called the first time the app has a non-zero cost for today.
     ///
     /// Distinct from provider detection on purpose: a provider can be found and
@@ -524,6 +605,10 @@ public actor AnonymousInstallTelemetry {
         providerDetected: Bool = false,
         helperConnected: Bool = false,
         costShown: Bool = false,
+        remoteLAN: Bool = false,
+        remoteTailnet: Bool = false,
+        remoteDelegate: Bool = false,
+        remoteNonClaude: Bool = false,
         onSuccess: @Sendable (AnonymousInstallPayload.WireVersion) -> Bool
     ) async -> Bool {
         guard let appVersion else { return false }
@@ -535,7 +620,11 @@ public actor AnonymousInstallTelemetry {
             providerDetected: providerDetected || store.activationReported,
             helperConnected: helperConnected || store.helperConnectedReported,
             costShown: costShown || store.costReported,
-            uiLanguage: uiLanguage()
+            uiLanguage: uiLanguage(),
+            remoteLANUsed: remoteLAN || store.remoteLANReported,
+            remoteTailnetUsed: remoteTailnet || store.remoteTailnetReported,
+            remoteDelegateUsed: remoteDelegate || store.remoteDelegateReported,
+            remoteNonClaudeUsed: remoteNonClaude || store.remoteNonClaudeReported
         )
         do {
             let accepted = try await transport.send(payload)

@@ -377,6 +377,12 @@ public actor LANLinkAgentSession {
                                 "input frame over \(LANLinkProtocol.maxInputBytesPerFrame) bytes"); return
                 }
                 if try await isLocalOnly(sid) { await replyLocalOnly(id); return }
+                // A session the phone DRIVES counts too, not just one it
+                // started — the question is "did anyone remote-control
+                // something other than Claude", however the session began.
+                if let row = knownRows[sid], row.provider.lowercased() != "claude" {
+                    await MainActor.run { AnonymousTelemetryCoordinator.shared?.remoteNonClaudeDriven() }
+                }
                 try await backend.sendInputRaw(sessionId: sid, bytes: bytes)
                 await reply(id, result: ["session_id": .string(sid), "written": .int(bytes.count)])
             case .sessionResize:
@@ -405,6 +411,15 @@ public actor LANLinkAgentSession {
                 let rc = params["claude_remote_control"]?.boolValue ?? false
                 let started = try await backend.startManagedSession(
                     provider: provider, clientLabel: label, cwd: cwd, claudeRemoteControl: rc)
+                // Plan §8, recorded only for a start that actually succeeded.
+                // Both are once-ever latches; the coordinator is nil on a
+                // build that may not send, so this is a no-op there.
+                await MainActor.run {
+                    if rc { AnonymousTelemetryCoordinator.shared?.remoteDelegateRequested() }
+                    if provider.lowercased() != "claude" {
+                        AnonymousTelemetryCoordinator.shared?.remoteNonClaudeDriven()
+                    }
+                }
                 rowsLoaded = false   // the next list must see the new row
                 await reply(id, result: ["session_id": .string(started.sessionId)])
             case .sessionStop:

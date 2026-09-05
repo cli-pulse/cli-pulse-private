@@ -324,6 +324,13 @@ public final class LANLinkAgent: ObservableObject {
                 }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    // Plan §8: which address class did this phone arrive on?
+                    // Derived here and ONLY the class is ever reported — the
+                    // address itself never leaves the machine.
+                    if let host = Self.remoteHost(of: conn),
+                       let kind = LANDirectAddress.classify(host) {
+                        AnonymousTelemetryCoordinator.shared?.remoteTransportUsed(kind)
+                    }
                     // Which phone is proven in `hello`, not here.
                     self.startSession(over: NWConnectionChannel(connection: conn, queue: queue))
                 }
@@ -333,6 +340,17 @@ public final class LANLinkAgent: ObservableObject {
             }
         }
         conn.start(queue: queue)
+    }
+
+    /// The peer's address as a plain string, for classification only.
+    static func remoteHost(of conn: NWConnection) -> String? {
+        guard case let .hostPort(host, _) = conn.currentPath?.remoteEndpoint else { return nil }
+        switch host {
+        case let .ipv4(a): return "\(a)".split(separator: "%").first.map(String.init)
+        case let .ipv6(a): return "\(a)".split(separator: "%").first.map(String.init)
+        case let .name(n, _): return n
+        @unknown default: return nil
+        }
     }
 
     private func startSession(over channel: any LANLinkChannel) {
