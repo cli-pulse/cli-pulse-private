@@ -71,7 +71,14 @@ class FakeStreamingBackend: SessionControlling, @unchecked Sendable {
         if let approveError { throw approveError }
     }
     func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error> {
-        AsyncThrowingStream { c in
+        subscribeEvents(sessionId: sessionId, raw: false)
+    }
+    /// Records what the agent ASKED for. The remote terminal is xterm.js,
+    /// so a cooked stream renders a TUI as a wall of text.
+    private(set) var lastSubscribeRaw: Bool?
+    func subscribeEvents(sessionId: String?, raw: Bool) -> AsyncThrowingStream<LocalSessionEvent, Error> {
+        lock.lock(); lastSubscribeRaw = raw; lock.unlock()
+        return AsyncThrowingStream { c in
             lock.lock(); continuations.append(c); lock.unlock()
             c.yield(.subscribed(sessionId: sessionId, managedSessions: sessions, pendingApprovals: []))
         }

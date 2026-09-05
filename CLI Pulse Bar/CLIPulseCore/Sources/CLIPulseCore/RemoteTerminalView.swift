@@ -156,8 +156,15 @@ public final class RemoteTerminalView: UIView {
     /// session A's output into session B's view).
     public func clear() {
         coalescer.flushNow()
-        webView.evaluateJavaScript("if (window.term) { window.term.reset(); }",
-                                   completionHandler: nil)
+        // The page exports its terminal as `window.__CLIPulseTerminal.term`
+        // and never assigns `window.term`, so the old guard was ALWAYS
+        // false and this method wiped nothing — session A's output stayed
+        // on screen under session B, which is the exact thing the doc
+        // above says this exists to prevent.
+        pendingOutput = Data()
+        webView.evaluateJavaScript(
+            "if (window.__CLIPulseTerminal) { window.__CLIPulseTerminal.term.reset(); }",
+            completionHandler: nil)
     }
 
     // MARK: - private
@@ -255,6 +262,7 @@ public final class RemoteTerminalView: UIView {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 if let ro = self.pendingReadOnly { self.setReadOnly(ro) }
+                self.drainPendingOutput()
                 self.delegate?.remoteTerminalViewDidBecomeReady(self)
             }
         case .stdin(let data):
@@ -273,7 +281,56 @@ public final class RemoteTerminalView: UIView {
         }
     }
 
+    /// Bytes that arrived before the page could take them. See
+    /// `emitFlush`.
+    private var pendingOutput = Data()
+    /// True once `window.pushChunk` exists. Until then every push is
+    /// held rather than evaluated.
+    private var canEmit = false
+    /// Cap on held bytes. Matches the JS-side scrollback budget: past
+    /// this, the oldest bytes are the ones the user is least likely to
+    /// want, and an unbounded buffer behind a page that never loads is
+    /// a leak.
+    private static let pendingOutputCap = 256 * 1024
+
+    /// `window.pushChunk` is defined by the page's own script, which
+    /// runs only after `loadFileURL` completes. A push before that
+    /// evaluates against a blank document, throws inside WebKit, and is
+    /// LOST — silently, because there is no completion handler and
+    /// nothing re-sends. On iOS the first push is fired synchronously
+    /// from `makeUIView`, four lines after the view is constructed, so
+    /// it always lands in that window and the terminal stays black
+    /// forever: `isReady` has no reader, `ReattachPaintBuffer.flush` is
+    /// one-shot, and unlike the Mac (`TerminalSessionAdapter`) nothing
+    /// re-pushes geometry on ready to force a TUI repaint.
+    ///
+    /// So hold the bytes here and replay them on ready. This keeps the
+    /// promise the delegate doc already makes ("consumer may safely
+    /// call `pushStdout(_:)`") for EVERY caller rather than asking each
+    /// one to wait.
     fileprivate func emitFlush(_ payload: Data) {
+        guard canEmit else {
+            pendingOutput.append(payload)
+            if pendingOutput.count > Self.pendingOutputCap {
+                pendingOutput.removeFirst(pendingOutput.count - Self.pendingOutputCap)
+            }
+            return
+        }
+        evaluatePush(payload)
+    }
+
+    /// Called once, on ready, before the delegate is told. Order is the
+    /// point: the held bytes must reach the terminal BEFORE anything the
+    /// delegate does in response to `didBecomeReady`.
+    private func drainPendingOutput() {
+        canEmit = true
+        let queued = pendingOutput
+        pendingOutput = Data()
+        guard !queued.isEmpty else { return }
+        evaluatePush(queued)
+    }
+
+    private func evaluatePush(_ payload: Data) {
         let b64 = payload.base64EncodedString()
         let js = "window.pushChunk('\(b64)')"
         webView.evaluateJavaScript(js, completionHandler: nil)

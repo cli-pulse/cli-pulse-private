@@ -90,6 +90,19 @@ public protocol SessionEventStreaming: SessionControlClient {
     /// then events until the stream ends. `sessionId == nil` means all.
     func subscribeEvents(sessionId: String?) -> AsyncThrowingStream<LocalSessionEvent, Error>
 
+    /// The same stream, but asking the helper to leave terminal escape
+    /// sequences intact. The phone's remote terminal is an xterm.js view:
+    /// strip the escapes and a full-screen TUI arrives as a wall of text
+    /// that never paints. The Mac's own terminal has always passed
+    /// `raw: true` (`TerminalSessionAdapter`); the LAN agent did not,
+    /// because it called the arity-matching overload that hard-codes
+    /// `raw: false`.
+    ///
+    /// This does NOT widen what leaves the Mac: `LANLinkAgentSession`
+    /// runs every chunk through `LANEgressRedactor.Streaming` before it
+    /// reaches the wire, raw or not.
+    func subscribeEvents(sessionId: String?, raw: Bool) -> AsyncThrowingStream<LocalSessionEvent, Error>
+
     /// Last `maxBytes` of the session's output — the frame the phone
     /// paints BEFORE live events start flowing, so it does not open on
     /// an empty screen.
@@ -136,6 +149,15 @@ public struct RemoteControlInfo: Sendable, Equatable {
     }
 
     public var isReady: Bool { status == "ready" && url != nil }
+}
+
+extension SessionEventStreaming {
+    /// Conformers that have no raw/cooked distinction get the plain
+    /// stream. Only the local helper client can honour `raw`.
+    public func subscribeEvents(sessionId: String?, raw: Bool)
+        -> AsyncThrowingStream<LocalSessionEvent, Error> {
+        subscribeEvents(sessionId: sessionId)
+    }
 }
 
 extension SessionControlClient {
