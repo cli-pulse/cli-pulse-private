@@ -202,6 +202,90 @@ owner's machine. Exit 2 means it could not check, which is not a pass.
 - Claude, Gemini, Codex, and other provider collectors are implemented inside
   `CLIPulseCore` and helper-side parsing logic
 
+## Remote Control (phone → Mac) — read this before touching `LAN*` files
+
+Shipped 2026-09-04/05 in PRs #527, #528, #529, #530, #531, #532. A paired
+iPhone watches, types into, starts, stops and approves AI-CLI sessions on the
+Mac. Developer ID only: the MAS build has no `com.apple.security.network.server`
+entitlement, so `MASSandboxGate` reports it unavailable there.
+
+### Shape
+
+```
+iPhone  LANSessionControlClient ─┐                    ┌─ LocalSessionControlClient ── UDS ── helper
+                                 │  TLS-PSK + frames  │
+                                 └─ LANLinkAgentSession (in the APP, not the helper)
+```
+
+- **The frame layer is one thing**: 4-byte big-endian length + UTF-8 JSON, 1 MiB
+  cap, four envelope kinds, per-subscription monotonic `seq`. `LANLinkChannel`
+  is the seam; both a real `NWConnection` and an in-memory test pair conform, so
+  the whole router is tested without sockets.
+- **The agent lives in the app.** It holds the helper's auth token, which never
+  crosses the network.
+- **Redaction happens at egress**, in `LANEgressRedactor`, per session. The
+  Swift helper's `output_delta` is NOT redacted (the Python one is) — this is
+  the only thing standing between a secret and the network. Proven live at both
+  layers 2026-09-04.
+
+### Invariants — breaking one of these is the whole point of the feature
+
+1. **No polling.** Nothing pulls; the socket and the helper's event stream push.
+2. **No public or plaintext mode.** There is no unencrypted path and no
+   unauthenticated topic.
+3. **Pairing is QR + SAS + a Mac-side Approve**, 60 s, one at a time. The QR's
+   expiry is enforced on BOTH the shown-QR and awaiting-approval states.
+4. **Per-phone permission is proven at the application layer**: hello carries
+   the phone's did plus an HMAC over the connection's RFC 5705 exporter, keyed
+   by the shared per-peer key. Do NOT try to read the TLS PSK identity on the
+   server — it works on macOS 26.5 and returns nothing on CI's older macOS, and
+   installing a selection block CHANGED the handshake there.
+   ⚠️ The paired records are **asymmetric**: on the Mac `id` is the phone's did,
+   on the phone `id` is the MAC's did. The phone must bind with
+   `PairedPeer.phoneDeviceID`, never `peer.id`. Sending the wrong one silently
+   downgrades the link to read-only, and a symmetric test id will not catch it.
+5. **`local_control_enabled` is the user's revocation lever** and is re-checked
+   every heartbeat, fail-closed. The helper checks it only once per
+   subscription, so the agent must keep asking.
+6. **Do not touch `RemoteSessionPlane.isEnabled`.** That is the RETIRED cloud
+   session plane's switch, mirrored in the app and the helper and drift-gated.
+   It is unrelated to this feature.
+
+### Gotchas that have already cost time
+
+- The Mac's listener is **not** Wi-Fi-only: nothing constrains its interfaces.
+  It binds a remembered port (default 51000) so a typed address stays valid.
+- `posix_spawnp` searches the PARENT's PATH. The helper's LaunchAgent PATH is
+  bare, so provider argv[0] must be an absolute path resolved through the
+  augmented search — otherwise "available" providers fail to spawn.
+- Approvals expire. `decide` refuses a past-TTL row, `waitForDecision` expires
+  the row it timed out on, and the daemon sweeps every 5 s. Before this, a late
+  approval "succeeded" after Claude had already fallen back to deny.
+- A short PTY write is lost input, not success. The master is non-blocking.
+- Driving Claude Code's TUI blind: text and the carriage return in one burst is
+  treated as a PASTE and the return is swallowed. Send the text, wait ~10 s,
+  then send `\r`.
+- `swift test` here compiles macOS only; the iOS-only screens
+  (`LANRemoteScreens.swift`) need the `CLI Pulse iOS` scheme to be type-checked.
+
+### Verification tooling
+
+`/tmp/pairprobe` is a scripted phone built against `CLIPulseCore`, so it drives
+the SHIPPING code paths: `pairprobe <clipulse://pair…>` to pair, `resume` for
+the read surface, `control` for M1 (env `PAIRPROBE_START/CWD/RC/SESSION/INPUT/
+DECIDE/STOP`). When a hardware check has two possible causes, log the
+discriminator — a "Forget closed the link" result was once fully explained by
+the probe's own timeout firing at the same moment.
+
+### Owner gates
+
+The ciphertext relay (plan M2) is NOT built. Its design failed review on five
+blockers, and Tailnet connect-by-address shipped instead. If it is ever built,
+its `realtime.messages` RLS migration is an **owner gate** — do not apply
+migrations. The Phoenix client it needs already exists in git history at
+`e067c4fb^` (`RemoteSessionEventStream.swift`, 591 lines); port it rather than
+writing one.
+
 ## Safe Validation Commands
 
 Run these before shipping collector or helper changes:
