@@ -89,10 +89,17 @@ final class RemoteControlTelemetryLatchTests: XCTestCase {
                     "remote_delegate_used_at", "remote_nonclaude_used_at"] {
             XCTAssertTrue(sql.contains(col), col)
         }
-        // The migration must stay a latch: coalesce(existing, new), never the
+        // The migration must stay a latch: coalesce(EXISTING, new), never the
         // other way round, or a later launch would move the first-seen time.
-        XCTAssertTrue(sql.contains("coalesce(ai.remote_lan_used_at,"),
-                      "the LAN column is not latched with coalesce(existing, new)")
+        // Whitespace-insensitive: the surrounding file wraps its coalesce
+        // arguments onto the next line, and the ORDER is what matters.
+        let flat = sql.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        for col in ["remote_lan_used_at", "remote_tailnet_used_at",
+                    "remote_delegate_used_at", "remote_nonclaude_used_at"] {
+            XCTAssertTrue(flat.contains("coalesce( ai.\(col), excluded.\(col) )")
+                          || flat.contains("coalesce(ai.\(col), excluded.\(col))"),
+                          "\(col) is not latched as coalesce(existing, new)")
+        }
         // And it must not have been applied by an agent: the file says so.
         XCTAssertTrue(sql.contains("OWNER GATE"), "the owner-gate notice was removed from the migration")
     }
