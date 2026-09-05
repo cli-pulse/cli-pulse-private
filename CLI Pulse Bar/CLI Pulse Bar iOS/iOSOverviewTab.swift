@@ -271,25 +271,29 @@ struct iOSOverviewTab: View {
     /// Entry to the LAN remote-control list. A NavigationLink, not an
     /// auto-started browser: Bonjour starts when the destination appears,
     /// which is when the local-network prompt is allowed to fire.
+    @ViewBuilder
     private var nearbyMacsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionHeader(title: L10n.remote.nearbyMacs, icon: "desktopcomputer")
-            NavigationLink {
-                LANNearbyMacsView()
-            } label: {
-                HStack {
-                    Image(systemName: "iphone.and.arrow.forward")
-                    Text(L10n.remote.title)
-                    Spacer()
-                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
+        // M3 dark-ship: no entry point when the build does not offer it.
+        if RemoteControlFeature.isAvailable() {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionHeader(title: L10n.remote.nearbyMacs, icon: "desktopcomputer")
+                NavigationLink {
+                    LANNearbyMacsView()
+                } label: {
+                    HStack {
+                        Image(systemName: "iphone.and.arrow.forward")
+                        Text(L10n.remote.title)
+                        Spacer()
+                        Image(systemName: "chevron.right").foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .background(Color.secondary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
-                .padding(12)
-                .background(Color.secondary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+            .padding(.horizontal)
         }
-        .padding(.horizontal)
     }
 
     // MARK: - Cost Section

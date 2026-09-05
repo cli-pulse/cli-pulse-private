@@ -268,8 +268,12 @@ struct SettingsTab: View {
                 // since the underlying keychain bug affects both.
                 Divider()
                 PrivacySettingsSection()
-                // Remote-control M0: view lives in CLIPulseCore (no pbxproj entry).
-                LANRemoteControlSection(agent: state.lanAgent)
+                // Remote control: view lives in CLIPulseCore (no pbxproj entry).
+                // M3 dark-ship — the card is not rendered at all when the
+                // build does not offer the feature.
+                if RemoteControlFeature.isAvailable() {
+                    LANRemoteControlSection(agent: state.lanAgent)
+                }
 
                 Divider()
 

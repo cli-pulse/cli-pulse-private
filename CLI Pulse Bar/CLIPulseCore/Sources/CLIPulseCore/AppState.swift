@@ -1088,7 +1088,9 @@ public final class AppState: ObservableObject {
         // agent at launch when the toggle is already on, so remote control
         // survives a relaunch without a trip to Settings. Off by default, and
         // `start()` self-gates on the App Store build.
-        if lanAgent.isEnabled { lanAgent.start() }
+        // M3 dark-ship: the user's toggle only matters when the build
+        // offers the feature at all.
+        if RemoteControlFeature.isAvailable(), lanAgent.isEnabled { lanAgent.start() }
         #endif
     }
 
