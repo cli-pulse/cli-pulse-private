@@ -187,8 +187,20 @@ final class LANPairingTests: XCTestCase {
         XCTAssertNotEqual(allowed, allowed.withControlAllowed(false))
         XCTAssertFalse(allowed.withControlAllowed(false).controlAllowed)
 
-        let legacy = try allowed.serialized().replacingOccurrences(of: "\"ctl\":true", with: "")
-            .replacingOccurrences(of: ",}", with: "}").replacingOccurrences(of: ",,", with: ",")
+        // Build the M0 record by REMOVING the key from the decoded object,
+        // not by string surgery on the JSON. Swift's synthesized `Codable`
+        // encodes through a dictionary-backed container, so key order is
+        // randomised per process by hash seeding: `"ctl":true` lands in a
+        // different position on every run, and when it landed FIRST the old
+        // string edit left a leading `{,` that the `,}` / `,,` patches could
+        // not repair — invalid JSON, `.corrupt`, a red CI nobody had touched.
+        // Measured 2026-09-05: 1 failure in 3 local runs on a clean tree.
+        var fields = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try allowed.serialized().utf8))
+                as? [String: Any])
+        fields.removeValue(forKey: "ctl")
+        let legacy = String(decoding: try JSONSerialization.data(withJSONObject: fields),
+                            as: UTF8.self)
         XCTAssertFalse(legacy.contains("ctl"), legacy)
         let back = try LANPairing.PairedPeer.deserialize(legacy)
         XCTAssertFalse(back.controlAllowed)

@@ -806,4 +806,34 @@ final class LANLinkAgentSessionTests: XCTestCase {
         XCTAssertFalse(phone.ended, "heartbeating phone was disconnected")
         await session.close(); _ = await run.value
     }
+
+    // MARK: - The agent must ask for a RAW stream (2026-09-05)
+
+    /// `subscribeEvents(sessionId:)` resolves to the forwarder that
+    /// hard-codes `raw: false`. The Mac's own terminal has always passed
+    /// `raw: true` because xterm.js needs the escapes to paint a TUI.
+    /// Harmless while the Swift bundled helper is serving (its
+    /// `output_delta` is verbatim) and fatal the moment a Python `.pkg`
+    /// helper shadows the socket.
+    func testTheAgentSubscribesRawSoATUICanPaint() async throws {
+        let (session, phone, backend, run) = makeSession()
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        XCTAssertEqual(backend.lastSubscribeRaw, true,
+                       "subscribed cooked — a TUI cannot paint in xterm.js without escapes")
+        await session.close(); _ = await run.value
+    }
+
+    /// The invariant the raw switch must not disturb: raw is about
+    /// ESCAPES, never about what may leave the Mac.
+    func testRawSubscriptionStillRedacts() async throws {
+        let (session, phone, backend, run) = makeSession()
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.outputRaw(sessionId: "s1",
+                                payload: "\u{1b}[32mkey sk-ant-api03-AAAABBBBCCCCDDDD\u{1b}[0m\n", ts: 1))
+        try await Task.sleep(nanoseconds: 400_000_000)
+        let joined = phone.allFrames.map { String(describing: $0) }.joined()
+        XCTAssertFalse(joined.contains("sk-ant-api03-AAAABBBBCCCCDDDD"),
+                       "a raw subscription leaked a secret past the redactor")
+        await session.close(); _ = await run.value
+    }
 }

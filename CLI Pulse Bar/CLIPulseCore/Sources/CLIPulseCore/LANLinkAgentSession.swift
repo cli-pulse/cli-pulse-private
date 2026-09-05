@@ -545,7 +545,11 @@ public actor LANLinkAgentSession {
     // MARK: - Subscriptions
 
     private func startSubscription(_ sub: String, sessionID: String?) {
-        let stream = backend.subscribeEvents(sessionId: sessionID)
+        // raw: the phone renders this in xterm.js, so the escapes have to
+        // survive or a TUI never paints. Redaction is unaffected -- every
+        // chunk still goes through `LANEgressRedactor.Streaming` in
+        // `emitOutput` before it reaches the wire.
+        let stream = backend.subscribeEvents(sessionId: sessionID, raw: true)
         let task = Task { [weak self] in
             guard let self else { return }
             do {
