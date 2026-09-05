@@ -399,6 +399,35 @@ struct LANQRScanner: UIViewControllerRepresentable {
 
 // MARK: - Sessions on one Mac
 
+/// Owns the LAN link for the TRUE lifetime of `LANMacSessionsView`.
+///
+/// `.onDisappear` is the wrong hook for tearing a link down here, and the
+/// cost was the whole remote terminal. SwiftUI fires `onDisappear` on this
+/// screen when the terminal screen is PUSHED OVER it — and the pushed
+/// screen was handed this very client. Closing there tore the link down
+/// underneath the screen the user had just navigated into.
+///
+/// Measured on hardware 2026-09-06, in this order: `session.subscribe`
+/// (all sessions) · `session.subscribe` (that session) · `session.tail` ·
+/// `approvals.list` · then BOTH subscriptions cancelled. So the tail
+/// snapshot painted and everything then went dead: the live stream
+/// reported "disconnected", nothing updated again, and typing reached
+/// nothing — the client had been closed out from under the screen using it.
+///
+/// A `@State`-held box is released when the screen is really popped, not
+/// when a child is pushed on top of it, so `deinit` is the honest hook.
+@MainActor
+final class LANMacLinkOwner {
+    var client: LANSessionControlClient?
+    var eventsTask: Task<Void, Never>?
+
+    deinit {
+        // Both are synchronous and safe to call from `deinit`.
+        eventsTask?.cancel()
+        client?.close()
+    }
+}
+
 public struct LANMacSessionsView: View {
     let mac: LANMacBrowser.DiscoveredMac
     let peer: LANPairing.PairedPeer
@@ -410,7 +439,7 @@ public struct LANMacSessionsView: View {
     @State private var error: String?
     @State private var pendingBySession: [String: Int] = [:]
     @State private var showNewSession = false
-    @State private var eventsTask: Task<Void, Never>?
+    @State private var linkOwner = LANMacLinkOwner()
 
     /// `existingClient` is the connection a direct (address) connect
     /// already established — reusing it avoids a second handshake and keeps
@@ -505,7 +534,6 @@ public struct LANMacSessionsView: View {
         }
         .refreshable { await refresh() }
         .task { await connect() }
-        .onDisappear { eventsTask?.cancel(); client?.close(); client = nil }
     }
 
     private func connect() async {
@@ -521,6 +549,7 @@ public struct LANMacSessionsView: View {
             }
             c.onDisconnect = { _ in Task { @MainActor in status = L10n.remote.disconnected; client = nil } }
             client = c
+            linkOwner.client = c
             _ = try await c.hello()
             hello = c.helloInfo
             status = L10n.remote.connected
@@ -554,8 +583,8 @@ public struct LANMacSessionsView: View {
 
     /// No polling: the list changes when the Mac says so.
     private func watchEvents(_ c: LANSessionControlClient) {
-        eventsTask?.cancel()
-        eventsTask = Task {
+        linkOwner.eventsTask?.cancel()
+        linkOwner.eventsTask = Task {
             do {
                 for try await ev in c.subscribeEvents(sessionId: nil) {
                     if Task.isCancelled { return }
