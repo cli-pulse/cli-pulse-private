@@ -211,6 +211,15 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
         )
     }
 
+    func testReleaseForProviderWithoutSharedSourceIsSuccessfulNoOp() {
+        XCTAssertTrue(
+            ProviderSharedCredentialOwner.release(
+                kind: .codex,
+                accountID: UUID()
+            )
+        )
+    }
+
     func testOwnerCallIsReentrantInsideCredentialMutationLock()
         throws
     {
@@ -237,6 +246,37 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
                 kind: .gemini,
                 accountID: accountID
             )
+        )
+    }
+
+    @MainActor
+    func testAppSaveTransactionLockAllowsReentrantOwnerMutation()
+        throws
+    {
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "05050505-0505-4505-8505-050505050505"
+            )
+        )
+        let state = AppState(
+            runtimeEnvironment: TestRuntimeFixtures.productionApp,
+            defaults: testDefaults,
+            helperDefaults: testDefaults,
+            performLaunchSetup: false
+        )
+
+        XCTAssertTrue(
+            state.withProviderAccountPersistenceLock(or: false) {
+                ProviderSharedCredentialOwner.claim(
+                    kind: .gemini,
+                    accountID: accountID
+                )
+            }
+        )
+        XCTAssertEqual(
+            ProviderSharedCredentialOwner.lookup(kind: .gemini),
+            .owned(accountID)
         )
     }
 
@@ -335,6 +375,57 @@ final class ProviderSharedCredentialOwnerTests: XCTestCase {
             ProviderSharedCredentialOwner.isOwner(
                 kind: .claude,
                 accountID: laterID
+            )
+        )
+    }
+
+    func testReconcileRestoresEveryProviderWhenLaterOwnerWriteFails()
+        throws
+    {
+        let claudeID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "DADADADA-DADA-4ADA-8ADA-DADADADADADA"
+            )
+        )
+        let geminiID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "EAEAEAEA-EAEA-4AEA-8AEA-EAEAEAEAEAEA"
+            )
+        )
+        var synchronizeCalls = 0
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in
+            synchronizeCalls += 1
+            return synchronizeCalls != 3
+        }
+
+        XCTAssertFalse(
+            ProviderSharedCredentialOwner.reconcile(
+                configs: [
+                    ProviderConfig(
+                        kind: .claude,
+                        accountID: claudeID,
+                        isEnabled: true
+                    ),
+                    ProviderConfig(
+                        kind: .gemini,
+                        accountID: geminiID,
+                        isEnabled: true
+                    ),
+                ]
+            )
+        )
+        XCTAssertNil(
+            testDefaults.object(
+                forKey:
+                    "cli_pulse_provider_shared_credential_owner_Claude"
+            )
+        )
+        XCTAssertNil(
+            testDefaults.object(
+                forKey:
+                    "cli_pulse_provider_shared_credential_owner_Gemini"
             )
         )
     }
