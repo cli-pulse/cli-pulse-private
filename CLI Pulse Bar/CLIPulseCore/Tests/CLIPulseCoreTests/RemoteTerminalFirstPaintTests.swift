@@ -71,3 +71,50 @@ final class RemoteTerminalFirstPaintTests: XCTestCase {
                        "the page now DOES define window.term; re-check which global clear() should use")
     }
 }
+
+/// DEFECT 4 — the parent screen closed the link the child was using.
+///
+/// `LANMacSessionsView` tore its link down in `.onDisappear`, and SwiftUI
+/// fires that when the terminal screen is PUSHED OVER it — while the pushed
+/// screen holds the very same `LANSessionControlClient`. Measured on
+/// hardware 2026-09-06 with the agent instrumented, in this order:
+/// `session.subscribe` (all) · `session.subscribe` (that session) ·
+/// `session.tail` · `approvals.list` · then BOTH backend subscriptions
+/// terminated with `reason=cancelled`. So the snapshot painted and the
+/// terminal went dead: live output stopped, the status read "disconnected",
+/// and keystrokes reached nothing.
+///
+/// Source guard, not behavioural: this is `#if os(iOS)` SwiftUI, and CI
+/// builds the iOS scheme but runs no iOS tests.
+final class LANMacScreenLinkOwnershipTests: XCTestCase {
+
+    private func screensSource() throws -> String {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        return try String(contentsOf: root.appending(path: "Sources/CLIPulseCore/LANRemoteScreens.swift"),
+                          encoding: .utf8)
+    }
+
+    func test_theMacScreenDoesNotCloseItsLinkOnDisappear() throws {
+        let src = try screensSource()
+        for line in src.split(separator: "\n") where line.contains(".onDisappear") {
+            XCTAssertFalse(line.contains("client?.close()") || line.contains("client.close()"),
+                           "onDisappear closes the client again — it fires when the terminal screen is pushed OVER this one, and that screen is using this client: \(line)")
+        }
+    }
+
+    func test_theLinkIsOwnedForTheScreensRealLifetime() throws {
+        let src = try screensSource()
+        XCTAssertTrue(src.contains("final class LANMacLinkOwner"),
+                      "the lifetime owner is gone; the link is back on a view-appearance hook")
+        XCTAssertTrue(src.contains("linkOwner.client = c"),
+                      "the owner is never handed the client, so nothing closes the link on pop")
+        // The owner must actually release it, or the link leaks per visit.
+        let ownerBody = try XCTUnwrap(src.range(of: "final class LANMacLinkOwner").map {
+            String(src[$0.lowerBound...].prefix(900))
+        })
+        XCTAssertTrue(ownerBody.contains("deinit"), "LANMacLinkOwner never releases the link")
+        XCTAssertTrue(ownerBody.contains("client?.close()"), "LANMacLinkOwner's deinit does not close the client")
+    }
+}
+
