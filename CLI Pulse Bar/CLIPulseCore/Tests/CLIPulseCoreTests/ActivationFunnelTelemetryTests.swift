@@ -501,8 +501,14 @@ final class ActivationFunnelTransportTests: XCTestCase {
         // bound against, so that is the one to compare with.
         let sql = try String(contentsOf: Self.latestMigrationURL, encoding: .utf8)
 
-        let marker = "create or replace function public.record_anonymous_install("
-        let start = try XCTUnwrap(sql.range(of: marker), "the migration's function signature moved")
+        // Either spelling is legitimate: v0.76 used `create or replace`,
+        // v0.80 had to `drop` + `create` because adding parameters makes an
+        // OVERLOAD rather than a replacement. Accept both so the guard tracks
+        // the signature, not the verb.
+        let start = try XCTUnwrap(
+            sql.range(of: "create function public.record_anonymous_install(")
+                ?? sql.range(of: "create or replace function public.record_anonymous_install("),
+            "the migration's function signature moved")
         let tail = sql[start.upperBound...]
         let block = try XCTUnwrap(tail.firstIndex(of: ")").map { String(tail[..<$0]) })
 

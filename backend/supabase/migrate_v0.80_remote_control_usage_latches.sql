@@ -70,7 +70,6 @@
 -- read path. The new parameters are booleans; there is no new free-text
 -- surface and nothing here can be used to store an attacker's string.
 
-begin;
 
 -- ---------------------------------------------------------------------------
 -- Columns — additive, nullable, no default backfill
@@ -93,7 +92,31 @@ comment on column public.anonymous_installs.remote_nonclaude_used_at is
 -- ---------------------------------------------------------------------------
 -- RPC — four more boolean parameters, defaulted so the v0.76 call still works
 -- ---------------------------------------------------------------------------
-create or replace function public.record_anonymous_install(
+-- Postgres identifies a function by name + ARGUMENT TYPES, so adding
+-- parameters with `create or replace` does not replace anything: it creates a
+-- second overload. Both would carry defaults, so a 5- or 8-key body could
+-- match either and PostgREST answers "could not choose the best candidate
+-- function" -- every install goes silent, which is the exact failure this
+-- telemetry exists to end. v0.76 dropped its predecessors for this reason;
+-- do the same, inside the transaction so there is no window with no function.
+-- Postgres identifies a function by name + ARGUMENT TYPES, so adding
+-- parameters with `create or replace` would not replace anything: it would
+-- create a second overload, both with defaults, and a 5- or 8-key body could
+-- match either -- PostgREST then answers "could not choose the best candidate
+-- function" and EVERY install goes silent, the exact failure this telemetry
+-- exists to end. v0.76 dropped its predecessors for the same reason. The
+-- 12-arg drop makes a second apply a no-op rather than "already exists".
+drop function if exists public.record_anonymous_install(uuid, text, text, text, boolean);
+drop function if exists public.record_anonymous_install(uuid, text, text, text, boolean, boolean, boolean, text);
+drop function if exists public.record_anonymous_install(uuid, text, text, text, boolean, boolean, boolean, text, boolean, boolean, boolean, boolean);
+
+-- The body below is v0.76's, VERBATIM, with four parameters, four insert
+-- columns, four values and four coalesce latches added and nothing else
+-- touched. This function replaces the one every install already calls, so
+-- restating its validation from memory would silently change it: an earlier
+-- draft of this file did exactly that and would have recorded every Homebrew
+-- install as `unknown` and blanked every `zh-Hans`.
+create function public.record_anonymous_install(
     p_install_id            uuid,
     p_channel               text,
     p_app_version           text,
@@ -110,84 +133,131 @@ create or replace function public.record_anonymous_install(
 returns void
 language plpgsql
 security definer
-set search_path = public
-as $$
+set search_path = public, pg_temp
+as $migration$
 declare
     v_channel     text;
     v_app_version text;
     v_os_version  text;
-    v_ui_language text;
-    v_now         timestamptz := now();
+    v_language    text;
+    v_today_count bigint;
 begin
     if p_install_id is null then
-        return;
+        raise exception 'install_id is required' using errcode = '22023';
     end if;
 
-    -- Validation is unchanged from v0.76: unrecognised values are refused
-    -- rather than stored, so this cannot become free-text storage.
+    -- Reject rather than coerce. An unrecognised value is a client bug or an
+    -- abuse attempt; filing it under "unknown" would hide both, and storing it
+    -- verbatim would turn this column into free text.
     v_channel := lower(coalesce(p_channel, ''));
-    if v_channel not in ('mas', 'devid', 'homebrew', 'testflight', 'unknown') then
-        v_channel := 'unknown';
+    if v_channel not in ('mas', 'devid', 'brew', 'unknown') then
+        raise exception 'unsupported channel' using errcode = '22023';
     end if;
 
     v_app_version := coalesce(p_app_version, '');
-    if v_app_version !~ '^[0-9]{1,3}(\.[0-9]{1,3}){0,2}$' then
-        v_app_version := '';
+    if v_app_version !~ '^[0-9]{1,4}(\.[0-9]{1,4}){0,4}$' then
+        raise exception 'unsupported app_version' using errcode = '22023';
     end if;
 
     v_os_version := coalesce(p_os_version, '');
-    if v_os_version !~ '^[0-9]{1,3}(\.[0-9]{1,3})?$' then
-        v_os_version := '';
+    if v_os_version !~ '^[0-9]{1,4}(\.[0-9]{1,4}){0,2}$' then
+        raise exception 'unsupported os_version' using errcode = '22023';
     end if;
 
+    -- NULL is allowed and means "client did not report one" -- a pre-v0.77
+    -- binary, which must keep working. A NON-NULL value outside the closed set
+    -- is a client bug, and is rejected for the same reason `channel` is: the
+    -- client coarsens to this set, so anything else means the shaping broke,
+    -- and silently storing it would make this a free-text column.
     if p_ui_language is null then
-        v_ui_language := null;
-    elsif lower(p_ui_language) ~ '^[a-z]{2}(-[a-z]{2,8})?$' then
-        v_ui_language := lower(p_ui_language);
+        v_language := null;
     else
-        v_ui_language := null;
+        v_language := p_ui_language;
+        if v_language not in ('en', 'es', 'ja', 'ko', 'zh-Hans', 'zh-Hant', 'other') then
+            raise exception 'unsupported ui_language' using errcode = '22023';
+        end if;
+    end if;
+
+    -- Ceiling on NEW installs per day. Counts inserts only, on purpose: an
+    -- existing install updating its row is not growth, and throttling
+    -- returning users would corrupt the very activation ratio this table
+    -- exists to measure. 20k/day is roughly 100x the current install base.
+    if not exists (
+        select 1 from public.anonymous_installs where install_id = p_install_id
+    ) then
+        select count(*) into v_today_count
+        from public.anonymous_installs
+        where first_seen_at >= date_trunc('day', now());
+
+        if v_today_count >= 20000 then
+            -- Drop silently. Raising would tell a prober exactly where the
+            -- ceiling sits, and a client can do nothing useful with the error.
+            return;
+        end if;
     end if;
 
     insert into public.anonymous_installs as ai (
-        install_id, channel, app_version, os_version, ui_language,
-        first_seen_at, last_seen_at,
+        install_id, channel, app_version, os_version,
         first_provider_detected_at, helper_connected_at, first_cost_at,
+        ui_language,
         remote_lan_used_at, remote_tailnet_used_at,
         remote_delegate_used_at, remote_nonclaude_used_at
     )
     values (
-        p_install_id, v_channel, v_app_version, v_os_version, v_ui_language,
-        v_now, v_now,
-        case when p_provider_detected then v_now end,
-        case when p_helper_connected  then v_now end,
-        case when p_cost_shown        then v_now end,
-        case when p_remote_lan        then v_now end,
-        case when p_remote_tailnet    then v_now end,
-        case when p_remote_delegate   then v_now end,
-        case when p_remote_nonclaude  then v_now end
+        p_install_id, v_channel, v_app_version, v_os_version,
+        case when p_provider_detected then now() else null end,
+        case when p_helper_connected  then now() else null end,
+        case when p_cost_shown        then now() else null end,
+        v_language,
+        case when p_remote_lan        then now() else null end,
+        case when p_remote_tailnet    then now() else null end,
+        case when p_remote_delegate   then now() else null end,
+        case when p_remote_nonclaude  then now() else null end
     )
     on conflict (install_id) do update set
+        last_seen_at = now(),
         channel      = excluded.channel,
         app_version  = excluded.app_version,
         os_version   = excluded.os_version,
+        -- Latest wins, like channel and version above: someone who switches the
+        -- in-app language switcher is now running the new catalogue, and that
+        -- is what the next launch's funnel row describes. `coalesce` keeps a
+        -- known value when an older client omits the field, so a mixed fleet
+        -- does not erase what a newer build already reported.
         ui_language  = coalesce(excluded.ui_language, ai.ui_language),
-        last_seen_at = v_now,
-        -- Every milestone is a LATCH: the first time wins and later calls
-        -- cannot move it. `coalesce(existing, new)` and never the reverse.
-        first_provider_detected_at = coalesce(ai.first_provider_detected_at, excluded.first_provider_detected_at),
-        helper_connected_at        = coalesce(ai.helper_connected_at,        excluded.helper_connected_at),
-        first_cost_at              = coalesce(ai.first_cost_at,              excluded.first_cost_at),
-        remote_lan_used_at         = coalesce(ai.remote_lan_used_at,         excluded.remote_lan_used_at),
-        remote_tailnet_used_at     = coalesce(ai.remote_tailnet_used_at,     excluded.remote_tailnet_used_at),
-        remote_delegate_used_at    = coalesce(ai.remote_delegate_used_at,    excluded.remote_delegate_used_at),
-        remote_nonclaude_used_at   = coalesce(ai.remote_nonclaude_used_at,   excluded.remote_nonclaude_used_at);
+        -- Each milestone happens once. Never overwrite the original timestamp,
+        -- or "time to first value" silently becomes "time since last launch".
+        first_provider_detected_at = coalesce(
+            ai.first_provider_detected_at, excluded.first_provider_detected_at
+        ),
+        helper_connected_at = coalesce(
+            ai.helper_connected_at, excluded.helper_connected_at
+        ),
+        first_cost_at = coalesce(
+            ai.first_cost_at, excluded.first_cost_at
+        ),
+        -- Remote-control latches, same rule: the first time wins.
+        remote_lan_used_at = coalesce(
+            ai.remote_lan_used_at, excluded.remote_lan_used_at
+        ),
+        remote_tailnet_used_at = coalesce(
+            ai.remote_tailnet_used_at, excluded.remote_tailnet_used_at
+        ),
+        remote_delegate_used_at = coalesce(
+            ai.remote_delegate_used_at, excluded.remote_delegate_used_at
+        ),
+        remote_nonclaude_used_at = coalesce(
+            ai.remote_nonclaude_used_at, excluded.remote_nonclaude_used_at
+        );
 end;
-$$;
+$migration$;
 
-grant execute on function public.record_anonymous_install(
-    uuid, text, text, text, boolean, boolean, boolean, text,
-    boolean, boolean, boolean, boolean
-) to anon, authenticated;
+comment on function public.record_anonymous_install(uuid, text, text, text, boolean, boolean, boolean, text, boolean, boolean, boolean, boolean) is
+    'Upsert one anonymous install row. v0.80 adds four once-ever remote-control '
+    'latches; every other rule is v0.76 unchanged.';
+revoke all on function public.record_anonymous_install(uuid, text, text, text, boolean, boolean, boolean, text, boolean, boolean, boolean, boolean) from public;
+grant execute on function public.record_anonymous_install(uuid, text, text, text, boolean, boolean, boolean, text, boolean, boolean, boolean, boolean) to anon, authenticated;
+
 
 -- ---------------------------------------------------------------------------
 -- Verification — run these after applying; each must hold
@@ -207,37 +277,47 @@ begin
 end;
 $$;
 
--- The latch must not move once set. Proven on a throwaway id inside a
--- transaction that is rolled back, because a `do` block cannot observe its
--- own `now()` changing (see the sql-verification-predicates note: a
--- timestamp assertion inside one block is otherwise vacuous).
+-- What CAN be proven inside one transaction.
+--
+-- NOT provable here: "a second call does not move the timestamp". `now()` is
+-- TRANSACTION-scoped, so both calls stamp the identical value and the
+-- assertion passes whether or not `coalesce` is the right way round --
+-- exactly the vacuous predicate this repo has been bitten by before. The
+-- ordering of `coalesce(existing, excluded)` is pinned by the Swift drift
+-- test instead, which reads this file's text.
 do $$
 declare
     v_id  uuid := gen_random_uuid();
     v_one timestamptz;
     v_two timestamptz;
 begin
+    -- Setting the flag sets the column.
     perform public.record_anonymous_install(v_id, 'devid', '1.53.0', '26.5',
                                             false, false, false, null, true);
     select remote_lan_used_at into v_one from public.anonymous_installs where install_id = v_id;
     if v_one is null then
         raise exception 'the LAN latch did not set';
     end if;
-    perform pg_sleep(0.01);
-    perform public.record_anonymous_install(v_id, 'devid', '1.53.0', '26.5',
-                                            false, false, false, null, true);
-    select remote_lan_used_at into v_two from public.anonymous_installs where install_id = v_id;
-    if v_two is distinct from v_one then
-        raise exception 'the LAN latch moved on a second call: % -> %', v_one, v_two;
+
+    -- The OTHER latches stay null: one flag must not set its neighbours.
+    perform 1 from public.anonymous_installs
+        where install_id = v_id
+          and (remote_tailnet_used_at is not null
+               or remote_delegate_used_at is not null
+               or remote_nonclaude_used_at is not null);
+    if found then
+        raise exception 'setting the LAN flag also set another latch';
     end if;
-    -- A call that does NOT claim the milestone must not clear it either.
+
+    -- A later call that does NOT claim the milestone must not clear it. This
+    -- one is real: it fails if `coalesce` is dropped or inverted.
     perform public.record_anonymous_install(v_id, 'devid', '1.53.0', '26.5');
     select remote_lan_used_at into v_two from public.anonymous_installs where install_id = v_id;
-    if v_two is distinct from v_one then
+    if v_two is null then
         raise exception 'a later call without the flag cleared the latch';
     end if;
+
     delete from public.anonymous_installs where install_id = v_id;
 end;
 $$;
 
-commit;
