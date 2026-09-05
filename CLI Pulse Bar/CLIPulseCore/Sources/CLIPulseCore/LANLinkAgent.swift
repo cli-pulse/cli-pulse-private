@@ -169,6 +169,7 @@ public final class LANLinkAgent: ObservableObject {
         // would leave its covert stream running past Forget. An innocent
         // phone caught mid-handshake just reconnects.
         closeSessions { $0 == peerID || $0 == nil }
+        clearFinishedPairingResult()
         if steadyListener != nil { restartSteadyListener() }
     }
 
@@ -176,8 +177,27 @@ public final class LANLinkAgent: ObservableObject {
         LANPairingStore.removeAllPeers()
         peers = []
         closeSessions { _ in true }
+        clearFinishedPairingResult()
         if steadyListener != nil { restartSteadyListener() }
     }
+
+    /// A finished pairing result describes a pairing that Forget just
+    /// ended, so it must not stay on screen saying "<phone> is paired".
+    /// Found on hardware: the peer list emptied and the green card
+    /// remained. A pairing still IN FLIGHT is left alone — forgetting one
+    /// phone must not silently abort another phone's approval.
+    private func clearFinishedPairingResult() {
+        switch pairing {
+        case .succeeded, .failed: pairing = .idle
+        case .idle, .showingQR, .awaitingApproval: break
+        }
+    }
+
+    /// Test seam: drive the pairing card into a state without running a
+    /// real pairing. `pairing` is `private(set)` on purpose.
+    #if DEBUG
+    func setPairingStateForTesting(_ s: PairingState) { pairing = s }
+    #endif
 
     /// M1: allow or withdraw CONTROL for one phone without cutting its
     /// link. Live connections ask on every control frame, so this applies

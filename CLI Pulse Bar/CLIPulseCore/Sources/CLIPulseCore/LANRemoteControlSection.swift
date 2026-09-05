@@ -114,12 +114,17 @@ public struct LANRemoteControlSection: View {
                             Spacer()
                             // Per-phone permission. Read on every control
                             // frame, so flipping it applies to the next key.
+                            // `fixedSize` because the popover is narrow
+                            // enough to break "Control" into "Cont rol"
+                            // (seen on the owner's Mac).
                             Toggle("Control", isOn: Binding(
                                 get: { peer.controlAllowed },
                                 set: { agent.setControlAllowed(peerID: peer.id, $0) }))
                                 .toggleStyle(.switch)
                                 .controlSize(.mini)
                                 .font(.system(size: 10))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .help("Off: this iPhone can only watch. On: it can type into sessions, start and stop them, and answer approvals.")
                             Button("Forget") { agent.forget(peerID: peer.id) }
                                 .font(.system(size: 10))
