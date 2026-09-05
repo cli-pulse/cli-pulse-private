@@ -94,8 +94,12 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
     /// installed the app", which is the exact confusion this telemetry exists
     /// to end.
     public enum WireVersion: Sendable, Equatable {
-        /// v0.76 and later: milestones and UI language included.
+        /// v0.80 and later: the remote-control latches as well.
         case current
+        /// The v0.76 eight-parameter shape — everything except the
+        /// remote-control latches. A database that has had v0.76 but not
+        /// v0.80 accepts this.
+        case v076
         /// The v0.73 five-parameter shape. Nothing new is sent, and nothing is
         /// lost that the next launch cannot re-send once the migration lands —
         /// the milestone latches only set on a successful send.
@@ -110,6 +114,14 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
     public let helperConnected: Bool
     public let costShown: Bool
     public let uiLanguage: ReportedUILanguage
+    /// Remote-control usage latches (plan §8). Each is "this has happened at
+    /// least once on this install", never a count — see
+    /// `migrate_v0.80_remote_control_usage_latches.sql` for why a rate is
+    /// deliberately not collected.
+    public let remoteLANUsed: Bool
+    public let remoteTailnetUsed: Bool
+    public let remoteDelegateUsed: Bool
+    public let remoteNonClaudeUsed: Bool
     public let wireVersion: WireVersion
 
     public init(
@@ -121,6 +133,10 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
         helperConnected: Bool = false,
         costShown: Bool = false,
         uiLanguage: ReportedUILanguage = .other,
+        remoteLANUsed: Bool = false,
+        remoteTailnetUsed: Bool = false,
+        remoteDelegateUsed: Bool = false,
+        remoteNonClaudeUsed: Bool = false,
         wireVersion: WireVersion = .current
     ) {
         self.installID = installID
@@ -131,6 +147,10 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
         self.helperConnected = helperConnected
         self.costShown = costShown
         self.uiLanguage = uiLanguage
+        self.remoteLANUsed = remoteLANUsed
+        self.remoteTailnetUsed = remoteTailnetUsed
+        self.remoteDelegateUsed = remoteDelegateUsed
+        self.remoteNonClaudeUsed = remoteNonClaudeUsed
         self.wireVersion = wireVersion
     }
 
@@ -153,12 +173,20 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
         case helperConnected = "p_helper_connected"
         case costShown = "p_cost_shown"
         case uiLanguage = "p_ui_language"
+        case remoteLAN = "p_remote_lan"
+        case remoteTailnet = "p_remote_tailnet"
+        case remoteDelegate = "p_remote_delegate"
+        case remoteNonClaude = "p_remote_nonclaude"
     }
 
     /// Keys a `.legacy` payload must never carry. PostgREST binds by the names
     /// present in the body, so one stray key is the whole difference between
     /// the fallback working and 404-ing a second time.
     static let v076OnlyKeys: [CodingKeys] = [.helperConnected, .costShown, .uiLanguage]
+
+    /// Keys only a database with v0.80 applied will bind. Same rule: one
+    /// stray key and the whole call 404s instead of degrading.
+    static let v080OnlyKeys: [CodingKeys] = [.remoteLAN, .remoteTailnet, .remoteDelegate, .remoteNonClaude]
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -167,10 +195,24 @@ public struct AnonymousInstallPayload: Equatable, Sendable, Encodable {
         try c.encode(appVersion, forKey: .appVersion)
         try c.encode(osVersion, forKey: .osVersion)
         try c.encode(providerDetected, forKey: .providerDetected)
-        guard wireVersion == .current else { return }
+        guard wireVersion != .legacy else { return }
         try c.encode(helperConnected, forKey: .helperConnected)
         try c.encode(costShown, forKey: .costShown)
         try c.encode(uiLanguage.rawValue, forKey: .uiLanguage)
+        guard wireVersion == .current else { return }
+        try c.encode(remoteLANUsed, forKey: .remoteLAN)
+        try c.encode(remoteTailnetUsed, forKey: .remoteTailnet)
+        try c.encode(remoteDelegateUsed, forKey: .remoteDelegate)
+        try c.encode(remoteNonClaudeUsed, forKey: .remoteNonClaude)
+    }
+
+    /// The same facts, shaped for a database that has v0.76 but not v0.80.
+    public func v076Shaped() -> AnonymousInstallPayload {
+        AnonymousInstallPayload(
+            installID: installID, channel: channel, appVersion: appVersion,
+            osVersion: osVersion, providerDetected: providerDetected,
+            helperConnected: helperConnected, costShown: costShown,
+            uiLanguage: uiLanguage, wireVersion: .v076)
     }
 }
 

@@ -271,6 +271,8 @@ final class ActivationFunnelTelemetryTests: XCTestCase {
         XCTAssertEqual(Set((current ?? [:]).keys), [
             "p_install_id", "p_channel", "p_app_version", "p_os_version",
             "p_provider_detected", "p_helper_connected", "p_cost_shown", "p_ui_language",
+            // v0.80 latches — see `migrate_v0.80_remote_control_usage_latches.sql`.
+            "p_remote_lan", "p_remote_tailnet", "p_remote_delegate", "p_remote_nonclaude",
         ])
         XCTAssertEqual(Set((legacy ?? [:]).keys), [
             "p_install_id", "p_channel", "p_app_version", "p_os_version", "p_provider_detected",
@@ -396,25 +398,45 @@ final class ActivationFunnelTransportTests: XCTestCase {
         SequencedProtocol.serveUnknownFunctionBody = true
     }
 
-    /// A database without v0.76 answers 404/PGRST202 for the new parameter
-    /// set. Without the retry every install goes silent — and silent here is
-    /// indistinguishable from "nobody installed the app", the exact confusion
-    /// this telemetry exists to end.
-    func test_aPGRST202FallsBackToTheLegacyShapeExactlyOnce() async throws {
+    /// A database that has v0.76 but NOT v0.80 — the state every install is
+    /// in until the owner applies the new migration — answers 404/PGRST202
+    /// for the newest parameter set. The degrade is a ladder, so this must
+    /// land on the v0.76 rung and keep reporting everything that rung can
+    /// carry, rather than dropping all the way to legacy.
+    func test_aPGRST202FallsBackOneRungToV076() async throws {
         SequencedProtocol.statuses = [404, 204]
 
         let accepted = try await makeTransport().send(payload)
 
-        XCTAssertEqual(accepted, .legacy,
-                       "the caller must be told the v0.76 fields never landed")
-        XCTAssertEqual(SequencedProtocol.bodies.count, 2, "one retry, not a loop")
+        XCTAssertEqual(accepted, .v076,
+                       "the caller must be told the v0.80 latches never landed — but v0.76's fields did")
+        XCTAssertEqual(SequencedProtocol.bodies.count, 2, "one rung down, not a loop")
         let first = try XCTUnwrap(JSONSerialization.jsonObject(with: SequencedProtocol.bodies[0]) as? [String: Any])
         let second = try XCTUnwrap(JSONSerialization.jsonObject(with: SequencedProtocol.bodies[1]) as? [String: Any])
-        XCTAssertNotNil(first["p_ui_language"], "the first attempt must use the current contract")
-        XCTAssertNil(second["p_ui_language"], "the retry must drop every v0.76 key")
-        XCTAssertNil(second["p_helper_connected"])
-        XCTAssertNil(second["p_cost_shown"])
+        XCTAssertNotNil(first["p_remote_lan"], "the first attempt must use the current contract")
+        XCTAssertNil(second["p_remote_lan"], "the retry must drop every v0.80 key")
+        XCTAssertNil(second["p_remote_tailnet"])
+        XCTAssertNil(second["p_remote_delegate"])
+        XCTAssertNil(second["p_remote_nonclaude"])
+        XCTAssertNotNil(second["p_ui_language"], "…and must KEEP the v0.76 fields, which that database does know")
         XCTAssertEqual(second["p_install_id"] as? String, "12345678-1234-1234-1234-123456789012")
+    }
+
+    /// A database with NEITHER migration refuses twice, and the ladder walks
+    /// all the way down rather than giving up after one rung. Two retries is
+    /// the bound; a third refusal is a real error.
+    func test_twoRefusalsWalkTheLadderToLegacy() async throws {
+        SequencedProtocol.statuses = [404, 404, 204]
+
+        let accepted = try await makeTransport().send(payload)
+
+        XCTAssertEqual(accepted, .legacy)
+        XCTAssertEqual(SequencedProtocol.bodies.count, 3, "two rungs down, then stop")
+        let last = try XCTUnwrap(JSONSerialization.jsonObject(with: SequencedProtocol.bodies[2]) as? [String: Any])
+        for k in ["p_remote_lan", "p_ui_language", "p_helper_connected", "p_cost_shown"] {
+            XCTAssertNil(last[k], "the bottom rung must carry only v0.73's five parameters — \(k) leaked")
+        }
+        XCTAssertEqual(last.count, 5)
     }
 
     /// A 404 that is NOT `PGRST202` — a mistyped project URL, say — must
@@ -469,9 +491,13 @@ final class ActivationFunnelTransportTests: XCTestCase {
     /// name: one key that does not match a parameter is a 404, on the only
     /// write path anonymous users have.
     func test_theWireKeysMatchTheMigrationsParameterNames() throws {
-        let sql = try String(contentsOf: Self.migrationURL, encoding: .utf8)
+        // The wire contract now spans TWO migrations: v0.76 declared eight
+        // parameters, v0.80 re-declares them plus the four remote-control
+        // latches. The NEWEST declaration is the one a current-shape call is
+        // bound against, so that is the one to compare with.
+        let sql = try String(contentsOf: Self.latestMigrationURL, encoding: .utf8)
 
-        let marker = "create function public.record_anonymous_install("
+        let marker = "create or replace function public.record_anonymous_install("
         let start = try XCTUnwrap(sql.range(of: marker), "the migration's function signature moved")
         let tail = sql[start.upperBound...]
         let block = try XCTUnwrap(tail.firstIndex(of: ")").map { String(tail[..<$0]) })
@@ -482,7 +508,7 @@ final class ActivationFunnelTransportTests: XCTestCase {
                   token.hasPrefix("p_") else { return nil }
             return token
         })
-        XCTAssertEqual(declared.count, 8, "parsed \(declared) — the parser is broken, not the SQL")
+        XCTAssertEqual(declared.count, 12, "parsed \(declared) — the parser is broken, not the SQL")
 
         let wire = Set(AnonymousInstallPayload.CodingKeys.allCases.map(\.rawValue))
         XCTAssertEqual(wire, declared,
@@ -500,6 +526,15 @@ final class ActivationFunnelTransportTests: XCTestCase {
         .deletingLastPathComponent()   // CLI Pulse Bar
         .deletingLastPathComponent()   // repo root
         .appendingPathComponent("backend/supabase/migrate_v0.76_activation_funnel.sql")
+
+    /// The migration that declares the CURRENT wire contract. When a future
+    /// migration adds parameters again, point this at it and the drift guard
+    /// keeps working.
+    static let latestMigrationURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent("backend/supabase/migrate_v0.80_remote_control_usage_latches.sql")
 
     func test_theLanguageSetMatchesTheMigrationFile() throws {
         let sql = try String(contentsOf: Self.migrationURL, encoding: .utf8)

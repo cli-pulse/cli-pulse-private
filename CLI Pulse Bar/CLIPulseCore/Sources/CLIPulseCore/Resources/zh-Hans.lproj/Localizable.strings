@@ -1146,14 +1146,14 @@
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名安装统计";
-"telemetry.disclosure_body" = "CLI Pulse 只上报它走到了哪一步:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。我们靠这个判断 app 在哪一步卡住了 —— 这里不涉及账号,否则我们无从得知。";
-"telemetry.disclosure_body_local_only" = "本地模式已开启,CLI Pulse 什么都不会发送。如果关闭本地模式,它会上报四个步骤:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。";
+"telemetry.disclosure_body" = "CLI Pulse 只上报它走到了哪一步:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。我们靠这个判断 app 在哪一步卡住了 —— 这里不涉及账号,否则我们无从得知。如果你使用远程控制,还会加上四个是/否:手机是否通过本地 Wi-Fi 连到这台 Mac、是否通过你自己的专用网络连到这台 Mac、是否有会话交接给了 claude.ai、以及你是否遥控过 Claude 以外的工具。";
+"telemetry.disclosure_body_local_only" = "本地模式已开启,CLI Pulse 什么都不会发送。如果关闭本地模式,它会上报四个步骤:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。如果你使用远程控制,还会加上四个是/否:手机是否通过本地 Wi-Fi 连到这台 Mac、是否通过你自己的专用网络连到这台 Mac、是否有会话交接给了 claude.ai、以及你是否遥控过 Claude 以外的工具。";
 "telemetry.not_collected" = "不含文件路径、项目名、服务商名称、token 数或费用金额,也不含任何能识别你或你机器的信息。该 id 是随机生成的,卸载即删除。";
 "telemetry.toggle" = "发送匿名安装统计";
 "telemetry.toggle_local_only" = "已关闭 —— 本地模式已经涵盖了这一项。";
 "telemetry.got_it" = "知道了";
 "telemetry.change_later" = "你随时可以在「设置 › 隐私」里更改。";
-"telemetry.settings_body" = "只上报 app 走到了哪一步,不涉及账号,也不含任何能识别你或你机器的信息:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。不含文件路径、项目名、服务商名称、token 数或费用金额。该 id 是随机生成的,卸载即删除。";
+"telemetry.settings_body" = "只上报 app 走到了哪一步,不涉及账号,也不含任何能识别你或你机器的信息:是否被安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字,以及当前显示的语言。不含文件路径、项目名、服务商名称、token 数或费用金额。该 id 是随机生成的,卸载即删除。如果你使用远程控制,还会加上四个是/否:手机是否通过本地 Wi-Fi 连到这台 Mac、是否通过你自己的专用网络连到这台 Mac、是否有会话交接给了 claude.ai、以及你是否遥控过 Claude 以外的工具。";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "远程控制";
