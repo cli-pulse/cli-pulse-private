@@ -306,12 +306,16 @@ struct iOSSettingsTab: View {
                         }
                     }
 
-                    // Remote control (LAN, M0) — the pairing entry point.
-                    Section(L10n.remote.title) {
-                        NavigationLink {
-                            LANNearbyMacsView()
-                        } label: {
-                            Label(L10n.remote.pairWithMac, systemImage: "qrcode.viewfinder")
+                    // Remote control — the pairing entry point.
+                    // M3 dark-ship: hidden entirely when the build does not
+                    // offer the feature.
+                    if RemoteControlFeature.isAvailable() {
+                        Section(L10n.remote.title) {
+                            NavigationLink {
+                                LANNearbyMacsView()
+                            } label: {
+                                Label(L10n.remote.pairWithMac, systemImage: "qrcode.viewfinder")
+                            }
                         }
                     }
 

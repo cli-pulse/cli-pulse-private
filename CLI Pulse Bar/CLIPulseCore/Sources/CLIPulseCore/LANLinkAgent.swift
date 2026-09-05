@@ -118,12 +118,26 @@ public final class LANLinkAgent: ObservableObject {
     // MARK: - Availability
 
     /// Why the agent cannot run on this build, or nil if it can.
-    public static var unavailabilityReason: String? {
+    ///
+    /// `featureAvailable` is the M3 dark-ship gate. It is a parameter so the
+    /// test suite can drive both answers; production reads the real one.
+    public static func unavailabilityReason(
+        featureAvailable: Bool = RemoteControlFeature.isAvailable()
+    ) -> String? {
+        // Order matters: on a sandboxed build the App Store reason is the
+        // true one, and saying "turned off in this build" there would send
+        // a user looking for a switch that would not help.
         if MASSandboxGate.isSandboxed {
             return "Remote control needs the Developer ID build of CLI Pulse — session control is not available in the App Store build."
         }
+        if !featureAvailable {
+            return "Remote control is not turned on in this build."
+        }
         return nil
     }
+
+    /// Convenience for the UI, which asks without arguments.
+    public static var unavailabilityReason: String? { unavailabilityReason() }
 
     // MARK: - Lifecycle
 
