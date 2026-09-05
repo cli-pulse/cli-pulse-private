@@ -85,6 +85,18 @@ public final class LANLinkAgent: ObservableObject {
     private var steadyListener: NWListener?
     private var pairingListener: NWListener?
     private var sessions: [ObjectIdentifier: (session: LANLinkAgentSession, task: Task<Void, Never>, peerID: Box)] = [:]
+    /// M2a: true while the current steady listener is trying a FIXED port
+    /// (remembered or default). A bind clash surfaces asynchronously as
+    /// `.failed`, so the retry-on-any decision has to be made there.
+    private var steadyTriedFixedPort = false
+    /// Set once a fixed-port bind has already failed, so the retry uses any
+    /// port and a second failure is reported honestly.
+    private var steadyPortFallback = false
+    /// M2a: the address to show for "connect from anywhere", recomputed
+    /// whenever the listener becomes ready.
+    @Published public private(set) var directAddress: String?
+    /// Whether `directAddress` is a tailnet address or just a LAN one.
+    @Published public private(set) var directAddressIsTailnet = false
     /// A mutable holder so the session's own hello handler can report the
     /// peer it proved back to the agent (for Forget-closes-links).
     final class Box: @unchecked Sendable { var id: String?; init() {} }
@@ -179,6 +191,18 @@ public final class LANLinkAgent: ObservableObject {
         peers = LANPairingStore.peers()
     }
 
+    /// M2a: one address worth printing, plus its port.
+    private func refreshDirectAddress(port: UInt16) {
+        guard port != 0,
+              let best = LANDirectAddress.preferredAddress(from: LANDirectAddress.localInterfaceAddresses()) else {
+            directAddress = nil
+            directAddressIsTailnet = false
+            return
+        }
+        directAddress = LANDirectAddress.Parsed(host: best.address, port: port).displayString
+        directAddressIsTailnet = best.kind == .tailnet
+    }
+
     private func closeSessions(where match: (String?) -> Bool) {
         for (_, entry) in sessions where match(entry.peerID.id) {
             let s = entry.session
@@ -194,9 +218,18 @@ public final class LANLinkAgent: ObservableObject {
         guard let identity else { return }
 
         let listener: NWListener
+        // M2a: prefer a port that survives a relaunch, so an address the
+        // user wrote down stays valid. A clash falls back to any port (see
+        // the `.failed` arm) rather than leaving remote control off.
+        let fixedPort = LANListenerPort.remembered() ?? LANDirectAddress.defaultPort
+        steadyTriedFixedPort = !steadyPortFallback
         do {
             let params = try LANTransportSecurity.parameters(presharedKeys: peers.map(\.presharedKey))
-            listener = try NWListener(using: params)
+            if steadyTriedFixedPort, let p = NWEndpoint.Port(rawValue: fixedPort) {
+                listener = try NWListener(using: params, on: p)
+            } else {
+                listener = try NWListener(using: params)
+            }
         } catch {
             state = .failed("Listener setup failed: \(error)")
             return
@@ -213,11 +246,24 @@ public final class LANLinkAgent: ObservableObject {
                 guard let self, self.steadyListener === listener else { return }
                 switch st {
                 case .ready:
-                    self.state = .listening(port: listener.port?.rawValue ?? 0,
+                    let port = listener.port?.rawValue ?? 0
+                    LANListenerPort.remember(Int(port))
+                    self.steadyPortFallback = false
+                    self.refreshDirectAddress(port: port)
+                    self.state = .listening(port: port,
                                             peerCount: self.peers.count,
                                             connections: self.sessions.count)
                 case .failed(let e):
+                    // A busy fixed port must not leave remote control off:
+                    // retry once on any port. Only then is it a real failure.
+                    if self.steadyTriedFixedPort, !self.steadyPortFallback {
+                        agentLog.notice("steady listener could not take the fixed port (\(String(describing: e))); retrying on any port")
+                        self.steadyPortFallback = true
+                        self.restartSteadyListener()
+                        return
+                    }
                     agentLog.error("steady listener failed: \(String(describing: e))")
+                    self.directAddress = nil
                     self.state = .failed("\(e)")
                 case .cancelled:
                     if case .listening = self.state { self.state = .off }

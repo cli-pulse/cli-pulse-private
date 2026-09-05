@@ -11,6 +11,7 @@ import CoreImage.CIFilterBuiltins
 /// so the app target needs a one-line reference and no pbxproj entry.
 public struct LANRemoteControlSection: View {
     @ObservedObject private var agent: LANLinkAgent
+    @State private var addrCopied = false
 
     public init(agent: LANLinkAgent) {
         self.agent = agent
@@ -35,13 +36,13 @@ public struct LANRemoteControlSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Toggle(isOn: Binding(get: { agent.isEnabled }, set: { agent.isEnabled = $0 })) {
-                    Text("Let paired iPhones on this Wi-Fi watch and control sessions")
+                    Text("Let paired iPhones watch and control sessions")
                         .font(.system(size: 11))
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                Text("Output is redacted before it leaves this Mac, and the connection is encrypted with a key that only exists on the two devices. A phone with Control on can type into sessions, start and stop them, and answer approvals — while Session control is on in the Sessions tab. Only sessions you choose to open on claude.ai go through Anthropic.")
+                Text("Paired iPhones reach this Mac on this Wi-Fi, and over your own private network (Tailscale, VPN) using the address below. Output is redacted before it leaves this Mac, and the connection is encrypted with a key that only exists on the two devices — an address alone gets nobody in. A phone with Control on can type into sessions, start and stop them, and answer approvals, while Session control is on in the Sessions tab. Only sessions you choose to open on claude.ai go through Anthropic.")
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -76,6 +77,26 @@ public struct LANRemoteControlSection: View {
                         Divider().padding(.vertical, 2)
                         LANPairingInline(agent: agent)
                     }
+                }
+
+                if let addr = agent.directAddress {
+                    Divider().padding(.vertical, 2)
+                    HStack(spacing: 6) {
+                        Image(systemName: agent.directAddressIsTailnet ? "globe" : "wifi")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text(L10n.remote.reachableAt).font(.system(size: 10)).foregroundStyle(.secondary)
+                        Text(addr).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
+                        Spacer()
+                        Button(addrCopied ? "Copied" : "Copy") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(addr, forType: .string)
+                            addrCopied = true
+                        }
+                        .font(.system(size: 10)).controlSize(.mini)
+                    }
+                    Text(agent.directAddressIsTailnet ? L10n.remote.tailnetHint : L10n.remote.lanOnlyHint)
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if !agent.peers.isEmpty {

@@ -1202,3 +1202,11 @@
 "remote.session_ended" = "会话已结束";
 "remote.no_sessions_control" = "还没有会话。点 + 开一个。";
 "remote.no_providers" = "这台 Mac 没有可用的 CLI 工具。";
+"remote.connect_by_address" = "按地址连接";
+"remote.address_hint" = "不在同一 Wi-Fi 时,通过 Tailscale 或 VPN 连接这台 Mac。";
+"remote.address_placeholder" = "主机或 主机:端口";
+"remote.address_invalid" = "这不是本应用可用的地址。";
+"remote.saved_address" = "已保存的地址";
+"remote.reachable_at" = "可连接地址";
+"remote.tailnet_hint" = "这是你的 Tailscale 地址 —— 已配对的 iPhone 在你的 tailnet 内任何地方都能用它连接。";
+"remote.lan_only_hint" = "这个地址只在本网络内可用。两台设备都装 Tailscale 后,就能在任何地方连接这台 Mac。";
