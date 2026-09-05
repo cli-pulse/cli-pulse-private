@@ -200,6 +200,32 @@ final class LANSessionControlClientTests: XCTestCase {
         client.close(); _ = await run.value
     }
 
+    /// PROBE (2026-09-06): the real app holds TWO subscriptions on ONE
+    /// client — the Mac screen's all-sessions one, and the terminal
+    /// screen's session-scoped one. No test has ever opened both. On
+    /// hardware the terminal's stream ends immediately while the Mac
+    /// screen's keeps delivering approvals.
+    func testTwoConcurrentSubscriptionsOnOneClientBothStayAlive() async throws {
+        let (client, backend, run) = loopback()
+        let all = client.subscribeEvents(sessionId: nil)          // Mac screen
+        var allIt = all.makeAsyncIterator()
+        guard case .subscribed = try await allIt.next() else { return XCTFail("all: no ack") }
+
+        let one = client.subscribeEvents(sessionId: "s1")         // terminal screen
+        var oneIt = one.makeAsyncIterator()
+        guard case .subscribed = try await oneIt.next() else { return XCTFail("one: no ack") }
+
+        backend.push(.outputDelta(sessionId: "s1", payload: "after both\n", ts: 1))
+
+        let fromOne = try await oneIt.next()
+        XCTAssertEqual(fromOne, .outputRaw(sessionId: "s1", payload: "after both\n", ts: 0),
+                       "the session-scoped subscription died once a second one existed")
+        let fromAll = try await allIt.next()
+        XCTAssertEqual(fromAll, .outputRaw(sessionId: "s1", payload: "after both\n", ts: 0),
+                       "the all-sessions subscription died once a second one existed")
+        client.close(); _ = await run.value
+    }
+
     func testLocalControlOffOnTheMacSurfacesAsTypedErrorOnThePhone() async throws {
         let (client, backend, run) = loopback(heartbeat: 0.03)
         let stream = client.subscribeEvents(sessionId: "s1")
