@@ -836,4 +836,85 @@ final class LANLinkAgentSessionTests: XCTestCase {
                        "a raw subscription leaked a secret past the redactor")
         await session.close(); _ = await run.value
     }
+
+    /// A secret split across an IDLE PAUSE longer than the redaction flush.
+    ///
+    /// The streaming redactor exists to survive chunk splits — that is what
+    /// its carry is for. The idle flush defeats it: `flushOutput` calls
+    /// `Streaming.flush()`, which emits the WHOLE carry, and half a key
+    /// matches no pattern. `testSubscriptionStreamsRedactedOutputWithMonotonicSeq`
+    /// pushes both halves back to back, so the timer never fires and this
+    /// window has never been covered.
+    ///
+    /// A PTY does pause mid-token: `printf 'cred sk-ant-'; sleep 1; printf ...`
+    /// is enough, and so is any program that writes a token in pieces.
+    func testASecretSplitAcrossTheIdleFlushIsStillRedacted() async throws {
+        let (session, phone, backend, run) = makeSession(idleFlush: 0.05)
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+
+        let secret = "sk-ant-api03-AAAABBBBCCCCDDDD"
+        backend.push(.outputRaw(sessionId: "s1", payload: "cred " + String(secret.prefix(12)), ts: 1))
+        // Longer than idleFlush: the flush fires BETWEEN the halves.
+        try await Task.sleep(nanoseconds: 300_000_000)
+        backend.push(.outputRaw(sessionId: "s1", payload: String(secret.dropFirst(12)) + " done\n", ts: 1))
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        var joined = ""
+        for f in phone.allFrames {
+            guard case let .event(kind, _, _, d) = f, kind == "output",
+                  let b64 = d["bytes_b64"]?.stringValue,
+                  let bytes = Data(base64Encoded: b64) else { continue }
+            joined += String(decoding: bytes, as: UTF8.self)
+        }
+        // Not vacuous: the phone must actually have received the surrounding
+        // text, or "no secret" would just mean "no output".
+        XCTAssertTrue(joined.contains("done"),
+                      "no output reached the phone at all — the assertions below would be vacuous")
+        XCTAssertFalse(joined.contains(secret),
+                       "the whole secret reached the phone: \(joined)")
+        // The TAIL is the part that matters. Redacting `sk-ant-api03` while
+        // letting the entropy through hides the label and ships the value.
+        XCTAssertFalse(joined.contains("AAAABBBBCCCCDDDD"),
+                       "the secret's high-entropy tail reached the phone in clear text: \(joined)")
+        await session.close(); _ = await run.value
+    }
+
+    /// The other half of the bargain: holding back the trailing token must
+    /// not turn the idle flush off. A long-running line still has to appear.
+    func testTheIdleFlushStillShowsAPartialLine() async throws {
+        let (session, phone, backend, run) = makeSession(idleFlush: 0.05)
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.outputRaw(sessionId: "s1", payload: "Downloading the thing", ts: 1))
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        var joined = ""
+        for f in phone.allFrames {
+            guard case let .event(kind, _, _, d) = f, kind == "output",
+                  let b64 = d["bytes_b64"]?.stringValue,
+                  let bytes = Data(base64Encoded: b64) else { continue }
+            joined += String(decoding: bytes, as: UTF8.self)
+        }
+        XCTAssertEqual(joined, "Downloading the ",
+                       "the idle flush must still show a partial line, minus only the unfinished last word")
+        await session.close(); _ = await run.value
+    }
+
+    /// A prompt ends in whitespace, so nothing is held back and it appears
+    /// whole. This is the case that would have made the fix unshippable.
+    func testAPromptEndingInWhitespaceFlushesWhole() async throws {
+        let (session, phone, backend, run) = makeSession(idleFlush: 0.05)
+        _ = try unwrapOK(try await phone.request(.sessionSubscribe, ["session_id": .string("s1")]))
+        backend.push(.outputRaw(sessionId: "s1", payload: "you@mac ~ % ", ts: 1))
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        var joined = ""
+        for f in phone.allFrames {
+            guard case let .event(kind, _, _, d) = f, kind == "output",
+                  let b64 = d["bytes_b64"]?.stringValue,
+                  let bytes = Data(base64Encoded: b64) else { continue }
+            joined += String(decoding: bytes, as: UTF8.self)
+        }
+        XCTAssertEqual(joined, "you@mac ~ % ", "a shell prompt no longer reaches the phone")
+        await session.close(); _ = await run.value
+    }
 }

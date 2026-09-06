@@ -179,6 +179,34 @@ public enum LANEgressRedactor {
             return ""
         }
 
+        /// Idle flush: emit what is held back EXCEPT a trailing partial
+        /// token. For the periodic flush that keeps a long-running line
+        /// visible — NOT for session end, which must use `flush()`.
+        ///
+        /// `flush()` empties the carry, and half a secret matches no
+        /// pattern, so an idle flush landing INSIDE a token shipped the
+        /// remainder in clear text. Measured 2026-09-06 through the real
+        /// phone path: `cred «REDACTED»-AAAABBBBCCCCDDDD` — the label
+        /// masked and the entropy sent, which is the wrong half.
+        ///
+        /// A secret is a single whitespace-delimited token, so retaining
+        /// the trailing partial token is exactly enough to close the
+        /// window, and it costs at most one unfinished word of latency. A
+        /// prompt like `"> "` ends in whitespace and still flushes whole.
+        public mutating func flushIdle() -> String {
+            if carry.isEmpty { return "" }
+            guard let lastBreak = carry.lastIndex(where: { $0.isWhitespace }) else {
+                // The entire carry is one unfinished token. Holding it is
+                // the safe choice: `flush()` at session end still sends it.
+                return ""
+            }
+            let cut = carry.index(after: lastBreak)
+            let complete = String(carry[carry.startIndex..<cut])
+            carry = String(carry[cut...])
+            if complete.isEmpty { return "" }
+            return LANEgressRedactor.redact(complete)
+        }
+
         /// Emit everything held back. Call on session end / disconnect —
         /// otherwise the tail of the last line is never sent.
         public mutating func flush() -> String {

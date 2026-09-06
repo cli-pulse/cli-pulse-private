@@ -655,7 +655,10 @@ public actor LANLinkAgentSession {
         // Flush every session that holds bytes, each to its own session id.
         for (sid, red) in (subscriptions[sub]?.redactors ?? [:]) where red.hasPendingBytes {
             var r = red
-            let tail = r.flush()
+            // IDLE flush: keeps back a trailing partial token so a secret
+            // split by this very timer cannot escape. Session end uses the
+            // full `flush()` in `flushSession`.
+            let tail = r.flushIdle()
             subscriptions[sub]?.redactors[sid] = r
             if !tail.isEmpty {
                 await emit(sub, kind: .output, data: [
