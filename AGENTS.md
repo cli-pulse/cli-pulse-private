@@ -267,6 +267,17 @@ iPhone  LANSessionControlClient ─┐                    ┌─ LocalSessionCon
   then send `\r`.
 - `swift test` here compiles macOS only; the iOS-only screens
   (`LANRemoteScreens.swift`) need the `CLI Pulse iOS` scheme to be type-checked.
+- 🚨 **This Mac's SDK is a generation ahead of CI's, so a local green does not
+  mean CI compiles.** `swift-ci.yml` runs on `macos-15` (`lint-ci.yml` on
+  `macos-14`); a dev machine here is macOS/Xcode 26.x. Measured 2026-09-07:
+  `case .wifiAware` on `NWError` — a case the macOS 26 SDK added and the
+  compiler explicitly suggests adding — compiled locally, passed 3005 tests
+  and an iOS Simulator archive, and was `error: type 'NWError' has no member
+  'wifiAware'` on the runner. For a non-frozen enum from a framework, prefer a
+  plain `default:`; `@unknown default` is only safe once every case you NAME
+  exists on `macos-15` too. The same caution applies to any recently-added
+  API, and to `xcodebuild -destination 'generic/platform=iOS Simulator'` run
+  here — it uses the local SDK, not CI's.
 
 ### Verification tooling
 
