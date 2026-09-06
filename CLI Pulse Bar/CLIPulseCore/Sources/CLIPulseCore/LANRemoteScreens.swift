@@ -204,7 +204,7 @@ public struct LANDirectConnectView: View {
                     id: peer.id, name: peer.displayName, endpoint: parsed.endpoint,
                     protocolVersion: LANLinkProtocol.version, isPairingService: false)
             } catch {
-                self.error = "\(error)"
+                self.error = LANRemoteFailureText.message(for: error)
             }
             connecting = false
         }
@@ -306,7 +306,11 @@ public struct LANPairingFlowView: View {
     private func handleScanned(_ code: String) {
         guard step == .scanning else { return }
         do { begin(try LANPairing.QRPayload.parse(code)) }
-        catch { step = .failed("\(error)") }
+        // The one failure whose cause is entirely in the user's hands: they
+        // scanned or pasted something that is not a pairing code. Saying
+        // "something went wrong, try again" would send them to re-scan the
+        // same wrong thing.
+        catch { step = .failed(L10n.remote.errNotAPairingCode) }
     }
 
     private func begin(_ payload: LANPairing.QRPayload) {
@@ -321,7 +325,7 @@ public struct LANPairingFlowView: View {
                     if let m = browser.pairingService(for: payload.deviceID) { endpoint = m.endpoint; break }
                     try await Task.sleep(nanoseconds: 100_000_000)
                 }
-                guard let endpoint else { throw LANPairingSession.Failure.transport("Mac not found on this Wi-Fi") }
+                guard let endpoint else { throw LANPairingSession.Failure.transport("mac not found on this wi-fi") }
                 let identity = try LANPairingStore.loadOrCreateIdentity()
                 let channel = try await LANSessionControlClient.connectForPairing(to: endpoint, payload: payload)
                 let peer = try await LANPairingSession.Client.pair(
@@ -342,13 +346,13 @@ public struct LANPairingFlowView: View {
             } catch let e as LANPairingSession.Failure {
                 let why: String
                 switch e {
-                case .rejected: why = "Declined on the Mac"
+                case .rejected: why = L10n.remote.errPairingDeclined
                 case .expired: why = L10n.remote.qrExpired
-                default: why = "\(e)"
+                default: why = LANRemoteFailureText.message(for: e)
                 }
                 await MainActor.run { step = .failed(why) }
             } catch {
-                await MainActor.run { step = .failed("\(error)") }
+                await MainActor.run { step = .failed(LANRemoteFailureText.message(for: error)) }
             }
         }
     }
@@ -571,7 +575,7 @@ public struct LANMacSessionsView: View {
             watchEvents(c)
         } catch {
             status = L10n.remote.disconnected
-            self.error = "\(error)"
+            self.error = LANRemoteFailureText.message(for: error)
         }
     }
 
@@ -586,13 +590,13 @@ public struct LANMacSessionsView: View {
                 let pending = try await client.getPendingApprovals(sessionId: nil)
                 pendingBySession = Dictionary(grouping: pending, by: \.sessionId).mapValues(\.count)
             }
-        } catch { self.error = "\(error)" }
+        } catch { self.error = LANRemoteFailureText.message(for: error) }
     }
 
     private func stop(_ id: String) async {
         guard let client else { return }
         do { try await client.stopSession(sessionId: id); await refresh() }
-        catch { self.error = "\(error)" }
+        catch { self.error = LANRemoteFailureText.message(for: error) }
     }
 
     /// No polling: the list changes when the Mac says so.
@@ -716,7 +720,7 @@ struct LANNewSessionSheet: View {
                 onStarted()
                 dismiss()
             } catch {
-                self.error = "\(L10n.remote.startFailed): \(error)"
+                self.error = LANRemoteFailureText.message(for: error)
                 starting = false
             }
         }
@@ -787,7 +791,7 @@ public struct LANTerminalScreen: View {
             } catch let e as SessionControlError where e == .approvalAlreadyResolved || e == .approvalExpired {
                 expired.insert(a.approvalId)
             } catch {
-                status = "\(error)"
+                status = LANRemoteFailureText.message(for: error)
             }
         }
     }
@@ -965,7 +969,7 @@ struct LANTerminalHost: UIViewRepresentable {
                 } catch let e as SessionControlError where e == .localControlOff {
                     setStatus(L10n.remote.controlOffOnMac)
                 } catch {
-                    setStatus("\(L10n.remote.disconnected): \(error)")
+                    setStatus(LANRemoteFailureText.message(for: error))
                 }
             }
             pingTask = Task { [weak self] in
@@ -1018,7 +1022,7 @@ struct LANTerminalHost: UIViewRepresentable {
                     setStatus(L10n.remote.sessionEnded)
                     pendingStdin.removeAll()
                 } catch {
-                    setStatus("\(error)")
+                    setStatus(LANRemoteFailureText.message(for: error))
                 }
             }
         }

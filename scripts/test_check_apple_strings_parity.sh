@@ -98,6 +98,18 @@ expect_fail() {
     pass=$((pass + 1))
 }
 
+expect_ok() {
+    local name="$1" out rc
+    out="$(python3 "$GUARD" --root "$TMP/case" 2>&1)"; rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "FAIL: [$name] guard REJECTED a tree it should have accepted."
+        printf '%s\n' "$out" | sed 's/^/      /'
+        fail=$((fail + 1)); return
+    fi
+    echo "ok:   [$name] guard accepted it."
+    pass=$((pass + 1))
+}
+
 # ── positive control ────────────────────────────────────────────────────────
 build_fixture "$TMP/case"
 if python3 "$GUARD" --root "$TMP/case" >/dev/null 2>&1; then
@@ -143,6 +155,46 @@ F="$TMP/case/$RES/ja.lproj/Localizable.strings"
 B="$(shasum "$F" | cut -d' ' -f1)"
 printf '"tab.overview" = "概要(2)";\n' >> "$F"
 assert_changed "duplicate key" "$F" "$B" && expect_fail "duplicate key" "declared more than once"
+
+# ── syntax A. unescaped quote — CFBundle drops the WHOLE catalogue ────────
+# 2026-09-06: `"Can"t reach this Mac."` shipped into en.lproj and this guard
+# printed OK with a full key count, because the key regex read straight past
+# the break. The runtime could not load the file at all, so EVERY key in the
+# app — long-shipped ones included — rendered as its raw dotted identifier.
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/en.lproj/Localizable.strings"
+B="$(shasum "$F" | cut -d' ' -f1)"
+printf '"wizard.broken" = "Can"t do that";\n' >> "$F"
+assert_changed "unescaped quote" "$F" "$B" && expect_fail "unescaped quote" "does not parse"
+
+# ── syntax B. an escaped quote is LEGAL and must stay accepted ────────────
+# The opposite failure: a syntax check strict enough to reject `\"` would
+# reject shipped copy (providers.show_all_hint, remote.scan_hint) and the
+# multi-line advanced.remote_consent_body. Pairs with 5a so neither
+# direction can be "fixed" by breaking the other.
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/en.lproj/Localizable.strings"
+printf '"wizard.quoted" = "Tap \\"Show All\\" to see more";\n' >> "$F"
+printf '"wizard.multiline" = "first line\nsecond line";\n' >> "$F"
+for L in es ja ko zh-Hans zh-Hant; do
+  printf '"wizard.quoted" = "q";\n"wizard.multiline" = "m";\n' >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
+done
+expect_ok "escaped quote and multi-line value stay legal"
+
+# ── syntax C. an empty catalogue is the same outage as an unparseable one ─
+build_fixture "$TMP/case"
+printf '// only a comment\n' > "$TMP/case/$RES/en.lproj/Localizable.strings"
+expect_fail "empty catalogue" "declares no entries"
+
+# ── syntax D. the two readers must agree — two entries on one line ────────
+# The key regex is anchored to line start, so it sees one; the syntax scanner
+# sees both. A disagreement means one of them is misreading the file, which is
+# exactly the state 5a shipped in.
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/ja.lproj/Localizable.strings"
+B="$(shasum "$F" | cut -d' ' -f1)"
+printf '"wizard.a" = "x"; "wizard.b" = "y";\n' >> "$F"
+assert_changed "two readers" "$F" "$B" && expect_fail "two readers" "disagree"
 
 # ── 5b. an entire SHIPPED locale disappearing ──────────────────────────────
 #    Discovery by glob simply stopped iterating the deleted locale, so a whole

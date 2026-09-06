@@ -917,6 +917,14 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "remote.watch_only_link" = "Este Mac solo permite ver desde este iPhone";
 "remote.start_failed" = "No se pudo iniciar la sesión";
 "remote.session_ended" = "Sesión finalizada";
+"remote.err_mac_unreachable" = "No se puede acceder a este Mac. Comprueba que esté encendido y que CLI Pulse se esté ejecutando.";
+"remote.err_pairing_lost" = "Este Mac ya no reconoce este iPhone. Vuelve a vincularlo.";
+"remote.err_pairing_declined" = "Rechazado en el Mac.";
+"remote.err_insecure_connection" = "No se pudo proteger esta conexión. No se envió nada.";
+"remote.err_mac_needs_update" = "Este Mac tiene una versión antigua de CLI Pulse. Actualízala para usar esto.";
+"remote.err_too_fast" = "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.";
+"remote.err_unexpected" = "Algo salió mal. Inténtalo de nuevo.";
+"remote.err_not_a_pairing_code" = "Ese no es un código de vinculación de CLI Pulse. En el Mac, abre Ajustes › Control remoto y toca Vincular iPhone.";
 "remote.no_sessions_control" = "No hay sesiones. Toca + para iniciar una.";
 "remote.no_providers" = "Este Mac no tiene herramientas CLI disponibles.";
 "remote.connect_by_address" = "Conectar por dirección";

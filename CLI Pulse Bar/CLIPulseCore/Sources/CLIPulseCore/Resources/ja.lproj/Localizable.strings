@@ -1147,6 +1147,14 @@
 "remote.watch_only_link" = "この Mac ではこの iPhone は閲覧のみです";
 "remote.start_failed" = "セッションを開始できません";
 "remote.session_ended" = "セッションが終了しました";
+"remote.err_mac_unreachable" = "この Mac に接続できません。スリープしていないか、CLI Pulse が起動しているか確認してください。";
+"remote.err_pairing_lost" = "この Mac はこの iPhone を認識しなくなりました。もう一度ペアリングしてください。";
+"remote.err_pairing_declined" = "Mac で拒否されました。";
+"remote.err_insecure_connection" = "この接続を保護できませんでした。何も送信していません。";
+"remote.err_mac_needs_update" = "この Mac の CLI Pulse が古いバージョンです。更新してください。";
+"remote.err_too_fast" = "リクエストが多すぎます。少し待ってからもう一度お試しください。";
+"remote.err_unexpected" = "問題が発生しました。もう一度お試しください。";
+"remote.err_not_a_pairing_code" = "CLI Pulse のペアリングコードではありません。Mac で設定 › リモート操作を開き、「iPhone をペアリング」をタップしてください。";
 "remote.no_sessions_control" = "セッションがありません。+ で開始できます。";
 "remote.no_providers" = "この Mac に利用できる CLI ツールがありません。";
 "remote.connect_by_address" = "アドレスで接続";

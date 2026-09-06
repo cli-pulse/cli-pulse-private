@@ -102,7 +102,13 @@ public enum LANDirectAddress {
     public enum Kind: Equatable, Sendable {
         /// Tailscale's ranges — reachable from anywhere on the tailnet.
         case tailnet
-        /// RFC 1918 — reachable on the same network only.
+        /// Reachable on the same network only. `classify` (advertise side)
+        /// produces this for RFC 1918 addresses; `classifyPeer` (measurement
+        /// side) additionally produces it for IPv6 link-local and ULA and for
+        /// IPv4 link-local, because those are equally "same network" when a
+        /// phone ARRIVES on one. Do not read this case as "RFC 1918" — it
+        /// used to say exactly that, and the narrower reading is what let the
+        /// usage latch miss every IPv6 arrival.
         case lan
     }
 
@@ -137,6 +143,71 @@ public enum LANDirectAddress {
         if parts[0] == 172, (16...31).contains(parts[1]) { return .lan }
         if parts[0] == 192, parts[1] == 168 { return .lan }
         return nil   // loopback, link-local, public: not offered
+    }
+
+    /// Classify an INBOUND peer's address, for the plan §8 usage latches.
+    ///
+    /// Deliberately NOT `classify`. That one answers "may the Mac ADVERTISE
+    /// this address of its own?", where excluding every non-Tailscale IPv6 is
+    /// correct — offering one invites exposing the listener. Reusing it to
+    /// measure how a phone ARRIVED asks a different question, and there
+    /// "not offered" is not the same as "not a LAN".
+    ///
+    /// Measured 2026-09-07, and this is why the latch was wrong: an iPhone
+    /// reaching the Mac through Bonjour on ordinary Wi-Fi routinely arrives on
+    /// an IPv6 link-local or ULA address, and `classify` maps every one of
+    /// those to nil — so `remoteTransportUsed` was never called and
+    /// `remote_lan_used_at` stayed null through real LAN use. The four latches
+    /// are the only evidence the plan has for deciding whether the self-built
+    /// transport lives, so a silent under-count there is not a telemetry
+    /// nicety; it biases the decision.
+    ///
+    /// | peer address                | before | now |
+    /// |-----------------------------|--------|-----|
+    /// | `192.168.x` / `10.x` / `172.16-31.x` | .lan | .lan |
+    /// | `100.64-127.x`, `fd7a:115c:a1e0…`    | .tailnet | .tailnet |
+    /// | `fe80::…` link-local        | nil | **.lan** |
+    /// | `fc00::/7` ULA (not Tailscale) | nil | **.lan** |
+    /// | loopback, global v6, public v4 | nil | nil |
+    ///
+    /// Loopback stays unclassified on purpose: a phone is not on a network
+    /// when it is this machine. Be honest about the limit, though — this does
+    /// NOT reliably exclude the owner's own iOS Simulator. A Simulator shares
+    /// the host's network stack, so resolving the Mac's own Bonjour service
+    /// returns the host's real addresses and the arrival is typically the en0
+    /// link-local, which scores `.lan` here exactly like a real iPhone would.
+    /// The latch cannot tell those apart, and no address-based rule can.
+    /// Treat a single `remote_lan_used_at` on a developer install as
+    /// unproven. Global IPv6 also stays unclassified —
+    /// on a v6 home network it IS the same Wi-Fi, but it is indistinguishable
+    /// from a peer somewhere on the internet, and guessing would put a number
+    /// into the one place the plan reads for a decision.
+    static func classifyPeer(_ address: String) -> Kind? {
+        let a = address.lowercased()
+        if a.hasPrefix("fd7a:115c:a1e0") { return .tailnet }
+
+        if a.contains(":") {
+            if a == "::1" { return nil }                       // loopback
+            if a.hasPrefix("fe8") || a.hasPrefix("fe9")
+                || a.hasPrefix("fea") || a.hasPrefix("feb") { return .lan }   // fe80::/10
+            // fc00::/7 — unique local. First hextet begins fc or fd.
+            if a.hasPrefix("fc") || a.hasPrefix("fd") { return .lan }
+            return nil                                          // global v6: see above
+        }
+
+        let parts = a.split(separator: ".").compactMap { UInt8($0) }
+        guard parts.count == 4 else { return nil }
+        if parts[0] == 100, (64...127).contains(parts[1]) { return .tailnet }
+        if parts[0] == 10 { return .lan }
+        if parts[0] == 172, (16...31).contains(parts[1]) { return .lan }
+        if parts[0] == 192, parts[1] == 168 { return .lan }
+        // 169.254.0.0/16 — the IPv4 half of the same "same link, no router"
+        // arrival that fe80::/10 covers above. Two devices on a Wi-Fi network
+        // with no DHCP self-assign from this range and reach each other over
+        // Bonjour perfectly well. Leaving it out would reproduce, in v4,
+        // exactly the under-count this function exists to fix.
+        if parts[0] == 169, parts[1] == 254 { return .lan }
+        return nil                                              // loopback, public
     }
 
     /// The Mac's current addresses. Uses `getifaddrs`; separated from

@@ -51,9 +51,76 @@ public struct LANHelloInfo: Equatable, Sendable {
 public final class LANSessionControlClient: SessionControlling, @unchecked Sendable {
 
     public enum ConnectError: Error, Equatable {
-        case handshakeFailed(String)
+
+        /// Why the connection never reached `.ready`, classified where the
+        /// `NWError` is still in hand.
+        ///
+        /// Both of the interesting causes arrive as `.waiting`, and once
+        /// stringified they are indistinguishable — measured on macOS 26.5,
+        /// loopback `NWListener`, pinned suite:
+        ///
+        ///   wrong PSK          → `tls(-9820)` "bad MAC"
+        ///   nothing listening  → `posix(61)`  "Connection refused"
+        ///
+        /// They need opposite words: one means "pair again", the other means
+        /// "wake the Mac". Keeping only the description threw that away and
+        /// painted `POSIXErrorCode(rawValue: 61)` at the user.
+        public enum Reason: String, Sendable, Equatable {
+            /// TLS refused the key: this Mac does not know this phone any
+            /// more (unpaired on the Mac, or restored from a backup).
+            case keyRejected
+            /// Nothing answered — asleep, app not running, wrong address,
+            /// or a network that drops the route.
+            case unreachable
+            /// We tore the connection down ourselves.
+            case cancelled
+            /// Anything unclassified. Never shown verbatim.
+            case other
+        }
+
+        case handshakeFailed(Reason, String)
         case unexpectedNegotiation(String)
         case timeout
+
+        /// Map an `NWError` to the reason the user needs to hear.
+        public static func reason(for error: NWError) -> Reason {
+            switch error {
+            case .tls:
+                return .keyRejected
+            case .posix(let code):
+                switch code {
+                case .ECONNREFUSED, .EHOSTDOWN, .EHOSTUNREACH,
+                     .ENETDOWN, .ENETUNREACH, .ETIMEDOUT, .ECONNRESET, .EPIPE,
+                     // A typed IPv6 address with no usable local route gives
+                     // EADDRNOTAVAIL, not a refusal.
+                     .EADDRNOTAVAIL, .ENOTCONN:
+                    return .unreachable
+                case .ECANCELED:
+                    return .cancelled
+                default:
+                    return .other
+                }
+            case .dns:
+                // A name that does not resolve. `LANDirectAddress.parse`
+                // accepts hostnames on purpose (MagicDNS, `studio.local`), so
+                // a typo on the connect-by-address field lands here — and
+                // "Something went wrong, try again" is the one answer that
+                // cannot help. It is a reachability failure like any other.
+                return .unreachable
+            default:
+                // A plain `default`, NOT `@unknown default`, and that is a
+                // portability decision rather than laziness. Newer SDKs add
+                // cases to `NWError` — this one has `.wifiAware` — and naming
+                // one that the CI runner's older SDK does not have is a build
+                // ERROR there, not a warning. Measured: `swift build` and the
+                // iOS archive were both green locally on macOS 26.5 while CI
+                // failed with `type 'NWError' has no member 'wifiAware'`.
+                // Anything unrecognised is genuinely `.other`; the mapper
+                // turns that into "Something went wrong", which is the honest
+                // answer for a transport error we cannot name.
+                return .other
+            }
+        }
     }
 
     private let channel: any LANLinkChannel
@@ -169,13 +236,13 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
                 case .ready:
                     if once.first() { k.resume() }
                 case .failed(let e):
-                    if once.first() { k.resume(throwing: ConnectError.handshakeFailed("\(e)")) }
+                    if once.first() { k.resume(throwing: ConnectError.handshakeFailed(ConnectError.reason(for: e), "\(e)")) }
                 case .waiting(let e):
                     // A PSK mismatch surfaces here as a handshake failure
                     // rather than `.failed`; do not sit in `.waiting`.
-                    if once.first() { conn.cancel(); k.resume(throwing: ConnectError.handshakeFailed("\(e)")) }
+                    if once.first() { conn.cancel(); k.resume(throwing: ConnectError.handshakeFailed(ConnectError.reason(for: e), "\(e)")) }
                 case .cancelled:
-                    if once.first() { k.resume(throwing: ConnectError.handshakeFailed("cancelled")) }
+                    if once.first() { k.resume(throwing: ConnectError.handshakeFailed(.cancelled, "cancelled")) }
                 default: break
                 }
             }

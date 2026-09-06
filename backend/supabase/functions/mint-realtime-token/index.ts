@@ -9,7 +9,15 @@
 // Flow:
 //   helper  --POST {device_id, helper_secret, session_id}-->  this fn
 //   this fn --rpc remote_helper_authorize_broadcast (service role)-->  owner uuid
-//   this fn --sign ES256 {sub: owner, role/aud: authenticated, exp}-->  {token, expires_at}
+//   this fn --sign ES256 {sub: owner, role: r0_broadcast,
+//                          aud: authenticated, r0_session_id, exp}-->  {token, expires_at}
+//
+// NOTE: this line used to read `role/aud: authenticated`. That described the
+// PRE-v0.65 token, and `role: authenticated` is exactly the account-wide
+// PostgREST authority migrate_v0.65 was written to remove — see its F1 header.
+// Since 2026-07-04 `token.ts` signs `role: "r0_broadcast"` plus an
+// `r0_session_id` claim that binds the token to ONE session. The stale comment
+// outlived the fix and was still being read as current on 2026-09-06.
 //
 // The dedicated R0 keypair (NOT the project GoTrue key — Supabase won't export
 // it) is registered as a Third-Party Auth trusted issuer; this fn holds only
