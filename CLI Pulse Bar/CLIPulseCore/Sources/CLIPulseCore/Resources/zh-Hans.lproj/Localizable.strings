@@ -1092,6 +1092,8 @@
 "collector_status.not_installed_hint" = "装上 %@ 后,用量会自动出现在这里。";
 "collector_status.not_signed_in" = "未登录";
 "collector_status.not_signed_in_hint" = "在 %@ 自己的应用或命令行里登录即可,不需要在这里填密钥。";
+"collector_status.shared_login_taken" = "共享登录已占用";
+"collector_status.shared_login_taken_hint" = "这台 Mac 上的 %@ 登录信息已被另一个账户占用。给这个账户单独填入 API 密钥,或移除那个账户。";
 "collector_status.not_set_up" = "未配置";
 "collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
 "collector_status.no_data" = "没有返回数据";

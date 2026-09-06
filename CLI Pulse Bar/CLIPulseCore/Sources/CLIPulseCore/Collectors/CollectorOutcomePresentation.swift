@@ -91,6 +91,16 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .attention
             )
 
+        case .notReady(.sharedCredentialTaken):
+            // The provider IS connected; this entry just is not the one
+            // allowed to read the machine-wide login. "Open Settings to
+            // connect this provider" was false and unactionable here.
+            return .init(
+                label: L10n.collectorStatus.sharedLoginTaken,
+                nextStep: L10n.collectorStatus.sharedLoginTakenHint(providerName),
+                severity: .attention
+            )
+
         case .notReady(.unknown):
             // We could not tell why. Do not guess a cause — point at the one
             // screen that can resolve any of them.

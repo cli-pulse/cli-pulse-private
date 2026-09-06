@@ -346,6 +346,10 @@ public enum L10n {
         public static func notSignedInHint(_ provider: String) -> String {
             tr("collector_status.not_signed_in_hint", provider)
         }
+        public static var sharedLoginTaken: String { tr("collector_status.shared_login_taken") }
+        public static func sharedLoginTakenHint(_ provider: String) -> String {
+            tr("collector_status.shared_login_taken_hint", provider)
+        }
         public static var notSetUp: String { tr("collector_status.not_set_up") }
         public static var notSetUpHint: String { tr("collector_status.not_set_up_hint") }
         public static var noData: String { tr("collector_status.no_data") }

@@ -98,6 +98,18 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         return creds?.accessToken != nil
     }
 
+    /// Same shape as Claude's: `readCredentials` consults
+    /// `ProviderSharedCredentialOwner`, so an entry that does not hold this
+    /// Mac's Gemini login reads no credentials at all — and would otherwise be
+    /// reported as "Not set up" while the user is signed in.
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        if isAvailable(config: config) { return .ready }
+        if let conflict = CollectorReadinessProbe.sharedCredentialConflict(
+            kind: .gemini, accountID: config.accountID
+        ) { return conflict }
+        return .notReady(.unknown)
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let initial = readCredentials(config: config),
               initial.accessToken != nil || initial.refreshToken != nil else {

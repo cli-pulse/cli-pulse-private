@@ -1038,6 +1038,8 @@
 "collector_status.not_installed_hint" = "%@ をインストールすると、使用量が自動的にここに表示されます。";
 "collector_status.not_signed_in" = "未サインイン";
 "collector_status.not_signed_in_hint" = "%@ のアプリまたは CLI でサインインしてください。ここでキーを入力する必要はありません。";
+"collector_status.shared_login_taken" = "共有ログイン使用中";
+"collector_status.shared_login_taken_hint" = "この Mac の %@ ログインは、すでに別のアカウントが使用しています。このアカウントには専用の API キーを設定するか、そのアカウントを削除してください。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "設定を開いてこのプロバイダを接続してください。";
 "collector_status.no_data" = "データが空でした";

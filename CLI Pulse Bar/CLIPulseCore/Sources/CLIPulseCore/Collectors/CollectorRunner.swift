@@ -106,6 +106,17 @@ public enum CollectorNotReadyReason: String, Sendable, Equatable {
     /// supply `COPILOT_API_TOKEN` — so telling them to sign in to the Copilot
     /// app and that "no key is needed here" is advice that cannot work.
     case missingApiKey = "missing_api_key"
+    /// A provider whose credentials are one machine-wide login (Claude,
+    /// Gemini) can only be read by ONE account entry — otherwise two entries
+    /// would report the same quota as if it were two. This entry is not the
+    /// one holding it.
+    ///
+    /// Split out of `unknown` because "Not set up — open Settings to connect
+    /// this provider" is BOTH false and unactionable here: the provider is
+    /// connected, Settings says so, and opening Settings changes nothing. The
+    /// two things that do work are an API key of this entry's own, or removing
+    /// the entry that holds the shared login.
+    case sharedCredentialTaken = "shared_credential_taken"
     /// `isAvailable` said no and the collector did not say why.
     case unknown
 }
@@ -431,6 +442,25 @@ public enum CollectorReadinessProbe {
     /// `SandboxFileAccess.fileExists` is the default because it is
     /// nonisolated (this runs off the main actor, inside the collector
     /// fan-out) and already resolves a bookmark when one exists.
+    /// `.notReady(.sharedCredentialTaken)` when this Mac's one machine-wide
+    /// login for `kind` is assigned to a DIFFERENT account entry, or nil when
+    /// that is not what is wrong.
+    ///
+    /// Only meaningful for the kinds `ProviderSharedCredentialOwner` governs;
+    /// for anything else the owner is always nil and this returns nil.
+    /// `owner` is injectable for tests; the production lookup lives in the
+    /// body because `ProviderSharedCredentialOwner` is internal and a default
+    /// argument cannot name it.
+    public static func sharedCredentialConflict(
+        kind: ProviderKind,
+        accountID: UUID,
+        owner: ((ProviderKind) -> UUID?)? = nil
+    ) -> CollectorReadiness? {
+        let lookup = owner ?? { ProviderSharedCredentialOwner.owner(kind: $0) }
+        guard let current = lookup(kind), current != accountID else { return nil }
+        return .notReady(.sharedCredentialTaken)
+    }
+
     public static func fromConfigDirectory(
         path: String,
         isSandboxed: Bool = MASSandboxGate.isSandboxed,
