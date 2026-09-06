@@ -355,12 +355,24 @@ public final class ApprovalRegistry: @unchecked Sendable {
             lock.unlock()
             throw RegistryError.sessionNotFound
         }
-        let totalPending = pendingBySession.values.reduce(0) { $0 + $1.count }
+        // Count only rows that are actually PENDING, which is what both
+        // limits are documented to mean. `decide` and `expireOld` only set
+        // `row.status`; nothing removes a row from `pendingBySession` short
+        // of session stop. Counting bucket size therefore counted every
+        // approval the session had EVER created, so after `maxPerSession`
+        // tool uses a long-lived session could never ask for anything again
+        // — however long ago those were answered — while the phone showed
+        // an empty approval list over a live link. `listPending` already
+        // filters on status; these two did not.
+        func pendingCount(_ bucket: [String: PendingApproval]) -> Int {
+            bucket.values.reduce(0) { $0 + ($1.status == .pending ? 1 : 0) }
+        }
+        let totalPending = pendingBySession.values.reduce(0) { $0 + pendingCount($1) }
         if totalPending >= limits.maxTotalPending {
             lock.unlock()
             throw RegistryError.approvalLimitReached
         }
-        if (pendingBySession[sessionId]?.count ?? 0) >= limits.maxPerSession {
+        if pendingCount(pendingBySession[sessionId] ?? [:]) >= limits.maxPerSession {
             lock.unlock()
             throw RegistryError.approvalLimitReached
         }
