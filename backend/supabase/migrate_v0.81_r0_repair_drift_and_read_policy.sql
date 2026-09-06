@@ -4,9 +4,22 @@
 --
 -- Measured 2026-09-07 against prod (gkjwsxotmwrgqsvfijzs):
 --   select count(*) from public.user_settings where realtime_private_enabled;  -- 0 of 216
--- The realtime_private cutover is still OFF for 100% of users, so these
--- policies/grants govern NOTHING today. Applying this changes ZERO current
--- behaviour — the same standing this migration's parent (v0.65) had.
+-- The realtime_private cutover is still OFF for 100% of users, so sections
+-- (1)-(3) — the role, the two oracles and the two realtime.messages policies
+-- — govern NOTHING today.
+--
+-- Section (4) is different and deserves saying out loud, because "the cutover
+-- is off" does NOT cover it: it changes EXECUTE grants on three live RPCs.
+-- It is still inert, for its own reasons, each checked rather than assumed:
+--   * register_desktop_helper      — anon already revoked by v0.36
+--   * get_daily_usage_by_device    — anon already revoked by v0.37
+--   * upsert_daily_usage           — raises 'Not authenticated' when
+--                                    auth.uid() is null, so its anon grant is
+--                                    dead code; every real caller is
+--                                    authenticated
+-- and all three end with `grant execute … to authenticated, service_role`,
+-- which is who calls them today. So: no behaviour change, but by a different
+-- argument than sections (1)-(3), not the same one.
 --
 -- ── PROBLEM 1: the ledger says v0.65 applied; none of it is there ──
 -- `supabase_migrations.schema_migrations` carries
@@ -28,6 +41,16 @@
 -- ⚠️ Believe objects, never the ledger row. A ledger entry records that a
 --    migration was RUN, not that its objects survived.
 --
+-- HOW IT GOT THIS WAY IS NOT KNOWN, and this migration does not pretend to
+-- know. The script is one implicit transaction, so a partial commit is not
+-- the explanation; a ledger row written without the body executing, a later
+-- manual revert, or a restore are all consistent with what is observable
+-- today. Recording a guess here would be worse than recording the gap.
+-- What follows from it regardless: after APPLYING this, run the post-apply
+-- queries at the foot of the file and confirm them BY HAND. A green apply is
+-- not evidence; `select count(*) from pg_roles where rolname='r0_broadcast'`
+-- returning 1 is.
+--
 -- ── PROBLEM 2: v0.65 and v0.77 are incompatible, and nobody noticed ──
 -- v0.65 deliberately left the READ policy exactly as v0.56 defined it —
 -- `to authenticated`, with an inlined `exists (select 1 from
@@ -48,16 +71,21 @@
 -- no user has hit it is that the cutover flag is false for all 216 accounts.
 --
 -- ── FIX ───────────────────────────────────────────────────────
--- (1..3) Re-apply v0.65 verbatim — role, grants, write oracle, retargeted
---        WRITE policy, and the three PUBLIC-grant re-scopes. Every statement
---        there is idempotent by construction, so this is a repair, not a
---        second migration of the same thing.
--- (4)    NEW: give the READ policy the same treatment the WRITE policy got.
---        It keeps `to authenticated` (subscribers really do read with their
---        own login token), but the ownership check moves into a SECURITY
---        DEFINER oracle so the policy body no longer needs a table grant the
---        caller does not have. This is the half v0.65 did not need and v0.77
---        made necessary.
+-- (1) and (2)  Re-apply v0.65's role, grants, write oracle and retargeted
+--              WRITE policy, verbatim. Every statement there is idempotent by
+--              construction, so this is a repair, not a second migration of
+--              the same thing.
+-- (3)          NEW: give the READ policy the same treatment the WRITE policy
+--              got. It keeps `to authenticated` (subscribers really do read
+--              with their own login token), but the ownership check moves
+--              into a SECURITY DEFINER oracle so the policy body no longer
+--              needs a table grant the caller does not have. This is the half
+--              v0.65 did not need and v0.77 made necessary.
+-- (4)          Re-apply v0.65's three PUBLIC-grant re-scopes, verbatim.
+--
+-- (The numbers above are the section numbers in the body below. An earlier
+--  draft of this summary numbered them 1..3 / 4 and did not match, which in a
+--  file someone applies by hand is a defect of its own.)
 --
 -- ⚠️ OWNER RUNBOOK — unchanged from v0.65, and now with one addition:
 --    BEFORE the cutover, RE-DEPLOY `mint-realtime-token`. Production is

@@ -100,14 +100,6 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
                 default:
                     return .other
                 }
-            case .wifiAware:
-                // Wi-Fi Aware (NAN). This link never negotiates it, so an
-                // error from it is not a case we can say anything useful
-                // about — and guessing "wake the Mac" would be wrong.
-                // Listed explicitly rather than swept into `@unknown default`,
-                // which exists to WARN when a genuinely new case appears; a
-                // known case hiding there is a warning that never gets read.
-                return .other
             case .dns:
                 // A name that does not resolve. `LANDirectAddress.parse`
                 // accepts hostnames on purpose (MagicDNS, `studio.local`), so
@@ -115,7 +107,17 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
                 // "Something went wrong, try again" is the one answer that
                 // cannot help. It is a reachability failure like any other.
                 return .unreachable
-            @unknown default:
+            default:
+                // A plain `default`, NOT `@unknown default`, and that is a
+                // portability decision rather than laziness. Newer SDKs add
+                // cases to `NWError` — this one has `.wifiAware` — and naming
+                // one that the CI runner's older SDK does not have is a build
+                // ERROR there, not a warning. Measured: `swift build` and the
+                // iOS archive were both green locally on macOS 26.5 while CI
+                // failed with `type 'NWError' has no member 'wifiAware'`.
+                // Anything unrecognised is genuinely `.other`; the mapper
+                // turns that into "Something went wrong", which is the honest
+                // answer for a transport error we cannot name.
                 return .other
             }
         }

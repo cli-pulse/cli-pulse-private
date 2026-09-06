@@ -1154,6 +1154,7 @@
 "remote.err_mac_needs_update" = "この Mac の CLI Pulse が古いバージョンです。更新してください。";
 "remote.err_too_fast" = "リクエストが多すぎます。少し待ってからもう一度お試しください。";
 "remote.err_unexpected" = "問題が発生しました。もう一度お試しください。";
+"remote.err_not_a_pairing_code" = "CLI Pulse のペアリングコードではありません。Mac で設定 › リモート操作を開き、「iPhone をペアリング」をタップしてください。";
 "remote.no_sessions_control" = "セッションがありません。+ で開始できます。";
 "remote.no_providers" = "この Mac に利用できる CLI ツールがありません。";
 "remote.connect_by_address" = "アドレスで接続";

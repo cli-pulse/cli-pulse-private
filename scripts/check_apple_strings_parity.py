@@ -162,8 +162,10 @@ def _scan_strings(text: str) -> int:
         nonlocal i
         if i >= n or text[i] != ch:
             found = text[i:i+1] or "end of file"
-            fail(f"expected {ch!r}, found {found!r} — usually an unescaped "
-                 f'quote inside the previous value (write \\" or a typographic quote)')
+            hint = ("usually an unescaped quote inside the previous value "
+                    '(write \\" or a typographic quote)') if ch == ";" else \
+                   "the entry is not in the house `\"key\" = \"value\";` form"
+            fail(f"expected {ch!r}, found {found!r} — {hint}")
         i += 1
 
     while True:
@@ -181,7 +183,19 @@ def _scan_strings(text: str) -> int:
 
 
 def unparseable(res_dir: Path) -> list[str]:
-    """Locales whose .strings CFBundle itself would refuse to read.
+    """Locales whose .strings this repo will not accept.
+
+    NOT the same set as "files CFBundle would refuse", and the difference is
+    deliberate: this scanner is STRICTER. CFBundle's old-style plist parser
+    also accepts unquoted tokens (`key = value;`), a brace-wrapped dictionary,
+    and a stray extra `;`. None of those appear in any shipped catalogue,
+    Xcode does not emit them, and accepting them would mean carrying a second
+    grammar for no benefit. It also rejects an unterminated `/* comment`,
+    which CFBundle swallows to end-of-file — silently losing every key after
+    it, which is the outage this gate exists to prevent.
+
+    So a rejection here means "not the house format", which is a superset of
+    "the runtime cannot load it".
 
     This gate reads keys with a line regex, which is the right tool for
     counting parity but happily accepts a file the runtime rejects. On

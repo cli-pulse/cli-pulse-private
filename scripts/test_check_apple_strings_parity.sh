@@ -156,7 +156,7 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 printf '"tab.overview" = "概要(2)";\n' >> "$F"
 assert_changed "duplicate key" "$F" "$B" && expect_fail "duplicate key" "declared more than once"
 
-# ── 5a. unescaped quote — CFBundle drops the WHOLE catalogue ───────────────
+# ── syntax A. unescaped quote — CFBundle drops the WHOLE catalogue ────────
 # 2026-09-06: `"Can"t reach this Mac."` shipped into en.lproj and this guard
 # printed OK with a full key count, because the key regex read straight past
 # the break. The runtime could not load the file at all, so EVERY key in the
@@ -167,7 +167,7 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 printf '"wizard.broken" = "Can"t do that";\n' >> "$F"
 assert_changed "unescaped quote" "$F" "$B" && expect_fail "unescaped quote" "does not parse"
 
-# ── 5b. an escaped quote is LEGAL and must stay accepted ───────────────────
+# ── syntax B. an escaped quote is LEGAL and must stay accepted ────────────
 # The opposite failure: a syntax check strict enough to reject `\"` would
 # reject shipped copy (providers.show_all_hint, remote.scan_hint) and the
 # multi-line advanced.remote_consent_body. Pairs with 5a so neither
@@ -181,12 +181,12 @@ for L in es ja ko zh-Hans zh-Hant; do
 done
 expect_ok "escaped quote and multi-line value stay legal"
 
-# ── 5c. an empty catalogue is the same outage as an unparseable one ────────
+# ── syntax C. an empty catalogue is the same outage as an unparseable one ─
 build_fixture "$TMP/case"
 printf '// only a comment\n' > "$TMP/case/$RES/en.lproj/Localizable.strings"
 expect_fail "empty catalogue" "declares no entries"
 
-# ── 5d. the two readers must agree — two entries on one line ───────────────
+# ── syntax D. the two readers must agree — two entries on one line ────────
 # The key regex is anchored to line start, so it sees one; the syntax scanner
 # sees both. A disagreement means one of them is misreading the file, which is
 # exactly the state 5a shipped in.

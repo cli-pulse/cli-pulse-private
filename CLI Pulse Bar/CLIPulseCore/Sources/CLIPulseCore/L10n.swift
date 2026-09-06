@@ -1034,6 +1034,7 @@ public enum L10n {
         public static var errMacNeedsUpdate: String { tr("remote.err_mac_needs_update") }
         public static var errTooFast: String { tr("remote.err_too_fast") }
         public static var errUnexpected: String { tr("remote.err_unexpected") }
+        public static var errNotAPairingCode: String { tr("remote.err_not_a_pairing_code") }
     }
 
     public enum integrations {

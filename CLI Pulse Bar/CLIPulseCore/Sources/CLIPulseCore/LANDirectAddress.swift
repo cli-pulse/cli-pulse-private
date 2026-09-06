@@ -102,7 +102,13 @@ public enum LANDirectAddress {
     public enum Kind: Equatable, Sendable {
         /// Tailscale's ranges — reachable from anywhere on the tailnet.
         case tailnet
-        /// RFC 1918 — reachable on the same network only.
+        /// Reachable on the same network only. `classify` (advertise side)
+        /// produces this for RFC 1918 addresses; `classifyPeer` (measurement
+        /// side) additionally produces it for IPv6 link-local and ULA and for
+        /// IPv4 link-local, because those are equally "same network" when a
+        /// phone ARRIVES on one. Do not read this case as "RFC 1918" — it
+        /// used to say exactly that, and the narrower reading is what let the
+        /// usage latch miss every IPv6 arrival.
         case lan
     }
 
@@ -195,6 +201,12 @@ public enum LANDirectAddress {
         if parts[0] == 10 { return .lan }
         if parts[0] == 172, (16...31).contains(parts[1]) { return .lan }
         if parts[0] == 192, parts[1] == 168 { return .lan }
+        // 169.254.0.0/16 — the IPv4 half of the same "same link, no router"
+        // arrival that fe80::/10 covers above. Two devices on a Wi-Fi network
+        // with no DHCP self-assign from this range and reach each other over
+        // Bonjour perfectly well. Leaving it out would reproduce, in v4,
+        // exactly the under-count this function exists to fix.
+        if parts[0] == 169, parts[1] == 254 { return .lan }
         return nil                                              // loopback, public
     }
 

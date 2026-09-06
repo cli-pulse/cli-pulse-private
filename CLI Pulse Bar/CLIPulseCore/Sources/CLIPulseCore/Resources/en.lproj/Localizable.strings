@@ -1205,6 +1205,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "remote.err_mac_needs_update" = "This Mac runs an older CLI Pulse. Update it to use this.";
 "remote.err_too_fast" = "Too many requests. Wait a moment and try again.";
 "remote.err_unexpected" = "Something went wrong. Try again.";
+"remote.err_not_a_pairing_code" = "That is not a CLI Pulse pairing code. On the Mac, open Settings › Remote Control and tap Pair iPhone.";
 "remote.no_sessions_control" = "No sessions yet. Tap + to start one.";
 "remote.no_providers" = "This Mac has no CLI tools available.";
 "remote.connect_by_address" = "Connect by address";

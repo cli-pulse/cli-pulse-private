@@ -306,7 +306,11 @@ public struct LANPairingFlowView: View {
     private func handleScanned(_ code: String) {
         guard step == .scanning else { return }
         do { begin(try LANPairing.QRPayload.parse(code)) }
-        catch { step = .failed(L10n.remote.errUnexpected) }
+        // The one failure whose cause is entirely in the user's hands: they
+        // scanned or pasted something that is not a pairing code. Saying
+        // "something went wrong, try again" would send them to re-scan the
+        // same wrong thing.
+        catch { step = .failed(L10n.remote.errNotAPairingCode) }
     }
 
     private func begin(_ payload: LANPairing.QRPayload) {

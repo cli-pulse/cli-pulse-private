@@ -1157,6 +1157,7 @@
 "remote.err_mac_needs_update" = "這台 Mac 上的 CLI Pulse 版本過舊,請先更新。";
 "remote.err_too_fast" = "請求過於頻繁,請稍候再試。";
 "remote.err_unexpected" = "出了點問題,請重試。";
+"remote.err_not_a_pairing_code" = "這不是 CLI Pulse 的配對碼。請在 Mac 上打開「設定 › 遠端控制」,點一下「配對 iPhone」。";
 "remote.no_sessions_control" = "還沒有工作階段。點 + 開一個。";
 "remote.no_providers" = "這台 Mac 沒有可用的 CLI 工具。";
 "remote.connect_by_address" = "按位址連線";

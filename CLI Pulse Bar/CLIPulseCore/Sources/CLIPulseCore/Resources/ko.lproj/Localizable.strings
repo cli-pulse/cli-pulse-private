@@ -924,6 +924,7 @@
 "remote.err_mac_needs_update" = "이 Mac의 CLI Pulse 버전이 낮습니다. 업데이트하세요.";
 "remote.err_too_fast" = "요청이 너무 많습니다. 잠시 후 다시 시도하세요.";
 "remote.err_unexpected" = "문제가 발생했습니다. 다시 시도하세요.";
+"remote.err_not_a_pairing_code" = "CLI Pulse 페어링 코드가 아닙니다. Mac에서 설정 › 원격 제어를 열고 'iPhone 페어링'을 탭하세요.";
 "remote.no_sessions_control" = "세션이 없습니다. +로 시작하세요.";
 "remote.no_providers" = "이 Mac에 사용할 수 있는 CLI 도구가 없습니다.";
 "remote.connect_by_address" = "주소로 연결";

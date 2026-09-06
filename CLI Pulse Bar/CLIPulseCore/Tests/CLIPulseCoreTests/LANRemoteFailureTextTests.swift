@@ -218,6 +218,17 @@ final class LANRemoteFailureTextTests: XCTestCase {
 
 /// Source guards for the `#if os(iOS)` screens that call the mapper — CI
 /// compiles them but runs no iOS tests, so behaviour there is unreachable.
+///
+/// SCOPE, stated so nobody reads the green as broader than it is: this covers
+/// `LANRemoteScreens.swift` only. The Mac's own `LANLinkAgent` still puts raw
+/// `NWError` text into `state = .failed("\(error)")`, and the Settings card
+/// renders it. That is NOT an oversight of the same kind — the agent's header
+/// says `state` deliberately records "what `NWListener` actually reported, so
+/// an entitlement or sandbox surprise shows up ... rather than as a phone that
+/// silently never connects". Converting it would trade a diagnostic the repo
+/// asked for against copy quality on a surface only the Mac's owner sees.
+/// Worth revisiting as its own change — showing localised copy AND keeping the
+/// raw detail — but not by quietly widening this guard.
 final class LANRemoteScreensErrorCopyTests: XCTestCase {
 
     private func screensSource() throws -> String {
