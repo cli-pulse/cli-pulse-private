@@ -797,6 +797,8 @@
 "collector_status.not_installed_hint" = "%@을(를) 설치하면 사용량이 자동으로 여기에 표시됩니다.";
 "collector_status.not_signed_in" = "로그인되지 않음";
 "collector_status.not_signed_in_hint" = "%@의 앱이나 CLI에서 로그인하세요. 여기에 키를 입력할 필요는 없습니다.";
+"collector_status.shared_login_taken" = "공유 로그인 사용 중";
+"collector_status.shared_login_taken_hint" = "여기에 설정된 다른 계정이 이 Mac의 %@ 로그인을 이미 사용하고 있습니다. 이 계정에는 별도의 API 키를 입력하거나 그 계정을 제거하세요.";
 "collector_status.not_set_up" = "설정되지 않음";
 "collector_status.not_set_up_hint" = "설정을 열어 이 제공업체를 연결하세요.";
 "collector_status.no_data" = "데이터 없음";

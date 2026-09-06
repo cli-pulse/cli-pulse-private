@@ -1040,6 +1040,8 @@
 "collector_status.not_installed_hint" = "裝上 %@ 後,用量會自動出現在這裡。";
 "collector_status.not_signed_in" = "未登入";
 "collector_status.not_signed_in_hint" = "在 %@ 自己的應用程式或命令列登入即可,不需要在這裡填密鑰。";
+"collector_status.shared_login_taken" = "共用登入被佔用";
+"collector_status.shared_login_taken_hint" = "這台 Mac 上只能有一個 %@ 登入,已被另一個帳戶佔用。為這個帳戶單獨填入一組 API 金鑰,或移除另一個帳戶。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "開啟設定來連接這個服務商。";
 "collector_status.no_data" = "沒有回傳資料";

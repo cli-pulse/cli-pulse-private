@@ -20,6 +20,19 @@ public struct ClaudeCollector: ProviderCollector, Sendable {
         resolver.isAvailable(config: config)
     }
 
+    /// Say WHY when the machine-wide Claude login belongs to another account
+    /// entry. `resolveTokenDetails` refuses that case before it reads any
+    /// credential source, so `isAvailable` goes false while the user is
+    /// perfectly signed in — and the default reason renders as "Not set up",
+    /// which sends them to a Settings screen that already says Connected.
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        if isAvailable(config: config) { return .ready }
+        if let conflict = CollectorReadinessProbe.sharedCredentialConflict(
+            kind: .claude, accountID: config.accountID
+        ) { return conflict }
+        return .notReady(.unknown)
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         try await resolver.resolve(config: config)
     }

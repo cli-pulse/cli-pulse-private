@@ -1088,6 +1088,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_status.not_installed_hint" = "Install %@ and its usage will appear here automatically.";
 "collector_status.not_signed_in" = "Not signed in";
 "collector_status.not_signed_in_hint" = "Sign in to %@ in its own app or CLI — no key needed here.";
+"collector_status.shared_login_taken" = "Shared login in use";
+"collector_status.shared_login_taken_hint" = "Another account here is already using this Mac's %@ login. Give this one its own API key, or remove the other account.";
 "collector_status.not_set_up" = "Not set up";
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";

@@ -797,6 +797,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_status.not_installed_hint" = "Instala %@ y su uso aparecerá aquí automáticamente.";
 "collector_status.not_signed_in" = "Sin iniciar sesión";
 "collector_status.not_signed_in_hint" = "Inicia sesión en %@ desde su propia app o CLI; aquí no hace falta ninguna clave.";
+"collector_status.shared_login_taken" = "Inicio de sesión en uso";
+"collector_status.shared_login_taken_hint" = "Otra de tus cuentas ya está usando el inicio de sesión de %@ en este Mac. Dale a esta cuenta su propia clave API, o elimina la otra.";
 "collector_status.not_set_up" = "Sin configurar";
 "collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
 "collector_status.no_data" = "Sin datos";
