@@ -31,6 +31,9 @@ public enum LANRemoteFailureText {
         if let e = error as? SessionControlError {
             return message(for: e)
         }
+        if let e = error as? LANLinkChannelError {
+            return message(for: e)
+        }
         if error is CancellationError {
             return L10n.remote.disconnected
         }
@@ -59,6 +62,27 @@ public enum LANRemoteFailureText {
             return L10n.remote.errInsecureConnection
         case .timeout:
             return L10n.remote.errMacUnreachable
+        }
+    }
+
+    /// The transport itself failing. This is what the terminal's fallthrough
+    /// catch actually receives when Wi-Fi drops or the Mac sleeps mid-session:
+    /// `LANLinkChannel` wraps every `NWConnection` failure as
+    /// `receiveFailed("\(e)")`, and the type conforms to `Error, Equatable`
+    /// only — no `CustomStringConvertible` — so interpolating it yields the
+    /// reflected Swift form, errno and all.
+    static func message(for error: LANLinkChannelError) -> String {
+        switch error {
+        case .closed, .sendFailed, .receiveFailed:
+            // Not the generic fallback: a dropped link is a REACHABILITY
+            // failure, and "check the Mac is awake" is the one useful thing
+            // to say. The wrapped detail stays for logs.
+            return L10n.remote.errMacUnreachable
+        case .framing:
+            // The bytes arrived and did not parse — a version or corruption
+            // problem, not a reachability one. Saying "wake the Mac" here
+            // would send the user to fix the wrong thing.
+            return L10n.remote.errUnexpected
         }
     }
 

@@ -716,7 +716,7 @@ struct LANNewSessionSheet: View {
                 onStarted()
                 dismiss()
             } catch {
-                self.error = "\(L10n.remote.startFailed): \(error)"
+                self.error = LANRemoteFailureText.message(for: error)
                 starting = false
             }
         }
@@ -965,7 +965,7 @@ struct LANTerminalHost: UIViewRepresentable {
                 } catch let e as SessionControlError where e == .localControlOff {
                     setStatus(L10n.remote.controlOffOnMac)
                 } catch {
-                    setStatus("\(L10n.remote.disconnected): \(error)")
+                    setStatus(LANRemoteFailureText.message(for: error))
                 }
             }
             pingTask = Task { [weak self] in

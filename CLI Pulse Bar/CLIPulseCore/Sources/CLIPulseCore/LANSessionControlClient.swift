@@ -90,14 +90,32 @@ public final class LANSessionControlClient: SessionControlling, @unchecked Senda
             case .posix(let code):
                 switch code {
                 case .ECONNREFUSED, .EHOSTDOWN, .EHOSTUNREACH,
-                     .ENETDOWN, .ENETUNREACH, .ETIMEDOUT, .ECONNRESET, .EPIPE:
+                     .ENETDOWN, .ENETUNREACH, .ETIMEDOUT, .ECONNRESET, .EPIPE,
+                     // A typed IPv6 address with no usable local route gives
+                     // EADDRNOTAVAIL, not a refusal.
+                     .EADDRNOTAVAIL, .ENOTCONN:
                     return .unreachable
                 case .ECANCELED:
                     return .cancelled
                 default:
                     return .other
                 }
-            default:
+            case .wifiAware:
+                // Wi-Fi Aware (NAN). This link never negotiates it, so an
+                // error from it is not a case we can say anything useful
+                // about — and guessing "wake the Mac" would be wrong.
+                // Listed explicitly rather than swept into `@unknown default`,
+                // which exists to WARN when a genuinely new case appears; a
+                // known case hiding there is a warning that never gets read.
+                return .other
+            case .dns:
+                // A name that does not resolve. `LANDirectAddress.parse`
+                // accepts hostnames on purpose (MagicDNS, `studio.local`), so
+                // a typo on the connect-by-address field lands here — and
+                // "Something went wrong, try again" is the one answer that
+                // cannot help. It is a reachability failure like any other.
+                return .unreachable
+            @unknown default:
                 return .other
             }
         }

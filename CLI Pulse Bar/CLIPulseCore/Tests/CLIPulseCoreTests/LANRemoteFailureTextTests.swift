@@ -138,6 +138,41 @@ final class LANRemoteFailureTextTests: XCTestCase {
         XCTAssertFalse(LANRemoteFailureText.message(for: SessionControlError.spawnFailed(detail: "no binary")).contains("no binary"))
     }
 
+    /// What the terminal's fallthrough catch ACTUALLY receives. `LANLinkChannel`
+    /// wraps every NWConnection failure as `receiveFailed("\(e)")`, and the type
+    /// has no `CustomStringConvertible`, so the old code painted the reflected
+    /// Swift form — errno and all — after a localised "Disconnected: " prefix.
+    func test_transportFailuresSayReachability_notTheReflectedSwiftForm() {
+        let dropped: [LANLinkChannelError] = [
+            .closed,
+            .sendFailed("POSIXErrorCode(rawValue: 32): Broken pipe"),
+            .receiveFailed("POSIXErrorCode(rawValue: 54): Connection reset by peer"),
+        ]
+        for e in dropped {
+            let msg = LANRemoteFailureText.message(for: e)
+            assertHuman(msg, "\(e)")
+            XCTAssertEqual(msg, L10n.remote.errMacUnreachable,
+                           "a dropped link should tell the user to check the Mac")
+            XCTAssertFalse(msg.contains("54"), "the errno reached the phone: \(msg)")
+        }
+        // Framing is NOT a reachability failure — the bytes arrived and did not
+        // parse. Telling the user to wake the Mac would aim them at the wrong
+        // thing, so it deliberately gets different words.
+        let framing = LANRemoteFailureText.message(for: LANLinkChannelError.framing(.tooLarge(claimed: 9_999_999)))
+        assertHuman(framing, "framing")
+        XCTAssertNotEqual(framing, L10n.remote.errMacUnreachable)
+    }
+
+    /// A hostname that does not resolve — `LANDirectAddress.parse` accepts
+    /// hostnames on purpose (MagicDNS, `.local`), so a typo on the
+    /// connect-by-address field lands here. "Try again" cannot help.
+    func test_aNameThatDoesNotResolveIsAReachabilityFailure() {
+        XCTAssertEqual(LANSessionControlClient.ConnectError.reason(for: .dns(-65554)), .unreachable)
+        XCTAssertEqual(LANRemoteFailureText.message(for: NWError.dns(-65554)),
+                       L10n.remote.errMacUnreachable)
+        XCTAssertEqual(LANSessionControlClient.ConnectError.reason(for: .posix(.EADDRNOTAVAIL)), .unreachable)
+    }
+
     /// A bare `NWError` reaching the UI unwrapped must land the same way.
     func test_bareNetworkErrorsAreHuman() {
         for e: NWError in [.posix(.ECONNREFUSED), .posix(.EHOSTUNREACH), .tls(-9820), .dns(-65554)] {
@@ -193,12 +228,33 @@ final class LANRemoteScreensErrorCopyTests: XCTestCase {
         return try String(contentsOf: p, encoding: .utf8)
     }
 
+    /// ⚠️ This guard was FALSE GREEN when first written, and the way it failed
+    /// is the reason it is worth reading.
+    ///
+    /// It matched the literal `"\(error)"` — WITH the delimiting quotes. That
+    /// is the shape of a bare interpolation, and `main` had eight of those.
+    /// It had two more that interpolate after a localised prefix:
+    ///
+    ///     setStatus("\(L10n.remote.disconnected): \(error)")
+    ///
+    /// There the `\(error)` is preceded by a space, so the quoted substring
+    /// never appears and the assertion passed while the terminal's busiest
+    /// failure path still painted `receiveFailed("POSIXErrorCode(rawValue:
+    /// 54): Connection reset by peer")` at a six-language audience.
+    ///
+    /// The invariant is "no screen interpolates an Error", not "no screen
+    /// contains this exact spelling". Match the interpolation itself. Verified
+    /// precise rather than over-broad: on the fixed file neither pattern has a
+    /// single hit, and `LANRemoteFailureText.message(for: error)` contains no
+    /// interpolation to trip over.
     func test_noScreenPaintsAnErrorDescription() throws {
         let src = try screensSource()
-        for bad in ["\"\\(error)\"", "\"\\(e)\""] {
+        for bad in ["\\(error)", "\\(e)"] {
             XCTAssertFalse(src.contains(bad),
-                           "a remote screen renders \(bad) into the UI again — "
-                           + "route it through LANRemoteFailureText.message(for:)")
+                           "a remote screen interpolates \(bad) into the UI again — "
+                           + "route it through LANRemoteFailureText.message(for:). "
+                           + "A localised prefix in front of it does not make it safe: "
+                           + "the interpolated half is still an untranslated Swift dump.")
         }
     }
 

@@ -164,9 +164,15 @@ public enum LANDirectAddress {
     /// | `fc00::/7` ULA (not Tailscale) | nil | **.lan** |
     /// | loopback, global v6, public v4 | nil | nil |
     ///
-    /// Loopback stays unclassified on purpose: the iOS Simulator on the same
-    /// Mac is not a phone on a network, and counting it would put the owner's
-    /// own rig into the fleet evidence. Global IPv6 also stays unclassified —
+    /// Loopback stays unclassified on purpose: a phone is not on a network
+    /// when it is this machine. Be honest about the limit, though — this does
+    /// NOT reliably exclude the owner's own iOS Simulator. A Simulator shares
+    /// the host's network stack, so resolving the Mac's own Bonjour service
+    /// returns the host's real addresses and the arrival is typically the en0
+    /// link-local, which scores `.lan` here exactly like a real iPhone would.
+    /// The latch cannot tell those apart, and no address-based rule can.
+    /// Treat a single `remote_lan_used_at` on a developer install as
+    /// unproven. Global IPv6 also stays unclassified —
     /// on a v6 home network it IS the same Wi-Fi, but it is indistinguishable
     /// from a peer somewhere on the internet, and guessing would put a number
     /// into the one place the plan reads for a decision.
