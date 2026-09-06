@@ -133,4 +133,40 @@ final class LANMacScreenLinkOwnershipTests: XCTestCase {
                       "the foreground reconnect is gone, or it no longer guards on a DEAD link — "
                       + "replacing a live client would close it via deinit and tear down the screen the user is on")
     }
+
+
+    /// DEFECT 6 — the terminal kept its keyboard after the session ended, and
+    /// the first doomed keystroke painted a raw English error.
+    ///
+    /// `.sessionStopped` set the status and never touched `canType`, so typing
+    /// stayed enabled over a dead session. The next keystroke earned
+    /// `sessionNotFound`, which fell past both typed catches into
+    /// `setStatus("\(error)")` and painted the literal lowercase
+    /// "session not found" — untranslated, in an app that ships six languages
+    /// — while every further key dragged a `list_sessions` round trip onto the
+    /// agent's ordered request worker.
+    func test_aStoppedSessionTakesTheKeyboardAway() throws {
+        let src = try screensSource()
+        let stopArm = try XCTUnwrap(src.range(of: "case .sessionStopped:").map {
+            String(src[$0.lowerBound...].prefix(900))
+        })
+        XCTAssertTrue(stopArm.contains("canType = false"),
+                      "a stopped session leaves typing enabled again")
+        XCTAssertTrue(stopArm.contains("view?.setReadOnly(true)"),
+                      "a stopped session leaves the soft keyboard up again")
+    }
+
+    /// The same outcome for the race where the stopped event has not arrived:
+    /// say it in the app's own words, not the error's.
+    func test_sessionNotFoundIsNotPaintedRaw() throws {
+        let src = try screensSource()
+        XCTAssertTrue(src.contains("catch let e as SessionControlError where e == .sessionNotFound"),
+                      "sessionNotFound falls through to the raw-error catch again")
+        let arm = try XCTUnwrap(
+            src.range(of: "catch let e as SessionControlError where e == .sessionNotFound").map {
+                String(src[$0.lowerBound...].prefix(600))
+            })
+        XCTAssertTrue(arm.contains("L10n.remote.sessionEnded"),
+                      "the dead-session catch no longer uses the localised string")
+    }
 }

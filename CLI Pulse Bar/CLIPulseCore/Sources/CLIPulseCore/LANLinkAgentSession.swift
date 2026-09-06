@@ -76,10 +76,22 @@ public struct LANAgentPeer: Sendable, Equatable {
 /// frame.
 ///
 /// ── What the helper does not own ──
-/// A hand-launched session parked in tmux is local-only until the user
-/// opts it in. Such sessions are not listed, not readable, not
-/// controllable over the link, and their bytes are dropped from an
-/// all-sessions subscription.
+/// A hand-launched session the user attached from the Sessions tab is
+/// local-only: not listed, not readable, not controllable over the link,
+/// and its bytes are dropped from an all-sessions subscription.
+///
+/// This used to say "until the user opts it in". There is no opt-in any
+/// more. The only writer of that flag is
+/// `set_wrapped_session_cloud_shared`, and `CloudShareArm` has been
+/// permanently unattached since the session plane was retired — it now
+/// reports the retirement rather than sharing anything. The Mac's own
+/// toggle for it is gated off behind `RemoteSessionPlane.isEnabled` for
+/// exactly that reason. Restoring the promise means building a new
+/// opt-in, not flipping a flag.
+///
+/// Sessions STARTED through the helper are unaffected: `isLocalOnly` is
+/// `attached && !cloudShared`, so a managed session — whether the phone
+/// or the Mac's Sessions tab started it — is visible over the link.
 public actor LANLinkAgentSession {
 
     public enum EndReason: Equatable, Sendable {

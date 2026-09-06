@@ -937,7 +937,18 @@ struct LANTerminalHost: UIViewRepresentable {
                                 if let now = self.paint.intake(chunk) { self.view?.pushStdout(now) }
                             }
                         case .sessionStopped:
+                            // Take the keyboard away too. Setting only the
+                            // status left it live over a dead session: the
+                            // next keystroke earned `sessionNotFound`, which
+                            // fell past both typed catches below and painted
+                            // the raw lowercase "session not found" — an
+                            // untranslated internal string in a six-language
+                            // app — and every further key dragged a
+                            // `list_sessions` round trip onto the agent's
+                            // ordered worker.
                             setStatus(L10n.remote.sessionEnded)
+                            canType = false
+                            view?.setReadOnly(true)
                         case let .approvalRequested(a):
                             onApprovalRequested(a)
                         case let .approvalResolved(_, aid, _, st):
@@ -996,6 +1007,15 @@ struct LANTerminalHost: UIViewRepresentable {
                     canType = false
                     view?.setReadOnly(true)
                     onControlRefused(e == .localControlOff ? L10n.remote.controlOffOnMac : L10n.remote.watchOnlyLink)
+                    pendingStdin.removeAll()
+                } catch let e as SessionControlError where e == .sessionNotFound {
+                    // The session ended and the event has not reached us yet
+                    // (or arrived while this drain was in flight). Same
+                    // outcome, said the same way, rather than leaking the
+                    // error's English description to the status bar.
+                    canType = false
+                    view?.setReadOnly(true)
+                    setStatus(L10n.remote.sessionEnded)
                     pendingStdin.removeAll()
                 } catch {
                     setStatus("\(error)")
