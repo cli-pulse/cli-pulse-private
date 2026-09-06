@@ -105,6 +105,59 @@ final class ApprovalRegistryTests: XCTestCase {
         }
     }
 
+    /// The cap is documented as a PENDING cap — "Maximum number of pending
+    /// approvals", "Per-session pending cap. Stops one runaway Claude from
+    /// starving other sessions." It counts every row ever created instead:
+    /// `decide` and `expireOld` only set `row.status`, and nothing removes a
+    /// row from `pendingBySession` short of session stop.
+    ///
+    /// So a long-lived session stops being able to ask for ANYTHING after
+    /// `maxPerSession` approvals, however long ago they were answered. With
+    /// the shipped 16, the 17th tool use in a session is refused while the
+    /// phone shows an empty approval list over a live link.
+    ///
+    /// `testCreatePendingEnforcesPerSessionLimit` cannot see this: it never
+    /// resolves its two rows, so it passes under either meaning.
+    func testResolvedApprovalsDoNotCountAgainstThePerSessionCap() throws {
+        var limits = ApprovalRegistry.Limits()
+        limits.maxPerSession = 2
+        let r = ApprovalRegistry(limits: limits)
+        _ = r.registerSession("S")
+
+        let a = try r.createPending(sessionId: "S", kind: "Bash",
+                                    title: "1", summary: "", toolMetadata: [:])
+        let b = try r.createPending(sessionId: "S", kind: "Bash",
+                                    title: "2", summary: "", toolMetadata: [:])
+        _ = try r.decide(sessionId: "S", approvalId: a.approvalId, decision: "approve")
+        _ = try r.decide(sessionId: "S", approvalId: b.approvalId, decision: "reject")
+
+        XCTAssertEqual(r.listPending(sessionId: "S").filter { $0.status == .pending }.count, 0,
+                       "both rows were answered, so nothing is pending")
+        XCTAssertNoThrow(try r.createPending(sessionId: "S", kind: "Bash",
+                                             title: "3", summary: "", toolMetadata: [:]),
+                         "answered approvals still count against the cap, so this session can never ask again")
+    }
+
+    /// Same hole via the other exit: an approval nobody answered expires, and
+    /// the expired row keeps occupying its slot forever.
+    func testExpiredApprovalsDoNotCountAgainstThePerSessionCap() throws {
+        var limits = ApprovalRegistry.Limits()
+        limits.maxPerSession = 2
+        let r = ApprovalRegistry(limits: limits)
+        _ = r.registerSession("S")
+
+        _ = try r.createPending(sessionId: "S", kind: "Bash", title: "1",
+                                summary: "", toolMetadata: [:], ttlSeconds: 0.01)
+        _ = try r.createPending(sessionId: "S", kind: "Bash", title: "2",
+                                summary: "", toolMetadata: [:], ttlSeconds: 0.01)
+        Thread.sleep(forTimeInterval: 0.2)
+        XCTAssertEqual(r.expireOld(), 2, "both rows should have expired")
+
+        XCTAssertNoThrow(try r.createPending(sessionId: "S", kind: "Bash",
+                                             title: "3", summary: "", toolMetadata: [:]),
+                         "expired approvals still count against the cap")
+    }
+
     func testCreatePendingPublishesApprovalRequestedEvent() throws {
         let broker = EventBroker()
         var captured: [[String: Any]] = []

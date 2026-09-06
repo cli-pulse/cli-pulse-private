@@ -450,7 +450,16 @@ class ApprovalRegistry:
                     f"no managed session with id {session_id!r}",
                 )
             bucket = self._pending.setdefault(session_id, {})
-            if len(bucket) >= MAX_PENDING_PER_SESSION:
+            # Count only rows that are actually PENDING, which is what the
+            # limit is named for. Deciding or expiring an approval only sets
+            # `status`; nothing drops a row from the bucket short of session
+            # stop. `len(bucket)` therefore counted every approval the
+            # session had EVER created, so after MAX_PENDING_PER_SESSION
+            # tool uses a long-lived session could never ask again, however
+            # long ago those were answered — while `list_pending` (which
+            # DOES filter on status) reported nothing outstanding.
+            live = sum(1 for a in bucket.values() if a.status == "pending")
+            if live >= MAX_PENDING_PER_SESSION:
                 raise ApprovalError(
                     ApprovalError.APPROVAL_LIMIT,
                     f"too many pending approvals for session {session_id}",

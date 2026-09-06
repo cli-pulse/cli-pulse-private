@@ -224,6 +224,28 @@ def test_create_pending_respects_session_cap():
     assert exc.value.code == ApprovalError.APPROVAL_LIMIT
 
 
+def test_resolved_approvals_do_not_count_against_the_session_cap():
+    """The cap is named for PENDING approvals, and `list_pending` filters on
+    status — but `create_pending` counted the whole bucket, and nothing drops
+    a row short of session stop. So a long-lived session stopped being able to
+    ask for anything after MAX_PENDING_PER_SESSION tool uses, however long ago
+    they were answered. `test_create_pending_respects_session_cap` cannot see
+    it: it never resolves its rows, so it passes under either meaning.
+    """
+    reg = _registry_with_descent()
+    reg.register_session("S1", claude_pid=None)
+    ids = []
+    for i in range(MAX_PENDING_PER_SESSION):
+        ids.append(reg.create_pending("S1", kind="K", title=f"T{i}",
+                                      summary="", tool_metadata={}))
+    for aid in ids:
+        reg.decide(aid, "approve", session_id_hint="S1")
+
+    assert reg.list_pending("S1") == [], "every row was answered"
+    # Must not raise: nothing is outstanding.
+    reg.create_pending("S1", kind="K", title="after", summary="", tool_metadata={})
+
+
 def test_metadata_sanitisation_caps_lengths():
     reg = _registry_with_descent()
     reg.register_session("S1", claude_pid=None)
