@@ -1202,6 +1202,13 @@
 "remote.watch_only_link" = "这台 Mac 只允许此 iPhone 观看";
 "remote.start_failed" = "无法启动会话";
 "remote.session_ended" = "会话已结束";
+"remote.err_mac_unreachable" = "连不上这台 Mac。请确认它没有休眠,且 CLI Pulse 正在运行。";
+"remote.err_pairing_lost" = "这台 Mac 已不认识这部 iPhone,请重新配对。";
+"remote.err_pairing_declined" = "已在 Mac 上拒绝。";
+"remote.err_insecure_connection" = "无法建立安全连接,没有发送任何内容。";
+"remote.err_mac_needs_update" = "这台 Mac 上的 CLI Pulse 版本过旧,请先更新。";
+"remote.err_too_fast" = "请求过于频繁,请稍候再试。";
+"remote.err_unexpected" = "出了点问题,请重试。";
 "remote.no_sessions_control" = "还没有会话。点 + 开一个。";
 "remote.no_providers" = "这台 Mac 没有可用的 CLI 工具。";
 "remote.connect_by_address" = "按地址连接";

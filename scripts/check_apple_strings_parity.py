@@ -58,6 +58,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import subprocess
 import collections
 import json
 import re
@@ -86,6 +87,35 @@ KEY_RE = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*=', re.MULTILINE)
 def read_keys(path: Path) -> list[str]:
     """Declared keys, in file order, duplicates included."""
     return KEY_RE.findall(path.read_text(encoding="utf-8"))
+
+
+def unparseable(res_dir: Path) -> list[str]:
+    """Locales whose .strings CFBundle itself would refuse to read.
+
+    This gate reads keys with a line regex, which is the right tool for
+    counting parity but happily accepts a file the runtime rejects. On
+    2026-09-06 a stray double quote inside an English value
+    (`"Can"t reach this Mac."`) made `en.lproj` unparseable: this script
+    printed OK, and the only thing that noticed was `L10nFallbackTests`
+    failing — because CFBundle dropped the WHOLE catalogue and every key in
+    the app, including long-shipped ones, rendered as its raw dotted
+    identifier. A broken en is the worst case: it is the fallback for every
+    other locale and has no fallback itself.
+
+    `plutil -lint` is the same parser the runtime uses, so it is the
+    artifact-level judgement rather than a second opinion of our own.
+    """
+    broken: list[str] = []
+    for lproj in sorted(res_dir.glob("*.lproj")):
+        strings = lproj / STRINGS_FILE
+        if not strings.is_file():
+            continue
+        r = subprocess.run(["plutil", "-lint", str(strings)],
+                           capture_output=True, text=True)
+        if r.returncode != 0:
+            detail = (r.stdout + r.stderr).strip().splitlines()
+            broken.append(f"{lproj.name} — {detail[-1] if detail else 'plutil refused it'}")
+    return broken
 
 
 def collect(res_dir: Path) -> dict[str, list[str]]:
@@ -137,6 +167,17 @@ def main() -> int:
     if not res_dir.is_dir():
         print(f"FATAL: no .lproj resources at {res_dir}", file=sys.stderr)
         return 2
+
+    broken = unparseable(res_dir)
+    if broken:
+        print("FAIL — a .strings file does not parse. CFBundle drops the ENTIRE", file=sys.stderr)
+        print("       catalogue, so every key in that locale renders as its raw", file=sys.stderr)
+        print("       dotted identifier — not just the broken line:\n", file=sys.stderr)
+        for line in broken:
+            print(f"    {line}", file=sys.stderr)
+        print("\n    Usually an unescaped \" inside a value. Use \\\" or a typographic", file=sys.stderr)
+        print("    quote, then re-run.\n", file=sys.stderr)
+        return 1
 
     catalogues = collect(res_dir)
     if BASE_LOCALE not in catalogues:

@@ -1150,6 +1150,13 @@
 "remote.watch_only_link" = "這台 Mac 只允許此 iPhone 觀看";
 "remote.start_failed" = "無法啟動工作階段";
 "remote.session_ended" = "工作階段已結束";
+"remote.err_mac_unreachable" = "連不上這台 Mac。請確認它沒有睡眠,且 CLI Pulse 正在執行。";
+"remote.err_pairing_lost" = "這台 Mac 已不認識這部 iPhone,請重新配對。";
+"remote.err_pairing_declined" = "已在 Mac 上拒絕。";
+"remote.err_insecure_connection" = "無法建立安全連線,沒有傳送任何內容。";
+"remote.err_mac_needs_update" = "這台 Mac 上的 CLI Pulse 版本過舊,請先更新。";
+"remote.err_too_fast" = "請求過於頻繁,請稍候再試。";
+"remote.err_unexpected" = "出了點問題,請重試。";
 "remote.no_sessions_control" = "還沒有工作階段。點 + 開一個。";
 "remote.no_providers" = "這台 Mac 沒有可用的 CLI 工具。";
 "remote.connect_by_address" = "按位址連線";

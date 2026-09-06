@@ -1198,6 +1198,13 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "remote.watch_only_link" = "This Mac lets this iPhone watch only";
 "remote.start_failed" = "Could not start the session";
 "remote.session_ended" = "Session ended";
+"remote.err_mac_unreachable" = "Can’t reach this Mac. Check it is awake and CLI Pulse is running.";
+"remote.err_pairing_lost" = "This Mac no longer recognises this iPhone. Pair again.";
+"remote.err_pairing_declined" = "Declined on the Mac.";
+"remote.err_insecure_connection" = "This connection could not be secured. Nothing was sent.";
+"remote.err_mac_needs_update" = "This Mac runs an older CLI Pulse. Update it to use this.";
+"remote.err_too_fast" = "Too many requests. Wait a moment and try again.";
+"remote.err_unexpected" = "Something went wrong. Try again.";
 "remote.no_sessions_control" = "No sessions yet. Tap + to start one.";
 "remote.no_providers" = "This Mac has no CLI tools available.";
 "remote.connect_by_address" = "Connect by address";

@@ -1024,6 +1024,16 @@ public enum L10n {
         public static var watchOnlyLink: String { tr("remote.watch_only_link") }
         public static var startFailed: String { tr("remote.start_failed") }
         public static var sessionEnded: String { tr("remote.session_ended") }
+
+        // Said instead of an error's own description. See
+        // `LANRemoteFailureText`, which is the only caller.
+        public static var errMacUnreachable: String { tr("remote.err_mac_unreachable") }
+        public static var errPairingLost: String { tr("remote.err_pairing_lost") }
+        public static var errPairingDeclined: String { tr("remote.err_pairing_declined") }
+        public static var errInsecureConnection: String { tr("remote.err_insecure_connection") }
+        public static var errMacNeedsUpdate: String { tr("remote.err_mac_needs_update") }
+        public static var errTooFast: String { tr("remote.err_too_fast") }
+        public static var errUnexpected: String { tr("remote.err_unexpected") }
     }
 
     public enum integrations {
