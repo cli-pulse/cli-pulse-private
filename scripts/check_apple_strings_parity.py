@@ -58,7 +58,6 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
-import subprocess
 import collections
 import json
 import re
@@ -89,6 +88,98 @@ def read_keys(path: Path) -> list[str]:
     return KEY_RE.findall(path.read_text(encoding="utf-8"))
 
 
+class StringsSyntaxError(Exception):
+    """A .strings file CFBundle would refuse, with the line that breaks it."""
+
+
+def _scan_strings(text: str) -> int:
+    """Strictly scan an old-style plist `.strings` body; return the entry count.
+
+    Raises `StringsSyntaxError` on anything CFBundle would reject. Deliberately
+    hand-written rather than shelled out to `plutil`: that is macOS-only, and
+    this gate runs on the Linux CI runner, where a shell-out either crashes
+    (it did) or gets caught and skipped — leaving the gate blind exactly where
+    it actually runs.
+
+    Literal newlines inside a quoted value are legal here and are used (see
+    `advanced.remote_consent_body`), so they are counted, not rejected.
+    """
+    i, n, line, entries = 0, len(text), 1, 0
+    if text.startswith("\ufeff"):
+        i = 1
+
+    def fail(msg: str) -> None:
+        raise StringsSyntaxError(f"line {line}: {msg}")
+
+    def skip_filler() -> None:
+        nonlocal i, line
+        while i < n:
+            c = text[i]
+            if c == "\n":
+                line += 1
+                i += 1
+            elif c.isspace():
+                i += 1
+            elif text.startswith("//", i):
+                j = text.find("\n", i)
+                i = n if j < 0 else j
+            elif text.startswith("/*", i):
+                j = text.find("*/", i + 2)
+                if j < 0:
+                    fail("unterminated /* comment")
+                line += text.count("\n", i, j)
+                i = j + 2
+            else:
+                return
+
+    def quoted() -> str:
+        nonlocal i, line
+        if i >= n or text[i] != '"':
+            fail(f"expected a quoted string, found {text[i:i+1]!r}")
+        i += 1
+        out = []
+        while i < n:
+            c = text[i]
+            if c == "\\":
+                if i + 1 >= n:
+                    fail("string ends with a dangling backslash")
+                out.append(text[i + 1])
+                if text[i + 1] == "\n":
+                    line += 1
+                i += 2
+            elif c == '"':
+                i += 1
+                return "".join(out)
+            else:
+                if c == "\n":
+                    line += 1
+                out.append(c)
+                i += 1
+        fail("unterminated string")
+        return ""
+
+    def expect(ch: str) -> None:
+        nonlocal i
+        if i >= n or text[i] != ch:
+            found = text[i:i+1] or "end of file"
+            fail(f"expected {ch!r}, found {found!r} — usually an unescaped "
+                 f'quote inside the previous value (write \\" or a typographic quote)')
+        i += 1
+
+    while True:
+        skip_filler()
+        if i >= n:
+            return entries
+        quoted()            # key
+        skip_filler()
+        expect("=")
+        skip_filler()
+        quoted()            # value
+        skip_filler()
+        expect(";")
+        entries += 1
+
+
 def unparseable(res_dir: Path) -> list[str]:
     """Locales whose .strings CFBundle itself would refuse to read.
 
@@ -96,25 +187,43 @@ def unparseable(res_dir: Path) -> list[str]:
     counting parity but happily accepts a file the runtime rejects. On
     2026-09-06 a stray double quote inside an English value
     (`"Can"t reach this Mac."`) made `en.lproj` unparseable: this script
-    printed OK, and the only thing that noticed was `L10nFallbackTests`
-    failing — because CFBundle dropped the WHOLE catalogue and every key in
-    the app, including long-shipped ones, rendered as its raw dotted
-    identifier. A broken en is the worst case: it is the fallback for every
-    other locale and has no fallback itself.
-
-    `plutil -lint` is the same parser the runtime uses, so it is the
-    artifact-level judgement rather than a second opinion of our own.
+    printed OK and reported the full key count, because the regex read
+    straight past the break. CFBundle does not — it dropped the WHOLE
+    catalogue, so every key in the app, including long-shipped ones, rendered
+    as its raw dotted identifier. Only `L10nFallbackTests` noticed. A broken
+    `en` is the worst case: it is the fallback for every other locale and has
+    no fallback itself.
     """
     broken: list[str] = []
     for lproj in sorted(res_dir.glob("*.lproj")):
         strings = lproj / STRINGS_FILE
         if not strings.is_file():
             continue
-        r = subprocess.run(["plutil", "-lint", str(strings)],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            detail = (r.stdout + r.stderr).strip().splitlines()
-            broken.append(f"{lproj.name} — {detail[-1] if detail else 'plutil refused it'}")
+        try:
+            entries = _scan_strings(strings.read_text(encoding="utf-8"))
+        except StringsSyntaxError as exc:
+            broken.append(f"{lproj.name} — {exc}")
+            continue
+        except UnicodeDecodeError as exc:
+            broken.append(f"{lproj.name} — not valid UTF-8: {exc}")
+            continue
+        # Vacuity guard: a scanner that silently consumed nothing would call
+        # an empty file healthy, and an empty catalogue is the same outage.
+        if entries == 0:
+            broken.append(f"{lproj.name} — parsed, but declares no entries")
+            continue
+        # Two independent readers, one file. `read_keys` is a line regex that
+        # COUNTS; `_scan_strings` is a syntax scanner that VALIDATES. They must
+        # agree, and when they do not it is the regex that has read past
+        # something — which is precisely how the 2026-09-06 break scored a
+        # full 1069 keys on a catalogue the runtime could not load at all.
+        counted = len(read_keys(strings))
+        if counted != entries:
+            broken.append(
+                f"{lproj.name} — the two readers disagree: the key regex sees "
+                f"{counted} entr(ies), the syntax scanner {entries}. One of "
+                f"them is misreading this file."
+            )
     return broken
 
 
