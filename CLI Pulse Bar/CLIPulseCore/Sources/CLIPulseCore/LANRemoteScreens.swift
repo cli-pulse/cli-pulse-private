@@ -440,6 +440,7 @@ public struct LANMacSessionsView: View {
     @State private var pendingBySession: [String: Int] = [:]
     @State private var showNewSession = false
     @State private var linkOwner = LANMacLinkOwner()
+    @Environment(\.scenePhase) private var scenePhase
 
     /// `existingClient` is the connection a direct (address) connect
     /// already established — reusing it avoids a second handshake and keeps
@@ -534,6 +535,19 @@ public struct LANMacSessionsView: View {
         }
         .refreshable { await refresh() }
         .task { await connect() }
+        // iOS tears the link down when the app is backgrounded, and there is
+        // no reconnect anywhere else: measured 2026-09-06 on the rig, coming
+        // back to the foreground left the screen on "Disconnected" with an
+        // empty session list and sent the Mac not one request. Pull-to-refresh
+        // was the only way back, and nothing on screen said so.
+        //
+        // Only when the link is actually down — a live one must not be
+        // replaced, because `LANSessionControlClient.deinit` closes it and
+        // that would tear down the connection the user is looking at.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, client == nil else { return }
+            Task { await connect() }
+        }
     }
 
     private func connect() async {

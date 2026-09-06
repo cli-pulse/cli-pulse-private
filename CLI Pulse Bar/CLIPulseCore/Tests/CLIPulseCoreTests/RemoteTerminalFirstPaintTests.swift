@@ -116,5 +116,21 @@ final class LANMacScreenLinkOwnershipTests: XCTestCase {
         XCTAssertTrue(ownerBody.contains("deinit"), "LANMacLinkOwner never releases the link")
         XCTAssertTrue(ownerBody.contains("client?.close()"), "LANMacLinkOwner's deinit does not close the client")
     }
-}
 
+
+    /// DEFECT 5 — backgrounding killed the link and nothing brought it back.
+    ///
+    /// Measured 2026-09-06 on the rig: background the app, return, and the Mac
+    /// screen sat on "Disconnected" with an empty session list, having sent the
+    /// Mac not one request. Pull-to-refresh was the only way back and nothing
+    /// on screen said so — on the feature's primary flow, on a phone, where
+    /// backgrounding is what phones do.
+    func test_theMacScreenReconnectsWhenTheAppReturns() throws {
+        let src = try screensSource()
+        XCTAssertTrue(src.contains("@Environment(\\.scenePhase)"),
+                      "the Mac screen no longer observes the scene phase, so a backgrounded link stays dead")
+        XCTAssertTrue(src.contains("guard phase == .active, client == nil else { return }"),
+                      "the foreground reconnect is gone, or it no longer guards on a DEAD link — "
+                      + "replacing a live client would close it via deinit and tear down the screen the user is on")
+    }
+}
