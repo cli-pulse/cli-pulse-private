@@ -139,6 +139,59 @@ public enum LANDirectAddress {
         return nil   // loopback, link-local, public: not offered
     }
 
+    /// Classify an INBOUND peer's address, for the plan §8 usage latches.
+    ///
+    /// Deliberately NOT `classify`. That one answers "may the Mac ADVERTISE
+    /// this address of its own?", where excluding every non-Tailscale IPv6 is
+    /// correct — offering one invites exposing the listener. Reusing it to
+    /// measure how a phone ARRIVED asks a different question, and there
+    /// "not offered" is not the same as "not a LAN".
+    ///
+    /// Measured 2026-09-07, and this is why the latch was wrong: an iPhone
+    /// reaching the Mac through Bonjour on ordinary Wi-Fi routinely arrives on
+    /// an IPv6 link-local or ULA address, and `classify` maps every one of
+    /// those to nil — so `remoteTransportUsed` was never called and
+    /// `remote_lan_used_at` stayed null through real LAN use. The four latches
+    /// are the only evidence the plan has for deciding whether the self-built
+    /// transport lives, so a silent under-count there is not a telemetry
+    /// nicety; it biases the decision.
+    ///
+    /// | peer address                | before | now |
+    /// |-----------------------------|--------|-----|
+    /// | `192.168.x` / `10.x` / `172.16-31.x` | .lan | .lan |
+    /// | `100.64-127.x`, `fd7a:115c:a1e0…`    | .tailnet | .tailnet |
+    /// | `fe80::…` link-local        | nil | **.lan** |
+    /// | `fc00::/7` ULA (not Tailscale) | nil | **.lan** |
+    /// | loopback, global v6, public v4 | nil | nil |
+    ///
+    /// Loopback stays unclassified on purpose: the iOS Simulator on the same
+    /// Mac is not a phone on a network, and counting it would put the owner's
+    /// own rig into the fleet evidence. Global IPv6 also stays unclassified —
+    /// on a v6 home network it IS the same Wi-Fi, but it is indistinguishable
+    /// from a peer somewhere on the internet, and guessing would put a number
+    /// into the one place the plan reads for a decision.
+    static func classifyPeer(_ address: String) -> Kind? {
+        let a = address.lowercased()
+        if a.hasPrefix("fd7a:115c:a1e0") { return .tailnet }
+
+        if a.contains(":") {
+            if a == "::1" { return nil }                       // loopback
+            if a.hasPrefix("fe8") || a.hasPrefix("fe9")
+                || a.hasPrefix("fea") || a.hasPrefix("feb") { return .lan }   // fe80::/10
+            // fc00::/7 — unique local. First hextet begins fc or fd.
+            if a.hasPrefix("fc") || a.hasPrefix("fd") { return .lan }
+            return nil                                          // global v6: see above
+        }
+
+        let parts = a.split(separator: ".").compactMap { UInt8($0) }
+        guard parts.count == 4 else { return nil }
+        if parts[0] == 100, (64...127).contains(parts[1]) { return .tailnet }
+        if parts[0] == 10 { return .lan }
+        if parts[0] == 172, (16...31).contains(parts[1]) { return .lan }
+        if parts[0] == 192, parts[1] == 168 { return .lan }
+        return nil                                              // loopback, public
+    }
+
     /// The Mac's current addresses. Uses `getifaddrs`; separated from
     /// `preferredAddress` so the choice is testable without real hardware.
     public static func localInterfaceAddresses() -> [InterfaceAddress] {

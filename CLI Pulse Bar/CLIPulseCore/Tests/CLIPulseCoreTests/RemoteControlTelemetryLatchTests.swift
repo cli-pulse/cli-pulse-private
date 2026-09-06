@@ -124,8 +124,19 @@ final class RemoteControlTelemetryLatchTests: XCTestCase {
         let agent = try coreSource("LANLinkAgent.swift")
         XCTAssertTrue(agent.contains("remoteTransportUsed("),
                       "nothing reports which address class a phone arrived on")
-        XCTAssertTrue(agent.contains("LANDirectAddress.classify("),
+        XCTAssertTrue(agent.contains("LANDirectAddress.classifyPeer("),
                       "the transport class must be DERIVED, not taken from the wire")
+        // `classifyPeer`, specifically. This assertion used to accept
+        // `LANDirectAddress.classify(`, and that is what the agent called —
+        // the ADVERTISE-side allowlist, which maps every non-Tailscale IPv6 to
+        // nil. A phone arriving over an IPv6 link-local address (the ordinary
+        // Bonjour case on Wi-Fi) therefore never fired the latch at all, so
+        // `remote_lan_used_at` read null through real LAN use. Derived-not-
+        // asserted was true either way; the guard could not see that the
+        // derivation answered the wrong question. See
+        // `LANPeerClassificationTests`.
+        XCTAssertFalse(agent.contains("LANDirectAddress.classify(host)"),
+                       "the latch is back on the advertise-side allowlist")
 
         let session = try coreSource("LANLinkAgentSession.swift")
         XCTAssertTrue(session.contains("remoteDelegateRequested()"),

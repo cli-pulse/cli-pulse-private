@@ -327,8 +327,12 @@ public final class LANLinkAgent: ObservableObject {
                     // Plan §8: which address class did this phone arrive on?
                     // Derived here and ONLY the class is ever reported — the
                     // address itself never leaves the machine.
+                    // `classifyPeer`, NOT `classify`: the latter is the
+                    // advertise-side allowlist and maps every non-Tailscale
+                    // IPv6 to nil, so real LAN arrivals over IPv6 were never
+                    // counted. See its doc comment.
                     if let host = Self.remoteHost(of: conn),
-                       let kind = LANDirectAddress.classify(host) {
+                       let kind = LANDirectAddress.classifyPeer(host) {
                         AnonymousTelemetryCoordinator.shared?.remoteTransportUsed(kind)
                     }
                     // Which phone is proven in `hello`, not here.
