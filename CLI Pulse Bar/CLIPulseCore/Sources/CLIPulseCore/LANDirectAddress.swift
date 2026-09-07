@@ -153,14 +153,30 @@ public enum LANDirectAddress {
     /// measure how a phone ARRIVED asks a different question, and there
     /// "not offered" is not the same as "not a LAN".
     ///
-    /// Measured 2026-09-07, and this is why the latch was wrong: an iPhone
-    /// reaching the Mac through Bonjour on ordinary Wi-Fi routinely arrives on
-    /// an IPv6 link-local or ULA address, and `classify` maps every one of
-    /// those to nil — so `remoteTransportUsed` was never called and
-    /// `remote_lan_used_at` stayed null through real LAN use. The four latches
-    /// are the only evidence the plan has for deciding whether the self-built
-    /// transport lives, so a silent under-count there is not a telemetry
-    /// nicety; it biases the decision.
+    /// ⚠️ CORRECTED 2026-09-07, after the hardware run that was supposed to
+    /// confirm it. The original text here claimed a phone "routinely arrives
+    /// on an IPv6 link-local address, and that is why `remote_lan_used_at`
+    /// stayed null through real LAN use". Neither half survived measurement:
+    ///
+    ///   * On this Wi-Fi, a client resolving the Mac's Bonjour service
+    ///     arrived on the IPv4 address (`192.168.1.104`) both times, never
+    ///     `fe80::`. `classify` and `classifyPeer` are byte-identical for
+    ///     RFC 1918, so that arrival cannot tell the two apart at all.
+    ///   * The historical null had a simpler cause: the Mac app had **0
+    ///     paired phones**. No phone had ever completed a handshake with it.
+    ///     The earlier sessions were driven against an XCTest-hosted agent,
+    ///     where `AnonymousTelemetryCoordinator.shared` is nil and nothing is
+    ///     ever reported regardless of address.
+    ///
+    /// So this function is still correct — fe80::/10, fc00::/7 and 169.254/16
+    /// ARE the same network when a phone arrives on one, and `classify`
+    /// returning nil for them would under-count — but that is an argument
+    /// from the address semantics, proven by `LANPeerClassificationTests`,
+    /// NOT from an observed fleet miss. Do not cite it as one.
+    ///
+    /// Still true and still the reason to care: the four latches are the only
+    /// evidence the plan has for deciding whether the self-built transport
+    /// lives, so a silent under-count there is not a telemetry nicety.
     ///
     /// | peer address                | before | now |
     /// |-----------------------------|--------|-----|
