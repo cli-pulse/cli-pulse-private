@@ -7,11 +7,22 @@ import XCTest
 /// So a latch that silently fails to fire is not a telemetry nicety; it
 /// biases that decision with a number that looks like an answer.
 ///
-/// It did fail to fire. `LANLinkAgent.accept` classified the inbound peer
-/// with `LANDirectAddress.classify`, which is the ADVERTISE-side allowlist:
-/// it answers "may the Mac offer this address of its own?", where excluding
+/// `LANLinkAgent.accept` classified the inbound peer with
+/// `LANDirectAddress.classify`, which is the ADVERTISE-side allowlist: it
+/// answers "may the Mac offer this address of its own?", where excluding
 /// every non-Tailscale IPv6 is correct. Measuring how a phone ARRIVED is a
 /// different question, and there "not offered" is not "not a LAN".
+///
+/// ⚠️ SCOPE OF THE EVIDENCE, corrected after the 2026-09-07 hardware run.
+/// These tests prove the CLASSIFICATION: `fe80::`, `fc00::/7` and
+/// `169.254/16` are private-local addresses and must count as `.lan`. They do
+/// NOT prove that a real arrival on this network takes one — measured, a
+/// client resolving the Mac's Bonjour service arrived on IPv4 both times, and
+/// `classify`/`classifyPeer` are byte-identical there. The hardware run
+/// therefore confirmed the WIRING (connection → latch → production column)
+/// and found no regression, but was inconclusive for the IPv6 change itself.
+/// The earlier "the latch never fired" observation had a different cause: the
+/// Mac app had 0 paired phones.
 final class LANPeerClassificationTests: XCTestCase {
 
     // MARK: - The regression itself
