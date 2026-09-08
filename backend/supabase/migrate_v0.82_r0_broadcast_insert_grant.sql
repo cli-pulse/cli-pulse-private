@@ -20,12 +20,16 @@
 --   pg_has_role('postgres','supabase_realtime_admin','SET')             false
 --   pg_has_role('postgres','supabase_realtime_admin','MEMBER')          false
 --
--- (An earlier draft of this header probed that membership with 'USAGE'. That
---  is the NOINHERIT trap v0.81's defect #2 was about — supabase_realtime_admin
---  has rolinherit=false, so USAGE reads false even when membership is perfect,
---  and the probe would have "confirmed" the blocker for the wrong reason. 'SET'
---  is the right question, and it answers false too, so the conclusion survives
---  its own correction. The evidence did not; hence this rewrite.)
+-- (An earlier draft probed that membership with 'USAGE', which is unsound
+--  here — but NOT for the reason the first correction gave. That correction
+--  said supabase_realtime_admin's rolinherit=false made USAGE misleading;
+--  `rolinherit` governs what a role inherits FROM ITS OWN memberships, so the
+--  attribute that would matter is postgres's, and postgres has rolinherit=true.
+--  The real defect is simpler and worse: USAGE answers false both when the
+--  membership does not inherit AND when there is no membership at all, so it
+--  cannot tell "blocked" from "absent". SET and MEMBER each have one meaning,
+--  and both answer false. The conclusion survived two wrong explanations of
+--  itself, which is exactly why the probe is recorded and not just the verdict.)
 --
 -- PostgreSQL does not raise when a grantor lacks the grant option. It emits
 --   WARNING:  no privileges were granted for "messages"
@@ -47,12 +51,54 @@
 -- realtime.messages for postgres, and v0.56 created the live policies exactly
 -- that way. Only the GRANT needs a higher role.
 --
--- ── How to get it applied ─────────────────────────────────────
--- Supabase support, or the platform superuser channel. Ask for exactly these
--- statements as supabase_admin, and nothing else.
+-- ── How to get it applied — READ THIS BEFORE OPENING A TICKET ─
 --
--- ⛔ DO NOT go looking for a self-service way around this. An earlier draft of
---    this header offered one — "an alternative that would let the owner apply
+-- The honest answer is: probably do not, yet. Two facts, both measured
+-- 2026-09-08, change what this file is for.
+--
+-- ⛔ FACT 1 — NOTHING WRITES THIS TOPIC TODAY. The `pterm:` producer does not
+--    ship in the app. The bundled Swift helper says so itself, in its own
+--    source, in three places:
+--      HelperSwift/Sources/HelperKit/RemoteAgentCloud.swift:613
+--        "since the Swift helper ships no `pterm:` producer (DEV_PLAN §2 gap 2),
+--         output reaches it through the durable event tail at ~3 s poll latency"
+--      HelperSwift/Sources/HelperKit/ManagedSessionManager.swift:1122
+--      migrate_v0.69_register_session_realtime_private.sql:25
+--    The only producer in the tree is `helper/realtime_broadcast.py`, in the
+--    separately-installed Python .pkg. So this grant would unblock a path the
+--    shipping client cannot exercise. That is the FOURTH and deciding way the
+--    write path is dead, and it is the one with no owner named below.
+--
+-- ✅ FACT 2 — A FALLBACK IS ALREADY PROVISIONED AND NEEDS NO NEW PRIVILEGE.
+--    v0.65 recorded it at its own line 65 and this file previously ignored it:
+--      "If Realtime rejects the custom role name, fall back to a service-relay
+--       broadcast (helper→edge fn→service-role realtime.send)"
+--    Measured on production, so it is not speculative:
+--      has_table_privilege('service_role','realtime.messages','INSERT')   true
+--      has_function_privilege('service_role','realtime.send(...)','EXECUTE') true
+--    `mint-realtime-token` already proves the shape works: an edge function
+--    that authorizes with `remote_helper_authorize_broadcast` and acts with the
+--    service role. The authorization boundary moves from the RLS policy into
+--    that function — which is a real cost, and the same cost as the definer
+--    trap below, except this one is already built, already reviewed, and does
+--    not require asking anyone for anything.
+--
+-- SO THE ORDER IS: settle the design question first, build a producer second,
+-- ask for the grant last — and only if the custom-role design wins on its
+-- merits. Asking a platform team to grant a customer role privileges on a
+-- managed schema is a one-shot favour; spending it before knowing whether the
+-- design survives is backwards.
+--
+-- IF the ticket is still the right call, ask NARROWLY. Exactly one statement in
+-- this file needs a role we do not have — the GRANT. The policy DDL beneath it
+-- is available to `postgres` via `supautils.policy_grants`, and v0.81 proved
+-- that on production by creating the READ policy from this same connection. A
+-- one-line privilege request with a rationale is a plausible ticket; "run this
+-- customer DDL against your managed schema as supabase_admin" is the kind that
+-- gets declined.
+--
+-- ⛔ DO NOT go looking for a self-service way around the grant. An earlier draft
+--    of this header offered one — "an alternative that would let the owner apply
 --    it directly is `grant supabase_realtime_admin to postgres`" — and it does
 --    not exist. Tried on production 2026-09-08 inside a transaction that was
 --    then aborted:
@@ -65,33 +111,21 @@
 --    The false alternative is recorded here rather than deleted, because a
 --    deleted dead end gets rediscovered.
 --
--- ⚠️ What this means for the DESIGN, not just this file: on hosted Supabase a
---    custom Postgres role can never hold INSERT on realtime.messages without
---    the platform's help. v0.65's least-privilege broadcast role is therefore
---    not "pending an owner step" — it is pending a SUPPORT REQUEST, and support
---    may reasonably decline to grant a customer role privileges on a managed
---    schema. If they do, R0's write side needs a different design.
+-- ⚠️ And do not reach for the OTHER obvious workaround either: a SECURITY
+--    DEFINER function owned by `postgres`, which does hold INSERT, exposed to
+--    r0_broadcast by EXECUTE alone. `postgres` is rolbypassrls=true and definer
+--    runs as the owner, so such a function IS NOT CHECKED BY THE WRITE POLICY
+--    AT ALL. Measured 2026-09-08 in a transaction that was then aborted: a
+--    definer function owned by postgres read a row from a table with RLS
+--    enabled and a `using (false)` deny-all policy. Every ownership and topic
+--    check would have to move inside the function body, where a missing
+--    predicate is not a denied write but an unbounded one. `realtime.send`
+--    cannot serve as one either — `prosecdef = false`.
 --
---    The obvious candidate is a SECURITY DEFINER function owned by `postgres`,
---    which DOES hold INSERT on realtime.messages, exposed to r0_broadcast by
---    EXECUTE alone. Two things must be said about it in the same breath,
---    because the idea is much more attractive than it is safe:
---
---      * realtime.send cannot be used for this. Checked: prosecdef = false.
---      * `postgres` is rolbypassrls = true, and SECURITY DEFINER runs as the
---        OWNER, so such a function DOES NOT GET CHECKED BY THE WRITE POLICY AT
---        ALL. Measured 2026-09-08 in a transaction that was then aborted: a
---        definer function owned by postgres read a table carrying a
---        `using (false)` deny-all policy and saw its row anyway.
---
---        That inverts the whole authorization story. Today the policy is the
---        boundary and the oracle is its helper; under a definer function there
---        IS no policy in the path, and every topic/ownership check has to live
---        inside the function body — where a missing predicate is not a denied
---        write but an unbounded one, to any topic, for any session.
---
---    So: written down as a direction, explicitly NOT as a recommendation. Do
---    not reach for it because this file made it sound close.
+--    Note that FACT 2's service relay has the same property and is still the
+--    better option: service_role is also rolbypassrls, but its boundary is an
+--    edge function that already exists and already does the authorization,
+--    rather than a new definer function written to dodge a grant.
 --
 -- ── Order ─────────────────────────────────────────────────────
 -- v0.81 first (it creates the role this grants to). Then this.
@@ -101,22 +135,67 @@
 -- `mint-realtime-token` was redeployed to v5. Verified against the deployed
 -- source, not the repo: v5 signs `role: "r0_broadcast"`.
 --
--- So the production write path is currently dead THREE ways, and it is worth
--- being precise about which, because each has a different owner:
+-- So the production write path is currently dead FOUR ways, and it is worth
+-- being precise about which, because each has a different owner — and because
+-- the last one decides whether the others are worth fixing at all:
 --   1. the token says role=r0_broadcast; the WRITE policy still targets
 --      {authenticated} — nothing matches                     (this file fixes)
 --   2. r0_broadcast holds no INSERT on realtime.messages — denied before any
 --      policy is consulted                                   (support fixes)
 --   3. the WRITE policy body still inlines remote_sessions, which r0_broadcast
 --      cannot SELECT — it would 42501 for its own role        (this file fixes)
+--   4. the shipped Swift helper contains no `pterm:` producer, so nothing
+--      attempts this write in the first place              (NOBODY — see above)
 --
--- It governs nothing today: `select count(*) from public.user_settings where
--- realtime_private_enabled` = 0 of 216 on 2026-09-08. That is the ONLY reason
--- this is a latent defect and not an outage. Do not flip the cutover for any
--- account until 1-3 are all closed and the integration gate below has run.
+-- Why this is a latent defect and not an outage — stated carefully, because an
+-- earlier version of this paragraph got the reason wrong:
+--   It is NOT "the cutover flag is false for all accounts". Nothing in the R0
+--   path reads `user_settings.realtime_private_enabled`; both policies and both
+--   oracles key on `remote_sessions.realtime_private`. Measured 2026-09-08:
+--     user_settings    218 rows, realtime_private_enabled = 0
+--     remote_sessions    3 rows, realtime_private        = 3   <— the real gate
+--   All three are `status='stopped'`, one account, last event 2026-07-16, and
+--   are due to be deleted by `remote_retention_cleanup_nightly` on 2026-09-14.
+--   So these policies govern three dead rows, plus reason 4 above. Re-measure;
+--   do not trust this count, which is why v0.81's post-apply block now carries
+--   the query instead of the answer.
+-- Do not flip realtime_private for any live session until 1-4 are all closed
+-- and the integration gate below has run.
 -- ============================================================
 
-set lock_timeout = '5s';
+-- ⚠️ THE `begin;` BELOW IS LOAD-BEARING, not decoration. This file's headline
+--    promise is that running it as `postgres` "does nothing" because the
+--    assertion block turns the silent no-op into an abort. An assertion can
+--    only abort statements it shares a transaction with. Without the explicit
+--    BEGIN/COMMIT, a client in autocommit would commit the GRANT (a no-op) and
+--    the policy retarget (NOT a no-op — postgres can do policy DDL here) and
+--    only then hit the raise — leaving production in the crossed state where
+--    the WRITE policy targets a role that cannot insert. v0.81 declared "this
+--    whole script runs as ONE transaction" in prose and relied on the runner;
+--    this file makes it a statement instead, because here the two DDL effects
+--    genuinely differ and the residue would be real.
+--    v0.81 now carries an assertion that DETECTS that crossed state; this
+--    prevents it.
+begin;
+
+set local lock_timeout = '5s';
+
+-- Fail before touching anything if v0.81 has not run. This has to come FIRST:
+-- the GRANT below names r0_broadcast, and GRANT to a missing role raises its
+-- own 42704 with a far less useful message. An earlier draft put this check in
+-- the assertion block at the foot, where it could never fire.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'r0_broadcast') then
+    raise exception 'r0_broadcast does not exist — apply v0.81 first';
+  end if;
+  -- Same reason, one link further along: this file's policy body calls the
+  -- write oracle, and v0.81 is what creates it and grants EXECUTE on it.
+  if to_regprocedure('public.r0_broadcast_topic_allowed(text)') is null then
+    raise exception 'the write oracle is missing — apply v0.81 first';
+  end if;
+end
+$$;
 
 -- The statement v0.81 could not issue.
 grant insert on realtime.messages to r0_broadcast;
@@ -132,11 +211,6 @@ create policy "r0 broadcast own remote session terminal"
 
 do $$
 begin
-  -- v0.81 must have run: this file grants to a role it does not create.
-  if not exists (select 1 from pg_roles where rolname = 'r0_broadcast') then
-    raise exception 'r0_broadcast does not exist — apply v0.81 first';
-  end if;
-
   -- THE WHOLE POINT. Without this the grant above is a silent no-op and the
   -- apply reports success with the write path dead.
   if not has_table_privilege('r0_broadcast', 'realtime.messages', 'INSERT') then
@@ -176,10 +250,23 @@ begin
   ) then
     raise exception 'the WRITE policy still inlines remote_sessions';
   end if;
+
+  -- The last link in the write chain, and the only one no file checked. The
+  -- policy body above calls public.r0_broadcast_topic_allowed(...), evaluated
+  -- as r0_broadcast. The EXECUTE grant for it is issued in a DIFFERENT file
+  -- (v0.81), so nothing here guaranteed it survived — and the failure mode is
+  -- identical to the 42501 the previous assertion exists to prevent: the
+  -- policy looks right, targets the right role, does not inline the table, and
+  -- still aborts for its own role the moment it is evaluated.
+  if not has_function_privilege('r0_broadcast', 'public.r0_broadcast_topic_allowed(text)', 'EXECUTE') then
+    raise exception
+      'r0_broadcast cannot EXECUTE its own write oracle — the WRITE policy '
+      'would abort 42501 on every insert. v0.81 grants this; check it survived.';
+  end if;
 end
 $$;
 
-reset lock_timeout;
+commit;
 
 -- ============================================================
 -- Post-apply, by hand — a green apply is not evidence:
@@ -189,7 +276,13 @@ reset lock_timeout;
 --    where schemaname='realtime' and tablename='messages';
 --     -- write -> {r0_broadcast}, body calls r0_broadcast_topic_allowed(...)
 --
--- Only then the v0.65 cutover gate: re-deploy mint-realtime-token, mint an
--- r0_broadcast token, confirm POST /realtime/v1/api/broadcast to that
--- session's pterm: topic delivers, and that a cross-session token does NOT.
+-- Only then the v0.65 cutover gate. The re-deploy it used to open with is
+-- DONE (v5, signing role: "r0_broadcast" — see the Order section above); what
+-- remains is the integration test itself: mint an r0_broadcast token, confirm
+-- POST /realtime/v1/api/broadcast to that session's pterm: topic delivers, and
+-- that a cross-session token does NOT.
+--
+-- And before any of that, answer death #4: there is still no `pterm:` producer
+-- in the shipped Swift helper, so a passing integration test proves the
+-- plumbing works, not that the feature does.
 -- ============================================================

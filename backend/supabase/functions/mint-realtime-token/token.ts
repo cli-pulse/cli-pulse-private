@@ -21,10 +21,21 @@
 // realtime.messages INSERT" currently overstates a privilege the role does not
 // have. The grant needs a supabase_admin-class role; see
 // backend/supabase/migrate_v0.82_r0_broadcast_insert_grant.sql for the
-// measurement and why the owner cannot issue it. Harmless because the cutover
-// (`user_settings.realtime_private_enabled`) is false for all 216 accounts.
-// This comment stays until v0.82 lands — the previous stale claim in this same
-// file survived a fix by two months and was still being read as current.
+// measurement and why the owner cannot issue it.
+//
+// Why that is harmless today — stated precisely, because the obvious answer is
+// the wrong one. It is NOT that `user_settings.realtime_private_enabled` is
+// false for everyone; nothing in the R0 path reads that column. The gate is
+// `remote_sessions.realtime_private`, which on 2026-09-08 was TRUE for 3 of 3
+// rows — all `status='stopped'`, one account, last event 2026-07-16. What
+// actually makes it moot is that the bundled Swift helper ships no `pterm:`
+// producer at all (see RemoteAgentCloud.swift and ManagedSessionManager.swift),
+// so nothing attempts this write.
+//
+// This comment stays until v0.82 lands. The sibling `index.ts` — not this file
+// — had a stale claim that outlived its fix by two months and was still being
+// read as current on 2026-09-06; that is the precedent, and misfiling which
+// file it happened in would be the same mistake one level up.
 //
 // ES256 signing reuses the proven Web-Crypto pattern from
 // send-approval-push/index.ts (signAPNsJWT): import the PKCS8 private key,

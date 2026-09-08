@@ -56,6 +56,29 @@
 --      `postgres_changes: []` and use broadcast, so no table-level SELECT is
 --      involved.
 --
+--      🚨 ITEM 4 IS WRONG, AND IT IS THE ONE ITEM IN THIS LIST THAT WAS NOT
+--         VERIFIED — added 2026-09-08, after this migration broke the thing it
+--         promised it could not touch.
+--
+--         Subscribing without `postgres_changes` does avoid table-level SELECT
+--         on the subscription path. It does not cover the RLS POLICIES on
+--         realtime.messages, and those are where the damage landed. Both the
+--         READ and WRITE policies were written by v0.56 with an inlined
+--         `EXISTS (SELECT 1 FROM public.remote_sessions ...)` body, and a policy
+--         expression is evaluated as the CURRENT role. Revoking `authenticated`'s
+--         SELECT on remote_sessions therefore made both policy bodies raise.
+--         Measured 2026-09-07, as a returned value rather than a NOTICE:
+--             as postgres      -> RAN OK
+--             as authenticated -> FAILS: 42501 permission denied for remote_sessions
+--         The R0 private terminal was dead on production in BOTH directions from
+--         2026-08-30 until v0.81 repaired the READ half on 2026-09-08. The WRITE
+--         half is still broken; see v0.82.
+--
+--         Nobody noticed for nine days because no live session used the private
+--         path — not because the reasoning held. This item is left in place with
+--         its refutation attached rather than rewritten, because "verified, not
+--         assumed" was the heading it sat under, and it was assumed.
+--
 -- The policies are deliberately LEFT IN PLACE. Removing them would make the
 -- tables readable again the moment anyone re-granted SELECT; keeping them
 -- means the tables stay default-deny under two independent mechanisms.
