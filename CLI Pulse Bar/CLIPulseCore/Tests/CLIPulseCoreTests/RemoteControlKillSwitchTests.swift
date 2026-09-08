@@ -154,56 +154,83 @@ final class RemoteControlKillSwitchTests: XCTestCase {
                       "nothing in this suite can distinguish a working mechanism from a stub")
     }
 
-    // MARK: - The manifest half, which `swift test` CANNOT compile
+    // MARK: - The manifest half
 
-    /// ⚠️ `AppUpdater.swift` opens with `#if os(macOS) && DEVID_BUILD`, and
-    /// `DEVID_BUILD` is not defined by `Package.swift`. So under `swift build`
-    /// and `swift test` — including CI's — that file compiles to NOTHING: the
-    /// manifest field and the hook below are not merely untested there, they
-    /// are not even type-checked. A behavioural test referencing
-    /// `AppUpdater.Manifest` does not compile in this target at all; that is
-    /// how this limitation was found rather than assumed.
+    /// ⚠️ CORRECTED. The first version of this section claimed the manifest
+    /// half could not be compiled by `swift test` "including CI's", and used
+    /// source guards on that basis. Half true, and the false half mattered:
+    /// `AppUpdater.swift` opens with `#if os(macOS) && DEVID_BUILD` and
+    /// `Package.swift` does not define it, so the DEFAULT `swift test` — the
+    /// one run locally — really does compile that file to nothing. But CI runs
+    /// a SECOND pass, `swift test -Xswiftc -DDEVID_BUILD`
+    /// (.github/workflows/swift-ci.yml:240), which compiles it fully and
+    /// already had `AppUpdaterTests`. CI proved the claim wrong by failing:
+    /// adding a field broke that file's memberwise `Manifest(...)` calls.
     ///
-    /// So these are source guards, which do run, plus a real Developer ID
-    /// build of the app as the compile check. Do not "fix" them into
-    /// behavioural tests without first moving `Manifest` out of the
-    /// conditional — and if you do that, delete these.
-    private func updaterSource() throws -> String {
+    /// So the decode IS behaviourally testable, and is tested below rather
+    /// than grepped for. Run `swift test -Xswiftc -DDEVID_BUILD` locally
+    /// before trusting a green default run on anything DEVID-gated.
+    #if DEVID_BUILD
+    func test_theManifestFieldIsOptionalAndDecodesBothWays() throws {
+        let base = """
+        {"version":"1.53.0","arch":"arm64","url":"https://example.com/a.dmg",
+         "sha256":"abc","size_bytes":1,"min_os_version":"13.0"
+        """
+        let dec = JSONDecoder()
+
+        let on = try dec.decode(AppUpdater.Manifest.self,
+                                from: Data((base + ",\"remote_control_enabled\":true}").utf8))
+        XCTAssertEqual(on.remoteControlEnabled, true)
+
+        let off = try dec.decode(AppUpdater.Manifest.self,
+                                 from: Data((base + ",\"remote_control_enabled\":false}").utf8))
+        XCTAssertEqual(off.remoteControlEnabled, false)
+
+        // The case that must NOT be conflated with `false`: nil clears the
+        // cache, false is an explicit off. Every manifest shipped so far lacks
+        // the field, so a non-optional here would break the updater outright.
+        let silent = try dec.decode(AppUpdater.Manifest.self, from: Data((base + "}").utf8))
+        XCTAssertNil(silent.remoteControlEnabled,
+                     "a manifest with no opinion must decode as nil, not false")
+    }
+
+    /// The three decoded shapes drive the three resolutions, end to end.
+    func test_eachDecodedShapeResolvesTheGateCorrectly() throws {
+        let base = """
+        {"version":"1.53.0","arch":"arm64","url":"https://example.com/a.dmg",
+         "sha256":"abc","size_bytes":1,"min_os_version":"13.0"
+        """
+        let dec = JSONDecoder()
+        for (json, expected) in [(",\"remote_control_enabled\":true}", true),
+                                 (",\"remote_control_enabled\":false}", false),
+                                 ("}", RemoteControlFeature.shippedDefault)] {
+            let m = try dec.decode(AppUpdater.Manifest.self, from: Data((base + json).utf8))
+            RemoteControlFeature.recordRemoteAllowance(m.remoteControlEnabled, at: t0, in: d)
+            XCTAssertEqual(RemoteControlFeature.isAvailable(in: d, now: t0), expected,
+                           "manifest \(json) resolved wrongly")
+        }
+    }
+    #endif
+
+    /// Ordering is a property of the SOURCE, not of a value, so it stays a
+    /// source guard — and it reads shipping code only. Its first run compared
+    /// prose: the first occurrence of `recordRemoteAllowance` is in a doc
+    /// comment 100 lines above the call.
+    private func updaterCode() throws -> String {
         let here = URL(fileURLWithPath: #filePath)
         let root = here.deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent()
         return try String(contentsOf: root.appendingPathComponent("Sources/CLIPulseCore/AppUpdater.swift"),
                           encoding: .utf8)
-    }
-
-    /// Shipping code only. The ordering guard below first compared the raw
-    /// file and failed, because the FIRST occurrence of `recordRemoteAllowance`
-    /// is in a doc comment 100 lines above the call. A guard that matches the
-    /// prose explaining the code is not a guard on the code.
-    private func updaterCode() throws -> String {
-        try updaterSource()
             .split(separator: "\n", omittingEmptySubsequences: false)
             .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
             .joined(separator: "\n")
     }
 
-    func test_theManifestCarriesTheAllowanceAsAnOptional() throws {
-        let src = try updaterSource()
-        XCTAssertTrue(src.contains("public let remoteControlEnabled: Bool?"),
-                      "the manifest no longer carries the allowance, or it stopped being OPTIONAL — "
-                      + "a non-optional would make every existing manifest fail to decode, taking "
-                      + "the updater down with it")
-        XCTAssertTrue(src.contains("case remoteControlEnabled = \"remote_control_enabled\""),
-                      "the JSON key is gone or renamed; the field would silently always be nil")
-    }
-
     func test_theAllowanceIsRecordedOnlyAfterTheManifestPassesValidation() throws {
-        let src = try updaterSource()
-        XCTAssertTrue(src.contains("RemoteControlFeature.recordRemoteAllowance(m.remoteControlEnabled"),
-                      "nothing records the allowance — the kill switch is inert")
-        // Ordering is the property: recording must sit AFTER the arch check,
-        // so a manifest rejected for any other reason lets the cache decay.
         let code = try updaterCode()
+        XCTAssertTrue(code.contains("RemoteControlFeature.recordRemoteAllowance(m."),
+                      "nothing records the allowance — the kill switch is inert")
         let archAt = try XCTUnwrap(code.range(of: "try Self.assertArchitectureMatches(m)"))
         let recordAt = try XCTUnwrap(code.range(of: "RemoteControlFeature.recordRemoteAllowance(m."))
         XCTAssertTrue(archAt.lowerBound < recordAt.lowerBound,
@@ -211,11 +238,10 @@ final class RemoteControlKillSwitchTests: XCTestCase {
                       + "updater rejects would still be able to enable the feature")
     }
 
-    /// No second timer. The first draft of this design specified its own
-    /// refresh cadence; the repo already has one, tuned by a prior audit.
+    /// No second timer. The first draft specified its own refresh cadence; the
+    /// repo already has one, tuned by a prior audit.
     func test_noSeparatePollWasAdded() throws {
-        let src = try updaterSource()
-        XCTAssertFalse(src.contains("allowanceRefreshInterval"),
+        XCTAssertFalse(try updaterCode().contains("allowanceRefreshInterval"),
                        "a second poll appeared; the allowance rides the existing refresh")
     }
 }

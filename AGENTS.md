@@ -267,6 +267,17 @@ iPhone  LANSessionControlClient ─┐                    ┌─ LocalSessionCon
   then send `\r`.
 - `swift test` here compiles macOS only; the iOS-only screens
   (`LANRemoteScreens.swift`) need the `CLI Pulse iOS` scheme to be type-checked.
+- 🚨 **A green `swift test` is HALF the suite.** CI runs it twice —
+  plain, and `swift test -Xswiftc -DDEVID_BUILD`
+  (`.github/workflows/swift-ci.yml:240`). `Package.swift` does not define
+  `DEVID_BUILD`, so the default pass compiles every `#if DEVID_BUILD` file —
+  `AppUpdater.swift` among them — to NOTHING. Measured 2026-09-08: plain
+  = 3020 tests, DEVID = **3057**. Adding one field to `AppUpdater.Manifest`
+  built and tested clean locally and broke `AppUpdaterTests` in CI, because
+  neither the change nor its existing tests were compiled here. **Run both
+  passes before trusting a green run on anything DEVID-gated**, and prefer a
+  `#if DEVID_BUILD` behavioural test to a source guard — the source guard was
+  written on the false belief that CI could not compile the file either.
 - 🚨 **This Mac's SDK is a generation ahead of CI's, so a local green does not
   mean CI compiles.** `swift-ci.yml` runs on `macos-15` (`lint-ci.yml` on
   `macos-14`); a dev machine here is macOS/Xcode 26.x. Measured 2026-09-07:
@@ -278,6 +289,16 @@ iPhone  LANSessionControlClient ─┐                    ┌─ LocalSessionCon
   exists on `macos-15` too. The same caution applies to any recently-added
   API, and to `xcodebuild -destination 'generic/platform=iOS Simulator'` run
   here — it uses the local SDK, not CI's.
+
+- ⭐ **Before building a mechanism to collect evidence, count the population
+  that could ever supply it.** 2026-09-08: a staged rollout was designed —
+  allowlist, `rollout_percent`, hash bucketing — to make the §8 remote-control
+  latches produce readings. The addressable population was **one**: of 12
+  installs, 10 are `mas` (`MASSandboxGate` refuses before the feature gate is
+  read) and the 2 `devid` are the owner plus one install seen once and never
+  again. The bucketing alone produced three of that review's seven findings.
+  The bottleneck was distribution, not instrumentation, and no mechanism fixes
+  that. Run the channel counts first; they are one query.
 
 ### Verification tooling
 
