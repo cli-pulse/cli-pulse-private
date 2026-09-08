@@ -238,6 +238,27 @@ final class EdgeRelayPrivateBroadcastSinkTests: XCTestCase {
         XCTAssertEqual(rec.urls.count, 2, "infra failure must not latch a healthy session")
     }
 
+    func test_countersRecordOutcomesSoADarkShipIsEvaluable() async {
+        let sink = makeSink(coalesce: .milliseconds(1), denialBackoff: .seconds(60))
+        await publish(sink, "sid-1", "a")
+        await sink.flushNow()
+        var st = await sink.stats()
+        XCTAssertEqual(st.sent, 1); XCTAssertEqual(st.failed, 0); XCTAssertEqual(st.suppressed, 0)
+
+        rec.status = 500
+        await publish(sink, "sid-2", "b")
+        await sink.flushNow()
+        st = await sink.stats()
+        XCTAssertEqual(st.sent, 1); XCTAssertEqual(st.failed, 1); XCTAssertEqual(st.suppressed, 0)
+
+        rec.status = 403
+        await publish(sink, "sid-3", "c")
+        await sink.flushNow()
+        st = await sink.stats()
+        XCTAssertEqual(st.suppressed, 1, "a denial is a distinct outcome from a failure")
+        XCTAssertEqual(st.failed, 1)
+    }
+
     func test_oneSessionsDenialDoesNotSuppressAnother() async {
         rec.status = 403
         let sink = makeSink(coalesce: .milliseconds(1), denialBackoff: .seconds(60))

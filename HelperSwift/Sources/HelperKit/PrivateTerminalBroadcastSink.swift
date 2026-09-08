@@ -174,6 +174,19 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
     /// corruption, not just lateness.
     private var flushing = false
 
+    /// Observable outcome counters. A dark-shipped path with no signal is a
+    /// path you cannot evaluate, and "turn it on per-machine and see" needs
+    /// something to see. These are read by tests today and are the obvious
+    /// hook for a diagnostics line later.
+    public private(set) var sentBatches = 0
+    public private(set) var failedBatches = 0
+    public private(set) var suppressedSessions = 0
+
+    /// Snapshot of the counters, for tests and diagnostics.
+    public func stats() -> (sent: Int, failed: Int, suppressed: Int) {
+        (sentBatches, failedBatches, suppressedSessions)
+    }
+
     public init(
         configProvider: @escaping @Sendable () -> HelperConfigStore.CloudConfig,
         requestTimeout: TimeInterval = 2.5,
@@ -262,14 +275,28 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
                 for group in Self.split(items, maxBytes: maxBatchBytes, maxCount: maxBatchCount) {
                     do {
                         try await send(sessionId: sessionId, items: group)
+                        sentBatches += 1
                     } catch SinkError.denied {
                         deniedUntil[sessionId] = ContinuousClock.now.advanced(by: denialBackoff)
-                        break
+                        suppressedSessions += 1
+                        // Log the SUPPRESSION, not every dropped chunk: this is
+                        // the transition an operator needs to see, and it is
+                        // rate-limited by construction (once per backoff
+                        // window). Session id only — never the payload.
+                        FileHandle.standardError.write(Data(
+                            ("cli_pulse_helper: pterm relay denied session=\(sessionId) "
+                             + "— suppressed for \(denialBackoff)\n").utf8))
                     } catch {
-                        // Transport/5xx: the chunk is gone. The publisher's
-                        // drop accounting and the phone's reconnect
-                        // tail-snapshot are the recovery path; retrying here
-                        // would back-pressure the PTY drain loop.
+                        failedBatches += 1
+                        // Transport/5xx: the chunk is gone. Retrying here would
+                        // back-pressure the PTY drain loop. Logged only on the
+                        // FIRST failure of a run so a flapping network cannot
+                        // turn stderr into the firehose the PTY already is.
+                        if failedBatches == 1 || failedBatches % 100 == 0 {
+                            FileHandle.standardError.write(Data(
+                                ("cli_pulse_helper: pterm relay batch failed "
+                                 + "(total=\(failedBatches)) session=\(sessionId)\n").utf8))
+                        }
                     }
                 }
             }

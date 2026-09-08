@@ -1148,12 +1148,28 @@ public final class ManagedSessionManager: @unchecked Sendable {
     @discardableResult
     public func publishTailSnapshot(sessionId: String, maxBytes: Int) async -> Bool {
         guard let publisher = broadcastPublisher else { return false }
-        // R0 (S2) fail-closed: never publish a private/unknown session's snapshot
-        // on the public `term:` channel (a gone session → nil → also muted).
+        // R0 (S2) fail-closed, on the SAME gate the drain loop uses.
+        //
+        // This used to read `allowsPublicBroadcast` alone, which silently meant
+        // "private sessions get no snapshot". That was consistent while there
+        // was no private producer, and became a contradiction the moment there
+        // was one: `EdgeRelayPrivateBroadcastSink` cites the phone's reconnect
+        // tail-snapshot as the recovery path for the chunks it drops, and for a
+        // private session that path did not exist. A recovery path that is only
+        // wired for the sessions that were not dropping chunks is not a
+        // recovery path.
+        //
+        // A gone session → nil record → nil visibility → muted, as before.
         lock.lock()
-        let allowPublic = sessions[sessionId]?.allowsPublicBroadcast ?? false
+        let rec = sessions[sessionId]
+        let visibility = rec.flatMap {
+            ManagedSessionManager.broadcastVisibility(
+                realtimePrivate: $0.realtimePrivate,
+                localOnly: isLocalOnly($0),
+                privateEnabled: privateBroadcastEnabled)
+        }
         lock.unlock()
-        guard allowPublic else { return false }
+        guard let visibility else { return false }
         guard let snapshot = getTailSnapshot(sessionId: sessionId, maxBytes: maxBytes) else {
             return false
         }
@@ -1164,7 +1180,8 @@ public final class ManagedSessionManager: @unchecked Sendable {
         await publisher.submit(
             sessionId: sessionId,
             channel: "tail_snapshot_result",
-            chunk: snapshot)
+            chunk: snapshot,
+            visibility: visibility)
         return true
     }
 
