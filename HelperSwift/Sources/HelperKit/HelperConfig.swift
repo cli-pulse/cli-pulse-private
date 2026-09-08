@@ -81,6 +81,31 @@ public final class HelperConfigStore: @unchecked Sendable {
         return (raw["remote_realtime_enabled"] as? Bool) ?? true
     }
 
+    /// R0 `pterm:` producer — the PRIVATE terminal mirror.
+    ///
+    /// **Defaults to FALSE, unlike its public sibling above, and the
+    /// asymmetry is deliberate.** `remote_realtime_enabled` defaults
+    /// true because that path has shipped and been exercised since
+    /// v1.25. This one routes output through a NEW edge function
+    /// (`broadcast-terminal`) that no install has ever called, and it
+    /// spends one edge-function invocation per coalesced batch. Ship
+    /// it dark, turn it on per-machine, and only then consider a
+    /// default flip — the reverse order is how you find out at scale
+    /// that the relay was misconfigured.
+    ///
+    /// Off means a positively-private session simply gets no live
+    /// mirror; the phone degrades to the durable event tail at ~3 s,
+    /// which is exactly the behaviour that shipped before this
+    /// producer existed. It never falls back to the PUBLIC topic.
+    ///
+    /// Note this gate is ANDed with `remoteRealtimeEnabled`: that flag
+    /// is the ops kill switch for all realtime mirroring, so turning
+    /// it off must stop this path too.
+    public var privateTerminalBroadcastEnabled: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return (raw["remote_private_terminal_broadcast_enabled"] as? Bool) ?? false
+    }
+
     /// Cloud pairing fields — Phase 4E Slice 3 read-only. Empty
     /// string when the helper is unpaired (Python helper's `pair`
     /// flow hasn't run); callers treat empty as "skip cloud RPCs"

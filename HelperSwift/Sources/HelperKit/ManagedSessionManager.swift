@@ -189,6 +189,11 @@ public final class ManagedSessionManager: @unchecked Sendable {
             ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: realtimePrivate)
         }
 
+        /// `nil` = mute. See `ManagedSessionManager.broadcastVisibility`.
+        var broadcastVisibility: TerminalBroadcastVisibility? {
+            ManagedSessionManager.broadcastVisibility(realtimePrivate: realtimePrivate)
+        }
+
         init(
             sessionId: String,
             provider: String,
@@ -233,11 +238,35 @@ public final class ManagedSessionManager: @unchecked Sendable {
     /// true ONLY for a session POSITIVELY known public (`realtime_private ==
     /// false`). A `nil` (unknown — local session / pre-v0.61 payload) or `true`
     /// (private) => false, so a private session's redacted output is NEVER
-    /// POSTed to the public `term:<sid>` topic. The Swift helper does not run
-    /// Route B-lite (no minted producer token), so a private session simply
-    /// gets no realtime mirror — the phone degrades to event-polling.
+    /// POSTed to the public `term:<sid>` topic.
+    ///
+    /// This governs the PUBLIC topic ONLY, and the distinction now matters:
+    /// since the `pterm:` producer landed, `false` here no longer means "no
+    /// realtime mirror at all", it means "not on the public channel". A
+    /// positively-private session (`realtimePrivate == true`) gets the private
+    /// mirror instead; see `broadcastVisibility`.
+    ///
+    /// `nil` — UNKNOWN privacy — stays muted on BOTH topics. That is the
+    /// fail-closed half: a record whose privacy we cannot name must not be
+    /// guessed onto either channel.
     static func allowsPublicBroadcast(realtimePrivate: Bool?) -> Bool {
         realtimePrivate == false
+    }
+
+    /// Which topic family a record's output may go to, or `nil` for "neither".
+    ///
+    /// The three-way return is the point. A `Bool` here would have to collapse
+    /// UNKNOWN into one of the two live answers, and both collapses are wrong:
+    /// treating `nil` as public leaks an external session onto a UUID-secrecy
+    /// channel, and treating it as private publishes to a topic whose RLS
+    /// policy may not admit anyone. Muting is the only safe reading of "we do
+    /// not know".
+    static func broadcastVisibility(realtimePrivate: Bool?) -> TerminalBroadcastVisibility? {
+        switch realtimePrivate {
+        case .some(false): return .publicTopic
+        case .some(true):  return .privateTopic
+        case .none:        return nil
+        }
     }
 
     /// M4.4d: how an op treats an ATTACHED wrapped (external) session.
@@ -1115,16 +1144,29 @@ public final class ManagedSessionManager: @unchecked Sendable {
                     // is fire-and-forget (actor handles its own
                     // queue/drop policy).
                     //
-                    // R0 (S2) fail-closed: the publisher POSTs to the PUBLIC
-                    // `term:<sid>` topic, so mirror there ONLY for a session
-                    // positively known public. A private or unknown-privacy
-                    // session gets NO broadcast — its output never leaks on the
-                    // public channel (the Swift helper has no `pterm:` producer;
-                    // the phone falls back to polling).
-                    if record.allowsPublicBroadcast, let publisher = broadcastPublisher {
+                    // R0 (S2) fail-closed, now with BOTH topics wired.
+                    //
+                    // `broadcastVisibility` is three-valued on purpose:
+                    //   false -> .publicTopic   `term:<sid>`, anon-key fanout
+                    //   true  -> .privateTopic  `pterm:<sid>`, edge-relay + RLS
+                    //   nil   -> MUTE           privacy unknown, guess nothing
+                    //
+                    // The old code mirrored only `allowsPublicBroadcast`, which
+                    // collapsed true and nil into the same silence. That was
+                    // correct while no `pterm:` producer existed and is wrong
+                    // now: a positively-private session has a real destination,
+                    // and only UNKNOWN should be muted. The publisher stamps the
+                    // topic from this value and the routing sink dispatches on
+                    // that topic, so a private session cannot reach the public
+                    // channel even if this branch were mis-edited later.
+                    if let visibility = record.broadcastVisibility,
+                       let publisher = broadcastPublisher {
                         let sid = record.sessionId
                         let payload = chunk
-                        Task { await publisher.submit(sessionId: sid, chunk: payload) }
+                        Task {
+                            await publisher.submit(
+                                sessionId: sid, chunk: payload, visibility: visibility)
+                        }
                     }
                     let text = String(data: chunk, encoding: .utf8) ?? String(decoding: chunk, as: UTF8.self)
                     // Latch local_only onto the FRAME (review: codex) — the cloud

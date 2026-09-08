@@ -368,12 +368,25 @@ case "daemon":
     let bootCloudCfg = configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
     let broadcastPublisher: TerminalBroadcastPublisher?
     if bootCloudCfg.isPaired && configStore.remoteRealtimeEnabled {
-        let sink = SupabaseRealtimeBroadcastSink(
-            configProvider: { configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer) }
-        )
+        let provider: @Sendable () -> HelperConfigStore.CloudConfig = {
+            configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
+        }
+        let publicSink = SupabaseRealtimeBroadcastSink(configProvider: provider)
+        // R0: the `pterm:` producer, dark by default. When the gate is off the
+        // private sink is nil and the router REFUSES a `pterm:` chunk rather
+        // than downgrading it to the public topic — the whole reason routing
+        // is by topic prefix and not by a boolean argument.
+        let privateSink: (any TerminalBroadcastSink)? =
+            configStore.privateTerminalBroadcastEnabled
+                ? EdgeRelayPrivateBroadcastSink(configProvider: provider)
+                : nil
+        let sink = PrivacyRoutingBroadcastSink(
+            publicSink: publicSink, privateSink: privateSink)
         broadcastPublisher = TerminalBroadcastPublisher(sink: sink)
         FileHandle.standardError.write(Data(
-            "cli_pulse_helper (Swift): terminal Broadcast publisher active (Supabase Realtime sink)\n".utf8
+            ("cli_pulse_helper (Swift): terminal Broadcast publisher active "
+             + "(public=Supabase Realtime, private="
+             + (privateSink == nil ? "OFF" : "edge relay") + ")\n").utf8
         ))
     } else {
         broadcastPublisher = nil
