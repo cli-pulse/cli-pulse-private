@@ -124,7 +124,7 @@ import Foundation
 /// already run `Redactor.redact`. It MUST NOT reach for the raw
 /// chunk by any side path; that invariant is pinned upstream by
 /// `TerminalBroadcastPublisherTests`.
-public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
+public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroadcastSink {
 
     public enum SinkError: Error, Equatable {
         case notConfigured
@@ -143,6 +143,20 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
 
     public let requestTimeout: TimeInterval
     public let coalesceWindow: Duration
+    /// Cap on buffered chunks PER SESSION, drop-oldest on overflow.
+    ///
+    /// `TerminalBroadcastPublisher` documents the pipeline's bound — "a laggy
+    /// sink cannot back-pressure the drain loop" — and enforces it on ITS
+    /// queue. That bound cannot reach this buffer: `publish` returns as soon as
+    /// it appends here, so the publisher considers the chunk delivered and its
+    /// drop-oldest never fires. Without a cap of its own, a relay that is slow
+    /// or suppressed accumulates a session's entire output in memory.
+    /// Mirrors the publisher's default so the two bounds are legible together.
+    public let maxPendingPerSession: Int
+    /// Chunks dropped here for exceeding `maxPendingPerSession`. Distinct from
+    /// `failedBatches`: these never reached a request.
+    public private(set) var droppedForBackpressure = 0
+
     /// Cap on how much redacted output one relay POST may carry.
     /// Bounds both the edge-function payload and the damage a burst
     /// can do; excess is flushed as a second request, never dropped
@@ -183,8 +197,21 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
     public private(set) var suppressedSessions = 0
 
     /// Snapshot of the counters, for tests and diagnostics.
-    public func stats() -> (sent: Int, failed: Int, suppressed: Int) {
-        (sentBatches, failedBatches, suppressedSessions)
+    public func stats() -> (sent: Int, failed: Int, suppressed: Int, droppedForBackpressure: Int) {
+        (sentBatches, failedBatches, suppressedSessions, droppedForBackpressure)
+    }
+
+    /// Discard everything buffered for a session and forget its suppression.
+    ///
+    /// Called when consent is REVOKED. The visibility gate stops NEW chunks
+    /// immediately, but anything already sitting in `pending` would still be
+    /// POSTed by the next flush — a window of one coalescing interval plus
+    /// whatever a slow relay was holding. `unshareAttachedSession` promises
+    /// "from that instant nothing further uploads"; without this, that promise
+    /// is approximately true instead of true.
+    public func purge(sessionId: String) {
+        pending.removeValue(forKey: sessionId)
+        deniedUntil.removeValue(forKey: sessionId)
     }
 
     public init(
@@ -193,6 +220,7 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
         coalesceWindow: Duration = .milliseconds(60),
         maxBatchBytes: Int = 64 * 1024,
         maxBatchCount: Int = 64,
+        maxPendingPerSession: Int = 256,
         denialBackoff: Duration = .seconds(60),
         session: URLSession? = nil
     ) {
@@ -201,6 +229,7 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
         self.coalesceWindow = coalesceWindow
         self.maxBatchBytes = max(1024, maxBatchBytes)
         self.maxBatchCount = max(1, maxBatchCount)
+        self.maxPendingPerSession = max(1, maxPendingPerSession)
         self.denialBackoff = denialBackoff
         if let session {
             self.session = session
@@ -225,7 +254,13 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
         }
         if isDenied(sessionId) { throw SinkError.denied }
 
-        pending[sessionId, default: []].append((event: event, bytes: redactedBytes))
+        var queue = pending[sessionId] ?? []
+        if queue.count >= maxPendingPerSession {
+            queue.removeFirst()
+            droppedForBackpressure += 1
+        }
+        queue.append((event: event, bytes: redactedBytes))
+        pending[sessionId] = queue
         armFlushIfNeeded()
     }
 
@@ -272,13 +307,23 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
             pending.removeAll(keepingCapacity: true)
             for (sessionId, items) in batches {
                 if isDenied(sessionId) { continue }
+                var deniedThisPass = false
                 for group in Self.split(items, maxBytes: maxBatchBytes, maxCount: maxBatchCount) {
+                    // One denial suppresses the SESSION, so the remaining
+                    // groups of the same pass must not be sent. The `break`
+                    // that did this was lost when the permanent latch became an
+                    // expiring one: `isDenied` is checked once per session per
+                    // pass, ABOVE this loop, so without this the sink re-POSTs
+                    // and re-logs once per group for a session it has just been
+                    // told it may not write to.
+                    if deniedThisPass { break }
                     do {
                         try await send(sessionId: sessionId, items: group)
                         sentBatches += 1
                     } catch SinkError.denied {
                         deniedUntil[sessionId] = ContinuousClock.now.advanced(by: denialBackoff)
                         suppressedSessions += 1
+                        deniedThisPass = true
                         // Log the SUPPRESSION, not every dropped chunk: this is
                         // the transition an operator needs to see, and it is
                         // rate-limited by construction (once per backoff
@@ -414,7 +459,14 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
 /// `pterm:` but sent through the anon-key public sink" unrepresentable
 /// rather than merely unlikely. An unrecognized prefix is refused,
 /// not guessed.
-public struct PrivacyRoutingBroadcastSink: TerminalBroadcastSink {
+public struct PrivacyRoutingBroadcastSink: TerminalBroadcastSink, PurgeableBroadcastSink {
+
+    /// Forward a purge to whichever sink buffers. Only the private sink does.
+    public func purge(sessionId: String) async {
+        if let p = privateSink as? PurgeableBroadcastSink {
+            await p.purge(sessionId: sessionId)
+        }
+    }
 
     public enum RouteError: Error, Equatable {
         case unroutableTopic(String)

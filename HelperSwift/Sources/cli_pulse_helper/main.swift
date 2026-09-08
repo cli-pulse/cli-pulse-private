@@ -373,10 +373,17 @@ case "daemon":
             configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
         }
         let publicSink = SupabaseRealtimeBroadcastSink(configProvider: provider)
-        // R0: the `pterm:` producer, dark by default. When the gate is off the
-        // private sink is nil and the router REFUSES a `pterm:` chunk rather
-        // than downgrading it to the public topic — the whole reason routing
-        // is by topic prefix and not by a boolean argument.
+        // R0: the `pterm:` producer, dark by default.
+        //
+        // With the gate OFF the manager never routes a private chunk at all
+        // (see `privateBroadcastEnabled` below), so there is no `pterm:` chunk
+        // for anything to refuse and the router is not built. An earlier
+        // comment here claimed the router's refusal was what protected the OFF
+        // state; that was true of the first cut, which wrapped unconditionally
+        // and gated only the sink. Gating at the branch is strictly better —
+        // no redaction, no queue entry, no drop accounting — but it means the
+        // refusal is now a defence-in-depth backstop for a mis-wiring, not the
+        // mechanism. `PrivacyRoutingBroadcastSinkTests` still pins it.
         // When the gate is off the manager never routes a private chunk at
         // all (see privateBroadcastEnabled below), so the router would only
         // ever see `term:`. Keep the plain public sink in that case: one less

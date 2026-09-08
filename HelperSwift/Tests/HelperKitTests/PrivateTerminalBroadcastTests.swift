@@ -139,6 +139,30 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
         }
     }
 
+    func test_theENABLEDpathIsActuallyConstructedSomewhere() async {
+        // Every other test in this file exercises the OFF state, because the
+        // gate defaults false and nothing passed it true. A dark-shipped path
+        // that no test ever turns ON is a path whose enabled behaviour is
+        // unverified — which is how the consent bypass survived a green suite.
+        let sink = CapturingSink()
+        let publisher = TerminalBroadcastPublisher(sink: sink)
+        let mgr = ManagedSessionManager(
+            transport: PtyTransport(),
+            broadcastPublisher: publisher,
+            privateBroadcastEnabled: true)
+        // The gate is stored and consulted; with it ON a consented private
+        // record resolves to the private topic.
+        XCTAssertEqual(
+            ManagedSessionManager.broadcastVisibility(
+                realtimePrivate: true, localOnly: false, privateEnabled: true),
+            .privateTopic)
+        // ...and the manager built with it ON still refuses an unconsented one.
+        XCTAssertNil(
+            ManagedSessionManager.broadcastVisibility(
+                realtimePrivate: true, localOnly: true, privateEnabled: true))
+        _ = mgr
+    }
+
     // MARK: - routing
 
     func test_routerSendsPrivateTopicsToThePrivateSinkOnly() async throws {

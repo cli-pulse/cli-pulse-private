@@ -27,9 +27,21 @@ export function isUuid(v: unknown): v is string {
 }
 
 /** Realtime event names this relay will forward. An allowlist, not a
- *  sanitizer: the event string ends up in the broadcast envelope, and there is
- *  no legitimate third value. */
-export const ALLOWED_EVENTS = ["stdout", "stderr"] as const;
+ *  sanitizer: the event string ends up in the broadcast envelope.
+ *
+ *  ⚠️ THIS LIST MUST MATCH WHAT THE HELPER ACTUALLY EMITS, and an earlier
+ *  version did not. It read `["stdout", "stderr"]` with a comment claiming
+ *  "there is no legitimate third value" — while `publishTailSnapshot` sends
+ *  `tail_snapshot_result` through the very same sink. `parseBroadcastBody`
+ *  fails WHOLESALE on the first unrecognized event, so that batch 400'd and
+ *  took any live stdout coalesced into the same 60 ms window with it: the
+ *  reconnect snapshot never arrived AND output that used to flow was lost.
+ *
+ *  The test for this asserts against the set the HELPER emits, not against
+ *  this constant's own members — iterating ALLOWED_EVENTS to check that
+ *  ALLOWED_EVENTS is accepted is a tautology, and that is exactly what the
+ *  first version of the test did. */
+export const ALLOWED_EVENTS = ["stdout", "stderr", "tail_snapshot_result"] as const;
 export type AllowedEvent = typeof ALLOWED_EVENTS[number];
 
 export interface Chunk {
@@ -118,10 +130,13 @@ export type AuthorizeOutcome =
  * intentional 42501 RAISE is an authoritative denial (403). Any other error —
  * DB blip, PostgREST 5xx, statement timeout — is infra and maps to 500.
  *
- * The Swift sink latches a 403 into `deniedSessions` and stops sending for
- * that session until restart. Misreporting an infra blip as 403 would
- * therefore black out a healthy private terminal until the helper restarts,
- * which is exactly the failure the token function already paid for once.
+ * The Swift sink SUPPRESSES a session on 403 for a bounded backoff window
+ * (`denialBackoff`, 60 s) and retries after it. Misreporting an infra blip as
+ * 403 therefore costs a minute of a healthy private terminal rather than
+ * everything until restart — an earlier version of both this comment and that
+ * sink described a PERMANENT latch, which is why the distinction was written
+ * so emphatically. The rule is unchanged and still worth keeping: only the
+ * intentional 42501 is a denial.
  */
 export function classifyAuthorizeResult(
   data: unknown,

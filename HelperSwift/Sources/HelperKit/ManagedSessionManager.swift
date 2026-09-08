@@ -909,6 +909,22 @@ public final class ManagedSessionManager: @unchecked Sendable {
         if let expectedEpoch, rec.attachEpoch != expectedEpoch { return nil }
         let was = rec.cloudShared
         rec.cloudShared = shared
+        if !shared {
+            // REVOKE. The visibility gate stops NEW chunks the instant
+            // `cloudShared` flips, but anything already buffered in the relay
+            // sink would still be POSTed by its next flush — one coalescing
+            // window, plus whatever a slow relay was holding. Drop it.
+            //
+            // Fire-and-forget on purpose: this method holds `lock` and returns
+            // a value callers act on synchronously, so it must not await. The
+            // race that leaves is benign in the safe direction — the purge can
+            // only run after the flag is already false, so the gate has already
+            // stopped new chunks; the purge only shortens the tail.
+            if let publisher = broadcastPublisher {
+                let sid = sessionId
+                Task { await publisher.purge(sessionId: sid) }
+            }
+        }
         return CloudShareChange(provider: rec.provider, clientLabel: rec.clientLabel, previouslyShared: was)
     }
 

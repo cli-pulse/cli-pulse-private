@@ -259,6 +259,73 @@ final class EdgeRelayPrivateBroadcastSinkTests: XCTestCase {
         XCTAssertEqual(st.failed, 1)
     }
 
+    func test_aDenialStopsTheSessionsRemainingGroupsInTheSamePass() async {
+        // The `break` that did this was lost when the permanent latch became an
+        // expiring one. `isDenied` is checked once per session per pass, ABOVE
+        // the group loop, so without it the sink re-POSTs and re-logs once per
+        // group for a session it was just told it may not write to.
+        rec.status = 403
+        // maxBatchCount 1 => one group per chunk, so a missing break is visible
+        // as extra requests.
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [InterceptProtocol.self]
+        let sink = EdgeRelayPrivateBroadcastSink(
+            configProvider: { Self.cloud },
+            coalesceWindow: .milliseconds(1),
+            maxBatchCount: 1,
+            session: URLSession(configuration: cfg))
+        for i in 1...5 { await publish(sink, "sid-1", "c\(i)") }
+        await sink.flushNow()
+        XCTAssertEqual(rec.urls.count, 1,
+                       "one denial must stop the remaining groups of the same pass")
+        let st = await sink.stats()
+        XCTAssertEqual(st.suppressed, 1, "and must be counted once, not once per group")
+    }
+
+    func test_pendingIsBoundedSoASuppressedSessionCannotGrowWithoutLimit() async {
+        // This buffer is the ONE queue the publisher's drop-oldest bound cannot
+        // reach: `publish` returns as soon as it appends here, so the publisher
+        // considers the chunk delivered.
+        rec.status = 403
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [InterceptProtocol.self]
+        let sink = EdgeRelayPrivateBroadcastSink(
+            configProvider: { Self.cloud },
+            coalesceWindow: .seconds(60),   // never fires during the test
+            maxPendingPerSession: 8,
+            session: URLSession(configuration: cfg))
+        for i in 1...40 { await publish(sink, "sid-1", "c\(i)") }
+        let st = await sink.stats()
+        XCTAssertEqual(st.droppedForBackpressure, 32,
+                       "excess must be dropped at the buffer, not accumulated")
+    }
+
+    func test_purgeDropsTheBufferedTailOnRevoke() async {
+        let sink = makeSink(coalesce: .seconds(60))  // nothing flushes on its own
+        for i in 1...5 { await publish(sink, "sid-1", "c\(i)") }
+        await publish(sink, "sid-2", "keep")
+        await sink.purge(sessionId: "sid-1")
+        await sink.flushNow()
+        XCTAssertEqual(rec.bodies.compactMap { $0["session_id"] as? String }, ["sid-2"],
+                       "a revoked session's buffered tail must not be POSTed")
+        XCTAssertEqual(rec.flatChunks, [Data("keep".utf8).base64EncodedString()])
+    }
+
+    func test_tailSnapshotEventSurvivesTheRelayContract() async {
+        // The relay's allowlist rejected `tail_snapshot_result` wholesale with
+        // 400, which also destroyed any stdout coalesced into the same batch.
+        // Pin the event name the helper actually emits on this wire.
+        let sink = makeSink(coalesce: .milliseconds(50))
+        try? await sink.publish(sessionId: "sid-1", channel: "pterm:sid-1",
+                                event: "tail_snapshot_result",
+                                redactedBytes: Data("snap".utf8))
+        await publish(sink, "sid-1", "live")
+        await sink.flushNow()
+        let events = (rec.bodies.first?["chunks"] as? [[String: Any]] ?? [])
+            .compactMap { $0["event"] as? String }
+        XCTAssertEqual(events, ["tail_snapshot_result", "stdout"])
+    }
+
     func test_oneSessionsDenialDoesNotSuppressAnother() async {
         rec.status = 403
         let sink = makeSink(coalesce: .milliseconds(1), denialBackoff: .seconds(60))

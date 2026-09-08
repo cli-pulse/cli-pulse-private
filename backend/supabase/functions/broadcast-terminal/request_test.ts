@@ -40,6 +40,27 @@ Deno.test("parse: rejects malformed envelopes", () => {
   for (const b of bad) assertEquals(parseBroadcastBody(b).ok, false);
 });
 
+/** The event names the Swift helper actually puts on this wire.
+ *
+ *  Hard-coded ON PURPOSE, not derived from ALLOWED_EVENTS. The previous test
+ *  iterated the constant to prove the constant was accepted — a tautology that
+ *  passed while `tail_snapshot_result` (emitted by
+ *  ManagedSessionManager.publishTailSnapshot, via
+ *  TerminalBroadcastPublisher.submit's `channel:` -> envelope `event`) was
+ *  being rejected with a 400. If the helper gains an event, add it HERE and
+ *  watch this fail before widening ALLOWED_EVENTS. */
+const EMITTED_BY_HELPER = ["stdout", "stderr", "tail_snapshot_result"];
+
+Deno.test("parse: accepts every event the helper actually emits", () => {
+  for (const ev of EMITTED_BY_HELPER) {
+    assertEquals(
+      parseBroadcastBody(ok({ chunks: [{ event: ev, data_b64: "aGk=" }] })).ok,
+      true,
+      `the helper emits ${ev}; rejecting it 400s the whole batch, taking co-batched stdout with it`,
+    );
+  }
+});
+
 Deno.test("parse: event is an allowlist, not a sanitizer", () => {
   for (const ev of ALLOWED_EVENTS) {
     assertEquals(parseBroadcastBody(ok({ chunks: [{ event: ev, data_b64: "aGk=" }] })).ok, true);

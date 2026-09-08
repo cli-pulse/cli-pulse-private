@@ -51,6 +51,15 @@ public enum TerminalBroadcastVisibility: String, Sendable, Equatable, CaseIterab
     }
 }
 
+/// A sink that buffers, and can therefore be told to forget a session.
+///
+/// Separate from `TerminalBroadcastSink` because most sinks do not buffer —
+/// the public sink POSTs synchronously inside `publish`, so it has nothing to
+/// purge and should not be forced to implement a no-op.
+public protocol PurgeableBroadcastSink: Sendable {
+    func purge(sessionId: String) async
+}
+
 public protocol TerminalBroadcastSink: Sendable {
     /// Hand off ONE already-redacted chunk to wherever the chunk
     /// goes (Supabase channel POST / WebSocket frame / log line).
@@ -190,6 +199,20 @@ public actor TerminalBroadcastPublisher {
         // drain task progress.
         while draining || !queue.isEmpty {
             await Task.yield()
+        }
+    }
+
+    /// Drop everything buffered for a session, here and in the sink.
+    ///
+    /// Called on consent REVOCATION. The publisher's own queue is shared
+    /// across sessions, so it is filtered rather than cleared — dropping
+    /// another session's chunks would be a bug of its own.
+    public func purge(sessionId: String) async {
+        let before = queue.count
+        queue.removeAll { $0.sessionId == sessionId }
+        droppedSinceStart += before - queue.count
+        if let purgeable = sink as? PurgeableBroadcastSink {
+            await purgeable.purge(sessionId: sessionId)
         }
     }
 

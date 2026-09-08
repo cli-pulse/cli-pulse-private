@@ -100,9 +100,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   );
   const outcome = classifyAuthorizeResult(data, error);
   if (!outcome.authorized) {
-    // 500 = infra trouble, NOT a denial. The Swift sink latches a 403 into
-    // `deniedSessions` and stops sending until the helper restarts, so a
-    // misreported blip would black out a healthy terminal.
+    // 500 = infra trouble, NOT a denial. The Swift sink suppresses a session
+    // for a bounded backoff on 403, so a misreported blip costs a minute of a
+    // healthy terminal.
     if (outcome.status === 500) {
       console.error(
         `broadcast-terminal: authorize errored (infra) session=${session_id}`,
@@ -167,8 +167,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     );
     // Map to 502, NOT to the upstream status: a 403 from Realtime is an
     // infrastructure/config problem on OUR side (service key, topic shape), not
-    // an authorization denial for this device — and 403 is the one status the
-    // Swift sink treats as permanent.
+    // an authorization denial for this device — and 403 is the one status that
+    // suppresses the session on the helper side.
     return json(502, { error: "broadcast rejected upstream" });
   }
 
