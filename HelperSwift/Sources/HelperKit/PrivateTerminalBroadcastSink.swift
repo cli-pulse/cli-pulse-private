@@ -324,12 +324,28 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroa
         while !pending.isEmpty {
             let batches = pending
             pending.removeAll(keepingCapacity: true)
+            // Capture EVERY session's generation here, beside the snapshot,
+            // before the pass's first suspension.
+            //
+            // Capturing per-session inside the loop below looks equivalent and
+            // is not: only the session iterated FIRST gets a pre-suspension
+            // read. Every later one is captured after a previous session's
+            // `await send(...)` released the actor, so a purge landing in that
+            // window is ALREADY reflected in its baseline — the barrier then
+            // compares a post-purge value against itself and can never fire.
+            // Measured at that version: two sessions, both purged mid-flush,
+            // 6 POSTs of which 5 landed after the revoke.
+            //
+            // Worse, which session is "first" is Dictionary iteration order, so
+            // the protected one was nondeterministic. And the global kill
+            // switch (`revokeAllCloudShares`) is multi-session by definition —
+            // the exact path this barrier was added for.
+            let gensAtSnapshot = batches.keys.reduce(into: [String: Int?]()) {
+                $0[$1] = purgeGen[$1]
+            }
             for (sessionId, items) in batches {
                 if isDenied(sessionId) { continue }
-                // Captured BEFORE the first suspension, re-checked before every
-                // send. A change means the session was purged mid-flush and
-                // this batch must be abandoned, not delivered.
-                let purgeAtEntry = purgeGen[sessionId]
+                let purgeAtEntry = gensAtSnapshot[sessionId] ?? nil
                 var deniedThisPass = false
                 for group in Self.split(items, maxBytes: maxBatchBytes, maxCount: maxBatchCount) {
                     // One denial suppresses the SESSION, so the remaining

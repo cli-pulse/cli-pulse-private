@@ -330,6 +330,36 @@ final class EdgeRelayPrivateBroadcastSinkTests: XCTestCase {
             "a revoke must abandon the rest of the tail, not deliver it — got \(rec.urls.count) POSTs")
     }
 
+    func test_purgeStopsEVERYSessionsTailNotJustTheFirstIterated() async {
+        // The single-session test above passes even when the barrier is armed
+        // AFTER a purge, because the first-iterated session is the one case a
+        // late capture still protects — and which session that is, is
+        // Dictionary iteration order. The global kill switch
+        // (`revokeAllCloudShares`) is multi-session by definition, so this is
+        // the shape that actually matters. Measured with the late capture:
+        // 6 POSTs, 5 of them after both purges.
+        rec.delayMs = 120
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [InterceptProtocol.self]
+        let sink = EdgeRelayPrivateBroadcastSink(
+            configProvider: { Self.cloud },
+            coalesceWindow: .milliseconds(1),
+            maxBatchCount: 1,
+            session: URLSession(configuration: cfg))
+        for i in 1...5 {
+            await publish(sink, "sid-1", "a\(i)")
+            await publish(sink, "sid-2", "b\(i)")
+        }
+        try? await Task.sleep(for: .milliseconds(60))
+        // Exactly what revokeAllCloudShares' Task does.
+        await sink.purge(sessionId: "sid-1")
+        await sink.purge(sessionId: "sid-2")
+        try? await Task.sleep(for: .milliseconds(900))
+        XCTAssertLessThanOrEqual(
+            rec.urls.count, 2,
+            "a global revoke must abandon EVERY session's tail, not just one — got \(rec.urls.count) POSTs")
+    }
+
     func test_purgeDropsTheBufferedTailOnRevoke() async {
         let sink = makeSink(coalesce: .seconds(60))  // nothing flushes on its own
         for i in 1...5 { await publish(sink, "sid-1", "c\(i)") }

@@ -139,41 +139,74 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
         }
     }
 
-    func test_theENABLEDpathIsActuallyConstructedSomewhere() async {
-        // Every other test in this file exercises the OFF state, because the
-        // gate defaults false and nothing passed it true. A dark-shipped path
-        // that no test ever turns ON is a path whose enabled behaviour is
-        // unverified — which is how the consent bypass survived a green suite.
-        let sink = CapturingSink()
-        let publisher = TerminalBroadcastPublisher(sink: sink)
-        let mgr = ManagedSessionManager(
-            transport: PtyTransport(),
-            broadcastPublisher: publisher,
-            privateBroadcastEnabled: true)
+    /// tmux, resolved once. The attach path needs a real tmux server — the
+    /// same dependency `WrappedSessionVerbsTests` already carries — because
+    /// `sessions` is private and `startSession` spawns a real CLI, so there is
+    /// no way to a live record without it.
+    private static let tmuxBin: String? = {
+        for p in ["/opt/homebrew/bin/tmux", "/usr/local/bin/tmux", "/usr/bin/tmux"]
+        where FileManager.default.isExecutableFile(atPath: p) { return p }
+        return nil
+    }()
 
-        // Exercise the INSTANCE, not the static function the truth table
-        // already covers. An earlier version of this test built all three
-        // objects and then discarded them (`_ = mgr`), asserting only on the
-        // pure function — so it proved the gate compiles, not that it is
-        // wired. publishTailSnapshot is the reachable instance path that
-        // consults `privateBroadcastEnabled`.
+    func test_theInstanceGateIsWiredNotJustStored() throws {
+        // The one test whose job is to prove `privateBroadcastEnabled` is
+        // CONSULTED rather than merely stored, and two earlier attempts could
+        // not do it. The first built a manager and discarded it, asserting only
+        // the static function. The second drove `publishTailSnapshot` on an
+        // UNKNOWN session, where both gate states return false before the gate
+        // is ever read — mutating the call site to a hardcoded `true` left all
+        // 794 tests green.
         //
-        // Unknown session => nil record => nil visibility => refuses, without
-        // needing a live PTY. That pins the fail-closed edge of the wiring.
-        let refusedUnknown = await mgr.publishTailSnapshot(
-            sessionId: "no-such-session", maxBytes: 1024)
-        XCTAssertFalse(refusedUnknown)
-        XCTAssertTrue(sink.topics.isEmpty, "an unknown session must publish nothing")
+        // This aims at `resolvedBroadcastVisibility`, the instance method both
+        // real call sites share, with a REAL attached record.
+        guard let bin = Self.tmuxBin else {
+            throw XCTSkip("tmux not available — this assertion needs a live record")
+        }
+        let sockDir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("gatewire-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: sockDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sockDir) }
+        let sock = sockDir.appendingPathComponent("s.sock").path
 
-        // And a manager built with the gate OFF must refuse the same call for
-        // the same reason, so the assertion above cannot pass for the wrong one.
-        let off = ManagedSessionManager(
-            transport: PtyTransport(),
-            broadcastPublisher: publisher,
-            privateBroadcastEnabled: false)
-        let refusedOff = await off.publishTailSnapshot(
-            sessionId: "no-such-session", maxBytes: 1024)
-        XCTAssertFalse(refusedOff)
+        func makeManager(gate: Bool, tmux: String) throws -> ManagedSessionManager {
+            let m = ManagedSessionManager(
+                transport: PtyTransport(),
+                broadcastPublisher: TerminalBroadcastPublisher(sink: CapturingSink()),
+                privateBroadcastEnabled: gate)
+            let owner = TmuxTransport(socketPath: sock, tmuxBin: tmux)
+            let oh = try owner.start(sessionId: "clipulse-claude-gate-\(gate)", argv: ["cat"])
+            addTeardownBlock { owner.close(oh) }
+            // Attached => realtimePrivate: true, cloudShared: false (M4.4d).
+            XCTAssertTrue(m.attachWrappedSession(
+                sessionId: "s-gate",
+                tmuxSessionName: "clipulse-claude-gate-\(gate)",
+                tmuxBin: tmux, socketPath: sock))
+            addTeardownBlock { m.shutdown() }
+            return m
+        }
+
+        let on = try makeManager(gate: true, tmux: bin)
+        let off = try makeManager(gate: false, tmux: bin)
+
+        // Not yet consented: BOTH mute, for the consent reason.
+        XCTAssertNil(on.resolvedBroadcastVisibility(sessionId: "s-gate"))
+        XCTAssertNil(off.resolvedBroadcastVisibility(sessionId: "s-gate"))
+
+        // Consent granted: the gate is now the ONLY difference between these
+        // two managers, so this pair discriminates ON from OFF. Mutating the
+        // call site's `privateEnabled:` to a constant makes it fail.
+        _ = on.setCloudShared("s-gate", true)
+        _ = off.setCloudShared("s-gate", true)
+        XCTAssertEqual(on.resolvedBroadcastVisibility(sessionId: "s-gate"), .privateTopic,
+                       "gate ON + consented => the private topic")
+        XCTAssertNil(off.resolvedBroadcastVisibility(sessionId: "s-gate"),
+                     "gate OFF must mute even a consented private session")
+
+        // Revoking puts it back, so consent is re-read live rather than
+        // captured at attach.
+        _ = on.setCloudShared("s-gate", false)
+        XCTAssertNil(on.resolvedBroadcastVisibility(sessionId: "s-gate"))
     }
 
     // MARK: - routing

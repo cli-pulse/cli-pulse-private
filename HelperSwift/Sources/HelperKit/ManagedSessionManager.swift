@@ -321,6 +321,27 @@ public final class ManagedSessionManager: @unchecked Sendable {
         }
     }
 
+    /// Resolve a LIVE session's visibility using THIS manager's gate and the
+    /// record's current consent. Takes `lock` itself.
+    ///
+    /// Exists so the instance wiring is reachable from a test. The static above
+    /// is pure and fully covered by a truth table, but covering it proves
+    /// nothing about whether `privateBroadcastEnabled` is actually consulted at
+    /// the call sites — and a test aimed at `publishTailSnapshot` could not
+    /// tell the gate states apart either, because both return false on the
+    /// empty-buffer check further down. Measured: mutating
+    /// `privateEnabled: privateBroadcastEnabled` to a hardcoded `true` left the
+    /// entire 794-test suite green. This method is what makes that mutation
+    /// detectable, which is the only reason it exists.
+    func resolvedBroadcastVisibility(sessionId: String) -> TerminalBroadcastVisibility? {
+        lock.lock(); defer { lock.unlock() }
+        guard let rec = sessions[sessionId] else { return nil }
+        return ManagedSessionManager.broadcastVisibility(
+            realtimePrivate: rec.realtimePrivate,
+            localOnly: isLocalOnly(rec),
+            privateEnabled: privateBroadcastEnabled)
+    }
+
     /// M4.4d: how an op treats an ATTACHED wrapped (external) session.
     ///
     /// Replaces #362's `refuseAttached: Bool`, which could only express
@@ -1186,16 +1207,9 @@ public final class ManagedSessionManager: @unchecked Sendable {
         // recovery path.
         //
         // A gone session → nil record → nil visibility → muted, as before.
-        lock.lock()
-        let rec = sessions[sessionId]
-        let visibility = rec.flatMap {
-            ManagedSessionManager.broadcastVisibility(
-                realtimePrivate: $0.realtimePrivate,
-                localOnly: isLocalOnly($0),
-                privateEnabled: privateBroadcastEnabled)
+        guard let visibility = resolvedBroadcastVisibility(sessionId: sessionId) else {
+            return false
         }
-        lock.unlock()
-        guard let visibility else { return false }
         guard let snapshot = getTailSnapshot(sessionId: sessionId, maxBytes: maxBytes) else {
             return false
         }
