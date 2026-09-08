@@ -153,6 +153,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // reaches a subscriber. So `resp.ok` proves the request was accepted, not
   // that anyone received it. The authorization that actually means something
   // happened above, against the database.
+  // Drain the body so the connection can be reused. Deno keeps an unread
+  // response body's stream open, and this function runs once per coalesced
+  // batch — leaking a stream per call is a slow resource leak in the hottest
+  // path we have. We deliberately do not LOG the body (it can carry
+  // internals); reading and discarding is not the same as echoing.
+  try { await resp.arrayBuffer(); } catch { /* already closed */ }
+
   if (!resp.ok) {
     // Never echo the Realtime body — it can carry internals. Status only.
     console.error(

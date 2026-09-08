@@ -59,6 +59,22 @@ class HelperConfig:
     # dropping it. Authoritative reader is Swift's
     # HelperConfigStore.remoteRealtimeEnabled.
     remote_realtime_enabled: bool = True
+    # R0 (2026-09-08): gate for the SWIFT helper's PRIVATE `pterm:` producer,
+    # which relays through the `broadcast-terminal` edge function. Like
+    # `remote_realtime_enabled` above, the Python helper never reads this — the
+    # field exists ONLY so `save_config()` round-trips the key instead of
+    # dropping it on the floor.
+    #
+    # That is not hypothetical tidiness. `load_config` filters `data` against
+    # this dataclass's field names ("Accept only known fields"), and every save
+    # rewrites the whole file, so a key Python does not know about is DELETED
+    # the next time anything touches the config — pairing, a Local Control
+    # toggle, anything. Without this line the Swift-side flag could be set by
+    # hand and would silently vanish, which is indistinguishable from the
+    # feature not working. Defaults FALSE to match
+    # HelperConfigStore.privateTerminalBroadcastEnabled; the authoritative
+    # reader is Swift.
+    remote_private_terminal_broadcast_enabled: bool = False
     # R0 (B2/S3): gate for the PYTHON helper's terminal-broadcast producer
     # (realtime_broadcast.TerminalBroadcastPublisher). DISTINCT from
     # `remote_realtime_enabled` above on purpose.

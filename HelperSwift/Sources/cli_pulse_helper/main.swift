@@ -366,6 +366,7 @@ case "daemon":
     let pairingWithoutContainer: () -> AppGroupConfigReader.AppPairing? = { nil }
 
     let bootCloudCfg = configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
+    let privateBroadcastOn = configStore.privateTerminalBroadcastEnabled
     let broadcastPublisher: TerminalBroadcastPublisher?
     if bootCloudCfg.isPaired && configStore.remoteRealtimeEnabled {
         let provider: @Sendable () -> HelperConfigStore.CloudConfig = {
@@ -376,12 +377,16 @@ case "daemon":
         // private sink is nil and the router REFUSES a `pterm:` chunk rather
         // than downgrading it to the public topic — the whole reason routing
         // is by topic prefix and not by a boolean argument.
+        // When the gate is off the manager never routes a private chunk at
+        // all (see privateBroadcastEnabled below), so the router would only
+        // ever see `term:`. Keep the plain public sink in that case: one less
+        // wrapper on the path that has shipped since v1.25, and the routing
+        // sink's refusal branch stays reachable only where it means something.
         let privateSink: (any TerminalBroadcastSink)? =
-            configStore.privateTerminalBroadcastEnabled
-                ? EdgeRelayPrivateBroadcastSink(configProvider: provider)
-                : nil
-        let sink = PrivacyRoutingBroadcastSink(
-            publicSink: publicSink, privateSink: privateSink)
+            privateBroadcastOn ? EdgeRelayPrivateBroadcastSink(configProvider: provider) : nil
+        let sink: any TerminalBroadcastSink = privateSink.map {
+            PrivacyRoutingBroadcastSink(publicSink: publicSink, privateSink: $0)
+        } ?? publicSink
         broadcastPublisher = TerminalBroadcastPublisher(sink: sink)
         FileHandle.standardError.write(Data(
             ("cli_pulse_helper (Swift): terminal Broadcast publisher active "
@@ -403,7 +408,11 @@ case "daemon":
         registry: registry,
         broker: broker,
         getHelperArgv0: { ExecutablePath.current() },
-        broadcastPublisher: broadcastPublisher
+        broadcastPublisher: broadcastPublisher,
+        // Off ⇒ the drain loop does not redact, enqueue, or account for a
+        // private session's output at all. "Dark" has to mean the path is not
+        // taken, not that its last hop is nil.
+        privateBroadcastEnabled: privateBroadcastOn
     )
     // M4.4d: late-bound because RemoteAgentCloud is built AFTER the server, and
     // only when the helper is paired. Stays inert (verb → not_implemented) until

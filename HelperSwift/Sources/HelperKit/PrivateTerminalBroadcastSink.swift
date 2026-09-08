@@ -1,6 +1,23 @@
 import Foundation
 
-/// R0 — the `pterm:` producer the Swift helper has been missing.
+/// R0 — the `pterm:` producer the SWIFT helper has been missing.
+///
+/// ⚠️ "Missing" is true of the Swift helper and FALSE of the repo. A complete
+/// `pterm:` producer already ships in `helper/realtime_broadcast.py` (the
+/// separately-installed Python .pkg), gated by
+/// `remote_realtime_broadcast_enabled`, which has DEFAULTED ON since helper
+/// 1.24.0. It takes v0.65's direct path: mint a token, POST to
+/// `/realtime/v1/api/broadcast`. Measured 2026-09-08, that path cannot have
+/// delivered a byte since at least 2026-08-30 — `r0_broadcast` holds no INSERT
+/// on `realtime.messages`, so Realtime's write-side check refuses it, and the
+/// endpoint returns 202 either way (see "Measured, not assumed" below). Its
+/// failures are invisible for the same reason this sink's would be.
+///
+/// This file does NOT change, disable, or fix that producer. Two producers for
+/// one topic is a state to resolve, not to leave — but resolving it means
+/// deciding whether the Python helper keeps a terminal path at all, which is
+/// a larger question than this change. Recorded here so the next reader does
+/// not rediscover it as a surprise.
 ///
 /// ## Why this is not just `SupabaseRealtimeBroadcastSink` with a
 /// ## different topic string
@@ -82,12 +99,24 @@ import Foundation
 /// ## Coalescing
 ///
 /// Every POST here costs one edge-function invocation, unlike the
-/// public sink's direct hop. A chatty PTY would otherwise turn one
-/// terminal into hundreds of invocations a minute, so this sink
-/// batches: chunks that arrive within `coalesceWindow` are sent as
-/// one request carrying an ordered array. The Python producer
-/// (`helper/realtime_broadcast.py`) uses the same ~60 ms window for
-/// the same reason.
+/// public sink's direct hop, so this sink batches: chunks arriving
+/// within `coalesceWindow` go out as one ordered array.
+///
+/// Be honest about how much that buys, because the window was copied
+/// from the Python producer without checking it against THIS
+/// producer's cadence. `ManagedSessionManager.drainIntervalMs` is 50,
+/// so a busy session hands us at most ~20 chunks/s. A 60 ms window
+/// against a 50 ms arrival rate coalesces roughly 2 chunks, so a
+/// continuously-chatty session still costs on the order of 10
+/// requests/s — not the order-of-magnitude reduction "coalescing"
+/// suggests. What actually bounds the cost today is that this ships
+/// dark and applies only to shared attached sessions.
+///
+/// The single-flight latch below helps more than the window does: while
+/// a POST is in flight every arriving chunk accumulates, so under real
+/// latency the effective batch grows to whatever arrives during one
+/// round trip. Raising `coalesceWindow` is the knob if invocation count
+/// ever matters; the ordering guarantee does not depend on it.
 ///
 /// ## What this sink must never do
 ///
@@ -119,28 +148,47 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
     /// can do; excess is flushed as a second request, never dropped
     /// here (drop policy belongs to the publisher).
     public let maxBatchBytes: Int
+    /// Must not exceed the relay's `MAX_CHUNKS`. The server rejects an
+    /// oversized batch WHOLESALE with 400, so a client-side bound that
+    /// did not match would turn a burst into total loss for that batch
+    /// rather than into two requests.
+    public let maxBatchCount: Int
+    /// How long a 403 suppresses a session. NOT permanent: the denial
+    /// is genuinely user-reversible (an attached session is authorized
+    /// only after `set_wrapped_session_cloud_shared`, and Remote
+    /// Control can be switched off and back on), so latching forever
+    /// would kill the mirror for the exact flow this exists to serve.
+    public let denialBackoff: Duration
 
     private let configProvider: @Sendable () -> HelperConfigStore.CloudConfig
     private let session: URLSession
-    /// Sessions whose relay returned an authoritative 403. Cleared
-    /// only by a helper restart or a new pairing — retrying a denied
-    /// session every 60 ms would hammer the edge function for output
-    /// nobody is allowed to receive.
-    private var deniedSessions: Set<String> = []
+    /// Sessions suppressed until an instant, after a 403. Bounded in
+    /// time rather than permanent — see `denialBackoff`.
+    private var deniedUntil: [String: ContinuousClock.Instant] = [:]
     private var pending: [String: [(event: String, bytes: Data)]] = [:]
     private var flushTask: Task<Void, Never>?
+    /// Single-flight latch. An actor is REENTRANT across `await`, so
+    /// without this a chunk arriving during an in-flight POST arms a
+    /// second flush that issues a CONCURRENT POST for the same
+    /// session — and terminal output arriving out of order is
+    /// corruption, not just lateness.
+    private var flushing = false
 
     public init(
         configProvider: @escaping @Sendable () -> HelperConfigStore.CloudConfig,
         requestTimeout: TimeInterval = 2.5,
         coalesceWindow: Duration = .milliseconds(60),
         maxBatchBytes: Int = 64 * 1024,
+        maxBatchCount: Int = 64,
+        denialBackoff: Duration = .seconds(60),
         session: URLSession? = nil
     ) {
         self.configProvider = configProvider
         self.requestTimeout = requestTimeout
         self.coalesceWindow = coalesceWindow
         self.maxBatchBytes = max(1024, maxBatchBytes)
+        self.maxBatchCount = max(1, maxBatchCount)
+        self.denialBackoff = denialBackoff
         if let session {
             self.session = session
         } else {
@@ -162,14 +210,30 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
         guard channel.hasPrefix(TerminalBroadcastVisibility.privateTopic.topicPrefix) else {
             throw SinkError.wrongTopic(channel)
         }
-        if deniedSessions.contains(sessionId) { throw SinkError.denied }
+        if isDenied(sessionId) { throw SinkError.denied }
 
         pending[sessionId, default: []].append((event: event, bytes: redactedBytes))
-        if flushTask == nil {
-            flushTask = Task { [coalesceWindow] in
-                try? await Task.sleep(for: coalesceWindow)
-                await self.flush()
-            }
+        armFlushIfNeeded()
+    }
+
+    private func isDenied(_ sessionId: String) -> Bool {
+        guard let until = deniedUntil[sessionId] else { return false }
+        if ContinuousClock.now >= until {
+            deniedUntil.removeValue(forKey: sessionId)   // bounded: expires
+            return false
+        }
+        return true
+    }
+
+    /// Arm the coalescing timer, unless one is already armed or there is
+    /// nothing to send. Called after every append AND at the end of a
+    /// flush, so a chunk that arrived while a POST was in flight cannot
+    /// be stranded until the next unrelated `publish`.
+    private func armFlushIfNeeded() {
+        guard flushTask == nil, !pending.isEmpty else { return }
+        flushTask = Task { [coalesceWindow] in
+            try? await Task.sleep(for: coalesceWindow)
+            await self.flush()
         }
     }
 
@@ -182,38 +246,60 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
 
     private func flush() async {
         flushTask = nil
-        let batches = pending
-        pending.removeAll(keepingCapacity: true)
-        for (sessionId, items) in batches {
-            if deniedSessions.contains(sessionId) { continue }
-            for group in Self.split(items, maxBytes: maxBatchBytes) {
-                do {
-                    try await send(sessionId: sessionId, items: group)
-                } catch SinkError.denied {
-                    deniedSessions.insert(sessionId)
-                    break
-                } catch {
-                    // Transport/5xx: the chunk is gone. The publisher's
-                    // drop accounting and the phone's reconnect
-                    // tail-snapshot are the recovery path; retrying here
-                    // would back-pressure the PTY drain loop.
+        // SINGLE FLIGHT. Everything below the first `await` runs with actor
+        // isolation held, so this check-and-set is atomic. If a flush is
+        // already draining, it will pick up whatever we just appended on its
+        // next loop iteration — and if it happens to be past that point, the
+        // `armFlushIfNeeded()` at its tail re-arms us.
+        if flushing { armFlushIfNeeded(); return }
+        flushing = true
+
+        while !pending.isEmpty {
+            let batches = pending
+            pending.removeAll(keepingCapacity: true)
+            for (sessionId, items) in batches {
+                if isDenied(sessionId) { continue }
+                for group in Self.split(items, maxBytes: maxBatchBytes, maxCount: maxBatchCount) {
+                    do {
+                        try await send(sessionId: sessionId, items: group)
+                    } catch SinkError.denied {
+                        deniedUntil[sessionId] = ContinuousClock.now.advanced(by: denialBackoff)
+                        break
+                    } catch {
+                        // Transport/5xx: the chunk is gone. The publisher's
+                        // drop accounting and the phone's reconnect
+                        // tail-snapshot are the recovery path; retrying here
+                        // would back-pressure the PTY drain loop.
+                    }
                 }
             }
         }
+
+        flushing = false
+        armFlushIfNeeded()
     }
 
-    /// Split an ordered run of chunks into batches no larger than
-    /// `maxBytes`, preserving order. A single chunk larger than the
-    /// cap becomes its own batch rather than being silently truncated.
+    /// Split an ordered run of chunks into batches bounded by BOTH
+    /// `maxBytes` and `maxCount`, preserving order. A single chunk
+    /// larger than the byte cap becomes its own batch rather than
+    /// being silently truncated.
+    ///
+    /// The count bound is not decoration: the relay rejects a batch of
+    /// more than `MAX_CHUNKS` (64) entries WHOLESALE with 400, so a
+    /// client that bounded only bytes would turn a burst of small
+    /// chunks — the common case for a chatty PTY — into total loss for
+    /// that batch. The two constants must stay in step; the relay's is
+    /// `MAX_CHUNKS` in broadcast-terminal/request.ts.
     static func split(
         _ items: [(event: String, bytes: Data)],
-        maxBytes: Int
+        maxBytes: Int,
+        maxCount: Int
     ) -> [[(event: String, bytes: Data)]] {
         var out: [[(event: String, bytes: Data)]] = []
         var cur: [(event: String, bytes: Data)] = []
         var size = 0
         for item in items {
-            if !cur.isEmpty && size + item.bytes.count > maxBytes {
+            if !cur.isEmpty && (size + item.bytes.count > maxBytes || cur.count >= maxCount) {
                 out.append(cur); cur = []; size = 0
             }
             cur.append(item)
@@ -267,10 +353,20 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink {
         guard let http = response as? HTTPURLResponse else {
             throw SinkError.transport("non-HTTP response")
         }
-        // 403 is the RPC's authoritative 42501 denial. 5xx is infra —
-        // the edge function maps a DB blip to 500 on purpose so this
-        // side does not latch a healthy session into `deniedSessions`.
-        if http.statusCode == 403 || http.statusCode == 401 {
+        // 403 is the RPC's authoritative 42501 denial, and the ONLY status
+        // that suppresses a session. 5xx is infra — the edge function maps a
+        // DB blip to 500 on purpose so this side does not suppress a healthy
+        // session.
+        //
+        // 401 is deliberately NOT a denial, though an earlier cut treated it
+        // as one. The relay never emits 401: `classifyAuthorizeResult` yields
+        // only 403 or 500, and the handler returns 400/403/405/500/502. A 401
+        // can only come from the gateway — a wrong or rotated anon key — which
+        // is a GLOBAL configuration fault affecting every session equally, not
+        // a statement about this one. Suppressing per-session on it would
+        // silently mark each session denied in turn while the real fault went
+        // unreported.
+        if http.statusCode == 403 {
             throw SinkError.denied
         }
         if !(200..<300).contains(http.statusCode) {

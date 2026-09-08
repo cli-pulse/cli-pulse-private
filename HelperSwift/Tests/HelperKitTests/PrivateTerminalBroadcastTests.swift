@@ -77,15 +77,66 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
 
     // MARK: - the fail-closed gate
 
+    private func vis(_ p: Bool?, localOnly: Bool = false, enabled: Bool = true)
+        -> TerminalBroadcastVisibility?
+    {
+        ManagedSessionManager.broadcastVisibility(
+            realtimePrivate: p, localOnly: localOnly, privateEnabled: enabled)
+    }
+
     func test_unknownPrivacyIsMutedOnBothTopics() {
-        // nil is the whole reason broadcastVisibility is three-valued.
-        XCTAssertNil(ManagedSessionManager.broadcastVisibility(realtimePrivate: nil))
-        XCTAssertEqual(ManagedSessionManager.broadcastVisibility(realtimePrivate: true), .privateTopic)
-        XCTAssertEqual(ManagedSessionManager.broadcastVisibility(realtimePrivate: false), .publicTopic)
-        // And the old gate keeps its exact meaning: PUBLIC only for `false`.
+        XCTAssertNil(vis(nil))
+        XCTAssertEqual(vis(true), .privateTopic)
+        XCTAssertEqual(vis(false), .publicTopic)
+        // The old gate keeps its exact meaning: PUBLIC only for `false`.
         XCTAssertTrue(ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: false))
         XCTAssertFalse(ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: true))
         XCTAssertFalse(ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: nil))
+    }
+
+    // MARK: - the consent gate (M4.4d)
+
+    func test_attachedSessionWithoutConsentIsMuted() {
+        // THE regression this test exists for. An attached external session is
+        // stamped realtimePrivate:true at attach time, BEFORE any consent —
+        // privacy there means "never on the public topic", not "publish me".
+        // Consent is `cloudShared`, surfaced here as `localOnly`.
+        XCTAssertNil(vis(true, localOnly: true),
+                     "an attached session the user has not shared must not publish")
+        // And once the user opts in, it flows.
+        XCTAssertEqual(vis(true, localOnly: false), .privateTopic)
+    }
+
+    func test_localOnlyMutesThePublicTopicToo() {
+        XCTAssertNil(vis(false, localOnly: true))
+    }
+
+    func test_featureGateOffMeansTheDrainLoopNeverRoutesPrivate() {
+        // "Ships dark" must mean the path is not taken — not that its last hop
+        // is nil. With the gate off a private record yields NO visibility, so
+        // no redaction, no queue entry, no drop accounting.
+        XCTAssertNil(vis(true, enabled: false))
+        XCTAssertNil(vis(true, localOnly: true, enabled: false))
+        // The public path is unaffected by the private gate.
+        XCTAssertEqual(vis(false, enabled: false), .publicTopic)
+        XCTAssertNil(vis(nil, enabled: false))
+    }
+
+    func test_visibilityTruthTableIsExhaustive() {
+        // All 12 combinations, written out, because this function is the whole
+        // privacy boundary and a future edit should have to change a table.
+        let cases: [(Bool?, Bool, Bool, TerminalBroadcastVisibility?)] = [
+            (false, false, false, .publicTopic),  (false, false, true,  .publicTopic),
+            (false, true,  false, nil),           (false, true,  true,  nil),
+            (true,  false, false, nil),           (true,  false, true,  .privateTopic),
+            (true,  true,  false, nil),           (true,  true,  true,  nil),
+            (nil,   false, false, nil),           (nil,   false, true,  nil),
+            (nil,   true,  false, nil),           (nil,   true,  true,  nil),
+        ]
+        for (p, lo, en, want) in cases {
+            XCTAssertEqual(vis(p, localOnly: lo, enabled: en), want,
+                           "private=\(String(describing: p)) localOnly=\(lo) enabled=\(en)")
+        }
     }
 
     // MARK: - routing
@@ -158,14 +209,38 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
     }
 
     func test_relayBatchSplitPreservesOrderAndBoundsSize() {
-        let mk = { (n: Int) in (event: "stdout", bytes: Data(repeating: 0x41, count: n)) }
-        let items = [mk(10), mk(10), mk(10), mk(10)]
-        let out = EdgeRelayPrivateBroadcastSink.split(items, maxBytes: 25)
+        // DISTINGUISHABLE fixtures. An earlier version used four identical
+        // 10-byte blobs, so it asserted the shape of the split and could not
+        // have detected reordering at all — the one property whose violation
+        // corrupts a terminal.
+        let mk = { (i: Int, n: Int) in
+            (event: "stdout", bytes: Data([UInt8(i)]) + Data(repeating: 0x41, count: n - 1))
+        }
+        let items = (1...4).map { mk($0, 10) }
+        let out = EdgeRelayPrivateBroadcastSink.split(items, maxBytes: 25, maxCount: 64)
         XCTAssertEqual(out.map(\.count), [2, 2])
-        XCTAssertEqual(out.flatMap { $0 }.count, items.count)
+        XCTAssertEqual(out.flatMap { $0 }.map { $0.bytes.first! }, [1, 2, 3, 4],
+                       "split must preserve order across batches")
+
         // A single oversized chunk becomes its own batch rather than vanishing.
-        let big = EdgeRelayPrivateBroadcastSink.split([mk(100), mk(1)], maxBytes: 25)
+        let big = EdgeRelayPrivateBroadcastSink.split(
+            [mk(9, 100), mk(8, 1)], maxBytes: 25, maxCount: 64)
         XCTAssertEqual(big.map(\.count), [1, 1])
         XCTAssertEqual(big[0][0].bytes.count, 100)
+        XCTAssertEqual(big.flatMap { $0 }.map { $0.bytes.first! }, [9, 8])
+    }
+
+    func test_relayBatchSplitBoundsCountToMatchTheRelay() {
+        // The relay rejects >MAX_CHUNKS (64) WHOLESALE with 400, so a bound on
+        // bytes alone would turn a burst of small chunks into total loss.
+        let tiny = (0..<150).map { i in
+            (event: "stdout", bytes: Data([UInt8(i % 251)]))
+        }
+        let out = EdgeRelayPrivateBroadcastSink.split(tiny, maxBytes: 64 * 1024, maxCount: 64)
+        XCTAssertEqual(out.map(\.count), [64, 64, 22])
+        XCTAssertTrue(out.allSatisfy { $0.count <= 64 })
+        XCTAssertEqual(out.flatMap { $0 }.count, 150)
+        XCTAssertEqual(out.flatMap { $0 }.map { $0.bytes.first! },
+                       tiny.map { $0.bytes.first! }, "order preserved across count splits")
     }
 }

@@ -7,9 +7,16 @@
 // would mean a parse change in one silently reshapes the other's contract.
 
 export const MAX_CHUNKS = 64;
-/** Cap on total decoded payload per request. The Swift sink batches to 64 KiB;
- *  this is the server-side half of that bound, so a hand-rolled client cannot
- *  turn one call into an unbounded Realtime message. */
+/** Cap on total BASE64 CHARACTERS per request — not decoded bytes. The
+ *  accumulator below sums `data_b64.length`, so 256 KiB here admits roughly
+ *  192 KiB of decoded output (base64 is 4 chars per 3 bytes). Named and
+ *  documented for what it measures, because an earlier comment called it a
+ *  decoded-payload cap and a future reader sizing the Swift batch against it
+ *  would have been off by a third.
+ *
+ *  The Swift sink batches to 64 KiB decoded, so this leaves ample headroom;
+ *  its purpose is to stop a hand-rolled client turning one call into an
+ *  unbounded Realtime message, not to mirror the client bound exactly. */
 export const MAX_TOTAL_B64_BYTES = 256 * 1024;
 
 const UUID_RE =

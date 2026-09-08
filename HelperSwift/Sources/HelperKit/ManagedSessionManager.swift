@@ -86,6 +86,14 @@ public final class ManagedSessionManager: @unchecked Sendable {
     /// posture. Real sinks (e.g. Supabase Realtime POST) are passed
     /// in by the daemon wire-up.
     private let broadcastPublisher: TerminalBroadcastPublisher?
+    /// `remote_private_terminal_broadcast_enabled`. FALSE means this manager
+    /// behaves exactly as it did before the `pterm:` producer existed — no
+    /// redaction work, no queue entry, no drop accounting for private
+    /// sessions. The first cut gated only the SINK, which left the drain loop
+    /// enqueueing and discarding every attached session's output on every
+    /// install: "ships dark" has to mean the code path is not taken, not that
+    /// its last hop is nil.
+    private let privateBroadcastEnabled: Bool
     /// Phase 4D iter10 (Codex P1③.A): hook is no longer installed
     /// globally in `~/.claude/settings.json`. Instead the helper
     /// injects an ephemeral settings JSON at spawn time via
@@ -189,10 +197,13 @@ public final class ManagedSessionManager: @unchecked Sendable {
             ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: realtimePrivate)
         }
 
-        /// `nil` = mute. See `ManagedSessionManager.broadcastVisibility`.
-        var broadcastVisibility: TerminalBroadcastVisibility? {
-            ManagedSessionManager.broadcastVisibility(realtimePrivate: realtimePrivate)
-        }
+        // DELIBERATELY NOT a `broadcastVisibility` property on the record.
+        // The answer depends on `cloudShared`, which is mutable and must be
+        // read under the manager's `lock`, and on a config gate the record
+        // knows nothing about. A convenience accessor here would read
+        // `cloudShared` unlocked and would silently drop the feature gate —
+        // exactly the two mistakes the first cut of this made.
+        // Use `ManagedSessionManager.broadcastVisibility(realtimePrivate:localOnly:privateEnabled:)`.
 
         init(
             sessionId: String,
@@ -261,11 +272,52 @@ public final class ManagedSessionManager: @unchecked Sendable {
     /// channel, and treating it as private publishes to a topic whose RLS
     /// policy may not admit anyone. Muting is the only safe reading of "we do
     /// not know".
-    static func broadcastVisibility(realtimePrivate: Bool?) -> TerminalBroadcastVisibility? {
+    /// - Parameters:
+    ///   - realtimePrivate: the record's privacy flag.
+    ///   - localOnly: `isLocalOnly(record)` — an ATTACHED session the user has
+    ///     not opted into the cloud (M4.4d). MUST be read under `lock`.
+    ///   - privateEnabled: the `remote_private_terminal_broadcast_enabled` gate.
+    ///
+    /// ⚠️ THE `localOnly` PARAMETER IS THE WHOLE POINT OF THIS SIGNATURE, and
+    /// leaving it out was a real privacy defect in the first cut of the
+    /// `pterm:` producer. Read this before "simplifying" it away:
+    ///
+    /// `attachWrappedSession` stamps `realtimePrivate: true` on EVERY attached
+    /// external session, at attach time, before any consent exists — because
+    /// privacy there means "never advertise on the public `term:` topic"
+    /// (v0.69). Consent is a DIFFERENT field: `cloudShared`, flipped by
+    /// `set_wrapped_session_cloud_shared`.
+    ///
+    /// While no `pterm:` producer existed, `allowsPublicBroadcast` collapsed
+    /// `true` and `nil` into the same silence, so the local-only invariant held
+    /// BY ACCIDENT — nothing on the broadcast path ever consulted consent
+    /// because nothing on that path could publish a private session at all.
+    /// Giving `true` a real destination turned that accident into a leak: an
+    /// attached session the user never shared, or explicitly UN-shared, would
+    /// stream off the machine. `unshareAttachedSession`'s own contract —
+    /// "from that instant... nothing further uploads" — would have become false.
+    ///
+    /// So consent is now consulted explicitly, on the same latch the broker
+    /// frame below already uses, rather than inherited from a coincidence.
+    static func broadcastVisibility(
+        realtimePrivate: Bool?,
+        localOnly: Bool,
+        privateEnabled: Bool
+    ) -> TerminalBroadcastVisibility? {
         switch realtimePrivate {
-        case .some(false): return .publicTopic
-        case .some(true):  return .privateTopic
-        case .none:        return nil
+        case .some(false):
+            // Unchanged from before the private producer existed. A spawned
+            // session is never `attached`, so `localOnly` is false here in
+            // practice; the check costs nothing and removes the need to reason
+            // about that being permanently true.
+            return localOnly ? nil : .publicTopic
+        case .some(true):
+            // Two independent reasons to stay silent, both required.
+            guard privateEnabled else { return nil }
+            guard !localOnly else { return nil }
+            return .privateTopic
+        case .none:
+            return nil
         }
     }
 
@@ -335,6 +387,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
         getHelperArgv0: @escaping @Sendable () -> String? = { nil },
         providerRegistry: ProviderSpawnerRegistry? = nil,
         broadcastPublisher: TerminalBroadcastPublisher? = nil,
+        privateBroadcastEnabled: Bool = false,
         claudeTokenResolver: @escaping @Sendable () -> String? = { ClaudeOAuthInjector.resolveAccessToken() }
     ) {
         self.config = config
@@ -342,6 +395,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
         self.registry = registry
         self.broker = broker
         self.broadcastPublisher = broadcastPublisher
+        self.privateBroadcastEnabled = privateBroadcastEnabled
         self.getHelperArgv0 = getHelperArgv0
         self.claudeTokenResolver = claudeTokenResolver
         // v1.15: default registry wires Claude with inline-settings
@@ -1159,7 +1213,20 @@ public final class ManagedSessionManager: @unchecked Sendable {
                     // topic from this value and the routing sink dispatches on
                     // that topic, so a private session cannot reach the public
                     // channel even if this branch were mis-edited later.
-                    if let visibility = record.broadcastVisibility,
+                    //
+                    // The consent latch is read ONCE here, under the lock, and
+                    // used by BOTH the broadcast branch and the broker frame
+                    // below. Previously the broker read it and the broadcast
+                    // path did not, which is precisely how the private branch
+                    // shipped without a consent check.
+                    lock.lock()
+                    let localOnly = isLocalOnly(record)
+                    lock.unlock()
+
+                    if let visibility = ManagedSessionManager.broadcastVisibility(
+                            realtimePrivate: record.realtimePrivate,
+                            localOnly: localOnly,
+                            privateEnabled: privateBroadcastEnabled),
                        let publisher = broadcastPublisher {
                         let sid = record.sessionId
                         let payload = chunk
@@ -1173,12 +1240,10 @@ public final class ManagedSessionManager: @unchecked Sendable {
                     // observer handles events on a DEFERRED per-event Task, so it
                     // can't reliably query live manager state (the record may be
                     // removed by then). The flag travels with the event →
-                    // ordering-independent skip. Read under the lock: M4.4d made
+                    // ordering-independent skip. `localOnly` was read above,
+                    // under the lock, for exactly this reason: M4.4d made
                     // `cloudShared` mutable, so a bare read would race
                     // `setCloudShared`.
-                    lock.lock()
-                    let localOnly = isLocalOnly(record)
-                    lock.unlock()
                     broker?.publish([
                         "event": "output_delta",
                         "session_id": record.sessionId,

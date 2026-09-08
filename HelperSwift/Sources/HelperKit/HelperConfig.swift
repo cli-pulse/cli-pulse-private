@@ -101,6 +101,15 @@ public final class HelperConfigStore: @unchecked Sendable {
     /// Note this gate is ANDed with `remoteRealtimeEnabled`: that flag
     /// is the ops kill switch for all realtime mirroring, so turning
     /// it off must stop this path too.
+    /// ⛔ PREREQUISITE, and nothing in the toolchain enforces it: the
+    /// `broadcast-terminal` edge function must be DEPLOYED before this flag is
+    /// turned on. The repo has no edge-function deploy manifest and no CI
+    /// deploy step — CI only type-checks and unit-tests the function — so
+    /// flipping this against a project where the function is absent produces a
+    /// 404 on every batch. A 404 is neither 403 nor 5xx, so it is not
+    /// suppressed and not retried: the helper just drops chunks silently and
+    /// forever. Deploy first:
+    ///     supabase functions deploy broadcast-terminal --project-ref <ref>
     public var privateTerminalBroadcastEnabled: Bool {
         lock.lock(); defer { lock.unlock() }
         return (raw["remote_private_terminal_broadcast_enabled"] as? Bool) ?? false
