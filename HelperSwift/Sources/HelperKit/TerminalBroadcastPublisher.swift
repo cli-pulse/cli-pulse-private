@@ -11,6 +11,55 @@ import Foundation
 ///     Supabase Realtime `/broadcast` endpoint with the helper's
 ///     short-lived JWT. Lands when the iOS client's subscribe path
 ///     is built (Phase 2c slice 3).
+/// Which Realtime topic a chunk belongs on, and therefore which
+/// authorization story protects it. The two are NOT interchangeable
+/// and the difference is the whole point of R0:
+///
+///   * `.publicTopic` → `term:<sid>`. Fanned out by Realtime with NO
+///     RLS. Confidentiality rests entirely on the server-generated
+///     session UUID being unguessable. Anyone who learns the UUID can
+///     read the stream.
+///   * `.privateTopic` → `pterm:<sid>`. Governed by the
+///     `realtime.messages` READ policy (migrate_v0.81), so only the
+///     session's owner can subscribe. This is the topic an ATTACHED
+///     external session must use — the user launched it in their own
+///     terminal and never agreed to publish it on a UUID-secrecy
+///     channel (migrate_v0.69).
+///
+/// The publisher picks the prefix; it is never inferred from a
+/// missing flag. See `ManagedSessionManager.allowsPublicBroadcast`
+/// for the fail-closed gate that decides which one a record gets.
+public enum TerminalBroadcastVisibility: String, Sendable, Equatable, CaseIterable {
+    case publicTopic
+    case privateTopic
+
+    /// Topic prefix, including the colon. Deliberately a computed
+    /// property rather than a stored string: a typo'd `pterm` that
+    /// silently fell back to `term` would publish a private session
+    /// on the public channel, which is the one bug this whole type
+    /// exists to make impossible.
+    public var topicPrefix: String {
+        switch self {
+        case .publicTopic: return "term:"
+        case .privateTopic: return "pterm:"
+        }
+    }
+
+    /// Full topic for a session id.
+    public func topic(for sessionId: String) -> String {
+        topicPrefix + sessionId
+    }
+}
+
+/// A sink that buffers, and can therefore be told to forget a session.
+///
+/// Separate from `TerminalBroadcastSink` because most sinks do not buffer —
+/// the public sink POSTs synchronously inside `publish`, so it has nothing to
+/// purge and should not be forced to implement a no-op.
+public protocol PurgeableBroadcastSink: Sendable {
+    func purge(sessionId: String) async
+}
+
 public protocol TerminalBroadcastSink: Sendable {
     /// Hand off ONE already-redacted chunk to wherever the chunk
     /// goes (Supabase channel POST / WebSocket frame / log line).
@@ -82,7 +131,16 @@ public actor TerminalBroadcastPublisher {
     /// publisher will redact, enqueue, and asynchronously hand off
     /// to the sink. Returns immediately; callers must not await
     /// confirmation of delivery.
-    public func submit(sessionId: String, channel: String = "stdout", chunk: Data) {
+    /// - Parameter visibility: which topic family the chunk belongs
+    ///   on. Defaults to `.publicTopic` so every pre-existing call
+    ///   site keeps its exact behaviour; the private path is opt-in
+    ///   at the call site, which is where the privacy flag lives.
+    public func submit(
+        sessionId: String,
+        channel: String = "stdout",
+        chunk: Data,
+        visibility: TerminalBroadcastVisibility = .publicTopic
+    ) {
         if chunk.isEmpty { return }
         // Decode → redact → re-encode. Same lossy contract as
         // `getTailSnapshot`: corrupted boundary codepoints render
@@ -92,7 +150,7 @@ public actor TerminalBroadcastPublisher {
         let text = String(data: chunk, encoding: .utf8) ?? String(decoding: chunk, as: UTF8.self)
         let redacted = Redactor.redact(text)
         let payload = Data(redacted.utf8)
-        let channelName = "term:\(sessionId)"
+        let channelName = visibility.topic(for: sessionId)
         let envelope = (sessionId: sessionId, channel: channelName, event: channel, redactedBytes: payload)
 
         if queue.count >= queueCapacity {
@@ -141,6 +199,20 @@ public actor TerminalBroadcastPublisher {
         // drain task progress.
         while draining || !queue.isEmpty {
             await Task.yield()
+        }
+    }
+
+    /// Drop everything buffered for a session, here and in the sink.
+    ///
+    /// Called on consent REVOCATION. The publisher's own queue is shared
+    /// across sessions, so it is filtered rather than cleared — dropping
+    /// another session's chunks would be a bug of its own.
+    public func purge(sessionId: String) async {
+        let before = queue.count
+        queue.removeAll { $0.sessionId == sessionId }
+        droppedSinceStart += before - queue.count
+        if let purgeable = sink as? PurgeableBroadcastSink {
+            await purgeable.purge(sessionId: sessionId)
         }
     }
 

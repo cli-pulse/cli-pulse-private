@@ -610,10 +610,18 @@ public actor RemoteAgentCloud {
     /// external session must never be advertised on the public `term:<uuid>`
     /// topic, which bypasses RLS by design (v0.56) — anyone who learns the UUID
     /// could read the stream. The phone therefore joins the RLS-governed
-    /// `pterm:` topic; since the Swift helper ships no `pterm:` producer
-    /// (DEV_PLAN §2 gap 2), output reaches it through the durable event tail at
-    /// ~3 s poll latency instead of a live stream. Private and correct, just not
-    /// live — the honest trade until that gap closes.
+    /// `pterm:` topic.
+    ///
+    /// Updated 2026-09-08: the Swift helper now HAS a `pterm:` producer
+    /// (`EdgeRelayPrivateBroadcastSink`), but two things must be true before it
+    /// changes anything here. It is gated behind
+    /// `remote_private_terminal_broadcast_enabled`, which defaults FALSE; and
+    /// it publishes only for a session whose `cloudShared` is set — i.e. after
+    /// the opt-in this very method performs. So the default path is still the
+    /// durable event tail at ~3 s poll latency: private and correct, just not
+    /// live. Do not read the producer's existence as making the row's privacy
+    /// optional — it is the reason the row is minted private in the first
+    /// place, and the producer depends on it.
     public func shareAttachedSession(sessionId: String) async -> (ok: Bool, error: String) {
         let cfg = helperConfig()
         guard cfg.isPaired else {

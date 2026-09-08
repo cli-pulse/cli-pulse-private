@@ -86,6 +86,14 @@ public final class ManagedSessionManager: @unchecked Sendable {
     /// posture. Real sinks (e.g. Supabase Realtime POST) are passed
     /// in by the daemon wire-up.
     private let broadcastPublisher: TerminalBroadcastPublisher?
+    /// `remote_private_terminal_broadcast_enabled`. FALSE means this manager
+    /// behaves exactly as it did before the `pterm:` producer existed — no
+    /// redaction work, no queue entry, no drop accounting for private
+    /// sessions. The first cut gated only the SINK, which left the drain loop
+    /// enqueueing and discarding every attached session's output on every
+    /// install: "ships dark" has to mean the code path is not taken, not that
+    /// its last hop is nil.
+    private let privateBroadcastEnabled: Bool
     /// Phase 4D iter10 (Codex P1③.A): hook is no longer installed
     /// globally in `~/.claude/settings.json`. Instead the helper
     /// injects an ephemeral settings JSON at spawn time via
@@ -189,6 +197,14 @@ public final class ManagedSessionManager: @unchecked Sendable {
             ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: realtimePrivate)
         }
 
+        // DELIBERATELY NOT a `broadcastVisibility` property on the record.
+        // The answer depends on `cloudShared`, which is mutable and must be
+        // read under the manager's `lock`, and on a config gate the record
+        // knows nothing about. A convenience accessor here would read
+        // `cloudShared` unlocked and would silently drop the feature gate —
+        // exactly the two mistakes the first cut of this made.
+        // Use `ManagedSessionManager.broadcastVisibility(realtimePrivate:localOnly:privateEnabled:)`.
+
         init(
             sessionId: String,
             provider: String,
@@ -233,11 +249,97 @@ public final class ManagedSessionManager: @unchecked Sendable {
     /// true ONLY for a session POSITIVELY known public (`realtime_private ==
     /// false`). A `nil` (unknown — local session / pre-v0.61 payload) or `true`
     /// (private) => false, so a private session's redacted output is NEVER
-    /// POSTed to the public `term:<sid>` topic. The Swift helper does not run
-    /// Route B-lite (no minted producer token), so a private session simply
-    /// gets no realtime mirror — the phone degrades to event-polling.
+    /// POSTed to the public `term:<sid>` topic.
+    ///
+    /// This governs the PUBLIC topic ONLY, and the distinction now matters:
+    /// since the `pterm:` producer landed, `false` here no longer means "no
+    /// realtime mirror at all", it means "not on the public channel". A
+    /// positively-private session (`realtimePrivate == true`) gets the private
+    /// mirror instead; see `broadcastVisibility`.
+    ///
+    /// `nil` — UNKNOWN privacy — stays muted on BOTH topics. That is the
+    /// fail-closed half: a record whose privacy we cannot name must not be
+    /// guessed onto either channel.
     static func allowsPublicBroadcast(realtimePrivate: Bool?) -> Bool {
         realtimePrivate == false
+    }
+
+    /// Which topic family a record's output may go to, or `nil` for "neither".
+    ///
+    /// The three-way return is the point. A `Bool` here would have to collapse
+    /// UNKNOWN into one of the two live answers, and both collapses are wrong:
+    /// treating `nil` as public leaks an external session onto a UUID-secrecy
+    /// channel, and treating it as private publishes to a topic whose RLS
+    /// policy may not admit anyone. Muting is the only safe reading of "we do
+    /// not know".
+    /// - Parameters:
+    ///   - realtimePrivate: the record's privacy flag.
+    ///   - localOnly: `isLocalOnly(record)` — an ATTACHED session the user has
+    ///     not opted into the cloud (M4.4d). MUST be read under `lock`.
+    ///   - privateEnabled: the `remote_private_terminal_broadcast_enabled` gate.
+    ///
+    /// ⚠️ THE `localOnly` PARAMETER IS THE WHOLE POINT OF THIS SIGNATURE, and
+    /// leaving it out was a real privacy defect in the first cut of the
+    /// `pterm:` producer. Read this before "simplifying" it away:
+    ///
+    /// `attachWrappedSession` stamps `realtimePrivate: true` on EVERY attached
+    /// external session, at attach time, before any consent exists — because
+    /// privacy there means "never advertise on the public `term:` topic"
+    /// (v0.69). Consent is a DIFFERENT field: `cloudShared`, flipped by
+    /// `set_wrapped_session_cloud_shared`.
+    ///
+    /// While no `pterm:` producer existed, `allowsPublicBroadcast` collapsed
+    /// `true` and `nil` into the same silence, so the local-only invariant held
+    /// BY ACCIDENT — nothing on the broadcast path ever consulted consent
+    /// because nothing on that path could publish a private session at all.
+    /// Giving `true` a real destination turned that accident into a leak: an
+    /// attached session the user never shared, or explicitly UN-shared, would
+    /// stream off the machine. `unshareAttachedSession`'s own contract —
+    /// "from that instant... nothing further uploads" — would have become false.
+    ///
+    /// So consent is now consulted explicitly, on the same latch the broker
+    /// frame below already uses, rather than inherited from a coincidence.
+    static func broadcastVisibility(
+        realtimePrivate: Bool?,
+        localOnly: Bool,
+        privateEnabled: Bool
+    ) -> TerminalBroadcastVisibility? {
+        switch realtimePrivate {
+        case .some(false):
+            // Unchanged from before the private producer existed. A spawned
+            // session is never `attached`, so `localOnly` is false here in
+            // practice; the check costs nothing and removes the need to reason
+            // about that being permanently true.
+            return localOnly ? nil : .publicTopic
+        case .some(true):
+            // Two independent reasons to stay silent, both required.
+            guard privateEnabled else { return nil }
+            guard !localOnly else { return nil }
+            return .privateTopic
+        case .none:
+            return nil
+        }
+    }
+
+    /// Resolve a LIVE session's visibility using THIS manager's gate and the
+    /// record's current consent. Takes `lock` itself.
+    ///
+    /// Exists so the instance wiring is reachable from a test. The static above
+    /// is pure and fully covered by a truth table, but covering it proves
+    /// nothing about whether `privateBroadcastEnabled` is actually consulted at
+    /// the call sites — and a test aimed at `publishTailSnapshot` could not
+    /// tell the gate states apart either, because both return false on the
+    /// empty-buffer check further down. Measured: mutating
+    /// `privateEnabled: privateBroadcastEnabled` to a hardcoded `true` left the
+    /// entire 794-test suite green. This method is what makes that mutation
+    /// detectable, which is the only reason it exists.
+    func resolvedBroadcastVisibility(sessionId: String) -> TerminalBroadcastVisibility? {
+        lock.lock(); defer { lock.unlock() }
+        guard let rec = sessions[sessionId] else { return nil }
+        return ManagedSessionManager.broadcastVisibility(
+            realtimePrivate: rec.realtimePrivate,
+            localOnly: isLocalOnly(rec),
+            privateEnabled: privateBroadcastEnabled)
     }
 
     /// M4.4d: how an op treats an ATTACHED wrapped (external) session.
@@ -306,6 +408,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
         getHelperArgv0: @escaping @Sendable () -> String? = { nil },
         providerRegistry: ProviderSpawnerRegistry? = nil,
         broadcastPublisher: TerminalBroadcastPublisher? = nil,
+        privateBroadcastEnabled: Bool = false,
         claudeTokenResolver: @escaping @Sendable () -> String? = { ClaudeOAuthInjector.resolveAccessToken() }
     ) {
         self.config = config
@@ -313,6 +416,7 @@ public final class ManagedSessionManager: @unchecked Sendable {
         self.registry = registry
         self.broker = broker
         self.broadcastPublisher = broadcastPublisher
+        self.privateBroadcastEnabled = privateBroadcastEnabled
         self.getHelperArgv0 = getHelperArgv0
         self.claudeTokenResolver = claudeTokenResolver
         // v1.15: default registry wires Claude with inline-settings
@@ -826,6 +930,22 @@ public final class ManagedSessionManager: @unchecked Sendable {
         if let expectedEpoch, rec.attachEpoch != expectedEpoch { return nil }
         let was = rec.cloudShared
         rec.cloudShared = shared
+        if !shared {
+            // REVOKE. The visibility gate stops NEW chunks the instant
+            // `cloudShared` flips, but anything already buffered in the relay
+            // sink would still be POSTed by its next flush — one coalescing
+            // window, plus whatever a slow relay was holding. Drop it.
+            //
+            // Fire-and-forget on purpose: this method holds `lock` and returns
+            // a value callers act on synchronously, so it must not await. The
+            // race that leaves is benign in the safe direction — the purge can
+            // only run after the flag is already false, so the gate has already
+            // stopped new chunks; the purge only shortens the tail.
+            if let publisher = broadcastPublisher {
+                let sid = sessionId
+                Task { await publisher.purge(sessionId: sid) }
+            }
+        }
         return CloudShareChange(provider: rec.provider, clientLabel: rec.clientLabel, previouslyShared: was)
     }
 
@@ -919,6 +1039,16 @@ public final class ManagedSessionManager: @unchecked Sendable {
         for (sid, rec) in sessions where rec.attached && rec.cloudShared {
             rec.cloudShared = false
             revoked.append(sid)
+        }
+        // The "Local Session Control off" kill switch. `setCloudShared` purges
+        // the broadcast tail on a single revoke and this — the GLOBAL revoke,
+        // the one whose whole purpose is "stop everything now" — did not. Same
+        // fire-and-forget shape and the same reasoning: this method holds
+        // `lock` and must not await, and the purge can only run after the flags
+        // are already false, so it shortens the tail rather than gating it.
+        if let publisher = broadcastPublisher, !revoked.isEmpty {
+            let ids = revoked
+            Task { for sid in ids { await publisher.purge(sessionId: sid) } }
         }
         return revoked.sorted()
     }
@@ -1065,12 +1195,21 @@ public final class ManagedSessionManager: @unchecked Sendable {
     @discardableResult
     public func publishTailSnapshot(sessionId: String, maxBytes: Int) async -> Bool {
         guard let publisher = broadcastPublisher else { return false }
-        // R0 (S2) fail-closed: never publish a private/unknown session's snapshot
-        // on the public `term:` channel (a gone session → nil → also muted).
-        lock.lock()
-        let allowPublic = sessions[sessionId]?.allowsPublicBroadcast ?? false
-        lock.unlock()
-        guard allowPublic else { return false }
+        // R0 (S2) fail-closed, on the SAME gate the drain loop uses.
+        //
+        // This used to read `allowsPublicBroadcast` alone, which silently meant
+        // "private sessions get no snapshot". That was consistent while there
+        // was no private producer, and became a contradiction the moment there
+        // was one: `EdgeRelayPrivateBroadcastSink` cites the phone's reconnect
+        // tail-snapshot as the recovery path for the chunks it drops, and for a
+        // private session that path did not exist. A recovery path that is only
+        // wired for the sessions that were not dropping chunks is not a
+        // recovery path.
+        //
+        // A gone session → nil record → nil visibility → muted, as before.
+        guard let visibility = resolvedBroadcastVisibility(sessionId: sessionId) else {
+            return false
+        }
         guard let snapshot = getTailSnapshot(sessionId: sessionId, maxBytes: maxBytes) else {
             return false
         }
@@ -1081,7 +1220,8 @@ public final class ManagedSessionManager: @unchecked Sendable {
         await publisher.submit(
             sessionId: sessionId,
             channel: "tail_snapshot_result",
-            chunk: snapshot)
+            chunk: snapshot,
+            visibility: visibility)
         return true
     }
 
@@ -1115,28 +1255,52 @@ public final class ManagedSessionManager: @unchecked Sendable {
                     // is fire-and-forget (actor handles its own
                     // queue/drop policy).
                     //
-                    // R0 (S2) fail-closed: the publisher POSTs to the PUBLIC
-                    // `term:<sid>` topic, so mirror there ONLY for a session
-                    // positively known public. A private or unknown-privacy
-                    // session gets NO broadcast — its output never leaks on the
-                    // public channel (the Swift helper has no `pterm:` producer;
-                    // the phone falls back to polling).
-                    if record.allowsPublicBroadcast, let publisher = broadcastPublisher {
+                    // R0 (S2) fail-closed, now with BOTH topics wired.
+                    //
+                    // `broadcastVisibility` is three-valued on purpose:
+                    //   false -> .publicTopic   `term:<sid>`, anon-key fanout
+                    //   true  -> .privateTopic  `pterm:<sid>`, edge-relay + RLS
+                    //   nil   -> MUTE           privacy unknown, guess nothing
+                    //
+                    // The old code mirrored only `allowsPublicBroadcast`, which
+                    // collapsed true and nil into the same silence. That was
+                    // correct while no `pterm:` producer existed and is wrong
+                    // now: a positively-private session has a real destination,
+                    // and only UNKNOWN should be muted. The publisher stamps the
+                    // topic from this value and the routing sink dispatches on
+                    // that topic, so a private session cannot reach the public
+                    // channel even if this branch were mis-edited later.
+                    //
+                    // The consent latch is read ONCE here, under the lock, and
+                    // used by BOTH the broadcast branch and the broker frame
+                    // below. Previously the broker read it and the broadcast
+                    // path did not, which is precisely how the private branch
+                    // shipped without a consent check.
+                    lock.lock()
+                    let localOnly = isLocalOnly(record)
+                    lock.unlock()
+
+                    if let visibility = ManagedSessionManager.broadcastVisibility(
+                            realtimePrivate: record.realtimePrivate,
+                            localOnly: localOnly,
+                            privateEnabled: privateBroadcastEnabled),
+                       let publisher = broadcastPublisher {
                         let sid = record.sessionId
                         let payload = chunk
-                        Task { await publisher.submit(sessionId: sid, chunk: payload) }
+                        Task {
+                            await publisher.submit(
+                                sessionId: sid, chunk: payload, visibility: visibility)
+                        }
                     }
                     let text = String(data: chunk, encoding: .utf8) ?? String(decoding: chunk, as: UTF8.self)
                     // Latch local_only onto the FRAME (review: codex) — the cloud
                     // observer handles events on a DEFERRED per-event Task, so it
                     // can't reliably query live manager state (the record may be
                     // removed by then). The flag travels with the event →
-                    // ordering-independent skip. Read under the lock: M4.4d made
+                    // ordering-independent skip. `localOnly` was read above,
+                    // under the lock, for exactly this reason: M4.4d made
                     // `cloudShared` mutable, so a bare read would race
                     // `setCloudShared`.
-                    lock.lock()
-                    let localOnly = isLocalOnly(record)
-                    lock.unlock()
                     broker?.publish([
                         "event": "output_delta",
                         "session_id": record.sessionId,

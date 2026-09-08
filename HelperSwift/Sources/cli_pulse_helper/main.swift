@@ -366,14 +366,35 @@ case "daemon":
     let pairingWithoutContainer: () -> AppGroupConfigReader.AppPairing? = { nil }
 
     let bootCloudCfg = configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
+    let privateBroadcastOn = configStore.privateTerminalBroadcastEnabled
     let broadcastPublisher: TerminalBroadcastPublisher?
     if bootCloudCfg.isPaired && configStore.remoteRealtimeEnabled {
-        let sink = SupabaseRealtimeBroadcastSink(
-            configProvider: { configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer) }
-        )
+        let provider: @Sendable () -> HelperConfigStore.CloudConfig = {
+            configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
+        }
+        let publicSink = SupabaseRealtimeBroadcastSink(configProvider: provider)
+        // R0: the `pterm:` producer, dark by default.
+        //
+        // With the gate OFF the manager never routes a private chunk at all
+        // (see `privateBroadcastEnabled` below), so there is no `pterm:` chunk
+        // for anything to refuse and the router is not built. An earlier
+        // comment here credited the router's refusal with protecting the OFF
+        // state; that was true of the first cut, which wrapped unconditionally
+        // and gated only the sink. Gating at the branch is strictly better — no
+        // redaction, no queue entry, no drop accounting — so the refusal is now
+        // a defence-in-depth backstop against a mis-wiring rather than the
+        // mechanism. It is pinned by
+        // `PrivateTerminalBroadcastTests.test_routerRefusesPrivateChunkWhenPrivateSinkIsAbsent`.
+        let privateSink: (any TerminalBroadcastSink)? =
+            privateBroadcastOn ? EdgeRelayPrivateBroadcastSink(configProvider: provider) : nil
+        let sink: any TerminalBroadcastSink = privateSink.map {
+            PrivacyRoutingBroadcastSink(publicSink: publicSink, privateSink: $0)
+        } ?? publicSink
         broadcastPublisher = TerminalBroadcastPublisher(sink: sink)
         FileHandle.standardError.write(Data(
-            "cli_pulse_helper (Swift): terminal Broadcast publisher active (Supabase Realtime sink)\n".utf8
+            ("cli_pulse_helper (Swift): terminal Broadcast publisher active "
+             + "(public=Supabase Realtime, private="
+             + (privateSink == nil ? "OFF" : "edge relay") + ")\n").utf8
         ))
     } else {
         broadcastPublisher = nil
@@ -390,7 +411,11 @@ case "daemon":
         registry: registry,
         broker: broker,
         getHelperArgv0: { ExecutablePath.current() },
-        broadcastPublisher: broadcastPublisher
+        broadcastPublisher: broadcastPublisher,
+        // Off ⇒ the drain loop does not redact, enqueue, or account for a
+        // private session's output at all. "Dark" has to mean the path is not
+        // taken, not that its last hop is nil.
+        privateBroadcastEnabled: privateBroadcastOn
     )
     // M4.4d: late-bound because RemoteAgentCloud is built AFTER the server, and
     // only when the helper is paired. Stays inert (verb → not_implemented) until
