@@ -1,6 +1,27 @@
 -- ============================================================
 -- v0.56 — R0: Secure Remote Realtime Terminal — per-subscriber authz
--- Date: 2026-06-24 · *** WRITTEN, NOT YET APPLIED — OWNER-GATED ***
+-- Date: 2026-06-24 · *** APPLIED — ledger 20260624090841 ***
+--
+-- ⚠️ CORRECTED 2026-09-08. This banner read "WRITTEN, NOT YET APPLIED —
+--    OWNER-GATED" for two and a half months after the migration ran. Production
+--    disagrees with that on every object below: `remote_sessions.realtime_private`
+--    and `user_settings.realtime_private_enabled` both exist, and the live WRITE
+--    policy on realtime.messages still carries this file's inlined
+--    `EXISTS (SELECT 1 FROM remote_sessions ...)` body.
+--
+-- ⚠️ AND THE INVARIANT THIS FILE STATES BELOW IS NO LONGER TRUE. It says a
+--    session is only private once `user_settings.realtime_private_enabled` flips,
+--    and that until then "these policies/columns govern nothing → ZERO behavior
+--    change". migrate_v0.69 deliberately broke that coupling and said so: the
+--    helper-side `remote_helper_register_session` gained `p_realtime_private`,
+--    written straight through with no `user_settings` read, so that a wrapped
+--    session is never advertised on the public `term:` topic. Both helpers pass
+--    true unconditionally. Measured 2026-09-08: user_settings.realtime_private_
+--    enabled = 0 of 218, while remote_sessions.realtime_private = 3 of 3.
+--
+--    So do NOT reason about blast radius from the user_settings flag. That
+--    mistake was made in v0.65, inherited by v0.81, and only caught on
+--    2026-09-08. The gate is the per-session column. See v0.81 and v0.82.
 --
 -- Operationalizes DEV_PLAN_R0_remote_realtime_terminal_2026-06-22.md (§2
 -- design, §3 B1) + ~/.claude/plans/r0-realtime-auth-spec.md. Dual-reviewed

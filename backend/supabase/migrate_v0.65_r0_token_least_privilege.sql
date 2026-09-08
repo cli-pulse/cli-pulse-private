@@ -1,6 +1,32 @@
 -- ============================================================
 -- v0.65 — R0: least-privilege realtime broadcast token (deep-audit 2026-07-04, F1)
--- Date: 2026-07-04 · *** ADDITIVE + INERT — SAFE TO APPLY (see below) ***
+-- Date: 2026-07-04 · *** LEDGER SAYS APPLIED — ITS OBJECTS WERE NOT THERE ***
+--
+-- ⚠️ READ THIS BEFORE RUNNING ANYTHING BELOW. Corrected 2026-09-08.
+--
+--    `supabase_migrations.schema_migrations` carries this file as
+--    20260704045711. On 2026-09-07 production had NONE of what it creates: no
+--    r0_broadcast role, neither oracle, and both realtime.messages policies
+--    still at v0.56's inlined bodies. How that happened is not known and is not
+--    guessed at; see migrate_v0.81's PROBLEM 1. The repair is v0.81 (applied)
+--    plus v0.82 (still owed).
+--
+-- ⛔ ONE STATEMENT IN THIS FILE CANNOT WORK AND DOES NOT SAY SO:
+--       line ~94   grant insert on realtime.messages to r0_broadcast;
+--    realtime.messages is owned by supabase_realtime_admin, and `postgres` holds
+--    INSERT WITHOUT grant option. PostgreSQL does not raise in that case — it
+--    warns and returns success. Reproduced 2026-09-08 in a rolled-back
+--    transaction: the grant reports success and has_table_privilege stays FALSE.
+--    So this file's post-apply line `has_table_privilege(...,'INSERT') -- true`
+--    is an expectation that cannot be met by the role that applies migrations
+--    here. That is the single reason v0.82 exists as a separate file.
+--
+-- ✅ AND THE FALLBACK THIS FILE ALREADY RECORDS IS THE MORE LIKELY ANSWER.
+--    Its own line ~65 says: "If Realtime rejects the custom role name, fall back
+--    to a service-relay broadcast (helper→edge fn→service-role realtime.send)".
+--    Measured 2026-09-08: service_role already holds INSERT on realtime.messages
+--    and EXECUTE on realtime.send. That path needs no new privilege and no
+--    support request. v0.82's header works through the trade-off.
 --
 -- Verified 2026-07-04 against prod (gkjwsxotmwrgqsvfijzs):
 --   select count(*) from public.user_settings where realtime_private_enabled;  -- 0
