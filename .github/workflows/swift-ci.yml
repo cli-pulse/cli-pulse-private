@@ -285,6 +285,27 @@ jobs:
       - name: Show Xcode
         run: xcodebuild -version
 
+      # tmux is a TEST DEPENDENCY, not an optional nicety, and its absence was
+      # silent. Measured on run 34268589946 (macos-15, no install step):
+      #
+      #     Executed 792 tests, with 19 tests skipped and 0 failures
+      #
+      # Every one of those 19 skipped for "tmux not available", and they are not
+      # peripheral — they are the M4.4d consent machinery:
+      #     testTurningLocalControlOffRevokesEverySharedSession
+      #     testShareMintsAPrivateRowAndUnshareRevokes
+      #     testSharedSessionUploadsOutputAndUnsharedStops
+      # i.e. the "revoke actually stops the upload" invariant. Those tests have
+      # been green-by-skipping since they were written, and a green suite was
+      # read as covering them.
+      #
+      # Found 2026-09-09 while adding a gate test for the `pterm:` producer: the
+      # new test skipped here too, so the mutation it exists to detect
+      # (hardcoding the privacy gate ON) still merged with every check green.
+      # A guard that does not run at the merge gate is not a guard.
+      - name: Install tmux (test dependency — 19 tests skip without it)
+        run: brew install tmux || brew list tmux
+
       - name: Swift test (HelperSwift)
         working-directory: HelperSwift
         run: swift test

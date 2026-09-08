@@ -158,15 +158,27 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
         // is ever read — mutating the call site to a hardcoded `true` left all
         // 794 tests green.
         //
-        // This aims at `resolvedBroadcastVisibility`, the instance method both
-        // real call sites share, with a REAL attached record.
+        // This aims at `resolvedBroadcastVisibility`, the instance method
+        // `publishTailSnapshot` uses, with a REAL attached record.
+        //
+        // ONE of the two gate call sites. The drain loop still calls the static
+        // `broadcastVisibility` inline, and hardcoding ITS `privateEnabled:` to
+        // true leaves the suite green — measured. Reaching it needs a live PTY
+        // producing output. Do not read this test as covering the streaming
+        // producer; it does not.
         guard let bin = Self.tmuxBin else {
             throw XCTSkip("tmux not available — this assertion needs a live record")
         }
         let sockDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("gatewire-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: sockDir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: sockDir) }
+        // Registered FIRST so LIFO teardown runs it LAST — after the
+        // `owner.close(oh)` blocks below. `TmuxTransport.close` kills the
+        // session via `tmux -S <sock> kill-session`, so unlinking the socket
+        // first makes that call fail silently (`try?`) and strands the `cat`
+        // children. The precedent gets this right at
+        // WrappedSessionVerbsTests.swift:182 by closing before unlinking.
+        addTeardownBlock { try? FileManager.default.removeItem(at: sockDir) }
         let sock = sockDir.appendingPathComponent("s.sock").path
 
         func makeManager(gate: Bool, tmux: String) throws -> ManagedSessionManager {
