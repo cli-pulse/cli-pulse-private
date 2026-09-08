@@ -1,9 +1,9 @@
 -- ============================================================
 -- v0.81 — R0 repair: v0.65 never took effect, and v0.77 killed the READ policy
--- Date: 2026-09-07 · *** ADDITIVE + INERT — SAFE TO APPLY (see below) ***
+-- Date: 2026-09-08 · *** ADDITIVE + INERT — SAFE TO APPLY (see below) ***
 --
 -- Measured 2026-09-07 against prod (gkjwsxotmwrgqsvfijzs):
---   select count(*) from public.user_settings where realtime_private_enabled;  -- 0 of 216
+--   select count(*) from public.user_settings where realtime_private_enabled;  -- 0 of 218 (measured 2026-09-08)
 -- The realtime_private cutover is still OFF for 100% of users, so sections
 -- (1)-(3) — the role, the two oracles and the two realtime.messages policies
 -- — govern NOTHING today.
@@ -11,15 +11,28 @@
 -- Section (4) is different and deserves saying out loud, because "the cutover
 -- is off" does NOT cover it: it changes EXECUTE grants on three live RPCs.
 -- It is still inert, for its own reasons, each checked rather than assumed:
---   * register_desktop_helper      — anon already revoked by v0.36
---   * get_daily_usage_by_device    — anon already revoked by v0.37
---   * upsert_daily_usage           — raises 'Not authenticated' when
---                                    auth.uid() is null, so its anon grant is
---                                    dead code; every real caller is
---                                    authenticated
--- and all three end with `grant execute … to authenticated, service_role`,
--- which is who calls them today. So: no behaviour change, but by a different
--- argument than sections (1)-(3), not the same one.
+-- ⚠️ CORRECTED before applying. An earlier draft of this comment said anon
+-- was "already revoked by v0.36 / v0.37" for two of the three. That was
+-- written from those migrations' intent, not from `pg_proc.proacl`, and it is
+-- FALSE. Measured on production 2026-09-08:
+--
+--   register_desktop_helper(text,text,text,text)
+--     proacl {=X/postgres,postgres=X,authenticated=X,service_role=X}
+--   get_daily_usage_by_device(integer)                    same shape
+--   upsert_daily_usage(jsonb,uuid)                        same, plus anon=X
+--   has_function_privilege('anon', …, 'EXECUTE')  →  TRUE for all THREE
+--
+-- v0.36/v0.37 removed the explicit `anon=X` entries; they left the PUBLIC
+-- grant (the leading `=X/postgres`), and anon inherits PUBLIC. So section (4)
+-- genuinely REMOVES anon's reach rather than tidying a dead grant.
+--
+-- It is still inert in OUTCOME, by the third argument applied to all three
+-- rather than to one: `pg_get_functiondef` shows every one of them references
+-- `auth.uid()` and raises 'Not authenticated', so an anon caller has always
+-- received an exception. All three end with
+-- `grant execute … to authenticated, service_role`, which is who calls them
+-- today. So: no behaviour change — but by a DIFFERENT argument from the one
+-- that covers sections (1)-(3), not the same one.
 --
 -- ── PROBLEM 1: the ledger says v0.65 applied; none of it is there ──
 -- `supabase_migrations.schema_migrations` carries
@@ -68,13 +81,34 @@
 --
 -- The WRITE policy has the same body today and fails the same way. So the R0
 -- private terminal is dead on production in BOTH directions; the only reason
--- no user has hit it is that the cutover flag is false for all 216 accounts.
+-- no user has hit it is that the cutover flag is false for all 218 accounts.
+--
+-- ── PROBLEM 3: one statement v0.65 needs cannot be issued from here ──
+-- v0.65's whole point is that r0_broadcast's ONLY reach is INSERT on
+-- realtime.messages. Measured on production 2026-09-08 as the applying role:
+--
+--   has_table_privilege('postgres','realtime.messages','INSERT')        true
+--   has_table_privilege('postgres',…,'INSERT WITH GRANT OPTION')        FALSE
+--   pg_has_role('postgres','supabase_realtime_admin','USAGE')           false
+--
+-- A GRANT whose grantor holds no grant option does not error: PostgreSQL
+-- warns 'no privileges were granted' and returns success. Putting it in this
+-- file would have granted nothing while every assertion still passed — the
+-- apply would have reported green with the write path dead. So it, and the
+-- WRITE policy that depends on it, are split into v0.82, which must be run by
+-- a supabase_admin-class role (Supabase support, or after they grant postgres
+-- membership in supabase_realtime_admin).
+--
+-- Policy DDL itself is fine from here, despite postgres not owning the table:
+-- supautils.policy_grants lists realtime.messages for postgres, and v0.56
+-- created the live policies exactly this way.
 --
 -- ── FIX ───────────────────────────────────────────────────────
--- (1) and (2)  Re-apply v0.65's role, grants, write oracle and retargeted
---              WRITE policy, verbatim. Every statement there is idempotent by
---              construction, so this is a repair, not a second migration of
---              the same thing.
+-- (1) and (2)  Re-apply v0.65's role, its schema grant and the write oracle,
+--              verbatim. Every statement is idempotent by construction, so
+--              this is a repair, not a second migration of the same thing.
+--              NOT the INSERT grant and NOT the WRITE policy retarget — see
+--              PROBLEM 3 above; those are v0.82's.
 -- (3)          NEW: give the READ policy the same treatment the WRITE policy
 --              got. It keeps `to authenticated` (subscribers really do read
 --              with their own login token), but the ownership check moves
@@ -115,7 +149,22 @@ $$;
 grant r0_broadcast to authenticator;
 
 grant usage on schema realtime to r0_broadcast;
-grant insert on realtime.messages to r0_broadcast;
+
+-- NOT HERE: `grant insert on realtime.messages to r0_broadcast`.
+-- Measured on production 2026-09-08, as the role that applies this file:
+--     has_table_privilege('postgres','realtime.messages','INSERT')  → true
+--     …'INSERT WITH GRANT OPTION'                                   → FALSE
+--     pg_has_role('postgres','supabase_realtime_admin','USAGE')     → false
+-- A GRANT whose grantor holds no grant option does NOT error. Postgres emits
+--     WARNING: no privileges were granted for "messages"
+-- and returns success. It would have granted nothing, every assertion below
+-- would still have passed, and the apply would have reported green while the
+-- role this file exists to build had zero privilege on the table.
+--
+-- That statement, and the WRITE policy that depends on it, are in
+-- migrate_v0.82 — which must be run by a supabase_admin-class role. Splitting
+-- them is the whole point: each file's assertions are now true of what that
+-- file actually does.
 
 -- ------------------------------------------------------------
 -- (2) WRITE authorization oracle. Body copied verbatim from v0.65 §2a.
@@ -141,13 +190,10 @@ $function$;
 revoke all on function public.r0_broadcast_topic_allowed(text) from public, anon, authenticated;
 grant execute on function public.r0_broadcast_topic_allowed(text) to r0_broadcast, service_role;
 
-drop policy if exists "r0 broadcast own remote session terminal" on realtime.messages;
-create policy "r0 broadcast own remote session terminal"
-  on realtime.messages for insert to r0_broadcast
-  with check (
-    realtime.messages.extension = 'broadcast'
-    and public.r0_broadcast_topic_allowed(realtime.topic())
-  );
+-- The WRITE policy retarget lives in v0.82, with the grant it depends on.
+-- Retargeting it to r0_broadcast HERE would point the only write path at a
+-- role that (see above) cannot be given INSERT from this connection — trading
+-- one dead write path for another while claiming a repair.
 
 -- ------------------------------------------------------------
 -- (3) NEW — READ authorization oracle, and the retargeted READ policy.
@@ -228,14 +274,36 @@ begin
     raise exception 'an authorization oracle is missing';
   end if;
 
-  -- Would have failed before: the WRITE policy targeted {authenticated}.
-  if not exists (
-    select 1 from pg_policies
-    where schemaname = 'realtime' and tablename = 'messages'
-      and policyname = 'r0 broadcast own remote session terminal'
-      and roles::text = '{r0_broadcast}'
-  ) then
-    raise exception 'the WRITE policy does not target r0_broadcast';
+  -- THE ONE THE FIRST DRAFT WAS MISSING. `grant usage on schema realtime`
+  -- succeeds (postgres holds USAGE *with grant option* there), but nothing
+  -- verified it, and the sibling INSERT grant fails SILENTLY — which is why
+  -- it is not in this file at all. Assert the grant that IS issued here, so a
+  -- future edit cannot reintroduce a silent no-op unnoticed.
+  if not has_schema_privilege('r0_broadcast', 'realtime', 'USAGE') then
+    raise exception 'r0_broadcast has no USAGE on schema realtime — the grant no-opped';
+  end if;
+
+  -- authenticator must be able to SET ROLE into it, or the minted token can
+  -- never assume the role. Would have failed before: the role did not exist.
+  --
+  -- 'SET', NOT 'USAGE'. `authenticator` is NOINHERIT, and for a NOINHERIT
+  -- member `pg_has_role(…,'USAGE')` is FALSE even when the grant is perfect —
+  -- so the obvious spelling would have aborted a CORRECT apply. Measured on
+  -- production against an existing, working membership rather than reasoned
+  -- about: pg_has_role('authenticator','authenticated', …) returns
+  -- USAGE=false, SET=true, MEMBER=true on PostgreSQL 17.6.
+  if not pg_has_role('authenticator', 'r0_broadcast', 'SET') then
+    raise exception 'authenticator cannot SET ROLE into r0_broadcast';
+  end if;
+
+  -- And the honest converse: this file deliberately does NOT give r0_broadcast
+  -- INSERT on realtime.messages, and must not appear to. If a future edit adds
+  -- it back here it will silently no-op, so fail loudly if it is ever present
+  -- without v0.82 having run.
+  if has_table_privilege('r0_broadcast', 'realtime.messages', 'INSERT') then
+    raise exception
+      'r0_broadcast already has INSERT on realtime.messages — v0.82 has run, so '
+      'this file is not the right place to be asserting the write path';
   end if;
 
   -- THE POINT OF THIS MIGRATION: neither policy body may name a public table
@@ -244,8 +312,9 @@ begin
   if exists (
     select 1 from pg_policies
     where schemaname = 'realtime' and tablename = 'messages'
-      and policyname in ('r0 broadcast own remote session terminal',
-                         'r0 read own remote session terminal')
+      -- READ only: the WRITE policy is v0.82's to fix, and until then it
+      -- legitimately still carries v0.56's inlined body.
+      and policyname = 'r0 read own remote session terminal'
       and (coalesce(qual, '') like '%remote_sessions%'
         or coalesce(with_check, '') like '%remote_sessions%')
   ) then
@@ -267,11 +336,20 @@ $$;
 -- Post-apply verification (run manually after APPLY):
 --   select rolname, rolcanlogin from pg_roles where rolname='r0_broadcast';   -- 1 row, f
 --   select has_table_privilege('r0_broadcast','public.devices','SELECT');     -- false
---   select has_table_privilege('r0_broadcast','realtime.messages','INSERT');  -- true
+--   select has_table_privilege('r0_broadcast','realtime.messages','INSERT');  -- FALSE
+--       ^ false is CORRECT after this file. postgres cannot grant it (no grant
+--         option); v0.82 owes it, run by a supabase_admin-class role. If this
+--         is true, v0.82 has already run.
 --   select pg_has_role('authenticator','r0_broadcast','SET');                 -- true
+--       ^ 'SET', not 'USAGE': authenticator is NOINHERIT, so USAGE is false
+--         even when the grant is perfect. Measured on 17.6.
 --   select policyname, roles::text, qual, with_check from pg_policies
 --     where schemaname='realtime' and tablename='messages';
---     -- write -> {r0_broadcast}, read -> {authenticated}, NEITHER naming remote_sessions
+--     -- read  -> {authenticated}, and its body must NOT name remote_sessions
+--     -- write -> still {authenticated} with v0.56's inlined body. That is
+--     --          EXPECTED here and is v0.82's to fix; it is dead either way
+--     --          until then, and nothing uses it (0 of 218 accounts have the
+--     --          cutover flag).
 --   select has_function_privilege('anon','public.register_desktop_helper(text,text,text,text)','EXECUTE'); -- false
 --
 --   -- And the check that actually reproduces the outage this repairs:
