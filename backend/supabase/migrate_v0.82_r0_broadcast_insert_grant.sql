@@ -70,12 +70,28 @@
 --    the platform's help. v0.65's least-privilege broadcast role is therefore
 --    not "pending an owner step" — it is pending a SUPPORT REQUEST, and support
 --    may reasonably decline to grant a customer role privileges on a managed
---    schema. If they do, R0's write side needs a different design (the nearest
---    one: a SECURITY DEFINER function owned by `postgres`, which DOES hold
---    INSERT, exposed to r0_broadcast by EXECUTE alone — note that realtime.send
---    itself cannot serve this, it is prosecdef=false). Do not treat that as
---    decided; it is written down so the next reader starts from the measurement
---    instead of rediscovering it.
+--    schema. If they do, R0's write side needs a different design.
+--
+--    The obvious candidate is a SECURITY DEFINER function owned by `postgres`,
+--    which DOES hold INSERT on realtime.messages, exposed to r0_broadcast by
+--    EXECUTE alone. Two things must be said about it in the same breath,
+--    because the idea is much more attractive than it is safe:
+--
+--      * realtime.send cannot be used for this. Checked: prosecdef = false.
+--      * `postgres` is rolbypassrls = true, and SECURITY DEFINER runs as the
+--        OWNER, so such a function DOES NOT GET CHECKED BY THE WRITE POLICY AT
+--        ALL. Measured 2026-09-08 in a transaction that was then aborted: a
+--        definer function owned by postgres read a table carrying a
+--        `using (false)` deny-all policy and saw its row anyway.
+--
+--        That inverts the whole authorization story. Today the policy is the
+--        boundary and the oracle is its helper; under a definer function there
+--        IS no policy in the path, and every topic/ownership check has to live
+--        inside the function body — where a missing predicate is not a denied
+--        write but an unbounded one, to any topic, for any session.
+--
+--    So: written down as a direction, explicitly NOT as a recommendation. Do
+--    not reach for it because this file made it sound close.
 --
 -- ── Order ─────────────────────────────────────────────────────
 -- v0.81 first (it creates the role this grants to). Then this.
