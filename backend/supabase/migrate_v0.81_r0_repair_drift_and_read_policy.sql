@@ -296,15 +296,25 @@ begin
     raise exception 'authenticator cannot SET ROLE into r0_broadcast';
   end if;
 
-  -- And the honest converse: this file deliberately does NOT give r0_broadcast
-  -- INSERT on realtime.messages, and must not appear to. If a future edit adds
-  -- it back here it will silently no-op, so fail loudly if it is ever present
-  -- without v0.82 having run.
-  if has_table_privilege('r0_broadcast', 'realtime.messages', 'INSERT') then
-    raise exception
-      'r0_broadcast already has INSERT on realtime.messages — v0.82 has run, so '
-      'this file is not the right place to be asserting the write path';
-  end if;
+  -- NO ASSERTION ON realtime.messages INSERT HERE, and the reason is worth
+  -- stating so it does not get "helpfully" added back.
+  --
+  -- The tempting guard is `if has_table_privilege('r0_broadcast',
+  -- 'realtime.messages','INSERT') then raise`, to catch a future edit that
+  -- re-adds the grant to this file. Work through both states it can see:
+  --
+  --   * grant re-added to THIS file, v0.82 not yet run — it no-ops silently,
+  --     the privilege stays FALSE, and the guard says nothing. It cannot
+  --     detect the one thing it exists to detect.
+  --   * v0.82 legitimately applied by support — the privilege is TRUE and the
+  --     guard ABORTS a re-run of a file whose header promises it is an
+  --     idempotent repair.
+  --
+  -- So it is a false negative for its stated purpose and a false positive in
+  -- the state we are working toward: strictly worse than silence. What
+  -- actually protects the boundary is v0.82's own assertion, which checks the
+  -- privilege AFTER the statement that is supposed to create it — the only
+  -- place where TRUE and FALSE mean what you want them to mean.
 
   -- THE POINT OF THIS MIGRATION: neither policy body may name a public table
   -- any more, because the role each targets has no grant on it. Checked

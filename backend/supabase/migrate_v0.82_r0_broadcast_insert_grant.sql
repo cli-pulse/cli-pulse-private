@@ -8,20 +8,40 @@
 --
 -- ── Why it is separate ────────────────────────────────────────
 -- v0.65's design gives r0_broadcast exactly one reach: INSERT on
--- realtime.messages. Measured on production 2026-09-08, as the role that
--- applies migrations here:
+-- realtime.messages. That single grant is the one thing the owner of a hosted
+-- Supabase project CANNOT issue. Measured on production 2026-09-08, as the
+-- role that applies migrations here:
 --
+--   pg_get_userbyid(relowner) for realtime.messages     supabase_realtime_admin
+--   relacl                          postgres=arwdDxtm/supabase_realtime_admin
+--                                   ^ 'a' = INSERT, and NO '*' = no grant option
 --   has_table_privilege('postgres','realtime.messages','INSERT')        true
 --   has_table_privilege('postgres', …, 'INSERT WITH GRANT OPTION')      FALSE
---   pg_has_role('postgres','supabase_realtime_admin','USAGE')           false
---   pg_get_userbyid(relowner) for realtime.messages     supabase_realtime_admin
+--   pg_has_role('postgres','supabase_realtime_admin','SET')             false
+--   pg_has_role('postgres','supabase_realtime_admin','MEMBER')          false
+--
+-- (An earlier draft of this header probed that membership with 'USAGE'. That
+--  is the NOINHERIT trap v0.81's defect #2 was about — supabase_realtime_admin
+--  has rolinherit=false, so USAGE reads false even when membership is perfect,
+--  and the probe would have "confirmed" the blocker for the wrong reason. 'SET'
+--  is the right question, and it answers false too, so the conclusion survives
+--  its own correction. The evidence did not; hence this rewrite.)
 --
 -- PostgreSQL does not raise when a grantor lacks the grant option. It emits
 --   WARNING:  no privileges were granted for "messages"
--- and returns success. Had this statement stayed in v0.81 it would have
--- granted nothing, every assertion there would still have passed, and the
--- apply would have reported green with the write path dead — the precise
--- shape of failure that produced PROBLEM 1 in v0.81's own header.
+-- and returns success. That was reasoned about when v0.81 was split; on
+-- 2026-09-08 it was REPRODUCED, inside a transaction that was then rolled back:
+--
+--   begin;
+--   grant insert on realtime.messages to r0_broadcast;          -- reports success
+--   select has_table_privilege('r0_broadcast','realtime.messages','INSERT');
+--     -- => false
+--   rollback;
+--
+-- Had this statement stayed in v0.81 it would have granted nothing, every
+-- assertion there would still have passed, and the apply would have reported
+-- green with the write path dead — the precise shape of failure that produced
+-- PROBLEM 1 in v0.81's own header.
 --
 -- Note what is NOT the obstacle: policy DDL. `supautils.policy_grants` lists
 -- realtime.messages for postgres, and v0.56 created the live policies exactly
@@ -29,15 +49,55 @@
 --
 -- ── How to get it applied ─────────────────────────────────────
 -- Supabase support, or the platform superuser channel. Ask for exactly these
--- statements as supabase_admin, and nothing else. An alternative that would
--- let the owner apply it directly is `grant supabase_realtime_admin to
--- postgres`, but that is a much larger privilege than this needs.
+-- statements as supabase_admin, and nothing else.
+--
+-- ⛔ DO NOT go looking for a self-service way around this. An earlier draft of
+--    this header offered one — "an alternative that would let the owner apply
+--    it directly is `grant supabase_realtime_admin to postgres`" — and it does
+--    not exist. Tried on production 2026-09-08 inside a transaction that was
+--    then aborted:
+--
+--      ERROR:  42501: "supabase_realtime_admin" role memberships are reserved,
+--                     only superusers can grant them
+--
+--    `supautils.reserved_memberships` names supabase_realtime_admin explicitly,
+--    so this is closed by platform configuration, not by an accident of setup.
+--    The false alternative is recorded here rather than deleted, because a
+--    deleted dead end gets rediscovered.
+--
+-- ⚠️ What this means for the DESIGN, not just this file: on hosted Supabase a
+--    custom Postgres role can never hold INSERT on realtime.messages without
+--    the platform's help. v0.65's least-privilege broadcast role is therefore
+--    not "pending an owner step" — it is pending a SUPPORT REQUEST, and support
+--    may reasonably decline to grant a customer role privileges on a managed
+--    schema. If they do, R0's write side needs a different design (the nearest
+--    one: a SECURITY DEFINER function owned by `postgres`, which DOES hold
+--    INSERT, exposed to r0_broadcast by EXECUTE alone — note that realtime.send
+--    itself cannot serve this, it is prosecdef=false). Do not treat that as
+--    decided; it is written down so the next reader starts from the measurement
+--    instead of rediscovering it.
 --
 -- ── Order ─────────────────────────────────────────────────────
--- v0.81 first (it creates the role this grants to). Then this. Then, BEFORE
--- any cutover, re-deploy `mint-realtime-token`: production still runs the
--- pre-v0.65 build signing `role: "authenticated"`, and after this file the
--- WRITE policy admits only r0_broadcast, so broadcast would fail closed.
+-- v0.81 first (it creates the role this grants to). Then this.
+--
+-- The re-deploy this file used to demand has ALREADY HAPPENED: production ran
+-- the pre-v0.65 build signing `role: "authenticated"` until 2026-09-08, when
+-- `mint-realtime-token` was redeployed to v5. Verified against the deployed
+-- source, not the repo: v5 signs `role: "r0_broadcast"`.
+--
+-- So the production write path is currently dead THREE ways, and it is worth
+-- being precise about which, because each has a different owner:
+--   1. the token says role=r0_broadcast; the WRITE policy still targets
+--      {authenticated} — nothing matches                     (this file fixes)
+--   2. r0_broadcast holds no INSERT on realtime.messages — denied before any
+--      policy is consulted                                   (support fixes)
+--   3. the WRITE policy body still inlines remote_sessions, which r0_broadcast
+--      cannot SELECT — it would 42501 for its own role        (this file fixes)
+--
+-- It governs nothing today: `select count(*) from public.user_settings where
+-- realtime_private_enabled` = 0 of 216 on 2026-09-08. That is the ONLY reason
+-- this is a latent defect and not an outage. Do not flip the cutover for any
+-- account until 1-3 are all closed and the integration gate below has run.
 -- ============================================================
 
 set lock_timeout = '5s';

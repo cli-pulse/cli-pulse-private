@@ -13,6 +13,19 @@
 // was minted for: the WRITE policy requires topic == pterm:<r0_session_id>, closing
 // cross-session-within-owner. `aud` stays 'authenticated' (audience, not role).
 //
+// ⚠️ THE PARAGRAPH ABOVE DESCRIBES THE DESIGN, NOT PRODUCTION. Measured
+// 2026-09-08: `r0_broadcast` exists and is NOLOGIN, but it does NOT hold
+// realtime.messages INSERT, and the WRITE policy still targets {authenticated}
+// with v0.56's inlined body. So a token minted here cannot broadcast at all
+// today — it fails closed, which is the safe direction, but "ONLY
+// realtime.messages INSERT" currently overstates a privilege the role does not
+// have. The grant needs a supabase_admin-class role; see
+// backend/supabase/migrate_v0.82_r0_broadcast_insert_grant.sql for the
+// measurement and why the owner cannot issue it. Harmless because the cutover
+// (`user_settings.realtime_private_enabled`) is false for all 216 accounts.
+// This comment stays until v0.82 lands — the previous stale claim in this same
+// file survived a fix by two months and was still being read as current.
+//
 // ES256 signing reuses the proven Web-Crypto pattern from
 // send-approval-push/index.ts (signAPNsJWT): import the PKCS8 private key,
 // crypto.subtle.sign with ECDSA/P-256/SHA-256 — whose output is already the
