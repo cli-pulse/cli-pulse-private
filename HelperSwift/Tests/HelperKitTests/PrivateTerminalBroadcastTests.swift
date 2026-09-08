@@ -150,17 +150,30 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
             transport: PtyTransport(),
             broadcastPublisher: publisher,
             privateBroadcastEnabled: true)
-        // The gate is stored and consulted; with it ON a consented private
-        // record resolves to the private topic.
-        XCTAssertEqual(
-            ManagedSessionManager.broadcastVisibility(
-                realtimePrivate: true, localOnly: false, privateEnabled: true),
-            .privateTopic)
-        // ...and the manager built with it ON still refuses an unconsented one.
-        XCTAssertNil(
-            ManagedSessionManager.broadcastVisibility(
-                realtimePrivate: true, localOnly: true, privateEnabled: true))
-        _ = mgr
+
+        // Exercise the INSTANCE, not the static function the truth table
+        // already covers. An earlier version of this test built all three
+        // objects and then discarded them (`_ = mgr`), asserting only on the
+        // pure function — so it proved the gate compiles, not that it is
+        // wired. publishTailSnapshot is the reachable instance path that
+        // consults `privateBroadcastEnabled`.
+        //
+        // Unknown session => nil record => nil visibility => refuses, without
+        // needing a live PTY. That pins the fail-closed edge of the wiring.
+        let refusedUnknown = await mgr.publishTailSnapshot(
+            sessionId: "no-such-session", maxBytes: 1024)
+        XCTAssertFalse(refusedUnknown)
+        XCTAssertTrue(sink.topics.isEmpty, "an unknown session must publish nothing")
+
+        // And a manager built with the gate OFF must refuse the same call for
+        // the same reason, so the assertion above cannot pass for the wrong one.
+        let off = ManagedSessionManager(
+            transport: PtyTransport(),
+            broadcastPublisher: publisher,
+            privateBroadcastEnabled: false)
+        let refusedOff = await off.publishTailSnapshot(
+            sessionId: "no-such-session", maxBytes: 1024)
+        XCTAssertFalse(refusedOff)
     }
 
     // MARK: - routing

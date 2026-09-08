@@ -1019,6 +1019,16 @@ public final class ManagedSessionManager: @unchecked Sendable {
             rec.cloudShared = false
             revoked.append(sid)
         }
+        // The "Local Session Control off" kill switch. `setCloudShared` purges
+        // the broadcast tail on a single revoke and this — the GLOBAL revoke,
+        // the one whose whole purpose is "stop everything now" — did not. Same
+        // fire-and-forget shape and the same reasoning: this method holds
+        // `lock` and must not await, and the purge can only run after the flags
+        // are already false, so it shortens the tail rather than gating it.
+        if let publisher = broadcastPublisher, !revoked.isEmpty {
+            let ids = revoked
+            Task { for sid in ids { await publisher.purge(sessionId: sid) } }
+        }
         return revoked.sorted()
     }
 

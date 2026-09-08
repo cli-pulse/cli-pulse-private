@@ -180,6 +180,23 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroa
     /// time rather than permanent — see `denialBackoff`.
     private var deniedUntil: [String: ContinuousClock.Instant] = [:]
     private var pending: [String: [(event: String, bytes: Data)]] = [:]
+    /// Per-session PURGE generation, bumped only by `purge`.
+    ///
+    /// The pattern is lifted verbatim from `EventUploader.purgeGen`, which
+    /// exists in this repo for the SAME M4.4d revoke and whose comment records
+    /// the exact mistake made here: a pump "must NOT hold a local copy across
+    /// the suspension", because doing so "RESURRECTS events removeSession
+    /// purged (defeating M4.4d's revoke — the user's revoked output uploads
+    /// anyway)".
+    ///
+    /// `flush` lifts the whole buffer into a local before its first `await`, so
+    /// clearing `pending` cannot reach a batch already in flight — which is
+    /// precisely the "whatever a slow relay was holding" case `purge` was
+    /// written to cover. Capturing this counter at snapshot time and
+    /// re-checking it before every `send` makes the purge a BARRIER instead of
+    /// a filter.
+    private var purgeGen: [String: Int] = [:]
+    private var purgeGenCounter = 0
     private var flushTask: Task<Void, Never>?
     /// Single-flight latch. An actor is REENTRANT across `await`, so
     /// without this a chunk arriving during an in-flight POST arms a
@@ -212,6 +229,8 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroa
     public func purge(sessionId: String) {
         pending.removeValue(forKey: sessionId)
         deniedUntil.removeValue(forKey: sessionId)
+        purgeGenCounter += 1
+        purgeGen[sessionId] = purgeGenCounter
     }
 
     public init(
@@ -307,6 +326,10 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroa
             pending.removeAll(keepingCapacity: true)
             for (sessionId, items) in batches {
                 if isDenied(sessionId) { continue }
+                // Captured BEFORE the first suspension, re-checked before every
+                // send. A change means the session was purged mid-flush and
+                // this batch must be abandoned, not delivered.
+                let purgeAtEntry = purgeGen[sessionId]
                 var deniedThisPass = false
                 for group in Self.split(items, maxBytes: maxBatchBytes, maxCount: maxBatchCount) {
                     // One denial suppresses the SESSION, so the remaining
@@ -317,6 +340,9 @@ public actor EdgeRelayPrivateBroadcastSink: TerminalBroadcastSink, PurgeableBroa
                     // and re-logs once per group for a session it has just been
                     // told it may not write to.
                     if deniedThisPass { break }
+                    // The barrier. Consent was withdrawn while this batch was
+                    // already out of `pending`; drop the rest of the tail.
+                    if purgeGen[sessionId] != purgeAtEntry { break }
                     do {
                         try await send(sessionId: sessionId, items: group)
                         sentBatches += 1

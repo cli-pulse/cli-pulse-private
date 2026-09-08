@@ -378,17 +378,13 @@ case "daemon":
         // With the gate OFF the manager never routes a private chunk at all
         // (see `privateBroadcastEnabled` below), so there is no `pterm:` chunk
         // for anything to refuse and the router is not built. An earlier
-        // comment here claimed the router's refusal was what protected the OFF
+        // comment here credited the router's refusal with protecting the OFF
         // state; that was true of the first cut, which wrapped unconditionally
-        // and gated only the sink. Gating at the branch is strictly better —
-        // no redaction, no queue entry, no drop accounting — but it means the
-        // refusal is now a defence-in-depth backstop for a mis-wiring, not the
-        // mechanism. `PrivacyRoutingBroadcastSinkTests` still pins it.
-        // When the gate is off the manager never routes a private chunk at
-        // all (see privateBroadcastEnabled below), so the router would only
-        // ever see `term:`. Keep the plain public sink in that case: one less
-        // wrapper on the path that has shipped since v1.25, and the routing
-        // sink's refusal branch stays reachable only where it means something.
+        // and gated only the sink. Gating at the branch is strictly better — no
+        // redaction, no queue entry, no drop accounting — so the refusal is now
+        // a defence-in-depth backstop against a mis-wiring rather than the
+        // mechanism. It is pinned by
+        // `PrivateTerminalBroadcastTests.test_routerRefusesPrivateChunkWhenPrivateSinkIsAbsent`.
         let privateSink: (any TerminalBroadcastSink)? =
             privateBroadcastOn ? EdgeRelayPrivateBroadcastSink(configProvider: provider) : nil
         let sink: any TerminalBroadcastSink = privateSink.map {

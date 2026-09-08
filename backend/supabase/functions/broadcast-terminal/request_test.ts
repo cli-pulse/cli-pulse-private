@@ -103,8 +103,10 @@ Deno.test("parse: bounds chunk count and total size", () => {
 });
 
 Deno.test("classify: ONLY 42501 is an authoritative denial", () => {
-  // This is the invariant that keeps the Swift sink from latching a healthy
-  // session into deniedSessions on a DB blip.
+  // This is the invariant that keeps the Swift sink from SUPPRESSING a healthy
+  // session on a DB blip. (It suppresses for a bounded backoff, not the
+  // permanent `deniedSessions` latch an earlier version of this comment
+  // described — that type no longer exists anywhere in the repo.)
   assertEquals(classifyAuthorizeResult(null, { code: "42501" }), {
     authorized: false,
     status: 403,

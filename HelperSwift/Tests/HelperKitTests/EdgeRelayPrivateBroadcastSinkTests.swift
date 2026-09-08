@@ -282,11 +282,17 @@ final class EdgeRelayPrivateBroadcastSinkTests: XCTestCase {
         XCTAssertEqual(st.suppressed, 1, "and must be counted once, not once per group")
     }
 
-    func test_pendingIsBoundedSoASuppressedSessionCannotGrowWithoutLimit() async {
+    func test_pendingIsBoundedWhenTheRelayIsSLOW() async {
         // This buffer is the ONE queue the publisher's drop-oldest bound cannot
         // reach: `publish` returns as soon as it appends here, so the publisher
         // considers the chunk delivered.
-        rec.status = 403
+        //
+        // The state that matters is a SLOW relay, not a suppressed one. An
+        // earlier version of this test set status 403 — dead setup, because a
+        // suppressed session cannot grow at all (`publish` throws before the
+        // append), and with a 60 s window no request was ever made so nothing
+        // was ever suppressed either. It asserted the right number for no
+        // reason.
         let cfg = URLSessionConfiguration.ephemeral
         cfg.protocolClasses = [InterceptProtocol.self]
         let sink = EdgeRelayPrivateBroadcastSink(
@@ -298,6 +304,30 @@ final class EdgeRelayPrivateBroadcastSinkTests: XCTestCase {
         let st = await sink.stats()
         XCTAssertEqual(st.droppedForBackpressure, 32,
                        "excess must be dropped at the buffer, not accumulated")
+    }
+
+    func test_purgeStopsATailThatIsALREADYINFLIGHT() async {
+        // THE case purge exists for, and the one the idle test below cannot
+        // reach. `flush()` lifts the whole buffer into a local before its first
+        // await, so clearing `pending` cannot reach a batch already in flight —
+        // "whatever a slow relay was holding" is definitionally "already out of
+        // pending". Measured before the fix: all 5 chunks POSTed after revoke.
+        rec.delayMs = 120
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.protocolClasses = [InterceptProtocol.self]
+        let sink = EdgeRelayPrivateBroadcastSink(
+            configProvider: { Self.cloud },
+            coalesceWindow: .milliseconds(1),
+            maxBatchCount: 1,            // one group per chunk => a visible tail
+            session: URLSession(configuration: cfg))
+        for i in 1...5 { await publish(sink, "sid-1", "c\(i)") }
+        // Let the first POST get in flight, then revoke.
+        try? await Task.sleep(for: .milliseconds(60))
+        await sink.purge(sessionId: "sid-1")
+        try? await Task.sleep(for: .milliseconds(600))
+        XCTAssertLessThanOrEqual(
+            rec.urls.count, 2,
+            "a revoke must abandon the rest of the tail, not deliver it — got \(rec.urls.count) POSTs")
     }
 
     func test_purgeDropsTheBufferedTailOnRevoke() async {

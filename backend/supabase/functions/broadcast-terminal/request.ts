@@ -90,7 +90,14 @@ export function parseBroadcastBody(raw: unknown): ParseResult {
     const co = c as Record<string, unknown>;
     const ev = co.event;
     if (typeof ev !== "string" || !(ALLOWED_EVENTS as readonly string[]).includes(ev)) {
-      return { ok: false, error: "chunk.event must be stdout or stderr" };
+      return {
+        ok: false,
+        // Derived from the allowlist, never restated: an earlier version
+        // hard-coded "stdout or stderr" and kept saying it after
+        // tail_snapshot_result was added, so the 400 body told the client to
+        // send something the server would also have rejected.
+        error: `chunk.event must be one of ${ALLOWED_EVENTS.join(", ")}`,
+      };
     }
     const d = co.data_b64;
     if (typeof d !== "string" || d.length === 0) {

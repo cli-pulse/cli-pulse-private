@@ -28,6 +28,25 @@
 //    lives in the `remote_helper_authorize_broadcast` call below, and the topic
 //    is derived from the session id that call authorized — never from anything
 //    the caller sends separately. Do not add a caller-supplied topic parameter.
+//
+// ⛔ KNOWN GAP, and it is a SCHEMA change so it is not fixed here.
+//    `remote_helper_authorize_broadcast` (migrate_v0.56, ~lines 145-175) selects
+//    on exactly `rs.id`, `rs.device_id`, `rs.user_id` and
+//    `rs.realtime_private is true`. There is NO status predicate and no consent
+//    column — M4.4d's `cloudShared` is an in-memory helper flag never mirrored
+//    to the database, and revocation only posts `status='stopped'`, which this
+//    RPC does not read.
+//
+//    So revocation is enforced ENTIRELY on the client: the visibility gate
+//    stops new chunks and the sink's purge barrier abandons in-flight ones. A
+//    helper that is compromised, stale, or simply buggy would still be
+//    authorized to write a revoked session's topic, and this function — which
+//    the paragraph above calls the entire write-side boundary — would let it.
+//
+//    Closing it means a migration adding a status/consent predicate to that
+//    RPC, which is owner-gated. Until then, do not describe revocation as
+//    server-enforced anywhere: it is client-enforced, with a server that does
+//    not disagree.
 //    The READ side is unaffected and still RLS-governed (migrate_v0.81), so
 //    subscribers are still restricted to their own sessions.
 //
