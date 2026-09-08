@@ -91,11 +91,24 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         public let minOsVersion: String
         public let releaseNotesUrl: String?
 
+        /// Remote-control dark-ship allowance. OPTIONAL, and its absence is
+        /// meaningful: it clears the cached allowance rather than leaving the
+        /// last answer standing, so removing the field turns the feature back
+        /// off. See `RemoteControlFeature.recordRemoteAllowance`.
+        ///
+        /// Carried here rather than on a new endpoint because this manifest is
+        /// already fetched, already throttled, already verified-downstream and
+        /// carries NO identifier — which is the whole reason this is a kill
+        /// switch and not a staged rollout. A per-install rollout would have
+        /// needed an id, and the app must not send one a user declined.
+        public let remoteControlEnabled: Bool?
+
         enum CodingKeys: String, CodingKey {
             case version, build, channel, arch, url, sha256
             case sizeBytes = "size_bytes"
             case minOsVersion = "min_os_version"
             case releaseNotesUrl = "release_notes_url"
+            case remoteControlEnabled = "remote_control_enabled"
         }
     }
 
@@ -187,6 +200,15 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         // Cache so `download()` can use the same manifest the user saw
         // in the "update available" prompt.
         cachedManifest = m
+
+        // The remote-control kill switch, recorded only HERE — after the
+        // manifest has passed every check above. A manifest rejected for any
+        // other reason (unreachable, empty, wrong arch) therefore records
+        // nothing, the cached allowance ages out, and the feature decays to
+        // `shippedDefault`. No separate timer: this refresh is the existing,
+        // already-tuned poll, and adding a second one was a defect in the
+        // first draft of the design.
+        RemoteControlFeature.recordRemoteAllowance(m.remoteControlEnabled, at: Date())
 
         if Self.compareVersions(installed, m.version) < 0 {
             state = .updateAvailable(installed: installed, latest: m.version)
