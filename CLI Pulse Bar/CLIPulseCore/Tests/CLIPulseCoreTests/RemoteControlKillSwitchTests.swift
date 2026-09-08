@@ -30,9 +30,32 @@ final class RemoteControlKillSwitchTests: XCTestCase {
     // MARK: - The shipped posture
 
     /// Pins the default. Flipping it must be a deliberate act, not a drive-by.
-    func test_aFreshInstallIsOff() {
+    func test_aFreshInstallIsOffOnMac() {
         XCTAssertFalse(RemoteControlFeature.isAvailable(in: d, now: t0))
         XCTAssertFalse(RemoteControlFeature.shippedDefault)
+    }
+
+    /// ⚠️ The line above runs on macOS ONLY — `swift test` compiles nothing
+    /// else — so it would stay green through any change to the iOS arm. The
+    /// asymmetry is deliberate and load-bearing, so it is pinned as source:
+    /// macOS off (the listener, remotely revocable), iOS on (a client that can
+    /// reach nothing unless a Mac is already advertising, and which has no way
+    /// to be turned on remotely at all).
+    func test_theShippedDefaultIsAsymmetricAndBothArmsArePinned() throws {
+        let here = URL(fileURLWithPath: #filePath)
+        let root = here.deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let src = try String(
+            contentsOf: root.appendingPathComponent("Sources/CLIPulseCore/RemoteControlFeature.swift"),
+            encoding: .utf8)
+        let block = try XCTUnwrap(src.range(of: "#if os(iOS)").map {
+            String(src[$0.lowerBound...].prefix(200))
+        }, "the platform split is gone — one arm now decides both")
+        XCTAssertTrue(block.contains("public static let shippedDefault = true"),
+                      "the iOS arm no longer ships ON; the phone half becomes unreachable, since "
+                      + "iOS has no defaults-write, no manifest fetch and no telemetry channel")
+        XCTAssertTrue(block.contains("#else\n    public static let shippedDefault = false"),
+                      "the macOS arm no longer ships OFF — a release would expose the listener")
     }
 
     // MARK: - The remote allowance

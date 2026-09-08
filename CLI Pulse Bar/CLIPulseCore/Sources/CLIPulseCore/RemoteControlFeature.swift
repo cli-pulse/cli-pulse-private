@@ -30,11 +30,40 @@ public enum RemoteControlFeature {
     /// The override key. Absent ⇒ `shippedDefault`.
     public static let overrideDefaultsKey = "cli_pulse_remote_control_feature_enabled"
 
-    /// What a fresh install gets. **False on purpose**: a release must not
-    /// expose remote control until that is a decision someone made.
-    /// `RemoteControlFeatureTests` pins this value, so flipping it is a
-    /// visible, deliberate act rather than a drive-by edit.
+    /// What a fresh install gets — and it is deliberately ASYMMETRIC.
+    ///
+    /// **macOS: false.** A release must not expose remote control until that
+    /// is a decision someone made. This is the half with the security weight:
+    /// it is the Mac that opens a listener and advertises on Bonjour, and the
+    /// half the manifest allowance can turn back on or off without a release.
+    ///
+    /// **iOS: true.** The phone is a client. It opens nothing, listens on
+    /// nothing, and can do nothing at all unless some Mac is already
+    /// advertising — which only happens when that Mac's owner has both been
+    /// allowed AND flipped their own switch. Keeping it false there does not
+    /// protect anything; it only makes the feature unusable end to end,
+    /// because iOS has no `defaults write` escape hatch, no manifest fetch and
+    /// no telemetry channel, so there is NO way to turn the phone half on.
+    /// The adversarial review of the rollout design called this out as a
+    /// blocker: remoting only the Mac would open a listener that no phone
+    /// could ever reach, and the §8 latches would stay at zero for a second,
+    /// equally meaningless round.
+    ///
+    /// The cost is honest and bounded: an iPhone whose Mac is not enabled sees
+    /// the Nearby Macs row and, inside it, `remote.no_macs` — "No Macs found
+    /// on this Wi-Fi. On the Mac, turn on Settings › Remote Control." — in all
+    /// six languages. Browsing starts on that screen's `.onAppear`
+    /// (LANRemoteScreens.swift:112), so merely shipping this does NOT raise
+    /// the local-network permission prompt for anyone who does not go looking.
+    ///
+    /// `RemoteControlKillSwitchTests` pins BOTH values as a source guard,
+    /// because `swift test` compiles macOS only and would never see an
+    /// accidental change to the iOS arm.
+    #if os(iOS)
+    public static let shippedDefault = true
+    #else
     public static let shippedDefault = false
+    #endif
 
     // MARK: - Remote allowance (the kill switch)
 
