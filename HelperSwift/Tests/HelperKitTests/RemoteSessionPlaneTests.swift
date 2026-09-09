@@ -37,6 +37,40 @@ final class RemoteSessionPlaneTests: XCTestCase {
     /// "Retired" and "unpaired" are different facts. Printing the same line for
     /// both is how a deliberate withdrawal gets read as a pairing problem —
     /// the confidently-wrong-status class this project keeps paying for.
+    func test_thePrivateTerminalProducerIsGatedOnTheRETIREMENT_notJustItsOwnFlag() {
+        // #549 shipped the `pterm:` producer gated only on
+        // `remote_private_terminal_broadcast_enabled`. Flipping that flag would
+        // have produced terminal output for a plane this very file declares
+        // retired, whose consumer was removed with it.
+        //
+        // All four combinations, because the conjunction is the whole point.
+        for paired in [true, false] {
+            for cfg in [true, false] {
+                XCTAssertEqual(
+                    RemoteSessionPlane.shouldRunPrivateTerminalProducer(
+                        configEnabled: cfg, isPaired: paired),
+                    RemoteSessionPlane.isEnabled && cfg && paired,
+                    "cfg=\(cfg) paired=\(paired)")
+            }
+        }
+        // And concretely, while the plane is retired: nothing turns it on.
+        XCTAssertFalse(RemoteSessionPlane.shouldRunPrivateTerminalProducer(
+            configEnabled: true, isPaired: true),
+            "the ops flag must not be able to outvote the retirement")
+    }
+
+    func test_theProducerGateMatchesTheCloudTaskGateShape() {
+        // Same shape as its sibling, so un-retiring flips both together rather
+        // than leaving a producer running against a plane with no consumer.
+        for paired in [true, false] {
+            XCTAssertEqual(
+                RemoteSessionPlane.shouldRunPrivateTerminalProducer(
+                    configEnabled: true, isPaired: paired),
+                RemoteSessionPlane.shouldStartCloudTask(isPaired: paired),
+                "with the ops flag on, the producer gate must track the cloud-task gate")
+        }
+    }
+
     func test_theStartupNoticeDistinguishesRetiredFromUnpaired() {
         let paired = RemoteSessionPlane.startupNotice(isPaired: true)
         let unpaired = RemoteSessionPlane.startupNotice(isPaired: false)

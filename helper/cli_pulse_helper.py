@@ -18,6 +18,7 @@ from typing import Any
 from system_collector import CollectedAlert, collect_alerts, collect_device_snapshot, collect_sessions, estimate_provider_quotas
 from git_collector import GitCollector, project_paths_from_sessions
 import user_secret as _user_secret_module
+from remote_session_plane import should_run_terminal_broadcast
 
 logger = logging.getLogger("cli_pulse.helper")
 
@@ -627,8 +628,16 @@ def daemon(args: argparse.Namespace) -> None:
         # broadcasts, zero edge-fn calls). Even on, only PRIVATE sessions
         # broadcast: the local gate in `_post_stdout_chunk` skips public/unknown
         # sessions entirely, and the mint edge fn denies public.
+        # ⛔ ANDed with the RETIREMENT, not just the ops flag. `pterm:` streams a
+        # terminal to a plane that was withdrawn in #499-#514; nothing
+        # subscribes to that topic on any platform, and this producer's own
+        # write path (v0.65's direct mint+POST) has been refused by Realtime
+        # since 2026-08-30 because `r0_broadcast` holds no INSERT — invisibly,
+        # since the endpoint answers 202 either way. See remote_session_plane.py.
         broadcast_publisher = None
-        if getattr(config_for_manager, "remote_realtime_broadcast_enabled", False):
+        if should_run_terminal_broadcast(
+            getattr(config_for_manager, "remote_realtime_broadcast_enabled", False)
+        ):
             try:
                 from realtime_broadcast import (  # type: ignore
                     RealtimeBroadcastSink,
