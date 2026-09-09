@@ -366,7 +366,17 @@ case "daemon":
     let pairingWithoutContainer: () -> AppGroupConfigReader.AppPairing? = { nil }
 
     let bootCloudCfg = configStore.cloudConfigSnapshot(appGroupReader: pairingWithoutContainer)
-    let privateBroadcastOn = configStore.privateTerminalBroadcastEnabled
+    // ⛔ ANDed with the RETIREMENT, not just the ops flag. `pterm:` streams a
+    // terminal to the phone, and `RemoteSessionPlane` — mirrored in both
+    // packages with a drift test — says the app offers no remote terminals and
+    // the consumer was removed with the rest of that plane. Producing for it
+    // would be redaction, batching and egress in service of nothing.
+    //
+    // This check was MISSING when the producer shipped (#549). The flag alone
+    // would have turned it on.
+    let privateBroadcastOn = RemoteSessionPlane.shouldRunPrivateTerminalProducer(
+        configEnabled: configStore.privateTerminalBroadcastEnabled,
+        isPaired: bootCloudCfg.isPaired)
     let broadcastPublisher: TerminalBroadcastPublisher?
     if bootCloudCfg.isPaired && configStore.remoteRealtimeEnabled {
         let provider: @Sendable () -> HelperConfigStore.CloudConfig = {

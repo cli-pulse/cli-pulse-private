@@ -43,10 +43,17 @@
 //    authorized to write a revoked session's topic, and this function — which
 //    the paragraph above calls the entire write-side boundary — would let it.
 //
-//    Closing it means a migration adding a status/consent predicate to that
-//    RPC, which is owner-gated. Until then, do not describe revocation as
-//    server-enforced anywhere: it is client-enforced, with a server that does
-//    not disagree.
+//    HALF-CLOSED 2026-09-09 by migrate_v0.83: the RPC now also requires
+//    `rs.status in ('pending','running')`, so a session retired to
+//    status='stopped' — which is exactly what revocation posts — stops
+//    authorizing. Verified against real rows: the old predicate set matched 1,
+//    the new one matches 0.
+//
+//    STILL OPEN: consent. `cloudShared` is an in-memory helper flag never
+//    mirrored to the database, so a session that was never shared but is
+//    running would still authorize if a helper asked. Closing that needs a
+//    consent column the client maintains. So revocation is now enforced on
+//    BOTH sides; consent is still client-only. Do not conflate them.
 //    The READ side is unaffected and still RLS-governed (migrate_v0.81), so
 //    subscribers are still restricted to their own sessions.
 //

@@ -65,6 +65,36 @@ public enum RemoteSessionPlane {
         isEnabled && isPaired
     }
 
+    /// Whether the helper may run the PRIVATE `pterm:` terminal producer.
+    ///
+    /// Added 2026-09-09, after shipping that producer without this check.
+    ///
+    /// `pterm:` exists to stream a terminal to the phone. This enum's own
+    /// docstring says the app "offers no remote sessions, terminals or
+    /// approvals", and the app-side consumer was removed with the rest of the
+    /// plane — so with the config flag on and this predicate absent, the helper
+    /// would have redacted, batched and POSTed a session's output to a topic
+    /// nothing subscribes to, for a plane both copies of this file declare
+    /// retired. Not a leak (the relay authorizes, and the READ policy still
+    /// scopes subscribers to their own sessions), but real work and real
+    /// egress in service of nothing.
+    ///
+    /// The conjunction is the point, and it is the same shape as
+    /// `shouldStartCloudTask`: the ops flag can only ever turn the producer
+    /// OFF sooner, never on past the retirement. Un-retiring is one edit, in
+    /// one place, reviewed on its own — which is what the flag is for.
+    ///
+    /// Lives here rather than inline in `main.swift` for the reason stated
+    /// above `shouldStartCloudTask`: main.swift is an executable target with no
+    /// test bundle, and a predicate a test cannot reach is a predicate nobody
+    /// has checked. That is exactly how this one shipped unchecked.
+    public static func shouldRunPrivateTerminalProducer(
+        configEnabled: Bool,
+        isPaired: Bool
+    ) -> Bool {
+        isEnabled && configEnabled && isPaired
+    }
+
     /// Why the cloud task is not running, for an operator reading the log.
     /// "Retired" and "unpaired" are different facts and must not print the
     /// same line — confusing them is how a real outage gets read as a config
