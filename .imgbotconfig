@@ -1,0 +1,13 @@
+{
+  "schedule": "monthly",
+  "minKBReduced": 50,
+  "prTitle": "chore(assets): lossless image compression",
+  "ignoredFiles": [
+    "**/*.xcassets/**",
+    "*/*.xcassets/*",
+    "**/Assets.xcassets/**",
+    "**/screenshots/**",
+    "*/screenshots/*",
+    "**/fastlane/**"
+  ]
+}
