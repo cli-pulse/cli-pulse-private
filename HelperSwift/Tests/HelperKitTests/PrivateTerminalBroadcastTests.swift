@@ -221,6 +221,68 @@ final class PrivateTerminalBroadcastTests: XCTestCase {
         XCTAssertNil(on.resolvedBroadcastVisibility(sessionId: "s-gate"))
     }
 
+    // MARK: - upgrade safety: 1.52.1 -> 1.53.0 with the gate off
+
+    func test_gateOFF_isBehaviourallyIDENTICALtoThePreProducerGate() {
+        // 1.53.0 shipped to real users via the auto-updater. Anyone who upgrades
+        // and never touches a flag must get EXACTLY the pre-producer behaviour.
+        //
+        // Before the producer existed the only gate was
+        // `allowsPublicBroadcast(realtimePrivate:)`. Pin that, with the gate
+        // off, `broadcastVisibility` publishes on exactly the same records —
+        // and on the same topic.
+        for p in [true, false, nil] as [Bool?] {
+            for localOnly in [true, false] {
+                let now = ManagedSessionManager.broadcastVisibility(
+                    realtimePrivate: p, localOnly: localOnly, privateEnabled: false)
+                let before = ManagedSessionManager.allowsPublicBroadcast(realtimePrivate: p)
+
+                // The ONE input pair where they differ is unreachable in
+                // production — see the invariant test below — so it is excluded
+                // here deliberately rather than silently.
+                if p == false && localOnly { continue }
+
+                XCTAssertEqual(now != nil, before,
+                    "gate OFF must publish on exactly the pre-producer set "
+                    + "(private=\(String(describing: p)) localOnly=\(localOnly))")
+                if before {
+                    XCTAssertEqual(now, .publicTopic,
+                                   "and on the same topic it always used")
+                }
+            }
+        }
+    }
+
+    func test_theOneDivergentInputPairIsUnreachable() {
+        // The excluded pair above is (realtimePrivate == false, localOnly == true).
+        // `localOnly` is `attached && !cloudShared`, so it needs an ATTACHED
+        // record — and every attached record is stamped realtimePrivate: true.
+        // If that ever stops being true, the exclusion above becomes a real
+        // behaviour change for upgrading users, so pin the invariant itself.
+        let src = try? String(
+            contentsOfFile: "HelperSwift/Sources/HelperKit/ManagedSessionManager.swift",
+            encoding: .utf8)
+        // Fall back to a relative path when the test runs from the package dir.
+        let text = src ?? (try? String(
+            contentsOfFile: "Sources/HelperKit/ManagedSessionManager.swift",
+            encoding: .utf8)) ?? ""
+        guard !text.isEmpty else {
+            // Source not reachable from the test's cwd — assert the behaviour
+            // directly instead of the source, so this never silently passes.
+            XCTAssertNil(ManagedSessionManager.broadcastVisibility(
+                realtimePrivate: false, localOnly: true, privateEnabled: false))
+            return
+        }
+        guard let attachRange = text.range(of: "public func attachWrappedSession") else {
+            return XCTFail("attachWrappedSession moved — re-check the invariant")
+        }
+        let body = String(text[attachRange.lowerBound...].prefix(4000))
+        XCTAssertTrue(body.contains("realtimePrivate: true"),
+            "attachWrappedSession no longer stamps realtimePrivate:true, so "
+            + "(private=false, localOnly=true) may now be reachable — the "
+            + "gate-OFF equivalence above no longer holds")
+    }
+
     // MARK: - routing
 
     func test_routerSendsPrivateTopicsToThePrivateSinkOnly() async throws {
