@@ -1,6 +1,44 @@
 -- ============================================================
 -- v0.82 — the one grant v0.81 could not issue, and the policy that needs it
--- Date: 2026-09-08 · *** NOT APPLIED — REQUIRES A supabase_admin-CLASS ROLE ***
+-- Date: 2026-09-08 · *** SUPERSEDED 2026-09-09 — DO NOT APPLY, DO NOT ASK ***
+--
+-- ╔══════════════════════════════════════════════════════════════════════╗
+-- ║ READ THIS BEFORE OPENING A SUPABASE SUPPORT TICKET. Everything below ║
+-- ║ is still TRUE and still worth reading for the measurements — but the ║
+-- ║ ask it recommends is no longer the right one.                        ║
+-- ╚══════════════════════════════════════════════════════════════════════╝
+--
+-- Three things changed on 2026-09-08/09, in the order that matters:
+--
+--  1. THE WRITE PATH WAS BUILT WITHOUT THIS GRANT. The `broadcast-terminal`
+--     edge function (deployed v1, 2026-09-09) takes v0.65's own recorded
+--     fallback — helper → edge fn → service_role — and service_role ALREADY
+--     holds INSERT on realtime.messages. Proven end to end before it shipped: a
+--     service-role publish to a private topic is delivered; an anon publish
+--     gets the same HTTP 202 and is silently dropped. So the grant this file
+--     exists to obtain buys nothing the product needs.
+--
+--  2. THE FEATURE IT SERVES IS RETIRED. `RemoteSessionPlane.isEnabled = false`
+--     in three packages now (Swift helper, CLIPulseCore, and as of 2026-09-09
+--     helper/remote_session_plane.py, with a drift gate across all three). The
+--     app offers no remote terminals; nothing subscribes to `pterm:` on any
+--     platform. Both producers are gated on that flag.
+--
+--  3. THE SUPPORT ASK WAS THE EXPENSIVE PART. This file's own header calls it
+--     a one-shot favour and says not to spend it before knowing the design
+--     survives. It did not survive: it was replaced (1) and then retired (2).
+--
+-- WHAT TO DO IF THE PLANE IS EVER UN-RETIRED: start from the relay, not from
+-- here. The custom-role design needs a privilege the project owner cannot
+-- obtain and support may decline; the relay needs none and is already deployed
+-- and tested. Re-read `broadcast-terminal/index.ts` — including its stated cost,
+-- that service_role is rolbypassrls so the edge function IS the write-side
+-- boundary — before reviving anything in this file.
+--
+-- KEPT, NOT DELETED, for the same reason the retirement was: the measurements
+-- below (silent no-op GRANT, reserved membership, the NOINHERIT probe trap,
+-- the definer/bypassrls trap) are the expensive part and a deleted dead end
+-- gets rediscovered.
 --
 -- ⚠️ RUN AS `postgres` AND THIS FILE DOES NOT ERROR. It warns and does
 --    nothing. The assertion block at the foot turns that silence into an
