@@ -96,6 +96,173 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         )
     }
 
+    func testFailedLocalMetadataRemovalIsNotFlushedToCloud()
+        async throws
+    {
+        let removalSuiteName =
+            "AppStateProviderAccountSyncTests.metadata-failure.\(UUID())"
+        let removalDefaults = try XCTUnwrap(
+            DroppingUserDefaults(suiteName: removalSuiteName)
+        )
+        defer {
+            removalDefaults.removePersistentDomain(
+                forName: removalSuiteName
+            )
+        }
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "12121212-1212-4212-8212-121212121212"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            syncOwnerUserID: "user-a"
+        )
+        XCTAssertTrue(
+            ProviderConfigMetadataStore(
+                defaults: removalDefaults,
+                helperDefaults: nil
+            ).save([config])
+        )
+        let outbox = ProviderAccountDeletionOutbox(
+            defaults: removalDefaults,
+            storageKey:
+                "AppStateProviderAccountSyncTests.metadata-failure.outbox"
+        )
+        AppStateProviderAccountStubProtocol.configure(
+            responses: [
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#
+                ),
+            ]
+        )
+        let runtime =
+            CLIPulseRuntimeEnvironment.resolveForTesting(
+                infoDictionary: [
+                    "CFBundleIdentifier":
+                        "tests.clipulse.failed-local-removal",
+                ],
+                environment: [:]
+            )
+        let state = AppState(
+            runtimeEnvironment: runtime,
+            defaults: removalDefaults,
+            providerSecretStore: MemoryProviderSecretStore(),
+            api: await makeAuthenticatedAPI(),
+            providerAccountDeletionOutbox: outbox,
+            performLaunchSetup: false
+        )
+        state.isAuthenticated = true
+        state.userId = "user-a"
+        state.providerConfigs = [config]
+        removalDefaults.droppedSetKeys.insert(
+            ProviderAccountMigration.configsKey
+        )
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        await state.flushPendingProviderAccountDeletions(
+            for: "user-a"
+        )
+
+        XCTAssertTrue(
+            AppStateProviderAccountStubProtocol.recordedRequests()
+                .isEmpty,
+            "a prepared intent must not reach the server before local metadata commits"
+        )
+        XCTAssertEqual(
+            outbox.pendingAccountIDs(for: "user-a"),
+            [accountID]
+        )
+    }
+
+    func testRestoredAccountIsRecheckedBeforeEachBatchedCloudDelete()
+        async throws
+    {
+        let firstAccountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "10101010-1010-4010-8010-101010101010"
+            )
+        )
+        let restoredAccountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "20202020-2020-4020-8020-202020202020"
+            )
+        )
+        let firstRequestStarted = expectation(
+            description: "first batched delete started"
+        )
+        let firstResponseGate = DispatchSemaphore(value: 0)
+        AppStateProviderAccountStubProtocol.configure(
+            responses: [
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#,
+                    responseGate: firstResponseGate
+                ),
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#
+                ),
+            ],
+            onRequest: { request in
+                if AppStateProviderAccountStubProtocol
+                    .recordedRequests().count == 1
+                {
+                    firstRequestStarted.fulfill()
+                }
+            }
+        )
+        let outbox = makeOutbox()
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: firstAccountID,
+                provider: .claude
+            )
+        )
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: restoredAccountID,
+                provider: .codex
+            )
+        )
+        let state = makeState(
+            api: await makeAuthenticatedAPI(),
+            outbox: outbox,
+            userID: "user-a"
+        )
+
+        let flush = Task { @MainActor in
+            await state.flushPendingProviderAccountDeletions(
+                for: "user-a"
+            )
+        }
+        await fulfillment(of: [firstRequestStarted], timeout: 3)
+        state.providerConfigs = [
+            ProviderConfig(
+                kind: .codex,
+                accountID: restoredAccountID,
+                syncOwnerUserID: "user-a"
+            ),
+        ]
+        firstResponseGate.signal()
+        await flush.value
+
+        XCTAssertEqual(
+            AppStateProviderAccountStubProtocol.recordedRequests()
+                .count,
+            1,
+            "each awaited delete must recheck whether its account became local again"
+        )
+        XCTAssertEqual(
+            outbox.pendingAccountIDs(for: "user-a"),
+            [restoredAccountID]
+        )
+    }
+
     func testProviderlessLegacyIntentsDoNotStarveTypedDeletion()
         async throws
     {
@@ -282,6 +449,69 @@ final class AppStateProviderAccountSyncTests: XCTestCase {
         XCTAssertTrue(
             outbox.pendingAccountIDs(for: "user-b").isEmpty
         )
+    }
+
+    func testStaleSuccessfulDeleteDoesNotClearNewerIntentForSameAccount()
+        async throws
+    {
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "34343434-3434-4434-8434-343434343434"
+            )
+        )
+        let requestStarted = expectation(
+            description: "original delete request started"
+        )
+        let responseGate = DispatchSemaphore(value: 0)
+        AppStateProviderAccountStubProtocol.configure(
+            responses: [
+                .json(
+                    #"{"accounts_deleted":1,"tombstones_persisted":1}"#,
+                    responseGate: responseGate
+                ),
+            ],
+            onRequest: { _ in requestStarted.fulfill() }
+        )
+        let outbox = makeOutbox()
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: accountID,
+                provider: .claude
+            )
+        )
+        let state = makeState(
+            api: await makeAuthenticatedAPI(),
+            outbox: outbox,
+            userID: "user-a"
+        )
+
+        let flush = Task { @MainActor in
+            await state.flushPendingProviderAccountDeletions(
+                for: "user-a"
+            )
+        }
+        await fulfillment(of: [requestStarted], timeout: 3)
+        XCTAssertTrue(
+            outbox.enqueue(
+                userID: "user-a",
+                accountID: accountID,
+                provider: .claude
+            ),
+            "a retry while the original request is in flight must create a new durable intent"
+        )
+        responseGate.signal()
+        await flush.value
+
+        let pending = outbox.pendingIntents(for: "user-a")
+        XCTAssertEqual(
+            pending.count,
+            1,
+            "an old response must not clear a newer retry authority"
+        )
+        XCTAssertEqual(pending.first?.accountID, accountID)
+        XCTAssertEqual(pending.first?.provider, .claude)
     }
 
     func testStatusSyncFiltersCurrentOwnerAndDoesNotRetryStaleLeaseWithNewSession()

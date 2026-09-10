@@ -21,6 +21,15 @@ enum ProviderSharedCredentialOwner {
     ]
     private static let lock = NSLock()
 
+    struct PersistenceCheckpoint {
+        fileprivate struct Entry {
+            let kind: ProviderKind
+            let rawValue: String?
+        }
+
+        fileprivate let entries: [Entry]
+    }
+
     /// Injectable for focused tests. The production value is shared with the
     /// helper so both processes make the same legacy-account assignment.
     static var defaults: UserDefaults? =
@@ -48,6 +57,13 @@ enum ProviderSharedCredentialOwner {
                     return false
                 }
                 _ = synchronizeDefaults(defaults)
+                guard
+                    let checkpoint = persistenceCheckpoint(
+                        defaults: defaults
+                    )
+                else {
+                    return false
+                }
                 let kinds = supportedKinds.sorted {
                     $0.rawValue < $1.rawValue
                 }
@@ -107,6 +123,10 @@ enum ProviderSharedCredentialOwner {
                             forKey: key
                         )
                     else {
+                        _ = restore(
+                            checkpoint,
+                            defaults: defaults
+                        )
                         return false
                     }
                 } else {
@@ -117,6 +137,10 @@ enum ProviderSharedCredentialOwner {
                             forKey: key
                         )
                     else {
+                        _ = restore(
+                            checkpoint,
+                            defaults: defaults
+                        )
                         return false
                     }
                     }
@@ -124,6 +148,46 @@ enum ProviderSharedCredentialOwner {
                 return true
             }
         }
+    }
+
+    static func makePersistenceCheckpoint()
+        -> PersistenceCheckpoint?
+    {
+        withMutationLock(or: nil) {
+            lock.withLock {
+                guard let defaults else {
+                    return nil
+                }
+                _ = synchronizeDefaults(defaults)
+                return persistenceCheckpoint(
+                    defaults: defaults
+                )
+            }
+        }
+    }
+
+    @discardableResult
+    static func restore(
+        _ checkpoint: PersistenceCheckpoint
+    ) -> Bool {
+        withMutationLock(or: false) {
+            lock.withLock {
+                guard let defaults else {
+                    return false
+                }
+                return restore(
+                    checkpoint,
+                    defaults: defaults
+                )
+            }
+        }
+    }
+
+    static func withPersistenceLock<T>(
+        or failure: T,
+        _ body: () -> T
+    ) -> T {
+        withMutationLock(or: failure, body)
     }
 
     /// Returns true for the existing owner, or atomically claims an unowned
@@ -263,8 +327,10 @@ enum ProviderSharedCredentialOwner {
         kind: ProviderKind,
         accountID: UUID
     ) -> Bool {
+        // Idempotent cleanup: providers without a shared compatibility source
+        // have no owner record to release.
         guard supportedKinds.contains(kind) else {
-            return false
+            return true
         }
         return withMutationLock(or: false) {
             lock.withLock {
@@ -335,6 +401,54 @@ enum ProviderSharedCredentialOwner {
             return false
         }
         return true
+    }
+
+    private static func persistenceCheckpoint(
+        defaults: UserDefaults
+    ) -> PersistenceCheckpoint? {
+        let kinds = supportedKinds.sorted {
+            $0.rawValue < $1.rawValue
+        }
+        var entries: [PersistenceCheckpoint.Entry] = []
+        for kind in kinds {
+            let raw = defaults.object(
+                forKey: ownerKey(for: kind)
+            )
+            guard raw == nil || raw is String else {
+                return nil
+            }
+            entries.append(
+                PersistenceCheckpoint.Entry(
+                    kind: kind,
+                    rawValue: raw as? String
+                )
+            )
+        }
+        return PersistenceCheckpoint(entries: entries)
+    }
+
+    private static func restore(
+        _ checkpoint: PersistenceCheckpoint,
+        defaults: UserDefaults
+    ) -> Bool {
+        for entry in checkpoint.entries {
+            let key = ownerKey(for: entry.kind)
+            if let rawValue = entry.rawValue {
+                defaults.set(rawValue, forKey: key)
+            } else {
+                defaults.removeObject(forKey: key)
+            }
+        }
+        guard synchronizeDefaults(defaults) else {
+            return false
+        }
+        return checkpoint.entries.allSatisfy { entry in
+            let key = ownerKey(for: entry.kind)
+            if let rawValue = entry.rawValue {
+                return defaults.string(forKey: key) == rawValue
+            }
+            return defaults.object(forKey: key) == nil
+        }
     }
 
     private static func ownerKey(for kind: ProviderKind) -> String {

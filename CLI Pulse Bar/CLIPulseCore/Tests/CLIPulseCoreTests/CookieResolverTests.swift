@@ -90,4 +90,11 @@ final class CookieResolverTests: XCTestCase {
             importer: NullCookieImporter())
         if case .unavailable = result {} else { XCTFail("NullCookieImporter must yield .unavailable") }
     }
+
+    func test_platform_default_importer_is_null_in_xctest_runtime() {
+        XCTAssertTrue(
+            CookieResolver.platformDefaultImporter is NullCookieImporter,
+            "xctest must never receive the importer that reads real browser cookies or Keychain entries"
+        )
+    }
 }

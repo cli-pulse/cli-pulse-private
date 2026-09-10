@@ -835,9 +835,26 @@ struct ProviderConfigEditor: View {
 
     @discardableResult
     private func save() -> Bool {
+        state.withProviderAccountPersistenceLock(or: false) {
+            saveAssumingProviderAccountPersistenceLock()
+        }
+    }
+
+    @discardableResult
+    private func saveAssumingProviderAccountPersistenceLock()
+        -> Bool
+    {
         guard let idx = state.providerConfigs.firstIndex(
             where: { $0.accountID == accountID }
         ) else {
+            return false
+        }
+        guard state.recoverPendingProviderAccountSave(accountID) else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not restore the previous provider configuration. Please retry before saving new changes."
+            )
+            #endif
             return false
         }
         guard
@@ -852,22 +869,39 @@ struct ProviderConfigEditor: View {
             #endif
             return false
         }
-        #if os(macOS)
-        if kind == .gemini && allowsLiveProviderActions {
+        let secretCheckpoint:
+            ProviderConfig.SecretPersistenceCheckpoint?
+        if allowsLiveProviderActions {
             guard
-                geminiCredentialDraft.commit(
-                    accountID: accountID
-                )
+                let captured =
+                    state.providerConfigs[idx]
+                        .makeSecretPersistenceCheckpoint()
             else {
+                #if os(macOS)
                 testState = .failure(
-                    GeminiOAuthError
-                        .credentialPersistenceFailed
-                        .localizedDescription
+                    "Could not safely read existing provider credentials. Please retry."
                 )
+                #endif
                 return false
             }
+            secretCheckpoint = captured
+        } else {
+            secretCheckpoint = nil
         }
-        #endif
+        let secretRecoveryConfig = state.providerConfigs[idx]
+        guard
+            let persistenceCheckpoint =
+                state.makeProviderAccountPersistenceCheckpoint(
+                    accountID
+                )
+        else {
+            #if os(macOS)
+            testState = .failure(
+                "Could not safely prepare provider configuration. Please retry."
+            )
+            #endif
+            return false
+        }
         state.providerConfigs[idx].sourceMode = sourceMode
         state.providerConfigs[idx].accountLabel = accountLabel.isEmpty ? nil : accountLabel
         state.providerConfigs[idx].setPlanOverride(
@@ -899,24 +933,99 @@ struct ProviderConfigEditor: View {
             ? true
             : nil
         #endif
-        if allowsLiveProviderActions {
-            guard state.providerConfigs[idx].saveSecrets() else {
+        let transactionResult = ProviderAccountSaveTransaction.commit(
+            persistSecrets: {
+                guard allowsLiveProviderActions else {
+                    return true
+                }
+                guard state.providerConfigs[idx].saveSecrets() else {
+                    #if os(macOS)
+                    testState = .failure(
+                        "Could not safely save provider credentials. Please retry."
+                    )
+                    #endif
+                    return false
+                }
+                return true
+            },
+            rollbackSecrets: {
+                guard allowsLiveProviderActions else {
+                    return true
+                }
+                guard let secretCheckpoint else {
+                    return false
+                }
+                return secretRecoveryConfig
+                    .restoreSecrets(
+                        from: secretCheckpoint
+                    )
+            },
+            persistMetadata: {
+                guard state.persistProviderAccountDraftMetadata(accountID) else {
+                    #if os(macOS)
+                    testState = .failure(
+                        "Could not safely save provider configuration. Please retry."
+                    )
+                    #endif
+                    return false
+                }
+                return true
+            },
+            rollbackMetadata: {
+                persistenceCheckpoint.restore()
+            },
+            commitProviderCredential: {
                 #if os(macOS)
-                testState = .failure(
-                    "Could not safely save provider credentials. Please retry."
-                )
+                guard kind == .gemini && allowsLiveProviderActions else {
+                    return true
+                }
+                guard geminiCredentialDraft.commit(accountID: accountID) else {
+                    testState = .failure(
+                        GeminiOAuthError
+                            .credentialPersistenceFailed
+                            .localizedDescription
+                    )
+                    return false
+                }
                 #endif
-                return false
+                return true
+            },
+            finalize: {
+                state.finalizeProviderAccountDraft(accountID)
             }
-        }
-        guard state.commitProviderAccountDraft(accountID) else {
+        )
+        switch transactionResult {
+        case .committed:
+            return true
+        case .failedRolledBack:
+            return false
+        case .failedRollbackIncomplete:
+            let recovery = ProviderAccountSaveRecovery(
+                restoreMetadata: {
+                    persistenceCheckpoint.restore()
+                },
+                restoreSecrets: {
+                    guard allowsLiveProviderActions else {
+                        return true
+                    }
+                    guard let secretCheckpoint else {
+                        return false
+                    }
+                    return secretRecoveryConfig.restoreSecrets(
+                        from: secretCheckpoint
+                    )
+                }
+            )
+            state.retainProviderAccountSaveRecovery(
+                recovery,
+                for: accountID
+            )
             #if os(macOS)
             testState = .failure(
-                "Could not safely save provider configuration. Please retry."
+                "Save failed and recovery is incomplete. Retry to restore the previous configuration before saving again."
             )
             #endif
             return false
         }
-        return true
     }
 }

@@ -90,11 +90,11 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
             accountID: account,
             provider: .codex
         )
-
-        outbox.markCompleted(
-            userID: "user-a",
-            accountID: account
+        let userAIntent = try XCTUnwrap(
+            outbox.pendingIntents(for: "user-a").first
         )
+
+        outbox.markCompleted(userAIntent)
 
         XCTAssertTrue(
             outbox.pendingAccountIDs(for: "user-a").isEmpty
@@ -134,6 +134,10 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
             restored.pendingIntents().first?.provider,
             .claude
         )
+        XCTAssertNotNil(
+            restored.pendingIntents().first?.generation,
+            "new intent identity must survive process recreation"
+        )
     }
 
     func testProviderlessV1IntentDecodesAndCanBeSafelyEnriched()
@@ -160,6 +164,10 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
         )
 
         XCTAssertNil(outbox.pendingIntents().first?.provider)
+        XCTAssertNil(
+            outbox.pendingIntents().first?.generation,
+            "an older payload without generation must remain decodable"
+        )
         XCTAssertTrue(
             outbox.enqueue(
                 userID: "user-a",
@@ -172,6 +180,7 @@ final class ProviderAccountDeletionOutboxTests: XCTestCase {
             outbox.pendingIntents().first?.provider,
             .claude
         )
+        XCTAssertNotNil(outbox.pendingIntents().first?.generation)
     }
 
     func testPersistedIntentRecoversLocalConfigAfterCrash() throws {
