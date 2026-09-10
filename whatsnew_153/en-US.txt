@@ -1,0 +1,17 @@
+Your iPhone can drive a CLI session on your Mac again — this time over your own local network, not through a server.
+
+• New: Remote Control. On the same Wi-Fi, your iPhone finds your Mac, pairs with it once, and then lists the CLI sessions running there. You can watch a session's terminal live, type into it, start and stop sessions, and approve or reject tool permission requests from your phone. The connection is direct and encrypted between the two devices; the session's output does not travel through our servers.
+
+This replaces the server-based version removed in 1.52.1, which had stopped working. Remote Control needs the Developer ID version of CLI Pulse running on the Mac; the App Store build of the Mac app says so plainly rather than offering a switch that cannot work.
+
+• Fixed: the remote terminal opened black. The first screenful was pushed before the terminal view existed and was discarded silently, so a session that had already printed its banner showed nothing until it printed again.
+
+• Fixed: opening a session's terminal closed the very connection that terminal needed, so it painted once and then went dead.
+
+• Fixed: the link is re-established when you bring the app back to the foreground. Before, backgrounding the app dropped the connection and nothing reconnected it.
+
+• Fixed: a secret could be sent to the phone in clear text. When output paused mid-token, the part already buffered was flushed without redaction — and the tail of an API key carries most of its entropy.
+
+• Fixed: answered approvals kept their slot, so a long session eventually stopped being able to ask for permission at all.
+
+• Fixed: a session whose helper had stopped kept its keyboard live and answered keystrokes with an untranslated internal error.

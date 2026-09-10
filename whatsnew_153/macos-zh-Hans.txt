@@ -1,0 +1,5 @@
+这个版本几乎全是 iPhone 那一侧的工作,不改变 Mac app 的 App Store 版本的行为。
+
+远程操作 —— 在局域网上用 iPhone 操作 Mac 上的 CLI 会话 —— 需要 Mac 上的 Developer ID 版本,因为它要开一个网络监听端口,而沙盒化的 App Store 版本做不到。Mac app 会在你去找这个设置的地方原样说明这一点。
+
+• 下载更小:内置图片改为无损压缩,app 体积减少约 564 KB。
