@@ -1,0 +1,5 @@
+This release is almost entirely iPhone-side work, and it does not change what the App Store build of the Mac app does.
+
+Remote Control — driving a Mac CLI session from your iPhone over the local network — requires the Developer ID version of CLI Pulse on the Mac, because it needs to open a network listener that the sandboxed App Store build cannot. The Mac app says exactly that where you would look for the setting.
+
+• Smaller download: the bundled images are now losslessly compressed, taking about 564 KB off the app.
