@@ -153,23 +153,71 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         saveSecrets(using: KeychainProviderSecretStore())
     }
 
+    /// Opaque rollback point for the account-scoped secret entries and their
+    /// migration markers. The values stay in memory only for the duration of
+    /// the editor save transaction.
+    ///
+    /// Each entry keeps the FULL read result, not just a value, so an entry we
+    /// could not read is recorded as exactly that rather than collapsing the
+    /// whole checkpoint. A checkpoint is a rollback *aid*; it must never become
+    /// a precondition for writing, or one unreadable Keychain item would make
+    /// an account permanently un-editable and un-deletable — see the header on
+    /// `makeSecretPersistenceCheckpoint(using:)`.
+    public struct SecretPersistenceCheckpoint {
+        fileprivate let apiKey: ProviderSecretReadResult
+        fileprivate let apiKeyMarker: ProviderSecretReadResult
+        fileprivate let cookie: ProviderSecretReadResult
+        fileprivate let cookieMarker: ProviderSecretReadResult
+    }
+
+    public func makeSecretPersistenceCheckpoint()
+        -> SecretPersistenceCheckpoint?
+    {
+        makeSecretPersistenceCheckpoint(
+            using: KeychainProviderSecretStore()
+        )
+    }
+
+    @discardableResult
+    public func restoreSecrets(
+        from checkpoint: SecretPersistenceCheckpoint
+    ) -> Bool {
+        restoreSecrets(
+            from: checkpoint,
+            using: KeychainProviderSecretStore()
+        )
+    }
+
     @discardableResult
     func saveSecrets(
         using store: any ProviderSecretStoring
     ) -> Bool {
-        let apiKeySaved =
+        guard
+            let checkpoint = makeSecretPersistenceCheckpoint(
+                using: store
+            )
+        else {
+            return false
+        }
+        guard
             persistSecret(
                 apiKey,
                 suffix: "apiKey",
                 using: store
-            )
-        let cookieSaved =
+            ),
             persistSecret(
                 manualCookieHeader,
                 suffix: "cookie",
                 using: store
             )
-        return apiKeySaved && cookieSaved
+        else {
+            _ = restoreSecrets(
+                from: checkpoint,
+                using: store
+            )
+            return false
+        }
+        return true
     }
 
     /// Load secrets from Keychain into the in-memory fields.
@@ -192,11 +240,171 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
     func deleteSecrets(
         using store: any ProviderSecretStoring
     ) -> Bool {
-        let apiKeyDeleted =
-            persistSecret(nil, suffix: "apiKey", using: store)
-        let cookieDeleted =
+        guard
+            let checkpoint = makeSecretPersistenceCheckpoint(
+                using: store
+            )
+        else {
+            return false
+        }
+        guard
+            persistSecret(nil, suffix: "apiKey", using: store),
             persistSecret(nil, suffix: "cookie", using: store)
-        return apiKeyDeleted && cookieDeleted
+        else {
+            _ = restoreSecrets(
+                from: checkpoint,
+                using: store
+            )
+            return false
+        }
+        return true
+    }
+
+    /// Retire every credential entry owned by an explicitly deleted account.
+    ///
+    /// `deleteSecrets(using:)` intentionally retains migration markers so a
+    /// disconnected account cannot resurrect a legacy provider-scoped value.
+    /// Once the account itself is being removed, those markers would become
+    /// orphaned. The one account designated as the legacy migration owner must
+    /// also retire the provider-scoped entries before its retry anchor (the
+    /// account metadata) can be removed.
+    @discardableResult
+    func deleteSecretsForAccountRemoval(
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        guard deleteSecrets(using: store) else {
+            return false
+        }
+
+        let group = Self.secretsAccessGroup
+        if legacySecretMigrationEligible == true {
+            for suffix in ["apiKey", "cookie"] {
+                guard deleteAndConfirmMissing(
+                    key: Self.legacyKeychainKey(kind, suffix),
+                    accessGroup: group,
+                    using: store
+                ) else {
+                    return false
+                }
+            }
+        }
+
+        for suffix in ["apiKey", "cookie"] {
+            guard deleteAndConfirmMissing(
+                key: Self.migrationMarkerKey(accountID, suffix),
+                accessGroup: group,
+                using: store
+            ) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    func makeSecretPersistenceCheckpoint(
+        using store: any ProviderSecretStoring
+    ) -> SecretPersistenceCheckpoint? {
+        let group = Self.secretsAccessGroup
+        let apiKey = store.read(
+            key: Self.accountKeychainKey(accountID, "apiKey"),
+            accessGroup: group
+        )
+        let apiKeyMarker = store.read(
+            key: Self.migrationMarkerKey(accountID, "apiKey"),
+            accessGroup: group
+        )
+        let cookie = store.read(
+            key: Self.accountKeychainKey(accountID, "cookie"),
+            accessGroup: group
+        )
+        let cookieMarker = store.read(
+            key: Self.migrationMarkerKey(accountID, "cookie"),
+            accessGroup: group
+        )
+        // Deliberately NOT `guard ... != .failure else { return nil }`.
+        //
+        // That is what this used to do, and it was a trap: `readResult` maps
+        // EVERY OSStatus other than success/itemNotFound to `.failure`, so a
+        // single unreadable entry — a denied authorization prompt, an ACL
+        // mismatch after a re-sign or a MAS/Developer-ID channel switch, a
+        // missing entitlement, a non-UTF8 payload — made this return nil, and
+        // both `saveSecrets` and `deleteSecrets` guarded on it. The account
+        // could then be neither overwritten nor removed: fail-closed had become
+        // fail-forever, with no route back for the user. Reproduced against the
+        // real Keychain by planting a non-UTF8 item.
+        //
+        // An entry we cannot read has no known previous value, so there is
+        // nothing to preserve and nothing a caller could usefully refuse over.
+        // Record it as `.failure` and let `restoreSecrets` skip it.
+        return SecretPersistenceCheckpoint(
+            apiKey: apiKey,
+            apiKeyMarker: apiKeyMarker,
+            cookie: cookie,
+            cookieMarker: cookieMarker
+        )
+    }
+
+    @discardableResult
+    func restoreSecrets(
+        from checkpoint: SecretPersistenceCheckpoint,
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        let group = Self.secretsAccessGroup
+        let entries: [(String, ProviderSecretReadResult)] = [
+            (
+                Self.accountKeychainKey(accountID, "apiKey"),
+                checkpoint.apiKey
+            ),
+            (
+                Self.migrationMarkerKey(accountID, "apiKey"),
+                checkpoint.apiKeyMarker
+            ),
+            (
+                Self.accountKeychainKey(accountID, "cookie"),
+                checkpoint.cookie
+            ),
+            (
+                Self.migrationMarkerKey(accountID, "cookie"),
+                checkpoint.cookieMarker
+            ),
+        ]
+        var restored = true
+        for (key, captured) in entries {
+            let entryRestored: Bool
+            switch captured {
+            case let .value(value):
+                entryRestored =
+                    store.save(
+                        key: key,
+                        value: value,
+                        accessGroup: group
+                    )
+                    && store.read(
+                        key: key,
+                        accessGroup: group
+                    ) == .value(value)
+            case .missing:
+                entryRestored =
+                    store.delete(
+                        key: key,
+                        accessGroup: group
+                    )
+                    && store.read(
+                        key: key,
+                        accessGroup: group
+                    ) == .missing
+            case .failure:
+                // The entry was already unreadable when the checkpoint was
+                // taken, so there is no prior state to put back. Skipping is
+                // the only honest option: writing would invent a value and
+                // deleting would destroy one we never managed to see. It does
+                // NOT count against the rollback — we are no worse off here
+                // than before the attempt.
+                entryRestored = true
+            }
+            restored = entryRestored && restored
+        }
+        return restored
     }
 
     @discardableResult
@@ -217,7 +425,12 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
             ) else {
                 return false
             }
-            guard store.load(key: accountKey, accessGroup: group) == value else {
+            guard
+                store.read(
+                    key: accountKey,
+                    accessGroup: group
+                ) == .value(value)
+            else {
                 return false
             }
         } else {
@@ -226,10 +439,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
                     key: accountKey,
                     accessGroup: group
                 ),
-                store.load(
+                store.read(
                     key: accountKey,
                     accessGroup: group
-                ) == nil
+                ) == .missing
             else {
                 return false
             }
@@ -242,10 +455,27 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         ) else {
             return false
         }
-        return store.load(
+        return store.read(
             key: markerKey,
             accessGroup: group
-        ) == "1"
+        ) == .value("1")
+    }
+
+    private func deleteAndConfirmMissing(
+        key: String,
+        accessGroup: String?,
+        using store: any ProviderSecretStoring
+    ) -> Bool {
+        guard store.delete(
+            key: key,
+            accessGroup: accessGroup
+        ) else {
+            return false
+        }
+        return store.read(
+            key: key,
+            accessGroup: accessGroup
+        ) == .missing
     }
 
     private func loadSecret(

@@ -30,10 +30,30 @@ public enum CookieResolutionResult: Sendable {
 }
 
 public enum CookieResolver {
+    /// Unit tests must never inherit the production browser importer. Reading
+    /// Chrome/Edge cookie stores can cross into the user's login Keychain and
+    /// present an interactive consent dialog from an XCTest process.
+    private static let isRunningUnderXCTest: Bool = {
+        let environment = ProcessInfo.processInfo.environment
+        let bundlePath = Bundle.main.bundleURL.path
+        let processName = ProcessInfo.processInfo.processName.lowercased()
+
+        return NSClassFromString("XCTestCase") != nil
+            || environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestBundlePath"] != nil
+            || bundlePath.hasSuffix(".xctest")
+            || bundlePath.contains(".xctest/")
+            || processName == "xctest"
+            || processName.hasSuffix("tests.xctest")
+    }()
+
     /// Platform-appropriate default importer: SweetCookieKit on macOS,
     /// a no-op everywhere else.
     public static var platformDefaultImporter: CookieImporting {
         #if os(macOS)
+        if isRunningUnderXCTest {
+            return NullCookieImporter()
+        }
         return BrowserCookieAutoImporter.shared
         #else
         return NullCookieImporter()

@@ -79,7 +79,8 @@ public enum ClaudeHelperContract {
 
     /// App-group container directory when available to the running process.
     public static var appGroupHelperDir: String? {
-        FileManager.default
+        if ClaudeCredentials.isolatedTestHomeDirectory != nil { return nil }
+        return FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
             .path
     }

@@ -247,12 +247,633 @@ final class ProviderAccountKeychainMigrationTests: XCTestCase {
         )
     }
 
+    func testSaveSecretsRestoresBothEntriesWhenSecondWriteFails()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ABABABAB-ABAB-4BAB-8BAB-ABABABABABAB"
+            )
+        )
+        let original = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "old-api-key",
+            manualCookieHeader: "old-cookie"
+        )
+        XCTAssertTrue(original.saveSecrets(using: store))
+        store.failingSaveAttemptsByKey[
+            accountKey(accountID, "cookie")
+        ] = 1
+        let edited = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "new-api-key",
+            manualCookieHeader: "new-cookie"
+        )
+
+        XCTAssertFalse(edited.saveSecrets(using: store))
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-api-key"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-cookie"
+        )
+    }
+
+    /// An unreadable entry must NOT collapse the checkpoint.
+    ///
+    /// Replaces `testSaveSecretsFailsWithoutMutationWhenCheckpointReadFails`,
+    /// which pinned the opposite promise — "if any entry cannot be read, refuse
+    /// to write at all". That promise was the bug. `readResult` maps every
+    /// OSStatus other than success/itemNotFound to `.failure`, so one denied
+    /// authorization prompt, ACL mismatch after a re-sign, missing entitlement
+    /// or non-UTF8 payload made `makeSecretPersistenceCheckpoint` return nil —
+    /// and both `saveSecrets` and `deleteSecrets` guarded on it, leaving the
+    /// account neither editable nor removable with no route back for the user.
+    /// Reproduced against the real Keychain by planting a non-UTF8 item.
+    ///
+    /// The trade this encodes: an entry we could never read cannot be rolled
+    /// back either, because its previous value was never observed. Readable
+    /// entries are still rolled back exactly as before.
+    func testCheckpointSurvivesAnUnreadableEntry() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ACACACAC-ACAC-4CAC-8CAC-ACACACACACAC"
+            )
+        )
+        let original = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "old-api-key",
+            manualCookieHeader: "old-cookie"
+        )
+        XCTAssertTrue(original.saveSecrets(using: store))
+        let apiKey = accountKey(accountID, "apiKey")
+        store.failingLoadKeys.insert(apiKey)
+
+        XCTAssertNotNil(
+            original.makeSecretPersistenceCheckpoint(using: store),
+            "an unreadable entry must be recorded, not turned into a refusal"
+        )
+
+        let edited = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "new-api-key",
+            manualCookieHeader: "new-cookie"
+        )
+        // This double fails reads for that key permanently, so the write-back
+        // verification inside `persistSecret` can never succeed and the save
+        // still reports failure. What matters here is what happens to the OTHER
+        // entry while that is going on.
+        XCTAssertFalse(edited.saveSecrets(using: store))
+
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "old-cookie",
+            "the readable entry must still be rolled back"
+        )
+    }
+
+    /// The rollback path itself: a `.failure` entry is skipped rather than
+    /// invented or destroyed, and skipping it does not count as a failed
+    /// rollback — we end up no worse off than before the attempt.
+    func testRestoreSkipsUnreadableEntryAndStillReportsSuccess() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ADADADAD-ADAD-4DAD-8DAD-ADADADADADAD"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "seed-api-key",
+            manualCookieHeader: "seed-cookie"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+
+        store.failingLoadKeys.insert(accountKey(accountID, "apiKey"))
+        let checkpoint = try XCTUnwrap(
+            config.makeSecretPersistenceCheckpoint(using: store)
+        )
+        store.failingLoadKeys.removeAll()
+
+        XCTAssertTrue(
+            store.save(
+                key: accountKey(accountID, "cookie"),
+                value: "drifted-cookie",
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+
+        XCTAssertTrue(
+            config.restoreSecrets(from: checkpoint, using: store),
+            "skipping an unreadable entry must not be reported as a failed rollback"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: ProviderConfig.secretsAccessGroup
+            ),
+            "seed-cookie",
+            "the readable entry is restored"
+        )
+    }
+
+    func testRestoreMissingSecretReportsReadFailureAfterDelete()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "ADADADAD-ADAD-4DAD-8DAD-ADADADADADAD"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID
+        )
+        let checkpoint = try XCTUnwrap(
+            config.makeSecretPersistenceCheckpoint(using: store)
+        )
+        let apiKey = accountKey(accountID, "apiKey")
+        XCTAssertTrue(
+            store.save(
+                key: apiKey,
+                value: "must-be-removed",
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+        store.failingLoadKeys.insert(apiKey)
+
+        XCTAssertFalse(
+            config.restoreSecrets(
+                from: checkpoint,
+                using: store
+            ),
+            "a read failure must not verify deletion as successful"
+        )
+
+        store.failingLoadKeys.remove(apiKey)
+        XCTAssertNil(
+            store.load(
+                key: apiKey,
+                accessGroup: ProviderConfig.secretsAccessGroup
+            )
+        )
+    }
+
+    @MainActor
+    func testRemovingMigrationOwnerDeletesLegacySlotsAndOnlyItsAccountSecrets()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let ownerID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "AEAEAEAE-AEAE-4EAE-8EAE-AEAEAEAEAEAE"
+            )
+        )
+        let siblingID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "AFAFAFAF-AFAF-4FAF-8FAF-AFAFAFAFAFAF"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let owner = ProviderConfig(
+            kind: .claude,
+            accountID: ownerID,
+            apiKey: "owner-api-key",
+            manualCookieHeader: "owner-cookie",
+            legacySecretMigrationEligible: true
+        )
+        let sibling = ProviderConfig(
+            kind: .claude,
+            accountID: siblingID,
+            apiKey: "sibling-api-key",
+            manualCookieHeader: "sibling-cookie"
+        )
+        XCTAssertTrue(owner.saveSecrets(using: store))
+        XCTAssertTrue(sibling.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "cookie"),
+                value: "legacy-cookie",
+                accessGroup: group
+            )
+        )
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [owner, sibling]
+
+        XCTAssertTrue(state.removeProviderAccount(ownerID))
+
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [siblingID])
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(ownerID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(ownerID, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(siblingID, "apiKey"),
+                accessGroup: group
+            ),
+            "sibling-api-key"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: accountKey(siblingID, "cookie"),
+                accessGroup: group
+            ),
+            "sibling-cookie"
+        )
+    }
+
+    @MainActor
+    func testLegacyDeleteFailureKeepsAccountRetryableUntilCleanupCompletes()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B0B0B0B0-B0B0-40B0-80B0-B0B0B0B0B0B0"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            manualCookieHeader: "account-cookie",
+            legacySecretMigrationEligible: true
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        let legacyCookie = legacyKey(.claude, "cookie")
+        XCTAssertTrue(
+            store.save(
+                key: legacyCookie,
+                value: "legacy-cookie",
+                accessGroup: group
+            )
+        )
+        store.failingDeleteKeys.insert(legacyCookie)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertNil(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            ),
+            "completed deletion steps may remain monotonic while metadata stays retryable"
+        )
+        XCTAssertEqual(
+            store.load(key: legacyCookie, accessGroup: group),
+            "legacy-cookie"
+        )
+        XCTAssertEqual(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            ),
+            "1",
+            "the marker must prevent retained legacy data from reappearing before retry"
+        )
+
+        store.failingDeleteKeys.remove(legacyCookie)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(store.load(key: legacyCookie, accessGroup: group))
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+    }
+
+    @MainActor
+    func testLegacyReadFailureCannotVerifyAccountRemoval() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B1B1B1B1-B1B1-41B1-81B1-B1B1B1B1B1B1"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            legacySecretMigrationEligible: true
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let legacyAPIKey = legacyKey(.claude, "apiKey")
+        XCTAssertTrue(
+            store.save(
+                key: legacyAPIKey,
+                value: "legacy-api-key",
+                accessGroup: group
+            )
+        )
+        store.failingLoadKeys.insert(legacyAPIKey)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+
+        store.failingLoadKeys.remove(legacyAPIKey)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+    }
+
+    @MainActor
+    func testMarkerDeleteFailureKeepsAccountRetryableUntilCleanupCompletes()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B2B2B2B2-B2B2-42B2-82B2-B2B2B2B2B2B2"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key",
+            manualCookieHeader: "account-cookie"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let cookieMarker = markerKey(accountID, "cookie")
+        store.failingDeleteKeys.insert(cookieMarker)
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertNil(
+            store.load(
+                key: accountKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: accountKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertEqual(
+            store.load(key: cookieMarker, accessGroup: group),
+            "1"
+        )
+
+        store.failingDeleteKeys.remove(cookieMarker)
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(store.load(key: cookieMarker, accessGroup: group))
+    }
+
+    @MainActor
+    func testRemovingNonMigrationSiblingPreservesLegacySlotsAndRemovesMarkers()
+        throws
+    {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B3B3B3B3-B3B3-43B3-83B3-B3B3B3B3B3B3"
+            )
+        )
+        let group = ProviderConfig.secretsAccessGroup
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "sibling-api-key"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        XCTAssertTrue(
+            store.save(
+                key: legacyKey(.claude, "apiKey"),
+                value: "migration-owner-legacy-key",
+                accessGroup: group
+            )
+        )
+        let state = try makeIsolatedState(store: store)
+        state.providerConfigs = [config]
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+
+        XCTAssertEqual(
+            store.load(
+                key: legacyKey(.claude, "apiKey"),
+                accessGroup: group
+            ),
+            "migration-owner-legacy-key"
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "apiKey"),
+                accessGroup: group
+            )
+        )
+        XCTAssertNil(
+            store.load(
+                key: markerKey(accountID, "cookie"),
+                accessGroup: group
+            )
+        )
+    }
+
+    #if os(macOS)
+    @MainActor
+    func testSharedOwnerReleaseFailureKeepsAccountRetryable() throws {
+        let store = InMemoryProviderSecretStore()
+        let accountID = try XCTUnwrap(
+            UUID(
+                uuidString:
+                    "B4B4B4B4-B4B4-44B4-84B4-B4B4B4B4B4B4"
+            )
+        )
+        let config = ProviderConfig(
+            kind: .claude,
+            accountID: accountID,
+            apiKey: "account-api-key"
+        )
+        XCTAssertTrue(config.saveSecrets(using: store))
+        let state = try makeIsolatedState(
+            store: store,
+            bundleIdentifier: "yyh.CLI-Pulse"
+        )
+        state.providerConfigs = [config]
+
+        let ownerSuiteName =
+            "ProviderAccountKeychainMigrationTests.Owner.\(UUID().uuidString)"
+        let ownerDefaults = try XCTUnwrap(
+            UserDefaults(suiteName: ownerSuiteName)
+        )
+        ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+        let ownerKey =
+            "cli_pulse_provider_shared_credential_owner_\(ProviderKind.claude.rawValue)"
+        ownerDefaults.set(accountID.uuidString, forKey: ownerKey)
+
+        let originalOwnerDefaults = ProviderSharedCredentialOwner.defaults
+        let originalSynchronizeDefaults =
+            ProviderSharedCredentialOwner.synchronizeDefaults
+        let originalMutationLock =
+            ProviderSharedCredentialOwner.mutationLock
+        let mutationLockPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(ownerSuiteName).lock")
+            .path
+        defer {
+            ProviderSharedCredentialOwner.defaults = originalOwnerDefaults
+            ProviderSharedCredentialOwner.synchronizeDefaults =
+                originalSynchronizeDefaults
+            ProviderSharedCredentialOwner.mutationLock =
+                originalMutationLock
+            ownerDefaults.removePersistentDomain(forName: ownerSuiteName)
+            try? FileManager.default.removeItem(
+                atPath: mutationLockPath
+            )
+        }
+        ProviderSharedCredentialOwner.defaults = ownerDefaults
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in false }
+        ProviderSharedCredentialOwner.mutationLock =
+            GeminiCredentialMutationLock(
+                lockFilePath: mutationLockPath
+            )
+
+        XCTAssertFalse(state.removeProviderAccount(accountID))
+        XCTAssertEqual(state.providerConfigs.map(\.accountID), [accountID])
+        XCTAssertEqual(
+            ownerDefaults.string(forKey: ownerKey),
+            accountID.uuidString
+        )
+
+        ProviderSharedCredentialOwner.synchronizeDefaults = { _ in true }
+
+        XCTAssertTrue(state.removeProviderAccount(accountID))
+        XCTAssertTrue(state.providerConfigs.isEmpty)
+        XCTAssertNil(ownerDefaults.string(forKey: ownerKey))
+    }
+    #endif
+
     private func legacyKey(_ kind: ProviderKind, _ suffix: String) -> String {
         "cli_pulse_provider_\(kind.rawValue)_\(suffix)"
     }
 
     private func accountKey(_ accountID: UUID, _ suffix: String) -> String {
         "cli_pulse_provider_account_\(accountID.uuidString)_\(suffix)"
+    }
+
+    private func markerKey(_ accountID: UUID, _ suffix: String) -> String {
+        "\(accountKey(accountID, suffix))_legacy_migrated"
+    }
+
+    @MainActor
+    private func makeIsolatedState(
+        store: InMemoryProviderSecretStore,
+        bundleIdentifier: String =
+            "tests.clipulse.provider-account-removal"
+    ) throws -> AppState {
+        let suiteName =
+            "ProviderAccountKeychainMigrationTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(
+            UserDefaults(suiteName: suiteName)
+        )
+        defaults.removePersistentDomain(forName: suiteName)
+        addTeardownBlock {
+            defaults.removePersistentDomain(forName: suiteName)
+        }
+        let runtime =
+            CLIPulseRuntimeEnvironment.resolveForTesting(
+                infoDictionary: [
+                    "CFBundleIdentifier":
+                        bundleIdentifier,
+                ],
+                environment: [:]
+            )
+        return AppState(
+            runtimeEnvironment: runtime,
+            defaults: defaults,
+            providerSecretStore: store,
+            performLaunchSetup: false
+        )
     }
 }
 
@@ -264,7 +885,9 @@ private final class InMemoryProviderSecretStore: ProviderSecretStoring {
 
     private var values: [Slot: String] = [:]
     var failingSaveKeys: Set<String> = []
+    var failingSaveAttemptsByKey: [String: Int] = [:]
     var failingDeleteKeys: Set<String> = []
+    var failingLoadKeys: Set<String> = []
 
     @discardableResult
     func save(
@@ -275,12 +898,38 @@ private final class InMemoryProviderSecretStore: ProviderSecretStoring {
         guard !failingSaveKeys.contains(key) else {
             return false
         }
+        if let remaining = failingSaveAttemptsByKey[key],
+           remaining > 0
+        {
+            failingSaveAttemptsByKey[key] = remaining - 1
+            return false
+        }
         values[Slot(key: key, accessGroup: accessGroup)] = value
         return true
     }
 
     func load(key: String, accessGroup: String?) -> String? {
-        values[Slot(key: key, accessGroup: accessGroup)]
+        guard !failingLoadKeys.contains(key) else {
+            return nil
+        }
+        return values[Slot(key: key, accessGroup: accessGroup)]
+    }
+
+    func read(
+        key: String,
+        accessGroup: String?
+    ) -> ProviderSecretReadResult {
+        guard !failingLoadKeys.contains(key) else {
+            return .failure
+        }
+        guard
+            let value = values[
+                Slot(key: key, accessGroup: accessGroup)
+            ]
+        else {
+            return .missing
+        }
+        return .value(value)
     }
 
     @discardableResult
