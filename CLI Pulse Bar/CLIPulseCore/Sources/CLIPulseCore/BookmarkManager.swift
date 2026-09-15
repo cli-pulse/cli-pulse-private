@@ -27,7 +27,7 @@ public final class BookmarkManager {
     public struct KnownDirectory: Identifiable, Sendable {
         public let id: String
         public let path: String           // e.g. "~/.codex/"
-        public let displayName: String    // e.g. "Codex CLI"
+        public let displayName: String    // English source title, e.g. "Codex CLI" — show `localizedDisplayName`
         public let detectionFile: String? // e.g. "auth.json" — nil = check only dir existence
         /// v1.9.4: when true, this entry is shown in the folder-access UI even
         /// if the sandbox reports the directory as missing. Use for cost-scan
@@ -35,6 +35,23 @@ public final class BookmarkManager {
         /// bookmark is granted. Without this flag, `FolderAccessView` would
         /// filter them out of the list the user sees, creating a chicken/egg.
         public let alwaysShow: Bool
+
+        /// The row title to SHOW. Localized at render time, keyed by the stable `id`,
+        /// so it follows the in-app language switch even though FolderAccessView holds
+        /// these structs in @State from `onAppear`. (A computed `knownDirectories`
+        /// was tried first: it froze in that snapshot anyway, and a computed static
+        /// on this @MainActor class also lost the nonisolated access the stored
+        /// table had.) Titles that are product names stay as written.
+        public var localizedDisplayName: String {
+            switch id {
+            case "clipulse-config": return L10n.folderAccess.dirClipulseConfig
+            case "clipulse-data": return L10n.folderAccess.dirClipulseData
+            case "codex-sessions": return L10n.folderAccess.dirCodexSessionLogs
+            case "codex-archived-sessions": return L10n.folderAccess.dirCodexArchivedLogs
+            case "claude-projects": return L10n.folderAccess.dirClaudeSessionLogs
+            default: return displayName
+            }
+        }
 
         public init(id: String, path: String, displayName: String, detectionFile: String? = nil, alwaysShow: Bool = false) {
             self.id = id
@@ -312,7 +329,7 @@ public final class BookmarkManager {
     /// Present NSOpenPanel for user to grant access to a directory
     public func requestAccessViaPanel(directory: KnownDirectory) -> Bool {
         let panel = NSOpenPanel()
-        panel.message = L10n.folderAccess.panelMessageDirectory(directory.displayName)
+        panel.message = L10n.folderAccess.panelMessageDirectory(directory.localizedDisplayName)
         panel.prompt = L10n.folderAccess.panelPrompt
         panel.canChooseFiles = false
         panel.canChooseDirectories = true

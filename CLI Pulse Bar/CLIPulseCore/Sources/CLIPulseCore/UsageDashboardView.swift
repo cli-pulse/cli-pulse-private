@@ -182,8 +182,8 @@ struct DashboardTrends: View {
                 .frame(maxWidth: .infinity, minHeight: 120)
         } else {
             Chart(points) { p in
-                BarMark(x: .value("Day", p.day), y: .value("Tokens", p.tokens))
-                    .foregroundStyle(by: .value("Provider", p.provider))
+                BarMark(x: .value(L10n.usageDashboard.chartDay, p.day), y: .value(L10n.usageDashboard.chartTokens, p.tokens))
+                    .foregroundStyle(by: .value(L10n.usageDashboard.chartProvider, p.provider))
             }
             .chartXAxis(.hidden)
             .chartYAxis {

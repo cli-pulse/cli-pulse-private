@@ -635,7 +635,17 @@ public enum HelperAPIError: LocalizedError {
         case .invalidURL(let fn): return L10n.pairing.errorInvalidURL(fn)
         case .httpError(let s, let fn, let body): return L10n.pairing.errorHttpStatus(s, fn, String(body.prefix(200)))
         case .parseFailed(let msg): return L10n.pairing.errorParseFailed(msg)
-        case .pairingRejected(_, let message): return message
+        case .pairingRejected(let code, let message):
+            // The server sends English text with a stable code
+            // (backend/supabase/helper_rpc.sql, register_helper). Localize the
+            // codes we know; anything new keeps the server's own wording.
+            switch code {
+            case "invalid_code": return L10n.pairing.errorInvalidCode
+            case "expired": return L10n.pairing.errorCodeExpired
+            case "rate_limited": return L10n.pairing.errorRateLimited
+            case "too_many_failed_attempts": return L10n.pairing.errorTooManyAttempts
+            default: return message
+            }
         }
     }
 }

@@ -1528,3 +1528,22 @@
 "alerts.snooze_short" = "%d 分鐘";
 "machine.fan_max_fmt" = "最高 %d";
 "remote.listener_failed" = "遠端控制監聽發生錯誤：%@";
+
+/* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
+"alerts.critical_count_badge" = "嚴重 %d 則";
+"alerts.warning_count_badge" = "警告 %d 則";
+"account.deleting" = "正在刪除帳戶…";
+"usage_dashboard.chart_day" = "日期";
+"usage_dashboard.chart_tokens" = "Token 數";
+"usage_dashboard.chart_provider" = "服務商";
+"folder_access.dir_clipulse_config" = "CLI Pulse 設定";
+"folder_access.dir_clipulse_data" = "CLI Pulse 資料";
+"folder_access.dir_codex_session_logs" = "Codex 會話日誌";
+"folder_access.dir_codex_archived_logs" = "Codex 封存日誌";
+"folder_access.dir_claude_session_logs" = "Claude 會話日誌";
+"sessions.action_helper_unavailable" = "CLI Pulse 無法連線 helper，或「%1$@」已關閉。請確認 helper 正在執行且「%1$@」已開啟後再試一次。";
+"sessions.approval_session_not_owned" = "此會話暫時無法在這裡控制，因此無法處理這個請求。";
+"pairing.error_invalid_code" = "配對碼無效";
+"pairing.error_code_expired" = "配對碼已過期";
+"pairing.error_rate_limited" = "配對嘗試次數過多，請稍候一分鐘再試";
+"pairing.error_too_many_attempts" = "失敗次數過多，請產生新的配對碼";

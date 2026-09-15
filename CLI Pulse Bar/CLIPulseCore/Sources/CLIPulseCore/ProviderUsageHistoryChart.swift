@@ -28,8 +28,8 @@ public struct ProviderUsageHistoryChart: View {
         } else {
             Chart(points) { p in
                 BarMark(
-                    x: .value("Day", p.dateKey),
-                    y: .value("Tokens", p.ioTokens)
+                    x: .value(L10n.usageDashboard.chartDay, p.dateKey),
+                    y: .value(L10n.usageDashboard.chartTokens, p.ioTokens)
                 )
                 .foregroundStyle(accent.gradient)
                 .cornerRadius(1.5)

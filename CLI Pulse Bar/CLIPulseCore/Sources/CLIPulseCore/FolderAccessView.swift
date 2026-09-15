@@ -41,7 +41,7 @@ public struct FolderAccessView: View {
                         .font(.system(size: 14))
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(item.directory.displayName)
+                        Text(item.directory.localizedDisplayName)
                             .font(.system(size: 12, weight: .medium))
                         Text(item.directory.path)
                             .font(.system(size: 10, design: .monospaced))

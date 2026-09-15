@@ -1576,3 +1576,22 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "alerts.snooze_short" = "%dm";
 "machine.fan_max_fmt" = "max %d";
 "remote.listener_failed" = "Remote control listener error: %@";
+
+/* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
+"alerts.critical_count_badge" = "Critical: %d";
+"alerts.warning_count_badge" = "Warnings: %d";
+"account.deleting" = "Deleting account…";
+"usage_dashboard.chart_day" = "Day";
+"usage_dashboard.chart_tokens" = "Tokens";
+"usage_dashboard.chart_provider" = "Provider";
+"folder_access.dir_clipulse_config" = "CLI Pulse Config";
+"folder_access.dir_clipulse_data" = "CLI Pulse Data";
+"folder_access.dir_codex_session_logs" = "Codex Session Logs";
+"folder_access.dir_codex_archived_logs" = "Codex Archived Logs";
+"folder_access.dir_claude_session_logs" = "Claude Session Logs";
+"sessions.action_helper_unavailable" = "CLI Pulse couldn't reach the helper, or “%1$@” is turned off. Make sure the helper is running and “%1$@” is on, then try again.";
+"sessions.approval_session_not_owned" = "This session can't be controlled from here right now, so this request can't be answered.";
+"pairing.error_invalid_code" = "Invalid pairing code";
+"pairing.error_code_expired" = "Pairing code has expired";
+"pairing.error_rate_limited" = "Too many pairing attempts — please wait a minute and try again";
+"pairing.error_too_many_attempts" = "Too many failed attempts — please generate a new pairing code";

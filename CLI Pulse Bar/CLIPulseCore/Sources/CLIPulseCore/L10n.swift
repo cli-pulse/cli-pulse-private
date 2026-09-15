@@ -332,6 +332,9 @@ public enum L10n {
         public static var range30d: String { tr("usage_dashboard.range_30d") }
         public static var range90d: String { tr("usage_dashboard.range_90d") }
         public static var range1y: String { tr("usage_dashboard.range_1y") }
+        public static var chartDay: String { tr("usage_dashboard.chart_day") }
+        public static var chartTokens: String { tr("usage_dashboard.chart_tokens") }
+        public static var chartProvider: String { tr("usage_dashboard.chart_provider") }
     }
 
     // MARK: - Providers
@@ -623,6 +626,8 @@ public enum L10n {
         public static var previewEmptyGemini: String { tr("sessions.preview_empty_gemini") }
         public static func oauthFloorBlocked(_ a0: String, _ a1: String) -> String { tr("sessions.oauth_floor_blocked", a0, a1) }
         public static func wrappedAttachFailed(_ a0: String) -> String { tr("sessions.wrapped_attach_failed", a0) }
+        public static func actionHelperUnavailable(_ a0: String) -> String { tr("sessions.action_helper_unavailable", a0) }
+        public static var approvalSessionNotOwned: String { tr("sessions.approval_session_not_owned") }
     }
 
 
@@ -651,6 +656,8 @@ public enum L10n {
         public static func unresolvedCount(_ count: Int) -> String { tr("alerts.unresolved_count", count) }
         public static var resolveAll: String { tr("alerts.resolve_all") }
         public static func snoozeShort(_ a0: Int) -> String { tr("alerts.snooze_short", a0) }
+        public static func criticalCountBadge(_ a0: Int) -> String { tr("alerts.critical_count_badge", a0) }
+        public static func warningCountBadge(_ a0: Int) -> String { tr("alerts.warning_count_badge", a0) }
     }
 
     // MARK: - Settings
@@ -946,6 +953,7 @@ public enum L10n {
         // (via state.lastError) so the user understands why they were
         // bounced and what to do next.
         public static var deleteSessionExpired: String { tr("account.delete_session_expired") }
+        public static var deleting: String { tr("account.deleting") }
     }
 
     // MARK: - Session Details
@@ -1378,6 +1386,11 @@ public enum L10n {
         public static var bannerBody: String { tr("folder_access.banner_body") }
         public static func panelMessageDirectory(_ a0: String) -> String { tr("folder_access.panel_message_directory", a0) }
         public static var panelMessageHome: String { tr("folder_access.panel_message_home") }
+        public static var dirClipulseConfig: String { tr("folder_access.dir_clipulse_config") }
+        public static var dirClipulseData: String { tr("folder_access.dir_clipulse_data") }
+        public static var dirCodexSessionLogs: String { tr("folder_access.dir_codex_session_logs") }
+        public static var dirCodexArchivedLogs: String { tr("folder_access.dir_codex_archived_logs") }
+        public static var dirClaudeSessionLogs: String { tr("folder_access.dir_claude_session_logs") }
     }
 
     // MARK: - Provider Configuration
@@ -1680,6 +1693,10 @@ public enum L10n {
         public static func errorHttpStatus(_ a0: Int, _ a1: String, _ a2: String) -> String { tr("pairing.error_http_status", a0, a1, a2) }
         public static func errorParseFailed(_ a0: String) -> String { tr("pairing.error_parse_failed", a0) }
         public static func errorInvalidURL(_ a0: String) -> String { tr("pairing.error_invalid_url", a0) }
+        public static var errorInvalidCode: String { tr("pairing.error_invalid_code") }
+        public static var errorCodeExpired: String { tr("pairing.error_code_expired") }
+        public static var errorRateLimited: String { tr("pairing.error_rate_limited") }
+        public static var errorTooManyAttempts: String { tr("pairing.error_too_many_attempts") }
     }
 
     // MARK: - Watch
