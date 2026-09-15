@@ -254,11 +254,19 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
     /// This is a source scan for the same reason as the test above: the strings
     /// live in an app target with no test bundle.
     func test_theDeadHelperStateDoesNotBlameRemoteControl() throws {
-        let file = URL(fileURLWithPath: #filePath)
+        let appDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("CLI Pulse Bar/SessionsTab.swift")
+        let file = appDir.appendingPathComponent("CLI Pulse Bar/SessionsTab.swift")
         let text = try String(contentsOf: file, encoding: .utf8)
+        // The copy itself now lives in the English catalogue (SessionsTab reads it
+        // through L10n), so the dead phrases must be absent from BOTH files — a
+        // scan of the Swift file alone would pass while the catalogue brought the
+        // same sentence straight back.
+        let english = try String(
+            contentsOf: appDir.appendingPathComponent(
+                "CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"),
+            encoding: .utf8)
 
         // Scan CODE only. The first version of this test matched comments too
         // and failed on the comment that documents the very change it guards —
@@ -271,12 +279,18 @@ final class RemoteSessionPlaneRetirementTests: XCTestCase {
                      "⌘↩ to approve pending"] {
             XCTAssertFalse(code.contains(dead),
                            "SessionsTab still tells a helper-down user: \(dead)")
+            XCTAssertFalse(english.contains(dead),
+                           "the English catalogue still tells a helper-down user: \(dead)")
         }
 
         // Positive controls. Without these a renamed file or a bad path would
-        // make both absences vacuous — the failure mode this repo keeps hitting.
-        XCTAssertTrue(code.contains("can't reach the helper"),
-                      "the replacement copy is missing — wrong file?")
+        // make every absence above vacuous — the failure mode this repo keeps
+        // hitting. They follow the copy to where it now lives: the catalogue
+        // carries the sentence, SessionsTab carries the accessor that shows it.
+        XCTAssertTrue(english.contains("can't reach the helper"),
+                      "the replacement copy is missing from en.lproj — wrong file?")
+        XCTAssertTrue(code.contains("L10n.sessions.hintHelperUnreachable"),
+                      "SessionsTab no longer shows the replacement copy")
         XCTAssertTrue(code.contains("shouldRouteSessionLocally"),
                       "this is not SessionsTab; the scan path is wrong")
         // …and the comment-stripping must not have eaten the file.
