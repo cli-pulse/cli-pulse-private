@@ -1525,3 +1525,22 @@
 "alerts.snooze_short" = "%d分";
 "machine.fan_max_fmt" = "最大 %d";
 "remote.listener_failed" = "リモート操作のリスナーでエラーが発生しました: %@";
+
+/* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
+"alerts.critical_count_badge" = "重大: %d";
+"alerts.warning_count_badge" = "警告: %d";
+"account.deleting" = "アカウントを削除しています…";
+"usage_dashboard.chart_day" = "日付";
+"usage_dashboard.chart_tokens" = "トークン数";
+"usage_dashboard.chart_provider" = "プロバイダー";
+"folder_access.dir_clipulse_config" = "CLI Pulse 設定";
+"folder_access.dir_clipulse_data" = "CLI Pulse データ";
+"folder_access.dir_codex_session_logs" = "Codex セッションログ";
+"folder_access.dir_codex_archived_logs" = "Codex アーカイブ済みログ";
+"folder_access.dir_claude_session_logs" = "Claude セッションログ";
+"sessions.action_helper_unavailable" = "CLI Pulse がヘルパーに接続できないか、「%1$@」がオフになっています。ヘルパーが実行中で「%1$@」がオンになっていることを確認してから、もう一度お試しください。";
+"sessions.approval_session_not_owned" = "このセッションは現在ここから操作できないため、このリクエストに応答できません。";
+"pairing.error_invalid_code" = "ペアリングコードが無効です";
+"pairing.error_code_expired" = "ペアリングコードの有効期限が切れています";
+"pairing.error_rate_limited" = "ペアリングの試行回数が多すぎます。1 分ほど待ってから再試行してください";
+"pairing.error_too_many_attempts" = "失敗回数が多すぎます。新しいペアリングコードを生成してください";

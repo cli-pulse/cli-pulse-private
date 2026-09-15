@@ -203,7 +203,7 @@ struct DangerZoneSection: View {
     private var deleteDeletingBody: some View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
-            Text(L10n.account.deleteAccount + "…")
+            Text(L10n.account.deleting)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         }

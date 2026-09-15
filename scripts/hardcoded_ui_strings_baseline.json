@@ -329,13 +329,13 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
    "literal": "\"CLI Pulse webhook test\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: OTHER: title of the test AlertRecord that testWebhook() (DataRefreshManager.swift:2789; triggered from GeneralSection.swift:165 and iOSSettingsTab.swift:342) sends via api.sendWebhook to the send-webhook edge function. It is never shown in the app. The function wraps it in Eng…"
+   "reason": "KEEP_BY_DECISION: webhook deliveries stay English (owner default, 2026-09-16). This is the TITLE of the test AlertRecord created by testWebhook(); it is rendered only inside the English Slack/Discord message built by the send-webhook edge function, never in the app."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
    "literal": "\"If you see this, your webhook integration is working correctly.\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: OTHER: message body of the same test webhook alert (see :2794). It is delivered only inside English server-side Slack/Discord chrome and never rendered in-app. Decide together with webhook localization as a whole."
+   "reason": "KEEP_BY_DECISION: webhook deliveries stay English (owner default, 2026-09-16). This is the body of the test alert sent by testWebhook(); it is rendered only inside the English Slack/Discord message built by the send-webhook edge function, never in the app."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",

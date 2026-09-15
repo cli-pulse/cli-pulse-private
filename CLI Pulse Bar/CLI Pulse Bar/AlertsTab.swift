@@ -110,10 +110,10 @@ struct AlertsTab: View {
 
         HStack(spacing: 6) {
             if critical > 0 {
-                StatusBadge(text: "\(critical) \(L10n.alerts.severityCritical)", color: .red)
+                StatusBadge(text: L10n.alerts.criticalCountBadge(critical), color: .red)
             }
             if warning > 0 {
-                StatusBadge(text: "\(warning) \(L10n.alerts.severityWarning)", color: .orange)
+                StatusBadge(text: L10n.alerts.warningCountBadge(warning), color: .orange)
             }
         }
     }

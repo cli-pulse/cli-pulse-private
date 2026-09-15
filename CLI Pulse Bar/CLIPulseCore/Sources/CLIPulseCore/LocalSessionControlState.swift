@@ -882,7 +882,8 @@ extension AppState {
         // even if the UI somehow plumbed a stale id in, we don't
         // surface it as a typed error from the helper.
         guard localManagedSessions.contains(where: { $0.id == sessionId }) else {
-            self.localHelperError = "approveLocalAction: session not owned by current helper"
+            Self.localStateLogger.error("approveLocalAction: session not owned by current helper")
+            self.localHelperError = L10n.sessions.approvalSessionNotOwned
             return false
         }
         let client = LocalSessionControlClient(
@@ -987,7 +988,8 @@ extension AppState {
     @discardableResult
     public func installClaudeHookViaHelper() async -> InstallClaudeHookResult? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "installClaudeHookViaHelper: helper not reachable or local control disabled"
+            Self.localStateLogger.error("installClaudeHookViaHelper: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         let client = LocalSessionControlClient(
@@ -1013,7 +1015,8 @@ extension AppState {
     /// Returns nil (and records `localHelperError`) if unreachable / gated off.
     public func uninstallClaudeHookViaHelper() async -> UninstallClaudeHookResult? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "uninstallClaudeHookViaHelper: helper not reachable or local control disabled"
+            Self.localStateLogger.error("uninstallClaudeHookViaHelper: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         let client = LocalSessionControlClient(
@@ -1089,7 +1092,8 @@ extension AppState {
     @discardableResult @MainActor
     public func setWrappedSessionCloudSharedViaHelper(sessionId: String, shared: Bool) async -> Bool? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "setWrappedSessionCloudShared: helper not reachable or local control disabled"
+            Self.localStateLogger.error("setWrappedSessionCloudShared: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         do {
@@ -1125,7 +1129,8 @@ extension AppState {
     @discardableResult @MainActor
     public func installShellIntegrationViaHelper() async -> ShellIntegrationStatus? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "installShellIntegration: helper not reachable or local control disabled"
+            Self.localStateLogger.error("installShellIntegration: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         do {
@@ -1145,7 +1150,8 @@ extension AppState {
     @discardableResult @MainActor
     public func uninstallShellIntegrationViaHelper() async -> ShellIntegrationStatus? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "uninstallShellIntegration: helper not reachable or local control disabled"
+            Self.localStateLogger.error("uninstallShellIntegration: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         do {
@@ -1181,7 +1187,8 @@ extension AppState {
     @discardableResult @MainActor
     public func attachWrappedSessionViaHelper(tmuxName: String, provider: String) async -> String? {
         guard localHelperReachable, localControlEnabled else {
-            self.localHelperError = "attachWrappedSession: helper not reachable or local control disabled"
+            Self.localStateLogger.error("attachWrappedSession: helper not reachable or local control disabled")
+            self.localHelperError = L10n.sessions.actionHelperUnavailable(L10n.sessions.localFastPathTitle)
             return nil
         }
         let sessionId = WrappedSessionID.sessionId(forTmuxName: tmuxName)

@@ -616,6 +616,13 @@ struct SessionsTab: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
+    /// The row labels and yes/no values are English ON PURPOSE (decided 2026-09-16).
+    /// This is a support snapshot — "Share this snapshot when reporting" — and
+    /// it is read by whoever debugs the report, next to paths, inode notes and
+    /// `NSHomeDirectory`, which have no translation. The localized hint below
+    /// (`sessions.diagnostics_inode_hint`) quotes "Socket exists" and "no"
+    /// verbatim in every locale; if these labels are ever localized, that key
+    /// has to change with them.
     @ViewBuilder
     private func localDiagnosticsPanel(_ diag: LocalSessionControlClient.Diagnostics) -> some View {
         VStack(alignment: .leading, spacing: 4) {
