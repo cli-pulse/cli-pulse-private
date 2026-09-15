@@ -58,9 +58,9 @@ public enum FreshnessTier: String, Sendable, Equatable, CaseIterable {
     /// fits in a small `StatusBadge`-style chip.
     public var badge: String {
         switch self {
-        case .activeProcess: return "running"
-        case .activeJsonl:   return "recent activity"
-        case .recentJsonl:   return "recent"
+        case .activeProcess: return L10n.sessions.running
+        case .activeJsonl:   return L10n.sessions.tierBadgeRecentActivity
+        case .recentJsonl:   return L10n.sessions.tierBadgeRecent
         case .hidden:        return ""
         }
     }

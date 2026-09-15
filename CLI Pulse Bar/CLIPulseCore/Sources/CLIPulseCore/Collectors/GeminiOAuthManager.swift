@@ -23,19 +23,19 @@ public enum GeminiOAuthError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .noCallback:            return "OAuth callback not received"
-        case .sessionStartFailed:    return "Failed to start authentication session"
-        case .noAuthCode:            return "No authorization code in callback"
-        case .stateMismatch:         return "OAuth state parameter mismatch"
-        case .tokenExchangeFailed(let s): return "Token exchange failed (HTTP \(s))"
+        case .noCallback:            return L10n.providerConfig.errorGeminiNoCallback
+        case .sessionStartFailed:    return L10n.providerConfig.errorGeminiSessionStartFailed
+        case .noAuthCode:            return L10n.providerConfig.errorGeminiNoAuthCode
+        case .stateMismatch:         return L10n.providerConfig.errorGeminiStateMismatch
+        case .tokenExchangeFailed(let s): return L10n.providerConfig.errorGeminiTokenExchangeFailed(s)
         case .tokenRefreshFailed(let s):  return "Token refresh failed (HTTP \(s))"
-        case .invalidTokenResponse:  return "Invalid token response from Google"
+        case .invalidTokenResponse:  return L10n.providerConfig.errorGeminiInvalidTokenResponse
         case .noRefreshToken:        return "No refresh token available"
-        case .clientNotConfigured:   return "OAuth client ID not configured — see docs/GEMINI_OAUTH_SETUP.md"
-        case .alreadyInProgress:     return "OAuth flow already in progress"
-        case .randomGenerationFailed: return "Secure random generation failed"
+        case .clientNotConfigured:   return L10n.providerConfig.errorGeminiClientNotConfigured
+        case .alreadyInProgress:     return L10n.providerConfig.errorGeminiAlreadyInProgress
+        case .randomGenerationFailed: return L10n.providerConfig.errorGeminiRandomGenerationFailed
         case .credentialPersistenceFailed:
-            return "Could not safely save or remove Gemini credentials. Please retry."
+            return L10n.providerConfig.errorGeminiCredentialPersistenceFailed
         }
     }
 }

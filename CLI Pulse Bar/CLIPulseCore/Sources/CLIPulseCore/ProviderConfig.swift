@@ -403,10 +403,10 @@ public enum MenuBarDisplayMode: String, Codable, CaseIterable, Sendable {
 
     public var description: String {
         switch self {
-        case .icon: return "App icon only"
-        case .percent: return "Remaining % of most-used"
-        case .pace: return "Usage vs expected pace"
-        case .mostUsed: return "Most active provider"
+        case .icon: return L10n.display.iconDescription
+        case .percent: return L10n.display.percentDescription
+        case .pace: return L10n.display.paceDescription
+        case .mostUsed: return L10n.display.mostUsedDescription
         }
     }
 }

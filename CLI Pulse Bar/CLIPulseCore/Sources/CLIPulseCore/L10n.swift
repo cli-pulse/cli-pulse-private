@@ -113,6 +113,7 @@ public enum L10n {
         public static var familyGoogle: String { tr("pet.family_google") }
         public static var familyOther: String { tr("pet.family_other") }
         public static func formName(_ form: PetForm) -> String { tr("pet.form_\(form.rawValue)") }
+        public static func catteryActiveA11y(_ a0: String) -> String { tr("pet.cattery_active_a11y", a0) }
     }
 
     // MARK: - Machine (System Monitor)
@@ -288,6 +289,12 @@ public enum L10n {
         public static var subscriptionUtilization: String { tr("dashboard.subscription_utilization") }
         public static var totalMonthly: String { tr("dashboard.total_monthly") }
         public static var noEnabledWithData: String { tr("dashboard.no_enabled_with_data") }
+        public static func utilizedPercent(_ a0: Double) -> String { tr("dashboard.utilized_percent", a0) }
+        public static func valueMultiplier(_ a0: String) -> String { tr("dashboard.value_multiplier", a0) }
+        public static var apiEquivalent30d: String { tr("dashboard.api_equivalent_30d") }
+        public static var allInMonthlyEst: String { tr("dashboard.all_in_monthly_est") }
+        public static var allInMonthlyHelp: String { tr("dashboard.all_in_monthly_help") }
+        public static var noAiToolsDetected: String { tr("dashboard.no_ai_tools_detected") }
     }
 
     // MARK: - Usage Dashboard (v1.40)
@@ -315,6 +322,11 @@ public enum L10n {
         public static var less: String { tr("usage_dashboard.less") }
         public static var more: String { tr("usage_dashboard.more") }
         public static var all: String { tr("usage_dashboard.all") }
+        public static var tokensUnit: String { tr("usage_dashboard.tokens_unit") }
+        public static var range7d: String { tr("usage_dashboard.range_7d") }
+        public static var range30d: String { tr("usage_dashboard.range_30d") }
+        public static var range90d: String { tr("usage_dashboard.range_90d") }
+        public static var range1y: String { tr("usage_dashboard.range_1y") }
     }
 
     // MARK: - Providers
@@ -375,6 +387,10 @@ public enum L10n {
         public static var cannotReadHint: String { tr("collector_status.cannot_read_hint") }
         public static var failed: String { tr("collector_status.failed") }
         public static var failedHint: String { tr("collector_status.failed_hint") }
+        public static var zedSignInFromEditor: String { tr("collector_status.zed_sign_in_from_editor") }
+        public static var zedKeychainNeedsApproval: String { tr("collector_status.zed_keychain_needs_approval") }
+        public static func zedKeychainReadFailed(_ a0: Int) -> String { tr("collector_status.zed_keychain_read_failed", a0) }
+        public static var zedCredentialsExpired: String { tr("collector_status.zed_credentials_expired") }
     }
 
     public enum providers {
@@ -445,6 +461,17 @@ public enum L10n {
         public static var grantAccessBody: String { tr("providers.grant_access_body") }
         public static var openSettings: String { tr("providers.open_settings") }
         public static var quotaDataUnavailable: String { tr("providers.quota_data_unavailable") }
+        public static func claudeSignedInConnectHint(_ a0: String) -> String { tr("providers.claude_signed_in_connect_hint", a0) }
+        public static var claudeQuotaUnavailableHint: String { tr("providers.claude_quota_unavailable_hint") }
+        public static func trackedCount(_ a0: Int) -> String { tr("providers.tracked_count", a0) }
+        public static func messagesShort(_ a0: String) -> String { tr("providers.messages_short", a0) }
+        public static var claudeMetricHelp: String { tr("providers.claude_metric_help") }
+        public static var claudeNoScanHelp: String { tr("providers.claude_no_scan_help") }
+        public static var ioTokensHelp: String { tr("providers.io_tokens_help") }
+        public static var noScanHelp: String { tr("providers.no_scan_help") }
+        public static var apiTokenCountHelp: String { tr("providers.api_token_count_help") }
+        public static func percentUsed(_ a0: Int) -> String { tr("providers.percent_used", a0) }
+        public static func resetsIn(_ a0: String) -> String { tr("providers.resets_in", a0) }
     }
 
     // MARK: - Remote Control Diagnostics
@@ -481,6 +508,107 @@ public enum L10n {
         public static var running: String { tr("sessions.running") }
         public static var details: String { tr("sessions.details") }
         public static func countRunning(_ count: Int) -> String { tr("sessions.count_running", count) }
+        public static var newCodexOffPlan: String { tr("sessions.new_codex_off_plan") }
+        public static var newLocal: String { tr("sessions.new_local") }
+        public static var newShort: String { tr("sessions.new_short") }
+        public static var localFastPathHelp: String { tr("sessions.local_fast_path_help") }
+        public static var localPillHelperNotRunning: String { tr("sessions.local_pill_helper_not_running") }
+        public static var localPillError: String { tr("sessions.local_pill_error") }
+        public static var localPillActive: String { tr("sessions.local_pill_active") }
+        public static var localPillOff: String { tr("sessions.local_pill_off") }
+        public static var newLocalHelp: String { tr("sessions.new_local_help") }
+        public static var startHelperHint: String { tr("sessions.start_helper_hint") }
+        public static var wrapTerminalTitle: String { tr("sessions.wrap_terminal_title") }
+        public static var wrappedEmpty: String { tr("sessions.wrapped_empty") }
+        public static var shellIntegrationOn: String { tr("sessions.shell_integration_on") }
+        public static var shellIntegrationOff: String { tr("sessions.shell_integration_off") }
+        public static var shellIntegrationOnDetail: String { tr("sessions.shell_integration_on_detail") }
+        public static func shellIntegrationOffDetail(_ a0: String) -> String { tr("sessions.shell_integration_off_detail", a0) }
+        public static var turnOff: String { tr("sessions.turn_off") }
+        public static var turnOn: String { tr("sessions.turn_on") }
+        public static var wrappedOpen: String { tr("sessions.wrapped_open") }
+        public static var wrappedAttach: String { tr("sessions.wrapped_attach") }
+        public static var helperFailingTitle: String { tr("sessions.helper_failing_title") }
+        public static var diagnose: String { tr("sessions.diagnose") }
+        public static var managedEmpty: String { tr("sessions.managed_empty") }
+        public static var managedEmptyNoHelper: String { tr("sessions.managed_empty_no_helper") }
+        public static var detectedTitle: String { tr("sessions.detected_title") }
+        public static var detectedFooter: String { tr("sessions.detected_footer") }
+        public static var sectionActive: String { tr("sessions.section_active") }
+        public static var sectionRecent: String { tr("sessions.section_recent") }
+        public static var freshnessLegend: String { tr("sessions.freshness_legend") }
+        public static var send: String { tr("sessions.send") }
+        public static var approveHelp: String { tr("sessions.approve_help") }
+        public static var rejectHelp: String { tr("sessions.reject_help") }
+        public static var openTerminal: String { tr("sessions.open_terminal") }
+        public static var openTerminalHelp: String { tr("sessions.open_terminal_help") }
+        public static var hideOutput: String { tr("sessions.hide_output") }
+        public static var showOutput: String { tr("sessions.show_output") }
+        public static var outputPendingHelp: String { tr("sessions.output_pending_help") }
+        public static var hideOutputHelp: String { tr("sessions.hide_output_help") }
+        public static var showOutputHelp: String { tr("sessions.show_output_help") }
+        public static var statusStarting: String { tr("sessions.status_starting") }
+        public static var statusErrored: String { tr("sessions.status_errored") }
+        public static var statusStopped: String { tr("sessions.status_stopped") }
+        public static var liveOutputInTerminal: String { tr("sessions.live_output_in_terminal") }
+        public static var demotedOutputDetail: String { tr("sessions.demoted_output_detail") }
+        public static var previewDisclaimer: String { tr("sessions.preview_disclaimer") }
+        public static var placeholderWaiting: String { tr("sessions.placeholder_waiting") }
+        public static var placeholderSendUnsupported: String { tr("sessions.placeholder_send_unsupported") }
+        public static var placeholderResolveApproval: String { tr("sessions.placeholder_resolve_approval") }
+        public static func placeholderPromptFor(_ a0: String) -> String { tr("sessions.placeholder_prompt_for", a0) }
+        public static var stopHelpStale: String { tr("sessions.stop_help_stale") }
+        public static var stopHelpPending: String { tr("sessions.stop_help_pending") }
+        public static var stopHelpRunning: String { tr("sessions.stop_help_running") }
+        public static var hintStale: String { tr("sessions.hint_stale") }
+        public static var hintPending: String { tr("sessions.hint_pending") }
+        public static var hintResolveApproval: String { tr("sessions.hint_resolve_approval") }
+        public static var hintNoPendingApproval: String { tr("sessions.hint_no_pending_approval") }
+        public static var hintApprovalsNotAdvertised: String { tr("sessions.hint_approvals_not_advertised") }
+        public static var hintHelperUnreachable: String { tr("sessions.hint_helper_unreachable") }
+        public static var hintEnterToSend: String { tr("sessions.hint_enter_to_send") }
+        public static var outputEmpty: String { tr("sessions.output_empty") }
+        public static var outputStreamingUnsupported: String { tr("sessions.output_streaming_unsupported") }
+        public static var outputHelperUnreachable: String { tr("sessions.output_helper_unreachable") }
+        public static var helperNotRunningTitle: String { tr("sessions.helper_not_running_title") }
+        public static var helperNotRunningDetail: String { tr("sessions.helper_not_running_detail") }
+        public static var openHelperSetup: String { tr("sessions.open_helper_setup") }
+        public static var openHelperSetupHelp: String { tr("sessions.open_helper_setup_help") }
+        public static var helperOldVersion: String { tr("sessions.helper_old_version") }
+        public static var oauthFloorTitle: String { tr("sessions.oauth_floor_title") }
+        public static func oauthFloorDetail(_ a0: String, _ a1: String) -> String { tr("sessions.oauth_floor_detail", a0, a1) }
+        public static var updateHelper: String { tr("sessions.update_helper") }
+        public static var updateHelperHelp: String { tr("sessions.update_helper_help") }
+        public static var hookParseErrorTitle: String { tr("sessions.hook_parse_error_title") }
+        public static var hookParseErrorDetail: String { tr("sessions.hook_parse_error_detail") }
+        public static var hookInstalledTitle: String { tr("sessions.hook_installed_title") }
+        public static var hookInstalledDetail: String { tr("sessions.hook_installed_detail") }
+        public static func hookInstallResult(_ a0: String, _ a1: String) -> String { tr("sessions.hook_install_result", a0, a1) }
+        public static var hookRemove: String { tr("sessions.hook_remove") }
+        public static var hookRemoveHelp: String { tr("sessions.hook_remove_help") }
+        public static var hookInstallTitle: String { tr("sessions.hook_install_title") }
+        public static var hookInstallDetail: String { tr("sessions.hook_install_detail") }
+        public static func hookUninstallResult(_ a0: String, _ a1: Int, _ a2: String) -> String { tr("sessions.hook_uninstall_result", a0, a1, a2) }
+        public static var hookInstall: String { tr("sessions.hook_install") }
+        public static var hookInstallHelp: String { tr("sessions.hook_install_help") }
+        public static var hookCopyCommand: String { tr("sessions.hook_copy_command") }
+        public static var hookCopyCommandHelp: String { tr("sessions.hook_copy_command_help") }
+        public static var localFastPathTitle: String { tr("sessions.local_fast_path_title") }
+        public static var localFastPathOnDetail: String { tr("sessions.local_fast_path_on_detail") }
+        public static var localFastPathOffDetail: String { tr("sessions.local_fast_path_off_detail") }
+        public static func rowFallbackLabel(_ a0: String) -> String { tr("sessions.row_fallback_label", a0) }
+        public static func rowLabelOnDevice(_ a0: String, _ a1: String) -> String { tr("sessions.row_label_on_device", a0, a1) }
+        public static var transportLocal: String { tr("sessions.transport_local") }
+        public static var transportLocalHelp: String { tr("sessions.transport_local_help") }
+        public static var transportHelperRestarted: String { tr("sessions.transport_helper_restarted") }
+        public static var transportStaleHelp: String { tr("sessions.transport_stale_help") }
+        public static var rowNotControllable: String { tr("sessions.row_not_controllable") }
+        public static var rowTapToControl: String { tr("sessions.row_tap_to_control") }
+        public static var previewHeaderCodex: String { tr("sessions.preview_header_codex") }
+        public static var previewHeaderGemini: String { tr("sessions.preview_header_gemini") }
+        public static var previewHeaderClaude: String { tr("sessions.preview_header_claude") }
+        public static var tierBadgeRecentActivity: String { tr("sessions.tier_badge_recent_activity") }
+        public static var tierBadgeRecent: String { tr("sessions.tier_badge_recent") }
     }
 
 
@@ -586,6 +714,14 @@ public enum L10n {
         public static var remoteControl: String { tr("settings.remote_control") }
         public static var remoteControlIPhoneHint: String { tr("settings.remote_control_iphone_hint") }
         public static var privacyRedactedHint: String { tr("settings.privacy_redacted_hint") }
+        public static var localOnlyMode: String { tr("settings.local_only_mode") }
+        public static var localOnlyModeHint: String { tr("settings.local_only_mode_hint") }
+        public static var skipClaudeKeychain: String { tr("settings.skip_claude_keychain") }
+        public static var skipClaudeKeychainForced: String { tr("settings.skip_claude_keychain_forced") }
+        public static var skipClaudeKeychainHint: String { tr("settings.skip_claude_keychain_hint") }
+        public static var blockClaudeOnOutdatedHelper: String { tr("settings.block_claude_on_outdated_helper") }
+        public static var blockClaudeOnOutdatedHelperHint: String { tr("settings.block_claude_on_outdated_helper_hint") }
+        public static func pushRegistrationFailed(_ a0: String) -> String { tr("settings.push_registration_failed", a0) }
     }
 
     // MARK: - Auth
@@ -633,6 +769,9 @@ public enum L10n {
         public static var watchEmailFallback: String { tr("auth.watch_email_fallback") }
         public static var appleNoToken: String { tr("auth.apple_no_token") }
         public static var appleNonceFailed: String { tr("auth.apple_nonce_failed") }
+        public static var errorInvalidResponse: String { tr("auth.error_invalid_response") }
+        public static var errorSessionExpired: String { tr("auth.error_session_expired") }
+        public static var errorNotSignedIn: String { tr("auth.error_not_signed_in") }
     }
 
     // MARK: - Subscription
@@ -703,6 +842,14 @@ public enum L10n {
         public static var oneTime: String { tr("subscription.one_time") }
         public static var oneTimeBadge: String { tr("subscription.one_time_badge") }
         public static var buyLifetime: String { tr("subscription.buy_lifetime") }
+        public static func storePlansNotOffered(_ a0: Int) -> String { tr("subscription.store_plans_not_offered", a0) }
+        public static var storeReturnedNoPlans: String { tr("subscription.store_returned_no_plans") }
+        public static var storeRequestFailed: String { tr("subscription.store_request_failed") }
+        public static var tierCheckInProgress: String { tr("subscription.tier_check_in_progress") }
+        public static func tierCheckIncomplete(_ a0: String) -> String { tr("subscription.tier_check_incomplete", a0) }
+        public static func storeDiagnostic(_ a0: String) -> String { tr("subscription.store_diagnostic", a0) }
+        public static var proMonthly: String { tr("subscription.pro_monthly") }
+        public static var proYearly: String { tr("subscription.pro_yearly") }
     }
 
     // MARK: - About
@@ -734,6 +881,7 @@ public enum L10n {
         // Countdown per-provider window labels (5h session / weekly)
         public static var window5h: String { tr("widget.window_5h") }
         public static var windowWeekly: String { tr("widget.window_weekly") }
+        public static var complicationDescription: String { tr("widget.complication_description") }
     }
 
     // MARK: - Time
@@ -741,6 +889,7 @@ public enum L10n {
     public enum time {
         public static var justNow: String { tr("time.just_now") }
         public static var ago: String { tr("time.ago") }
+        public static func seconds(_ a0: Int) -> String { tr("time.seconds_fmt", a0) }
     }
 
     // MARK: - Account
@@ -817,6 +966,12 @@ public enum L10n {
         public static var mergeMenuBarIcons: String { tr("display.merge_menu_bar_icons") }
         public static var mergeMenuBarHint: String { tr("display.merge_menu_bar_hint") }
         public static var reorderHint: String { tr("display.reorder_hint") }
+        public static var sectionMenuBar: String { tr("display.section_menu_bar") }
+        public static var sectionOverviewProviders: String { tr("display.section_overview_providers") }
+        public static var iconDescription: String { tr("display.icon_description") }
+        public static var percentDescription: String { tr("display.percent_description") }
+        public static var paceDescription: String { tr("display.pace_description") }
+        public static var mostUsedDescription: String { tr("display.most_used_description") }
     }
 
     // MARK: - Status
@@ -1035,6 +1190,29 @@ public enum L10n {
         public static var errTooFast: String { tr("remote.err_too_fast") }
         public static var errUnexpected: String { tr("remote.err_unexpected") }
         public static var errNotAPairingCode: String { tr("remote.err_not_a_pairing_code") }
+        public static var allowPairedIphones: String { tr("remote.allow_paired_iphones") }
+        public static var macPrivacyExplainer: String { tr("remote.mac_privacy_explainer") }
+        public static var pairAnIphone: String { tr("remote.pair_an_iphone") }
+        public static var copied: String { tr("remote.copied") }
+        public static var copy: String { tr("remote.copy") }
+        public static var controlToggle: String { tr("remote.control_toggle") }
+        public static var controlToggleHelp: String { tr("remote.control_toggle_help") }
+        public static var statusUnavailable: String { tr("remote.status_unavailable") }
+        public static func countConnected(_ a0: Int) -> String { tr("remote.count_connected", a0) }
+        public static func countPaired(_ a0: Int) -> String { tr("remote.count_paired", a0) }
+        public static var pairQrHint: String { tr("remote.pair_qr_hint") }
+        public static func expiresInSeconds(_ a0: Int) -> String { tr("remote.expires_in_seconds", a0) }
+        public static var copyLink: String { tr("remote.copy_link") }
+        public static func pairApprovalPrompt(_ a0: String) -> String { tr("remote.pair_approval_prompt", a0) }
+        public static var decline: String { tr("remote.decline") }
+        public static func peerIsPaired(_ a0: String) -> String { tr("remote.peer_is_paired", a0) }
+        public static var tryAgain: String { tr("remote.try_again") }
+        public static func identityCreateFailed(_ a0: String) -> String { tr("remote.identity_create_failed", a0) }
+        public static func listenerSetupFailed(_ a0: String) -> String { tr("remote.listener_setup_failed", a0) }
+        public static var turnOnFirst: String { tr("remote.turn_on_first") }
+        public static var macQrExpired: String { tr("remote.mac_qr_expired") }
+        public static func savePairingFailed(_ a0: String) -> String { tr("remote.save_pairing_failed", a0) }
+        public static var macPairingDeclined: String { tr("remote.mac_pairing_declined") }
     }
 
     public enum integrations {
@@ -1049,6 +1227,8 @@ public enum L10n {
         public static var filterTypes: String { tr("integrations.filter_types") }
         public static var filterProviders: String { tr("integrations.filter_providers") }
         public static var filterAll: String { tr("integrations.filter_all") }
+        public static func saveSettingsFailed(_ a0: String) -> String { tr("integrations.save_settings_failed", a0) }
+        public static func testWebhookFailed(_ a0: String) -> String { tr("integrations.test_webhook_failed", a0) }
     }
 
     // MARK: - Forecast
@@ -1084,6 +1264,7 @@ public enum L10n {
         public static var close: String { tr("common.close") }
         public static var disconnect: String { tr("common.disconnect") }
         public static var noProviderSelected: String { tr("common.no_provider_selected") }
+        public static var disabled: String { tr("common.disabled") }
     }
 
     // MARK: - Cost Section (iter22)
@@ -1115,6 +1296,8 @@ public enum L10n {
             case .estimated: return estimated
             }
         }
+        public static var ioTokensCodexBarHelp: String { tr("cost.io_tokens_codexbar_help") }
+        public static var ioTokensHelp: String { tr("cost.io_tokens_help") }
     }
 
     // MARK: - PDF Report (CLIPulseCore shared generator)
@@ -1208,6 +1391,35 @@ public enum L10n {
         public static var claudeReadFailed: String { tr("provider_config.claude_read_failed") }
         public static var testConnection: String { tr("provider_config.test_connection") }
         public static var testing: String { tr("provider_config.testing") }
+        public static var errorClaudeNoToken: String { tr("provider_config.error_claude_no_token") }
+        public static func errorClaudeHttpStatus(_ a0: Int) -> String { tr("provider_config.error_claude_http_status", a0) }
+        public static func errorClaudeParseFailed(_ a0: String) -> String { tr("provider_config.error_claude_parse_failed", a0) }
+        public static var errorClaudeNoBinary: String { tr("provider_config.error_claude_no_binary") }
+        public static var errorClaudeNoSessionKey: String { tr("provider_config.error_claude_no_session_key") }
+        public static var errorClaudeUnauthorized: String { tr("provider_config.error_claude_unauthorized") }
+        public static var errorClaudeTimedOut: String { tr("provider_config.error_claude_timed_out") }
+        public static var errorClaudeProcessExited: String { tr("provider_config.error_claude_process_exited") }
+        public static func errorClaudeRateLimitBackoff(_ a0: Int) -> String { tr("provider_config.error_claude_rate_limit_backoff", a0) }
+        public static var errorGeminiNoCallback: String { tr("provider_config.error_gemini_no_callback") }
+        public static var errorGeminiSessionStartFailed: String { tr("provider_config.error_gemini_session_start_failed") }
+        public static var errorGeminiNoAuthCode: String { tr("provider_config.error_gemini_no_auth_code") }
+        public static var errorGeminiStateMismatch: String { tr("provider_config.error_gemini_state_mismatch") }
+        public static func errorGeminiTokenExchangeFailed(_ a0: Int) -> String { tr("provider_config.error_gemini_token_exchange_failed", a0) }
+        public static var errorGeminiInvalidTokenResponse: String { tr("provider_config.error_gemini_invalid_token_response") }
+        public static var errorGeminiClientNotConfigured: String { tr("provider_config.error_gemini_client_not_configured") }
+        public static var errorGeminiAlreadyInProgress: String { tr("provider_config.error_gemini_already_in_progress") }
+        public static var errorGeminiRandomGenerationFailed: String { tr("provider_config.error_gemini_random_generation_failed") }
+        public static var errorGeminiCredentialPersistenceFailed: String { tr("provider_config.error_gemini_credential_persistence_failed") }
+        public static var windowTitle: String { tr("provider_config.window_title") }
+        public static var testOauthReady: String { tr("provider_config.test_oauth_ready") }
+        public static var testStagedForRemoval: String { tr("provider_config.test_staged_for_removal") }
+        public static var testNoCollector: String { tr("provider_config.test_no_collector") }
+        public static func testOkRemaining(_ a0: Int, _ a1: String) -> String { tr("provider_config.test_ok_remaining", a0, a1) }
+        public static func testOkCredits(_ a0: Int) -> String { tr("provider_config.test_ok_credits", a0) }
+        public static func testOkStatus(_ a0: Int) -> String { tr("provider_config.test_ok_status", a0) }
+        public static var prepareCredentialsFailed: String { tr("provider_config.prepare_credentials_failed") }
+        public static var saveCredentialsFailed: String { tr("provider_config.save_credentials_failed") }
+        public static var saveConfigurationFailed: String { tr("provider_config.save_configuration_failed") }
     }
 
     // MARK: - Onboarding Wizard
@@ -1309,6 +1521,14 @@ public enum L10n {
         public static var upgradeBody: String { tr("onboarding_wizard.upgrade_body") }
         public static var checkAccounts: String { tr("onboarding_wizard.check_accounts") }
         public static var later: String { tr("onboarding_wizard.later") }
+        public static var featureUsageTitle: String { tr("onboarding_wizard.feature_usage_title") }
+        public static var featureUsageDesc: String { tr("onboarding_wizard.feature_usage_desc") }
+        public static var featureAlertsTitle: String { tr("onboarding_wizard.feature_alerts_title") }
+        public static var featureAlertsDesc: String { tr("onboarding_wizard.feature_alerts_desc") }
+        public static var featureDevicesTitle: String { tr("onboarding_wizard.feature_devices_title") }
+        public static var featureDevicesDesc: String { tr("onboarding_wizard.feature_devices_desc") }
+        public static var featureCostTitle: String { tr("onboarding_wizard.feature_cost_title") }
+        public static var featureCostDesc: String { tr("onboarding_wizard.feature_cost_desc") }
     }
 
     // MARK: - Advanced Settings
@@ -1349,6 +1569,12 @@ public enum L10n {
         public static var privacyMetricsDetail: String { tr("advanced.privacy_metrics_detail") }
         public static var privacyEmailTitle: String { tr("advanced.privacy_email_title") }
         public static var privacyEmailDetail: String { tr("advanced.privacy_email_detail") }
+        public static var startup: String { tr("advanced.startup") }
+        public static var backgroundHelper: String { tr("advanced.background_helper") }
+        public static var debug: String { tr("advanced.debug") }
+        public static var tokenNone: String { tr("advanced.token_none") }
+        public static func trackGitSaveFailed(_ a0: String) -> String { tr("advanced.track_git_save_failed", a0) }
+        public static func remoteControlSaveFailed(_ a0: String) -> String { tr("advanced.remote_control_save_failed", a0) }
     }
 
     // MARK: - Remote Approvals
@@ -1418,6 +1644,7 @@ public enum L10n {
         public static var manualSetup: String { tr("pairing.manual_setup") }
         public static var yourCode: String { tr("pairing.your_code") }
         public static var copy: String { tr("pairing.copy") }
+        public static var notConnected: String { tr("pairing.not_connected") }
     }
 
     // MARK: - Watch
@@ -1513,6 +1740,75 @@ public enum L10n {
         public static var changeLater: String { tr("local_scan_consent.change_later") }
         public static var declinedTitle: String { tr("local_scan_consent.declined_title") }
         public static var declinedBody: String { tr("local_scan_consent.declined_body") }
+        public static var settingsToggle: String { tr("local_scan_consent.settings_toggle") }
+        public static var settingsToggleDetail: String { tr("local_scan_consent.settings_toggle_detail") }
+    }
+
+    // MARK: - Previously hardcoded UI copy (2026-09-15 sweep)
+
+    public enum helper {
+        public static var title: String { tr("helper.title") }
+        public static var notResponding: String { tr("helper.not_responding") }
+        public static var installing: String { tr("helper.installing") }
+        public static func runningVersion(_ a0: String) -> String { tr("helper.running_version", a0) }
+        public static var builtIn: String { tr("helper.built_in") }
+        public static func builtInVersion(_ a0: String) -> String { tr("helper.built_in_version", a0) }
+        public static var installIntro: String { tr("helper.install_intro") }
+        public static var waitingForInstaller: String { tr("helper.waiting_for_installer") }
+        public static var runningUnpairedHint: String { tr("helper.running_unpaired_hint") }
+        public static var bundledHint: String { tr("helper.bundled_hint") }
+        public static func updateAvailableBody(_ a0: String) -> String { tr("helper.update_available_body", a0) }
+        public static var installButton: String { tr("helper.install_button") }
+        public static var recheck: String { tr("helper.recheck") }
+        public static var uninstall: String { tr("helper.uninstall") }
+        public static var updateButton: String { tr("helper.update_button") }
+    }
+
+    public enum appUpdater {
+        public static var checking: String { tr("app_updater.checking") }
+        public static func downloadingPercent(_ a0: Int) -> String { tr("app_updater.downloading_percent", a0) }
+        public static func updateAvailableBadge(_ a0: String, _ a1: String) -> String { tr("app_updater.update_available_badge", a0, a1) }
+        public static var errorBadge: String { tr("app_updater.error_badge") }
+        public static var checkForUpdates: String { tr("app_updater.check_for_updates") }
+        public static var title: String { tr("app_updater.title") }
+        public static var permissionsRegrantTitle: String { tr("app_updater.permissions_regrant_title") }
+        public static func permissionsRegrantBody(_ a0: String) -> String { tr("app_updater.permissions_regrant_body", a0) }
+        public static func openPermission(_ a0: String) -> String { tr("app_updater.open_permission", a0) }
+        public static var devidChannelTitle: String { tr("app_updater.devid_channel_title") }
+        public static var masAutoUpdateWarning: String { tr("app_updater.mas_auto_update_warning") }
+        public static var openAppStoreSettings: String { tr("app_updater.open_app_store_settings") }
+        public static func upToDate(_ a0: String) -> String { tr("app_updater.up_to_date", a0) }
+        public static var readyToInstall: String { tr("app_updater.ready_to_install") }
+        public static func updateAvailableBody(_ a0: String) -> String { tr("app_updater.update_available_body", a0) }
+        public static var installInstructions: String { tr("app_updater.install_instructions") }
+        public static var downloadUpdate: String { tr("app_updater.download_update") }
+        public static var installUpdateQuits: String { tr("app_updater.install_update_quits") }
+    }
+
+    public enum terminal {
+        public static func windowTitle(_ a0: String) -> String { tr("terminal.window_title", a0) }
+        public static var reconnect: String { tr("terminal.reconnect") }
+        public static var disconnectedTitle: String { tr("terminal.disconnected_title") }
+        public static func disconnectedMessage(_ a0: String) -> String { tr("terminal.disconnected_message", a0) }
+        public static var sessionGoneTitle: String { tr("terminal.session_gone_title") }
+        public static func sessionGoneMessage(_ a0: String) -> String { tr("terminal.session_gone_message", a0) }
+        public static var helperUnreachableTitle: String { tr("terminal.helper_unreachable_title") }
+        public static var helperUnreachableMessage: String { tr("terminal.helper_unreachable_message") }
+    }
+
+    public enum inAppTerminal {
+        public static var menuTitle: String { tr("in_app_terminal.menu_title") }
+        public static func newTerminal(_ a0: String) -> String { tr("in_app_terminal.new_terminal", a0) }
+        public static var helperNotReadyMenuItem: String { tr("in_app_terminal.helper_not_ready_menu_item") }
+        public static var notReadyTitle: String { tr("in_app_terminal.not_ready_title") }
+        public static var notReadyBody: String { tr("in_app_terminal.not_ready_body") }
+        public static var claudeBlockedTitle: String { tr("in_app_terminal.claude_blocked_title") }
+        public static var claudeApiWarningTitle: String { tr("in_app_terminal.claude_api_warning_title") }
+        public static func claudeHelperOutdatedBody(_ a0: String, _ a1: String) -> String { tr("in_app_terminal.claude_helper_outdated_body", a0, a1) }
+        public static var startAnyway: String { tr("in_app_terminal.start_anyway") }
+        public static var openTerminalHere: String { tr("in_app_terminal.open_terminal_here") }
+        public static func chooseWorkingDirectory(_ a0: String) -> String { tr("in_app_terminal.choose_working_directory", a0) }
+        public static func startFailedTitle(_ a0: String) -> String { tr("in_app_terminal.start_failed_title", a0) }
     }
 }
 

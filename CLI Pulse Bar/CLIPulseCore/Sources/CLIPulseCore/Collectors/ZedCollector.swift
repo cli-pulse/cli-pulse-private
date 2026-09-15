@@ -89,7 +89,7 @@ public struct ZedCollector: ProviderCollector, Sendable {
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         #if DEVID_BUILD
         guard let creds = try Self.loadCredentials() else {
-            throw CollectorError.notSignedIn("Zed: sign in from the Zed editor (GitHub)")
+            throw CollectorError.notSignedIn(L10n.collectorStatus.zedSignInFromEditor)
         }
         let data = try await Self.fetch(creds)
         let response = try Self.parse(data)
@@ -147,9 +147,9 @@ public struct ZedCollector: ProviderCollector, Sendable {
         case errSecItemNotFound: return nil
         case errSecInteractionNotAllowed, errSecAuthFailed, errSecNoAccessForItem:
             ZedKeychainGate.noteInteractionDenied()   // back off so we don't re-prompt every refresh
-            throw CollectorError.notSignedIn("Zed: Keychain access needs approval — allow access to zed.dev in the dialog, or sign in to Zed again")
+            throw CollectorError.notSignedIn(L10n.collectorStatus.zedKeychainNeedsApproval)
         default:
-            throw CollectorError.notSignedIn("Zed: could not read Keychain (status \(status))")
+            throw CollectorError.notSignedIn(L10n.collectorStatus.zedKeychainReadFailed(Int(status)))
         }
         guard let item = result as? [String: Any],
               let account = (item[kSecAttrAccount as String] as? String)?
@@ -179,7 +179,7 @@ public struct ZedCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn("Zed: credentials invalid/expired — sign in to Zed again")
+            throw CollectorError.notSignedIn(L10n.collectorStatus.zedCredentialsExpired)
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "Zed") }
         return data

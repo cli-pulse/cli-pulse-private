@@ -395,7 +395,7 @@ struct OverviewTab: View {
                             Text(L10n.cost.tokensSuffix(TokenFormatter.format(providerState.costSummary.todayTokens)))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.tertiary)
-                                .help("I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost). CodexBar's 'tokens' figure rolls cache in; ours doesn't, so the numbers will differ. Cost is computed with full per-component pricing on both sides and matches.")
+                                .help(L10n.cost.ioTokensCodexBarHelp)
                         }
                     }
                 }
@@ -411,7 +411,7 @@ struct OverviewTab: View {
                             Text(L10n.cost.tokensSuffix(TokenFormatter.format(providerState.costSummary.thirtyDayTokens)))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.tertiary)
-                                .help("I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost).")
+                                .help(L10n.cost.ioTokensHelp)
                         }
                     }
                 }
@@ -460,7 +460,7 @@ struct OverviewTab: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + "/mo")
+                    Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + L10n.subscription.perMonth)
                         .font(.system(size: 11, weight: .bold, design: .rounded))
                         .foregroundStyle(.orange)
                 }
@@ -515,11 +515,11 @@ struct OverviewTab: View {
                             }
                             .frame(height: 4)
                             HStack {
-                                Text(String(format: "%.0f%% utilized", item.utilizationPercent))
+                                Text(L10n.dashboard.utilizedPercent(item.utilizationPercent))
                                     .font(.system(size: 9))
                                     .foregroundStyle(.tertiary)
                                 if !item.valueMultiplier.isEmpty {
-                                    Text("· \(item.valueMultiplier) value")
+                                    Text(L10n.dashboard.valueMultiplier(item.valueMultiplier))
                                         .font(.system(size: 9, weight: .medium))
                                         .foregroundStyle(utilizationColor(item.utilizationPercent))
                                 }
@@ -540,7 +540,7 @@ struct OverviewTab: View {
                 // tooltip so the composition is clear.
                 VStack(spacing: 2) {
                     HStack {
-                        Text("API equivalent (30d)")
+                        Text(L10n.dashboard.apiEquivalent30d)
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -581,16 +581,16 @@ struct OverviewTab: View {
                     }
 
                     HStack {
-                        Text("Subscriptions")
+                        Text(L10n.dashboard.subscriptions)
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + "/mo")
+                        Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + L10n.subscription.perMonth)
                             .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundStyle(.orange)
                     }
                     HStack {
-                        Text("All-in monthly (est.)")
+                        Text(L10n.dashboard.allInMonthlyEst)
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -598,7 +598,7 @@ struct OverviewTab: View {
                             .font(.system(size: 12, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
                     }
-                    .help("API-equivalent 30-day cost from your usage PLUS monthly subscription cost. This is NOT a real bill — Anthropic / OpenAI / Google charge subscription cost only; the API-equivalent figure shows what your usage would have cost on pay-as-you-go.")
+                    .help(L10n.dashboard.allInMonthlyHelp)
                 }
             }
 

@@ -31,7 +31,7 @@ struct AppUpdaterSection: View {
                 Image(systemName: "arrow.down.app")
                     .font(.system(size: 11))
                     .foregroundStyle(PulseTheme.accent)
-                Text("App Updates (Beta Channel)")
+                Text(L10n.appUpdater.title)
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
                 statusBadge
@@ -65,9 +65,9 @@ struct AppUpdaterSection: View {
                 .foregroundStyle(.orange)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 4) {
-                Text("Permissions need re-granting after channel switch")
+                Text(L10n.appUpdater.permissionsRegrantTitle)
                     .font(.system(size: 10, weight: .medium))
-                Text("Migrating from the App Store version resets macOS permissions. Please re-grant: \(permMigration.revertedPermissions.joined(separator: ", ")).")
+                Text(L10n.appUpdater.permissionsRegrantBody(permMigration.revertedPermissions.joined(separator: ", ")))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -80,7 +80,7 @@ struct AppUpdaterSection: View {
                                 Task.detached { NSWorkspace.shared.open(url) }
                             }
                         } label: {
-                            Text("Open \(perm)…")
+                            Text(L10n.appUpdater.openPermission(perm))
                                 .font(.system(size: 10))
                         }
                         .buttonStyle(.link)
@@ -89,7 +89,7 @@ struct AppUpdaterSection: View {
                     Button {
                         permMigration.dismissNudge()
                     } label: {
-                        Text("Got it")
+                        Text(L10n.firstRun.dismiss)
                             .font(.system(size: 10))
                     }
                     .buttonStyle(.bordered)
@@ -112,9 +112,9 @@ struct AppUpdaterSection: View {
                 .foregroundStyle(.blue)
                 .padding(.top, 1)
             VStack(alignment: .leading, spacing: 2) {
-                Text("You're on the Developer ID Beta channel.")
+                Text(L10n.appUpdater.devidChannelTitle)
                     .font(.system(size: 10, weight: .medium))
-                Text("To stay here, disable Automatic Updates for CLI Pulse in System Settings → App Store. The App Store version may overwrite this beta otherwise.")
+                Text(L10n.appUpdater.masAutoUpdateWarning)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -125,7 +125,7 @@ struct AppUpdaterSection: View {
                         Task.detached { NSWorkspace.shared.open(url) }
                     }
                 } label: {
-                    Text("Open App Store settings…")
+                    Text(L10n.appUpdater.openAppStoreSettings)
                         .font(.system(size: 10))
                 }
                 .buttonStyle(.link)
@@ -144,39 +144,39 @@ struct AppUpdaterSection: View {
         case .checking:
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini)
-                Text("Checking…").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(L10n.appUpdater.checking).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         case .upToDate(let v):
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.green)
-                Text("v\(v) up to date").font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                Text(L10n.appUpdater.upToDate(v)).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
             }
         case .updateAvailable(let installed, let latest):
             HStack(spacing: 4) {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                Text("Update: \(installed) → \(latest)")
+                Text(L10n.appUpdater.updateAvailableBadge(installed, latest))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.orange)
             }
         case .downloading(let p):
-            Text("Downloading \(Int(p * 100))%").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(L10n.appUpdater.downloadingPercent(Int(p * 100))).font(.system(size: 10)).foregroundStyle(.secondary)
         case .readyToInstall:
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                Text("Ready to install").font(.system(size: 10, weight: .medium)).foregroundStyle(.orange)
+                Text(L10n.appUpdater.readyToInstall).font(.system(size: 10, weight: .medium)).foregroundStyle(.orange)
             }
         case .error:
             HStack(spacing: 4) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.red)
-                Text("Error").font(.system(size: 10, weight: .medium)).foregroundStyle(.red)
+                Text(L10n.appUpdater.errorBadge).font(.system(size: 10, weight: .medium)).foregroundStyle(.red)
             }
         }
     }
@@ -189,7 +189,7 @@ struct AppUpdaterSection: View {
         case .checking, .upToDate:
             EmptyView()
         case .updateAvailable(_, let latest):
-            Text("A new CLI Pulse beta version (\(latest)) is available. Downloading the update takes about 30 seconds.")
+            Text(L10n.appUpdater.updateAvailableBody(latest))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -198,7 +198,7 @@ struct AppUpdaterSection: View {
                 .progressViewStyle(.linear)
                 .controlSize(.small)
         case .readyToInstall:
-            Text("Installing will quit CLI Pulse and open the disk image in Finder. Drag the new app over the old one in /Applications, then relaunch from Launchpad or Spotlight.")
+            Text(L10n.appUpdater.installInstructions)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -219,7 +219,7 @@ struct AppUpdaterSection: View {
             EmptyView()
         case .upToDate:
             HStack {
-                Button("Check for Updates") {
+                Button(L10n.appUpdater.checkForUpdates) {
                     Task { await updater.refresh() }
                 }
                 .controlSize(.small)
@@ -230,7 +230,7 @@ struct AppUpdaterSection: View {
                 Button {
                     Task { await updater.download() }
                 } label: {
-                    Text("Download Update")
+                    Text(L10n.appUpdater.downloadUpdate)
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
@@ -243,7 +243,7 @@ struct AppUpdaterSection: View {
                 Button {
                     updater.install()
                 } label: {
-                    Text("Install Update (quits CLI Pulse)")
+                    Text(L10n.appUpdater.installUpdateQuits)
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
@@ -253,7 +253,7 @@ struct AppUpdaterSection: View {
             }
         case .error:
             HStack {
-                Button("Retry") {
+                Button(L10n.common.retry) {
                     Task { await updater.refresh() }
                 }
                 .controlSize(.small)

@@ -239,11 +239,11 @@ public final class SubscriptionManager: ObservableObject {
             case .notAttempted, .storeKitDisabled, .complete:
                 return nil
             case .partial(let missing):
-                return "\(missing.count) plan(s) not offered by the store"
+                return L10n.subscription.storePlansNotOffered(missing.count)
             case .returnedNothing:
-                return "store returned no plans"
+                return L10n.subscription.storeReturnedNoPlans
             case .failed:
-                return "store request failed"
+                return L10n.subscription.storeRequestFailed
             }
         }
     }

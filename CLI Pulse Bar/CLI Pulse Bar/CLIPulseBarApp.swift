@@ -179,7 +179,7 @@ struct CLIPulseBarApp: App {
                 && appState.runtimeEnvironment.capabilities
                     .allowsLiveCollection
             {
-                CommandMenu("Terminal") {
+                CommandMenu(L10n.inAppTerminal.menuTitle) {
                     let ready = appState.canStartLocalManagedSession
                     // v1.34 R1d: when the user opted into the strict block AND
                     // the socket-owner helper is below the Claude-OAuth floor,
@@ -187,23 +187,23 @@ struct CLIPulseBarApp: App {
                     // API, not Max). Gemini/Codex are unaffected.
                     let claudeBlocked = appState.localHelperBelowOAuthFloor
                         && PrivacySettings.shared.blockClaudeOnOutdatedHelper
-                    Button("New Terminal — Claude") {
+                    Button(L10n.inAppTerminal.newTerminal("Claude")) {
                         newTerminal(provider: "claude")
                     }
                     .keyboardShortcut("t", modifiers: [.command, .shift])
                     .disabled(!ready || claudeBlocked)
-                    Button("New Terminal — Gemini (agy)") {
+                    Button(L10n.inAppTerminal.newTerminal("Gemini (agy)")) {
                         newTerminal(provider: "gemini")
                     }
                     .keyboardShortcut("g", modifiers: [.command, .shift])
                     .disabled(!ready)
-                    Button("New Terminal — Codex") {
+                    Button(L10n.inAppTerminal.newTerminal("Codex")) {
                         newTerminal(provider: "codex")
                     }
                     .disabled(!ready)
                     if !ready {
                         Divider()
-                        Button("Background helper not ready — open Settings…") {
+                        Button(L10n.inAppTerminal.helperNotReadyMenuItem) {
                             appState.selectedTab = .settings
                             NSApp.activate(ignoringOtherApps: true)
                         }
@@ -228,7 +228,7 @@ struct CLIPulseBarApp: App {
         // Provider config editor lives in its own window so the system
         // Keychain AutoFill dialog (if it ever appears) cannot collapse the
         // MenuBarExtra popover when dismissed.
-        Window("Provider Settings", id: "provider-config") {
+        Window(L10n.providerConfig.windowTitle, id: "provider-config") {
             ProviderConfigWindowContent()
                 .environmentObject(appState)
                 .environmentObject(appState.subscriptionManager)
@@ -287,11 +287,11 @@ struct CLIPulseBarApp: App {
         guard appState.canStartLocalManagedSession else {
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
-            alert.messageText = "In-app terminal isn't ready"
-            alert.informativeText = "The background helper must be running and Local Session Control must be enabled. Open Settings to set it up."
+            alert.messageText = L10n.inAppTerminal.notReadyTitle
+            alert.informativeText = L10n.inAppTerminal.notReadyBody
             alert.alertStyle = .informational
-            alert.addButton(withTitle: "Open Settings")
-            alert.addButton(withTitle: "Cancel")
+            alert.addButton(withTitle: L10n.providers.openSettings)
+            alert.addButton(withTitle: L10n.common.cancel)
             if alert.runModal() == .alertFirstButtonReturn {
                 appState.selectedTab = .settings
             }
@@ -307,23 +307,23 @@ struct CLIPulseBarApp: App {
             NSApp.activate(ignoringOtherApps: true)
             let blocking = PrivacySettings.shared.blockClaudeOnOutdatedHelper
             let shown = appState.localHelperVersion.isEmpty
-                ? "an old version" : "v\(appState.localHelperVersion)"
+                ? L10n.sessions.helperOldVersion : "v\(appState.localHelperVersion)"
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = blocking
-                ? "Managed Claude is blocked — helper is outdated"
-                : "Managed Claude will use the Claude API, not your plan"
-            alert.informativeText = "This Mac's Companion CLI helper (\(shown)) is older than \(LocalSessionControlClient.oauthInjectionHelperFloor), so managed Claude sessions run on the Claude API instead of your Max/Pro subscription. Update the helper in Settings → Companion CLI."
+                ? L10n.inAppTerminal.claudeBlockedTitle
+                : L10n.inAppTerminal.claudeApiWarningTitle
+            alert.informativeText = L10n.inAppTerminal.claudeHelperOutdatedBody(shown, LocalSessionControlClient.oauthInjectionHelperFloor)
             if blocking {
-                alert.addButton(withTitle: "Open Settings")
-                alert.addButton(withTitle: "Cancel")
+                alert.addButton(withTitle: L10n.providers.openSettings)
+                alert.addButton(withTitle: L10n.common.cancel)
                 if alert.runModal() == .alertFirstButtonReturn {
                     appState.selectedTab = .settings
                 }
                 return  // hard-blocked
             }
-            alert.addButton(withTitle: "Start Anyway")
-            alert.addButton(withTitle: "Open Settings")
+            alert.addButton(withTitle: L10n.inAppTerminal.startAnyway)
+            alert.addButton(withTitle: L10n.providers.openSettings)
             if alert.runModal() != .alertFirstButtonReturn {
                 appState.selectedTab = .settings
                 return  // user chose to update instead of starting
@@ -342,8 +342,8 @@ struct CLIPulseBarApp: App {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "Open Terminal Here"
-        panel.message = "Choose the working directory for the \(provider.capitalized) session"
+        panel.prompt = L10n.inAppTerminal.openTerminalHere
+        panel.message = L10n.inAppTerminal.chooseWorkingDirectory(provider.capitalized)
         panel.directoryURL = home
         panel.begin { response in
             // Cancel cancels — don't headlessly spawn a CLI in HOME when the
@@ -373,7 +373,7 @@ struct CLIPulseBarApp: App {
                     // a hung menu — activate first (deep review).
                     NSApp.activate(ignoringOtherApps: true)
                     let alert = NSAlert()
-                    alert.messageText = "Couldn't start \(provider.capitalized) session"
+                    alert.messageText = L10n.inAppTerminal.startFailedTitle(provider.capitalized)
                     alert.informativeText = error.localizedDescription
                     alert.alertStyle = .warning
                     alert.runModal()

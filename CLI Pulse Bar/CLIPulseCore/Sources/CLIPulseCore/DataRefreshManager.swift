@@ -313,7 +313,7 @@ internal final class DataRefreshManager {
             callbacks.setServerOnline(try await api.health())
         } catch {
             callbacks.setServerOnline(false)
-            callbacks.setLastError("Server offline")
+            callbacks.setLastError(L10n.dashboard.serverOffline)
             callbacks.setLoading(false)
             return
         }
@@ -1013,7 +1013,7 @@ internal final class DataRefreshManager {
             // process scanner OR the JSONL synthesis surfaced any sessions,
             // and when at least one provider collector returned data.
             risk_signals: synthesizedSessions.isEmpty && collectorResults.isEmpty
-                ? ["No AI tools detected. Start a coding session to see data."] : [],
+                ? [L10n.dashboard.noAiToolsDetected] : [],
             alert_summary: AlertSummaryDTO(critical: 0, warning: 0, info: 0)
         )
 
@@ -2780,7 +2780,7 @@ extension AppState {
                     webhook_event_filter: filter
                 ))
             } catch {
-                lastError = "Failed to save webhook settings: \(error.localizedDescription)"
+                lastError = L10n.integrations.saveSettingsFailed(error.localizedDescription)
             }
         }
     }
@@ -2802,7 +2802,7 @@ extension AppState {
             )
             try await api.sendWebhook(alert: testAlert)
         } catch {
-            lastError = "Webhook test failed: \(error.localizedDescription)"
+            lastError = L10n.integrations.testWebhookFailed(error.localizedDescription)
         }
     }
 
@@ -2947,7 +2947,7 @@ extension AppState {
                     track_git_activity: gitTrackingEnabled
                 ))
             } catch {
-                lastError = "Failed to save git tracking setting: \(error.localizedDescription)"
+                lastError = L10n.advanced.trackGitSaveFailed(error.localizedDescription)
             }
         }
     }
@@ -3021,7 +3021,7 @@ extension AppState {
                 registeredPushToken = token
                 pendingPushTokenRegistration = nil
             } catch {
-                lastError = "Failed to register for push notifications: \(error.localizedDescription)"
+                lastError = L10n.settings.pushRegistrationFailed(error.localizedDescription)
             }
         }
     }
@@ -3153,8 +3153,7 @@ extension AppState {
                 // was disabling and the disable failed, the existing pending
                 // list is still the truth from the server's perspective.
                 remoteControlEnabled = previousValue
-                let action = desired ? "enable" : "disable"
-                lastError = "Couldn't \(action) Remote Control: \(error.localizedDescription)"
+                lastError = L10n.advanced.remoteControlSaveFailed(error.localizedDescription)
                 remoteApprovalsError = lastError
             }
             // Always clear saving so a follow-up toggle (or a deferred

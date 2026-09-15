@@ -395,15 +395,15 @@ public struct PetTab: View {
         }
     }
     static func ago(_ seconds: Int) -> String {
-        if seconds < 90 { return "\(max(1, seconds))s" }
-        if seconds < 3600 { return "\(seconds / 60)m" }
-        return "\(seconds / 3600)h"
+        if seconds < 90 { return L10n.time.seconds(max(1, seconds)) }
+        if seconds < 3600 { return L10n.machine.minutes(seconds / 60) }
+        return L10n.machine.hours(seconds / 3600)
     }
     private func petVoiceOver(form: PetForm) -> String {
         "\(PetSettings.displayName(for: form)) — \(vitalWord(vm.model.vitals.energy)), \(confidenceLine(vm.model.vitals))"
     }
     private func catteryVoiceOver(_ e: PetCatteryEntry) -> String {
-        e.owned ? "\(PetSettings.displayName(for: e.form))\(e.isActive ? ", active" : "")"
+        e.owned ? (e.isActive ? L10n.pet.catteryActiveA11y(PetSettings.displayName(for: e.form)) : PetSettings.displayName(for: e.form))
                 : "\(L10n.pet.formName(e.form)), \(e.form.isInHatchPool ? L10n.pet.locked : L10n.pet.comingSoon)"
     }
     private var dietVoiceOver: String {

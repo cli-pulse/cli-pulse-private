@@ -150,7 +150,7 @@ public final class LANLinkAgent: ObservableObject {
         do {
             identity = try LANPairingStore.loadOrCreateIdentity()
         } catch {
-            state = .failed("Could not create a device identity: \(error)")
+            state = .failed(L10n.remote.identityCreateFailed("\(error)"))
             return
         }
         peers = LANPairingStore.peers()
@@ -265,7 +265,7 @@ public final class LANLinkAgent: ObservableObject {
                 listener = try NWListener(using: params)
             }
         } catch {
-            state = .failed("Listener setup failed: \(error)")
+            state = .failed(L10n.remote.listenerSetupFailed("\(error)"))
             return
         }
         let txt = NWTXTRecord([
@@ -417,7 +417,7 @@ public final class LANLinkAgent: ObservableObject {
     /// Mint a QR and open the pairing listener for 60 s.
     public func beginPairing() {
         guard let identity, steadyListener != nil else {
-            pairing = .failed("Turn remote control on first")
+            pairing = .failed(L10n.remote.turnOnFirst)
             return
         }
         cancelPairing()
@@ -465,7 +465,7 @@ public final class LANLinkAgent: ObservableObject {
                 case .showingQR:
                     // Nobody connected. Tear it all down here.
                     self.cancelPairing()
-                    self.pairing = .failed("QR code expired")
+                    self.pairing = .failed(L10n.remote.macQrExpired)
                 case .awaitingApproval:
                     // Someone connected and the user never answered. The
                     // session is parked on `askUser`; answer "no" for it,
@@ -558,10 +558,10 @@ public final class LANLinkAgent: ObservableObject {
                 pairing = .succeeded(peerName: peer.displayName)
                 restartSteadyListener()
             } catch {
-                pairing = .failed("Could not save the pairing: \(error)")
+                pairing = .failed(L10n.remote.savePairingFailed("\(error)"))
             }
-        case .rejected: pairing = .failed("Declined")
-        case .expired: pairing = .failed("QR code expired")
+        case .rejected: pairing = .failed(L10n.remote.macPairingDeclined)
+        case .expired: pairing = .failed(L10n.remote.macQrExpired)
         case .failed(let why): pairing = .failed(why)
         }
     }

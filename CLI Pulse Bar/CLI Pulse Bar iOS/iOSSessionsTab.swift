@@ -93,14 +93,14 @@ struct iOSSessionsTab: View {
                 )
                 if !buckets.active.isEmpty {
                     iosSessionSection(
-                        header: "Active",
+                        header: L10n.sessions.sectionActive,
                         sessions: buckets.active,
                         now: now
                     )
                 }
                 if !buckets.recent.isEmpty {
                     iosSessionSection(
-                        header: "Recent · last 30 min",
+                        header: L10n.sessions.sectionRecent,
                         sessions: buckets.recent,
                         now: now
                     )
@@ -113,7 +113,7 @@ struct iOSSessionsTab: View {
                     }
                     .padding(.vertical, 20)
                 }
-                Text("Running = process confirmed. Recent = JSONL activity only.")
+                Text(L10n.sessions.freshnessLegend)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)

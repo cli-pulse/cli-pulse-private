@@ -22,7 +22,7 @@ struct AdvancedSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if state.runtimeEnvironment.capabilities.allowsHelperRegistration {
-                SectionHeader(title: "Startup", icon: "power")
+                SectionHeader(title: L10n.advanced.startup, icon: "power")
 
                 Toggle(isOn: $launchAtLogin) {
                     Text(L10n.advanced.launchAtLogin)
@@ -40,7 +40,7 @@ struct AdvancedSection: View {
                 Divider()
 
                 SectionHeader(
-                    title: "Background Helper",
+                    title: L10n.advanced.backgroundHelper,
                     icon: "arrow.triangle.2.circlepath"
                 )
 
@@ -124,7 +124,7 @@ struct AdvancedSection: View {
                     Text(L10n.advanced.fullDetails)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
-                    Link("Privacy Policy", destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!)
+                    Link(L10n.settings.privacyPolicy, destination: URL(string: "https://cli-pulse.github.io/cli-pulse/privacy.html")!)
                         .font(.system(size: 9))
                 }
                 .padding(.top, 2)
@@ -289,14 +289,14 @@ struct AdvancedSection: View {
 
             Divider()
 
-            SectionHeader(title: "Debug", icon: "ladybug")
+            SectionHeader(title: L10n.advanced.debug, icon: "ladybug")
 
             HStack {
                 Text(L10n.advanced.token)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(state.storedToken.isEmpty ? "none" : "••••••••")
+                Text(state.storedToken.isEmpty ? L10n.advanced.tokenNone : "••••••••")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.quaternary)
             }
