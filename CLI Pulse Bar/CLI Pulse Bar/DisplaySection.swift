@@ -10,7 +10,7 @@ struct DisplaySection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Menu Bar", icon: "menubar.rectangle")
+            SectionHeader(title: L10n.display.sectionMenuBar, icon: "menubar.rectangle")
 
             HStack {
                 Text(L10n.display.mode)
@@ -48,12 +48,12 @@ struct DisplaySection: View {
 
             Divider()
 
-            SectionHeader(title: "Appearance", icon: "paintbrush")
+            SectionHeader(title: L10n.settings.appearance, icon: "paintbrush")
 
 
             Divider()
 
-            SectionHeader(title: "Overview Providers", icon: "square.grid.2x2")
+            SectionHeader(title: L10n.display.sectionOverviewProviders, icon: "square.grid.2x2")
 
             Text(L10n.display.reorderHint)
                 .font(.system(size: 9))

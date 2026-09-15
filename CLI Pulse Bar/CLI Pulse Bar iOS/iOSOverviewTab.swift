@@ -397,7 +397,7 @@ struct iOSOverviewTab: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + "/mo")
+                    Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + L10n.subscription.perMonth)
                         .font(.subheadline.weight(.bold).monospacedDigit())
                         .foregroundStyle(.orange)
                 }
@@ -452,11 +452,11 @@ struct iOSOverviewTab: View {
                         }
                         .frame(height: 6)
                         HStack {
-                            Text(String(format: "%.0f%% utilized", item.utilizationPercent))
+                            Text(L10n.dashboard.utilizedPercent(item.utilizationPercent))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                             if !item.valueMultiplier.isEmpty {
-                                Text("· \(item.valueMultiplier) value")
+                                Text(L10n.dashboard.valueMultiplier(item.valueMultiplier))
                                     .font(.caption2.weight(.medium))
                                     .foregroundStyle(iOSUtilizationColor(item.utilizationPercent))
                             }

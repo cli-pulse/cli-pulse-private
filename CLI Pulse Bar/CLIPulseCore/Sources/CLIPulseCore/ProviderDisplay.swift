@@ -53,14 +53,14 @@ public enum ProviderDisplay {
     /// Pre-v1.15 every code path used the literal `"Claude session"`;
     /// post-v1.15 the fallback respects the provider.
     public static func defaultLabel(for provider: String) -> String {
-        "\(displayName(for: provider)) session"
+        L10n.sessions.rowFallbackLabel(displayName(for: provider))
     }
 
     /// Section header for the managed-sessions list. Pre-v1.15 the UI
     /// hardcoded `"Managed Claude sessions"`. With multi-CLI shipping,
     /// the static header drops the provider name (it's unknown until
     /// the user picks one in the New menu).
-    public static let managedSectionHeader = "Managed sessions"
+    public static var managedSectionHeader: String { L10n.sessions.managedSectionHeader }
 
     private static func normalize(_ provider: String) -> String {
         provider.trimmingCharacters(in: .whitespaces).lowercased()

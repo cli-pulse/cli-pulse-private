@@ -155,7 +155,7 @@ struct SessionCompactRow: View {
 
             Spacer(minLength: 4)
 
-            StatusBadge(text: session.status, color: PulseTheme.statusColor(session.status))
+            StatusBadge(text: L10n.status.localized(session.status), color: PulseTheme.statusColor(session.status))
                 .scaleEffect(0.82)
 
             Text(CostFormatter.formatUsage(session.total_usage))
@@ -219,7 +219,7 @@ struct WatchSessionDetailView: View {
                             .font(.caption.weight(.bold))
                             .lineLimit(2)
                         StatusBadge(
-                            text: session.status,
+                            text: L10n.status.localized(session.status),
                             color: PulseTheme.statusColor(session.status)
                         )
                         .scaleEffect(0.85)

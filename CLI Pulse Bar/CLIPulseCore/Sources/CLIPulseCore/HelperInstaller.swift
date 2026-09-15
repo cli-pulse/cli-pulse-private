@@ -333,9 +333,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
                 // This state means "something is at that path and we could not
                 // talk to it", and the text now says only that.
                 return .unreachable(
-                    "Can't reach the companion CLI helper (probed \(udsPath)). "
-                        + "Local scanning is unaffected. Try Re-check; if it persists, "
-                        + "Uninstall and reinstall."
+                    L10n.helper.unreachableDetail(udsPath)
                 )
             }
             return .notInstalled
@@ -354,13 +352,13 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         guard let manifest else {
             // Helper running but we couldn't reach the manifest — still a
             // working state, just no update info.
-            return .running(version: hello.helperVersion.isEmpty ? "older" : hello.helperVersion)
+            return .running(version: hello.helperVersion)   // "" = running, version unknown
         }
         if hello.helperVersion.isEmpty {
             // Answered hello but reported no version (older protocol that omits
             // helper_version). We can't compare, and it IS running — don't show
             // a spurious, permanent "update available".
-            return .running(version: "installed")
+            return .running(version: "")   // shown as "Running", never as "v<word> running"
         }
         if compareVersions(hello.helperVersion, manifest.version) < 0 {
             return .updateAvailable(installed: hello.helperVersion, latest: manifest.version)
@@ -572,7 +570,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             // Finder — user double-clicks to run, equally effective.
             helperInstallerLog.warning("openApplication failed (\(error.localizedDescription, privacy: .public)); falling back to Finder reveal")
             NSWorkspace.shared.activateFileViewerSelecting([uninstallerURL])
-            state = .error("Open the Uninstaller manually from Finder (revealed). It was placed at \(uninstallerURL.path).")
+            state = .error(L10n.helper.uninstallerRevealManual(uninstallerURL.path))
         }
     }
 
@@ -639,7 +637,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             throw NSError(
                 domain: "HelperInstaller",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Manifest fetch HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.appUpdater.errorManifestHttp((response as? HTTPURLResponse)?.statusCode ?? -1)]
             )
         }
         return try JSONDecoder().decode(Manifest.self, from: data)
@@ -658,7 +656,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             throw NSError(
                 domain: "HelperInstaller",
                 code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "Pkg download HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.helper.pkgDownloadHttp((response as? HTTPURLResponse)?.statusCode ?? -1)]
             )
         }
         // Move to a stable temp path so NSWorkspace.open has a valid URL after
@@ -691,7 +689,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             throw NSError(
                 domain: "HelperInstaller",
                 code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "Pkg SHA-256 mismatch (expected \(manifest.sha256), got \(actualSHA))"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.helper.pkgShaMismatch(manifest.sha256, actualSHA)]
             )
         }
 
@@ -784,7 +782,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // installer is hung. pollTask result reveals which.
         let pollResult = await pollTask.value
         if !pollResult {
-            state = .error("Helper did not become ready within \(Int(timeout))s. Check ~/Library/Logs/CLI-Pulse-Helper/")
+            state = .error(L10n.helper.notReadyTimeout(Int(timeout)))
         }
     }
 
@@ -816,7 +814,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             throw NSError(
                 domain: "HelperInstaller",
                 code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Manifest is for \(manifest.arch) but this Mac is \(host). Wait for \(host) build."]
+                userInfo: [NSLocalizedDescriptionKey: L10n.helper.archMismatch(manifest.arch, host, host)]
             )
         }
     }

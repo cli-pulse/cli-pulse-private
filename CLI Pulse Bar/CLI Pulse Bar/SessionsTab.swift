@@ -228,7 +228,7 @@ struct SessionsTab: View {
                         Task { await openManagedClaudeSession(provider: "codex") }
                     } label: {
                         Label(
-                            codexOffPlan ? "Codex — OpenAI API (billed, not your plan)" : "Codex",
+                            codexOffPlan ? L10n.sessions.newCodexOffPlan : "Codex",
                             systemImage: codexOffPlan ? "exclamationmark.triangle" : "chevron.left.slash.chevron.right")
                     }
                     .disabled(!codexOK)
@@ -239,7 +239,7 @@ struct SessionsTab: View {
                     }
                     .disabled(!geminiOK)
                 } label: {
-                    Label(canStartLocal ? "New Local" : "New",
+                    Label(canStartLocal ? L10n.sessions.newLocal : L10n.sessions.newShort,
                           systemImage: "plus.circle.fill")
                         .font(.system(size: 11, weight: .medium))
                         .lineLimit(1)
@@ -266,26 +266,26 @@ struct SessionsTab: View {
             .padding(.vertical, 2)
             .background(color.opacity(0.12))
             .clipShape(Capsule())
-            .help("Local fast path = same-Mac session control over the helper UDS socket. Independent from cloud Remote Control.")
+            .help(L10n.sessions.localFastPathHelp)
         }
     }
 
     private func localFastPathStatus() -> (text: String, color: Color, systemImage: String) {
         if !state.localHelperReachable {
-            return ("local: helper not running", .gray, "bolt.slash")
+            return (L10n.sessions.localPillHelperNotRunning, .gray, "bolt.slash")
         }
         if state.localHelperError != nil {
-            return ("local: error", .orange, "exclamationmark.triangle")
+            return (L10n.sessions.localPillError, .orange, "exclamationmark.triangle")
         }
         if state.localControlEnabled {
-            return ("local: active", .green, "bolt.fill")
+            return (L10n.sessions.localPillActive, .green, "bolt.fill")
         }
-        return ("local: off", .secondary, "bolt")
+        return (L10n.sessions.localPillOff, .secondary, "bolt")
     }
 
     private func openManagedHelpText(localAvailable: Bool) -> String {
         localAvailable
-            ? "Spawns a new Claude Code session on this Mac via the local helper (UDS, no Supabase round-trip)."
+            ? L10n.sessions.newLocalHelp
             : ""
     }
 
@@ -360,7 +360,7 @@ struct SessionsTab: View {
             // local-helper half is still true and still actionable.
             inlineHint(
                 icon: "lock.shield",
-                text: "Start the local helper to drive a Claude session through the local fast path."
+                text: L10n.sessions.startHelperHint
             )
         } else {
             if displayed.isEmpty {
@@ -428,7 +428,7 @@ struct SessionsTab: View {
                     Image(systemName: "arrow.triangle.2.circlepath.circle")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
-                    Text("Wrap terminal sessions")
+                    Text(L10n.sessions.wrapTerminalTitle)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -440,7 +440,7 @@ struct SessionsTab: View {
                         wrappedSessionRow(name)
                     }
                 } else if state.shellIntegrationStatus?.installed == true {
-                    Text("No wrapped sessions yet. Open a new terminal and run `claude` or `codex` — it'll appear here to attach.")
+                    Text(LocalizedStringKey(L10n.sessions.wrappedEmpty))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -456,11 +456,11 @@ struct SessionsTab: View {
                 .font(.system(size: 12))
                 .foregroundStyle(installed ? Color.green : Color.secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text(installed ? "Shell integration on" : "Shell integration off")
+                Text(installed ? L10n.sessions.shellIntegrationOn : L10n.sessions.shellIntegrationOff)
                     .font(.system(size: 11, weight: .semibold))
                 Text(installed
-                     ? "Future `claude` / `codex` launches run inside a CLI-Pulse tmux so you can stream + drive them here. Restart your shell (or open a new terminal) for changes to take effect."
-                     : "Turn on to wrap future `claude` / `codex` launches so CLI Pulse can attach to them. Edits your shell rc (\(state.shellIntegrationStatus?.rcFilesWithBlock.first.map { ($0 as NSString).lastPathComponent } ?? "~/.zshrc")); reversible — already-open shells need a restart after either toggle.")
+                     ? LocalizedStringKey(L10n.sessions.shellIntegrationOnDetail)
+                     : LocalizedStringKey(L10n.sessions.shellIntegrationOffDetail(state.shellIntegrationStatus?.rcFilesWithBlock.first.map { ($0 as NSString).lastPathComponent } ?? "~/.zshrc")))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -473,7 +473,7 @@ struct SessionsTab: View {
                     await state.refreshWrappedSessionState()
                 }
             } label: {
-                Text(installed ? "Turn Off" : "Turn On")
+                Text(installed ? L10n.sessions.turnOff : L10n.sessions.turnOn)
                     .font(.system(size: 10, weight: .semibold))
             }
             .buttonStyle(.bordered)
@@ -525,7 +525,7 @@ struct SessionsTab: View {
                         await state.refreshWrappedSessionState()
                     }
                 } label: {
-                    Label(isAttached ? "Open" : "Attach", systemImage: "arrow.right.circle")
+                    Label(isAttached ? L10n.sessions.wrappedOpen : L10n.sessions.wrappedAttach, systemImage: "arrow.right.circle")
                         .font(.system(size: 10))
                 }
                 .buttonStyle(.borderedProminent)
@@ -594,7 +594,7 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Local helper reachable but failing")
+                    Text(L10n.sessions.helperFailingTitle)
                         .font(.system(size: 11, weight: .semibold))
                     Text(message)
                         .font(.system(size: 10))
@@ -603,7 +603,7 @@ struct SessionsTab: View {
                         .textSelection(.enabled)
                 }
                 Spacer()
-                Button("Diagnose") { showLocalDiagnostics.toggle() }
+                Button(L10n.sessions.diagnose) { showLocalDiagnostics.toggle() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -627,7 +627,7 @@ struct SessionsTab: View {
             diagnosticRow(label: "Token readable",      value: diag.tokenReadable ? "yes" : "no")
             diagnosticRow(label: "App-group container", value: diag.appGroupContainerPath ?? "<nil>")
             diagnosticRow(label: "NSHomeDirectory",     value: diag.nsHomeDirectory)
-            Text("If \"Socket exists\" is no but the helper terminal log shows it bound to that exact path, the sandboxed app and unsandboxed helper are seeing different inodes — usually a firmlink / app-group container mismatch. Share this snapshot when reporting.")
+            Text(L10n.sessions.diagnosticsInodeHint)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -651,8 +651,8 @@ struct SessionsTab: View {
 
     private func emptyStateText(localStartAvailable: Bool) -> String {
         localStartAvailable
-            ? "No managed sessions yet. Click \"New\" to spawn one."
-            : "No paired Mac with the helper installed. Install the helper to open a managed session."
+            ? L10n.sessions.managedEmpty
+            : L10n.sessions.managedEmptyNoHelper
     }
 
     @ViewBuilder
@@ -665,7 +665,7 @@ struct SessionsTab: View {
                     Image(systemName: "magnifyingglass.circle")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
-                    Text("Detected on this Mac · read-only")
+                    Text(L10n.sessions.detectedTitle)
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -676,7 +676,7 @@ struct SessionsTab: View {
                 ForEach(detected, id: \.id) { row in
                     detectedSessionRow(row)
                 }
-                Text("These Claude sessions are running on this Mac but were not started by CLI Pulse, so the helper can't safely send input or stop them. Use them in the originating terminal instead.")
+                Text(L10n.sessions.detectedFooter)
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -694,12 +694,12 @@ struct SessionsTab: View {
                 Text(row.clientLabel ?? ProviderDisplay.defaultLabel(for: row.provider))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
-                Text(row.status)
+                Text(L10n.status.localized(row.status))
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Text("read-only")
+            Text(L10n.remote.readOnly)
                 .font(.system(size: 9, weight: .medium))
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 6)
@@ -747,7 +747,7 @@ struct SessionsTab: View {
                 acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
             }
             if runningCount > 0 {
-                StatusBadge(text: "\(runningCount) \(L10n.sessions.running)", color: .green)
+                StatusBadge(text: L10n.sessions.countRunning(runningCount), color: .green)
             }
         }
     }
@@ -774,14 +774,14 @@ struct SessionsTab: View {
             VStack(alignment: .leading, spacing: 12) {
                 if !buckets.active.isEmpty {
                     sessionSection(
-                        header: "Active",
+                        header: L10n.sessions.sectionActive,
                         sessions: buckets.active,
                         now: now
                     )
                 }
                 if !buckets.recent.isEmpty {
                     sessionSection(
-                        header: "Recent · last 30 min",
+                        header: L10n.sessions.sectionRecent,
                         sessions: buckets.recent,
                         now: now
                     )
@@ -793,7 +793,7 @@ struct SessionsTab: View {
                         subtitle: L10n.sessions.emptyHint
                     )
                 }
-                Text("Running = process confirmed. Recent = JSONL activity only.")
+                Text(L10n.sessions.freshnessLegend)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -926,14 +926,14 @@ struct SessionsTab: View {
                     guard !promptDisabled else { return }
                     Task { await sendPrompt(for: session) }
                 }
-                Button("Send") {
+                Button(L10n.sessions.send) {
                     Task { await sendPrompt(for: session) }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .disabled(promptDisabled || promptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if localApprovalsAvailable, let pendingApproval = localPending {
-                    Button("Approve") {
+                    Button(L10n.remote.approve) {
                         Task {
                             await state.approveLocalAction(
                                 sessionId: session.id,
@@ -945,8 +945,8 @@ struct SessionsTab: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .keyboardShortcut(.return, modifiers: .command)
-                    .help("Approve the pending Claude permission request bound to this local session (⌘↩).")
-                    Button("Reject") {
+                    .help(L10n.sessions.approveHelp)
+                    Button(L10n.remote.reject) {
                         Task {
                             await state.approveLocalAction(
                                 sessionId: session.id,
@@ -957,7 +957,7 @@ struct SessionsTab: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Reject the pending Claude permission request. Claude will continue waiting for a different decision or fall back to its own prompt.")
+                    .help(L10n.sessions.rejectHelp)
                 }
             }
             HStack(spacing: 8) {
@@ -985,12 +985,12 @@ struct SessionsTab: View {
                         openWindow(value: TerminalSessionKey(sessionId: session.id,
                                                              provider: session.provider))
                     } label: {
-                        Label("Open Terminal", systemImage: "terminal")
+                        Label(L10n.sessions.openTerminal, systemImage: "terminal")
                             .font(.system(size: 10))
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.mini)
-                    .help("Open the real terminal for this session — the exact CLI TUI rendered 1:1. Closing the window detaches; the session keeps running and is re-openable here.")
+                    .help(L10n.sessions.openTerminalHelp)
                 }
                 Button {
                     if showOutput {
@@ -1005,7 +1005,7 @@ struct SessionsTab: View {
                     showOutput.toggle()
                 } label: {
                     Label(
-                        showOutput ? "Hide output" : "Show output",
+                        showOutput ? L10n.sessions.hideOutput : L10n.sessions.showOutput,
                         systemImage: showOutput ? "eye.slash" : "eye"
                     )
                     .font(.system(size: 10))
@@ -1014,10 +1014,10 @@ struct SessionsTab: View {
                 .controlSize(.mini)
                 .disabled(isPending)
                 .help(isPending
-                      ? "Output appears once the helper starts the session."
+                      ? L10n.sessions.outputPendingHelp
                       : (showOutput
-                         ? "Hide the live output tail. Helper keeps uploading events while Remote Control is on; this only controls what's shown here."
-                         : "Show the live output tail (stdout, status, info events). Default off — privacy-visible opt-in."))
+                         ? L10n.sessions.hideOutputHelp
+                         : L10n.sessions.showOutputHelp))
                 Button(role: .destructive) {
                     Task {
                         // Codex review on PR #17 second manual verify:
@@ -1046,7 +1046,7 @@ struct SessionsTab: View {
                         }
                     }
                 } label: {
-                    Label(isPending ? "Cancel" : "Stop",
+                    Label(isPending ? L10n.common.cancel : L10n.remote.stop,
                           systemImage: isPending ? "xmark.circle" : "stop.circle")
                         .font(.system(size: 10))
                 }
@@ -1108,10 +1108,10 @@ struct SessionsTab: View {
     private func demotedOutputPeek(for session: RemoteSession) -> some View {
         let statusText: String = {
             switch session.status.lowercased() {
-            case "running": return "Running"
-            case "pending": return "Starting…"
-            case "errored": return "Errored"
-            case "stopped", "ended": return "Stopped"
+            case "running": return L10n.status.running
+            case "pending": return L10n.sessions.statusStarting
+            case "errored": return L10n.sessions.statusErrored
+            case "stopped", "ended": return L10n.sessions.statusStopped
             default: return session.status.capitalized
             }
         }()
@@ -1119,13 +1119,13 @@ struct SessionsTab: View {
             HStack(spacing: 6) {
                 Image(systemName: "terminal").font(.system(size: 10))
                     .foregroundStyle(.tertiary)
-                Text("Live output is in the terminal").font(.system(size: 10))
+                Text(L10n.sessions.liveOutputInTerminal).font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(statusText).font(.system(size: 9, weight: .medium))
                     .foregroundStyle(.tertiary)
             }
-            Text("Click \u{201C}Open Terminal\u{201D} above for the real CLI — colors, spinners, box-drawing, cursor, all 1:1. This summary view is a lossy ANSI-stripped digest.")
+            Text(L10n.sessions.demotedOutputDetail)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1183,7 +1183,7 @@ struct SessionsTab: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                 Spacer()
-                Text("Best-effort · not a terminal · secrets redacted")
+                Text(L10n.sessions.previewDisclaimer)
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
             }
@@ -1259,9 +1259,9 @@ struct SessionsTab: View {
         localSendUnsupported: Bool,
         hasPendingApproval: Bool
     ) -> String {
-        if !isRunning { return "Waiting for helper to start session…" }
+        if !isRunning { return L10n.sessions.placeholderWaiting }
         if localSendUnsupported {
-            return "This local helper doesn't support send_input — update the helper to type prompts."
+            return L10n.sessions.placeholderSendUnsupported
         }
         if hasPendingApproval {
             // Codex iter6/iter7 lockout. Resolve the pending request
@@ -1272,13 +1272,13 @@ struct SessionsTab: View {
             // applies to local-routed AND remote-routed rows: in
             // both, Claude is parked waiting on a permission
             // decision and its PTY shows the native prompt.
-            return "Resolve the pending permission request first (Approve or Reject)."
+            return L10n.sessions.placeholderResolveApproval
         }
         // v1.15 round-5: provider-aware placeholder. Pre-fix this
         // hardcoded "Prompt for Claude…" for every row regardless
         // of the actual session's provider — confusing when the
         // user just spawned Codex / Gemini.
-        return "Prompt for \(ProviderDisplay.displayName(for: provider))…"
+        return L10n.sessions.placeholderPromptFor(ProviderDisplay.displayName(for: provider))
     }
 
     /// Status-line text under the prompt input. Branches on:
@@ -1298,12 +1298,12 @@ struct SessionsTab: View {
     /// would have no idea why clicking does nothing.
     private func stopHelpText(isPending: Bool, isStaleLocal: Bool) -> String {
         if isStaleLocal {
-            return "This row was started by a previous helper process. The current helper does not own its PTY, so Stop here is disabled. Stop the underlying Claude process from your terminal directly."
+            return L10n.sessions.stopHelpStale
         }
         if isPending {
-            return "Cancel this queued session. No helper running yet, so this just removes the row."
+            return L10n.sessions.stopHelpPending
         }
-        return "Stop the running Claude session. Helper will terminate the PTY."
+        return L10n.sessions.stopHelpRunning
     }
 
     private func commandBarHintText(
@@ -1315,10 +1315,10 @@ struct SessionsTab: View {
         isStaleLocal: Bool = false
     ) -> String {
         if isStaleLocal {
-            return "Helper restarted — this row is no longer controllable from CLI Pulse. Stop the underlying Claude process from your terminal."
+            return L10n.sessions.hintStale
         }
         if isPending {
-            return "Waiting for helper to consume the start command. Cancel to remove this session."
+            return L10n.sessions.hintPending
         }
         if localApprovalsAvailable {
             // Distinguish "no structured pending" from a generic
@@ -1334,22 +1334,22 @@ struct SessionsTab: View {
             // Send is disabled so the "Enter to send" prefix would
             // be misleading — surface the lockout instead.
             return hasLocalPending
-                ? "Resolve approval first · ⌘↩ to approve"
-                : "Enter to send · no structured permission request pending"
+                ? L10n.sessions.hintResolveApproval
+                : L10n.sessions.hintNoPendingApproval
         }
         if routesLocally {
             // Local-routed but helper doesn't advertise the
             // approvals capability — older daemon, transport
             // missing broker / registry, etc.
-            return "Enter to send · approvals not advertised by this helper"
+            return L10n.sessions.hintApprovalsNotAdvertised
         }
         if helperUnreachable {
             // This used to offer "Enter to send · ⌘↩ to approve pending" —
             // two actions that cannot work when the helper is the thing that
             // is down. Say what is true, and what fixes it.
-            return "CLI Pulse can't reach the helper — restart it to control this session"
+            return L10n.sessions.hintHelperUnreachable
         }
-        return "Enter to send"
+        return L10n.sessions.hintEnterToSend
     }
 
     /// Empty-state copy for the output panel.
@@ -1361,10 +1361,10 @@ struct SessionsTab: View {
     private func emptyOutputText(routesLocally: Bool) -> String {
         if routesLocally {
             return state.localCapabilities?.subscribeEvents == true
-                ? "No output yet…"
-                : "This helper doesn't advertise streaming output."
+                ? L10n.sessions.outputEmpty
+                : L10n.sessions.outputStreamingUnsupported
         }
-        return "CLI Pulse can't reach the helper, so output isn't streaming. Restart it to reconnect."
+        return L10n.sessions.outputHelperUnreachable
     }
 
 
@@ -1504,7 +1504,7 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Helper not running")
+                    Text(L10n.sessions.helperNotRunningTitle)
                         .font(.system(size: 11, weight: .semibold))
                     // Was: "…falls back to the slower remote path until the
                     // helper is started." There is no remote path — the
@@ -1514,21 +1514,21 @@ struct SessionsTab: View {
                     // told the user to wait out a degradation that never
                     // resolves. That made it worse than the siblings fixed in
                     // #508: it actively suppressed the one action that works.
-                    Text("CLI Pulse can't reach the local helper on this Mac, so managed sessions can't start, send, or stream. Start the helper to restore control.")
+                    Text(L10n.sessions.helperNotRunningDetail)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Button("Diagnose") { showLocalDiagnostics.toggle() }
+                Button(L10n.sessions.diagnose) { showLocalDiagnostics.toggle() }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                Button("Open Helper Setup") {
+                Button(L10n.sessions.openHelperSetup) {
                     state.selectedTab = .settings
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Open Settings → Advanced to enable the Background Helper.")
+                .help(L10n.sessions.openHelperSetupHelp)
             }
             // Codex review on PR #17 manual verification: when the
             // helper IS running per terminal but the app sees ENOENT,
@@ -1551,27 +1551,27 @@ struct SessionsTab: View {
     /// block in Privacy settings).
     private var claudeOAuthFloorWarningBanner: some View {
         let shown = state.localHelperVersion.isEmpty
-            ? "an old version" : "v\(state.localHelperVersion)"
+            ? L10n.sessions.helperOldVersion : "v\(state.localHelperVersion)"
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12))
                     .foregroundStyle(.red)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Managed Claude is running on the Claude API, not your plan")
+                    Text(L10n.sessions.oauthFloorTitle)
                         .font(.system(size: 11, weight: .semibold))
-                    Text("This Mac's Companion CLI helper (\(shown)) is older than \(LocalSessionControlClient.oauthInjectionHelperFloor), so managed Claude sessions use the Claude API instead of your Max/Pro subscription. Update the helper to run on your plan.")
+                    Text(L10n.sessions.oauthFloorDetail(shown, LocalSessionControlClient.oauthInjectionHelperFloor))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Button("Update Helper") {
+                Button(L10n.sessions.updateHelper) {
                     state.selectedTab = .settings
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
-                .help("Open Settings → Companion CLI to update the background helper.")
+                .help(L10n.sessions.updateHelperHelp)
             }
         }
         .padding(10)
@@ -1670,14 +1670,14 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Claude settings file can't be read")
+                    Text(L10n.sessions.hookParseErrorTitle)
                         .font(.system(size: 11, weight: .semibold))
                     Text(approvalHookParseErrorMessage)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .textSelection(.enabled)
-                    Text("Approval routing depends on this file. Open ~/.claude/settings.json in a text editor, fix the JSON, and the banner will clear automatically. CLI Pulse won't try to install over a malformed file.")
+                    Text(L10n.sessions.hookParseErrorDetail)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1706,7 +1706,7 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.green)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("External approval hook active")
+                    Text(L10n.sessions.hookInstalledTitle)
                         .font(.system(size: 11, weight: .semibold))
                     // "or from your phone" removed with the session plane.
                     // The LOCAL half is untouched and still true:
@@ -1714,7 +1714,7 @@ struct SessionsTab: View {
                     // localCapabilities?.approvals`, which never consulted
                     // remote control — so approving on this Mac still works,
                     // and terminal Claude is not left blocking on nobody.
-                    Text("Terminal-launched Claude routes its tool permissions through CLI Pulse, so you can Approve / Reject them here. Remove to stop instrumenting terminal Claude — your own hooks and other Claude settings stay intact.")
+                    Text(L10n.sessions.hookInstalledDetail)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1722,7 +1722,7 @@ struct SessionsTab: View {
                     // the detector flips to .wired and THIS installed banner is
                     // what remains on screen (review: codex).
                     if let lastInstall = lastInstallHookResult {
-                        Text("Installed: \(lastInstall.action) — \(lastInstall.settingsPath)")
+                        Text(L10n.sessions.hookInstallResult(lastInstall.action, lastInstall.settingsPath))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
@@ -1730,13 +1730,13 @@ struct SessionsTab: View {
                     }
                 }
                 Spacer()
-                Button("Remove") {
+                Button(L10n.sessions.hookRemove) {
                     Task { await uninstallClaudeHookFromBanner() }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .disabled(installHookInFlight)
-                .help("Asks the helper to remove CLI Pulse's PermissionRequest + PreToolUse hooks from ~/.claude/settings.json. Your own hooks and other settings are preserved. Restart Claude afterwards.")
+                .help(L10n.sessions.hookRemoveHelp)
             }
         }
         .padding(10)
@@ -1773,7 +1773,7 @@ struct SessionsTab: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Approve terminal Claude from CLI Pulse")
+                    Text(L10n.sessions.hookInstallTitle)
                         .font(.system(size: 11, weight: .semibold))
                     // The sibling banner 60 lines up (the INSTALLED variant)
                     // already dropped "or from your phone" and carries the
@@ -1782,7 +1782,7 @@ struct SessionsTab: View {
                     // showed exactly while the user was deciding, then flipped
                     // to honest copy the moment they installed. One predicate,
                     // two call sites, only one fixed.
-                    Text("Install the approval hook so a Claude you launch in any Terminal routes its tool permissions through CLI Pulse — Approve / Reject them here on this Mac. Writes ~/.claude/settings.json (both events); reversible any time. Restart Claude after installing.")
+                    Text(L10n.sessions.hookInstallDetail)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1790,7 +1790,7 @@ struct SessionsTab: View {
                     // the detector flips to .notWired and THIS install banner is
                     // what remains on screen (review: codex).
                     if let lastUninstall = lastUninstallHookResult {
-                        Text("Removed: \(lastUninstall.action) (\(lastUninstall.removed) hooks) — \(lastUninstall.settingsPath)")
+                        Text(L10n.sessions.hookUninstallResult(lastUninstall.action, lastUninstall.removed, lastUninstall.settingsPath))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
@@ -1799,14 +1799,14 @@ struct SessionsTab: View {
                 }
                 Spacer()
                 VStack(spacing: 4) {
-                    Button("Install hook") {
+                    Button(L10n.sessions.hookInstall) {
                         Task { await installClaudeHookFromBanner() }
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .disabled(installHookInFlight)
-                    .help("Asks the helper to wire up Claude's PermissionRequest hook in ~/.claude/settings.json. Idempotent — safe to click even if some other settings are already in place.")
-                    Button("Copy command") {
+                    .help(L10n.sessions.hookInstallHelp)
+                    Button(L10n.sessions.hookCopyCommand) {
                         let pasteboard = NSPasteboard.general
                         pasteboard.clearContents()
                         pasteboard.setString(
@@ -1816,7 +1816,7 @@ struct SessionsTab: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .help("Fallback for users running an older helper that doesn't expose the install_claude_hook method. Paste into a terminal where the helper lives.")
+                    .help(L10n.sessions.hookCopyCommandHelp)
                 }
             }
         }
@@ -1859,11 +1859,11 @@ struct SessionsTab: View {
                 .font(.system(size: 12))
                 .foregroundStyle(state.localControlEnabled ? .green : .secondary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Local fast path")
+                Text(L10n.sessions.localFastPathTitle)
                     .font(.system(size: 11, weight: .semibold))
                 Text(state.localControlEnabled
-                     ? "Same-device sessions go through the local helper socket — no Supabase round-trip."
-                     : "Off by default. Turn on to spawn and stop same-device managed sessions through the local helper socket instead of the cloud.")
+                     ? L10n.sessions.localFastPathOnDetail
+                     : L10n.sessions.localFastPathOffDetail)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1918,9 +1918,9 @@ private struct ManagedSessionRow: View {
         // and a Codex row whose label collapsed-with-device-name
         // rendered as "Claude on Mac" instead of "Codex on Mac".
         let providerName = ProviderDisplay.displayName(for: session.provider)
-        if label.isEmpty { return "\(providerName) session" }
+        if label.isEmpty { return L10n.sessions.rowFallbackLabel(providerName) }
         if !device.isEmpty && label.caseInsensitiveCompare(device) == .orderedSame {
-            return "\(providerName) on \(device)"
+            return L10n.sessions.rowLabelOnDevice(providerName, device)
         }
         return label
     }
@@ -1955,20 +1955,20 @@ private struct ManagedSessionRow: View {
                         // know which row is local-controllable"
                         // confusion Codex flagged.
                         if routesLocally {
-                            transportBadge(text: "Local", color: .green)
-                                .help("Prompt and Stop on this row use the local UDS fast path (helper-owned PTY).")
+                            transportBadge(text: L10n.sessions.transportLocal, color: .green)
+                                .help(L10n.sessions.transportLocalHelp)
                         } else if isStaleLocal {
                             // Stale row: helper restarted, no PTY
                             // for this id. Neutral grey pill plus
                             // a hover-tooltip explaining what
                             // happened — the user shouldn't think
                             // this is normal "running" state.
-                            transportBadge(text: "Helper restarted", color: .secondary)
-                                .help("This row was started by a previous helper process. The current helper does not own its PTY, so Send / Stop / Approve here are disabled. Stop the underlying Claude process from the terminal directly.")
+                            transportBadge(text: L10n.sessions.transportHelperRestarted, color: .secondary)
+                                .help(L10n.sessions.transportStaleHelp)
                         }
                     }
                     HStack(spacing: 6) {
-                        Text(session.status)
+                        Text(L10n.status.localized(session.status))
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(statusColor)
                         // Affordance hint so the chevron isn't the
@@ -1977,11 +1977,11 @@ private struct ManagedSessionRow: View {
                         // with an explanatory subtitle.
                         if !isSelected {
                             if isStaleLocal {
-                                Text("· not controllable")
+                                Text(L10n.sessions.rowNotControllable)
                                     .font(.system(size: 9))
                                     .foregroundStyle(.tertiary)
                             } else {
-                                Text("· tap to control")
+                                Text(L10n.sessions.rowTapToControl)
                                     .font(.system(size: 9))
                                     .foregroundStyle(.tertiary)
                             }

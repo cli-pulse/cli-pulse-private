@@ -15,7 +15,7 @@ struct WatchComplicationWidget: Widget {
             WatchComplicationView(entry: entry)
         }
         .configurationDisplayName("CLI Pulse")
-        .description("Quota & alerts at a glance")
+        .description(L10n.widget.complicationDescription)
         #if os(watchOS)
         .supportedFamilies([
             .accessoryCircular,

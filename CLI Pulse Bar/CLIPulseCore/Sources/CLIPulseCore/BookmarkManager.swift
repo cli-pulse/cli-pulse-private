@@ -312,8 +312,8 @@ public final class BookmarkManager {
     /// Present NSOpenPanel for user to grant access to a directory
     public func requestAccessViaPanel(directory: KnownDirectory) -> Bool {
         let panel = NSOpenPanel()
-        panel.message = "Grant CLI Pulse read access to \(directory.displayName) credentials"
-        panel.prompt = "Grant Access"
+        panel.message = L10n.folderAccess.panelMessageDirectory(directory.displayName)
+        panel.prompt = L10n.folderAccess.panelPrompt
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false
@@ -344,8 +344,8 @@ public final class BookmarkManager {
     /// "can't read local usage" banner for a one-tap fix.
     public func requestHomeAccessViaPanel() -> Bool {
         let panel = NSOpenPanel()
-        panel.message = "Grant CLI Pulse read access to your home folder so it can read your local AI usage logs (~/.claude, ~/.codex, ~/.gemini)."
-        panel.prompt = "Grant Access"
+        panel.message = L10n.folderAccess.panelMessageHome
+        panel.prompt = L10n.folderAccess.panelPrompt
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = false

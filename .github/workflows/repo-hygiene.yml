@@ -121,6 +121,19 @@ jobs:
       - run: python3 scripts/check_apple_strings_parity.py
       - run: bash scripts/test_check_apple_strings_parity.sh
 
+      # The half of localization the parity gate cannot see. Parity compares keys
+      # BETWEEN catalogues; English hardcoded in a view never became a key, so
+      # there was nothing for it to find missing. The zh-Hans App Store
+      # screenshots of 1.53.0 still read "Active" / "recent activity" in English
+      # with the parity gate green.
+      #
+      # A ratchet like the parity gate: new hardcoded copy fails, and an
+      # allowlist entry that no longer matches anything fails too, so the list
+      # of accepted English can only shrink. The negative controls run
+      # alongside, because a gate only ever seen green has not been seen to work.
+      - run: python3 scripts/check_hardcoded_ui_strings.py
+      - run: bash scripts/test_check_hardcoded_ui_strings.sh
+
       # The anonymous-telemetry switch defaults ON, which is only defensible
       # because the app states what it sends before it sends anything. So the
       # disclosure is not documentation, it is the consent basis, and a payload

@@ -36,8 +36,7 @@ import Foundation
 /// against a small fixture set. Real production traces will surface
 /// further chrome lines to add to `wizardMarkers`.
 public enum GeminiConversationPreviewFormatter {
-    public static let emptyFallback =
-        "Gemini is running. Waiting for conversational output…"
+    public static var emptyFallback: String { L10n.sessions.previewEmptyGemini }
 
     public static func format(eventPayloads: [String]) -> String {
         guard !eventPayloads.isEmpty else { return emptyFallback }

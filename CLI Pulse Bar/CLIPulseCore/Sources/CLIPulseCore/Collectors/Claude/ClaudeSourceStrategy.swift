@@ -194,11 +194,11 @@ public enum ClaudeResultBuilder {
             // or Cloudflare challenge / schema drift on the web endpoint).
             // Point the user at the Connect action rather than the obsolete
             // `/usage` CLI command — that command was removed in Claude v2.x.
-            statusText = "Signed in as \(email) — Connect Claude Code in Settings"
+            statusText = L10n.providers.claudeSignedInConnectHint(email)
         } else {
             // No signal at all: no account email, no usage. Direct the user
             // to Settings → Claude where the Connect button lives.
-            statusText = "Claude quota unavailable — Connect in Settings → Claude"
+            statusText = L10n.providers.claudeQuotaUnavailableHint
         }
 
         #if DEBUG
@@ -533,20 +533,20 @@ public enum ClaudeStrategyError: LocalizedError, Sendable {
 
     public var errorDescription: String? {
         switch self {
-        case .noToken: return "No Claude OAuth token available"
-        case .httpError(let s, _): return "Claude API HTTP \(s)"
-        case .parseFailed(let m): return "Claude parse failed: \(m)"
-        case .noBinary: return "Claude CLI binary not found"
-        case .noSessionKey: return "No Claude session key available"
-        case .unauthorized: return "Claude session expired or unauthorized"
-        case .timedOut: return "Claude probe timed out"
-        case .processExited: return "Claude CLI process exited unexpectedly"
+        case .noToken: return L10n.providerConfig.errorClaudeNoToken
+        case .httpError(let s, _): return L10n.providerConfig.errorClaudeHttpStatus(s)
+        case .parseFailed(let m): return L10n.providerConfig.errorClaudeParseFailed(m)
+        case .noBinary: return L10n.providerConfig.errorClaudeNoBinary
+        case .noSessionKey: return L10n.providerConfig.errorClaudeNoSessionKey
+        case .unauthorized: return L10n.providerConfig.errorClaudeUnauthorized
+        case .timedOut: return L10n.providerConfig.errorClaudeTimedOut
+        case .processExited: return L10n.providerConfig.errorClaudeProcessExited
         case .rateLimitBackoff(let remaining):
             // Round to whole minutes for the user-visible log line —
             // sub-minute precision adds nothing for "we're sitting out
             // a rate-limit window" diagnostics.
             let mins = Int(ceil(remaining / 60))
-            return "Claude OAuth rate-limit backoff active (~\(mins)m remaining)"
+            return L10n.providerConfig.errorClaudeRateLimitBackoff(mins)
         }
     }
 

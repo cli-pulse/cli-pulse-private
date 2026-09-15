@@ -3040,13 +3040,13 @@ public enum APIError: LocalizedError, Equatable {
     public var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Invalid response from server"
+            return L10n.auth.errorInvalidResponse
         case .httpError(let status, let body):
             return "HTTP \(status): \(body)"
         case .tokenExpired:
-            return "Session expired. Please sign in again."
+            return L10n.auth.errorSessionExpired
         case .notAuthenticated:
-            return "Not signed in."
+            return L10n.auth.errorNotSignedIn
         }
     }
 }

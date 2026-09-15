@@ -23,7 +23,7 @@ struct CompanionCLISection: View {
                 Image(systemName: "terminal")
                     .font(.system(size: 11))
                     .foregroundStyle(PulseTheme.accent)
-                Text("Managed CLI Helper")
+                Text(L10n.helper.title)
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
                 statusBadge
@@ -43,27 +43,27 @@ struct CompanionCLISection: View {
         case .checking:
             HStack(spacing: 4) {
                 ProgressView().controlSize(.mini)
-                Text("Checking…").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(L10n.appUpdater.checking).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         case .notInstalled:
-            Text("Not installed").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(L10n.collectorStatus.notInstalled).font(.system(size: 10)).foregroundStyle(.secondary)
         case .unreachable:
             HStack(spacing: 4) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                Text("Not responding").font(.system(size: 10, weight: .medium)).foregroundStyle(.orange)
+                Text(L10n.helper.notResponding).font(.system(size: 10, weight: .medium)).foregroundStyle(.orange)
             }
         case .downloading(let p):
-            Text("Downloading \(Int(p * 100))%").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(L10n.appUpdater.downloadingPercent(Int(p * 100))).font(.system(size: 10)).foregroundStyle(.secondary)
         case .installing:
-            Text("Installing…").font(.system(size: 10)).foregroundStyle(.secondary)
+            Text(L10n.helper.installing).font(.system(size: 10)).foregroundStyle(.secondary)
         case .running(let v):
             HStack(spacing: 4) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.green)
-                Text("v\(v) running").font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                Text(v.isEmpty ? L10n.advanced.helperRunning : L10n.helper.runningVersion(v)).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
             }
         case .bundled(let v):
             // v1.43: app-bundled helper — a distinct "built-in" badge (no
@@ -72,7 +72,7 @@ struct CompanionCLISection: View {
                 Image(systemName: "checkmark.seal.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.green)
-                Text(v.isEmpty ? "Built-in" : "Built-in · v\(v)")
+                Text(v.isEmpty ? L10n.helper.builtIn : L10n.helper.builtInVersion(v))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.green)
             }
@@ -81,7 +81,7 @@ struct CompanionCLISection: View {
                 Image(systemName: "arrow.up.circle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.orange)
-                Text("Update: \(installed) → \(latest)")
+                Text(L10n.appUpdater.updateAvailableBadge(installed, latest))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.orange)
             }
@@ -90,7 +90,7 @@ struct CompanionCLISection: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.red)
-                Text("Error").font(.system(size: 10, weight: .medium)).foregroundStyle(.red)
+                Text(L10n.appUpdater.errorBadge).font(.system(size: 10, weight: .medium)).foregroundStyle(.red)
             }
         }
     }
@@ -101,7 +101,7 @@ struct CompanionCLISection: View {
         case .checking:
             EmptyView()
         case .notInstalled:
-            Text("Install the optional Companion CLI helper to drive `claude`, `codex`, and `gemini` sessions from the menubar. The helper is signed by Apple's notary service and installs to your home folder with no admin password.")
+            Text(L10n.helper.installIntro)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -117,7 +117,7 @@ struct CompanionCLISection: View {
         case .installing:
             HStack {
                 ProgressView().controlSize(.small)
-                Text("Waiting for the macOS Installer to finish…")
+                Text(L10n.helper.waitingForInstaller)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -128,7 +128,7 @@ struct CompanionCLISection: View {
             // pairing. `helperPaired == nil` (older helper that predates the
             // flag) shows nothing — same as before.
             if installer.helperPaired == false {
-                Text("Installed and running. Pair this Mac (above) to drive managed sessions.")
+                Text(L10n.helper.runningUnpairedHint)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -143,12 +143,12 @@ struct CompanionCLISection: View {
             // a bundled owner — a conditional pairing hint would be dead code.
             // (Wiring `paired` into the Swift hello to enable it is a separate
             // wire-mirror follow-up.)
-            Text("Built into CLI Pulse — updates automatically when you update the app. No separate install needed.")
+            Text(L10n.helper.bundledHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         case .updateAvailable(_, let latest):
-            Text("A new helper version (\(latest)) is available. The update flow is identical to the install flow.")
+            Text(L10n.helper.updateAvailableBody(latest))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
         case .error(let msg):
@@ -178,7 +178,7 @@ struct CompanionCLISection: View {
                 HStack {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 10))
-                    Text("Install Companion CLI")
+                    Text(L10n.helper.installButton)
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .frame(maxWidth: .infinity)
@@ -188,24 +188,24 @@ struct CompanionCLISection: View {
             .tint(PulseTheme.accent)
         case .unreachable:
             HStack {
-                Button("Re-check") {
+                Button(L10n.helper.recheck) {
                     Task { await installer.refresh() }
                 }
                 .controlSize(.small)
                 Spacer()
-                Button("Uninstall…") {
+                Button(L10n.helper.uninstall) {
                     Task { await installer.uninstall() }
                 }
                 .controlSize(.small)
             }
         case .running:
             HStack {
-                Button("Check for Updates") {
+                Button(L10n.appUpdater.checkForUpdates) {
                     Task { await installer.refresh() }
                 }
                 .controlSize(.small)
                 Spacer()
-                Button("Uninstall…") {
+                Button(L10n.helper.uninstall) {
                     Task { await installer.uninstall() }
                 }
                 .controlSize(.small)
@@ -215,21 +215,21 @@ struct CompanionCLISection: View {
                 Button {
                     Task { await installer.install() }
                 } label: {
-                    Text("Update Companion CLI")
+                    Text(L10n.helper.updateButton)
                         .font(.system(size: 11, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
                 .controlSize(.small)
                 Spacer()
-                Button("Uninstall…") {
+                Button(L10n.helper.uninstall) {
                     Task { await installer.uninstall() }
                 }
                 .controlSize(.small)
             }
         case .error:
             HStack {
-                Button("Retry") {
+                Button(L10n.common.retry) {
                     Task { await installer.refresh() }
                 }
                 .controlSize(.small)

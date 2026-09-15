@@ -31,7 +31,7 @@ struct PairingSection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             } else {
-                modeIndicator(icon: "questionmark.circle", text: "Not Connected", color: .orange)
+                modeIndicator(icon: "questionmark.circle", text: L10n.pairing.notConnected, color: .orange)
             }
 
             if !authState.isPaired {

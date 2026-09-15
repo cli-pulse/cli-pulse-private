@@ -1283,14 +1283,14 @@ struct LegacyOnboardingWizardView: View {
 
             ScrollView {
                 VStack(spacing: 10) {
-                    featureCard(icon: "chart.bar.fill", title: "Usage Tracking",
-                                desc: "Real-time token usage across Claude, Codex, Gemini, and 14+ providers.")
-                    featureCard(icon: "bell.badge.fill", title: "Smart Alerts",
-                                desc: "Get notified when quotas run low, costs spike, or sessions fail.")
-                    featureCard(icon: "desktopcomputer", title: "Multi-Device",
-                                desc: "Monitor all your dev machines from the menu bar.")
-                    featureCard(icon: "dollarsign.circle.fill", title: "Cost Estimates",
-                                desc: "Track daily and weekly spend per provider.")
+                    featureCard(icon: "chart.bar.fill", title: L10n.onboardingWizard.featureUsageTitle,
+                                desc: L10n.onboardingWizard.featureUsageDesc)
+                    featureCard(icon: "bell.badge.fill", title: L10n.onboardingWizard.featureAlertsTitle,
+                                desc: L10n.onboardingWizard.featureAlertsDesc)
+                    featureCard(icon: "desktopcomputer", title: L10n.onboardingWizard.featureDevicesTitle,
+                                desc: L10n.onboardingWizard.featureDevicesDesc)
+                    featureCard(icon: "dollarsign.circle.fill", title: L10n.onboardingWizard.featureCostTitle,
+                                desc: L10n.onboardingWizard.featureCostDesc)
                 }
                 .padding(.horizontal, 16)
             }
@@ -1480,7 +1480,7 @@ struct LegacyOnboardingWizardView: View {
 
     private var emailCodeForm: some View {
         VStack(spacing: 8) {
-            TextField("Email", text: $email)
+            TextField(L10n.settings.email, text: $email)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
                 .onSubmit { sendCode() }
@@ -1510,7 +1510,7 @@ struct LegacyOnboardingWizardView: View {
 
     private var passwordForm: some View {
         VStack(spacing: 8) {
-            TextField("Email", text: $email)
+            TextField(L10n.settings.email, text: $email)
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 260)
                 .onSubmit { signInWithPassword() }

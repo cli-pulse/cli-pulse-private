@@ -151,7 +151,7 @@ struct DashboardTrends: View {
     @State private var rangeDays: Int = 30   // -1 ⇒ all
 
     private let ranges: [(label: String, days: Int)] = [
-        ("7D", 7), ("30D", 30), ("90D", 90), ("1Y", 365),
+        (L10n.usageDashboard.range7d, 7), (L10n.usageDashboard.range30d, 30), (L10n.usageDashboard.range90d, 90), (L10n.usageDashboard.range1y, 365),
     ]
 
     var body: some View {
@@ -378,7 +378,7 @@ public struct UsageDashboardView: View {
                               font: .system(size: 33, weight: .medium, design: .default))
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
-                Text("tokens")
+                Text(L10n.usageDashboard.tokensUnit)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Text(L10n.usageDashboard.scope)

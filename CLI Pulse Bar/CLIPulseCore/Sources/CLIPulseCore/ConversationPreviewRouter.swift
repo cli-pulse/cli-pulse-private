@@ -52,9 +52,9 @@ public enum ConversationPreviewRouter {
     /// Codex-routed session that says "Claude".
     public static func headerLabel(for provider: String) -> String {
         switch normalize(provider) {
-        case "codex":  return "Codex conversation preview"
-        case "gemini": return "Gemini conversation preview"
-        default:       return "Claude conversation preview"
+        case "codex":  return L10n.sessions.previewHeaderCodex
+        case "gemini": return L10n.sessions.previewHeaderGemini
+        default:       return L10n.sessions.previewHeaderClaude
         }
     }
 

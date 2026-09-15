@@ -57,7 +57,7 @@ struct SubscriptionSection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(subscriptionManager.maxProviders < 0 ? "Unlimited" : "\(subscriptionManager.maxProviders)")
+                Text(subscriptionManager.maxProviders < 0 ? L10n.account.unlimited : "\(subscriptionManager.maxProviders)")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
@@ -143,7 +143,7 @@ struct SubscriptionSection: View {
                 Button {
                     Task { await subscriptionManager.updateCurrentEntitlements() }
                 } label: {
-                    Text("Retry")
+                    Text(L10n.subscription.retry)
                         .font(.system(size: 9))
                 }
                 .buttonStyle(.plain)
@@ -159,10 +159,10 @@ struct SubscriptionSection: View {
     private func tierResolutionDiagnosticText() -> String {
         switch subscriptionManager.tierResolutionState {
         case .unresolved:
-            return "Tier check in progress…"
+            return L10n.subscription.tierCheckInProgress
         case .resolvedDegraded:
             let category = subscriptionManager.lastTierRefreshError?.rawValue ?? "unknown"
-            return "Tier check incomplete (\(category)). Showing best-effort plan."
+            return L10n.subscription.tierCheckIncomplete(category)
         case .resolvedConfirmed:
             return ""
         }
@@ -185,7 +185,7 @@ struct SubscriptionSection: View {
             HStack(spacing: 4) {
                 Image(systemName: "cart.badge.questionmark")
                     .font(.system(size: 9))
-                Text("Store: \(label)")
+                Text(L10n.subscription.storeDiagnostic(label))
                     .font(.system(size: 9))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -214,13 +214,13 @@ struct SubscriptionSection: View {
             // not deployed to production. `check_paywall_claims.sh` now reads
             // this file too, so the strings below must stay backed.
             if let pro = subscriptionManager.proMonthly {
-                inlineProductRow(product: pro, label: "Pro Monthly", features: L10n.subscription.unlimitedProviders)
+                inlineProductRow(product: pro, label: L10n.subscription.proMonthly, features: L10n.subscription.unlimitedProviders)
             }
             if let proY = subscriptionManager.proYearly {
                 // Computed, never written down: the literal "Save 17%" that
                 // used to live here was correct for $4.99/$49.99 and became a
                 // lie — an inverted one — when the prices changed.
-                inlineProductRow(product: proY, label: "Pro Yearly",
+                inlineProductRow(product: proY, label: L10n.subscription.proYearly,
                                  features: yearlySavingText ?? L10n.subscription.yearly)
             }
             // v1.52 — Team rows removed. The tier is withdrawn from sale;

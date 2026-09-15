@@ -209,7 +209,7 @@ struct AlertRow: View {
                 if showSnooze {
                     HStack(spacing: 6) {
                         ForEach([15, 30, 60, 120], id: \.self) { min in
-                            Button("\(min)m") {
+                            Button(L10n.alerts.snoozeShort(min)) {
                                 Task {
                                     await onSnooze(min)
                                     showSnooze = false

@@ -101,7 +101,7 @@ public struct DeviceHealthCard: View {
         }
         if device.sensorCan("fans"), let rpm = device.fan_rpm {
             out.append(Chip(title: L10n.machine.fan, value: "\(rpm)",
-                            subtitle: device.fan_max_rpm.map { "max \($0)" }, icon: "fanblades.fill", color: .teal))
+                            subtitle: device.fan_max_rpm.map { L10n.machine.fanMax($0) }, icon: "fanblades.fill", color: .teal))
         }
         return out
     }

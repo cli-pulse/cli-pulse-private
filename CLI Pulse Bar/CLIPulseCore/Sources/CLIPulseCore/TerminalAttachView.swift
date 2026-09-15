@@ -97,7 +97,7 @@ public struct TerminalAttachView: View {
         }
         .frame(minWidth: 640, minHeight: 400)
         // P2: reflect the CLI's OSC title when it sets one, else the default.
-        .navigationTitle(session.windowTitle ?? "Terminal — \(provider.capitalized)")
+        .navigationTitle(session.windowTitle ?? L10n.terminal.windowTitle(provider.capitalized))
         .onAppear { session.startIfNeeded() }
     }
 
@@ -120,10 +120,10 @@ public struct TerminalAttachView: View {
                 .fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 10) {
                 if canReconnect {
-                    Button("Reconnect") { session.reconnect() }
+                    Button(L10n.terminal.reconnect) { session.reconnect() }
                         .keyboardShortcut(.defaultAction)
                 }
-                Button("Close") { dismiss() }
+                Button(L10n.common.close) { dismiss() }
                     .keyboardShortcut(canReconnect ? .cancelAction : .defaultAction)
             }
         }
@@ -188,8 +188,8 @@ final class TerminalAttachSession: ObservableObject {
                 case .failed:
                     if self.didAutoReconnect {
                         self.phase = .unavailable(
-                            title: "Session disconnected",
-                            message: "The \(self.provider.capitalized) session lost its connection to the helper. Reconnect, or start a new one from the menu / Sessions tab.",
+                            title: L10n.terminal.disconnectedTitle,
+                            message: L10n.terminal.disconnectedMessage(self.provider.capitalized),
                             canReconnect: true)
                     } else {
                         // One silent auto-attempt for a transient blip (e.g. the
@@ -250,16 +250,16 @@ final class TerminalAttachSession: ObservableObject {
                 if Task.isCancelled { return }
                 guard sessions.contains(where: { $0.id == sid }) else {
                     self?.phase = .unavailable(
-                        title: "Session no longer available",
-                        message: "This \(prov.capitalized) session has ended or the helper restarted. Start a new one from the menu or the Sessions tab.",
+                        title: L10n.terminal.sessionGoneTitle,
+                        message: L10n.terminal.sessionGoneMessage(prov.capitalized),
                         canReconnect: false)
                     return
                 }
             } catch {
                 if Task.isCancelled { return }
                 self?.phase = .unavailable(
-                    title: "Can't reach the helper",
-                    message: "CLI Pulse couldn't reach the local helper — it may be restarting. Try Reconnect, or start a new session from the menu / Sessions tab.",
+                    title: L10n.terminal.helperUnreachableTitle,
+                    message: L10n.terminal.helperUnreachableMessage,
                     canReconnect: true)
                 return
             }

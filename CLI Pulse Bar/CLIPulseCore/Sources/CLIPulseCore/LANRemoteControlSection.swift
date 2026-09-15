@@ -23,7 +23,7 @@ public struct LANRemoteControlSection: View {
                 Image(systemName: "iphone.and.arrow.forward")
                     .font(.system(size: 11))
                     .foregroundStyle(PulseTheme.accent)
-                Text("Remote Control")
+                Text(L10n.remote.title)
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
                 statusBadge
@@ -36,13 +36,13 @@ public struct LANRemoteControlSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 Toggle(isOn: Binding(get: { agent.isEnabled }, set: { agent.isEnabled = $0 })) {
-                    Text("Let paired iPhones watch and control sessions")
+                    Text(L10n.remote.allowPairedIphones)
                         .font(.system(size: 11))
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                Text("Paired iPhones reach this Mac on this Wi-Fi, and over your own private network (Tailscale, VPN) using the address below. Output is redacted before it leaves this Mac, and the connection is encrypted with a key that only exists on the two devices — an address alone gets nobody in. A phone with Control on can type into sessions, start and stop them, and answer approvals, while Session control is on in the Sessions tab. Only sessions you choose to open on claude.ai go through Anthropic.")
+                Text(L10n.remote.macPrivacyExplainer)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -66,7 +66,7 @@ public struct LANRemoteControlSection: View {
                             Button {
                                 agent.beginPairing()
                             } label: {
-                                Label("Pair an iPhone…", systemImage: "qrcode")
+                                Label(L10n.remote.pairAnIphone, systemImage: "qrcode")
                                     .font(.system(size: 11))
                             }
                             .controlSize(.small)
@@ -87,7 +87,7 @@ public struct LANRemoteControlSection: View {
                         Text(L10n.remote.reachableAt).font(.system(size: 10)).foregroundStyle(.secondary)
                         Text(addr).font(.system(size: 11, design: .monospaced)).textSelection(.enabled)
                         Spacer()
-                        Button(addrCopied ? "Copied" : "Copy") {
+                        Button(addrCopied ? L10n.remote.copied : L10n.remote.copy) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(addr, forType: .string)
                             addrCopied = true
@@ -117,7 +117,7 @@ public struct LANRemoteControlSection: View {
                             // `fixedSize` because the popover is narrow
                             // enough to break "Control" into "Cont rol"
                             // (seen on the owner's Mac).
-                            Toggle("Control", isOn: Binding(
+                            Toggle(L10n.remote.controlToggle, isOn: Binding(
                                 get: { peer.controlAllowed },
                                 set: { agent.setControlAllowed(peerID: peer.id, $0) }))
                                 .toggleStyle(.switch)
@@ -125,8 +125,8 @@ public struct LANRemoteControlSection: View {
                                 .font(.system(size: 10))
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
-                                .help("Off: this iPhone can only watch. On: it can type into sessions, start and stop them, and answer approvals.")
-                            Button("Forget") { agent.forget(peerID: peer.id) }
+                                .help(L10n.remote.controlToggleHelp)
+                            Button(L10n.remote.forget) { agent.forget(peerID: peer.id) }
                                 .font(.system(size: 10))
                                 .controlSize(.mini)
                         }
@@ -152,18 +152,18 @@ public struct LANRemoteControlSection: View {
         case .off:
             EmptyView()
         case .unavailable:
-            Text("Unavailable").font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(L10n.remote.statusUnavailable).font(.system(size: 9)).foregroundStyle(.secondary)
         case .starting:
-            Text("Starting…").font(.system(size: 9)).foregroundStyle(.secondary)
+            Text(L10n.sessions.statusStarting).font(.system(size: 9)).foregroundStyle(.secondary)
         case let .listening(_, peers, connections):
             HStack(spacing: 4) {
                 Circle().fill(connections > 0 ? Color.green : Color.secondary.opacity(0.5)).frame(width: 6, height: 6)
-                Text(connections > 0 ? "\(connections) connected" : "\(peers) paired")
+                Text(connections > 0 ? L10n.remote.countConnected(connections) : L10n.remote.countPaired(peers))
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
         case .failed:
-            Text("Failed").font(.system(size: 9)).foregroundStyle(.red)
+            Text(L10n.status.failed).font(.system(size: 9)).foregroundStyle(.red)
         }
     }
 }
@@ -180,7 +180,7 @@ struct LANPairingInline: View {
         VStack(alignment: .leading, spacing: 8) {
             switch agent.pairing {
             case let .showingQR(url, expiresAt):
-                Text("Scan with CLI Pulse on your iPhone, or copy the link into it.")
+                Text(L10n.remote.pairQrHint)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 HStack(alignment: .top, spacing: 12) {
@@ -191,23 +191,23 @@ struct LANPairingInline: View {
                             .frame(width: 132, height: 132)
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Expires in \(max(0, Int(expiresAt.timeIntervalSince(now)))) s")
+                        Text(L10n.remote.expiresInSeconds(max(0, Int(expiresAt.timeIntervalSince(now)))))
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
                             .monospacedDigit()
-                        Button(copied ? "Copied" : "Copy link") {
+                        Button(copied ? L10n.remote.copied : L10n.remote.copyLink) {
                             NSPasteboard.general.clearContents()
                             NSPasteboard.general.setString(url, forType: .string)
                             copied = true
                         }
                         .controlSize(.small)
-                        Button("Cancel") { agent.cancelPairing() }
+                        Button(L10n.remote.cancel) { agent.cancelPairing() }
                             .controlSize(.small)
                     }
                 }
 
             case let .awaitingApproval(sas, peerName):
-                Text("Pair with \(peerName)? It will be able to watch AND control your sessions (you can turn Control off per phone below). Approve only if this code matches the one on the iPhone.")
+                Text(L10n.remote.pairApprovalPrompt(peerName))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -215,19 +215,19 @@ struct LANPairingInline: View {
                     .font(.system(size: 28, weight: .semibold, design: .monospaced))
                     .tracking(4)
                 HStack(spacing: 8) {
-                    Button("Approve") { agent.approvePairing() }
+                    Button(L10n.remote.approve) { agent.approvePairing() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
-                    Button("Decline") { agent.rejectPairing() }
+                    Button(L10n.remote.decline) { agent.rejectPairing() }
                         .controlSize(.small)
                 }
 
             case let .succeeded(peerName):
                 HStack(spacing: 6) {
                     Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    Text("\(peerName) is paired").font(.system(size: 11))
+                    Text(L10n.remote.peerIsPaired(peerName)).font(.system(size: 11))
                     Spacer()
-                    Button("Done") { agent.dismissPairingResult() }.controlSize(.small)
+                    Button(L10n.remote.done) { agent.dismissPairingResult() }.controlSize(.small)
                 }
 
             case let .failed(why):
@@ -235,8 +235,8 @@ struct LANPairingInline: View {
                     Image(systemName: "xmark.circle").foregroundStyle(.secondary)
                     Text(why).font(.system(size: 10)).fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Try again") { agent.beginPairing() }.controlSize(.small)
-                    Button("Close") { agent.dismissPairingResult() }.controlSize(.small)
+                    Button(L10n.remote.tryAgain) { agent.beginPairing() }.controlSize(.small)
+                    Button(L10n.common.close) { agent.dismissPairingResult() }.controlSize(.small)
                 }
 
             case .idle:

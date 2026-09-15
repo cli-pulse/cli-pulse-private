@@ -42,8 +42,7 @@ import Foundation
 ///   * isolated punctuation / glyph fragments
 ///   * orphan ANSI body fragments like "[38;2;215;119;87m"
 public enum ClaudeConversationPreviewFormatter {
-    public static let emptyFallback =
-        "Claude is running. Waiting for conversational output…"
+    public static var emptyFallback: String { L10n.sessions.previewEmptyClaude }
 
     /// v1.16 hotfix: shown when raw payload exists (claude IS emitting
     /// bytes — spinners, "Incubating…", "Proofing…", token counters)
@@ -52,8 +51,7 @@ public enum ClaudeConversationPreviewFormatter {
     /// pre-fix fallback ("Waiting for conversational output…") read as
     /// "nothing is happening" and confused users into thinking the
     /// helper had hung. This signals "yes, claude is alive — be patient."
-    public static let thinkingFallback =
-        "Claude is thinking… (first reply may take 15-30 s)"
+    public static var thinkingFallback: String { L10n.sessions.previewThinkingClaude }
 
     /// Activity markers Claude TUI emits during processing — used by
     /// `format` to distinguish "no PTY output at all" from "PTY output

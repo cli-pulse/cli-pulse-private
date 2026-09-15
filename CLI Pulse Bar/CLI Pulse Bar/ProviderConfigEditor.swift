@@ -124,7 +124,7 @@ struct ProviderConfigEditor: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(descriptor.displayName)
                         .font(.system(size: 13, weight: .bold))
-                    Text(descriptor.category.rawValue)
+                    Text(descriptor.category.localizedName)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
@@ -165,7 +165,7 @@ struct ProviderConfigEditor: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 #if os(macOS)
-                NoAutoFillTextField(placeholder: "e.g. team-A, dev-box", text: $accountLabel)
+                NoAutoFillTextField(placeholder: L10n.providerConfig.accountPlaceholder, text: $accountLabel)
                     .frame(minHeight: 22)
                     .padding(.vertical, 1)
                 #else
@@ -757,12 +757,12 @@ struct ProviderConfigEditor: View {
                 .connectionTestDisposition {
             case .authorizationReadyToSave:
                 testState = .success(
-                    "OAuth authorization ready to save"
+                    L10n.providerConfig.testOauthReady
                 )
                 return
             case .stagedForRemoval:
                 testState = .failure(
-                    "Connection is staged for removal"
+                    L10n.providerConfig.testStagedForRemoval
                 )
                 return
             case .usePersistedCredentials:
@@ -793,7 +793,7 @@ struct ProviderConfigEditor: View {
         )
 
         guard let collector = CollectorRegistry.collector(for: kind, config: probeConfig) else {
-            testState = .failure("No collector available. Check credentials or source mode.")
+            testState = .failure(L10n.providerConfig.testNoCollector)
             return
         }
 
@@ -816,11 +816,11 @@ struct ProviderConfigEditor: View {
             switch result.dataKind {
             case .quota:
                 let rem = result.usage.remaining.map { "\($0)" } ?? "—"
-                summary = "OK (\(ms)ms) remaining: \(rem)"
+                summary = L10n.providerConfig.testOkRemaining(ms, rem)
             case .credits:
-                summary = "OK (\(ms)ms) credits fetched"
+                summary = L10n.providerConfig.testOkCredits(ms)
             case .statusOnly:
-                summary = "OK (\(ms)ms) status reachable"
+                summary = L10n.providerConfig.testOkStatus(ms)
             }
             testState = .success(summary)
             withAnimation { autoImportFailed = false }
@@ -847,7 +847,7 @@ struct ProviderConfigEditor: View {
         else {
             #if os(macOS)
             testState = .failure(
-                "Could not safely prepare provider credentials. Please retry."
+                L10n.providerConfig.prepareCredentialsFailed
             )
             #endif
             return false
@@ -903,7 +903,7 @@ struct ProviderConfigEditor: View {
             guard state.providerConfigs[idx].saveSecrets() else {
                 #if os(macOS)
                 testState = .failure(
-                    "Could not safely save provider credentials. Please retry."
+                    L10n.providerConfig.saveCredentialsFailed
                 )
                 #endif
                 return false
@@ -912,7 +912,7 @@ struct ProviderConfigEditor: View {
         guard state.commitProviderAccountDraft(accountID) else {
             #if os(macOS)
             testState = .failure(
-                "Could not safely save provider configuration. Please retry."
+                L10n.providerConfig.saveConfigurationFailed
             )
             #endif
             return false

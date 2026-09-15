@@ -22,7 +22,7 @@ struct PrivacySettingsSection: View {
                 Image(systemName: "lock.shield")
                     .font(.system(size: 11))
                     .foregroundStyle(PulseTheme.accent)
-                Text("Privacy")
+                Text(L10n.settings.privacy)
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
             }
@@ -40,13 +40,13 @@ struct PrivacySettingsSection: View {
                         set: { state.localScanConsent = $0 ? .granted : .declined }
                     )
                 ) {
-                    Text("Scan this Mac for CLI usage")
+                    Text(L10n.localScanConsent.settingsToggle)
                         .font(.system(size: 11))
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
 
-                Text("Reads the last 30 days of session logs under ~/.codex and ~/.claude, and asks the providers you use for live quota. Off means CLI Pulse reads nothing here.")
+                Text(L10n.localScanConsent.settingsToggleDetail)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
@@ -58,20 +58,20 @@ struct PrivacySettingsSection: View {
             }
 
             Toggle(isOn: $settings.localOnlyMode) {
-                Text("Local-only mode")
+                Text(L10n.settings.localOnlyMode)
                     .font(.system(size: 11))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Text("Skip all cross-app data sources. Usage data still works for files in your home directory.")
+            Text(L10n.settings.localOnlyModeHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 2)
                 .padding(.bottom, 2)
 
             Toggle(isOn: $settings.skipClaudeKeychain) {
-                Text("Skip Claude Code keychain access")
+                Text(L10n.settings.skipClaudeKeychain)
                     .font(.system(size: 11))
             }
             .toggleStyle(.switch)
@@ -81,8 +81,8 @@ struct PrivacySettingsSection: View {
             .opacity(settings.localOnlyMode ? 0.6 : 1.0)
 
             Text(settings.localOnlyMode
-                 ? "Forced ON by Local-only mode."
-                 : "Stops CLI Pulse from reading the Claude Code OAuth credentials owned by other apps. Useful if you've hit a macOS keychain dialog that won't accept your login password.")
+                 ? L10n.settings.skipClaudeKeychainForced
+                 : L10n.settings.skipClaudeKeychainHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 18)
@@ -95,13 +95,13 @@ struct PrivacySettingsSection: View {
             // helper. Default OFF = warn-only (a banner tells the user the
             // session is on the Claude API, not their plan).
             Toggle(isOn: $settings.blockClaudeOnOutdatedHelper) {
-                Text("Block managed Claude on outdated helper")
+                Text(L10n.settings.blockClaudeOnOutdatedHelper)
                     .font(.system(size: 11))
             }
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Text("When the Companion CLI helper is too old to run Claude on your Max/Pro plan, prevent starting managed Claude sessions (which would silently use the Claude API). Off by default — you'll only see a warning.")
+            Text(L10n.settings.blockClaudeOnOutdatedHelperHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .padding(.leading, 2)

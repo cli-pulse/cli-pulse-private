@@ -56,25 +56,25 @@ public enum UpdateVerifierError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         let detail: String
         switch self {
-        case .manifestInsecureScheme(let s): detail = "update URL is not https (\(s))"
-        case .manifestURLNotAllowed(let s): detail = "update URL is not an official release (\(s))"
-        case .manifestSizeOutOfRange(let n): detail = "declared size out of range (\(n))"
-        case .sizeMismatch(let e, let a): detail = "size mismatch (expected \(e), got \(a))"
-        case .dmgSignatureRejected(let s): detail = "disk image is not signed by CLI Pulse (\(s))"
-        case .dmgNotarizationRejected(let s): detail = "disk image is not notarized (\(s))"
-        case .mountFailed(let s): detail = "could not mount the disk image (\(s))"
-        case .noAppOnVolume: detail = "no app found in the disk image"
-        case .multipleAppsOnVolume(let n): detail = "unexpected disk image layout (\(n) apps)"
-        case .symlinkMasquerade(let s): detail = "app entry is a symlink (\(s))"
-        case .appSignatureRejected(let s): detail = "app is not signed by CLI Pulse (\(s))"
-        case .appNotarizationRejected(let s): detail = "app is not notarized (\(s))"
-        case .infoPlistUnreadable: detail = "could not read the app's Info.plist"
-        case .versionMismatch(let e, let f): detail = "version mismatch (manifest \(e), app \(f))"
-        case .buildMismatch(let e, let f): detail = "build mismatch (manifest \(e), app \(f))"
-        case .notAnUpgrade(let i, let c): detail = "not an upgrade (installed \(i), offered \(c))"
-        case .toolingUnavailable(let s): detail = "verification tool unavailable (\(s))"
+        case .manifestInsecureScheme(let s): detail = L10n.appUpdater.verifyInsecureScheme(s)
+        case .manifestURLNotAllowed(let s): detail = L10n.appUpdater.verifyUrlNotAllowed(s)
+        case .manifestSizeOutOfRange(let n): detail = L10n.appUpdater.verifySizeOutOfRange(n)
+        case .sizeMismatch(let e, let a): detail = L10n.appUpdater.verifySizeMismatch(e, a)
+        case .dmgSignatureRejected(let s): detail = L10n.appUpdater.verifyDmgNotSigned(s)
+        case .dmgNotarizationRejected(let s): detail = L10n.appUpdater.verifyDmgNotNotarized(s)
+        case .mountFailed(let s): detail = L10n.appUpdater.verifyMountFailed(s)
+        case .noAppOnVolume: detail = L10n.appUpdater.verifyNoApp
+        case .multipleAppsOnVolume(let n): detail = L10n.appUpdater.verifyMultipleApps(n)
+        case .symlinkMasquerade(let s): detail = L10n.appUpdater.verifySymlink(s)
+        case .appSignatureRejected(let s): detail = L10n.appUpdater.verifyAppNotSigned(s)
+        case .appNotarizationRejected(let s): detail = L10n.appUpdater.verifyAppNotNotarized(s)
+        case .infoPlistUnreadable: detail = L10n.appUpdater.verifyInfoPlistUnreadable
+        case .versionMismatch(let e, let f): detail = L10n.appUpdater.verifyVersionMismatch(e, f)
+        case .buildMismatch(let e, let f): detail = L10n.appUpdater.verifyBuildMismatch(e, f)
+        case .notAnUpgrade(let i, let c): detail = L10n.appUpdater.verifyNotUpgrade(i, c)
+        case .toolingUnavailable(let s): detail = L10n.appUpdater.verifyToolingUnavailable(s)
         }
-        return "Couldn't verify this update: \(detail)."
+        return L10n.appUpdater.verifyFailed(detail)
     }
 }
 

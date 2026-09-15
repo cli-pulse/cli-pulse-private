@@ -35,7 +35,7 @@ struct ProvidersTab: View {
                             .foregroundStyle(PulseTheme.accent)
                     }
                     .buttonStyle(.plain)
-                    Text("\(providerState.enabledProviderCount) \(L10n.providers.tracked)")
+                    Text(L10n.providers.trackedCount(providerState.enabledProviderCount))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
                 }
@@ -506,14 +506,14 @@ struct EnhancedProviderCard: View {
         if isClaude {
             if let msgs {
                 return CardMetric(
-                    primary: "\(CostFormatter.formatUsage(msgs)) msgs",
+                    primary: L10n.providers.messagesShort(CostFormatter.formatUsage(msgs)),
                     secondary: tokens.map { "\(CostFormatter.formatUsage($0)) I/O" },
-                    breakdownTooltip: "Messages = user + assistant log events (including streaming chunks) — matches Claude Code's UI convention. I/O tokens = input + output (excludes cache reads, which are ~98% of Claude's raw token volume, and are billed at a 10% discount)."
+                    breakdownTooltip: L10n.providers.claudeMetricHelp
                 )
             }
             if isQuotaProvider {
                 return CardMetric(primary: "—", secondary: nil,
-                                  breakdownTooltip: "No local Claude scan data for this window yet. Grant access in Settings → CLI Tool Access, then click Force Rescan.")
+                                  breakdownTooltip: L10n.providers.claudeNoScanHelp)
             }
         }
 
@@ -523,11 +523,11 @@ struct EnhancedProviderCard: View {
                 return CardMetric(
                     primary: "\(CostFormatter.formatUsage(tokens)) I/O",
                     secondary: nil,
-                    breakdownTooltip: "Input + output tokens only (matches OpenAI billing convention). Excludes cached input which is billed at 10% rate."
+                    breakdownTooltip: L10n.providers.ioTokensHelp
                 )
             }
             return CardMetric(primary: "—", secondary: nil,
-                              breakdownTooltip: "No local scan data for this window yet.")
+                              breakdownTooltip: L10n.providers.noScanHelp)
         }
 
         // Non-quota providers: token count stored in today_usage/week_usage.
@@ -535,7 +535,7 @@ struct EnhancedProviderCard: View {
         return CardMetric(
             primary: CostFormatter.formatUsage(raw),
             secondary: nil,
-            breakdownTooltip: "Token count reported by the provider's API."
+            breakdownTooltip: L10n.providers.apiTokenCountHelp
         )
     }
 
@@ -735,7 +735,7 @@ struct EnhancedProviderCard: View {
                 let today = metric(for: Date())
                 let week = metric(for: nil, weekRolling: true)
                 HStack(spacing: 12) {
-                    usageColumn(header: "Today", metric: today, cost: provider.estimated_cost_today)
+                    usageColumn(header: L10n.dashboard.today, metric: today, cost: provider.estimated_cost_today)
                     usageColumn(header: L10n.providers.thisWeek, metric: week, cost: provider.estimated_cost_week)
                     Spacer()
                 }
@@ -761,7 +761,7 @@ struct EnhancedProviderCard: View {
                           // overall quota" (matches AppState.buildProviderDetails).
                           provider.provider != "Claude" {
                     UsageBar(
-                        label: "Quota",
+                        label: L10n.providers.quota,
                         value: provider.usagePercent,
                         color: usageColor,
                         detail: remainingText
@@ -864,11 +864,11 @@ struct EnhancedProviderCard: View {
 
     private var accessibilitySummary: String {
         var parts: [String] = [provider.provider]
-        parts.append(config.isEnabled ? "enabled" : "disabled")
+        parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
         parts.append(provider.status_text)
         if let quota = provider.quota, quota > 0 {
             let pct = Int(round(provider.usagePercent * 100))
-            parts.append("\(pct)% used")
+            parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
     }
@@ -886,11 +886,11 @@ struct EnhancedProviderCard: View {
     }
 
     private var statusText: String {
-        if !config.isEnabled { return "Disabled" }
+        if !config.isEnabled { return L10n.status.disabled }
         switch detail.operationalStatus {
-        case .operational: return "Operational"
-        case .degraded: return "Degraded"
-        case .down: return "Down"
+        case .operational: return L10n.status.operational
+        case .degraded: return L10n.status.degraded
+        case .down: return L10n.status.down
         }
     }
 
@@ -935,27 +935,27 @@ struct EnhancedProviderCard: View {
     private func tierDetail(_ tier: UsageTier) -> String? {
         guard let remaining = tier.remaining, let quota = tier.quota, quota > 0 else { return nil }
         let pctLeft = Int(100.0 * Double(remaining) / Double(quota))
-        var result = "\(pctLeft)% left"
+        var result = L10n.watch.percentLeft(pctLeft)
         if let reset = tier.resetTime,
            let resetText = RelativeTime.formatReset(reset) {
-            result += " · Resets \(resetText)"
+            result += " · " + L10n.providers.resetsIn(resetText)
         }
         return result
     }
 
     private var remainingText: String? {
         guard let remaining = provider.remaining else { return nil }
-        return "\(CostFormatter.formatUsage(remaining)) remaining"
+        return L10n.detail.remainingValue(CostFormatter.formatUsage(remaining))
     }
 
     private var quotaBadge: some View {
         Group {
             if provider.usagePercent > 0.9 {
-                StatusBadge(text: "LOW", color: .red)
+                StatusBadge(text: L10n.quota.low, color: .red)
             } else if provider.usagePercent > 0.7 {
-                StatusBadge(text: "MODERATE", color: .orange)
+                StatusBadge(text: L10n.quota.moderate, color: .orange)
             } else {
-                StatusBadge(text: "OK", color: .green)
+                StatusBadge(text: L10n.quota.ok, color: .green)
             }
         }
     }
