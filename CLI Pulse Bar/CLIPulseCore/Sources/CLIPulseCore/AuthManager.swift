@@ -764,6 +764,10 @@ extension AppState {
         tierLimitWarning = nil
         lastRefresh = nil
         locallySupplementedProviders = []
+        // The usage-activity archive is account data too (v1.41 added it after
+        // this list was written, and it was missed): without this, the next
+        // account to sign in saw the previous one's heatmap until the cache aged.
+        resetUsageArchive()
         // iter16 hotfix (2026-04-29): signed-out + onboarding-completed
         // users used to land on `.overview` after a sign-out / delete-
         // account, which renders an empty "No Data Yet" state — a

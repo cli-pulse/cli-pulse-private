@@ -329,14 +329,49 @@ public final class AppState: ObservableObject {
     @Published public var usageArchive: DailyUsageArchive = DailyUsageArchive()
     private var usageArchiveLoadedAt: Date?
 
+    /// Whose days `usageArchive` holds: a user id, or `demoUsageArchiveOwner`.
+    ///
+    /// The archive is account-scoped data behind a five-minute cache, and it
+    /// used to have no owner. `applySignedOutState` resets every other piece of
+    /// account state — its own comment says so "a different account signing in
+    /// on the same device doesn't briefly inherit the previous user's" data —
+    /// but this property arrived later (v1.41) and was never added to it. So a
+    /// sign-out followed by a different sign-in inside the TTL showed the first
+    /// account's heatmap, and because an empty fetch deliberately keeps the
+    /// previous archive, it could keep showing it well past the TTL too.
+    private(set) var usageArchiveOwner: String?
+    static let demoUsageArchiveOwner = "__demo__"
+
+    private var currentUsageArchiveOwner: String {
+        isDemoMode ? Self.demoUsageArchiveOwner : userId
+    }
+
     /// Fetch up to a year of daily usage from Supabase and fold it into
     /// `usageArchive`. Cheap-cached: within `ttl` of the last successful load it
     /// no-ops (the heatmap is opened deliberately, not polled). A failed/empty
-    /// fetch leaves the previous archive intact.
+    /// fetch leaves the previous archive intact — for the SAME owner only.
+    ///
+    /// In Demo mode the archive comes from `DemoDataProvider.dailyUsage` instead,
+    /// through the same `mergeCloudDays` fold as real rows. Before this, "Try
+    /// Demo" showed a fully populated dashboard with one empty card in the middle
+    /// of it: the fetch ran unauthenticated, returned nothing, and the card fell
+    /// back to its scope caption.
     public func refreshUsageArchive(days: Int = 365, ttl: TimeInterval = 300, force: Bool = false) async {
+        let owner = currentUsageArchiveOwner
+        if owner != usageArchiveOwner { resetUsageArchive(owner: owner) }
         if !force, let at = usageArchiveLoadedAt, Date().timeIntervalSince(at) < ttl { return }
+
+        if isDemoMode {
+            var a = DailyUsageArchive()
+            a.mergeCloudDays(DemoDataProvider.dailyUsage(days: days))
+            adoptUsageArchive(a, owner: owner)
+            return
+        }
+
         let rows = await api.fetchDailyUsage(days: days)
-        guard !rows.isEmpty else { return }
+        // The account can change while the fetch is suspended. Rows fetched for
+        // one owner must never land in another owner's archive.
+        guard currentUsageArchiveOwner == owner, !rows.isEmpty else { return }
         var a = DailyUsageArchive()
         let entries = rows
             .filter { $0.model != ScanEntry.messageBucketModel }
@@ -344,8 +379,21 @@ public final class AppState: ObservableObject {
                               inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
                               outputTokens: $0.outputTokens, cost: $0.cost) }
         a.mergeCloudDays(entries)
-        usageArchive = a
+        adoptUsageArchive(a, owner: owner)
+    }
+
+    /// Drop the archive and its cache stamp. `owner` records who the (now empty)
+    /// archive belongs to; `nil` means nobody, which is the signed-out state.
+    func resetUsageArchive(owner: String? = nil) {
+        usageArchive = DailyUsageArchive()
+        usageArchiveLoadedAt = nil
+        usageArchiveOwner = owner
+    }
+
+    func adoptUsageArchive(_ archive: DailyUsageArchive, owner: String) {
+        usageArchive = archive
         usageArchiveLoadedAt = Date()
+        usageArchiveOwner = owner
     }
 
     // MARK: - Yield Score

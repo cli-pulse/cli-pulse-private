@@ -174,6 +174,76 @@ internal enum DemoDataProvider {
             alerts: alerts
         )
     }
+
+    /// A year of plausible daily usage for the Demo-mode activity heatmap.
+    ///
+    /// Deterministic on purpose — no random source — so the same "Try Demo" screen
+    /// renders identically every time, which is what App Store screenshots and
+    /// tests both need. Today's row reproduces the `generate()` provider figures
+    /// exactly (85.9K / 43.4K / 24.8K tokens), so the heatmap's today cell and the
+    /// dashboard's Usage Today tile agree instead of telling two different stories.
+    ///
+    /// Shape: weekdays busier than weekends, usage ramping up over the year the way
+    /// a real adopter's does, and a scattering of idle days that thins out as the
+    /// habit forms — a flat wall of identical cells reads as fake.
+    static func dailyUsage(days: Int, today: Date = Date(), calendar: Calendar = .current) -> [CloudEntry] {
+        struct Profile { let provider: String; let model: String; let todayTokens: Int; let todayCost: Double }
+        let profiles = [
+            Profile(provider: "Codex", model: "gpt-5-codex", todayTokens: 85_900, todayCost: 1.03),
+            Profile(provider: "Gemini", model: "gemini-2.5-pro", todayTokens: 43_400, todayCost: 0.35),
+            Profile(provider: "Claude", model: "claude-sonnet-4-5", todayTokens: 24_800, todayCost: 0.37),
+        ]
+
+        /// Stable value in [0, 1) for (day offset, salt) — a SplitMix64 step.
+        func unit(_ offset: Int, _ salt: UInt64) -> Double {
+            var z = UInt64(truncatingIfNeeded: offset) &* 0x9E37_79B9_7F4A_7C15 &+ salt
+            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+            z ^= z >> 31
+            return Double(z >> 11) / Double(1 << 53)
+        }
+
+        func entry(_ key: String, _ p: Profile, tokens: Int, cost: Double) -> CloudEntry {
+            // mergeCloudDays sums all three buckets; the split only needs to be sane.
+            let cached = tokens * 55 / 100
+            let output = tokens * 12 / 100
+            return CloudEntry(date: key, provider: p.provider, model: p.model,
+                              inputTokens: tokens - cached - output, cachedTokens: cached,
+                              outputTokens: output, cost: cost)
+        }
+
+        var rows: [CloudEntry] = []
+        let span = max(1, days)
+        for offset in 0..<span {
+            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
+            let key = DailyUsageStats.localDayKey(date, calendar: calendar)
+
+            if offset == 0 {
+                rows += profiles.map { entry(key, $0, tokens: $0.todayTokens, cost: $0.todayCost) }
+                continue
+            }
+
+            let age = Double(offset) / Double(span)                 // 0 = today, 1 = a year ago
+            let activeChance = 0.93 - 0.50 * age                    // the habit forms over time
+            guard unit(offset, 1) < activeChance else { continue }  // an idle day
+
+            let weekday = calendar.component(.weekday, from: date)  // 1 = Sunday … 7 = Saturday
+            let weekend = weekday == 1 || weekday == 7
+            let ramp = 1.0 - 0.7 * age
+            let dayScale = ramp * (weekend ? 0.35 : 1.0) * (0.45 + 0.9 * unit(offset, 2))
+
+            for (i, p) in profiles.enumerated() {
+                // Not every provider is used every day.
+                guard unit(offset, 10 + UInt64(i)) < 0.85 else { continue }
+                let jitter = 0.6 + 0.8 * unit(offset, 20 + UInt64(i))
+                let tokens = Int(Double(p.todayTokens) * dayScale * jitter)
+                guard tokens > 0 else { continue }
+                let cost = p.todayCost * Double(tokens) / Double(p.todayTokens)
+                rows.append(entry(key, p, tokens: tokens, cost: (cost * 100).rounded() / 100))
+            }
+        }
+        return rows
+    }
 }
 
 extension AppState {
