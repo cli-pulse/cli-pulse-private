@@ -63,7 +63,7 @@ struct CompanionCLISection: View {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 10))
                     .foregroundStyle(.green)
-                Text(L10n.helper.runningVersion(v)).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                Text(v.isEmpty ? L10n.advanced.helperRunning : L10n.helper.runningVersion(v)).font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
             }
         case .bundled(let v):
             // v1.43: app-bundled helper — a distinct "built-in" badge (no

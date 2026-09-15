@@ -627,7 +627,7 @@ struct SessionsTab: View {
             diagnosticRow(label: "Token readable",      value: diag.tokenReadable ? "yes" : "no")
             diagnosticRow(label: "App-group container", value: diag.appGroupContainerPath ?? "<nil>")
             diagnosticRow(label: "NSHomeDirectory",     value: diag.nsHomeDirectory)
-            Text("If \"Socket exists\" is no but the helper terminal log shows it bound to that exact path, the sandboxed app and unsandboxed helper are seeing different inodes — usually a firmlink / app-group container mismatch. Share this snapshot when reporting.")
+            Text(L10n.sessions.diagnosticsInodeHint)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -694,7 +694,7 @@ struct SessionsTab: View {
                 Text(row.clientLabel ?? ProviderDisplay.defaultLabel(for: row.provider))
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(1)
-                Text(row.status)
+                Text(L10n.status.localized(row.status))
                     .font(.system(size: 9))
                     .foregroundStyle(.secondary)
             }
@@ -1968,7 +1968,7 @@ private struct ManagedSessionRow: View {
                         }
                     }
                     HStack(spacing: 6) {
-                        Text(session.status)
+                        Text(L10n.status.localized(session.status))
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(statusColor)
                         // Affordance hint so the chevron isn't the

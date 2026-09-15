@@ -40,7 +40,7 @@ struct WatchMachineCard: View {
     private var subtitle: String {
         if let t = device.cpuTempC { return String(format: "%.0f°C", t) }
         if let up = device.uptimeSeconds { return MachineFormat.uptime(up) }
-        return device.status
+        return L10n.status.localized(device.status)
     }
 }
 

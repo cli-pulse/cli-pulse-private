@@ -143,7 +143,7 @@ struct iOSUsageDashboardView: View {
                     Text(CostFormatter.formatUsage(DailyUsageStats.totalTokens(archive)))
                         .font(.system(size: 30, weight: .semibold)).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.5)
-                    Text("tokens · \(L10n.usageDashboard.scope)")
+                    Text(L10n.usageDashboard.tokensUnit + " · " + L10n.usageDashboard.scope)
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

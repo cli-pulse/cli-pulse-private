@@ -8,9 +8,9 @@ public enum MachineFormat {
     /// "3d 4h" / "4h 12m" / "12m".
     public static func uptime(_ seconds: Int) -> String {
         let d = seconds / 86400, h = (seconds % 86400) / 3600, m = (seconds % 3600) / 60
-        if d > 0 { return "\(d)d \(h)h" }
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
+        if d > 0 { return L10n.machine.uptimeDaysHours(d, h) }
+        if h > 0 { return L10n.machine.uptimeHoursMinutes(h, m) }
+        return L10n.machine.uptimeMinutes(m)
     }
 
     /// Whole-GB string, matching the macOS Machine tab.

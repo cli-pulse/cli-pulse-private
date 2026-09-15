@@ -31,10 +31,7 @@ extension AppUpdater {
         if manifest.arch != host {
             // No x86_64 DMG has ever been published and the embedded helpers
             // are arm64-only — never promise a build that will not exist.
-            let msg = "Automatic updates aren't available for \(host) Macs "
-                + "(updates are published for \(manifest.arch)). Download the "
-                + "latest DMG manually from the releases page, or use the "
-                + "App Store version."
+            let msg = L10n.appUpdater.archUnavailable(host, manifest.arch)
             throw NSError(
                 domain: "AppUpdater",
                 code: 5,

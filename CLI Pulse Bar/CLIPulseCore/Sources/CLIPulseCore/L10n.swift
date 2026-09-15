@@ -240,6 +240,11 @@ public enum L10n {
         public static func keepAwakeEndsIn(_ span: String) -> String { tr("machine.keep_awake_ends_in_fmt", span) }
         public static var commandFailed: String { tr("machine.command_failed") }
         public static var noReadings: String { tr("machine.no_readings") }
+        public static func fanMaxRpm(_ a0: Int) -> String { tr("machine.fan_max_rpm_fmt", a0) }
+        public static func uptimeDaysHours(_ a0: Int, _ a1: Int) -> String { tr("machine.uptime_days_hours_fmt", a0, a1) }
+        public static func uptimeHoursMinutes(_ a0: Int, _ a1: Int) -> String { tr("machine.uptime_hours_minutes_fmt", a0, a1) }
+        public static func uptimeMinutes(_ a0: Int) -> String { tr("machine.uptime_minutes_fmt", a0) }
+        public static func fanMax(_ a0: Int) -> String { tr("machine.fan_max_fmt", a0) }
     }
 
     // MARK: - Dashboard
@@ -609,6 +614,15 @@ public enum L10n {
         public static var previewHeaderClaude: String { tr("sessions.preview_header_claude") }
         public static var tierBadgeRecentActivity: String { tr("sessions.tier_badge_recent_activity") }
         public static var tierBadgeRecent: String { tr("sessions.tier_badge_recent") }
+        public static func rowProcessLabel(_ a0: String) -> String { tr("sessions.row_process_label", a0) }
+        public static var managedSectionHeader: String { tr("sessions.managed_section_header") }
+        public static var diagnosticsInodeHint: String { tr("sessions.diagnostics_inode_hint") }
+        public static var previewEmptyClaude: String { tr("sessions.preview_empty_claude") }
+        public static var previewThinkingClaude: String { tr("sessions.preview_thinking_claude") }
+        public static var previewEmptyCodex: String { tr("sessions.preview_empty_codex") }
+        public static var previewEmptyGemini: String { tr("sessions.preview_empty_gemini") }
+        public static func oauthFloorBlocked(_ a0: String, _ a1: String) -> String { tr("sessions.oauth_floor_blocked", a0, a1) }
+        public static func wrappedAttachFailed(_ a0: String) -> String { tr("sessions.wrapped_attach_failed", a0) }
     }
 
 
@@ -636,6 +650,7 @@ public enum L10n {
         public static var severityWarning: String { tr("alerts.severity_warning") }
         public static func unresolvedCount(_ count: Int) -> String { tr("alerts.unresolved_count", count) }
         public static var resolveAll: String { tr("alerts.resolve_all") }
+        public static func snoozeShort(_ a0: Int) -> String { tr("alerts.snooze_short", a0) }
     }
 
     // MARK: - Settings
@@ -890,6 +905,15 @@ public enum L10n {
         public static var justNow: String { tr("time.just_now") }
         public static var ago: String { tr("time.ago") }
         public static func seconds(_ a0: Int) -> String { tr("time.seconds_fmt", a0) }
+        public static func minutesAgo(_ a0: Int) -> String { tr("time.minutes_ago", a0) }
+        public static func hoursAgo(_ a0: Int) -> String { tr("time.hours_ago", a0) }
+        public static func daysAgo(_ a0: Int) -> String { tr("time.days_ago", a0) }
+        public static var inLessThanMinute: String { tr("time.in_less_than_minute") }
+        public static func inMinutes(_ a0: Int) -> String { tr("time.in_minutes", a0) }
+        public static func inHoursMinutes(_ a0: Int, _ a1: Int) -> String { tr("time.in_hours_minutes", a0, a1) }
+        public static func inHours(_ a0: Int) -> String { tr("time.in_hours", a0) }
+        public static func inDaysHours(_ a0: Int, _ a1: Int) -> String { tr("time.in_days_hours", a0, a1) }
+        public static func inDays(_ a0: Int) -> String { tr("time.in_days", a0) }
     }
 
     // MARK: - Account
@@ -1213,6 +1237,7 @@ public enum L10n {
         public static var macQrExpired: String { tr("remote.mac_qr_expired") }
         public static func savePairingFailed(_ a0: String) -> String { tr("remote.save_pairing_failed", a0) }
         public static var macPairingDeclined: String { tr("remote.mac_pairing_declined") }
+        public static func listenerFailed(_ a0: String) -> String { tr("remote.listener_failed", a0) }
     }
 
     public enum integrations {
@@ -1351,6 +1376,8 @@ public enum L10n {
         // usage scan is empty because the App Store sandbox lacks a folder grant.
         public static var bannerTitle: String { tr("folder_access.banner_title") }
         public static var bannerBody: String { tr("folder_access.banner_body") }
+        public static func panelMessageDirectory(_ a0: String) -> String { tr("folder_access.panel_message_directory", a0) }
+        public static var panelMessageHome: String { tr("folder_access.panel_message_home") }
     }
 
     // MARK: - Provider Configuration
@@ -1420,6 +1447,7 @@ public enum L10n {
         public static var prepareCredentialsFailed: String { tr("provider_config.prepare_credentials_failed") }
         public static var saveCredentialsFailed: String { tr("provider_config.save_credentials_failed") }
         public static var saveConfigurationFailed: String { tr("provider_config.save_configuration_failed") }
+        public static var migrationFailed: String { tr("provider_config.migration_failed") }
     }
 
     // MARK: - Onboarding Wizard
@@ -1605,6 +1633,10 @@ public enum L10n {
         public static func commitsCount(_ count: Int) -> String { tr("yield.commits_count", count) }
         public static func commitsCountDecimal(_ count: Double) -> String { tr("yield.commits_count_decimal", count) }
         public static func ambiguousCount(_ count: Int) -> String { tr("yield.ambiguous_count", count) }
+        public static var rangeLast7Days: String { tr("yield.range_last_7_days") }
+        public static var rangeLast30Days: String { tr("yield.range_last_30_days") }
+        public static var rangeLast90Days: String { tr("yield.range_last_90_days") }
+        public static func costPerCommit(_ a0: String) -> String { tr("yield.cost_per_commit", a0) }
     }
 
     // MARK: - Menu Bar
@@ -1645,6 +1677,9 @@ public enum L10n {
         public static var yourCode: String { tr("pairing.your_code") }
         public static var copy: String { tr("pairing.copy") }
         public static var notConnected: String { tr("pairing.not_connected") }
+        public static func errorHttpStatus(_ a0: Int, _ a1: String, _ a2: String) -> String { tr("pairing.error_http_status", a0, a1, a2) }
+        public static func errorParseFailed(_ a0: String) -> String { tr("pairing.error_parse_failed", a0) }
+        public static func errorInvalidURL(_ a0: String) -> String { tr("pairing.error_invalid_url", a0) }
     }
 
     // MARK: - Watch
@@ -1762,6 +1797,20 @@ public enum L10n {
         public static var recheck: String { tr("helper.recheck") }
         public static var uninstall: String { tr("helper.uninstall") }
         public static var updateButton: String { tr("helper.update_button") }
+        public static func unreachableDetail(_ a0: String) -> String { tr("helper.unreachable_detail", a0) }
+        public static func uninstallerRevealManual(_ a0: String) -> String { tr("helper.uninstaller_reveal_manual", a0) }
+        public static func pkgDownloadHttp(_ a0: Int) -> String { tr("helper.pkg_download_http", a0) }
+        public static func pkgShaMismatch(_ a0: String, _ a1: String) -> String { tr("helper.pkg_sha_mismatch", a0, a1) }
+        public static func notReadyTimeout(_ a0: Int) -> String { tr("helper.not_ready_timeout", a0) }
+        public static func archMismatch(_ a0: String, _ a1: String, _ a2: String) -> String { tr("helper.arch_mismatch", a0, a1, a2) }
+        public static func pkgVerifyFailed(_ a0: String) -> String { tr("helper.pkg_verify_failed", a0) }
+        public static func pkgUrlInsecure(_ a0: String) -> String { tr("helper.pkg_url_insecure", a0) }
+        public static func pkgUrlNotAllowed(_ a0: String) -> String { tr("helper.pkg_url_not_allowed", a0) }
+        public static func pkgVersionMalformed(_ a0: String) -> String { tr("helper.pkg_version_malformed", a0) }
+        public static func pkgDowngradeBlocked(_ a0: String, _ a1: String) -> String { tr("helper.pkg_downgrade_blocked", a0, a1) }
+        public static func pkgNotSigned(_ a0: String) -> String { tr("helper.pkg_not_signed", a0) }
+        public static func pkgNotNotarized(_ a0: String) -> String { tr("helper.pkg_not_notarized", a0) }
+        public static func pkgTeamMismatch(_ a0: String) -> String { tr("helper.pkg_team_mismatch", a0) }
     }
 
     public enum appUpdater {
@@ -1783,6 +1832,31 @@ public enum L10n {
         public static var installInstructions: String { tr("app_updater.install_instructions") }
         public static var downloadUpdate: String { tr("app_updater.download_update") }
         public static var installUpdateQuits: String { tr("app_updater.install_update_quits") }
+        public static func errorManifestHttp(_ a0: Int) -> String { tr("app_updater.error_manifest_http", a0) }
+        public static func verifySizeOutOfRange(_ a0: Int) -> String { tr("app_updater.verify_size_out_of_range", a0) }
+        public static func verifySizeMismatch(_ a0: Int, _ a1: Int) -> String { tr("app_updater.verify_size_mismatch", a0, a1) }
+        public static func verifyToolingUnavailable(_ a0: String) -> String { tr("app_updater.verify_tooling_unavailable", a0) }
+        public static func errorServerUnreachable(_ a0: String) -> String { tr("app_updater.error_server_unreachable", a0) }
+        public static var errorNotVerified: String { tr("app_updater.error_not_verified") }
+        public static func errorInvalidManifestUrl(_ a0: String) -> String { tr("app_updater.error_invalid_manifest_url", a0) }
+        public static func errorDmgHttp(_ a0: Int) -> String { tr("app_updater.error_dmg_http", a0) }
+        public static func errorDmgShaMismatch(_ a0: String, _ a1: String) -> String { tr("app_updater.error_dmg_sha_mismatch", a0, a1) }
+        public static func archUnavailable(_ a0: String, _ a1: String) -> String { tr("app_updater.arch_unavailable", a0, a1) }
+        public static func verifyFailed(_ a0: String) -> String { tr("app_updater.verify_failed", a0) }
+        public static func verifyInsecureScheme(_ a0: String) -> String { tr("app_updater.verify_insecure_scheme", a0) }
+        public static func verifyUrlNotAllowed(_ a0: String) -> String { tr("app_updater.verify_url_not_allowed", a0) }
+        public static func verifyDmgNotSigned(_ a0: String) -> String { tr("app_updater.verify_dmg_not_signed", a0) }
+        public static func verifyDmgNotNotarized(_ a0: String) -> String { tr("app_updater.verify_dmg_not_notarized", a0) }
+        public static func verifyMountFailed(_ a0: String) -> String { tr("app_updater.verify_mount_failed", a0) }
+        public static var verifyNoApp: String { tr("app_updater.verify_no_app") }
+        public static func verifyMultipleApps(_ a0: Int) -> String { tr("app_updater.verify_multiple_apps", a0) }
+        public static func verifySymlink(_ a0: String) -> String { tr("app_updater.verify_symlink", a0) }
+        public static func verifyAppNotSigned(_ a0: String) -> String { tr("app_updater.verify_app_not_signed", a0) }
+        public static func verifyAppNotNotarized(_ a0: String) -> String { tr("app_updater.verify_app_not_notarized", a0) }
+        public static var verifyInfoPlistUnreadable: String { tr("app_updater.verify_info_plist_unreadable") }
+        public static func verifyVersionMismatch(_ a0: String, _ a1: String) -> String { tr("app_updater.verify_version_mismatch", a0, a1) }
+        public static func verifyBuildMismatch(_ a0: String, _ a1: String) -> String { tr("app_updater.verify_build_mismatch", a0, a1) }
+        public static func verifyNotUpgrade(_ a0: String, _ a1: String) -> String { tr("app_updater.verify_not_upgrade", a0, a1) }
     }
 
     public enum terminal {

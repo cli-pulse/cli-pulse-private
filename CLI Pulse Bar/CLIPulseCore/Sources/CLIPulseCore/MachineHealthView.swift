@@ -233,7 +233,7 @@ public struct MachineHealthView: View {
             }
             if snap.can("fans"), let rpm = snap.fanRpm {
                 MetricCard(title: L10n.machine.fan, value: "\(rpm)",
-                           subtitle: snap.fanMaxRpm.map { "max \($0) rpm" }, icon: "fanblades.fill", color: .teal)
+                           subtitle: snap.fanMaxRpm.map { L10n.machine.fanMaxRpm($0) }, icon: "fanblades.fill", color: .teal)
             }
         }
     }
@@ -360,9 +360,9 @@ public struct MachineHealthView: View {
 
     private func formatUptime(_ seconds: Int) -> String {
         let d = seconds / 86400, h = (seconds % 86400) / 3600, m = (seconds % 3600) / 60
-        if d > 0 { return "\(d)d \(h)h" }
-        if h > 0 { return "\(h)h \(m)m" }
-        return "\(m)m"
+        if d > 0 { return L10n.machine.uptimeDaysHours(d, h) }
+        if h > 0 { return L10n.machine.uptimeHoursMinutes(h, m) }
+        return L10n.machine.uptimeMinutes(m)
     }
     private func gb(_ bytes: Int) -> String {
         String(format: "%.0f GB", Double(bytes) / 1_073_741_824.0)

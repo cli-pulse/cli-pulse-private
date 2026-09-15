@@ -48,18 +48,18 @@ public enum HelperPkgVerifierError: Error, LocalizedError, Equatable {
     public var errorDescription: String? {
         let detail: String
         switch self {
-        case .urlInsecureScheme(let s): detail = "download URL is not https (\(s))"
-        case .urlNotAllowed(let s): detail = "download URL is not an official helper release (\(s))"
-        case .versionMalformed(let s): detail = "declared version is not a plain numeric version (\(s))"
-        case .sizeOutOfRange(let n): detail = "declared size out of range (\(n))"
-        case .sizeMismatch(let e, let a): detail = "size mismatch (expected \(e), got \(a))"
-        case .downgradeBlocked(let i, let c): detail = "refusing a downgrade (installed \(i), offered \(c))"
-        case .signatureRejected(let s): detail = "package is not signed by CLI Pulse (\(s))"
-        case .notarizationRejected(let s): detail = "package is not notarized (\(s))"
-        case .teamMismatch(let f): detail = "package signed by an unexpected team (\(f))"
-        case .toolingUnavailable(let s): detail = "verification tool unavailable (\(s))"
+        case .urlInsecureScheme(let s): detail = L10n.helper.pkgUrlInsecure(s)
+        case .urlNotAllowed(let s): detail = L10n.helper.pkgUrlNotAllowed(s)
+        case .versionMalformed(let s): detail = L10n.helper.pkgVersionMalformed(s)
+        case .sizeOutOfRange(let n): detail = L10n.appUpdater.verifySizeOutOfRange(n)
+        case .sizeMismatch(let e, let a): detail = L10n.appUpdater.verifySizeMismatch(e, a)
+        case .downgradeBlocked(let i, let c): detail = L10n.helper.pkgDowngradeBlocked(i, c)
+        case .signatureRejected(let s): detail = L10n.helper.pkgNotSigned(s)
+        case .notarizationRejected(let s): detail = L10n.helper.pkgNotNotarized(s)
+        case .teamMismatch(let f): detail = L10n.helper.pkgTeamMismatch(f)
+        case .toolingUnavailable(let s): detail = L10n.appUpdater.verifyToolingUnavailable(s)
         }
-        return "Couldn't verify the Companion CLI package: \(detail)."
+        return L10n.helper.pkgVerifyFailed(detail)
     }
 }
 

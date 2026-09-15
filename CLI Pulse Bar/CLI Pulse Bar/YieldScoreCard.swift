@@ -149,7 +149,7 @@ struct YieldScoreCard: View {
 
     private func yieldLine(_ s: YieldScoreSummary) -> String {
         guard let cpc = s.costPerCommit else { return "—" }
-        return "\(CostFormatter.format(cpc)) / commit"
+        return L10n.yield.costPerCommit(CostFormatter.format(cpc))
     }
 
     /// Star the best yield (lowest cost/commit), warn at >2× the median.
@@ -205,7 +205,7 @@ struct YieldScoreDetailView: View {
                 Text(s.provider).font(.headline)
                 Spacer()
                 if let cpc = s.costPerCommit {
-                    Text("\(CostFormatter.format(cpc)) / commit")
+                    Text(L10n.yield.costPerCommit(CostFormatter.format(cpc)))
                         .font(.system(.body, design: .monospaced))
                         .foregroundStyle(.purple)
                 } else {

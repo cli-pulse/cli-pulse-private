@@ -140,7 +140,7 @@ struct LockScreenWidgetView: View {
         let percent = topProvider.map { Int($0.usagePercent * 100) } ?? 0
         let name = topProvider?.name ?? L10n.auth.title
 
-        return Text("\(name) \(percent)% • \(entry.data.activeSessions) sessions")
+        return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.data.activeSessions))")
     }
 }
 

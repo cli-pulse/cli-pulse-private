@@ -164,12 +164,12 @@ struct iOSSettingsTab: View {
                             get: { state.refreshInterval },
                             set: { state.updateRefreshInterval($0) }
                         )) {
-                            Text("30s").tag(30)
-                            Text("1m").tag(60)
-                            Text("2m").tag(120)
-                            Text("5m").tag(300)
-                            Text("10m").tag(600)
-                            Text("30m").tag(1800)
+                            Text(L10n.time.seconds(30)).tag(30)
+                            Text(L10n.machine.minutes(1)).tag(60)
+                            Text(L10n.machine.minutes(2)).tag(120)
+                            Text(L10n.machine.minutes(5)).tag(300)
+                            Text(L10n.machine.minutes(10)).tag(600)
+                            Text(L10n.machine.minutes(30)).tag(1800)
                         }
                     }
 

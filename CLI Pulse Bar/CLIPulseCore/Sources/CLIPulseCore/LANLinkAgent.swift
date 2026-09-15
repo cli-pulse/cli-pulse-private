@@ -298,7 +298,7 @@ public final class LANLinkAgent: ObservableObject {
                     }
                     agentLog.error("steady listener failed: \(String(describing: e))")
                     self.directAddress = nil
-                    self.state = .failed("\(e)")
+                    self.state = .failed(L10n.remote.listenerFailed("\(e)"))
                 case .cancelled:
                     if case .listening = self.state { self.state = .off }
                 default: break
@@ -429,7 +429,7 @@ public final class LANLinkAgent: ObservableObject {
             listener = try NWListener(using: try LANTransportSecurity.parameters(
                 presharedKeys: [try LANPairing.pairingPSK(for: payload)]))
         } catch {
-            pairing = .failed("\(error)")
+            pairing = .failed(L10n.remote.listenerFailed("\(error)"))
             return
         }
         // A distinct name: two services with the same name and type make
@@ -446,7 +446,7 @@ public final class LANLinkAgent: ObservableObject {
             ]))
         listener.stateUpdateHandler = { [weak self] st in
             if case .failed(let e) = st {
-                Task { @MainActor [weak self] in self?.pairing = .failed("\(e)") }
+                Task { @MainActor [weak self] in self?.pairing = .failed(L10n.remote.listenerFailed("\(e)")) }
             }
         }
         listener.newConnectionHandler = { [weak self] conn in

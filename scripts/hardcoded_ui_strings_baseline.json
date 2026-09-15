@@ -1,0 +1,1313 @@
+{
+ "_about": "Literals check_hardcoded_ui_strings.py allows to stay English, each with why. Generated 2026-09-16 from a two-round classify+adversarial-verify sweep. NEEDS_JUDGMENT entries are real user-visible English deferred to a follow-up because the string is also data (persisted/synced/compared) or needs an app string catalog — the prefix after the colon names the group. Shrink this file; never grow it without a reason.",
+ "entries": [
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Claude\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name in CLIPulseProviderName.displayName. It is also a match token: matches(_:) at line 88 compares it case-insensitively against cached provider names. The enum is dead code; grep across the worktree finds only its declaration at line 66."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Codex\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name, also compared in matches(_:) at line 88. The enum is unreferenced."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Cursor\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name, also compared in matches(_:) at line 88. The enum is unreferenced."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Gemini\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name, also compared in matches(_:) at line 88. The enum is unreferenced."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Ollama\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name, also compared in matches(_:) at line 88. The enum is unreferenced."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"Windsurf\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name, also compared in matches(_:) at line 88. The enum is unreferenced."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
+   "literal": "\"opencode\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Enum raw value (case openCode = \"opencode\"). It is an identifier and is never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/GetProviderQuotaIntent.swift",
+   "literal": "\"Provider\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: App Intents metadata: AppEnum.typeDisplayRepresentation is a compile-time LocalizedStringResource and needs a main-bundle string catalog."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/GetStatusIntent.swift",
+   "literal": "\"less than one cent\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Returned by formatCost -> embedded in `spoken` (:25) -> IntentDialog(stringLiteral:) at :36 and the return value at :37, so Siri speaks it. The file imports only AppIntents and Foundation. The source comment (:50-52) says it runs in a separate extension, but the pbxproj compil…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMainView.swift",
+   "literal": "\"CLI Pulse\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Product name used as the iPad sidebar navigationTitle. Identical in all locales."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
+   "literal": "\"Apple\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Brand name, passed as the argument to the localized L10n.account.unlinkWithProvider / unlinkMessage (lines 739, 748)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
+   "literal": "\"Email\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Unreachable, verified. providerLabel is only called with pendingUnlink.provider (lines 739, 748). pendingUnlink is only assigned non-nil at line 792, from linkedIdentity(for: provider.id) (line 926-927 matches $0.provider == provider), and providerOptions holds only apple/goog…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
+   "literal": "\"GitHub\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Brand name, used as the argument to the localized unlink strings."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
+   "literal": "\"Google\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Brand name, used as the argument to the localized unlink strings."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/CLIPulseBarApp.swift",
+   "literal": "\"CLI Pulse\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Product name, used as the VoiceOver label."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/CLIPulseBarApp.swift",
+   "literal": "\"CLI Pulse, \\(label)\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Product name plus the computed menu-bar value. There are no translatable words (round-1 decision)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/MenuBarView.swift",
+   "literal": "\"English\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Language endonym in the footer language picker (MenuBarView.swift:639-657). It must read the same in every UI locale."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/PairingSection.swift",
+   "literal": "\"python3 /tmp/cli_pulse_helper.py daemon\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: The same shell command, used as the clipboard payload."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "literal": "\"checkmark.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "literal": "\"exclamationmark.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "literal": "\"magnifyingglass.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon for Label(statusLabel, systemImage:). statusLabel is already localized."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "literal": "\"minus.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderConfigEditor.swift",
+   "literal": "\"session=abc123; ...\"",
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: The same cookie-header syntax example, used as the TextField placeholder in the non-macOS branch. It is protocol syntax, not copy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderConfigEditor.swift",
+   "literal": "\"sk-...\"",
+   "count": 3,
+   "reason": "KEEP_PROPER_NOUN: The same API-key prefix placeholder, in the non-macOS SecureField."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
+   "literal": "\"exclamationmark.triangle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
+   "literal": "\"info.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
+   "literal": "\"xmark.octagon\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Claude\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider/CLI product name in the New Local menu (Label(\"Claude\", systemImage: \"sparkles\")). Brand names stay untranslated."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Gemini\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider/CLI product name in the New Local menu."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Show on my phone\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: wrappedCloudShareToggle is only called under `if RemoteSessionPlane.isEnabled, ...` (SessionsTab.swift:545). RemoteSessionPlane.isEnabled is `public static let isEnabled = false` (CLIPulseCore/Sources/CLIPulseCore/RemoteSessionPlane.swift:44), so this is dead UI of the retired…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Widgets/WatchComplicationWidget.swift",
+   "literal": "\"CLI Pulse\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Product name header in the rectangular complication."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+   "literal": "\"bell.badge\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+   "literal": "\"gauge.with.dots.needle.33percent\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+   "literal": "\"pawprint.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
+   "literal": "\"waveform.path.ecg\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by menuBarIcon (default case)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"com.clipulse.app\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Keychain service identifier from keychainService. Its only consumer is KeychainHelper.swift:42 (checked). It is persisted, so changing it would orphan existing Keychain items."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"com.clipulse.app.qa\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QA Keychain service identifier, consumed by KeychainHelper.swift:42. It is never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"com.clipulse.app.quarantine\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Quarantine Keychain service identifier, consumed by KeychainHelper.swift:42. It is never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"group.yyh.CLI-Pulse\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Keychain access group / app-group identifier from keychainAccessGroup, consumed by KeychainHelper.swift:53 and HelperConfig.swift:307 (checked). It must match the entitlements."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"group.yyh.CLI-Pulse.qa\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QA Keychain access group identifier, consumed by KeychainHelper.swift:53 and HelperConfig.swift:307. It is never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
+   "literal": "\"group.yyh.CLI-Pulse.quarantine\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Quarantine Keychain access group identifier, consumed by KeychainHelper.swift:53 and HelperConfig.swift:307. It is never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
+   "literal": "\"empty\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Stable telemetry token. Not rendered."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
+   "literal": "\"not_ready_\\(reason.rawValue)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Stable telemetry token built from a rawValue. Not rendered."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
+   "literal": "\"ok\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Compared against the token returned by HelperAPIClient.classifyCollectorOutcome (line 244). A comparison string."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Resets soon\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: interval <= 0 implies the ISO parse succeeded, so resetTime is non-nil and mapSnapshot (GeminiCollector.swift:732) prefers the ISO string."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "\"Zed Business\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Zed plan brand name, stored as plan_type (see line 287)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "\"Zed Free\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Zed plan brand name stored as plan_type. plan_type is synced to the server (APIClient/HelperIPC), used as a SubscriptionPricing lookup key, and compared as raw text, so it must stay a stable raw value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "\"Zed Pro Trial\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Zed plan brand name, stored as plan_type (see line 287)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "\"Zed Pro\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Zed plan brand name, stored as plan_type (see line 287)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "\"Zed Student\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Zed plan brand name, stored as plan_type (see line 287)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
+   "literal": "\"arrow.triangle.branch\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in CategoryBadge.icon. Visible text uses L10n.badge.aggregator."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
+   "literal": "\"checkmark.shield.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon. Visible text uses L10n.badge.high."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
+   "literal": "\"questionmark.diamond\"",
+   "count": 2,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon (default case)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
+   "literal": "\"shield.lefthalf.filled\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+   "literal": "\"CLI Pulse webhook test\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: OTHER: title of the test AlertRecord that testWebhook() (DataRefreshManager.swift:2789; triggered from GeneralSection.swift:165 and iOSSettingsTab.swift:342) sends via api.sendWebhook to the send-webhook edge function. It is never shown in the app. The function wraps it in Eng…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
+   "literal": "\"If you see this, your webhook integration is working correctly.\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: OTHER: message body of the same test webhook alert (see :2794). It is delivered only inside English server-side Slack/Discord chrome and never rendered in-app. Decide together with webhook localization as a whole."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Alert fired\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem title; fixture-only (live recent_activity is always [])."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Codex error rate spiked: 3 errors across 4 sessions\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Codex estimated cost today reached $1.03, exceeding threshold $0.80\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real cost-spike message (AlertGenerator.swift:216) is English, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Codex quota critically low\"",
+   "count": 2,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle; fixture-only, mirrors the English demo alert title."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Cost spike: Codex\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real equivalent AlertGenerator.swift:215 \"Unusual cost spike detected\" is English, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Dashboard metrics pass on MacBook Pro\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle -> PulseHomeView.swift; fixture-only (live recent_activity is always [])."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Device offline: build-box\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals (AlertGenerator.swift), not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Error rate spike: Codex\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Only 7.6% remaining (38,000 of 500,000 tokens)\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real path (AlertGenerator.swift:284) is English, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Session 'Session error triage' encountered 3 errors on build-box\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Session error triage on build-box\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle; fixture-only sample data."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Session failed\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem title; fixture-only."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Session failed: error triage\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"Session started\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem -> CLI Pulse Bar Watch/PulseHomeView.swift:271-273. No live producer: APIClient.swift:1094 and DataRefreshManager.swift:1011 both set recent_activity: [], so fixture-only."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
+   "literal": "\"build-box has not synced for over 60 minutes\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"notRegistered\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: The same Verdict.description as :103, and a Swift case identifier. It reaches only logs and the unrendered helperAgentStatus."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"running\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Compared against launchd's `state = ` value parsed from `launchctl print` output. Translating it would break the check."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",
+   "literal": "\"Cannot resolve Contents/Library/LaunchAgents path from the running executable. Bundle layout is unexpected — running from a non-standard location.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: HelperLifecycleError.bundleLayoutBroken is never thrown or referenced outside this file (grep across all targets, excluding .build). errorDescription is dead code and never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANLinkAgent.swift",
+   "literal": "\"Remote control is not turned on in this build.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Returned only when isAvailable() is false, and SettingsTab.swift:274 hides LANRemoteControlSection in exactly that case, so Text(reason) at LANRemoteControlSection.swift:33 cannot show it. start() also stores it in .unavailable(reason:), but statusBadge (LANRemoteControlSectio…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANLinkAgent.swift",
+   "literal": "\"Remote control needs the Developer ID build of CLI Pulse — session control is not available in the App Store build.\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Rendered only by LANRemoteControlSection.swift:32-33. SettingsTab.swift:274 renders that section only when RemoteControlFeature.isAvailable() is true. On MAS, shippedDefault is false on macOS (RemoteControlFeature.swift:65), and recordRemoteAllowance is only called from AppUpd…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+   "literal": "\"\\(latencyMs) ms\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Latency readout in the terminal status bar. \"ms\" is an SI unit symbol, and shipped locales keep \"%d ms\" verbatim."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",
+   "literal": "\"\\(Int(min(max(fanSliderRPM, minR), maxR))) rpm\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Number plus the unit symbol rpm, with no words."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",
+   "literal": "\"rpm\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Unit symbol after the live per-fan RPM number in fanBoostCard. It is kept like the sibling unit symbols W, °C, GB and MB in this file."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
+   "literal": "\"bolt.horizontal.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only in Image(systemName:)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
+   "literal": "\"lock.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only in Image(systemName:)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
+   "literal": "\"puzzlepiece.extension\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only by Image(systemName: unavailability.iconName) at MachineHealthView.swift:1025. The message next to it is already localized (L10n.machine.*)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"a.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.left.arrow.right.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.right.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.triangle.branch\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.triangle.swap\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.triangle.turn.up.right.diamond\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"arrow.up.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"bolt.horizontal.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"brain.head.profile\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"c.square.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"chart.bar\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"chevron.left.forwardslash.chevron.right\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"cursorarrow.rays\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"k.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"magnifyingglass.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"moon.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"plus.magnifyingglass\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"text.bubble\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"wand.and.stars\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
+   "literal": "\"waveform.path\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Bashful Blush\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_shy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Belly Laugh\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_laugh."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Belly-Up Nap\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_nap."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Big Stretch\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_stretch."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Blow Kiss\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_kiss."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Bored Sigh\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_bored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Cheeky Grin\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_grin."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Cheer Yay\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_cheer."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Chill Lean\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_chill."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Chilly Shiver\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_cold."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Clap Clap\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_clap."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Deadpan Chonk\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_chonk."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Deep Thinker\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_think."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Derpy Blep\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_derp."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Dizzy Spiral\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_dizzy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Dramatic Flop\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_flop."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Fired Up\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_fierce."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Friendly Wave\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_wave."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Groovy Dance\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_dance."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Head-Tilt Huh?\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_huh."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Headclutch Wail\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_wail."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Heart-Eyes\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_love."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Hissy Fit\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_angry."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Hmph Huff\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_huff."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Hungry Drool\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_drool."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Innocent Whistle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_whistle."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Keyboard-Smash\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_smash."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Marathon Loaf\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Only occurrence of `punName` in source (repo + parent dir, excluding build dSYMs) is its definition at PetForm.swift:106; no call sites, no keypath use. UI renders L10n.pet.formName -> tr(\"pet.form_loaf\"), present in all 6 locales."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Melty Puddle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_melt."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Middle Manager\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_boss."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Mighty Flex\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_flex."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Mlem Lick\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_mlem."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Nervous Wreck\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_nervous."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Nom Nom\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_nom."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Ouch Wince\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_ouch."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Peace Out\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_peace."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Phew Relief\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_phew."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Pleading Kitten\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_plead."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Point Ahead\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_point."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Polite Flat-Smile\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_polite."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Pop-Mouth\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_pop."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Proud Puff\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_proud."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Queasy Ugh\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_queasy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Rolly Giggle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_roll."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Self Hug\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_hug."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sheepish Oops\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_oops."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Shrug Dunno\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_shrug."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Shush Secret\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_shush."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sing Song\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_sing."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Skeptical Squint\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_skept."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sleepy Yawn\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_sleepy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Smug Duchess\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_smug."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sneaky Peek\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_peek."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sniff Sniff\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_sniff."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Spooked Floof\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_floof."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Starry Eyes\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_star."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Stretched Long\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_long."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sulky Pout\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_sulk."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Sweaty Pant\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_hot."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Ta-Da\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_tada."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Teary Waterworks\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_weepy."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Tiny Sneeze\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_sneeze."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Wide-Eyed Gasp\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_gasp."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Winky Wink\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_wink."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Wishful Pray\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_pray."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Zen Meditate\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_zen."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
+   "literal": "\"Zoomies Dash\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Dead punName (no call sites); UI uses L10n.pet.formName -> pet.form_zoomies."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
+   "literal": "\"Debug: Reset collection\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Inside #if DEBUG && os(macOS) (:325-345)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
+   "literal": "\"Debug: Unlock all cats\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Inside #if DEBUG && os(macOS) (:325-345). Not compiled into release builds."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderAccountMigration.swift",
+   "literal": "\"The migrated provider configuration could not be encoded.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Swallowed at AppState.swift:2189, as with line 27."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderAccountMigration.swift",
+   "literal": "\"The migrated provider configuration could not be verified.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Swallowed at AppState.swift:2189, as with line 27."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderAccountMigration.swift",
+   "literal": "\"The stored provider configuration could not be decoded.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: The only non-test caller, AppState.swift:2181-2190, catches every error and sets lastError to a fixed string, dropping the errorDescription."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderDisplay.swift",
+   "literal": "\"Claude\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name and the palette key for PulseTheme.providerColor (line 49)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderDisplay.swift",
+   "literal": "\"Codex\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name. It is also the palette key that PulseTheme.providerColor uses (line 49), so it must stay the canonical English name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderDisplay.swift",
+   "literal": "\"Gemini\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider brand name and the palette key for PulseTheme.providerColor (line 49)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderDisplay.swift",
+   "literal": "\"chevron.left.slash.chevron.right\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name, passed to Image(systemName:) at SessionsTab.swift:1941."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
+   "literal": "\"checkmark.circle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by Status.iconName and used only in Image(systemName:) (RemoteControlHealthView.swift:143/153). Identifier, never rendered as text."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
+   "literal": "\"exclamationmark.triangle.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
+   "literal": "\"minus.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
+   "literal": "\"xmark.octagon.fill\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"groqstatus.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.augmentcode.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.claude.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname returned by statusPageHost(for:). It is only used to build URLs: statusPageURL (line 298), statusEndpoint (line 304), summaryEndpoint (line 312) and hasStatusPage (line 318). A repo-wide grep finds no UI that shows the host as text. The only UI use is Link(destination…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.codeium.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.cursor.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.deepgram.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.elevenlabs.io\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.moonshot.cn\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.openai.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"status.warp.dev\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
+   "literal": "\"www.githubstatus.com\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"approval already resolved\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch (LocalSessionControlState.swift:914) when a second device or click resolved the approval first. It is also the wire message and an os_log value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"approval capability invalid\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Verified against the helpers. The Swift helper emits it only in handleHookIngress/authenticateHook (HelperSwift LocalSessionServer.swift:1144-1145). The Python helper emits it only in authenticate_hook (helper/local_approvals.py:296-378). Both are hook-subprocess ingress paths…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"approval expired\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch-all (LocalSessionControlState.swift:914). That catch does not special-case expiry, although the enum doc says the UI should just drop the row. It is also the wire…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"approval not allowed for this session\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch (LocalSessionControlState.swift:914). It is also the wire message and an os_log value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"approval not found\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch-all (LocalSessionControlState.swift:914 `localHelperError = String(describing: error)`, not special-cased). It is also the wire message and an os_log value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"could not attach to the wrapped session\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. A thrown .attachFailed lands in attachWrappedSessionViaHelper's catch (LocalSessionControlState.swift:1199-1200 `localHelperError = String(describing: error)`) and renders at SessionsTab.swift:597. It is also an os_log value and the wire…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"disconnected\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error) when a local RPC connection drops (frame_truncated also maps here, line 563). It is also an os_log value. TerminalSessionAdapter.swift:105 stores it in .failed(…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"helper not running\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: SessionControlError.description, used for more than one thing. It does reach the macOS UI: LocalSessionControlState.swift:294/600/630/653/914/1006/1030/1108/1139/1159/1200 `localHelperError = String(describing: error)` -> SessionsTab.swift:325-326 localHelperErrorBanner(messag…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"internal error: \\(detail)\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error). The detail is a raw helper message or '<code>: <message>' (line 583). It should become a generic localized message at the display boundary. Missed by hints."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"invalid response: \\(detail)\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error). The enum doc (lines 434-436) says the detail is for logs and the UI should show a generic 'couldn't reach helper' message, which argues for a display-side gene…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"local control disabled\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner when start/send/toggle runs with the helper gate off (LocalSessionControlState.swift:294/600/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value. The phone alr…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"local session control unavailable in this runtime\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Thrown only when !runtimeEnvironment.allowsLocalSessionControlClientAccess (LocalSessionControlClient.swift:322/385/821/1190/1250). That gate is true whenever channel == .production and the bundle id is production or the helper (CLIPulseRuntimeEnvironment.swift:186-190), so it…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"not implemented\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner, for example send_input against a helper that lacks the method (LocalSessionControlState.swift:653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"process is protected\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: The display text is already localized at MachineHealthView.swift:759/810 (L10n.machine.killErrProtected / suspendErrProtected), and the phone uses LANRemoteFailureText.swift:114. The description is never rendered."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"process not found\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Verified. The only callers of kill/suspend/resume are MachineHealthView.swift:729/771/794. Their errors go through killErrorMessage (:756-765) and suspendErrorMessage (:806-815), which map .processNotFound to L10n.machine.killErrNotFound / suspendErrNotFound and never render d…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"process owned by another user\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: The display text is already localized at MachineHealthView.swift:760/811 (L10n.machine.killErrNotPermitted / suspendErrNotPermitted). The description is never rendered."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"session not controllable from here\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner on stop/send against a detected-only row (LocalSessionControlState.swift:630/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"session not found\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner on stop/send against a stale id (LocalSessionControlState.swift:630/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value. RemoteTerminalFirstPaintTests.swift:14…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"spawn failed: \\(detail)\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521, and the one users are most likely to see. A failed managed start sets `localHelperError = String(describing: error)` (LocalSessionControlState.swift:600), which renders at SessionsTab.swift:597. `detail` is helper-supplied English. Sessio…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"timeout\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error) on any local RPC that times out, including hello (LocalSessionControlState.swift:138). It is also an os_log value. Missed by hints."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"too many pending approvals\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Verified. approval_limit_reached is emitted only from createPending: HelperSwift LocalSessionServer.swift:1184-1185, ApprovalRegistry.swift:373/377, and Python local_approvals.py:464 in create_pending. That is the hook_create_approval ingress used by the hook subprocess, so th…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"too many process actions\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: The display text is already localized at MachineHealthView.swift:762/813 (L10n.machine.killErrRateLimited / suspendErrRateLimited), and the phone uses LANRemoteFailureText.swift:116. rate_limited comes only from the machine-action RPCs."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"unauthenticated\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Case labels in the SessionControlErrorMapping switch (lines 555-582: version_mismatch, not_implemented, local_control_off, internal, bad_request, unknown_method, frame_too_large, frame_truncated, session_not_found, not_controllable, approval_*, process_*, rate_limited, attach_…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
+   "literal": "\"version mismatch\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches SessionsTab.swift:597 Text(message) through localHelperError (the hello catch at LocalSessionControlState.swift:138, plus the start/stop/send/approve/hook catches). It is also the wire message at LANLinkAgentSession.swift:467 a…"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift",
+   "literal": "\"StoreKit is unavailable in this runtime environment\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Thrown only when SubscriptionBootstrapPolicy.resolve disallows StoreKit (runtime capabilities without allowsStoreKitBootstrap: QA/quarantine runtimes)."
+  }
+ ]
+}

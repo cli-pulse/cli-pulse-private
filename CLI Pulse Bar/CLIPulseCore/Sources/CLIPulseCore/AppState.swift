@@ -2233,7 +2233,7 @@ public final class AppState: ObservableObject {
             }
             providerConfigs = migration.configs
         } catch {
-            lastError = "Provider configuration migration failed. Existing data was preserved."
+            lastError = L10n.providerConfig.migrationFailed
             return
         }
 

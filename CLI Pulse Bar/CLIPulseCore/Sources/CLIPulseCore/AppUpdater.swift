@@ -178,7 +178,7 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
             manifest = try await fetchManifest()
         } catch {
             appUpdaterLog.warning("manifest fetch failed: \(error.localizedDescription, privacy: .public)")
-            state = .error("Couldn't reach updates server: \(error.localizedDescription)")
+            state = .error(L10n.appUpdater.errorServerUnreachable(error.localizedDescription))
             lastChecked = Date()
             return
         }
@@ -261,7 +261,7 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         guard case .readyToInstall = state, let mount = verifiedMount else {
             appUpdaterLog.warning("install() called without a verified mount: \(String(describing: self.state))")
             // Fail safe: never present an unverified artifact for install.
-            state = .error("Update not verified — please re-download.")
+            state = .error(L10n.appUpdater.errorNotVerified)
             return
         }
         appUpdaterLog.info("revealing verified update volume and quitting for user drag-replace")
@@ -309,7 +309,7 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
             throw NSError(
                 domain: "AppUpdater",
                 code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Manifest fetch HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.appUpdater.errorManifestHttp((response as? HTTPURLResponse)?.statusCode ?? -1)]
             )
         }
         let manifest = try JSONDecoder().decode(Manifest.self, from: data)
@@ -334,14 +334,14 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         guard let url = URL(string: manifest.url) else {
             throw NSError(
                 domain: "AppUpdater", code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "Invalid manifest URL: \(manifest.url)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.appUpdater.errorInvalidManifestUrl(manifest.url)]
             )
         }
         let (tempURL, response) = try await urlSession.download(from: url)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw NSError(
                 domain: "AppUpdater", code: 3,
-                userInfo: [NSLocalizedDescriptionKey: "DMG download HTTP \((response as? HTTPURLResponse)?.statusCode ?? -1)"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.appUpdater.errorDmgHttp((response as? HTTPURLResponse)?.statusCode ?? -1)]
             )
         }
         // Download into a fresh, private (0700) per-update directory rather than a
@@ -367,7 +367,7 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
             try? FileManager.default.removeItem(at: dir)
             throw NSError(
                 domain: "AppUpdater", code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "DMG SHA-256 mismatch (expected \(manifest.sha256), got \(actualSHA))"]
+                userInfo: [NSLocalizedDescriptionKey: L10n.appUpdater.errorDmgShaMismatch(manifest.sha256, actualSHA)]
             )
         }
 

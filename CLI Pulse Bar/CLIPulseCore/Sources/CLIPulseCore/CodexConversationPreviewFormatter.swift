@@ -34,8 +34,7 @@ import Foundation
 /// `assistantContinuationChromeMarkers` table will grow as we observe
 /// real production sessions through the Sessions tab.
 public enum CodexConversationPreviewFormatter {
-    public static let emptyFallback =
-        "Codex is running. Waiting for conversational output…"
+    public static var emptyFallback: String { L10n.sessions.previewEmptyCodex }
 
     /// Aggregate event payloads in order, sanitize once, extract only
     /// conversation-meaningful lines.

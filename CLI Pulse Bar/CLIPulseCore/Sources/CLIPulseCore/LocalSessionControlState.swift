@@ -550,7 +550,7 @@ extension AppState {
                 Self.localStateLogger.warning(
                     "blocked managed Claude start: live socket-owner '\(owner.helperVersion, privacy: .public)' < OAuth floor \(LocalSessionControlClient.oauthInjectionHelperFloor, privacy: .public) and block-setting is on"
                 )
-                self.localHelperError = "Managed Claude is blocked: this Mac's helper (\(owner.helperVersion.isEmpty ? "an old version" : "v\(owner.helperVersion)")) is older than \(LocalSessionControlClient.oauthInjectionHelperFloor) and would run Claude on the API, not your Max/Pro plan. Update the Companion CLI in Settings (or turn off the block in Privacy)."
+                self.localHelperError = L10n.sessions.oauthFloorBlocked(owner.helperVersion.isEmpty ? L10n.sessions.helperOldVersion : "v\(owner.helperVersion)", LocalSessionControlClient.oauthInjectionHelperFloor)
                 return .blocked
             }
         }
@@ -1194,7 +1194,7 @@ extension AppState {
                 self.localHelperError = nil
                 return sessionId
             }
-            self.localHelperError = "could not attach \(tmuxName) — the session may have ended"
+            self.localHelperError = L10n.sessions.wrappedAttachFailed(tmuxName)
             return nil
         } catch {
             self.localHelperError = String(describing: error)

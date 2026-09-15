@@ -175,8 +175,7 @@ struct iOSProvidersTab: View {
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Text(
-                        "\(providerState.enabledProviderCount) "
-                        + L10n.providers.tracked
+                        L10n.providers.trackedCount(providerState.enabledProviderCount)
                     )
                         .font(.caption)
                         .foregroundStyle(.tertiary)
@@ -479,7 +478,7 @@ struct iOSEnhancedProviderCard: View {
 
     private var accessibilitySummary: String {
         var parts: [String] = [provider.provider]
-        parts.append(config.isEnabled ? "enabled" : "disabled")
+        parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
         parts.append(provider.status_text)
         if !accountUsages.isEmpty {
             parts.append(
@@ -490,7 +489,7 @@ struct iOSEnhancedProviderCard: View {
         }
         if let quota = provider.quota, quota > 0 {
             let pct = Int(round(provider.usagePercent * 100))
-            parts.append("\(pct)% used")
+            parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
     }
@@ -541,10 +540,10 @@ struct iOSEnhancedProviderCard: View {
     private func tierDetail(_ tier: UsageTier) -> String? {
         guard let remaining = tier.remaining, let quota = tier.quota, quota > 0 else { return nil }
         let pctLeft = Int(100.0 * Double(remaining) / Double(quota))
-        var result = "\(pctLeft)% left"
+        var result = L10n.watch.percentLeft(pctLeft)
         if let reset = tier.resetTime,
            let resetText = RelativeTime.formatReset(reset) {
-            result += " · Resets \(resetText)"
+            result += " · " + L10n.providers.resetsIn(resetText)
         }
         return result
     }

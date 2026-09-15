@@ -631,10 +631,10 @@ public enum HelperAPIError: LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .notConfigured: return "HelperAPIClient is not configured — SUPABASE_ANON_KEY is missing or empty"
-        case .invalidURL(let fn): return "Invalid URL for \(fn)"
-        case .httpError(let s, let fn, let body): return "HTTP \(s) from \(fn): \(body.prefix(200))"
-        case .parseFailed(let msg): return "Parse failed: \(msg)"
+        case .notConfigured: return L10n.a11y.configurationErrorBody
+        case .invalidURL(let fn): return L10n.pairing.errorInvalidURL(fn)
+        case .httpError(let s, let fn, let body): return L10n.pairing.errorHttpStatus(s, fn, String(body.prefix(200)))
+        case .parseFailed(let msg): return L10n.pairing.errorParseFailed(msg)
         case .pairingRejected(_, let message): return message
         }
     }

@@ -29,7 +29,7 @@ struct SettingsTab: View {
             switch self {
             case .general: return L10n.settings.general
             case .display: return L10n.settings.display
-            case .providers: return "Providers"
+            case .providers: return L10n.settings.providers
             case .advanced: return L10n.settings.advanced
             }
         }

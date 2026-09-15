@@ -665,21 +665,20 @@ public enum RelativeTime {
         if interval >= 0 {
             // Past
             if interval < 60 { return L10n.time.justNow }
-            let ago = L10n.time.ago
-            if interval < 3600 { return "\(Int(interval / 60))m \(ago)" }
-            if interval < 86400 { return "\(Int(interval / 3600))h \(ago)" }
-            return "\(Int(interval / 86400))d \(ago)"
+            if interval < 3600 { return L10n.time.minutesAgo(Int(interval / 60)) }
+            if interval < 86400 { return L10n.time.hoursAgo(Int(interval / 3600)) }
+            return L10n.time.daysAgo(Int(interval / 86400))
         } else {
             // Future (for reset times)
             let remaining = -interval
-            if remaining < 60 { return "in <1m" }
-            if remaining < 3600 { return "in \(Int(remaining / 60))m" }
+            if remaining < 60 { return L10n.time.inLessThanMinute }
+            if remaining < 3600 { return L10n.time.inMinutes(Int(remaining / 60)) }
             let hours = Int(remaining / 3600)
             let mins = Int(remaining.truncatingRemainder(dividingBy: 3600) / 60)
-            if remaining < 86400 { return mins > 0 ? "in \(hours)h \(mins)m" : "in \(hours)h" }
+            if remaining < 86400 { return mins > 0 ? L10n.time.inHoursMinutes(hours, mins) : L10n.time.inHours(hours) }
             let days = Int(remaining / 86400)
             let remHours = Int(remaining.truncatingRemainder(dividingBy: 86400) / 3600)
-            return remHours > 0 ? "in \(days)d \(remHours)h" : "in \(days)d"
+            return remHours > 0 ? L10n.time.inDaysHours(days, remHours) : L10n.time.inDays(days)
         }
     }
 
@@ -699,11 +698,11 @@ public enum RelativeTime {
         let mins = totalMinutes % 60
 
         if days > 0 {
-            return hours > 0 ? "in \(days)d \(hours)h" : "in \(days)d"
+            return hours > 0 ? L10n.time.inDaysHours(days, hours) : L10n.time.inDays(days)
         }
         if hours > 0 {
-            return mins > 0 ? "in \(hours)h \(mins)m" : "in \(hours)h"
+            return mins > 0 ? L10n.time.inHoursMinutes(hours, mins) : L10n.time.inHours(hours)
         }
-        return "in \(totalMinutes)m"
+        return L10n.time.inMinutes(totalMinutes)
     }
 }

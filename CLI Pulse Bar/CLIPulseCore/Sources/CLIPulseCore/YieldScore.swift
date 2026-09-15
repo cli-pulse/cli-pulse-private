@@ -75,9 +75,9 @@ public enum YieldScoreRange: String, CaseIterable, Identifiable, Sendable {
 
     public var label: String {
         switch self {
-        case .sevenDays: return "Last 7 days"
-        case .thirtyDays: return "Last 30 days"
-        case .ninetyDays: return "Last 90 days"
+        case .sevenDays: return L10n.yield.rangeLast7Days
+        case .thirtyDays: return L10n.yield.rangeLast30Days
+        case .ninetyDays: return L10n.yield.rangeLast90Days
         }
     }
 }

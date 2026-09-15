@@ -124,7 +124,7 @@ struct ProviderConfigEditor: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(descriptor.displayName)
                         .font(.system(size: 13, weight: .bold))
-                    Text(descriptor.category.rawValue)
+                    Text(descriptor.category.localizedName)
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }

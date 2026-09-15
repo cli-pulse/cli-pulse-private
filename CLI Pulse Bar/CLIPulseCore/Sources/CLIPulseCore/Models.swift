@@ -268,6 +268,17 @@ public enum ProviderCategory: String, Codable, Sendable {
     case local
     case aggregator
     case ide
+
+    /// Display name. The raw value is a persisted Codable token and must stay English;
+    /// the provider settings header used to print it directly.
+    public var localizedName: String {
+        switch self {
+        case .cloud: return L10n.badge.cloud
+        case .local: return L10n.badge.local
+        case .aggregator: return L10n.badge.aggregator
+        case .ide: return L10n.badge.ide
+        }
+    }
 }
 
 public enum AlertSeverity: String, Codable, Sendable {
@@ -676,7 +687,7 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
         if !cleanProject.isEmpty {
             return "\(provider) · \(cleanProject)"
         }
-        return "\(provider) process"
+        return L10n.sessions.rowProcessLabel(provider)
     }
 
     public init(

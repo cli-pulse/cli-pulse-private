@@ -276,7 +276,7 @@ public struct LANPairingFlowView: View {
 
                 case let .succeeded(macName):
                     Image(systemName: "checkmark.circle.fill").font(.system(size: 56)).foregroundStyle(.green)
-                    Text("\(L10n.remote.pairingSucceeded): \(macName)").font(.headline)
+                    Text(L10n.remote.peerIsPaired(macName)).font(.headline)
                     Button(L10n.remote.done) { dismiss() }.buttonStyle(.borderedProminent)
 
                 case let .failed(why):
@@ -495,7 +495,7 @@ public struct LANMacSessionsView: View {
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(s.clientLabel ?? s.id).lineLimit(1)
-                                    Text("\(s.provider) · \(s.status)").font(.caption).foregroundStyle(.secondary)
+                                    Text("\(ProviderDisplay.displayName(for: s.provider)) · \(L10n.status.localized(s.status))").font(.caption).foregroundStyle(.secondary)
                                     if let n = pendingBySession[s.id], n > 0 {
                                         Label("\(n) · \(L10n.remote.awaitingApproval)", systemImage: "hand.raised.fill")
                                             .font(.caption).foregroundStyle(.orange)
