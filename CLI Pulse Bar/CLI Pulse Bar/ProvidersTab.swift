@@ -376,7 +376,7 @@ struct ProviderAccountQuotaSummaryView: View {
                     detail: "\(remaining) / \(quota)"
                 )
             } else {
-                Text(usage.statusText)
+                Text(L10n.providers.localizedStatusText(usage.statusText))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -784,9 +784,14 @@ struct EnhancedProviderCard: View {
                         // fall back to a provider-agnostic line. Avoid the old
                         // "/usage in the CLI" hint — that command was removed
                         // in Claude CLI v2.x.
+                        // The three tests below read the RAW `s` on purpose —
+                        // they are token comparisons, not display. Only the
+                        // value that survives them is localized, and the other
+                        // branch returns an already-localized line, so
+                        // `Text(detailText)` must not be wrapped again.
                         if !s.isEmpty && s != "Operational" &&
                            !s.lowercased().contains("try `/usage`") {
-                            return s
+                            return L10n.providers.localizedStatusText(s)
                         }
                         return L10n.providers.quotaDataUnavailable
                     }()
@@ -865,7 +870,7 @@ struct EnhancedProviderCard: View {
     private var accessibilitySummary: String {
         var parts: [String] = [provider.provider]
         parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
-        parts.append(provider.status_text)
+        parts.append(L10n.providers.localizedStatusText(provider.status_text))
         if let quota = provider.quota, quota > 0 {
             let pct = Int(round(provider.usagePercent * 100))
             parts.append(L10n.providers.percentUsed(pct))

@@ -324,7 +324,7 @@ struct iOSEnhancedProviderCard: View {
                         }
                     }
                     HStack(spacing: 4) {
-                        Text(provider.status_text)
+                        Text(L10n.providers.localizedStatusText(provider.status_text))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if showCost {
@@ -479,7 +479,7 @@ struct iOSEnhancedProviderCard: View {
     private var accessibilitySummary: String {
         var parts: [String] = [provider.provider]
         parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
-        parts.append(provider.status_text)
+        parts.append(L10n.providers.localizedStatusText(provider.status_text))
         if !accountUsages.isEmpty {
             parts.append(
                 L10n.providers.accountsCount(
@@ -744,7 +744,7 @@ struct iOSProviderAccountRow: View {
                     )
                 )
             } else {
-                Text(account.statusText)
+                Text(L10n.providers.localizedStatusText(account.statusText))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -755,7 +755,7 @@ struct iOSProviderAccountRow: View {
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "\(accountLabel), \(planLabel), "
-            + account.statusText
+            + L10n.providers.localizedStatusText(account.statusText)
         )
     }
 

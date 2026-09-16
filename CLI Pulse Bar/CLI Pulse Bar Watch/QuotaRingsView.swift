@@ -770,7 +770,7 @@ struct WatchAccountQuotaDetail: View {
                 )
             )
         } else {
-            Text(account.statusText)
+            Text(L10n.providers.localizedStatusText(account.statusText))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
@@ -1023,12 +1023,15 @@ struct WatchProviderDetailView: View {
                         valueColor: .red
                     )
                 }
+                // The isEmpty gate reads the RAW value: an empty string
+                // means "the collector said nothing", which is a fact about
+                // the data, not about the display language.
                 if !provider.status_text.isEmpty {
                     HStack {
                         Text(L10n.providers.status)
                             .font(.caption)
                         Spacer()
-                        Text(provider.status_text)
+                        Text(L10n.providers.localizedStatusText(provider.status_text))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }

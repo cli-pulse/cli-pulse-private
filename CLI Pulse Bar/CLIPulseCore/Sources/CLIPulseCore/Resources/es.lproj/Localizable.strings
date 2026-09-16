@@ -760,6 +760,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.account_number" = "Cuenta %d";
 "providers.plan_unconfirmed" = "Plan sin confirmar";
 "providers.connected" = "Conectada";
+"providers.status_connected" = "Conectado";
 "providers.needs_reconnect" = "Necesita reconexión";
 "providers.monitor_account" = "Supervisar %@";
 "providers.edit_account" = "Editar %@";

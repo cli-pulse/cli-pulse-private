@@ -760,6 +760,7 @@
 "providers.account_number" = "계정 %d";
 "providers.plan_unconfirmed" = "요금제 미확인";
 "providers.connected" = "연결됨";
+"providers.status_connected" = "연결됨";
 "providers.needs_reconnect" = "다시 연결 필요";
 "providers.monitor_account" = "%@ 모니터링";
 "providers.edit_account" = "%@ 편집";

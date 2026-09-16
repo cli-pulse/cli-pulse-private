@@ -472,6 +472,7 @@
 "providers.account_number" = "アカウント %d";
 "providers.plan_unconfirmed" = "プラン未確認";
 "providers.connected" = "接続済み";
+"providers.status_connected" = "接続済み";
 "providers.needs_reconnect" = "再接続が必要";
 "providers.monitor_account" = "%@ を監視";
 "providers.edit_account" = "%@ を編集";

@@ -480,6 +480,52 @@ public enum L10n {
         public static var apiTokenCountHelp: String { tr("providers.api_token_count_help") }
         public static func percentUsed(_ a0: Int) -> String { tr("providers.percent_used", a0) }
         public static func resetsIn(_ a0: String) -> String { tr("providers.resets_in", a0) }
+
+        /// "Connected" as a **provider/service** status.
+        ///
+        /// Deliberately not `providers.connected`, whose Spanish value is
+        /// "Conectada" — feminine, because it was written for an account
+        /// ("cuenta"). The subject here is a provider ("proveedor"), so the
+        /// two cannot share a key without one of them reading wrong.
+        public static var statusConnected: String { tr("providers.status_connected") }
+
+        /// Display text for a provider or account `status_text`.
+        ///
+        /// `status_text` is a model field, not a display string: every device
+        /// receives the producing device's bytes unchanged, and
+        /// `ProviderAccountPresentation.enabledAccounts` hides accounts whose
+        /// raw value is "Disabled". So the value itself stays English
+        /// everywhere and only its *rendering* is translated, here, keyed on
+        /// the closed set of sentinels that producers agree on.
+        ///
+        /// Anything outside that set passes through unchanged, which is
+        /// required rather than merely tolerated: `APIClient` forwards any
+        /// non-empty server value verbatim, and the collectors compose free
+        /// text ("5h 60% left · Weekly 40% left") that must not be mangled.
+        public static func localizedStatusText(_ raw: String) -> String {
+            switch raw.lowercased() {
+            case "operational": return L10n.status.operational
+            case "disabled": return L10n.status.disabled
+            case "unknown": return L10n.status.unknown
+            case "connected": return statusConnected
+            default:
+                if let percent = percentUsedSentinel(raw) { return percentUsed(percent) }
+                return raw
+            }
+        }
+
+        /// `"42% used"` -> `42`; `nil` for everything else.
+        ///
+        /// Anchored on both ends on purpose. The collectors emit composite
+        /// strings that merely *contain* a percentage — "5h 60% left · Weekly
+        /// 40% left", "Daily 80% left" — and those have to survive untouched.
+        private static func percentUsedSentinel(_ raw: String) -> Int? {
+            let suffix = "% used"
+            guard raw.hasSuffix(suffix) else { return nil }
+            let digits = raw.dropLast(suffix.count)
+            guard !digits.isEmpty, digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+            return Int(digits)
+        }
     }
 
     // MARK: - Remote Control Diagnostics
