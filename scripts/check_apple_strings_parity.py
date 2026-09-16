@@ -254,6 +254,47 @@ L10N_SUBPATH = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift"
 TR_CALL = re.compile(r'\btr\(\s*"((?:[^"\\]|\\.)+)"')
 
 
+APP_ROOT_SUBPATH = Path("CLI Pulse Bar")
+USAGE_KEY = "UsageDescription"
+
+
+def unlocalized_permission_prompts(root: Path) -> list[str]:
+    """Every `NS…UsageDescription` an app declares must be localized, in every locale.
+
+    These are the lines iOS shows inside its own permission alert. They are not
+    in any `Localizable.strings` — iOS reads them from the app bundle's
+    `<locale>.lproj/InfoPlist.strings` — so nothing above can see them. Until
+    this existed there was not a single InfoPlist.strings in the repository and
+    the iPhone's camera and local-network prompts were English in every language.
+    A new usage description added without translations would reopen that
+    silently, so it fails here.
+    """
+    import plistlib
+    problems: list[str] = []
+    app_root = root / APP_ROOT_SUBPATH
+    if not app_root.is_dir():
+        return problems
+    for info in sorted(app_root.glob("*/Info.plist")):
+        try:
+            declared = plistlib.loads(info.read_bytes())
+        except Exception:
+            continue
+        keys = sorted(k for k in declared if k.endswith(USAGE_KEY))
+        if not keys:
+            continue
+        target = info.parent.name
+        for loc in SHIPPED_LOCALES:
+            strings = info.parent / f"{loc}.lproj" / "InfoPlist.strings"
+            if not strings.is_file():
+                problems.append(f"{target}: {loc}.lproj/InfoPlist.strings is missing ({', '.join(keys)})")
+                continue
+            have = set(re.findall(r'^\s*"([^"]+)"\s*=', strings.read_text(encoding="utf-8"), re.M))
+            for k in keys:
+                if k not in have:
+                    problems.append(f"{target}: {k} is not in {loc}.lproj/InfoPlist.strings")
+    return problems
+
+
 def keys_the_code_asks_for(root: Path) -> set[str]:
     """Every key passed to `L10n.tr` in L10n.swift.
 
@@ -461,6 +502,16 @@ def main() -> int:
             if len(keys) > 8:
                 print(f"        ... ({len(keys) - 8} more)", file=sys.stderr)
         print(f"\n    Fix: python3 {BASELINE_SUBPATH.parent.name}/{Path(__file__).name} --update-baseline\n", file=sys.stderr)
+
+    prompts = unlocalized_permission_prompts(root)
+    if prompts:
+        failed = True
+        print("FAIL — a permission prompt is not localized. iOS shows these inside its own", file=sys.stderr)
+        print("       system alert and reads them from <locale>.lproj/InfoPlist.strings, not", file=sys.stderr)
+        print("       from any Localizable.strings, so a missing entry renders English:\n", file=sys.stderr)
+        for line in prompts:
+            print(f"    {line}", file=sys.stderr)
+        print("", file=sys.stderr)
 
     if failed:
         return 1

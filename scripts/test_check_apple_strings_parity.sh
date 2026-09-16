@@ -221,6 +221,49 @@ printf 'extension L10n { static var w: String { tr("wizard.welcome") } }\n' >> "
 assert_changed "declared tr key" "$F" "$BEFORE" &&
 expect_ok "a tr key present in en.lproj passes"
 
+# ── permission prompts. iOS reads NS…UsageDescription from the APP bundle's
+# <locale>.lproj/InfoPlist.strings, which no Localizable.strings check can see.
+# The repo had zero InfoPlist.strings until this check existed.
+write_app_plist() {  # write_app_plist <dir> <has-usage-key: 1|0>
+    mkdir -p "$1"
+    if [ "$2" = 1 ]; then
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>NSCameraUsageDescription</key><string>Scan the code.</string></dict></plist>\n' > "$1/Info.plist"
+    else
+        printf '<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>CFBundleName</key><string>App</string></dict></plist>\n' > "$1/Info.plist"
+    fi
+}
+write_prompt_strings() {  # write_prompt_strings <app dir> <locale...>
+    local dir="$1"; shift
+    for loc in "$@"; do
+        mkdir -p "$dir/$loc.lproj"
+        printf '"NSCameraUsageDescription" = "x";\n' > "$dir/$loc.lproj/InfoPlist.strings"
+    done
+}
+
+build_fixture "$TMP/case"
+write_app_plist "$TMP/case/CLI Pulse Bar/App" 1
+expect_fail "usage description with no InfoPlist.strings at all" "InfoPlist.strings is missing"
+
+build_fixture "$TMP/case"
+write_app_plist "$TMP/case/CLI Pulse Bar/App" 1
+write_prompt_strings "$TMP/case/CLI Pulse Bar/App" en es ja ko zh-Hans    # zh-Hant forgotten
+expect_fail "usage description missing from one locale" "zh-Hant.lproj/InfoPlist.strings is missing"
+
+build_fixture "$TMP/case"
+write_app_plist "$TMP/case/CLI Pulse Bar/App" 1
+write_prompt_strings "$TMP/case/CLI Pulse Bar/App" en es ja ko zh-Hans zh-Hant
+printf '"SomethingElse" = "x";\n' > "$TMP/case/CLI Pulse Bar/App/ko.lproj/InfoPlist.strings"
+expect_fail "InfoPlist.strings present but the key is not in it" "NSCameraUsageDescription is not in ko.lproj"
+
+build_fixture "$TMP/case"
+write_app_plist "$TMP/case/CLI Pulse Bar/App" 1
+write_prompt_strings "$TMP/case/CLI Pulse Bar/App" en es ja ko zh-Hans zh-Hant
+expect_ok "a usage description localized in every shipped locale passes"
+
+build_fixture "$TMP/case"
+write_app_plist "$TMP/case/CLI Pulse Bar/Watch" 0
+expect_ok "an app that declares no usage description needs no InfoPlist.strings"
+
 # ── syntax C. an empty catalogue is the same outage as an unparseable one ─
 build_fixture "$TMP/case"
 printf '// only a comment\n' > "$TMP/case/$RES/en.lproj/Localizable.strings"

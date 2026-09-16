@@ -1,0 +1,7 @@
+/* Permission prompts. iOS renders these INSIDE its own system alert, directly under
+   its own localized title, so they follow the system's terminology and register
+   rather than the app's. They cannot follow CLI Pulse's in-app language setting:
+   iOS resolves them from the system language. */
+
+"NSCameraUsageDescription" = "CLI Pulse는 Mac에 표시된 페어링 코드를 스캔하기 위해 카메라를 사용합니다.";
+"NSLocalNetworkUsageDescription" = "CLI Pulse는 iPhone에서 Mac의 CLI 세션을 볼 수 있도록 이 Wi-Fi에서 Mac을 찾습니다.";
