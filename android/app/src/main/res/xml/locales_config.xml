@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The languages CLI Pulse ships, so Android 13+ lists the app under
+  Settings > System > Languages > App languages and lets the user pick one
+  for CLI Pulse alone. Must match the values-* directories exactly;
+  scripts/ci_check_android_strings_parity.py fails if they drift.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="es" />
+    <locale android:name="ja" />
+    <locale android:name="ko" />
+    <locale android:name="zh-CN" />
+    <locale android:name="zh-TW" />
+</locale-config>

@@ -33,6 +33,9 @@ WHAT IT CHECKS NOW (the catalogues are at parity, so nothing is baselined):
   * a BARE % in a string formatted with arguments. Formatter parses it anyway:
     Spanish "98 % del uso" reads `% d` as a flag and a conversion.
   * UNESCAPED APOSTROPHES, which fail the aapt2 release build.
+  * PER-APP LANGUAGE. The manifest's android:localeConfig names exactly the
+    shipped locales, so Android 13+ offers every language the app has and
+    none it lacks.
 
 Usage:
   python3 scripts/ci_check_android_strings_parity.py
@@ -54,6 +57,20 @@ from pathlib import Path
 RES_SUBPATH = Path("android/app/src/main/res")
 DEFAULT_DIR = "values"
 STRINGS_FILE = "strings.xml"
+
+MANIFEST_SUBPATH = Path("android/app/src/main/AndroidManifest.xml")
+ANDROID_NS = "{http://schemas.android.com/apk/res/android}"
+
+# The BCP-47 tag each shipped directory is declared as in locales_config.xml.
+# `values` is English: the unqualified resources are the English copy.
+LOCALE_TAG = {
+    "values": "en",
+    "values-es": "es",
+    "values-ja": "ja",
+    "values-ko": "ko",
+    "values-zh-rCN": "zh-CN",
+    "values-zh-rTW": "zh-TW",
+}
 
 # The locales the app SHIPS, with the plural categories CLDR selects for
 # integers in each language. `many` is a CLDR 42 category for Spanish (used for
@@ -182,6 +199,37 @@ def compare(locale: str, base: dict[str, Resource], res: dict[str, Resource]) ->
     return problems
 
 
+def locale_config_problems(root: Path) -> list[str]:
+    """Android 13+ lists an app under Settings > App languages only when the
+    manifest declares android:localeConfig, and offers exactly the languages
+    that file names. A shipped locale missing from it cannot be chosen; a
+    language in it with no resources is offered and then renders English."""
+    manifest = root / MANIFEST_SUBPATH
+    if not manifest.is_file():
+        return [f"{MANIFEST_SUBPATH} is missing"]
+    try:
+        app = ET.parse(manifest).getroot().find("application")
+    except ET.ParseError as exc:
+        return [f"{MANIFEST_SUBPATH} does not parse ({exc})"]
+    ref = app.get(f"{ANDROID_NS}localeConfig") if app is not None else None
+    if not ref or not ref.startswith("@xml/"):
+        return ["<application> declares no android:localeConfig, so Android 13+ offers no per-app language"]
+    path = root / RES_SUBPATH / "xml" / f"{ref.removeprefix('@xml/')}.xml"
+    if not path.is_file():
+        return [f"android:localeConfig points at {ref}, which does not exist"]
+    try:
+        declared = [el.get(f"{ANDROID_NS}name") for el in ET.parse(path).getroot().findall("locale")]
+    except ET.ParseError as exc:
+        return [f"{path.name} does not parse ({exc})"]
+    problems = []
+    want = {LOCALE_TAG[d] for d in SHIPPED}
+    for tag in sorted(want - set(declared)):
+        problems.append(f"{path.name} does not offer {tag}, which the app ships")
+    for tag in sorted(set(declared) - want):
+        problems.append(f"{path.name} offers {tag}, which has no strings (it would render English)")
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default=None, help="repo root to check (defaults to this script's repo)")
@@ -224,9 +272,13 @@ def main() -> int:
         if problems:
             report.setdefault(locale, []).extend(problems)
 
+    config_problems = locale_config_problems(root)
+    if config_problems:
+        report.setdefault("per-app language", []).extend(config_problems)
+
     if not report:
         print(f"OK — {len(SHIPPED)} locales, {len(base)} resources each: parity, format arguments, "
-              "plural categories, percent signs and apostrophes all hold.")
+              "plural categories, percent signs, apostrophes and per-app language all hold.")
         return 0
 
     total = sum(len(v) for v in report.values())
