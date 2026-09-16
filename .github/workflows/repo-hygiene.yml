@@ -135,6 +135,11 @@ jobs:
       # throws IllegalFormatConversionException in that language only), a bare
       # % in a formatted string, plural categories a language never selects,
       # orphan and duplicate keys, and a shipped locale directory that vanished.
+      # Play "What's new" per language: the publish script refuses an unknown
+      # language, a duplicate, an empty text or one over Play's 500-character
+      # limit before it uploads anything.
+      - run: python3 scripts/test_play_publish_notes.py
+
       - run: python3 scripts/ci_check_android_strings_parity.py
       - run: bash scripts/test_check_android_strings_parity.sh
 

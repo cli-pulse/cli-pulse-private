@@ -21,6 +21,14 @@ Usage:
   play_publish.py --aab app-release.aab --version-name 1.33.0 \
       --track production --notes-file notes_en.txt [--rollout 1.0] [--dry-run]
 
+Release notes in several languages ("What's new" is otherwise English in every
+storefront):
+  --notes-dir release/whatsnew_150        every <locale>.txt in it
+  --notes zh-CN=notes_zh.txt --notes ja-JP=notes_ja.txt   (repeatable)
+File names may use the repo's Apple locale names (en-US, zh-Hans, zh-Hant, ja,
+ko, es); they are mapped to Play's language codes. Each text must fit Play's
+500-character limit, checked before anything is uploaded.
+
 --rollout 1.0 (default) = full release (status "completed"). A fraction in
 (0,1) does a staged rollout (status "inProgress", userFraction=frac).
 --dry-run validates everything (uploads the bundle into the edit) but does
@@ -42,6 +50,53 @@ def resolve_sa(arg):
     return arg or os.environ.get("PLAY_SA_JSON") or DEFAULT_SA
 
 
+# The repo writes release notes per Apple locale (release/whatsnew_*/<locale>.txt);
+# Play wants its own language codes.
+PLAY_LANGUAGE = {
+    "en": "en-US", "en-US": "en-US",
+    "zh-Hans": "zh-CN", "zh-CN": "zh-CN",
+    "zh-Hant": "zh-TW", "zh-TW": "zh-TW",
+    "ja": "ja-JP", "ja-JP": "ja-JP",
+    "ko": "ko-KR", "ko-KR": "ko-KR",
+    "es": "es-ES", "es-ES": "es-ES", "es-419": "es-419",
+}
+PLAY_NOTES_LIMIT = 500
+
+
+def collect_release_notes(notes_file=None, notes_lang="en-US", notes=(), notes_dir=None):
+    """[{"language", "text"}] for Play, from every source given. Raises ValueError
+    for an unknown language, a language given twice, an empty text, or a text over
+    Play's limit — before the API is touched, so a bad file cannot half-publish."""
+    sources = []
+    if notes_file:
+        sources.append((notes_lang, notes_file))
+    for spec in notes:
+        lang, sep, path = spec.partition("=")
+        if not sep or not lang or not path:
+            raise ValueError(f"--notes expects LANG=FILE, got {spec!r}")
+        sources.append((lang, path))
+    if notes_dir:
+        for name in sorted(os.listdir(notes_dir)):
+            if name.endswith(".txt"):
+                sources.append((name[:-4], os.path.join(notes_dir, name)))
+    out, seen = [], {}
+    for lang, path in sources:
+        code = PLAY_LANGUAGE.get(lang)
+        if code is None:
+            raise ValueError(f"{path}: no Play language for {lang!r} (known: {', '.join(sorted(PLAY_LANGUAGE))})")
+        if code in seen:
+            raise ValueError(f"{path}: {code} already comes from {seen[code]}")
+        with open(path, encoding="utf-8") as f:
+            text = f.read().strip()
+        if not text:
+            raise ValueError(f"{path}: empty release notes")
+        if len(text) > PLAY_NOTES_LIMIT:
+            raise ValueError(f"{path}: {len(text)} characters, over Play's {PLAY_NOTES_LIMIT} for {code}")
+        seen[code] = path
+        out.append({"language": code, "text": text})
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--aab", required=True)
@@ -49,11 +104,20 @@ def main():
     ap.add_argument("--track", default="production")
     ap.add_argument("--notes-file", help="release notes text file (en-US)")
     ap.add_argument("--notes-lang", default="en-US")
+    ap.add_argument("--notes", action="append", default=[], metavar="LANG=FILE",
+                    help="release notes for one language; repeatable")
+    ap.add_argument("--notes-dir", help="directory of <locale>.txt release notes")
     ap.add_argument("--rollout", type=float, default=1.0,
                     help="1.0 = full (completed); 0<f<1 = staged (inProgress)")
     ap.add_argument("--sa")
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()
+
+    try:
+        release_notes = collect_release_notes(args.notes_file, args.notes_lang, args.notes, args.notes_dir)
+    except (ValueError, OSError) as e:
+        print(f"!! release notes: {e}")
+        sys.exit(1)
 
     from google.oauth2 import service_account
     from googleapiclient.discovery import build
@@ -65,11 +129,6 @@ def main():
     if not os.path.isfile(args.aab):
         print(f"!! AAB not found: {args.aab}")
         sys.exit(1)
-
-    notes = None
-    if args.notes_file:
-        with open(args.notes_file) as f:
-            notes = f.read().strip()
 
     creds = service_account.Credentials.from_service_account_file(sa, scopes=SCOPES)
     svc = build("androidpublisher", "v3", credentials=creds, cache_discovery=False)
@@ -102,8 +161,9 @@ def main():
         "name": args.version_name,
         "versionCodes": [str(code)],
     }
-    if notes:
-        release["releaseNotes"] = [{"language": args.notes_lang, "text": notes}]
+    if release_notes:
+        release["releaseNotes"] = release_notes
+        print("  release notes:", ", ".join(n["language"] for n in release_notes))
     if args.rollout >= 1.0:
         release["status"] = "completed"
     else:
