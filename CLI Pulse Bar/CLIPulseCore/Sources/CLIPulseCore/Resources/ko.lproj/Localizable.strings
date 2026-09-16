@@ -45,7 +45,7 @@
 "dashboard.today" = "오늘";
 "dashboard.30day_est" = "30일 예상";
 "dashboard.provider_usage" = "공급자 사용량";
-"dashboard.top_projects" = "인기 프로젝트";
+"dashboard.top_projects" = "상위 프로젝트";
 "dashboard.no_projects" = "추적 중인 프로젝트 없음";
 "dashboard.risk_signals" = "위험 신호";
 "dashboard.activity" = "활동";
@@ -111,7 +111,7 @@
 "alerts.ack" = "확인";
 "alerts.acknowledge" = "확인";
 "alerts.resolve" = "해결";
-"alerts.snooze" = "알림 끄기";
+"alerts.snooze" = "다시 알림";
 "alerts.snooze_minutes" = "%d분";
 "alerts.created" = "생성 시간";
 "alerts.related" = "관련";
@@ -1624,9 +1624,9 @@
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
    and they sit beside the suppression key. */
-"alert_kind.budget_daily_message" = "오늘 지출 $%1$@, 일간 예산 $%2$@보다 많습니다.";
+"alert_kind.budget_daily_message" = "오늘 지출($%1$@)이 일간 예산($%2$@)을 초과했습니다.";
 "alert_kind.budget_daily_title" = "일간 예산 초과 — $%@";
-"alert_kind.budget_weekly_message" = "최근 7일 지출 합계 $%1$@, 주간 예산 $%2$@보다 많습니다.";
+"alert_kind.budget_weekly_message" = "최근 7일 지출 합계($%1$@)가 주간 예산($%2$@)을 초과했습니다.";
 "alert_kind.budget_weekly_title" = "주간 예산 초과 — $%@";
 "alert_kind.device_cpu_message" = "헬퍼가 측정한 CPU 사용률은 %@%%입니다.";
 "alert_kind.device_cpu_title" = "기기 CPU 사용률이 높습니다";

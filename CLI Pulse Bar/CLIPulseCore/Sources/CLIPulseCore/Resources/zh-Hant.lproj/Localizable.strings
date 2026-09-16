@@ -104,7 +104,7 @@
 "alerts.no_alerts" = "無告警";
 "alerts.no_unresolved" = "無未解決告警";
 "alerts.no_matching" = "無匹配告警";
-"alerts.open" = "未處理";
+"alerts.open" = "未解決";
 "alerts.resolved" = "已解決";
 "alerts.all" = "全部";
 "alerts.filter" = "篩選";
@@ -153,7 +153,7 @@
 "settings.cost_tracking" = "費用追蹤";
 "settings.display" = "顯示";
 "settings.show_cost_estimates" = "顯示費用預估";
-"settings.menu_bar_mode" = "選單欄模式";
+"settings.menu_bar_mode" = "選單列模式";
 "settings.reorder_providers" = "排序服務商";
 "settings.reorder_hint" = "拖拽排序，點按啟用/禁用";
 "settings.manage_providers" = "管理服務商";
@@ -222,7 +222,7 @@
 
 /* ── 關於 ── */
 "about.title" = "關於 CLI Pulse Bar";
-"about.description" = "從選單欄監控你的 AI 程式設計工具。跟蹤 Claude、Codex、Gemini 等 20+ 服務商的用量、費用和告警。";
+"about.description" = "從選單列監控你的 AI 程式設計工具。跟蹤 Claude、Codex、Gemini 等 20+ 服務商的用量、費用和告警。";
 "about.copyright" = "© 2025 CLI Pulse 貢獻者";
 "about.report_issue" = "報告問題";
 
@@ -302,7 +302,7 @@
 "status.online" = "線上";
 "status.offline" = "離線";
 "status.degraded" = "降級";
-"status.operational" = "正常執行";
+"status.operational" = "運作正常";
 "status.down" = "已停止";
 "status.disabled" = "已禁用";
 "status.ended" = "已結束";
@@ -451,7 +451,7 @@
 
 /* ── 顯示補充 (i18n sweep) ── */
 "display.mode" = "顯示模式";
-"display.merge_menu_bar_icons" = "合併選單欄圖示";
+"display.merge_menu_bar_icons" = "合併選單列圖示";
 "display.merge_menu_bar_hint" = "單圖示 + 服務商切換器";
 "display.reorder_hint" = "選擇要在「概覽」標籤頁顯示的服務商，拖動可重新排序。";
 
@@ -636,7 +636,7 @@
 "yield.detail_title" = "Yield Score 詳情";
 "yield.detail_body" = "當無法獲取精確的 API 價格時，成本根據 token 使用量估算。合併提交不計入歸因。";
 
-/* ── 選單欄 ── */
+/* ── 選單列 ── */
 "menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以適配免費方案。已禁用 %d 個——可在「設定 → 服務商」中編輯。";
 "menu_bar.over_plan_limits" = "已超出 CLI Pulse %1$@ 方案限制——服務商：%2$d/%3$d。請升級或減少使用。";
 "menu_bar.provider_limit_reached" = "你的 CLI Pulse %1$@ 方案最多支援 %2$d 個服務商。升級後可啟用更多。";
@@ -1329,7 +1329,7 @@
 "helper.built_in_version" = "內建 · v%@";
 "app_updater.update_available_badge" = "可更新：%1$@ → %2$@";
 "app_updater.error_badge" = "錯誤";
-"helper.install_intro" = "安裝選用的 Companion CLI helper，即可從選單欄操作 claude、codex 和 gemini 會話。此 helper 已通過 Apple 公證，會安裝在你的個人專屬資料夾中，不需要管理員密碼。";
+"helper.install_intro" = "安裝選用的 Companion CLI helper，即可從選單列操作 claude、codex 和 gemini 會話。此 helper 已通過 Apple 公證，會安裝在你的個人專屬資料夾中，不需要管理員密碼。";
 "helper.waiting_for_installer" = "正在等待 macOS 安裝程式完成…";
 "helper.running_unpaired_hint" = "已安裝並在執行中。請先在上方配對這台 Mac，才能操作託管會話。";
 "helper.bundled_hint" = "內建於 CLI Pulse —— 更新 App 時會自動更新，不需要另外安裝。";
@@ -1390,7 +1390,7 @@
 "onboarding_wizard.feature_alerts_title" = "智慧告警";
 "onboarding_wizard.feature_alerts_desc" = "配額不足、費用暴增或會話失敗時即時通知你。";
 "onboarding_wizard.feature_devices_title" = "多裝置";
-"onboarding_wizard.feature_devices_desc" = "在選單欄監控你所有的開發機器。";
+"onboarding_wizard.feature_devices_desc" = "在選單列監控你所有的開發機器。";
 "onboarding_wizard.feature_cost_title" = "費用預估";
 "onboarding_wizard.feature_cost_desc" = "依服務商追蹤每日與每週支出。";
 "providers.claude_signed_in_connect_hint" = "已登入為 %@ — 請在設定中連線 Claude Code";
@@ -1449,7 +1449,7 @@
 "subscription.store_plans_not_offered" = "商店未提供 %d 個方案";
 "subscription.store_returned_no_plans" = "商店未傳回任何方案";
 "subscription.store_request_failed" = "商店請求失敗";
-"display.section_menu_bar" = "選單欄";
+"display.section_menu_bar" = "選單列";
 "display.section_overview_providers" = "概覽中的服務商";
 "provider_config.test_oauth_ready" = "OAuth 授權已就緒，儲存後生效";
 "provider_config.test_staged_for_removal" = "連線將在儲存後移除";

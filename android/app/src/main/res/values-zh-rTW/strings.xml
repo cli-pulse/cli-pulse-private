@@ -6,7 +6,7 @@
     <string name="tab_overview">總覽</string>
     <string name="tab_providers">服務商</string>
     <string name="tab_sessions">工作階段</string>
-    <string name="tab_alerts">警告</string>
+    <string name="tab_alerts">告警</string>
     <string name="tab_settings">設定</string>
 
     <!-- Auth -->
@@ -22,7 +22,7 @@
     <string name="estimated_cost">預估費用</string>
     <string name="active_sessions">活躍工作階段</string>
     <string name="online_devices">線上裝置</string>
-    <string name="unresolved_alerts">未處理警告</string>
+    <string name="unresolved_alerts">未解決告警</string>
     <string name="overview_requests">請求數</string>
     <string name="overview_no_data">尚無資料。配對裝置以開始監控。</string>
 
@@ -40,9 +40,9 @@
     <string name="settings_save_url">儲存 URL</string>
     <string name="settings_test">測試</string>
     <string name="settings_event_filter">事件過濾</string>
-    <string name="settings_event_filter_hint">僅對符合的警告發送 Webhook（留空 = 全部）</string>
+    <string name="settings_event_filter_hint">僅對符合的告警發送 Webhook（留空 = 全部）</string>
     <string name="settings_filter_severities">嚴重級別</string>
-    <string name="settings_filter_types">警告類型</string>
+    <string name="settings_filter_types">告警類型</string>
     <string name="settings_exit_demo">離開示範模式</string>
     <string name="settings_delete_title">刪除帳號？</string>
     <string name="settings_delete_message">這將永久刪除您的所有資料，此操作無法復原。</string>
@@ -73,7 +73,7 @@
     <string name="export_data">匯出資料</string>
     <string name="export_sessions">匯出工作階段 CSV</string>
     <string name="export_providers">匯出服務商 CSV</string>
-    <string name="export_alerts">匯出警告 CSV</string>
+    <string name="export_alerts">匯出告警 CSV</string>
     <string name="export_cost_report">匯出費用報告 CSV</string>
     <string name="export_pdf_report">匯出 PDF 報告</string>
 
@@ -123,11 +123,11 @@
     <!-- 空狀態 -->
     <string name="providers_empty">尚無提供者資料。</string>
     <string name="sessions_empty">尚無工作階段。</string>
-    <string name="alerts_empty">沒有警示，一切正常！</string>
+    <string name="alerts_empty">沒有告警，一切正常！</string>
     <string name="devices_empty_title">尚未註冊裝置</string>
     <string name="devices_empty_body">在 macOS 的設定中配對裝置即可開始同步資料。</string>
 
-    <!-- 警示操作 -->
+    <!-- 告警操作 -->
     <string name="alert_action_ack">確認</string>
     <string name="alert_action_resolve">解決</string>
     <string name="alert_action_snooze">稍後提醒</string>
@@ -183,8 +183,8 @@
     <string name="pdf_today_est_cost">今日預估費用</string>
     <string name="pdf_today_usage">今日用量</string>
     <string name="pdf_top_sessions">費用最高的工作階段</string>
-    <string name="pdf_unresolved_alerts">未處理警示</string>
-    <string name="screen_alerts">警示</string>
+    <string name="pdf_unresolved_alerts">未解決告警</string>
+    <string name="screen_alerts">告警</string>
     <string name="screen_devices">裝置</string>
     <string name="screen_providers">提供者</string>
     <string name="screen_sessions">工作階段</string>
@@ -221,7 +221,7 @@
     <string name="settings_threshold_offline_grace">離線寬限（分鐘）</string>
     <string name="settings_threshold_data_retention">資料保留（天）</string>
     <string name="settings_demo_user">示範使用者</string>
-    <string name="notification_channel_alerts">CLI Pulse 警告</string>
+    <string name="notification_channel_alerts">CLI Pulse 告警</string>
     <string name="export_share_title">匯出 CLI Pulse 資料</string>
     <plurals name="overview_alerts_critical_count">
         <item quantity="other">嚴重 %d 則</item>
@@ -239,9 +239,9 @@
     <string name="error_rate_limited">嘗試次數過多，請稍候一分鐘再試一次。</string>
     <string name="error_server">伺服器傳回錯誤（HTTP %1$d），請再試一次。</string>
     <string name="error_something_went_wrong">發生問題，請再試一次。</string>
-    <string name="error_action_acknowledge">無法確認警告。%1$s</string>
-    <string name="error_action_resolve">無法解決警告。%1$s</string>
-    <string name="error_action_snooze">無法暫緩警告。%1$s</string>
+    <string name="error_action_acknowledge">無法確認告警。%1$s</string>
+    <string name="error_action_resolve">無法解決告警。%1$s</string>
+    <string name="error_action_snooze">無法暫緩告警。%1$s</string>
     <string name="error_action_delete_account">無法刪除帳號。%1$s</string>
     <string name="error_action_load_linked_accounts">無法載入已連結帳號。%1$s</string>
     <string name="error_action_start_link">無法開始連結帳號。%1$s</string>
