@@ -174,7 +174,6 @@
     <string name="pdf_progress_value">%1$d/%2$d 天</string>
     <string name="pdf_provider_breakdown">服务商明细</string>
     <string name="pdf_top_sessions">成本最高会话</string>
-    <string name="pdf_daily_trend">每日成本趋势（过去 30 天）</string>
     <string name="pdf_footer">CLI Pulse v%1$s · %2$s</string>
     <string name="pdf_na">无</string>
     <string name="pdf_h_provider">服务商</string>
@@ -330,4 +329,11 @@
     <string name="alert_kind_budget_daily_message">今日支出 $%1$s 已超过每日预算 $%2$s。</string>
     <string name="alert_kind_budget_weekly_title">每周预算已超出：近 7 天 $%s</string>
     <string name="alert_kind_budget_weekly_message">最近 7 天支出共计 $%1$s，已超过每周预算 $%2$s。</string>
+    <!-- Ranges stated from the data actually shown, not a fixed "30 days" -->
+    <plurals name="pdf_daily_trend_days">
+        <item quantity="other">每日成本趋势（%d 天）</item>
+    </plurals>
+    <plurals name="cost_chart_summary">
+        <item quantity="other">每日成本图表：%1$d 天，最高 %2$s</item>
+    </plurals>
 </resources>

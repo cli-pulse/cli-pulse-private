@@ -174,7 +174,6 @@
     <string name="pdf_progress_value">%1$d/%2$d days</string>
     <string name="pdf_provider_breakdown">Provider Breakdown</string>
     <string name="pdf_top_sessions">Top Sessions by Cost</string>
-    <string name="pdf_daily_trend">Daily Cost Trend (Last 30 Days)</string>
     <string name="pdf_footer">CLI Pulse v%1$s · %2$s</string>
     <string name="pdf_na">N/A</string>
     <string name="pdf_h_provider">Provider</string>
@@ -334,4 +333,13 @@
     <string name="alert_kind_budget_daily_message">Today\'s spend of $%1$s is above your daily budget of $%2$s.</string>
     <string name="alert_kind_budget_weekly_title">Weekly budget exceeded — $%s</string>
     <string name="alert_kind_budget_weekly_message">Last 7 days of spend totals $%1$s, above your weekly budget of $%2$s.</string>
+    <!-- Ranges stated from the data actually shown, not a fixed "30 days" -->
+    <plurals name="pdf_daily_trend_days">
+        <item quantity="one">Daily Cost Trend (%d day)</item>
+        <item quantity="other">Daily Cost Trend (%d days)</item>
+    </plurals>
+    <plurals name="cost_chart_summary">
+        <item quantity="one">Daily cost chart: %1$d day, highest %2$s</item>
+        <item quantity="other">Daily cost chart: %1$d days, highest %2$s</item>
+    </plurals>
 </resources>

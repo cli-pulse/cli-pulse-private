@@ -25,6 +25,8 @@ import com.clipulse.android.ui.common.DataTokenDisplay
 import com.clipulse.android.ui.common.tokenLabel
 import com.clipulse.android.ui.common.DateDisplay
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,7 +52,7 @@ fun DevicesScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(stringResource(R.string.screen_devices), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.screen_devices), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
                 Spacer(Modifier.height(4.dp))
                 Text(
                     // v1.21 E6: pluralStringResource handles "1 device" vs "N

@@ -29,6 +29,8 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import com.clipulse.android.ui.common.text
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,6 +66,7 @@ fun OverviewScreen(
                 Text(
                     stringResource(R.string.tab_overview),
                     style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.semantics { heading() },
                 )
                 Box {
                     IconButton(onClick = { showExportMenu = true }) {

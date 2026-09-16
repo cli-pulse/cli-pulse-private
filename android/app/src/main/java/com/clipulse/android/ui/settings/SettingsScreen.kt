@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.DataTokenDisplay
 import com.clipulse.android.ui.common.tokenLabel
+import androidx.compose.ui.semantics.heading
 
 @Composable
 fun SettingsScreen(
@@ -77,7 +78,7 @@ fun SettingsScreen(
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        Text(stringResource(R.string.tab_settings), style = MaterialTheme.typography.headlineMedium)
+        Text(stringResource(R.string.tab_settings), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
         Spacer(Modifier.height(16.dp))
 
         // Account info

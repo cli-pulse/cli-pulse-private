@@ -25,6 +25,8 @@ import com.clipulse.android.ui.theme.SeverityWarning
 import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.DataTokenDisplay
 import com.clipulse.android.ui.common.tokenLabel
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,7 +59,7 @@ fun AlertsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(stringResource(R.string.screen_alerts), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.screen_alerts), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -84,6 +86,7 @@ fun AlertsScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AlertCard(
     alert: AlertRecord,
@@ -118,19 +121,20 @@ fun AlertCard(
 
             if (!alert.isResolved) {
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Wraps: translated labels at large font scale overflowed a single row.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (!alert.isRead) {
                         FilledTonalButton(onClick = onAcknowledge, contentPadding = PaddingValues(horizontal = 12.dp)) {
                             Text(stringResource(R.string.alert_action_ack), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                     FilledTonalButton(onClick = onResolve, contentPadding = PaddingValues(horizontal = 12.dp)) {
-                        Icon(Icons.Default.Check, contentDescription = stringResource(R.string.alert_action_resolve), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.alert_action_resolve), style = MaterialTheme.typography.labelSmall)
                     }
                     FilledTonalButton(onClick = onSnooze, contentPadding = PaddingValues(horizontal = 12.dp)) {
-                        Icon(Icons.Default.Snooze, contentDescription = stringResource(R.string.alert_action_snooze), modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Snooze, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(stringResource(R.string.alert_action_snooze_duration_1h), style = MaterialTheme.typography.labelSmall)
                     }
