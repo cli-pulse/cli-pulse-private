@@ -20,6 +20,7 @@ import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.PulseSuccess
 import com.clipulse.android.ui.theme.PulseWarning
 import kotlin.math.roundToInt
+import com.clipulse.android.ui.common.text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,8 +30,9 @@ fun DevicesScreen(
     LifecyclePollingEffect(viewModel::setPolling)
     val state by viewModel.state.collectAsState()
     val snackbar = LocalSnackbarHostState.current
+    val errorText = state.error?.text()
     LaunchedEffect(state.error) {
-        state.error?.let { snackbar.showSnackbar(it) }
+        errorText?.let { snackbar.showSnackbar(it) }
     }
 
     PullToRefreshBox(
@@ -68,7 +70,7 @@ fun DevicesScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(
-                            state.error ?: stringResource(R.string.error_unknown),
+                            state.error?.text() ?: stringResource(R.string.error_unknown),
                             modifier = Modifier.padding(16.dp),
                             color = MaterialTheme.colorScheme.onErrorContainer,
                         )

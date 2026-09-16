@@ -20,6 +20,7 @@ import com.clipulse.android.ui.components.*
 import com.clipulse.android.ui.theme.PulseSuccess
 import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
+import com.clipulse.android.ui.common.text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,8 +31,9 @@ fun ProvidersScreen(
     LifecyclePollingEffect(viewModel::setPolling)
     val state by viewModel.state.collectAsState()
     val snackbar = LocalSnackbarHostState.current
+    val errorText = state.error?.text()
     LaunchedEffect(state.error) {
-        state.error?.let { snackbar.showSnackbar(it) }
+        errorText?.let { snackbar.showSnackbar(it) }
     }
 
     PullToRefreshBox(
@@ -55,7 +57,7 @@ fun ProvidersScreen(
                             containerColor = MaterialTheme.colorScheme.errorContainer,
                         ),
                     ) {
-                        Text(error, modifier = Modifier.padding(16.dp))
+                        Text(error.text(), modifier = Modifier.padding(16.dp))
                     }
                 }
             }

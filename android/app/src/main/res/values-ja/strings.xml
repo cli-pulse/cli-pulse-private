@@ -236,4 +236,22 @@
     <plurals name="overview_alerts_warning_count">
         <item quantity="other">警告 %d 件</item>
     </plurals>
+
+    <!-- Errors shown in the UI, one per UiError kind (the exception text stays in logs) -->
+    <string name="error_session_expired">セッションの有効期限が切れました。もう一度サインインしてください。</string>
+    <string name="error_offline">CLI Pulse に接続できません。接続を確認して、もう一度お試しください。</string>
+    <string name="error_offline_cached_session">オフラインです。保存済みのセッションを使用しています。</string>
+    <string name="error_invalid_credentials">メールアドレスまたはパスワードが正しくありません。</string>
+    <string name="error_code_invalid">コードが無効か、有効期限が切れています。新しいコードをリクエストしてください。</string>
+    <string name="error_rate_limited">試行回数が多すぎます。1 分ほど待ってから、もう一度お試しください。</string>
+    <string name="error_server">サーバーでエラーが発生しました（HTTP %1$d）。もう一度お試しください。</string>
+    <string name="error_something_went_wrong">問題が発生しました。もう一度お試しください。</string>
+    <string name="error_action_acknowledge">アラートを確認済みにできませんでした。%1$s</string>
+    <string name="error_action_resolve">アラートを解決済みにできませんでした。%1$s</string>
+    <string name="error_action_snooze">アラートをスヌーズできませんでした。%1$s</string>
+    <string name="error_action_delete_account">アカウントを削除できませんでした。%1$s</string>
+    <string name="error_action_load_linked_accounts">連携済みアカウントを読み込めませんでした。%1$s</string>
+    <string name="error_action_start_link">アカウントの連携を開始できませんでした。%1$s</string>
+    <string name="error_action_link">アカウントを連携できませんでした。%1$s</string>
+    <string name="error_action_unlink">アカウントの連携を解除できませんでした。%1$s</string>
 </resources>

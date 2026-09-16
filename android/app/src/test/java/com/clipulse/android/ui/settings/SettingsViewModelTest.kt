@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.settings
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.local.CacheDao
 import com.clipulse.android.data.model.SettingsSnapshot
@@ -158,7 +159,10 @@ class SettingsViewModelTest {
         
 
         assertNotNull(vm.state.value.deleteError)
-        assertTrue(vm.state.value.deleteError!!.contains("server error"))
+        assertEquals(
+            UiError.ActionFailed(UiError.Action.DeleteAccount, UiError.Unknown("server error")),
+            vm.state.value.deleteError,
+        )
         vm.viewModelScope.cancel()
     }
 

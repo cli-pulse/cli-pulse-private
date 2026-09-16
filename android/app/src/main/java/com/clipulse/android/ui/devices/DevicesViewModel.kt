@@ -10,11 +10,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class DevicesUiState(
     val isLoading: Boolean = true,
     val devices: List<DeviceRecord> = emptyList(),
-    val error: String? = null,
+    val error: UiError? = null,
 )
 
 @HiltViewModel
@@ -55,7 +56,7 @@ class DevicesViewModel @Inject constructor(
                 val devices = supabase.devices()
                 _state.value = _state.value.copy(isLoading = false, devices = devices)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }

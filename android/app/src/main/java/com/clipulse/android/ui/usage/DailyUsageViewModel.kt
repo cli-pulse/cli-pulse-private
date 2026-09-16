@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class DailyUsageUiState(
     val isLoading: Boolean = true,
     val dailyUsage: List<DailyUsage> = emptyList(),
-    val error: String? = null,
+    val error: UiError? = null,
 )
 
 @HiltViewModel
@@ -40,7 +41,7 @@ class DailyUsageViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    error = e.message,
+                    error = UiError.from(e),
                 )
             }
         }

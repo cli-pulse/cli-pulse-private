@@ -28,6 +28,7 @@ import com.clipulse.android.data.remote.OAuthDeepLinkCallback
 import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
+import com.clipulse.android.ui.common.text
 
 @Composable
 fun SettingsScreen(
@@ -149,7 +150,7 @@ fun SettingsScreen(
 
                     state.linkIdentityError?.let { err ->
                         Text(
-                            err,
+                            err.text(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -353,7 +354,7 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(error, modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer)
+                Text(error.text(), modifier = Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onErrorContainer)
             }
         }
 

@@ -11,12 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class OverviewUiState(
     val isLoading: Boolean = true,
     val dashboard: DashboardSummary? = null,
     val costForecast: CostForecast? = null,
-    val error: String? = null,
+    val error: UiError? = null,
 )
 
 @HiltViewModel
@@ -50,7 +51,7 @@ class OverviewViewModel @Inject constructor(
                     costForecast = forecast,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -69,7 +70,7 @@ class OverviewViewModel @Inject constructor(
                     repository.refreshDashboard()
                     _state.value = _state.value.copy(dashboard = repository.dashboard.value, error = null)
                 } catch (e: ApiError.TokenExpired) {
-                    _state.value = _state.value.copy(error = "Session expired. Please sign in again.")
+                    _state.value = _state.value.copy(error = UiError.SessionExpired)
                     break // Stop auto-refresh on auth failure
                 } catch (_: Exception) { }
             }

@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.providers
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.ProviderUsage
 import com.clipulse.android.data.model.TierDTO
@@ -81,7 +82,7 @@ class ProvidersViewModelTest {
         
 
         assertFalse(vm.state.value.isLoading)
-        assertEquals("timeout", vm.state.value.error)
+        assertEquals(UiError.Unknown("timeout"), vm.state.value.error)
         assertTrue(vm.state.value.providers.isEmpty())
         vm.viewModelScope.cancel()
     }

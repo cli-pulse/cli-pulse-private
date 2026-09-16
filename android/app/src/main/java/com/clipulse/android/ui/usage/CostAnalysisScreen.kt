@@ -23,6 +23,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.clipulse.android.R
 import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
+import com.clipulse.android.ui.common.text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,8 +37,9 @@ fun CostAnalysisScreen(
     // survives low-memory process death. Plain `remember` reset to tab 0 every
     // time the OS killed the app while the user was off-screen.
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    val errorText = state.error?.text()
     LaunchedEffect(state.error) {
-        state.error?.let { snackbar.showSnackbar(it) }
+        errorText?.let { snackbar.showSnackbar(it) }
     }
 
     Scaffold(

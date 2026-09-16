@@ -10,11 +10,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class ProvidersUiState(
     val isLoading: Boolean = true,
     val providers: List<ProviderUsage> = emptyList(),
-    val error: String? = null,
+    val error: UiError? = null,
 )
 
 @HiltViewModel
@@ -42,7 +43,7 @@ class ProvidersViewModel @Inject constructor(
                 val providers = supabase.providers()
                 _state.value = _state.value.copy(isLoading = false, providers = providers)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }

@@ -27,6 +27,7 @@ import com.clipulse.android.data.remote.OAuthDeepLinkCallback
 import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
+import com.clipulse.android.ui.common.text
 
 @Composable
 fun LoginScreen(
@@ -113,7 +114,7 @@ fun LoginScreen(
 
             state.error?.let { error ->
                 Text(
-                    error,
+                    error.text(),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
                     textAlign = TextAlign.Center,

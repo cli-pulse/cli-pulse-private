@@ -235,4 +235,22 @@
     <plurals name="overview_alerts_warning_count">
         <item quantity="other">警告 %d 条</item>
     </plurals>
+
+    <!-- Errors shown in the UI, one per UiError kind (the exception text stays in logs) -->
+    <string name="error_session_expired">登录已过期，请重新登录。</string>
+    <string name="error_offline">无法连接 CLI Pulse。请检查网络后重试。</string>
+    <string name="error_offline_cached_session">当前离线，正在使用已保存的登录状态。</string>
+    <string name="error_invalid_credentials">邮箱或密码不正确。</string>
+    <string name="error_code_invalid">验证码无效或已过期，请重新获取。</string>
+    <string name="error_rate_limited">尝试次数过多，请稍等一分钟后重试。</string>
+    <string name="error_server">服务器返回错误（HTTP %1$d），请重试。</string>
+    <string name="error_something_went_wrong">出了点问题，请重试。</string>
+    <string name="error_action_acknowledge">无法确认告警。%1$s</string>
+    <string name="error_action_resolve">无法解决告警。%1$s</string>
+    <string name="error_action_snooze">无法暂缓告警。%1$s</string>
+    <string name="error_action_delete_account">无法删除账户。%1$s</string>
+    <string name="error_action_load_linked_accounts">无法加载已关联账户。%1$s</string>
+    <string name="error_action_start_link">无法开始关联账户。%1$s</string>
+    <string name="error_action_link">无法关联账户。%1$s</string>
+    <string name="error_action_unlink">无法取消关联账户。%1$s</string>
 </resources>

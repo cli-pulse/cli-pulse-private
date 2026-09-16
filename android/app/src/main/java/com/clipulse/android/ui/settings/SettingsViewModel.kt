@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class SettingsUiState(
     val userName: String? = null,
@@ -19,7 +20,7 @@ data class SettingsUiState(
     val tier: String = "free",
     val settings: SettingsSnapshot? = null,
     val isLoading: Boolean = true,
-    val deleteError: String? = null,
+    val deleteError: UiError? = null,
     val deleteSuccess: Boolean = false,
     val webhookEnabled: Boolean = false,
     val webhookUrl: String? = null,
@@ -28,7 +29,7 @@ data class SettingsUiState(
     val isDemoMode: Boolean = false,
     val linkedIdentities: List<UserIdentity> = emptyList(),
     val isLinkingIdentity: Boolean = false,
-    val linkIdentityError: String? = null,
+    val linkIdentityError: UiError? = null,
 )
 
 @HiltViewModel
@@ -63,7 +64,7 @@ class SettingsViewModel @Inject constructor(
                 _state.value = _state.value.copy(linkedIdentities = list)
             } catch (e: Exception) {
                 // Non-fatal — surface via linkIdentityError if something important failed
-                _state.value = _state.value.copy(linkIdentityError = e.message)
+                _state.value = _state.value.copy(linkIdentityError = UiError.action(UiError.Action.LoadLinkedAccounts, e))
             }
         }
     }
@@ -87,7 +88,7 @@ class SettingsViewModel @Inject constructor(
             )
             url
         } catch (e: Exception) {
-            _state.value = _state.value.copy(linkIdentityError = e.message ?: "Failed to start link flow")
+            _state.value = _state.value.copy(linkIdentityError = UiError.action(UiError.Action.StartLink, e))
             null
         }
     }
@@ -104,7 +105,7 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLinkingIdentity = false,
-                    linkIdentityError = e.message ?: "Failed to link identity",
+                    linkIdentityError = UiError.action(UiError.Action.Link, e),
                 )
             }
         }
@@ -120,7 +121,7 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLinkingIdentity = false,
-                    linkIdentityError = e.message ?: "Failed to unlink identity",
+                    linkIdentityError = UiError.action(UiError.Action.Unlink, e),
                 )
             }
         }
@@ -230,7 +231,7 @@ class SettingsViewModel @Inject constructor(
             } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     isLoading = false,
-                    deleteError = "Failed to delete account: ${e.message}",
+                    deleteError = UiError.action(UiError.Action.DeleteAccount, e),
                 )
             }
         }

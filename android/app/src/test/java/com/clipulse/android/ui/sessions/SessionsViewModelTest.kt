@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.sessions
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.SessionRecord
 import com.clipulse.android.data.remote.SupabaseClient
@@ -74,7 +75,7 @@ class SessionsViewModelTest {
         
 
         assertFalse(vm.state.value.isLoading)
-        assertEquals("connection refused", vm.state.value.error)
+        assertEquals(UiError.Unknown("connection refused"), vm.state.value.error)
         assertTrue(vm.state.value.sessions.isEmpty())
         vm.viewModelScope.cancel()
     }

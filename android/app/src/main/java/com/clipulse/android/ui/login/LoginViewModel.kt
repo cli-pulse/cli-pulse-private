@@ -10,10 +10,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class LoginUiState(
     val isLoading: Boolean = false,
-    val error: String? = null,
+    val error: UiError? = null,
     val isLoggedIn: Boolean = false,
     val showOtpInput: Boolean = false,
     val otpEmail: String = "",
@@ -46,7 +47,7 @@ class LoginViewModel @Inject constructor(
                 supabase.signInWithGoogle(idToken, name, email)
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -62,7 +63,7 @@ class LoginViewModel @Inject constructor(
                     otpEmail = email,
                 )
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -74,7 +75,7 @@ class LoginViewModel @Inject constructor(
                 supabase.verifyOTP(_state.value.otpEmail, code)
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -86,7 +87,7 @@ class LoginViewModel @Inject constructor(
                 supabase.signInWithPassword(email, password)
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -121,7 +122,7 @@ class LoginViewModel @Inject constructor(
                 tokenStore.clearPendingOAuthFlow()
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -153,12 +154,12 @@ class LoginViewModel @Inject constructor(
                 } else {
                     // Transient error — keep tokens, proceed as logged in
                     _state.value = _state.value.copy(isLoading = false, isLoggedIn = true,
-                        error = "Offline — using cached session")
+                        error = UiError.OfflineUsingCachedSession)
                 }
             } catch (_: Exception) {
                 // Network error — keep tokens, proceed as logged in
                 _state.value = _state.value.copy(isLoading = false, isLoggedIn = true,
-                    error = "Offline — using cached session")
+                    error = UiError.OfflineUsingCachedSession)
             }
         }
     }

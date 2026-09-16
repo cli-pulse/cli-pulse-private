@@ -22,6 +22,7 @@ import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.SeverityCritical
 import com.clipulse.android.ui.theme.SeverityInfo
 import com.clipulse.android.ui.theme.SeverityWarning
+import com.clipulse.android.ui.common.text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,8 +32,17 @@ fun AlertsScreen(
     LifecyclePollingEffect(viewModel::setPolling)
     val state by viewModel.state.collectAsState()
     val snackbar = LocalSnackbarHostState.current
+    val errorText = state.error?.text()
     LaunchedEffect(state.error) {
-        state.error?.let { snackbar.showSnackbar(it) }
+        errorText?.let { snackbar.showSnackbar(it) }
+    }
+    // Acknowledge / resolve / snooze failures used to be stored and never shown.
+    val mutationErrorText = state.mutationError?.text()
+    LaunchedEffect(state.mutationError) {
+        mutationErrorText?.let {
+            snackbar.showSnackbar(it)
+            viewModel.clearMutationError()
+        }
     }
 
     PullToRefreshBox(
