@@ -47,6 +47,7 @@
 		A20011 /* iOSAlertsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20007 /* iOSAlertsTab.swift */; };
 		A20012 /* iOSSettingsTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20008 /* iOSSettingsTab.swift */; };
 		A20013 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B20009 /* Assets.xcassets */; };
+		A20090 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = B20090 /* InfoPlist.strings */; };
 		A20016 /* iOSMachineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20014 /* iOSMachineView.swift */; };
 		A20030 /* iOSUsageHeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20030 /* iOSUsageHeatmapView.swift */; };
 		A20015 /* iOSAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20013 /* iOSAppDelegate.swift */; };
@@ -224,6 +225,12 @@
 		B20008 /* iOSSettingsTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSSettingsTab.swift; sourceTree = "<group>"; };
 		B20009 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B20010 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B20091 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "en"; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B20092 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B20093 /* zh-Hant */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hant"; path = "zh-Hant.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B20094 /* ja */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ja"; path = "ja.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B20095 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ko"; path = "ko.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		B20096 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es"; path = "es.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		B20011 /* CLI_Pulse_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = CLI_Pulse_iOS.entitlements; sourceTree = "<group>"; };
 		B20014 /* iOSMachineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSMachineView.swift; sourceTree = "<group>"; };
 		B20030 /* iOSUsageHeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iOSUsageHeatmapView.swift; sourceTree = "<group>"; };
@@ -406,6 +413,7 @@
 				B30021 /* PhoneSessionManager.swift */,
 				B20009 /* Assets.xcassets */,
 				B20010 /* Info.plist */,
+				B20090 /* InfoPlist.strings */,
 				B20011 /* CLI_Pulse_iOS.entitlements */,
 				A87404BA11DA4150BF4E2CFC /* PrivacyInfo.xcprivacy */,
 			);
@@ -607,6 +615,11 @@
 			knownRegions = (
 				en,
 				Base,
+				"zh-Hans",
+				"zh-Hant",
+				ja,
+				ko,
+				es,
 			);
 			mainGroup = E10001;
 			packageReferences = (
@@ -639,6 +652,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A20013 /* Assets.xcassets in Resources */,
+				A20090 /* InfoPlist.strings in Resources */,
 				E63FBDBE21C6066701023522 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -808,6 +822,22 @@
 			targetProxy = P60001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		B20090 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				B20091 /* en */,
+				B20092 /* zh-Hans */,
+				B20093 /* zh-Hant */,
+				B20094 /* ja */,
+				B20095 /* ko */,
+				B20096 /* es */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		G10002 /* Debug */ = {
