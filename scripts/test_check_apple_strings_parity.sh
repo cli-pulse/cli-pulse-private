@@ -61,6 +61,16 @@ STRINGS
 STRINGS
     done
 
+    mkdir -p "$dest/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore"
+    cat > "$dest/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift" <<'SWIFT'
+public enum L10n {
+    public enum tab {
+        public static var overview: String { tr("tab.overview") }
+        public static var settings: String { tr("tab.settings") }
+    }
+}
+SWIFT
+
     cat > "$dest/scripts/apple_strings_parity_baseline.json" <<'JSON'
 {
   "_comment": ["fixture baseline"],
@@ -180,6 +190,36 @@ for L in es ja ko zh-Hans zh-Hant; do
   printf '"wizard.quoted" = "q";\n"wizard.multiline" = "m";\n' >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
 done
 expect_ok "escaped quote and multi-line value stay legal"
+
+# ── code→catalogue A. a tr() key in NO catalogue is invisible to parity ───
+# The comparison is catalogue-to-catalogue, so a key missing from ALL of them
+# has no locale to disagree with. NSLocalizedString then echoes the key and the
+# user reads the raw dotted identifier. Six such keys existed on the branch that
+# added this check.
+build_fixture "$TMP/case"
+F="$TMP/case/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift"
+BEFORE="$(shasum "$F" | cut -d' ' -f1)"
+printf 'extension L10n { static var orphan: String { tr("nowhere.at_all") } }\n' >> "$F"
+assert_changed "tr key in no catalogue" "$F" "$BEFORE" &&
+expect_fail "tr key in no catalogue" "nowhere.at_all"
+
+# ── code→catalogue B. a key composed at runtime cannot be resolved ────────
+# `tr("pet.form_\(form.rawValue)")` is a real pattern in this codebase (71
+# cases, 71 keys). Reporting it would make the gate permanently red.
+build_fixture "$TMP/case"
+F="$TMP/case/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift"
+BEFORE="$(shasum "$F" | cut -d' ' -f1)"
+printf 'extension L10n { static func f(_ x: P) -> String { tr("pet.form_\\(x.rawValue)") } }\n' >> "$F"
+assert_changed "interpolated tr key" "$F" "$BEFORE" &&
+expect_ok "a tr key composed at runtime is skipped, not reported"
+
+# ── code→catalogue C. the check must not fire when the key IS declared ────
+build_fixture "$TMP/case"
+F="$TMP/case/CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift"
+BEFORE="$(shasum "$F" | cut -d' ' -f1)"
+printf 'extension L10n { static var w: String { tr("wizard.welcome") } }\n' >> "$F"
+assert_changed "declared tr key" "$F" "$BEFORE" &&
+expect_ok "a tr key present in en.lproj passes"
 
 # ── syntax C. an empty catalogue is the same outage as an unparseable one ─
 build_fixture "$TMP/case"

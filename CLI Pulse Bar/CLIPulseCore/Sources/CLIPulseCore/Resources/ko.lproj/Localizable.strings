@@ -1372,3 +1372,12 @@
 "quota_tier.weekly" = "주간";
 "quota_tier.window_5h" = "5h 기간";
 "quota_tier.window_fallback" = "기간";
+
+/* Collector + OAuth error wrappers — surfaced once the hardcoded-strings gate
+   stopped losing `errorDescription` bodies to `case … let x` bindings */
+"collector_error.invalid_url" = "URL이 올바르지 않습니다: %@";
+"collector_error.http_status" = "%1$@에서 HTTP %2$d 응답을 받았습니다";
+"collector_error.parse_failed" = "응답을 해석하지 못했습니다: %@";
+"provider_config.error_gemini_token_refresh_failed" = "토큰 갱신에 실패했습니다(HTTP %d)";
+"provider_config.error_gemini_no_refresh_token" = "사용 가능한 갱신 토큰이 없습니다";
+"auth.error_http_status" = "HTTP %1$d: %2$@";

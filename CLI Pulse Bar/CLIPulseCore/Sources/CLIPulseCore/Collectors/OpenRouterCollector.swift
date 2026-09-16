@@ -193,9 +193,9 @@ public enum CollectorError: LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .missingCredentials(let msg): return msg
-        case .invalidURL(let url): return "Invalid URL: \(url)"
-        case .httpError(let status, let provider): return "\(provider) HTTP \(status)"
-        case .parseFailed(let msg): return "Parse error: \(msg)"
+        case .invalidURL(let url): return L10n.collectorError.invalidURL(url)
+        case .httpError(let status, let provider): return L10n.collectorError.httpStatus(provider, status)
+        case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg)
         case .notSignedIn(let msg): return msg
         case .silentBackoff(let msg): return msg
         }

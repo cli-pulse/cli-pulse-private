@@ -91,5 +91,32 @@ new_tree; view 'struct V: View { var body: some View { Text(L10n.x.y) } }'
 baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"Gone\"", "count": 1, "reason": "was here once"}]}'
 expect 1 "a STALE baseline entry fails, so the allowlist can only shrink"
 
+# A `case` line's `let` is a PATTERN BINDING, not a declaration. Treating it as
+# one reset the tracker, so the enclosing `var errorDescription: String?` was
+# forgotten and every error enum's body went unscanned. That is how two of
+# GeminiOAuthError's eleven cases stayed English while the other nine were
+# localized, with this gate green.
+new_tree; core 'enum E: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case .bad(let url): return "Invalid URL: \(url)"
+        }
+    }
+}'
+expect 1 "copy returned from an errorDescription case with a pattern binding fails"
+
+# The same fix must NOT start flagging protocol tokens returned from a
+# non-display-named property — `let reason` used to hijack the tracker (because
+# "reason" is on the display-name list) and made three of these false positives.
+new_tree; core 'enum E {
+    var telemetryToken: String {
+        switch self {
+        case .notReady(let reason): return "not_ready_\(reason.rawValue)"
+        case .producedData: return "ok"
+        }
+    }
+}'
+expect 0 "telemetry tokens returned from a non-display property still pass"
+
 echo "check_hardcoded_ui_strings negative controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

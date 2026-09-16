@@ -248,24 +248,6 @@
    "reason": "KEEP_NOT_USER_VISIBLE: Quarantine Keychain access group identifier, consumed by KeychainHelper.swift:53 and HelperConfig.swift:307. It is never displayed."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
-   "literal": "\"empty\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Stable telemetry token. Not rendered."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
-   "literal": "\"not_ready_\\(reason.rawValue)\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Stable telemetry token built from a rawValue. Not rendered."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CollectorRunner.swift",
-   "literal": "\"ok\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Compared against the token returned by HelperAPIClient.classifyCollectorOutcome (line 244). A comparison string."
-  },
-  {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
    "literal": "\"Resets soon\"",
    "count": 1,
@@ -429,6 +411,12 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"indeterminate(\\(s))\"",
+   "count": 1,
+   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
    "literal": "\"notRegistered\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: The same Verdict.description as :103, and a Swift case identifier. It reaches only logs and the unrendered helperAgentStatus."
@@ -438,6 +426,18 @@
    "literal": "\"running\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: Compared against launchd's `state = ` value parsed from `launchctl print` output. Translating it would break the check."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"spawnFailing(\\(d))\"",
+   "count": 1,
+   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"staleRegistration(recorded: \\(r), current: \\(c))\"",
+   "count": 1,
+   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",

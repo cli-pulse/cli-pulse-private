@@ -1586,3 +1586,12 @@
 "quota_tier.weekly" = "週次";
 "quota_tier.window_5h" = "5h";
 "quota_tier.window_fallback" = "期間";
+
+/* Collector + OAuth error wrappers — surfaced once the hardcoded-strings gate
+   stopped losing `errorDescription` bodies to `case … let x` bindings */
+"collector_error.invalid_url" = "URL が無効です: %@";
+"collector_error.http_status" = "%1$@ が HTTP %2$d を返しました";
+"collector_error.parse_failed" = "解析に失敗しました: %@";
+"provider_config.error_gemini_token_refresh_failed" = "トークンの更新に失敗しました（HTTP %d）";
+"provider_config.error_gemini_no_refresh_token" = "利用可能なリフレッシュトークンがありません";
+"auth.error_http_status" = "HTTP %1$d: %2$@";

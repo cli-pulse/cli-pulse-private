@@ -1637,3 +1637,12 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "quota_tier.weekly" = "Weekly";
 "quota_tier.window_5h" = "5h Window";
 "quota_tier.window_fallback" = "Window";
+
+/* Collector + OAuth error wrappers — surfaced once the hardcoded-strings gate
+   stopped losing `errorDescription` bodies to `case … let x` bindings */
+"collector_error.invalid_url" = "Invalid URL: %@";
+"collector_error.http_status" = "%1$@ returned HTTP %2$d";
+"collector_error.parse_failed" = "Parse failed: %@";
+"provider_config.error_gemini_token_refresh_failed" = "Token refresh failed (HTTP %d)";
+"provider_config.error_gemini_no_refresh_token" = "No refresh token available";
+"auth.error_http_status" = "HTTP %1$d: %2$@";
