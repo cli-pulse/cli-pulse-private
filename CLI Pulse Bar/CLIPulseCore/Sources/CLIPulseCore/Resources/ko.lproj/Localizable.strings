@@ -1410,3 +1410,12 @@
 "alert_kind.source_quota" = "할당량";
 "alert_kind.source_session" = "세션";
 "alert_kind.source_swarm" = "스웜";
+
+/* Mac-perspective failures of the Mac's own session control. The remote.* equivalents
+   are written for the iPhone and read wrong shown on the Mac about itself. */
+"sessions.err_approval_gone" = "이 요청은 더 이상 응답을 기다리고 있지 않습니다.";
+"sessions.err_helper_connection_lost" = "로컬 헬퍼와의 연결이 끊어졌습니다. 다시 시도하세요.";
+"sessions.err_helper_needs_update" = "로컬 헬퍼 버전이 낮습니다. 이 기능을 사용하려면 CLI Pulse를 업데이트하세요.";
+"sessions.err_not_controllable" = "이 세션은 여기에서 볼 수는 있지만 제어할 수는 없습니다.";
+"sessions.err_runtime_restricted" = "이 빌드에서는 세션 제어를 사용할 수 없습니다.";
+"sessions.err_unauthenticated" = "로컬 헬퍼가 CLI Pulse의 자격 증명을 받아들이지 않았습니다. 헬퍼를 다시 시작한 후 다시 시도하세요.";

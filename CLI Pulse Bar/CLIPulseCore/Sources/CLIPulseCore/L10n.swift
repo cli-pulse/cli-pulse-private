@@ -674,6 +674,15 @@ public enum L10n {
         public static func wrappedAttachFailed(_ a0: String) -> String { tr("sessions.wrapped_attach_failed", a0) }
         public static func actionHelperUnavailable(_ a0: String) -> String { tr("sessions.action_helper_unavailable", a0) }
         public static var approvalSessionNotOwned: String { tr("sessions.approval_session_not_owned") }
+        // Mac-perspective failures of the Mac's OWN session control. The
+        // `remote.*` equivalents are written for the iPhone ("This Mac lets this
+        // iPhone watch only") and read wrong shown on the Mac about itself.
+        public static var errRuntimeRestricted: String { tr("sessions.err_runtime_restricted") }
+        public static var errUnauthenticated: String { tr("sessions.err_unauthenticated") }
+        public static var errHelperNeedsUpdate: String { tr("sessions.err_helper_needs_update") }
+        public static var errHelperConnectionLost: String { tr("sessions.err_helper_connection_lost") }
+        public static var errNotControllable: String { tr("sessions.err_not_controllable") }
+        public static var errApprovalGone: String { tr("sessions.err_approval_gone") }
     }
 
 

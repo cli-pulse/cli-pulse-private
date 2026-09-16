@@ -1679,3 +1679,12 @@
 "alert_kind.source_quota" = "配额";
 "alert_kind.source_session" = "会话";
 "alert_kind.source_swarm" = "Agent 集群";
+
+/* Mac-perspective failures of the Mac's own session control. The remote.* equivalents
+   are written for the iPhone and read wrong shown on the Mac about itself. */
+"sessions.err_approval_gone" = "这个请求已不再等待处理。";
+"sessions.err_helper_connection_lost" = "与本地 helper 的连接已断开。请重试。";
+"sessions.err_helper_needs_update" = "本地 helper 版本过旧。请更新 CLI Pulse 后再使用此功能。";
+"sessions.err_not_controllable" = "此会话在这里只能查看，无法控制。";
+"sessions.err_runtime_restricted" = "此版本无法使用会话控制。";
+"sessions.err_unauthenticated" = "本地 helper 拒绝了 CLI Pulse 的凭据。请重启 helper 后重试。";

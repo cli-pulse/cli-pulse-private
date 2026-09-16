@@ -1675,3 +1675,12 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "alert_kind.source_quota" = "Quota";
 "alert_kind.source_session" = "Session";
 "alert_kind.source_swarm" = "Swarm";
+
+/* Mac-perspective failures of the Mac's own session control. The remote.* equivalents
+   are written for the iPhone and read wrong shown on the Mac about itself. */
+"sessions.err_approval_gone" = "This request is no longer waiting for an answer.";
+"sessions.err_helper_connection_lost" = "Lost the connection to the local helper. Try again.";
+"sessions.err_helper_needs_update" = "The local helper is out of date. Update CLI Pulse to use this.";
+"sessions.err_not_controllable" = "This session can be watched from here but not controlled.";
+"sessions.err_runtime_restricted" = "Session control isn't available in this build.";
+"sessions.err_unauthenticated" = "The local helper didn't accept CLI Pulse's credentials. Restart the helper and try again.";

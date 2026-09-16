@@ -135,7 +135,7 @@ extension AppState {
             case .helperNotRunning:
                 self.localHelperError = nil  // not really an error
             default:
-                self.localHelperError = String(describing: err)
+                self.localHelperError = LocalSessionFailureText.message(for: err)
             }
             Self.localStateLogger.info(
                 "hello failed: \(String(describing: err), privacy: .public) (socketExists=\(diag.socketExists, privacy: .public))"
@@ -144,7 +144,7 @@ extension AppState {
         } catch {
             self.localHelperReachable = false
             self.localHelperVersion = ""
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             Self.localStateLogger.info(
                 "hello failed (non-typed): \(String(describing: error), privacy: .public)"
             )
@@ -291,7 +291,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "setLocalControlEnabled(\(enabled, privacy: .public)) failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return self.localControlEnabled
         }
     }
@@ -597,7 +597,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "local start failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return .failed
         }
     }
@@ -627,7 +627,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "local stop failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return false
         }
     }
@@ -650,7 +650,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "local send_input failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return false
         }
     }
@@ -912,7 +912,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "local approve(\(approvalId, privacy: .public)) failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             // On any error refresh from snapshot so the UI is
             // consistent with the helper's view.
             await refreshLocalPendingApprovals(sessionId: sessionId)
@@ -1005,7 +1005,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "install_claude_hook failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
     }
@@ -1030,7 +1030,7 @@ extension AppState {
             Self.localStateLogger.warning(
                 "uninstall_claude_hook failed: \(String(describing: error), privacy: .public)"
             )
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
     }
@@ -1109,7 +1109,7 @@ extension AppState {
             }
             return now
         } catch {
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             // Re-read rather than assume: a failed share may still have minted
             // the row, and a failed unshare may still have revoked. The helper
             // is the authority on what actually happened — but if we can't reach
@@ -1141,7 +1141,7 @@ extension AppState {
             self.shellIntegrationStatus = st
             return st
         } catch {
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
     }
@@ -1162,7 +1162,7 @@ extension AppState {
             self.shellIntegrationStatus = st
             return st
         } catch {
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
     }
@@ -1204,7 +1204,7 @@ extension AppState {
             self.localHelperError = L10n.sessions.wrappedAttachFailed(tmuxName)
             return nil
         } catch {
-            self.localHelperError = String(describing: error)
+            self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
     }

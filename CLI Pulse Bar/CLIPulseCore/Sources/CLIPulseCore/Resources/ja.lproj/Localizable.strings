@@ -1624,3 +1624,12 @@
 "alert_kind.source_quota" = "クォータ";
 "alert_kind.source_session" = "セッション";
 "alert_kind.source_swarm" = "スウォーム";
+
+/* Mac-perspective failures of the Mac's own session control. The remote.* equivalents
+   are written for the iPhone and read wrong shown on the Mac about itself. */
+"sessions.err_approval_gone" = "このリクエストはすでに応答待ちではありません。";
+"sessions.err_helper_connection_lost" = "ローカルヘルパーとの接続が切れました。もう一度お試しください。";
+"sessions.err_helper_needs_update" = "ローカルヘルパーのバージョンが古いです。この機能を使うには CLI Pulse を更新してください。";
+"sessions.err_not_controllable" = "このセッションはここから表示できますが、操作はできません。";
+"sessions.err_runtime_restricted" = "このビルドではセッション操作を利用できません。";
+"sessions.err_unauthenticated" = "ローカルヘルパーが CLI Pulse の認証情報を受け付けませんでした。ヘルパーを再起動してから、もう一度お試しください。";
