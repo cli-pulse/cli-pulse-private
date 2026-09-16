@@ -312,4 +312,21 @@
     <string name="webhook_type_quota_exceeded">Cuota superada</string>
     <string name="webhook_type_session_long">Sesión larga</string>
     <string name="webhook_type_device_offline">Dispositivo sin conexión</string>
+
+    <!-- Alert titles and messages re-rendered from the producer's English (ui/alerts/AlertPresentation.kt); worded as Apple's alert_kind.* -->
+    <string name="alert_kind_device_cpu_title">El uso de CPU del dispositivo es elevado</string>
+    <string name="alert_kind_device_cpu_message">El helper midió un uso de CPU del %s%%.</string>
+    <string name="alert_kind_session_cpu_title">%s está consumiendo mucha CPU</string>
+    <string name="alert_kind_session_cpu_message_system">%3$s usa ~%1$s%% de la CPU total del sistema (%2$s núcleos).</string>
+    <string name="alert_kind_session_cpu_message_process">La CPU del proceso de %2$s es del %1$s%%.</string>
+    <string name="alert_kind_session_cpu_message_process_in_project">La CPU del proceso de %2$s en %3$s es del %1$s%%.</string>
+    <string name="alert_kind_session_long_title">%s lleva mucho tiempo en ejecución</string>
+    <string name="alert_kind_session_long_message">El helper detectó una sesión de agente local de larga duración.</string>
+    <string name="alert_kind_quota_title">%1$s %2$s al %3$s%%</string>
+    <string name="alert_kind_quota_message">El periodo de cuota «%1$s» se ha usado al %2$s%% (%3$s%% restante).</string>
+    <string name="alert_kind_quota_message_reset">El periodo de cuota «%1$s» se ha usado al %2$s%% (%3$s%% restante; se reinicia %4$s).</string>
+    <string name="alert_kind_budget_daily_title">Presupuesto diario superado — $%s</string>
+    <string name="alert_kind_budget_daily_message">El gasto de hoy, $%1$s, supera tu presupuesto diario de $%2$s.</string>
+    <string name="alert_kind_budget_weekly_title">Presupuesto semanal superado — $%s</string>
+    <string name="alert_kind_budget_weekly_message">El gasto de los últimos 7 días, $%1$s, supera tu presupuesto semanal de $%2$s.</string>
 </resources>
