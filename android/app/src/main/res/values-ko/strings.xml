@@ -321,9 +321,9 @@
     <string name="alert_kind_quota_message">‘%1$s’ 사용량이 %2$s%%입니다(%3$s%% 남음).</string>
     <string name="alert_kind_quota_message_reset">‘%1$s’ 사용량이 %2$s%%입니다(%3$s%% 남음, %4$s 리셋).</string>
     <string name="alert_kind_budget_daily_title">일간 예산 초과 — $%s</string>
-    <string name="alert_kind_budget_daily_message">오늘 지출 $%1$s, 일간 예산 $%2$s보다 많습니다.</string>
+    <string name="alert_kind_budget_daily_message">오늘 지출($%1$s)이 일간 예산($%2$s)을 초과했습니다.</string>
     <string name="alert_kind_budget_weekly_title">주간 예산 초과 — $%s</string>
-    <string name="alert_kind_budget_weekly_message">최근 7일 지출 합계 $%1$s, 주간 예산 $%2$s보다 많습니다.</string>
+    <string name="alert_kind_budget_weekly_message">최근 7일 지출 합계($%1$s)가 주간 예산($%2$s)을 초과했습니다.</string>
     <!-- Ranges stated from the data actually shown, not a fixed "30 days" -->
     <plurals name="pdf_daily_trend_days">
         <item quantity="other">일일 비용 추이(%d일)</item>
