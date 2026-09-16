@@ -1,0 +1,16 @@
+/* App Intents: names, descriptions and parameter titles.
+   The system reads these from the APP bundle — in the Shortcuts app and Spotlight,
+   sometimes before CLI Pulse has run — so they cannot go through L10n, and they follow
+   the system language rather than the in-app language switcher.
+   Keys are the English literals in the intent source; `${provider}` stands for the
+   `\(\.$provider)` interpolation in GetProviderQuotaIntent.parameterSummary. */
+
+"Get CLI Pulse Status" = "获取 CLI Pulse 状态";
+"Get today's total usage, cost, active sessions, and unresolved alerts across all providers." = "获取所有服务商今日的总用量、费用、活跃会话和未解决告警。";
+"Status" = "状态";
+"Get Provider Quota" = "获取服务商配额";
+"Check how much quota is remaining for a specific provider (Claude, Codex, Gemini, and more)." = "查看指定服务商（Claude、Codex、Gemini 等）的剩余配额。";
+"Provider" = "服务商";
+"Get ${provider} quota" = "获取 ${provider} 的配额";
+"Get Status" = "获取状态";
+"Provider Quota" = "服务商配额";

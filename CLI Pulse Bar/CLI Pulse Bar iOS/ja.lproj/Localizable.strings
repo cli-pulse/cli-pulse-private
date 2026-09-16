@@ -1,0 +1,16 @@
+/* App Intents: names, descriptions and parameter titles.
+   The system reads these from the APP bundle — in the Shortcuts app and Spotlight,
+   sometimes before CLI Pulse has run — so they cannot go through L10n, and they follow
+   the system language rather than the in-app language switcher.
+   Keys are the English literals in the intent source; `${provider}` stands for the
+   `\(\.$provider)` interpolation in GetProviderQuotaIntent.parameterSummary. */
+
+"Get CLI Pulse Status" = "CLI Pulse のステータスを取得";
+"Get today's total usage, cost, active sessions, and unresolved alerts across all providers." = "すべてのプロバイダーの今日の合計使用量、コスト、アクティブセッション、未解決のアラートを取得します。";
+"Status" = "ステータス";
+"Get Provider Quota" = "プロバイダーのクォータを取得";
+"Check how much quota is remaining for a specific provider (Claude, Codex, Gemini, and more)." = "特定のプロバイダー（Claude、Codex、Gemini など）のクォータの残量を確認します。";
+"Provider" = "プロバイダー";
+"Get ${provider} quota" = "${provider} のクォータを取得";
+"Get Status" = "ステータスを取得";
+"Provider Quota" = "プロバイダーのクォータ";

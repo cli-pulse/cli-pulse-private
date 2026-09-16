@@ -264,6 +264,42 @@ build_fixture "$TMP/case"
 write_app_plist "$TMP/case/CLI Pulse Bar/Watch" 0
 expect_ok "an app that declares no usage description needs no InfoPlist.strings"
 
+# ── app-bundle tables: App Intent titles and Shortcut phrases live in the APP
+# bundle, where the catalogue comparison above cannot see them.
+write_shortcuts() {  # write_shortcuts <app dir> <en value> <other-locale value>
+    local dir="$1" en="$2" other="$3"
+    mkdir -p "$dir"
+    printf 'struct S: AppShortcutsProvider { static var appShortcuts: [AppShortcut] { AppShortcut(intent: I(), phrases: [ "Check \\(.applicationName) quota" ], shortTitle: "Q", systemImageName: "cpu") } }\n' > "$dir/S.swift"
+    for loc in en es ja ko zh-Hans zh-Hant; do
+        mkdir -p "$dir/$loc.lproj"
+        local v="$other"; [ "$loc" = en ] && v="$en"
+        printf '"Check ${applicationName} quota" = "%s";\n' "$v" > "$dir/$loc.lproj/AppShortcuts.strings"
+    done
+}
+
+build_fixture "$TMP/case"
+write_shortcuts "$TMP/case/CLI Pulse Bar/App" 'Check ${applicationName} quota' 'X ${applicationName} Y'
+expect_ok "Shortcut phrases with the token exactly once in every locale pass"
+
+# The silent one: iOS just never responds to this phrase in this language.
+build_fixture "$TMP/case"
+write_shortcuts "$TMP/case/CLI Pulse Bar/App" 'Check ${applicationName} quota' 'Check the quota'
+expect_fail "a translated phrase that DROPPED the token" 'contains ${applicationName} 0 times'
+
+build_fixture "$TMP/case"
+write_shortcuts "$TMP/case/CLI Pulse Bar/App" 'Check ${applicationName} quota' '${applicationName} ${applicationName}'
+expect_fail "a translated phrase with the token twice" 'contains ${applicationName} 2 times'
+
+build_fixture "$TMP/case"
+write_shortcuts "$TMP/case/CLI Pulse Bar/App" 'Check ${applicationName} quota' 'X ${applicationName} Y'
+printf 'struct T: AppShortcutsProvider { static var appShortcuts: [AppShortcut] { AppShortcut(intent: J(), phrases: [ "Open \\(.applicationName)" ], shortTitle: "O", systemImageName: "x") } }\n' > "$TMP/case/CLI Pulse Bar/App/T.swift"
+expect_fail "a new phrase in Swift with no translation" "has no entry in AppShortcuts.strings"
+
+build_fixture "$TMP/case"
+write_shortcuts "$TMP/case/CLI Pulse Bar/App" 'Check ${applicationName} quota' 'X ${applicationName} Y'
+printf '"Something" = "else";\n' > "$TMP/case/CLI Pulse Bar/App/ja.lproj/AppShortcuts.strings"
+expect_fail "one locale's table lacks a key" "ja.lproj/AppShortcuts.strings lacks"
+
 # ── syntax C. an empty catalogue is the same outage as an unparseable one ─
 build_fixture "$TMP/case"
 printf '// only a comment\n' > "$TMP/case/$RES/en.lproj/Localizable.strings"

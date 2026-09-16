@@ -1645,3 +1645,19 @@
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "複数アカウント";
+
+/* Siri / Shortcuts runtime text — dialogs and the spoken summary (L10n.intents) */
+"intents.active_sessions" = "アクティブセッション %d 件";
+"intents.active_sessions_one" = "アクティブセッション %d 件";
+"intents.clause_separator" = "、";
+"intents.less_than_one_cent" = "1セント未満";
+"intents.no_data_dialog" = "CLI Pulse のデータはまだありません。一度アプリを開いて、Mac から同期してください。";
+"intents.no_data_value" = "データなし";
+"intents.no_open_alerts" = "未解決のアラートなし";
+"intents.open_alerts" = "未解決のアラート %d 件";
+"intents.open_alerts_one" = "未解決のアラート %d 件";
+"intents.provider_not_configured" = "%@ は CLI Pulse で設定されていません。";
+"intents.provider_quota_left" = "%1$@: 残り %2$@、全体の %3$d%% です。";
+"intents.provider_usage_no_quota" = "%1$@: 今日 %2$@ 使用、クォータは未設定です。";
+"intents.sentence_end" = "。";
+"intents.status_today" = "今日: %1$@ トークン、コスト %2$@";

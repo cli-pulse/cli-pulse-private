@@ -295,6 +295,73 @@ def unlocalized_permission_prompts(root: Path) -> list[str]:
     return problems
 
 
+APP_TABLES = ("Localizable.strings", "AppShortcuts.strings")
+PHRASE_TOKEN = "${applicationName}"
+
+
+def _strings_keys_values(path: Path) -> dict[str, str]:
+    rx = re.compile(r'^\s*"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;', re.M)
+    return {m.group(1): m.group(2) for m in rx.finditer(path.read_text(encoding="utf-8"))}
+
+
+def app_bundle_table_problems(root: Path) -> list[str]:
+    """String tables that live in an APP bundle rather than in CLIPulseCore.
+
+    App Intent titles and Shortcut phrases are read by the system from the app's
+    own `<locale>.lproj/Localizable.strings` and `AppShortcuts.strings` — the
+    Shortcuts app and Spotlight can read them before CLI Pulse has run, so they
+    cannot go through L10n. The catalogue comparison above only covers
+    CLIPulseCore, so these get their own checks:
+
+      * every locale of a table declares the same keys;
+      * every Shortcut phrase, in every locale, contains ${applicationName}
+        EXACTLY ONCE — iOS silently ignores a phrase without it, so a translation
+        that drops the token makes that phrase dead in that language with no error
+        anywhere;
+      * every phrase written in an `AppShortcutsProvider` has a translation.
+    """
+    problems: list[str] = []
+    app_root = root / APP_ROOT_SUBPATH
+    if not app_root.is_dir():
+        return problems
+    for app_dir in sorted(d for d in app_root.iterdir() if d.is_dir()):
+        for table in APP_TABLES:
+            present = {loc: app_dir / f"{loc}.lproj" / table for loc in SHIPPED_LOCALES}
+            if not any(p.is_file() for p in present.values()):
+                continue
+            parsed: dict[str, dict[str, str]] = {}
+            for loc, path in present.items():
+                if not path.is_file():
+                    problems.append(f"{app_dir.name}: {loc}.lproj/{table} is missing")
+                else:
+                    parsed[loc] = _strings_keys_values(path)
+            base = parsed.get(BASE_LOCALE, {})
+            for loc, kv in parsed.items():
+                if loc == BASE_LOCALE:
+                    continue
+                for k in sorted(set(base) - set(kv)):
+                    problems.append(f"{app_dir.name}: {loc}.lproj/{table} lacks {k!r}")
+                for k in sorted(set(kv) - set(base)):
+                    problems.append(f"{app_dir.name}: {loc}.lproj/{table} has {k!r}, which en does not")
+            if table == "AppShortcuts.strings":
+                for loc, kv in parsed.items():
+                    for k, v in kv.items():
+                        n = v.count(PHRASE_TOKEN)
+                        if n != 1:
+                            problems.append(
+                                f"{app_dir.name}: {loc}.lproj/{table} phrase {k!r} contains "
+                                f"{PHRASE_TOKEN} {n} times — iOS silently ignores it unless it is exactly once")
+                declared = set()
+                for swift in app_dir.rglob("*.swift"):
+                    src = swift.read_text(encoding="utf-8", errors="replace")
+                    for block in re.findall(r"phrases:\s*\[(.*?)\]", src, re.S):
+                        for lit in re.findall(r'"((?:[^"\\]|\\.)*)"', block):
+                            declared.add(lit.replace("\\(.applicationName)", PHRASE_TOKEN))
+                for phrase in sorted(declared - set(base)):
+                    problems.append(f"{app_dir.name}: Shortcut phrase {phrase!r} has no entry in AppShortcuts.strings")
+    return problems
+
+
 def keys_the_code_asks_for(root: Path) -> set[str]:
     """Every key passed to `L10n.tr` in L10n.swift.
 
@@ -510,6 +577,15 @@ def main() -> int:
         print("       system alert and reads them from <locale>.lproj/InfoPlist.strings, not", file=sys.stderr)
         print("       from any Localizable.strings, so a missing entry renders English:\n", file=sys.stderr)
         for line in prompts:
+            print(f"    {line}", file=sys.stderr)
+        print("", file=sys.stderr)
+
+    tables = app_bundle_table_problems(root)
+    if tables:
+        failed = True
+        print("FAIL — an app-bundle string table (App Intents / Shortcuts) is inconsistent.", file=sys.stderr)
+        print("       The system reads these from the app bundle, not from CLIPulseCore:\n", file=sys.stderr)
+        for line in tables:
             print(f"    {line}", file=sys.stderr)
         print("", file=sys.stderr)
 

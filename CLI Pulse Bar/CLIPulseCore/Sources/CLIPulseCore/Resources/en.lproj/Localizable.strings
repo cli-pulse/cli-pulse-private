@@ -1696,3 +1696,19 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "Multiple accounts";
+
+/* Siri / Shortcuts runtime text — dialogs and the spoken summary (L10n.intents) */
+"intents.active_sessions" = "%d active sessions";
+"intents.active_sessions_one" = "%d active session";
+"intents.clause_separator" = ", ";
+"intents.less_than_one_cent" = "less than one cent";
+"intents.no_data_dialog" = "No CLI Pulse data yet. Open the app once to sync from your Mac.";
+"intents.no_data_value" = "No data";
+"intents.no_open_alerts" = "no open alerts";
+"intents.open_alerts" = "%d open alerts";
+"intents.open_alerts_one" = "%d open alert";
+"intents.provider_not_configured" = "%@ is not configured in CLI Pulse.";
+"intents.provider_quota_left" = "%1$@: %2$@ left, %3$d%% remaining.";
+"intents.provider_usage_no_quota" = "%1$@: %2$@ used today, no quota set.";
+"intents.sentence_end" = ".";
+"intents.status_today" = "Today: %1$@ tokens, %2$@ spent";

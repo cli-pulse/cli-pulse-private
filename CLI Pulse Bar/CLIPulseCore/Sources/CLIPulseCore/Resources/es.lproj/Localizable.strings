@@ -1431,3 +1431,19 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "Web";
 "providers.plan_multiple_accounts" = "Varias cuentas";
+
+/* Siri / Shortcuts runtime text — dialogs and the spoken summary (L10n.intents) */
+"intents.active_sessions" = "%d sesiones activas";
+"intents.active_sessions_one" = "%d sesión activa";
+"intents.clause_separator" = ", ";
+"intents.less_than_one_cent" = "menos de un centavo";
+"intents.no_data_dialog" = "Aún no hay datos de CLI Pulse. Abre la aplicación una vez para sincronizar desde tu Mac.";
+"intents.no_data_value" = "Sin datos";
+"intents.no_open_alerts" = "ninguna alerta abierta";
+"intents.open_alerts" = "%d alertas abiertas";
+"intents.open_alerts_one" = "%d alerta abierta";
+"intents.provider_not_configured" = "%@ no está configurado en CLI Pulse.";
+"intents.provider_quota_left" = "%1$@: quedan %2$@, un %3$d%% del total.";
+"intents.provider_usage_no_quota" = "%1$@: %2$@ usados hoy, sin cuota configurada.";
+"intents.sentence_end" = ".";
+"intents.status_today" = "Hoy: %1$@ tokens, gasto de %2$@";

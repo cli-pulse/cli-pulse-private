@@ -50,12 +50,6 @@
    "reason": "NEEDS_JUDGMENT: App Intents metadata: AppEnum.typeDisplayRepresentation is a compile-time LocalizedStringResource and needs a main-bundle string catalog."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/GetStatusIntent.swift",
-   "literal": "\"less than one cent\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: Returned by formatCost -> embedded in `spoken` (:25) -> IntentDialog(stringLiteral:) at :36 and the return value at :37, so Siri speaks it. The file imports only AppIntents and Foundation. The source comment (:50-52) says it runs in a separate extension, but the pbxproj compil…"
-  },
-  {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMainView.swift",
    "literal": "\"CLI Pulse\"",
    "count": 1,

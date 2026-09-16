@@ -1,4 +1,5 @@
 import AppIntents
+import CLIPulseCore
 import Foundation
 
 @available(iOS 17.0, *)
@@ -13,8 +14,8 @@ struct GetStatusIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
         guard let snapshot = CLIPulseIntentCache.load() else {
-            let dialog = IntentDialog("No CLI Pulse data yet. Open the app once to sync from your Mac.")
-            return .result(value: "No data", dialog: dialog)
+            let dialog = IntentDialog(stringLiteral: L10n.intents.noDataDialog)
+            return .result(value: L10n.intents.noDataValue, dialog: dialog)
         }
 
         let usage = formatUsage(snapshot.totalUsageToday)
@@ -22,16 +23,15 @@ struct GetStatusIntent: AppIntent {
         let sessions = snapshot.activeSessions
         let alerts = snapshot.unresolvedAlerts
 
-        var spoken = "Today: \(usage) tokens, \(cost) spent"
+        // Whole clauses joined by the locale's own separator. This used to be one
+        // English string grown by `+=` with inline plurals, which no translation
+        // can follow; the English output is unchanged.
+        var clauses = [L10n.intents.statusToday(usage, cost)]
         if sessions > 0 {
-            spoken += ", \(sessions) active \(sessions == 1 ? "session" : "sessions")"
+            clauses.append(L10n.intents.activeSessions(sessions))
         }
-        if alerts > 0 {
-            spoken += ", \(alerts) open \(alerts == 1 ? "alert" : "alerts")"
-        } else {
-            spoken += ", no open alerts"
-        }
-        spoken += "."
+        clauses.append(alerts > 0 ? L10n.intents.openAlerts(alerts) : L10n.intents.noOpenAlerts)
+        let spoken = clauses.joined(separator: L10n.intents.clauseSeparator) + L10n.intents.sentenceEnd
 
         let dialog = IntentDialog(stringLiteral: spoken)
         return .result(value: spoken, dialog: dialog)
@@ -47,10 +47,12 @@ struct GetStatusIntent: AppIntent {
     }
 
     private func formatCost(_ cost: Double) -> String {
-        // NOTE (v1.40 PR-7): the Siri intent is a separate App Intents extension
-        // process without CLIPulseCore's CurrencyConverter — stays USD, deferred
-        // with the widget/watch to a future app-group currency-sync pass.
-        if cost < 0.01 { return "less than one cent" }
+        // Stays USD, deferred with the widget/watch to a future app-group
+        // currency-sync pass. (An earlier note here said this intent ran in a
+        // separate extension process without CLIPulseCore. It does not: it is
+        // compiled into the iOS app target, which links CLIPulseCore — checked
+        // against the project's target membership.)
+        if cost < 0.01 { return L10n.intents.lessThanOneCent }
         return String(format: "$%.2f", cost)
     }
 }
