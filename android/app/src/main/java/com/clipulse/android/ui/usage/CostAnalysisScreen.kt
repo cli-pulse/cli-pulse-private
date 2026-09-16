@@ -24,6 +24,9 @@ import com.clipulse.android.R
 import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.DateDisplay
+import androidx.compose.ui.platform.LocalConfiguration
+import android.text.format.DateFormat
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -206,17 +209,19 @@ private fun DailyCostBars(costByDate: Map<String, Double>) {
         }
     }
 
-    // Date labels (first and last)
+    // Date labels (first and last), as month and day in the app's language.
     if (entries.size >= 2) {
+        val locale = LocalConfiguration.current.locales[0]
+        val pattern = remember(locale) { DateFormat.getBestDateTimePattern(locale, "Md") }
         Row(modifier = Modifier.fillMaxWidth()) {
             Text(
-                entries.first().key.takeLast(5),
+                DateDisplay.monthDay(entries.first().key, pattern, locale) ?: entries.first().key.takeLast(5),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.weight(1f))
             Text(
-                entries.last().key.takeLast(5),
+                DateDisplay.monthDay(entries.last().key, pattern, locale) ?: entries.last().key.takeLast(5),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

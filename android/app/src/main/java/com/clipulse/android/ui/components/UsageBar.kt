@@ -122,7 +122,9 @@ fun StatusBadge(
 
 fun formatCost(cost: Double): String =
     if (cost < 0.01 && cost > 0) "<\$0.01"
-    else "\$${String.format("%.2f", cost)}"
+    // Locale.ROOT, like formatCostCompact: a US-dollar amount keeps its dot on a
+    // comma-decimal device ("$9.60", not "$9,60" beside another screen's "$9.60").
+    else "\$${String.format(java.util.Locale.ROOT, "%.2f", cost)}"
 
 fun formatUsage(tokens: Int): String = when {
     tokens >= 1_000_000 -> "${String.format("%.1f", tokens / 1_000_000.0)}M"

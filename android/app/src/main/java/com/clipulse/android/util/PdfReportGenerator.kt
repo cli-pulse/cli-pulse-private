@@ -18,6 +18,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import com.clipulse.android.ui.common.DataTokenDisplay
+import com.clipulse.android.ui.common.DateDisplay
+import android.text.format.DateFormat
 
 object PdfReportGenerator {
 
@@ -71,12 +73,15 @@ object PdfReportGenerator {
         }
 
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val dateDisplayFormat = SimpleDateFormat("MMMM d, yyyy", Locale.US)
+        // The report's language: Context resources follow Android's per-app language.
+        val locale = context.resources.configuration.locales[0]
+        val today = DateDisplay.longDate(java.time.LocalDate.now(), locale)
+        val monthDayPattern = DateFormat.getBestDateTimePattern(locale, "Md")
 
         // Title
         canvas.drawText(context.getString(R.string.pdf_title), MARGIN, y + 22f, titlePaint)
         y += 30f
-        canvas.drawText(context.getString(R.string.pdf_generated, dateDisplayFormat.format(Date())), MARGIN, y + 10f, labelPaint)
+        canvas.drawText(context.getString(R.string.pdf_generated, today), MARGIN, y + 10f, labelPaint)
         y += 20f
         divider()
         y += 8f
@@ -201,9 +206,9 @@ object PdfReportGenerator {
                 val cost = costByDate[date] ?: 0.0
                 val barWidth = if (maxCost > 0) (cost / maxCost * (CONTENT_WIDTH - 130)).toFloat() else 0f
 
-                canvas.drawText(date.takeLast(5), MARGIN, y + 8f, labelPaint)
+                canvas.drawText(DateDisplay.monthDay(date, monthDayPattern, locale) ?: date.takeLast(5), MARGIN, y + 8f, labelPaint)
                 canvas.drawRect(MARGIN + 45f, y, MARGIN + 45f + barWidth, y + 8f, barPaint)
-                canvas.drawText("$${String.format("%.2f", cost)}", MARGIN + 50f + CONTENT_WIDTH - 130f, y + 8f, labelPaint)
+                canvas.drawText("$${String.format(Locale.ROOT, "%.2f", cost)}", MARGIN + 50f + CONTENT_WIDTH - 130f, y + 8f, labelPaint)
                 y += 12f
             }
         }
@@ -212,7 +217,7 @@ object PdfReportGenerator {
         checkSpace(30f)
         y += 10f
         divider()
-        canvas.drawText(context.getString(R.string.pdf_footer, BuildConfig.VERSION_NAME, dateDisplayFormat.format(Date())), MARGIN, y + 8f, labelPaint)
+        canvas.drawText(context.getString(R.string.pdf_footer, BuildConfig.VERSION_NAME, today), MARGIN, y + 8f, labelPaint)
 
         doc.finishPage(page)
 

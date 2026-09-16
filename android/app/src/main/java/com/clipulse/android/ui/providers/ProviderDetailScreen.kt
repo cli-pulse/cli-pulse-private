@@ -16,6 +16,8 @@ import com.clipulse.android.R
 import com.clipulse.android.data.model.ProviderUsage
 import com.clipulse.android.ui.components.*
 import com.clipulse.android.ui.common.quotaTierLabel
+import com.clipulse.android.ui.common.DateDisplay
+import androidx.compose.ui.platform.LocalConfiguration
 
 /**
  * Navigation entry point — loads the provider from ViewModel state by name.
@@ -83,7 +85,10 @@ fun ProviderDetailScreen(
                     if (provider.resetTime != null) {
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            stringResource(R.string.card_resets, provider.resetTime!!),
+                            stringResource(
+                                R.string.card_resets,
+                                DateDisplay.dateTime(provider.resetTime!!, LocalConfiguration.current.locales[0]) ?: provider.resetTime!!,
+                            ),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
