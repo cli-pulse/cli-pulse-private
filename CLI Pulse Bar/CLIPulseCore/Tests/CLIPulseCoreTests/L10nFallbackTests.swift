@@ -13,11 +13,13 @@ import XCTest
 /// locale over the real production path, so the invariant they pin is the
 /// user-visible one: no screen, in any language, ever renders a dotted key.
 ///
-/// Negative control (run by hand when changing `resolve`): delete the
-/// English-fallback `guard` in `L10n.resolve` **in place** and re-run —
-/// `test_noShippedLocaleEverRendersARawKey` must fail and name the locale
-/// and the missing keys. Verified red on 2026-08-30 (670 misses across
-/// es/ja/ko/zh-Hant) before the fix, green after.
+/// Negative control (run by hand when changing `resolve`): replace the English
+/// lookup at the end of `L10n.resolve` with `return format` and re-run —
+/// `test_untranslatedKeysFallBackToTheEnglishString` and
+/// `test_parameterisedKeyInterpolatesThroughTheFallback` must fail. Verified red
+/// on 2026-08-30 against the real catalogues (670 misses across es/ja/ko/zh-Hant),
+/// and on 2026-09-17 against the synthetic catalogue, once the real ones reached
+/// parity and the sweep could no longer reach the fallback.
 final class L10nFallbackTests: XCTestCase {
 
     /// Every `.lproj` the two Info.plists declare as shipped.
@@ -98,52 +100,59 @@ final class L10nFallbackTests: XCTestCase {
         XCTAssertNotEqual(chinese, "tab.overview")
     }
 
-    /// Exercises the fallback branch directly on keys the incomplete
-    /// locales genuinely lack, and pins that the value handed back is the
-    /// **English string**, not merely "something other than the key".
+    /// Exercises the fallback branch directly and pins that the value handed back
+    /// is the **English string**, not merely "something other than the key".
     ///
-    /// Goes quiet if a locale is ever brought to full parity — that is the
-    /// intended end state, and `test_noShippedLocaleEverRendersARawKey`
-    /// keeps covering the behaviour either way.
+    /// The shipped catalogues reached full parity on 2026-09-17, so no real key
+    /// reaches this branch any more and the sweep above would stay green with the
+    /// fallback deleted. It still matters: it is what a user sees if a key ever
+    /// ships untranslated. So the test builds its own two-locale catalogue with a
+    /// key only English carries, and runs the production lookup over it.
     func test_untranslatedKeysFallBackToTheEnglishString() throws {
-        let baseKeys = try declaredKeys(in: "en")
-        var localesExercised = 0
-
-        for locale in Self.shippedLocales where locale != "en" {
-            let own = try declaredKeys(in: locale)
-            let untranslated = baseKeys.subtracting(own).sorted()
-            guard !untranslated.isEmpty else { continue }
-            localesExercised += 1
-
-            LocaleOverrideStore.shared.set("en")
-            let englishValues = untranslated.reduce(into: [String: String]()) { $0[$1] = L10n.resolve($1) }
-
-            LocaleOverrideStore.shared.set(locale)
-            for key in untranslated {
-                XCTAssertEqual(
-                    L10n.resolve(key), englishValues[key],
-                    "\(locale) is missing \(key) and did not fall back to the English copy"
-                )
-            }
-        }
-
-        XCTAssertGreaterThan(
-            localesExercised, 0,
-            "no locale has untranslated keys — if that is genuinely true, delete this test"
+        let (english, spanish) = try makeCatalogues(
+            english: ["shared.title": "Shared", "only.english": "Only in English"],
+            spanish: ["shared.title": "Compartido"]
         )
+
+        XCTAssertEqual(L10n.resolve("shared.title", active: spanish, english: english), "Compartido",
+                       "a key the locale carries must come from the locale, not from English")
+        XCTAssertEqual(L10n.resolve("only.english", active: spanish, english: english), "Only in English",
+                       "a key the locale lacks did not fall back to the English copy")
+        XCTAssertEqual(L10n.resolve("in.neither", active: spanish, english: english), "in.neither",
+                       "a key in no catalogue has nothing to fall back to")
     }
 
     /// `String(format:)` still has to work through the fallback: a
     /// parameterised key missing from the active locale must come back as
     /// interpolated English, not a format string with live `%@`.
     func test_parameterisedKeyInterpolatesThroughTheFallback() throws {
-        LocaleOverrideStore.shared.set("es")
-        let rendered = L10n.onboardingWizard.stepProgress(current: 3, total: 6, name: "Your Coding Agents")
+        let (english, spanish) = try makeCatalogues(
+            english: ["wizard.step": "Step %d of %d: %@"],
+            spanish: [:]
+        )
+        let format = L10n.resolve("wizard.step", active: spanish, english: english)
+        let rendered = String(format: format, 3, 6, "Your Coding Agents")
 
-        XCTAssertFalse(rendered.contains("%"), "format specifier survived into the rendered string: \(rendered)")
-        XCTAssertFalse(rendered.hasPrefix("onboarding_wizard."), "raw key rendered: \(rendered)")
-        XCTAssertTrue(rendered.contains("3"))
-        XCTAssertTrue(rendered.contains("6"))
-        XCTAssertTrue(rendered.contains("Your Coding Agents"))
+        XCTAssertEqual(rendered, "Step 3 of 6: Your Coding Agents")
+    }
+
+    /// Writes an `en.lproj` and an `es.lproj` into a temporary directory and opens
+    /// each as a bundle — the same shape `LocaleOverrideStore.bundle(forLocalization:)`
+    /// hands to the production lookup.
+    private func makeCatalogues(
+        english: [String: String],
+        spanish: [String: String]
+    ) throws -> (english: Bundle, spanish: Bundle) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("L10nFallbackTests-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+
+        func write(_ table: [String: String], locale: String) throws -> Bundle {
+            let dir = root.appendingPathComponent("\(locale).lproj", isDirectory: true)
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try (table as NSDictionary).write(to: dir.appendingPathComponent("Localizable.strings"))
+            return try XCTUnwrap(Bundle(path: dir.path), "could not open \(locale).lproj as a bundle")
+        }
+        return (try write(english, locale: "en"), try write(spanish, locale: "es"))
     }
 }

@@ -37,6 +37,10 @@ neither has an acceptable non-zero value:
     (`L10nEnBaseKeysTests`) expressed as a gate.
   * DUPLICATES — a key declared twice in one file. `.strings` silently keeps
     the last, so the earlier translation is dead text that reads as done.
+  * FORMAT ARGUMENTS — a translation whose specifiers (or `${name}` parameters)
+    consume different arguments from English. A `%d` that became `%@` crashes
+    `String(format:)` in that language only. A bare `%` in a formatted string is
+    the same defect in disguise: "98 % de" consumes an argument.
 
 DELIBERATELY NOT CHECKED
 ------------------------
@@ -52,7 +56,7 @@ Usage:
 
 Exit codes:
   0 — parity holds, or every gap is a known and still-accurate baseline entry
-  1 — new drift, stale baseline, orphan key, or duplicate key
+  1 — new drift, stale baseline, orphan key, duplicate key, or format-argument mismatch
   2 — the catalogues could not be read at all
 """
 from __future__ import annotations
@@ -362,6 +366,83 @@ def app_bundle_table_problems(root: Path) -> list[str]:
     return problems
 
 
+# The arguments a value consumes, written the way this codebase writes them:
+# %@ %d %ld %lld %.1f, optionally positional (%2$@). `%%` is a literal percent.
+# App-bundle tables use `${name}` parameters instead. Deliberately narrow: a
+# looser pattern reads the "% o" in "~98% of" as a flag-and-conversion.
+SPEC_RE = re.compile(r"%%|%(?:(\d+)\$)?(?:\.\d+)?(?:ll|l|q)?([@dfiu])|\$\{(\w+)\}")
+SPEC_KIND = {"@": "object", "d": "integer", "i": "integer", "u": "integer", "f": "float"}
+
+
+def argument_signature(value: str) -> list[tuple[str, str]]:
+    """(position, kind) for every argument the value consumes, sorted.
+
+    Positions are compared, not order: `%2$d … %1$d` in a translation consumes
+    the same arguments as `%d … %d` in English.
+    """
+    sig: list[tuple[str, str]] = []
+    implicit = 0
+    for m in SPEC_RE.finditer(value):
+        if m.group(0) == "%%":
+            continue
+        if m.group(3):
+            sig.append((m.group(3), "parameter"))
+            continue
+        implicit += 1
+        sig.append((m.group(1) or str(implicit), SPEC_KIND[m.group(2)]))
+    return sorted(sig)
+
+
+def _stray_percent(value: str) -> bool:
+    """A `%` that is neither a specifier nor `%%`. `String(format:)` parses it
+    anyway: Spanish "98 % de" reads `% d` as a flag and an integer conversion."""
+    return "%" in SPEC_RE.sub("", value)
+
+
+def _signature_problems(label: str, tables: dict[str, dict[str, str]]) -> list[str]:
+    base = tables.get(BASE_LOCALE, {})
+    problems: list[str] = []
+    for loc, kv in sorted(tables.items()):
+        for key in sorted(set(kv) & set(base)):
+            formatted = any(kind != "parameter" for _, kind in argument_signature(base[key]))
+            if formatted and _stray_percent(kv[key]):
+                problems.append(f"{label}: {loc} {key!r} has a bare % in a string formatted with "
+                                "arguments; write %%")
+        if loc == BASE_LOCALE:
+            continue
+        for key in sorted(set(kv) & set(base)):
+            want, got = argument_signature(base[key]), argument_signature(kv[key])
+            if want != got:
+                problems.append(f"{label}: {loc} {key!r} consumes {got or 'nothing'}, "
+                                f"{BASE_LOCALE} consumes {want or 'nothing'}")
+    return problems
+
+
+def format_argument_mismatches(root: Path) -> list[str]:
+    """Translations that consume different arguments from English.
+
+    `String(format:)` walks the argument list by the specifiers it finds, so a
+    translation that turns `%d` into `%@` reads an integer as an object pointer
+    and crashes, one that drops a `%@` shifts every later argument into the
+    wrong slot, and one that adds a specifier reads past the end. None of it
+    shows in English, and none of it is a missing key, so nothing above sees it.
+    """
+    res_dir = root / RES_SUBPATH
+    problems = _signature_problems(
+        STRINGS_FILE,
+        {loc: _strings_keys_values(res_dir / f"{loc}.lproj" / STRINGS_FILE)
+         for loc in SHIPPED_LOCALES if (res_dir / f"{loc}.lproj" / STRINGS_FILE).is_file()})
+    app_root = root / APP_ROOT_SUBPATH
+    if app_root.is_dir():
+        for app_dir in sorted(d for d in app_root.iterdir() if d.is_dir()):
+            for table in APP_TABLES:
+                paths = {loc: app_dir / f"{loc}.lproj" / table for loc in SHIPPED_LOCALES}
+                parsed = {loc: _strings_keys_values(p) for loc, p in paths.items() if p.is_file()}
+                if parsed:
+                    problems += _signature_problems(f"{app_dir.name}/{table}", parsed)
+    return problems
+
+
 def keys_the_code_asks_for(root: Path) -> set[str]:
     """Every key passed to `L10n.tr` in L10n.swift.
 
@@ -589,13 +670,24 @@ def main() -> int:
             print(f"    {line}", file=sys.stderr)
         print("", file=sys.stderr)
 
+    mismatched = format_argument_mismatches(root)
+    if mismatched:
+        failed = True
+        print("FAIL — a translation consumes different format arguments from English.", file=sys.stderr)
+        print("       String(format:) reads arguments by the specifiers it finds: a %d that", file=sys.stderr)
+        print("       became %@ crashes, and a dropped %@ shifts every later argument.", file=sys.stderr)
+        print("       Only that language is affected, so English testing never sees it:\n", file=sys.stderr)
+        for line in mismatched:
+            print(f"    {line}", file=sys.stderr)
+        print("", file=sys.stderr)
+
     if failed:
         return 1
 
     debt = sum(len(v) for v in missing.values())
     locales = ", ".join(f"{loc} {len(catalogues[loc])}" for loc in sorted(catalogues))
     print(f"OK — {len(catalogues)} locales (all {len(SHIPPED_LOCALES)} shipped ones present), "
-          "no new drift, no orphans, no duplicates.")
+          "no new drift, no orphans, no duplicates, format arguments match.")
     print(f"     key counts: {locales}")
     if debt:
         per_locale = ", ".join(f"{loc} {len(keys)}" for loc, keys in sorted(missing.items()))

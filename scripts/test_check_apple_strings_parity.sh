@@ -221,6 +221,58 @@ printf 'extension L10n { static var w: String { tr("wizard.welcome") } }\n' >> "
 assert_changed "declared tr key" "$F" "$BEFORE" &&
 expect_ok "a tr key present in en.lproj passes"
 
+# ── format arguments. String(format:) reads arguments by the specifiers it
+# finds, so a translation that consumes different ones crashes or misplaces
+# values in that language only — English testing cannot see it.
+add_format_key() {  # add_format_key <en value> <ja value> [<value for the other four>]
+    local other="${3:-$1}"
+    printf '"fmt.key" = "%s";\n' "$1" >> "$TMP/case/$RES/en.lproj/Localizable.strings"
+    printf '"fmt.key" = "%s";\n' "$2" >> "$TMP/case/$RES/ja.lproj/Localizable.strings"
+    for L in es ko zh-Hans zh-Hant; do
+        printf '"fmt.key" = "%s";\n' "$other" >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
+    done
+}
+
+build_fixture "$TMP/case"
+add_format_key 'Step %d of %d: %@' '全 %2$d ステップ中 %1$d ステップ目：%3$@'
+expect_ok "positional reordering consumes the same arguments"
+
+build_fixture "$TMP/case"
+add_format_key '~98%% of tokens, 98% of reads' '約 98%% のトークン、読み取りの 98%'
+expect_ok "a literal percent is not an argument"
+
+build_fixture "$TMP/case"
+add_format_key '%d alerts' '%@ 件のアラート'
+expect_fail "integer became object" "consumes different format arguments"
+
+build_fixture "$TMP/case"
+add_format_key '%1$@: %2$@' '%1$@'
+expect_fail "dropped argument" "consumes different format arguments"
+
+build_fixture "$TMP/case"
+add_format_key 'Synced %dm ago' '%d 分前、%@ に同期'
+expect_fail "added argument" "consumes different format arguments"
+
+build_fixture "$TMP/case"
+add_format_key 'Critical: %d%%' 'Crítico: %d %'
+expect_fail "bare percent in a formatted string" "bare % in a string formatted"
+
+build_fixture "$TMP/case"
+printf '"plain.key" = "98%% of reads";\n' >> "$TMP/case/$RES/en.lproj/Localizable.strings"
+for L in es ja ko zh-Hans zh-Hant; do
+    printf '"plain.key" = "98 %% de lecturas";\n' >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
+done
+expect_ok "a bare % in a string with no arguments is literal"
+
+build_fixture "$TMP/case"
+APPT="$TMP/case/CLI Pulse Bar/Some App"
+for L in en es ja ko zh-Hans zh-Hant; do
+    mkdir -p "$APPT/$L.lproj"
+    printf '"Get ${provider} quota" = "Get ${provider} quota";\n' > "$APPT/$L.lproj/Localizable.strings"
+done
+printf '"Get ${provider} quota" = "クォータを取得";\n' > "$APPT/ja.lproj/Localizable.strings"
+expect_fail "app-table parameter dropped" "consumes different format arguments"
+
 # ── permission prompts. iOS reads NS…UsageDescription from the APP bundle's
 # <locale>.lproj/InfoPlist.strings, which no Localizable.strings check can see.
 # The repo had zero InfoPlist.strings until this check existed.

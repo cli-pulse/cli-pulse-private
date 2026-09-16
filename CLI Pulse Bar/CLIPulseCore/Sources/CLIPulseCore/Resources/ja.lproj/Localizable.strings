@@ -61,6 +61,7 @@
 "providers.tracked" = "追跡中";
 "providers.no_providers" = "プロバイダーなし";
 "providers.no_data" = "プロバイダーデータなし";
+"providers.empty_hint" = "この Mac で Claude Code や Codex などの CLI を使うと、使用状況がここに表示されます。すでに使用している場合は、CLI Pulse にフォルダアクセスが許可されているか確認してください。";
 "providers.all_hidden" = "すべてのプロバイダーが非表示";
 "providers.show_all_hint" = "「すべて表示」をタップして無効なプロバイダーを表示";
 "providers.search_placeholder" = "プロバイダーを検索";
@@ -446,6 +447,7 @@
 "settings.test_webhook" = "Webhookをテスト";
 "settings.remote_control" = "他のデバイスからのマシンリクエスト";
 "settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
+"settings.privacy_redacted_hint" = "Mac が他のデバイスから受け付けるリクエストは4種類だけです — ファン目標、ファンを自動に戻す、低電力モード、スリープ防止。会話ログ、セッションログ、ターミナル出力を含め、それ以外のものはデバイスから一切送信されません。";
 
 /* ── 表示追加 (i18n sweep) ── */
 "display.mode" = "表示モード";
@@ -551,6 +553,58 @@
 "onboarding_wizard.helper_hint" = "ヘッドレスサーバーや Claude Remote Approvals 用のオプションヘルパーをお探しですか？オンボーディング後、設定 → ヘルパーを開いてください。";
 "onboarding_wizard.done" = "完了";
 "onboarding_wizard.close" = "オンボーディングを閉じる";
+"onboarding_wizard.step_progress" = "全 %2$d ステップ中 %1$d ステップ目：%3$@";
+"onboarding_wizard.find_agents" = "エージェントを探す";
+"onboarding_wizard.set_up_later" = "後で設定";
+"onboarding_wizard.privacy_direct_title" = "使用量はプロバイダーへ直接問い合わせます";
+"onboarding_wizard.privacy_direct_detail" = "CLI Pulse は、アカウントを接続した後にのみ、各プロバイダーにクォータとプランのメタデータを要求します。";
+"onboarding_wizard.privacy_raw_title" = "セッションの生データはアップロードされません";
+"onboarding_wizard.privacy_raw_detail" = "ローカルログはこの Mac 上で処理されます。同期モードでアップロードされるのは、正規化された使用量、クォータ、コスト、モデル、タイムスタンプの各フィールドのみです。";
+"onboarding_wizard.discovery_title" = "お使いのコーディングエージェント";
+"onboarding_wizard.discovery_subtitle" = "このパッシブスキャンでは、インストール済みの CLI、既知の設定パス、以前に許可したフォルダアクセス、既存の CLI Pulse メタデータを確認します。キーチェーンやブラウザを開いたり、ネットワークに接続したりすることはありません。";
+"onboarding_wizard.scanning" = "Codex、Claude、Gemini を探しています…";
+"onboarding_wizard.scan_again" = "再スキャン";
+"onboarding_wizard.no_agents_title" = "最適化済みのエージェントが見つかりません";
+"onboarding_wizard.no_agents_body" = "エージェントを選択せずに続行できます。後から設定でインストールまたは接続してください。";
+"onboarding_wizard.undetected_providers" = "最適化済みのエージェントのうち %d 個は見つかりませんでした";
+"onboarding_wizard.review_title" = "監視対象の確認";
+"onboarding_wizard.review_subtitle" = "以下のアカウントのみ有効になります。プランが未確認でも、セットアップが止まることはありません。";
+"onboarding_wizard.no_accounts_selected" = "アカウントが選択されていません。このまま設定を完了し、後で追加することもできます。";
+"onboarding_wizard.connection_title" = "選択したアカウントを接続";
+"onboarding_wizard.connection_subtitle" = "接続は常にユーザー自身の操作で開始されます。アカウント設定を開くと、プロバイダーの認証情報やブラウザでのサインインを求められることがあります。";
+"onboarding_wizard.connection_optional" = "このまま続行し、残りのアカウントは後で接続できます。";
+"onboarding_wizard.open_account_settings" = "アカウント設定を開く";
+"onboarding_wizard.mode_title" = "CLIPulse の動作モードを選択";
+"onboarding_wizard.mode_subtitle" = "この選択で変わるのは同期の動作だけで、プロバイダーの認証情報の保存方法は変わりません。";
+"onboarding_wizard.sync_mode_title" = "デバイス間で同期";
+"onboarding_wizard.sync_mode_body" = "サインインすると、正規化されたメトリクスを iPhone と Apple Watch に同期します。プロバイダーの認証情報がこの Mac から出ることはありません。";
+"onboarding_wizard.local_only_title" = "この Mac のみ";
+"onboarding_wizard.local_only_body" = "データ収集とダッシュボードはローカルのみで使います。Supabase 同期は行いません。後からサインインできます。";
+"onboarding_wizard.signed_in_ready" = "CLI Pulse アカウントにサインイン済みで、同期の準備ができています。";
+"onboarding_wizard.sign_in_for_sync" = "デバイス間同期を使うには、下からサインインしてください。";
+"onboarding_wizard.finish_title" = "Agent 設定の準備完了";
+"onboarding_wizard.finish_body" = "選択したアカウントを確認してから完了してください。Agent 設定は「設定」から再実行できます。";
+"onboarding_wizard.finish_local_body" = "後でサインインするまで、使用状況はこの Mac 内に留まります。";
+"onboarding_wizard.finish_sync_body" = "正規化された使用量が、この CLI Pulse アカウントでサインインしているデバイスに同期されます。";
+"onboarding_wizard.plan_unconfirmed" = "プラン未確認";
+"onboarding_wizard.default_account" = "デフォルトアカウント";
+"onboarding_wizard.enable_monitoring" = "監視を有効にする";
+"onboarding_wizard.monitoring_enabled" = "監視が有効";
+"onboarding_wizard.monitoring_disabled" = "監視が無効";
+"onboarding_wizard.connect" = "接続";
+"onboarding_wizard.status_detected" = "検出済み";
+"onboarding_wizard.status_connected" = "接続済み";
+"onboarding_wizard.status_action_required" = "操作が必要";
+"onboarding_wizard.status_not_found" = "見つかりません";
+"onboarding_wizard.signal_cli" = "CLI インストール済み";
+"onboarding_wizard.signal_config" = "設定パス";
+"onboarding_wizard.signal_bookmark" = "フォルダアクセス許可済み";
+"onboarding_wizard.signal_existing" = "既存の CLI Pulse 設定";
+"onboarding_wizard.signal_connected" = "既知の接続";
+"onboarding_wizard.upgrade_title" = "複数アカウントに対応しました";
+"onboarding_wizard.upgrade_body" = "初回のオンボーディングをすべてやり直さなくても、Codex、Claude、Gemini のアカウントを確認できます。";
+"onboarding_wizard.check_accounts" = "アカウントを確認";
+"onboarding_wizard.later" = "後で";
 
 /* ── 詳細設定 ── */
 "advanced.launch_at_login" = "ログイン時に起動";
@@ -1069,6 +1123,7 @@
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
+"machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › 詳細」からヘルパーを再起動してください。";
 
 /* v1.50 W-C — この Mac を読み取る前の選択 */
 "local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";

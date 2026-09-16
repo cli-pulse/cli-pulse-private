@@ -61,6 +61,7 @@
 "providers.tracked" = "rastreados";
 "providers.no_providers" = "Sin proveedores";
 "providers.no_data" = "Sin datos de proveedores";
+"providers.empty_hint" = "Usa Claude Code, Codex u otra CLI en este Mac y tu uso aparecerá aquí. ¿Ya usaste una? Comprueba que CLI Pulse tenga acceso a las carpetas.";
 "providers.all_hidden" = "Todos los proveedores ocultos";
 "providers.show_all_hint" = "Toque \"Mostrar todo\" para ver proveedores deshabilitados";
 "providers.search_placeholder" = "Buscar proveedores";
@@ -312,6 +313,7 @@
 "status.operational" = "Operativo";
 "status.down" = "Caído";
 "status.disabled" = "Deshabilitado";
+"status.ended" = "Finalizado";
 
 /* ── Insignias ── */
 "badge.free" = "GRATIS";
@@ -425,6 +427,9 @@
 "account.delete_failed_title" = "No se pudo eliminar la cuenta";
 "account.delete_failed_generic" = "No pudimos eliminar tu cuenta. Tu cuenta sigue activa. Verifica tu conexión y vuelve a intentarlo, o cierra sesión y vuelve a iniciar sesión para refrescar tu sesión.";
 "account.delete_session_expired" = "Tu sesión expiró antes de que pudiéramos eliminar tu cuenta. Tu cuenta sigue activa — vuelve a iniciar sesión y prueba de nuevo Eliminar cuenta desde Ajustes.";
+"provider_config.data_source" = "Fuente de datos";
+"provider_config.account_label" = "Etiqueta de cuenta";
+"provider_config.account_placeholder" = "p. ej., team-A, dev-box";
 
 /* ── v1.18.2 D-2: Indicador de horario pico de Anthropic en la tarjeta Claude ── */
 
@@ -459,6 +464,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "usage_pace.summary_left_only" = "Ritmo: %@";
 "folder_access.banner_title" = "CLI Pulse no puede leer tu uso local";
 "folder_access.banner_body" = "Tu uso real de tokens y costos no aparecen porque macOS bloquea el acceso a los registros de tus herramientas de IA. Concede acceso a la carpeta para verlos.";
+"subscription.billing" = "Facturación";
 
 /* Watch redesign — Pulse home (P1). NOTE: es/ko lack the rest of the watch.* namespace (pre-existing gap); full backfill tracked for P5. */
 "watch.pulse_label" = "Pulso de uso";
@@ -478,12 +484,32 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "watch.stale_updated" = "Obsoleto · actualizado %@";
 "watch.tightest_account" = "Más limitado: %@";
 "watch.unread" = "Sin leer";
+"widget.alerts_summary" = "%d alertas • CLI Pulse";
 
 /* Watch base namespace backfill (P5) — es previously fell back to en for these. */
 "watch.couldnt_load_data" = "No se pudieron cargar los datos";
 "watch.couldnt_load_providers" = "No se pudieron cargar los proveedores";
 "watch.retry" = "Reintentar";
 "watch.pull_to_refresh" = "Desliza para actualizar";
+"widget.sign_in_to_view" = "Inicia sesión para ver el uso";
+"common.retry" = "Reintentar";
+"common.close" = "Cerrar";
+"common.disconnect" = "Desconectar";
+"language.title" = "Idioma";
+"language.system_default" = "Predeterminado del sistema";
+"alerts.resolve_all" = "Resolver todas";
+"yield.no_commits" = "sin commits";
+"yield.estimated_badge" = "· Estimado";
+"yield.range_picker" = "Rango";
+"yield.empty_no_attribution" = "0 commits atribuidos en este periodo. Prueba a escribir algo de código en un repositorio con seguimiento.";
+"yield.detail_subtitle" = "%@ · ordenado por costo por commit (menor es mejor)";
+"yield.commits_count" = "%d commits";
+"yield.commits_count_decimal" = "%.1f commits";
+"yield.ambiguous_count" = "Ambiguos: %d";
+"menu_bar.quit_full" = "Salir de CLI Pulse Bar";
+"common.no_provider_selected" = "Ningún proveedor seleccionado";
+"cost.exact" = "Exacto";
+"cost.estimated" = "Estimado";
 "watch.unread_count" = "%d sin leer";
 "watch.snooze_15" = "15 minutos";
 "watch.snooze_30" = "30 minutos";
@@ -491,6 +517,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* Quota ring VoiceOver label (P6) — newly surfaced on the redesigned Quota page. */
 "widget.percent_left" = "%@ %d%% restante";
+"widget.quota_fallback" = "Cuota";
 
 /* System Monitor — Machine tab */
 "machine.subtitle" = "Estado de la máquina";
@@ -783,11 +810,213 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.grant_access_title" = "Concede acceso para ver tokens y costes";
 "providers.grant_access_body" = "CLI Pulse necesita acceso de lectura a ~/.codex/sessions/ y ~/.claude/projects/";
 "providers.open_settings" = "Abrir Ajustes";
+"menu_bar.tier_migration" = "Se conservaron tus %d proveedores más usados para ajustarse al plan gratuito. Se deshabilitaron %d — edítalos en Ajustes → Proveedores.";
 "providers.quota_data_unavailable" = "Datos de cuota no disponibles";
+"advanced.sync_just_now" = "Sincronizado ahora mismo";
+"advanced.sync_minutes_ago" = "Sincronizado hace %d min";
+"advanced.helper_running" = "En ejecución";
+"advanced.helper_not_running" = "No está en ejecución";
+"advanced.privacy_keys_title" = "Claves API y cookies de proveedores";
+"advanced.privacy_keys_detail" = "Solo se guardan en el Llavero de macOS · nunca se suben";
+"advanced.privacy_logs_title" = "Registros de sesión (~/.codex/sessions, ~/.claude/projects)";
+"advanced.privacy_logs_detail" = "Se escanean en el dispositivo a través de las carpetas a las que concedes acceso arriba";
+"advanced.privacy_metrics_title" = "Métricas de uso (recuento de tokens, costo, nombres de modelo)";
+"advanced.privacy_metrics_detail" = "Se sincronizan con tu cuenta de CLI Pulse para iPhone / Watch";
+"advanced.privacy_email_title" = "Tu correo de inicio de sesión";
+"advanced.privacy_email_detail" = "Se envía a nuestro servidor de autenticación para que puedas iniciar sesión";
+"onboarding_wizard.privacy_keys_title" = "Las claves API se quedan en este Mac";
+"onboarding_wizard.privacy_keys_detail" = "Las claves API de los proveedores y las cookies de sesión (OpenAI, Anthropic, Google, etc.) solo se guardan en el Llavero de macOS. Se usan para llamar directamente a esos proveedores y nunca se suben a nuestros servidores.";
+"onboarding_wizard.privacy_logs_title" = "Los registros de sesión se analizan en el dispositivo";
+"onboarding_wizard.privacy_logs_detail" = "CLI Pulse lee ~/.codex/sessions/ y ~/.claude/projects/ localmente para calcular el recuento de tokens. El contenido de los archivos nunca sale de tu dispositivo.";
+"onboarding_wizard.privacy_metrics_title" = "Las métricas de uso se sincronizan con tu cuenta";
+"onboarding_wizard.privacy_metrics_detail" = "El recuento de tokens, las estimaciones de costo, los nombres de modelo y las fechas se envían a tu cuenta de CLI Pulse para que el iPhone y el Apple Watch muestren el mismo historial.";
+"pdf.title" = "Informe mensual de CLI Pulse";
+"pdf.generated" = "Generado: %@";
+"pdf.summary" = "Resumen";
+"pdf.today_usage" = "Uso de hoy";
+"pdf.today_estimated_cost" = "Costo estimado de hoy";
+"pdf.active_sessions" = "Sesiones activas";
+"pdf.online_devices" = "Dispositivos en línea";
+"pdf.unresolved_alerts" = "Alertas sin resolver";
+"pdf.cost_forecast" = "Pronóstico de costos";
+"pdf.month_end_estimate" = "Estimación fin de mes";
+"pdf.spent_so_far" = "Gastado hasta ahora";
+"pdf.confidence_range" = "Rango de confianza";
+"pdf.progress" = "Progreso";
+"pdf.progress_value" = "%d/%d días";
+"pdf.provider_breakdown" = "Desglose por proveedor";
+"pdf.h_provider" = "Proveedor";
+"pdf.h_week_usage" = "Uso semanal";
+"pdf.h_est_cost" = "Costo est.";
+"pdf.h_remaining" = "Restante";
+"pdf.h_quota" = "Cuota";
+"pdf.na" = "N/D";
+"pdf.top_sessions" = "Sesiones con mayor costo";
+"pdf.h_project" = "Proyecto";
+"pdf.h_cost" = "Costo";
+"pdf.h_usage" = "Uso";
+"pdf.h_status" = "Estado";
+"pdf.daily_trend" = "Tendencia diaria de costos (últimos 30 días)";
+"pdf.footer" = "CLI Pulse v%@ • %@";
 "provider_config.manual_plan" = "Etiqueta manual del plan";
 "provider_config.manual_plan_placeholder" = "p. ej., Max 20x, Pro";
 "provider_config.manual_plan_hint" = "Solo sirve como alternativa visual. No cambia la cuota ni los costes recopilados.";
+"provider_config.api_key" = "Clave API";
+"provider_config.show_key" = "Mostrar clave";
+"provider_config.hide_key" = "Ocultar clave";
+"provider_config.keychain_notice" = "Solo se guarda en el Llavero de tu Mac. Nunca se sube.";
+"provider_config.cookie_source" = "Fuente de cookies";
+"provider_config.manual_cookie_header" = "Encabezado de cookies manual";
+"provider_config.auto_import_note" = "Importa automáticamente las cookies de sesión desde un navegador con la sesión iniciada. macOS puede pedir acceso al Llavero una vez; si no se encuentra ninguna, pégalas manualmente abajo.";
+"provider_config.auto_import_failed" = "No se pudieron importar automáticamente las cookies de sesión. Pégalas manualmente:";
+"provider_config.capabilities" = "Capacidades";
+"provider_config.cap_quota" = "Cuota";
+"provider_config.cap_exact_cost" = "Costo exacto";
+"provider_config.cap_credits" = "Créditos";
+"provider_config.cap_status_poll" = "Consulta de estado";
+"provider_config.requires_helper_sync" = "Los datos de cuota/plan requieren la sincronización del helper con el servidor.";
+"provider_config.google_oauth" = "Google OAuth";
+"provider_config.disconnect" = "Desconectar";
+"provider_config.connect_gemini" = "Conectar Gemini";
+"provider_config.gemini_uses_google" = "Usa tu cuenta de Google. No necesitas clave API.";
+"provider_config.gemini_cli_fallback" = "Respaldo de Gemini CLI";
+"provider_config.gemini_cli_fallback_note" = "Si no se puede renovar el inicio de sesión de Gemini en CLI Pulse, se usan como respaldo las credenciales propias de Gemini CLI. Solo en la versión de descarga directa.";
+"provider_config.claude_code" = "Claude Code";
+"provider_config.connect_claude_code" = "Conectar Claude Code";
+"provider_config.claude_keychain_hint" = "Lee tu inicio de sesión existente de Claude Code. macOS pedirá permiso una vez: haz clic en «Permitir siempre».";
+"provider_config.claude_read_failed" = "No se pudieron leer las credenciales de Claude Code. Si rechazaste la solicitud, inténtalo de nuevo o instala/abre Claude Code primero.";
+"provider_config.test_connection" = "Probar conexión";
+"provider_config.testing" = "Probando…";
+"onboarding_wizard.welcome_title" = "Bienvenido a CLI Pulse";
+"onboarding_wizard.welcome_subtitle" = "Supervisa el uso, los costos y las cuotas de tus\nherramientas de codificación con IA en un solo lugar.";
 "onboarding_wizard.welcome_accounts_body" = "Detecta y configura cuentas personales y de trabajo para Codex, Claude y Gemini.";
+"onboarding_wizard.get_started" = "Comenzar";
+"onboarding_wizard.what_does" = "Qué hace CLI Pulse";
+"onboarding_wizard.continue" = "Continuar";
+"onboarding_wizard.back" = "Volver";
+"onboarding_wizard.privacy_title" = "Tus datos, bajo tu control";
+"onboarding_wizard.privacy_body" = "Esto es exactamente lo que se queda en tu Mac y lo que se sincroniza con tu cuenta.";
+"onboarding_wizard.sign_in_title" = "Iniciar sesión";
+"onboarding_wizard.sign_in_subtitle" = "Inicia sesión para sincronizar tus datos: crearemos tu cuenta cuando verifiques el código por primera vez.";
+"onboarding_wizard.skip" = "Omitir por ahora";
+"onboarding_wizard.code_sent_to" = "Código enviado a %@";
+"onboarding_wizard.verify" = "Verificar";
+"onboarding_wizard.back_to_email" = "Cambiar correo";
+"onboarding_wizard.all_set_title" = "Todo listo";
+"onboarding_wizard.all_set_body" = "La sincronización se ejecuta automáticamente mientras la aplicación de Mac está abierta. Inicia sesión con la misma cuenta en cualquier otro dispositivo y tus datos de uso también aparecerán allí — sin emparejamiento ni configuración.";
+"onboarding_wizard.helper_hint" = "¿Buscas el helper opcional para servidores sin interfaz gráfica o las aprobaciones remotas de Claude? Abre Ajustes → Helper después de la configuración inicial.";
+"onboarding_wizard.done" = "Hecho";
+"onboarding_wizard.close" = "Cerrar la configuración inicial";
+"onboarding_wizard.step_progress" = "Paso %d de %d: %@";
+"onboarding_wizard.find_agents" = "Buscar mis agentes";
+"onboarding_wizard.set_up_later" = "Configurar más tarde";
+"onboarding_wizard.privacy_direct_title" = "Las consultas de uso van directamente a los proveedores";
+"onboarding_wizard.privacy_direct_detail" = "CLI Pulse solicita a cada proveedor los metadatos de cuota y plan solo después de que conectes esa cuenta.";
+"onboarding_wizard.privacy_raw_title" = "El contenido de sesión sin procesar no se sube";
+"onboarding_wizard.privacy_raw_detail" = "Los registros locales se procesan en este Mac. El modo de sincronización solo sube los campos normalizados de uso, cuota, costo, modelo y fecha y hora.";
+"onboarding_wizard.discovery_title" = "Tus agentes de código";
+"onboarding_wizard.discovery_subtitle" = "Este análisis pasivo revisa las CLI instaladas, las rutas de configuración conocidas, los accesos a carpetas concedidos anteriormente y los metadatos existentes de CLI Pulse. No abre el Llavero ni el navegador, ni se conecta a la red.";
+"onboarding_wizard.scanning" = "Buscando Codex, Claude y Gemini…";
+"onboarding_wizard.scan_again" = "Volver a escanear";
+"onboarding_wizard.no_agents_title" = "No se encontraron agentes optimizados";
+"onboarding_wizard.no_agents_body" = "Puedes continuar sin seleccionar ningún agente. Instala o conecta uno más tarde desde Ajustes.";
+"onboarding_wizard.undetected_providers" = "No se encontraron %d agentes optimizados";
+"onboarding_wizard.review_title" = "Revisar la supervisión";
+"onboarding_wizard.review_subtitle" = "Solo se activarán las cuentas de abajo. Un plan sin confirmar nunca bloquea la configuración.";
+"onboarding_wizard.no_accounts_selected" = "No hay cuentas seleccionadas. Aun así puedes terminar la configuración y añadir una más tarde.";
+"onboarding_wizard.connection_title" = "Conectar las cuentas seleccionadas";
+"onboarding_wizard.connection_subtitle" = "La conexión siempre la inicias tú. Al abrir los ajustes de la cuenta, es posible que se soliciten credenciales del proveedor o un inicio de sesión en el navegador.";
+"onboarding_wizard.connection_optional" = "Puedes continuar ahora y conectar más tarde las cuentas pendientes.";
+"onboarding_wizard.open_account_settings" = "Abrir ajustes de la cuenta";
+"onboarding_wizard.mode_title" = "Elige dónde se ejecuta CLIPulse";
+"onboarding_wizard.mode_subtitle" = "Esta elección cambia cómo se sincroniza, no cómo se guardan las credenciales del proveedor.";
+"onboarding_wizard.sync_mode_title" = "Sincronizar entre dispositivos";
+"onboarding_wizard.sync_mode_body" = "Inicia sesión para sincronizar métricas normalizadas con el iPhone y el Apple Watch. Las credenciales de los proveedores nunca salen de este Mac.";
+"onboarding_wizard.local_only_title" = "Solo este Mac";
+"onboarding_wizard.local_only_body" = "La recopilación y los paneles se quedan en local. Sin sincronización con Supabase; puedes iniciar sesión más tarde.";
+"onboarding_wizard.signed_in_ready" = "Tu cuenta de CLI Pulse tiene la sesión iniciada y está lista para sincronizar.";
+"onboarding_wizard.sign_in_for_sync" = "Inicia sesión abajo para usar la sincronización entre dispositivos.";
+"onboarding_wizard.finish_title" = "Configuración de agentes lista";
+"onboarding_wizard.finish_body" = "Revisa las cuentas seleccionadas y termina. Puedes volver a configurar los agentes desde Ajustes.";
+"onboarding_wizard.finish_local_body" = "Los datos de uso se quedan en este Mac hasta que decidas iniciar sesión más adelante.";
+"onboarding_wizard.finish_sync_body" = "El uso normalizado se sincronizará con los dispositivos que hayan iniciado sesión con esta cuenta de CLI Pulse.";
+"onboarding_wizard.plan_unconfirmed" = "Plan sin confirmar";
+"onboarding_wizard.default_account" = "Cuenta predeterminada";
+"onboarding_wizard.enable_monitoring" = "Activar supervisión";
+"onboarding_wizard.monitoring_enabled" = "Supervisión activada";
+"onboarding_wizard.monitoring_disabled" = "Supervisión desactivada";
+"onboarding_wizard.connect" = "Conectar";
+"onboarding_wizard.status_detected" = "Detectado";
+"onboarding_wizard.status_connected" = "Conectado";
+"onboarding_wizard.status_action_required" = "Requiere acción";
+"onboarding_wizard.status_not_found" = "No encontrado";
+"onboarding_wizard.signal_cli" = "CLI instalada";
+"onboarding_wizard.signal_config" = "Ruta de configuración";
+"onboarding_wizard.signal_bookmark" = "Acceso a la carpeta concedido";
+"onboarding_wizard.signal_existing" = "Configuración de CLI Pulse existente";
+"onboarding_wizard.signal_connected" = "Conexión conocida";
+"onboarding_wizard.upgrade_title" = "Ahora se admiten varias cuentas";
+"onboarding_wizard.upgrade_body" = "Revisa tus cuentas de Codex, Claude y Gemini sin tener que repetir toda la configuración inicial.";
+"onboarding_wizard.check_accounts" = "Revisar mis cuentas";
+"onboarding_wizard.later" = "Más tarde";
+"advanced.launch_at_login" = "Abrir al iniciar sesión";
+"advanced.background_sync" = "Activar sincronización en segundo plano";
+"advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para iOS/Watch/Android";
+"advanced.full_details" = "Detalles completos:";
+"advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
+"advanced.track_git" = "Seguimiento de actividad de git (Yield Score)";
+"advanced.track_git_hint" = "Solo se suben metadatos de commits protegidos con hash: ni mensajes, ni diffs, ni rutas";
+"advanced.git_consent_title" = "¿Activar el seguimiento de actividad de git?";
+"advanced.enable" = "Activar";
+"advanced.git_consent_body" = "CLI Pulse escaneará los registros de git de los proyectos con sesiones de IA activas. Solo salen de tu dispositivo el hash del commit, un HMAC de la ruta del proyecto, la marca de tiempo del commit y un indicador de commit de fusión. Nunca se suben los mensajes de commit, los diffs, las rutas de archivo ni la identidad del autor.";
+"advanced.remote_control" = "Solicitudes de máquina desde tus otros dispositivos";
+"advanced.remote_control_hint" = "Permite que tus dispositivos con sesión iniciada pidan a un Mac un impulso del ventilador, el Modo de bajo consumo o Mantener activo · desactivado por defecto";
+"advanced.remote_consent_title" = "¿Permitir solicitudes de máquina?";
+"advanced.token" = "Token";
+"advanced.providers_loaded" = "Proveedores cargados";
+"advanced.last_refresh" = "Última actualización";
+"advanced.never" = "Nunca";
+"yield.title" = "Yield Score";
+"yield.help_estimated" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API.";
+"yield.empty_body" = "Registra el costo de IA por commit para ver tu Yield Score.";
+"yield.empty_enable_hint" = "Actívalo en Ajustes → Privacidad → Seguimiento de actividad de git.";
+"yield.view_detail" = "Ver detalle";
+"yield.detail_title" = "Detalle de Yield Score";
+"yield.detail_body" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API. Los commits de fusión se excluyen de la atribución.";
+"dashboard.export_cost_report" = "Exportar informe de costos";
+"dashboard.export_sessions" = "Exportar sesiones";
+"dashboard.export_providers" = "Exportar proveedores";
+"dashboard.export_pdf" = "Exportar informe PDF";
+"dashboard.export" = "Exportar";
+"dashboard.subscriptions" = "Suscripciones";
+"dashboard.subscription_utilization" = "Utilización de suscripciones";
+"dashboard.total_monthly" = "Total mensual";
+"dashboard.no_enabled_with_data" = "No hay proveedores habilitados con datos";
+"settings.show_cost_summary" = "Mostrar resumen de costos";
+"settings.show_cost_summary_hint" = "Mostrar estimaciones de gasto de hoy y de 30 días";
+"settings.auto_poll_status" = "Consultar automáticamente las páginas de estado de los proveedores";
+"settings.quota_alert_thresholds" = "Umbrales de alerta de cuota";
+"settings.quota_alert_thresholds_hint" = "Emitir una advertencia cuando la cuota de un proveedor supere estos porcentajes.";
+"settings.warning_pct" = "Advertencia: %d%%";
+"settings.critical_pct" = "Crítico: %d%%";
+"settings.warning_threshold_pct" = "Umbral de advertencia: %d%%";
+"settings.critical_threshold_pct" = "Umbral crítico: %d%%";
+"settings.reset_thresholds_defaults" = "Restablecer los umbrales a los valores predeterminados";
+"settings.reset" = "Restablecer";
+"settings.privacy" = "Privacidad";
+"settings.test_webhook" = "Probar Webhook";
+"settings.remote_control" = "Solicitudes de máquina desde tus otros dispositivos";
+"settings.remote_control_iphone_hint" = "Solicita desde este iPhone a un Mac el impulso del ventilador, el Modo de bajo consumo o Mantener activo";
+"settings.privacy_redacted_hint" = "Tus Mac aceptan cuatro tipos de solicitud de tus otros dispositivos: objetivo del ventilador, volver el ventilador a automático, Modo de bajo consumo y Mantener activo. Nada más sale de tu dispositivo: ni transcripciones, ni registros de sesión, ni salida del terminal.";
+"display.mode" = "Modo de visualización";
+"display.merge_menu_bar_icons" = "Combinar iconos de la barra de menú";
+"display.merge_menu_bar_hint" = "Un solo icono con selector de proveedores";
+"display.reorder_hint" = "Selecciona qué proveedores mostrar en la pestaña Resumen. Arrastra para reordenar.";
+"subscription.loading_plans" = "Cargando planes…";
+"subscription.unavailable" = "Los planes de suscripción no están disponibles en este momento.";
+"subscription.retry" = "Reintentar";
+"subscription.view_all_plans" = "Ver todos los planes y detalles";
+"providers.configure_hint" = "Configura la fuente de datos, las credenciales y la visualización de cada proveedor.";
 
 /* v1.44 W3 — per-provider collector outcome labels + next steps */
 "collector_status.ok" = "Funcionando";
@@ -828,6 +1057,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* v1.44 — why machine health is unavailable, told apart */
 "machine.helper_lacks_machine_health" = "El estado de la máquina no está disponible con el helper integrado: no lee sensores. Todo lo demás en este Mac sigue funcionando; el soporte de sensores está en camino.";
+"machine.helper_unauthenticated" = "El helper rechazó las credenciales de esta app. Reinicia el helper desde Ajustes › Avanzado.";
 
 /* v1.50 W-C — la decisión previa a cualquier lectura de este Mac */
 "local_scan_consent.title" = "Antes de que CLI Pulse lea este Mac";
@@ -854,6 +1084,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 /* v1.51 — upgrade prompts, previously hardcoded English in AppState / DataRefreshManager */
 "menu_bar.over_plan_limits" = "Has superado los límites del plan %1$@ de CLI Pulse — Proveedores: %2$d/%3$d. Mejora tu plan o reduce el uso.";
 "menu_bar.provider_limit_reached" = "Tu plan %1$@ de CLI Pulse permite hasta %2$d proveedores. Mejora tu plan para activar más.";
+"menu_bar.edit" = "Editar";
+"menu_bar.app_version" = "CLI Pulse v%@";
+"menu_bar.quit" = "Salir de CLI Pulse";
 
 /* v1.51 — pricing coverage: how much of the cost figure we could actually price */
 "cost.coverage_summary" = "Se tarificó el %1$d%% de los tokens · %2$d modelo(s) sin tarifa";
@@ -861,6 +1094,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* v1.51 — cost-card badge third state */
 "cost.partial" = "Parcial";
+"cost.tokens_suffix" = "· %@ tokens de E/S";
+"cost.tokens_short_suffix" = "· %@";
+"cost.thirty_day_precise" = "30 días";
+"cost.tokens_value" = "%@ tokens de E/S";
+"cost.day_progress" = "%d/%d días";
+"cost.by_model" = "Por modelo";
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "Estadísticas de instalación anónimas";
