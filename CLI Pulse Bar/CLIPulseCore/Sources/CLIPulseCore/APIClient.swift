@@ -3042,7 +3042,7 @@ public enum APIError: LocalizedError, Equatable {
         case .invalidResponse:
             return L10n.auth.errorInvalidResponse
         case .httpError(let status, let body):
-            return "HTTP \(status): \(body)"
+            return L10n.auth.errorHTTPStatus(status, body)
         case .tokenExpired:
             return L10n.auth.errorSessionExpired
         case .notAuthenticated:

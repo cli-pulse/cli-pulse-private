@@ -1641,3 +1641,12 @@
 "quota_tier.weekly" = "每周";
 "quota_tier.window_5h" = "5h 窗口";
 "quota_tier.window_fallback" = "时间窗口";
+
+/* Collector + OAuth error wrappers — surfaced once the hardcoded-strings gate
+   stopped losing `errorDescription` bodies to `case … let x` bindings */
+"collector_error.invalid_url" = "URL 无效：%@";
+"collector_error.http_status" = "%1$@ 返回 HTTP %2$d";
+"collector_error.parse_failed" = "解析失败：%@";
+"provider_config.error_gemini_token_refresh_failed" = "令牌刷新失败（HTTP %d）";
+"provider_config.error_gemini_no_refresh_token" = "没有可用的刷新令牌";
+"auth.error_http_status" = "HTTP %1$d：%2$@";

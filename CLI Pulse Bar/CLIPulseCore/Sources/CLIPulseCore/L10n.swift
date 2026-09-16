@@ -809,6 +809,11 @@ public enum L10n {
         public static var resendCode: String { tr("auth.resend_code") }
         public static var backToEmail: String { tr("auth.back_to_email") }
         public static var codePlaceholder: String { tr("auth.code_placeholder") }
+        /// The app's own backend returned an unexpected status during sign-in.
+        /// Positional specifiers: the status and the body may swap order.
+        public static func errorHTTPStatus(_ status: Int, _ body: String) -> String {
+            tr("auth.error_http_status", status, body)
+        }
         public static var passwordOptional: String { tr("auth.password_optional") }
         public static var passwordPlaceholder: String { tr("auth.password_placeholder") }
         public static var signInGoogle: String { tr("auth.sign_in_google") }
@@ -1492,6 +1497,10 @@ public enum L10n {
         public static var errorGeminiStateMismatch: String { tr("provider_config.error_gemini_state_mismatch") }
         public static func errorGeminiTokenExchangeFailed(_ a0: Int) -> String { tr("provider_config.error_gemini_token_exchange_failed", a0) }
         public static var errorGeminiInvalidTokenResponse: String { tr("provider_config.error_gemini_invalid_token_response") }
+        public static func errorGeminiTokenRefreshFailed(_ status: Int) -> String {
+            tr("provider_config.error_gemini_token_refresh_failed", status)
+        }
+        public static var errorGeminiNoRefreshToken: String { tr("provider_config.error_gemini_no_refresh_token") }
         public static var errorGeminiClientNotConfigured: String { tr("provider_config.error_gemini_client_not_configured") }
         public static var errorGeminiAlreadyInProgress: String { tr("provider_config.error_gemini_already_in_progress") }
         public static var errorGeminiRandomGenerationFailed: String { tr("provider_config.error_gemini_random_generation_failed") }
@@ -2051,6 +2060,29 @@ public enum L10n {
             default: return raw
             }
         }
+    }
+
+    // MARK: - Collector errors
+
+    /// The three wrappers `CollectorError.errorDescription` puts around a
+    /// payload. They surface in macOS Settings under a provider's Test
+    /// Connection result, so they are user-facing copy — but the gate could not
+    /// see them until the `case ... let x` blind spot was fixed, which is how
+    /// two of GeminiOAuthError's eleven cases stayed English while the other
+    /// nine were localized.
+    ///
+    /// The interpolated payloads stay as they are: a URL, a provider name and a
+    /// technical decoding fragment are not translatable, and mixing an English
+    /// fragment inside a localized wrapper is the existing precedent
+    /// (`provider_config.error_claude_parse_failed`).
+    public enum collectorError {
+        public static func invalidURL(_ url: String) -> String { tr("collector_error.invalid_url", url) }
+        /// Positional: the provider name and the status code swap order in
+        /// several of the six locales.
+        public static func httpStatus(_ provider: String, _ status: Int) -> String {
+            tr("collector_error.http_status", provider, status)
+        }
+        public static func parseFailed(_ detail: String) -> String { tr("collector_error.parse_failed", detail) }
     }
 }
 

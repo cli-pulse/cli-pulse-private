@@ -28,9 +28,9 @@ public enum GeminiOAuthError: LocalizedError {
         case .noAuthCode:            return L10n.providerConfig.errorGeminiNoAuthCode
         case .stateMismatch:         return L10n.providerConfig.errorGeminiStateMismatch
         case .tokenExchangeFailed(let s): return L10n.providerConfig.errorGeminiTokenExchangeFailed(s)
-        case .tokenRefreshFailed(let s):  return "Token refresh failed (HTTP \(s))"
+        case .tokenRefreshFailed(let s):  return L10n.providerConfig.errorGeminiTokenRefreshFailed(s)
         case .invalidTokenResponse:  return L10n.providerConfig.errorGeminiInvalidTokenResponse
-        case .noRefreshToken:        return "No refresh token available"
+        case .noRefreshToken:        return L10n.providerConfig.errorGeminiNoRefreshToken
         case .clientNotConfigured:   return L10n.providerConfig.errorGeminiClientNotConfigured
         case .alreadyInProgress:     return L10n.providerConfig.errorGeminiAlreadyInProgress
         case .randomGenerationFailed: return L10n.providerConfig.errorGeminiRandomGenerationFailed

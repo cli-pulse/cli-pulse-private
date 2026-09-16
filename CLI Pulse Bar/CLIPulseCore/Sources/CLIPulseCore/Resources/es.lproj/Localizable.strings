@@ -1372,3 +1372,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "quota_tier.weekly" = "Semanal";
 "quota_tier.window_5h" = "Periodo 5h";
 "quota_tier.window_fallback" = "Periodo";
+
+/* Collector + OAuth error wrappers — surfaced once the hardcoded-strings gate
+   stopped losing `errorDescription` bodies to `case … let x` bindings */
+"collector_error.invalid_url" = "URL no válida: %@";
+"collector_error.http_status" = "%1$@ devolvió HTTP %2$d";
+"collector_error.parse_failed" = "No se pudieron analizar los datos: %@";
+"provider_config.error_gemini_token_refresh_failed" = "Error al renovar el token (HTTP %d)";
+"provider_config.error_gemini_no_refresh_token" = "No hay ningún token de actualización disponible";
+"auth.error_http_status" = "HTTP %1$d: %2$@";

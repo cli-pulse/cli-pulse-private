@@ -146,6 +146,7 @@ UI_PREFIX = re.compile(
     r'|\b(?:header|footer|title|subtitle|message|placeholder|prompt|caption)\s*:\s*)$'
 )
 RETURN_PREFIX = re.compile(r'\breturn\s+$')
+CASE_PATTERN = re.compile(r'(?:case|default)\b')
 DECL = re.compile(r'\b(?:var|func|let)\s+(\w+)')
 DISPLAY_NAME = re.compile(r'label|title|caption|header|footer|hint|message|placeholder|description|'
                           r'displayname|text|subtitle|summary|reason|badge|chip|tooltip|headline|detail|explanation', re.I)
@@ -173,10 +174,17 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
         code_only = line
         for start, lit in reversed(lits):          # blank literals before looking for declarations
             code_only = code_only[:start] + '""' + code_only[start + len(lit):]
-        m = DECL.search(code_only)
-        if m:
-            recent_decl = m.group(1)
-            recent_decl_is_string = 'String' in code_only
+        # A `case` line's `let` is a PATTERN BINDING, not a declaration. Treating
+        # it as one reset the tracker on every
+        #   case .invalidURL(let url): return "Invalid URL: \(url)"
+        # so the enclosing `var errorDescription: String?` was forgotten and the
+        # whole body of every error enum went unscanned — the literals above are
+        # real UI copy, shown in Settings' Test Connection.
+        if not CASE_PATTERN.match(stripped):
+            m = DECL.search(code_only)
+            if m:
+                recent_decl = m.group(1)
+                recent_decl_is_string = 'String' in code_only
         named_copy = bool(DISPLAY_NAME.search(recent_decl or ''))
         for start, lit in lits:
             if not is_copy(lit):

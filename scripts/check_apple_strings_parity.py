@@ -250,6 +250,30 @@ def collect(res_dir: Path) -> dict[str, list[str]]:
     return catalogues
 
 
+L10N_SUBPATH = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/L10n.swift")
+TR_CALL = re.compile(r'\btr\(\s*"((?:[^"\\]|\\.)+)"')
+
+
+def keys_the_code_asks_for(root: Path) -> set[str]:
+    """Every key passed to `L10n.tr` in L10n.swift.
+
+    The catalogue-to-catalogue comparison below is structurally blind to a key
+    that is missing from ALL of them: there is no locale to be inconsistent
+    with. `L10n.resolve` then falls back to en, finds nothing there either, and
+    NSLocalizedString echoes the key — so the user reads `collector_error.
+    invalid_url` off the screen. That is the same class of bug the fallback
+    machinery was built for, from the other direction.
+    LIMITATION: a key COMPOSED at runtime — `tr("pet.form_\\(form.rawValue)")` —
+    cannot be resolved statically, so it is skipped. Those need their own
+    per-enum check (PetForm has 71 cases and 71 `pet.form_*` keys today).
+    """
+    path = root / L10N_SUBPATH
+    if not path.is_file():
+        return set()
+    return {m.group(1) for m in TR_CALL.finditer(path.read_text(encoding="utf-8"))
+            if "\\(" not in m.group(1)}
+
+
 def compute(catalogues: dict[str, list[str]]) -> tuple[dict[str, list[str]], list[str], list[str]]:
     """Returns (missing-per-locale, orphan complaints, duplicate complaints)."""
     base = set(catalogues[BASE_LOCALE])
@@ -385,6 +409,18 @@ def main() -> int:
         print("       earlier translation is dead text that reads as done:\n", file=sys.stderr)
         for line in duplicates:
             print(f"    {line}", file=sys.stderr)
+        print("", file=sys.stderr)
+
+    undeclared = sorted(keys_the_code_asks_for(root) - set(catalogues[BASE_LOCALE]))
+    if undeclared:
+        failed = True
+        print("FAIL — L10n.swift asks for key(s) that are in NO catalogue, not even", file=sys.stderr)
+        print(f"       {BASE_LOCALE}.lproj. Nothing else catches this: the parity check below", file=sys.stderr)
+        print("       compares catalogues to each other, and a key missing from all of", file=sys.stderr)
+        print("       them has no locale to disagree with. NSLocalizedString echoes the", file=sys.stderr)
+        print("       key, so every user reads the raw dotted identifier off the screen:\n", file=sys.stderr)
+        for key in undeclared:
+            print(f"    {key}", file=sys.stderr)
         print("", file=sys.stderr)
 
     if orphans:
