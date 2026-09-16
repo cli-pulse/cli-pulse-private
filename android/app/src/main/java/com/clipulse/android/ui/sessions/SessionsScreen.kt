@@ -23,6 +23,8 @@ import com.clipulse.android.ui.theme.PulseWarning
 import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.DataTokenDisplay
+import com.clipulse.android.ui.common.tokenLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -103,7 +105,7 @@ fun SessionCard(session: SessionRecord) {
                     Text(session.name.ifBlank { session.provider }, style = MaterialTheme.typography.titleSmall)
                     Text(session.project.ifBlank { "—" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                StatusBadge(session.status, statusColor)
+                StatusBadge(tokenLabel(session.status, DataTokenDisplay.sessionStatus(session.status)), statusColor)
             }
             Spacer(Modifier.height(8.dp))
             Row(

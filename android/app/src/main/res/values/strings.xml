@@ -298,4 +298,23 @@
     <string name="quota_tier_voucher_balance">Voucher</string>
     <string name="quota_tier_weekly">Weekly</string>
     <string name="quota_tier_window_fallback">Window</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">Running</string>
+    <string name="session_status_idle">Idle</string>
+    <string name="session_status_failed">Failed</string>
+    <string name="session_status_syncing">Syncing</string>
+    <string name="session_status_ended">Ended</string>
+    <string name="device_status_online">Online</string>
+    <string name="device_status_degraded">Degraded</string>
+    <string name="device_status_offline">Offline</string>
+    <string name="alert_severity_critical">Critical</string>
+    <string name="alert_severity_warning">Warning</string>
+    <string name="alert_severity_info">Info</string>
+    <string name="account_tier_free">Free</string>
+    <string name="account_tier_pro">Pro</string>
+    <string name="account_tier_team">Team</string>
+    <string name="webhook_type_cost_spike">Cost spike</string>
+    <string name="webhook_type_quota_exceeded">Quota exceeded</string>
+    <string name="webhook_type_session_long">Long session</string>
+    <string name="webhook_type_device_offline">Device offline</string>
 </resources>

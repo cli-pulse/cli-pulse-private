@@ -289,4 +289,23 @@
     <string name="quota_tier_voucher_balance">바우처</string>
     <string name="quota_tier_weekly">주간</string>
     <string name="quota_tier_window_fallback">기간</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">실행 중</string>
+    <string name="session_status_idle">대기</string>
+    <string name="session_status_failed">실패</string>
+    <string name="session_status_syncing">동기화 중</string>
+    <string name="session_status_ended">종료됨</string>
+    <string name="device_status_online">온라인</string>
+    <string name="device_status_degraded">저하</string>
+    <string name="device_status_offline">오프라인</string>
+    <string name="alert_severity_critical">심각</string>
+    <string name="alert_severity_warning">경고</string>
+    <string name="alert_severity_info">정보</string>
+    <string name="account_tier_free">무료</string>
+    <string name="account_tier_pro">프로</string>
+    <string name="account_tier_team">팀</string>
+    <string name="webhook_type_cost_spike">비용 급증</string>
+    <string name="webhook_type_quota_exceeded">할당량 초과</string>
+    <string name="webhook_type_session_long">장시간 세션</string>
+    <string name="webhook_type_device_offline">기기 오프라인</string>
 </resources>

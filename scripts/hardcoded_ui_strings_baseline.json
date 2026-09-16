@@ -1367,13 +1367,13 @@
    "path": "android/app/src/main/java/com/clipulse/android/data/collector/ProviderCollector.kt",
    "literal": "\"Operational\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-data-tokens — default CollectorResult.statusText. Collectors never run on Android (TokenStore.saveProviderKey has no caller), so this default is not rendered; decide together with ProviderUsage.statusText."
+   "reason": "KEEP_NOT_USER_VISIBLE: default statusText, a stored token. Nothing renders it: the provider detail badge that did was removed, because provider_summary carries no status_text and the badge claimed \"Operational\" for every provider whatever its state."
   },
   {
    "path": "android/app/src/main/java/com/clipulse/android/data/model/ProviderUsage.kt",
    "literal": "\"Operational\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-data-tokens — default ProviderUsage.statusText, rendered as the provider detail Status badge. provider_summary returns no status_text, so every provider claims \"Operational\" whatever its state: drop the badge or map real status before translating a claim that is often false."
+   "reason": "KEEP_NOT_USER_VISIBLE: default statusText, a stored token. Nothing renders it: the provider detail badge that did was removed, because provider_summary carries no status_text and the badge claimed \"Operational\" for every provider whatever its state."
   },
   {
    "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",

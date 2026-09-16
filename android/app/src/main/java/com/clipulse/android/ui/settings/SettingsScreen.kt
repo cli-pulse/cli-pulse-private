@@ -29,6 +29,8 @@ import com.clipulse.android.data.remote.OAuthDeepLinkNotice
 import com.clipulse.android.data.remote.OAuthDeepLinkNoticeReason
 import kotlinx.coroutines.launch
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.DataTokenDisplay
+import com.clipulse.android.ui.common.tokenLabel
 
 @Composable
 fun SettingsScreen(
@@ -90,7 +92,7 @@ fun SettingsScreen(
                     Text(email, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(stringResource(R.string.settings_tier, state.tier), style = MaterialTheme.typography.labelMedium)
+                Text(stringResource(R.string.settings_tier, tokenLabel(state.tier, DataTokenDisplay.accountTier(state.tier))), style = MaterialTheme.typography.labelMedium)
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = onManageSubscription, modifier = Modifier.weight(1f)) {
@@ -292,7 +294,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = selected,
                                 onClick = { viewModel.toggleWebhookFilterSeverity(severity) },
-                                label = { Text(severity, style = MaterialTheme.typography.bodySmall) },
+                                label = { Text(tokenLabel(severity, DataTokenDisplay.severity(severity)), style = MaterialTheme.typography.bodySmall) },
                             )
                         }
                     }
@@ -308,7 +310,7 @@ fun SettingsScreen(
                             FilterChip(
                                 selected = selected,
                                 onClick = { viewModel.toggleWebhookFilterType(type) },
-                                label = { Text(type.replace("_", " "), style = MaterialTheme.typography.bodySmall) },
+                                label = { Text(tokenLabel(type.replace("_", " "), DataTokenDisplay.webhookType(type)), style = MaterialTheme.typography.bodySmall) },
                             )
                         }
                     }

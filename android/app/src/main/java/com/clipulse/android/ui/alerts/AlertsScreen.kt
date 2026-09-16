@@ -23,6 +23,8 @@ import com.clipulse.android.ui.theme.SeverityCritical
 import com.clipulse.android.ui.theme.SeverityInfo
 import com.clipulse.android.ui.theme.SeverityWarning
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.DataTokenDisplay
+import com.clipulse.android.ui.common.tokenLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -102,7 +104,7 @@ fun AlertCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                StatusBadge(alert.severity, severityColor)
+                StatusBadge(tokenLabel(alert.severity, DataTokenDisplay.severity(alert.severity)), severityColor)
                 if (alert.relatedProvider != null) {
                     Text(alert.relatedProvider, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

@@ -293,4 +293,23 @@
     <string name="quota_tier_voucher_balance">Cupón</string>
     <string name="quota_tier_weekly">Semanal</string>
     <string name="quota_tier_window_fallback">Periodo</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">Ejecutando</string>
+    <string name="session_status_idle">Inactivo</string>
+    <string name="session_status_failed">Fallido</string>
+    <string name="session_status_syncing">Sincronizando</string>
+    <string name="session_status_ended">Finalizado</string>
+    <string name="device_status_online">En línea</string>
+    <string name="device_status_degraded">Degradado</string>
+    <string name="device_status_offline">Fuera de línea</string>
+    <string name="alert_severity_critical">Crítico</string>
+    <string name="alert_severity_warning">Advertencia</string>
+    <string name="alert_severity_info">Info</string>
+    <string name="account_tier_free">Gratis</string>
+    <string name="account_tier_pro">Pro</string>
+    <string name="account_tier_team">Equipo</string>
+    <string name="webhook_type_cost_spike">Pico de costo</string>
+    <string name="webhook_type_quota_exceeded">Cuota superada</string>
+    <string name="webhook_type_session_long">Sesión larga</string>
+    <string name="webhook_type_device_offline">Dispositivo sin conexión</string>
 </resources>
