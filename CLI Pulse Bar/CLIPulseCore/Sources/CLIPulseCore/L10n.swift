@@ -1947,6 +1947,111 @@ public enum L10n {
         public static func chooseWorkingDirectory(_ a0: String) -> String { tr("in_app_terminal.choose_working_directory", a0) }
         public static func startFailedTitle(_ a0: String) -> String { tr("in_app_terminal.start_failed_title", a0) }
     }
+
+    // MARK: - Quota tier names
+
+    public enum quotaTier {
+        public static var aiCredits: String { tr("quota_tier.ai_credits") }
+        public static var billingCycle: String { tr("quota_tier.billing_cycle") }
+        public static var bonus: String { tr("quota_tier.bonus") }
+        public static var bonusCredits: String { tr("quota_tier.bonus_credits") }
+        public static var cashBalance: String { tr("quota_tier.cash_balance") }
+        public static var characters: String { tr("quota_tier.characters") }
+        public static var credits: String { tr("quota_tier.credits") }
+        public static var daily: String { tr("quota_tier.daily") }
+        public static var `default`: String { tr("quota_tier.default") }
+        public static var extraUsage: String { tr("quota_tier.extra_usage") }
+        public static var hours4: String { tr("quota_tier.hours_4") }
+        public static var hours5: String { tr("quota_tier.hours_5") }
+        public static var keyLimit: String { tr("quota_tier.key_limit") }
+        public static var monthly: String { tr("quota_tier.monthly") }
+        public static var onDemand: String { tr("quota_tier.on_demand") }
+        public static var openSource: String { tr("quota_tier.open_source") }
+        public static var opusOnly: String { tr("quota_tier.opus_only") }
+        public static var opusWeekly: String { tr("quota_tier.opus_weekly") }
+        public static var otherModels: String { tr("quota_tier.other_models") }
+        public static var planIncluded: String { tr("quota_tier.plan_included") }
+        public static var professionalVoices: String { tr("quota_tier.professional_voices") }
+        public static var purchased: String { tr("quota_tier.purchased") }
+        public static var quotaFallback: String { tr("quota_tier.quota_fallback") }
+        public static var rateLimit5h: String { tr("quota_tier.rate_limit_5h") }
+        public static var recurring: String { tr("quota_tier.recurring") }
+        public static var refreshCredits: String { tr("quota_tier.refresh_credits") }
+        public static var requests: String { tr("quota_tier.requests") }
+        public static var rollingWindow: String { tr("quota_tier.rolling_window") }
+        public static var session: String { tr("quota_tier.session") }
+        public static var sonnetOnly: String { tr("quota_tier.sonnet_only") }
+        public static var sonnetWeekly: String { tr("quota_tier.sonnet_weekly") }
+        public static var tariffCredits: String { tr("quota_tier.tariff_credits") }
+        public static var timeLimit: String { tr("quota_tier.time_limit") }
+        public static var tokens: String { tr("quota_tier.tokens") }
+        public static var voiceSlots: String { tr("quota_tier.voice_slots") }
+        public static var voucherBalance: String { tr("quota_tier.voucher_balance") }
+        public static var weekly: String { tr("quota_tier.weekly") }
+        public static var window5h: String { tr("quota_tier.window_5h") }
+        public static var windowFallback: String { tr("quota_tier.window_fallback") }
+
+        /// Display text for a quota tier name.
+        ///
+        /// The stored name is always English: it is uploaded to the cloud, used as
+        /// the quota alert's `suppression_key`, used as a `ForEach` id, and
+        /// `WatchRingMath.weeklyTier` finds the weekly window by matching "week"
+        /// in it. Only the rendering is translated.
+        ///
+        /// Matched case-insensitively: producers disagree on capitalization
+        /// ("Voice slots" and "Professional voices" really are lowercase
+        /// mid-phrase), and no two names differ by case alone —
+        /// `scripts/check_quota_tier_names.py` checks that.
+        ///
+        /// The 17 names deliberately NOT translated are vendor products, plans,
+        /// models, coined units or currency codes; translating them would stop the
+        /// row matching the vendor's own billing page. They are listed with their
+        /// reasons in `scripts/quota_tier_names.json`.
+        public static func localized(_ raw: String) -> String {
+            switch raw.lowercased() {
+            case "4-hour": return hours4
+            case "5-hour": return hours5
+            case "5h rate limit": return rateLimit5h
+            case "5h window": return window5h
+            case "ai credits": return aiCredits
+            case "billing cycle": return billingCycle
+            case "bonus": return bonus
+            case "bonus credits": return bonusCredits
+            case "cash": return cashBalance
+            case "characters": return characters
+            case "credits": return credits
+            case "daily": return daily
+            case "default": return `default`
+            case "extra usage": return extraUsage
+            case "key limit": return keyLimit
+            case "monthly": return monthly
+            case "on-demand": return onDemand
+            case "open source": return openSource
+            case "opus (weekly)": return opusWeekly
+            case "opus only": return opusOnly
+            case "other": return otherModels
+            case "plan": return planIncluded
+            case "professional voices": return professionalVoices
+            case "purchased": return purchased
+            case "quota": return quotaFallback
+            case "recurring": return recurring
+            case "refresh": return refreshCredits
+            case "requests": return requests
+            case "rolling": return rollingWindow
+            case "session": return session
+            case "sonnet (weekly)": return sonnetWeekly
+            case "sonnet only": return sonnetOnly
+            case "tariff credits": return tariffCredits
+            case "time": return timeLimit
+            case "tokens": return tokens
+            case "voice slots": return voiceSlots
+            case "voucher": return voucherBalance
+            case "weekly": return weekly
+            case "window": return windowFallback
+            default: return raw
+            }
+        }
+    }
 }
 
 #if !SWIFT_PACKAGE

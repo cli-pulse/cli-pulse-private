@@ -450,7 +450,7 @@ struct ProviderTierCard: View {
                     id: \.offset
                 ) { _, tier in
                     UsageBar(
-                        label: tier.name,
+                        label: L10n.quotaTier.localized(tier.name),
                         value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
                         color:
                             isStale
@@ -730,7 +730,7 @@ struct WatchAccountQuotaDetail: View {
                 id: \.offset
             ) { _, tier in
                 UsageBar(
-                    label: tier.name,
+                    label: L10n.quotaTier.localized(tier.name),
                     value: WatchRingMath.remainingFraction(
                         quota: tier.quota,
                         remaining: tier.remaining
@@ -918,7 +918,7 @@ struct WatchProviderDetailView: View {
                     ForEach(displayedTiers.indices, id: \.self) { i in
                         let tier = displayedTiers[i]
                         UsageBar(
-                            label: tier.name,
+                            label: L10n.quotaTier.localized(tier.name),
                             value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
                             color:
                                 isStale

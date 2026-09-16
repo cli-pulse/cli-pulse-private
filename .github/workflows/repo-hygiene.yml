@@ -134,6 +134,24 @@ jobs:
       - run: python3 scripts/check_hardcoded_ui_strings.py
       - run: bash scripts/test_check_hardcoded_ui_strings.sh
 
+      # Quota tier names are display strings that are ALSO identity: the alert
+      # suppression_key, a ForEach id, a cloud upload, and the input to the
+      # "week" match that finds the weekly window. So the stored name stays
+      # English and only the rendering is localized — which leaves one judgment
+      # per name that neither of the gates above can make: is this the app's own
+      # generic word, or the vendor's term the user is matching against their
+      # billing page? `scripts/quota_tier_names.json` records that decision with
+      # its reason for all 56 known names.
+      #
+      # This gate keeps the record honest: a stale entry fails, a newly produced
+      # name fails until someone classifies it, and a name marked TRANSLATE that
+      # is missing its accessor or any of the six catalogue values fails instead
+      # of silently rendering English. Its scanner's recall is 82%, measured and
+      # documented in the script — most collectors build tiers through a local
+      # helper, not a constructor — so it is a ratchet, not a completeness proof.
+      - run: python3 scripts/check_quota_tier_names.py
+      - run: bash scripts/test_check_quota_tier_names.sh
+
       # The anonymous-telemetry switch defaults ON, which is only defensible
       # because the app states what it sends before it sends anything. So the
       # disclosure is not documentation, it is the consent basis, and a payload

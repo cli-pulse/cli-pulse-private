@@ -355,7 +355,7 @@ struct ProviderAccountQuotaSummaryView: View {
                         quota: tier.quota
                     )
                     UsageBar(
-                        label: tier.name,
+                        label: L10n.quotaTier.localized(tier.name),
                         value: fraction,
                         color: quotaColor(fraction),
                         detail:
@@ -745,7 +745,7 @@ struct EnhancedProviderCard: View {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(detail.tiers) { tier in
                             UsageBar(
-                                label: tier.name,
+                                label: L10n.quotaTier.localized(tier.name),
                                 value: 1.0 - tier.usagePercent,
                                 color: tierColor(tier),
                                 detail: tierDetail(tier),

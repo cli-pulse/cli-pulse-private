@@ -40,5 +40,13 @@ regexes = [
     '''Curve25519\.KeyAgreement\.PrivateKey''',
     # CI stub anon key used by the Swift test job.
     '''ci-stub-anon-key''',
+    # Localization catalogue KEYS, not credentials. `scripts/quota_tier_names.json`
+    # records one decision per quota tier name, and the field holding the .strings
+    # key is named `l10n_key` — enough for the generic-api-key rule to fire on the
+    # two values that contain digits (`quota_tier.hours_4`, `quota_tier.hours_5`).
+    # Same category as the `.lproj` path allowlist above: translated-UI metadata.
+    # Scoped to the `quota_tier.` prefix, so a real credential in that same field
+    # is still caught — verified by committing one and watching gitleaks fail.
+    '''quota_tier\.[a-z0-9_]+''',
 ]
 stopwords = ["example", "redacted", "stub", "dummy", "placeholder", "changeme", "your-"]
