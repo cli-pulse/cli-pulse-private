@@ -67,4 +67,79 @@ final class LocalizedCopyDecisionsTests: XCTestCase {
         XCTAssertTrue(message.contains(toggle), "message does not name the \(toggle) toggle: \(message)")
         XCTAssertFalse(message.contains("%"), "an unfilled format specifier leaked: \(message)")
     }
+
+    // MARK: - Provider status_text
+
+    /// `status_text` is a model field that crosses devices, so only its
+    /// rendering is localized. Asserted under zh-Hans: in English the mapped
+    /// value equals the input and every assertion here would hold with the
+    /// mapper deleted.
+    func testStatusSentinelsAreLocalizedAndEverythingElsePassesThrough() {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+
+        let sentinels: [(String, String)] = [
+            ("Operational", L10n.status.operational),
+            ("Disabled", L10n.status.disabled),
+            ("Unknown", L10n.status.unknown),
+            ("Connected", L10n.providers.statusConnected),
+        ]
+        for (raw, localized) in sentinels {
+            XCTAssertEqual(L10n.providers.localizedStatusText(raw), localized)
+            XCTAssertNotEqual(
+                L10n.providers.localizedStatusText(raw), raw,
+                "\(raw) still renders in English under zh-Hans")
+        }
+
+        // A server or collector may lower-case a token; it is still that token.
+        XCTAssertEqual(L10n.providers.localizedStatusText("disabled"), L10n.status.disabled)
+
+        XCTAssertEqual(L10n.providers.localizedStatusText("42% used"), L10n.providers.percentUsed(42))
+        XCTAssertNotEqual(L10n.providers.localizedStatusText("42% used"), "42% used")
+
+        // Free text the collectors compose has to survive byte-identical: there
+        // is no closed set to map it to, and mangling it loses real information.
+        for passthrough in [
+            "5h 60% left · Weekly 40% left",
+            "Daily 80% left",
+            "Balance: 640 credits",
+            "Pro · $18.00 of $30.00",
+            "-5% used",          // remaining > quota; not the sentinel shape
+            "42 % used",         // a space the sentinel does not have
+            "about 42% used",    // contains the sentinel, is not the sentinel
+            "",
+        ] {
+            XCTAssertEqual(
+                L10n.providers.localizedStatusText(passthrough), passthrough,
+                "mapper altered free text it does not own")
+        }
+    }
+
+    /// The reason the mapper exists instead of localizing the field: a
+    /// translated model value would silently un-hide disabled accounts on every
+    /// read-only surface, because the filter compares against "disabled".
+    func testDisabledAccountsStayHiddenWhenTheUIIsNotEnglish() {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+
+        func account(_ statusText: String) -> ProviderAccountUsage {
+            ProviderAccountUsage(
+                id: UUID(), provider: .claude, accountLabel: "a@example.com",
+                planEvidence: ProviderPlanEvidence(
+                    rawValue: "pro", displayValue: "Pro",
+                    source: .providerAPI, confidence: .high, observedAt: nil),
+                quota: 100, remaining: 50, tiers: [], resetTime: nil,
+                observedAt: nil, sourceDeviceID: nil, statusText: statusText)
+        }
+
+        let accounts = [account("Operational"), account("Disabled")]
+        let enabled = ProviderAccountPresentation.enabledAccounts(accounts)
+        XCTAssertEqual(enabled.count, 1, "the disabled account came back under zh-Hans")
+        XCTAssertEqual(enabled.first?.statusText, "Operational",
+                       "the model value was localized; it must stay English")
+    }
 }

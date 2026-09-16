@@ -610,6 +610,7 @@
 "providers.account_number" = "Account %d";
 "providers.plan_unconfirmed" = "Plan not confirmed";
 "providers.connected" = "Connected";
+"providers.status_connected" = "Connected";
 "providers.needs_reconnect" = "Needs reconnect";
 "providers.monitor_account" = "Monitor %@";
 "providers.edit_account" = "Edit %@";
