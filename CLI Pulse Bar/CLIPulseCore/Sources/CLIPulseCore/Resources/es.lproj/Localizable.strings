@@ -1381,3 +1381,32 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_config.error_gemini_token_refresh_failed" = "Error al renovar el token (HTTP %d)";
 "provider_config.error_gemini_no_refresh_token" = "No hay ningún token de actualización disponible";
 "auth.error_http_status" = "HTTP %1$d: %2$@";
+
+/* Alert templates — localized at render time by AlertPresentation. The stored
+   title/message stay English: they are the webhook payload, they cross devices,
+   and they sit beside the suppression key. */
+"alert_kind.budget_daily_message" = "El gasto de hoy, $%1$@, supera tu presupuesto diario de $%2$@.";
+"alert_kind.budget_daily_title" = "Presupuesto diario superado — $%@";
+"alert_kind.budget_weekly_message" = "El gasto de los últimos 7 días, $%1$@, supera tu presupuesto semanal de $%2$@.";
+"alert_kind.budget_weekly_title" = "Presupuesto semanal superado — $%@";
+"alert_kind.device_cpu_message" = "El helper midió un uso de CPU del %@%%.";
+"alert_kind.device_cpu_title" = "El uso de CPU del dispositivo es elevado";
+"alert_kind.quota_message" = "El periodo de cuota «%1$@» se ha usado al %2$@%% (%3$@%% restante).";
+"alert_kind.quota_message_reset" = "El periodo de cuota «%1$@» se ha usado al %2$@%% (%3$@%% restante; se reinicia %4$@).";
+"alert_kind.quota_title" = "%1$@ %2$@ al %3$@%%";
+"alert_kind.session_cpu_message_process" = "La CPU del proceso de %2$@ es del %1$@%%.";
+"alert_kind.session_cpu_message_process_in_project" = "La CPU del proceso de %2$@ en %3$@ es del %1$@%%.";
+"alert_kind.session_cpu_message_system" = "%3$@ usa ~%1$@%% de la CPU total del sistema (%2$@ núcleos).";
+"alert_kind.session_cpu_title" = "%@ está consumiendo mucha CPU";
+"alert_kind.session_long_message" = "El helper detectó una sesión de agente local de larga duración.";
+"alert_kind.session_long_title" = "%@ lleva mucho tiempo en ejecución";
+"alert_kind.severity_critical" = "Crítico";
+"alert_kind.severity_info" = "Info";
+"alert_kind.severity_warning" = "Advertencia";
+"alert_kind.source_budget" = "Presupuesto";
+"alert_kind.source_device" = "Dispositivo";
+"alert_kind.source_project" = "Proyecto";
+"alert_kind.source_provider" = "Proveedor";
+"alert_kind.source_quota" = "Cuota";
+"alert_kind.source_session" = "Sesión";
+"alert_kind.source_swarm" = "Swarm";

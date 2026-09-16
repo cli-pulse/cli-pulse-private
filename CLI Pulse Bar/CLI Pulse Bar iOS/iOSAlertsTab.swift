@@ -143,11 +143,12 @@ struct iOSAlertRow: View {
     @State private var showSnooze = false
 
     var body: some View {
+        let shown = AlertPresentation.text(for: alert)
         VStack(alignment: .leading, spacing: 8) {
             // Header
             HStack(spacing: 8) {
                 SeverityDot(severity: alert.severity)
-                Text(alert.title)
+                Text(shown.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                 Spacer()
@@ -157,7 +158,7 @@ struct iOSAlertRow: View {
             }
 
             // Message
-            Text(alert.message)
+            Text(shown.message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(3)

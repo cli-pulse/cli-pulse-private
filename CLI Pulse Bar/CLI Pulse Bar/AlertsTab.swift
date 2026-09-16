@@ -130,11 +130,15 @@ struct AlertRow: View {
     @State private var showSnooze = false
 
     var body: some View {
+        // The stored title/message stay English (they are also the webhook
+        // payload and neighbours of the suppression key); only this rendering
+        // is translated. An unrecognized template returns the stored text.
+        let shown = AlertPresentation.text(for: alert)
         VStack(alignment: .leading, spacing: 6) {
             // Header
             HStack(spacing: 6) {
                 SeverityDot(severity: alert.severity)
-                Text(alert.title)
+                Text(shown.title)
                     .font(.system(size: 11, weight: .semibold))
                     .lineLimit(2)
                 Spacer()
@@ -144,7 +148,7 @@ struct AlertRow: View {
             }
 
             // Message
-            Text(alert.message)
+            Text(shown.message)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .lineLimit(3)

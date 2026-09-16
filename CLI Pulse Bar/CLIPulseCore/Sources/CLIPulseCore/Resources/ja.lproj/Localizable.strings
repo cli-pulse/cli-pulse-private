@@ -1595,3 +1595,32 @@
 "provider_config.error_gemini_token_refresh_failed" = "トークンの更新に失敗しました（HTTP %d）";
 "provider_config.error_gemini_no_refresh_token" = "利用可能なリフレッシュトークンがありません";
 "auth.error_http_status" = "HTTP %1$d: %2$@";
+
+/* Alert templates — localized at render time by AlertPresentation. The stored
+   title/message stay English: they are the webhook payload, they cross devices,
+   and they sit beside the suppression key. */
+"alert_kind.budget_daily_message" = "本日の支出 $%1$@ が日次予算 $%2$@ を超えています。";
+"alert_kind.budget_daily_title" = "日次予算を超過 — $%@";
+"alert_kind.budget_weekly_message" = "過去 7 日間の支出合計 $%1$@ が週次予算 $%2$@ を超えています。";
+"alert_kind.budget_weekly_title" = "週次予算を超過 — $%@";
+"alert_kind.device_cpu_message" = "ヘルパーが CPU 使用率を %@%% と計測しました。";
+"alert_kind.device_cpu_title" = "デバイスの CPU 使用率が高くなっています";
+"alert_kind.quota_message" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%）。";
+"alert_kind.quota_message_reset" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%、%4$@ にリセット）。";
+"alert_kind.quota_title" = "%1$@「%2$@」が %3$@%% に到達";
+"alert_kind.session_cpu_message_process" = "%2$@ のプロセス CPU は %1$@%% です。";
+"alert_kind.session_cpu_message_process_in_project" = "%3$@ 内の %2$@ のプロセス CPU は %1$@%% です。";
+"alert_kind.session_cpu_message_system" = "%3$@ がシステム全体の CPU（%2$@ コア）の約 %1$@%% を使用しています。";
+"alert_kind.session_cpu_title" = "%@ が CPU を大量に消費しています";
+"alert_kind.session_long_message" = "ヘルパーが長時間実行中のローカル Agent セッションを検出しました。";
+"alert_kind.session_long_title" = "%@ が長時間実行されています";
+"alert_kind.severity_critical" = "重大";
+"alert_kind.severity_info" = "情報";
+"alert_kind.severity_warning" = "警告";
+"alert_kind.source_budget" = "予算";
+"alert_kind.source_device" = "デバイス";
+"alert_kind.source_project" = "プロジェクト";
+"alert_kind.source_provider" = "プロバイダー";
+"alert_kind.source_quota" = "クォータ";
+"alert_kind.source_session" = "セッション";
+"alert_kind.source_swarm" = "スウォーム";
