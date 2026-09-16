@@ -1410,3 +1410,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "alert_kind.source_quota" = "Cuota";
 "alert_kind.source_session" = "Sesión";
 "alert_kind.source_swarm" = "Swarm";
+
+/* Mac-perspective failures of the Mac's own session control. The remote.* equivalents
+   are written for the iPhone and read wrong shown on the Mac about itself. */
+"sessions.err_approval_gone" = "Esta solicitud ya no está esperando respuesta.";
+"sessions.err_helper_connection_lost" = "Se perdió la conexión con el helper local. Inténtalo de nuevo.";
+"sessions.err_helper_needs_update" = "El helper local está desactualizado. Actualiza CLI Pulse para usar esto.";
+"sessions.err_not_controllable" = "Desde aquí puedes ver esta sesión, pero no controlarla.";
+"sessions.err_runtime_restricted" = "El control de sesiones no está disponible en esta compilación.";
+"sessions.err_unauthenticated" = "El helper local no aceptó las credenciales de CLI Pulse. Reinicia el helper y vuelve a intentarlo.";

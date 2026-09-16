@@ -374,7 +374,7 @@ struct CLIPulseBarApp: App {
                     NSApp.activate(ignoringOtherApps: true)
                     let alert = NSAlert()
                     alert.messageText = L10n.inAppTerminal.startFailedTitle(provider.capitalized)
-                    alert.informativeText = error.localizedDescription
+                    alert.informativeText = LocalSessionFailureText.message(for: error)
                     alert.alertStyle = .warning
                     alert.runModal()
                 }
