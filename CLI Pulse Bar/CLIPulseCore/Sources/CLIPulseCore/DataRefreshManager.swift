@@ -1975,7 +1975,9 @@ internal final class DataRefreshManager {
         }
     }
 
-    nonisolated private static func shouldSilenceCollectorError(kind: ProviderKind, error: Error) -> Bool {
+    /// Internal rather than private so `CollectorErrorSilencingTests` can pin the
+    /// locale-independence below.
+    nonisolated static func shouldSilenceCollectorError(kind: ProviderKind, error: Error) -> Bool {
         // v1.16 §2.2: any collector that uses CollectorError.silentBackoff
         // (currently Gemini's expired-refresh-token path) is silenced
         // unconditionally for the backoff duration.
@@ -1985,13 +1987,26 @@ internal final class DataRefreshManager {
 
         guard kind == .ollama else { return false }
 
+        // An Ollama that is simply not running is the normal state for most
+        // users, so its connection failures are not worth a log line. Decided by
+        // domain and CODE, never by message: this used to fall back to
+        // `localizedDescription == "Could not connect to the server."`, which is
+        // English only — under a Chinese or Japanese system language the text is
+        // localized, the comparison never matched, and a wrapped connection
+        // failure was logged for those users and silenced for English ones.
+        // The underlying error is checked too, which is what that string compare
+        // was evidently reaching for.
+        let unreachable: Set<Int> = [NSURLErrorCannotConnectToHost, NSURLErrorTimedOut,
+                                     NSURLErrorNetworkConnectionLost]
         let nsError = error as NSError
-        if nsError.domain == NSURLErrorDomain,
-           [NSURLErrorCannotConnectToHost, NSURLErrorTimedOut, NSURLErrorNetworkConnectionLost].contains(nsError.code) {
+        if nsError.domain == NSURLErrorDomain, unreachable.contains(nsError.code) {
             return true
         }
-
-        return nsError.localizedDescription == "Could not connect to the server."
+        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+           underlying.domain == NSURLErrorDomain, unreachable.contains(underlying.code) {
+            return true
+        }
+        return false
     }
 
     private func observeHelperSync(onRefreshRequested: @escaping @MainActor () async -> Void) {

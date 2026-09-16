@@ -1636,3 +1636,15 @@
 "sessions.err_not_controllable" = "此會話在這裡只能檢視，無法控制。";
 "sessions.err_runtime_restricted" = "此版本無法使用會話控制。";
 "sessions.err_unauthenticated" = "本機 helper 未接受 CLI Pulse 的憑證。請重新啟動 helper 後再試一次。";
+
+/* Data tokens rendered as words: source/cookie-source names and the composed plan badge */
+"provider_config.cookie_source_automatic" = "自動";
+"provider_config.cookie_source_manual" = "手動";
+"provider_config.source_api" = "API";
+"provider_config.source_auto" = "自動";
+"provider_config.source_cli" = "CLI";
+"provider_config.source_local" = "本機";
+"provider_config.source_merged" = "雲端 + 本機";
+"provider_config.source_oauth" = "OAuth";
+"provider_config.source_web" = "網頁";
+"providers.plan_multiple_accounts" = "多個帳戶";

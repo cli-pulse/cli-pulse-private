@@ -1688,3 +1688,15 @@
 "sessions.err_not_controllable" = "此会话在这里只能查看，无法控制。";
 "sessions.err_runtime_restricted" = "此版本无法使用会话控制。";
 "sessions.err_unauthenticated" = "本地 helper 拒绝了 CLI Pulse 的凭据。请重启 helper 后重试。";
+
+/* Data tokens rendered as words: source/cookie-source names and the composed plan badge */
+"provider_config.cookie_source_automatic" = "自动";
+"provider_config.cookie_source_manual" = "手动";
+"provider_config.source_api" = "API";
+"provider_config.source_auto" = "自动";
+"provider_config.source_cli" = "CLI";
+"provider_config.source_local" = "本地";
+"provider_config.source_merged" = "云端 + 本地";
+"provider_config.source_oauth" = "OAuth";
+"provider_config.source_web" = "网页";
+"providers.plan_multiple_accounts" = "多个账户";

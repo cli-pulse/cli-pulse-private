@@ -715,9 +715,9 @@ struct EnhancedProviderCard: View {
                             .lineLimit(1)
                     }
                     if let plan = detail.planType {
-                        StatusBadge(text: plan, color: plan == "Paid" ? .green : .orange)
+                        StatusBadge(text: L10n.providers.planDisplay(plan), color: plan == "Paid" ? .green : .orange)
                     }
-                    Text(L10n.providers.sourceLabel(detail.sourceType.rawValue))
+                    Text(L10n.providers.sourceLabel(detail.sourceType.localizedName))
                         .font(.system(size: 8))
                         .foregroundStyle(.quaternary)
                     Spacer()

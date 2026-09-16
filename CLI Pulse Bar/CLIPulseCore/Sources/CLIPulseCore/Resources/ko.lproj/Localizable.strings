@@ -1419,3 +1419,15 @@
 "sessions.err_not_controllable" = "이 세션은 여기에서 볼 수는 있지만 제어할 수는 없습니다.";
 "sessions.err_runtime_restricted" = "이 빌드에서는 세션 제어를 사용할 수 없습니다.";
 "sessions.err_unauthenticated" = "로컬 헬퍼가 CLI Pulse의 자격 증명을 받아들이지 않았습니다. 헬퍼를 다시 시작한 후 다시 시도하세요.";
+
+/* Data tokens rendered as words: source/cookie-source names and the composed plan badge */
+"provider_config.cookie_source_automatic" = "자동";
+"provider_config.cookie_source_manual" = "수동";
+"provider_config.source_api" = "API";
+"provider_config.source_auto" = "자동";
+"provider_config.source_cli" = "CLI";
+"provider_config.source_local" = "로컬";
+"provider_config.source_merged" = "클라우드 + 로컬";
+"provider_config.source_oauth" = "OAuth";
+"provider_config.source_web" = "웹";
+"providers.plan_multiple_accounts" = "여러 계정";

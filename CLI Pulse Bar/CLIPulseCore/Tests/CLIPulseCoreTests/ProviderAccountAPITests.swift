@@ -282,6 +282,10 @@ final class ProviderAccountAPITests: XCTestCase {
         XCTAssertEqual(result.providers[0].quota, 100)
         XCTAssertEqual(result.providers[0].remaining, 20)
         XCTAssertEqual(result.providers[0].plan_type, "Multiple accounts")
+        // The display side keys on this exact string; if the producer rewords it,
+        // the badge silently reverts to English. `DataTokenDisplayTests` pins the
+        // other end.
+        XCTAssertEqual(L10n.providers.planDisplay("Multiple accounts"), L10n.providers.planMultipleAccounts)
 
         let work = try XCTUnwrap(
             result.providerAccounts.first {

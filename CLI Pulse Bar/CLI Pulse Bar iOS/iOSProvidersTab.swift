@@ -311,7 +311,7 @@ struct iOSEnhancedProviderCard: View {
                             .fill(statusColor)
                             .frame(width: 6, height: 6)
                         if let plan = provider.plan_type, plan != "Unknown", plan != "Free" {
-                            Text(plan)
+                            Text(L10n.providers.planDisplay(plan))
                                 .font(.system(size: 9, weight: .medium))
                                 .foregroundStyle(.orange)
                                 .padding(.horizontal, 4)

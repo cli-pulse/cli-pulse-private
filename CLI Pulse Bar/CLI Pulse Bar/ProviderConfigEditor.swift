@@ -151,7 +151,7 @@ struct ProviderConfigEditor: View {
                 Spacer()
                 Picker("", selection: $sourceMode) {
                     ForEach(descriptor.supportedSources, id: \.self) { src in
-                        Text(src.rawValue).tag(src)
+                        Text(src.localizedName).tag(src)
                     }
                 }
                 .pickerStyle(.menu)
@@ -264,7 +264,7 @@ struct ProviderConfigEditor: View {
                         set: { cookieSource = $0 }
                     )) {
                         ForEach(availableCookieSources, id: \.self) { src in
-                            Text(src.rawValue).tag(src)
+                            Text(src.localizedName).tag(src)
                         }
                     }
                     .pickerStyle(.menu)
