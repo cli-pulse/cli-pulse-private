@@ -541,6 +541,13 @@ public enum L10n {
             case "connected": return statusConnected
             default:
                 if let percent = percentUsedSentinel(raw) { return percentUsed(percent) }
+                if raw == ClaudeStatusSentinel.quotaUnavailable { return claudeQuotaUnavailableHint }
+                if raw.hasPrefix(ClaudeStatusSentinel.signedInPrefix), raw.hasSuffix(ClaudeStatusSentinel.signedInSuffix),
+                   raw.count > ClaudeStatusSentinel.signedInPrefix.count + ClaudeStatusSentinel.signedInSuffix.count {
+                    let email = String(raw.dropFirst(ClaudeStatusSentinel.signedInPrefix.count)
+                        .dropLast(ClaudeStatusSentinel.signedInSuffix.count))
+                    return claudeSignedInConnectHint(email)
+                }
                 return raw
             }
         }

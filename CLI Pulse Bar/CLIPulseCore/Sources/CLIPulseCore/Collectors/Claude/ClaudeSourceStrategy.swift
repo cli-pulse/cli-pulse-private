@@ -194,11 +194,11 @@ public enum ClaudeResultBuilder {
             // or Cloudflare challenge / schema drift on the web endpoint).
             // Point the user at the Connect action rather than the obsolete
             // `/usage` CLI command — that command was removed in Claude v2.x.
-            statusText = L10n.providers.claudeSignedInConnectHint(email)
+            statusText = ClaudeStatusSentinel.signedInConnect(email)
         } else {
             // No signal at all: no account email, no usage. Direct the user
             // to Settings → Claude where the Connect button lives.
-            statusText = L10n.providers.claudeQuotaUnavailableHint
+            statusText = ClaudeStatusSentinel.quotaUnavailable
         }
 
         #if DEBUG
@@ -567,3 +567,19 @@ public enum ClaudeStrategyError: LocalizedError, Sendable {
     }
 }
 #endif
+
+/// The two Claude status lines that are hints rather than numbers, written as fixed
+/// English. `status_text` is data: collectors run in the Login Item helper as well as
+/// the app, it crosses the App Group, and it is uploaded for other devices. Localizing
+/// it here made its language whichever process produced it, not the reader's.
+/// `L10n.providers.localizedStatusText` translates these at render time, and
+/// `ClaudeStatusSentinelTests` pins them to the English catalogue.
+public enum ClaudeStatusSentinel {
+    public static func signedInConnect(_ email: String) -> String {
+        "Signed in as \(email) — Connect Claude Code in Settings"
+    }
+    public static let quotaUnavailable = "Claude quota unavailable — Connect in Settings → Claude"
+
+    static let signedInPrefix = "Signed in as "
+    static let signedInSuffix = " — Connect Claude Code in Settings"
+}
