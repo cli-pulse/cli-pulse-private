@@ -169,7 +169,9 @@ class SettingsViewModelTest {
         coEvery { supabase.settings() } returns testSettings
         val vm = SettingsViewModel(supabase, tokenStore, cache)
 
-        assertEquals("Demo User", vm.state.value.userName)
+        // The demo name is copy, so SettingsScreen renders it from R.string.settings_demo_user
+        // in the app's language; the view model carries no English name.
+        assertNull(vm.state.value.userName)
         assertEquals("demo@clipulse.app", vm.state.value.userEmail)
         assertTrue(vm.state.value.isDemoMode)
         vm.viewModelScope.cancel()

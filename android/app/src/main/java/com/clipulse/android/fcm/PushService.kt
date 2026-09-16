@@ -23,7 +23,6 @@ class PushService : FirebaseMessagingService() {
     companion object {
         private const val TAG = "PushService"
         private const val CHANNEL_ID = "cli_pulse_alerts"
-        private const val CHANNEL_NAME = "CLI Pulse Alerts"
         private val notificationIdCounter = AtomicInteger(0)
     }
 
@@ -65,7 +64,7 @@ class PushService : FirebaseMessagingService() {
         // Create channel (Android 8+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
-                CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT,
+                CHANNEL_ID, getString(R.string.notification_channel_alerts), NotificationManager.IMPORTANCE_DEFAULT,
             )
             manager.createNotificationChannel(channel)
         }

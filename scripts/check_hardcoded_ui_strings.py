@@ -37,6 +37,17 @@ tokenizer that tracks `\\( … )` depth and nested literals, so neither that nor
 quoted dictionary key inside an interpolation cuts a literal short. Multi-line
 triple-quoted string literals are out of scope for a line scanner.
 
+ANDROID (added 2026-09-17)
+The Android app had no equivalent, so Kotlin copy was invisible to every gate:
+`Text("Resets in ${h}h")`, a share-sheet title, `error = "Session expired…"`
+shown in a banner. Kotlin sources under android/app/src/main/java are scanned
+with their own tokenizer (`${ … }` templates and `$name`) and their own sinks
+(Compose `Text(`, `contentDescription =`, `label =`, `title =`,
+`Intent.createChooser`, `NotificationChannel`, UI-state error fields …). A
+Compose call usually puts its argument on the NEXT line, so for Kotlin the
+text before a literal includes the previous code line when the literal starts
+its own line. Same baseline, same ratchet, same reasons.
+
 Pure Python on purpose: repo-hygiene runs on Linux.
 """
 from __future__ import annotations
@@ -201,6 +212,209 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     return found
 
 
+# ---- Kotlin -------------------------------------------------------------------
+
+KOTLIN_DIR = "android/app/src/main/java"
+
+
+def _kt_scan_string(line: str, i: int) -> int:
+    """i is just past an opening quote; return index just past the closing one, or -1."""
+    n = len(line)
+    while i < n:
+        c = line[i]
+        if c == '\\':
+            i += 2
+            continue
+        if c == '$' and i + 1 < n and line[i + 1] == '{':
+            i = _kt_scan_template(line, i + 2)
+            if i < 0:
+                return -1
+            continue
+        if c == '"':
+            return i + 1
+        i += 1
+    return -1
+
+
+def _kt_scan_template(line: str, i: int) -> int:
+    """i is just past `${`; return index just past the matching `}`, or -1."""
+    depth, n = 1, len(line)
+    while i < n:
+        c = line[i]
+        if c == '"':
+            j = _kt_scan_string(line, i + 1)
+            if j < 0:
+                return -1
+            i = j
+            continue
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return -1
+
+
+def kotlin_literals(line: str) -> list[tuple[int, str]]:
+    out, i, n = [], 0, len(line)
+    while i < n:
+        if line.startswith('//', i):
+            break
+        if line[i] == "'":                       # a char literal such as '"' must not open a string
+            m = re.match(r"'(?:\\.|[^'\\])'", line[i:])
+            if m:
+                i += m.end()
+                continue
+        if line[i] == '"':
+            if line.startswith('"""', i):        # raw string: out of scope for a line scanner
+                break
+            j = _kt_scan_string(line, i + 1)
+            if j < 0:
+                break
+            out.append((i, line[i:j]))
+            i = j
+            continue
+        i += 1
+    return out
+
+
+def kotlin_without_templates(body: str) -> str:
+    out, i, n = [], 0, len(body)
+    while i < n:
+        if body[i] == '$' and i + 1 < n and body[i + 1] == '{':
+            j = _kt_scan_template(body, i + 2)
+            if j < 0:
+                break
+            i = j
+            continue
+        if body[i] == '$' and i + 1 < n and (body[i + 1].isalpha() or body[i + 1] == '_'):
+            m = re.match(r'\$\w+', body[i:])
+            i += m.end()
+            continue
+        out.append(body[i])
+        i += 1
+    return ''.join(out)
+
+
+# Sinks that render their argument. Compose names are discovered per tree (every
+# `@Composable fun Name(`), so the app's own `EditableSettingRow("Usage Spike")`
+# counts without a hand-kept list; these are the framework ones.
+KT_FRAMEWORK_COMPOSABLES = ("Text", "AlertDialog", "Tab", "NavigationBarItem", "DropdownMenuItem")
+KT_NAMED_SINKS = (
+    r'text|contentDescription|label|placeholder|title|subtitle|message|trailingText|supportingText|'
+    r'headline|description|hint|confirmText|dismissText|chooserTitle|'
+    # UI-state fields a screen renders verbatim.
+    r'error|errorMessage|mutationError|deleteError|linkIdentityError|statusMessage|notice|userName|displayName'
+)
+# What may sit between a sink and the literal and still be the rendered value:
+# `x ?: "…"`, `if (demo) "…"`, `else "…"`.
+KT_VALUE_LEAD = r'(?:[\w.()!]+\s*\?:\s*|if\s*\(.*\)\s*|else\s+)?'
+KT_CALL_SINKS = (
+    r'\bcreateChooser\s*\([^()]*,\s*'
+    r'|\bNotificationChannel\s*\([^()]*,\s*'
+    r'|\bmakeText\s*\([^()]*,\s*'
+    r'|\b(?:setContentTitle|setContentText|setTicker|showSnackbar)\s*\(\s*'
+)
+KT_RETURN_PREFIX = re.compile(r'(?:\breturn\s+|->\s*|\bget\(\)\s*=\s*|\)\s*(?::\s*String\??\s*)?=\s*'
+                              r'|\bval\s+\w+\s*(?::\s*String\??\s*)?=\s*)' + KT_VALUE_LEAD + r'$')
+KT_FUN = re.compile(r'\bfun\s+(?:<[^>]*>\s*)?(?:[\w<>?,. ]+\.)?(\w+)\s*\(')
+KT_PROP = re.compile(r'\b(?:const\s+)?va[lr]\s+(\w+)\s*(?::\s*String\??\s*)?(?:=|$|\bget\(\))')
+KT_DISPLAY_NAME = re.compile(DISPLAY_NAME.pattern + r'|^format|channel_?name', re.I)
+# Words separated by whitespace. Swift's PHRASE also accepts `.` and `-`, which in
+# Kotlin constants reads product ids and hosts (`com.clipulse.pro`, `api.anthropic`) as prose.
+KT_PHRASE = re.compile(r'[A-Za-z]{2,}\s+[A-Za-z]{2,}')
+
+
+def kotlin_composables(root: Path) -> set[str]:
+    names = set(KT_FRAMEWORK_COMPOSABLES)
+    base = root / KOTLIN_DIR
+    if base.is_dir():
+        for f in base.rglob('*.kt'):
+            src = f.read_text(encoding='utf-8', errors='replace')
+            names.update(re.findall(r'@Composable\s+(?:(?:private|internal|public)\s+)?fun\s+([A-Z]\w*)\s*\(', src))
+    return names
+
+
+def kotlin_ui_prefix(composables: set[str]) -> re.Pattern[str]:
+    calls = '|'.join(sorted(map(re.escape, composables)))
+    return re.compile(
+        r'(?:(?<![\w.])(?:' + calls + r')\s*\((?:[^()]*,)?\s*'
+        r'|\b(?:' + KT_NAMED_SINKS + r')\s*=\s*'
+        r'|' + KT_CALL_SINKS + r')' + KT_VALUE_LEAD + r'$'
+    )
+
+
+def kotlin_is_copy(literal: str) -> bool:
+    return re.search(r'[A-Za-z]{2,}', kotlin_without_templates(literal[1:-1])) is not None
+
+
+def scan_kotlin_file(path: Path, ui_prefix: re.Pattern[str]) -> list[tuple[int, str]]:
+    found: list[tuple[int, str]] = []
+    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    fun_name, fun_is_string = '', False
+    prop_name, prop_is_string = '', False
+    previous_code = ''
+    depth = 0
+    ui_when_depths: list[int] = []          # brace depths of `when`/`if` blocks whose value feeds a sink
+    in_block_comment = False
+    for n, line in enumerate(lines, 1):
+        stripped = line.lstrip()
+        if in_block_comment:
+            if '*/' in stripped:
+                in_block_comment = False
+            continue
+        if stripped.startswith('/*'):
+            in_block_comment = '*/' not in stripped
+            continue
+        if not stripped or stripped.startswith(('//', '*', '@file', 'import ', 'package ')):
+            continue
+        lits = kotlin_literals(line)
+        code_only = line
+        for start, lit in reversed(lits):
+            code_only = code_only[:start] + '""' + code_only[start + len(lit):]
+        code = code_only.split('//')[0].rstrip()
+        # A local `val hours = …` must not replace the enclosing function as the
+        # context, or `fun formatResetTime(): String { … -> "Resets in …" }` is lost.
+        m = KT_FUN.search(code)
+        if m:
+            fun_name, fun_is_string = m.group(1), bool(re.search(r'\)\s*:\s*String\??', code))
+            prop_name, prop_is_string = '', False
+        else:
+            m = KT_PROP.search(code)
+            if m and (': String' in code or 'get()' in code or 'const ' in code):
+                prop_name, prop_is_string = m.group(1), True
+        context_name = prop_name or fun_name
+        named_copy = bool(KT_DISPLAY_NAME.search(context_name))
+        string_typed = prop_is_string or fun_is_string
+        joined = (previous_code + ' ') if previous_code else ''
+        for start, lit in lits:
+            if not kotlin_is_copy(lit):
+                continue
+            before = line[:start]
+            lead_only = re.fullmatch(r'\s*' + KT_VALUE_LEAD + r'\s*', before) is not None
+            context = joined + before if lead_only else before
+            in_ui_when = bool(ui_when_depths) and re.search(r'->\s*' + KT_VALUE_LEAD + r'$', before)
+            if ui_prefix.search(context) or in_ui_when:
+                found.append((n, lit))
+            elif KT_RETURN_PREFIX.search(context) and (
+                    named_copy or (string_typed and KT_PHRASE.search(kotlin_without_templates(lit[1:-1])))):
+                found.append((n, lit))
+        opens, closes = code.count('{'), code.count('}')
+        if opens > closes and re.search(r'(?:when|if\s*\(.*\))\s*(?:\([^)]*\))?\s*\{\s*$', code):
+            head = code[:code.rfind('when')] if 'when' in code else code[:code.rfind('if')]
+            head_context = head if head.strip() else joined + head
+            if ui_prefix.search(head_context.rstrip() + ' '):
+                ui_when_depths.append(depth + opens - closes)
+        depth += opens - closes
+        while ui_when_depths and depth < ui_when_depths[-1]:
+            ui_when_depths.pop()
+        if code.strip():
+            previous_code = code
+    return found
+
+
 def scan(root: Path) -> dict[tuple[str, str], list[int]]:
     hits: dict[tuple[str, str], list[int]] = {}
     for d in SCAN_DIRS:
@@ -212,6 +426,13 @@ def scan(root: Path) -> dict[tuple[str, str], list[int]]:
             if SKIP_PARTS & set(rel.parts[1:]):
                 continue
             for n, lit in scan_file(f):
+                hits.setdefault((rel.as_posix(), lit), []).append(n)
+    kotlin = root / KOTLIN_DIR
+    if kotlin.is_dir():
+        ui_prefix = kotlin_ui_prefix(kotlin_composables(root))
+        for f in sorted(kotlin.rglob('*.kt')):
+            rel = f.relative_to(root)
+            for n, lit in scan_kotlin_file(f, ui_prefix):
                 hits.setdefault((rel.as_posix(), lit), []).append(n)
     return hits
 
@@ -260,7 +481,8 @@ def main() -> int:
     if errors:
         print("check_hardcoded_ui_strings: FAILED")
         print("\n".join(errors))
-        print("\nUser-visible copy must go through L10n (CLIPulseCore/L10n.swift + all six .lproj).\n"
+        print("\nUser-visible copy must go through L10n (CLIPulseCore/L10n.swift + all six .lproj),\n"
+              "or on Android through string resources (res/values*/strings.xml, all six).\n"
               "If a literal is genuinely not translatable (a product name, a shell command, a DEBUG-only\n"
               f"menu), add it to {BASELINE_DEFAULT} with the reason.")
         return 1

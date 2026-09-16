@@ -210,4 +210,24 @@
     <string name="thermal_serious">심각</string>
     <string name="thermal_critical">위험</string>
     <string name="subscription_unavailable_android">현재 Android에서는 구독을 제공하지 않습니다. 이 앱의 기능에는 잠금이 없으며 모두 그대로 사용할 수 있습니다.</string>
+
+    <!-- UI chrome that used to be hardcoded English in Kotlin (hardcoded-UI gate, 2026-09-17) -->
+    <string name="usage_resetting">초기화 중…</string>
+    <string name="usage_resets_in_hm">%1$d시간 %2$d분 후 초기화</string>
+    <string name="usage_resets_in_m">%1$d분 후 초기화</string>
+    <string name="usage_resets_soon">곧 초기화</string>
+    <string name="settings_threshold_usage_spike">사용량 급증(토큰)</string>
+    <string name="settings_threshold_project_budget">프로젝트 예산($)</string>
+    <string name="settings_threshold_long_session">장시간 세션(분)</string>
+    <string name="settings_threshold_offline_grace">오프라인 유예(분)</string>
+    <string name="settings_threshold_data_retention">데이터 보존(일)</string>
+    <string name="settings_demo_user">데모 사용자</string>
+    <string name="notification_channel_alerts">CLI Pulse 알림</string>
+    <string name="export_share_title">CLI Pulse 데이터 내보내기</string>
+    <plurals name="overview_alerts_critical_count">
+        <item quantity="other">심각 %d건</item>
+    </plurals>
+    <plurals name="overview_alerts_warning_count">
+        <item quantity="other">경고 %d건</item>
+    </plurals>
 </resources>

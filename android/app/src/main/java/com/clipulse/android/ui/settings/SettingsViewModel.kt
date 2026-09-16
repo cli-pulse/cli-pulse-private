@@ -40,7 +40,8 @@ class SettingsViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(
         SettingsUiState(
-            userName = if (tokenStore.isDemoMode) "Demo User" else tokenStore.userName,
+            // Demo mode's name is copy, rendered by SettingsScreen in the app's language.
+            userName = if (tokenStore.isDemoMode) null else tokenStore.userName,
             userEmail = if (tokenStore.isDemoMode) "demo@clipulse.app" else tokenStore.userEmail,
             isDemoMode = tokenStore.isDemoMode,
         )

@@ -10,7 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.clipulse.android.R
 import com.clipulse.android.ui.theme.PulseError
 import com.clipulse.android.ui.theme.PulseSuccess
 import com.clipulse.android.ui.theme.PulseWarning
@@ -40,7 +42,7 @@ fun UsageBar(
             ) {
                 Text(label ?: "", style = MaterialTheme.typography.bodySmall)
                 Text(
-                    trailingText ?: "${(remainingPercent * 100).toInt()}% left",
+                    trailingText ?: stringResource(R.string.card_pct_left, (remainingPercent * 100).toInt()),
                     style = MaterialTheme.typography.bodySmall,
                     color = color,
                 )
@@ -128,22 +130,38 @@ fun formatUsage(tokens: Int): String = when {
     else -> tokens.toString()
 }
 
-/** Format ISO reset_time to human readable "Resets in Xh Ym" */
-fun formatResetTime(isoTime: String?): String? {
+/** How far away a tier's reset is. Kept apart from the words so it can be tested on the JVM. */
+sealed class ResetCountdown {
+    data object Resetting : ResetCountdown()
+    data class InHoursAndMinutes(val hours: Long, val minutes: Long) : ResetCountdown()
+    data class InMinutes(val minutes: Long) : ResetCountdown()
+    data object Soon : ResetCountdown()
+}
+
+fun resetCountdown(isoTime: String?, now: java.time.Instant = java.time.Instant.now()): ResetCountdown? {
     if (isoTime.isNullOrBlank()) return null
     return try {
-        val resetInstant = java.time.Instant.parse(isoTime)
-        val now = java.time.Instant.now()
-        val diff = java.time.Duration.between(now, resetInstant)
-        if (diff.isNegative) return "Resetting..."
+        val diff = java.time.Duration.between(now, java.time.Instant.parse(isoTime))
         val hours = diff.toHours()
         val minutes = diff.toMinutes() % 60
         when {
-            hours > 0 -> "Resets in ${hours}h ${minutes}m"
-            minutes > 0 -> "Resets in ${minutes}m"
-            else -> "Resets soon"
+            diff.isNegative -> ResetCountdown.Resetting
+            hours > 0 -> ResetCountdown.InHoursAndMinutes(hours, minutes)
+            minutes > 0 -> ResetCountdown.InMinutes(minutes)
+            else -> ResetCountdown.Soon
         }
     } catch (_: Exception) {
         null
     }
+}
+
+/** A tier's reset time as the words the user reads ("Resets in 3h 12m"), in the app's language. */
+@Composable
+fun formatResetTime(isoTime: String?): String? = when (val countdown = resetCountdown(isoTime)) {
+    null -> null
+    ResetCountdown.Resetting -> stringResource(R.string.usage_resetting)
+    is ResetCountdown.InHoursAndMinutes ->
+        stringResource(R.string.usage_resets_in_hm, countdown.hours.toInt(), countdown.minutes.toInt())
+    is ResetCountdown.InMinutes -> stringResource(R.string.usage_resets_in_m, countdown.minutes.toInt())
+    ResetCountdown.Soon -> stringResource(R.string.usage_resets_soon)
 }

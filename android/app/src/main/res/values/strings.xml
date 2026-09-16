@@ -217,4 +217,26 @@
     <string name="thermal_serious">Serious</string>
     <string name="thermal_critical">Critical</string>
     <string name="subscription_unavailable_android">Subscriptions are not available on Android right now. Nothing in this app is locked — every feature is available to you as it is.</string>
+
+    <!-- UI chrome that used to be hardcoded English in Kotlin (hardcoded-UI gate, 2026-09-17) -->
+    <string name="usage_resetting">Resetting…</string>
+    <string name="usage_resets_in_hm">Resets in %1$dh %2$dm</string>
+    <string name="usage_resets_in_m">Resets in %1$dm</string>
+    <string name="usage_resets_soon">Resets soon</string>
+    <string name="settings_threshold_usage_spike">Usage Spike (tokens)</string>
+    <string name="settings_threshold_project_budget">Project Budget ($)</string>
+    <string name="settings_threshold_long_session">Long Session (min)</string>
+    <string name="settings_threshold_offline_grace">Offline Grace (min)</string>
+    <string name="settings_threshold_data_retention">Data Retention (days)</string>
+    <string name="settings_demo_user">Demo User</string>
+    <string name="notification_channel_alerts">CLI Pulse Alerts</string>
+    <string name="export_share_title">Export CLI Pulse Data</string>
+    <plurals name="overview_alerts_critical_count">
+        <item quantity="one">%d critical</item>
+        <item quantity="other">%d critical</item>
+    </plurals>
+    <plurals name="overview_alerts_warning_count">
+        <item quantity="one">%d warning</item>
+        <item quantity="other">%d warnings</item>
+    </plurals>
 </resources>

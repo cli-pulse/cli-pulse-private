@@ -126,5 +126,97 @@ expect 1 "an English literal passed to .serverMessage fails"
 new_tree; core 'func f(message: String) throws { throw CollectorError.missingCredentials(CredentialProblem("X", .serverMessage(message))) }'
 expect 0 "server-supplied text passed to .serverMessage passes"
 
+# ── Android / Kotlin ────────────────────────────────────────────────────────
+# The Kotlin scanner has its own tokenizer and sinks. Compose puts arguments on
+# the NEXT line, the app defines its own composables, and a `when` often computes
+# the value a sink renders — each of those was a miss in the first version.
+kt() { mkdir -p "$T/android/app/src/main/java/app"; printf '%s\n' "$1" > "$T/android/app/src/main/java/app/V.kt"; }
+
+new_tree; kt '@Composable fun S() { Text(stringResource(R.string.overview)) }'
+expect 0 "kotlin: copy from a string resource passes"
+
+new_tree; kt '@Composable fun S() { Text("Active") }'
+expect 1 "kotlin: a hardcoded Text literal fails"
+
+new_tree; kt '@Composable fun S(h: Int) { Text("Resets in ${h}h") }'
+expect 1 "kotlin: a literal with a \${} template fails"
+
+new_tree; kt '@Composable fun S() {
+    Text(
+        "Resets soon",
+        style = MaterialTheme.typography.bodySmall,
+    )
+}'
+expect 1 "kotlin: a literal on the line after Text( fails"
+
+new_tree; kt '@Composable fun SettingRow(label: String) {}
+@Composable fun S() { SettingRow("Usage Spike (tokens)") }'
+expect 1 "kotlin: a literal passed to one of the app composables fails"
+
+new_tree; kt '@Composable fun S(n: Int) {
+    MetricCard(
+        subtitle = when {
+            n > 0 -> "${n} critical"
+            else -> null
+        },
+    )
+}'
+expect 1 "kotlin: a when branch whose value feeds a sink fails"
+
+# A single word, so only the enclosing function name can flag it: a multi-word
+# phrase would be caught by the phrase signal whatever the tracker remembered.
+new_tree; kt 'fun formatResetTime(iso: String?): String? {
+    val hours = 3
+    return when {
+        hours < 0 -> "Resetting"
+        else -> null
+    }
+}'
+expect 1 "kotlin: a local val does not hide the enclosing format* function"
+
+new_tree; kt '@Composable fun S(t: String?, p: Int) {
+    Text(
+        t ?: "${p}% left",
+    )
+}'
+expect 1 "kotlin: an elvis fallback on its own line inherits the sink"
+
+new_tree; kt 'class VM { fun f() { state = state.copy(error = "Failed to load") } }'
+expect 1 "kotlin: an English UI-state error fails"
+
+new_tree; kt '@Composable fun S() { Icon(Icons.Filled.Close, contentDescription = "Close") }'
+expect 1 "kotlin: a contentDescription literal fails"
+
+new_tree; kt 'object P { private const val CHANNEL_NAME = "Alerts" }'
+expect 1 "kotlin: a one-word notification channel name constant fails"
+
+new_tree; kt 'object C {
+    private const val TAG = "SyncWorker"
+    const val MONTHLY = "com.clipulse.pro.monthly"
+    val baseUrl: String = "https://api.example.com"
+    fun f(t: String) { Log.w(TAG, "Failed to load"); header("Authorization", "Bearer $t") }
+}'
+expect 0 "kotlin: log text, headers, ids and hosts pass"
+
+# A char literal holding a double quote must not open a string.
+new_tree; kt "@Composable fun S() {
+    // Text(\"Commented out\")
+    /* Text(\"Block comment\") */
+    val quote = '\"'
+    Text(quote)
+}"
+expect 0 "kotlin: comments and a quote char literal pass"
+
+new_tree; kt "@Composable fun S() { val q = '\"'; Text(\"Active\") }"
+expect 1 "kotlin: copy after a quote char literal on the same line is still seen"
+
+new_tree; kt '@Composable fun S() { Text("CLI Pulse") }'
+baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
+expect 0 "kotlin: a baselined literal with a reason passes"
+
+new_tree; kt '@Composable fun S() { Text(stringResource(R.string.brand)) }'
+baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
+expect 1 "kotlin: a stale baseline entry fails"
+
 echo "check_hardcoded_ui_strings negative controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
