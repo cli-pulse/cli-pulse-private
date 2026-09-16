@@ -17,6 +17,7 @@ import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.clipulse.android.ui.common.DataTokenDisplay
 
 object PdfReportGenerator {
 
@@ -174,7 +175,7 @@ object PdfReportGenerator {
                 s.project.take(18),
                 "$${String.format("%.4f", s.estimatedCost)}",
                 formatTokens(s.totalUsage),
-                s.status.take(10),
+                (DataTokenDisplay.sessionStatus(s.status)?.let { context.getString(it) } ?: s.status).take(10),
             )
             for (i in row.indices) {
                 canvas.drawText(row[i], MARGIN + CONTENT_WIDTH * sessCols[i], y + 9f, smallPaint)

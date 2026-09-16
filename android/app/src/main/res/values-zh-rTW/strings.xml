@@ -289,4 +289,23 @@
     <string name="quota_tier_voucher_balance">抵用券</string>
     <string name="quota_tier_weekly">每週</string>
     <string name="quota_tier_window_fallback">時段</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">執行中</string>
+    <string name="session_status_idle">空閒</string>
+    <string name="session_status_failed">失敗</string>
+    <string name="session_status_syncing">同步中</string>
+    <string name="session_status_ended">已結束</string>
+    <string name="device_status_online">線上</string>
+    <string name="device_status_degraded">降級</string>
+    <string name="device_status_offline">離線</string>
+    <string name="alert_severity_critical">嚴重</string>
+    <string name="alert_severity_warning">警告</string>
+    <string name="alert_severity_info">資訊</string>
+    <string name="account_tier_free">免費</string>
+    <string name="account_tier_pro">專業</string>
+    <string name="account_tier_team">團隊</string>
+    <string name="webhook_type_cost_spike">費用激增</string>
+    <string name="webhook_type_quota_exceeded">配額超限</string>
+    <string name="webhook_type_session_long">工作階段過長</string>
+    <string name="webhook_type_device_offline">裝置離線</string>
 </resources>

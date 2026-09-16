@@ -15,7 +15,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.clipulse.android.R
 import com.clipulse.android.data.model.ProviderUsage
 import com.clipulse.android.ui.components.*
-import com.clipulse.android.ui.theme.providerColor
 import com.clipulse.android.ui.common.quotaTierLabel
 
 /**
@@ -46,9 +45,6 @@ fun ProviderDetailScreen(
     provider: ProviderUsage,
     onBack: () -> Unit,
 ) {
-    val kind = provider.providerKind
-    val color = kind?.let { providerColor(it) } ?: MaterialTheme.colorScheme.primary
-
     Scaffold(
         topBar = {
             TopAppBar(
@@ -76,7 +72,9 @@ fun ProviderDetailScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(stringResource(R.string.card_status), style = MaterialTheme.typography.titleMedium)
-                        StatusBadge(provider.statusText, color)
+                        // No status badge: provider_summary carries no status_text, so on Android
+                        // this was always the ProviderUsage default "Operational", whatever the
+                        // provider's real state. A translated false claim is still a false claim.
                     }
                     if (provider.planType != null) {
                         Spacer(Modifier.height(8.dp))

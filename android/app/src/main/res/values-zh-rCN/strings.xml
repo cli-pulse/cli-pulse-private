@@ -294,4 +294,23 @@
     <string name="quota_tier_voucher_balance">代金券</string>
     <string name="quota_tier_weekly">每周</string>
     <string name="quota_tier_window_fallback">时间窗口</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">运行中</string>
+    <string name="session_status_idle">空闲</string>
+    <string name="session_status_failed">失败</string>
+    <string name="session_status_syncing">同步中</string>
+    <string name="session_status_ended">已结束</string>
+    <string name="device_status_online">在线</string>
+    <string name="device_status_degraded">降级</string>
+    <string name="device_status_offline">离线</string>
+    <string name="alert_severity_critical">严重</string>
+    <string name="alert_severity_warning">警告</string>
+    <string name="alert_severity_info">信息</string>
+    <string name="account_tier_free">免费</string>
+    <string name="account_tier_pro">专业</string>
+    <string name="account_tier_team">团队</string>
+    <string name="webhook_type_cost_spike">费用激增</string>
+    <string name="webhook_type_quota_exceeded">配额超限</string>
+    <string name="webhook_type_session_long">会话过长</string>
+    <string name="webhook_type_device_offline">设备离线</string>
 </resources>

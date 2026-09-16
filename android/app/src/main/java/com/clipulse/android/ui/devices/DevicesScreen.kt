@@ -21,6 +21,8 @@ import com.clipulse.android.ui.theme.PulseSuccess
 import com.clipulse.android.ui.theme.PulseWarning
 import kotlin.math.roundToInt
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.DataTokenDisplay
+import com.clipulse.android.ui.common.tokenLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -148,7 +150,7 @@ private fun DeviceCard(device: com.clipulse.android.data.model.DeviceRecord) {
                     color = MaterialTheme.colorScheme.surfaceVariant,
                 ) {
                     Text(
-                        device.status,
+                        tokenLabel(device.status, DataTokenDisplay.deviceStatus(device.status)),
                         color = statusColor,
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),

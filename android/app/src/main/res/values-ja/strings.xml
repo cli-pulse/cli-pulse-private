@@ -295,4 +295,23 @@
     <string name="quota_tier_voucher_balance">クーポン</string>
     <string name="quota_tier_weekly">週次</string>
     <string name="quota_tier_window_fallback">期間</string>
+    <!-- Stored tokens rendered for people: the stored value stays English, only the label is translated -->
+    <string name="session_status_running">実行中</string>
+    <string name="session_status_idle">待機中</string>
+    <string name="session_status_failed">失敗</string>
+    <string name="session_status_syncing">同期中</string>
+    <string name="session_status_ended">終了</string>
+    <string name="device_status_online">オンライン</string>
+    <string name="device_status_degraded">低下</string>
+    <string name="device_status_offline">オフライン</string>
+    <string name="alert_severity_critical">重大</string>
+    <string name="alert_severity_warning">警告</string>
+    <string name="alert_severity_info">情報</string>
+    <string name="account_tier_free">無料</string>
+    <string name="account_tier_pro">プロ</string>
+    <string name="account_tier_team">チーム</string>
+    <string name="webhook_type_cost_spike">コスト急増</string>
+    <string name="webhook_type_quota_exceeded">クォータ超過</string>
+    <string name="webhook_type_session_long">長時間セッション</string>
+    <string name="webhook_type_device_offline">デバイスがオフライン</string>
 </resources>
