@@ -32,6 +32,19 @@ XML
 
 build_fixture() {
     rm -rf "$TMP/case"
+    mkdir -p "$TMP/case/$RES/xml"
+    mkdir -p "$TMP/case/android/app/src/main"
+    cat > "$TMP/case/android/app/src/main/AndroidManifest.xml" <<'XML'
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name" android:localeConfig="@xml/locales_config" />
+</manifest>
+XML
+    cat > "$TMP/case/$RES/xml/locales_config.xml" <<'XML'
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" /><locale android:name="es" /><locale android:name="ja" />
+    <locale android:name="ko" /><locale android:name="zh-CN" /><locale android:name="zh-TW" />
+</locale-config>
+XML
     write_locale values "Today\\'s Usage" "Plan: %1\$s, %2\$d left" \
         '    <plurals name="devices"><item quantity="one">%d device</item><item quantity="other">%d devices</item></plurals>'
     write_locale values-es "Uso de hoy" "Plan: %1\$s, quedan %2\$d" \
@@ -143,6 +156,18 @@ build_fixture; mutate "unescaped apostrophe" values-es "s.replace('Uso de hoy', 
     expect_fail "unescaped apostrophe" "unescaped apostrophe"
 build_fixture; mutate "quoted apostrophe" values-es "s.replace('Uso de hoy', '\"Today\\'s\"'.replace(chr(92), ''))" &&
     expect_ok "an apostrophe inside a double-quoted value is legal"
+
+# ── per-app language ───────────────────────────────────────────────────────
+M="$TMP/case/android/app/src/main/AndroidManifest.xml"
+C="$TMP/case/$RES/xml/locales_config.xml"
+build_fixture; B="$(shasum "$M" | cut -d' ' -f1)"; sed -i.bak 's/ android:localeConfig="@xml\/locales_config"//' "$M"
+    assert_changed "manifest lost localeConfig" "$M" "$B" && expect_fail "manifest lost localeConfig" "declares no android:localeConfig"
+build_fixture; B="$(shasum "$C" | cut -d' ' -f1)"; sed -i.bak 's/<locale android:name="ko" \/>//' "$C"
+    assert_changed "shipped locale not offered" "$C" "$B" && expect_fail "shipped locale not offered" "does not offer ko"
+build_fixture; B="$(shasum "$C" | cut -d' ' -f1)"; sed -i.bak 's/<\/locale-config>/<locale android:name="fr" \/><\/locale-config>/' "$C"
+    assert_changed "offered locale not shipped" "$C" "$B" && expect_fail "offered locale not shipped" "offers fr"
+build_fixture; rm "$C"
+    expect_fail "config file missing" "does not exist"
 
 echo
 echo "ci_check_android_strings_parity negative controls: $pass passed, $fail failed"
