@@ -71,7 +71,7 @@ public struct T3ChatCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("T3 Chat: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("T3 Chat", .noSessionCookieImportable))
         }
         let data = try await fetch(cookie: cookie)
         let customer = try Self.parseJSONLines(data)
@@ -121,12 +121,10 @@ public struct T3ChatCollector: ProviderCollector, Sendable {
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("T3 Chat: session expired or unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("T3 Chat", .sessionExpiredOrUnauthorized))
         }
         if status == 429, http?.value(forHTTPHeaderField: "x-vercel-mitigated") == "challenge" {
-            throw CollectorError.missingCredentials(
-                "T3 Chat: access blocked by Vercel bot protection. Open t3.chat in your browser, "
-                + "ensure you are logged in, then refresh your session cookies.")
+            throw CollectorError.missingCredentials(CredentialProblem("T3 Chat", .botProtectionBlocked("t3.chat")))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "T3 Chat")

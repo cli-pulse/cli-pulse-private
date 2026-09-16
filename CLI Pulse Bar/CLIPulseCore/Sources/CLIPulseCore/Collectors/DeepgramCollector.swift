@@ -82,7 +82,7 @@ public struct DeepgramCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Deepgram: no API key (set DEEPGRAM_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Deepgram", .noAPIKeySetEnv("DEEPGRAM_API_KEY")))
         }
         let pinnedProject = Self.resolveProjectID()
 

@@ -143,6 +143,9 @@ UI_PREFIX = re.compile(
     r'(?:(?<![\w.])(?:Text|Button|Toggle|Label|Section|TextField|SecureField|Picker|Menu|Link|'
     r'ContentUnavailableView|CommandMenu|NavigationLink)\s*\(\s*'
     r'|\.(?:help|navigationTitle|alert|confirmationDialog|accessibilityLabel|accessibilityHint)\s*\(\s*'
+    # `CredentialIssue.serverMessage` passes server text through untranslated; a literal
+    # there is an English message that has escaped the typed credential catalogue.
+    r'|\.serverMessage\s*\(\s*'
     r'|\b(?:header|footer|title|subtitle|message|placeholder|prompt|caption)\s*:\s*)$'
 )
 RETURN_PREFIX = re.compile(r'\breturn\s+$')

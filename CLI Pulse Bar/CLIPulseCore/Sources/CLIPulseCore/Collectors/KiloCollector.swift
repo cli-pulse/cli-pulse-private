@@ -14,7 +14,7 @@ public struct KiloCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Kilo: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Kilo", .noAPIKey))
         }
         let data = try await fetchBatch(token: token)
         let parsed = try KiloCollector.parseResponse(data)

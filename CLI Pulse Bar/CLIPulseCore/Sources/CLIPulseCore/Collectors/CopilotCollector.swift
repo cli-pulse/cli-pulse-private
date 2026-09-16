@@ -28,7 +28,7 @@ public struct CopilotCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Copilot: no API token found")
+            throw CollectorError.missingCredentials(CredentialProblem("Copilot", .noAPIToken))
         }
         let data = try await fetchUsage(token: token)
         let parsed = try CopilotCollector.parseResponse(data)

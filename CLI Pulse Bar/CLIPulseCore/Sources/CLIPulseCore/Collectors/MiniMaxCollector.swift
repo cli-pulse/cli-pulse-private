@@ -37,7 +37,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
             let parsed = try MiniMaxCollector.parseRemainsResponse(data)
             return buildResult(parsed)
         }
-        throw CollectorError.missingCredentials("MiniMax: no API key or cookie found")
+        throw CollectorError.missingCredentials(CredentialProblem("MiniMax", .noAPIKeyOrCookie))
     }
 
     private func resolveAPIToken(config: ProviderConfig) -> String? {

@@ -69,7 +69,7 @@ public struct ElevenLabsCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("ElevenLabs: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("ElevenLabs", .noAPIKey))
         }
         let data = try await fetchSubscription(token: token)
         let parsed = try Self.parseResponse(data)
@@ -106,7 +106,7 @@ public struct ElevenLabsCollector: ProviderCollector, Sendable {
         case 200...299:
             return data
         case 401, 403:
-            throw CollectorError.missingCredentials("ElevenLabs: API key rejected (HTTP \(status))")
+            throw CollectorError.missingCredentials(CredentialProblem("ElevenLabs", .apiKeyRejectedStatus(String(describing: status))))
         default:
             throw CollectorError.httpError(status: status, provider: "ElevenLabs")
         }

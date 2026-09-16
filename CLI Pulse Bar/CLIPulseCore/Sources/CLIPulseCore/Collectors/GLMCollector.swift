@@ -17,7 +17,7 @@ public struct GLMCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("GLM: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("GLM", .noAPIKey))
         }
         let data = try await fetchModels(token: token)
         let parsed = try GLMCollector.parseModelsResponse(data)

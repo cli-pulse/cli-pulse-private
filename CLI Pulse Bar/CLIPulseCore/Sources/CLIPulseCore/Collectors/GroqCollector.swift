@@ -65,7 +65,7 @@ public struct GroqCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let key = resolveKey(config: config) else {
-            throw CollectorError.missingCredentials("Groq: no API key (set GROQ_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Groq", .noAPIKeySetEnv("GROQ_API_KEY")))
         }
         let base = Self.resolveBaseURL()
         // 4 concurrent rate queries, each 10s-bounded ⇒ total ~10s wall-clock.
@@ -122,7 +122,7 @@ public struct GroqCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Groq: unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("Groq", .unauthorized))
         }
         guard (200..<300).contains(status) else {
             throw CollectorError.httpError(status: status, provider: "Groq")

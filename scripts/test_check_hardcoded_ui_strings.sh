@@ -118,5 +118,13 @@ new_tree; core 'enum E {
 }'
 expect 0 "telemetry tokens returned from a non-display property still pass"
 
+# `.serverMessage` passes server text through untranslated. A LITERAL there is an
+# English message that has escaped the typed credential catalogue.
+new_tree; core 'func f() throws { throw CollectorError.missingCredentials(CredentialProblem("X", .serverMessage("Please sign in again"))) }'
+expect 1 "an English literal passed to .serverMessage fails"
+
+new_tree; core 'func f(message: String) throws { throw CollectorError.missingCredentials(CredentialProblem("X", .serverMessage(message))) }'
+expect 0 "server-supplied text passed to .serverMessage passes"
+
 echo "check_hardcoded_ui_strings negative controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

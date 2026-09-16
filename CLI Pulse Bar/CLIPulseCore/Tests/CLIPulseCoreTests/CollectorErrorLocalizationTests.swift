@@ -57,27 +57,64 @@ final class CollectorErrorLocalizationTests: XCTestCase {
         }
     }
 
-    /// Documents what this change does NOT cover, so the gap is visible rather
-    /// than assumed closed. `missingCredentials` / `notSignedIn` /
-    /// `silentBackoff` return their payload verbatim, and ~103 throw sites pass
-    /// English into them. Localizing those needs typed cases (and a matching
-    /// update to `CollectorFailureCategory.categorize`), which is a separate
-    /// change. When it lands, this test should start failing and be rewritten.
-    func testVerbatimPayloadCasesAreStillPassedThroughUnchanged() {
+    /// Replaces a test that pinned the OLD behaviour on purpose — the credential
+    /// payloads were English strings passed through verbatim, and that test was
+    /// written to start failing when they were localized. They now are.
+    func testCredentialPayloadsAreLocalizedAndKeepTheirTechnicalTokens() {
         withChinese {
-            for error in [CollectorError.missingCredentials("Kimi: no API key found"),
-                          CollectorError.notSignedIn("Cursor session expired"),
-                          CollectorError.silentBackoff("backing off")] {
+            let problem = CredentialProblem("Poe", .noAPIKeySetEnv("POE_API_KEY"))
+            for error in [CollectorError.missingCredentials(problem),
+                          CollectorError.notSignedIn(problem),
+                          CollectorError.silentBackoff(problem)] {
                 let shown = error.localizedDescription
-                let payload: String
-                switch error {
-                case .missingCredentials(let m), .notSignedIn(let m), .silentBackoff(let m): payload = m
-                default: payload = ""
-                }
-                XCTAssertEqual(shown, payload,
-                               "a payload case started transforming its message; update this test on purpose")
+                XCTAssertNotEqual(shown, "Poe: no API key (set POE_API_KEY)", "still English under zh-Hans")
+                XCTAssertTrue(shown.contains("Poe"), "the provider was dropped: \(shown)")
+                XCTAssertTrue(shown.contains("POE_API_KEY"),
+                              "the environment variable was translated or dropped: \(shown)")
+                XCTAssertFalse(shown.contains("%"), "an unfilled specifier leaked: \(shown)")
             }
         }
+    }
+
+    /// Logs stay English whatever the UI language, so a log line from a Mac set
+    /// to Chinese can be grepped against one from a Mac set to English.
+    func testLogTextStaysEnglishUnderAnyLocale() {
+        withChinese {
+            let error = CollectorError.missingCredentials(CredentialProblem("Kimi K2", .noAPIKey))
+            XCTAssertEqual(error.logText, "Kimi K2: no API key found")
+            XCTAssertEqual(CollectorError.logText(for: error), "Kimi K2: no API key found")
+            XCTAssertNotEqual(error.localizedDescription, error.logText, "the UI text did not localize")
+        }
+    }
+
+    /// The three wrapper cases log in English too, not only the credential ones.
+    func testWrapperCasesLogInEnglishUnderAnyLocale() {
+        withChinese {
+            let cases: [(CollectorError, String)] = [
+                (.invalidURL("https://x"), "Invalid URL: https://x"),
+                (.httpError(status: 503, provider: "Groq"), "Groq returned HTTP 503"),
+                (.parseFailed("bad JSON"), "Parse failed: bad JSON"),
+            ]
+            for (error, english) in cases {
+                XCTAssertEqual(error.logText, english)
+                XCTAssertNotEqual(error.localizedDescription, english, "the UI text did not localize")
+            }
+        }
+    }
+
+    /// Server-supplied text has no template; it passes through in both renderings.
+    func testServerSuppliedDetailPassesThroughVerbatim() {
+        withChinese {
+            let problem = CredentialProblem("Abacus AI", .serverMessage("Invalid session token"))
+            XCTAssertEqual(problem.englishText, "Abacus AI: Invalid session token")
+            XCTAssertTrue(problem.localizedText.contains("Invalid session token"))
+        }
+    }
+
+    func testCredentialCasesStillCategorizeAsAuth() {
+        let problem = CredentialProblem(nil, .sessionRejected)
+        XCTAssertEqual(CollectorFailureCategory.categorize(CollectorError.missingCredentials(problem)), .auth)
+        XCTAssertEqual(CollectorFailureCategory.categorize(CollectorError.notSignedIn(problem)), .auth)
     }
 }
 #endif

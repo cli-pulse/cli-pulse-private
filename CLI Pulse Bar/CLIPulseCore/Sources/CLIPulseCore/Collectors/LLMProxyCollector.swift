@@ -63,10 +63,10 @@ public struct LLMProxyCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let key = resolveKey(config: config) else {
-            throw CollectorError.missingCredentials("LLM Proxy: no API key (set LLM_PROXY_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("LLM Proxy", .noAPIKeySetEnv("LLM_PROXY_API_KEY")))
         }
         guard let base = Self.resolveBase(), let url = Self.quotaStatsURL(base: base) else {
-            throw CollectorError.missingCredentials("LLM Proxy: no base URL (set LLM_PROXY_BASE_URL)")
+            throw CollectorError.missingCredentials(CredentialProblem("LLM Proxy", .noBaseURLSetEnv("LLM_PROXY_BASE_URL")))
         }
         let data = try await fetch(url: url, key: key)
         let stats = try Self.parseSnapshot(data)
@@ -106,7 +106,7 @@ public struct LLMProxyCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("LLM Proxy: unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("LLM Proxy", .unauthorized))
         }
         guard (200..<300).contains(status) else {
             throw CollectorError.httpError(status: status, provider: "LLM Proxy")

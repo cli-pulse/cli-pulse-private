@@ -77,10 +77,10 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
             config: config, envVarNames: Self.envVars,
             domains: Self.cookieDomains, knownSessionCookieNames: Self.knownSessionNames)
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Alibaba Token Plan: no console cookie")
+            throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .noNamedCookie("console")))
         }
         guard Self.csrf(from: cookie) != nil else {
-            throw CollectorError.missingCredentials("Alibaba Token Plan: cookie has no CSRF token (log in)")
+            throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .cookieMissingFieldLogIn("CSRF token")))
         }
         let secToken = await Self.resolveSECToken(cookie: cookie)
         let data = try await fetchUsage(cookie: cookie, secToken: secToken)
@@ -182,7 +182,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Alibaba Token Plan: login required")
+            throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired))
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "Alibaba Token Plan") }
         return data
@@ -222,7 +222,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         let object: Any
         do { object = try JSONSerialization.jsonObject(with: data) }
         catch {
-            if isLoginHTML(data) { throw CollectorError.missingCredentials("Alibaba Token Plan: login required") }
+            if isLoginHTML(data) { throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired)) }
             throw CollectorError.parseFailed("Alibaba Token Plan: invalid JSON")
         }
         let expanded = expandedJSON(object, depth: 0)
@@ -349,7 +349,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
                     .first(where: { !$0.isEmpty }) ?? "request was not successful"
                 let lowered = msg.lowercased()
                 if lowered.contains("needlogin") || lowered.contains("login") || lowered.contains("log in") {
-                    throw CollectorError.missingCredentials("Alibaba Token Plan: login required")
+                    throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired))
                 }
                 throw CollectorError.parseFailed("Alibaba Token Plan: \(msg)")
             }
@@ -357,7 +357,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         for k in ["statusCode", "status_code", "code"] {
             if let code = parseInt(dict[k]), code != 0, code != 200 {
                 if code == 401 || code == 403 {
-                    throw CollectorError.missingCredentials("Alibaba Token Plan: login required")
+                    throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired))
                 }
                 let msg = ["statusMessage", "message", "msg"].compactMap { dict[$0] as? String }.first
                 throw CollectorError.parseFailed("Alibaba Token Plan: \(msg ?? "code \(code)")")
@@ -365,7 +365,7 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
         }
         let texts = ["code", "status", "message", "msg"].compactMap { (dict[$0] as? String)?.lowercased() }
         if texts.contains(where: { $0.contains("login") || $0.contains("log in") }) {
-            throw CollectorError.missingCredentials("Alibaba Token Plan: login required")
+            throw CollectorError.missingCredentials(CredentialProblem("Alibaba Token Plan", .loginRequired))
         }
     }
 
