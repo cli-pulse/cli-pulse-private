@@ -121,6 +121,20 @@ jobs:
       - run: python3 scripts/check_apple_strings_parity.py
       - run: bash scripts/test_check_apple_strings_parity.sh
 
+      # Android string resources. This used to run only in android-ci.yml: only
+      # on PRs touching android/**, so a PR editing just the script never ran
+      # it, and only AFTER the step that restores google-services.json from a
+      # secret, so a run without the secret never reached it. It needs neither
+      # the SDK nor a secret, so it lives here, path-blind.
+      #
+      # Beyond key parity it checks what aapt2 lets through and the device then
+      # crashes on: a translation that changes format arguments (%1$d → %1$s
+      # throws IllegalFormatConversionException in that language only), a bare
+      # % in a formatted string, plural categories a language never selects,
+      # orphan and duplicate keys, and a shipped locale directory that vanished.
+      - run: python3 scripts/ci_check_android_strings_parity.py
+      - run: bash scripts/test_check_android_strings_parity.sh
+
       # The half of localization the parity gate cannot see. Parity compares keys
       # BETWEEN catalogues; English hardcoded in a view never became a key, so
       # there was nothing for it to find missing. The zh-Hans App Store
