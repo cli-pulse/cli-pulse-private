@@ -23,6 +23,8 @@ import kotlin.math.roundToInt
 import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.DataTokenDisplay
 import com.clipulse.android.ui.common.tokenLabel
+import com.clipulse.android.ui.common.DateDisplay
+import androidx.compose.ui.platform.LocalConfiguration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -171,7 +173,10 @@ private fun DeviceCard(device: com.clipulse.android.data.model.DeviceRecord) {
                     )
                     device.lastSyncAt?.let {
                         Text(
-                            stringResource(R.string.card_last_seen, it.take(16).replace("T", " ")),
+                            stringResource(
+                                R.string.card_last_seen,
+                                DateDisplay.dateTime(it, LocalConfiguration.current.locales[0]) ?: it.take(16).replace("T", " "),
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
