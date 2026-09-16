@@ -55,12 +55,16 @@ final class LANLinkAgentSessionTests: XCTestCase {
 
         func request(raw method: String, _ p: [String: AnySendableJSON] = [:]) async throws -> LANLinkFrame {
             let id = UUID().uuidString
-            // Already-received replies are impossible here since id is fresh.
-            async let reply: LANLinkFrame = withCheckedContinuation { k in
-                lock.lock(); waiters.append((id, k)); lock.unlock()
-            }
+            // Send, THEN park — `reply(for:)` checks the buffer and registers the
+            // waiter under one lock hold, so a reply that lands in between is
+            // still delivered. The `async let` this replaces registered the
+            // waiter in a child task concurrently with the send: whenever the
+            // child was scheduled after the reply arrived, `record()` found no
+            // waiter, buffered the frame, and the never-woken continuation hung
+            // the whole suite. Measured: a 50ms delay before registration hung
+            // the old path for 14 hours; the same delay here costs 50ms.
             try await channel.send(try LANLinkFrame.request(id: id, method: method, params: p).encode())
-            return await reply
+            return await reply(for: id)
         }
 
         /// Await the reply to a request sent by hand on the channel.
