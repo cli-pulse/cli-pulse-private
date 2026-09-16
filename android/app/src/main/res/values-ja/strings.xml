@@ -254,4 +254,45 @@
     <string name="error_action_start_link">アカウントの連携を開始できませんでした。%1$s</string>
     <string name="error_action_link">アカウントを連携できませんでした。%1$s</string>
     <string name="error_action_unlink">アカウントの連携を解除できませんでした。%1$s</string>
+
+    <!-- Quota tier names (scripts/quota_tier_names.json, TRANSLATE entries). Worded as Apple's quota_tier.* -->
+    <string name="quota_tier_hours_4">4h</string>
+    <string name="quota_tier_hours_5">5h</string>
+    <string name="quota_tier_rate_limit_5h">5h レート制限</string>
+    <string name="quota_tier_window_5h">5h</string>
+    <string name="quota_tier_ai_credits">AIクレジット</string>
+    <string name="quota_tier_billing_cycle">請求サイクル</string>
+    <string name="quota_tier_bonus">ボーナス</string>
+    <string name="quota_tier_bonus_credits">ボーナスクレジット</string>
+    <string name="quota_tier_cash_balance">現金</string>
+    <string name="quota_tier_characters">文字数</string>
+    <string name="quota_tier_credits">クレジット</string>
+    <string name="quota_tier_daily">日次</string>
+    <string name="quota_tier_default">デフォルト</string>
+    <string name="quota_tier_extra_usage">追加使用量</string>
+    <string name="quota_tier_key_limit">キー別上限</string>
+    <string name="quota_tier_monthly">月次</string>
+    <string name="quota_tier_on_demand">従量課金</string>
+    <string name="quota_tier_open_source">オープンソース</string>
+    <string name="quota_tier_opus_weekly">Opus（週次）</string>
+    <string name="quota_tier_opus_only">Opus のみ</string>
+    <string name="quota_tier_other_models">その他</string>
+    <string name="quota_tier_plan_included">プラン内</string>
+    <string name="quota_tier_professional_voices">プロ音声</string>
+    <string name="quota_tier_purchased">購入分</string>
+    <string name="quota_tier_quota_fallback">クォータ</string>
+    <string name="quota_tier_recurring">定期分</string>
+    <string name="quota_tier_refresh_credits">定期更新</string>
+    <string name="quota_tier_requests">リクエスト</string>
+    <string name="quota_tier_rolling_window">ローリング期間</string>
+    <string name="quota_tier_session">セッション</string>
+    <string name="quota_tier_sonnet_weekly">Sonnet（週次）</string>
+    <string name="quota_tier_sonnet_only">Sonnet のみ</string>
+    <string name="quota_tier_tariff_credits">プランクレジット</string>
+    <string name="quota_tier_time_limit">利用時間</string>
+    <string name="quota_tier_tokens">トークン</string>
+    <string name="quota_tier_voice_slots">音声スロット</string>
+    <string name="quota_tier_voucher_balance">クーポン</string>
+    <string name="quota_tier_weekly">週次</string>
+    <string name="quota_tier_window_fallback">期間</string>
 </resources>

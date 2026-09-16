@@ -252,4 +252,45 @@
     <string name="error_action_start_link">No se pudo iniciar la vinculación de la cuenta. %1$s</string>
     <string name="error_action_link">No se pudo vincular la cuenta. %1$s</string>
     <string name="error_action_unlink">No se pudo desvincular la cuenta. %1$s</string>
+
+    <!-- Quota tier names (scripts/quota_tier_names.json, TRANSLATE entries). Worded as Apple's quota_tier.* -->
+    <string name="quota_tier_hours_4">4h</string>
+    <string name="quota_tier_hours_5">5h</string>
+    <string name="quota_tier_rate_limit_5h">Límite 5h</string>
+    <string name="quota_tier_window_5h">Periodo 5h</string>
+    <string name="quota_tier_ai_credits">Créditos de IA</string>
+    <string name="quota_tier_billing_cycle">Ciclo de pago</string>
+    <string name="quota_tier_bonus">Extra</string>
+    <string name="quota_tier_bonus_credits">Créditos extra</string>
+    <string name="quota_tier_cash_balance">Efectivo</string>
+    <string name="quota_tier_characters">Caracteres</string>
+    <string name="quota_tier_credits">Créditos</string>
+    <string name="quota_tier_daily">Diario</string>
+    <string name="quota_tier_default">Predeterminado</string>
+    <string name="quota_tier_extra_usage">Uso adicional</string>
+    <string name="quota_tier_key_limit">Límite por clave</string>
+    <string name="quota_tier_monthly">Mensual</string>
+    <string name="quota_tier_on_demand">Pago por uso</string>
+    <string name="quota_tier_open_source">Código abierto</string>
+    <string name="quota_tier_opus_weekly">Opus (semanal)</string>
+    <string name="quota_tier_opus_only">Solo Opus</string>
+    <string name="quota_tier_other_models">Otros</string>
+    <string name="quota_tier_plan_included">Plan</string>
+    <string name="quota_tier_professional_voices">Voces profesionales</string>
+    <string name="quota_tier_purchased">Comprados</string>
+    <string name="quota_tier_quota_fallback">Cuota</string>
+    <string name="quota_tier_recurring">Recurrentes</string>
+    <string name="quota_tier_refresh_credits">Renovación</string>
+    <string name="quota_tier_requests">Solicitudes</string>
+    <string name="quota_tier_rolling_window">Periodo móvil</string>
+    <string name="quota_tier_session">Sesión</string>
+    <string name="quota_tier_sonnet_weekly">Sonnet (semanal)</string>
+    <string name="quota_tier_sonnet_only">Solo Sonnet</string>
+    <string name="quota_tier_tariff_credits">Créditos del plan</string>
+    <string name="quota_tier_time_limit">Tiempo</string>
+    <string name="quota_tier_tokens">Tokens</string>
+    <string name="quota_tier_voice_slots">Plazas de voz</string>
+    <string name="quota_tier_voucher_balance">Cupón</string>
+    <string name="quota_tier_weekly">Semanal</string>
+    <string name="quota_tier_window_fallback">Periodo</string>
 </resources>

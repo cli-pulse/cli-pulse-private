@@ -257,4 +257,45 @@
     <string name="error_action_start_link">Couldn\'t start linking the account. %1$s</string>
     <string name="error_action_link">Couldn\'t link the account. %1$s</string>
     <string name="error_action_unlink">Couldn\'t unlink the account. %1$s</string>
+
+    <!-- Quota tier names (scripts/quota_tier_names.json, TRANSLATE entries). Worded as Apple's quota_tier.* -->
+    <string name="quota_tier_hours_4">4-hour</string>
+    <string name="quota_tier_hours_5">5-hour</string>
+    <string name="quota_tier_rate_limit_5h">5h Rate Limit</string>
+    <string name="quota_tier_window_5h">5h Window</string>
+    <string name="quota_tier_ai_credits">AI Credits</string>
+    <string name="quota_tier_billing_cycle">Billing Cycle</string>
+    <string name="quota_tier_bonus">Bonus</string>
+    <string name="quota_tier_bonus_credits">Bonus Credits</string>
+    <string name="quota_tier_cash_balance">Cash</string>
+    <string name="quota_tier_characters">Characters</string>
+    <string name="quota_tier_credits">Credits</string>
+    <string name="quota_tier_daily">Daily</string>
+    <string name="quota_tier_default">Default</string>
+    <string name="quota_tier_extra_usage">Extra Usage</string>
+    <string name="quota_tier_key_limit">Key Limit</string>
+    <string name="quota_tier_monthly">Monthly</string>
+    <string name="quota_tier_on_demand">On-Demand</string>
+    <string name="quota_tier_open_source">Open Source</string>
+    <string name="quota_tier_opus_weekly">Opus (Weekly)</string>
+    <string name="quota_tier_opus_only">Opus only</string>
+    <string name="quota_tier_other_models">Other</string>
+    <string name="quota_tier_plan_included">Plan</string>
+    <string name="quota_tier_professional_voices">Professional voices</string>
+    <string name="quota_tier_purchased">Purchased</string>
+    <string name="quota_tier_quota_fallback">Quota</string>
+    <string name="quota_tier_recurring">Recurring</string>
+    <string name="quota_tier_refresh_credits">Refresh</string>
+    <string name="quota_tier_requests">Requests</string>
+    <string name="quota_tier_rolling_window">Rolling</string>
+    <string name="quota_tier_session">Session</string>
+    <string name="quota_tier_sonnet_weekly">Sonnet (Weekly)</string>
+    <string name="quota_tier_sonnet_only">Sonnet only</string>
+    <string name="quota_tier_tariff_credits">Tariff Credits</string>
+    <string name="quota_tier_time_limit">Time</string>
+    <string name="quota_tier_tokens">Tokens</string>
+    <string name="quota_tier_voice_slots">Voice slots</string>
+    <string name="quota_tier_voucher_balance">Voucher</string>
+    <string name="quota_tier_weekly">Weekly</string>
+    <string name="quota_tier_window_fallback">Window</string>
 </resources>

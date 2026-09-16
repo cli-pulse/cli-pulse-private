@@ -208,7 +208,10 @@ class SupabaseClient(
                 (0 until tiersArr.length()).map { j ->
                     val t = tiersArr.getJSONObject(j)
                     TierDTO(
-                        name = t.optString("name", "Default"),
+                        // optStringOrNull, not optString(key, fallback): on a device a JSON
+                        // null comes back as the string "null" (the JVM org.json in unit
+                        // tests returns the fallback), and the tier bar would read "null".
+                        name = t.optStringOrNull("name") ?: "Default",
                         quota = t.optInt("quota"),
                         remaining = t.optInt("remaining"),
                         resetTime = t.optString("reset_time").takeIf { it.isNotBlank() },

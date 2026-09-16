@@ -127,7 +127,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.default",
    "reason": "Synthetic and invented by this app at AppState.swift:2160 when a non-Claude provider reports an overall quota but no tiers — no vendor page anywhere says \"Default\", so it is the purest translate candidate in the set. Critical: localize ONLY at the render sites (ProvidersTab.swift:748, iOSProvidersTab.swift:411), never at line 2160, because UsageTier's `id` is its name and that string is the SwiftUI ForEach identity.",
-   "producers": "Swift AppState.buildProviderDetails - a SYNTHETIC tier invented in the app (not by any collector) when a non-Claude provider reports an overall quota but no per-tier data. It is rendered exactly like a collector tier AND is the UsageTier's `id`."
+   "producers": "Swift AppState.buildProviderDetails - a SYNTHETIC tier invented in the app (not by any collector) when a non-Claude provider reports an overall quota but no per-tier data. It is rendered exactly like a collector tier AND is the UsageTier's `id`.; Android SupabaseClient (a server tier with no name)"
   },
   {
    "name": "Designs",

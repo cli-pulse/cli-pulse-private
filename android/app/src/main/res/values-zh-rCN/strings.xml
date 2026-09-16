@@ -253,4 +253,45 @@
     <string name="error_action_start_link">无法开始关联账户。%1$s</string>
     <string name="error_action_link">无法关联账户。%1$s</string>
     <string name="error_action_unlink">无法取消关联账户。%1$s</string>
+
+    <!-- Quota tier names (scripts/quota_tier_names.json, TRANSLATE entries). Worded as Apple's quota_tier.* -->
+    <string name="quota_tier_hours_4">4h</string>
+    <string name="quota_tier_hours_5">5h</string>
+    <string name="quota_tier_rate_limit_5h">5h 限额</string>
+    <string name="quota_tier_window_5h">5h 窗口</string>
+    <string name="quota_tier_ai_credits">AI 积分</string>
+    <string name="quota_tier_billing_cycle">计费周期</string>
+    <string name="quota_tier_bonus">奖励</string>
+    <string name="quota_tier_bonus_credits">奖励积分</string>
+    <string name="quota_tier_cash_balance">现金</string>
+    <string name="quota_tier_characters">字符</string>
+    <string name="quota_tier_credits">积分</string>
+    <string name="quota_tier_daily">每日</string>
+    <string name="quota_tier_default">默认</string>
+    <string name="quota_tier_extra_usage">额外用量</string>
+    <string name="quota_tier_key_limit">密钥限额</string>
+    <string name="quota_tier_monthly">每月</string>
+    <string name="quota_tier_on_demand">按量付费</string>
+    <string name="quota_tier_open_source">开源</string>
+    <string name="quota_tier_opus_weekly">Opus（每周）</string>
+    <string name="quota_tier_opus_only">仅 Opus</string>
+    <string name="quota_tier_other_models">其他</string>
+    <string name="quota_tier_plan_included">方案配额</string>
+    <string name="quota_tier_professional_voices">专业音色</string>
+    <string name="quota_tier_purchased">已购买</string>
+    <string name="quota_tier_quota_fallback">配额</string>
+    <string name="quota_tier_recurring">定期额度</string>
+    <string name="quota_tier_refresh_credits">定期重置</string>
+    <string name="quota_tier_requests">请求数</string>
+    <string name="quota_tier_rolling_window">滑动窗口</string>
+    <string name="quota_tier_session">会话</string>
+    <string name="quota_tier_sonnet_weekly">Sonnet（每周）</string>
+    <string name="quota_tier_sonnet_only">仅 Sonnet</string>
+    <string name="quota_tier_tariff_credits">方案积分</string>
+    <string name="quota_tier_time_limit">时长</string>
+    <string name="quota_tier_tokens">Token</string>
+    <string name="quota_tier_voice_slots">音色名额</string>
+    <string name="quota_tier_voucher_balance">代金券</string>
+    <string name="quota_tier_weekly">每周</string>
+    <string name="quota_tier_window_fallback">时间窗口</string>
 </resources>
