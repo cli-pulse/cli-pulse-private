@@ -68,7 +68,7 @@ public struct CursorCollector: ProviderCollector, Sendable {
             knownSessionCookieNames: Self.knownSessionNames
         )
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Cursor: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Cursor", .noSessionCookieImportable))
         }
         let data = try await fetchUsageSummary(cookie: cookie)
         let parsed = try CursorCollector.parseResponse(data)
@@ -97,8 +97,7 @@ public struct CursorCollector: ProviderCollector, Sendable {
         // user knows to re-open cursor.com (or paste a cookie) rather than
         // wondering why Cursor shows no data.
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn(
-                "Cursor: not signed in — open cursor.com in your browser, or paste a session cookie")
+            throw CollectorError.notSignedIn(CredentialProblem("Cursor", .notSignedInOpenOrPaste("cursor.com")))
         }
         guard (200...299).contains(status) else {
             throw CollectorError.httpError(status: status, provider: "Cursor")

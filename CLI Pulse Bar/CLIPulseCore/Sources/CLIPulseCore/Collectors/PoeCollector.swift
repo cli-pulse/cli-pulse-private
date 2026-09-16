@@ -65,7 +65,7 @@ public struct PoeCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Poe: no API key (set POE_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Poe", .noAPIKeySetEnv("POE_API_KEY")))
         }
         let data = try await fetchBalance(token: token)
         let balance = try Self.parseBalance(data)
@@ -100,7 +100,7 @@ public struct PoeCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn("Poe: API key rejected (401/403)")
+            throw CollectorError.notSignedIn(CredentialProblem("Poe", .apiKeyRejected))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Poe")

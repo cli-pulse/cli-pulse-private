@@ -70,10 +70,10 @@ public struct QoderCollector: ProviderCollector, Sendable {
             config: config, envVarNames: Self.envVars, domains: Self.cookieDomains,
             knownSessionCookieNames: [])
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Qoder: no session cookie")
+            throw CollectorError.missingCredentials(CredentialProblem("Qoder", .noSessionCookie))
         }
         // The pasted cookie is host-specific; try international, fall back to China.
-        var lastError: Error = CollectorError.notSignedIn("Qoder: session rejected")
+        var lastError: Error = CollectorError.notSignedIn(CredentialProblem("Qoder", .sessionRejected))
         for site in Site.allCases {
             do {
                 let data = try await Self.fetch(cookie: cookie, site: site)
@@ -111,12 +111,12 @@ public struct QoderCollector: ProviderCollector, Sendable {
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn("Qoder: session expired (sign in again)")
+            throw CollectorError.notSignedIn(CredentialProblem("Qoder", .sessionExpiredSignInAgain))
         }
         // Reject a cross-origin redirect that could have leaked the cookie.
         if let responseHost = http?.url?.host?.lowercased(),
            let requestHost = url.host?.lowercased(), responseHost != requestHost {
-            throw CollectorError.notSignedIn("Qoder: redirected off-origin")
+            throw CollectorError.notSignedIn(CredentialProblem("Qoder", .redirectedOffOrigin))
         }
         guard (200..<300).contains(status) else {
             throw CollectorError.httpError(status: status, provider: "Qoder")

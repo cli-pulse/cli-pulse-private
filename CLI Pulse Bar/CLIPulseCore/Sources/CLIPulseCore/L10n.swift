@@ -25,6 +25,19 @@ public enum L10n {
         return args.isEmpty ? format : String(format: format, arguments: args)
     }
 
+    /// `tr` with a choice of language: the active locale, or English regardless of
+    /// it. English is for text that is logged — a translated log line cannot be
+    /// grepped for. Falls back to the active locale if the English table is missing.
+    private static func tr(_ key: String, english: Bool, _ args: CVarArg...) -> String {
+        let format: String
+        if english, let en = LocaleOverrideStore.englishBundle {
+            format = NSLocalizedString(key, bundle: en, comment: "")
+        } else {
+            format = resolve(key)
+        }
+        return args.isEmpty ? format : String(format: format, arguments: args)
+    }
+
     /// Looks a key up in the active locale, falling back to **English
     /// copy** when that locale does not carry it.
     ///
@@ -2108,13 +2121,18 @@ public enum L10n {
     /// fragment inside a localized wrapper is the existing precedent
     /// (`provider_config.error_claude_parse_failed`).
     public enum collectorError {
-        public static func invalidURL(_ url: String) -> String { tr("collector_error.invalid_url", url) }
+        /// `english: true` renders the en.lproj text whatever the UI language, for logs.
+        public static func invalidURL(_ url: String, english: Bool = false) -> String {
+            tr("collector_error.invalid_url", english: english, url)
+        }
         /// Positional: the provider name and the status code swap order in
         /// several of the six locales.
-        public static func httpStatus(_ provider: String, _ status: Int) -> String {
-            tr("collector_error.http_status", provider, status)
+        public static func httpStatus(_ provider: String, _ status: Int, english: Bool = false) -> String {
+            tr("collector_error.http_status", english: english, provider, status)
         }
-        public static func parseFailed(_ detail: String) -> String { tr("collector_error.parse_failed", detail) }
+        public static func parseFailed(_ detail: String, english: Bool = false) -> String {
+            tr("collector_error.parse_failed", english: english, detail)
+        }
     }
 
     // MARK: - Alert kinds
@@ -2235,6 +2253,83 @@ public enum L10n {
         }
         public static func providerUsageNoQuota(_ provider: String, _ used: String) -> String {
             tr("intents.provider_usage_no_quota", provider, used)
+        }
+    }
+
+    // MARK: - Collector credential problems
+
+    /// See `CredentialProblem`. One switch, rendered in the active locale for the UI
+    /// and in English for logs. Every key is written out as a string literal so the
+    /// code-to-catalogue check in `check_apple_strings_parity.py` verifies it exists.
+    public enum collectorCredential {
+        static func text(_ issue: CredentialIssue, english: Bool) -> String {
+            switch issue {
+            case .noAPIKey: return tr("collector_credential.no_api_key", english: english)
+            case .noAPIToken: return tr("collector_credential.no_api_token", english: english)
+            case .noCredentials: return tr("collector_credential.no_credentials", english: english)
+            case .noAPIKeyOrCookie: return tr("collector_credential.no_api_key_or_cookie", english: english)
+            case .noAPIKeySetEnv(let a0): return tr("collector_credential.no_api_key_set_env", english: english, a0)
+            case .noAPIKeySetEnvOrConfigure(let a0): return tr("collector_credential.no_api_key_set_env_or_configure", english: english, a0)
+            case .noBaseURLSetEnv(let a0): return tr("collector_credential.no_base_url_set_env", english: english, a0)
+            case .noDeploymentSetEnv(let a0): return tr("collector_credential.no_deployment_set_env", english: english, a0)
+            case .noEndpointSetEnv(let a0): return tr("collector_credential.no_endpoint_set_env", english: english, a0)
+            case .setEnvPair(let a0, let a1): return tr("collector_credential.set_env_pair", english: english, a0, a1)
+            case .noFileFound(let a0): return tr("collector_credential.no_file_found", english: english, a0)
+            case .noRefreshToken: return tr("collector_credential.no_refresh_token", english: english)
+            case .noGCPProject(let a0): return tr("collector_credential.no_gcp_project", english: english, a0)
+            case .gcloudADCNotFound(let a0): return tr("collector_credential.gcloud_adc_not_found", english: english, a0)
+            case .adcNoRefreshToken: return tr("collector_credential.adc_no_refresh_token", english: english)
+            case .adcMissingClient: return tr("collector_credential.adc_missing_client", english: english)
+            case .serviceAccountNeedsGcloud(let a0): return tr("collector_credential.service_account_needs_gcloud", english: english, a0)
+            case .couldNotDiscoverWorkspace(let a0, let a1): return tr("collector_credential.could_not_discover_workspace", english: english, a0, a1)
+            case .developerIDBuildOnly: return tr("collector_credential.developer_id_build_only", english: english)
+            case .orgAdminKeyRequired(let a0): return tr("collector_credential.org_admin_key_required", english: english, a0)
+            case .noSessionCookieImportable: return tr("collector_credential.no_session_cookie_importable", english: english)
+            case .noSessionCookie: return tr("collector_credential.no_session_cookie", english: english)
+            case .noNamedSessionCookie(let a0): return tr("collector_credential.no_named_session_cookie", english: english, a0)
+            case .noNamedCookie(let a0): return tr("collector_credential.no_named_cookie", english: english, a0)
+            case .noAuthTokenImportable: return tr("collector_credential.no_auth_token_importable", english: english)
+            case .cookieMissingField(let a0): return tr("collector_credential.cookie_missing_field", english: english, a0)
+            case .cookieMissingValue(let a0): return tr("collector_credential.cookie_missing_value", english: english, a0)
+            case .cookieMissingFieldLogIn(let a0): return tr("collector_credential.cookie_missing_field_log_in", english: english, a0)
+            case .cookieMissingFieldNotSignedIn(let a0): return tr("collector_credential.cookie_missing_field_not_signed_in", english: english, a0)
+            case .cookieNeedsFieldsLogInAt(let a0, let a1): return tr("collector_credential.cookie_needs_fields_log_in_at", english: english, a0, a1)
+            case .pasteSessionBundleOrSetEnv(let a0, let a1): return tr("collector_credential.paste_session_bundle_or_set_env", english: english, a0, a1)
+            case .signInAtOrSetEnv(let a0, let a1): return tr("collector_credential.sign_in_at_or_set_env", english: english, a0, a1)
+            case .notSignedInOpenOrPaste(let a0): return tr("collector_credential.not_signed_in_open_or_paste", english: english, a0)
+            case .botProtectionBlocked(let a0): return tr("collector_credential.bot_protection_blocked", english: english, a0)
+            case .loginRequired: return tr("collector_credential.login_required", english: english)
+            case .sessionExpiredOrUnauthorized: return tr("collector_credential.session_expired_or_unauthorized", english: english)
+            case .sessionExpiredSignInAgain: return tr("collector_credential.session_expired_sign_in_again", english: english)
+            case .sessionExpiredLogInAgain: return tr("collector_credential.session_expired_log_in_again", english: english)
+            case .sessionExpiredInvalid: return tr("collector_credential.session_expired_invalid", english: english)
+            case .sessionExpiredInvalidHint(let a0, let a1): return tr("collector_credential.session_expired_invalid_hint", english: english, a0, a1)
+            case .unauthenticatedHint(let a0, let a1): return tr("collector_credential.unauthenticated_hint", english: english, a0, a1)
+            case .unauthorized: return tr("collector_credential.unauthorized", english: english)
+            case .apiKeyRejected: return tr("collector_credential.api_key_rejected", english: english)
+            case .apiKeyRejectedStatus(let a0): return tr("collector_credential.api_key_rejected_status", english: english, a0)
+            case .sessionRejected: return tr("collector_credential.session_rejected", english: english)
+            case .redirectedOffOrigin: return tr("collector_credential.redirected_off_origin", english: english)
+            case .credentialsRejectedBy(let a0): return tr("collector_credential.credentials_rejected_by", english: english, a0)
+            case .tokenExpiredReconnectOAuth: return tr("collector_credential.token_expired_reconnect_oauth", english: english)
+            case .tokenExpiredNoRefreshToken: return tr("collector_credential.token_expired_no_refresh_token", english: english)
+            case .tokenExpiredSilenced(let a0): return tr("collector_credential.token_expired_silenced", english: english, a0)
+            case .tokenRefreshFailedRun(let a0, let a1): return tr("collector_credential.token_refresh_failed_run", english: english, a0, a1)
+            case .accessTokenNilAfterRefresh(let a0): return tr("collector_credential.access_token_nil_after_refresh", english: english, a0)
+            case .authFileMissingAccessToken(let a0): return tr("collector_credential.auth_file_missing_access_token", english: english, a0)
+            case .apiKeyNotConfigured(let a0): return tr("collector_credential.api_key_not_configured", english: english, a0)
+            case .serverMessage(let a0): return tr("collector_credential.detail", english: english, a0)
+            case .zedSignInFromEditor: return tr("collector_status.zed_sign_in_from_editor", english: english)
+            case .zedKeychainNeedsApproval: return tr("collector_status.zed_keychain_needs_approval", english: english)
+            case .zedKeychainReadFailed(let a0): return tr("collector_status.zed_keychain_read_failed", english: english, a0)
+            case .zedCredentialsExpired: return tr("collector_status.zed_credentials_expired", english: english)
+            }
+        }
+
+        /// "Provider: message". Its own key because the separator differs by locale
+        /// (full-width "：" in Chinese).
+        static func withProvider(_ provider: String, _ body: String, english: Bool) -> String {
+            tr("collector_credential.with_provider", english: english, provider, body)
         }
     }
 }

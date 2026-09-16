@@ -89,16 +89,13 @@ public struct AzureOpenAICollector: ProviderCollector, Sendable {
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         let env = ProcessInfo.processInfo.environment
         guard let apiKey = resolveAPIKey(config: config, env: env) else {
-            throw CollectorError.missingCredentials(
-                "Azure OpenAI: no API key (set AZURE_OPENAI_API_KEY or configure a key)")
+            throw CollectorError.missingCredentials(CredentialProblem("Azure OpenAI", .noAPIKeySetEnvOrConfigure("AZURE_OPENAI_API_KEY")))
         }
         guard let endpoint = Self.resolveEndpoint(env: env) else {
-            throw CollectorError.missingCredentials(
-                "Azure OpenAI: no endpoint (set AZURE_OPENAI_ENDPOINT)")
+            throw CollectorError.missingCredentials(CredentialProblem("Azure OpenAI", .noEndpointSetEnv("AZURE_OPENAI_ENDPOINT")))
         }
         guard let deployment = Self.resolveDeployment(env: env) else {
-            throw CollectorError.missingCredentials(
-                "Azure OpenAI: no deployment (set AZURE_OPENAI_DEPLOYMENT_NAME)")
+            throw CollectorError.missingCredentials(CredentialProblem("Azure OpenAI", .noDeploymentSetEnv("AZURE_OPENAI_DEPLOYMENT_NAME")))
         }
         let apiVersion = Self.resolveAPIVersion(env: env)
 

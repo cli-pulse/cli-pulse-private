@@ -78,11 +78,11 @@ public struct MistralCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let header = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Mistral: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Mistral", .noSessionCookieImportable))
         }
         let (hasSession, csrf) = Self.sessionAndCSRF(fromHeader: header)
         guard hasSession else {
-            throw CollectorError.missingCredentials("Mistral: cookie has no ory_session_* (not signed in)")
+            throw CollectorError.missingCredentials(CredentialProblem("Mistral", .cookieMissingFieldNotSignedIn("ory_session_*")))
         }
         let data = try await fetchUsage(cookie: header, csrf: csrf)
         let usage = try Self.parseUsage(data)
@@ -146,7 +146,7 @@ public struct MistralCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Mistral: session expired or unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("Mistral", .sessionExpiredOrUnauthorized))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Mistral")

@@ -66,7 +66,7 @@ public struct ChutesCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Chutes: no API key (set CHUTES_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Chutes", .noAPIKeySetEnv("CHUTES_API_KEY")))
         }
         let data = try await fetchUsage(token: token)
         let snapshot = try Self.parse(data)
@@ -101,7 +101,7 @@ public struct ChutesCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn("Chutes: API key rejected (401/403)")
+            throw CollectorError.notSignedIn(CredentialProblem("Chutes", .apiKeyRejected))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Chutes")

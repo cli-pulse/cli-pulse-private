@@ -82,10 +82,10 @@ public struct ManusCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let header = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Manus: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Manus", .noSessionCookieImportable))
         }
         guard let token = Self.sessionToken(fromCookieHeader: header) else {
-            throw CollectorError.missingCredentials("Manus: cookie has no session_id value")
+            throw CollectorError.missingCredentials(CredentialProblem("Manus", .cookieMissingValue("session_id")))
         }
         let data = try await fetchCredits(token: token)
         let parsed = try Self.parseResponse(data)

@@ -71,7 +71,7 @@ public struct VeniceCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Venice: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Venice", .noAPIKey))
         }
         let data = try await fetchBalance(token: token)
         let parsed = try Self.parseResponse(data)

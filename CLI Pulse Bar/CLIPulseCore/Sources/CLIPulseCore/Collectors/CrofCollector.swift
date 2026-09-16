@@ -63,7 +63,7 @@ public struct CrofCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Crof: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Crof", .noAPIKey))
         }
         let data = try await fetchUsage(token: token)
         let parsed = try CrofCollector.parseResponse(data)

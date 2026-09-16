@@ -71,7 +71,7 @@ public struct CrossModelCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("CrossModel: no API key (set CROSSMODEL_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("CrossModel", .noAPIKeySetEnv("CROSSMODEL_API_KEY")))
         }
         let base = try Self.resolveBase()
         let credits = try await fetchCredits(token: token, base: base)
@@ -135,7 +135,7 @@ public struct CrossModelCollector: ProviderCollector, Sendable {
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.notSignedIn("CrossModel: API key rejected (401/403)")
+            throw CollectorError.notSignedIn(CredentialProblem("CrossModel", .apiKeyRejected))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "CrossModel")

@@ -14,7 +14,7 @@ public struct WarpCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Warp: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Warp", .noAPIKey))
         }
         let data = try await fetchGraphQL(token: token)
         let parsed = try WarpCollector.parseResponse(data)

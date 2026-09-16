@@ -18,7 +18,7 @@ public struct VolcanoEngineCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Volcano Engine: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Volcano Engine", .noAPIKey))
         }
         let data = try await fetchUsage(token: token)
         let parsed = try VolcanoEngineCollector.parseUsageResponse(data)

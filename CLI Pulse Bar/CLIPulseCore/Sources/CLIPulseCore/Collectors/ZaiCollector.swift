@@ -15,7 +15,7 @@ public struct ZaiCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("z.ai: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("z.ai", .noAPIKey))
         }
         let data = try await fetchQuota(token: token)
         let parsed = try ZaiCollector.parseResponse(data)

@@ -71,7 +71,7 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
             config: config, envVarNames: Self.envVars,
             domains: Self.cookieDomains, knownSessionCookieNames: Self.knownSessionNames)
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("OpenCode Go: no session cookie")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenCode Go", .noSessionCookie))
         }
         let workspaceID = try await resolveWorkspaceID(cookie: cookie, config: config)
         let pageText = try await Self.fetchPage(
@@ -121,11 +121,10 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let text = String(data: data, encoding: .utf8) ?? ""
         if status == 401 || status == 403 || looksSignedOut(text) {
-            throw CollectorError.missingCredentials("OpenCode Go: session expired (sign in again)")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenCode Go", .sessionExpiredSignInAgain))
         }
         guard status == 200, let id = firstWorkspaceID(in: text) else {
-            throw CollectorError.missingCredentials(
-                "OpenCode Go: couldn't discover workspace — set OPENCODEGO_WORKSPACE_ID (wrk_…)")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenCode Go", .couldNotDiscoverWorkspace("OPENCODEGO_WORKSPACE_ID", "wrk_…")))
         }
         return id
     }
@@ -155,7 +154,7 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let text = String(data: data, encoding: .utf8) ?? ""
         if status == 401 || status == 403 || looksSignedOut(text) {
-            throw CollectorError.missingCredentials("OpenCode Go: session expired (sign in again)")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenCode Go", .sessionExpiredSignInAgain))
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "OpenCode Go") }
         return text

@@ -68,7 +68,7 @@ public struct DeepSeekCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("DeepSeek: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("DeepSeek", .noAPIKey))
         }
         let data = try await fetchBalance(token: token)
         let parsed = try Self.parseResponse(data)

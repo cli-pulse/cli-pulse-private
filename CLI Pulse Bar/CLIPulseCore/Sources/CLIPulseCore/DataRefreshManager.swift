@@ -1214,7 +1214,7 @@ internal final class DataRefreshManager {
                 scopedResult: scopedResult
             )
         } catch {
-            let message = "[Collector] \(config.kind.rawValue) failed: \(error.localizedDescription)"
+            let message = "[Collector] \(config.kind.rawValue) failed: \(CollectorError.logText(for: error))"
             if !shouldSilenceCollectorError(kind: config.kind, error: error) {
                 refreshLogger.warning("\(message)")
             }

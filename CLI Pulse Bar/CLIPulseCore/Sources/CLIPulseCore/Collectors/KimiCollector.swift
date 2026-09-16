@@ -20,7 +20,7 @@ public struct KimiCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = await resolveTokenAsync(config: config) else {
-            throw CollectorError.missingCredentials("Kimi: no auth token (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Kimi", .noAuthTokenImportable))
         }
         let data = try await fetchUsages(token: token)
         let parsed = try KimiCollector.parseResponse(data)

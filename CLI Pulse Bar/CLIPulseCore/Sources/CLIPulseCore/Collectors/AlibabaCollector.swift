@@ -15,7 +15,7 @@ public struct AlibabaCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Alibaba: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Alibaba", .noAPIKey))
         }
 
         // Try international first, fall back to China mainland

@@ -61,8 +61,7 @@ public struct WindsurfCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let auth = resolveAuth(config: config) else {
-            throw CollectorError.missingCredentials(
-                "Windsurf: paste a Devin session bundle or set WINDSURF_SESSION_TOKEN + auth1/account/org")
+            throw CollectorError.missingCredentials(CredentialProblem("Windsurf", .pasteSessionBundleOrSetEnv("WINDSURF_SESSION_TOKEN", "auth1/account/org")))
         }
         let data = try await fetchPlanStatus(auth: auth)
         let status = try Self.decodeResponse(data)
@@ -129,7 +128,7 @@ public struct WindsurfCollector: ProviderCollector, Sendable {
 
         let (data, response) = try await URLSession.shared.data(for: request)
         let s = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if s == 401 || s == 403 { throw CollectorError.missingCredentials("Windsurf: session expired/invalid") }
+        if s == 401 || s == 403 { throw CollectorError.missingCredentials(CredentialProblem("Windsurf", .sessionExpiredInvalid)) }
         guard s == 200 else { throw CollectorError.httpError(status: s, provider: "Windsurf") }
         return data
     }
