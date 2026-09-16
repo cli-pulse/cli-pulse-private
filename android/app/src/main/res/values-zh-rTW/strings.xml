@@ -210,4 +210,24 @@
     <string name="thermal_serious">偏高</string>
     <string name="thermal_critical">嚴重</string>
     <string name="subscription_unavailable_android">目前 Android 上不提供訂閱。這個 app 裡沒有任何功能被鎖住，現在就可以全部使用。</string>
+
+    <!-- UI chrome that used to be hardcoded English in Kotlin (hardcoded-UI gate, 2026-09-17) -->
+    <string name="usage_resetting">正在重置…</string>
+    <string name="usage_resets_in_hm">%1$d 小時 %2$d 分鐘後重置</string>
+    <string name="usage_resets_in_m">%1$d 分鐘後重置</string>
+    <string name="usage_resets_soon">即將重置</string>
+    <string name="settings_threshold_usage_spike">用量激增（tokens）</string>
+    <string name="settings_threshold_project_budget">專案預算（$）</string>
+    <string name="settings_threshold_long_session">工作階段過長（分鐘）</string>
+    <string name="settings_threshold_offline_grace">離線寬限（分鐘）</string>
+    <string name="settings_threshold_data_retention">資料保留（天）</string>
+    <string name="settings_demo_user">示範使用者</string>
+    <string name="notification_channel_alerts">CLI Pulse 警告</string>
+    <string name="export_share_title">匯出 CLI Pulse 資料</string>
+    <plurals name="overview_alerts_critical_count">
+        <item quantity="other">嚴重 %d 則</item>
+    </plurals>
+    <plurals name="overview_alerts_warning_count">
+        <item quantity="other">警告 %d 則</item>
+    </plurals>
 </resources>

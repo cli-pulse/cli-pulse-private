@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -186,8 +187,12 @@ fun OverviewScreen(
                         title = stringResource(R.string.unresolved_alerts),
                         value = d.unresolvedAlerts.toString(),
                         subtitle = when {
-                            d.alertSummary.critical > 0 -> "${d.alertSummary.critical} critical"
-                            d.alertSummary.warning > 0 -> "${d.alertSummary.warning} warnings"
+                            d.alertSummary.critical > 0 -> pluralStringResource(
+                                R.plurals.overview_alerts_critical_count, d.alertSummary.critical, d.alertSummary.critical,
+                            )
+                            d.alertSummary.warning > 0 -> pluralStringResource(
+                                R.plurals.overview_alerts_warning_count, d.alertSummary.warning, d.alertSummary.warning,
+                            )
                             else -> null
                         },
                         modifier = Modifier.weight(1f),
@@ -295,7 +300,7 @@ private fun ForecastCard(forecast: CostForecast) {
                 trackColor = MaterialTheme.colorScheme.surfaceVariant,
             )
             Text(
-                "${forecast.currentDayOfMonth}/${forecast.daysInMonth} days",
+                stringResource(R.string.pdf_progress_value, forecast.currentDayOfMonth, forecast.daysInMonth),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 2.dp),

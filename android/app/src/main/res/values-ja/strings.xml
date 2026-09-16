@@ -216,4 +216,24 @@
     <string name="thermal_serious">警告</string>
     <string name="thermal_critical">重大</string>
     <string name="subscription_unavailable_android">現在、Android では購読を提供していません。このアプリの機能に制限はなく、すべてそのままお使いいただけます。</string>
+
+    <!-- UI chrome that used to be hardcoded English in Kotlin (hardcoded-UI gate, 2026-09-17) -->
+    <string name="usage_resetting">リセット中…</string>
+    <string name="usage_resets_in_hm">%1$d時間%2$d分後にリセット</string>
+    <string name="usage_resets_in_m">%1$d分後にリセット</string>
+    <string name="usage_resets_soon">まもなくリセット</string>
+    <string name="settings_threshold_usage_spike">使用量の急増（トークン）</string>
+    <string name="settings_threshold_project_budget">プロジェクト予算（$）</string>
+    <string name="settings_threshold_long_session">長時間セッション（分）</string>
+    <string name="settings_threshold_offline_grace">オフライン猶予（分）</string>
+    <string name="settings_threshold_data_retention">データ保持（日）</string>
+    <string name="settings_demo_user">デモユーザー</string>
+    <string name="notification_channel_alerts">CLI Pulse のアラート</string>
+    <string name="export_share_title">CLI Pulse のデータをエクスポート</string>
+    <plurals name="overview_alerts_critical_count">
+        <item quantity="other">重大 %d 件</item>
+    </plurals>
+    <plurals name="overview_alerts_warning_count">
+        <item quantity="other">警告 %d 件</item>
+    </plurals>
 </resources>

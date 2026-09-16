@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -80,7 +82,7 @@ fun SettingsScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(stringResource(R.string.settings_account), style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(8.dp))
-                state.userName?.let { name ->
+                (if (state.isDemoMode) stringResource(R.string.settings_demo_user) else state.userName)?.let { name ->
                     Text(name, style = MaterialTheme.typography.bodyMedium)
                 }
                 state.userEmail?.let { email ->
@@ -206,19 +208,19 @@ fun SettingsScreen(
                     Text(stringResource(R.string.settings_thresholds), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(8.dp))
 
-                    EditableSettingRow("Usage Spike (tokens)", settings.usageSpikeThreshold) {
+                    EditableSettingRow(stringResource(R.string.settings_threshold_usage_spike), settings.usageSpikeThreshold) {
                         viewModel.updateSetting("usage_spike_threshold", it)
                     }
-                    EditableDecimalRow("Project Budget ($)", settings.projectBudgetThresholdUsd) {
+                    EditableDecimalRow(stringResource(R.string.settings_threshold_project_budget), settings.projectBudgetThresholdUsd) {
                         viewModel.updateSetting("project_budget_threshold_usd", it)
                     }
-                    EditableSettingRow("Long Session (min)", settings.sessionTooLongThresholdMinutes) {
+                    EditableSettingRow(stringResource(R.string.settings_threshold_long_session), settings.sessionTooLongThresholdMinutes) {
                         viewModel.updateSetting("session_too_long_threshold_minutes", it)
                     }
-                    EditableSettingRow("Offline Grace (min)", settings.offlineGracePeriodMinutes) {
+                    EditableSettingRow(stringResource(R.string.settings_threshold_offline_grace), settings.offlineGracePeriodMinutes) {
                         viewModel.updateSetting("offline_grace_period_minutes", it)
                     }
-                    EditableSettingRow("Data Retention (days)", settings.dataRetentionDays) {
+                    EditableSettingRow(stringResource(R.string.settings_threshold_data_retention), settings.dataRetentionDays) {
                         viewModel.updateSetting("data_retention_days", maxOf(1, it))
                     }
                 }
@@ -423,14 +425,14 @@ private fun EditableDecimalRow(label: String, currentValue: Double, onUpdate: (D
             OutlinedTextField(
                 value = textValue,
                 onValueChange = { textValue = sanitizeDecimalInput(it) },
-                modifier = Modifier.width(100.dp),
+                modifier = Modifier.width(100.dp).semantics { contentDescription = label },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium,
             )
             IconButton(onClick = {
                 editing = false
                 parseDecimalInput(textValue)?.let { onUpdate(it) }
-            }) { Icon(Icons.Filled.Check, contentDescription = null) }
+            }) { Icon(Icons.Filled.Check, contentDescription = stringResource(R.string.save)) }
         } else {
             TextButton(onClick = { editing = true }) {
                 Text(formatDecimalRoot(currentValue))
@@ -455,7 +457,7 @@ private fun EditableSettingRow(label: String, currentValue: Int, onUpdate: (Int)
             OutlinedTextField(
                 value = textValue,
                 onValueChange = { textValue = it.filter { c -> c.isDigit() } },
-                modifier = Modifier.width(100.dp),
+                modifier = Modifier.width(100.dp).semantics { contentDescription = label },
                 singleLine = true,
                 textStyle = MaterialTheme.typography.bodyMedium,
             )
@@ -524,10 +526,11 @@ private fun LinkedAccountRow(
     }
 }
 
+@Composable
 private fun providerDisplayName(provider: String): String = when (provider.lowercase()) {
     "google" -> "Google"
     "github" -> "GitHub"
     "apple" -> "Apple"
-    "email" -> "Email"
+    "email" -> stringResource(R.string.auth_email_label)
     else -> provider.replaceFirstChar { it.uppercase() }
 }

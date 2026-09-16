@@ -1,5 +1,5 @@
 {
- "_about": "Literals check_hardcoded_ui_strings.py allows to stay English, each with why. Generated 2026-09-16 from a two-round classify+adversarial-verify sweep. NEEDS_JUDGMENT entries are real user-visible English deferred to a follow-up because the string is also data (persisted/synced/compared) or needs an app string catalog — the prefix after the colon names the group. Shrink this file; never grow it without a reason.",
+ "_about": "Literals check_hardcoded_ui_strings.py allows to stay English, each with why. Generated 2026-09-16 from a two-round classify+adversarial-verify sweep. NEEDS_JUDGMENT entries are real user-visible English deferred to a follow-up because the string is also data (persisted/synced/compared) or needs an app string catalog — the prefix after the colon names the group. Android Kotlin entries (android/…) were added 2026-09-17 when the gate learned Kotlin. Shrink this file; never grow it without a reason.",
  "entries": [
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
@@ -1302,6 +1302,162 @@
    "literal": "\"StoreKit is unavailable in this runtime environment\"",
    "count": 1,
    "reason": "KEEP_DEBUG_OR_QA_ONLY: Thrown only when SubscriptionBootstrapPolicy.resolve disallows StoreKit (runtime capabilities without allowsStoreKitBootstrap: QA/quarantine runtimes)."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Codex error rate spiked: 3 errors across 4 sessions\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Codex estimated cost today reached \\$1.03, exceeding threshold \\$0.80\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Codex quota critically low\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Cost spike: Codex\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Device offline: build-box\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Error rate spike: Codex\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Only 7.6% remaining (38,000 of 500,000 tokens)\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Session 'Session error triage' encountered 3 errors on build-box\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"Session failed: error triage\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",
+   "literal": "\"build-box has not synced for over 60 minutes\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: DemoDataProvider sample alert text. It never renders on Android today: loadDemoData() is called only from DashboardRepository.refreshAll(), which has no caller, so 'Try Demo' shows live (empty) data. Localize it if demo mode is ever wired up."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/collector/ProviderCollector.kt",
+   "literal": "\"Operational\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-data-tokens — default CollectorResult.statusText. Collectors never run on Android (TokenStore.saveProviderKey has no caller), so this default is not rendered; decide together with ProviderUsage.statusText."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/model/ProviderUsage.kt",
+   "literal": "\"Operational\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-data-tokens — default ProviderUsage.statusText, rendered as the provider detail Status badge. provider_summary returns no status_text, so every provider claims \"Operational\" whatever its state: drop the badge or map real status before translating a claim that is often false."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
+   "literal": "\"HTTP $code: $body\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — ApiError.Http message \"HTTP <code>: <body>\"; LoginScreen shows it raw, so a wrong password reads as GoTrue JSON. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
+   "literal": "\"Session expired. Please sign in again.\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — ApiError.TokenExpired message, surfaced through OverviewViewModel. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
+   "literal": "\"Failed to acknowledge: ${e.message}\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
+   "literal": "\"Failed to resolve: ${e.message}\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
+   "literal": "\"Failed to snooze: ${e.message}\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/login/LoginViewModel.kt",
+   "literal": "\"Offline — using cached session\"",
+   "count": 2,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — offline notice after a transient session-refresh failure. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/overview/OverviewViewModel.kt",
+   "literal": "\"Session expired. Please sign in again.\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — session-expired banner on Overview. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsScreen.kt",
+   "literal": "\"Apple\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: sign-in provider brand name in SettingsScreen.providerDisplayName, shown in Linked Accounts."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsScreen.kt",
+   "literal": "\"GitHub\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: sign-in provider brand name in SettingsScreen.providerDisplayName, shown in Linked Accounts."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsScreen.kt",
+   "literal": "\"Google\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: sign-in provider brand name in SettingsScreen.providerDisplayName, shown in Linked Accounts."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
+   "literal": "\"Failed to delete account: ${e.message}\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
+   "literal": "\"Failed to link identity\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
+   "literal": "\"Failed to start link flow\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+  },
+  {
+   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
+   "literal": "\"Failed to unlink identity\"",
+   "count": 1,
+   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
   }
  ]
 }

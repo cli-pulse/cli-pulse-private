@@ -3,6 +3,7 @@ package com.clipulse.android.util
 import android.content.Context
 import android.content.Intent
 import androidx.core.content.FileProvider
+import com.clipulse.android.R
 import com.clipulse.android.data.model.ProviderUsage
 import com.clipulse.android.data.model.SessionRecord
 import java.io.BufferedWriter
@@ -84,7 +85,7 @@ object ExportUtil {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(intent, "Export CLI Pulse Data"))
+        context.startActivity(Intent.createChooser(intent, context.getString(R.string.export_share_title)))
     }
 
     // Chars that make a spreadsheet cell execute as a formula when it's the

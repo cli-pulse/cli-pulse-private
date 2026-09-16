@@ -145,6 +145,9 @@ jobs:
       # allowlist entry that no longer matches anything fails too, so the list
       # of accepted English can only shrink. The negative controls run
       # alongside, because a gate only ever seen green has not been seen to work.
+      # Since 2026-09-17 it also reads the Android app's Kotlin, which no gate
+      # looked at before: Compose Text(...), the app's own composables, UI-state
+      # error fields, share-sheet and notification-channel titles.
       - run: python3 scripts/check_hardcoded_ui_strings.py
       - run: bash scripts/test_check_hardcoded_ui_strings.sh
 
