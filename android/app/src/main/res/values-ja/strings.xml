@@ -314,4 +314,21 @@
     <string name="webhook_type_quota_exceeded">クォータ超過</string>
     <string name="webhook_type_session_long">長時間セッション</string>
     <string name="webhook_type_device_offline">デバイスがオフライン</string>
+
+    <!-- Alert titles and messages re-rendered from the producer's English (ui/alerts/AlertPresentation.kt); worded as Apple's alert_kind.* -->
+    <string name="alert_kind_device_cpu_title">デバイスの CPU 使用率が高くなっています</string>
+    <string name="alert_kind_device_cpu_message">ヘルパーが CPU 使用率を %s%% と計測しました。</string>
+    <string name="alert_kind_session_cpu_title">%s が CPU を大量に消費しています</string>
+    <string name="alert_kind_session_cpu_message_system">%3$s がシステム全体の CPU（%2$s コア）の約 %1$s%% を使用しています。</string>
+    <string name="alert_kind_session_cpu_message_process">%2$s のプロセス CPU は %1$s%% です。</string>
+    <string name="alert_kind_session_cpu_message_process_in_project">%3$s 内の %2$s のプロセス CPU は %1$s%% です。</string>
+    <string name="alert_kind_session_long_title">%s が長時間実行されています</string>
+    <string name="alert_kind_session_long_message">ヘルパーが長時間実行中のローカル Agent セッションを検出しました。</string>
+    <string name="alert_kind_quota_title">%1$s「%2$s」が %3$s%% に到達</string>
+    <string name="alert_kind_quota_message">クォータ期間「%1$s」は %2$s%% 使用済みです（残り %3$s%%）。</string>
+    <string name="alert_kind_quota_message_reset">クォータ期間「%1$s」は %2$s%% 使用済みです（残り %3$s%%、%4$s にリセット）。</string>
+    <string name="alert_kind_budget_daily_title">日次予算を超過 — $%s</string>
+    <string name="alert_kind_budget_daily_message">本日の支出 $%1$s が日次予算 $%2$s を超えています。</string>
+    <string name="alert_kind_budget_weekly_title">週次予算を超過 — $%s</string>
+    <string name="alert_kind_budget_weekly_message">過去 7 日間の支出合計 $%1$s が週次予算 $%2$s を超えています。</string>
 </resources>

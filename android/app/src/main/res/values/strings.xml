@@ -317,4 +317,21 @@
     <string name="webhook_type_quota_exceeded">Quota exceeded</string>
     <string name="webhook_type_session_long">Long session</string>
     <string name="webhook_type_device_offline">Device offline</string>
+
+    <!-- Alert titles and messages re-rendered from the producer's English (ui/alerts/AlertPresentation.kt); worded as Apple's alert_kind.* -->
+    <string name="alert_kind_device_cpu_title">Device CPU usage is elevated</string>
+    <string name="alert_kind_device_cpu_message">The helper sampled CPU usage at %s%%.</string>
+    <string name="alert_kind_session_cpu_title">%s is consuming high CPU</string>
+    <string name="alert_kind_session_cpu_message_system">Using ~%1$s%% of total system CPU (%2$s cores) for %3$s.</string>
+    <string name="alert_kind_session_cpu_message_process">Process CPU is %1$s%% for %2$s.</string>
+    <string name="alert_kind_session_cpu_message_process_in_project">Process CPU is %1$s%% for %2$s in %3$s.</string>
+    <string name="alert_kind_session_long_title">%s has been running for a long time</string>
+    <string name="alert_kind_session_long_message">Long-running local agent session detected by helper.</string>
+    <string name="alert_kind_quota_title">%1$s %2$s at %3$s%%</string>
+    <string name="alert_kind_quota_message">Quota window \'%1$s\' is %2$s%% used (%3$s%% remaining).</string>
+    <string name="alert_kind_quota_message_reset">Quota window \'%1$s\' is %2$s%% used (%3$s%% remaining) (resets %4$s).</string>
+    <string name="alert_kind_budget_daily_title">Daily budget exceeded — $%s</string>
+    <string name="alert_kind_budget_daily_message">Today\'s spend of $%1$s is above your daily budget of $%2$s.</string>
+    <string name="alert_kind_budget_weekly_title">Weekly budget exceeded — $%s</string>
+    <string name="alert_kind_budget_weekly_message">Last 7 days of spend totals $%1$s, above your weekly budget of $%2$s.</string>
 </resources>

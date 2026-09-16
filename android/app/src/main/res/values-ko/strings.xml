@@ -308,4 +308,21 @@
     <string name="webhook_type_quota_exceeded">할당량 초과</string>
     <string name="webhook_type_session_long">장시간 세션</string>
     <string name="webhook_type_device_offline">기기 오프라인</string>
+
+    <!-- Alert titles and messages re-rendered from the producer's English (ui/alerts/AlertPresentation.kt); worded as Apple's alert_kind.* -->
+    <string name="alert_kind_device_cpu_title">기기 CPU 사용률이 높습니다</string>
+    <string name="alert_kind_device_cpu_message">헬퍼가 측정한 CPU 사용률은 %s%%입니다.</string>
+    <string name="alert_kind_session_cpu_title">%s의 CPU 사용률이 높습니다</string>
+    <string name="alert_kind_session_cpu_message_system">%3$s의 CPU 사용률은 시스템 전체(%2$s 코어) 대비 약 %1$s%%입니다.</string>
+    <string name="alert_kind_session_cpu_message_process">%2$s의 프로세스 CPU는 %1$s%%입니다.</string>
+    <string name="alert_kind_session_cpu_message_process_in_project">%3$s의 %2$s 프로세스 CPU는 %1$s%%입니다.</string>
+    <string name="alert_kind_session_long_title">%s이(가) 오랫동안 실행 중입니다</string>
+    <string name="alert_kind_session_long_message">헬퍼가 오래 실행 중인 로컬 에이전트 세션을 감지했습니다.</string>
+    <string name="alert_kind_quota_title">%1$s %2$s %3$s%% 도달</string>
+    <string name="alert_kind_quota_message">‘%1$s’ 사용량이 %2$s%%입니다(%3$s%% 남음).</string>
+    <string name="alert_kind_quota_message_reset">‘%1$s’ 사용량이 %2$s%%입니다(%3$s%% 남음, %4$s 리셋).</string>
+    <string name="alert_kind_budget_daily_title">일간 예산 초과 — $%s</string>
+    <string name="alert_kind_budget_daily_message">오늘 지출 $%1$s, 일간 예산 $%2$s보다 많습니다.</string>
+    <string name="alert_kind_budget_weekly_title">주간 예산 초과 — $%s</string>
+    <string name="alert_kind_budget_weekly_message">최근 7일 지출 합계 $%1$s, 주간 예산 $%2$s보다 많습니다.</string>
 </resources>

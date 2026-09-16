@@ -110,9 +110,11 @@ fun AlertCard(
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(alert.title, style = MaterialTheme.typography.titleSmall)
+            // Stored English stays as it is; only the rendering is translated.
+            val kind = remember(alert.id, alert.title, alert.message) { AlertPresentation.classify(alert) }
+            Text(alert.displayTitle(kind), style = MaterialTheme.typography.titleSmall)
             Spacer(Modifier.height(4.dp))
-            Text(alert.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(alert.displayMessage(kind), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             if (!alert.isResolved) {
                 Spacer(Modifier.height(12.dp))

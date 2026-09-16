@@ -313,4 +313,21 @@
     <string name="webhook_type_quota_exceeded">配额超限</string>
     <string name="webhook_type_session_long">会话过长</string>
     <string name="webhook_type_device_offline">设备离线</string>
+
+    <!-- Alert titles and messages re-rendered from the producer's English (ui/alerts/AlertPresentation.kt); worded as Apple's alert_kind.* -->
+    <string name="alert_kind_device_cpu_title">设备 CPU 使用率偏高</string>
+    <string name="alert_kind_device_cpu_message">helper 采样到的 CPU 使用率为 %s%%。</string>
+    <string name="alert_kind_session_cpu_title">%s 正占用大量 CPU</string>
+    <string name="alert_kind_session_cpu_message_system">%3$s 的系统总 CPU 占用约为 %1$s%%（共 %2$s 核）。</string>
+    <string name="alert_kind_session_cpu_message_process">%2$s 的进程 CPU 占用为 %1$s%%。</string>
+    <string name="alert_kind_session_cpu_message_process_in_project">%3$s 中 %2$s 的进程 CPU 占用为 %1$s%%。</string>
+    <string name="alert_kind_session_long_title">%s 已运行很长时间</string>
+    <string name="alert_kind_session_long_message">helper 检测到长时间运行的本地 Agent 会话。</string>
+    <string name="alert_kind_quota_title">%1$s %2$s 已使用 %3$s%%</string>
+    <string name="alert_kind_quota_message">配额窗口「%1$s」已使用 %2$s%%（剩余 %3$s%%）。</string>
+    <string name="alert_kind_quota_message_reset">配额窗口「%1$s」已使用 %2$s%%（剩余 %3$s%%，%4$s 重置）。</string>
+    <string name="alert_kind_budget_daily_title">每日预算已超出：今日 $%s</string>
+    <string name="alert_kind_budget_daily_message">今日支出 $%1$s 已超过每日预算 $%2$s。</string>
+    <string name="alert_kind_budget_weekly_title">每周预算已超出：近 7 天 $%s</string>
+    <string name="alert_kind_budget_weekly_message">最近 7 天支出共计 $%1$s，已超过每周预算 $%2$s。</string>
 </resources>
