@@ -1381,3 +1381,32 @@
 "provider_config.error_gemini_token_refresh_failed" = "토큰 갱신에 실패했습니다(HTTP %d)";
 "provider_config.error_gemini_no_refresh_token" = "사용 가능한 갱신 토큰이 없습니다";
 "auth.error_http_status" = "HTTP %1$d: %2$@";
+
+/* Alert templates — localized at render time by AlertPresentation. The stored
+   title/message stay English: they are the webhook payload, they cross devices,
+   and they sit beside the suppression key. */
+"alert_kind.budget_daily_message" = "오늘 지출 $%1$@, 일간 예산 $%2$@보다 많습니다.";
+"alert_kind.budget_daily_title" = "일간 예산 초과 — $%@";
+"alert_kind.budget_weekly_message" = "최근 7일 지출 합계 $%1$@, 주간 예산 $%2$@보다 많습니다.";
+"alert_kind.budget_weekly_title" = "주간 예산 초과 — $%@";
+"alert_kind.device_cpu_message" = "헬퍼가 측정한 CPU 사용률은 %@%%입니다.";
+"alert_kind.device_cpu_title" = "기기 CPU 사용률이 높습니다";
+"alert_kind.quota_message" = "‘%1$@’ 사용량이 %2$@%%입니다(%3$@%% 남음).";
+"alert_kind.quota_message_reset" = "‘%1$@’ 사용량이 %2$@%%입니다(%3$@%% 남음, %4$@ 리셋).";
+"alert_kind.quota_title" = "%1$@ %2$@ %3$@%% 도달";
+"alert_kind.session_cpu_message_process" = "%2$@의 프로세스 CPU는 %1$@%%입니다.";
+"alert_kind.session_cpu_message_process_in_project" = "%3$@의 %2$@ 프로세스 CPU는 %1$@%%입니다.";
+"alert_kind.session_cpu_message_system" = "%3$@의 CPU 사용률은 시스템 전체(%2$@ 코어) 대비 약 %1$@%%입니다.";
+"alert_kind.session_cpu_title" = "%@의 CPU 사용률이 높습니다";
+"alert_kind.session_long_message" = "헬퍼가 오래 실행 중인 로컬 에이전트 세션을 감지했습니다.";
+"alert_kind.session_long_title" = "%@이(가) 오랫동안 실행 중입니다";
+"alert_kind.severity_critical" = "심각";
+"alert_kind.severity_info" = "정보";
+"alert_kind.severity_warning" = "경고";
+"alert_kind.source_budget" = "예산";
+"alert_kind.source_device" = "기기";
+"alert_kind.source_project" = "프로젝트";
+"alert_kind.source_provider" = "공급자";
+"alert_kind.source_quota" = "할당량";
+"alert_kind.source_session" = "세션";
+"alert_kind.source_swarm" = "스웜";

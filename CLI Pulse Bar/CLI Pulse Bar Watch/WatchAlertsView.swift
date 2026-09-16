@@ -149,12 +149,12 @@ struct AlertCard: View {
                             .fill(.blue)
                             .frame(width: 6, height: 6)
                     }
-                    Text(alert.title)
+                    Text(AlertPresentation.text(for: alert).title)
                         .font(.system(size: 12, weight: .semibold))
                         .lineLimit(2)
                 }
 
-                Text(alert.message)
+                Text(AlertPresentation.text(for: alert).message)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -210,13 +210,13 @@ struct WatchAlertDetailView: View {
                         RoundedRectangle(cornerRadius: 2)
                             .fill(severityColor)
                             .frame(width: 3, height: 20)
-                        Text(alert.severity)
+                        Text(AlertPresentation.severityLabel(alert.severity))
                             .font(.caption.weight(.bold))
                             .foregroundStyle(severityColor)
                     }
-                    Text(alert.title)
+                    Text(AlertPresentation.text(for: alert).title)
                         .font(.caption.weight(.semibold))
-                    Text(alert.message)
+                    Text(AlertPresentation.text(for: alert).message)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }

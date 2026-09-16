@@ -1646,3 +1646,32 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "provider_config.error_gemini_token_refresh_failed" = "Token refresh failed (HTTP %d)";
 "provider_config.error_gemini_no_refresh_token" = "No refresh token available";
 "auth.error_http_status" = "HTTP %1$d: %2$@";
+
+/* Alert templates — localized at render time by AlertPresentation. The stored
+   title/message stay English: they are the webhook payload, they cross devices,
+   and they sit beside the suppression key. */
+"alert_kind.budget_daily_message" = "Today's spend of $%1$@ is above your daily budget of $%2$@.";
+"alert_kind.budget_daily_title" = "Daily budget exceeded — $%@";
+"alert_kind.budget_weekly_message" = "Last 7 days of spend totals $%1$@, above your weekly budget of $%2$@.";
+"alert_kind.budget_weekly_title" = "Weekly budget exceeded — $%@";
+"alert_kind.device_cpu_message" = "The helper sampled CPU usage at %@%%.";
+"alert_kind.device_cpu_title" = "Device CPU usage is elevated";
+"alert_kind.quota_message" = "Quota window '%1$@' is %2$@%% used (%3$@%% remaining).";
+"alert_kind.quota_message_reset" = "Quota window '%1$@' is %2$@%% used (%3$@%% remaining) (resets %4$@).";
+"alert_kind.quota_title" = "%1$@ %2$@ at %3$@%%";
+"alert_kind.session_cpu_message_process" = "Process CPU is %1$@%% for %2$@.";
+"alert_kind.session_cpu_message_process_in_project" = "Process CPU is %1$@%% for %2$@ in %3$@.";
+"alert_kind.session_cpu_message_system" = "Using ~%1$@%% of total system CPU (%2$@ cores) for %3$@.";
+"alert_kind.session_cpu_title" = "%@ is consuming high CPU";
+"alert_kind.session_long_message" = "Long-running local agent session detected by helper.";
+"alert_kind.session_long_title" = "%@ has been running for a long time";
+"alert_kind.severity_critical" = "Critical";
+"alert_kind.severity_info" = "Info";
+"alert_kind.severity_warning" = "Warning";
+"alert_kind.source_budget" = "Budget";
+"alert_kind.source_device" = "Device";
+"alert_kind.source_project" = "Project";
+"alert_kind.source_provider" = "Provider";
+"alert_kind.source_quota" = "Quota";
+"alert_kind.source_session" = "Session";
+"alert_kind.source_swarm" = "Swarm";

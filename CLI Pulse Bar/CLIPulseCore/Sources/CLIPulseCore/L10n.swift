@@ -2084,6 +2084,84 @@ public enum L10n {
         }
         public static func parseFailed(_ detail: String) -> String { tr("collector_error.parse_failed", detail) }
     }
+
+    // MARK: - Alert kinds
+
+    /// Localized rendering for the alert templates the three generators emit.
+    /// See `AlertPresentation` for why this is recovered from the English
+    /// rather than read from a structured column.
+    ///
+    /// Every numeric parameter is a `%@`, not a `%d` or `%f`, on purpose: the
+    /// captured text is passed through exactly as the producer formatted it.
+    /// The Swift generator writes an integer percent, the Python helper writes
+    /// one decimal place, and re-formatting here would make the same alert read
+    /// differently depending on which machine raised it.
+    public enum alertKind {
+        public static var deviceCPUTitle: String { tr("alert_kind.device_cpu_title") }
+        public static func deviceCPUMessage(_ percent: String) -> String {
+            tr("alert_kind.device_cpu_message", percent)
+        }
+
+        public static func sessionCPUTitle(_ session: String) -> String {
+            tr("alert_kind.session_cpu_title", session)
+        }
+        /// Swift `AlertGenerator`: normalized against total system capacity.
+        public static func sessionCPUMessageSystem(_ percent: String, _ cores: String, _ provider: String) -> String {
+            tr("alert_kind.session_cpu_message_system", percent, cores, provider)
+        }
+        /// Python helper: raw per-process CPU.
+        public static func sessionCPUMessageProcess(_ percent: String, _ provider: String) -> String {
+            tr("alert_kind.session_cpu_message_process", percent, provider)
+        }
+        /// Tauri desktop: raw per-process CPU, plus the project.
+        public static func sessionCPUMessageProcessInProject(_ percent: String, _ provider: String, _ project: String) -> String {
+            tr("alert_kind.session_cpu_message_process_in_project", percent, provider, project)
+        }
+
+        public static func sessionLongTitle(_ session: String) -> String {
+            tr("alert_kind.session_long_title", session)
+        }
+        public static var sessionLongMessage: String { tr("alert_kind.session_long_message") }
+
+        public static func quotaTitle(_ provider: String, _ tier: String, _ used: String) -> String {
+            tr("alert_kind.quota_title", provider, tier, used)
+        }
+        public static func quotaMessage(_ tier: String, _ used: String, _ remaining: String) -> String {
+            tr("alert_kind.quota_message", tier, used, remaining)
+        }
+        public static func quotaMessageReset(_ tier: String, _ used: String, _ remaining: String, _ reset: String) -> String {
+            tr("alert_kind.quota_message_reset", tier, used, remaining, reset)
+        }
+
+        public static func budgetDailyTitle(_ amount: String) -> String {
+            tr("alert_kind.budget_daily_title", amount)
+        }
+        public static func budgetDailyMessage(_ spend: String, _ budget: String) -> String {
+            tr("alert_kind.budget_daily_message", spend, budget)
+        }
+        public static func budgetWeeklyTitle(_ amount: String) -> String {
+            tr("alert_kind.budget_weekly_title", amount)
+        }
+        public static func budgetWeeklyMessage(_ spend: String, _ budget: String) -> String {
+            tr("alert_kind.budget_weekly_message", spend, budget)
+        }
+
+        /// Title-case, for a severity shown on its own. Deliberately NOT
+        /// `alerts.severity_critical`, whose value is the lowercase "critical"
+        /// used mid-sentence in a count phrase.
+        public static var severityCritical: String { tr("alert_kind.severity_critical") }
+        public static var severityWarning: String { tr("alert_kind.severity_warning") }
+        public static var severityInfo: String { tr("alert_kind.severity_info") }
+
+        public static var sourceDevice: String { tr("alert_kind.source_device") }
+        public static var sourceSession: String { tr("alert_kind.source_session") }
+        public static var sourceQuota: String { tr("alert_kind.source_quota") }
+        public static var sourceBudget: String { tr("alert_kind.source_budget") }
+        public static var sourceProvider: String { tr("alert_kind.source_provider") }
+        public static var sourceProject: String { tr("alert_kind.source_project") }
+        /// Retired kind; historical rows still carry it.
+        public static var sourceSwarm: String { tr("alert_kind.source_swarm") }
+    }
 }
 
 #if !SWIFT_PACKAGE
