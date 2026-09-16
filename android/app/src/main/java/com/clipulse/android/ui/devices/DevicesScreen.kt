@@ -254,7 +254,7 @@ private fun DeviceCard(device: com.clipulse.android.data.model.DeviceRecord) {
                         }
                         device.batteryCycleCount?.let {
                             Text(
-                                stringResource(R.string.card_battery_cycles, it),
+                                pluralStringResource(R.plurals.card_battery_cycles, it, it),
                                 style = MaterialTheme.typography.labelSmall,
                             )
                         }

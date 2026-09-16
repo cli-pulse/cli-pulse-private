@@ -203,7 +203,10 @@
     <string name="card_power_w">%1$.1f W</string>
     <string name="card_battery_charge">Batería %1$d%%</string>
     <string name="card_battery_health">Salud %1$d%%</string>
-    <string name="card_battery_cycles">%1$d ciclos</string>
+    <plurals name="card_battery_cycles">
+        <item quantity="one">%d ciclo</item>
+        <item quantity="other">%d ciclos</item>
+    </plurals>
     <string name="thermal_nominal">Normal</string>
     <string name="thermal_fair">Moderado</string>
     <string name="thermal_serious">Alto</string>

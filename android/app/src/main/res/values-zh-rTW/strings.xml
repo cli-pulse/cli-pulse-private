@@ -28,7 +28,7 @@
 
     <!-- Settings -->
     <string name="settings_account">帳號</string>
-    <string name="settings_tier">等級: %1$s</string>
+    <string name="settings_tier">等級：%1$s</string>
     <string name="settings_subscription">訂閱</string>
     <string name="settings_devices">裝置</string>
     <string name="settings_notifications">通知</string>
@@ -129,7 +129,7 @@
 
     <!-- 警示操作 -->
     <string name="alert_action_ack">確認</string>
-    <string name="alert_action_resolve">已解決</string>
+    <string name="alert_action_resolve">解決</string>
     <string name="alert_action_snooze">稍後提醒</string>
     <string name="alert_action_snooze_duration_1h">1 小時</string>
 
@@ -155,7 +155,7 @@
     <string name="card_usage">用量</string>
     <string name="card_usage_value">用量：%1$s</string>
     <string name="card_used_of">已使用 %1$s / %2$s</string>
-    <string name="card_week">週</string>
+    <string name="card_week">本週</string>
     <string name="error_unknown">未知錯誤</string>
     <string name="pdf_active_sessions">進行中工作階段</string>
     <string name="pdf_confidence_range">信賴區間</string>
@@ -202,10 +202,12 @@
     <string name="card_power_w">%1$.1f W</string>
     <string name="card_battery_charge">電量 %1$d%%</string>
     <string name="card_battery_health">健康度 %1$d%%</string>
-    <string name="card_battery_cycles">%1$d 次循環</string>
+    <plurals name="card_battery_cycles">
+        <item quantity="other">%d 次循環</item>
+    </plurals>
     <string name="thermal_nominal">正常</string>
     <string name="thermal_fair">一般</string>
     <string name="thermal_serious">偏高</string>
     <string name="thermal_critical">嚴重</string>
-    <string name="subscription_unavailable_android">目前 Android 上不提供訂閱。這個 app 裡沒有任何功能被鎖住,現在就可以全部使用。</string>
+    <string name="subscription_unavailable_android">目前 Android 上不提供訂閱。這個 app 裡沒有任何功能被鎖住，現在就可以全部使用。</string>
 </resources>
