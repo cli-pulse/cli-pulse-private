@@ -1431,3 +1431,19 @@
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "웹";
 "providers.plan_multiple_accounts" = "여러 계정";
+
+/* Siri / Shortcuts runtime text — dialogs and the spoken summary (L10n.intents) */
+"intents.active_sessions" = "활성 세션 %d개";
+"intents.active_sessions_one" = "활성 세션 %d개";
+"intents.clause_separator" = ", ";
+"intents.less_than_one_cent" = "1센트 미만";
+"intents.no_data_dialog" = "아직 CLI Pulse 데이터가 없습니다. 앱을 한 번 열면 Mac의 데이터가 동기화됩니다.";
+"intents.no_data_value" = "데이터 없음";
+"intents.no_open_alerts" = "미해결 알림 없음";
+"intents.open_alerts" = "미해결 알림 %d개";
+"intents.open_alerts_one" = "미해결 알림 %d개";
+"intents.provider_not_configured" = "%@ 공급자가 CLI Pulse에 설정되어 있지 않습니다.";
+"intents.provider_quota_left" = "%1$@: 남은 할당량 %2$@, 전체의 %3$d%%입니다.";
+"intents.provider_usage_no_quota" = "%1$@: 오늘 %2$@ 사용, 할당량은 설정되지 않았습니다.";
+"intents.sentence_end" = ".";
+"intents.status_today" = "오늘: %1$@ 토큰, 비용 %2$@";

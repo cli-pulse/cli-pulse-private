@@ -1,0 +1,11 @@
+/* App Shortcut phrases — what a person SAYS to Siri. Extracted at BUILD time by Xcode's
+   App Intents metadata processor. Every phrase must contain ${applicationName} exactly
+   once; iOS silently ignores a phrase that does not. */
+
+"Get ${applicationName} status" = "${applicationName} 상태 알려 줘";
+"Check my ${applicationName}" = "${applicationName} 확인해 줘";
+"How is my ${applicationName} doing" = "${applicationName} 상태 어때";
+"${applicationName} summary" = "${applicationName} 요약";
+"Check ${applicationName} quota" = "${applicationName} 할당량 확인해 줘";
+"${applicationName} quota remaining" = "${applicationName} 남은 할당량";
+"How much ${applicationName} quota do I have" = "${applicationName} 할당량 얼마나 남았어";

@@ -1700,3 +1700,19 @@
 "provider_config.source_oauth" = "OAuth";
 "provider_config.source_web" = "网页";
 "providers.plan_multiple_accounts" = "多个账户";
+
+/* Siri / Shortcuts runtime text — dialogs and the spoken summary (L10n.intents) */
+"intents.active_sessions" = "%d 个活跃会话";
+"intents.active_sessions_one" = "%d 个活跃会话";
+"intents.clause_separator" = "，";
+"intents.less_than_one_cent" = "不到一美分";
+"intents.no_data_dialog" = "还没有 CLI Pulse 数据。请先打开一次应用，从你的 Mac 同步数据。";
+"intents.no_data_value" = "无数据";
+"intents.no_open_alerts" = "没有未解决的告警";
+"intents.open_alerts" = "%d 条未解决告警";
+"intents.open_alerts_one" = "%d 条未解决告警";
+"intents.provider_not_configured" = "%@ 尚未在 CLI Pulse 中配置。";
+"intents.provider_quota_left" = "%1$@：还剩 %2$@，占总配额的 %3$d%%。";
+"intents.provider_usage_no_quota" = "%1$@：今日已用 %2$@，未设置配额。";
+"intents.sentence_end" = "。";
+"intents.status_today" = "今日：%1$@ tokens，花费 %2$@";

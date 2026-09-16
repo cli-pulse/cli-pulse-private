@@ -1,4 +1,5 @@
 import AppIntents
+import CLIPulseCore
 import Foundation
 
 @available(iOS 17.0, *)
@@ -54,22 +55,22 @@ struct GetProviderQuotaIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
         guard let snapshot = CLIPulseIntentCache.load() else {
-            let dialog = IntentDialog("No CLI Pulse data yet. Open the app once to sync from your Mac.")
-            return .result(value: "No data", dialog: dialog)
+            let dialog = IntentDialog(stringLiteral: L10n.intents.noDataDialog)
+            return .result(value: L10n.intents.noDataValue, dialog: dialog)
         }
 
         let target = provider.canonicalName
         guard let cached = snapshot.providers.first(where: { $0.name.caseInsensitiveCompare(target) == .orderedSame }) else {
-            let msg = "\(target) is not configured in CLI Pulse."
+            let msg = L10n.intents.providerNotConfigured(target)
             return .result(value: msg, dialog: IntentDialog(stringLiteral: msg))
         }
 
         let spoken: String
         if let remaining = cached.remaining, let quota = cached.quota, quota > 0 {
             let percent = Int((1.0 - cached.usagePercent) * 100)
-            spoken = "\(target): \(formatUsage(remaining)) left, \(percent)% remaining."
+            spoken = L10n.intents.providerQuotaLeft(target, formatUsage(remaining), percent)
         } else {
-            spoken = "\(target): \(formatUsage(cached.usage)) used today, no quota set."
+            spoken = L10n.intents.providerUsageNoQuota(target, formatUsage(cached.usage))
         }
 
         return .result(value: spoken, dialog: IntentDialog(stringLiteral: spoken))

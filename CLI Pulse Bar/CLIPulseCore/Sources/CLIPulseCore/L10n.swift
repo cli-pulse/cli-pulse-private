@@ -2194,6 +2194,49 @@ public enum L10n {
         /// Retired kind; historical rows still carry it.
         public static var sourceSwarm: String { tr("alert_kind.source_swarm") }
     }
+
+    // MARK: - Siri / Shortcuts (runtime text)
+
+    /// Text the App Intents build at RUNTIME — dialogs and the spoken summary.
+    /// These can go through L10n because the intents are compiled into the iOS
+    /// app target, which links CLIPulseCore.
+    ///
+    /// The intents' STATIC strings — titles, descriptions, parameter names and
+    /// Shortcut phrases — cannot: the system reads those from the app bundle's
+    /// own `Localizable.strings` / `AppShortcuts.strings`, sometimes before the
+    /// app has run, so they live in `CLI Pulse Bar iOS/<locale>.lproj`.
+    public enum intents {
+        public static var noDataDialog: String { tr("intents.no_data_dialog") }
+        public static var noDataValue: String { tr("intents.no_data_value") }
+
+        /// The summary used to be one English string built by concatenation with
+        /// inline plurals ("\(n) active \(n == 1 ? "session" : "sessions")"),
+        /// which no translation can follow. It is now whole clauses joined by a
+        /// locale's own separator, and reads identically in English.
+        public static func statusToday(_ usage: String, _ cost: String) -> String {
+            tr("intents.status_today", usage, cost)
+        }
+        public static func activeSessions(_ count: Int) -> String {
+            count == 1 ? tr("intents.active_sessions_one", count) : tr("intents.active_sessions", count)
+        }
+        public static func openAlerts(_ count: Int) -> String {
+            count == 1 ? tr("intents.open_alerts_one", count) : tr("intents.open_alerts", count)
+        }
+        public static var noOpenAlerts: String { tr("intents.no_open_alerts") }
+        public static var clauseSeparator: String { tr("intents.clause_separator") }
+        public static var sentenceEnd: String { tr("intents.sentence_end") }
+        public static var lessThanOneCent: String { tr("intents.less_than_one_cent") }
+
+        public static func providerNotConfigured(_ provider: String) -> String {
+            tr("intents.provider_not_configured", provider)
+        }
+        public static func providerQuotaLeft(_ provider: String, _ left: String, _ percent: Int) -> String {
+            tr("intents.provider_quota_left", provider, left, percent)
+        }
+        public static func providerUsageNoQuota(_ provider: String, _ used: String) -> String {
+            tr("intents.provider_usage_no_quota", provider, used)
+        }
+    }
 }
 
 #if !SWIFT_PACKAGE
