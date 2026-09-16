@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.alerts
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.AlertRecord
 import com.clipulse.android.data.remote.SupabaseClient
@@ -71,7 +72,7 @@ class AlertsViewModelTest {
         val vm = AlertsViewModel(supabase, repository)
         
 
-        assertEquals("server error", vm.state.value.error)
+        assertEquals(UiError.Unknown("server error"), vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 
@@ -99,7 +100,10 @@ class AlertsViewModelTest {
         vm.acknowledge("a1")
         
 
-        assertEquals("Failed to acknowledge: forbidden", vm.state.value.mutationError)
+        assertEquals(
+            UiError.ActionFailed(UiError.Action.Acknowledge, UiError.Unknown("forbidden")),
+            vm.state.value.mutationError,
+        )
         vm.viewModelScope.cancel()
     }
 

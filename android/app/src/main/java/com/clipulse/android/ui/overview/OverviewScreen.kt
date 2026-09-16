@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
+import com.clipulse.android.ui.common.text
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,8 +41,9 @@ fun OverviewScreen(
     val context = LocalContext.current
     val snackbar = LocalSnackbarHostState.current
     var showExportMenu by remember { mutableStateOf(false) }
+    val errorText = state.error?.text()
     LaunchedEffect(state.error) {
-        state.error?.let { snackbar.showSnackbar(it) }
+        errorText?.let { snackbar.showSnackbar(it) }
     }
 
     PullToRefreshBox(
@@ -129,7 +131,7 @@ fun OverviewScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(
-                        error,
+                        error.text(),
                         modifier = Modifier.padding(16.dp),
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )

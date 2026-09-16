@@ -234,4 +234,22 @@
         <item quantity="one">%d advertencia</item>
         <item quantity="other">%d advertencias</item>
     </plurals>
+
+    <!-- Errors shown in the UI, one per UiError kind (the exception text stays in logs) -->
+    <string name="error_session_expired">Tu sesión expiró. Vuelve a iniciar sesión.</string>
+    <string name="error_offline">No se puede conectar con CLI Pulse. Revisa tu conexión y vuelve a intentarlo.</string>
+    <string name="error_offline_cached_session">Sin conexión: se usa tu sesión guardada.</string>
+    <string name="error_invalid_credentials">El correo o la contraseña no son correctos.</string>
+    <string name="error_code_invalid">El código no es válido o ha caducado. Solicita uno nuevo.</string>
+    <string name="error_rate_limited">Demasiados intentos. Espera un minuto y vuelve a intentarlo.</string>
+    <string name="error_server">El servidor devolvió un error (HTTP %1$d). Vuelve a intentarlo.</string>
+    <string name="error_something_went_wrong">Algo salió mal. Vuelve a intentarlo.</string>
+    <string name="error_action_acknowledge">No se pudo confirmar la alerta. %1$s</string>
+    <string name="error_action_resolve">No se pudo resolver la alerta. %1$s</string>
+    <string name="error_action_snooze">No se pudo posponer la alerta. %1$s</string>
+    <string name="error_action_delete_account">No se pudo eliminar tu cuenta. %1$s</string>
+    <string name="error_action_load_linked_accounts">No se pudieron cargar las cuentas vinculadas. %1$s</string>
+    <string name="error_action_start_link">No se pudo iniciar la vinculación de la cuenta. %1$s</string>
+    <string name="error_action_link">No se pudo vincular la cuenta. %1$s</string>
+    <string name="error_action_unlink">No se pudo desvincular la cuenta. %1$s</string>
 </resources>

@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.overview
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.AlertSummaryDTO
 import com.clipulse.android.data.model.DailyUsage
@@ -90,7 +91,7 @@ class OverviewViewModelTest {
 
         val state = vm.state.value
         assertFalse(state.isLoading)
-        assertEquals("Network error", state.error)
+        assertEquals(UiError.Unknown("Network error"), state.error)
         vm.viewModelScope.cancel()
     }
 
@@ -99,7 +100,7 @@ class OverviewViewModelTest {
         coEvery { repository.refreshDashboard() } throws RuntimeException("fail")
         val vm = OverviewViewModel(repository)
         
-        assertEquals("fail", vm.state.value.error)
+        assertEquals(UiError.Unknown("fail"), vm.state.value.error)
 
         // Now succeed
         coEvery { repository.refreshDashboard() } coAnswers {
@@ -118,7 +119,7 @@ class OverviewViewModelTest {
         coEvery { repository.refreshDashboard() } throws ApiError.TokenExpired
         val vm = OverviewViewModel(repository)
 
-        assertEquals("Session expired. Please sign in again.", vm.state.value.error)
+        assertEquals(UiError.SessionExpired, vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 

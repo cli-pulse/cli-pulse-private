@@ -11,12 +11,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+import com.clipulse.android.ui.common.UiError
 
 data class AlertsUiState(
     val isLoading: Boolean = true,
     val alerts: List<AlertRecord> = emptyList(),
-    val error: String? = null,
-    val mutationError: String? = null,
+    val error: UiError? = null,
+    val mutationError: UiError? = null,
 )
 
 @HiltViewModel
@@ -62,7 +63,7 @@ class AlertsViewModel @Inject constructor(
                 val alerts = supabase.alerts()
                 _state.value = _state.value.copy(isLoading = false, alerts = alerts)
             } catch (e: Exception) {
-                _state.value = _state.value.copy(isLoading = false, error = e.message)
+                _state.value = _state.value.copy(isLoading = false, error = UiError.from(e))
             }
         }
     }
@@ -74,7 +75,7 @@ class AlertsViewModel @Inject constructor(
                 supabase.acknowledgeAlert(id)
                 refresh()
             } catch (e: Exception) {
-                _state.value = _state.value.copy(mutationError = "Failed to acknowledge: ${e.message}")
+                _state.value = _state.value.copy(mutationError = UiError.action(UiError.Action.Acknowledge, e))
             }
         }
     }
@@ -86,7 +87,7 @@ class AlertsViewModel @Inject constructor(
                 supabase.resolveAlert(id)
                 refresh()
             } catch (e: Exception) {
-                _state.value = _state.value.copy(mutationError = "Failed to resolve: ${e.message}")
+                _state.value = _state.value.copy(mutationError = UiError.action(UiError.Action.Resolve, e))
             }
         }
     }
@@ -98,7 +99,7 @@ class AlertsViewModel @Inject constructor(
                 supabase.snoozeAlert(id, minutes)
                 refresh()
             } catch (e: Exception) {
-                _state.value = _state.value.copy(mutationError = "Failed to snooze: ${e.message}")
+                _state.value = _state.value.copy(mutationError = UiError.action(UiError.Action.Snooze, e))
             }
         }
     }

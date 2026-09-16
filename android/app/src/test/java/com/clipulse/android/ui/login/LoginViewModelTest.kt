@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.login
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.AuthResponse
 import com.clipulse.android.data.model.UserDTO
@@ -100,7 +101,7 @@ class LoginViewModelTest {
         
 
         assertFalse(vm.state.value.isLoggedIn)
-        assertEquals("invalid token", vm.state.value.error)
+        assertEquals(UiError.Unknown("invalid token"), vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 
@@ -126,7 +127,7 @@ class LoginViewModelTest {
         
 
         assertFalse(vm.state.value.showOtpInput)
-        assertEquals("rate limited", vm.state.value.error)
+        assertEquals(UiError.Unknown("rate limited"), vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 
@@ -207,7 +208,7 @@ class LoginViewModelTest {
         
 
         assertTrue(vm.state.value.isLoggedIn)
-        assertEquals("Offline — using cached session", vm.state.value.error)
+        assertEquals(UiError.OfflineUsingCachedSession, vm.state.value.error)
         vm.viewModelScope.cancel()
     }
 

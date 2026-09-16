@@ -1,5 +1,6 @@
 package com.clipulse.android.ui.devices
 
+import com.clipulse.android.ui.common.UiError
 import com.clipulse.android.MainDispatcherRule
 import com.clipulse.android.data.model.DeviceRecord
 import com.clipulse.android.data.remote.SupabaseClient
@@ -70,7 +71,7 @@ class DevicesViewModelTest {
         val vm = DevicesViewModel(supabase)
         
 
-        assertEquals("DNS error", vm.state.value.error)
+        assertEquals(UiError.Unknown("DNS error"), vm.state.value.error)
         assertTrue(vm.state.value.devices.isEmpty())
         vm.viewModelScope.cancel()
     }

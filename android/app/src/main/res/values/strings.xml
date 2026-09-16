@@ -239,4 +239,22 @@
         <item quantity="one">%d warning</item>
         <item quantity="other">%d warnings</item>
     </plurals>
+
+    <!-- Errors shown in the UI, one per UiError kind (the exception text stays in logs) -->
+    <string name="error_session_expired">Your session expired. Sign in again.</string>
+    <string name="error_offline">Can\'t reach CLI Pulse. Check your connection and try again.</string>
+    <string name="error_offline_cached_session">Offline — using your saved session.</string>
+    <string name="error_invalid_credentials">Incorrect email or password.</string>
+    <string name="error_code_invalid">That code is invalid or has expired. Request a new one.</string>
+    <string name="error_rate_limited">Too many attempts. Wait a minute, then try again.</string>
+    <string name="error_server">The server returned an error (HTTP %1$d). Try again.</string>
+    <string name="error_something_went_wrong">Something went wrong. Try again.</string>
+    <string name="error_action_acknowledge">Couldn\'t acknowledge the alert. %1$s</string>
+    <string name="error_action_resolve">Couldn\'t resolve the alert. %1$s</string>
+    <string name="error_action_snooze">Couldn\'t snooze the alert. %1$s</string>
+    <string name="error_action_delete_account">Couldn\'t delete your account. %1$s</string>
+    <string name="error_action_load_linked_accounts">Couldn\'t load linked accounts. %1$s</string>
+    <string name="error_action_start_link">Couldn\'t start linking the account. %1$s</string>
+    <string name="error_action_link">Couldn\'t link the account. %1$s</string>
+    <string name="error_action_unlink">Couldn\'t unlink the account. %1$s</string>
 </resources>

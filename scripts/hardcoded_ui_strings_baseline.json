@@ -1379,43 +1379,13 @@
    "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
    "literal": "\"HTTP $code: $body\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — ApiError.Http message \"HTTP <code>: <body>\"; LoginScreen shows it raw, so a wrong password reads as GoTrue JSON. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+   "reason": "KEEP_NOT_USER_VISIBLE: ApiError.message, for logs and Sentry. Screens render UiError (ui/common/UiError.kt), which classifies the exception — GoTrue error_code included — and takes its words from string resources."
   },
   {
    "path": "android/app/src/main/java/com/clipulse/android/data/remote/SupabaseClient.kt",
    "literal": "\"Session expired. Please sign in again.\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — ApiError.TokenExpired message, surfaced through OverviewViewModel. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
-   "literal": "\"Failed to acknowledge: ${e.message}\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
-   "literal": "\"Failed to resolve: ${e.message}\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/alerts/AlertsViewModel.kt",
-   "literal": "\"Failed to snooze: ${e.message}\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — AlertsViewModel.mutationError for acknowledge/resolve/snooze. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/login/LoginViewModel.kt",
-   "literal": "\"Offline — using cached session\"",
-   "count": 2,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — offline notice after a transient session-refresh failure. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/overview/OverviewViewModel.kt",
-   "literal": "\"Session expired. Please sign in again.\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — session-expired banner on Overview. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
+   "reason": "KEEP_NOT_USER_VISIBLE: ApiError.message, for logs and Sentry. Screens render UiError (ui/common/UiError.kt), which classifies the exception — GoTrue error_code included — and takes its words from string resources."
   },
   {
    "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsScreen.kt",
@@ -1434,30 +1404,6 @@
    "literal": "\"Google\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: sign-in provider brand name in SettingsScreen.providerDisplayName, shown in Linked Accounts."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
-   "literal": "\"Failed to delete account: ${e.message}\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
-   "literal": "\"Failed to link identity\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
-   "literal": "\"Failed to start link flow\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
-  },
-  {
-   "path": "android/app/src/main/java/com/clipulse/android/ui/settings/SettingsViewModel.kt",
-   "literal": "\"Failed to unlink identity\"",
-   "count": 1,
-   "reason": "NEEDS_JUDGMENT: android-typed-errors — Settings linked-account and delete-account errors. Shown to the user as UI-state error text. The fix is a typed UiError resolved to string resources in the Composable (keeping the raw message for logs), not a string swap here, because the same text is asserted by view-model tests and built from exception messages."
   }
  ]
 }
