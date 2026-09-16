@@ -308,6 +308,15 @@ public enum CookieSource: String, Codable, CaseIterable, Sendable {
     case chrome = "Chrome"
     case firefox = "Firefox"
     case manual = "Manual"
+
+    /// Browser names are product names and render as written.
+    public var localizedName: String {
+        switch self {
+        case .automatic: return L10n.providerConfig.cookieSourceAutomatic
+        case .safari, .chrome, .firefox: return rawValue
+        case .manual: return L10n.providerConfig.cookieSourceManual
+        }
+    }
 }
 
 // MARK: - Usage Tier (e.g., Pro/Flash/Flash Lite for Gemini)

@@ -1419,3 +1419,15 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.err_not_controllable" = "Desde aquí puedes ver esta sesión, pero no controlarla.";
 "sessions.err_runtime_restricted" = "El control de sesiones no está disponible en esta compilación.";
 "sessions.err_unauthenticated" = "El helper local no aceptó las credenciales de CLI Pulse. Reinicia el helper y vuelve a intentarlo.";
+
+/* Data tokens rendered as words: source/cookie-source names and the composed plan badge */
+"provider_config.cookie_source_automatic" = "Automático";
+"provider_config.cookie_source_manual" = "Manual";
+"provider_config.source_api" = "API";
+"provider_config.source_auto" = "Automático";
+"provider_config.source_cli" = "CLI";
+"provider_config.source_local" = "Local";
+"provider_config.source_merged" = "Nube + local";
+"provider_config.source_oauth" = "OAuth";
+"provider_config.source_web" = "Web";
+"providers.plan_multiple_accounts" = "Varias cuentas";

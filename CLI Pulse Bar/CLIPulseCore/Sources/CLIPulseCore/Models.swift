@@ -307,6 +307,22 @@ public enum SourceType: String, Codable, CaseIterable, Sendable {
     case api
     case local
     case merged  // cloud + local collector supplemented
+
+    /// Display name. The raw value is a stored identifier ("oauth", "merged") —
+    /// the source pickers used to render it directly, which read as lowercase
+    /// debug tokens even in English. No `description`/CustomStringConvertible:
+    /// `ClaudeSourceResolver` interpolates this enum into a log line.
+    public var localizedName: String {
+        switch self {
+        case .auto: return L10n.providerConfig.sourceAuto
+        case .web: return L10n.providerConfig.sourceWeb
+        case .cli: return L10n.providerConfig.sourceCLI
+        case .oauth: return L10n.providerConfig.sourceOAuth
+        case .api: return L10n.providerConfig.sourceAPI
+        case .local: return L10n.providerConfig.sourceLocal
+        case .merged: return L10n.providerConfig.sourceMerged
+        }
+    }
 }
 
 // MARK: - Auth

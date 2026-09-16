@@ -1684,3 +1684,15 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "sessions.err_not_controllable" = "This session can be watched from here but not controlled.";
 "sessions.err_runtime_restricted" = "Session control isn't available in this build.";
 "sessions.err_unauthenticated" = "The local helper didn't accept CLI Pulse's credentials. Restart the helper and try again.";
+
+/* Data tokens rendered as words: source/cookie-source names and the composed plan badge */
+"provider_config.cookie_source_automatic" = "Automatic";
+"provider_config.cookie_source_manual" = "Manual";
+"provider_config.source_api" = "API";
+"provider_config.source_auto" = "Automatic";
+"provider_config.source_cli" = "CLI";
+"provider_config.source_local" = "Local";
+"provider_config.source_merged" = "Cloud + local";
+"provider_config.source_oauth" = "OAuth";
+"provider_config.source_web" = "Web";
+"providers.plan_multiple_accounts" = "Multiple accounts";

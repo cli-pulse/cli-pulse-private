@@ -1,5 +1,8 @@
 #if os(macOS)
 import SwiftUI
+import os
+
+private let machineHealthLog = Logger(subsystem: "com.clipulse", category: "machine-health")
 
 /// System Monitor S4 — the "Machine" tab. Read-only machine-health cockpit:
 /// CPU/mem gauges, a battery-health card, native temps/fans/power (Developer-ID
@@ -966,7 +969,13 @@ public struct MachineHealthView: View {
             // Settle the thumb on the value the daemon actually applied (it may have
             // clamped a below-auto request up to the auto floor).
             syncFanSlider(infos)
-            fanError = result.ok ? nil : (result.error ?? L10n.machine.fanErrGeneric)
+            // The daemon's text is an internal diagnostic ("fan 2 unreadable —
+            // refusing (fail-safe)"), not guidance, and English in every locale.
+            // It goes to the log; the user gets the generic line.
+            if !result.ok, let detail = result.error {
+                machineHealthLog.error("fan boost failed: \(detail, privacy: .public)")
+            }
+            fanError = result.ok ? nil : L10n.machine.fanErrGeneric
         }
     }
 
@@ -1155,7 +1164,8 @@ public struct MachineHealthView: View {
         case "charging": return L10n.machine.stateCharging
         case "discharging": return L10n.machine.stateDischarging
         case "charged": return L10n.machine.stateCharged
-        default: return state
+        // Unrecognised states used to render the daemon's raw token.
+        default: return L10n.status.unknown
         }
     }
 

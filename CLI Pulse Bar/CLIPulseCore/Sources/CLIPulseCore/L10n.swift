@@ -489,6 +489,18 @@ public enum L10n {
         /// two cannot share a key without one of them reading wrong.
         public static var statusConnected: String { tr("providers.status_connected") }
 
+
+        public static var planMultipleAccounts: String { tr("providers.plan_multiple_accounts") }
+
+        /// Display text for a provider-level `plan_type`. The one value the app
+        /// itself composes is "Multiple accounts" (`APIClient`, when a provider
+        /// has more than one active account); it is also what the server
+        /// projection returns, and the raw value is compared against "Paid" and
+        /// "Free" by the views, so only the rendering is mapped. A vendor's plan
+        /// name ("Pro", "Max 5x") is not ours to translate and passes through.
+        public static func planDisplay(_ raw: String) -> String {
+            raw == "Multiple accounts" ? planMultipleAccounts : raw
+        }
         /// Display text for a provider or account `status_text`.
         ///
         /// `status_text` is a model field, not a display string: every device
@@ -1506,6 +1518,17 @@ public enum L10n {
         public static var errorGeminiStateMismatch: String { tr("provider_config.error_gemini_state_mismatch") }
         public static func errorGeminiTokenExchangeFailed(_ a0: Int) -> String { tr("provider_config.error_gemini_token_exchange_failed", a0) }
         public static var errorGeminiInvalidTokenResponse: String { tr("provider_config.error_gemini_invalid_token_response") }
+        // Source and cookie-source display names. The raw values are stored
+        // identifiers ("oauth", "merged") and were rendered directly.
+        public static var sourceAuto: String { tr("provider_config.source_auto") }
+        public static var sourceWeb: String { tr("provider_config.source_web") }
+        public static var sourceCLI: String { tr("provider_config.source_cli") }
+        public static var sourceOAuth: String { tr("provider_config.source_oauth") }
+        public static var sourceAPI: String { tr("provider_config.source_api") }
+        public static var sourceLocal: String { tr("provider_config.source_local") }
+        public static var sourceMerged: String { tr("provider_config.source_merged") }
+        public static var cookieSourceAutomatic: String { tr("provider_config.cookie_source_automatic") }
+        public static var cookieSourceManual: String { tr("provider_config.cookie_source_manual") }
         public static func errorGeminiTokenRefreshFailed(_ status: Int) -> String {
             tr("provider_config.error_gemini_token_refresh_failed", status)
         }
