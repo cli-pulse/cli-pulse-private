@@ -43,10 +43,16 @@ public enum L10n {
     /// Internal rather than private so `L10nFallbackTests` can sweep every
     /// key in every locale through the real production path.
     static func resolve(_ key: String) -> String {
-        let activeBundle = LocaleOverrideStore.shared.bundle
+        resolve(key, active: LocaleOverrideStore.shared.bundle, english: LocaleOverrideStore.englishBundle)
+    }
+
+    /// The lookup itself, with the two catalogues passed in so a test can exercise
+    /// the fallback on a key it controls. The shipped catalogues are at parity, so no
+    /// real key reaches the fallback branch any more.
+    static func resolve(_ key: String, active activeBundle: Bundle, english: Bundle?) -> String {
         let format = NSLocalizedString(key, bundle: activeBundle, comment: "")
         guard format == key else { return format }
-        guard let english = LocaleOverrideStore.englishBundle, english !== activeBundle else {
+        guard let english, english !== activeBundle else {
             return format
         }
         return NSLocalizedString(key, bundle: english, comment: "")

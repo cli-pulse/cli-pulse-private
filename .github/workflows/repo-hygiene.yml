@@ -112,9 +112,12 @@ jobs:
       # wizard keys — every one of which rendered as its raw dotted identifier
       # until `L10n.resolve` gained an English fallback.
       #
-      # A ratchet rather than a bar: the 670 are baselined, NEW drift fails.
-      # A permanently-red gate gets `continue-on-error`'d, which is the same
-      # failure as a green gate that guards nothing.
+      # A ratchet rather than a bar: the 670 were baselined, NEW drift failed,
+      # and the baseline reached zero on 2026-09-17. A permanently-red gate gets
+      # `continue-on-error`'d, which is the same failure as a green gate that
+      # guards nothing. It also checks that every translation consumes the same
+      # format arguments as English: a `%d` that became `%@` crashes
+      # String(format:) in that one language, where English testing never looks.
       #
       # Path-blind for the usual reason: the PR most likely to add an
       # en-only key is a Swift PR that touches no `.strings` file at all.
