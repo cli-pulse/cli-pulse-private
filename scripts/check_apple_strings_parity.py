@@ -39,7 +39,8 @@ neither has an acceptable non-zero value:
     the last, so the earlier translation is dead text that reads as done.
   * FORMAT ARGUMENTS — a translation whose specifiers (or `${name}` parameters)
     consume different arguments from English. A `%d` that became `%@` crashes
-    `String(format:)` in that language only.
+    `String(format:)` in that language only. A bare `%` in a formatted string is
+    the same defect in disguise: "98 % de" consumes an argument.
 
 DELIBERATELY NOT CHECKED
 ------------------------
@@ -392,10 +393,21 @@ def argument_signature(value: str) -> list[tuple[str, str]]:
     return sorted(sig)
 
 
+def _stray_percent(value: str) -> bool:
+    """A `%` that is neither a specifier nor `%%`. `String(format:)` parses it
+    anyway: Spanish "98 % de" reads `% d` as a flag and an integer conversion."""
+    return "%" in SPEC_RE.sub("", value)
+
+
 def _signature_problems(label: str, tables: dict[str, dict[str, str]]) -> list[str]:
     base = tables.get(BASE_LOCALE, {})
     problems: list[str] = []
     for loc, kv in sorted(tables.items()):
+        for key in sorted(set(kv) & set(base)):
+            formatted = any(kind != "parameter" for _, kind in argument_signature(base[key]))
+            if formatted and _stray_percent(kv[key]):
+                problems.append(f"{label}: {loc} {key!r} has a bare % in a string formatted with "
+                                "arguments; write %%")
         if loc == BASE_LOCALE:
             continue
         for key in sorted(set(kv) & set(base)):

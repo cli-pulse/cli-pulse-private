@@ -254,6 +254,17 @@ add_format_key 'Synced %dm ago' '%d 分前、%@ に同期'
 expect_fail "added argument" "consumes different format arguments"
 
 build_fixture "$TMP/case"
+add_format_key 'Critical: %d%%' 'Crítico: %d %'
+expect_fail "bare percent in a formatted string" "bare % in a string formatted"
+
+build_fixture "$TMP/case"
+printf '"plain.key" = "98%% of reads";\n' >> "$TMP/case/$RES/en.lproj/Localizable.strings"
+for L in es ja ko zh-Hans zh-Hant; do
+    printf '"plain.key" = "98 %% de lecturas";\n' >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
+done
+expect_ok "a bare % in a string with no arguments is literal"
+
+build_fixture "$TMP/case"
 APPT="$TMP/case/CLI Pulse Bar/Some App"
 for L in en es ja ko zh-Hans zh-Hant; do
     mkdir -p "$APPT/$L.lproj"
