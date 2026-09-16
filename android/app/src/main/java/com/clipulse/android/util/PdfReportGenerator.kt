@@ -194,11 +194,17 @@ object PdfReportGenerator {
             checkSpace(40f)
             divider()
             y += 4f
-            canvas.drawText(context.getString(R.string.pdf_daily_trend), MARGIN, y + 16f, headingPaint)
-            y += 24f
-
             val costByDate = dailyUsage.groupBy { it.date }.mapValues { (_, items) -> items.sumOf { it.cost } }
             val sortedDates = costByDate.keys.sorted().takeLast(30)
+            // The heading said "Last 30 Days" whatever range the shared repository held
+            // (7 or 14 after a visit to Cost Analysis). State the span actually plotted.
+            val spanDays = trendSpanDays(sortedDates)
+            canvas.drawText(
+                context.resources.getQuantityString(R.plurals.pdf_daily_trend_days, spanDays, spanDays),
+                MARGIN, y + 16f, headingPaint,
+            )
+            y += 24f
+
             val maxCost = costByDate.values.maxOrNull() ?: 1.0
 
             for (date in sortedDates) {
@@ -238,5 +244,16 @@ object PdfReportGenerator {
         value >= 1_000_000 -> String.format("%.1fM", value / 1_000_000.0)
         value >= 1_000 -> String.format("%.1fK", value / 1_000.0)
         else -> "$value"
+    }
+
+    /** Calendar days from the first to the last plotted date, inclusive; the count when dates do not parse. */
+    internal fun trendSpanDays(sortedDates: List<String>): Int {
+        if (sortedDates.isEmpty()) return 0
+        return runCatching {
+            java.time.temporal.ChronoUnit.DAYS.between(
+                java.time.LocalDate.parse(sortedDates.first()),
+                java.time.LocalDate.parse(sortedDates.last()),
+            ).toInt() + 1
+        }.getOrDefault(sortedDates.size)
     }
 }

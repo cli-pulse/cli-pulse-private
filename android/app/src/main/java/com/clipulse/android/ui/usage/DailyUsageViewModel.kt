@@ -15,6 +15,8 @@ data class DailyUsageUiState(
     val isLoading: Boolean = true,
     val dailyUsage: List<DailyUsage> = emptyList(),
     val error: UiError? = null,
+    /** The range the loaded data covers; the screen's selected tab follows it. */
+    val days: Int = 30,
 )
 
 @HiltViewModel
@@ -31,7 +33,7 @@ class DailyUsageViewModel @Inject constructor(
 
     fun refresh(days: Int = 30) {
         viewModelScope.launch {
-            _state.value = _state.value.copy(isLoading = true, error = null)
+            _state.value = _state.value.copy(isLoading = true, error = null, days = days)
             try {
                 repository.refreshDailyUsage(days)
                 _state.value = _state.value.copy(

@@ -27,6 +27,9 @@ import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.DateDisplay
 import androidx.compose.ui.platform.LocalConfiguration
 import android.text.format.DateFormat
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,10 +39,10 @@ fun CostAnalysisScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val snackbar = LocalSnackbarHostState.current
-    // v1.21 E7: rememberSaveable so the user's selected range (7d / 30d / 90d)
-    // survives low-memory process death. Plain `remember` reset to tab 0 every
-    // time the OS killed the app while the user was off-screen.
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    // The selected tab is the range the view model actually loaded. It used to be
+    // separate UI state starting at "7 Days" while the view model's init loaded 30,
+    // so the screen opened with a 7-day label over 30 days of data.
+    val selectedTab = RANGES.indexOf(state.days).coerceAtLeast(0)
     val errorText = state.error?.text()
     LaunchedEffect(state.error) {
         errorText?.let { snackbar.showSnackbar(it) }
@@ -66,13 +69,13 @@ fun CostAnalysisScreen(
         ) {
             // Time range tabs
             TabRow(selectedTabIndex = selectedTab) {
-                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0; viewModel.refresh(7) }) {
+                Tab(selected = selectedTab == 0, onClick = { viewModel.refresh(RANGES[0]) }) {
                     Text(stringResource(R.string.cost_7_days), modifier = Modifier.padding(12.dp))
                 }
-                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1; viewModel.refresh(14) }) {
+                Tab(selected = selectedTab == 1, onClick = { viewModel.refresh(RANGES[1]) }) {
                     Text(stringResource(R.string.cost_14_days), modifier = Modifier.padding(12.dp))
                 }
-                Tab(selected = selectedTab == 2, onClick = { selectedTab = 2; viewModel.refresh(30) }) {
+                Tab(selected = selectedTab == 2, onClick = { viewModel.refresh(RANGES[2]) }) {
                     Text(stringResource(R.string.cost_30_days), modifier = Modifier.padding(12.dp))
                 }
             }
@@ -185,15 +188,23 @@ private fun HorizontalBarChart(items: List<BarItem>) {
     }
 }
 
+/** The tabs' ranges in days, in tab order. */
+private val RANGES = listOf(7, 14, 30)
+
 @Composable
 private fun DailyCostBars(costByDate: Map<String, Double>) {
     val entries = costByDate.entries.toList()
     val maxCost = entries.maxOfOrNull { it.value } ?: 1.0
+    // A bar chart is only colored boxes to TalkBack; say what it shows.
+    val summary = pluralStringResource(
+        R.plurals.cost_chart_summary, entries.size, entries.size, formatCostCompact(entries.maxOfOrNull { it.value } ?: 0.0),
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(80.dp),
+            .height(80.dp)
+            .clearAndSetSemantics { contentDescription = summary },
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.Bottom,
     ) {

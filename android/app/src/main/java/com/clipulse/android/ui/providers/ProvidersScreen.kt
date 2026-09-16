@@ -22,6 +22,8 @@ import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
 import com.clipulse.android.ui.common.text
 import com.clipulse.android.ui.common.quotaTierLabel
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,7 +49,7 @@ fun ProvidersScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item {
-                Text(stringResource(R.string.screen_providers), style = MaterialTheme.typography.headlineMedium)
+                Text(stringResource(R.string.screen_providers), style = MaterialTheme.typography.headlineMedium, modifier = Modifier.semantics { heading() })
                 Spacer(Modifier.height(8.dp))
             }
 
@@ -101,9 +103,11 @@ fun ProviderCard(provider: ProviderUsage, onClick: () -> Unit = {}) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (kind != null) {
+                        // Decorative: the provider name is the Text beside it, and TalkBack
+                        // read "Claude Claude" for the merged card.
                         Icon(
                             kind.icon,
-                            contentDescription = kind.displayValue,
+                            contentDescription = null,
                             tint = color,
                         )
                     }
