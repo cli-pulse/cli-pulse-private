@@ -63,7 +63,7 @@ public struct OpenAIAdminCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let key = resolveKey(config: config) else {
-            throw CollectorError.missingCredentials("OpenAI Admin: no API key (set OPENAI_ADMIN_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenAI Admin", .noAPIKeySetEnv("OPENAI_ADMIN_KEY")))
         }
         let data = try await fetchCosts(key: key)
         let (total, currency) = try Self.parseCosts(data)
@@ -112,7 +112,7 @@ public struct OpenAIAdminCollector: ProviderCollector, Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
             // A regular `sk-` key lacks org-cost scope ⇒ be explicit (Gemini C-15 R1 Q2).
-            throw CollectorError.missingCredentials("OpenAI Admin: org admin key (sk-admin-) required")
+            throw CollectorError.missingCredentials(CredentialProblem("OpenAI Admin", .orgAdminKeyRequired("sk-admin-")))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "OpenAI Admin")

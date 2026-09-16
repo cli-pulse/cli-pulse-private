@@ -85,7 +85,7 @@ public struct CommandCodeCollector: ProviderCollector, Sendable {
             knownSessionCookieNames: Self.knownSessionNames)
         guard let raw = resolution.headerValue,
               let cookieHeader = Self.cookieHeaderValue(from: raw) else {
-            throw CollectorError.missingCredentials("Command Code: no better-auth session cookie")
+            throw CollectorError.missingCredentials(CredentialProblem("Command Code", .noNamedSessionCookie("better-auth")))
         }
         // Credits required (throws); subscription best-effort grace-bounded so
         // it can never stall the shared collector TaskGroup.
@@ -194,7 +194,7 @@ public struct CommandCodeCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Command Code: session expired or unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("Command Code", .sessionExpiredOrUnauthorized))
         }
         guard (200..<300).contains(status) else {
             throw CollectorError.httpError(status: status, provider: "Command Code")

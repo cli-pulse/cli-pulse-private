@@ -14,7 +14,7 @@ public struct KimiK2Collector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Kimi K2: no API key found")
+            throw CollectorError.missingCredentials(CredentialProblem("Kimi K2", .noAPIKey))
         }
         let data = try await fetchCredits(token: token)
         let parsed = try KimiK2Collector.parseResponse(data)

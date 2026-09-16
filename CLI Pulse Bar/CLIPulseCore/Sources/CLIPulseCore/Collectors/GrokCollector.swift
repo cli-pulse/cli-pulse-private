@@ -97,8 +97,7 @@ public struct GrokCollector: ProviderCollector, Sendable {
             .trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
             return .bearer(token)
         }
-        throw CollectorError.missingCredentials(
-            "Grok: sign in at grok.com (cookie auto-import) or set GROK_TOKEN")
+        throw CollectorError.missingCredentials(CredentialProblem("Grok", .signInAtOrSetEnv("grok.com", "GROK_TOKEN")))
     }
 
     // MARK: - Networking (gRPC-web unary, empty request frame)
@@ -129,8 +128,7 @@ public struct GrokCollector: ProviderCollector, Sendable {
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials(
-                "Grok: session expired/invalid (sign in at grok.com or refresh GROK_TOKEN)")
+            throw CollectorError.missingCredentials(CredentialProblem("Grok", .sessionExpiredInvalidHint("grok.com", "GROK_TOKEN")))
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "Grok") }
         // grpc-status can ride on the HTTP headers AND/OR the trailer frame.
@@ -169,8 +167,7 @@ public struct GrokCollector: ProviderCollector, Sendable {
     static func validateGRPCStatusFields(_ fields: [String: String]) throws {
         guard let rawStatus = fields["grpc-status"], let status = Int(rawStatus), status != 0 else { return }
         if status == 16 {
-            throw CollectorError.missingCredentials(
-                "Grok: unauthenticated (sign in at grok.com or refresh GROK_TOKEN)")
+            throw CollectorError.missingCredentials(CredentialProblem("Grok", .unauthenticatedHint("grok.com", "GROK_TOKEN")))
         }
         throw CollectorError.parseFailed("Grok: RPC status \(status) \(fields["grpc-message"] ?? "")")
     }

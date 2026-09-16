@@ -76,7 +76,7 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let token = resolveToken(config: config) else {
-            throw CollectorError.missingCredentials("Codebuff: no API key (set CODEBUFF_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Codebuff", .noAPIKeySetEnv("CODEBUFF_API_KEY")))
         }
         // Concurrent: usage is required (throws); subscription is
         // best-effort and grace-bounded so it can never stall the

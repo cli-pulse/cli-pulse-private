@@ -130,16 +130,13 @@ public struct VertexAICollector: ProviderCollector, Sendable {
             creds = cached
         } else {
             guard let data = SandboxFileAccess.read(path: Self.credentialsPath(env)) else {
-                throw CollectorError.missingCredentials(
-                    "Vertex AI: gcloud ADC not found — run `gcloud auth application-default login`")
+                throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .gcloudADCNotFound("gcloud auth application-default login")))
             }
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 throw CollectorError.parseFailed("Vertex AI: invalid ADC JSON")
             }
             if Self.isServiceAccount(json) {
-                throw CollectorError.missingCredentials(
-                    "Vertex AI: service-account credentials require the gcloud CLI "
-                    + "(not available in sandbox) — run `gcloud auth application-default login`")
+                throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .serviceAccountNeedsGcloud("gcloud auth application-default login")))
             }
             creds = try Self.parseUserCredentials(json: json, env: env)
             if creds.needsRefresh {
@@ -149,8 +146,7 @@ public struct VertexAICollector: ProviderCollector, Sendable {
         }
 
         guard let projectId = creds.projectId, !projectId.isEmpty else {
-            throw CollectorError.missingCredentials(
-                "Vertex AI: no GCP project — run `gcloud config set project PROJECT_ID`")
+            throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .noGCPProject("gcloud config set project PROJECT_ID")))
         }
 
         let pct = try await Self.fetchUsedPercent(accessToken: creds.accessToken, projectId: projectId)
@@ -170,10 +166,10 @@ public struct VertexAICollector: ProviderCollector, Sendable {
     static func parseUserCredentials(json: [String: Any], env: [String: String]) throws -> Creds {
         guard let clientId = json["client_id"] as? String,
               let clientSecret = json["client_secret"] as? String else {
-            throw CollectorError.missingCredentials("Vertex AI: ADC missing client_id/secret")
+            throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .adcMissingClient))
         }
         guard let refreshToken = json["refresh_token"] as? String, !refreshToken.isEmpty else {
-            throw CollectorError.missingCredentials("Vertex AI: ADC has no refresh_token")
+            throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .adcNoRefreshToken))
         }
         let accessToken = json["access_token"] as? String ?? ""
         var expiry: Date?
@@ -253,9 +249,7 @@ public struct VertexAICollector: ProviderCollector, Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 400 || status == 401 {
             let code = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["error"] as? String
-            throw CollectorError.missingCredentials(
-                "Vertex AI: token refresh failed (\(code ?? "expired")) — "
-                + "run `gcloud auth application-default login` again")
+            throw CollectorError.missingCredentials(CredentialProblem("Vertex AI", .tokenRefreshFailedRun(code ?? "expired", "gcloud auth application-default login")))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Vertex AI")

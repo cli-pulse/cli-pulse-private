@@ -64,7 +64,7 @@ public struct MoonshotCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let key = resolveKey(config: config) else {
-            throw CollectorError.missingCredentials("Moonshot: no API key (set MOONSHOT_API_KEY)")
+            throw CollectorError.missingCredentials(CredentialProblem("Moonshot", .noAPIKeySetEnv("MOONSHOT_API_KEY")))
         }
         let data = try await fetchBalance(key: key, base: Self.resolveBase())
         let balance = try Self.parseBalance(data)
@@ -104,7 +104,7 @@ public struct MoonshotCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Moonshot: unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("Moonshot", .unauthorized))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Moonshot")

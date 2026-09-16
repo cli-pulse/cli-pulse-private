@@ -82,7 +82,7 @@ public struct AbacusCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Abacus AI: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Abacus AI", .noSessionCookieImportable))
         }
         // Compute points is required (throws); billing is best-effort and
         // grace-bounded so it can never stall the shared collector TaskGroup.
@@ -174,7 +174,7 @@ public struct AbacusCollector: ProviderCollector, Sendable {
     /// the inner `result` dict. Extracted from the request for testability.
     static func unwrapResult(data: Data, status: Int) throws -> [String: Any] {
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("Abacus AI: session expired or unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("Abacus AI", .sessionExpiredOrUnauthorized))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "Abacus AI")
@@ -188,7 +188,7 @@ public struct AbacusCollector: ProviderCollector, Sendable {
         // Failure envelope — decide re-auth vs parse error from the message.
         let message = (root["error"] as? String ?? "unknown error")
         if Self.isAuthErrorMessage(message) {
-            throw CollectorError.missingCredentials("Abacus AI: \(message)")
+            throw CollectorError.missingCredentials(CredentialProblem("Abacus AI", .serverMessage(String(describing: message))))
         }
         throw CollectorError.parseFailed("Abacus AI: \(message)")
     }

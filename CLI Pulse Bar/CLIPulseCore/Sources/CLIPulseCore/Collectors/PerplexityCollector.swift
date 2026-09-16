@@ -74,7 +74,7 @@ public struct PerplexityCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Perplexity: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Perplexity", .noSessionCookieImportable))
         }
         let data = try await fetchCredits(cookie: cookie)
         let parsed = try Self.parseCredits(data)

@@ -455,7 +455,7 @@ final class HelperDaemon {
                         candidate: candidateStatus
                     )
             } catch {
-                logger.warning("Collector failed for \(providerName): \(error.localizedDescription)")
+                logger.warning("Collector failed for \(providerName): \(CollectorError.logText(for: error))")
                 status[providerName] =
                     HelperAPIClient.aggregateCollectorStatus(
                         current: status[providerName],

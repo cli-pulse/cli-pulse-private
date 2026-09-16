@@ -75,8 +75,7 @@ public struct MiMoCollector: ProviderCollector, Sendable {
             knownSessionCookieNames: Self.requiredCookieNames)
         guard let header = resolution.headerValue,
               let cookie = Self.normalizedHeader(from: header) else {
-            throw CollectorError.missingCredentials(
-                "MiMo: cookie needs api-platform_serviceToken + userId (log in at platform.xiaomimimo.com)")
+            throw CollectorError.missingCredentials(CredentialProblem("MiMo", .cookieNeedsFieldsLogInAt("api-platform_serviceToken + userId", "platform.xiaomimimo.com")))
         }
         let base = Self.resolveBase()
         async let balanceData = Self.fetchAuthenticated(urlString: base + "/balance", cookie: cookie)
@@ -145,7 +144,7 @@ public struct MiMoCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("MiMo: session expired (log in again)")
+            throw CollectorError.missingCredentials(CredentialProblem("MiMo", .sessionExpiredLogInAgain))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "MiMo")
@@ -161,7 +160,7 @@ public struct MiMoCollector: ProviderCollector, Sendable {
         catch { throw CollectorError.parseFailed("MiMo: \(error.localizedDescription)") }
         guard resp.code == 0 else {
             if resp.code == 401 || resp.code == 403 {
-                throw CollectorError.missingCredentials("MiMo: session expired (log in again)")
+                throw CollectorError.missingCredentials(CredentialProblem("MiMo", .sessionExpiredLogInAgain))
             }
             throw CollectorError.parseFailed("MiMo: code \(resp.code)")
         }

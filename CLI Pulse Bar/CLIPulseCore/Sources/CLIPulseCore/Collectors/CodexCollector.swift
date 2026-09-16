@@ -31,7 +31,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard var auth = readAuthFile(), let accessToken = auth.accessToken else {
-            throw CollectorError.missingCredentials("Codex auth.json not found or has no access token")
+            throw CollectorError.missingCredentials(CredentialProblem(nil, .authFileMissingAccessToken("Codex")))
         }
 
         // Refresh token if stale (>8 days since last refresh)
@@ -44,7 +44,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
         }
 
         guard let currentToken = auth.accessToken else {
-            throw CollectorError.missingCredentials("Codex access token became nil after refresh")
+            throw CollectorError.missingCredentials(CredentialProblem(nil, .accessTokenNilAfterRefresh("Codex")))
         }
         let usageData = try await fetchUsage(accessToken: currentToken, accountId: auth.accountId)
         return buildResult(usage: usageData)
@@ -219,7 +219,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     private func refreshTokens(auth: CodexAuth) async throws -> CodexAuth {
         guard let refreshToken = auth.refreshToken else {
-            throw CollectorError.missingCredentials("Codex: no refresh token")
+            throw CollectorError.missingCredentials(CredentialProblem("Codex", .noRefreshToken))
         }
         guard let url = URL(string: Self.refreshURL) else {
             throw CollectorError.invalidURL(Self.refreshURL)

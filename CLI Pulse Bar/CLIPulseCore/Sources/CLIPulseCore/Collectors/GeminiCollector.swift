@@ -118,7 +118,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             // constructed) unless explicitly opted in; any probe error
             // is swallowed so this throw path stays byte-identical.
             if let probed = await probeFallbackResult(config: config) { return probed }
-            throw CollectorError.missingCredentials("Gemini: no credentials found")
+            throw CollectorError.missingCredentials(CredentialProblem("Gemini", .noCredentials))
         }
 
         // Resolve a usable (valid or just-refreshed) token, falling through
@@ -152,9 +152,9 @@ public struct GeminiCollector: ProviderCollector, Sendable {
                     source: primary,
                     accountID: config.accountID
                 )
-                throw CollectorError.missingCredentials("Gemini: token expired — reconnect via CLI Pulse OAuth")
+                throw CollectorError.missingCredentials(CredentialProblem("Gemini", .tokenExpiredReconnectOAuth))
             } else {
-                throw CollectorError.silentBackoff("Gemini: token expired (silenced for 15min after first error)")
+                throw CollectorError.silentBackoff(CredentialProblem("Gemini", .tokenExpiredSilenced("15")))
             }
         }
         // Reset backoff on successful token use. Clear the primary source too
@@ -445,7 +445,7 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     /// but no new refresh_token, so the existing refresh_token is preserved.
     private func refreshViaGoogle(creds: GeminiCreds, clientId: String, clientSecret: String) async throws -> GeminiCreds {
         guard let rt = creds.refreshToken, !rt.isEmpty else {
-            throw CollectorError.missingCredentials("Gemini: token expired, no refresh_token available")
+            throw CollectorError.missingCredentials(CredentialProblem("Gemini", .tokenExpiredNoRefreshToken))
         }
         guard let url = URL(string: "https://oauth2.googleapis.com/token") else {
             throw CollectorError.invalidURL("oauth token endpoint")

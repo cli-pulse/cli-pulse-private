@@ -226,7 +226,7 @@ final class CollectorRunnerTests: XCTestCase {
     // MARK: - failure categories
 
     func testAuthFailuresAreDistinguishedFromGenericHTTP() {
-        XCTAssertEqual(CollectorFailureCategory.categorize(CollectorError.notSignedIn("x")), .auth)
+        XCTAssertEqual(CollectorFailureCategory.categorize(CollectorError.notSignedIn(CredentialProblem(nil, .sessionRejected))), .auth)
         XCTAssertEqual(
             CollectorFailureCategory.categorize(CollectorError.httpError(status: 401, provider: "x")), .auth,
             "401 is 'sign in again', not a generic upstream error"

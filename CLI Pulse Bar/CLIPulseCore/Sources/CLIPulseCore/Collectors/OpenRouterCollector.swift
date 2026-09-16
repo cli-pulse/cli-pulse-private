@@ -18,7 +18,7 @@ public struct OpenRouterCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let apiKey = config.apiKey, !apiKey.isEmpty else {
-            throw CollectorError.missingCredentials("OpenRouter API key not configured")
+            throw CollectorError.missingCredentials(CredentialProblem(nil, .apiKeyNotConfigured("OpenRouter")))
         }
 
         let baseURL = ProcessInfo.processInfo.environment["OPENROUTER_API_URL"]
@@ -173,7 +173,7 @@ public struct OpenRouterCollector: ProviderCollector, Sendable {
 // MARK: - Collector errors
 
 public enum CollectorError: LocalizedError, Sendable {
-    case missingCredentials(String)
+    case missingCredentials(CredentialProblem)
     case invalidURL(String)
     case httpError(status: Int, provider: String)
     case parseFailed(String)
@@ -181,24 +181,43 @@ public enum CollectorError: LocalizedError, Sendable {
     /// (HTTP 401/403) — e.g. an expired browser session cookie. Distinct from
     /// `missingCredentials` (nothing to send) and `httpError` (generic) so the
     /// UI can tell the user to sign in again rather than showing a raw status.
-    case notSignedIn(String)
+    case notSignedIn(CredentialProblem)
     /// v1.16 §2.2: error that should be skipped silently by the
     /// collector dispatcher (no error log) — used for repeated OAuth
     /// refresh failures that fire every collector tick once a refresh
     /// token has expired. The first failure logs normally; subsequent
     /// failures within the backoff window (1h) throw this case so the
     /// dispatcher knows not to spam.
-    case silentBackoff(String)
+    case silentBackoff(CredentialProblem)
 
     public var errorDescription: String? {
         switch self {
-        case .missingCredentials(let msg): return msg
+        case .missingCredentials(let problem): return problem.localizedText
         case .invalidURL(let url): return L10n.collectorError.invalidURL(url)
         case .httpError(let status, let provider): return L10n.collectorError.httpStatus(provider, status)
         case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg)
-        case .notSignedIn(let msg): return msg
-        case .silentBackoff(let msg): return msg
+        case .notSignedIn(let problem): return problem.localizedText
+        case .silentBackoff(let problem): return problem.localizedText
         }
+    }
+
+    /// English, for log lines. `localizedDescription` follows the UI language, and a
+    /// log written in Chinese on one Mac cannot be grepped against one written in
+    /// English on another.
+    public var logText: String {
+        switch self {
+        case .missingCredentials(let problem), .notSignedIn(let problem), .silentBackoff(let problem):
+            return problem.englishText
+        case .invalidURL(let url): return L10n.collectorError.invalidURL(url, english: true)
+        case .httpError(let status, let provider): return L10n.collectorError.httpStatus(provider, status, english: true)
+        case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg, english: true)
+        }
+    }
+
+    /// English text for any error bound for a log: a `CollectorError`'s own
+    /// `logText`, otherwise the error's description.
+    public static func logText(for error: Error) -> String {
+        (error as? CollectorError)?.logText ?? error.localizedDescription
     }
 
     /// True if this error indicates "skip silently this tick".

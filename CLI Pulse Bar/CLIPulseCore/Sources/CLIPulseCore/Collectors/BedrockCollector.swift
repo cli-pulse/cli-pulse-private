@@ -70,8 +70,7 @@ public struct BedrockCollector: ProviderCollector, Sendable {
 
     public func collect(config _: ProviderConfig) async throws -> CollectorResult {
         guard let creds = Self.creds() else {
-            throw CollectorError.missingCredentials(
-                "AWS Bedrock: set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY")
+            throw CollectorError.missingCredentials(CredentialProblem("AWS Bedrock", .setEnvPair("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY")))
         }
         // Serve from the 12h cache when fresh — Cost Explorer bills per call.
         if let cached = await Self.cache.value(maxAge: Self.cacheTTL) {
@@ -165,7 +164,7 @@ public struct BedrockCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("AWS Bedrock: credentials rejected by Cost Explorer")
+            throw CollectorError.missingCredentials(CredentialProblem("AWS Bedrock", .credentialsRejectedBy("Cost Explorer")))
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "AWS Bedrock") }
         return data

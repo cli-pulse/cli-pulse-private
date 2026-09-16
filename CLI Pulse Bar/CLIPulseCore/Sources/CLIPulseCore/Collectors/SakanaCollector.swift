@@ -58,7 +58,7 @@ public struct SakanaCollector: ProviderCollector, Sendable {
             config: config, envVarNames: Self.envVars, domains: Self.cookieDomains,
             knownSessionCookieNames: [])
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Sakana AI: no session cookie")
+            throw CollectorError.missingCredentials(CredentialProblem("Sakana AI", .noSessionCookie))
         }
         let html = try await Self.fetchHTML(url: Self.billingURL, cookie: cookie)
         var snapshot = try Self.parseBillingHTML(html)
@@ -89,12 +89,12 @@ public struct SakanaCollector: ProviderCollector, Sendable {
         let http = response as? HTTPURLResponse
         let status = http?.statusCode ?? 0
         if status == 401 || status == 403 || (300..<400).contains(status) {
-            throw CollectorError.notSignedIn("Sakana AI: login required")
+            throw CollectorError.notSignedIn(CredentialProblem("Sakana AI", .loginRequired))
         }
         // Reject a redirect to a different origin (auth wall on another host).
         guard http?.url?.scheme?.lowercased() == "https",
               http?.url?.host?.lowercased() == Self.host else {
-            throw CollectorError.notSignedIn("Sakana AI: login required")
+            throw CollectorError.notSignedIn(CredentialProblem("Sakana AI", .loginRequired))
         }
         guard status == 200 else { throw CollectorError.httpError(status: status, provider: "Sakana AI") }
         guard let html = String(data: data, encoding: .utf8), !html.isEmpty else {

@@ -26,7 +26,7 @@ public struct AugmentCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains
         )
         guard let cookie = resolution.headerValue else {
-            throw CollectorError.missingCredentials("Augment: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("Augment", .noSessionCookieImportable))
         }
         let creditsData = try await fetchEndpoint(path: "/api/credits", cookie: cookie)
         let credits = try AugmentCollector.parseCredits(creditsData)

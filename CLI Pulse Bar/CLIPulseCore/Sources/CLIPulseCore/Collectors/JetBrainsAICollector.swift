@@ -16,7 +16,7 @@ public struct JetBrainsAICollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard let path = findQuotaFile() else {
-            throw CollectorError.missingCredentials("JetBrains AI: no AIAssistantQuotaManager2.xml found")
+            throw CollectorError.missingCredentials(CredentialProblem("JetBrains AI", .noFileFound("AIAssistantQuotaManager2.xml")))
         }
 
         let xmlString = try String(contentsOfFile: path, encoding: .utf8)

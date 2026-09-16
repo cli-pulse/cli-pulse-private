@@ -79,11 +79,11 @@ public struct StepFunCollector: ProviderCollector, Sendable {
             domains: Self.cookieDomains,
             knownSessionCookieNames: Self.knownSessionNames)
         guard let header = resolution.headerValue else {
-            throw CollectorError.missingCredentials("StepFun: no session cookie (manual or auto-import)")
+            throw CollectorError.missingCredentials(CredentialProblem("StepFun", .noSessionCookieImportable))
         }
         let (token, webidFromCookie) = Self.cookieTokens(fromHeader: header)
         guard let token else {
-            throw CollectorError.missingCredentials("StepFun: cookie has no Oasis-Token")
+            throw CollectorError.missingCredentials(CredentialProblem("StepFun", .cookieMissingField("Oasis-Token")))
         }
         let webid = webidFromCookie ?? Self.fallbackWebID
 
@@ -168,7 +168,7 @@ public struct StepFunCollector: ProviderCollector, Sendable {
         let (data, response) = try await URLSession.shared.data(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         if status == 401 || status == 403 {
-            throw CollectorError.missingCredentials("StepFun: session expired or unauthorized")
+            throw CollectorError.missingCredentials(CredentialProblem("StepFun", .sessionExpiredOrUnauthorized))
         }
         guard status == 200 else {
             throw CollectorError.httpError(status: status, provider: "StepFun")

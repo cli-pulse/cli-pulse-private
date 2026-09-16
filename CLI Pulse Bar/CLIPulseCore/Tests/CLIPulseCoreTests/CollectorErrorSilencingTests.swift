@@ -70,7 +70,7 @@ final class CollectorErrorSilencingTests: XCTestCase {
 
     func testTheSilentBackoffCaseStillWinsForEveryProvider() {
         XCTAssertTrue(DataRefreshManager.shouldSilenceCollectorError(
-            kind: .gemini, error: CollectorError.silentBackoff("refresh token expired")))
+            kind: .gemini, error: CollectorError.silentBackoff(CredentialProblem("Gemini", .tokenExpiredSilenced("15")))))
     }
 }
 #endif
