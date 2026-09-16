@@ -21,6 +21,7 @@ import com.clipulse.android.ui.theme.PulseSuccess
 import com.clipulse.android.ui.navigation.LocalSnackbarHostState
 import com.clipulse.android.ui.theme.providerColor
 import com.clipulse.android.ui.common.text
+import com.clipulse.android.ui.common.quotaTierLabel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -177,7 +178,7 @@ private fun TierRow(tier: TierDTO) {
 
     UsageBar(
         remainingPercent = remainingPct,
-        label = tier.name,
+        label = quotaTierLabel(tier.name),
         trailingText = trailing,
     )
 }

@@ -16,6 +16,7 @@ import com.clipulse.android.R
 import com.clipulse.android.data.model.ProviderUsage
 import com.clipulse.android.ui.components.*
 import com.clipulse.android.ui.theme.providerColor
+import com.clipulse.android.ui.common.quotaTierLabel
 
 /**
  * Navigation entry point — loads the provider from ViewModel state by name.
@@ -137,7 +138,7 @@ fun ProviderDetailScreen(
                             }
                             UsageBar(
                                 remainingPercent = remainPct,
-                                label = tier.name,
+                                label = quotaTierLabel(tier.name),
                                 trailingText = trailing,
                             )
                             Spacer(Modifier.height(12.dp))

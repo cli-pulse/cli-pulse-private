@@ -50,6 +50,17 @@ expect() {  # expect <want-exit> <name>
   rm -rf "$T"
 }
 
+# An Android tree, fully wired for "Weekly": the mapper entry and the string in all six files.
+android_tree() {
+  local m="$T/android/app/src/main/java/com/clipulse/android/ui/common"
+  mkdir -p "$m"
+  printf '%s\n' 'object QuotaTierDisplay { private val LABELS = mapOf("weekly" to R.string.quota_tier_weekly) }' > "$m/QuotaTierDisplay.kt"
+  for d in values values-es values-ja values-ko values-zh-rCN values-zh-rTW; do
+    mkdir -p "$T/android/app/src/main/res/$d"
+    printf '%s\n' '<resources><string name="quota_tier_weekly">W</string></resources>' > "$T/android/app/src/main/res/$d/strings.xml"
+  done
+}
+
 echo "check_quota_tier_names negative controls"
 
 new_tree
@@ -130,6 +141,18 @@ expect 1 "a composed_at_runtime entry FAILS once its expression is gone"
 
 new_tree; manifest '{"entries":[{"name":"Weekly","display":"TRANSLATE","l10n_key":"quota_tier.weekly","reason":"a generic time window this app composed, emitted by nine unrelated collectors"},{"name":"CNY Balance","display":"PASSTHROUGH","reason":"a currency code, and not a closed literal: the collector interpolates the currency","composed_at_runtime":true}]}'
 expect 1 "composed_at_runtime without composed_from fails"
+
+new_tree; android_tree
+expect 0 "android: a fully wired TRANSLATE name passes"
+
+new_tree; android_tree; printf '%s\n' '<resources></resources>' > "$T/android/app/src/main/res/values-ja/strings.xml"
+expect 1 "android: a TRANSLATE name missing from one strings.xml fails"
+
+new_tree; android_tree; printf '%s\n' 'object QuotaTierDisplay { private val LABELS = mapOf<String, Int>() }' > "$T/android/app/src/main/java/com/clipulse/android/ui/common/QuotaTierDisplay.kt"
+expect 1 "android: a TRANSLATE name with no mapper entry fails"
+
+new_tree; android_tree; rm "$T/android/app/src/main/java/com/clipulse/android/ui/common/QuotaTierDisplay.kt"
+expect 1 "android: a missing mapper fails"
 
 echo "check_quota_tier_names negative controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

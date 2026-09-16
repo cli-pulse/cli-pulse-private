@@ -31,7 +31,8 @@ WHAT IT CHECKS
   2. every name the scanner finds is in the manifest   — a new collector's tier
      name FAILS until someone decides how to show it;
   3. every TRANSLATE name has its `L10n.quotaTier` accessor AND a value in all
-     six .lproj catalogues                             — a half-done
+     six .lproj catalogues, and on Android an entry in `QuotaTierDisplay` AND a
+     value in all six strings.xml                     — a half-done
      translation FAILS instead of silently rendering English;
   4. every entry carries a real reason, and no name is classified twice.
 
@@ -96,6 +97,10 @@ NOT_A_TIER_NAME = re.compile(
     r"|^MacBook Pro$"
     r"|^(?:Dashboard metrics pass|Helper heartbeat monitor|Provider adapter review|Session error triage)$"
 )
+
+ANDROID_RES = "android/app/src/main/res"
+ANDROID_DIRS = ["values", "values-es", "values-ja", "values-ko", "values-zh-rCN", "values-zh-rTW"]
+ANDROID_MAPPER = "android/app/src/main/java/com/clipulse/android/ui/common/QuotaTierDisplay.kt"
 
 BOILERPLATE_REASON = re.compile(r"^(?:todo|tbd|n/?a|\?+|fixme|-+|because|reason)?$", re.I)
 
@@ -276,6 +281,26 @@ def main() -> None:
         for loc in LOCALES:
             if key not in cats[loc]:
                 errors.append(f'"{name}": {key} missing from {loc}.lproj')
+
+    # 3b. ...and the same on Android, where the resource name is the key with `_`.
+    if (root / ANDROID_RES).is_dir():
+        mapper_path = root / ANDROID_MAPPER
+        mapper = mapper_path.read_text(encoding="utf-8") if mapper_path.exists() else ""
+        if not mapper:
+            errors.append(f"{ANDROID_MAPPER} is missing, so every tier name renders English on Android")
+        android = {d: set(re.findall(r'<string\s+name="([^"]+)"',
+                                     (root / ANDROID_RES / d / "strings.xml").read_text(encoding="utf-8")))
+                   if (root / ANDROID_RES / d / "strings.xml").exists() else set()
+                   for d in ANDROID_DIRS}
+        for name, e in sorted(seen.items()):
+            if e.get("display") != "TRANSLATE":
+                continue
+            res = e["l10n_key"].replace(".", "_")
+            if mapper and f'"{name.lower()}" to R.string.{res}' not in mapper:
+                errors.append(f'"{name}": QuotaTierDisplay has no "{name.lower()}" to R.string.{res}, so Android renders English')
+            for d in ANDROID_DIRS:
+                if res not in android[d]:
+                    errors.append(f'"{name}": {res} missing from {d}/strings.xml')
 
     if errors:
         fail(errors)
