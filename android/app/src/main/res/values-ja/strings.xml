@@ -208,7 +208,9 @@
     <string name="card_power_w">%1$.1f W</string>
     <string name="card_battery_charge">充電 %1$d%%</string>
     <string name="card_battery_health">状態 %1$d%%</string>
-    <string name="card_battery_cycles">%1$d 回</string>
+    <plurals name="card_battery_cycles">
+        <item quantity="other">%d 回</item>
+    </plurals>
     <string name="thermal_nominal">正常</string>
     <string name="thermal_fair">注意</string>
     <string name="thermal_serious">警告</string>

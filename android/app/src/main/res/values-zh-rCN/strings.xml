@@ -28,7 +28,7 @@
 
     <!-- Settings -->
     <string name="settings_account">账户</string>
-    <string name="settings_tier">等级: %1$s</string>
+    <string name="settings_tier">等级：%1$s</string>
     <string name="settings_subscription">订阅</string>
     <string name="settings_devices">设备</string>
     <string name="settings_notifications">通知</string>
@@ -129,7 +129,7 @@
 
     <!-- 告警操作 -->
     <string name="alert_action_ack">确认</string>
-    <string name="alert_action_resolve">已解决</string>
+    <string name="alert_action_resolve">解决</string>
     <string name="alert_action_snooze">稍后提醒</string>
     <string name="alert_action_snooze_duration_1h">1 小时</string>
 
@@ -207,10 +207,12 @@
     <string name="card_power_w">%1$.1f W</string>
     <string name="card_battery_charge">电量 %1$d%%</string>
     <string name="card_battery_health">健康度 %1$d%%</string>
-    <string name="card_battery_cycles">%1$d 次循环</string>
+    <plurals name="card_battery_cycles">
+        <item quantity="other">%d 次循环</item>
+    </plurals>
     <string name="thermal_nominal">正常</string>
     <string name="thermal_fair">一般</string>
     <string name="thermal_serious">偏高</string>
     <string name="thermal_critical">严重</string>
-    <string name="subscription_unavailable_android">目前 Android 上不提供订阅。这个 app 里没有任何功能被锁住,现在就可以全部使用。</string>
+    <string name="subscription_unavailable_android">目前 Android 上不提供订阅。这个 app 里没有任何功能被锁住，现在就可以全部使用。</string>
 </resources>
