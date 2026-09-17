@@ -15,6 +15,11 @@ import Foundation
 /// rows byte-identical. LEFT is derived from USED, never rounded on its own, so
 /// the two always add up to 100 on a window that is not over its quota.
 ///
+/// Every screen that shows a window's percentage takes it from here: the
+/// provider cards, the Mac menu bar, the Watch, the widgets and Siri.
+/// `QuotaPercentTests.test_noScreenWorksOutAQuotaPercentageOnItsOwn` fails on
+/// one that scales a fraction or count by 100 itself.
+///
 /// THE EDGES
 /// * More remaining than the quota is 0% used and 100% left.
 /// * Less than nothing remaining is over quota. USED keeps the overage ("120%

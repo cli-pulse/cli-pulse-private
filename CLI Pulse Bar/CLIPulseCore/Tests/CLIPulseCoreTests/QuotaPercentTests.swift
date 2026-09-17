@@ -100,4 +100,59 @@ final class QuotaPercentTests: XCTestCase {
             XCTAssertTrue(body.contains("L10n.watch.percentLeft(percent.left)"), "\(path): \(body)")
         }
     }
+
+    /// The rule only holds if nothing works a window's percentage out again.
+    /// After the tier rows moved to `QuotaPercent`, the Mac menu bar still
+    /// showed "7%" for a window the alert called 8% remaining, Siri said 7%,
+    /// the lock-screen and home-screen widgets truncated used (92 beside an
+    /// alert at 93), and the medium widget's rows and the Mac's most-constrained
+    /// account rounded left on their own (43 where the tier row said 42).
+    ///
+    /// Most of those surfaces are in app and extension targets `swift test` does
+    /// not build, so this reads their source: a quota fraction or count scaled
+    /// by 100 by hand is the pattern every one of them used.
+    func test_noScreenWorksOutAQuotaPercentageOnItsOwn() throws {
+        let apps = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()    // …/Tests/CLIPulseCoreTests
+            .deletingLastPathComponent()    // …/Tests
+            .deletingLastPathComponent()    // …/CLIPulseCore
+            .deletingLastPathComponent()    // …/CLI Pulse Bar
+        let scanned = ["CLI Pulse Bar", "CLI Pulse Bar iOS", "CLI Pulse Bar Watch", "CLI Pulse Widgets",
+                       "CLIPulseCore/Sources/CLIPulseCore"]
+        let handMade = try NSRegularExpression(pattern:
+            #"(?i)(usage|used|remaining|left|fraction|percent)\w*\)?\s*\*\s*100\b"# + "|" +
+            #"\b100(\.0)?\s*\*\s*\(?\s*(Double\()?\s*(remaining|used|usage|quota)"#)
+        // Lines that scale by 100 for something other than showing a window's
+        // used or left percentage.
+        let notAWindowsPercentage: [(file: String, line: String, why: String)] = [
+            ("QuotaPercent.swift", "", "the rule itself"),
+            ("ProviderUsage+Pace.swift", "usedPercent: usagePercent * 100", "a Double for the pace engine, never shown"),
+            ("DemoDataProvider.swift", "remaining * 100 < quota * lowQuotaPercent", "which demo windows count as low"),
+            ("CostCoverage.swift", "Int((fraction * 100).rounded(.down))", "the share of tokens priced, not a quota"),
+        ]
+        var offenders: [String] = []
+        var files = 0
+        for directory in scanned {
+            let root = apps.appending(path: directory)
+            let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil), directory)
+            for case let url as URL in walker {
+                // Collectors produce stored status text; their numbers are data, not display.
+                if url.pathComponents.contains("Collectors") || url.pathComponents.contains(".build") { continue }
+                guard url.pathExtension == "swift" else { continue }
+                files += 1
+                let source = try String(contentsOf: url, encoding: .utf8)
+                for (number, line) in source.components(separatedBy: "\n").enumerated() {
+                    let code = line.trimmingCharacters(in: .whitespaces)
+                    if code.hasPrefix("//") { continue }
+                    guard handMade.firstMatch(in: line, range: NSRange(line.startIndex..., in: line)) != nil else { continue }
+                    if notAWindowsPercentage.contains(where: { url.lastPathComponent == $0.file && ($0.line.isEmpty || code.contains($0.line)) }) {
+                        continue
+                    }
+                    offenders.append("\(directory)/…/\(url.lastPathComponent):\(number + 1): \(code)")
+                }
+            }
+        }
+        XCTAssertGreaterThan(files, 200, "control: the scan found the app sources")
+        XCTAssertEqual(offenders, [], "use QuotaPercent.usedAndLeft instead:\n" + offenders.joined(separator: "\n"))
+    }
 }

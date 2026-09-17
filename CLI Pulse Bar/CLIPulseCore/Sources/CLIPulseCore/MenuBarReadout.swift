@@ -42,7 +42,10 @@ public enum MenuBarReadout: Equatable, Sendable {
         switch mode {
         case .percent:
             if let top = mostUsedProvider, top.usagePercent > 0 {
-                return .percentLeft(provider: top.provider, percent: Int((1.0 - top.usagePercent) * 100))
+                // The quota alert's rule, so "8%" here is its "(8% remaining)".
+                return .percentLeft(
+                    provider: top.provider,
+                    percent: QuotaPercent.usedAndLeft(usedFraction: top.usagePercent).left)
             }
             return .empty
         case .mostUsed:
@@ -61,10 +64,10 @@ public enum MenuBarReadout: Equatable, Sendable {
                     summary: L10n.usagePace.summaryLeftOnly(detail.leftLabel))
             }
             if top.usagePercent > 0 {
-                // Half-to-even, as the `String(format: "%.0f%%")` this replaced.
+                // The quota alert's rule, so "93%" here is its "at 93%".
                 return .percentUsed(
                     provider: top.provider,
-                    percent: Int((top.usagePercent * 100).rounded(.toNearestOrEven)))
+                    percent: QuotaPercent.usedAndLeft(usedFraction: top.usagePercent).used)
             }
             return .empty
         case .icon:

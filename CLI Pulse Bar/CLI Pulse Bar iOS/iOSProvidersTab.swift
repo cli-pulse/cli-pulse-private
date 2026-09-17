@@ -489,7 +489,7 @@ struct iOSEnhancedProviderCard: View {
             )
         }
         if let quota = provider.quota, quota > 0 {
-            let pct = Int(round(provider.usagePercent * 100))
+            let pct = QuotaPercent.usedAndLeft(usedFraction: provider.usagePercent).used
             parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")

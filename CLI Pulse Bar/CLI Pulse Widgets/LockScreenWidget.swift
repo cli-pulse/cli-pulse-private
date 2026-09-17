@@ -81,7 +81,8 @@ struct LockScreenWidgetView: View {
     private var circularView: some View {
         let topProvider = entry.data.providers.first
         let percent = topProvider?.usagePercent ?? 0
-        let usedPercent = Int(percent * 100)
+        // The quota alert's rule: "93" for a window its alert calls 93%.
+        let usedPercent = QuotaPercent.usedAndLeft(usedFraction: percent).used
 
         return ZStack {
             AccessoryWidgetBackground()
@@ -120,7 +121,7 @@ struct LockScreenWidgetView: View {
                     .font(.caption2)
             } else {
                 ForEach(providers) { p in
-                    let usedPercent = Int(p.usagePercent * 100)
+                    let usedPercent = QuotaPercent.usedAndLeft(usedFraction: p.usagePercent).used
                     HStack(spacing: 4) {
                         Text(p.name)
                             .font(.caption2)
@@ -146,7 +147,7 @@ struct LockScreenWidgetView: View {
 
     private var inlineView: some View {
         let topProvider = entry.data.providers.first
-        let percent = topProvider.map { Int($0.usagePercent * 100) } ?? 0
+        let percent = topProvider.map { QuotaPercent.usedAndLeft(usedFraction: $0.usagePercent).used } ?? 0
         let name = topProvider?.name ?? L10n.auth.title
 
         return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.data.activeSessions))")

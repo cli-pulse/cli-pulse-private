@@ -253,7 +253,11 @@ struct ProviderAccountQuotaSummaryView: View {
                     Text(
                         "\(accountDisplayLabel(for: mostConstrained.id)) · "
                         + L10n.providers.remainingPercent(
-                            Int((fraction * 100).rounded())
+                            // The tier rows' rule, so this is the "42% left"
+                            // they show for the same window, not 43.
+                            QuotaPercent.usedAndLeft(
+                                usedFraction: 1 - fraction
+                            ).left
                         )
                     )
                     .font(.caption2)
@@ -873,7 +877,7 @@ struct EnhancedProviderCard: View {
         parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
         parts.append(L10n.providers.localizedStatusText(provider.status_text))
         if let quota = provider.quota, quota > 0 {
-            let pct = Int(round(provider.usagePercent * 100))
+            let pct = QuotaPercent.usedAndLeft(usedFraction: provider.usagePercent).used
             parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
