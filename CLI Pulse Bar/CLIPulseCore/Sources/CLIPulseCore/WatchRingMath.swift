@@ -15,7 +15,7 @@ public struct WatchProviderQuotaSnapshot:
     public var id: String { provider.id }
     public var usagePercent: Double { 1 - remainingFraction }
     public var remainingPercent: Int {
-        Int(remainingFraction * 100)
+        WatchRingMath.remainingPercentInt(remainingFraction: remainingFraction)
     }
 
     public init(
@@ -73,11 +73,24 @@ public enum WatchRingMath {
     }
 
     /// Remaining percent as an integer `0...100` for the ring centre
-    /// label ("38%"). Uses the same rounding as the complication
-    /// (`Int(remaining * 100)`, i.e. truncation) so the two surfaces
-    /// always show the identical number for the same provider.
+    /// label ("38%").
+    ///
+    /// Every "% left" on the Watch and the lock-screen complication comes
+    /// through these three functions, which all use `QuotaPercent`: used is
+    /// rounded and left is what remains of 100. That is the rule the quota
+    /// alert and the iPhone and Mac provider cards read the same window with.
+    /// These used to truncate left instead, which kept the ring and the
+    /// complication in step with each other but not with the alert the Watch
+    /// shows on its own Alerts page: "7% left" beside "(8% remaining)" for a
+    /// window 92.1% used.
     public static func remainingPercentInt(usagePercent: Double) -> Int {
-        Int(remainingFraction(usagePercent: usagePercent) * 100)
+        QuotaPercent.usedAndLeft(usedFraction: usagePercent).left
+    }
+
+    /// `remainingPercentInt(usagePercent:)` for a surface that holds the
+    /// remaining fraction instead.
+    public static func remainingPercentInt(remainingFraction: Double) -> Int {
+        QuotaPercent.usedAndLeft(usedFraction: 1 - remainingFraction).left
     }
 
     // MARK: - Per-tier math (5h / Weekly / model windows)
@@ -100,8 +113,10 @@ public enum WatchRingMath {
     }
 
     /// Remaining percent `0...100` for a quota/remaining pair (bar label).
+    /// Straight from the counts, so it is exactly the number the iPhone and
+    /// Mac tier rows and the quota alert print for the same window.
     public static func remainingPercentInt(quota: Int, remaining: Int) -> Int {
-        Int(remainingFraction(quota: quota, remaining: remaining) * 100)
+        QuotaPercent.usedAndLeft(quota: quota, remaining: remaining)?.left ?? 0
     }
 
     // MARK: - Account-aware quota snapshots
