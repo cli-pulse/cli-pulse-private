@@ -20,6 +20,34 @@ import XCTest
 /// on 2026-08-30 against the real catalogues (670 misses across es/ja/ko/zh-Hant),
 /// and on 2026-09-17 against the synthetic catalogue, once the real ones reached
 /// parity and the sweep could no longer reach the fallback.
+/// Looks a key up in ONE locale's catalogue, with the English fallback switched
+/// off.
+///
+/// Through the production path, a key a non-English locale lacks — or a whole
+/// catalogue that fails to load — resolves to the English copy, which is never
+/// the key. So "resolve(key) != key" can only ever fail for en, and every test
+/// that looped over the six locales asserting it ("\(locale) is missing …") was
+/// green for es/ja/ko/zh whatever their catalogues held. Asking one catalogue
+/// with `english: nil` is the question those tests meant to ask.
+enum LocaleCatalogueProbe {
+    /// The locale's own value for `key`, or nil when that catalogue does not
+    /// carry it (or did not load).
+    static func ownValue(_ key: String, in localization: String) -> String? {
+        guard let bundle = LocaleOverrideStore.bundle(forLocalization: localization) else { return nil }
+        return ownValue(key, in: bundle)
+    }
+
+    static func ownValue(_ key: String, in bundle: Bundle) -> String? {
+        let value = L10n.resolve(key, active: bundle, english: nil)
+        return value == key ? nil : value
+    }
+
+    /// The keys of `keys` that `localization` does not carry itself.
+    static func missing(_ keys: [String], in localization: String) -> [String] {
+        keys.filter { ownValue($0, in: localization) == nil }
+    }
+}
+
 final class L10nFallbackTests: XCTestCase {
 
     /// Every shipped `.lproj`. The store's list, not a copy of it:
@@ -87,19 +115,78 @@ final class L10nFallbackTests: XCTestCase {
         )
     }
 
-    /// Guards the sweep against passing vacuously. If the base catalogue
-    /// stopped loading, or the override never took effect, `resolve` would
-    /// return English for everything and the sweep above would be green for
-    /// the wrong reason.
+    /// What the sweep above cannot see. It asks "does any key render as its
+    /// identifier?", and outside en the English fallback answers no for a key the
+    /// locale lacks and for a catalogue that does not load at all. This asks each
+    /// locale's own catalogue, without the fallback, for every base key — and
+    /// compares the declared key sets both ways, so an extra key fails too.
+    func test_everyShippedLocaleCarriesEveryBaseKeyItself() throws {
+        let baseKeys = try declaredKeys(in: "en")
+        XCTAssertGreaterThan(baseKeys.count, 1000, "en.lproj is not the real catalogue")
+
+        var report: [String] = []
+        for locale in Self.shippedLocales where locale != "en" {
+            let declared = try declaredKeys(in: locale)
+            let absent = baseKeys.subtracting(declared).sorted()
+            let extra = declared.subtracting(baseKeys).sorted()
+            let unresolved = LocaleCatalogueProbe.missing(baseKeys.sorted(), in: locale)
+            if !absent.isEmpty {
+                report.append("\(locale): declares \(absent.count) fewer key(s) than en — \(absent.prefix(5).joined(separator: ", "))")
+            }
+            if !extra.isEmpty {
+                report.append("\(locale): declares \(extra.count) key(s) en does not — \(extra.prefix(5).joined(separator: ", "))")
+            }
+            if !unresolved.isEmpty {
+                report.append("\(locale): its own catalogue does not resolve \(unresolved.count) base key(s) — "
+                              + unresolved.prefix(5).joined(separator: ", "))
+            }
+        }
+        XCTAssertTrue(report.isEmpty, "A locale is showing English where it should carry its own copy:\n"
+                      + report.joined(separator: "\n"))
+    }
+
+    /// Guards the sweeps against passing vacuously. If a catalogue stopped
+    /// loading, or the override never took effect, `resolve` would return
+    /// English and the sweep above would be green for the wrong reason. Every
+    /// non-English locale, not only zh-Hans: each has its own `.lproj` to lose.
     func test_localeOverrideActuallySwitchesCatalogue() throws {
         LocaleOverrideStore.shared.set("en")
         let english = L10n.resolve("tab.overview")
-        LocaleOverrideStore.shared.set("zh-Hans")
-        let chinese = L10n.resolve("tab.overview")
-
         XCTAssertEqual(english, "Overview")
-        XCTAssertNotEqual(chinese, english, "the locale override did not swap the catalogue")
-        XCTAssertNotEqual(chinese, "tab.overview")
+
+        for locale in Self.shippedLocales where locale != "en" {
+            LocaleOverrideStore.shared.set(locale)
+            let shown = L10n.resolve("tab.overview")
+            let own = try XCTUnwrap(LocaleOverrideStore.bundle(forLocalization: locale)
+                                        .flatMap { LocaleCatalogueProbe.ownValue("tab.overview", in: $0) },
+                                    "\(locale).lproj does not carry tab.overview itself")
+            XCTAssertEqual(shown, own, "under \(locale) the override did not read \(locale).lproj")
+            XCTAssertNotEqual(shown, english, "the \(locale) override did not swap the catalogue")
+        }
+    }
+
+    /// Negative control for the two tests above, on catalogues this test writes.
+    /// A locale missing a key, and a locale whose file does not parse, both pass
+    /// the old "never renders a raw key" criterion through the fallback — and
+    /// the probe must report both.
+    func test_theProbeReportsWhatTheFallbackHides() throws {
+        let (english, spanish) = try makeCatalogues(
+            english: ["shared.title": "Shared", "only.english": "Only in English"],
+            spanish: ["shared.title": "Compartido"]
+        )
+        for key in ["shared.title", "only.english"] {
+            XCTAssertNotEqual(L10n.resolve(key, active: spanish, english: english), key,
+                              "precondition: through the fallback, nothing looks missing")
+        }
+        XCTAssertEqual(LocaleCatalogueProbe.ownValue("shared.title", in: spanish), "Compartido")
+        XCTAssertNil(LocaleCatalogueProbe.ownValue("only.english", in: spanish),
+                     "the probe fell back to English for a key the locale lacks")
+
+        let broken = try makeUnparseableCatalogue(#""shared.title" = "Compartido;"#)
+        XCTAssertNotEqual(L10n.resolve("shared.title", active: broken, english: english), "shared.title",
+                          "precondition: an unloadable catalogue still looks fine through the fallback")
+        XCTAssertNil(LocaleCatalogueProbe.ownValue("shared.title", in: broken),
+                     "the probe read a value out of a catalogue that does not parse")
     }
 
     /// Exercises the fallback branch directly and pins that the value handed back
@@ -136,6 +223,19 @@ final class L10nFallbackTests: XCTestCase {
         let rendered = String(format: format, 3, 6, "Your Coding Agents")
 
         XCTAssertEqual(rendered, "Step 3 of 6: Your Coding Agents")
+    }
+
+    /// A one-locale catalogue whose `Localizable.strings` is the given raw text.
+    private func makeUnparseableCatalogue(_ text: String) throws -> Bundle {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("L10nFallbackTests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("ko.lproj", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("Localizable.strings")
+        try text.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertNil(NSDictionary(contentsOf: file), "precondition: the planted catalogue must not parse")
+        return try XCTUnwrap(Bundle(path: dir.path), "could not open ko.lproj as a bundle")
     }
 
     /// Writes an `en.lproj` and an `es.lproj` into a temporary directory and opens

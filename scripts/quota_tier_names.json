@@ -223,6 +223,7 @@
    "l10n_key": "quota_tier.other_models",
    "reason": "Synthetic: the desktop's Gemini classify_model fallback bucket, invented when no model matched. No vendor supplies it and it means only \"everything else\", so it is passed through rather than given a translation that would imply a real bucket.",
    "producers": "Tauri desktop ONLY - gemini.rs classify_model's fallback bucket (the Swift and Python paths instead fall back to the raw model id).",
+   "produced_elsewhere": "cli-pulse-desktop src-tauri/src/quota/gemini.rs (classify_model fallback)",
    "scanner_blind_spot": true
   },
   {

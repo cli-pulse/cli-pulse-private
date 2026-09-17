@@ -119,6 +119,13 @@ jobs:
       # format arguments as English: a `%d` that became `%@` crashes
       # String(format:) in that one language, where English testing never looks.
       #
+      # Since 2026-09-17 it also checks what the English value and the CODE
+      # disagree on (an Int passed to a %@ changed in all six catalogues at once),
+      # expands keys composed from an enum's raw value, and covers the tables the
+      # iPhone app ships from its own bundle: their syntax, that every App Intents
+      # literal has its key, that Xcode's variant groups actually copy all six,
+      # and that every host Info.plist declares the six locales.
+      #
       # Path-blind for the usual reason: the PR most likely to add an
       # en-only key is a Swift PR that touches no `.strings` file at all.
       - run: python3 scripts/check_apple_strings_parity.py
@@ -186,6 +193,19 @@ jobs:
       # reason in scripts/collector_status_text_allowlist.json.
       - run: python3 scripts/check_collector_status_text.py
       - run: bash scripts/test_check_collector_status_text.sh
+
+      # Alert rows are stored in the producer's English and translated only when
+      # AlertPresentation recognises the template. The in-app generator is run
+      # through the matchers by AlertPresentationTests; the legacy Python helper
+      # cannot be, so its three templates were pinned only by strings copied into
+      # a test by hand, and rewording one left every suite green while those rows
+      # rendered English in every language. This reads the templates out of
+      # helper/system_collector.py, the matchers out of AlertPresentation.swift
+      # and the fixtures out of testPythonHelperTemplatesAreRecognized, and
+      # requires all three to agree. Path-blind: the PR that rewords a template
+      # touches only helper/**, which swift-ci does not run for.
+      - run: python3 scripts/check_alert_templates.py
+      - run: bash scripts/test_check_alert_templates.sh
 
       # The anonymous-telemetry switch defaults ON, which is only defensible
       # because the app states what it sends before it sends anything. So the

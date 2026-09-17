@@ -33,8 +33,13 @@ WHAT IT CHECKS
   3. every TRANSLATE name has its `L10n.quotaTier` accessor AND a value in all
      six .lproj catalogues, and on Android an entry in `QuotaTierDisplay` AND a
      value in all six strings.xml                     — a half-done
-     translation FAILS instead of silently rendering English;
-  4. every entry carries a real reason, and no name is classified twice.
+     translation FAILS instead of silently rendering English. On Apple the
+     `localized` switch is READ, not searched: it must be on
+     `raw.lowercased()`, every label lowercase, the name's label must return
+     the accessor whose tr() key is the manifest's `l10n_key`, and no label may
+     match a PASSTHROUGH name or no name at all;
+  4. every entry carries a real reason, and no name is classified twice — not
+     even in two capitalizations, since matching ignores case.
 
 THE SCANNER'S RECALL IS 82%, MEASURED — DO NOT READ IT AS COMPLETE
 Collectors rarely call `UsageTier(name:)` directly; most build tiers through a
@@ -128,7 +133,7 @@ def source_files(root: Path):
                 yield p
 
 
-def strip_line_comments(src: str) -> str:
+def strip_line_comments(src: str, hash_comments: bool = True) -> str:
     """Blank out `//` and `#` comment tails, keeping offsets so lines still map.
 
     A comment documenting an XML pattern — `// Pattern: <option name="quotaInfo"`
@@ -155,7 +160,7 @@ def strip_line_comments(src: str) -> str:
             out.append(c)
             i += 1
             continue
-        if src.startswith("//", i) or c == "#":
+        if src.startswith("//", i) or (hash_comments and c == "#"):
             j = src.find("\n", i)
             j = n if j == -1 else j
             out.append(" " * (j - i))
@@ -190,13 +195,70 @@ def scan_produced(root: Path) -> dict[str, str]:
     return found
 
 
+# Files that CONSUME tier names rather than produce them. L10n.swift's
+# `case "4-hour"` and QuotaTierDisplay.kt's `"4-hour" to R.string…` are the
+# mappers this gate checks; counting them as producers meant those entries could
+# never be reported stale, and a doc comment quoting "Voice slots" did the same.
+NOT_A_PRODUCER = {"L10n.swift", "QuotaTierDisplay.kt"}
+
+# A name only another repository writes has no literal here to find. Such an
+# entry says which file writes it, as `produced_elsewhere`, instead of being
+# kept alive by an unrelated comment — which is how "Other" (written only by the
+# Tauri desktop's Gemini collector) passed the stale check until comments
+# stopped counting: PetRuleset.swift mentions "Other" in a doc comment.
+EXTERNAL_PRODUCER_REPOS = ("cli-pulse-desktop ",)
+
+
 def literal_is_present(root: Path, name: str) -> bool:
-    """Is this exact literal still written down anywhere a producer lives?"""
+    """Is this exact literal still written down, outside a comment, where a producer lives?"""
     needle = f'"{name}"'
     for p in source_files(root):
-        if needle in p.read_text(encoding="utf-8", errors="replace"):
+        if p.name in NOT_A_PRODUCER:
+            continue
+        src = p.read_text(encoding="utf-8", errors="replace")
+        if needle in src and needle in strip_line_comments(src, hash_comments=p.suffix == ".py"):
             return True
     return False
+
+
+def swift_quota_tier_switch(l10n: str) -> tuple[str | None, dict[str, str], list[tuple[str, str]], list[str]]:
+    """Read `L10n.quotaTier`: (switch subject, accessor -> tr key, [(label, accessor)], problems).
+
+    Reads the switch rather than searching the file for `case "<name>"`. The
+    search accepted `case "Bonus Credits":`, which can never match because the
+    switch is on `raw.lowercased()`, and `case "weekly": return monthly`, which
+    renders every Weekly bar as 每月. Both passed, and so did a PASSTHROUGH
+    "weekly" beside TRANSLATE "Weekly", which the runtime translates anyway.
+    """
+    problems: list[str] = []
+    src = strip_line_comments(l10n, hash_comments=False)
+    enum = re.search(r"\benum\s+quotaTier\s*\{", src)
+    if not enum:
+        return None, {}, [], ["L10n.swift has no `enum quotaTier`, so no tier name is translated"]
+    depth, end = 0, len(src)
+    for k in range(enum.end() - 1, len(src)):
+        if src[k] == "{":
+            depth += 1
+        elif src[k] == "}":
+            depth -= 1
+            if depth == 0:
+                end = k
+                break
+    body = src[enum.end():end]
+    accessors = {m.group(1): m.group(2) for m in re.finditer(
+        r'\bstatic\s+var\s+`?(\w+)`?\s*:\s*String\s*\{\s*tr\(\s*"([^"]+)"\s*\)\s*\}', body)}
+    func = re.search(r"\bfunc\s+localized\s*\(\s*_\s+raw\s*:\s*String\s*\)", body)
+    switch = re.search(r"\bswitch\s+([^{]+?)\s*\{", body[func.end():]) if func else None
+    if not switch:
+        return None, accessors, [], ["L10n.quotaTier has no `func localized(_ raw: String)` with a switch to read"]
+    labels: list[tuple[str, str]] = []
+    for m in re.finditer(r'\bcase\s+((?:"[^"]*"\s*,\s*)*"[^"]*")\s*:\s*return\s+`?(\w+)`?',
+                         body[func.end() + switch.end():]):
+        for label in re.findall(r'"([^"]*)"', m.group(1)):
+            labels.append((label, m.group(2)))
+    if not labels:
+        problems.append("L10n.quotaTier.localized has no `case \"…\": return accessor` arms to read")
+    return switch.group(1).strip(), accessors, labels, problems
 
 
 def parse_strings(path: Path) -> dict[str, str]:
@@ -245,6 +307,17 @@ def main() -> None:
         if e.get("display") == "PASSTHROUGH" and e.get("l10n_key"):
             errors.append(f'"{name}": PASSTHROUGH entries must not carry an "l10n_key"')
 
+    # 4b. names that differ by case alone. `localized` matches case-insensitively,
+    #     so two such entries are one rendering with two recorded decisions.
+    by_folded: dict[str, list[str]] = {}
+    for name in seen:
+        by_folded.setdefault(name.lower(), []).append(name)
+    for folded, names in sorted(by_folded.items()):
+        if len(names) > 1:
+            errors.append(f"{' and '.join(repr(n) for n in sorted(names))} differ only by case; "
+                          "L10n.quotaTier.localized matches case-insensitively, so they cannot be "
+                          "classified differently")
+
     # 1. stale entries. A name COMPOSED at runtime ("\(b.currency) Balance")
     #    has no literal to find, so requiring one would fail forever; such an
     #    entry must instead name the expression that builds it.
@@ -256,6 +329,11 @@ def main() -> None:
                 errors.append(
                     f'"{name}": composed_from {e["composed_from"]!r} is not in any producer — '
                     "the expression that built this name is gone, so delete the entry")
+        elif e.get("produced_elsewhere") is not None:
+            where = str(e["produced_elsewhere"])
+            if not where.startswith(EXTERNAL_PRODUCER_REPOS):
+                errors.append(f'"{name}": produced_elsewhere must name the file in '
+                              f'{" or ".join(r.strip() for r in EXTERNAL_PRODUCER_REPOS)} that writes it, got {where!r}')
         elif not literal_is_present(root, name):
             errors.append(f'"{name}": no producer writes this literal any more — stale entry, delete it')
 
@@ -270,17 +348,48 @@ def main() -> None:
     cats = {loc: parse_strings(root / APPLE /
                                f"CLIPulseCore/Sources/CLIPulseCore/Resources/{loc}.lproj/Localizable.strings")
             for loc in LOCALES}
+    subject, accessors, labels, switch_problems = swift_quota_tier_switch(l10n)
+    errors += switch_problems
+    if subject is not None and re.sub(r"\s", "", subject) != "raw.lowercased()":
+        errors.append(f"L10n.quotaTier.localized switches on `{subject}`, not `raw.lowercased()` — "
+                      "the lowercase labels below only match a lowercased name")
+    arm: dict[str, str] = {}
+    for label, accessor in labels:
+        if label in arm:
+            errors.append(f'L10n.quotaTier.localized has case "{label}" twice; only the first can match')
+            continue
+        arm[label] = accessor
+        if label != label.lower():
+            errors.append(f'L10n.quotaTier.localized has case "{label}", which can never match: '
+                          "the switch is on raw.lowercased(), so every label must be lowercase")
     for name, e in sorted(seen.items()):
         if e.get("display") != "TRANSLATE":
             continue
         key = e["l10n_key"]
         if f'tr("{key}")' not in l10n:
             errors.append(f'"{name}": no L10n accessor calls tr("{key}")')
-        if f'case "{name}"' not in l10n and f'case "{name.lower()}"' not in l10n:
-            errors.append(f'"{name}": L10n.quotaTier.localized has no case for it, so it renders English')
+        accessor = arm.get(name.lower())
+        if accessor is None:
+            errors.append(f'"{name}": L10n.quotaTier.localized has no case "{name.lower()}", so it renders English')
+        elif accessor not in accessors:
+            errors.append(f'"{name}": case "{name.lower()}" returns {accessor}, which is not a '
+                          "`static var … { tr(\"…\") }` accessor of L10n.quotaTier")
+        elif accessors[accessor] != key:
+            errors.append(f'"{name}": case "{name.lower()}" returns {accessor}, which reads '
+                          f'{accessors[accessor]}, but the manifest says {key} — every "{name}" bar '
+                          "would show another tier's name")
         for loc in LOCALES:
             if key not in cats[loc]:
                 errors.append(f'"{name}": {key} missing from {loc}.lproj')
+    folded = {n.lower(): e for n, e in seen.items()}
+    for label in sorted(arm):
+        entry = folded.get(label)
+        if entry is None:
+            errors.append(f'L10n.quotaTier.localized has case "{label}", which matches no manifest name — '
+                          "a tier nobody classified, or a stale arm")
+        elif entry.get("display") == "PASSTHROUGH":
+            errors.append(f'"{entry["name"]}" is PASSTHROUGH, but L10n.quotaTier.localized has case "{label}", '
+                          "so it is translated at runtime anyway")
 
     # 3b. ...and the same on Android, where the resource name is the key with `_`.
     if (root / ANDROID_RES).is_dir():

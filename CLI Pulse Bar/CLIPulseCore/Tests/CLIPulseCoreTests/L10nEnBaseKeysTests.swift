@@ -30,6 +30,23 @@ final class L10nEnBaseKeysTests: XCTestCase {
         super.tearDown()
     }
 
+    /// The per-locale loops below say "\(locale) is missing …". They used to
+    /// check `hasPrefix("providers.")`, which can only fail for en: under any
+    /// other locale a missing key resolves to the English copy, which has no
+    /// dotted prefix. So each loop now asks the locale's OWN catalogue, and ties
+    /// a plain accessor to the key it is supposed to read.
+    private func assertOwnCopy(_ shown: String?, key: String, in locale: String, _ what: String,
+                               file: StaticString = #filePath, line: UInt = #line) {
+        guard let own = LocaleCatalogueProbe.ownValue(key, in: locale) else {
+            XCTFail("\(locale) is missing \(what) (\(key) is not in \(locale).lproj)", file: file, line: line)
+            return
+        }
+        if let shown {
+            XCTAssertEqual(shown, L10n.keepingBrandUnbroken(own),
+                           "\(locale): \(what) does not read \(key) from \(locale).lproj", file: file, line: line)
+        }
+    }
+
     func test_providerConfigAutoImportKeys_resolveInEnBase() {
         let note = L10n.providerConfig.autoImportNote
         let failed = L10n.providerConfig.autoImportFailed
@@ -85,11 +102,9 @@ final class L10nEnBaseKeysTests: XCTestCase {
 
         for locale in ["ja", "zh-Hant", "es", "ko"] {
             LocaleOverrideStore.shared.set(locale)
-            XCTAssertFalse(
-                L10n.onboardingWizard.welcomeAccountsBody
-                    .hasPrefix("onboarding_wizard."),
-                "\(locale) is missing the first-run account summary"
-            )
+            assertOwnCopy(L10n.onboardingWizard.welcomeAccountsBody,
+                          key: "onboarding_wizard.welcome_accounts_body", in: locale,
+                          "the first-run account summary")
         }
     }
 
@@ -109,16 +124,12 @@ final class L10nEnBaseKeysTests: XCTestCase {
         for locale in ["en", "ja", "zh-Hans", "zh-Hant", "es", "ko"] {
             LocaleOverrideStore.shared.set(locale)
 
-            XCTAssertFalse(
-                L10n.providers.rerunAgentSetup
-                    .hasPrefix("providers."),
-                "\(locale) is missing the Agent setup rerun title"
-            )
-            XCTAssertFalse(
-                L10n.providers.rerunAgentSetupHint
-                    .hasPrefix("providers."),
-                "\(locale) is missing the Agent setup rerun hint"
-            )
+            assertOwnCopy(L10n.providers.rerunAgentSetup,
+                          key: "providers.rerun_agent_setup", in: locale,
+                          "the Agent setup rerun title")
+            assertOwnCopy(L10n.providers.rerunAgentSetupHint,
+                          key: "providers.rerun_agent_setup_hint", in: locale,
+                          "the Agent setup rerun hint")
         }
     }
 
@@ -132,22 +143,16 @@ final class L10nEnBaseKeysTests: XCTestCase {
             let message = L10n.providers.removeAccountMessage
             let manualPlan = L10n.providerConfig.manualPlan
 
-            XCTAssertFalse(
-                title.hasPrefix("providers."),
-                "\(locale) is missing the account removal title"
-            )
+            assertOwnCopy(nil, key: "providers.remove_account_title", in: locale,
+                          "the account removal title")
             XCTAssertTrue(
                 title.contains("Claude") && title.contains("Work"),
                 "\(locale) removal title lost its provider/account placeholders"
             )
-            XCTAssertFalse(
-                message.hasPrefix("providers."),
-                "\(locale) is missing the destructive account removal message"
-            )
-            XCTAssertFalse(
-                manualPlan.hasPrefix("provider_config."),
-                "\(locale) is missing manual-plan copy"
-            )
+            assertOwnCopy(message, key: "providers.remove_account_message", in: locale,
+                          "the destructive account removal message")
+            assertOwnCopy(manualPlan, key: "provider_config.manual_plan", in: locale,
+                          "manual-plan copy")
         }
     }
 
@@ -160,22 +165,16 @@ final class L10nEnBaseKeysTests: XCTestCase {
             let quotaUnavailable =
                 L10n.providers.quotaDataUnavailable
 
-            XCTAssertFalse(
-                source.hasPrefix("providers."),
-                "\(locale) is missing provider-plan source copy"
-            )
-            XCTAssertFalse(
-                sourceLabel.hasPrefix("providers."),
-                "\(locale) is missing the source label"
-            )
+            assertOwnCopy(source, key: "providers.source_provider_api", in: locale,
+                          "provider-plan source copy")
+            assertOwnCopy(nil, key: "providers.source_label", in: locale,
+                          "the source label")
             XCTAssertTrue(
                 sourceLabel.contains(source),
                 "\(locale) source label lost its placeholder"
             )
-            XCTAssertFalse(
-                quotaUnavailable.hasPrefix("providers."),
-                "\(locale) is missing quota-unavailable copy"
-            )
+            assertOwnCopy(quotaUnavailable, key: "providers.quota_data_unavailable", in: locale,
+                          "quota-unavailable copy")
         }
     }
 
@@ -187,22 +186,16 @@ final class L10nEnBaseKeysTests: XCTestCase {
             let stale = L10n.watch.staleUpdated("5m")
             let tightest = L10n.watch.tightestAccount("Work")
 
-            XCTAssertFalse(
-                connect.hasPrefix("watch."),
-                "\(locale) is missing the Mac setup guidance"
-            )
-            XCTAssertFalse(
-                stale.hasPrefix("watch."),
-                "\(locale) is missing stale-data copy"
-            )
+            assertOwnCopy(connect, key: "watch.connect_agents_on_mac", in: locale,
+                          "the Mac setup guidance")
+            assertOwnCopy(nil, key: "watch.stale_updated", in: locale,
+                          "stale-data copy")
             XCTAssertTrue(
                 stale.contains("5m"),
                 "\(locale) stale copy lost its timestamp"
             )
-            XCTAssertFalse(
-                tightest.hasPrefix("watch."),
-                "\(locale) is missing tightest-account copy"
-            )
+            assertOwnCopy(nil, key: "watch.tightest_account", in: locale,
+                          "tightest-account copy")
             XCTAssertTrue(
                 tightest.contains("Work"),
                 "\(locale) tightest-account copy lost its label"

@@ -85,6 +85,99 @@ final class QuotaTierNameLocalizationTests: XCTestCase {
         }
     }
 
+    // MARK: - Every manifest decision, as the mapper renders it
+
+    struct ManifestEntry: Decodable {
+        let name: String
+        let display: String
+        let l10n_key: String?
+    }
+
+    /// `scripts/quota_tier_names.json`, the record of every tier name's decision.
+    private func manifest() throws -> [ManifestEntry] {
+        struct File: Decodable { let entries: [ManifestEntry] }
+        let url = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+            .deletingLastPathComponent()   // CLI Pulse Bar
+            .deletingLastPathComponent()   // repository root
+            .appendingPathComponent("scripts/quota_tier_names.json")
+        return try JSONDecoder().decode(File.self, from: Data(contentsOf: url)).entries
+    }
+
+    /// What is wrong with a mapper's rendering of the manifest. A TRANSLATE name
+    /// must render exactly its OWN key's value (looked up without the English
+    /// fallback), in any capitalization; a PASSTHROUGH name must render as itself.
+    static func renderingProblems(_ entries: [ManifestEntry],
+                                  localize: (String) -> String,
+                                  ownValue: (String) -> String?) -> [String] {
+        var problems: [String] = []
+        for entry in entries {
+            switch entry.display {
+            case "TRANSLATE":
+                guard let key = entry.l10n_key, let expected = ownValue(key) else {
+                    problems.append("\(entry.name): no value for \(entry.l10n_key ?? "its key")")
+                    continue
+                }
+                for spelling in [entry.name, entry.name.uppercased(), entry.name.lowercased()] {
+                    let shown = localize(spelling)
+                    if shown != expected {
+                        problems.append("\(spelling) renders \(shown), not \(key) (\(expected))")
+                    }
+                }
+            case "PASSTHROUGH":
+                let shown = localize(entry.name)
+                if shown != entry.name {
+                    problems.append("\(entry.name) is PASSTHROUGH but renders \(shown)")
+                }
+            default:
+                problems.append("\(entry.name): unknown display \(entry.display)")
+            }
+        }
+        return problems
+    }
+
+    /// All 56 decisions, not a sample of seven: a case label returning the wrong
+    /// accessor (every Weekly bar showing 每月) or a capitalized label that
+    /// `raw.lowercased()` never equals fails here, where "differs from English"
+    /// did not notice either.
+    func testEveryManifestNameRendersItsOwnKey() throws {
+        let entries = try manifest()
+        XCTAssertGreaterThan(entries.count, 40, "the manifest did not load")
+        withChinese {
+            let own = { (key: String) in
+                LocaleCatalogueProbe.ownValue(key, in: "zh-Hans").map(L10n.keepingBrandUnbroken)
+            }
+            let problems = Self.renderingProblems(entries, localize: L10n.quotaTier.localized, ownValue: own)
+            XCTAssertEqual(problems, [], "L10n.quotaTier.localized disagrees with scripts/quota_tier_names.json")
+        }
+    }
+
+    /// Negative control: the two regressions the test above exists for must be
+    /// reported, or its green run proves nothing.
+    func testTheManifestCheckReportsAWrongArmAndACaseSensitiveLabel() throws {
+        let entries = try manifest()
+        withChinese {
+            let own = { (key: String) in
+                LocaleCatalogueProbe.ownValue(key, in: "zh-Hans").map(L10n.keepingBrandUnbroken)
+            }
+            let wrongArm: (String) -> String = { raw in
+                raw.lowercased() == "weekly" ? L10n.quotaTier.monthly : L10n.quotaTier.localized(raw)
+            }
+            XCTAssertTrue(Self.renderingProblems(entries, localize: wrongArm, ownValue: own)
+                            .contains { $0.hasPrefix("Weekly renders") },
+                          "a Weekly arm returning monthly was not reported")
+
+            let caseSensitive: (String) -> String = { raw in
+                raw == "Bonus Credits" ? raw : L10n.quotaTier.localized(raw)
+            }
+            XCTAssertTrue(Self.renderingProblems(entries, localize: caseSensitive, ownValue: own)
+                            .contains { $0.hasPrefix("Bonus Credits renders Bonus Credits") },
+                          "a label that never matches Bonus Credits was not reported")
+        }
+    }
+
     // MARK: - Names deliberately left English
 
     /// Vendor products, plans, models, coined units and currency codes are what
