@@ -1773,7 +1773,7 @@
 "server_error.unavailable" = "服务器暂时不可用（HTTP %d），请稍后再试。";
 "server_error.failed" = "服务器返回错误（HTTP %d）。";
 "server_error.network" = "无法连接服务器，请检查网络连接。";
-"server_error.device_not_paired" = "这台 Mac 已不再与你的账户配对。请在设置中重新配对以恢复同步。";
+"server_error.device_not_paired" = "这台 Mac 已不再与你的账户配对。如需恢复同步，请在设置中重新设置云同步。";
 "advanced.helper_sync_failed" = "后台同步失败，将自动重试。";
 "sessions.hook_settings_unreadable" = "无法读取 %@";
 "sessions.hook_settings_invalid_json" = "%@ 不是有效的 JSON";

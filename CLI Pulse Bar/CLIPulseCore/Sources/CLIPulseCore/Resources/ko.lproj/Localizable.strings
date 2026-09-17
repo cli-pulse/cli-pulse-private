@@ -1741,9 +1741,9 @@
 "server_error.linking_disabled" = "지금은 계정을 연결할 수 없습니다.";
 "server_error.timeout" = "서버 응답 시간이 초과되었습니다. 다시 시도하세요.";
 "server_error.unavailable" = "서버를 일시적으로 사용할 수 없습니다(HTTP %d). 잠시 후 다시 시도하세요.";
-"server_error.failed" = "서버에서 오류를 반환했습니다(HTTP %d).";
+"server_error.failed" = "서버가 오류를 반환했습니다(HTTP %d).";
 "server_error.network" = "서버에 연결할 수 없습니다. 네트워크 연결을 확인하세요.";
-"server_error.device_not_paired" = "이 Mac은 더 이상 계정과 페어링되어 있지 않습니다. 동기화를 다시 시작하려면 설정에서 다시 페어링하세요.";
+"server_error.device_not_paired" = "이 Mac은 더 이상 계정과 페어링되어 있지 않습니다. 동기화를 다시 시작하려면 설정에서 클라우드 동기화를 다시 설정하세요.";
 "advanced.helper_sync_failed" = "백그라운드 동기화에 실패했습니다. 자동으로 다시 시도합니다.";
 "sessions.hook_settings_unreadable" = "%@ 파일을 읽을 수 없습니다";
 "sessions.hook_settings_invalid_json" = "%@ 파일이 올바른 JSON이 아닙니다";

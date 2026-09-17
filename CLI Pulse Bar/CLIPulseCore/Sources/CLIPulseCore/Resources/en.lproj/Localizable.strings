@@ -1783,7 +1783,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "server_error.unavailable" = "The server is temporarily unavailable (HTTP %d). Please try again later.";
 "server_error.failed" = "The server returned an error (HTTP %d).";
 "server_error.network" = "Couldn't reach the server. Check your network connection.";
-"server_error.device_not_paired" = "This Mac is no longer paired with your account. Pair it again in Settings to resume syncing.";
+"server_error.device_not_paired" = "This Mac is no longer paired with your account. Set up cloud sync again in Settings to resume syncing.";
 "advanced.helper_sync_failed" = "Background sync failed. It will try again automatically.";
 "sessions.hook_settings_unreadable" = "Couldn't read %@";
 "sessions.hook_settings_invalid_json" = "%@ isn't valid JSON";

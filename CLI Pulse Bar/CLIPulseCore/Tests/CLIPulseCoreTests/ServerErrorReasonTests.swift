@@ -112,7 +112,7 @@ final class ServerErrorReasonTests: XCTestCase {
         XCTAssertEqual(ServerErrorReason.classify(status: 400, body: deviceGone), .deviceNotPaired)
         let shown = HelperAPIError.httpError(status: 400, function: "helper_heartbeat", body: deviceGone)
             .localizedDescription
-        XCTAssertEqual(shown, "这台 Mac 已不再与你的账户配对。请在设置中重新配对以恢复同步。")
+        XCTAssertEqual(shown, "这台 Mac 已不再与你的账户配对。如需恢复同步，请在设置中重新设置云同步。")
         assertNoServerText(shown, body: deviceGone)
         XCTAssertFalse(shown.contains("Device not found"), shown)
     }

@@ -18,7 +18,11 @@ public enum HelperIPC {
 
     public static let suiteName = "group.yyh.CLI-Pulse"
 
-    /// Helper status JSON: { "state": "running"|"idle"|"error", "lastSync": ISO8601, "error": "..." }
+    /// Helper status: `Status` encoded with a default `JSONEncoder` —
+    /// { "state": "running"|"idle"|"error", "lastSync": Date, "error": English
+    /// detail for diagnosis, "errorCode": `HelperSyncFailure` token, "helperVersion" }.
+    /// The app shows `errorCode`, rendered in its own language, and falls back
+    /// to `error` only for a status from a helper that predates `errorCode`.
     public static let statusKey = "helper_status"
 
     /// Helper config (HelperConfig encoded as JSON data)

@@ -59,7 +59,7 @@ final class HelperSyncFailureTests: XCTestCase {
     func testEveryCodeTheHelperWritesRendersInTheAppLanguage() {
         let errors: [(Error, String)] = [
             (HelperAPIError.httpError(status: 400, function: "helper_sync", body: deviceGone),
-             "这台 Mac 已不再与你的账户配对。请在设置中重新配对以恢复同步。"),
+             "这台 Mac 已不再与你的账户配对。如需恢复同步，请在设置中重新设置云同步。"),
             (HelperAPIError.httpError(status: 400, function: "helper_sync", body: tooManySessions), "服务器返回错误（HTTP 400）。"),
             (HelperAPIError.httpError(status: 500, function: "helper_sync", body: timeoutBody), L10n.serverError.timeout),
             (URLError(.notConnectedToInternet), "无法连接服务器，请检查网络连接。"),

@@ -913,6 +913,9 @@ public enum L10n {
         public static func failed(_ status: Int) -> String { tr("server_error.failed", status) }
         public static var network: String { tr("server_error.network") }
         /// `ServerErrorReason.deviceNotPaired`: only the Mac's helper hits it.
+        /// Names the action (set up cloud sync), not a pairing button: Settings
+        /// shows Set Up Cloud Sync only while `profiles.paired` is false, and the
+        /// account can stay paired after this Mac's device row is gone.
         public static var deviceNotPaired: String { tr("server_error.device_not_paired") }
     }
 

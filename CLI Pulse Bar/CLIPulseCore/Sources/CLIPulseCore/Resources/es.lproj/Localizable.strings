@@ -1757,7 +1757,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "server_error.unavailable" = "El servidor no está disponible temporalmente (HTTP %d). Inténtalo de nuevo más tarde.";
 "server_error.failed" = "El servidor devolvió un error (HTTP %d).";
 "server_error.network" = "No se pudo conectar con el servidor. Comprueba tu conexión de red.";
-"server_error.device_not_paired" = "Este Mac ya no está vinculado a tu cuenta. Vuelve a vincularlo en Ajustes para reanudar la sincronización.";
+"server_error.device_not_paired" = "Este Mac ya no está vinculado a tu cuenta. En Ajustes, vuelve a configurar la sincronización en la nube para reanudarla.";
 "advanced.helper_sync_failed" = "Error en la sincronización en segundo plano. Se volverá a intentar automáticamente.";
 "sessions.hook_settings_unreadable" = "No se pudo leer %@";
 "sessions.hook_settings_invalid_json" = "%@ no es un JSON válido";

@@ -1787,7 +1787,7 @@
 "server_error.unavailable" = "サーバーが一時的に利用できません（HTTP %d）。しばらくしてからもう一度お試しください。";
 "server_error.failed" = "サーバーがエラーを返しました（HTTP %d）。";
 "server_error.network" = "サーバーに接続できませんでした。ネットワーク接続を確認してください。";
-"server_error.device_not_paired" = "この Mac はアカウントとペアリングされていません。同期を再開するには、設定でもう一度ペアリングしてください。";
+"server_error.device_not_paired" = "この Mac とアカウントのペアリングが解除されています。同期を再開するには、設定でクラウド同期をもう一度セットアップしてください。";
 "advanced.helper_sync_failed" = "バックグラウンド同期に失敗しました。自動的に再試行されます。";
 "sessions.hook_settings_unreadable" = "%@ を読み込めませんでした";
 "sessions.hook_settings_invalid_json" = "%@ は有効な JSON ではありません";

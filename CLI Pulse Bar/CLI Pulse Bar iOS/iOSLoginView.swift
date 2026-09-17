@@ -240,10 +240,13 @@ struct iOSLoginView: View {
                     self.webAuthSession = nil
                 }
                 if let error {
-                    if (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
-                        return
+                    // Closing the sheet shows nothing; any other session error is
+                    // the app's own line, not the system's domain and code.
+                    Task { @MainActor in
+                        if let message = WebAuthSessionFailure.signInMessage(for: error) {
+                            state?.lastError = message
+                        }
                     }
-                    Task { @MainActor in state?.lastError = error.localizedDescription }
                     return
                 }
                 guard let callbackURL else {
