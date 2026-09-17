@@ -460,8 +460,8 @@
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
    "literal": "\"Resets soon\"",
-   "count": 2,
-   "reason": "KEEP_STORED_DATA: formatResetTime's two fallbacks. The interval <= 0 one (:1075) follows a successful ISO parse, so mapSnapshot stores the timestamp instead. The unparseable-date one (:1068) becomes TierDTO.reset_time only in the opt-in Gemini CLI probe fallback (GeminiProbeFallbackTests pins that textual fallback). reset_time is a synced field: provider cards show it only through RelativeTime.formatReset, which returns nil for non-ISO text, and a quota alert keeps a non-ISO reset as written by decision (AlertPresentationTests.testQuotaAlertKeepsANonISOResetAsWritten)."
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: formatResetTime's interval <= 0 fallback, reached only after parseResetTime succeeded, so GeminiModelQuota.resetTime is non-nil and GeminiCollector.mapSnapshot (:732) stores the ISO timestamp instead; GeminiStatusSnapshot.resetDescription has no reader. The other occurrence, for a resetTime that is not ISO-8601, was English of ours stored as TierDTO.reset_time and shown as written in a quota alert (\"Resets soon 重置\"); it now keeps Google's text, as buildResult does (GeminiProbeFallbackTests.test_unparseable_resetTime_keeps_the_vendor_text)."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiCollector.swift",
