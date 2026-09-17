@@ -1829,7 +1829,6 @@
 "status_text.window_percent_left" = "%1$@ %2$d%% 남음";
 "status_text.used_of" = "%1$@/%2$@ 사용됨";
 "status_text.credits_used_of" = "%1$@/%2$@ 크레딧 사용됨";
-"status_text.tokens_of" = "%1$@/%2$@ 토큰";
 "status_text.keys_of" = "%1$@/%2$@ 키";
 "status_text.characters_of" = "%1$@ / %2$@자";
 "status_text.characters_of_overage" = "%1$@ / %2$@자(초과 사용: %3$@ %4$@)";
@@ -1855,6 +1854,7 @@
 "status_text.deepseek_empty_balance" = "%@ — platform.deepseek.com에서 충전하세요";
 "status_text.deepseek_balance" = "%1$@(충전: %2$@ / 증정: %3$@)";
 "status_text.requests" = "요청 %@건";
+"status_text.requests_one" = "요청 %d건";
 "status_text.audio_hours" = "오디오 %@시간";
 "status_text.billable_hours" = "과금 대상 %@시간";
 "status_text.tokens" = "%@ 토큰";
@@ -1869,6 +1869,8 @@
 "status_text.models_installed" = "설치된 모델 %d개";
 "status_text.models_installed_one" = "설치된 모델 %d개";
 "status_text.running_installed" = "%1$d개 실행 중, %2$d개 설치됨";
+"status_text.active_sessions" = "활성 세션 %d개";
+"status_text.active_sessions_one" = "활성 세션 %d개";
 "status_text.unlimited" = "무제한";
 "status_text.balance_unavailable" = "잔액 정보 없음";
 "status_text.balance_unavailable_api" = "API 호출에 사용할 수 있는 잔액 없음";

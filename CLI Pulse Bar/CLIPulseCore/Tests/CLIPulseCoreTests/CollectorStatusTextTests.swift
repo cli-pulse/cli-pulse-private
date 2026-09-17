@@ -64,7 +64,8 @@ final class CollectorStatusTextTests: XCTestCase {
         S.month("$3.00"),
         S.deepSeekEmptyBalance("¥0.00"),
         S.deepSeekBalance(total: "¥12.30", paid: "¥10.00", granted: "¥2.30"),
-        S.requests("100"),
+        S.requests(1),
+        S.requests(1234),
         S.audioHours("1.5"),
         S.billableHours("2"),
         S.tokens("1,500"),
@@ -79,6 +80,8 @@ final class CollectorStatusTextTests: XCTestCase {
         S.modelsInstalled(1),
         S.modelsInstalled(2),
         S.runningInstalled(running: 1, installed: 2),
+        S.activeSessions(1),
+        S.activeSessions(3),
         S.unlimited,
         S.balanceUnavailable,
         S.balanceUnavailableForAPICalls,
@@ -109,6 +112,26 @@ final class CollectorStatusTextTests: XCTestCase {
         XCTAssertEqual(render(line, in: "zh-Hans"), "5h：剩余 60% · 每周：剩余 40%")
         XCTAssertEqual(render(S.usedOf("12", "100"), in: "zh-Hans"), "已使用 12/100")
         XCTAssertEqual(render(S.thisMonth("$3.00"), in: "ja"), "今月 $3.00")
+        XCTAssertEqual(render(S.join(["CNY 12.50", S.planExpired]), in: "ja"), "CNY 12.50 · プラン期限切れ")
+    }
+
+    /// "300/1,000 tokens" has no rule of its own. A separate `tokens_of` key read
+    /// byte-for-byte like "(.+) tokens" in every language, so it was removed;
+    /// this pins that the general rule still renders it.
+    func testUsedOfLimitTokensRenderThroughTheGeneralTokensRule() {
+        XCTAssertEqual(render(S.tokensOf("300", "1,000"), in: "zh-Hans"), "300/1,000 token")
+        XCTAssertEqual(render(S.tokensOf("300", "1,000"), in: "ja"), "300/1,000 トークン")
+        XCTAssertEqual(render(S.tokensOf("300", "1,000"), in: "ko"), "300/1,000 토큰")
+    }
+
+    /// Sakana writes "$0.50 credit" and Crof "$1.00 credits": the same dollar
+    /// credit, so Chinese gives both one shape and calls it 额度, not 积分 (points).
+    func testDollarCreditHasOneShapeInChinese() {
+        XCTAssertEqual(render(S.join([S.windowPercentLeft(.fiveHour, 60), S.credit("$0.50")]), in: "zh-Hans"),
+                       "5h：剩余 60% · 额度：$0.50")
+        XCTAssertEqual(render(S.credits("$1.00"), in: "zh-Hans"), "额度：$1.00")
+        XCTAssertEqual(render(S.credit("$0.50"), in: "zh-Hant"), "額度：$0.50")
+        XCTAssertEqual(render(S.credits("$1.00"), in: "zh-Hant"), "額度：$1.00")
     }
 
     /// A vendor's words keep their place and their spelling next to ours.
@@ -136,11 +159,29 @@ final class CollectorStatusTextTests: XCTestCase {
         XCTAssertEqual(render(S.modelsAvailable(1), in: "es"), "1 modelo disponible")
         XCTAssertEqual(render(S.modelsAvailable(3), in: "es"), "3 modelos disponibles")
         XCTAssertEqual(render(S.requestsLeft(1), in: "es"), "1 solicitud restante")
+
+        // Only the count of 1 changed its English bytes; larger counts keep the
+        // grouping Deepgram always wrote.
+        XCTAssertEqual(S.requests(1), "1 request")
+        XCTAssertEqual(S.requests(0), "0 requests")
+        XCTAssertEqual(S.requests(1234), "1,234 requests")
+        XCTAssertEqual(render(S.requests(1), in: "es"), "1 solicitud")
+        XCTAssertEqual(render(S.requests(1234), in: "es"), "1,234 solicitudes")
+        // A line stored before the singular existed still translates.
+        XCTAssertEqual(render("1 requests", in: "es"), "1 solicitudes")
+
+        // English says "1 active" and "3 active" alike; Spanish does not.
+        XCTAssertEqual(S.activeSessions(1), "1 active")
+        XCTAssertEqual(S.activeSessions(3), "3 active")
+        XCTAssertEqual(render(S.activeSessions(1), in: "es"), "1 sesión activa")
+        XCTAssertEqual(render(S.activeSessions(3), in: "es"), "3 sesiones activas")
+        XCTAssertEqual(render(S.activeSessions(3), in: "zh-Hans"), "3 个活跃会话")
     }
 
     /// Anchored: a line that merely contains a template is not that template.
     func testNearMissesPassThrough() {
-        for raw in ["about 40% left", "Weekly 40%", "Hourly 40% left", "the balance of $3 of it", "Unlimited plan"] {
+        for raw in ["about 40% left", "Weekly 40%", "Hourly 40% left", "the balance of $3 of it", "Unlimited plan",
+                    "2 request", "one active", "3 active keys"] {
             XCTAssertEqual(render(raw, in: "zh-Hans"), raw)
         }
     }
@@ -161,16 +202,23 @@ final class CollectorStatusTextTests: XCTestCase {
                 balance: nil, currency: "CNY", planCode: nil,
                 periodEnd: nil, expired: false, used: 0, limit: 0).usage.status_text,
             AzureOpenAICollector.formatStatusText(deploymentName: "gpt-4o", model: "gpt-4o-2024-08-06"),
+            DeepgramCollector.formatStatusText(.init(requests: 1, hours: 1.5)),
         ]
         // The template words these lines are made of; amounts, currency codes and
         // model ids are allowed to stay.
-        let templateWords = #"\b(left|keys|req|tok|this month|of|Balance|unavailable|Deployment|Model)\b"#
+        let templateWords = #"\b(left|keys|req|tok|this month|of|Balance|unavailable|Deployment|Model|requests?|audio hrs)\b"#
         for line in lines {
             XCTAssertEqual(render(line, in: "en"), line)
             let shown = render(line, in: "zh-Hans")
             XCTAssertNil(shown.range(of: templateWords, options: .regularExpression),
                          "\(line) -> \(shown) kept English template words")
         }
+    }
+
+    func testDeepgramWritesOneRequestInTheSingular() {
+        let line = DeepgramCollector.formatStatusText(.init(requests: 1, hours: 1.5))
+        XCTAssertEqual(line, "1 request · 1.5 audio hrs")
+        XCTAssertEqual(render(line, in: "es"), "1 solicitud · 1.5 h de audio")
     }
     #endif
 }

@@ -290,7 +290,7 @@ public struct DeepgramCollector: ProviderCollector, Sendable {
     // MARK: - Result building (.statusOnly — no gauge)
 
     static func formatStatusText(_ a: UsageAggregate) -> String {
-        var parts: [String] = [CollectorStatusText.requests(compactInt(a.requests))]
+        var parts: [String] = [CollectorStatusText.requests(a.requests)]
         if a.hours > 0 { parts.append(CollectorStatusText.audioHours(compactDecimal(a.hours))) }
         else if a.totalHours > 0 { parts.append(CollectorStatusText.billableHours(compactDecimal(a.totalHours))) }
         let totalTokens = a.tokensIn + a.tokensOut

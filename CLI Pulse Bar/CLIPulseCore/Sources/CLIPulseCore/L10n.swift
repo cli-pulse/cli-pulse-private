@@ -699,7 +699,6 @@ public enum L10n {
         public static func windowPercentLeft(_ a0: String, _ a1: Int) -> String { tr("status_text.window_percent_left", a0, a1) }
         public static func usedOf(_ a0: String, _ a1: String) -> String { tr("status_text.used_of", a0, a1) }
         public static func creditsUsedOf(_ a0: String, _ a1: String) -> String { tr("status_text.credits_used_of", a0, a1) }
-        public static func tokensOf(_ a0: String, _ a1: String) -> String { tr("status_text.tokens_of", a0, a1) }
         public static func keysOf(_ a0: String, _ a1: String) -> String { tr("status_text.keys_of", a0, a1) }
         public static func charactersOf(_ a0: String, _ a1: String) -> String { tr("status_text.characters_of", a0, a1) }
         public static func charactersOfWithOverage(_ a0: String, _ a1: String, _ a2: String, _ a3: String) -> String {
@@ -729,7 +728,13 @@ public enum L10n {
         public static func month(_ a0: String) -> String { tr("status_text.month", a0) }
         public static func deepSeekEmptyBalance(_ a0: String) -> String { tr("status_text.deepseek_empty_balance", a0) }
         public static func deepSeekBalance(_ a0: String, _ a1: String, _ a2: String) -> String { tr("status_text.deepseek_balance", a0, a1, a2) }
+        /// A count as stored, grouped ("1,234"); the recognizer passes it through.
         public static func requests(_ a0: String) -> String { tr("status_text.requests", a0) }
+        public static func requests(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.requests_one", count)
+                : requests(CollectorStatusText.grouped(count))
+        }
         public static func audioHours(_ a0: String) -> String { tr("status_text.audio_hours", a0) }
         public static func billableHours(_ a0: String) -> String { tr("status_text.billable_hours", a0) }
         public static func tokens(_ a0: String) -> String { tr("status_text.tokens", a0) }
@@ -750,6 +755,11 @@ public enum L10n {
                 : tr("status_text.models_installed", count)
         }
         public static func runningInstalled(_ a0: Int, _ a1: Int) -> String { tr("status_text.running_installed", a0, a1) }
+        public static func activeSessions(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.active_sessions_one", count)
+                : tr("status_text.active_sessions", count)
+        }
         public static var unlimited: String { tr("status_text.unlimited") }
         public static var balanceUnavailable: String { tr("status_text.balance_unavailable") }
         public static var balanceUnavailableForAPICalls: String { tr("status_text.balance_unavailable_api") }

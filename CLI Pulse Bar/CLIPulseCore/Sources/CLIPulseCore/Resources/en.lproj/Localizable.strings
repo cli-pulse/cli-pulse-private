@@ -1869,7 +1869,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "status_text.window_percent_left" = "%1$@ %2$d%% left";
 "status_text.used_of" = "%1$@/%2$@ used";
 "status_text.credits_used_of" = "%1$@/%2$@ credits used";
-"status_text.tokens_of" = "%1$@/%2$@ tokens";
 "status_text.keys_of" = "%1$@/%2$@ keys";
 "status_text.characters_of" = "%1$@ / %2$@ characters";
 "status_text.characters_of_overage" = "%1$@ / %2$@ characters (Overage: %3$@ %4$@)";
@@ -1895,6 +1894,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "status_text.deepseek_empty_balance" = "%@ — add credits at platform.deepseek.com";
 "status_text.deepseek_balance" = "%1$@ (Paid: %2$@ / Granted: %3$@)";
 "status_text.requests" = "%@ requests";
+"status_text.requests_one" = "%d request";
 "status_text.audio_hours" = "%@ audio hrs";
 "status_text.billable_hours" = "%@ billable hrs";
 "status_text.tokens" = "%@ tokens";
@@ -1909,6 +1909,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "status_text.models_installed" = "%d models installed";
 "status_text.models_installed_one" = "%d model installed";
 "status_text.running_installed" = "%1$d running, %2$d installed";
+"status_text.active_sessions" = "%d active";
+"status_text.active_sessions_one" = "%d active";
 "status_text.unlimited" = "Unlimited";
 "status_text.balance_unavailable" = "Balance unavailable";
 "status_text.balance_unavailable_api" = "Balance unavailable for API calls";

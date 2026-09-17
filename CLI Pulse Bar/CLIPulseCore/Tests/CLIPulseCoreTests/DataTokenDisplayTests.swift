@@ -269,6 +269,16 @@ final class DataTokenDisplayTests: XCTestCase {
                    mapped: "label: WebhookEventFilter.severityLabel(severity),", raw: ["label: severity,"]),
             Wiring(file: "CLI Pulse Bar/GeneralSection.swift",
                    mapped: "label: WebhookEventFilter.typeLabel(type),", raw: ["type.replacingOccurrences"]),
+            // Translated chip labels are longer than the English ones; a chip keeps
+            // its label on one line ("デバイスオフライン" broke mid-word) and the
+            // row wraps between chips instead.
+            Wiring(file: "CLI Pulse Bar/GeneralSection.swift",
+                   mapped: "WebhookChipFlowLayout(spacing: 4)", count: 2),
+            Wiring(file: "CLI Pulse Bar/GeneralSection.swift", mapped: ".fixedSize()"),
+            // Local mode's provider line is English data like the collectors' lines.
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/LocalScanner.swift",
+                   mapped: "status_text: CollectorStatusText.activeSessions(data.sessions),",
+                   raw: [#"status_text: "\(data.sessions) active""#]),
             Wiring(file: "CLI Pulse Bar iOS/iOSProvidersTab.swift", mapped: "account.planEvidence.localizedDisplay"),
             Wiring(file: "CLI Pulse Bar Watch/QuotaRingsView.swift",
                    mapped: "account.planEvidence.localizedDisplay", count: 2),
@@ -318,21 +328,58 @@ final class DataTokenDisplayTests: XCTestCase {
             }
         }
 
-        // Plan evidence holds what was detected, so any new screen that reads it
-        // must map it too. APIClient reads it as data: it uploads the plan and
-        // builds the provider's plan_type, which is mapped where it is shown.
-        let unmappedDisplay = try NSRegularExpression(
-            pattern: #"planEvidence\.displayValue(?!\.map\(L10n\.providers\.planDisplay\))"#)
+        // Plan evidence holds what was detected, so any new screen that renders it
+        // must map it too. Only renders count: reading it as data (`== nil`, a
+        // comparison, APIClient uploading the plan) is not showing it.
         var mappedSites = 0
-        for (path, text) in sources where !path.hasSuffix("/APIClient.swift") {
-            let range = NSRange(text.startIndex..., in: text)
-            XCTAssertEqual(unmappedDisplay.numberOfMatches(in: text, range: range), 0,
-                           "planEvidence.displayValue is shown without planDisplay in \(path)")
-            XCTAssertFalse(text.contains("planEvidence.rawValue"),
-                           "planEvidence.rawValue is shown without planDisplay in \(path)")
+        for (path, text) in sources {
+            for site in Self.unmappedPlanRenders(in: text) {
+                XCTFail("planEvidence.\(site) is shown without planDisplay in \(path)")
+            }
             mappedSites += text.components(separatedBy: "planEvidence.displayValue.map(").count - 1
         }
         XCTAssertGreaterThanOrEqual(mappedSites, 3, "positive control: the mapped plan renders were not found")
+    }
+
+    /// The render forms plan evidence reaches a screen through, each followed by
+    /// an optional receiver chain (`usage?.`, `account.`) and the raw value
+    /// without `.map(L10n.providers.planDisplay)`. Returns the unmapped fields.
+    static func unmappedPlanRenders(in text: String) -> [String] {
+        let sinks = [#"Text\((?:verbatim:\s*)?"#, #"planLabel\s*(?::\s*String\??\s*\{|[:=])"#, #"(?:let|var)\s+plan(?:\s*:[^=\n]*)?\s*="#,
+                     #"\.help\("#, #"\.accessibilityLabel\("#]
+        let pattern = "(?:" + sinks.joined(separator: "|") + #")\s*[\w?!.]*?planEvidence\.(displayValue|rawValue)"#
+            + #"(?!\.map\(L10n\.providers\.planDisplay\))"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return ["<pattern did not compile>"] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).compactMap {
+            Range($0.range(at: 1), in: text).map { String(text[$0]) }
+        }
+    }
+
+    /// The scan above must fire on the renders it exists for and stay quiet on
+    /// data uses, or it either guards nothing or fails legitimate logic.
+    func testPlanRenderScanFlagsRendersAndIgnoresDataUses() {
+        let renders = [
+            "Text(usage?.planEvidence.displayValue ?? config.planOverride ?? \"\")",
+            "let plan =\n    usage?.planEvidence.displayValue\n    ?? config.planOverride",
+            "planLabel:\n    usage?.planEvidence.rawValue,",
+            ".help(account.planEvidence.displayValue ?? \"\")",
+            "let plan: String? = account.planEvidence.rawValue",
+            "private var planLabel: String {\n    account.planEvidence.displayValue\n        ?? account.planEvidence.rawValue",
+        ]
+        for text in renders {
+            XCTAssertEqual(Self.unmappedPlanRenders(in: text).count, 1, "not flagged: \(text)")
+        }
+        let quiet = [
+            "let plan =\n    usage?.planEvidence.displayValue.map(L10n.providers.planDisplay)\n    ?? config.planOverride",
+            "Text(\n    usage?.planEvidence.displayValue.map(L10n.providers.planDisplay)\n    ?? L10n.providers.planUnconfirmed\n)",
+            "if usage?.planEvidence.displayValue == nil { refresh() }",
+            "let detected = account.planEvidence.rawValue != nil",
+            "let planType: String? = { selected.usage.planEvidence.displayValue }()",
+            "return selected.usage.planEvidence.displayValue\n    ?? selected.usage.planEvidence.rawValue",
+        ]
+        for text in quiet {
+            XCTAssertEqual(Self.unmappedPlanRenders(in: text), [], "flagged a data use or a mapped render: \(text)")
+        }
     }
 
     private static let appRoot = URL(fileURLWithPath: #filePath)

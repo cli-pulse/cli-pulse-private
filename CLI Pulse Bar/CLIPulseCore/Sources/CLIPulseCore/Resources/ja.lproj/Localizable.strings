@@ -1873,7 +1873,6 @@
 "status_text.window_percent_left" = "%1$@: 残り %2$d%%";
 "status_text.used_of" = "%1$@/%2$@ 使用済み";
 "status_text.credits_used_of" = "%1$@/%2$@ クレジット使用済み";
-"status_text.tokens_of" = "%1$@/%2$@ トークン";
 "status_text.keys_of" = "%1$@/%2$@ キー";
 "status_text.characters_of" = "%1$@ / %2$@ 文字";
 "status_text.characters_of_overage" = "%1$@ / %2$@ 文字（超過分: %3$@ %4$@）";
@@ -1899,6 +1898,7 @@
 "status_text.deepseek_empty_balance" = "%@ — platform.deepseek.com でチャージしてください";
 "status_text.deepseek_balance" = "%1$@（チャージ: %2$@ / 付与: %3$@）";
 "status_text.requests" = "%@ リクエスト";
+"status_text.requests_one" = "%d リクエスト";
 "status_text.audio_hours" = "音声 %@ 時間";
 "status_text.billable_hours" = "課金対象 %@ 時間";
 "status_text.tokens" = "%@ トークン";
@@ -1913,13 +1913,15 @@
 "status_text.models_installed" = "インストール済みモデル %d 個";
 "status_text.models_installed_one" = "インストール済みモデル %d 個";
 "status_text.running_installed" = "%1$d 個実行中、%2$d 個インストール済み";
+"status_text.active_sessions" = "アクティブセッション %d 件";
+"status_text.active_sessions_one" = "アクティブセッション %d 件";
 "status_text.unlimited" = "無制限";
 "status_text.balance_unavailable" = "残高を取得できません";
 "status_text.balance_unavailable_api" = "API 呼び出しに使える残高がありません";
 "status_text.credits_data_unavailable" = "クレジット情報を取得できません";
 "status_text.no_venice_balance" = "利用できる Venice API 残高がありません";
 "status_text.auto_top_up" = "自動チャージ";
-"status_text.plan_expired" = "プランの期限切れ";
+"status_text.plan_expired" = "プラン期限切れ";
 "status_text.overdue_invoices" = "⚠︎ 支払期限切れの請求書あり";
 "status_text.deployment" = "デプロイ: %@";
 "status_text.model" = "モデル: %@";

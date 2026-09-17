@@ -1843,7 +1843,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "status_text.window_percent_left" = "%1$@: %2$d%% restante";
 "status_text.used_of" = "%1$@/%2$@ usados";
 "status_text.credits_used_of" = "%1$@/%2$@ créditos usados";
-"status_text.tokens_of" = "%1$@/%2$@ tokens";
 "status_text.keys_of" = "%1$@/%2$@ claves";
 "status_text.characters_of" = "%1$@ / %2$@ caracteres";
 "status_text.characters_of_overage" = "%1$@ / %2$@ caracteres (excedente: %3$@ %4$@)";
@@ -1869,6 +1868,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "status_text.deepseek_empty_balance" = "%@: añade créditos en platform.deepseek.com";
 "status_text.deepseek_balance" = "%1$@ (recargado: %2$@ / bonificado: %3$@)";
 "status_text.requests" = "%@ solicitudes";
+"status_text.requests_one" = "%d solicitud";
 "status_text.audio_hours" = "%@ h de audio";
 "status_text.billable_hours" = "%@ h facturables";
 "status_text.tokens" = "%@ tokens";
@@ -1883,6 +1883,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "status_text.models_installed" = "%d modelos instalados";
 "status_text.models_installed_one" = "%d modelo instalado";
 "status_text.running_installed" = "%1$d en ejecución, %2$d instalados";
+"status_text.active_sessions" = "%d sesiones activas";
+"status_text.active_sessions_one" = "%d sesión activa";
 "status_text.unlimited" = "Ilimitado";
 "status_text.balance_unavailable" = "Saldo no disponible";
 "status_text.balance_unavailable_api" = "Saldo no disponible para llamadas a la API";

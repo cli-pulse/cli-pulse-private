@@ -14,9 +14,12 @@ import Foundation
 ///
 /// A line is a list of segments joined by `separator`. Each segment is recognized
 /// on its own, so a line that mixes our words with a vendor's — a plan name in
-/// front ("Pro · $18.00 of $30.00"), T3 Chat's usage band, Zed's "edit
-/// predictions" — translates the part that is ours and keeps the vendor's text
-/// verbatim.
+/// front ("Pro · $18.00 of $30.00"), T3 Chat's usage band — translates the part
+/// that is ours and keeps the vendor's text verbatim. A segment that is all
+/// vendor text stays English as a whole: Zed's "400 / 1000 edit predictions" and
+/// "Unlimited edit predictions" are allowlisted in
+/// `scripts/collector_status_text_allowlist.json`, so only an overdue-invoices
+/// segment after them translates.
 ///
 /// Builders and recognizers sit side by side so they change together.
 /// `CollectorStatusTextTests` checks every builder against the English catalogue
@@ -55,6 +58,8 @@ public enum CollectorStatusText {
 
     public static func usedOf(_ used: String, _ limit: String) -> String { "\(used)/\(limit) used" }
     public static func creditsUsedOf(_ used: String, _ limit: String) -> String { "\(used)/\(limit) credits used" }
+    /// No rule or key of its own: "(.+) tokens" renders it. A dedicated key
+    /// rendered byte-for-byte the same in every language, so it was dropped.
     public static func tokensOf(_ used: String, _ limit: String) -> String { "\(used)/\(limit) tokens" }
     public static func keysOf(_ active: String, _ total: String) -> String { "\(active)/\(total) keys" }
     public static func charactersOf(_ used: String, _ limit: String) -> String { "\(used) / \(limit) characters" }
@@ -109,7 +114,11 @@ public enum CollectorStatusText {
 
     // MARK: - Usage volumes
 
-    public static func requests(_ count: String) -> String { "\(count) requests" }
+    /// Singular for 1; otherwise grouped the way Deepgram has always written it
+    /// ("1,234 requests"), so only the count of 1 changed its stored bytes.
+    public static func requests(_ count: Int) -> String {
+        count == 1 ? "1 request" : "\(grouped(count)) requests"
+    }
     public static func audioHours(_ hours: String) -> String { "\(hours) audio hrs" }
     public static func billableHours(_ hours: String) -> String { "\(hours) billable hrs" }
     public static func tokens(_ count: String) -> String { "\(count) tokens" }
@@ -130,6 +139,21 @@ public enum CollectorStatusText {
 
     public static func runningInstalled(running: Int, installed: Int) -> String {
         "\(running) running, \(installed) installed"
+    }
+
+    /// The live sessions `LocalScanner` found for one provider. English says
+    /// "1 active" and "3 active" alike; other languages name the sessions and
+    /// may distinguish one.
+    public static func activeSessions(_ count: Int) -> String { "\(count) active" }
+
+    /// en_US_POSIX thousands grouping, the same bytes on every device.
+    static func grouped(_ value: Int) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.usesGroupingSeparator = true
+        f.maximumFractionDigits = 0
+        return f.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
     // MARK: - Fixed phrases
@@ -195,7 +219,6 @@ public enum CollectorStatusText {
         },
         Rule(#"(.+)/(.+) credits used"#) { c in L10n.statusText.creditsUsedOf(c[0], c[1]) },
         Rule(#"(.+)/(.+) used"#) { c in L10n.statusText.usedOf(c[0], c[1]) },
-        Rule(#"(.+)/(.+) tokens"#) { c in L10n.statusText.tokensOf(c[0], c[1]) },
         Rule(#"(.+)/(.+) keys"#) { c in L10n.statusText.keysOf(c[0], c[1]) },
         Rule(#"(.+) / (.+) characters \(Overage: (.+) (.+)\)"#) { c in
             L10n.statusText.charactersOfWithOverage(c[0], c[1], c[2], c[3])
@@ -224,6 +247,7 @@ public enum CollectorStatusText {
         Rule(#"Month (.+)"#) { c in L10n.statusText.month(c[0]) },
         Rule(#"(.+) — add credits at platform\.deepseek\.com"#) { c in L10n.statusText.deepSeekEmptyBalance(c[0]) },
         Rule(#"(.+) \(Paid: (.+) / Granted: (.+)\)"#) { c in L10n.statusText.deepSeekBalance(c[0], c[1], c[2]) },
+        Rule(#"1 request"#) { _ in L10n.statusText.requests(1) },
         Rule(#"(.+) requests"#) { c in L10n.statusText.requests(c[0]) },
         Rule(#"(.+) audio hrs"#) { c in L10n.statusText.audioHours(c[0]) },
         Rule(#"(.+) billable hrs"#) { c in L10n.statusText.billableHours(c[0]) },
@@ -240,6 +264,7 @@ public enum CollectorStatusText {
             guard let running = Int(c[0]), let installed = Int(c[1]) else { return nil }
             return L10n.statusText.runningInstalled(running, installed)
         },
+        Rule(#"(\d+) active"#) { c in Int(c[0]).map(L10n.statusText.activeSessions) },
         Rule(#"Unlimited"#) { _ in L10n.statusText.unlimited },
         Rule(#"Credits data unavailable"#) { _ in L10n.statusText.creditsDataUnavailable },
         Rule(#"No Venice API balance available"#) { _ in L10n.statusText.noVeniceBalance },
