@@ -78,7 +78,8 @@ public final class DashboardPanelController {
         let probe = NSHostingView(rootView:
             UsageDashboardView(archive: snapshot, scrollable: false)
                 .frame(width: width)
-                .environment(\.colorScheme, .dark))
+                .environment(\.colorScheme, .dark)
+                .displayLocaleRoot())
         probe.layoutSubtreeIfNeeded()
         let naturalHeight = probe.fittingSize.height
         let fits = naturalHeight > 1 && naturalHeight <= maxHeight
@@ -99,7 +100,8 @@ public final class DashboardPanelController {
                 }
                 // token-monitor look: the slide-out panel is always dark frosted
                 // glass (see-through HUD backdrop), regardless of the system theme.
-                .environment(\.colorScheme, .dark))
+                .environment(\.colorScheme, .dark)
+                .displayLocaleRoot())
         hosting.wantsLayer = true
         // Round the window's own layer instead of clip-shaping the content (which
         // was centering + clipping the dashboard when its minWidth exceeded the panel).

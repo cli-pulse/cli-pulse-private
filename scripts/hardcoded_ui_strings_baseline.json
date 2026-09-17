@@ -92,12 +92,6 @@
    "reason": "KEEP_PROPER_NOUN: Product name plus the computed menu-bar value. There are no translatable words (round-1 decision)."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/MenuBarView.swift",
-   "literal": "\"English\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Language endonym in the footer language picker (MenuBarView.swift:639-657). It must read the same in every UI locale."
-  },
-  {
    "path": "CLI Pulse Bar/CLI Pulse Bar/PairingSection.swift",
    "literal": "\"python3 /tmp/cli_pulse_helper.py daemon\"",
    "count": 1,

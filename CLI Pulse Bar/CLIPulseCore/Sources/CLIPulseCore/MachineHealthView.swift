@@ -13,6 +13,13 @@ private let machineHealthLog = Logger(subsystem: "com.clipulse", category: "mach
 /// helper still feeds sensors when installed; when it can't, a clear affordance
 /// points to the direct-download build.
 public struct MachineHealthView: View {
+    /// Observed so a language switch redraws this tab in place. Rebuilding it
+    /// with `languageKeyed` instead would replace `fanClient`, whose deinit
+    /// stops the boost heartbeat, so the daemon returns the fans to auto.
+    /// Observing is enough here: every label is built in this body, and the
+    /// child views (`SectionHeader`, `MetricCard`, `StatusBadge`) take their
+    /// text as input.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @State private var snapshot: MachineSnapshot?
     @State private var didLoadOnce = false
     /// v1.44: WHY there is no snapshot. Every throw used to collapse into one

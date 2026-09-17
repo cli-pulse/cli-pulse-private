@@ -1764,3 +1764,5 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.hook_settings_root_not_object" = "%@ no contiene un objeto JSON en el nivel superior";
 "collector_error.no_projects_for_key" = "%@: no hay proyectos para esta clave API";
 "collector_error.no_quota_for_project" = "%@: no hay datos de cuota para este proyecto";
+/* ── macos-language-choice ── */
+"language.system_text_after_restart" = "Algunos textos del sistema cambian al reiniciar CLI Pulse.";

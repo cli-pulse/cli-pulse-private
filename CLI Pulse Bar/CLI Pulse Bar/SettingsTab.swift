@@ -8,6 +8,10 @@ struct SettingsTab: View {
     @EnvironmentObject var authState: AuthState
     let canRerunAgentSetup: Bool
     let onRerunAgentSetup: () -> Void
+    /// Observed so a language switch redraws this tab in place, keeping the
+    /// @State below: typed sign-in details and the chosen section. Only the
+    /// content under it is rebuilt (see `body`).
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @State private var email = ""
     @State private var otpCode = ""
     @State private var password = ""
@@ -52,6 +56,13 @@ struct SettingsTab: View {
                 }
             }
             .padding(12)
+            // The sections below (GeneralSection, PairingSection, …) take no
+            // input that changes with the language, so SwiftUI would keep their
+            // old bodies. Keying rebuilds them, and resets their own transient
+            // state (an expanded row, an open confirmation) the way switching
+            // tabs does. This view's @State lives above the key and survives,
+            // so the fields bound to it keep what was typed.
+            .languageKeyed(localeOverride.override)
         }
     }
 

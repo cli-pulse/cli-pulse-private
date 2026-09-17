@@ -32,6 +32,9 @@ public struct UsageHeatmapGrid: View {
     var cell: CGFloat = 13
     var gap: CGFloat = 4
     var showMonthLabels: Bool = true
+    /// The macOS roots set this from `LocaleOverrideStore.displayLocale`; on
+    /// iPhone it is the system locale.
+    @Environment(\.locale) private var locale
 
     public init(archive: DailyUsageArchive, weeks: Int, cell: CGFloat = 13, gap: CGFloat = 4,
                 showMonthLabels: Bool = true) {
@@ -81,9 +84,10 @@ public struct UsageHeatmapGrid: View {
 
     @ViewBuilder
     private func monthLabels(_ columns: [[String]]) -> some View {
+        let symbols = Self.shortMonthSymbols(locale: locale)
         HStack(spacing: gap) {
             ForEach(Array(columns.enumerated()), id: \.offset) { idx, _ in
-                let label = monthLabel(forColumn: idx, columns: columns)
+                let label = monthLabel(forColumn: idx, columns: columns, symbols: symbols)
                 Text(label)
                     .font(.system(size: 8))
                     .foregroundStyle(.secondary)
@@ -94,13 +98,13 @@ public struct UsageHeatmapGrid: View {
     }
 
     /// Show a short month name on the first column whose Sunday falls in a new month.
-    private func monthLabel(forColumn idx: Int, columns: [[String]]) -> String {
+    private func monthLabel(forColumn idx: Int, columns: [[String]], symbols: [String]) -> String {
         guard let month = monthComponent(columns[idx].first) else { return "" }
         if idx == 0 {
-            return shortMonth(month)
+            return Self.shortMonth(month, symbols: symbols)
         }
-        guard let prev = monthComponent(columns[idx - 1].first) else { return shortMonth(month) }
-        return month != prev ? shortMonth(month) : ""
+        guard let prev = monthComponent(columns[idx - 1].first) else { return Self.shortMonth(month, symbols: symbols) }
+        return month != prev ? Self.shortMonth(month, symbols: symbols) : ""
     }
 
     private func monthComponent(_ dayKey: String?) -> Int? {
@@ -109,8 +113,19 @@ public struct UsageHeatmapGrid: View {
         return cal.component(.month, from: date)
     }
 
-    private func shortMonth(_ month: Int) -> String {
-        let symbols = DateFormatter().shortMonthSymbols ?? []
+    /// Month names in `locale`. A bare `DateFormatter()` uses the system
+    /// language, which put "Jan Feb Mar" under Chinese headings when the app
+    /// was switched to 简体中文 on an English Mac.
+    static func shortMonthSymbols(locale: Locale) -> [String] {
+        let f = DateFormatter()
+        f.locale = locale
+        // After `locale`, which resets the calendar: `monthComponent` counts
+        // Gregorian months, so the names must be Gregorian too.
+        f.calendar = Calendar(identifier: .gregorian)
+        return f.shortMonthSymbols ?? []
+    }
+
+    static func shortMonth(_ month: Int, symbols: [String]) -> String {
         guard month >= 1, month <= symbols.count else { return "" }
         return symbols[month - 1]
     }

@@ -52,6 +52,7 @@ public final class FirstRunWelcomeController {
                 onDismiss()
                 self?.dismiss()
             }
+            .displayLocaleRoot()
         )
 
         // Sizing, carefully. `fittingSize` on a hosting view that has never been

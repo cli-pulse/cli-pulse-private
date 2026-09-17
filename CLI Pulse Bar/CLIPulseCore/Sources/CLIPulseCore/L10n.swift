@@ -1766,6 +1766,9 @@ public enum L10n {
     public enum language {
         public static var title: String { tr("language.title") }
         public static var systemDefault: String { tr("language.system_default") }
+        /// Shown under the language choices: macOS supplies some text itself
+        /// (alert and panel buttons) and only switches it at launch.
+        public static var systemTextAfterRestart: String { tr("language.system_text_after_restart") }
     }
 
     // MARK: - Yield Score

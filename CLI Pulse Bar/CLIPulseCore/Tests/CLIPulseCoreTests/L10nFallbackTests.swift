@@ -22,8 +22,10 @@ import XCTest
 /// parity and the sweep could no longer reach the fallback.
 final class L10nFallbackTests: XCTestCase {
 
-    /// Every `.lproj` the two Info.plists declare as shipped.
-    private static let shippedLocales = ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"]
+    /// Every shipped `.lproj`. The store's list, not a copy of it:
+    /// `LanguageChoiceTests` pins that list to the directories on disk, so a
+    /// new catalogue cannot be left out of this sweep.
+    private static let shippedLocales = LocaleOverrideStore.shippedLocalizations
 
     private var savedOverride: String?
 

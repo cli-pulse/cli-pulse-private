@@ -9,7 +9,11 @@ struct MenuBarView: View {
     @AppStorage("cli_pulse_menubar_height") private var storedHeight: Double = 580
     /// iter22: observed so SwiftUI re-evaluates the body (and every
     /// `Text(L10n.*)` inside it) whenever the user picks a new
-    /// language from the footer picker.
+    /// language from the footer picker. Child views whose inputs did not
+    /// change are not re-evaluated, so the content below them is keyed on
+    /// `localeOverride.override` (see `languageKeyed`): most of the tab
+    /// content (see `tabContent`), not this view, whose @State (a dismissed
+    /// wizard or upgrade card) must survive a switch.
     @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     /// v1.30.2 (RC-2): the MenuBarExtra(.window) popover becomes the key
     /// window when it opens. `controlActiveState` flips to `.key`/`.active`
@@ -91,6 +95,8 @@ struct MenuBarView: View {
                 // signed-in-but-unpaired-non-local-mode branch
                 // (PairingSection flow) stays in `notConnectedView`.
                 if shouldPresentAgentSetup {
+                    // Not keyed on the language: the wizard holds typed
+                    // credentials in @State, so it observes the store itself.
                     OnboardingWizardView(
                         setupState: $agentSetupState,
                         onStateChange: { updatedState in
@@ -104,6 +110,10 @@ struct MenuBarView: View {
                         }
                     )
                     .environmentObject(state)
+                    // The first run is where someone on a Mac set to another
+                    // language most needs the language menu, so every popover
+                    // state carries a footer with it.
+                    basicFooter
                 } else if LocalCollectionPolicy.shouldPresentDisclosure(
                     isAuthenticated: authState.isAuthenticated,
                     isLocalMode: state.isLocalMode,
@@ -121,6 +131,8 @@ struct MenuBarView: View {
                     // broken-looking app into a question.
                     LocalScanConsentView()
                         .environmentObject(state)
+                        .languageKeyed(localeOverride.override)
+                    basicFooter
                 } else if state.isLocalMode || authState.isPaired {
                     connectedView
                 } else {
@@ -295,24 +307,14 @@ struct MenuBarView: View {
                     // immediately visible.
                     VStack(spacing: 0) {
                         tabBar
-                        Group {
-                            switch state.selectedTab {
-                            case .overview:    OverviewTab()
-                            case .machine:     MachineHealthView()
-                            case .providers:   ProvidersTab()
-                            case .sessions:    SessionsTab()
-                            case .alerts:      AlertsTab()
-                            case .pet:         PetTab()
-                            case .settings:
-                                agentSettingsTab
-                            }
-                        }
-                        .environmentObject(state)
-                        .frame(maxHeight: .infinity)
+                        tabContent
+                            .environmentObject(state)
+                            .frame(maxHeight: .infinity)
                     }
                 } else {
                     VStack(spacing: 0) {
                         tabBar
+                        // Not keyed: see `tabContent`.
                         agentSettingsTab
                             .environmentObject(state)
                             .frame(maxHeight: .infinity)
@@ -431,32 +433,46 @@ struct MenuBarView: View {
             tabBar
 
             // Tab Content
-            Group {
-                switch state.selectedTab {
-                case .overview:
-                    OverviewTab()
-                case .machine:
-                    MachineHealthView()
-                case .providers:
-                    ProvidersTab()
-                case .sessions:
-                    SessionsTab()
-                case .alerts:
-                    AlertsTab()
-                case .pet:
-                    PetTab()
-                case .settings:
-                    agentSettingsTab
-                }
-            }
-            .environmentObject(state)
-            .frame(maxHeight: .infinity)
+            tabContent
+                .environmentObject(state)
+                .frame(maxHeight: .infinity)
 
             // Footer
             footer
 
             // Resize handle
             resizeHandle
+        }
+    }
+
+    /// The selected tab, for the connected and the signed-out shells.
+    ///
+    /// A tab that takes no input changing with the language keeps its old body
+    /// on a switch, so most tabs are keyed on the language and rebuilt, which
+    /// resets their own scroll position and expanded sections. Two are not,
+    /// because rebuilding them loses state a switch must keep, so they observe
+    /// the store and redraw in place instead:
+    /// * Machine: its fan client's deinit stops the heartbeat that holds an
+    ///   active fan boost.
+    /// * Settings: it holds the typed email, password and code, and keys only
+    ///   the sections below that state.
+    @ViewBuilder
+    private var tabContent: some View {
+        switch state.selectedTab {
+        case .overview:
+            OverviewTab().languageKeyed(localeOverride.override)
+        case .machine:
+            MachineHealthView()
+        case .providers:
+            ProvidersTab().languageKeyed(localeOverride.override)
+        case .sessions:
+            SessionsTab().languageKeyed(localeOverride.override)
+        case .alerts:
+            AlertsTab().languageKeyed(localeOverride.override)
+        case .pet:
+            PetTab().languageKeyed(localeOverride.override)
+        case .settings:
+            agentSettingsTab
         }
     }
 
@@ -530,6 +546,8 @@ struct MenuBarView: View {
 
             Spacer()
 
+            LanguagePickerMenu()
+
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -568,7 +586,7 @@ struct MenuBarView: View {
 
             // iter22: in-app language switcher placed immediately
             // left of the refresh button per director request.
-            languagePicker
+            LanguagePickerMenu()
 
             Button {
                 state.requestRefresh()
@@ -630,40 +648,6 @@ struct MenuBarView: View {
                     NSCursor.pop()
                 }
             }
-    }
-
-    /// iter22: globe icon button → menu with English / 简体中文 /
-    /// 日本語 / System Default. Tapping persists the choice via
-    /// `LocaleOverrideStore.shared.set(...)` and forces a re-render
-    /// because `localeOverride` is `@ObservedObject` on this view.
-    private var languagePicker: some View {
-        Menu {
-            Button(action: { LocaleOverrideStore.shared.set("en") }) {
-                Label("English", systemImage: localeOverride.override == "en" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("zh-Hans") }) {
-                Label("简体中文", systemImage: localeOverride.override == "zh-Hans" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("zh-Hant") }) {
-                Label("繁體中文", systemImage: localeOverride.override == "zh-Hant" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("ja") }) {
-                Label("日本語", systemImage: localeOverride.override == "ja" ? "checkmark" : "")
-            }
-            Divider()
-            Button(action: { LocaleOverrideStore.shared.set(nil) }) {
-                Label(L10n.language.systemDefault, systemImage: localeOverride.override == nil ? "checkmark" : "")
-            }
-        } label: {
-            Image(systemName: "globe")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(L10n.language.title)
-        .help(L10n.language.title)
     }
 
     private var providerSwitcher: some View {

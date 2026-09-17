@@ -1750,3 +1750,5 @@
 "sessions.hook_settings_root_not_object" = "%@ 파일의 최상위 값이 JSON 객체가 아닙니다";
 "collector_error.no_projects_for_key" = "%@: 이 API 키에 연결된 프로젝트 없음";
 "collector_error.no_quota_for_project" = "%@: 이 프로젝트의 할당량 데이터 없음";
+/* ── macos-language-choice ── */
+"language.system_text_after_restart" = "일부 시스템 텍스트는 CLI Pulse를 다시 시작한 후에 바뀝니다.";

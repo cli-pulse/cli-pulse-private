@@ -1794,3 +1794,5 @@
 "sessions.hook_settings_root_not_object" = "%@ の最上位が JSON オブジェクトではありません";
 "collector_error.no_projects_for_key" = "%@: この API キーにプロジェクトがありません";
 "collector_error.no_quota_for_project" = "%@: このプロジェクトのクォータデータがありません";
+/* ── macos-language-choice ── */
+"language.system_text_after_restart" = "一部のシステムの文言は、CLI Pulse の再起動後に切り替わります。";

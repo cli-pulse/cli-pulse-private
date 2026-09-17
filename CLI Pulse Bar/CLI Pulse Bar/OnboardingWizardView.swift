@@ -13,6 +13,12 @@ struct OnboardingWizardView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var providerState: ProviderState
+    /// Observed so a language switch from the popover footer redraws the
+    /// wizard in place. Rebuilding it with `.id` instead would discard the
+    /// step state and anything typed into the sign-in fields. Observing alone
+    /// does not reach child views with unchanged inputs, which is why the
+    /// read-only account cards are keyed (see `readOnlyAccountCard`).
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @Environment(\.openWindow) private var openWindow
 
     @Binding var setupState: AgentSetupState
@@ -325,6 +331,22 @@ struct OnboardingWizardView: View {
         }
     }
 
+    /// The card the review, connection and finish steps list.
+    ///
+    /// Keyed on the language: its inputs are plain values and no closures, so
+    /// when a switch redraws this wizard SwiftUI keeps the card's old body and
+    /// its status badge and plan line stay in the previous language under a
+    /// translated step header. The card holds no state of its own, so
+    /// rebuilding it loses nothing.
+    private func readOnlyAccountCard(_ option: AgentSetupAccountOption) -> some View {
+        ProviderAccountSetupCard(
+            option: option,
+            isSelected: true,
+            isReadOnly: true
+        )
+        .languageKeyed(localeOverride.override, row: option.id)
+    }
+
     // MARK: - Review
 
     private var reviewStep: some View {
@@ -343,11 +365,7 @@ struct OnboardingWizardView: View {
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         ForEach(selectedOptions) { option in
-                            ProviderAccountSetupCard(
-                                option: option,
-                                isSelected: true,
-                                isReadOnly: true
-                            )
+                            readOnlyAccountCard(option)
                         }
                     }
                     .padding(.horizontal, 2)
@@ -380,11 +398,7 @@ struct OnboardingWizardView: View {
                     LazyVStack(spacing: 10) {
                         ForEach(selectedOptions) { option in
                             VStack(spacing: 8) {
-                                ProviderAccountSetupCard(
-                                    option: option,
-                                    isSelected: true,
-                                    isReadOnly: true
-                                )
+                                readOnlyAccountCard(option)
 
                                 if option.status != .connected {
                                     Button {
@@ -594,11 +608,7 @@ struct OnboardingWizardView: View {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(selectedOptions) { option in
-                            ProviderAccountSetupCard(
-                                option: option,
-                                isSelected: true,
-                                isReadOnly: true
-                            )
+                            readOnlyAccountCard(option)
                         }
                     }
                     .padding(.horizontal, 2)
@@ -1087,6 +1097,8 @@ struct OnboardingWizardView: View {
 struct LegacyOnboardingWizardView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
+    /// See `OnboardingWizardView.localeOverride`.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @AppStorage("cli_pulse_onboarding_completed") private var onboardingCompleted = false
     @State private var step = 0
     @State private var email = ""

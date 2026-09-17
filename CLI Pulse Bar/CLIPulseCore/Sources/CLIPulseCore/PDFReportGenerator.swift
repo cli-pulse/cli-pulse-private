@@ -115,15 +115,11 @@ public enum PDFReportGenerator {
         y = drawText(L10n.pdf.title, at: CGPoint(x: margin, y: y), fontSize: 22, bold: true, context: context)
         y -= 4
 
-        // iter22: respect the in-app language override when one is
-        // active so dates render in the chosen locale; otherwise
-        // follow the system. The lproj name (e.g. "ja", "zh-Hans")
-        // maps cleanly onto a `Locale` identifier.
+        // iter22: dates render in the in-app language when one is chosen,
+        // through the same accessor every other displayed date uses.
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = LocaleOverrideStore.shared.displayLocale
         dateFormatter.dateStyle = .long
-        if let override = LocaleOverrideStore.shared.override {
-            dateFormatter.locale = Locale(identifier: override)
-        }
         y = drawText(L10n.pdf.generated(dateFormatter.string(from: generatedDate)), at: CGPoint(x: margin, y: y), fontSize: 10, color: .gray, context: context)
         y -= 20
 
