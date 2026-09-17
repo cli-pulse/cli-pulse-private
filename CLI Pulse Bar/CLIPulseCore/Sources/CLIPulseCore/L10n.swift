@@ -27,7 +27,7 @@ public enum L10n {
     /// for must read as the number. A decimal the reader sees is formatted by
     /// its accessor with `DisplayFormat.decimal` and reaches the value as `%@`.
     private static func tr(_ key: String, _ args: CVarArg...) -> String {
-        let format = resolve(key)
+        let format = displayFormat(key)
         return args.isEmpty ? format : String(format: format, arguments: args)
     }
 
@@ -37,11 +37,39 @@ public enum L10n {
     private static func tr(_ key: String, english: Bool, _ args: CVarArg...) -> String {
         let format: String
         if english, let en = LocaleOverrideStore.englishBundle {
+            // Logged text keeps the catalogue's plain spaces: it is grepped, not laid out.
             format = NSLocalizedString(key, bundle: en, comment: "")
         } else {
-            format = resolve(key)
+            format = displayFormat(key)
         }
         return args.isEmpty ? format : String(format: format, arguments: args)
+    }
+
+    /// The catalogue text for `key` as it should be laid out on screen.
+    ///
+    /// Internal so `CompositionGrammarTests` can sweep every key in every locale
+    /// through the path the accessors use.
+    static func displayFormat(_ key: String) -> String {
+        keepingBrandUnbroken(resolve(key))
+    }
+
+    /// "CLI Pulse" is one name, but SwiftUI may break a line at the space inside
+    /// it. In Chinese and Japanese the brand is often the only space for a whole
+    /// line, so the break lands there: "…登录同一 CLI" / "Pulse 账户。" on the
+    /// iPhone Settings footer. Swapping in U+00A0 at lookup covers all ~86 values
+    /// per locale at once, and keeps the invisible character out of the `.strings`
+    /// files, where reviewers cannot see it and the next translator would not
+    /// type it. Applied to the format before arguments go in, so user data that
+    /// happens to contain the words (a device named "CLI Pulse Helper") is left alone.
+    ///
+    /// Runs on every lookup, inside SwiftUI body evaluation on every platform, and
+    /// more than 1,500 of each catalogue's ~1,600 values have no brand in them. Those
+    /// return as they came after one search, without building a replaced copy; the
+    /// replacement starts at the first match, which is where the search stopped.
+    static func keepingBrandUnbroken(_ text: String) -> String {
+        guard let first = text.range(of: "CLI Pulse") else { return text }
+        return text.replacingOccurrences(
+            of: "CLI Pulse", with: "CLI\u{00A0}Pulse", range: first.lowerBound..<text.endIndex)
     }
 
     /// Looks a key up in the active locale, falling back to **English
@@ -75,6 +103,20 @@ public enum L10n {
             return format
         }
         return NSLocalizedString(key, bundle: english, comment: "")
+    }
+
+    /// Small all-caps captions (heatmap tiles, dashboard stats) are a Latin-script
+    /// style. `uppercased()` on a Chinese caption changes only the Latin loanwords
+    /// inside it, so "Token 總數" came out "TOKEN 總數". Scripts without case keep
+    /// the catalogue's own text.
+    public static func captionCase(_ text: String) -> String {
+        let localization = LocaleOverrideStore.resolvedLocalization
+        switch localization {
+        case "ja", "ko", "zh-Hans", "zh-Hant":
+            return text
+        default:
+            return text.uppercased(with: localization.map { Locale(identifier: $0) })
+        }
     }
 
     // MARK: - Tabs
@@ -453,6 +495,9 @@ public enum L10n {
         public static var searchPlaceholder: String { tr("providers.search_placeholder") }
         public static var noSearchMatch: String { tr("providers.no_search_match") }
         public static var serviceStatus: String { tr("providers.service_status") }
+        /// VoiceOver label for a provider's status disclosure. Juxtaposing
+        /// "Claude" + "Estado del servicio" reads backwards in Spanish.
+        public static func serviceStatusFor(_ provider: String) -> String { tr("providers.service_status_for", provider) }
         public static var openStatusPage: String { tr("providers.open_status_page") }
         public static var thisWeek: String { tr("providers.this_week") }
         public static var quota: String { tr("providers.quota") }
@@ -510,8 +555,17 @@ public enum L10n {
         public static var quotaDataUnavailable: String { tr("providers.quota_data_unavailable") }
         public static func claudeSignedInConnectHint(_ a0: String) -> String { tr("providers.claude_signed_in_connect_hint", a0) }
         public static var claudeQuotaUnavailableHint: String { tr("providers.claude_quota_unavailable_hint") }
-        public static func trackedCount(_ a0: Int) -> String { tr("providers.tracked_count", a0) }
-        public static func messagesShort(_ a0: String) -> String { tr("providers.messages_short", a0) }
+        public static func trackedCount(_ count: Int) -> String {
+            count == 1 ? tr("providers.tracked_count_one", count) : tr("providers.tracked_count", count)
+        }
+        /// Takes the count, not the formatted number, so it can pick "1 msg" over
+        /// "1 msgs"; the compact K/M formatting still happens here.
+        public static func messagesShort(_ count: Int) -> String {
+            let formatted = CostFormatter.formatUsage(count)
+            return count == 1
+                ? tr("providers.messages_short_one", formatted)
+                : tr("providers.messages_short", formatted)
+        }
         public static var claudeMetricHelp: String { tr("providers.claude_metric_help") }
         public static var claudeNoScanHelp: String { tr("providers.claude_no_scan_help") }
         public static var ioTokensHelp: String { tr("providers.io_tokens_help") }
@@ -702,6 +756,30 @@ public enum L10n {
         public static var hookInstalledTitle: String { tr("sessions.hook_installed_title") }
         public static var hookInstalledDetail: String { tr("sessions.hook_installed_detail") }
         public static func hookInstallResult(_ a0: String, _ a1: String) -> String { tr("sessions.hook_install_result", a0, a1) }
+        /// The Install result line. `action` is the helper's protocol token and stays
+        /// as sent; only the sentence around it is chosen here. An unknown token (a
+        /// newer helper) keeps the generic template, which at least shows what happened.
+        public static func hookInstallOutcome(action: String, settingsPath: String) -> String {
+            switch action {
+            case "created": return tr("sessions.hook_install_created", settingsPath)
+            case "added": return tr("sessions.hook_install_added", settingsPath)
+            case "replaced": return tr("sessions.hook_install_replaced", settingsPath)
+            case "noop": return tr("sessions.hook_install_noop", settingsPath)
+            default: return hookInstallResult(action, settingsPath)
+            }
+        }
+        /// The Remove result line. "noop" means nothing was installed, so it says so
+        /// instead of "Removed: noop (0 hooks)".
+        public static func hookUninstallOutcome(action: String, removed: Int, settingsPath: String) -> String {
+            switch action {
+            case "removed":
+                return removed == 1
+                    ? tr("sessions.hook_uninstall_removed_one", removed, settingsPath)
+                    : tr("sessions.hook_uninstall_removed", removed, settingsPath)
+            case "noop": return tr("sessions.hook_uninstall_noop", settingsPath)
+            default: return hookUninstallResult(action, removed, settingsPath)
+            }
+        }
         public static var hookRemove: String { tr("sessions.hook_remove") }
         public static var hookRemoveHelp: String { tr("sessions.hook_remove_help") }
         public static var hookInstallTitle: String { tr("sessions.hook_install_title") }
@@ -1041,7 +1119,12 @@ public enum L10n {
         public static var noProviderData: String { tr("widget.no_provider_data") }
         public static var used: String { tr("widget.used") }
         public static var signInToView: String { tr("widget.sign_in_to_view") }
-        public static func alertsSummary(_ count: Int) -> String { tr("widget.alerts_summary", count) }
+        /// Home Screen gauge widget. `usageDescription` says "on your Lock Screen"
+        /// and belongs to the Lock Screen widget.
+        public static var providerUsageDescription: String { tr("widget.provider_usage_description") }
+        public static func alertsSummary(_ count: Int) -> String {
+            count == 1 ? tr("widget.alerts_summary_one", count) : tr("widget.alerts_summary", count)
+        }
         public static func percentLeft(_ name: String, _ pct: Int) -> String { tr("widget.percent_left", name, pct) }
         public static var quotaFallback: String { tr("widget.quota_fallback") }
         public static var proLockedTitle: String { tr("widget.pro_locked_title") }
@@ -1202,6 +1285,17 @@ public enum L10n {
         public static var high: String { tr("badge.high") }
         public static var medium: String { tr("badge.medium") }
         public static var low: String { tr("badge.low") }
+        /// The session collection-confidence badge. A bare "高" beside an icon does
+        /// not say what is high, so the badge names the measure in every language.
+        /// Unknown values keep the raw token, as before.
+        public static func confidence(_ raw: String) -> String {
+            switch raw {
+            case "high": return tr("badge.confidence_high")
+            case "medium": return tr("badge.confidence_medium")
+            case "low": return tr("badge.confidence_low")
+            default: return raw.capitalized
+            }
+        }
         public static var cloud: String { tr("badge.cloud") }
         public static var local: String { tr("badge.local") }
         public static var aggregator: String { tr("badge.aggregator") }
@@ -1475,6 +1569,19 @@ public enum L10n {
             case .estimated: return estimated
             }
         }
+        /// `cost_status` ("Exact"/"Estimated"/"Unavailable", a server token) as plain
+        /// text, such as the macOS cost tile's subtitle. Not `CostStatusBadge`'s
+        /// words: those are capsule abbreviations ("EST", "ESTIMADO") that read as a
+        /// time zone or as shouting outside the capsule. An unknown token is shown
+        /// as it arrived, which is what the subtitle did before.
+        public static func statusLabel(_ token: String) -> String {
+            switch token {
+            case "Exact":       return exact
+            case "Estimated":   return estimated
+            case "Unavailable": return tr("cost.unavailable")
+            default:            return token
+            }
+        }
         public static var ioTokensCodexBarHelp: String { tr("cost.io_tokens_codexbar_help") }
         public static var ioTokensHelp: String { tr("cost.io_tokens_help") }
     }
@@ -1684,7 +1791,11 @@ public enum L10n {
         public static var scanAgain: String { tr("onboarding_wizard.scan_again") }
         public static var noAgentsTitle: String { tr("onboarding_wizard.no_agents_title") }
         public static var noAgentsBody: String { tr("onboarding_wizard.no_agents_body") }
-        public static func undetectedProviders(_ count: Int) -> String { tr("onboarding_wizard.undetected_providers", count) }
+        public static func undetectedProviders(_ count: Int) -> String {
+            count == 1
+                ? tr("onboarding_wizard.undetected_providers_one", count)
+                : tr("onboarding_wizard.undetected_providers", count)
+        }
         public static var reviewTitle: String { tr("onboarding_wizard.review_title") }
         public static var reviewSubtitle: String { tr("onboarding_wizard.review_subtitle") }
         public static var noAccountsSelected: String { tr("onboarding_wizard.no_accounts_selected") }
@@ -1809,7 +1920,9 @@ public enum L10n {
         public static var rangePicker: String { tr("yield.range_picker") }
         public static var emptyNoAttribution: String { tr("yield.empty_no_attribution") }
         public static func detailSubtitle(_ rangeLabel: String) -> String { tr("yield.detail_subtitle", rangeLabel) }
-        public static func commitsCount(_ count: Int) -> String { tr("yield.commits_count", count) }
+        public static func commitsCount(_ count: Int) -> String {
+            count == 1 ? tr("yield.commits_count_one", count) : tr("yield.commits_count", count)
+        }
         public static func commitsCountDecimal(_ count: Double) -> String {
             tr("yield.commits_count_decimal", DisplayFormat.decimal(count, fractionDigits: 1))
         }
@@ -1824,7 +1937,11 @@ public enum L10n {
 
     public enum menuBar {
         public static func tierMigration(kept: Int, disabled: Int) -> String {
-            tr("menu_bar.tier_migration", kept, disabled)
+            // `kept` is the free plan's limit (3), so only `disabled` can be 1 —
+            // and es must then say "Se desactivó 1: edítalo".
+            disabled == 1
+                ? tr("menu_bar.tier_migration_one", kept, disabled)
+                : tr("menu_bar.tier_migration", kept, disabled)
         }
         // v1.51 — the two upgrade prompts. Both were hardcoded English
         // literals until now, in an app whose paywall ships six languages,
@@ -1881,12 +1998,20 @@ public enum L10n {
         public static var pulseLabel: String { tr("watch.pulse_label") }
         public static func todayTokens(_ value: String) -> String { tr("watch.today_tokens", value) }
         public static var toggleCostHint: String { tr("watch.toggle_cost_hint") }
-        public static func sessionsCount(_ count: Int) -> String { tr("watch.sessions_count", count) }
-        public static func devicesCount(_ count: Int) -> String { tr("watch.devices_count", count) }
-        public static func alertsCount(_ count: Int) -> String { tr("watch.alerts_count", count) }
+        public static func sessionsCount(_ count: Int) -> String {
+            count == 1 ? tr("watch.sessions_count_one", count) : tr("watch.sessions_count", count)
+        }
+        public static func devicesCount(_ count: Int) -> String {
+            count == 1 ? tr("watch.devices_count_one", count) : tr("watch.devices_count", count)
+        }
+        public static func alertsCount(_ count: Int) -> String {
+            count == 1 ? tr("watch.alerts_count_one", count) : tr("watch.alerts_count", count)
+        }
         // Redesign — Quota rings (P2)
         public static func providerLeft(_ name: String) -> String { tr("watch.provider_left", name) }
-        public static func activeCount(_ count: Int) -> String { tr("watch.active_count", count) }
+        public static func activeCount(_ count: Int) -> String {
+            count == 1 ? tr("watch.active_count_one", count) : tr("watch.active_count", count)
+        }
         public static var remaining: String { tr("watch.remaining") }
         public static var errors: String { tr("watch.errors") }
         // Redesign — Live sessions (P3)
@@ -1896,6 +2021,9 @@ public enum L10n {
         public static func tokensUsed(_ value: String) -> String { tr("watch.tokens_used", value) }
         public static var connectAgentsOnMac: String { tr("watch.connect_agents_on_mac") }
         public static func staleUpdated(_ value: String) -> String { tr("watch.stale_updated", value) }
+        /// Stale with no observation time at all. A placeholder dash cannot go into
+        /// the time slot: "%@更新" would read "—更新".
+        public static var staleNoTimestamp: String { tr("watch.stale_no_timestamp") }
         public static func tightestAccount(_ value: String) -> String { tr("watch.tightest_account", value) }
         // Alert card VoiceOver value
         public static var unread: String { tr("watch.unread") }
@@ -2019,6 +2147,30 @@ public enum L10n {
         public static var permissionsRegrantTitle: String { tr("app_updater.permissions_regrant_title") }
         public static func permissionsRegrantBody(_ a0: String) -> String { tr("app_updater.permissions_regrant_body", a0) }
         public static func openPermission(_ a0: String) -> String { tr("app_updater.open_permission", a0) }
+        /// The re-grant button for one permission id. The CJK templates quote the
+        /// name (「通知」) with no space: the argument is always a translated name
+        /// now, and a bare "打开通知" reads as "turn notifications on".
+        public static func openPermissionButton(_ id: String) -> String { openPermission(permissionName(id)) }
+        /// Display name for a permission id from `AppPermissionMigrationChecker`.
+        /// The ids stay English: `systemSettingsURL(for:)` matches on them.
+        public static func permissionName(_ id: String) -> String {
+            switch id {
+            case "Notifications": return tr("app_updater.permission_notifications")
+            case "Accessibility": return tr("app_updater.permission_accessibility")
+            default: return id
+            }
+        }
+        /// "Notifications and Accessibility" / "通知和辅助功能" / "通知、アクセシビリティ".
+        /// ListFormatter in the language the catalogue is being read in, not the
+        /// system's, so the list matches the sentence around it.
+        public static func permissionList(_ ids: [String]) -> String {
+            let formatter = ListFormatter()
+            if let localization = LocaleOverrideStore.resolvedLocalization {
+                formatter.locale = Locale(identifier: localization)
+            }
+            let names = ids.map(permissionName)
+            return formatter.string(from: names) ?? names.joined(separator: ", ")
+        }
         public static var devidChannelTitle: String { tr("app_updater.devid_channel_title") }
         public static var masAutoUpdateWarning: String { tr("app_updater.mas_auto_update_warning") }
         public static var openAppStoreSettings: String { tr("app_updater.open_app_store_settings") }

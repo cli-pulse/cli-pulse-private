@@ -1780,3 +1780,31 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "dashboard.risk_quota_low" = "Cuota de %1$@: queda menos del %2$d%%";
 "dashboard.risk_device_offline" = "%@ está fuera de línea";
 "auth.demo_user_name" = "Usuario de demostración";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "%d sesión";
+"watch.devices_count_one" = "%d dispositivo";
+"watch.alerts_count_one" = "%d alerta";
+"widget.alerts_summary_one" = "%d alerta • CLI Pulse";
+"yield.commits_count_one" = "%d commit";
+"onboarding_wizard.undetected_providers_one" = "No se encontró %d agente optimizado";
+"providers.messages_short_one" = "%@ mensaje";
+"providers.tracked_count_one" = "%d supervisado";
+"watch.active_count_one" = "%d activo";
+"menu_bar.tier_migration_one" = "Se conservaron tus %d proveedores más usados para ajustarse al plan gratuito. Se desactivó %d: edítalo en Ajustes → Proveedores.";
+"sessions.hook_install_created" = "Instalado: se creó un archivo de ajustes nuevo — %@";
+"sessions.hook_install_added" = "Instalado: se añadió el hook — %@";
+"sessions.hook_install_replaced" = "Instalado: se reemplazó el hook anterior — %@";
+"sessions.hook_install_noop" = "Ya estaba instalado; no se cambió nada — %@";
+"sessions.hook_uninstall_removed" = "Se quitaron %d hooks — %@";
+"sessions.hook_uninstall_removed_one" = "Se quitó %d hook — %@";
+"sessions.hook_uninstall_noop" = "No había hooks que quitar — %@";
+"app_updater.permission_notifications" = "Notificaciones";
+"app_updater.permission_accessibility" = "Accesibilidad";
+"providers.service_status_for" = "Estado del servicio de %@";
+"watch.stale_no_timestamp" = "Obsoleto";
+"widget.provider_usage_description" = "Consulta rápidamente el porcentaje de uso en la pantalla de inicio.";
+"badge.confidence_high" = "Confianza alta";
+"badge.confidence_medium" = "Confianza media";
+"badge.confidence_low" = "Confianza baja";
+"cost.unavailable" = "No disponible";

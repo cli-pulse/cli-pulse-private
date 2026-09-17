@@ -5,14 +5,15 @@ import Foundation
 /// the existing enabled/disabled filter. Extracted as a pure function so the
 /// matching rule is unit-tested once and shared by both tabs.
 public enum ProviderSearchFilter {
-    /// Case- and diacritic-insensitive substring match of `query` against any
-    /// of `fields`. An empty / whitespace-only query matches everything, so the
-    /// list is unfiltered until the user types.
+    /// Case-, diacritic- and width-insensitive substring match of `query` against
+    /// any of `fields`. An empty / whitespace-only query matches everything, so the
+    /// list is unfiltered until the user types. Width-insensitive because a
+    /// Japanese or Chinese input source in full-width mode types "ｃｌａｕｄｅ".
     public static func matches(query: String, in fields: [String]) -> Bool {
         let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !q.isEmpty else { return true }
         return fields.contains { field in
-            field.range(of: q, options: [.caseInsensitive, .diacriticInsensitive]) != nil
+            field.range(of: q, options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive]) != nil
         }
     }
 

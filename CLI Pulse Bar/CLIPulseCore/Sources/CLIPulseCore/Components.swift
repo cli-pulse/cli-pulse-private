@@ -504,7 +504,12 @@ public struct CostStatusBadge: View {
         self.status = status
     }
 
-    private var label: String {
+    private var label: String { Self.label(for: status) }
+
+    /// `cost_status` is a server token ("Exact"/"Estimated"/"Unavailable"). These
+    /// are the capsule's abbreviations ("EST", "N/A"); plain text uses
+    /// `L10n.cost.statusLabel(_:)`, so this stays internal to the badge.
+    static func label(for status: String) -> String {
         switch status {
         case "Exact": return L10n.badge.exact
         case "Estimated": return L10n.badge.estimated
@@ -560,14 +565,7 @@ public struct ConfidenceBadge: View {
         }
     }
 
-    private var localizedConfidence: String {
-        switch confidence {
-        case "high": return L10n.badge.high
-        case "medium": return L10n.badge.medium
-        case "low": return L10n.badge.low
-        default: return confidence.capitalized
-        }
-    }
+    private var localizedConfidence: String { L10n.badge.confidence(confidence) }
 
     public var body: some View {
         HStack(spacing: 2) {
@@ -577,6 +575,9 @@ public struct ConfidenceBadge: View {
                 .font(.system(size: 8, weight: .medium))
         }
         .foregroundStyle(color)
+        // One element, so VoiceOver reads the labelled text and skips the icon name.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(localizedConfidence))
     }
 }
 

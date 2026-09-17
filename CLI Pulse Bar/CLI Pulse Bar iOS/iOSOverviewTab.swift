@@ -233,7 +233,9 @@ struct iOSOverviewTab: View {
 
         return LazyVGrid(columns: columns, spacing: 10) {
             iOSMetricCard(title: L10n.dashboard.usageToday, value: CostFormatter.formatUsage(dash.total_usage_today), icon: "chart.bar.fill", color: PulseTheme.accent)
-            iOSMetricCard(title: L10n.dashboard.estCost, value: CostFormatter.format(dash.total_estimated_cost_today), icon: "dollarsign.circle", color: .green, badge: dash.cost_status)
+            // "Cost Today", not "Est. Cost": the badge already says Estimated (or Exact,
+            // which the old title contradicted), so the title does not repeat it.
+            iOSMetricCard(title: L10n.dashboard.costToday, value: CostFormatter.format(dash.total_estimated_cost_today), icon: "dollarsign.circle", color: .green, badge: dash.cost_status)
             iOSMetricCard(title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple)
             iOSMetricCard(title: L10n.tab.sessions, value: "\(dash.active_sessions)", icon: "terminal", color: .cyan)
             iOSMetricCard(title: L10n.dashboard.onlineDevices, value: "\(dash.online_devices)", icon: "desktopcomputer", color: .blue)

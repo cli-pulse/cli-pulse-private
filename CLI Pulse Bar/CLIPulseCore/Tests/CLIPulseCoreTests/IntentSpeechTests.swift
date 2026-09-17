@@ -41,7 +41,8 @@ final class IntentSpeechTests: XCTestCase {
         withLocale("en") {
             XCTAssertEqual(L10n.intents.providerQuotaLeft("Claude", "450K", 38), "Claude: 450K left, 38% remaining.")
             XCTAssertEqual(L10n.intents.providerUsageNoQuota("Codex", "1.1M"), "Codex: 1.1M used today, no quota set.")
-            XCTAssertEqual(L10n.intents.providerNotConfigured("Gemini"), "Gemini is not configured in CLI Pulse.")
+            // The brand is joined with U+00A0 at lookup (L10n.keepingBrandUnbroken).
+            XCTAssertEqual(L10n.intents.providerNotConfigured("Gemini"), "Gemini is not configured in CLI\u{00A0}Pulse.")
         }
     }
 

@@ -193,7 +193,7 @@ struct DangerZoneSection: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(.red)
-                .disabled(deleteConfirmText != "DELETE")
+                .disabled(!UserInputNormalization.isDeleteConfirmation(deleteConfirmText))
             }
         }
     }

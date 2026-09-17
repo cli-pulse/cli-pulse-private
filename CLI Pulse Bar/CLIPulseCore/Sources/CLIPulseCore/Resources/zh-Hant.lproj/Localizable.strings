@@ -1345,7 +1345,7 @@
 "app_updater.title" = "App 更新（Beta 管道）";
 "app_updater.permissions_regrant_title" = "切換管道後需要重新授予權限";
 "app_updater.permissions_regrant_body" = "從 App Store 版移轉會重設 macOS 權限。請重新授予：%@。";
-"app_updater.open_permission" = "開啟 %@…";
+"app_updater.open_permission" = "開啟「%@」…";
 "app_updater.devid_channel_title" = "你目前使用的是 Developer ID Beta 管道。";
 "app_updater.mas_auto_update_warning" = "若要繼續使用此版本，請在「系統設定 → App Store」中關閉 CLI Pulse 的自動更新，否則 App Store 版本可能會覆蓋這個 Beta 版。";
 "app_updater.open_app_store_settings" = "開啟 App Store 設定…";
@@ -1796,3 +1796,31 @@
 "dashboard.risk_quota_low" = "%1$@ 配額：剩餘不足 %2$d%%";
 "dashboard.risk_device_offline" = "%@ 已離線";
 "auth.demo_user_name" = "示範使用者";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "%d 個會話";
+"watch.devices_count_one" = "%d 部裝置";
+"watch.alerts_count_one" = "%d 則告警";
+"widget.alerts_summary_one" = "%d 則告警 • CLI Pulse";
+"yield.commits_count_one" = "%d 次提交";
+"onboarding_wizard.undetected_providers_one" = "另有 %d 個最佳化支援的 Agent 未找到";
+"providers.messages_short_one" = "%@ 則訊息";
+"providers.tracked_count_one" = "正在追蹤 %d 個";
+"watch.active_count_one" = "%d 個活躍";
+"menu_bar.tier_migration_one" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 → 服務商」中編輯。";
+"sessions.hook_install_created" = "已安裝：已建立新的設定檔 — %@";
+"sessions.hook_install_added" = "已安裝：已加入 hook — %@";
+"sessions.hook_install_replaced" = "已安裝：已取代舊版 hook — %@";
+"sessions.hook_install_noop" = "已安裝，無需變更 — %@";
+"sessions.hook_uninstall_removed" = "已移除 %d 個 hook — %@";
+"sessions.hook_uninstall_removed_one" = "已移除 %d 個 hook — %@";
+"sessions.hook_uninstall_noop" = "沒有需要移除的 hook — %@";
+"app_updater.permission_notifications" = "通知";
+"app_updater.permission_accessibility" = "輔助使用";
+"providers.service_status_for" = "%@ 服務狀態";
+"watch.stale_no_timestamp" = "資料已過期";
+"widget.provider_usage_description" = "在主畫面上快速檢視使用百分比。";
+"badge.confidence_high" = "可信度：高";
+"badge.confidence_medium" = "可信度：中";
+"badge.confidence_low" = "可信度：低";
+"cost.unavailable" = "不可用";

@@ -1359,7 +1359,7 @@
 "app_updater.title" = "アプリのアップデート（ベータチャネル）";
 "app_updater.permissions_regrant_title" = "チャネル切り替え後は権限の再許可が必要です";
 "app_updater.permissions_regrant_body" = "App Store 版から移行すると macOS の権限がリセットされます。次の権限を再度許可してください: %@。";
-"app_updater.open_permission" = "%@ を開く…";
+"app_updater.open_permission" = "「%@」を開く…";
 "app_updater.devid_channel_title" = "Developer ID ベータチャネルを使用中です。";
 "app_updater.mas_auto_update_warning" = "このまま使い続けるには、「システム設定 → App Store」で CLI Pulse の自動アップデートをオフにしてください。オフにしないと、App Store 版がこのベータ版を上書きすることがあります。";
 "app_updater.open_app_store_settings" = "App Store の設定を開く…";
@@ -1810,3 +1810,31 @@
 "dashboard.risk_quota_low" = "%1$@ のクォータ: 残り %2$d%% 未満";
 "dashboard.risk_device_offline" = "%@ がオフライン";
 "auth.demo_user_name" = "デモユーザー";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "%d セッション";
+"watch.devices_count_one" = "%d デバイス";
+"watch.alerts_count_one" = "%d 件のアラート";
+"widget.alerts_summary_one" = "アラート %d 件 • CLI Pulse";
+"yield.commits_count_one" = "%d コミット";
+"onboarding_wizard.undetected_providers_one" = "対応エージェントのうち %d 個が見つかりませんでした";
+"providers.messages_short_one" = "%@ メッセージ";
+"providers.tracked_count_one" = "%d 件を追跡中";
+"watch.active_count_one" = "%d 件アクティブ";
+"menu_bar.tier_migration_one" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 「設定 → プロバイダー」で編集してください。";
+"sessions.hook_install_created" = "インストール済み: 設定ファイルを新規作成しました — %@";
+"sessions.hook_install_added" = "インストール済み: フックを追加しました — %@";
+"sessions.hook_install_replaced" = "インストール済み: 古いフックを置き換えました — %@";
+"sessions.hook_install_noop" = "インストール済みのため変更はありません — %@";
+"sessions.hook_uninstall_removed" = "フックを %d 件削除しました — %@";
+"sessions.hook_uninstall_removed_one" = "フックを %d 件削除しました — %@";
+"sessions.hook_uninstall_noop" = "削除するフックはありません — %@";
+"app_updater.permission_notifications" = "通知";
+"app_updater.permission_accessibility" = "アクセシビリティ";
+"providers.service_status_for" = "%@ のサービス状態";
+"watch.stale_no_timestamp" = "古いデータ";
+"widget.provider_usage_description" = "ホーム画面で使用率をすばやく確認。";
+"badge.confidence_high" = "信頼度: 高";
+"badge.confidence_medium" = "信頼度: 中";
+"badge.confidence_low" = "信頼度: 低";
+"cost.unavailable" = "不明";

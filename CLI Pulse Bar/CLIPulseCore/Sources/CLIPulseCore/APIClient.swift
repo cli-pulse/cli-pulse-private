@@ -936,7 +936,11 @@ public actor APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
 
-        request.httpBody = try encoder.encode(VerifyOTPRequest(email: email, token: code, type: "email"))
+        // Every sign-in code path (macOS, iPhone, Watch) ends here, so the
+        // full-width digits a CJK input source can type are folded once.
+        request.httpBody = try encoder.encode(
+            VerifyOTPRequest(email: email, token: UserInputNormalization.otpCode(code), type: "email")
+        )
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {

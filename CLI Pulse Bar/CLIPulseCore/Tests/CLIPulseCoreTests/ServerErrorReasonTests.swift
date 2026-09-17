@@ -134,8 +134,9 @@ final class ServerErrorReasonTests: XCTestCase {
             XCTAssertFalse(shown.isEmpty, "\(reason)")
             XCTAssertFalse(shown.contains("%"), "unfilled specifier for \(reason): \(shown)")
             XCTAssertFalse(shown.contains("server_error."), "raw key for \(reason): \(shown)")
-            // Brand, protocol and product names stay Latin in every language.
-            let prose = ["CLI Pulse", "HTTP", "Mac"].reduce(shown) {
+            // Brand, protocol and product names stay Latin in every language. The
+            // brand is shown with a no-break space (`L10n.keepingBrandUnbroken`).
+            let prose = [L10n.keepingBrandUnbroken("CLI Pulse"), "HTTP", "Mac"].reduce(shown) {
                 $0.replacingOccurrences(of: $1, with: "")
             }
             XCTAssertNil(prose.range(of: "[A-Za-z]{3,}", options: .regularExpression),

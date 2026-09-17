@@ -67,7 +67,7 @@ struct AppUpdaterSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.appUpdater.permissionsRegrantTitle)
                     .font(.system(size: 10, weight: .medium))
-                Text(L10n.appUpdater.permissionsRegrantBody(permMigration.revertedPermissions.joined(separator: ", ")))
+                Text(L10n.appUpdater.permissionsRegrantBody(L10n.appUpdater.permissionList(permMigration.revertedPermissions)))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -80,7 +80,7 @@ struct AppUpdaterSection: View {
                                 Task.detached { NSWorkspace.shared.open(url) }
                             }
                         } label: {
-                            Text(L10n.appUpdater.openPermission(perm))
+                            Text(L10n.appUpdater.openPermissionButton(perm))
                                 .font(.system(size: 10))
                         }
                         .buttonStyle(.link)

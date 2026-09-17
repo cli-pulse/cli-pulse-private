@@ -1806,3 +1806,31 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "dashboard.risk_quota_low" = "%1$@ quota: less than %2$d%% left";
 "dashboard.risk_device_offline" = "%@ is offline";
 "auth.demo_user_name" = "Demo User";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "%d session";
+"watch.devices_count_one" = "%d device";
+"watch.alerts_count_one" = "%d alert";
+"widget.alerts_summary_one" = "%d alert • CLI Pulse";
+"yield.commits_count_one" = "%d commit";
+"onboarding_wizard.undetected_providers_one" = "%d optimized agent not found";
+"providers.messages_short_one" = "%@ msg";
+"providers.tracked_count_one" = "%d tracked";
+"watch.active_count_one" = "%d active";
+"menu_bar.tier_migration_one" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings → Providers.";
+"sessions.hook_install_created" = "Installed: new settings file created — %@";
+"sessions.hook_install_added" = "Installed: hook added — %@";
+"sessions.hook_install_replaced" = "Installed: outdated hook replaced — %@";
+"sessions.hook_install_noop" = "Already installed, nothing changed — %@";
+"sessions.hook_uninstall_removed" = "Removed %d hooks — %@";
+"sessions.hook_uninstall_removed_one" = "Removed %d hook — %@";
+"sessions.hook_uninstall_noop" = "No hooks to remove — %@";
+"app_updater.permission_notifications" = "Notifications";
+"app_updater.permission_accessibility" = "Accessibility";
+"providers.service_status_for" = "%@ Service Status";
+"watch.stale_no_timestamp" = "Stale";
+"widget.provider_usage_description" = "Quick usage percentage on your Home Screen.";
+"badge.confidence_high" = "High confidence";
+"badge.confidence_medium" = "Medium confidence";
+"badge.confidence_low" = "Low confidence";
+"cost.unavailable" = "Unavailable";

@@ -313,10 +313,13 @@ struct OverviewTab: View {
                 icon: "chart.bar.fill",
                 color: PulseTheme.accent
             )
+            // Same as iOS: the status line carries "estimated", so the title
+            // does not. The status is a server token; this line is plain text, so
+            // it gets the sentence-case words, not the badge's "EST".
             MetricCard(
-                title: L10n.dashboard.estCost,
+                title: L10n.dashboard.costToday,
                 value: CostFormatter.format(dash.total_estimated_cost_today),
-                subtitle: dash.cost_status,
+                subtitle: L10n.cost.statusLabel(dash.cost_status),
                 icon: "dollarsign.circle",
                 color: .green
             )
