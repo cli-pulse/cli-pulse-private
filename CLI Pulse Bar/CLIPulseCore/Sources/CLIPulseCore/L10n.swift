@@ -359,6 +359,10 @@ public enum L10n {
             tr("dashboard.risk_device_offline", device)
         }
         public static var activity: String { tr("dashboard.activity") }
+        /// The iPhone Overview's hourly bar chart. Not `activity`: the heatmap
+        /// card right above it is titled that, and macOS and the Watch keep
+        /// `activity` for their only activity section.
+        public static var hourlyActivity: String { tr("dashboard.hourly_activity") }
         public static var quickStats: String { tr("dashboard.quick_stats") }
         public static var monitor: String { tr("dashboard.monitor") }
         public static var manage: String { tr("dashboard.manage") }
