@@ -11,17 +11,41 @@ the parity gate green, because it was correctly reporting that every key had a
 translation. The strings simply were not keys.
 
 WHAT IT CHECKS
-Every string literal passed to a user-facing SwiftUI/AppKit API (Text, Button,
-Toggle, Label, Section, TextField, Link, Menu, .help, .navigationTitle,
-.alert, header:/title:/message: arguments …), and every literal RETURNED from a
-property or function whose name says it is display copy (label, title,
-subtitle, caption, header, hint, message, placeholder, description …) in the
-app, watch, widget and CLIPulseCore sources.
+Every string literal that reaches a user-facing SwiftUI/AppKit/App Intents API,
+and every literal handed back from a property or function whose name says it is
+display copy (label, title, subtitle, caption, header, hint, message,
+placeholder, description …) or that is typed String and returns a phrase, in the
+app, watch, widget and CLIPulseCore sources. "Reaches" means:
+  * the first argument of a view or modifier — Text, Button, Label, Section,
+    ProgressView, LabeledContent, DisclosureGroup, Stepper, Window, .help,
+    .alert, .badge, .accessibilityLabel/Value/Hint, .configurationDisplayName,
+    .description, Text(verbatim:) …; a header:/title:/message: argument of any
+    call; a label:/text:/detail: argument of a call that builds a view;
+  * as a whole argument, not only when the literal comes first: a ternary
+    branch, a `??` fallback, a concatenation, and on the line after the call;
+    a ternary's condition may compare (`n >= 1 ?`, `a != b ?`, `x == .y ?`)
+    and call (`n <= limit(for: a) ?`);
+  * the format of a `String(format:)` handed to any of these;
+  * an assignment to messageText, informativeText, .title, .body, toolTip …;
+  * an element of an array literal that ForEach iterates;
+  * a local `let` whose value is later handed to any of the above;
+  * `return "…"`, an implicit return (`var subtitle: String { "…" }`), and a
+    `case …: "…"` arm, judged against the enclosing func or property — kept by
+    brace depth, so `guard let`, `if let` and local `let`s inside the body do
+    not replace it (they used to, and hid everything after them).
+Copy is any literal with words outside its interpolations: two ASCII letters in
+a row, or any letter in another script — "最近活动" and "한국어" count.
+App Intents metadata is localized by the system from the APP bundle's tables,
+so a literal there passes when every shipped `<lang>.lproj/Localizable.strings`
+of its target has it as a key, and fails when one does not.
 
 A RATCHET, NOT A BAR — same reasoning as the parity gate
 Some literals are correct as they are: product and provider names, protocol
 tokens, shell commands, DEBUG-only menus, persisted raw values. Those live in
 `scripts/hardcoded_ui_strings_baseline.json`, each with the reason it is allowed.
+A reason starts with its category (REASON_CATEGORIES below) and gives evidence.
+A placeholder such as TODO or NEEDS_JUDGMENT FAILS: deferring the decision is
+not a reason to ship English.
   * a literal that is not in the baseline FAILS  — new hardcoded copy is caught
     in the PR that adds it;
   * a baseline entry whose literal is gone FAILS — so the allowlist can only
@@ -150,66 +174,469 @@ def without_interpolations(body: str) -> str:
     return ''.join(out)
 
 
-UI_PREFIX = re.compile(
-    r'(?:(?<![\w.])(?:Text|Button|Toggle|Label|Section|TextField|SecureField|Picker|Menu|Link|'
-    r'ContentUnavailableView|CommandMenu|NavigationLink)\s*\(\s*'
-    r'|\.(?:help|navigationTitle|alert|confirmationDialog|accessibilityLabel|accessibilityHint)\s*\(\s*'
-    # `CredentialIssue.serverMessage` passes server text through untranslated; a literal
-    # there is an English message that has escaped the typed credential catalogue.
-    r'|\.serverMessage\s*\(\s*'
-    r'|\b(?:header|footer|title|subtitle|message|placeholder|prompt|caption)\s*:\s*)$'
-)
-RETURN_PREFIX = re.compile(r'\breturn\s+$')
-CASE_PATTERN = re.compile(r'(?:case|default)\b')
-DECL = re.compile(r'\b(?:var|func|let)\s+(\w+)')
 DISPLAY_NAME = re.compile(r'label|title|caption|header|footer|hint|message|placeholder|description|'
                           r'displayname|text|subtitle|summary|reason|badge|chip|tooltip|headline|detail|explanation', re.I)
 # A name list always has gaps (`var badge: String` returned "recent activity" and was missed by the first
 # version of this list). So a second, structural signal: a multi-word phrase returned from a declaration
-# typed String is prose whatever the property is called.
-PHRASE = re.compile(r'[A-Za-z]{2,}[\s,.;:·—-]+[A-Za-z]{2,}')
+# typed String is prose whatever the property is called. Words are separated by spaces and prose punctuation,
+# or a hyphen before a capital ("Heart-Eyes") — not a bare `.` or a lowercase `-`, which join the parts of an
+# SF Symbol name, a bundle id or a host ("exclamationmark.triangle.fill", "com.clipulse.app",
+# "status.claude.com"): 59 allowlist entries existed only because the separator class accepted them.
+PHRASE = re.compile(r'[A-Za-z]{2,}(?:[\s,;:·—]+|\.\s+|-(?=[A-Z]))[A-Za-z]{2,}')
+
+# Scripts that do not separate words with spaces (kana, CJK ideographs, Hangul): one character is a word.
+_CJK = re.compile('[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff]')
+# Words separated by spaces, or CJK text: what a stored `let` needs to be prose rather than an identifier.
+SPACED_PHRASE = re.compile(r'[A-Za-z]{2,}\s+[A-Za-z]{2,}|' + _CJK.pattern)
+
+
+def has_words(text: str) -> bool:
+    """Two ASCII letters in a row, one CJK/kana/Hangul character, or any other non-ASCII letter.
+
+    The first version asked only for `[A-Za-z]{2,}`, so "한국어", "最近活动" and every other
+    literal written in a script the app ships were invisible, while "English" beside them was seen.
+    """
+    if re.search(r'[A-Za-z]{2,}', text) or _CJK.search(text):
+        return True
+    return any(ch.isalpha() and ord(ch) > 127 for ch in text)
 
 
 def is_copy(literal: str) -> bool:
-    """Literals that could be English prose: a run of 2+ letters outside any interpolation."""
-    return re.search(r'[A-Za-z]{2,}', without_interpolations(literal[1:-1])) is not None
+    """Literals that could be prose: words outside any interpolation."""
+    return has_words(without_interpolations(literal[1:-1]))
+
+
+# ---- Swift: where a literal ends up ------------------------------------------
+#
+# The first version looked only at the text directly in front of a literal on
+# its own line (`Text("…")`, `title: "…"`, `return "…"`) and remembered the
+# enclosing declaration as "the last `let`/`var`/`func` seen". Everything SwiftUI
+# writes routinely around a literal fell through, with the gate green:
+#   Text(isOn ? "Enabled" : "Disabled")          a ternary branch
+#   Text(name ?? "Unknown account")              a nil-coalescing fallback
+#   Label(\n    "QA preview uses …",             the literal on the next line
+#   alert.messageText = "…"                      an assignment
+#   var subtitle: String { "Tap to pair" }       an implicit return
+#   let label = "Local session" … Text(label)    a local handed to a sink
+#   ForEach(["Critical", "Warning"], …)          an array rendered row by row
+#   func tooltip() -> String {                   a `guard let` / `if let` / local
+#       guard let day = … else { … }             `let` replaced `tooltip` as the
+#       return "\(key): \(n) tokens"             context, so the return was unseen
+# So a literal's call is found by walking back through the joined code lines to
+# the bracket that encloses it, its argument is judged as a whole, and the
+# enclosing declaration is a scope kept by brace depth, which a local binding
+# cannot replace.
+
+# Calls whose first positional argument is rendered.
+SWIFT_CALL_SINKS = frozenset({
+    'Text', 'Button', 'Toggle', 'Label', 'Section', 'TextField', 'SecureField', 'Picker', 'Menu', 'Link',
+    'ContentUnavailableView', 'CommandMenu', 'NavigationLink', 'ProgressView', 'LabeledContent', 'GroupBox',
+    'DisclosureGroup', 'Stepper', 'DatePicker', 'ColorPicker', 'ShareLink', 'Window', 'WindowGroup',
+    'MenuBarExtra', 'Tab', 'LocalizedStringKey',
+    '.help', '.navigationTitle', '.navigationSubtitle', '.alert', '.confirmationDialog',
+    '.accessibilityLabel', '.accessibilityHint', '.accessibilityValue', '.badge',
+    '.configurationDisplayName', '.description',
+    # `CredentialIssue.serverMessage` passes server text through untranslated; a literal
+    # there is an English message that has escaped the typed credential catalogue.
+    '.serverMessage',
+    # App Intents: shown by the system in Shortcuts, Spotlight and Siri.
+    'IntentDescription', 'IntentDialog', 'Summary', 'LocalizedStringResource',
+})
+# App Intents metadata is read by the system from the APP bundle's Localizable.strings
+# (Shortcuts, Spotlight, Siri — sometimes before the app has run), keyed by the literal.
+# It cannot go through L10n; it is localized when every shipped table has the key.
+SWIFT_INTENT_CALLS = frozenset({'IntentDescription', 'IntentDialog', 'Summary', 'LocalizedStringResource',
+                                'Parameter', 'AppShortcut', 'DisplayRepresentation'})
+POSITIONAL_LABELS = (None, 'verbatim', 'stringLiteral')
+# Argument labels whose value is rendered, whatever the call.
+SWIFT_LABEL_SINK = re.compile(r'(?:header|footer|title|subtitle|message|placeholder|prompt|caption|shortTitle|categoryName)$')
+# Argument labels whose value is rendered when the call builds a view or a model of one:
+# `diagnosticRow(label:)`, `copyButton(text:)`, `ProviderOption(label:)`, `Row(accessibilityLabel:)`.
+# The same words label queues, parsers and log sources (`DispatchQueue(label:)`,
+# `parseWindow(label: "Weekly", html:)`, `readSnapshot(sourceLabel: "cache")`), so the call decides.
+SWIFT_VIEW_LABEL_SINK = re.compile(r'(?:label|text|detail|\w+(?:Label|Title|Message|Hint|Caption|Subtitle|Placeholder|Tooltip))$')
+SWIFT_VIEW_CALL = re.compile(r'^[A-Z]\w*$|(?:Row|Button|Chip|Label|Cell|Badge|Card|Header|Footer|Section|View|Pill|Tile|'
+                             r'Banner|Item|Line|Field|Text|Option|Toast)$')
+SWIFT_NON_UI_CALLS = frozenset({'DispatchQueue', 'OperationQueue', 'Logger', 'OSLog', 'OSSignposter', 'Thread',
+                                'NSLock', 'NSRecursiveLock', 'OSAllocatedUnfairLock', 'NSError', 'URLQueryItem'})
+# Calls whose first argument is iterated with each element rendered.
+SWIFT_ITERATING_SINKS = frozenset({'ForEach'})
+# Assignments that put text on screen: AppKit/UIKit/UserNotifications properties, and
+# declarations typed as localized resources.
+SWIFT_ASSIGN_SINK = re.compile(
+    r'(?:\.(?:messageText|informativeText|title|subtitle|body|toolTip|stringValue|placeholderString|prompt|'
+    r'message|nameFieldLabel|accessibilityLabel|accessibilityValue|accessibilityHint)'
+    r'|(?P<intent>:\s*(?:LocalizedStringResource|TypeDisplayRepresentation|IntentDescription)\??)'
+    r'|:\s*LocalizedStringKey\??)'
+    r'\s*=\s*$')
+# Where a value is handed back: `return`, a `case …:` / `default:` arm, or a body that opens
+# straight onto the value (`var subtitle: String { "…" }`, `else { "…" }`).
+SWIFT_RESULT_HEAD = re.compile(r'\breturn\b|\bcase\b[^:;{}]*:|\bdefault\s*:|\{')
+SWIFT_BINDING_HEAD = re.compile(r'\b(?:let|var)\s+(\w+)\s*(?::\s*String\??\s*)?=\s*$')
+TYPE_KEYWORD = re.compile(r'\b(?:struct|class|enum|extension|protocol|actor)\s+(?!func\b|var\b|let\b|init\b)\w')
+FUNC_KEYWORD = re.compile(r'\bfunc\s+([^\s(<]+)|(?<![.\w])(init|subscript|deinit)\b\s*[?!]?\s*[(<{]')
+BINDING_KEYWORD = re.compile(r'\b(?:var|let)\s+(\w+)')
+PATTERN_BINDING = re.compile(r'\b(?:case|if|guard|while|for)\b|[,(]\s*$')
+
+
+def value_lead_ok(rest: str) -> bool:
+    """True when `rest` (code between the start of a value and a literal) leaves the literal as the value.
+
+    Empty; a ternary branch (`cond ?`, `cond ? "" :`); a nil-coalescing fallback (`x ??`);
+    or a concatenation (`name +`).
+    """
+    rest = rest.strip()
+    if not rest:
+        return True
+    if rest.endswith('??') or rest.endswith('+'):
+        return True
+    return '?' in rest and (rest.endswith('?') or rest.endswith(':'))
+
+
+def enclosing_bracket(ctx: str, pos: int) -> tuple[int, str, int, int] | None:
+    """Walk back from pos to the unclosed `(` or `[` around it.
+
+    Returns (index, bracket, top-level commas before pos, start of the current argument), or
+    None when pos is not inside a bracket of its statement (an enclosing `{` or a `;` comes first).
+    """
+    nest = brace = commas = 0
+    arg_start = -1
+    i = pos - 1
+    while i >= 0:
+        c = ctx[i]
+        if c in ')]':
+            nest += 1
+        elif c == '}':
+            brace += 1
+        elif c == '{':
+            if brace == 0:
+                return None
+            brace -= 1
+        elif c in '([':
+            if nest == 0 and brace == 0:
+                return i, c, commas, (arg_start if commas else i + 1)
+            nest -= 1
+        elif nest == 0 and brace == 0:
+            if c == ',':
+                if commas == 0:
+                    arg_start = i + 1
+                commas += 1
+            elif c == ';':
+                return None
+        i -= 1
+    return None
+
+
+def call_name(ctx: str, bracket_index: int) -> tuple[str, int]:
+    """(name, start) of the call whose `(` is at bracket_index: `Text`, `.help`, `Parameter`."""
+    m = re.search(r'@?(\.?[A-Za-z_]\w*)\s*(?:<[^<>()]*>)?\s*$', ctx[:bracket_index])
+    return (m.group(1), m.start()) if m else ('', bracket_index)
+
+
+def split_label(segment: str) -> tuple[str | None, str]:
+    m = re.match(r'\s*([A-Za-z_]\w*)\s*:(?!:)\s*(.*)$', segment, re.S)
+    if m and not re.match(r'\s*\w+\s*\?', segment):
+        return m.group(1), m.group(2)
+    return None, segment
+
+
+def call_sink(ctx: str, pos: int) -> tuple[str, int] | None:
+    """How the value at ctx[pos] is rendered by the call around it.
+
+    ('ui' | 'intent', pos) when it is; ('through', start) when it is the format of a
+    `String(format:)` whose own position decides; None otherwise.
+    """
+    found = enclosing_bracket(ctx, pos)
+    if not found:
+        return None
+    index, bracket, commas, arg_start = found
+    label, rest = split_label(ctx[arg_start:pos])
+    if not value_lead_ok(rest):
+        return None
+    if bracket == '[':
+        # An element of an array literal: rendered when the array is what ForEach iterates.
+        if label is not None:
+            return None
+        outer = enclosing_bracket(ctx, index)
+        if outer and outer[1] == '(' and outer[2] == 0:
+            outer_label, outer_rest = split_label(ctx[outer[3]:index])
+            if (outer_label is None and not outer_rest.strip()
+                    and call_name(ctx, outer[0])[0] in SWIFT_ITERATING_SINKS):
+                return 'ui', pos
+        return None
+    name, name_start = call_name(ctx, index)
+    kind = 'intent' if name in SWIFT_INTENT_CALLS else 'ui'
+    if label is not None and SWIFT_LABEL_SINK.match(label):
+        return kind, pos
+    if (label is not None and SWIFT_VIEW_LABEL_SINK.match(label)
+            and SWIFT_VIEW_CALL.search(name.lstrip('.')) and name not in SWIFT_NON_UI_CALLS):
+        return kind, pos
+    if commas == 0 and label in POSITIONAL_LABELS and name in SWIFT_CALL_SINKS:
+        return kind, pos
+    if commas == 0 and name == 'String' and label in (None, 'format'):
+        return 'through', name_start
+    return None
+
+
+def resolve_sink(ctx: str, pos: int) -> tuple[str, int] | None:
+    """call_sink, followed through `String(format:)` to the call around it.
+
+    call_sink hands a format on to the position of its `String(` call. The main loop used to
+    look there only for an assignment, a return or a binding, never for the view around it, so
+    `Text(String(format: "%d items", n))` and `.help(String(format: "Updated %@", t))` passed.
+    Returns ('ui' | 'intent', pos) when the value is rendered, ('through', start) of the
+    outermost `String(format:)` when it is not, or None.
+    """
+    sink = call_sink(ctx, pos)
+    for _ in range(8):                   # `String(format: String(format: …))` nests, but not deeply
+        if not sink or sink[0] != 'through':
+            break
+        outer = call_sink(ctx, sink[1])
+        if not outer:
+            break
+        sink = outer
+    return sink
+
+
+# An assignment operator: a bare `=` or the `=` of a compound one (`+=`), never the `=` of a
+# comparison (`==`, `!=`, `===`, `!==`, `<=`, `>=`). The ternary support first tested for any `=`
+# after `==` was removed, so `n >= 1 ? "Some" : "None"` read as an assignment and was not a result,
+# and it anchored an assignment on the last `=` — the second one of `==` — so
+# `content.title = level == .critical ? "Critical" : "Warning"` matched neither sink nor binding.
+ASSIGNMENT_OP = re.compile(r'(?<![=!<>])=(?!=)')
+
+
+def result_position(ctx: str, pos: int) -> bool:
+    """True when the value at ctx[pos] is what the enclosing body or `case` arm hands back."""
+    if enclosing_bracket(ctx, pos):
+        return False
+    heads = list(SWIFT_RESULT_HEAD.finditer(ctx, 0, pos))
+    if not heads:
+        return False
+    rest = ctx[heads[-1].end():pos]
+    return ';' not in rest and not ASSIGNMENT_OP.search(rest) and value_lead_ok(rest)
+
+
+def strip_value_lead(before: str) -> str:
+    """`x = cond ? "" : ` → `x = `, so an assignment or binding head still matches through a ternary.
+
+    The condition is whatever lies between the value's own `=` and the literal: it may compare
+    (`a == b`, `n >= 1`, `x != nil`) and call (`n <= limit(for: a)`). Walking back, brackets that
+    close before the literal are skipped whole; an unclosed one means the literal is an argument,
+    not the assigned value, and a `;`, `{` or `}` ends the statement.
+    """
+    nest = 0
+    for i in range(len(before) - 1, -1, -1):
+        c = before[i]
+        if c in ')]':
+            nest += 1
+        elif c in '([':
+            if nest == 0:
+                return before
+            nest -= 1
+        elif nest:
+            continue
+        elif c in ';{}':
+            return before
+        elif c == '=' and ASSIGNMENT_OP.match(before, i):
+            return before[:i + 1] if value_lead_ok(before[i + 1:]) else before
+    return before
+
+
+class _Scope:
+    __slots__ = ('depth', 'kind', 'name', 'is_string', 'locals')
+
+    def __init__(self, depth: int, kind: str, name: str, is_string: bool):
+        self.depth, self.kind, self.name, self.is_string = depth, kind, name, is_string
+        self.locals: dict[str, list[tuple[tuple[int, int, str], str]]] = {}
+
+
+def code_line(line: str, lits: list[tuple[int, str]]) -> str:
+    """The line with each literal's contents blanked (same length) and any // comment removed."""
+    chars = list(line)
+    for start, lit in lits:
+        for k in range(start + 1, start + len(lit) - 1):
+            chars[k] = ' '
+    code = ''.join(chars)
+    cut = code.find('//')
+    return code if cut < 0 else code[:cut]
+
+
+def scan_swift_file(path: Path) -> list[tuple[int, str, str]]:
+    """(line, literal, 'ui' | 'intent') for every literal that reaches a user-facing sink."""
+    found: dict[tuple[int, int, str], str] = {}
+    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
+    stack: list[_Scope] = []
+    pending: list | None = None          # [kind, name, signature so far, line, column] of a declaration awaiting `{`
+    depth = 0
+    window: list[str] = []               # previous code lines, for values that wrap onto the next line
+    in_block_comment = in_multiline_literal = False
+
+    def context() -> _Scope | None:
+        """The func or computed property whose body this is — never a local binding or a closure."""
+        for s in reversed(stack):
+            if s.kind in ('func', 'var'):
+                return s
+            if s.kind == 'type':
+                return None
+        return None
+
+    for n, line in enumerate(lines, 1):
+        stripped = line.lstrip()
+        if in_multiline_literal:
+            if '"""' in line:
+                in_multiline_literal = False
+                window.clear()
+            continue
+        if in_block_comment:
+            in_block_comment = '*/' not in line
+            continue
+        if stripped.startswith('/*'):
+            in_block_comment = '*/' not in stripped
+            continue
+        # Swift requires each `#if` branch to be balanced, so its braces can be counted in sequence.
+        if not stripped or stripped.startswith(('//', '*', '@available', '#if', '#else', '#elseif', '#endif')):
+            continue
+        lits = literals(line)
+        code = code_line(line, lits)
+        base = ' '.join(window) + ' '
+        offset = len(base)
+        ctx = base + code
+
+        events: list[tuple[int, int, str, object]] = []
+        for m in TYPE_KEYWORD.finditer(code):
+            events.append((m.start(), 1, 'type', ''))
+        for m in FUNC_KEYWORD.finditer(code):
+            events.append((m.start(), 1, 'func', m.group(1) or m.group(2)))
+        for m in BINDING_KEYWORD.finditer(code):
+            events.append((m.start(), 1, 'binding', m.group(1)))
+        for i, c in enumerate(code):
+            if c in '{}':
+                events.append((i, 1, c, ''))
+        for start, lit in lits:
+            events.append((start, 0, 'literal', lit))
+        events.sort(key=lambda e: (e[0], e[1]))
+
+        for pos, _, kind, payload in events:
+            if kind in ('type', 'func'):
+                pending = [kind, str(payload), code[pos:], n, pos]
+            elif kind == 'binding':
+                # A binding inside a body — `let x = …`, `guard let x`, `if let x`, `case .a(let x)` —
+                # is local. Only a stored or computed property at type level is a context.
+                if context() is None and not PATTERN_BINDING.search(code[:pos]):
+                    pending = ['var', str(payload), code[pos:], n, pos]
+            elif kind == '{':
+                if pending:
+                    sig = (pending[2] + ' ' + code[:pos]) if pending[3] != n else code[pending[4]:pos]
+                    is_string = bool(re.search(r'(?:->|:)\s*String\b', sig))
+                    stack.append(_Scope(depth + 1, pending[0], pending[1], is_string))
+                    pending = None
+                else:
+                    stack.append(_Scope(depth + 1, 'block', '', False))
+                depth += 1
+            elif kind == '}':
+                depth = max(0, depth - 1)
+                while stack and stack[-1].depth > depth:
+                    stack.pop()
+                pending = None
+            elif kind == 'literal':
+                lit = str(payload)
+                if not is_copy(lit):
+                    continue
+                at = offset + pos
+                key = (n, pos, lit)
+                sink = resolve_sink(ctx, at)
+                if sink and sink[0] in ('ui', 'intent'):
+                    found[key] = sink[0]
+                    continue
+                value_at = sink[1] if sink else at
+                before = strip_value_lead(ctx[:value_at])
+                assign = SWIFT_ASSIGN_SINK.search(before)
+                if assign:
+                    found[key] = 'intent' if assign.group('intent') else 'ui'
+                    continue
+                scope = context()
+                phrase = PHRASE.search(without_interpolations(lit[1:-1])) is not None
+                if scope and result_position(ctx, value_at) and (
+                        DISPLAY_NAME.search(scope.name) or (scope.is_string and phrase)):
+                    found[key] = 'ui'
+                    continue
+                binding = SWIFT_BINDING_HEAD.search(before)
+                if binding and not enclosing_bracket(ctx, value_at):
+                    if DISPLAY_NAME.search(binding.group(1)) and SPACED_PHRASE.search(without_interpolations(lit[1:-1])):
+                        found[key] = 'ui'           # `let emptyMessage = "No sessions yet"`, not `agentLabel = "a.b-C"`
+                    elif scope:
+                        scope.locals.setdefault(binding.group(1), []).append((key, 'value'))
+                    continue
+                # An element of a local array: `let severities = ["Critical", "Warning"]` … `ForEach(severities`.
+                bracket = enclosing_bracket(ctx, value_at)
+                if scope and bracket and bracket[1] == '[' and bracket[2] >= 0:
+                    label, rest = split_label(ctx[bracket[3]:value_at])
+                    element_binding = SWIFT_BINDING_HEAD.search(strip_value_lead(ctx[:bracket[0]]))
+                    if label is None and value_lead_ok(rest) and element_binding:
+                        scope.locals.setdefault(element_binding.group(1), []).append((key, 'element'))
+        # A local handed to a sink: `let label = "Local \(name) session"` … `Text(label)`,
+        # or an array of copy handed to ForEach.
+        for s in stack:
+            for name, origins in s.locals.items():
+                for m in re.finditer(r'(?<![\w.$\\])' + re.escape(name) + r'\b(?!:|\s*[(.=\[])', code):
+                    at = offset + m.start()
+                    sink = resolve_sink(ctx, at)
+                    rendered = bool(sink and sink[0] in ('ui', 'intent')) or bool(
+                        SWIFT_ASSIGN_SINK.search(strip_value_lead(ctx[:at])))
+                    iterated = False
+                    around = enclosing_bracket(ctx, at)
+                    if around and around[1] == '(' and around[2] == 0 and call_name(ctx, around[0])[0] in SWIFT_ITERATING_SINKS:
+                        label, rest = split_label(ctx[around[3]:at])
+                        iterated = label is None and not rest.strip()
+                    for origin, how in origins:
+                        if (how == 'value' and rendered) or (how == 'element' and iterated):
+                            found.setdefault(origin, 'ui')
+        if pending and pending[3] != n:
+            pending[2] += ' ' + code
+        if code.count('"""') % 2 == 1:
+            in_multiline_literal = True     # its lines are text, not code: a JS `return "…"` is not Swift
+            window.clear()
+        elif code.strip():
+            window.append(code.strip())
+            del window[:-16]
+    return [(n, lit, kind) for (n, _, lit), kind in sorted(found.items())]
 
 
 def scan_file(path: Path) -> list[tuple[int, str]]:
-    found: list[tuple[int, str]] = []
-    lines = path.read_text(encoding='utf-8', errors='replace').splitlines()
-    recent_decl = ''
-    recent_decl_is_string = False
-    for n, line in enumerate(lines, 1):
-        stripped = line.lstrip()
-        if not stripped or stripped.startswith(('//', '*', '/*', '@available')):
-            continue
-        lits = literals(line)
-        code_only = line
-        for start, lit in reversed(lits):          # blank literals before looking for declarations
-            code_only = code_only[:start] + '""' + code_only[start + len(lit):]
-        # A `case` line's `let` is a PATTERN BINDING, not a declaration. Treating
-        # it as one reset the tracker on every
-        #   case .invalidURL(let url): return "Invalid URL: \(url)"
-        # so the enclosing `var errorDescription: String?` was forgotten and the
-        # whole body of every error enum went unscanned — the literals above are
-        # real UI copy, shown in Settings' Test Connection.
-        if not CASE_PATTERN.match(stripped):
-            m = DECL.search(code_only)
-            if m:
-                recent_decl = m.group(1)
-                recent_decl_is_string = 'String' in code_only
-        named_copy = bool(DISPLAY_NAME.search(recent_decl or ''))
-        for start, lit in lits:
-            if not is_copy(lit):
-                continue
-            before = line[:start]
-            if UI_PREFIX.search(before):
-                found.append((n, lit))
-            elif RETURN_PREFIX.search(before) and (
-                    named_copy or (recent_decl_is_string and PHRASE.search(without_interpolations(lit[1:-1])))):
-                found.append((n, lit))
-    return found
+    return [(n, lit) for n, lit, _ in scan_swift_file(path)]
+
+
+# ---- App-bundle string tables (App Intents) -------------------------------------
+
+APP_BUNDLE_LOCALES = ("en", "es", "ja", "ko", "zh-Hans", "zh-Hant")
+
+
+def strings_keys(path: Path) -> set[str]:
+    if not path.is_file():
+        return set()
+    text = path.read_text(encoding='utf-8', errors='replace')
+    return set(re.findall(r'^\s*"((?:[^"\\]|\\.)*)"\s*=', text, re.M))
+
+
+def intent_key(literal: str) -> str:
+    """The table key App Intents looks up: `\\(\\.$provider)` is written `${provider}`."""
+    body = literal[1:-1]
+    return re.sub(r'\\\(\\?\.\$?(\w+)\)', r'${\1}', body)
+
+
+def app_bundle_tables(root: Path, rel: Path) -> list[set[str]] | None:
+    """Keys of every shipped Localizable.strings (and AppShortcuts.strings) of the target holding rel."""
+    for d in SCAN_DIRS:
+        if rel.as_posix().startswith(d + '/'):
+            target = root / d
+            tables = []
+            for loc in APP_BUNDLE_LOCALES:
+                keys = strings_keys(target / f"{loc}.lproj" / "Localizable.strings")
+                keys |= strings_keys(target / f"{loc}.lproj" / "AppShortcuts.strings")
+                tables.append(keys)
+            return tables if all(tables) else None
+    return None
 
 
 # ---- Kotlin -------------------------------------------------------------------
@@ -347,7 +774,7 @@ def kotlin_ui_prefix(composables: set[str]) -> re.Pattern[str]:
 
 
 def kotlin_is_copy(literal: str) -> bool:
-    return re.search(r'[A-Za-z]{2,}', kotlin_without_templates(literal[1:-1])) is not None
+    return has_words(kotlin_without_templates(literal[1:-1]))
 
 
 def scan_kotlin_file(path: Path, ui_prefix: re.Pattern[str]) -> list[tuple[int, str]]:
@@ -425,7 +852,12 @@ def scan(root: Path) -> dict[tuple[str, str], list[int]]:
             rel = f.relative_to(root)
             if SKIP_PARTS & set(rel.parts[1:]):
                 continue
-            for n, lit in scan_file(f):
+            tables = None
+            for n, lit, kind in scan_swift_file(f):
+                if kind == 'intent':
+                    tables = tables if tables is not None else (app_bundle_tables(root, rel) or [])
+                    if tables and all(intent_key(lit) in t for t in tables):
+                        continue        # localized by the system from the app bundle's tables
                 hits.setdefault((rel.as_posix(), lit), []).append(n)
     kotlin = root / KOTLIN_DIR
     if kotlin.is_dir():
@@ -435,6 +867,36 @@ def scan(root: Path) -> dict[tuple[str, str], list[int]]:
             for n, lit in scan_kotlin_file(f, ui_prefix):
                 hits.setdefault((rel.as_posix(), lit), []).append(n)
     return hits
+
+
+# Why a literal may stay English. The category is the decision; the words after it are the evidence.
+REASON_CATEGORIES = (
+    "KEEP_PROPER_NOUN",        # a brand, product, plan or unit name that reads the same in every language
+    "KEEP_NOT_USER_VISIBLE",   # identifiers, logs, wire text, dead or unreachable paths
+    "KEEP_STORED_DATA",        # English data that is stored, synced or compared; its rendering is translated
+    "KEEP_DEMO_CONTENT",       # sample data shown only in Demo mode
+    "KEEP_DEBUG_OR_QA_ONLY",   # compiled out of release builds, or reachable only in the QA runtime
+    "KEEP_BY_DECISION",        # an owner decision to keep English, cited
+)
+# A reason that defers the decision is not a reason. The first baseline carried 17 entries marked
+# NEEDS_JUDGMENT ("real user-visible English deferred"), and the gate accepted them as permission
+# indefinitely — while their text described a banner path the code no longer had.
+PLACEHOLDER_REASON = re.compile(r'^\s*(?:(?:TODO|TBD|FIXME|XXX|NEEDS[_ ]?\w*|DEFER\w*|PENDING\w*|UNKNOWN)\b|\?)', re.I)
+MIN_REASON_WORDS = 4
+
+
+def reason_problem(reason: object) -> str | None:
+    """Why a baseline reason is not acceptable, or None when it is."""
+    if not isinstance(reason, str) or not reason.strip():
+        return "without a reason"
+    if PLACEHOLDER_REASON.match(reason):
+        return f"with a placeholder reason ({reason.split(':')[0].strip()}) — decide: localize it, or say why it stays"
+    m = re.match(r'^(KEEP_[A-Z_]+):\s*(.*)$', reason, re.S)
+    if not m or m.group(1) not in REASON_CATEGORIES:
+        return "whose reason does not start with a category (" + ", ".join(REASON_CATEGORIES) + ")"
+    if len(m.group(2).split()) < MIN_REASON_WORDS:
+        return f"whose reason is too short to be evidence (at least {MIN_REASON_WORDS} words after the category)"
+    return None
 
 
 def main() -> int:
@@ -461,11 +923,16 @@ def main() -> int:
         return 2
 
     allowed = Counter()
+    bad_reasons = []
     for e in baseline:
-        if not e.get("reason") or e["reason"] == "TODO":
-            print(f"check_hardcoded_ui_strings: baseline entry without a reason: {e['path']} {e['literal']}")
-            return 1
+        problem = reason_problem(e.get("reason"))
+        if problem:
+            bad_reasons.append(f"  REASON {e['path']}  {e['literal']}  — entry {problem}")
         allowed[(e["path"], e["literal"])] += int(e.get("count", 1))
+    if bad_reasons:
+        print("check_hardcoded_ui_strings: FAILED — the allowlist must say why each literal stays English")
+        print("\n".join(bad_reasons))
+        return 1
 
     errors = []
     for (p, lit), ns in sorted(hits.items()):
@@ -483,6 +950,8 @@ def main() -> int:
         print("\n".join(errors))
         print("\nUser-visible copy must go through L10n (CLIPulseCore/L10n.swift + all six .lproj),\n"
               "or on Android through string resources (res/values*/strings.xml, all six).\n"
+              "App Intents metadata (LocalizedStringResource, IntentDescription, @Parameter titles) is read\n"
+              "from the app bundle instead: add the literal as a key to that target's six Localizable.strings.\n"
               "If a literal is genuinely not translatable (a product name, a shell command, a DEBUG-only\n"
               f"menu), add it to {BASELINE_DEFAULT} with the reason.")
         return 1

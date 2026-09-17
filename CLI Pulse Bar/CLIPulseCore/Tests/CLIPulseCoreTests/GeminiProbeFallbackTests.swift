@@ -92,6 +92,54 @@ final class GeminiProbeFallbackTests: XCTestCase {
         XCTAssertEqual(result.usage.reset_time, "in 3h")
     }
 
+    // MARK: - An unparseable reset is Google's text, not ours
+
+    private func withChinese(_ body: () -> Void) {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+        body()
+    }
+
+    /// `formatResetTime` answered a resetTime it could not parse as ISO-8601
+    /// with "Resets soon": English this process wrote, not Google's wording.
+    /// mapSnapshot stored it as the tier's reset_time, and a quota alert keeps
+    /// a non-ISO reset as written, so a Chinese reader saw "Resets soon 重置".
+    /// The primary path (buildResult) stores Google's text as it came; the
+    /// fallback now does the same, so nothing English of ours reaches the alert.
+    func test_unparseable_resetTime_keeps_the_vendor_text() throws {
+        let vendor = "2026-09-18 09:00 PDT"
+        let json = #"{"buckets":[{"modelId":"gemini-2.5-pro","remainingFraction":0.1,"resetTime":"\#(vendor)"}]}"#
+        let snapshot = try GeminiStatusProbe.parseAPIResponse(Data(json.utf8), email: nil)
+        let quota = try XCTUnwrap(snapshot.modelQuotas.first)
+        XCTAssertNil(quota.resetTime, "the fixture parsed as ISO-8601, so this proves nothing")
+        XCTAssertEqual(quota.resetDescription, vendor)
+
+        let usage = collector.mapSnapshot(snapshot).usage
+        XCTAssertEqual(usage.tiers.first { $0.name == "Pro" }?.reset_time, vendor)
+
+        let dicts = AlertGenerator.evaluateQuotaAlerts(providers: [usage], thresholds: [80, 95])
+        let alert = try XCTUnwrap(dicts.first.flatMap(AlertGenerator.makeAlertRecord(from:)),
+                                  "no quota alert fired, so this proves nothing")
+        withChinese {
+            let shown = AlertPresentation.text(for: alert)
+            XCTAssertTrue(shown.recognized, shown.message)
+            XCTAssertTrue(shown.message.contains("\(vendor) 重置"), shown.message)
+            XCTAssertFalse(shown.message.contains("Resets soon"), shown.message)
+        }
+    }
+
+    /// A blank resetTime is no reset at all, rather than "(resets )" in an alert.
+    func test_blank_resetTime_is_no_reset() throws {
+        let json = #"{"buckets":[{"modelId":"gemini-2.5-pro","remainingFraction":0.1,"resetTime":" "}]}"#
+        let snapshot = try GeminiStatusProbe.parseAPIResponse(Data(json.utf8), email: nil)
+        let quota = try XCTUnwrap(snapshot.modelQuotas.first)
+        XCTAssertNil(quota.resetDescription)
+        let pro = try XCTUnwrap(collector.mapSnapshot(snapshot).usage.tiers.first { $0.name == "Pro" })
+        XCTAssertNil(pro.reset_time)
+    }
+
     // MARK: - Q3: plan normalization matches buildResult vocabulary
 
     func test_normalizePlan_matches_buildResult_vocabulary() {

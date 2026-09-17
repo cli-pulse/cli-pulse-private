@@ -1881,3 +1881,6 @@
 "status_text.overdue_invoices" = "⚠︎ 연체된 청구서 있음";
 "status_text.deployment" = "배포: %@";
 "status_text.model" = "모델: %@";
+
+/* ── hardcoded-scanner ── */
+"alert_kind.notification_title" = "CLI Pulse: %@";

@@ -26,6 +26,9 @@
 //   * added `GeminiStatusProbeError.unsupportedPlatform` for the
 //     non-macOS OAuth-refresh path
 //   * UTF-8 BOM-free / 4-space style
+//   * a resetTime that is not ISO-8601 keeps Google's text instead of
+//     "Resets soon" (no English of ours in a stored reset), and
+//     `parseAPIResponse` is internal so tests can drive it
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -1008,7 +1011,8 @@ public struct GeminiStatusProbe: Sendable {
         let buckets: [QuotaBucket]?
     }
 
-    private static func parseAPIResponse(_ data: Data, email: String?) throws -> GeminiStatusSnapshot {
+    // Internal, not private: GeminiProbeFallbackTests drives the reset text end to end.
+    static func parseAPIResponse(_ data: Data, email: String?) throws -> GeminiStatusSnapshot {
         let decoder = JSONDecoder()
         let response = try decoder.decode(QuotaResponse.self, from: data)
 
@@ -1063,9 +1067,14 @@ public struct GeminiStatusProbe: Sendable {
         return formatter.date(from: isoString)
     }
 
-    private static func formatResetTime(_ isoString: String) -> String {
+    private static func formatResetTime(_ isoString: String) -> String? {
         guard let resetDate = parseResetTime(isoString) else {
-            return "Resets soon"
+            // Not ISO-8601: keep Google's own text, as GeminiCollector.buildResult
+            // does on the primary path. Upstream returned "Resets soon" here —
+            // English this process wrote, which mapSnapshot stored as the tier's
+            // reset_time and a quota alert showed as written ("Resets soon 重置").
+            let vendorText = isoString.trimmingCharacters(in: .whitespacesAndNewlines)
+            return vendorText.isEmpty ? nil : vendorText
         }
 
         let now = Date()

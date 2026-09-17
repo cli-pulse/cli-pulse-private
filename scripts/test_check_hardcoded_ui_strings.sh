@@ -7,10 +7,15 @@
 # literal (the first inventory regex rejected backslashes and could not see
 # `Text("tokens · \(x)")`) and a phrase returned from a property whose name is
 # not on the display-name list (`var badge: String { return "recent activity" }`).
+#
+# The cases after "Shapes the first version could not see" each plant one shape
+# the first scanner passed, and assert the gate names THAT literal as NEW — so a
+# case cannot pass because some other literal in the fixture tripped the gate.
+# Point HARDCODED_UI_GUARD at an older copy of the script to watch them fail there.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GUARD="$ROOT/scripts/check_hardcoded_ui_strings.py"
+GUARD="${HARDCODED_UI_GUARD:-$ROOT/scripts/check_hardcoded_ui_strings.py}"
 pass=0; fail=0
 
 new_tree() {
@@ -27,6 +32,27 @@ expect() {  # expect <want-exit> <name>
   out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
   if [ "$got" = "$want" ]; then pass=$((pass+1)); echo "  ok    $name"
   else fail=$((fail+1)); echo "  FAIL  $name (want exit $want, got $got)"; echo "$out" | sed 's/^/        /'; fi
+  rm -rf "$T"
+}
+
+# expect_new <name> <literal>... — exit 1, and every listed literal (without quotes) reported as NEW.
+expect_new() {
+  local name="$1" out got missing=""; shift
+  out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
+  for lit in "$@"; do
+    printf '%s\n' "$out" | grep -F "NEW" | grep -qF "\"$lit\"" || missing="$missing [$lit]"
+  done
+  if [ "$got" = 1 ] && [ -z "$missing" ]; then pass=$((pass+1)); echo "  ok    $name"
+  else fail=$((fail+1)); echo "  FAIL  $name (exit $got; not reported NEW:${missing:- none})"; echo "$out" | sed 's/^/        /'; fi
+  rm -rf "$T"
+}
+
+# expect_output <want-exit> <name> <text> — the exit code, and the output names the reason.
+expect_output() {
+  local want="$1" name="$2" text="$3" out got
+  out="$(python3 "$GUARD" --root "$T" 2>&1)"; got=$?
+  if [ "$got" = "$want" ] && printf '%s\n' "$out" | grep -qF -- "$text"; then pass=$((pass+1)); echo "  ok    $name"
+  else fail=$((fail+1)); echo "  FAIL  $name (want exit $want with \"$text\", got $got)"; echo "$out" | sed 's/^/        /'; fi
   rm -rf "$T"
 }
 
@@ -76,20 +102,20 @@ new_tree; view 'struct V: View { var body: some View { Text("x") } } // Text("Co
 expect 0 "copy inside a // comment passes"
 
 new_tree; view 'struct V: View { var body: some View { Text("CLI Pulse") } }'
-baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "KEEP_PROPER_NOUN: the product name, the same in every language"}]}'
 expect 0 "a baselined literal with a reason passes"
 
 new_tree; view 'struct V: View { var body: some View { Text("CLI Pulse") } }'
 baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "TODO"}]}'
-expect 1 "a baseline entry without a real reason fails"
+expect_output 1 "a baseline entry without a real reason fails" "placeholder reason (TODO)"
 
 new_tree; view 'struct V: View { var body: some View { VStack { Text("CLI Pulse"); Text("CLI Pulse") } } }'
-baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
-expect 1 "a second occurrence beyond the baselined count fails"
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "KEEP_PROPER_NOUN: the product name, the same in every language"}]}'
+expect_output 1 "a second occurrence beyond the baselined count fails" "(+1 beyond baseline)"
 
 new_tree; view 'struct V: View { var body: some View { Text(L10n.x.y) } }'
-baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"Gone\"", "count": 1, "reason": "was here once"}]}'
-expect 1 "a STALE baseline entry fails, so the allowlist can only shrink"
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"Gone\"", "count": 1, "reason": "KEEP_NOT_USER_VISIBLE: was here once, and is gone now"}]}'
+expect_output 1 "a STALE baseline entry fails, so the allowlist can only shrink" "STALE"
 
 # A `case` line's `let` is a PATTERN BINDING, not a declaration. Treating it as
 # one reset the tracker, so the enclosing `var errorDescription: String?` was
@@ -125,6 +151,232 @@ expect 1 "an English literal passed to .serverMessage fails"
 
 new_tree; core 'func f(message: String) throws { throw CollectorError.missingCredentials(CredentialProblem("X", .serverMessage(message))) }'
 expect 0 "server-supplied text passed to .serverMessage passes"
+
+# ── Shapes the first version could not see ──────────────────────────────────
+# Each passed the first scanner with the gate green (2026-09-17 audit). Single
+# words are used where a phrase would have been caught by the phrase signal
+# alone, so the case proves the new mechanism rather than the old one.
+
+new_tree; view 'struct V: View { var body: some View { Text(isOn ? "Enabled" : "Disabled") } }'
+expect_new "a ternary inside Text( fails, both branches" "Enabled" "Disabled"
+
+new_tree; view 'struct V: View { var body: some View { Text(name ?? "Unknown") } }'
+expect_new "a ?? fallback inside Text( fails" "Unknown"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        Label(
+            "Synthetic",
+            systemImage: "gear"
+        )
+    }
+}'
+expect_new "a literal on the line after Label( fails" "Synthetic"
+
+# SessionsTab.swift:566-569 had exactly this shape.
+new_tree; view 'struct V: View {
+    var body: some View {
+        Text(isShared
+             ? "Syncing"
+             : "Off")
+    }
+}'
+expect_new "a ternary spread over three lines fails" "Syncing" "Off"
+
+new_tree; core 'func f() { let alert = NSAlert(); alert.messageText = "Failed"; content.body = "Quota"; panel.prompt = "Choose" }'
+expect_new "assignments to messageText, .body and .prompt fail" "Failed" "Quota" "Choose"
+
+new_tree; core 'enum T { var subtitle: String { "Pairing" } }'
+expect_new "an implicit return from a display-named property fails" "Pairing"
+
+new_tree; core 'enum E: LocalizedError {
+    case a, b
+    var errorDescription: String? {
+        switch self {
+        case .a: "Waiting"
+        case .b:
+            "Declined"
+        }
+    }
+}'
+expect_new "implicit-return case arms in errorDescription fail, same line and next line" "Waiting" "Declined"
+
+# UsageHeatmap.swift:75-79: `guard !isFuture, let day = …` replaced `tooltip` as the
+# context, and its "tokens" tooltip shipped in English.
+new_tree; core 'enum H {
+    static func tooltip(key: String) -> String {
+        guard let day = archive[key] else { return "" }
+        return "\(key): \(day.n) tokens"
+    }
+}'
+expect_new "a return after guard let in a display function fails" '\(key): \(day.n) tokens'
+
+new_tree; core 'enum H {
+    static func statusText(p: Int?) -> String {
+        if let p { return "\(p) left" }
+        while let next = queue.pop() { _ = next }
+        return "unavailable"
+    }
+}'
+expect_new "returns after if let and while let in a display function fail" '\(p) left' "unavailable"
+
+# GeminiStatusProbe.formatResetTime-style: plain local lets before the return.
+new_tree; core 'enum H {
+    static func resetHint(date: Date) -> String {
+        let now = Date()
+        let hours = Int(date.timeIntervalSince(now) / 3600)
+        return "in \(hours)h"
+    }
+}'
+expect_new "a return after plain local lets in a display function fails" 'in \(hours)h'
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let label = "Local session"
+        Text(label)
+    }
+}'
+expect_new "a local let handed to Text( fails" "Local session"
+
+new_tree; view 'struct V: View { var body: some View { ForEach(["Critical", "Warning"], id: \.self) { Text($0) } } }'
+expect_new "an array literal iterated by ForEach fails" "Critical" "Warning"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let severities = ["Critical", "Info"]
+        ForEach(severities, id: \.self) { chip($0) }
+    }
+}'
+expect_new "a local array iterated by ForEach fails" "Critical" "Info"
+
+new_tree; view 'struct V: View { var body: some View { Text("最近活动") ; Text("한국어") } }'
+expect_new "non-Latin copy fails (Chinese, Korean)" "最近活动" "한국어"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        VStack {
+            ProgressView("Loading")
+            LabeledContent("Account", value: name)
+            Text(verbatim: "Verbatim")
+            Stepper("Threshold", value: $n)
+            DisclosureGroup("Advanced") { EmptyView() }
+            Text(n).badge("New").accessibilityValue("Half")
+        }
+    }
+}'
+expect_new "ProgressView, LabeledContent, Text(verbatim:), Stepper, DisclosureGroup, .badge, .accessibilityValue fail" \
+  "Loading" "Account" "Verbatim" "Threshold" "Advanced" "New" "Half"
+
+new_tree; view 'struct W: Widget { var body: some WidgetConfiguration { StaticConfiguration(kind: k) { _ in V() }.configurationDisplayName("Usage").description("Shows usage") } }'
+expect_new "a widget configurationDisplayName and description fail" "Usage" "Shows usage"
+
+new_tree; view 'struct V: View { var body: some View { diagnosticRow(label: "Socket", value: x) ; copyButton(text: "Copied") } }'
+expect_new "label: and text: arguments of a view-building call fail" "Socket" "Copied"
+
+new_tree; core 'final class Q { let queue = DispatchQueue(label: "com.example.queue"); func f() { parse(label: "Weekly", html: h) } }'
+expect 0 "label: of a queue or a parser passes"
+
+new_tree; core 'enum T { static func summary(_ n: Int) -> String { return String(format: "%d running", n) } }'
+expect_new "a String(format:) returned from a display function fails" "%d running"
+
+# 59 allowlist entries were SF Symbol names, bundle ids and hosts that the phrase signal
+# read as prose because it accepted a bare "." as a word separator.
+new_tree; core 'enum T { var symbol: String { "exclamationmark.triangle.fill" } ; var host: String { return "status.claude.com" } }'
+expect 0 "SF Symbol names and hosts returned from String properties pass"
+
+new_tree; core 'enum T { var freshness: String { "recent activity" } }'
+expect_new "a phrase implicitly returned from an unlisted String property fails" "recent activity"
+
+# App Intents metadata is localized from the app bundle's own tables, keyed by the literal.
+intent='struct I: AppIntent { static var title: LocalizedStringResource = "Refresh Widget"; @Parameter(title: "Provider") var p: String }'
+tables() {  # tables <locales...> — give those iOS app-bundle tables both keys
+  for loc in "$@"; do
+    mkdir -p "$T/CLI Pulse Bar/CLI Pulse Bar iOS/$loc.lproj"
+    printf '"Refresh Widget" = "x";\n"Provider" = "y";\n' > "$T/CLI Pulse Bar/CLI Pulse Bar iOS/$loc.lproj/Localizable.strings"
+  done
+}
+new_tree; view "$intent"
+expect_new "App Intents metadata with no app-bundle table fails" "Refresh Widget" "Provider"
+
+new_tree; view "$intent"; tables en es ja ko zh-Hans zh-Hant
+expect 0 "App Intents metadata keyed in all six app-bundle tables passes"
+
+new_tree; view "$intent"; tables en es ja ko zh-Hans
+expect_new "App Intents metadata missing from one locale's table fails" "Refresh Widget" "Provider"
+
+# ── A ternary whose condition compares ──────────────────────────────────────
+# The ternary support above told an assignment from a result by looking for "=",
+# and found one in `>=`, `<=` and `!=`; the assignment and binding checks stopped
+# at the "=" inside `==`. So the most common condition of all hid both branches,
+# while the same ternary on a Bool was caught. Each case below passed the gate
+# with an empty baseline.
+new_tree; core 'func statusLabel(n: Int) -> String { return n >= 1 ? "Some" : "None" }'
+expect_new "a returned ternary whose condition is >= fails" "Some" "None"
+
+new_tree; core 'struct S { var subtitle: String { a != b ? "Changed" : "Same" } }'
+expect_new "an implicit-return ternary whose condition is != fails" "Changed" "Same"
+
+new_tree; core 'func notify(level: Level) { content.title = level == .critical ? "Critical" : "Warning" }'
+expect_new "an assignment sink given a ternary whose condition is == fails" "Critical" "Warning"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let label = n == 1 ? "item" : "items"
+        Text(label)
+    }
+}'
+expect_new "a local let of a ternary whose condition is == handed to Text( fails" "item" "items"
+
+# A regex fix that skips only two-character comparisons and stops at parentheses still
+# missed these two: `===` leaves a bare "=" once "==" is removed, and a call has parentheses.
+new_tree; core 'func f(a: AnyObject) { alert.messageText = a === b ? "Same" : "Other" }'
+expect_new "an assignment sink given a ternary whose condition is === fails" "Same" "Other"
+
+new_tree; core 'func f(n: Int) { panel.prompt = n <= limit(for: a) ? "Pick" : "Wait" }'
+expect_new "an assignment sink given a ternary whose condition calls a function fails" "Pick" "Wait"
+
+# The "=" test must still keep a plain assignment inside a display body from reading as its result.
+new_tree; core 'enum T { var label: String { switch k { case .a: cache = n >= 1 ? "warm" : "cold"; default: break }; return L10n.x.y } }'
+expect 0 "a ternary assigned to a plain variable inside a display property passes"
+
+# ── A format string inside a view ───────────────────────────────────────────
+# call_sink hands a String(format:) format on to the position of the String call,
+# but only the assignment, return and binding checks looked there — never the view
+# around it. MachineHealthView.swift:515 `Text(String(format: "%.0f MB", …))` was
+# in the tree, neither flagged nor baselined.
+new_tree; view 'struct V: View { var body: some View { Text(String(format: "%d items", n)).help(String(format: "Updated %@", t)) } }'
+expect_new "a String(format:) inside Text( and .help( fails" "%d items" "Updated %@"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let format = "%d items"
+        Text(String(format: format, n))
+    }
+}'
+expect_new "a local format handed to String(format:) inside Text( fails" "%d items"
+
+new_tree; core 'func f(n: Int) { log(String(format: "%d items", n)) }'
+expect 0 "a String(format:) passed to a non-UI call passes"
+
+# A literal the owner decided stays English still passes in the new shapes.
+new_tree; view 'struct V: View { var body: some View { Label(codexOffPlan ? L10n.sessions.offPlan : "Codex", systemImage: "gear") } }'
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"Codex\"", "count": 1, "reason": "KEEP_PROPER_NOUN: provider product name in the New Local menu"}]}'
+expect 0 "a known-English literal allowlisted with a reason still passes in a ternary"
+
+# ── The allowlist's reasons ─────────────────────────────────────────────────
+# 17 entries said NEEDS_JUDGMENT ("real user-visible English deferred") and the
+# gate accepted them indefinitely.
+new_tree; view 'struct V: View { var body: some View { Text("CLI Pulse") } }'
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "NEEDS_JUDGMENT: dual-use description, decide later"}]}'
+expect_output 1 "a NEEDS_JUDGMENT reason fails" "placeholder reason (NEEDS_JUDGMENT)"
+
+new_tree; view 'struct V: View { var body: some View { Text("CLI Pulse") } }'
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "debug description mirroring the enum case name"}]}'
+expect_output 1 "a reason without a category fails" "does not start with a category"
+
+new_tree; view 'struct V: View { var body: some View { Text("CLI Pulse") } }'
+baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"CLI Pulse\"", "count": 1, "reason": "KEEP_PROPER_NOUN: brand"}]}'
+expect_output 1 "a category with no evidence fails" "too short"
 
 # ── Android / Kotlin ────────────────────────────────────────────────────────
 # The Kotlin scanner has its own tokenizer and sinks. Compose puts arguments on
@@ -184,6 +436,9 @@ expect 1 "kotlin: an elvis fallback on its own line inherits the sink"
 new_tree; kt 'class VM { fun f() { state = state.copy(error = "Failed to load") } }'
 expect 1 "kotlin: an English UI-state error fails"
 
+new_tree; kt '@Composable fun S() { Text("最近活动") }'
+expect_new "kotlin: non-Latin copy fails" "最近活动"
+
 new_tree; kt '@Composable fun S() { Icon(Icons.Filled.Close, contentDescription = "Close") }'
 expect 1 "kotlin: a contentDescription literal fails"
 
@@ -211,12 +466,12 @@ new_tree; kt "@Composable fun S() { val q = '\"'; Text(\"Active\") }"
 expect 1 "kotlin: copy after a quote char literal on the same line is still seen"
 
 new_tree; kt '@Composable fun S() { Text("CLI Pulse") }'
-baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
+baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "KEEP_PROPER_NOUN: the product name, the same in every language"}]}'
 expect 0 "kotlin: a baselined literal with a reason passes"
 
 new_tree; kt '@Composable fun S() { Text(stringResource(R.string.brand)) }'
-baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "product name"}]}'
-expect 1 "kotlin: a stale baseline entry fails"
+baseline '{"entries": [{"path": "android/app/src/main/java/app/V.kt", "literal": "\"CLI Pulse\"", "count": 1, "reason": "KEEP_PROPER_NOUN: the product name, the same in every language"}]}'
+expect_output 1 "kotlin: a stale baseline entry fails" "STALE"
 
 echo "check_hardcoded_ui_strings negative controls: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

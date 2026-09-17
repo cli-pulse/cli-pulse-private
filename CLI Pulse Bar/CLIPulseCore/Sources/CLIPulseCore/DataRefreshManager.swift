@@ -2775,7 +2775,7 @@ extension AppState {
 
     func sendNotification(for alert: AlertRecord) {
         let content = UNMutableNotificationContent()
-        content.title = "CLI Pulse: \(AlertPresentation.severityLabel(alert.severity))"
+        content.title = AlertPresentation.notificationTitle(for: alert)
         content.body = AlertPresentation.text(for: alert).title
         content.sound = alert.alertSeverity == .critical ? .defaultCritical : .default
 

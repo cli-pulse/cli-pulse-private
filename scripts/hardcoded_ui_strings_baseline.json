@@ -1,5 +1,5 @@
 {
- "_about": "Literals check_hardcoded_ui_strings.py allows to stay English, each with why. Generated 2026-09-16 from a two-round classify+adversarial-verify sweep. NEEDS_JUDGMENT entries are real user-visible English deferred to a follow-up because the string is also data (persisted/synced/compared) or needs an app string catalog — the prefix after the colon names the group. Android Kotlin entries (android/…) were added 2026-09-17 when the gate learned Kotlin. Shrink this file; never grow it without a reason.",
+ "_about": "Literals check_hardcoded_ui_strings.py allows to stay English, each with why. Generated 2026-09-16 from a two-round classify+adversarial-verify sweep; Android Kotlin entries (android/…) were added 2026-09-17 when the gate learned Kotlin; entries for ternaries, implicit returns, assignments, arrays, locals and bodies after a `let` were added 2026-09-17 when the gate learned to see them. Every reason starts with its category — KEEP_PROPER_NOUN, KEEP_NOT_USER_VISIBLE, KEEP_STORED_DATA (English data whose rendering is translated), KEEP_DEMO_CONTENT, KEEP_DEBUG_OR_QA_ONLY, KEEP_BY_DECISION — and the gate rejects a placeholder such as TODO or NEEDS_JUDGMENT. Shrink this file; never grow it without a reason.",
  "entries": [
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/CLIPulseIntentCache.swift",
@@ -44,22 +44,34 @@
    "reason": "KEEP_NOT_USER_VISIBLE: Enum raw value (case openCode = \"opencode\"). It is an identifier and is never displayed."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/GetProviderQuotaIntent.swift",
-   "literal": "\"Provider\"",
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/RefreshWidgetIntent.swift",
+   "literal": "\"Refresh CLI Pulse Widget\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: App Intents metadata: AppEnum.typeDisplayRepresentation is a compile-time LocalizedStringResource and needs a main-bundle string catalog."
+   "reason": "KEEP_NOT_USER_VISIBLE: RefreshWidgetIntent title. The intent sets isDiscoverable = false, so Shortcuts and Spotlight never list it; it is used only as Button(intent:) in UsageOverviewWidget.swift:137/190, whose label is an arrow.clockwise icon with .accessibilityLabel(L10n.common.refresh)."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSAlertsTab.swift",
-   "literal": "\"dollarsign.circle\"",
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/RefreshWidgetIntent.swift",
+   "literal": "\"Request a fresh pull of your CLI Pulse data. Tapping the button opens CLI Pulse so it can sync; the widget updates once the app finishes refreshing.\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by sourceKindIcon for the budget source-kind chip; the chip text is AlertPresentation.sourceKindLabel."
+   "reason": "KEEP_NOT_USER_VISIBLE: RefreshWidgetIntent description. The intent sets isDiscoverable = false, so Shortcuts and Spotlight never list it; it is used only as Button(intent:) in UsageOverviewWidget.swift:137/190, whose label is an arrow.clockwise icon with .accessibilityLabel(L10n.common.refresh)."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSAlertsTab.swift",
-   "literal": "\"gauge.with.needle\"",
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/Intents/RefreshWidgetIntent.swift",
+   "literal": "\"Widgets\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by sourceKindIcon for the quota source-kind chip; the chip text is AlertPresentation.sourceKindLabel."
+   "reason": "KEEP_NOT_USER_VISIBLE: RefreshWidgetIntent description categoryName. The intent sets isDiscoverable = false, so Shortcuts and Spotlight never list it; it is used only as Button(intent:) in UsageOverviewWidget.swift:137/190, whose label is an arrow.clockwise icon with .accessibilityLabel(L10n.common.refresh)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMachineView.swift",
+   "literal": "\"\\(Int(fanTargetRPM)) RPM\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Unit symbol RPM after the fan target number. The unit stays as printed in every language by decision, as L10n.a11y.fanRPM documents (L10n.swift: \"The unit stays as it is printed beside them, in every language\"), and like the macOS fan card's allowlisted rpm."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMachineView.swift",
+   "literal": "\"\\(L10n.machine.auto) · \\(Int(liveRPM)) RPM\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: The localized L10n.machine.auto, a separator dot, the live fan number and the unit symbol RPM, which stays as printed in every language (the L10n.a11y.fanRPM decision). No English word of our own."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMainView.swift",
@@ -70,8 +82,8 @@
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
    "literal": "\"Apple\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Brand name, passed as the argument to the localized L10n.account.unlinkWithProvider / unlinkMessage (lines 739, 748)."
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: Brand name, twice: the sign-in provider option label (ProviderOption(label:), line 709) and the argument to the localized L10n.account.unlinkWithProvider / unlinkMessage."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
@@ -82,44 +94,26 @@
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
    "literal": "\"GitHub\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Brand name, used as the argument to the localized unlink strings."
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: Brand name, twice: the sign-in provider option label (ProviderOption(label:), line 711) and the argument to the localized unlink strings."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSSettingsTab.swift",
    "literal": "\"Google\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Brand name, used as the argument to the localized unlink strings."
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: Brand name, twice: the sign-in provider option label (ProviderOption(label:), line 710) and the argument to the localized unlink strings."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar/PairingSection.swift",
    "literal": "\"python3 /tmp/cli_pulse_helper.py daemon\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: The same shell command, used as the clipboard payload."
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: A shell command, twice: shown as the command to run and passed to copyButton(text:) as the clipboard payload. It must be typed exactly as written."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
-   "literal": "\"checkmark.circle.fill\"",
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderConfigEditor.swift",
+   "literal": "\"QA preview uses synthetic provider data. Live credentials and connection tests are disabled.\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
-   "literal": "\"exclamationmark.circle.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
-   "literal": "\"magnifyingglass.circle.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon for Label(statusLabel, systemImage:). statusLabel is already localized."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
-   "literal": "\"minus.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by statusIcon."
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Label built only under `if !allowsLiveProviderActions` (ProviderConfigEditor.swift:136), i.e. runtimeEnvironment.capabilities.allowsLiveCollection == false, which holds only for the QA and quarantine runtimes (CLIPulseRuntimeEnvironment.swift:35/55/75); the production runtime never shows it."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderConfigEditor.swift",
@@ -134,22 +128,10 @@
    "reason": "KEEP_PROPER_NOUN: The same API-key prefix placeholder, in the non-macOS SecureField."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
-   "literal": "\"exclamationmark.triangle\"",
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"App-group container\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
-   "literal": "\"info.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/ProvidersTab.swift",
-   "literal": "\"xmark.octagon\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name from outcomeIcon(_:), used only by Image(systemName:) at ProvidersTab.swift:556."
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
@@ -159,9 +141,39 @@
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Codex\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Provider/CLI product name in the New Local menu, the else-branch of `codexOffPlan ? L10n.sessions.newCodexOffPlan : \"Codex\"`, beside the allowlisted \"Claude\" and \"Gemini\" items."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
    "literal": "\"Gemini\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: Provider/CLI product name in the New Local menu."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"NSHomeDirectory\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Off — this session stays on this Mac. Turn on to read and type from your phone.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Ternary branch of the wrappedCloudShareToggle footnote, beside the already allowlisted \"Show on my phone\". The toggle is built only under `if RemoteSessionPlane.isEnabled` (SessionsTab.swift:545), and RemoteSessionPlane.isEnabled is the constant false since the session plane was retired."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Resolved socket path\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Resolved token path\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
   },
   {
    "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
@@ -170,52 +182,58 @@
    "reason": "KEEP_NOT_USER_VISIBLE: wrappedCloudShareToggle is only called under `if RemoteSessionPlane.isEnabled, ...` (SessionsTab.swift:545). RemoteSessionPlane.isEnabled is `public static let isEnabled = false` (CLIPulseCore/Sources/CLIPulseCore/RemoteSessionPlane.swift:44), so this is dead UI of the retired…"
   },
   {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Socket exists\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"This session's output is syncing to your account so you can read and type from your phone. It updates every few seconds.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Ternary branch of the wrappedCloudShareToggle footnote, beside the already allowlisted \"Show on my phone\". The toggle is built only under `if RemoteSessionPlane.isEnabled` (SessionsTab.swift:545), and RemoteSessionPlane.isEnabled is the constant false since the session plane was retired."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Token exists\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/SessionsTab.swift",
+   "literal": "\"Token readable\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Row label of the Sessions-tab local diagnostics panel, English on purpose (decided 2026-09-16, SessionsTab.swift:618-624): it is a support snapshot read next to raw paths and NSHomeDirectory, and the localized sessions.diagnostics_inode_hint quotes these labels verbatim in every locale."
+  },
+  {
    "path": "CLI Pulse Bar/CLI Pulse Widgets/WatchComplicationWidget.swift",
    "literal": "\"CLI Pulse\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Product name header in the rectangular complication."
+   "count": 2,
+   "reason": "KEEP_PROPER_NOUN: Product name, twice: the widget's .configurationDisplayName in the complication picker and the header in the rectangular complication."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
-   "literal": "\"bell.badge\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/APIClient.swift",
+   "literal": "\"Authorization session changed; write cancelled\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+   "reason": "KEEP_NOT_USER_VISIBLE: AuthorizationLeaseError.errorDescription. The error is thrown only by ensureAuthorizationLeaseIsCurrent inside lease-guarded background writes, and every caller turns it into false/nil (syncProviderAccountStatuses, deleteProviderAccount, syncProviderQuotas, syncDailyUsage) or `try?` (DataRefreshManager.swift:639); it reaches logs only."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
-   "literal": "\"gauge.with.dots.needle.33percent\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/APIClient.swift",
+   "literal": "\"Disabled\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+   "reason": "KEEP_STORED_DATA: Fallback ProviderAccountUsage.statusText when the server sends none. ProviderAccountPresentation.enabledAccounts compares it (caseInsensitiveCompare(\"disabled\")), and L10n.providers.localizedStatusText renders it as L10n.status.disabled."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
-   "literal": "\"pawprint.fill\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/APIClient.swift",
+   "literal": "\"Multiple accounts\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Tab.icon)."
+   "reason": "KEEP_STORED_DATA: plan_type written when several accounts are active. plan_type syncs and is a SubscriptionPricing lookup key, so it stays English; L10n.providers.planDisplay renders it as providers.plan_multiple_accounts (L10n.swift:616)."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/AppState.swift",
-   "literal": "\"waveform.path.ecg\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/APIClient.swift",
+   "literal": "\"Operational\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by menuBarIcon (default case)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
-   "literal": "\"com.clipulse.app\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Keychain service identifier from keychainService. Its only consumer is KeychainHelper.swift:42 (checked). It is persisted, so changing it would orphan existing Keychain items."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
-   "literal": "\"com.clipulse.app.qa\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: QA Keychain service identifier, consumed by KeychainHelper.swift:42. It is never displayed."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
-   "literal": "\"com.clipulse.app.quarantine\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Quarantine Keychain service identifier, consumed by KeychainHelper.swift:42. It is never displayed."
+   "reason": "KEEP_STORED_DATA: Fallback ProviderAccountUsage.statusText when the server sends none, the same token the provider rows carry (APIClient.swift:1140). L10n.providers.localizedStatusText renders it as L10n.status.operational."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CLIPulseRuntimeEnvironment.swift",
@@ -236,10 +254,232 @@
    "reason": "KEEP_NOT_USER_VISIBLE: Quarantine Keychain access group identifier, consumed by KeychainHelper.swift:53 and HelperConfig.swift:307. It is never displayed."
   },
   {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"1 model available\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (modelsAvailable). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.models_available_one in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"1 model installed\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (modelsInstalled). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.models_installed_one in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"1 request left\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (requestsLeft). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.requests_left_one in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"Balance: \\(amount) credits\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (balanceOfCredits). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.balance_of_credits in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(amount) credits left\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (creditsLeft). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.credits_left in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(amount) credits remaining\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (creditsRemaining). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.credits_remaining in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(amount) in deficit\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (inDeficit). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.in_deficit in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(amount) this month\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (thisMonth). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.this_month in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(count) TTS chars\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (ttsCharacters). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.tts_characters in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(count) models available\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (modelsAvailable). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.models_available in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(count) models installed\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (modelsInstalled). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.models_installed in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(count) requests left\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (requestsLeft). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.requests_left in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(hours) audio hrs\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (audioHours). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.audio_hours in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(hours) billable hrs\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (billableHours). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.billable_hours in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(remaining) / \\(total) credits left\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (creditsLeftOf). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.credits_left_of in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(running) running, \\(installed) installed\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (runningInstalled). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.running_installed in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(used)/\\(limit) credits used\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (creditsUsedOf). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.credits_used_of in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/CollectorStatusText.swift",
+   "literal": "\"\\(zero) — add credits at platform.deepseek.com\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (deepSeekEmptyBalance). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.deepseek_empty_balance in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift",
+   "literal": "\"(no output)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: stand-in for PTY output that is not UTF-8 when the claude process exits during startup. The local `text` goes only to dumpRawOutput, which appends it to clipulse_claude_pty_raw.txt in the temporary directory for debugging; what is thrown is ClaudeStrategyError.processExited, which carries no text. Seen once the gate stopped reading the parentheses of `String(data:encoding:) ??` as the end of the value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
+   "literal": "\"Claude Enterprise\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Anthropic plan brand name from ClaudePlan.brandedLoginMethod, vendored from CodexBar and kept out of L10n on purpose (ClaudePlan.swift:15-17: brand proper nouns stay English in every locale)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
+   "literal": "\"Claude Max\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Anthropic plan brand name from ClaudePlan.brandedLoginMethod, vendored from CodexBar and kept out of L10n on purpose (ClaudePlan.swift:15-17: brand proper nouns stay English in every locale)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
+   "literal": "\"Claude Pro\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Anthropic plan brand name from ClaudePlan.brandedLoginMethod, vendored from CodexBar and kept out of L10n on purpose (ClaudePlan.swift:15-17: brand proper nouns stay English in every locale)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
+   "literal": "\"Claude Team\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Anthropic plan brand name from ClaudePlan.brandedLoginMethod, vendored from CodexBar and kept out of L10n on purpose (ClaudePlan.swift:15-17: brand proper nouns stay English in every locale)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
+   "literal": "\"Claude Ultra\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Anthropic plan brand name from ClaudePlan.brandedLoginMethod, vendored from CodexBar and kept out of L10n on purpose (ClaudePlan.swift:15-17: brand proper nouns stay English in every locale)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeSourceStrategy.swift",
+   "literal": "\"Signed in as \\(email) — Connect Claude Code in Settings\"",
+   "count": 1,
+   "reason": "KEEP_STORED_DATA: ClaudeStatusSentinel.signedInConnect, a status_text sentinel. It is written in English because status_text crosses the App Group and is uploaded (ClaudeSourceStrategy.swift:572-576); L10n.providers.localizedStatusText matches signedInPrefix/Suffix and renders claudeSignedInConnectHint(email), pinned by ClaudeStatusSentinelTests."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/CommandCodeCollector.swift",
+   "literal": "\"__Secure-better-auth.session_token=\\(trimmed)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: HTTP Cookie header value (name=value) built by cookieHeaderValue(from:) for Command Code's better-auth session cookie. The function name contains 'header', which is why the scanner looks at it; it is protocol text sent to the server."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Could not parse Gemini usage: \\(msg)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.parseFailed) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Gemini API error: \\(msg)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.apiError) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Gemini CLI OAuth refresh is only available on macOS.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.unsupportedPlatform) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Gemini CLI is not installed or not on PATH.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.geminiNotInstalled) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Gemini \\(authType) auth not supported. Use Google account (OAuth) instead.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.unsupportedAuthType) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Gemini quota API request timed out.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.timedOut) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Not logged in to Gemini. Run 'gemini' in Terminal to authenticate.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: GeminiStatusProbeError.errorDescription (.notLoggedIn) of the vendored CodexBar probe. Its only caller, GeminiCollector's opt-in CLI probe fallback, catches every error and returns nil (GeminiCollector.swift:709-714), so no error description is shown or stored."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Resets in \\(hours)h \\(minutes)m\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: formatResetTime text, reached only after parseResetTime succeeded, so GeminiModelQuota.resetTime is non-nil and GeminiCollector.mapSnapshot (:732) stores the ISO timestamp instead; GeminiStatusSnapshot.resetDescription has no reader."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
+   "literal": "\"Resets in \\(minutes)m\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: formatResetTime text, reached only after parseResetTime succeeded, so GeminiModelQuota.resetTime is non-nil and GeminiCollector.mapSnapshot (:732) stores the ISO timestamp instead; GeminiStatusSnapshot.resetDescription has no reader."
+  },
+  {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Gemini/GeminiStatusProbe.swift",
    "literal": "\"Resets soon\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: interval <= 0 implies the ISO parse succeeded, so resetTime is non-nil and mapSnapshot (GeminiCollector.swift:732) prefers the ISO string."
+   "reason": "KEEP_NOT_USER_VISIBLE: formatResetTime's interval <= 0 fallback, reached only after parseResetTime succeeded, so GeminiModelQuota.resetTime is non-nil and GeminiCollector.mapSnapshot (:732) stores the ISO timestamp instead; GeminiStatusSnapshot.resetDescription has no reader. The other occurrence, for a resetTime that is not ISO-8601, was English of ours stored as TierDTO.reset_time and shown as written in a quota alert (\"Resets soon 重置\"); it now keeps Google's text, as buildResult does (GeminiProbeFallbackTests.test_unparseable_resetTime_keeps_the_vendor_text)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/GeminiCollector.swift",
+   "literal": "\"Flash Lite\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: Gemini model family name (classifyModel). It is a TierDTO name, synced and matched in mapSnapshot's preferredOrder, and scripts/quota_tier_names.json lists \"Flash Lite\" as a vendor passthrough for L10n.quotaTier.localized."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/VeniceCollector.swift",
+   "literal": "\"DIEM %.2f / %.2f epoch allocation\"",
+   "count": 1,
+   "reason": "KEEP_BY_DECISION: Venice status_text shown as written: DIEM and its epoch allocation are Venice's own token and staking terms (VeniceCollector.swift:167 comment; the same decision is recorded in scripts/collector_status_text_allowlist.json and as the \"DIEM Balance\" passthrough in scripts/quota_tier_names.json)."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
@@ -270,30 +510,6 @@
    "literal": "\"Zed Student\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: Zed plan brand name, stored as plan_type (see line 287)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
-   "literal": "\"arrow.triangle.branch\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in CategoryBadge.icon. Visible text uses L10n.badge.aggregator."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
-   "literal": "\"checkmark.shield.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon. Visible text uses L10n.badge.high."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
-   "literal": "\"questionmark.diamond\"",
-   "count": 2,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon (default case)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Components.swift",
-   "literal": "\"shield.lefthalf.filled\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ConfidenceBadge.icon."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift",
@@ -347,7 +563,7 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
    "literal": "\"indeterminate(\\(s))\"",
    "count": 1,
-   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
+   "reason": "KEEP_NOT_USER_VISIBLE: Verdict.description, a debug rendering that mirrors the enum case name. It is read only by HelperAgentHealthTests and log lines, and no view shows a Verdict."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
@@ -363,21 +579,45 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
+   "literal": "\"spawn failed\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Last-resort detail for Verdict.spawnFailing, echoing launchd's own job state \"spawn failed\" that the line above compares. The verdict drives reconcileBundledAgent and logging; no view renders a Verdict or its detail."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
    "literal": "\"spawnFailing(\\(d))\"",
    "count": 1,
-   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
+   "reason": "KEEP_NOT_USER_VISIBLE: Verdict.description, a debug rendering that mirrors the enum case name. It is read only by HelperAgentHealthTests and log lines, and no view shows a Verdict."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",
    "literal": "\"staleRegistration(recorded: \\(r), current: \\(c))\"",
    "count": 1,
-   "reason": "debug description mirroring the enum case name; read only by HelperAgentHealthTests and never passed to a view"
+   "reason": "KEEP_NOT_USER_VISIBLE: Verdict.description, a debug rendering that mirrors the enum case name. It is read only by HelperAgentHealthTests and log lines, and no view shows a Verdict."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",
    "literal": "\"Cannot resolve Contents/Library/LaunchAgents path from the running executable. Bundle layout is unexpected — running from a non-standard location.\"",
    "count": 1,
    "reason": "KEEP_NOT_USER_VISIBLE: HelperLifecycleError.bundleLayoutBroken is never thrown or referenced outside this file (grep across all targets, excluding .build). errorDescription is dead code and never displayed."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",
+   "literal": "\"SMAppService.register failed: \\(error.domain)/\\(error.code) \\(error.localizedDescription)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Diagnostic detail for HelperLifecycleManager.Status.registrationFailed, written to logger.error and stored in AppState.helperAgentStatus, which no view reads (grep across the app, iOS, watch, widget and core sources finds only its assignments)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",
+   "literal": "\"SMAppService.unregister failed: \\(error.domain)/\\(error.code) \\(error.localizedDescription)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Diagnostic detail for HelperLifecycleManager.Status.registrationFailed, written to logger.error and stored in AppState.helperAgentStatus, which no view reads (grep across the app, iOS, watch, widget and core sources finds only its assignments)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperLifecycleManager.swift",
+   "literal": "\"re-register failed: \\(error.domain)/\\(error.code) \\(error.localizedDescription)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Diagnostic detail for HelperLifecycleManager.Status.registrationFailed, written to logger.error and stored in AppState.helperAgentStatus, which no view reads (grep across the app, iOS, watch, widget and core sources finds only its assignments)."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LANLinkAgent.swift",
@@ -398,6 +638,18 @@
    "reason": "KEEP_PROPER_NOUN: Latency readout in the terminal status bar. \"ms\" is an SI unit symbol, and shipped locales keep \"%d ms\" verbatim."
   },
   {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LocalSessionControlClient.swift",
+   "literal": "\"(no message)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: parseReply's stand-in when a helper error reply has no message. It becomes the detail of SessionControlErrorMapping's .internalError / .invalidResponse (or \"code: message\" in its default arm); every other wire code drops it. Those cases reach no screen: LocalSessionFailureText.message(for:) maps them to L10n.remote.errUnexpected without reading the detail, and SessionControlError.description goes only to os_log and the LAN wire message (see the .internalError and .invalidResponse entries for SessionControlClient.swift). Seen once the gate stopped reading the parentheses of `(err[\"message\"] as? String) ??` as the end of the value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",
+   "literal": "\"%.0f MB\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: one process's resident memory in the Machine Health process list, a whole number and the unit symbol MB with no words. MB is written the same in all six shipped languages, like the sibling rpm, W, °C and GB symbols in this file. Seen once the gate followed a String(format:) format into the Text around it."
+  },
+  {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",
    "literal": "\"\\(Int(min(max(fanSliderRPM, minR), maxR))) rpm\"",
    "count": 1,
@@ -408,144 +660,6 @@
    "literal": "\"rpm\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: Unit symbol after the live per-fan RPM number in fanBoostCard. It is kept like the sibling unit symbols W, °C, GB and MB in this file."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
-   "literal": "\"bolt.horizontal.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only in Image(systemName:)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
-   "literal": "\"lock.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only in Image(systemName:)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineSnapshotUnavailability.swift",
-   "literal": "\"puzzlepiece.extension\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (iconName), used only by Image(systemName: unavailability.iconName) at MachineHealthView.swift:1025. The message next to it is already localized (L10n.machine.*)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"a.circle.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.left.arrow.right.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.right.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.triangle.branch\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.triangle.swap\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.triangle.turn.up.right.diamond\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"arrow.up.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"bolt.horizontal.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"brain.head.profile\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"c.square.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"chart.bar\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"chevron.left.forwardslash.chevron.right\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"cursorarrow.rays\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"k.circle.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"magnifyingglass.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"moon.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"plus.magnifyingglass\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"text.bubble\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"wand.and.stars\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift",
-   "literal": "\"waveform.path\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name in ProviderKind.iconName. Not text."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetForm.swift",
@@ -951,9 +1065,21 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
+   "literal": "\"Debug: Animate companion now\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Ternary branch of the debug animation button inside #if DEBUG && os(macOS) (PetTab.swift:329-349). Not compiled into release builds."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
    "literal": "\"Debug: Reset collection\"",
    "count": 1,
    "reason": "KEEP_DEBUG_OR_QA_ONLY: Inside #if DEBUG && os(macOS) (:325-345)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
+   "literal": "\"Debug: Stop forced animation\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: Ternary branch of the debug animation button inside #if DEBUG && os(macOS) (PetTab.swift:329-349). Not compiled into release builds."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/PetTab.swift",
@@ -999,105 +1125,27 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ProviderDisplay.swift",
-   "literal": "\"chevron.left.slash.chevron.right\"",
+   "literal": "\"Local \\(displayName(for: provider)) session\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name, passed to Image(systemName:) at SessionsTab.swift:1941."
+   "reason": "KEEP_STORED_DATA: ProviderDisplay.localStartClientLabel, the client_label sent when the Sessions tab starts a managed session. The helper stores it and returns it to every viewer, so it stays English; ProviderDisplay.clientLabelDisplay recognizes it and renders L10n.sessions.rowFallbackLabel in the reader's language (LANRemoteScreens.swift:500/781)."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
-   "literal": "\"checkmark.circle.fill\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealth.swift",
+   "literal": "\"stale\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by Status.iconName and used only in Image(systemName:) (RemoteControlHealthView.swift:143/153). Identifier, never rendered as text."
+   "reason": "KEEP_NOT_USER_VISIBLE: Check.detail for the .warn Mac check. RemoteControlHealthView shows a detail only for .ok checks (RemoteControlHealthView.swift:161); a .warn check shows its localized remediation. The detail otherwise appears only in supportText(), the English support export."
   },
   {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
-   "literal": "\"exclamationmark.triangle.fill\"",
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServerErrorReason.swift",
+   "literal": "\"Device not found or unauthorized\"",
    "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
-   "literal": "\"minus.circle\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/RemoteControlHealthView.swift",
-   "literal": "\"xmark.octagon.fill\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name (Status.iconName), used only in Image(systemName:)."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"groqstatus.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.augmentcode.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.claude.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname returned by statusPageHost(for:). It is only used to build URLs: statusPageURL (line 298), statusEndpoint (line 304), summaryEndpoint (line 312) and hasStatusPage (line 318). A repo-wide grep finds no UI that shows the host as text. The only UI use is Link(destination…"
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.codeium.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.cursor.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.deepgram.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.elevenlabs.io\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.moonshot.cn\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.openai.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"status.warp.dev\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/ServiceStatus.swift",
-   "literal": "\"www.githubstatus.com\"",
-   "count": 1,
-   "reason": "KEEP_NOT_USER_VISIBLE: Hostname used only to build URLs (lines 298, 304, 312). It is never rendered as text. The link at ProviderStatusComponentsView.swift:147 is labelled L10n.providers.openStatusPage. It is a domain name."
+   "reason": "KEEP_NOT_USER_VISIBLE: The exact text the helper-credential RPCs raise as SQLSTATE P0001 (backend/supabase/helper_rpc.sql), matched to classify the failure; the user sees the localized reason it maps to, never this string."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"approval already resolved\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch (LocalSessionControlState.swift:914) when a second device or click resolved the approval first. It is also the wire message and an os_log value."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.approvalAlreadyResolved). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
@@ -1109,55 +1157,55 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"approval expired\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch-all (LocalSessionControlState.swift:914). That catch does not special-case expiry, although the enum doc says the UI should just drop the row. It is also the wire…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.approvalExpired). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"approval not allowed for this session\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch (LocalSessionControlState.swift:914). It is also the wire message and an os_log value."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.approvalNotAllowed). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"approval not found\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner from approveLocalAction's catch-all (LocalSessionControlState.swift:914 `localHelperError = String(describing: error)`, not special-cased). It is also the wire message and an os_log value."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.approvalNotFound). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"could not attach to the wrapped session\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. A thrown .attachFailed lands in attachWrappedSessionViaHelper's catch (LocalSessionControlState.swift:1199-1200 `localHelperError = String(describing: error)`) and renders at SessionsTab.swift:597. It is also an os_log value and the wire…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.attachFailed). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"disconnected\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error) when a local RPC connection drops (frame_truncated also maps here, line 563). It is also an os_log value. TerminalSessionAdapter.swift:105 stores it in .failed(…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.disconnected). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"helper not running\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: SessionControlError.description, used for more than one thing. It does reach the macOS UI: LocalSessionControlState.swift:294/600/630/653/914/1006/1030/1108/1139/1159/1200 `localHelperError = String(describing: error)` -> SessionsTab.swift:325-326 localHelperErrorBanner(messag…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.helperNotRunning). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"internal error: \\(detail)\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error). The detail is a raw helper message or '<code>: <message>' (line 583). It should become a generic localized message at the display boundary. Missed by hints."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.internalError). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"invalid response: \\(detail)\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error). The enum doc (lines 434-436) says the detail is for logs and the UI should show a generic 'couldn't reach helper' message, which argues for a display-side gene…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.invalidResponse). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"local control disabled\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner when start/send/toggle runs with the helper gate off (LocalSessionControlState.swift:294/600/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value. The phone alr…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.localControlOff). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
@@ -1169,7 +1217,7 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"not implemented\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner, for example send_input against a helper that lacks the method (LocalSessionControlState.swift:653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.notImplemented). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
@@ -1193,25 +1241,25 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"session not controllable from here\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner on stop/send against a detected-only row (LocalSessionControlState.swift:630/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.notControllable). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"session not found\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner on stop/send against a stale id (LocalSessionControlState.swift:630/653). It is also the wire message at LANLinkAgentSession.swift:467 and an os_log value. RemoteTerminalFirstPaintTests.swift:14…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.sessionNotFound). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"spawn failed: \\(detail)\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521, and the one users are most likely to see. A failed managed start sets `localHelperError = String(describing: error)` (LocalSessionControlState.swift:600), which renders at SessionsTab.swift:597. `detail` is helper-supplied English. Sessio…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.spawnFailed). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"timeout\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches the SessionsTab.swift:597 banner through String(describing: error) on any local RPC that times out, including hello (LocalSessionControlState.swift:138). It is also an os_log value. Missed by hints."
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.timeout). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
@@ -1235,13 +1283,97 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SessionControlClient.swift",
    "literal": "\"version mismatch\"",
    "count": 1,
-   "reason": "NEEDS_JUDGMENT: Same dual-use description as line 521. It reaches SessionsTab.swift:597 Text(message) through localHelperError (the hello catch at LocalSessionControlState.swift:138, plus the start/stop/send/approve/hook catches). It is also the wire message at LANLinkAgentSession.swift:467 a…"
+   "reason": "KEEP_NOT_USER_VISIBLE: SessionControlError.description (.versionMismatch). Since #584 it reaches no screen: every LocalSessionControlState catch that sets the Sessions-tab banner (localHelperError, :138/147/294/600/630/653/915/1008/1033/1112/1144/1165/1207) calls LocalSessionFailureText.message(for:), which maps the case to L10n and never reads description; the iPhone maps the same case through LANRemoteFailureText; TerminalSessionAdapter's .failed(reason:) is ignored by TerminalAttachView (case .failed:). What remains is os_log text and the LAN wire message (LANLinkAgentSession.swift:467), which LANSessionControlClient compares by prefix, so it must stay English."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift",
    "literal": "\"StoreKit is unavailable in this runtime environment\"",
    "count": 1,
    "reason": "KEEP_DEBUG_OR_QA_ONLY: Thrown only when SubscriptionBootstrapPolicy.resolve disallows StoreKit (runtime capabilities without allowsStoreKitBootstrap: QA/quarantine runtimes)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/BrowserCookieModels.swift",
+   "literal": "\"\\(names.dropLast().joined(separator: \", \")), or \\(last)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit Collection<Browser>.loginHint. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/BrowserCookieModels.swift",
+   "literal": "\"\\(names[0]) or \\(last)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit Collection<Browser>.loginHint. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/BrowserCookieModels.swift",
+   "literal": "\"browser\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit Collection<Browser>.loginHint. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/ChromeCookieImporter.swift",
+   "literal": "\"Chromium Cookies DB not found at \\(path).\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/ChromeCookieImporter.swift",
+   "literal": "\"Failed to read Chromium cookies: \\(message)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/ChromeCookieImporter.swift",
+   "literal": "\"\\(labelBase) (Network)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit cookie store label. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/ChromeCookieImporter.swift",
+   "literal": "\"macOS Keychain denied access to Chrome Safe Storage.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/GeckoCookieImporter.swift",
+   "literal": "\"Failed to read \\(browser.displayName) cookies: \\(message)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/GeckoCookieImporter.swift",
+   "literal": "\"\\(browser.displayName) cookie DB exists but is not readable (\\(path)).\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/GeckoCookieImporter.swift",
+   "literal": "\"\\(browser.displayName) cookie DB not found at \\(path).\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/SafariCookieImporter.swift",
+   "literal": "\"Safari cookie file exists but is not readable (\\(path)). Enable Full Disk Access.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/SafariCookieImporter.swift",
+   "literal": "\"Safari cookie file is invalid.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/SafariCookieImporter.swift",
+   "literal": "\"Safari cookie file not found.\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit import error description. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Vendor/SweetCookieKit/SafariCookieImporter.swift",
+   "literal": "\"Safari\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: Vendored SweetCookieKit cookie store label. Its only consumer, BrowserCookieAutoImporter (macOS), absorbs every import error into its log callback and returns nil (CookieImporting.swift:12-15 requires importers never to throw), and nothing outside Vendor/SweetCookieKit reads a store label or loginHint."
   },
   {
    "path": "android/app/src/main/java/com/clipulse/android/data/DemoDataProvider.kt",

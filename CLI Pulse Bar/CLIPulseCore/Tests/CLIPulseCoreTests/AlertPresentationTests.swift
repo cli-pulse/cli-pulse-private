@@ -358,5 +358,31 @@ final class AlertPresentationTests: XCTestCase {
             XCTAssertTrue(shown.message.contains("Friday 重置"), "the reset text was lost: \(shown.message)")
         }
     }
+
+    // MARK: - Notification title
+
+    /// `sendNotification` titled every notification "CLI Pulse: \(severity)": a
+    /// translated severity inside an English colon, which Chinese writes full-width.
+    /// check_hardcoded_ui_strings.py could not see it until it learned assignment
+    /// sinks (`content.title = "…"`).
+    func testNotificationTitleIsComposedByTheCatalogueInChinese() {
+        let alert = record(id: "a1", type: "Quota Warning", title: "t", message: "m")
+        withChinese {
+            let title = AlertPresentation.notificationTitle(for: alert)
+            XCTAssertEqual(title, "CLI\u{00A0}Pulse：警告")
+            XCTAssertFalse(title.contains("Warning"), "the severity is still English: \(title)")
+        }
+    }
+
+    /// English readers see exactly what the interpolation used to produce.
+    func testNotificationTitleInEnglishIsUnchanged() {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("en")
+        defer { store.set(previous) }
+        let alert = record(id: "a1", type: "Quota Warning", title: "t", message: "m")
+        XCTAssertEqual(AlertPresentation.notificationTitle(for: alert).replacingOccurrences(of: "\u{00A0}", with: " "),
+                       "CLI Pulse: Warning")
+    }
 }
 #endif

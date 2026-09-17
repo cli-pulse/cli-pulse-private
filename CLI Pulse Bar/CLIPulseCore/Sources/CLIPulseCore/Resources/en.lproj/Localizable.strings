@@ -1921,3 +1921,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "status_text.overdue_invoices" = "⚠︎ overdue invoices";
 "status_text.deployment" = "Deployment: %@";
 "status_text.model" = "Model: %@";
+
+/* ── hardcoded-scanner ── */
+"alert_kind.notification_title" = "CLI Pulse: %@";

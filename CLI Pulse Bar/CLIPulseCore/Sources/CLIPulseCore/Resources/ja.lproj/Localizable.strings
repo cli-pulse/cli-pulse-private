@@ -1925,3 +1925,6 @@
 "status_text.overdue_invoices" = "⚠︎ 支払期限切れの請求書あり";
 "status_text.deployment" = "デプロイ: %@";
 "status_text.model" = "モデル: %@";
+
+/* ── hardcoded-scanner ── */
+"alert_kind.notification_title" = "CLI Pulse: %@";
