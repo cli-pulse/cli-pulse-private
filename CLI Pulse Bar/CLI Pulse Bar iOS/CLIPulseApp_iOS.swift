@@ -61,6 +61,9 @@ struct CLIPulseApp: App {
                 .sheet(item: $pendingPairing) { payload in
                     LANPairingFlowView(browser: pairingBrowser, initialPayload: payload)
                 }
+                // Outermost, so the pairing sheet is covered too: SwiftUI on
+                // iPhone otherwise splits Korean words across lines.
+                .keepsKoreanWordsWhole()
         }
         .commands {
             CommandGroup(replacing: .newItem) { }
