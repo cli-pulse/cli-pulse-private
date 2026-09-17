@@ -39,7 +39,7 @@ final class DisplayFormatTests: XCTestCase {
         XCTAssertEqual(DisplayFormat.decimal(2.5, fractionDigits: 1), "2,5")
         XCTAssertEqual(L10n.yield.commitsCountDecimal(2.5), "2,5 commits", "a catalogue decimal ignores the display locale")
         XCTAssertEqual(L10n.dashboard.utilizedPercent(42.4), "42% utilizado")
-        XCTAssertEqual(CostFormatter.formatUsage(154_100), "154,1K")
+        XCTAssertEqual(CostFormatter.formatUsage(154_100), "154,1\u{00A0}mil")
     }
 
     /// A catalogue `%d` is as often an OSStatus, a byte count or an RPM as a

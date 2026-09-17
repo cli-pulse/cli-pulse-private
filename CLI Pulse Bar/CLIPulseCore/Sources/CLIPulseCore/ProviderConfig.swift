@@ -1085,16 +1085,32 @@ public struct CostSummary: Sendable {
 /// and a value that rounds up to 1000 moves to the next suffix ("1M", not
 /// "1000K").
 ///
-/// The K/M/B suffixes stay in every language: token counts are quoted that way
-/// in Japanese, Chinese and Korean developer tools too ("200K context"), and
-/// the provider dashboards users compare against do the same. The number
-/// itself takes the display locale's separator, so Spain reads "154,1K".
+/// The K/M/B suffixes stay in Japanese, Chinese and Korean: token counts are
+/// quoted that way in their developer tools too ("200K context"), and the
+/// provider dashboards users compare against do the same. Those languages' own
+/// compact forms count in 万 and 億, which would put "15.4万" beside a dashboard
+/// saying "154K". The number itself takes the display locale's separator.
+///
+/// Spanish is the exception. Its K and B read as English ("154,1K" is not how
+/// Spanish writes a quantity, and a Spanish billion is 10^12), so it takes the
+/// language's own compact form for the reader's region: "154,1 mil" and
+/// "16,8 M" in Spain, "154.1 k" in Mexico, from CLDR, with the same rounding.
+/// That includes CLDR's thousands of millions: "8600 M" and "12,3 mil M" in
+/// Spain.
 public enum TokenFormatter {
+    /// Languages whose own compact number form is used instead of K/M/B.
+    static let languagesWithOwnCompactForm: Set<String> = ["es"]
+
     public static func format(
         _ count: Int,
         locale: Locale = LocaleOverrideStore.shared.displayLocale
     ) -> String {
         guard count >= 1_000 else { return "\(count)" }
+        if let language = locale.language.languageCode?.identifier,
+           languagesWithOwnCompactForm.contains(language) {
+            return Double(count).formatted(
+                .number.notation(.compactName).precision(.fractionLength(0...1)).locale(locale))
+        }
         let units: [(divisor: Double, suffix: String)] = [(1e3, "K"), (1e6, "M"), (1e9, "B")]
         var index = units.lastIndex { Double(count) >= $0.divisor } ?? 0
         var value = (Double(count) / units[index].divisor * 10).rounded() / 10

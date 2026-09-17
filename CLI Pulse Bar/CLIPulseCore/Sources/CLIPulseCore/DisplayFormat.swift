@@ -46,14 +46,26 @@ public enum DisplayFormat {
     // MARK: - Dates and times
 
     /// An hour of the day on a chart axis, in the locale's own clock:
-    /// "3 PM", "15時", "오후 3시", "下午3时".
+    /// "3 PM", "15時", "오후 3시", "下午3时", "22:00".
+    ///
+    /// Some 24-hour locales have no hour word, so the hour alone is a bare
+    /// number: Spain's is "22", and an axis reading "22 10 21" says nothing
+    /// about time. Those get the locale's hour and minutes instead, which is how
+    /// they write a time of day. A locale whose hour already carries a word or
+    /// a day period ("22時", "22 Uhr", "10 p.m.") keeps it.
     public static func hour(
         _ date: Date,
         locale: Locale = LocaleOverrideStore.shared.displayLocale,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> String {
-        date.formatted(style(locale: locale, timeZone: timeZone)
+        let hourOnly = date.formatted(style(locale: locale, timeZone: timeZone)
             .hour(.defaultDigits(amPM: .abbreviated)))
+        guard !hourOnly.isEmpty,
+              hourOnly.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }) else {
+            return hourOnly
+        }
+        return date.formatted(style(locale: locale, timeZone: timeZone)
+            .hour(.defaultDigits(amPM: .abbreviated)).minute(.twoDigits))
     }
 
     /// A moment as a short date and time, for text that may be read after the
