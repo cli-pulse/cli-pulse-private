@@ -1911,3 +1911,6 @@
 "status_text.overdue_invoices" = "⚠︎ 有逾期帳單";
 "status_text.deployment" = "部署：%@";
 "status_text.model" = "模型：%@";
+
+/* ── hardcoded-scanner ── */
+"alert_kind.notification_title" = "CLI Pulse：%@";

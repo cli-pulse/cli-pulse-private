@@ -2647,6 +2647,13 @@ public enum L10n {
             tr("alert_kind.budget_weekly_message", spend, budget)
         }
 
+        /// The title of the local notification for an alert: the app's name and the
+        /// severity word, "CLI Pulse: Critical". A key rather than an interpolation,
+        /// so Chinese can use its full-width colon ("CLI Pulse：严重").
+        public static func notificationTitle(_ severity: String) -> String {
+            tr("alert_kind.notification_title", severity)
+        }
+
         /// Title-case, for a severity shown on its own. Deliberately NOT
         /// `alerts.severity_critical`, whose value is the lowercase "critical"
         /// used mid-sentence in a count phrase.

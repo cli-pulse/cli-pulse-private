@@ -144,6 +144,13 @@ public enum AlertPresentation {
 
     // MARK: - Labels
 
+    /// The title of the local notification `DataRefreshManager` posts for an
+    /// alert. It was an English interpolation, "CLI Pulse: \(severity)", with a
+    /// translated severity inside an untranslated colon.
+    public static func notificationTitle(for alert: AlertRecord) -> String {
+        L10n.alertKind.notificationTitle(severityLabel(alert.severity))
+    }
+
     /// Severity as a display word. The raw value stays English everywhere: it
     /// is a filter value, a webhook field, and what `AlertSeverity(rawValue:)`
     /// parses.
