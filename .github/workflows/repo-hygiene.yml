@@ -119,6 +119,13 @@ jobs:
       # format arguments as English: a `%d` that became `%@` crashes
       # String(format:) in that one language, where English testing never looks.
       #
+      # Since 2026-09-17 it also checks what the English value and the CODE
+      # disagree on (an Int passed to a %@ changed in all six catalogues at once),
+      # expands keys composed from an enum's raw value, and covers the tables the
+      # iPhone app ships from its own bundle: their syntax, that every App Intents
+      # literal has its key, that Xcode's variant groups actually copy all six,
+      # and that every host Info.plist declares the six locales.
+      #
       # Path-blind for the usual reason: the PR most likely to add an
       # en-only key is a Swift PR that touches no `.strings` file at all.
       - run: python3 scripts/check_apple_strings_parity.py
