@@ -23,6 +23,9 @@ app, watch, widget and CLIPulseCore sources. "Reaches" means:
     call; a label:/text:/detail: argument of a call that builds a view;
   * as a whole argument, not only when the literal comes first: a ternary
     branch, a `??` fallback, a concatenation, and on the line after the call;
+    a ternary's condition may compare (`n >= 1 ?`, `a != b ?`, `x == .y ?`)
+    and call (`n <= limit(for: a) ?`);
+  * the format of a `String(format:)` handed to any of these;
   * an assignment to messageText, informativeText, .title, .body, toolTip …;
   * an element of an array literal that ForEach iterates;
   * a local `let` whose value is later handed to any of the above;
@@ -375,6 +378,34 @@ def call_sink(ctx: str, pos: int) -> tuple[str, int] | None:
     return None
 
 
+def resolve_sink(ctx: str, pos: int) -> tuple[str, int] | None:
+    """call_sink, followed through `String(format:)` to the call around it.
+
+    call_sink hands a format on to the position of its `String(` call. The main loop used to
+    look there only for an assignment, a return or a binding, never for the view around it, so
+    `Text(String(format: "%d items", n))` and `.help(String(format: "Updated %@", t))` passed.
+    Returns ('ui' | 'intent', pos) when the value is rendered, ('through', start) of the
+    outermost `String(format:)` when it is not, or None.
+    """
+    sink = call_sink(ctx, pos)
+    for _ in range(8):                   # `String(format: String(format: …))` nests, but not deeply
+        if not sink or sink[0] != 'through':
+            break
+        outer = call_sink(ctx, sink[1])
+        if not outer:
+            break
+        sink = outer
+    return sink
+
+
+# An assignment operator: a bare `=` or the `=` of a compound one (`+=`), never the `=` of a
+# comparison (`==`, `!=`, `===`, `!==`, `<=`, `>=`). The ternary support first tested for any `=`
+# after `==` was removed, so `n >= 1 ? "Some" : "None"` read as an assignment and was not a result,
+# and it anchored an assignment on the last `=` — the second one of `==` — so
+# `content.title = level == .critical ? "Critical" : "Warning"` matched neither sink nor binding.
+ASSIGNMENT_OP = re.compile(r'(?<![=!<>])=(?!=)')
+
+
 def result_position(ctx: str, pos: int) -> bool:
     """True when the value at ctx[pos] is what the enclosing body or `case` arm hands back."""
     if enclosing_bracket(ctx, pos):
@@ -383,14 +414,32 @@ def result_position(ctx: str, pos: int) -> bool:
     if not heads:
         return False
     rest = ctx[heads[-1].end():pos]
-    return ';' not in rest and '=' not in rest.replace('==', '') and value_lead_ok(rest)
+    return ';' not in rest and not ASSIGNMENT_OP.search(rest) and value_lead_ok(rest)
 
 
 def strip_value_lead(before: str) -> str:
-    """`x = cond ? "" : ` → `x = `, so an assignment or binding head still matches through a ternary."""
-    m = re.search(r'(=\s*)([^=;{}()]*)$', before)
-    if m and value_lead_ok(m.group(2)):
-        return before[:m.end(1)]
+    """`x = cond ? "" : ` → `x = `, so an assignment or binding head still matches through a ternary.
+
+    The condition is whatever lies between the value's own `=` and the literal: it may compare
+    (`a == b`, `n >= 1`, `x != nil`) and call (`n <= limit(for: a)`). Walking back, brackets that
+    close before the literal are skipped whole; an unclosed one means the literal is an argument,
+    not the assigned value, and a `;`, `{` or `}` ends the statement.
+    """
+    nest = 0
+    for i in range(len(before) - 1, -1, -1):
+        c = before[i]
+        if c in ')]':
+            nest += 1
+        elif c in '([':
+            if nest == 0:
+                return before
+            nest -= 1
+        elif nest:
+            continue
+        elif c in ';{}':
+            return before
+        elif c == '=' and ASSIGNMENT_OP.match(before, i):
+            return before[:i + 1] if value_lead_ok(before[i + 1:]) else before
     return before
 
 
@@ -496,7 +545,7 @@ def scan_swift_file(path: Path) -> list[tuple[int, str, str]]:
                     continue
                 at = offset + pos
                 key = (n, pos, lit)
-                sink = call_sink(ctx, at)
+                sink = resolve_sink(ctx, at)
                 if sink and sink[0] in ('ui', 'intent'):
                     found[key] = sink[0]
                     continue
@@ -532,7 +581,7 @@ def scan_swift_file(path: Path) -> list[tuple[int, str, str]]:
             for name, origins in s.locals.items():
                 for m in re.finditer(r'(?<![\w.$\\])' + re.escape(name) + r'\b(?!:|\s*[(.=\[])', code):
                     at = offset + m.start()
-                    sink = call_sink(ctx, at)
+                    sink = resolve_sink(ctx, at)
                     rendered = bool(sink and sink[0] in ('ui', 'intent')) or bool(
                         SWIFT_ASSIGN_SINK.search(strip_value_lead(ctx[:at])))
                     iterated = False

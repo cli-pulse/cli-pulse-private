@@ -362,6 +362,12 @@
    "reason": "KEEP_STORED_DATA: CollectorStatusText builder output (deepSeekEmptyBalance). status_text is data: collectors run in the Login Item helper as well as the app, the line crosses the App Group, is uploaded for other devices and is compared by ProviderAccountPresentation, so it is written in English. L10n.providers.localizedStatusText recognizes it and renders status_text.deepseek_empty_balance in the reader's language; CollectorStatusTextTests pins the builder against the English catalogue and checks the zh-Hans rendering."
   },
   {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift",
+   "literal": "\"(no output)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: stand-in for PTY output that is not UTF-8 when the claude process exits during startup. The local `text` goes only to dumpRawOutput, which appends it to clipulse_claude_pty_raw.txt in the temporary directory for debugging; what is thrown is ClaudeStrategyError.processExited, which carries no text. Seen once the gate stopped reading the parentheses of `String(data:encoding:) ??` as the end of the value."
+  },
+  {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudePlan.swift",
    "literal": "\"Claude Enterprise\"",
    "count": 1,
@@ -630,6 +636,18 @@
    "literal": "\"\\(latencyMs) ms\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: Latency readout in the terminal status bar. \"ms\" is an SI unit symbol, and shipped locales keep \"%d ms\" verbatim."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LocalSessionControlClient.swift",
+   "literal": "\"(no message)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: parseReply's stand-in when a helper error reply has no message. It becomes the detail of SessionControlErrorMapping's .internalError / .invalidResponse (or \"code: message\" in its default arm); every other wire code drops it. Those cases reach no screen: LocalSessionFailureText.message(for:) maps them to L10n.remote.errUnexpected without reading the detail, and SessionControlError.description goes only to os_log and the LAN wire message (see the .internalError and .invalidResponse entries for SessionControlClient.swift). Seen once the gate stopped reading the parentheses of `(err[\"message\"] as? String) ??` as the end of the value."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",
+   "literal": "\"%.0f MB\"",
+   "count": 1,
+   "reason": "KEEP_PROPER_NOUN: one process's resident memory in the Machine Health process list, a whole number and the unit symbol MB with no words. MB is written the same in all six shipped languages, like the sibling rpm, W, °C and GB symbols in this file. Seen once the gate followed a String(format:) format into the Text around it."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/MachineHealthView.swift",

@@ -304,6 +304,60 @@ expect 0 "App Intents metadata keyed in all six app-bundle tables passes"
 new_tree; view "$intent"; tables en es ja ko zh-Hans
 expect_new "App Intents metadata missing from one locale's table fails" "Refresh Widget" "Provider"
 
+# ── A ternary whose condition compares ──────────────────────────────────────
+# The ternary support above told an assignment from a result by looking for "=",
+# and found one in `>=`, `<=` and `!=`; the assignment and binding checks stopped
+# at the "=" inside `==`. So the most common condition of all hid both branches,
+# while the same ternary on a Bool was caught. Each case below passed the gate
+# with an empty baseline.
+new_tree; core 'func statusLabel(n: Int) -> String { return n >= 1 ? "Some" : "None" }'
+expect_new "a returned ternary whose condition is >= fails" "Some" "None"
+
+new_tree; core 'struct S { var subtitle: String { a != b ? "Changed" : "Same" } }'
+expect_new "an implicit-return ternary whose condition is != fails" "Changed" "Same"
+
+new_tree; core 'func notify(level: Level) { content.title = level == .critical ? "Critical" : "Warning" }'
+expect_new "an assignment sink given a ternary whose condition is == fails" "Critical" "Warning"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let label = n == 1 ? "item" : "items"
+        Text(label)
+    }
+}'
+expect_new "a local let of a ternary whose condition is == handed to Text( fails" "item" "items"
+
+# A regex fix that skips only two-character comparisons and stops at parentheses still
+# missed these two: `===` leaves a bare "=" once "==" is removed, and a call has parentheses.
+new_tree; core 'func f(a: AnyObject) { alert.messageText = a === b ? "Same" : "Other" }'
+expect_new "an assignment sink given a ternary whose condition is === fails" "Same" "Other"
+
+new_tree; core 'func f(n: Int) { panel.prompt = n <= limit(for: a) ? "Pick" : "Wait" }'
+expect_new "an assignment sink given a ternary whose condition calls a function fails" "Pick" "Wait"
+
+# The "=" test must still keep a plain assignment inside a display body from reading as its result.
+new_tree; core 'enum T { var label: String { switch k { case .a: cache = n >= 1 ? "warm" : "cold"; default: break }; return L10n.x.y } }'
+expect 0 "a ternary assigned to a plain variable inside a display property passes"
+
+# ── A format string inside a view ───────────────────────────────────────────
+# call_sink hands a String(format:) format on to the position of the String call,
+# but only the assignment, return and binding checks looked there — never the view
+# around it. MachineHealthView.swift:515 `Text(String(format: "%.0f MB", …))` was
+# in the tree, neither flagged nor baselined.
+new_tree; view 'struct V: View { var body: some View { Text(String(format: "%d items", n)).help(String(format: "Updated %@", t)) } }'
+expect_new "a String(format:) inside Text( and .help( fails" "%d items" "Updated %@"
+
+new_tree; view 'struct V: View {
+    var body: some View {
+        let format = "%d items"
+        Text(String(format: format, n))
+    }
+}'
+expect_new "a local format handed to String(format:) inside Text( fails" "%d items"
+
+new_tree; core 'func f(n: Int) { log(String(format: "%d items", n)) }'
+expect 0 "a String(format:) passed to a non-UI call passes"
+
 # A literal the owner decided stays English still passes in the new shapes.
 new_tree; view 'struct V: View { var body: some View { Label(codexOffPlan ? L10n.sessions.offPlan : "Codex", systemImage: "gear") } }'
 baseline '{"entries": [{"path": "CLI Pulse Bar/CLI Pulse Bar iOS/V.swift", "literal": "\"Codex\"", "count": 1, "reason": "KEEP_PROPER_NOUN: provider product name in the New Local menu"}]}'
