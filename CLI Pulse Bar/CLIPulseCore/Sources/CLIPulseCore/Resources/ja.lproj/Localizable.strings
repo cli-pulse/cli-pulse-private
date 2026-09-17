@@ -1805,3 +1805,7 @@
 "usage_pace.eta_minutes" = "%d 分";
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ トークン · %3$@";
 "intents.less_than_amount" = "%@ 未満";
+
+/* ── demo-mode ── */
+"dashboard.risk_quota_low" = "%1$@ のクォータ: 残り %2$d%% 未満";
+"dashboard.risk_device_offline" = "%@ がオフライン";

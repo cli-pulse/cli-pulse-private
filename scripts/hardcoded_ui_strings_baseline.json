@@ -309,93 +309,39 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Alert fired\"",
+   "literal": "\"Device CPU usage is elevated\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem title; fixture-only (live recent_activity is always [])."
+   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert title, byte-identical to helper/system_collector.py (and AlertGenerator.swift's device rule). Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Codex error rate spiked: 3 errors across 4 sessions\"",
+   "literal": "\"Long-running local agent session detected by helper.\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
+   "reason": "KEEP_DEMO_CONTENT: Demo long-session alert message, the fixed template helper/system_collector.py and AlertGenerator.swift both write. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Codex estimated cost today reached $1.03, exceeding threshold $0.80\"",
+   "literal": "\"Using ~46% of total system CPU (10 cores) for \\(busy.provider).\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real cost-spike message (AlertGenerator.swift:216) is English, not L10n."
+   "reason": "KEEP_DEMO_CONTENT: Demo session-CPU alert message, the AlertGenerator.swift session rule's template with values filled in. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Codex quota critically low\"",
-   "count": 2,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle; fixture-only, mirrors the English demo alert title."
+   "literal": "\"\\(busy.name) is consuming high CPU\"",
+   "count": 1,
+   "reason": "KEEP_DEMO_CONTENT: Demo session-CPU alert title, the AlertGenerator.swift session rule's template. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Cost spike: Codex\"",
+   "literal": "\"\\(longRunning.name) has been running for a long time\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real equivalent AlertGenerator.swift:215 \"Unusual cost spike detected\" is English, not L10n."
+   "reason": "KEEP_DEMO_CONTENT: Demo long-session alert title, the template helper/system_collector.py and AlertGenerator.swift both write. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Dashboard metrics pass on MacBook Pro\"",
+   "literal": "\"helper sampled CPU usage at 91%.\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle -> PulseHomeView.swift; fixture-only (live recent_activity is always [])."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Device offline: build-box\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals (AlertGenerator.swift), not L10n."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Error rate spike: Codex\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals, not L10n."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Only 7.6% remaining (38,000 of 500,000 tokens)\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real path (AlertGenerator.swift:284) is English, not L10n."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Session 'Session error triage' encountered 3 errors on build-box\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Session error triage on build-box\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem subtitle; fixture-only sample data."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Session failed\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem title; fixture-only."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Session failed: error triage\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert title; real alert titles are English literals, not L10n."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Session started\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo ActivityItem -> CLI Pulse Bar Watch/PulseHomeView.swift:271-273. No live producer: APIClient.swift:1094 and DataRefreshManager.swift:1011 both set recent_activity: [], so fixture-only."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"build-box has not synced for over 60 minutes\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo alert message; real alert messages are English literals, not L10n."
+   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert message, the helper/system_collector.py template with the sample filled in. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",

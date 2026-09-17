@@ -1775,3 +1775,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "usage_pace.eta_minutes" = "%d min";
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
 "intents.less_than_amount" = "menos de %@";
+
+/* ── demo-mode ── */
+"dashboard.risk_quota_low" = "Cuota de %1$@: queda menos del %2$d%%";
+"dashboard.risk_device_offline" = "%@ está fuera de línea";

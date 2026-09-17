@@ -20,12 +20,13 @@ import Foundation
 /// the producer it came from.
 ///
 /// ANY MISS RENDERS THE RAW ENGLISH
-/// Retired kinds, demo rows, rows from a newer client, and any template edit
-/// fall through to the stored text unchanged. That is a visible, honest
+/// Retired kinds, rows from a newer client, and any template edit fall
+/// through to the stored text unchanged. That is a visible, honest
 /// degradation rather than a wrong translation — and
 /// `AlertPresentationRoundTripTests` runs the REAL generator output through
 /// this type so a template edit fails CI instead of silently reverting a
-/// locale to English.
+/// locale to English. Demo mode's rows are real producer templates too, and
+/// `DemoDataLocalizationTests` holds them to that.
 public enum AlertPresentation {
 
     public struct Text: Equatable, Sendable {

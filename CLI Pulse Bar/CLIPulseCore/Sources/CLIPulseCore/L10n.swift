@@ -305,6 +305,14 @@ public enum L10n {
         public static var topProjects: String { tr("dashboard.top_projects") }
         public static var noProjects: String { tr("dashboard.no_projects") }
         public static var riskSignals: String { tr("dashboard.risk_signals") }
+        /// Risk-signal rows. `risk_signals` is display text shown verbatim, so
+        /// whoever writes a signal resolves it through one of these.
+        public static func riskQuotaLow(_ provider: String, _ percent: Int) -> String {
+            tr("dashboard.risk_quota_low", provider, percent)
+        }
+        public static func riskDeviceOffline(_ device: String) -> String {
+            tr("dashboard.risk_device_offline", device)
+        }
         public static var activity: String { tr("dashboard.activity") }
         public static var quickStats: String { tr("dashboard.quick_stats") }
         public static var monitor: String { tr("dashboard.monitor") }
