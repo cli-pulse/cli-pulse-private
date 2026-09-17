@@ -731,7 +731,7 @@ expect_fail "a parameter requestDisambiguationDialog, on its own line" "@Paramet
 
 phone_case
 edit "$APP/Intents/StatusIntent.swift" 's.replace("func perform() async throws -> some IntentResult { .result() }", "func perform() async throws -> some IntentResult & ProvidesDialog { .result(dialog: IntentDialog(stringLiteral: \"No data yet.\")) }", 1)' &&
-expect_fail "IntentDialog(stringLiteral:) given a literal" "IntentDialog stringLiteral 'No data yet.' has no entry"
+expect_fail "IntentDialog(stringLiteral:) given a literal" "dialog 'No data yet.' has no entry"
 
 # Every element of the array, not only the first.
 phone_case
@@ -765,18 +765,148 @@ edit "$APP/Intents/StatusIntent.swift" 's.replace("DisplayRepresentation(title: 
 expect_fail "a subtitle inside caseDisplayRepresentations" "DisplayRepresentation subtitle 'Anthropic account' has no entry"
 
 # ── A required name the gate cannot read fails, whatever the form. ─────────
+# The name is still a key (read at its own declaration), but the title itself is
+# not a literal this gate reads, so nothing ties the intent to it.
 phone_case
-edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Get Provider Quota\"", "static var title: LocalizedStringResource { .init(\"Get Provider Quota\") }", 1)' &&
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Get Provider Quota\"", "static var title: LocalizedStringResource = Self.quotaTitle\n    static let quotaTitle: LocalizedStringResource = \"Get Provider Quota\"", 1)' &&
 expect_fail "an intent title in a form no site reads" "QuotaIntent conforms to AppIntent, but this gate reads no title literal"
 
 phone_case
-edit "$APP/Intents/StatusIntent.swift" 's.replace("static var typeDisplayRepresentation: TypeDisplayRepresentation = \"Provider\"", "static var typeDisplayRepresentation: TypeDisplayRepresentation { .init(name: \"Provider\") }", 1)' &&
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var typeDisplayRepresentation: TypeDisplayRepresentation = \"Provider\"", "static var typeDisplayRepresentation: TypeDisplayRepresentation { Self.typeName }\n    static let typeName: TypeDisplayRepresentation = \"Provider\"", 1)' &&
 expect_fail "an AppEnum type name in a form no site reads" "IntentProvider conforms to AppEnum, but this gate reads no typeDisplayRepresentation literal"
 
 # The system never lists a hidden intent, so its title need not be readable.
 phone_case
-edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Refresh the widget\"", "static var title: LocalizedStringResource { .init(\"Refresh the widget\") }", 1)' &&
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Refresh the widget\"", "static var title: LocalizedStringResource { Self.widgetTitle }", 1)' &&
 expect_ok "positive control: a hidden intent's unreadable title is not required"
+
+# ── One key, every spelling. Each localized type is ExpressibleByStringLiteral
+# AND has initialisers, so `"…"`, `.init("…")`, `Type("…")` and
+# `.init(stringLiteral: "…")` are the same key to the system. The gate read only
+# the first at most sites. Run against the gate before this change, every case
+# below passed (rc=0), or was caught only as an orphan (which blames the table,
+# not the code) or by the required-title rule (which covers titles and type names
+# alone, so the same spelling in a description, dialog or parameter was simply
+# not read). Each must now fail with "has no entry", naming the line that shows
+# English.
+add_swift() {  # add_swift <swift source> — appended to the fixture's intent file
+    printf '\n%s\n' "$1" >> "$APP/Intents/StatusIntent.swift"
+}
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Pulse Status"
+    static var description = IntentDescription(stringLiteral: "Opens the dashboard.")
+    func perform() async throws -> some IntentResult { .result() }
+}'
+expect_fail "IntentDescription(stringLiteral:)" "description 'Opens the dashboard.' has no entry"
+
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Pulse Status"
+    static var description: IntentDescription = .init("Opens the dashboard.", categoryName: "Dashboards")
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: .init("Opening the dashboard."))
+    }
+}'
+expect_fail "a description written = .init(…)" "description 'Opens the dashboard.' has no entry" &&
+expect_fail "…its categoryName, inside the same .init" "description categoryName 'Dashboards' has no entry" &&
+expect_fail "a .result(dialog: .init(…))" "dialog 'Opening the dashboard.' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("@Parameter(title: \"Provider\")", "@Parameter(title: \"Provider\", requestValueDialog: .init(\"Which provider?\"))", 1)' &&
+expect_fail "a requestValueDialog: .init(…)" "@Parameter requestValueDialog 'Which provider?' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("    var provider: IntentProvider\n", "    var provider: IntentProvider\n    func check() throws { throw $provider.needsValueError(.init(\"Which one?\")) }\n", 1)' &&
+expect_fail "a needsValueError(.init(…))" "dialog 'Which one?' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("    var provider: IntentProvider\n", "    var provider: IntentProvider\n    @Parameter(title: .init(\"Second provider\"), description: .init(\"The provider to compare with\"))\n    var other: IntentProvider\n", 1)' &&
+expect_fail "a @Parameter(title: .init(…))" "@Parameter title 'Second provider' has no entry" &&
+expect_fail "…and its description: .init(…)" "@Parameter description 'The provider to compare with' has no entry"
+
+phone_case
+edit "$APP/Intents/Shortcuts.swift" 's.replace("shortTitle: \"Get Status\"", "shortTitle: .init(\"Status Now\")", 1)' &&
+expect_fail "a shortTitle: .init(…) — blamed on the code, not only as an orphan" "shortTitle 'Status Now' has no entry"
+
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource { .init(stringLiteral: "Open Pulse Dashboard") }
+    func perform() async throws -> some IntentResult { .result() }
+}'
+expect_fail "a computed title { .init(stringLiteral:) }" "title 'Open Pulse Dashboard' has no entry"
+
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource { get { return LocalizedStringResource.init("Open Pulse Dashboard") } }
+    func perform() async throws -> some IntentResult { .result() }
+}'
+expect_fail "a title { get { return LocalizedStringResource.init(…) } }" "title 'Open Pulse Dashboard' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var typeDisplayRepresentation: TypeDisplayRepresentation = \"Provider\"", "static var typeDisplayRepresentation: TypeDisplayRepresentation { .init(name: \"Agent\") }", 1)' &&
+expect_fail "a type name { .init(name:) }" "typeDisplayRepresentation name 'Agent' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("categoryName: \"Status\"\n", "categoryName: \"Status\",\n        searchKeywords: [.init(\"quota\")]\n", 1)' &&
+expect_fail "a searchKeywords element written .init(…)" "searchKeywords 'quota' has no entry"
+
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Pulse Status"
+    func perform() async throws -> some IntentResult & ProvidesDialog { .result(dialog: opening()) }
+    private func opening() -> IntentDialog { "Opening the dashboard." }
+}'
+expect_fail "a dialog returned by a helper function" "opening 'Opening the dashboard.' has no entry"
+
+# …and every one of those spellings, with its key translated, passes — together
+# with the arguments that are NOT keys (a runtime string, `comment:`, `image:`,
+# `default:`), which must not trip the backstop below.
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource { get { return LocalizedStringResource.init("Open Pulse Dashboard", comment: "An intent title") } }
+    static var description: IntentDescription = .init("Opens the dashboard.", categoryName: .init(stringLiteral: "Dashboards"),
+                                                      searchKeywords: [.init("quota"), "usage"])
+    @Parameter(title: .init("Second provider"), description: IntentDialog.init("The provider to compare with"),
+               requestValueDialog: .init(full: "Which provider?", supporting: "Pick one"), default: "claude")
+    var other: String
+    var displayRepresentation: DisplayRepresentation {
+        .init(title: .init(stringLiteral: "Provider"), subtitle: "Quota source", image: .init(systemName: "cpu"))
+    }
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let spoken = "\(other) is fine"
+        if other.isEmpty { throw $other.needsValueError(.init("Which one?")) }
+        return .result(value: "raw value", dialog: IntentDialog(stringLiteral: spoken))
+    }
+    func picked(_ name: String) -> IntentDialog { return IntentDialog("Pick one") }
+}'
+for loc in en es ja ko zh-Hans zh-Hant; do
+    printf '"%s" = "x";\n' "Open Pulse Dashboard" "Opens the dashboard." "Dashboards" "quota" "usage" \
+        "Second provider" "The provider to compare with" "Which provider?" "Pick one" "Quota source" "Which one?" \
+        >> "$APP/$loc.lproj/Localizable.strings"
+done
+expect_ok "positive control: every spelling translated, and arguments that carry no key"
+
+# ── The backstop: a literal inside a localized value that no reading claims. ─
+# A spelling the lists above do not know would otherwise be the next silent
+# hole, so a literal in a localized initialiser's arguments, a localized
+# argument or a localized declaration fails unless it was read as a key.
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Get Provider Quota\"", "static var title: LocalizedStringResource { compact ? \"Quota\" : \"Get Provider Quota\" }", 1)' &&
+expect_fail "a title chosen by a ternary" 'title holds the literal "Quota" in a form this gate does not read'
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("@Parameter(title: \"Provider\")", "@Parameter(title: label(\"Provider\"))", 1)' &&
+expect_fail "a localized argument passed through a helper" '@Parameter title holds the literal "Provider" in a form this gate does not read'
+
+phone_case
+add_swift 'struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Get Pulse Status"
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        .result(dialog: .init(full: "Get Status", spoken: "Opening the dashboard."))
+    }
+}'
+expect_fail "an argument label no list knows, carrying a literal" 'dialog holds the literal "Opening the dashboard." in a form this gate does not read'
 
 phone_case
 edit "$APP/Intents/StatusIntent.swift" 's.replace("\"Get today\x27s usage.\"", "#\"Get today\x27s usage.\"#", 1)' &&

@@ -54,12 +54,16 @@ And the tables the APP BUNDLES ship, which the system reads without L10n:
     scan, two-reader agreement and duplicate check as the core catalogues;
   * every App Intents literal (title, description, category, search keywords,
     parameter title, description and request dialogs, parameter summary, type
-    and display names, shortTitle, dialogs — initialised or computed) is a key
-    in the app's en Localizable.strings, and every key there is still such a
-    literal. Files are chosen by what their code uses, not by how the import
-    is spelled; every AppIntent must yield a title (and every AppEnum/AppEntity
-    a type name) the gate actually read; and a table with keys while nothing
-    was read fails rather than "matching";
+    and display names, shortTitle, dialogs — initialised, computed or returned
+    by a helper) is a key in the app's en Localizable.strings, and every key
+    there is still such a literal. A value is read by its type, so `"…"`,
+    `.init("…")`, `Type("…")`, `Type.init("…")` and `.init(stringLiteral: "…")`
+    all yield the same key, and a literal inside a localized value that no
+    reading claims (a ternary, a helper call, a label the gate does not list)
+    fails instead of going unchecked. Files are chosen by what their code
+    uses, not by how the import is spelled; every AppIntent must yield a title
+    (and every AppEnum/AppEntity a type name) the gate actually read; and a
+    table with keys while nothing was read fails rather than "matching";
   * every such table is a child of its PBXVariantGroup for all six locales, in
     the owning target's Resources phase — otherwise Xcode silently skips it;
   * the four hosts that render L10n declare exactly the six locales in
@@ -547,11 +551,15 @@ def keys_the_code_asks_for(root: Path) -> set[str]:
 # offset in the other: comments blanked (string contents kept, to read
 # literals), and comments AND string contents blanked (to match brackets).
 
-def swift_masks(src: str) -> tuple[str, str]:
-    """(comments blanked, comments and string contents blanked). Newlines kept."""
+def swift_masks(src: str, literals: list[tuple[int, int]] | None = None) -> tuple[str, str]:
+    """(comments blanked, comments and string contents blanked). Newlines kept.
+
+    `literals`, when given, receives the (start, end) span of every string literal
+    that closes — delimiters and `#`s included, nested ones inside an
+    interpolation too."""
     n = len(src)
     no_comments, code = list(src), list(src)
-    stack: list[tuple] = []   # ("str", hashes, multiline) | ("interp", paren depth)
+    stack: list[tuple] = []   # ("str", hashes, multiline, start) | ("interp", paren depth)
     open_string = re.compile(r'(#*)("""|")')
 
     def blank(buf: list[str], a: int, b: int) -> None:
@@ -586,7 +594,7 @@ def swift_masks(src: str) -> tuple[str, str]:
             if src[i] in '#"':
                 m = open_string.match(src, i)
                 if m:
-                    stack.append(("str", len(m.group(1)), m.group(2) == '"""'))
+                    stack.append(("str", len(m.group(1)), m.group(2) == '"""', i))
                     i = m.end()
                     continue
             if top is not None:
@@ -601,7 +609,7 @@ def swift_masks(src: str) -> tuple[str, str]:
                     stack[-1] = ("interp", top[1] - 1)
             i += 1
             continue
-        _, hashes, multiline = top
+        _, hashes, multiline, start = top
         if src[i] == "\\" and src.startswith("#" * hashes, i + 1):
             k = i + 1 + hashes
             if k < n and src[k] == "(":
@@ -616,6 +624,8 @@ def swift_masks(src: str) -> tuple[str, str]:
         if src.startswith(close, i):
             stack.pop()
             i += len(close)
+            if literals is not None:
+                literals.append((start, i))
             continue
         if src[i] != "\n":
             code[i] = " "
@@ -938,44 +948,86 @@ def code_argument_mismatches(root: Path, index: SwiftIndex, en: dict[str, str]) 
 
 # App Intents turns a Swift literal into a LocalizedStringResource, which the
 # system looks up BY ITS ENGLISH TEXT in the app's own
-# `<locale>.lproj/Localizable.strings`. The places it does that, in three shapes:
+# `<locale>.lproj/Localizable.strings`. Every localized type is also
+# ExpressibleByStringLiteral and has initialisers of its own, so one key has
+# several spellings — `"…"`, `.init("…")`, `Type("…")`, `.init(stringLiteral: "…")`,
+# `.init(name: "…")` — and a site that reads only the first lets the others show
+# English in every language while this gate prints OK. So a value is read by its
+# TYPE, whichever spelling it takes, and a literal inside a localized value that
+# no reading claims fails (see `_literal_sites`).
 
-# 1. A property typed as one of the localized types, initialised or computed
-#    from a literal: `static var title: LocalizedStringResource = "…"`, and the
-#    computed `{ "…" }` / `{ return "…" }` / `{ get { "…" } }` bodies. The site is
-#    named after the property.
-LOCALIZED_TYPES = r"(?:LocalizedStringResource|IntentDescription|IntentDialog|TypeDisplayRepresentation|DisplayRepresentation)"
+LSR = "LocalizedStringResource"
+# Each localized type's initialisers: the type of an unlabelled FIRST argument
+# (None: it takes none), label → type of that argument, and labels that carry no
+# key. "String" is the key itself, as `stringLiteral:` takes it; "[T]" is an array.
+LOCALIZED_INITS: dict[str, tuple[str | None, dict[str, str], frozenset[str]]] = {
+    LSR: ("String", {"stringLiteral": "String"},
+          frozenset({"defaultValue", "table", "locale", "bundle", "comment"})),
+    "IntentDescription": (LSR, {"stringLiteral": "String", "categoryName": LSR, "resultValueName": LSR,
+                                "searchKeywords": f"[{LSR}]"}, frozenset()),
+    "IntentDialog": (LSR, {"stringLiteral": "String", "full": LSR, "supporting": LSR}, frozenset({"image"})),
+    "TypeDisplayRepresentation": (None, {"stringLiteral": "String", "name": LSR, "numericFormat": LSR},
+                                  frozenset()),
+    "DisplayRepresentation": (None, {"stringLiteral": "String", "title": LSR, "subtitle": LSR,
+                                     "synonyms": f"[{LSR}]"}, frozenset({"image"})),
+}
+_TYPE_NAMES = "|".join(LOCALIZED_INITS)
+# A localized initialiser at the start of a value: `.init(`, `Type(`, `Type.init(`.
+LOCALIZED_INIT_CALL = re.compile(r"(?:\b(" + _TYPE_NAMES + r")(?:\.init)?|\.init)\(")
+LITERAL_START = re.compile(r'#*"')
+ARGUMENT_LABEL = re.compile(r"\s*(\w+)\s*:(?!:)")
+
+# The sites, in the order they claim a value (the first names it):
+
+# 1. A property typed as one of the localized types, initialised or computed:
+#    `static var title: LocalizedStringResource = …`, and the computed `{ … }` /
+#    `{ return … }` / `{ get { … } }` bodies. The site is named after the property,
+#    and the whole initialiser or body is a localized value.
 DECLARATION_SITE = re.compile(
-    r"\b(?:var|let)\s+`?(\w+)`?\s*:\s*" + LOCALIZED_TYPES + r"\??\s*"
-    r"(?:=\s*|\{\s*(?:get\s*\{\s*)?(?:return\s+)?)(?=#*\")")
+    r"\b(?:var|let)\s+`?(\w+)`?\s*:\s*(" + _TYPE_NAMES + r")\??\s*"
+    r"(?:=\s*|(\{)\s*(?:get\s*\{\s*)?(?:return\s+)?)")
+#    …and a function returning one — `func dialog() -> IntentDialog { "…" }`, a
+#    helper whose call a site cannot see into. Named after the function.
+FUNCTION_SITE = re.compile(r"\bfunc\s+`?(\w+)`?\s*(?:<[^>{]*>)?\s*\(")
+RETURNS_LOCALIZED = re.compile(
+    r"\s*(?:async\s+)?(?:throws\s+)?->\s*(" + _TYPE_NAMES + r")\??\s*(\{)\s*(?:return\s+)?")
 
-# 2. Calls. (site, callee ending at its "(", first argument unlabelled and
-#    localized?, labels whose literal is localized, labels taking an ARRAY of
-#    localized literals, prefix naming a labelled site).
+# 2. Calls that TAKE a localized value without being one: (site, callee ending at
+#    its "(", type of an unlabelled first argument, label → type, prefix naming a
+#    labelled site). Only these arguments are localized — `default:`, `phrases:`,
+#    `systemImageName:` are not.
 INTENT_CALLS = [
-    ("LocalizedStringResource", re.compile(r"\bLocalizedStringResource\("), True, (), (), ""),
-    ("description", re.compile(r"\bIntentDescription\("), True,
-     ("categoryName", "resultValueName"), ("searchKeywords",), ""),
-    ("IntentDialog", re.compile(r"\bIntentDialog\("), True, ("stringLiteral", "full", "supporting"), (), "IntentDialog "),
-    ("parameterSummary", re.compile(r"\bSummary\("), True, (), (), ""),
-    ("typeDisplayRepresentation", re.compile(r"\bTypeDisplayRepresentation\("), False,
-     ("name", "numericFormat"), (), "typeDisplayRepresentation "),
-    ("DisplayRepresentation", re.compile(r"\bDisplayRepresentation\("), False,
-     ("title", "subtitle"), ("synonyms",), "DisplayRepresentation "),
-    ("@Parameter", re.compile(r"@Parameter\s*\("), False,
-     ("title", "description", "requestValueDialog", "requestDisambiguationDialog"), (), "@Parameter "),
-    ("AppShortcut", re.compile(r"\bAppShortcut\("), False, ("shortTitle",), (), ""),
-    ("dialog", re.compile(r"\b(?:requestValue|needsValueError)\("), True, (), (), ""),
+    ("parameterSummary", re.compile(r"\bSummary\("), "String", {}, ""),
+    ("@Parameter", re.compile(r"@Parameter\s*\("), None,
+     {"title": LSR, "description": LSR, "requestValueDialog": "IntentDialog",
+      "requestDisambiguationDialog": "IntentDialog"}, "@Parameter "),
+    ("AppShortcut", re.compile(r"\bAppShortcut\("), None, {"shortTitle": LSR}, ""),
+    ("dialog", re.compile(r"\b(?:requestValue|needsValueError)\("), "IntentDialog", {}, ""),
+    ("dialog", re.compile(r"(?:\.result|\b(?:requestDisambiguation|needsDisambiguationError|"
+                          r"requestConfirmation|needsConfirmationError))\("), None, {"dialog": "IntentDialog"}, ""),
 ]
 
-# 3. Labels that take a localized literal wherever they are written in an App
-#    Intents file — `.result(dialog: "…")`, `needsDisambiguationError(among:
-#    dialog:)`, `.init(title:subtitle:)` — so a call the list above does not
-#    name is still read. Calls above claim a literal first, for the better name.
-INTENT_LABEL_SITE = re.compile(
-    r"\b(dialog|requestValueDialog|requestDisambiguationDialog|requestConfirmationDialog|"
-    r"categoryName|resultValueName|shortTitle|subtitle)\s*:\s*(?=#*\")")
-INTENT_ARRAY_LABEL_SITE = re.compile(r"\b(searchKeywords|synonyms)\s*:\s*\[")
+# 3. A localized type's own initialiser, called by name wherever it is written:
+#    (type, site, prefix naming a labelled site).
+TYPE_CALLS = [
+    (LSR, LSR, LSR + " "),
+    ("IntentDescription", "description", ""),
+    ("IntentDialog", "IntentDialog", "IntentDialog "),
+    ("TypeDisplayRepresentation", "typeDisplayRepresentation", "typeDisplayRepresentation "),
+    ("DisplayRepresentation", "DisplayRepresentation", "DisplayRepresentation "),
+]
+
+# 4. Argument labels that take a localized value in whatever call they are
+#    written — `needsDisambiguationError(among:dialog:)`, `.init(title:subtitle:)`
+#    — so a call the lists above do not name is still read when its value is a
+#    literal or a localized initialiser.
+LABEL_TYPES = {
+    "dialog": "IntentDialog", "requestValueDialog": "IntentDialog",
+    "requestDisambiguationDialog": "IntentDialog", "requestConfirmationDialog": "IntentDialog",
+    "categoryName": LSR, "resultValueName": LSR, "shortTitle": LSR, "subtitle": LSR,
+}
+INTENT_LABEL_SITE = re.compile(r"[(,]\s*(" + "|".join(LABEL_TYPES) + r")\s*:(?!:)\s*")
+INTENT_ARRAY_LABEL_SITE = re.compile(r"[(,]\s*(searchKeywords|synonyms)\s*:\s*(?=\[)")
 
 SUMMARY_PARAMETER = re.compile(r"\\\(\\\.\$(\w+)\)")
 
@@ -1041,53 +1093,137 @@ def _type_declarations(code: str):
     return out
 
 
-def _literal_sites(no_comments: str, code: str) -> dict[int, str]:
-    """Offset of the opening quote (or `#`) of every localized literal → site name."""
-    sites: dict[int, str] = {}
+def _statement_end(code: str, a: int) -> int:
+    """Offset of the newline or `;` that ends the expression starting at code[a],
+    or of the bracket that encloses it."""
+    depth = 0
+    for k in range(a, len(code)):
+        c = code[k]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            if depth == 0:
+                return k
+            depth -= 1
+        elif depth == 0 and c in "\n;":
+            return k
+    return len(code)
 
-    def value_at(a: int, b: int) -> int:
+
+def _literal_sites(code: str, spans: list[tuple[int, int]]) -> tuple[dict[int, str], dict[int, str]]:
+    """(opening quote or `#` of every localized literal → site name,
+        opening of every literal inside a localized value that no site reads → site name).
+
+    `spans` is every string literal in the file, as `swift_masks` records them.
+
+    The second map is the backstop. A localized value is a declaration's
+    initialiser or body, a localized argument of an INTENT_CALLS call, or the
+    argument list of a localized initialiser; any literal in one that is not a key
+    read here — `cond ? "A" : "B"`, a label this gate does not list, a helper call
+    — is a string the system may look up and no language checks. Arguments that
+    carry no key (`comment:`, `image:` …) are left out; a runtime value, having no
+    literal, never trips it."""
+    sites: dict[int, str] = {}
+    values: list[tuple[int, int, str]] = []
+    no_key: list[tuple[int, int]] = []
+
+    def read(a: int, b: int, kind: str, name: str) -> None:
+        """Claim what the value in code[a:b], of type `kind`, yields — as `name`."""
         while a < b and code[a].isspace():
             a += 1
-        return a
+        if a >= b:
+            return
+        if LITERAL_START.match(code, a, b):
+            sites.setdefault(a, name)
+        elif kind.startswith("["):
+            close = match_close(code, a) if code[a] == "[" else -1
+            if 0 <= close <= b:
+                values.append((a + 1, close - 1, name))
+                for s, e in split_top_level(code, a + 1, close - 1):
+                    read(s, e, kind[1:-1], name)
+        else:
+            m = LOCALIZED_INIT_CALL.match(code, a, b)
+            type_ = (m.group(1) or (kind if kind in LOCALIZED_INITS else None)) if m else None
+            close = match_close(code, m.end() - 1) if type_ else -1
+            if 0 <= close <= b:
+                read_init(type_, m.end(), close - 1, name, name + " ")
 
-    for site, rx, positional, labels, array_labels, prefix in INTENT_CALLS:
+    def read_init(type_: str, a: int, b: int, name: str, prefix: str) -> None:
+        """The arguments code[a:b] of `type_`'s initialiser."""
+        positional, labels, no_key_labels = LOCALIZED_INITS[type_]
+        values.append((a, b, name))
+        for n, (s, e) in enumerate(split_top_level(code, a, b)):
+            lab = ARGUMENT_LABEL.match(code, s, e)
+            if lab is None:
+                if n == 0 and positional:
+                    read(s, e, positional, name)
+            elif lab.group(1) in no_key_labels:
+                no_key.append((s, e))
+            elif lab.group(1) in labels:
+                kind = labels[lab.group(1)]
+                sub = name if kind == "String" else prefix + lab.group(1)
+                values.append((lab.end(), e, sub))
+                read(lab.end(), e, kind, sub)
+
+    for m in DECLARATION_SITE.finditer(code):
+        if m.group(3):
+            close = match_close(code, m.start(3))
+            if close < 0:
+                continue
+            a, b = m.start(3) + 1, close - 1
+        else:
+            a, b = m.end(), _statement_end(code, m.end())
+        values.append((a, b, m.group(1)))
+        read(m.end(), b, m.group(2), m.group(1))
+    for m in FUNCTION_SITE.finditer(code):
+        params = match_close(code, m.end() - 1)
+        r = RETURNS_LOCALIZED.match(code, params) if params >= 0 else None
+        close = match_close(code, r.start(2)) if r else -1
+        if close >= 0:
+            values.append((r.start(2) + 1, close - 1, m.group(1)))
+            read(r.end(), close - 1, r.group(1), m.group(1))
+    for site, rx, positional, labels, prefix in INTENT_CALLS:
         for m in rx.finditer(code):
             close = match_close(code, m.end() - 1)
             if close < 0:
                 continue
             for n, (s, e) in enumerate(split_top_level(code, m.end(), close - 1)):
-                lab = re.match(r"\s*(\w+)\s*:(?!:)", code[s:e])
+                lab = ARGUMENT_LABEL.match(code, s, e)
                 if lab is None:
                     if n == 0 and positional:
-                        v = value_at(s, e)
-                        if code[v] in '"#':
-                            sites.setdefault(v, site)
-                    continue
-                v = value_at(s + lab.end(), e)
-                label = lab.group(1)
-                if label in labels and code[v] in '"#':
-                    sites.setdefault(v, prefix + label)
-                elif label in array_labels and code[v] == "[":
-                    inner = match_close(code, v)
-                    if inner < 0:
-                        continue
-                    for es, ee in split_top_level(code, v + 1, inner - 1):
-                        ev = value_at(es, ee)
-                        if code[ev] in '"#':
-                            sites.setdefault(ev, prefix + label)
-    for m in DECLARATION_SITE.finditer(code):
-        sites.setdefault(m.end(), m.group(1))
+                        values.append((s, e, site))
+                        read(s, e, positional, site)
+                elif lab.group(1) in labels:
+                    values.append((lab.end(), e, prefix + lab.group(1)))
+                    read(lab.end(), e, labels[lab.group(1)], prefix + lab.group(1))
+    for type_, site, prefix in TYPE_CALLS:
+        for m in re.finditer(r"\b" + type_ + r"(?:\.init)?\(", code):
+            close = match_close(code, m.end() - 1)
+            if close >= 0:
+                read_init(type_, m.end(), close - 1, site, prefix)
     for m in INTENT_LABEL_SITE.finditer(code):
-        sites.setdefault(m.end(), m.group(1))
+        read(m.end(), len(code), LABEL_TYPES[m.group(1)], m.group(1))
     for m in INTENT_ARRAY_LABEL_SITE.finditer(code):
-        close = match_close(code, m.end() - 1)
-        if close < 0:
-            continue
-        for s, e in split_top_level(code, m.end(), close - 1):
-            v = value_at(s, e)
-            if code[v] in '"#':
-                sites.setdefault(v, m.group(1))
-    return sites
+        close = match_close(code, m.end())
+        if close >= 0:
+            values.append((m.end() + 1, close - 1, m.group(1)))
+            read(m.end(), close, f"[{LSR}]", m.group(1))
+
+    # A literal inside another's interpolation is reported through the outer one.
+    nested: set[int] = set()
+    open_ends: list[int] = []
+    for s, e in sorted(spans):
+        while open_ends and open_ends[-1] <= s:
+            open_ends.pop()
+        if open_ends:
+            nested.add(s)
+        open_ends.append(e)
+    unread: dict[int, str] = {}
+    for a, b, name in sorted(values, key=lambda v: v[1] - v[0]):   # the innermost value names it
+        for s, _ in spans:
+            if a <= s < b and s not in sites and s not in nested and not any(x <= s < y for x, y in no_key):
+                unread.setdefault(s, name)
+    return sites, unread
 
 
 class _IntentFile:
@@ -1096,7 +1232,8 @@ class _IntentFile:
     def __init__(self, rel: str, src: str) -> None:
         self.rel = rel
         self.src = src
-        no_comments, code = swift_masks(src)
+        spans: list[tuple[int, int]] = []
+        no_comments, code = swift_masks(src, spans)
         self.types = _type_declarations(code)
 
         # Exempt, but still counted as producing its key:
@@ -1121,17 +1258,25 @@ class _IntentFile:
                     exempt.append((header, close))
                     self.hidden.add(name)
 
+        def is_exempt(at: int, site: str) -> bool:
+            return any(a <= at < b for a, b in exempt) or (
+                site.split()[-1] == "title" and any(a <= at < b for a, b in case_names))
+
+        sites, unread = _literal_sites(code, spans)
         # (site, key or None when unreadable, line, exempt, offset)
         self.literals: list[tuple[str, str | None, int, bool, int]] = []
-        for at, site in sorted(_literal_sites(no_comments, code).items()):
+        for at, site in sorted(sites.items()):
             literal = None
             if no_comments[at] == '"' and not no_comments.startswith('"""', at):
                 literal = first_string_literal(no_comments, at)
             if literal is not None and site == "parameterSummary":
                 literal = SUMMARY_PARAMETER.sub(r"${\1}", literal)
-            is_exempt = any(a <= at < b for a, b in exempt) or (
-                site.split()[-1] == "title" and any(a <= at < b for a, b in case_names))
-            self.literals.append((site, literal, self.line(at), is_exempt, at))
+            self.literals.append((site, literal, self.line(at), is_exempt(at, site), at))
+        # (site, the literal as written, line, exempt) for literals inside a
+        # localized value that no site reads.
+        ends = dict(spans)
+        self.unread: list[tuple[str, str, int, bool]] = [
+            (site, src[at:ends[at]], self.line(at), is_exempt(at, site)) for at, site in sorted(unread.items())]
 
         # Where each type declares the members REQUIRED_MEMBERS asks for:
         # type name → member → [(start, end)] spans, each running from the
@@ -1217,6 +1362,15 @@ def intent_metadata_problems(root: Path, stats: dict | None = None) -> list[str]
                 problems.append(f"{f.rel}:{line}: {site} {key!r} has no entry in "
                                 f"{app_dir.name}/{BASE_LOCALE}.lproj/{STRINGS_FILE}, so it shows English "
                                 "in every language")
+        for f in files:
+            for site, text, line, exempt in f.unread:
+                if exempt:
+                    continue
+                shown = text if len(text) <= 60 else text[:57] + "..."
+                problems.append(f"{f.rel}:{line}: {site} holds the literal {shown} in a form this gate does not "
+                                "read as a key, so whatever the system looks up there is checked in no "
+                                "language — write it as \"…\", .init(\"…\") or an argument label the gate "
+                                "lists, or teach the gate this form")
 
         # Every conforming type's required string is one the gate read.
         spans: dict[str, dict[str, list[tuple[_IntentFile, int, int]]]] = {}
