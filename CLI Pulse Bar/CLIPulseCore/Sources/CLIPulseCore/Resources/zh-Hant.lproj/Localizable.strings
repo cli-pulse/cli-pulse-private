@@ -1791,3 +1791,8 @@
 "usage_pace.eta_minutes" = "%d 分鐘";
 "usage_dashboard.day_tooltip" = "%1$@：%2$@ token · %3$@";
 "intents.less_than_amount" = "不到 %@";
+
+/* ── demo-mode ── */
+"dashboard.risk_quota_low" = "%1$@ 配額：剩餘不足 %2$d%%";
+"dashboard.risk_device_offline" = "%@ 已離線";
+"auth.demo_user_name" = "示範使用者";

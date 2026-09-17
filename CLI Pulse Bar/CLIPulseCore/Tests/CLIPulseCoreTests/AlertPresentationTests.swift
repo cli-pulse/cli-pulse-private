@@ -186,7 +186,7 @@ final class AlertPresentationTests: XCTestCase {
 
     // MARK: - Everything else must degrade to the stored English
 
-    /// Retired kinds, demo rows and anything a newer client invents must render
+    /// Retired kinds and anything a newer client invents must render
     /// their stored text rather than a wrong translation.
     func testUnrecognizedAlertsRenderTheirStoredEnglishUnchanged() {
         withChinese {

@@ -1801,3 +1801,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "usage_pace.eta_minutes" = "%dm";
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
 "intents.less_than_amount" = "less than %@";
+
+/* ── demo-mode ── */
+"dashboard.risk_quota_low" = "%1$@ quota: less than %2$d%% left";
+"dashboard.risk_device_offline" = "%@ is offline";
+"auth.demo_user_name" = "Demo User";

@@ -2253,6 +2253,15 @@ extension AppState {
     /// Used by `resolveAlerts(_:)` to batch N resolves into a single refresh —
     /// otherwise "Resolve All" would issue N back-to-back network fetches.
     private func resolveAlert(_ alert: AlertRecord, skipRefresh: Bool) async {
+        // Demo first. The demo's quota row carries a real `quota-` id, and the
+        // branch below persists its suppression to UserDefaults, where it would
+        // outlive Demo and silence that same alert for the account signed in next.
+        if isDemoMode {
+            if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
+                alerts[idx] = demoUpdateAlert(alerts[idx], isRead: true, isResolved: true)
+            }
+            return
+        }
         // Locally-generated alerts (id prefix `quota-`) don't exist server-side,
         // so `api.resolveAlert` would no-op and the alert would re-fire on the
         // next quota evaluation. Persist a permanent local suppression instead.
@@ -2260,12 +2269,6 @@ extension AppState {
             suppressAlert(id: alert.id, until: .distantFuture)
             if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
                 alerts.remove(at: idx)
-            }
-            return
-        }
-        if isDemoMode {
-            if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
-                alerts[idx] = demoUpdateAlert(alerts[idx], isRead: true, isResolved: true)
             }
             return
         }
@@ -2300,17 +2303,19 @@ extension AppState {
     }
 
     public func snoozeAlert(_ alert: AlertRecord, minutes: Int) async {
-        if alert.id.hasPrefix("quota-") {
-            suppressAlert(id: alert.id, until: Date().addingTimeInterval(Double(minutes) * 60))
-            if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
-                alerts.remove(at: idx)
-            }
-            return
-        }
+        // Demo first, for the same reason as `resolveAlert`: a demo snooze must
+        // not persist a suppression that a real `quota-` alert would inherit.
         if isDemoMode {
             if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
                 let until = sharedISO8601Formatter.string(from: Date().addingTimeInterval(Double(minutes) * 60))
                 alerts[idx] = demoUpdateAlert(alerts[idx], isRead: true, snoozedUntil: until)
+            }
+            return
+        }
+        if alert.id.hasPrefix("quota-") {
+            suppressAlert(id: alert.id, until: Date().addingTimeInterval(Double(minutes) * 60))
+            if let idx = alerts.firstIndex(where: { $0.id == alert.id }) {
+                alerts.remove(at: idx)
             }
             return
         }

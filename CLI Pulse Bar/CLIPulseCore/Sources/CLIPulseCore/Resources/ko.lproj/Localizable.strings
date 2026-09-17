@@ -1761,3 +1761,8 @@
 "usage_pace.eta_minutes" = "%d분";
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ 토큰 · %3$@";
 "intents.less_than_amount" = "%@ 미만";
+
+/* ── demo-mode ── */
+"dashboard.risk_quota_low" = "%1$@ 할당량: %2$d%% 미만 남음";
+"dashboard.risk_device_offline" = "%@ 오프라인";
+"auth.demo_user_name" = "데모 사용자";

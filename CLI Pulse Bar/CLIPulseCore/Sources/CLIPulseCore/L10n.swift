@@ -305,6 +305,14 @@ public enum L10n {
         public static var topProjects: String { tr("dashboard.top_projects") }
         public static var noProjects: String { tr("dashboard.no_projects") }
         public static var riskSignals: String { tr("dashboard.risk_signals") }
+        /// Risk-signal rows. `risk_signals` is display text shown verbatim, so
+        /// whoever writes a signal resolves it through one of these.
+        public static func riskQuotaLow(_ provider: String, _ percent: Int) -> String {
+            tr("dashboard.risk_quota_low", provider, percent)
+        }
+        public static func riskDeviceOffline(_ device: String) -> String {
+            tr("dashboard.risk_device_offline", device)
+        }
         public static var activity: String { tr("dashboard.activity") }
         public static var quickStats: String { tr("dashboard.quick_stats") }
         public static var monitor: String { tr("dashboard.monitor") }
@@ -864,6 +872,9 @@ public enum L10n {
         public static var subtitle: String { tr("auth.subtitle") }
         public static var or: String { tr("auth.or") }
         public static var tryDemo: String { tr("auth.try_demo") }
+        /// The account name Demo shows in Settings. A real account's name is
+        /// the user's own data and never goes through here.
+        public static var demoUserName: String { tr("auth.demo_user_name") }
         public static var welcome: String { tr("auth.welcome") }
         public static var watchHint: String { tr("auth.watch_hint") }
         public static var sendCode: String { tr("auth.send_code") }

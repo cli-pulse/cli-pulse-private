@@ -582,7 +582,9 @@ public final class WatchAppState: ObservableObject {
             currentUserID = "demo"
             isAuthenticated = true
             isPaired = true
-            userName = "Demo User"
+            // No Watch view shows this yet; resolved like the phone's Demo so
+            // the first one that does is not English in every language.
+            userName = L10n.auth.demoUserName
             userEmail = "demo@clipulse.app"
             return
         }
