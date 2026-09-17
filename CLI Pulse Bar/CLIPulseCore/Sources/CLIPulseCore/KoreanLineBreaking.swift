@@ -7,11 +7,30 @@ import SwiftUI
 /// Chinese-and-Japanese rule instead, which allows a break between any two
 /// syllables, so words split across lines: "전송|되지", "사용|되며", "호출|하는".
 ///
-/// Typesetting that text as English makes SwiftUI break at the spaces, and
-/// changes nothing else visible: Hangul glyphs, line height and the placement
-/// of Latin words in between are the same. Measured on the iOS 26.5 simulator
-/// with the onboarding and privacy strings at 318 to 359 points: without it,
-/// three words split at those widths; with it, none did.
+/// Typesetting that text as English makes SwiftUI break at the spaces instead
+/// of between Hangul syllables, and changes nothing else visible: Hangul
+/// glyphs, line height and the placement of Latin words in between are the
+/// same. Measured on the iOS 26.5 and 18.5 simulators with the iPhone's
+/// onboarding, sign-in, account and budget-alert strings at 318, 330 and 359
+/// points: without it, four words split between syllables; with it, none did.
+///
+/// WHAT STILL BREAKS
+/// Typeset as English, a line may break where a run that is not Hangul ends
+/// and the Hangul attached to it begins, which the Korean rule kept together:
+/// after a closing bracket or quote ("…Google 등)" / "는 macOS…"), a Latin word
+/// ("Mac" / "은", "API" / "를"), a number ("30" / "초"), a percent sign or a
+/// backtick. The particle then starts the next line. Measured the same way.
+///
+/// That is the trade taken. The Korean rule may split any Hangul word of two
+/// syllables or more; this one only where a name, number or bracket meets the
+/// Hangul after it.
+/// The iPhone strings whose parenthetical ended right before its particle are
+/// reworded without the parenthesis, and a test keeps them that way. A Latin
+/// word or number followed by its particle is how most of the app's Korean
+/// names things, so it is left as it is. No other typesetting language tried
+/// keeps both kinds whole: French, Russian, Arabic, Hindi, Thai, Vietnamese
+/// and "und" behave as English, and Korean with the `lw=keepall` extension
+/// renders exactly as plain Korean.
 ///
 /// NOT FOR OTHER LANGUAGES
 /// Chinese and Japanese have no spaces to break at, so the per-character rule
