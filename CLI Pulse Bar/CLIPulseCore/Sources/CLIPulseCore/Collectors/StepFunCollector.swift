@@ -235,7 +235,7 @@ public struct StepFunCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: 100, remaining: fhRemaining,        // headline = the 5-hour window
             plan_type: planName ?? "StepFun", reset_time: fhResetISO, tiers: tiers,
-            status_text: "5h \(fhRemaining)% left · Weekly \(wkRemaining)% left",
+            status_text: CollectorStatusText.join([CollectorStatusText.windowPercentLeft(.fiveHour, fhRemaining), CollectorStatusText.windowPercentLeft(.weekly, wkRemaining)]),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
                 display_name: "StepFun", category: "cloud",

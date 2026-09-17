@@ -290,13 +290,13 @@ public struct DeepgramCollector: ProviderCollector, Sendable {
     // MARK: - Result building (.statusOnly — no gauge)
 
     static func formatStatusText(_ a: UsageAggregate) -> String {
-        var parts: [String] = ["\(compactInt(a.requests)) requests"]
-        if a.hours > 0 { parts.append("\(compactDecimal(a.hours)) audio hrs") }
-        else if a.totalHours > 0 { parts.append("\(compactDecimal(a.totalHours)) billable hrs") }
+        var parts: [String] = [CollectorStatusText.requests(a.requests)]
+        if a.hours > 0 { parts.append(CollectorStatusText.audioHours(compactDecimal(a.hours))) }
+        else if a.totalHours > 0 { parts.append(CollectorStatusText.billableHours(compactDecimal(a.totalHours))) }
         let totalTokens = a.tokensIn + a.tokensOut
-        if totalTokens > 0 { parts.append("\(compactInt(totalTokens)) tokens") }
-        else if a.ttsCharacters > 0 { parts.append("\(compactInt(a.ttsCharacters)) TTS chars") }
-        return parts.joined(separator: " · ")
+        if totalTokens > 0 { parts.append(CollectorStatusText.tokens(compactInt(totalTokens))) }
+        else if a.ttsCharacters > 0 { parts.append(CollectorStatusText.ttsCharacters(compactInt(a.ttsCharacters))) }
+        return CollectorStatusText.join(parts)
     }
 
     static func buildResult(

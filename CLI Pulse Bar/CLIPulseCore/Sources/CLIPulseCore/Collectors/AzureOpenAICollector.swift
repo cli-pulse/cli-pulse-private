@@ -268,9 +268,9 @@ public struct AzureOpenAICollector: ProviderCollector, Sendable {
     static func formatStatusText(deploymentName: String, model: String?) -> String {
         let cleanedModel = model?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let cleanedModel, !cleanedModel.isEmpty {
-            return "Deployment: \(deploymentName) · Model: \(cleanedModel)"
+            return CollectorStatusText.join([CollectorStatusText.deployment(deploymentName), CollectorStatusText.model(cleanedModel)])
         }
-        return "Deployment: \(deploymentName)"
+        return CollectorStatusText.deployment(deploymentName)
     }
 
     static func buildResult(

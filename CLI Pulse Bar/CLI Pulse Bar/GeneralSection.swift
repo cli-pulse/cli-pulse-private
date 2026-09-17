@@ -185,34 +185,40 @@ struct GeneralSection: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
 
-                        HStack(spacing: 4) {
+                        // Chips keep their label on one line and the row wraps
+                        // between them: translated labels do not fit one row at
+                        // the popover's width, and a chip squeezed to fit broke
+                        // "デバイスオフライン" mid-word.
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text(L10n.integrations.filterSeverities)
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 70, alignment: .leading)
-                            ForEach(["Critical", "Warning", "Info"], id: \.self) { severity in
-                                filterChip(
-                                    label: severity,
-                                    isSelected: state.webhookEventFilter.severities.contains(severity),
-                                    color: severity == "Critical" ? .red : (severity == "Warning" ? .orange : .blue)
-                                ) {
-                                    toggleFilterItem(&state.webhookEventFilter.severities, severity)
+                            WebhookChipFlowLayout(spacing: 4) {
+                                ForEach(WebhookEventFilter.selectableSeverities, id: \.self) { severity in
+                                    filterChip(
+                                        label: WebhookEventFilter.severityLabel(severity),
+                                        isSelected: state.webhookEventFilter.severities.contains(severity),
+                                        color: severity == "Critical" ? .red : (severity == "Warning" ? .orange : .blue)
+                                    ) {
+                                        toggleFilterItem(&state.webhookEventFilter.severities, severity)
+                                    }
                                 }
                             }
-                            Spacer()
                         }
 
-                        HStack(spacing: 4) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
                             Text(L10n.integrations.filterTypes)
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 70, alignment: .leading)
-                            ForEach(["cost_spike", "quota_exceeded", "session_long", "device_offline"], id: \.self) { type in
-                                filterChip(label: type.replacingOccurrences(of: "_", with: " "), isSelected: state.webhookEventFilter.types.contains(type)) {
-                                    toggleFilterItem(&state.webhookEventFilter.types, type)
+                            WebhookChipFlowLayout(spacing: 4) {
+                                ForEach(WebhookEventFilter.selectableTypes, id: \.self) { type in
+                                    filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: state.webhookEventFilter.types.contains(type)) {
+                                        toggleFilterItem(&state.webhookEventFilter.types, type)
+                                    }
                                 }
                             }
-                            Spacer()
                         }
                     }
                     .padding(.top, 4)
@@ -292,6 +298,8 @@ struct GeneralSection: View {
         Button(action: action) {
             Text(label)
                 .font(.system(size: 8, weight: isSelected ? .semibold : .regular))
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(isSelected ? color.opacity(0.2) : Color.gray.opacity(0.1))
@@ -307,5 +315,52 @@ struct GeneralSection: View {
         } else {
             array.append(item)
         }
+    }
+}
+
+/// Lays chips left to right and starts a new row when the next one would not
+/// fit, so each chip keeps its ideal size. Takes the width it is offered and is
+/// as tall as its rows; its first text baseline is the first chip's, so a label
+/// beside it lines up with the first row.
+private struct WebhookChipFlowLayout: Layout {
+    var spacing: CGFloat = 4
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = arrange(width: proposal.width, subviews: subviews)
+        let width = proposal.width ?? rows.usedWidth
+        return CGSize(width: width.isFinite ? width : rows.usedWidth, height: rows.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = arrange(width: bounds.width, subviews: subviews)
+        for (index, origin) in rows.origins.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                                  proposal: .unspecified)
+        }
+    }
+
+    func explicitAlignment(of guide: VerticalAlignment, in bounds: CGRect, proposal: ProposedViewSize,
+                           subviews: Subviews, cache: inout ()) -> CGFloat? {
+        guard guide == .firstTextBaseline, let first = subviews.first else { return nil }
+        return bounds.minY + first.dimensions(in: .unspecified)[.firstTextBaseline]
+    }
+
+    private func arrange(width: CGFloat?, subviews: Subviews) -> (origins: [CGPoint], usedWidth: CGFloat, height: CGFloat) {
+        let maxWidth = width ?? .infinity
+        var origins: [CGPoint] = []
+        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, usedWidth: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            origins.append(CGPoint(x: x, y: y))
+            usedWidth = max(usedWidth, x + size.width)
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+        }
+        return (origins, usedWidth, y + rowHeight)
     }
 }

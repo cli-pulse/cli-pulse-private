@@ -652,8 +652,7 @@ struct iOSProviderAccountRow: View {
     }
 
     private var planLabel: String {
-        account.planEvidence.displayValue
-            ?? account.planEvidence.rawValue
+        account.planEvidence.localizedDisplay
             ?? L10n.providers.planUnconfirmed
     }
 

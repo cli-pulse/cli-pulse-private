@@ -371,7 +371,7 @@ struct CLIPulseBarApp: App {
                         runtimeEnvironment: appState.runtimeEnvironment
                     ).startManagedSession(
                         provider: provider,
-                        clientLabel: "in-app-terminal",
+                        clientLabel: ProviderDisplay.inAppTerminalClientLabel,
                         cwdBasename: (cwd as NSString).lastPathComponent,
                         cwdHmac: nil,
                         cwd: cwd)

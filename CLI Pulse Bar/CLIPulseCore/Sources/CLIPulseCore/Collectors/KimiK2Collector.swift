@@ -115,7 +115,7 @@ public struct KimiK2Collector: ProviderCollector, Sendable {
             quota: total > 0 ? Int(total * scale) : nil,
             remaining: Int(c.remaining * scale),
             plan_type: "Credits", reset_time: nil, tiers: tiers,
-            status_text: String(format: "%.2f / %.2f credits", c.remaining, total),
+            status_text: CollectorStatusText.credits(String(format: "%.2f / %.2f", c.remaining, total)),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Kimi K2", category: "cloud",
                                        supports_exact_cost: true, supports_quota: true))

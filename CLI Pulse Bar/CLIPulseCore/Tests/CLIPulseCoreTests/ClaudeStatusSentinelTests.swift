@@ -39,7 +39,7 @@ final class ClaudeStatusSentinelTests: XCTestCase {
 
     func testLookalikesPassThrough() {
         LocaleOverrideStore.shared.set("zh-Hans")
-        for raw in ["Signed in as  — Connect Claude Code in Settings", "Signed in as x", "5h 60% left · Weekly 40% left"] {
+        for raw in ["Signed in as  — Connect Claude Code in Settings", "Signed in as x", "Pro · Unlimited edit predictions"] {
             XCTAssertEqual(L10n.providers.localizedStatusText(raw), raw)
         }
     }

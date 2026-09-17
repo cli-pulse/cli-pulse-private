@@ -181,19 +181,19 @@ public struct DeepSeekCollector: ProviderCollector, Sendable {
 
     static func formatStatusText(isAvailable: Bool, primary: Balance?) -> String {
         guard let p = primary else {
-            return "Balance unavailable for API calls"
+            return CollectorStatusText.balanceUnavailableForAPICalls
         }
         let symbol = currencySymbol(p.currency)
         if p.totalBalance <= 0 {
-            return "\(symbol)0.00 — add credits at platform.deepseek.com"
+            return CollectorStatusText.deepSeekEmptyBalance("\(symbol)0.00")
         }
         if !isAvailable {
-            return "Balance unavailable for API calls"
+            return CollectorStatusText.balanceUnavailableForAPICalls
         }
         let total = String(format: "\(symbol)%.2f", p.totalBalance)
         let paid = String(format: "\(symbol)%.2f", p.toppedUpBalance)
         let granted = String(format: "\(symbol)%.2f", p.grantedBalance)
-        return "\(total) (Paid: \(paid) / Granted: \(granted))"
+        return CollectorStatusText.deepSeekBalance(total: total, paid: paid, granted: granted)
     }
 
     func buildResult(isAvailable: Bool, balances: [Balance]) -> CollectorResult {

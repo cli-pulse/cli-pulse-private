@@ -294,8 +294,13 @@ public struct OpenCodeGoCollector: ProviderCollector, Sendable {
         }
         let rollingRemaining = Int((100 - clamp(s.rollingUsedPercent)).rounded())
         let weeklyRemaining = Int((100 - clamp(s.weeklyUsedPercent)).rounded())
-        var status = "Rolling \(rollingRemaining)% · Weekly \(weeklyRemaining)% left"
-        if let zen = s.zenBalanceUSD { status += String(format: " · $%.2f Zen", zen) }
+        var segments = [
+            CollectorStatusText.windowPercentLeft(.rolling, rollingRemaining),
+            CollectorStatusText.windowPercentLeft(.weekly, weeklyRemaining),
+        ]
+        // Zen is OpenCode's product name; the balance segment stays as written.
+        if let zen = s.zenBalanceUSD { segments.append(String(format: "$%.2f Zen", zen)) }
+        let status = CollectorStatusText.join(segments)
 
         let usage = ProviderUsage(
             provider: ProviderKind.openCodeGo.rawValue, today_usage: 0, week_usage: 0,

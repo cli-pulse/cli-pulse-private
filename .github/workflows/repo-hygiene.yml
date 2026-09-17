@@ -177,6 +177,16 @@ jobs:
       - run: python3 scripts/check_quota_tier_names.py
       - run: bash scripts/test_check_quota_tier_names.sh
 
+      # Provider status lines ("5h 60% left · Weekly 40% left") are data like tier
+      # names: English everywhere, translated only where shown. The renderer can
+      # translate what `CollectorStatusText` builds and nothing else, so a
+      # collector that writes a status literal of its own ships English to every
+      # other language — which is how some 40 of them did until 2026-09-17. This
+      # fails that literal unless it is a vendor's own term, recorded with its
+      # reason in scripts/collector_status_text_allowlist.json.
+      - run: python3 scripts/check_collector_status_text.py
+      - run: bash scripts/test_check_collector_status_text.sh
+
       # The anonymous-telemetry switch defaults ON, which is only defensible
       # because the app states what it sends before it sends anything. So the
       # disclosure is not documentation, it is the consent basis, and a payload

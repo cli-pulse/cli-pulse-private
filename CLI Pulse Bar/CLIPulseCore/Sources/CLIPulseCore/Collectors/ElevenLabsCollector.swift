@@ -210,11 +210,13 @@ public struct ElevenLabsCollector: ProviderCollector, Sendable {
 
         // status_text: "X / Y characters" plus overage suffix if
         // non-nil (Gemini R1 MEDIUM — surface, don't pollute plan_type).
-        var statusText = "\(Self.formatCount(r.characterCount)) / \(Self.formatCount(r.characterLimit)) characters"
+        let used = Self.formatCount(r.characterCount)
+        let limit = Self.formatCount(r.characterLimit)
+        var statusText = CollectorStatusText.charactersOf(used, limit)
         if let o = r.currentOverage,
            let amount = o.amount?.trimmingCharacters(in: .whitespacesAndNewlines), !amount.isEmpty,
            let currency = o.currency?.trimmingCharacters(in: .whitespacesAndNewlines), !currency.isEmpty {
-            statusText += " (Overage: \(amount) \(currency))"
+            statusText = CollectorStatusText.charactersOf(used, limit, overage: amount, currency: currency)
         }
 
         let usage = ProviderUsage(

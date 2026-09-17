@@ -183,10 +183,14 @@ public struct GroqCollector: ProviderCollector, Sendable {
         let tokPerMin = max(0, inputTokPerSec + outputTokPerSec) * 60
         let cachePerMin = max(0, cacheHitsPerSec) * 60
 
-        var status = "\(formatDecimal(reqPerMin)) req/min · \(formatDecimal(tokPerMin)) tok/min"
+        var segments = [
+            CollectorStatusText.requestsPerMinute(formatDecimal(reqPerMin)),
+            CollectorStatusText.tokensPerMinute(formatDecimal(tokPerMin)),
+        ]
         if cacheHitsPerSec > 0 {
-            status += " · \(formatDecimal(cachePerMin)) cache/min"
+            segments.append(CollectorStatusText.cachePerMinute(formatDecimal(cachePerMin)))
         }
+        let status = CollectorStatusText.join(segments)
         let usage = ProviderUsage(
             provider: ProviderKind.groq.rawValue,
             today_usage: 0, week_usage: 0,

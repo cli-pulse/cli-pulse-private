@@ -113,9 +113,9 @@ public struct VolcanoEngineCollector: ProviderCollector, Sendable {
 
         let statusText: String
         if u.quota > 0 {
-            statusText = "\(used)/\(u.quota) used"
+            statusText = CollectorStatusText.usedOf("\(used)", "\(u.quota)")
         } else if u.modelCount > 0 {
-            statusText = "\(u.modelCount) models available"
+            statusText = CollectorStatusText.modelsAvailable(u.modelCount)
         } else {
             statusText = "Connected"
         }

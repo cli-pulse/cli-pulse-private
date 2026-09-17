@@ -93,7 +93,7 @@ public final class TerminalSessionAdapter: NSObject, TerminalViewDelegate, @unch
             // still see the project name without the full path.
             let result = try await client.startManagedSession(
                 provider: provider,
-                clientLabel: "in-app-terminal",
+                clientLabel: ProviderDisplay.inAppTerminalClientLabel,
                 cwdBasename: cwd.map { ($0 as NSString).lastPathComponent },
                 cwdHmac: nil,
                 cwd: cwd)

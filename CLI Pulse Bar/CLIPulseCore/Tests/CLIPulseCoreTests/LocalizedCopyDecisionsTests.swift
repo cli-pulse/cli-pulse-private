@@ -99,13 +99,14 @@ final class LocalizedCopyDecisionsTests: XCTestCase {
         XCTAssertEqual(L10n.providers.localizedStatusText("42% used"), L10n.providers.percentUsed(42))
         XCTAssertNotEqual(L10n.providers.localizedStatusText("42% used"), "42% used")
 
-        // Free text the collectors compose has to survive byte-identical: there
-        // is no closed set to map it to, and mangling it loses real information.
+        // The collectors' own composite lines are a closed set now
+        // (`CollectorStatusText`, covered in `CollectorStatusTextTests`), so they
+        // translate. What must survive byte-identical is text that is not ours:
+        // a vendor's plan and unit names, and near-misses of a template.
         for passthrough in [
-            "5h 60% left · Weekly 40% left",
-            "Daily 80% left",
-            "Balance: 640 credits",
-            "Pro · $18.00 of $30.00",
+            "Pro",
+            "Pro · Unlimited edit predictions",
+            "12,500/50,000 compute points",
             "-5% used",          // remaining > quota; not the sentinel shape
             "42 % used",         // a space the sentinel does not have
             "about 42% used",    // contains the sentinel, is not the sentinel

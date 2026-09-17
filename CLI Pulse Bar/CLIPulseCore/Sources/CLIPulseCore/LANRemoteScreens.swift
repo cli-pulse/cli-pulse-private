@@ -497,7 +497,8 @@ public struct LANMacSessionsView: View {
                                 LANTerminalScreen(client: client, session: s, controlAllowed: controlAllowed)
                             } label: {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(s.clientLabel ?? s.id).lineLimit(1)
+                                    Text(s.clientLabel.map { ProviderDisplay.clientLabelDisplay($0, provider: s.provider) } ?? s.id)
+                                        .lineLimit(1)
                                     Text("\(ProviderDisplay.displayName(for: s.provider)) · \(L10n.status.localized(s.status))").font(.caption).foregroundStyle(.secondary)
                                     if let n = pendingBySession[s.id], n > 0 {
                                         Label("\(n) · \(L10n.remote.awaitingApproval)", systemImage: "hand.raised.fill")
@@ -777,7 +778,7 @@ public struct LANTerminalScreen: View {
             .padding(.horizontal, 12).padding(.vertical, 6)
             .background(.bar)
         }
-        .navigationTitle(session.clientLabel ?? session.id)
+        .navigationTitle(session.clientLabel.map { ProviderDisplay.clientLabelDisplay($0, provider: session.provider) } ?? session.id)
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.keyboard)
         .task {

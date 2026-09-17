@@ -239,10 +239,11 @@ public struct MistralCollector: ProviderCollector, Sendable {
 
     static func buildResult(_ u: MistralUsage) -> CollectorResult {
         let cost = max(0, u.totalCost)
-        var status = "\(u.currencySymbol)\(String(format: "%.4f", cost)) this month"
+        var segments = [CollectorStatusText.thisMonth("\(u.currencySymbol)\(String(format: "%.4f", cost))")]
         if u.totalTokens > 0 {
-            status += " · \(creditCountString(Double(u.totalTokens))) tokens"
+            segments.append(CollectorStatusText.tokens(creditCountString(Double(u.totalTokens))))
         }
+        let status = CollectorStatusText.join(segments)
         let resetISO = u.endDate.map { sharedISO8601Formatter.string(from: $0) }
         let usage = ProviderUsage(
             provider: ProviderKind.mistral.rawValue,

@@ -158,10 +158,11 @@ public struct MoonshotCollector: ProviderCollector, Sendable {
     // MARK: - Result building (.credits uncapped USD balance)
 
     static func buildResult(_ b: MoonshotBalance) -> CollectorResult {
-        var status = "Balance: \(usdString(b.available))"
+        var segments = [CollectorStatusText.balanceOf(usdString(b.available))]
         if b.cash < 0 {
-            status += " · \(usdString(abs(b.cash))) in deficit"
+            segments.append(CollectorStatusText.inDeficit(usdString(abs(b.cash))))
         }
+        let status = CollectorStatusText.join(segments)
         // voucher / positive cash as informational tiers (skip negative cash —
         // a negative TierDTO breaks UI; the C-11 lesson).
         var tiers: [TierDTO] = []

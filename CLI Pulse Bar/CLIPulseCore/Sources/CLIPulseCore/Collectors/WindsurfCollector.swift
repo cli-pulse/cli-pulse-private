@@ -232,8 +232,8 @@ public struct WindsurfCollector: ProviderCollector, Sendable {
             tiers.append(TierDTO(name: "Weekly", quota: 100, remaining: weekly, reset_time: iso(status.weeklyResetUnix)))
         }
         var parts: [String] = []
-        if status.dailyRemainingPercent != nil { parts.append("Daily \(daily)% left") }
-        if status.weeklyRemainingPercent != nil { parts.append("Weekly \(weekly)% left") }
+        if status.dailyRemainingPercent != nil { parts.append(CollectorStatusText.windowPercentLeft(.daily, daily)) }
+        if status.weeklyRemainingPercent != nil { parts.append(CollectorStatusText.windowPercentLeft(.weekly, weekly)) }
 
         let usage = ProviderUsage(
             provider: ProviderKind.windsurf.rawValue, today_usage: 0, week_usage: 0,
@@ -241,7 +241,7 @@ public struct WindsurfCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: 100, remaining: status.dailyRemainingPercent != nil ? daily : weekly,
             plan_type: plan, reset_time: dailyResetISO, tiers: tiers,
-            status_text: parts.joined(separator: " · "),
+            status_text: CollectorStatusText.join(parts),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Windsurf", category: "ide",
                                        supports_exact_cost: false, supports_quota: true))

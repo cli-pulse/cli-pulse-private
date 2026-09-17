@@ -236,7 +236,7 @@ struct SessionDetailView: View {
                             .font(.title3.weight(.bold))
                         HStack(spacing: 6) {
                             StatusBadge(
-                                text: session.status,
+                                text: L10n.status.localized(session.status),
                                 color: PulseTheme.statusColor(session.status)
                             )
                             if let conf = session.collection_confidence {

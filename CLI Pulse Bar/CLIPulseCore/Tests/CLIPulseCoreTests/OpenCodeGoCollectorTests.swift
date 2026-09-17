@@ -68,7 +68,7 @@ final class OpenCodeGoCollectorTests: XCTestCase {
         XCTAssertEqual(u.tiers.first { $0.name == "Rolling" }?.remaining, 75)
         XCTAssertEqual(u.tiers.first { $0.name == "Weekly" }?.remaining, 60)
         XCTAssertEqual(u.tiers.first { $0.name == "Monthly" }?.remaining, 90)
-        XCTAssertTrue(u.status_text.contains("Rolling 75% · Weekly 60% left"), u.status_text)
+        XCTAssertTrue(u.status_text.contains("Rolling 75% left · Weekly 60% left"), u.status_text)
         XCTAssertTrue(u.status_text.contains("$12.50 Zen"), u.status_text)
     }
 

@@ -65,7 +65,9 @@ final class T3ChatCollectorTests: XCTestCase {
         XCTAssertEqual(u.remaining, 80)        // 100 − 20 used (4-hour headline)
         XCTAssertEqual(u.plan_type, "Pro Plan")
         XCTAssertEqual(u.metadata?.supports_quota, true)
-        XCTAssertEqual(u.status_text, "4h 80% left · Month 50% left · normal")
+        // Windows named like the tiers, so CollectorStatusText can translate them;
+        // the usage band is T3 Chat's own word and stays as written.
+        XCTAssertEqual(u.status_text, "4-hour 80% left · Monthly 50% left · normal")
         let fh = try XCTUnwrap(u.tiers.first { $0.name == "4-hour" })
         XCTAssertEqual(fh.remaining, 80)
         XCTAssertEqual(fh.windowMinutes, 240)

@@ -249,14 +249,15 @@ public struct CrossModelCollector: ProviderCollector, Sendable {
     // MARK: - Result building (.credits — wallet balance, uncapped)
 
     static func buildResult(credits c: Credits, usage: Usage?) -> CollectorResult {
-        var status = "Balance: \(currencyString(c.balance, code: c.currency))"
+        var segments = [CollectorStatusText.balanceOf(currencyString(c.balance, code: c.currency))]
         if c.uncollected > 0 {
-            status += " · \(currencyString(c.uncollected, code: c.currency)) uncollected"
+            segments.append(CollectorStatusText.uncollected(currencyString(c.uncollected, code: c.currency)))
         }
         if let usage {
-            status += " · Today \(currencyString(usage.dailyCost, code: usage.currency))"
-            status += " · Month \(currencyString(usage.monthlyCost, code: usage.currency))"
+            segments.append(CollectorStatusText.today(currencyString(usage.dailyCost, code: usage.currency)))
+            segments.append(CollectorStatusText.month(currencyString(usage.monthlyCost, code: usage.currency)))
         }
+        let status = CollectorStatusText.join(segments)
 
         let usageDTO = ProviderUsage(
             provider: ProviderKind.crossModel.rawValue,

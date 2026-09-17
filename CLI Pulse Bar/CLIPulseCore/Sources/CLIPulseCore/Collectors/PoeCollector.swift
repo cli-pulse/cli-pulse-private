@@ -142,10 +142,11 @@ public struct PoeCollector: ProviderCollector, Sendable {
         let status: String
         let remaining: Int?
         if let balance, balance.isFinite {
-            status = "Balance: \(compactNumber(balance)) points"
+            // "points" is Poe's own unit and stays as written.
+            status = CollectorStatusText.balanceOf("\(compactNumber(balance)) points")
             remaining = points(balance)
         } else {
-            status = "Poe balance unavailable"
+            status = CollectorStatusText.balanceUnavailable
             remaining = nil
         }
 

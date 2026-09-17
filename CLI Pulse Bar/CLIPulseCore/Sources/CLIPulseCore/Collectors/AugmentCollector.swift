@@ -104,7 +104,7 @@ public struct AugmentCollector: ProviderCollector, Sendable {
             quota: total > 0 ? total : nil, remaining: credits.remaining,
             plan_type: subscription?.planName, reset_time: subscription?.billingPeriodEnd,
             tiers: tiers,
-            status_text: total > 0 ? "\(credits.consumed)/\(total) used" : "Operational",
+            status_text: total > 0 ? CollectorStatusText.usedOf("\(credits.consumed)", "\(total)") : "Operational",
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Augment", category: "ide",
                                        supports_exact_cost: false, supports_quota: true))

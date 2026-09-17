@@ -227,8 +227,9 @@
   },
   {
    "name": "Overall",
-   "display": "PASSTHROUGH",
-   "reason": "Synthetic, and it never reaches a render site: AlertGenerator invents it for a provider with no per-tier data, so it lands only in the alert id, suppression_key and message text and never enters `provider.tiers`. There is nothing to localize, and giving it a translation would risk it leaking into a suppression key.",
+   "display": "TRANSLATE",
+   "l10n_key": "quota_tier.overall",
+   "reason": "Synthetic, and it DOES reach a render site. AlertGenerator invents it for a provider with a quota but no per-tier data, and it lands in the alert id, suppression_key and the English title/message. AlertPresentation.quota then parses the tier name back out of that message and renders it through L10n.quotaTier.localized, so without a case the Alerts tab showed \"OpenRouter「Overall」が 85% に到達\". The earlier PASSTHROUGH reason said it never rendered; that was wrong. Translating is safe because the mapper is display-only: the stored name, id and suppression_key keep the English.",
    "producers": "Swift AlertGenerator - a SYNTHETIC tier name used when a provider has no per-tier data, so it lands in the alert stableID / suppression_key and in the alert title/message text.",
    "scanner_blind_spot": true
   },

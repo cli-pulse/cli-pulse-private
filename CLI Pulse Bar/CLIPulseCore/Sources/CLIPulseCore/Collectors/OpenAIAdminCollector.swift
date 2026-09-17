@@ -170,7 +170,7 @@ public struct OpenAIAdminCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Exact",
             quota: nil, remaining: nil,
             plan_type: "Admin API", reset_time: nil, tiers: [],
-            status_text: "\(symbol)\(String(format: "%.2f", cost)) this month",
+            status_text: CollectorStatusText.thisMonth("\(symbol)\(String(format: "%.2f", cost))"),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
                 display_name: "OpenAI Admin", category: "cloud",

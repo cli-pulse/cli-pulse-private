@@ -270,6 +270,7 @@
     <string name="quota_tier_opus_weekly">Opus(주간)</string>
     <string name="quota_tier_opus_only">Opus 전용</string>
     <string name="quota_tier_other_models">기타</string>
+    <string name="quota_tier_overall">전체</string>
     <string name="quota_tier_plan_included">요금제</string>
     <string name="quota_tier_professional_voices">전문 음성</string>
     <string name="quota_tier_purchased">구매분</string>

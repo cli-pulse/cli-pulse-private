@@ -108,7 +108,8 @@ final class MiMoCollectorTests: XCTestCase {
         let u = MiMoCollector.buildResult(
             balance: nil, currency: "CNY", planCode: nil,
             periodEnd: nil, expired: false, used: 0, limit: 0).usage
-        XCTAssertEqual(u.status_text, "balance unavailable balance")
+        // Was "balance unavailable balance": the fallback went through the "<amount> balance" template.
+        XCTAssertEqual(u.status_text, CollectorStatusText.balanceUnavailable)
     }
 
     // MARK: - Availability

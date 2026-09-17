@@ -211,11 +211,12 @@ public struct BedrockCollector: ProviderCollector, Sendable {
 
     static func buildResult(spend: Double, region: String, budget: Double?) -> CollectorResult {
         let cost = max(0, spend)
-        var status = String(format: "$%.2f this month", cost)
+        var segments = [CollectorStatusText.thisMonth(String(format: "$%.2f", cost))]
         if let budget, budget > 0 {
             let pct = Int((min(100, max(0, cost / budget * 100))).rounded())
-            status += String(format: " · %d%% of $%.0f", pct, budget)
+            segments.append(CollectorStatusText.amountOf("\(pct)%", String(format: "$%.0f", budget)))
         }
+        let status = CollectorStatusText.join(segments)
         let usage = ProviderUsage(
             provider: ProviderKind.bedrock.rawValue,
             today_usage: 0, week_usage: 0,

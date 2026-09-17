@@ -302,9 +302,9 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
             let hasAnyData = usage.remaining != nil || usage.used != nil
             let statusText: String
             if let rem = usage.remaining {
-                statusText = "\(Self.compactCredits(rem)) credits remaining"
+                statusText = CollectorStatusText.creditsRemaining(Self.compactCredits(rem))
             } else if hasAnyData {
-                statusText = "Credits data unavailable"
+                statusText = CollectorStatusText.creditsDataUnavailable
             } else {
                 statusText = "Connected"
             }
@@ -338,7 +338,7 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: totalInt, remaining: remainingInt,
             plan_type: planType, reset_time: resetISO, tiers: tiers,
-            status_text: appendAutoTopUp("\(Self.compactCredits(Double(remainingInt))) credits remaining",
+            status_text: appendAutoTopUp(CollectorStatusText.creditsRemaining(Self.compactCredits(Double(remainingInt))),
                                          usage.autoTopUpEnabled),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
@@ -348,7 +348,7 @@ public struct CodebuffCollector: ProviderCollector, Sendable {
     }
 
     static func appendAutoTopUp(_ text: String, _ enabled: Bool?) -> String {
-        enabled == true ? "\(text) · auto top-up" : text
+        enabled == true ? CollectorStatusText.join([text, CollectorStatusText.autoTopUp]) : text
     }
 
     static func compactCredits(_ value: Double) -> String {

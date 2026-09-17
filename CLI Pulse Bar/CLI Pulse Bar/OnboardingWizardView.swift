@@ -692,7 +692,7 @@ struct OnboardingWizardView: View {
                         ?? config?.accountLabel
                         ?? L10n.onboardingWizard.defaultAccount,
                     planLabel:
-                        usage?.planEvidence.displayValue
+                        usage?.planEvidence.displayValue.map(L10n.providers.planDisplay)
                         ?? config?.planOverride,
                     status: status,
                     signals: candidate.signals

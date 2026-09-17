@@ -132,8 +132,8 @@ public struct OllamaCollector: ProviderCollector, Sendable {
 
     func buildResult(models: [OllamaModel], running: [String]) -> CollectorResult {
         let statusText = running.isEmpty
-            ? "\(models.count) models installed"
-            : "\(running.count) running, \(models.count) installed"
+            ? CollectorStatusText.modelsInstalled(models.count)
+            : CollectorStatusText.runningInstalled(running: running.count, installed: models.count)
 
         let usage = ProviderUsage(
             provider: ProviderKind.ollama.rawValue,

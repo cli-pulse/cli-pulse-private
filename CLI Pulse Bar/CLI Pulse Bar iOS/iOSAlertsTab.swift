@@ -184,9 +184,10 @@ struct iOSAlertRow: View {
                     chipView(icon: "desktopcomputer", text: device)
                 }
 
-                // Source kind chip from deep link metadata
+                // Source kind chip from deep link metadata. The raw value picks
+                // the icon; the chip shows it as a word in the reader's language.
                 if let sourceKind = alert.source_kind {
-                    chipView(icon: sourceKindIcon(sourceKind), text: sourceKind)
+                    chipView(icon: sourceKindIcon(sourceKind), text: AlertPresentation.sourceKindLabel(sourceKind))
                 }
             }
 
@@ -286,6 +287,8 @@ struct iOSAlertRow: View {
         case "session": return "terminal"
         case "project": return "folder"
         case "device": return "desktopcomputer"
+        case "quota": return "gauge.with.needle"
+        case "budget": return "dollarsign.circle"
         default: return "link"
         }
     }

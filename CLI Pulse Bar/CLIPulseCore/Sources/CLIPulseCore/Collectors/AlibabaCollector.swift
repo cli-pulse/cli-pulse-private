@@ -121,7 +121,7 @@ public struct AlibabaCollector: ProviderCollector, Sendable {
             quota: primary.1 > 0 ? primary.1 : nil,
             remaining: primary.1 > 0 ? max(0, primary.1 - primary.0) : nil,
             plan_type: a.planName, reset_time: primary.2, tiers: tiers,
-            status_text: primary.1 > 0 ? "\(primary.0)/\(primary.1) used" : "Unknown",
+            status_text: primary.1 > 0 ? CollectorStatusText.usedOf("\(primary.0)", "\(primary.1)") : "Unknown",
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Alibaba Coding Plan", category: "cloud",
                                        supports_exact_cost: false, supports_quota: true))

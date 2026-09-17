@@ -147,7 +147,7 @@ public struct KimiCollector: ProviderCollector, Sendable {
         let overallRemaining = k.weeklyRemaining
         let statusText: String
         if let used = k.weeklyUsed, let limit = k.weeklyLimit, limit > 0 {
-            statusText = "\(used)/\(limit) used"
+            statusText = CollectorStatusText.usedOf("\(used)", "\(limit)")
         } else {
             statusText = "Operational"
         }

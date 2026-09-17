@@ -594,15 +594,53 @@ public enum L10n {
 
 
         public static var planMultipleAccounts: String { tr("providers.plan_multiple_accounts") }
+        public static var planAPIKey: String { tr("providers.plan_api_key") }
+        public static var planPaid: String { tr("providers.plan_paid") }
+        public static var planFree: String { tr("providers.plan_free") }
+        public static var planLegacy: String { tr("providers.plan_legacy") }
+        public static var planUnknown: String { tr("providers.plan_unknown") }
+        public static var planLocal: String { tr("providers.plan_local") }
+        public static var planCredits: String { tr("providers.plan_credits") }
+        public static var planPayAsYouGo: String { tr("providers.plan_pay_as_you_go") }
+        public static var planSelfHosted: String { tr("providers.plan_self_hosted") }
+        public static var planAdminAPI: String { tr("providers.plan_admin_api") }
+        public static var planUnlimited: String { tr("providers.plan_unlimited") }
+        public static var planAccount: String { tr("providers.plan_account") }
+        public static func planProjectCount(_ a0: Int) -> String { tr("providers.plan_project_count", a0) }
 
-        /// Display text for a provider-level `plan_type`. The one value the app
-        /// itself composes is "Multiple accounts" (`APIClient`, when a provider
-        /// has more than one active account); it is also what the server
-        /// projection returns, and the raw value is compared against "Paid" and
-        /// "Free" by the views, so only the rendering is mapped. A vendor's plan
-        /// name ("Pro", "Max 5x") is not ours to translate and passes through.
+        /// Display text for a `plan_type`.
+        ///
+        /// The raw value stays English: it syncs, `SubscriptionPricing` looks
+        /// prices up by it, and the views compare it against "Paid", "Free" and
+        /// "Unknown". Only the rendering is mapped, and only for the closed set of
+        /// words the app itself writes — "Multiple accounts" from `APIClient`, and
+        /// the collectors' fallbacks when a vendor reports no plan name ("API key",
+        /// "Credits", "Local", Deepgram's "3 projects"). Matched case-insensitively
+        /// because some collectors `.capitalized` a vendor token ("unknown").
+        /// A vendor's plan name ("Pro", "Max 5x", "Coding Plan") is not ours to
+        /// translate and passes through.
         public static func planDisplay(_ raw: String) -> String {
-            raw == "Multiple accounts" ? planMultipleAccounts : raw
+            switch raw.lowercased() {
+            case "multiple accounts": return planMultipleAccounts
+            case "api key": return planAPIKey
+            case "paid": return planPaid
+            case "free": return planFree
+            case "legacy": return planLegacy
+            case "unknown": return planUnknown
+            case "local": return planLocal
+            case "credits": return planCredits
+            case "pay-as-you-go": return planPayAsYouGo
+            case "self-hosted": return planSelfHosted
+            case "admin api": return planAdminAPI
+            case "unlimited": return planUnlimited
+            case "account": return planAccount
+            default:
+                // DeepgramCollector names a multi-project key "\(count) projects".
+                if raw.hasSuffix(" projects"), let count = Int(raw.dropLast(" projects".count)) {
+                    return planProjectCount(count)
+                }
+                return raw
+            }
         }
         /// Display text for a provider or account `status_text`.
         ///
@@ -613,10 +651,11 @@ public enum L10n {
         /// everywhere and only its *rendering* is translated, here, keyed on
         /// the closed set of sentinels that producers agree on.
         ///
-        /// Anything outside that set passes through unchanged, which is
-        /// required rather than merely tolerated: `APIClient` forwards any
-        /// non-empty server value verbatim, and the collectors compose free
-        /// text ("5h 60% left · Weekly 40% left") that must not be mangled.
+        /// The lines collectors compose ("5h 60% left · Weekly 40% left") are
+        /// built by `CollectorStatusText` and recognized by it here, segment by
+        /// segment. Anything else passes through unchanged, which is required
+        /// rather than merely tolerated: `APIClient` forwards any non-empty
+        /// server value verbatim, and a vendor's own words must not be mangled.
         public static func localizedStatusText(_ raw: String) -> String {
             switch raw.lowercased() {
             case "operational": return L10n.status.operational
@@ -632,15 +671,14 @@ public enum L10n {
                         .dropLast(ClaudeStatusSentinel.signedInSuffix.count))
                     return claudeSignedInConnectHint(email)
                 }
-                return raw
+                return CollectorStatusText.localized(raw) ?? raw
             }
         }
 
         /// `"42% used"` -> `42`; `nil` for everything else.
         ///
-        /// Anchored on both ends on purpose. The collectors emit composite
-        /// strings that merely *contain* a percentage — "5h 60% left · Weekly
-        /// 40% left", "Daily 80% left" — and those have to survive untouched.
+        /// Anchored on both ends on purpose: "about 42% used" is not this
+        /// sentinel, and neither is a composite line that merely contains one.
         private static func percentUsedSentinel(_ raw: String) -> Int? {
             let suffix = "% used"
             guard raw.hasSuffix(suffix) else { return nil }
@@ -648,6 +686,90 @@ public enum L10n {
             guard !digits.isEmpty, digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
             return Int(digits)
         }
+    }
+
+    // MARK: - Collector status lines
+
+    /// Renderings of the English segments `CollectorStatusText` builds. Only its
+    /// recognizer calls these. Each key's English value is exactly what its
+    /// builder writes, which `CollectorStatusTextTests` pins, so an English
+    /// reader sees the stored line unchanged.
+    public enum statusText {
+        public static func percentLeft(_ a0: Int) -> String { tr("status_text.percent_left", a0) }
+        public static func windowPercentLeft(_ a0: String, _ a1: Int) -> String { tr("status_text.window_percent_left", a0, a1) }
+        public static func usedOf(_ a0: String, _ a1: String) -> String { tr("status_text.used_of", a0, a1) }
+        public static func creditsUsedOf(_ a0: String, _ a1: String) -> String { tr("status_text.credits_used_of", a0, a1) }
+        public static func keysOf(_ a0: String, _ a1: String) -> String { tr("status_text.keys_of", a0, a1) }
+        public static func charactersOf(_ a0: String, _ a1: String) -> String { tr("status_text.characters_of", a0, a1) }
+        public static func charactersOfWithOverage(_ a0: String, _ a1: String, _ a2: String, _ a3: String) -> String {
+            tr("status_text.characters_of_overage", a0, a1, a2, a3)
+        }
+        public static func creditsLeftOf(_ a0: String, _ a1: String) -> String { tr("status_text.credits_left_of", a0, a1) }
+        public static func unitsLeftOf(_ a0: String, _ a1: String, _ a2: String) -> String { tr("status_text.units_left_of", a0, a1, a2) }
+        public static func poolCount(_ a0: String, _ a1: String, _ a2: String) -> String { tr("status_text.pool_count", a0, a1, a2) }
+        public static func requestsLeft(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.requests_left_one", count)
+                : tr("status_text.requests_left", count)
+        }
+        public static func creditsRemaining(_ a0: String) -> String { tr("status_text.credits_remaining", a0) }
+        public static func creditsLeft(_ a0: String) -> String { tr("status_text.credits_left", a0) }
+        public static func credits(_ a0: String) -> String { tr("status_text.credits", a0) }
+        public static func credit(_ a0: String) -> String { tr("status_text.credit", a0) }
+        public static func balance(_ a0: String) -> String { tr("status_text.balance", a0) }
+        public static func balanceOf(_ a0: String) -> String { tr("status_text.balance_of", a0) }
+        public static func balanceOfCredits(_ a0: String) -> String { tr("status_text.balance_of_credits", a0) }
+        public static func thisMonth(_ a0: String) -> String { tr("status_text.this_month", a0) }
+        public static func remaining(_ a0: String) -> String { tr("status_text.remaining", a0) }
+        public static func amountOf(_ a0: String, _ a1: String) -> String { tr("status_text.amount_of", a0, a1) }
+        public static func inDeficit(_ a0: String) -> String { tr("status_text.in_deficit", a0) }
+        public static func uncollected(_ a0: String) -> String { tr("status_text.uncollected", a0) }
+        public static func today(_ a0: String) -> String { tr("status_text.today", a0) }
+        public static func month(_ a0: String) -> String { tr("status_text.month", a0) }
+        public static func deepSeekEmptyBalance(_ a0: String) -> String { tr("status_text.deepseek_empty_balance", a0) }
+        public static func deepSeekBalance(_ a0: String, _ a1: String, _ a2: String) -> String { tr("status_text.deepseek_balance", a0, a1, a2) }
+        /// A count as stored, grouped ("1,234"); the recognizer passes it through.
+        public static func requests(_ a0: String) -> String { tr("status_text.requests", a0) }
+        public static func requests(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.requests_one", count)
+                : requests(CollectorStatusText.grouped(count))
+        }
+        public static func audioHours(_ a0: String) -> String { tr("status_text.audio_hours", a0) }
+        public static func billableHours(_ a0: String) -> String { tr("status_text.billable_hours", a0) }
+        public static func tokens(_ a0: String) -> String { tr("status_text.tokens", a0) }
+        public static func ttsCharacters(_ a0: String) -> String { tr("status_text.tts_characters", a0) }
+        public static func requestsShort(_ a0: String) -> String { tr("status_text.requests_short", a0) }
+        public static func tokensShort(_ a0: String) -> String { tr("status_text.tokens_short", a0) }
+        public static func requestsPerMinute(_ a0: String) -> String { tr("status_text.requests_per_minute", a0) }
+        public static func tokensPerMinute(_ a0: String) -> String { tr("status_text.tokens_per_minute", a0) }
+        public static func cachePerMinute(_ a0: String) -> String { tr("status_text.cache_per_minute", a0) }
+        public static func modelsAvailable(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.models_available_one", count)
+                : tr("status_text.models_available", count)
+        }
+        public static func modelsInstalled(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.models_installed_one", count)
+                : tr("status_text.models_installed", count)
+        }
+        public static func runningInstalled(_ a0: Int, _ a1: Int) -> String { tr("status_text.running_installed", a0, a1) }
+        public static func activeSessions(_ count: Int) -> String {
+            count == 1
+                ? tr("status_text.active_sessions_one", count)
+                : tr("status_text.active_sessions", count)
+        }
+        public static var unlimited: String { tr("status_text.unlimited") }
+        public static var balanceUnavailable: String { tr("status_text.balance_unavailable") }
+        public static var balanceUnavailableForAPICalls: String { tr("status_text.balance_unavailable_api") }
+        public static var creditsDataUnavailable: String { tr("status_text.credits_data_unavailable") }
+        public static var noVeniceBalance: String { tr("status_text.no_venice_balance") }
+        public static var autoTopUp: String { tr("status_text.auto_top_up") }
+        public static var planExpired: String { tr("status_text.plan_expired") }
+        public static var overdueInvoices: String { tr("status_text.overdue_invoices") }
+        public static func deployment(_ a0: String) -> String { tr("status_text.deployment", a0) }
+        public static func model(_ a0: String) -> String { tr("status_text.model", a0) }
     }
 
     // MARK: - Remote Control Diagnostics
@@ -804,6 +926,8 @@ public enum L10n {
         public static var localFastPathOffDetail: String { tr("sessions.local_fast_path_off_detail") }
         public static func rowFallbackLabel(_ a0: String) -> String { tr("sessions.row_fallback_label", a0) }
         public static func rowLabelOnDevice(_ a0: String, _ a1: String) -> String { tr("sessions.row_label_on_device", a0, a1) }
+        public static func rowLocalLabel(_ a0: String) -> String { tr("sessions.row_local_label", a0) }
+        public static func rowInAppTerminalLabel(_ a0: String) -> String { tr("sessions.row_in_app_terminal_label", a0) }
         public static var transportLocal: String { tr("sessions.transport_local") }
         public static var transportLocalHelp: String { tr("sessions.transport_local_help") }
         public static var transportHelperRestarted: String { tr("sessions.transport_helper_restarted") }
@@ -1510,6 +1634,10 @@ public enum L10n {
         public static var filterTypes: String { tr("integrations.filter_types") }
         public static var filterProviders: String { tr("integrations.filter_providers") }
         public static var filterAll: String { tr("integrations.filter_all") }
+        public static var eventTypeCostSpike: String { tr("integrations.event_type_cost_spike") }
+        public static var eventTypeQuotaExceeded: String { tr("integrations.event_type_quota_exceeded") }
+        public static var eventTypeSessionLong: String { tr("integrations.event_type_session_long") }
+        public static var eventTypeDeviceOffline: String { tr("integrations.event_type_device_offline") }
         public static func saveSettingsFailed(_ a0: String) -> String { tr("integrations.save_settings_failed", a0) }
         public static func testWebhookFailed(_ a0: String) -> String { tr("integrations.test_webhook_failed", a0) }
     }
@@ -2338,6 +2466,7 @@ public enum L10n {
         public static var opusOnly: String { tr("quota_tier.opus_only") }
         public static var opusWeekly: String { tr("quota_tier.opus_weekly") }
         public static var otherModels: String { tr("quota_tier.other_models") }
+        public static var overall: String { tr("quota_tier.overall") }
         public static var planIncluded: String { tr("quota_tier.plan_included") }
         public static var professionalVoices: String { tr("quota_tier.professional_voices") }
         public static var purchased: String { tr("quota_tier.purchased") }
@@ -2371,7 +2500,7 @@ public enum L10n {
         /// mid-phrase), and no two names differ by case alone —
         /// `scripts/check_quota_tier_names.py` checks that.
         ///
-        /// The 17 names deliberately NOT translated are vendor products, plans,
+        /// The 16 names deliberately NOT translated are vendor products, plans,
         /// models, coined units or currency codes; translating them would stop the
         /// row matching the vendor's own billing page. They are listed with their
         /// reasons in `scripts/quota_tier_names.json`.
@@ -2398,6 +2527,7 @@ public enum L10n {
             case "opus (weekly)": return opusWeekly
             case "opus only": return opusOnly
             case "other": return otherModels
+            case "overall": return overall
             case "plan": return planIncluded
             case "professional voices": return professionalVoices
             case "purchased": return purchased

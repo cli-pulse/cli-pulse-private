@@ -248,7 +248,7 @@ public final class LocalScanner: @unchecked Sendable {
                 cost_status_week: "normal",
                 quota: nil,
                 remaining: nil,
-                status_text: "\(data.sessions) active",
+                status_text: CollectorStatusText.activeSessions(data.sessions),
                 trend: [],
                 recent_sessions: [],
                 recent_errors: [],

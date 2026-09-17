@@ -43,6 +43,7 @@ object QuotaTierDisplay {
         "opus (weekly)" to R.string.quota_tier_opus_weekly,
         "opus only" to R.string.quota_tier_opus_only,
         "other" to R.string.quota_tier_other_models,
+        "overall" to R.string.quota_tier_overall,
         "plan" to R.string.quota_tier_plan_included,
         "professional voices" to R.string.quota_tier_professional_voices,
         "purchased" to R.string.quota_tier_purchased,

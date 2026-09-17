@@ -192,10 +192,11 @@ public struct ChutesCollector: ProviderCollector, Sendable {
         // Primary gauge = rolling if present, else monthly.
         let primary = s.rolling ?? s.monthly!
         let primaryRemaining = Int((100 - clamp(primary.usedPercent)).rounded())
-        var status = "\(s.rolling != nil ? "4-hour" : "Monthly") \(primaryRemaining)% left"
+        var segments = [CollectorStatusText.windowPercentLeft(s.rolling != nil ? .fourHour : .monthly, primaryRemaining)]
         if s.rolling != nil, let m = s.monthly {
-            status += " · Monthly \(Int((100 - clamp(m.usedPercent)).rounded()))% left"
+            segments.append(CollectorStatusText.windowPercentLeft(.monthly, Int((100 - clamp(m.usedPercent)).rounded())))
         }
+        let status = CollectorStatusText.join(segments)
 
         let usage = ProviderUsage(
             provider: ProviderKind.chutes.rawValue,

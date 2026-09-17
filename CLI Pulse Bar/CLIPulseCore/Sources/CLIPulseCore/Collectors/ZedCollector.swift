@@ -260,7 +260,7 @@ public struct ZedCollector: ProviderCollector, Sendable {
             tiers.append(TierDTO(name: "Billing Cycle", quota: 100,
                                  remaining: Int((100 - elapsed).rounded()), reset_time: reset))
         }
-        if s.hasOverdueInvoices { status += " · ⚠︎ overdue invoices" }
+        if s.hasOverdueInvoices { status = CollectorStatusText.join([status, CollectorStatusText.overdueInvoices]) }
 
         let usage = ProviderUsage(
             provider: ProviderKind.zed.rawValue,
