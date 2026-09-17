@@ -369,7 +369,7 @@
 "auth.sign_in_cancelled" = "已取消登入";
 "auth.sign_in_failed_generic" = "登入失敗，請重試。";
 "auth.sign_in_failed_state_mismatch" = "登入失敗：安全性檢查不符，請重試。";
-"auth.link_cancelled" = "已取消連結";
+"auth.link_cancelled" = "已取消連結作業";
 "auth.link_failed_generic" = "連結失敗，請重試。";
 "auth.link_failed_state_mismatch" = "連結失敗：安全性檢查不符，請重試。";
 
@@ -447,7 +447,7 @@
 "settings.test_webhook" = "測試 Webhook";
 "settings.remote_control" = "向 Mac 傳送控制請求";
 "settings.remote_control_iphone_hint" = "用這台 iPhone 請求 Mac 提升風扇轉速、進入低耗電模式或保持喚醒";
-"settings.privacy_redacted_hint" = "你的 Mac 只接受四類請求：提升風扇轉速、恢復風扇自動控制、開啟或關閉低耗電模式、開啟或關閉保持喚醒。除此之外，沒有任何內容會離開你的裝置：不含對話記錄、會話日誌或終端機輸出。";
+"settings.privacy_redacted_hint" = "你的 Mac 只接受四類請求：提升風扇轉速、恢復風扇自動控制、開啟或關閉低耗電模式、開啟或關閉保持喚醒。除此之外，任何內容都不會離開你的裝置，包括對話記錄、會話日誌和終端機輸出。";
 
 /* ── 顯示補充 (i18n sweep) ── */
 "display.mode" = "顯示模式";
@@ -483,7 +483,7 @@
 "providers.remove_account_title" = "移除 %@ · %@？";
 "providers.remove_account_message" = "只會移除 CLIPulse 設定和此帳號在本機的專屬機密資訊，不會取消或變更服務商訂閱。";
 "providers.provider_level_cost" = "Token 與成本為服務商層級資料，只顯示一次。";
-"providers.most_constrained" = "最緊張帳號";
+"providers.most_constrained" = "配額最吃緊";
 "providers.remaining_percent" = "剩餘 %d%%";
 "providers.source_label" = "來源：%@";
 "providers.source_provider_api" = "服務商 API";
@@ -609,7 +609,7 @@
 /* ── 高階 ── */
 "advanced.launch_at_login" = "登入時自動啟動";
 "advanced.background_sync" = "啟用背景同步";
-"advanced.background_sync_hint" = "將使用資料同步到雲端，供 iOS／Watch／Android 使用";
+"advanced.background_sync_hint" = "將用量資料同步到雲端，供 iOS／Watch／Android 使用";
 "advanced.full_details" = "詳細資訊：";
 "advanced.hide_emails" = "在介面中隱藏電子郵件地址";
 "advanced.track_git" = "追蹤 git 活動（Yield Score）";
@@ -619,7 +619,7 @@
 "advanced.git_consent_body" = "CLI Pulse 會掃描有 AI 會話活動之專案的 git 日誌。只有提交雜湊、專案路徑的 HMAC、提交時間戳記以及合併提交標記會離開你的裝置。提交訊息、diff、檔案路徑和作者身分永遠不會上傳。";
 "advanced.remote_control" = "來自其他裝置的 Mac 控制請求";
 "advanced.remote_control_hint" = "允許已登入的裝置請求 Mac 提升風扇轉速、進入低耗電模式或保持喚醒 · 預設關閉";
-"advanced.remote_consent_title" = "要允許 Mac 控制請求嗎？";
+"advanced.remote_consent_title" = "要允許向 Mac 傳送控制請求嗎？";
 "advanced.token" = "權杖";
 "advanced.providers_loaded" = "已載入服務商";
 "advanced.last_refresh" = "上次重新整理";
@@ -645,7 +645,7 @@
 "menu_bar.quit" = "結束 CLI Pulse";
 
 /* ── 配對 ── */
-"pairing.helper_intro" = "背景 helper 會將使用資料同步到雲端，方便你在 iOS、Watch、Android 上檢視。";
+"pairing.helper_intro" = "背景 helper 會將用量資料同步到雲端，方便你在 iOS、Watch、Android 上檢視。";
 "pairing.set_up_helper" = "設定背景 Helper";
 "pairing.manual_setup" = "手動設定（終端機）";
 "pairing.your_code" = "你的配對碼：";
@@ -799,7 +799,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰視窗指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 設定目標風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n永遠不會離開你裝置的內容：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、會話日誌、終端機輸出\n• 完整專案路徑\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 會話與權限批准，這兩項已經下線。";
+"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 提升風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n永遠不會離開你裝置的內容：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、會話日誌、終端機輸出\n• 完整專案路徑\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 會話與權限批准，這兩項已經下線。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "節奏正常";
@@ -853,7 +853,7 @@
 "machine.controls_toggle" = "機器控制";
 "machine.controls_hint" = "允許在「機器」分頁中結束你自己的程序。預設關閉；每次操作都會要求確認。僅限直接下載（Developer ID）版本。";
 "machine.remote_control_toggle" = "遠端機器控制";
-"machine.remote_control_hint" = "允許你其他已登入的裝置請求在這台 Mac 上加速風扇或開啟低耗電模式。預設關閉；僅限風扇和低耗電模式，每次加速都會自動還原。僅限直接下載（Developer ID）版本。";
+"machine.remote_control_hint" = "允許你其他已登入的裝置請求在這台 Mac 上加速風扇、開啟低耗電模式或保持喚醒。預設關閉；僅限風扇、低耗電模式和保持喚醒，每次加速都會自動還原。僅限直接下載（Developer ID）版本。";
 "machine.suspend" = "暫停";
 "machine.resume" = "恢復";
 "machine.paused_badge" = "已暫停";
@@ -1647,8 +1647,8 @@
 "alert_kind.quota_message" = "配額時段「%1$@」已使用 %2$@%%（剩餘 %3$@%%）。";
 "alert_kind.quota_message_reset" = "配額時段「%1$@」已使用 %2$@%%（剩餘 %3$@%%，%4$@ 重置）。";
 "alert_kind.quota_title" = "%1$@「%2$@」已使用 %3$@%%";
-"alert_kind.session_cpu_message_process" = "%2$@ 程序的 CPU 佔用為 %1$@%%。";
-"alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 程序的 CPU 佔用為 %1$@%%。";
+"alert_kind.session_cpu_message_process" = "%2$@ 程序的 CPU 使用率為 %1$@%%。";
+"alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 程序的 CPU 使用率為 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 佔用約 %1$@%% 的系統總 CPU（%2$@ 核）。";
 "alert_kind.session_cpu_title" = "%@ 正佔用大量 CPU";
 "alert_kind.session_long_message" = "helper 偵測到長時間執行的本機 Agent 會話。";

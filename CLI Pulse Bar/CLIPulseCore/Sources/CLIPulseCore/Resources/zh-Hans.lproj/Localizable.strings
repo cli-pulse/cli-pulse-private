@@ -447,7 +447,7 @@
 "settings.test_webhook" = "测试 Webhook";
 "settings.remote_control" = "向 Mac 发送控制请求";
 "settings.remote_control_iphone_hint" = "用这台 iPhone 请求 Mac 提升风扇转速、开启低电量模式或保持唤醒";
-"settings.privacy_redacted_hint" = "你的 Mac 只接受四类请求：提升风扇转速、恢复风扇自动控制、开启或关闭低电量模式、开启或关闭保持唤醒。除此之外，没有任何内容会离开你的设备：不含会话记录、会话日志或终端输出。";
+"settings.privacy_redacted_hint" = "你的 Mac 只接受四类请求：提升风扇转速、恢复风扇自动控制、开启或关闭低电量模式、开启或关闭保持唤醒。除此之外，任何内容都不会离开你的设备，包括对话记录、会话日志和终端输出。";
 
 /* ── 显示补充 (i18n sweep) ── */
 "display.mode" = "显示模式";
@@ -619,7 +619,7 @@
 "advanced.git_consent_body" = "CLI Pulse 会扫描有 AI 会话活动的项目的 git 日志。仅会上传提交哈希、项目路径的 HMAC、提交时间戳以及合并提交标记。提交消息、diff、文件路径和作者身份永远不会上传。";
 "advanced.remote_control" = "来自其他设备的 Mac 控制请求";
 "advanced.remote_control_hint" = "允许已登录的设备请求 Mac 提升风扇转速、开启低电量模式或保持唤醒 · 默认关闭";
-"advanced.remote_consent_title" = "允许 Mac 控制请求？";
+"advanced.remote_consent_title" = "允许向 Mac 发送控制请求？";
 "advanced.token" = "令牌";
 "advanced.providers_loaded" = "已加载服务商";
 "advanced.last_refresh" = "上次刷新";
@@ -799,7 +799,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰窗口指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 设置目标风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n始终不会离开你设备的内容：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 会话记录、会话日志、终端输出\n• 完整项目路径\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与权限审批，这两项已经下线。";
+"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 提升风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n始终不会离开你设备的内容：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 对话记录、会话日志、终端输出\n• 完整项目路径\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与权限审批，这两项已经下线。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "节奏正常";
@@ -853,7 +853,7 @@
 "machine.controls_toggle" = "机器控制";
 "machine.controls_hint" = "允许在「机器」标签页中结束你自己的进程。默认关闭；每次操作都会请求确认。仅限直接下载（Developer ID）版本。";
 "machine.remote_control_toggle" = "远程机器控制";
-"machine.remote_control_hint" = "允许你其他已登录的设备请求在这台 Mac 上加速风扇或开启低电量模式。默认关闭；仅限风扇和低电量模式，每次加速都会自动恢复。仅限直接下载（Developer ID）版本。";
+"machine.remote_control_hint" = "允许你其他已登录的设备请求在这台 Mac 上加速风扇、开启低电量模式或保持唤醒。默认关闭；仅限风扇、低电量模式和保持唤醒，每次加速都会自动恢复。仅限直接下载（Developer ID）版本。";
 "machine.suspend" = "暂停";
 "machine.resume" = "恢复";
 "machine.paused_badge" = "已暂停";

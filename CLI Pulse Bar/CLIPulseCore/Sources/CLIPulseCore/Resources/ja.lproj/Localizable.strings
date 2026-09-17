@@ -145,7 +145,7 @@
 "settings.notifications" = "通知";
 "settings.desktop_notifications" = "デスクトップ通知";
 "settings.desktop_notifications_hint" = "クォータ不足やエラー発生時に通知";
-"settings.session_quota_notifications" = "セッションクォータ通知";
+"settings.session_quota_notifications" = "セッションのクォータ通知";
 "settings.session_quota_hint" = "5時間のセッションクォータを使い切ったときに通知";
 "settings.alert_notifications" = "アラート通知";
 "settings.session_quota_alerts" = "セッションのクォータアラート";
@@ -800,7 +800,7 @@
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "オンにすると、サインイン済みの他のデバイスから、このアカウントの Mac に次の4種類のリクエストだけを送れます:
-• ファンの目標回転数を指定する、またはファンを自動制御に戻す
+• ファンを増速する、またはファンを自動制御に戻す
 • 低電力モードのオン / オフ
 • スリープ防止のオン / オフ
 
@@ -867,7 +867,7 @@
 "machine.controls_toggle" = "マシン制御";
 "machine.controls_hint" = "「マシン」タブから自分のプロセスを終了できるようにします。デフォルトはオフで、操作ごとに確認します。直接ダウンロード（Developer ID）版のみ。";
 "machine.remote_control_toggle" = "リモートマシン制御";
-"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速や低電力モードをリクエストできるようにします。デフォルトはオフ。ファンと低電力モードのみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）版のみ。";
+"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速、低電力モード、スリープ防止をリクエストできるようにします。デフォルトはオフ。ファン、低電力モード、スリープ防止のみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）版のみ。";
 "machine.suspend" = "一時停止";
 "machine.resume" = "再開";
 "machine.paused_badge" = "一時停止中";

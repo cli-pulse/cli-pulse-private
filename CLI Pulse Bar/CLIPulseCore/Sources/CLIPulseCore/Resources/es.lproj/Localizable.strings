@@ -435,7 +435,7 @@
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "Cuando está activado, tus otros dispositivos con sesión iniciada pueden enviar a los Mac de esta cuenta cuatro tipos de solicitud, y nada más:
-• fijar una velocidad objetivo del ventilador, o devolverlo a automático
+• impulsar el ventilador o devolverlo a automático
 • activar o desactivar el Modo de bajo consumo
 • activar o desactivar Mantener activo
 
@@ -558,7 +558,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "machine.controls_toggle" = "Controles de la máquina";
 "machine.controls_hint" = "Permite finalizar tus propios procesos desde la pestaña Máquina. Desactivado por defecto; cada acción pide confirmación. Solo en la versión de descarga directa (Developer ID).";
 "machine.remote_control_toggle" = "Control remoto de la máquina";
-"machine.remote_control_hint" = "Permite que tus otros dispositivos con sesión iniciada soliciten un impulso del ventilador o el Modo de bajo consumo en este Mac. Desactivado por defecto; limitado al ventilador y al Modo de bajo consumo, y cada impulso se revierte automáticamente. Solo en la versión de descarga directa (Developer ID).";
+"machine.remote_control_hint" = "Permite que tus otros dispositivos con sesión iniciada soliciten un impulso del ventilador, el Modo de bajo consumo o Mantener activo en este Mac. Desactivado por defecto; limitado al ventilador, al Modo de bajo consumo y a Mantener activo, y cada impulso se revierte automáticamente. Solo en la versión de descarga directa (Developer ID).";
 "machine.suspend" = "Suspender";
 "machine.resume" = "Reanudar";
 "machine.paused_badge" = "En pausa";
