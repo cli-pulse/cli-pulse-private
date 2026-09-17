@@ -1780,3 +1780,5 @@
 "sessions.hook_settings_root_not_object" = "%@ 的最上層不是 JSON 物件";
 "collector_error.no_projects_for_key" = "%@：此 API 金鑰下沒有專案";
 "collector_error.no_quota_for_project" = "%@：此專案沒有配額資料";
+/* ── macos-language-choice ── */
+"language.system_text_after_restart" = "部分系統文字在重新開啟 CLI Pulse 後才會切換。";

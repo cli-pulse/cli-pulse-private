@@ -70,6 +70,12 @@ struct CLIPulseBarApp: App {
             )
         self.firstRunWelcome = firstRunWelcome
 
+        // After the migration, which carries the language override across, and
+        // after the first-run check, which must see no app-written defaults.
+        // Mirrors the in-app language into `AppleLanguages` so alert buttons,
+        // open/save panels and system error text follow it from the next launch.
+        LocaleOverrideStore.shared.mirrorToAppleLanguages()
+
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {
@@ -135,6 +141,9 @@ struct CLIPulseBarApp: App {
                 .environmentObject(appState.authState)
                 .environmentObject(appState.alertState)
                 .environmentObject(appState.providerState)
+                // Every scene root below carries this too, so dates and times
+                // format in the language picked in the menu, not the system's.
+                .displayLocaleRoot()
         } label: {
             MenuBarLabel(
                 appState: appState,
@@ -214,6 +223,7 @@ struct CLIPulseBarApp: App {
 
         Window(L10n.about.title, id: "about") {
             AboutView()
+                .displayLocaleRoot()
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -221,6 +231,7 @@ struct CLIPulseBarApp: App {
 
         Window(L10n.settings.subscription, id: "subscription") {
             SubscriptionView(manager: appState.subscriptionManager)
+                .displayLocaleRoot()
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
@@ -235,6 +246,7 @@ struct CLIPulseBarApp: App {
                 .environmentObject(appState.authState)
                 .environmentObject(appState.alertState)
                 .environmentObject(appState.providerState)
+                .displayLocaleRoot()
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
@@ -244,6 +256,7 @@ struct CLIPulseBarApp: App {
         // durable DailyUsageArchive snapshot on appear, no env injection needed.
         Window(L10n.usageDashboard.title, id: UsageDashboardView.windowID) {
             UsageDashboardView()
+                .displayLocaleRoot()
         }
         .windowResizability(.contentMinSize)
         .defaultPosition(.center)
@@ -260,6 +273,7 @@ struct CLIPulseBarApp: App {
         WindowGroup(for: TerminalSessionKey.self) { $key in
             if let key {
                 TerminalAttachView(sessionId: key.sessionId, provider: key.provider)
+                    .displayLocaleRoot()
             }
         }
         .windowResizability(.contentSize)
@@ -376,6 +390,9 @@ struct CLIPulseBarApp: App {
                     alert.messageText = L10n.inAppTerminal.startFailedTitle(provider.capitalized)
                     alert.informativeText = LocalSessionFailureText.message(for: error)
                     alert.alertStyle = .warning
+                    // Explicit, so the button is in the app's language: with no
+                    // button AppKit supplies "OK" in the system language.
+                    alert.addButton(withTitle: L10n.common.ok)
                     alert.runModal()
                 }
             }

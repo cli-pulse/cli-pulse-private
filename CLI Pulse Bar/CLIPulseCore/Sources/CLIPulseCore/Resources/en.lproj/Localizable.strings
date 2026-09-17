@@ -1790,3 +1790,5 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "sessions.hook_settings_root_not_object" = "%@ doesn't contain a JSON object at the top level";
 "collector_error.no_projects_for_key" = "%@: no projects for this API key";
 "collector_error.no_quota_for_project" = "%@: no quota data for this project";
+/* ── macos-language-choice ── */
+"language.system_text_after_restart" = "Some system text changes after CLI Pulse restarts.";

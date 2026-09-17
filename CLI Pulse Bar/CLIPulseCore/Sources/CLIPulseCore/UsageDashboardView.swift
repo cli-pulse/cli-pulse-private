@@ -236,6 +236,10 @@ public struct UsageDashboardView: View {
     public static let windowID = "usage-dashboard"
 
     @Environment(\.colorScheme) private var colorScheme
+    /// Observed so a language switch in the popover redraws this window and the
+    /// slide-out panel, which otherwise redraw only on archive or currency
+    /// changes. See `paddedContent` for why observing alone is not enough.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @State private var archive: DailyUsageArchive?
     @State private var animatedTokens: Double = 0
     @State private var didAnimateCountUp = false
@@ -274,6 +278,12 @@ public struct UsageDashboardView: View {
 
     private var paddedContent: some View {
         content
+            // Children such as `DashboardStatStrip` build their `L10n` labels
+            // from an unchanged archive, so SwiftUI would keep their old bodies.
+            // Keying on the override rebuilds them in the new language. The
+            // archive and count-up state live on this view and survive; the
+            // trends card's range picker goes back to its default.
+            .id(localeOverride.override)
             .padding(.horizontal, 26)
             .padding(.vertical, 22)
     }

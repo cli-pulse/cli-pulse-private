@@ -9,7 +9,9 @@ struct MenuBarView: View {
     @AppStorage("cli_pulse_menubar_height") private var storedHeight: Double = 580
     /// iter22: observed so SwiftUI re-evaluates the body (and every
     /// `Text(L10n.*)` inside it) whenever the user picks a new
-    /// language from the footer picker.
+    /// language from the footer picker. Child views whose inputs did not
+    /// change are not re-evaluated, so the content below them is keyed on
+    /// `localeOverride.override` (see `languageKeyed`).
     @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     /// v1.30.2 (RC-2): the MenuBarExtra(.window) popover becomes the key
     /// window when it opens. `controlActiveState` flips to `.key`/`.active`
@@ -91,6 +93,8 @@ struct MenuBarView: View {
                 // signed-in-but-unpaired-non-local-mode branch
                 // (PairingSection flow) stays in `notConnectedView`.
                 if shouldPresentAgentSetup {
+                    // Not keyed on the language: the wizard holds typed
+                    // credentials in @State, so it observes the store itself.
                     OnboardingWizardView(
                         setupState: $agentSetupState,
                         onStateChange: { updatedState in
@@ -104,6 +108,10 @@ struct MenuBarView: View {
                         }
                     )
                     .environmentObject(state)
+                    // The first run is where someone on a Mac set to another
+                    // language most needs the language menu, so every popover
+                    // state carries a footer with it.
+                    basicFooter
                 } else if LocalCollectionPolicy.shouldPresentDisclosure(
                     isAuthenticated: authState.isAuthenticated,
                     isLocalMode: state.isLocalMode,
@@ -121,6 +129,8 @@ struct MenuBarView: View {
                     // broken-looking app into a question.
                     LocalScanConsentView()
                         .environmentObject(state)
+                        .languageKeyed(localeOverride.override)
+                    basicFooter
                 } else if state.isLocalMode || authState.isPaired {
                     connectedView
                 } else {
@@ -308,6 +318,7 @@ struct MenuBarView: View {
                             }
                         }
                         .environmentObject(state)
+                        .languageKeyed(localeOverride.override)
                         .frame(maxHeight: .infinity)
                     }
                 } else {
@@ -315,6 +326,7 @@ struct MenuBarView: View {
                         tabBar
                         agentSettingsTab
                             .environmentObject(state)
+                            .languageKeyed(localeOverride.override)
                             .frame(maxHeight: .infinity)
                     }
                 }
@@ -450,6 +462,7 @@ struct MenuBarView: View {
                 }
             }
             .environmentObject(state)
+            .languageKeyed(localeOverride.override)
             .frame(maxHeight: .infinity)
 
             // Footer
@@ -530,6 +543,8 @@ struct MenuBarView: View {
 
             Spacer()
 
+            LanguagePickerMenu()
+
             Button {
                 NSApplication.shared.terminate(nil)
             } label: {
@@ -568,7 +583,7 @@ struct MenuBarView: View {
 
             // iter22: in-app language switcher placed immediately
             // left of the refresh button per director request.
-            languagePicker
+            LanguagePickerMenu()
 
             Button {
                 state.requestRefresh()
@@ -632,40 +647,6 @@ struct MenuBarView: View {
             }
     }
 
-    /// iter22: globe icon button → menu with English / 简体中文 /
-    /// 日本語 / System Default. Tapping persists the choice via
-    /// `LocaleOverrideStore.shared.set(...)` and forces a re-render
-    /// because `localeOverride` is `@ObservedObject` on this view.
-    private var languagePicker: some View {
-        Menu {
-            Button(action: { LocaleOverrideStore.shared.set("en") }) {
-                Label("English", systemImage: localeOverride.override == "en" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("zh-Hans") }) {
-                Label("简体中文", systemImage: localeOverride.override == "zh-Hans" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("zh-Hant") }) {
-                Label("繁體中文", systemImage: localeOverride.override == "zh-Hant" ? "checkmark" : "")
-            }
-            Button(action: { LocaleOverrideStore.shared.set("ja") }) {
-                Label("日本語", systemImage: localeOverride.override == "ja" ? "checkmark" : "")
-            }
-            Divider()
-            Button(action: { LocaleOverrideStore.shared.set(nil) }) {
-                Label(L10n.language.systemDefault, systemImage: localeOverride.override == nil ? "checkmark" : "")
-            }
-        } label: {
-            Image(systemName: "globe")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel(L10n.language.title)
-        .help(L10n.language.title)
-    }
-
     private var providerSwitcher: some View {
         let enabled = Array(providerState.providerConfigs.filter(\.isEnabled))
         let visible = Array(enabled.prefix(5))
@@ -682,5 +663,16 @@ struct MenuBarView: View {
                     .foregroundStyle(.tertiary)
             }
         }
+    }
+}
+
+private extension View {
+    /// Rebuilds the content when the language changes. Tab views take only
+    /// environment objects, so SwiftUI skips their bodies when `MenuBarView`
+    /// redraws and their `L10n` text would stay in the old language. Applied
+    /// to the content, not to `MenuBarView` itself, whose @State (a dismissed
+    /// wizard or upgrade card) must survive a switch.
+    func languageKeyed(_ override: String?) -> some View {
+        id(override)
     }
 }

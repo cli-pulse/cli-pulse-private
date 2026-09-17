@@ -44,6 +44,20 @@ final class LocaleOverrideStoreTests: XCTestCase {
         XCTAssertEqual(translated, "概覽")
     }
 
+    // ko and es shipped complete but were missing from the menu, and so from
+    // these tests: nothing proved an override to either one resolved.
+    func test_setKorean_resolvesToKoLproj() {
+        LocaleOverrideStore.shared.set("ko")
+        let translated = NSLocalizedString("tab.overview", bundle: LocaleOverrideStore.shared.bundle, comment: "")
+        XCTAssertEqual(translated, "개요")
+    }
+
+    func test_setSpanish_resolvesToEsLproj() {
+        LocaleOverrideStore.shared.set("es")
+        let translated = NSLocalizedString("tab.overview", bundle: LocaleOverrideStore.shared.bundle, comment: "")
+        XCTAssertEqual(translated, "Resumen")
+    }
+
     func test_unknownOverride_fallsBackToBaseBundle() {
         LocaleOverrideStore.shared.set("xx-Unknown")
         // Should NOT crash; should resolve via the base `.module` bundle.

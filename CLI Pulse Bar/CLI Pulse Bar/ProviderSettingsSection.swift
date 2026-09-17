@@ -70,7 +70,9 @@ struct ProviderSettingsSection: View {
                         config.accountID
                     )
                 },
-                secondaryButton: .cancel()
+                // Labelled, so it matches the title and message above: the
+                // bare `.cancel()` label comes from the system language.
+                secondaryButton: .cancel(Text(L10n.common.cancel))
             )
         }
     }

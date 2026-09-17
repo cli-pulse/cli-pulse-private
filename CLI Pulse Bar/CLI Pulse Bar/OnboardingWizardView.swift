@@ -13,6 +13,10 @@ struct OnboardingWizardView: View {
     @EnvironmentObject private var state: AppState
     @EnvironmentObject private var authState: AuthState
     @EnvironmentObject private var providerState: ProviderState
+    /// Observed so a language switch from the popover footer redraws the
+    /// wizard in place. Rebuilding it with `.id` instead would discard the
+    /// step state and anything typed into the sign-in fields.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @Environment(\.openWindow) private var openWindow
 
     @Binding var setupState: AgentSetupState
@@ -1087,6 +1091,8 @@ struct OnboardingWizardView: View {
 struct LegacyOnboardingWizardView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
+    /// See `OnboardingWizardView.localeOverride`.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     @AppStorage("cli_pulse_onboarding_completed") private var onboardingCompleted = false
     @State private var step = 0
     @State private var email = ""
