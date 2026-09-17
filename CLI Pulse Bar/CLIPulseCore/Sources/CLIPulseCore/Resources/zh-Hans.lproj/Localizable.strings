@@ -972,7 +972,7 @@
 "pet.switch_companion" = "当前伙伴";
 "pet.why_hatched" = "这只猫为什么会孵化？";
 "pet.locked" = "尚未孵化";
-"pet.owned_on" = "%@ 孵化";
+"pet.owned_on" = "%@孵化";
 "pet.energy" = "活力";
 "pet.hunger" = "饱食度";
 "pet.mood" = "心情";

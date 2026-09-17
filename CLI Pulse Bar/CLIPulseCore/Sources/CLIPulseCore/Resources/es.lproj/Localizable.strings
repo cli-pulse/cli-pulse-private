@@ -677,7 +677,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pet.switch_companion" = "Compañero activo";
 "pet.why_hatched" = "¿Por qué eclosionó este gato?";
 "pet.locked" = "Aún no eclosionado";
-"pet.owned_on" = "Eclosionado %@";
+"pet.owned_on" = "Eclosionado el %@";
 "pet.energy" = "Energía";
 "pet.hunger" = "Hambre";
 "pet.mood" = "Ánimo";

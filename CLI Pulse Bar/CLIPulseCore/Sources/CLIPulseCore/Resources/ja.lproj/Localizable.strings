@@ -986,7 +986,7 @@
 "pet.switch_companion" = "アクティブな相棒";
 "pet.why_hatched" = "なぜこの猫が孵ったの？";
 "pet.locked" = "未孵化";
-"pet.owned_on" = "%@ に孵化";
+"pet.owned_on" = "%@に孵化";
 "pet.energy" = "エネルギー";
 "pet.hunger" = "おなか";
 "pet.mood" = "きげん";

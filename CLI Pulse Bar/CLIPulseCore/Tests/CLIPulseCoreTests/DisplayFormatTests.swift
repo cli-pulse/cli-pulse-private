@@ -93,6 +93,32 @@ final class DisplayFormatTests: XCTestCase {
         XCTAssertEqual(shown, "2026年9月17日")
     }
 
+    /// The Pet tab's "Hatched …" line, built the way PetTab builds it. Its
+    /// templates were written for the raw key ("2026-09-17 に孵化"), and the
+    /// space before the particle stayed when the value became a date that ends
+    /// in 日: "2026年9月17日 に孵化" reads as a stray gap. Spanish needs the
+    /// article before a date, as the quota reset template does ("el …").
+    func test_petHatchedLine_joinsTheDateTheReadersWay() throws {
+        let key = "2026-09-17"
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }  // as on CI
+        func line(_ language: String) throws -> (date: String, line: String) {
+            LocaleOverrideStore.shared.set(language)
+            let date = try XCTUnwrap(DisplayFormat.day(key), language)
+            return (date, L10n.pet.ownedOn(date))
+        }
+        XCTAssertEqual(try line("ja").line, "2026年9月17日に孵化")
+        XCTAssertEqual(try line("zh-Hans").line, "2026年9月17日孵化")
+        XCTAssertEqual(try line("zh-Hant").line, "2026年9月17日孵化")
+        // Korean spaces before a noun, so its template keeps the gap.
+        XCTAssertEqual(try line("ko").line, "2026년 9월 17일 부화")
+        // A reader in Spain. The date is ICU's ("17 sept 2026") and varies by
+        // release; the template around it is what is pinned.
+        readInSpain()
+        let spanish = try line("es")
+        XCTAssertEqual(spanish.line, "Eclosionado el \(spanish.date)")
+        XCTAssertTrue(spanish.date.hasPrefix("17 "), spanish.date)
+    }
+
     /// A key names a day, not a moment. Rendered in the device's zone, its UTC
     /// midnight is the evening before anywhere west of Greenwich. This Mac and
     /// CI are not, so the zone itself is pinned rather than an output.
