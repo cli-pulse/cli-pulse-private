@@ -115,6 +115,51 @@ final class DemoDataLocalizationTests: XCTestCase {
     }
 }
 
+/// The account name Demo puts in Settings is the heading of that screen in
+/// every localized screenshot. It is not the user's data — there is no user —
+/// so it is copy, and it goes through the real `enterDemoMode`.
+@MainActor
+final class DemoAccountNameTests: XCTestCase {
+
+    private var suiteName = ""
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "DemoAccountNameTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(nil)
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    /// An empty Info.plist resolves to the quarantine capabilities, so entering
+    /// Demo here publishes no widget data to the real app group.
+    private func demoUserName(in locale: String) -> String {
+        LocaleOverrideStore.shared.set(locale)
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        state.enterDemoMode()
+        return state.userName
+    }
+
+    func testDemoAccountNameIsInTheUsersLanguage() {
+        let en = demoUserName(in: "en")
+        let ja = demoUserName(in: "ja")
+
+        XCTAssertFalse(en.isEmpty)
+        XCTAssertNotEqual(ja, en, "Demo's account name is not localized: \(ja)")
+        XCTAssertNil(ja.range(of: "[A-Za-z]", options: .regularExpression),
+                     "Latin letters in the Japanese demo account name: \(ja)")
+    }
+}
+
 /// The demo's quota alert now has a real `quota-` id. Resolving or snoozing a
 /// `quota-` alert normally persists a local suppression to UserDefaults — in
 /// Demo that would outlive the demo and silence the same alert (same provider,

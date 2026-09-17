@@ -1779,3 +1779,4 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 /* ── demo-mode ── */
 "dashboard.risk_quota_low" = "Cuota de %1$@: queda menos del %2$d%%";
 "dashboard.risk_device_offline" = "%@ está fuera de línea";
+"auth.demo_user_name" = "Usuario de demostración";

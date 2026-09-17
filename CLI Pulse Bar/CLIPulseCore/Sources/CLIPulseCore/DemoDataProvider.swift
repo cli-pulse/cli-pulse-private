@@ -292,7 +292,10 @@ extension AppState {
         isDemoMode = true
         isAuthenticated = true
         isPaired = true
-        userName = "Demo User"
+        // Shown as the Settings account title, the heading of every localized
+        // screenshot of that screen. Nothing stores or syncs it: a relaunch in
+        // Demo comes back through here and resolves it again.
+        userName = L10n.auth.demoUserName
         userEmail = "demo@clipulse.app"
         serverOnline = true
         lastRefresh = Date()

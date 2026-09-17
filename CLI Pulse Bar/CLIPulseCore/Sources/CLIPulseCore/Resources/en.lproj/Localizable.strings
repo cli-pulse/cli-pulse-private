@@ -1805,3 +1805,4 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 /* ── demo-mode ── */
 "dashboard.risk_quota_low" = "%1$@ quota: less than %2$d%% left";
 "dashboard.risk_device_offline" = "%@ is offline";
+"auth.demo_user_name" = "Demo User";

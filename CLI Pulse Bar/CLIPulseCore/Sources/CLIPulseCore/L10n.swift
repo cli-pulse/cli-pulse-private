@@ -872,6 +872,9 @@ public enum L10n {
         public static var subtitle: String { tr("auth.subtitle") }
         public static var or: String { tr("auth.or") }
         public static var tryDemo: String { tr("auth.try_demo") }
+        /// The account name Demo shows in Settings. A real account's name is
+        /// the user's own data and never goes through here.
+        public static var demoUserName: String { tr("auth.demo_user_name") }
         public static var welcome: String { tr("auth.welcome") }
         public static var watchHint: String { tr("auth.watch_hint") }
         public static var sendCode: String { tr("auth.send_code") }
