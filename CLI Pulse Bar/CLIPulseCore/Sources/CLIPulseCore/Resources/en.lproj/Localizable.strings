@@ -1792,3 +1792,12 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_error.no_quota_for_project" = "%@: no quota data for this project";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "Some system text changes after CLI Pulse restarts.";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$dd %2$dh";
+"usage_pace.eta_days" = "%dd";
+"usage_pace.eta_hours_minutes" = "%1$dh %2$dm";
+"usage_pace.eta_hours" = "%dh";
+"usage_pace.eta_minutes" = "%dm";
+"usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
+"intents.less_than_amount" = "less than %@";

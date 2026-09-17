@@ -1076,21 +1076,32 @@ public struct CostSummary: Sendable {
     }
 }
 
-/// Formats token counts into compact human-readable strings: 81M, 8.6B, 12.3K
+/// The one compact token count on every surface: "245K", "154.1K", "16.8M",
+/// "8.6B".
+///
+/// There were seven copies with three precision rules, so one day read
+/// "245.0K" in the app, "245K" in the widget and Siri, and "12K" on the cost
+/// card. They all call this now: at most one decimal, none when it is zero,
+/// and a value that rounds up to 1000 moves to the next suffix ("1M", not
+/// "1000K").
+///
+/// The K/M/B suffixes stay in every language: token counts are quoted that way
+/// in Japanese, Chinese and Korean developer tools too ("200K context"), and
+/// the provider dashboards users compare against do the same. The number
+/// itself takes the display locale's separator, so Spain reads "154,1K".
 public enum TokenFormatter {
-    public static func format(_ count: Int) -> String {
-        let d = Double(count)
-        switch d {
-        case 1_000_000_000...:
-            return String(format: "%.1fB", d / 1_000_000_000)
-        case 1_000_000...:
-            let m = d / 1_000_000
-            return m >= 10 ? String(format: "%.0fM", m) : String(format: "%.1fM", m)
-        case 1_000...:
-            let k = d / 1_000
-            return k >= 10 ? String(format: "%.0fK", k) : String(format: "%.1fK", k)
-        default:
-            return "\(count)"
+    public static func format(
+        _ count: Int,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        guard count >= 1_000 else { return "\(count)" }
+        let units: [(divisor: Double, suffix: String)] = [(1e3, "K"), (1e6, "M"), (1e9, "B")]
+        var index = units.lastIndex { Double(count) >= $0.divisor } ?? 0
+        var value = (Double(count) / units[index].divisor * 10).rounded() / 10
+        if value >= 1_000, index + 1 < units.count {
+            index += 1
+            value = (Double(count) / units[index].divisor * 10).rounded() / 10
         }
+        return value.formatted(.number.precision(.fractionLength(0...1)).locale(locale)) + units[index].suffix
     }
 }

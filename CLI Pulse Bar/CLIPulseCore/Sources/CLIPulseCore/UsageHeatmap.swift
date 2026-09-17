@@ -76,10 +76,17 @@ public struct UsageHeatmapGrid: View {
     }
 
     private func tooltip(_ dayKey: String, isFuture: Bool) -> String {
-        guard !isFuture, let day = archive.days[dayKey], day.tokens > 0 || day.messages > 0 else {
-            return dayKey
-        }
-        return "\(dayKey): \(CostFormatter.formatUsage(day.tokens)) tokens · \(CostFormatter.format(day.cost))"
+        Self.tooltip(dayKey, day: isFuture ? nil : archive.days[dayKey], locale: locale)
+    }
+
+    /// The hover text of one cell. It showed the raw key and an English
+    /// "tokens" in every language ("2026-09-17: 1.2K tokens · $0.40"); the date
+    /// and the sentence now follow the reader, and the key stays a key.
+    static func tooltip(_ dayKey: String, day: DayRollup?, locale: Locale) -> String {
+        let date = DisplayFormat.day(dayKey, locale: locale) ?? dayKey
+        guard let day, day.tokens > 0 || day.messages > 0 else { return date }
+        return L10n.usageDashboard.dayTooltip(date, TokenFormatter.format(day.tokens, locale: locale),
+                                              CurrencyConverter.shared.format(day.cost, locale: locale))
     }
 
     @ViewBuilder

@@ -231,16 +231,36 @@ final class AlertPresentationTests: XCTestCase {
         }
     }
 
-    func testQuotaAlertWithAResetTimeKeepsIt() {
+    /// The reset used to reach the sentence as the stored UTC timestamp:
+    /// "配额窗口「5 小时窗口」已使用 96%（剩余 4%，2026-09-16T14:00:00Z 重置）。"
+    /// It is shown as a local date and time now, while the record keeps the ISO.
+    func testQuotaAlertShowsTheResetAsALocalDateAndTime() {
         withChinese {
+            let message = "Quota window '5h Window' is 96% used (4% remaining) (resets 2026-09-16T14:00:00.000Z)."
             let a = record(id: "quota-Codex-5h Window-95", type: "Quota Warning",
-                           title: "Codex 5h Window at 96%",
-                           message: "Quota window '5h Window' is 96% used (4% remaining) (resets 2026-09-16T14:00:00Z).",
-                           provider: "Codex")
+                           title: "Codex 5h Window at 96%", message: message, provider: "Codex")
             let shown = AlertPresentation.text(for: a)
             XCTAssertTrue(shown.recognized)
-            XCTAssertTrue(shown.message.contains("2026-09-16T14:00:00Z"),
-                          "the reset time was dropped: \(shown.message)")
+            XCTAssertFalse(shown.message.contains("2026-09-16T14"), "raw timestamp shown: \(shown.message)")
+            let reset = ISO8601DateFormatter().date(from: "2026-09-16T14:00:00Z")!
+            let local = DisplayFormat.dateTime(reset)
+            XCTAssertTrue(local.contains("9月16日") || local.contains("9月17日"),
+                          "not a Chinese date: \(local)")
+            XCTAssertTrue(shown.message.contains("\(local) 重置"), "reset not shown as a date: \(shown.message)")
+            XCTAssertEqual(a.message, message, "the stored English was changed")
+        }
+    }
+
+    /// A reset that is not ISO-8601 is a vendor's own wording: kept, not dropped.
+    func testQuotaAlertKeepsANonISOResetAsWritten() {
+        withChinese {
+            let a = record(id: "quota-Claude-Weekly-80", type: "Quota Warning",
+                           title: "Claude Weekly at 85%",
+                           message: "Quota window 'Weekly' is 85% used (15% remaining) (resets Friday).",
+                           provider: "Claude")
+            let shown = AlertPresentation.text(for: a)
+            XCTAssertTrue(shown.recognized)
+            XCTAssertTrue(shown.message.contains("Friday 重置"), "the reset text was lost: \(shown.message)")
         }
     }
 }

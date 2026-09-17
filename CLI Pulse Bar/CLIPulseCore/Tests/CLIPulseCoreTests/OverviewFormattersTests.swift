@@ -8,10 +8,14 @@ import SwiftUI
 ///
 /// Note on timezone: the hour-label formatter intentionally uses the
 /// device's local timezone (pre-existing behavior from both platforms).
-/// These tests therefore assert the SHAPE of the output, not a specific
-/// hour, and cross-check parsed vs. fallback paths rather than hardcoding
-/// "3pm" which would only hold in UTC.
+/// The parsed-path tests therefore assert the locale's clock words rather
+/// than a specific hour, which would only hold in UTC.
 final class OverviewFormattersTests: XCTestCase {
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(nil)
+        super.tearDown()
+    }
 
     // MARK: - utilizationColor
 
@@ -30,38 +34,50 @@ final class OverviewFormattersTests: XCTestCase {
         XCTAssertEqual(OverviewFormatters.utilizationColor(-5), .gray)
     }
 
-    // MARK: - hourLabel — shape + parse-path vs fallback-path
+    // MARK: - hourLabel — the reader's clock, parse-path vs fallback-path
 
-    /// ISO-parsed labels match the "Ha" DateFormatter convention: either
-    /// "<N>am" / "<N>pm" (1–12 for 12h cycle).
-    func testHourLabelIsoFractionalReturnsLowercaseAmPm() {
-        let label = OverviewFormatters.hourLabel("2026-04-21T15:30:45.123Z")
-        XCTAssertTrue(label.hasSuffix("am") || label.hasSuffix("pm"),
-                      "expected am/pm suffix, got \(label)")
-        XCTAssertEqual(label, label.lowercased())
-        XCTAssertFalse(label.contains("h"), "parsed path must not produce the fallback 'h' suffix")
+    /// The axis read "3pm" under Japanese, Chinese, Korean and Spanish
+    /// headings: the formatter was pinned to POSIX "ha". Asserted in locales
+    /// whose hour words cannot be mistaken for English.
+    func testHourLabelUsesTheLocalesOwnHourWords() {
+        let ts = "2026-04-21T15:30:45.123Z"
+        let ja = OverviewFormatters.hourLabel(ts, locale: Locale(identifier: "ja_JP"))
+        XCTAssertTrue(ja.hasSuffix("時"), "ja: \(ja)")
+        let zh = OverviewFormatters.hourLabel(ts, locale: Locale(identifier: "zh-Hans_CN"))
+        XCTAssertTrue(zh.hasSuffix("时"), "zh-Hans: \(zh)")
+        let ko = OverviewFormatters.hourLabel(ts, locale: Locale(identifier: "ko_KR"))
+        XCTAssertTrue(ko.hasSuffix("시"), "ko: \(ko)")
+        for label in [ja, zh, ko] {
+            XCTAssertFalse(label.lowercased().contains("am") || label.lowercased().contains("pm"),
+                           "English day period in \(label)")
+        }
     }
 
-    func testHourLabelIsoNonFractionalReturnsLowercaseAmPm() {
+    /// Callers that pass no locale get the app's display language.
+    func testHourLabelDefaultsToTheDisplayLanguage() {
+        LocaleOverrideStore.shared.set("ja")
         let label = OverviewFormatters.hourLabel("2026-04-21T09:00:00Z")
-        XCTAssertTrue(label.hasSuffix("am") || label.hasSuffix("pm"))
-        XCTAssertEqual(label, label.lowercased())
+        XCTAssertTrue(label.hasSuffix("時"), "the in-app language did not reach the axis: \(label)")
     }
 
     /// Same input in both formats must produce the same label (both paths
     /// normalize to the same moment-in-time).
     func testHourLabelFractionalAndNonFractionalAgree() {
-        let a = OverviewFormatters.hourLabel("2026-04-21T12:00:00.000Z")
-        let b = OverviewFormatters.hourLabel("2026-04-21T12:00:00Z")
+        let ja = Locale(identifier: "ja_JP")
+        let a = OverviewFormatters.hourLabel("2026-04-21T12:00:00.000Z", locale: ja)
+        let b = OverviewFormatters.hourLabel("2026-04-21T12:00:00Z", locale: ja)
         XCTAssertEqual(a, b)
     }
 
-    func testHourLabelFallsBackToSubstringWithHSuffix() {
-        // Unparseable timestamp ≥ 13 chars → chars at [11, 12] + "h".
-        XCTAssertEqual(
-            OverviewFormatters.hourLabel("2026-04-21T14junk"),
-            "14h"
-        )
+    /// Unparseable timestamp ≥ 13 chars → the HH digits, as that hour in the
+    /// same locale's words (it used to append an English "h").
+    func testHourLabelFallsBackToTheSubstringHourInTheLocale() {
+        XCTAssertEqual(OverviewFormatters.hourLabel("2026-04-21T14junk", locale: Locale(identifier: "ja_JP")), "14時")
+        // ICU separates "2" and "PM" with a narrow no-break space on some OS versions.
+        let en = OverviewFormatters.hourLabel("2026-04-21T14junk", locale: Locale(identifier: "en_US"))
+        XCTAssertTrue(en.hasPrefix("2") && en.hasSuffix("PM"), "en: \(en)")
+        XCTAssertEqual(OverviewFormatters.hourLabel("2026-04-21Txxjunk", locale: Locale(identifier: "ja_JP")),
+                       "2026-04-21Txxjunk", "non-digits are not an hour")
     }
 
     func testHourLabelReturnsRawWhenTooShort() {

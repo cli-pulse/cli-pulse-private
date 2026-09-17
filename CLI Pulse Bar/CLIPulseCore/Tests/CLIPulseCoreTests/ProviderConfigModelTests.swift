@@ -20,38 +20,52 @@ final class ProviderConfigModelTests: XCTestCase {
 
     // MARK: - TokenFormatter.format
 
+    /// Every expectation passes an en_US locale: separators follow the display
+    /// locale, and these pin the precision rule, not the machine's region.
+    private let en = Locale(identifier: "en_US")
+
     func testTokenFormatterSmallNumbers() {
-        XCTAssertEqual(TokenFormatter.format(0), "0")
-        XCTAssertEqual(TokenFormatter.format(1), "1")
-        XCTAssertEqual(TokenFormatter.format(999), "999")
+        XCTAssertEqual(TokenFormatter.format(0, locale: en), "0")
+        XCTAssertEqual(TokenFormatter.format(1, locale: en), "1")
+        XCTAssertEqual(TokenFormatter.format(999, locale: en), "999")
     }
 
-    func testTokenFormatterThousandsUnder10K() {
-        XCTAssertEqual(TokenFormatter.format(1_000), "1.0K")
-        XCTAssertEqual(TokenFormatter.format(1_500), "1.5K")
-        XCTAssertEqual(TokenFormatter.format(9_500), "9.5K")
+    /// One rule for every surface: at most one decimal, none when it is zero.
+    /// The app used to show "245.0K" and "1.0M" where the widget showed "245K".
+    func testTokenFormatterKeepsOneDecimalAndDropsAZeroOne() {
+        XCTAssertEqual(TokenFormatter.format(1_000, locale: en), "1K")
+        XCTAssertEqual(TokenFormatter.format(1_500, locale: en), "1.5K")
+        XCTAssertEqual(TokenFormatter.format(9_500, locale: en), "9.5K")
+        XCTAssertEqual(TokenFormatter.format(12_300, locale: en), "12.3K")
+        XCTAssertEqual(TokenFormatter.format(154_100, locale: en), "154.1K")
+        XCTAssertEqual(TokenFormatter.format(245_000, locale: en), "245K")
+        XCTAssertEqual(TokenFormatter.format(1_000_000, locale: en), "1M")
+        XCTAssertEqual(TokenFormatter.format(8_600_000, locale: en), "8.6M")
+        XCTAssertEqual(TokenFormatter.format(16_800_000, locale: en), "16.8M")
+        XCTAssertEqual(TokenFormatter.format(81_000_000, locale: en), "81M")
     }
 
-    func testTokenFormatterThousandsAt10KAndAbove() {
-        XCTAssertEqual(TokenFormatter.format(10_000), "10K")
-        XCTAssertEqual(TokenFormatter.format(12_300), "12K")
-        XCTAssertEqual(TokenFormatter.format(999_999), "1000K")
-    }
-
-    func testTokenFormatterMillionsUnder10M() {
-        XCTAssertEqual(TokenFormatter.format(1_000_000), "1.0M")
-        XCTAssertEqual(TokenFormatter.format(8_600_000), "8.6M")
-    }
-
-    func testTokenFormatterMillionsAt10MAndAbove() {
-        XCTAssertEqual(TokenFormatter.format(10_000_000), "10M")
-        XCTAssertEqual(TokenFormatter.format(81_000_000), "81M")
+    /// A count that rounds to 1000 of one unit is shown in the next ("1000K" was
+    /// pinned here as expected output before).
+    func testTokenFormatterRollsOverToTheNextSuffix() {
+        XCTAssertEqual(TokenFormatter.format(999_949, locale: en), "999.9K")
+        XCTAssertEqual(TokenFormatter.format(999_999, locale: en), "1M")
+        XCTAssertEqual(TokenFormatter.format(999_960_000, locale: en), "1B")
     }
 
     func testTokenFormatterBillions() {
-        XCTAssertEqual(TokenFormatter.format(1_000_000_000), "1.0B")
-        XCTAssertEqual(TokenFormatter.format(8_600_000_000), "8.6B")
-        XCTAssertEqual(TokenFormatter.format(12_300_000_000), "12.3B")
+        XCTAssertEqual(TokenFormatter.format(1_000_000_000, locale: en), "1B")
+        XCTAssertEqual(TokenFormatter.format(8_600_000_000, locale: en), "8.6B")
+        XCTAssertEqual(TokenFormatter.format(12_300_000_000, locale: en), "12.3B")
+    }
+
+    /// The suffix stays K/M/B in every language; the decimal separator is the
+    /// reader's. In Spain "154.1K" reads as a thousands group.
+    func testTokenFormatterTakesTheLocaleDecimalSeparatorButKeepsTheSuffix() {
+        XCTAssertEqual(TokenFormatter.format(154_100, locale: Locale(identifier: "es_ES")), "154,1K")
+        XCTAssertEqual(TokenFormatter.format(16_800_000, locale: Locale(identifier: "es_ES")), "16,8M")
+        XCTAssertEqual(TokenFormatter.format(245_000, locale: Locale(identifier: "ja_JP")), "245K")
+        XCTAssertEqual(TokenFormatter.format(8_600_000, locale: Locale(identifier: "zh-Hans_CN")), "8.6M")
     }
 
     // MARK: - SubscriptionUtilization

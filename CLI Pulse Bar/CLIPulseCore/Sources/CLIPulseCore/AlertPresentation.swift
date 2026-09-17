@@ -112,7 +112,7 @@ public enum AlertPresentation {
         let provider = a.related_provider ?? stripSuffix(a.title, " \(m[0]) at \(used)%")
         let message = reset.isEmpty
             ? L10n.alertKind.quotaMessage(tier, used, remaining)
-            : L10n.alertKind.quotaMessageReset(tier, used, remaining, reset)
+            : L10n.alertKind.quotaMessageReset(tier, used, remaining, displayReset(reset))
         return Text(title: L10n.alertKind.quotaTitle(provider, tier, used),
                     message: message,
                     recognized: true)
@@ -171,6 +171,17 @@ public enum AlertPresentation {
     }
 
     // MARK: - Helpers
+
+    /// The stored reset is the collector's `reset_time`, almost always an
+    /// ISO-8601 UTC timestamp, which read as "2026-09-16T14:00:00Z" inside every
+    /// translated sentence and in UTC rather than the reader's clock. It is
+    /// shown as a local date and time, not "in 3h": an alert is often read
+    /// after its window has already reset. A value that is not ISO (a vendor's
+    /// own wording) stays as it was.
+    static func displayReset(_ raw: String) -> String {
+        guard let date = sharedISO8601Parse(raw) else { return raw }
+        return DisplayFormat.dateTime(date)
+    }
 
     /// Capture groups of an anchored match, or nil. A group that did not
     /// participate is dropped, so an optional trailing group simply shortens

@@ -92,7 +92,7 @@ struct iOSMachineView: View {
                                    icon: "clock", color: PulseTheme.accent)
                     }
                     if let one = d.load_avg_1m {
-                        MetricCard(title: L10n.machine.load, value: String(format: "%.2f", one),
+                        MetricCard(title: L10n.machine.load, value: DisplayFormat.string("%.2f", one),
                                    subtitle: loadSubtitle(d), icon: "gauge.medium", color: PulseTheme.accent)
                     }
                     if let mp = d.memory_pressure {
@@ -354,7 +354,7 @@ struct iOSMachineView: View {
 
     private func loadSubtitle(_ d: DeviceRecord) -> String? {
         guard let five = d.load_avg_5m, let fifteen = d.load_avg_15m else { return nil }
-        return String(format: "%.2f · %.2f", five, fifteen)
+        return DisplayFormat.string("%.2f · %.2f", five, fifteen)
     }
 
     private func fanBoostValue(_ d: DeviceRecord) -> String {

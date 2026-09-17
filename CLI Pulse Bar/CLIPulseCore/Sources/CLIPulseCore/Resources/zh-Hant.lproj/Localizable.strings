@@ -807,9 +807,9 @@
 "usage_pace.in_reserve" = "結餘 %@%%";
 "usage_pace.lasts_until_reset" = "可用至重置";
 "usage_pace.runs_out_now" = "即將耗盡";
-"usage_pace.runs_out_in" = "%@ 後耗盡";
+"usage_pace.runs_out_in" = "%@後耗盡";
 "usage_pace.projected_empty_now" = "預計即將用盡";
-"usage_pace.projected_empty_in" = "預計 %@ 後用盡";
+"usage_pace.projected_empty_in" = "預計 %@後用盡";
 "usage_pace.run_out_risk" = "≈ 耗盡風險 %@%%";
 "usage_pace.summary_with_right" = "節奏：%@ · %@";
 "usage_pace.summary_left_only" = "節奏：%@";
@@ -1782,3 +1782,12 @@
 "collector_error.no_quota_for_project" = "%@：此專案沒有配額資料";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "部分系統文字在重新開啟 CLI Pulse 後才會切換。";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$d 天 %2$d 小時";
+"usage_pace.eta_days" = "%d 天";
+"usage_pace.eta_hours_minutes" = "%1$d 小時 %2$d 分鐘";
+"usage_pace.eta_hours" = "%d 小時";
+"usage_pace.eta_minutes" = "%d 分鐘";
+"usage_dashboard.day_tooltip" = "%1$@：%2$@ Token · %3$@";
+"intents.less_than_amount" = "不到 %@";

@@ -161,4 +161,50 @@ final class UsagePaceTextTests: XCTestCase {
 
         XCTAssertNil(detail)
     }
+
+    // MARK: - Countdown units (localized)
+
+    private func weeklyRight(etaSeconds: TimeInterval) -> String? {
+        let pace = UsagePace(
+            stage: .ahead, deltaPercent: 8, expectedUsedPercent: 42, actualUsedPercent: 50,
+            etaSeconds: etaSeconds, willLastToReset: false, runOutProbability: nil)
+        return UsagePaceText.weeklyDetail(pace: pace, now: Date(timeIntervalSince1970: 0)).rightLabel
+    }
+
+    /// Every countdown shape, in English, byte-identical to the letters the
+    /// code used to build by hand.
+    func test_countdown_shapes_in_english_are_unchanged() {
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 86_400 + 3 * 3_600), "Runs out in 2d 3h")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 86_400), "Runs out in 2d")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 3_600 + 5 * 60), "Runs out in 2h 5m")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 3_600), "Runs out in 2h")
+        XCTAssertEqual(weeklyRight(etaSeconds: 45 * 60), "Runs out in 45m")
+    }
+
+    /// The units were English letters inside every translated sentence
+    /// ("あと 2h 5m で枯渇"). Asserted in Japanese, where the fallback copy
+    /// (English) cannot pass.
+    func test_countdown_units_follow_the_language() {
+        LocaleOverrideStore.shared.set("ja")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 86_400 + 3 * 3_600), "あと 2 日 3 時間で枯渇")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 86_400), "あと 2 日で枯渇")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 3_600 + 5 * 60), "あと 2 時間 5 分で枯渇")
+        XCTAssertEqual(weeklyRight(etaSeconds: 2 * 3_600), "あと 2 時間で枯渇")
+        XCTAssertEqual(weeklyRight(etaSeconds: 45 * 60), "あと 45 分で枯渇")
+    }
+
+    /// The session line (the one the provider cards show) in Chinese.
+    func test_session_countdown_in_chinese() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let now = Date(timeIntervalSince1970: 0)
+        let window = RateWindow(
+            usedPercent: 80,
+            windowMinutes: 300,
+            resetsAt: now.addingTimeInterval(2 * 3600),
+            resetDescription: nil)
+
+        let detail = UsagePaceText.sessionDetail(provider: .claude, window: window, now: now)
+
+        XCTAssertEqual(detail?.rightLabel, "预计 45 分钟后用尽")
+    }
 }

@@ -208,16 +208,13 @@ struct UsageOverviewWidgetView: View {
     }
 
     private func formatUsage(_ usage: Int) -> String {
-        if usage >= 1_000_000 {
-            return String(format: "%.1fM", Double(usage) / 1_000_000)
-        } else if usage >= 1_000 {
-            return String(format: "%.0fK", Double(usage) / 1_000)
-        }
-        return "\(usage)"
+        TokenFormatter.format(usage)
     }
 
+    /// Dollars, like `WidgetProviderData.formattedCost`: the display currency
+    /// does not reach this extension.
     private func formatCost(_ cost: Double) -> String {
-        String(format: "$%.2f", cost)
+        CostFormatter.format(cost)
     }
 }
 

@@ -87,8 +87,8 @@ public struct DeviceHealthCard: View {
     private var metricChips: [Chip] {
         var out: [Chip] = []
         if device.sensorCan("power"), let watts = device.system_power_w {
-            let sub = device.cpu_power_w.map { String(format: "CPU %.1f W", $0) }
-            out.append(Chip(title: L10n.machine.power, value: String(format: "%.1f W", watts),
+            let sub = device.cpu_power_w.map { DisplayFormat.string("CPU %.1f W", $0) }
+            out.append(Chip(title: L10n.machine.power, value: DisplayFormat.string("%.1f W", watts),
                             subtitle: sub, icon: "bolt.fill", color: .yellow))
         }
         if device.sensorCan("temps"), let temp = device.cpu_temp_c {

@@ -785,7 +785,7 @@ public final class AppState: ObservableObject {
 
     /// v1.40 PR-7: display currency for costs (storage stays USD; conversion at
     /// display time via CurrencyConverter). Use `displayCurrency` / `setDisplayCurrency`.
-    @AppStorage("cli_pulse_display_currency") var displayCurrencyRaw = DisplayCurrency.usd.rawValue
+    @AppStorage(DisplayCurrency.defaultsKey) var displayCurrencyRaw = DisplayCurrency.usd.rawValue
     public var displayCurrency: DisplayCurrency {
         DisplayCurrency(rawValue: displayCurrencyRaw) ?? .usd
     }

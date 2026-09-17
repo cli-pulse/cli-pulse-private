@@ -68,20 +68,11 @@ struct GetProviderQuotaIntent: AppIntent {
         let spoken: String
         if let remaining = cached.remaining, let quota = cached.quota, quota > 0 {
             let percent = Int((1.0 - cached.usagePercent) * 100)
-            spoken = L10n.intents.providerQuotaLeft(target, formatUsage(remaining), percent)
+            spoken = L10n.intents.providerQuotaLeft(target, TokenFormatter.format(remaining), percent)
         } else {
-            spoken = L10n.intents.providerUsageNoQuota(target, formatUsage(cached.usage))
+            spoken = L10n.intents.providerUsageNoQuota(target, TokenFormatter.format(cached.usage))
         }
 
         return .result(value: spoken, dialog: IntentDialog(stringLiteral: spoken))
-    }
-
-    private func formatUsage(_ usage: Int) -> String {
-        if usage >= 1_000_000 {
-            return String(format: "%.1fM", Double(usage) / 1_000_000)
-        } else if usage >= 1_000 {
-            return String(format: "%.0fK", Double(usage) / 1_000)
-        }
-        return "\(usage)"
     }
 }

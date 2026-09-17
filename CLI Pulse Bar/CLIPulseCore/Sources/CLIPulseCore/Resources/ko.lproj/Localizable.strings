@@ -1752,3 +1752,12 @@
 "collector_error.no_quota_for_project" = "%@: 이 프로젝트의 할당량 데이터 없음";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "일부 시스템 텍스트는 CLI Pulse를 다시 시작한 후에 바뀝니다.";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$d일 %2$d시간";
+"usage_pace.eta_days" = "%d일";
+"usage_pace.eta_hours_minutes" = "%1$d시간 %2$d분";
+"usage_pace.eta_hours" = "%d시간";
+"usage_pace.eta_minutes" = "%d분";
+"usage_dashboard.day_tooltip" = "%1$@: %2$@ 토큰 · %3$@";
+"intents.less_than_amount" = "%@ 미만";

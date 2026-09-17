@@ -195,9 +195,15 @@ public final class LocaleOverrideStore: ObservableObject {
         } else {
             language = liveSystemLocalization
         }
-        guard let language else { return .autoupdatingCurrent }
-        return Self.displayLocale(language: language, base: .autoupdatingCurrent)
+        guard let language else { return Self.systemLocale() }
+        return Self.displayLocale(language: language, base: Self.systemLocale())
     }
+
+    /// The system locale `displayLocale` starts from. The app never changes it.
+    /// Tests do, because separators come from the region: on an en_US machine,
+    /// which CI is, a Spanish choice formats "2.5" either way, so a formatter
+    /// that ignored the display locale could not fail there.
+    nonisolated(unsafe) static var systemLocale: () -> Locale = { .autoupdatingCurrent }
 
     /// `base` with its language replaced by `language`.
     static func displayLocale(language: String, base: Locale) -> Locale {

@@ -205,7 +205,7 @@ public extension View {
 // MARK: - Count-up number (glass headline)
 
 /// A number that animates up to `value` (Animatable drives the interpolation).
-/// Used for the dashboard's 46pt en-US-grouped headline. Drive the reveal with a
+/// Used for the dashboard's 46pt grouped headline. Drive the reveal with a
 /// `withAnimation(.timingCurve(...))` change of the bound value.
 public struct CountUpNumber: View, Animatable {
     public var value: Double
@@ -214,6 +214,8 @@ public struct CountUpNumber: View, Animatable {
         set { value = newValue }
     }
     private let font: Font
+    /// The display locale on macOS roots, the system locale on iPhone.
+    @Environment(\.locale) private var locale
 
     public init(value: Double, font: Font) {
         self.value = value
@@ -221,7 +223,7 @@ public struct CountUpNumber: View, Animatable {
     }
 
     public var body: some View {
-        Text(Self.grouped(Int(value.rounded())))
+        Text(Self.grouped(Int(value.rounded()), locale: locale))
             .font(font)
             .monospacedDigit()
     }
@@ -229,11 +231,10 @@ public struct CountUpNumber: View, Animatable {
     /// easeOutQuart timing curve (token-monitor's 2.2s count-up feel).
     public static let countUpAnimation: Animation = .timingCurve(0.165, 0.84, 0.44, 1.0, duration: 2.2)
 
-    static func grouped(_ n: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.locale = Locale(identifier: "en_US")
-        return f.string(from: NSNumber(value: n)) ?? "\(n)"
+    /// Grouped the reader's way: "12,345,678", or "12.345.678" in Spain, where
+    /// an en_US comma reads as a decimal point.
+    static func grouped(_ n: Int, locale: Locale) -> String {
+        n.formatted(.number.locale(locale))
     }
 }
 
@@ -633,10 +634,10 @@ public enum CostFormatter {
         CurrencyConverter.shared.format(cost)
     }
 
+    /// A compact token count. Kept under this name for its many call sites;
+    /// the one implementation is `TokenFormatter.format`.
     public static func formatUsage(_ usage: Int) -> String {
-        if usage >= 1_000_000 { return String(format: "%.1fM", Double(usage) / 1_000_000) }
-        if usage >= 1_000 { return String(format: "%.1fK", Double(usage) / 1_000) }
-        return "\(usage)"
+        TokenFormatter.format(usage)
     }
 }
 

@@ -22,9 +22,9 @@
 //     string ("3d", "2h 5m") or nil for the "now" case — the upstream
 //     concat-then-`dropFirst(3)` parse was a latent string-corruption
 //     bug. Rendered L10n output is byte-identical (tests unchanged).
-//     The compact d/h/m unit letters stay English this pass (Gemini R1
-//     Q4: defer 5-locale duration pluralization; CodexBar-identical,
-//     language-neutral); the L10n phrase templates are localized.
+//     The unit letters were English at first ("2h 5m" inside a Japanese
+//     sentence); they now come from `usage_pace.eta_*` keys, which read
+//     "2h 5m" in English exactly as before.
 //   * v1.23.0 G4: the consumed surface (`UsagePaceText`, `WeeklyDetail`,
 //     and the `weekly*`/`session*` statics) is promoted to `public` so
 //     the macOS/iOS app targets can consume it (was internal in Phase A
@@ -145,7 +145,7 @@ public enum UsagePaceText {
     /// "3d" / "3d 2h" / "2h" / "2h 5m" / "5m" — with **no** "in " prefix,
     /// so callers never string-slice (Gemini R1 HIGH: the upstream
     /// concat-then-`dropFirst(3)` was a latent corruption bug). Numeric
-    /// output is identical to upstream; English unit letters this pass.
+    /// output is identical to upstream; the units are the reader's language.
     private static func compactCountdown(seconds: TimeInterval) -> String? {
         let secs = max(0, seconds)
         if secs < 1 { return nil }
@@ -156,14 +156,14 @@ public enum UsagePaceText {
         let minutes = totalMinutes % 60
 
         if days > 0 {
-            if hours > 0 { return "\(days)d \(hours)h" }
-            return "\(days)d"
+            if hours > 0 { return L10n.usagePace.etaDaysHours(days, hours) }
+            return L10n.usagePace.etaDays(days)
         }
         if hours > 0 {
-            if minutes > 0 { return "\(hours)h \(minutes)m" }
-            return "\(hours)h"
+            if minutes > 0 { return L10n.usagePace.etaHoursMinutes(hours, minutes) }
+            return L10n.usagePace.etaHours(hours)
         }
-        return "\(totalMinutes)m"
+        return L10n.usagePace.etaMinutes(totalMinutes)
     }
 
     private static func roundedRiskPercent(_ probability: Double) -> Int {

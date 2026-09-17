@@ -20,9 +20,10 @@ public enum L10n {
     /// language switcher (footer button on macOS) can swap the
     /// `.lproj` bundle at runtime. When `override == nil` the store
     /// returns the same default bundle, preserving prior behavior.
+    /// A `%f` in the value takes the display locale's decimal separator.
     private static func tr(_ key: String, _ args: CVarArg...) -> String {
         let format = resolve(key)
-        return args.isEmpty ? format : String(format: format, arguments: args)
+        return args.isEmpty ? format : DisplayFormat.string(format, arguments: args)
     }
 
     /// `tr` with a choice of language: the active locale, or English regardless of
@@ -35,7 +36,9 @@ public enum L10n {
         } else {
             format = resolve(key)
         }
-        return args.isEmpty ? format : String(format: format, arguments: args)
+        guard !args.isEmpty else { return format }
+        // Logged text keeps POSIX numbers ("2.5") so it greps the same everywhere.
+        return english ? String(format: format, arguments: args) : DisplayFormat.string(format, arguments: args)
     }
 
     /// Looks a key up in the active locale, falling back to **English
@@ -336,6 +339,10 @@ public enum L10n {
         public static var longestStreak: String { tr("usage_dashboard.longest_streak") }
         public static var peakDay: String { tr("usage_dashboard.peak_day") }
         public static var favoriteModel: String { tr("usage_dashboard.favorite_model") }
+        /// Heatmap cell hover text: date, token count, cost.
+        public static func dayTooltip(_ date: String, _ tokens: String, _ cost: String) -> String {
+            tr("usage_dashboard.day_tooltip", date, tokens, cost)
+        }
         public static var messages: String { tr("usage_dashboard.messages") }
         // Sections
         public static var byModel: String { tr("usage_dashboard.by_model") }
@@ -1908,6 +1915,18 @@ public enum L10n {
         public static func summaryLeftOnly(_ left: String) -> String {
             tr("usage_pace.summary_left_only", left)
         }
+        // The countdown inside `runsOutIn` / `projectedEmptyIn`. Keys of their
+        // own rather than `machine.uptime_*`, so rewording uptime cannot change
+        // pace text.
+        public static func etaDaysHours(_ days: Int, _ hours: Int) -> String {
+            tr("usage_pace.eta_days_hours", days, hours)
+        }
+        public static func etaDays(_ days: Int) -> String { tr("usage_pace.eta_days", days) }
+        public static func etaHoursMinutes(_ hours: Int, _ minutes: Int) -> String {
+            tr("usage_pace.eta_hours_minutes", hours, minutes)
+        }
+        public static func etaHours(_ hours: Int) -> String { tr("usage_pace.eta_hours", hours) }
+        public static func etaMinutes(_ minutes: Int) -> String { tr("usage_pace.eta_minutes", minutes) }
     }
 
     // MARK: - Local scan consent (v1.50 W-C)
@@ -2293,6 +2312,11 @@ public enum L10n {
         public static var clauseSeparator: String { tr("intents.clause_separator") }
         public static var sentenceEnd: String { tr("intents.sentence_end") }
         public static var lessThanOneCent: String { tr("intents.less_than_one_cent") }
+        /// "less than ¥0.01": the spoken small-cost floor for a currency other than
+        /// the dollar, whose floor keeps its own words (`lessThanOneCent`).
+        public static func lessThanAmount(_ amount: String) -> String {
+            tr("intents.less_than_amount", amount)
+        }
 
         public static func providerNotConfigured(_ provider: String) -> String {
             tr("intents.provider_not_configured", provider)

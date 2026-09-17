@@ -1,3 +1,4 @@
+import CLIPulseCore
 import Foundation
 import WidgetKit
 
@@ -77,19 +78,12 @@ struct WidgetProviderData: Codable, Identifiable {
     /// the payload carries no weekly value (legacy or no weekly tier).
     var weeklyUsed: Double { min(1, max(0, weeklyPercent ?? usagePercent)) }
 
-    var formattedUsage: String {
-        if usage >= 1_000_000 {
-            return String(format: "%.1fM", Double(usage) / 1_000_000)
-        } else if usage >= 1_000 {
-            return String(format: "%.0fK", Double(usage) / 1_000)
-        }
-        return "\(usage)"
-    }
+    var formattedUsage: String { TokenFormatter.format(usage) }
 
-    var formattedCost: String {
-        if costToday < 0.01 { return "$0.00" }
-        return String(format: "$%.2f", costToday)
-    }
+    /// Through the app's formatter, so a cost reads the same here as in the app
+    /// (separators, "<$0.01"). Always dollars for now: the display currency is
+    /// kept in the app's own defaults, which this extension cannot read.
+    var formattedCost: String { CostFormatter.format(costToday) }
 }
 
 // MARK: - App Group Storage
