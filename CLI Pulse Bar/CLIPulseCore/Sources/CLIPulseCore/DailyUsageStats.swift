@@ -161,7 +161,7 @@ public enum DailyUsageStats {
         (a.days[dayKey]?.tokens ?? 0) > 0
     }
 
-    private static let keyFormatter: DateFormatter = DayKey.formatter(in: TimeZone(secondsFromGMT: 0)!)
+    private static let keyFormatter: DateFormatter = DayKey.formatter(in: DayKey.utc)
 
     /// The previous calendar day's key ("yyyy-MM-dd" → "yyyy-MM-dd"), or nil if unparseable.
     public static func previousDay(_ dayKey: String) -> String? { shift(dayKey, byDays: -1) }
@@ -178,11 +178,7 @@ public enum DailyUsageStats {
         return keyFormatter.string(from: shifted)
     }
 
-    private static let utcCalendar: Calendar = {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(secondsFromGMT: 0)!
-        return c
-    }()
+    private static let utcCalendar: Calendar = DayKey.calendar(in: DayKey.utc)
 
     // MARK: - Heatmap grid helpers
 

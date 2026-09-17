@@ -122,12 +122,12 @@ final class LanguageChoiceTests: XCTestCase {
     /// root put in the environment is `DisplayLocaleRootTests`.
     func test_heatmapMonthSymbols_areInTheLocaleTheyAreGiven() {
         LocaleOverrideStore.shared.set("ja")
-        let symbols = UsageHeatmapGrid.shortMonthSymbols(locale: LocaleOverrideStore.shared.displayLocale)
-        XCTAssertEqual(UsageHeatmapGrid.shortMonth(9, symbols: symbols), "9月")
+        let names = UsageHeatmapGrid.shortMonthNames(locale: LocaleOverrideStore.shared.displayLocale)
+        XCTAssertEqual(UsageHeatmapGrid.name(ofMonth: 9, in: names), "9月")
 
         LocaleOverrideStore.shared.set("zh-Hans")
-        let chinese = UsageHeatmapGrid.shortMonthSymbols(locale: LocaleOverrideStore.shared.displayLocale)
-        XCTAssertEqual(UsageHeatmapGrid.shortMonth(1, symbols: chinese), "1月")
+        let chinese = UsageHeatmapGrid.shortMonthNames(locale: LocaleOverrideStore.shared.displayLocale)
+        XCTAssertEqual(UsageHeatmapGrid.name(ofMonth: 1, in: chinese), "1月")
     }
 
     // MARK: - AppleLanguages

@@ -27,11 +27,19 @@ import Foundation
 /// also runs the whole test suite under the Japanese, ROC and Buddhist calendars.
 public enum DayKey {
 
+    /// UTC, for keys whose days split at UTC midnight (server dates, the
+    /// heatmap's string arithmetic). `TimeZone(identifier: "UTC")` cannot fail
+    /// on any OS this package supports; `.gmt` is the same offset and keeps the
+    /// constant non-optional without a force unwrap.
+    public static let utc: TimeZone = TimeZone(identifier: "UTC") ?? .gmt
+
+    private static let posixLocale = Locale(identifier: "en_US_POSIX")
+
     /// A Gregorian calendar with the POSIX locale in `timeZone`. Use it for any
     /// arithmetic whose year, month or day numbers end up in a key or a path.
     public static func calendar(in timeZone: TimeZone = .current) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.locale = Locale(identifier: "en_US_POSIX")
+        calendar.locale = posixLocale
         calendar.timeZone = timeZone
         return calendar
     }
@@ -56,7 +64,7 @@ public enum DayKey {
     /// one, and a calendar set earlier survives it (measured).
     public static func formatter(in timeZone: TimeZone) -> DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = posixLocale
         f.calendar = calendar(in: timeZone)
         f.timeZone = timeZone
         f.dateFormat = "yyyy-MM-dd"
@@ -64,20 +72,44 @@ public enum DayKey {
     }
 
     /// Year, month and day of a key, without judging whether they form a
-    /// Gregorian date. nil unless the key is `dddd-dd-dd`.
+    /// Gregorian date. nil unless the key is `dddd-dd-dd` in ASCII digits.
+    ///
+    /// Walks the UTF-8 view in place rather than copying it into an array: the
+    /// scanner cache checks every key it holds on every load (`isPlausible`).
     static func fields(of key: String) -> (year: Int, month: Int, day: Int)? {
-        let utf8 = Array(key.utf8)
-        guard utf8.count == 10, utf8[4] == 45, utf8[7] == 45 else { return nil }
-        func number(_ range: Range<Int>) -> Int? {
-            var value = 0
-            for byte in utf8[range] {
-                guard byte >= 48, byte <= 57 else { return nil }
-                value = value * 10 + Int(byte - 48)
+        let utf8 = key.utf8
+        guard utf8.count == 10 else { return nil }
+        var year = 0, month = 0, day = 0
+        var position = 0
+        for byte in utf8 {
+            if position == 4 || position == 7 {
+                guard byte == 0x2D else { return nil }   // "-"
+            } else {
+                guard byte >= 0x30, byte <= 0x39 else { return nil }
+                let digit = Int(byte &- 0x30)
+                switch position {
+                case 0..<4: year = year * 10 + digit
+                case 5..<7: month = month * 10 + digit
+                default: day = day * 10 + digit
+                }
             }
-            return value
+            position += 1
         }
-        guard let y = number(0..<4), let m = number(5..<7), let d = number(8..<10) else { return nil }
-        return (y, m, d)
+        return (year, month, day)
+    }
+
+    /// Days in a Gregorian month (1-12). The leap rule is the Gregorian one,
+    /// which is what `Calendar(identifier: .gregorian)` applies to every year
+    /// since 1582, so for the years `isPlausible` accepts it gives the same
+    /// answer as asking the calendar.
+    static func daysInGregorianMonth(_ month: Int, year: Int) -> Int {
+        switch month {
+        case 2:
+            let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
+            return leap ? 29 : 28
+        case 4, 6, 9, 11: return 30
+        default: return 31
+        }
     }
 
     /// The moment `hour` o'clock on the day `key` names, in `timeZone`. nil when
@@ -129,10 +161,19 @@ public enum DayKey {
     /// `DayKeyTests` checks every calendar Foundation offers, month by month
     /// from 2020 through 2075. Nothing here reads the clock, so a wrong device
     /// clock cannot make real history look foreign.
+    ///
+    /// Pure arithmetic, no `Calendar`, `Locale` or allocation: the scanner
+    /// cache runs it on every day key of every file entry on each scan, and
+    /// building calendars for that cost about 3.4 µs a key. Every year in the
+    /// window is a Gregorian-era year, so the arithmetic gives the same answer
+    /// as round-tripping the key through a Gregorian calendar, which is what
+    /// this did before; `test_plausible_matches_a_gregorian_calendar_round_trip`
+    /// holds the two equal.
     public static func isPlausible(_ key: String) -> Bool {
         guard let f = fields(of: key),
-              f.year >= earliestPlausibleYear, f.year <= latestPlausibleYear else { return false }
-        return date(from: key, hour: 12, in: TimeZone(secondsFromGMT: 0)!) != nil
+              f.year >= earliestPlausibleYear, f.year <= latestPlausibleYear,
+              f.month >= 1, f.month <= 12, f.day >= 1 else { return false }
+        return f.day <= daysInGregorianMonth(f.month, year: f.year)
     }
 
     /// A key read back from local storage, in Gregorian numbering.

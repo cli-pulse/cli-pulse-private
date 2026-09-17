@@ -109,6 +109,89 @@ final class DayKeyTests: XCTestCase {
         }
     }
 
+    /// `isPlausible` checks the date with arithmetic because the scanner cache
+    /// runs it on every key on every scan. It used to ask a Gregorian calendar:
+    /// parse the key, then accept it only if a calendar built for it formats
+    /// back to the same key. The reference below is that code, kept here so
+    /// the two can be compared on every day of every year at the window's edges
+    /// and its leap years, and on keys that are not days at all.
+    func test_plausible_matches_a_gregorian_calendar_round_trip() {
+        func referenceFields(_ key: String) -> (Int, Int, Int)? {
+            let utf8 = Array(key.utf8)
+            guard utf8.count == 10, utf8[4] == 45, utf8[7] == 45 else { return nil }
+            func number(_ range: Range<Int>) -> Int? {
+                var value = 0
+                for byte in utf8[range] {
+                    guard byte >= 48, byte <= 57 else { return nil }
+                    value = value * 10 + Int(byte - 48)
+                }
+                return value
+            }
+            guard let y = number(0..<4), let m = number(5..<7), let d = number(8..<10) else { return nil }
+            return (y, m, d)
+        }
+        func referencePlausible(_ key: String) -> Bool {
+            guard let f = referenceFields(key),
+                  f.0 >= DayKey.earliestPlausibleYear, f.0 <= DayKey.latestPlausibleYear else { return false }
+            var cal = Calendar(identifier: .gregorian)
+            cal.timeZone = TimeZone(identifier: "UTC")!
+            var comps = DateComponents()
+            comps.year = f.0; comps.month = f.1; comps.day = f.2; comps.hour = 12
+            guard let date = cal.date(from: comps) else { return false }
+            let back = cal.dateComponents([.year, .month, .day], from: date)
+            return String(format: "%04d-%02d-%02d", back.year!, back.month!, back.day!) == key
+        }
+
+        var keys: [String] = []
+        for year in [0, 8, 115, 1900, 2000, 2019, 2020, 2021, 2023, 2024, 2025, 2026, 2072, 2074, 2075, 2076, 2100, 2569, 9999] {
+            for month in 0...13 {
+                for day in [0, 1, 15, 27, 28, 29, 30, 31, 32, 99] {
+                    keys.append(String(format: "%04d-%02d-%02d", year, month, day))
+                }
+            }
+        }
+        keys += ["", "2026-9-17", "2026-09-1", "2026/09/17", "2026-09-17 ", " 2026-09-17", "2026-09-17T00",
+                 "20260917xx", "2026--09-17", "-026-09-17", "+026-09-17", "2026-0a-17", "2026-09-1\u{0}",
+                 "２０２６-０９-１７", "٢٠٢٦-٠٩-١٧", "2026-09-17".replacingOccurrences(of: "-", with: "\u{2010}"),
+                 "2026-09-17\u{301}", "2026-09-\u{1F600}"]
+
+        var plausible = 0
+        for key in keys {
+            let expected = referencePlausible(key)
+            XCTAssertEqual(DayKey.isPlausible(key), expected, key)
+            if expected { plausible += 1 }
+            let fields = DayKey.fields(of: key)
+            let reference = referenceFields(key)
+            XCTAssertEqual(fields?.year, reference?.0, key)
+            XCTAssertEqual(fields?.month, reference?.1, key)
+            XCTAssertEqual(fields?.day, reference?.2, key)
+        }
+        // Leap days in 2020, 2024 and 2072, and none in 2021, 2023, 2025 or 2026.
+        XCTAssertTrue(DayKey.isPlausible("2024-02-29"))
+        XCTAssertFalse(DayKey.isPlausible("2025-02-29"))
+        // The corpus has to exercise both answers, or the comparison proves nothing.
+        XCTAssertGreaterThan(plausible, 100)
+        XCTAssertGreaterThan(keys.count - plausible, 1000)
+    }
+
+    /// Stored keys are converted each time they are loaded (the pet event log
+    /// is append-only and is converted on every replay), so converting a key
+    /// that was already converted must give it back unchanged, in any calendar.
+    func test_a_converted_key_converts_to_itself() {
+        let utc = TimeZone(identifier: "UTC")!
+        var checked = 0
+        for var cal in allForeignCalendars() + [Calendar(identifier: .gregorian)] {
+            cal.timeZone = utc
+            for key in ["2025-01-19", "2026-02-28", "2026-07-11", "2026-09-17", "2028-02-29"] {
+                let day = DayKey.date(from: key, hour: 12, in: utc)!
+                guard let once = DayKey.normalizedStoredKey(legacyKey(day, in: cal), writtenIn: cal) else { continue }
+                XCTAssertEqual(DayKey.normalizedStoredKey(once, writtenIn: cal), once, "\(cal.identifier) \(key)")
+                checked += 1
+            }
+        }
+        XCTAssertGreaterThan(checked, 50)
+    }
+
     /// A key read back in the calendar that wrote it names the right day — or,
     /// when it cannot be read back, no day at all. Never a wrong day.
     func test_stored_keys_convert_back_from_the_calendar_that_wrote_them() {
@@ -277,6 +360,71 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
         XCTAssertEqual(state.lastHatchDayKey, "2026-07-11")
         XCTAssertEqual(state.ownedDayKeys["loaf"], "2026-07-11")
         XCTAssertTrue(PetEngine.timingAllows(lastHatchDayKey: state.lastHatchDayKey, todayKey: "2026-09-17"))
+    }
+
+    /// The same Thai user after switching the Mac to Gregorian: no calendar the
+    /// device offers reads 2569-07-11 back. The cat stays owned and keeps the
+    /// key it was logged with, but that key must not time the next hatch:
+    /// compared with a Gregorian today it blocked every hatch for 543 years.
+    func test_pet_hatch_key_the_device_calendar_cannot_read_does_not_block_the_next_hatch() {
+        let gregorian = calendar(.gregorian, "Asia/Bangkok")
+        let events = [PetEvent(kind: .hatch, dayKey: "2569-07-11", timestampUnixMs: 1, form: "loaf")]
+        let state = PetCoordinator.rebuild(from: events, writtenIn: gregorian)
+        XCTAssertEqual(state.ownedForms, ["loaf"])
+        XCTAssertEqual(state.ownedDayKeys["loaf"], "2569-07-11")
+        XCTAssertNil(state.lastHatchDayKey)
+        XCTAssertTrue(PetEngine.timingAllows(lastHatchDayKey: state.lastHatchDayKey, todayKey: "2026-09-17"))
+
+        // An earlier hatch that can be read still times the next one.
+        let withEarlier = PetCoordinator.rebuild(
+            from: [PetEvent(kind: .hatch, dayKey: "2026-09-14", timestampUnixMs: 1, form: "smash")] + events,
+            writtenIn: gregorian)
+        XCTAssertEqual(withEarlier.ownedForms, ["smash", "loaf"])
+        XCTAssertEqual(withEarlier.lastHatchDayKey, "2026-09-14")
+        XCTAssertFalse(PetEngine.timingAllows(lastHatchDayKey: withEarlier.lastHatchDayKey, todayKey: "2026-09-17"))
+    }
+
+    /// Replaying the log converts old keys in memory only. Replays must not
+    /// write the converted key back or append anything, the cat must stay owned
+    /// so it is not hatched a second time, and the next real hatch appends
+    /// exactly one line. Runs with the device calendar, which in CI is also
+    /// Japanese, ROC and Buddhist: Buddhist reads 2569-07-11 back, the others
+    /// cannot, and every assertion holds either way.
+    func test_pet_replay_does_not_rewrite_or_duplicate_the_event_log() async throws {
+        func ledger(_ provider: String, ending today: String) -> PetDailyLedger {
+            var days: [String: [String: PetFixtureSimulator.Usage]] = [:]
+            var key: String? = today
+            for _ in 0..<7 {
+                if let k = key { days[k] = [provider: .init(tokens: 20_000, messages: 10)]; key = DailyUsageStats.previousDay(k) }
+            }
+            return PetFixtureSimulator.makeLedger(days)
+        }
+        let buddhistHatch = PetEvent(kind: .hatch, dayKey: "2569-07-11", timestampUnixMs: 1, form: "loaf")
+        XCTAssertTrue(PetCoordinator.appendEvent(buddhistHatch, root: tempDir))
+        let url = PetCoordinator.eventsURL(root: tempDir)
+        let logged = try Data(contentsOf: url)
+
+        let coordinator = PetCoordinator(root: tempDir)
+        let first = await coordinator.state()
+        let second = await coordinator.state()
+        XCTAssertEqual(first, second)
+        XCTAssertEqual(PetCoordinator.rebuild(from: PetCoordinator.readEventLog(root: tempDir)), first)
+        XCTAssertTrue(first.owns(.loaf))
+        XCTAssertEqual(try Data(contentsOf: url), logged, "a replay wrote to the log")
+
+        let loafAgain = await coordinator.evaluateAndHatch(ledger: ledger("Claude", ending: "2026-09-17"),
+                                                           todayKey: "2026-09-17", nowUnixMs: 2)
+        XCTAssertNil(loafAgain.hatchEvent, "an owned cat was hatched again")
+        XCTAssertEqual(try Data(contentsOf: url), logged)
+
+        let smash = await coordinator.evaluateAndHatch(ledger: ledger("Codex", ending: "2026-09-17"),
+                                                       todayKey: "2026-09-17", nowUnixMs: 3)
+        XCTAssertEqual(smash.hatchEvent?.form, "smash", "the old hatch key blocked the next hatch")
+        XCTAssertEqual(try Data(contentsOf: url).prefix(logged.count), logged)
+        XCTAssertEqual(PetCoordinator.readEventLog(root: tempDir).map(\.dayKey), ["2569-07-11", "2026-09-17"])
+        XCTAssertEqual(smash.state.lastHatchDayKey, "2026-09-17")
+        let reloaded = await PetCoordinator(root: tempDir).state()
+        XCTAssertEqual(reloaded, smash.state)
     }
 
     // MARK: A device clock set years behind

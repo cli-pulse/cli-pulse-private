@@ -200,8 +200,8 @@ public struct BedrockCollector: ProviderCollector, Sendable {
     }
 
     static func currentMonthRange(now: Date = Date()) -> (start: String, end: String) {
-        let cal = DayKey.calendar(in: TimeZone(secondsFromGMT: 0)!)
-        let f = DayKey.formatter(in: TimeZone(secondsFromGMT: 0)!)
+        let cal = DayKey.calendar(in: DayKey.utc)
+        let f = DayKey.formatter(in: DayKey.utc)
         let monthStart = cal.date(from: cal.dateComponents([.year, .month], from: now)) ?? now
         let tomorrow = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: now)) ?? now
         return (f.string(from: monthStart), f.string(from: tomorrow))

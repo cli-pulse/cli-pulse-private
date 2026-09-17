@@ -2801,7 +2801,7 @@ public actor APIClient {
         let safeUserId = Self.sanitizeParam(userId)
         let calendar = Calendar(identifier: .gregorian)
         guard let cutoff = calendar.date(byAdding: .day, value: -days, to: Date()) else { return [] }
-        let cutoffStr = DayKey.string(from: cutoff, in: TimeZone(identifier: "UTC")!)
+        let cutoffStr = DayKey.string(from: cutoff, in: DayKey.utc)
         let path = "/rest/v1/yield_score_daily?user_id=eq.\(safeUserId)&day=gte.\(cutoffStr)&select=provider,day,total_cost,weighted_commit_count,raw_commit_count,ambiguous_commit_count&order=day.desc"
         do {
             let rows: [YieldScoreRow] = try await restGet(path)

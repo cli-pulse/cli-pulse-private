@@ -15,7 +15,7 @@ public struct YieldScoreRow: Codable, Sendable, Hashable {
     /// device calendar: a bare formatter under the Japanese calendar read
     /// "2026-09-17" as the year 4044, and every row fell outside the window.
     public var dayDate: Date? {
-        DayKey.formatter(in: TimeZone(identifier: "UTC")!).date(from: day)
+        DayKey.formatter(in: DayKey.utc).date(from: day)
     }
 }
 
