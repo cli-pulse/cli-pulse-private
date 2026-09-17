@@ -1814,3 +1814,5 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "terminal.input_label" = "Entrada del terminal";
 "terminal.too_much_output" = "Hay demasiada salida para leerla en voz alta: recorre las filas manualmente.";
 "machine.sort_by" = "Ordenar por";
+"common.clear_search" = "Borrar búsqueda";
+"common.more_options" = "Más opciones";

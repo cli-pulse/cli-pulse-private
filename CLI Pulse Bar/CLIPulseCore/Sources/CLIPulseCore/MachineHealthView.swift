@@ -600,6 +600,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.resume)
+            .accessibilityLabel(L10n.machine.resume)
             .disabled(anyActionInFlight)
         } else if offerSuspend, proc.isRunning {
             // Suspend can freeze dependent processes → inline confirm card.
@@ -614,6 +615,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.suspend)
+            .accessibilityLabel(L10n.machine.suspend)
             .disabled(anyActionInFlight)
         }
         // End Process — available on any same-UID row when kill is supported.
@@ -629,6 +631,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.endProcess)
+            .accessibilityLabel(L10n.machine.endProcess)
             .disabled(anyActionInFlight)
         }
     }
@@ -729,6 +732,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tertiary)
+            .accessibilityLabel(L10n.a11y.dismissError)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -906,6 +910,9 @@ public struct MachineHealthView: View {
                             }
                         })
                     .disabled(fanBusy)
+                    // Unnamed, and valued as a position in its range ("40%").
+                    .accessibilityLabel(L10n.machine.fanTarget)
+                    .accessibilityValue(L10n.a11y.fanRPM(Int(min(max(fanSliderRPM, minR), maxR))))
                     Text("\(Int(min(max(fanSliderRPM, minR), maxR))) rpm")
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                         .frame(width: 64, alignment: .trailing)

@@ -88,6 +88,8 @@ struct UsageOverviewWidgetView: View {
             Text(formatUsage(entry.data.totalUsageToday))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                // A bare "1.2M" on screen; say what it counts.
+                .accessibilityLabel(L10n.a11y.usageToday(formatUsage(entry.data.totalUsageToday)))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -106,12 +108,16 @@ struct UsageOverviewWidgetView: View {
                         .font(.caption.weight(.bold))
                 }
 
+                // Bare "1.2M" and "$1.25" on screen; the large widget titles
+                // them, this column has no room to, so only VoiceOver hears it.
                 Text(formatUsage(entry.data.totalUsageToday))
                     .font(.title2.weight(.bold).monospacedDigit())
+                    .accessibilityLabel(L10n.a11y.usageToday(formatUsage(entry.data.totalUsageToday)))
 
                 Text(formatCost(entry.data.totalCostToday))
                     .font(.caption.weight(.semibold).monospacedDigit())
                     .foregroundStyle(.green)
+                    .accessibilityLabel(L10n.a11y.costToday(formatCost(entry.data.totalCostToday)))
 
                 Spacer()
 
@@ -280,6 +286,12 @@ struct ProviderCountdownBars: View {
                         .foregroundStyle(.green)
                 }
             }
+            // One element: the provider icon was read by its symbol name, and
+            // the large widget's "$1.25" did not say it is today's cost.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(compact
+                ? provider.name
+                : L10n.a11y.clauses([provider.name, L10n.a11y.costToday(provider.formattedCost)]))
             // The row labels are abbreviations ("5h", "Wk") sized for an 18pt
             // column; VoiceOver gets the full window names instead.
             countdownRow(L10n.widget.window5h, spokenName: L10n.quotaTier.window5h, used: provider.sessionUsed)

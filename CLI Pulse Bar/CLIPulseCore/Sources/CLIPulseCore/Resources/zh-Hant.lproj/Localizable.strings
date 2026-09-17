@@ -1830,3 +1830,5 @@
 "terminal.input_label" = "終端機輸入";
 "terminal.too_much_output" = "輸出內容過多，無法朗讀。請手動移到各列閱讀。";
 "machine.sort_by" = "排序方式";
+"common.clear_search" = "清除搜尋內容";
+"common.more_options" = "更多選項";

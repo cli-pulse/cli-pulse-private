@@ -1840,3 +1840,5 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "terminal.input_label" = "Terminal input";
 "terminal.too_much_output" = "Too much output to announce, navigate to rows manually to read";
 "machine.sort_by" = "Sort by";
+"common.clear_search" = "Clear search";
+"common.more_options" = "More options";

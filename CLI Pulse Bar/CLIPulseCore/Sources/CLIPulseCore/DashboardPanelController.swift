@@ -97,6 +97,7 @@ public final class DashboardPanelController {
                     }
                     .buttonStyle(.plain)
                     .help(L10n.common.close)
+                    .accessibilityLabel(L10n.common.close)
                 }
                 // token-monitor look: the slide-out panel is always dark frosted
                 // glass (see-through HUD backdrop), regardless of the system theme.

@@ -122,6 +122,7 @@ struct iOSOverviewTab: View {
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
+                    .accessibilityLabel(L10n.dashboard.export)
                 }
             }
             .refreshable {

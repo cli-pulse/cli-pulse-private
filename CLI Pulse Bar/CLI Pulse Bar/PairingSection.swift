@@ -274,5 +274,6 @@ struct PairingSection: View {
         .buttonStyle(.plain)
         .foregroundStyle(PulseTheme.accent)
         .help(L10n.pairing.copy)
+        .accessibilityLabel(L10n.pairing.copy)
     }
 }

@@ -195,6 +195,10 @@ struct iOSMachineView: View {
                 get: { fanAuto ? liveRPM : fanTargetRPM },
                 set: { fanAuto = false; fanTargetRPM = $0 }
             ), in: 0...maxRPM, step: 100)
+            // The "Fan target" heading above is a separate element, and the
+            // slider's own value would be a position in its range ("40%").
+            .accessibilityLabel(L10n.machine.fanTarget)
+            .accessibilityValue(L10n.a11y.fanRPM(Int(fanAuto ? liveRPM : fanTargetRPM), auto: fanAuto))
             Picker(L10n.machine.holdDuration, selection: $ttlMinutes) {
                 Text(L10n.machine.minutes(15)).tag(15)
                 Text(L10n.machine.minutes(30)).tag(30)

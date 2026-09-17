@@ -1844,3 +1844,5 @@
 "terminal.input_label" = "ターミナル入力";
 "terminal.too_much_output" = "出力が多すぎるため読み上げられません。行に移動して手動で読んでください。";
 "machine.sort_by" = "並べ替え";
+"common.clear_search" = "検索テキストを消去";
+"common.more_options" = "その他のオプション";

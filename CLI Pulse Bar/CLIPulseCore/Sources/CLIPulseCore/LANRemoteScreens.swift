@@ -107,6 +107,9 @@ public struct LANNearbyMacsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { pairingTarget = nil; showScanner = true } label: { Image(systemName: "qrcode.viewfinder") }
+                    // The sheet it opens is titled this, and Settings labels the
+                    // same symbol with it.
+                    .accessibilityLabel(L10n.remote.pairWithMac)
             }
         }
         .onAppear { peers = LANPairingStore.peers(); browser.start() }

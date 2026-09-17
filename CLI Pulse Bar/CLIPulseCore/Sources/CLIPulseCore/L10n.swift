@@ -1544,6 +1544,8 @@ public enum L10n {
         public static var disconnect: String { tr("common.disconnect") }
         public static var noProviderSelected: String { tr("common.no_provider_selected") }
         public static var disabled: String { tr("common.disabled") }
+        public static var clearSearch: String { tr("common.clear_search") }
+        public static var moreOptions: String { tr("common.more_options") }
     }
 
     // MARK: - Cost Section (iter22)
@@ -2075,6 +2077,32 @@ public enum L10n {
         /// nor gets "1 sessions" right; this is what VoiceOver reads instead.
         public static func usageAndSessions(_ subject: String?, percentUsed percent: Int, activeSessions: Int) -> String {
             clauses([percentUsed(subject, percent), intents.activeSessions(activeSessions)])
+        }
+
+        /// "Usage Today, 1.2M". The overview widgets draw today's totals as bare
+        /// abbreviations; only the large widget puts a title above them.
+        public static func usageToday(_ formatted: String) -> String {
+            clauses([dashboard.usageToday, formatted])
+        }
+
+        /// "Cost Today, $1.25". The counterpart of `usageToday`.
+        public static func costToday(_ formatted: String) -> String {
+            clauses([dashboard.costToday, formatted])
+        }
+
+        /// "Usage, 120K, used". The single-provider widget's token count, which
+        /// the screen follows with "used" only when the provider has a quota;
+        /// the spoken form says the same, and never the bare "120K".
+        public static func tokenUsage(_ formatted: String, showsUsed: Bool) -> String {
+            clauses([widget.usageTitle, formatted, showsUsed ? widget.used : ""])
+        }
+
+        /// "1800 RPM", or "Auto, 1800 RPM" while the iPhone slider follows the
+        /// live fan. The value of the fan target sliders, which VoiceOver would
+        /// otherwise read as a position in their range ("40%"). The unit stays
+        /// as it is printed beside them, in every language.
+        public static func fanRPM(_ rpm: Int, auto: Bool = false) -> String {
+            clauses([auto ? machine.auto : "", "\(rpm) RPM"])
         }
     }
 

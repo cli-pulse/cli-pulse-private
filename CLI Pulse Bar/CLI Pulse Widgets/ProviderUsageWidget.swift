@@ -95,6 +95,11 @@ struct ProviderUsageWidgetView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // "120K" is a bare abbreviation, and "used" follows it only with a
+            // quota: one element that names the count either way.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.a11y.tokenUsage(entry.provider.formattedUsage,
+                                                     showsUsed: entry.provider.quota != nil))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

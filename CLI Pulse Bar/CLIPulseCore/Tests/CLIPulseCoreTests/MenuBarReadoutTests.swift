@@ -141,6 +141,32 @@ final class MenuBarReadoutTests: XCTestCase {
                        "Claude, 45% usado, 2 sesiones activas")
     }
 
+    /// The overview widget shows today's totals as bare abbreviations ("1.2M",
+    /// "$1.25"); only the large widget puts a title over them, so the small and
+    /// medium widgets (and the large one's per-provider cost) say it instead.
+    func test_widgetTotals_sayWhatTheNumberIs() {
+        XCTAssertEqual(L10n.a11y.usageToday("1.2M"), "今日の使用量、1.2M")
+        XCTAssertEqual(L10n.a11y.costToday("$1.25"), "今日のコスト、$1.25")
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(L10n.a11y.costToday("$1.25"), "今日费用，$1.25")
+    }
+
+    /// The single-provider widget draws "120K" and, only when the provider has
+    /// a quota, "used" after it. The spoken form follows the screen.
+    func test_providerWidgetTokenCount_isNamed_andSaysUsedOnlyWithAQuota() {
+        XCTAssertEqual(L10n.a11y.tokenUsage("120K", showsUsed: true), "使用量、120K、使用済み")
+        XCTAssertEqual(L10n.a11y.tokenUsage("120K", showsUsed: false), "使用量、120K")
+    }
+
+    /// Both fan sliders were read as "adjustable, 40%": no name, and a position
+    /// in the range instead of the RPM printed beside them.
+    func test_fanTargetSliders_haveANameAndSpeakRPM() {
+        XCTAssertEqual(L10n.machine.fanTarget, "目標回転数")
+        XCTAssertEqual(L10n.a11y.fanRPM(2400), "2400 RPM")
+        // In Auto the iPhone slider follows the live fan, and the screen says so.
+        XCTAssertEqual(L10n.a11y.fanRPM(1800, auto: true), "自動、1800 RPM")
+    }
+
     // MARK: - Names of controls whose titles are hidden (`.labelsHidden()`)
 
     /// The process sort picker has no visible title of its own, so its spoken
@@ -148,5 +174,12 @@ final class MenuBarReadoutTests: XCTestCase {
     func test_hiddenControlTitles_resolveInJapanese() {
         XCTAssertEqual(L10n.machine.sortBy, "並べ替え")
         XCTAssertEqual(L10n.alerts.filter, "フィルター")
+    }
+
+    /// Icon-only buttons whose symbol has no word on screen. Without a label
+    /// VoiceOver names them after the SF Symbol, in the system language.
+    func test_iconOnlyButtonNames_resolveInJapanese() {
+        XCTAssertEqual(L10n.common.clearSearch, "検索テキストを消去")
+        XCTAssertEqual(L10n.common.moreOptions, "その他のオプション")
     }
 }

@@ -58,6 +58,7 @@ struct ProvidersTab: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.common.clearSearch)
                     }
                 }
                 .padding(.horizontal, 8)
