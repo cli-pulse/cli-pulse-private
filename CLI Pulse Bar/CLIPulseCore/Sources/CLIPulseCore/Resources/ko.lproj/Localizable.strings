@@ -1299,7 +1299,7 @@
 "app_updater.title" = "앱 업데이트(베타 채널)";
 "app_updater.permissions_regrant_title" = "채널을 전환한 후 권한을 다시 허용해야 합니다";
 "app_updater.permissions_regrant_body" = "App Store 버전에서 옮겨 오면 macOS 권한이 초기화됩니다. 다음 권한을 다시 허용해 주세요: %@.";
-"app_updater.open_permission" = "%@ 열기…";
+"app_updater.open_permission" = "'%@' 열기…";
 "app_updater.devid_channel_title" = "Developer ID 베타 채널을 사용 중입니다.";
 "app_updater.mas_auto_update_warning" = "이 버전을 계속 사용하려면 시스템 설정 → App Store에서 CLI Pulse의 자동 업데이트를 끄세요. 그렇지 않으면 App Store 버전이 이 베타를 덮어쓸 수 있습니다.";
 "app_updater.open_app_store_settings" = "App Store 설정 열기…";

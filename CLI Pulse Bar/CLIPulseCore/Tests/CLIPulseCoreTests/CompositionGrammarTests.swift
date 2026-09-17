@@ -142,9 +142,12 @@ final class CompositionGrammarTests: XCTestCase {
         use("ja")
         XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "「通知」を開く…")
         XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "「アクセシビリティ」を開く…")
-        // Languages that separate words keep the space.
+        // Languages that separate words keep the space. ko marks the pane name the way
+        // its catalogue marks UI labels, as in machine.fan_approve_prompt's
+        // '로그인 항목 및 확장 프로그램', where zh and ja use 「」.
         use("ko")
-        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "손쉬운 사용 열기…")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "'손쉬운 사용' 열기…")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "'알림' 열기…")
         use("es")
         XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "Abrir Notificaciones…")
     }
@@ -253,6 +256,16 @@ final class CompositionGrammarTests: XCTestCase {
         }
         use("zh-Hans")
         XCTAssertTrue(L10n.account.linkedAccountsFooter.contains("同一 CLI\u{00A0}Pulse 账户"))
+    }
+
+    /// The swap starts where the search found the first brand, so the text before
+    /// it survives and every later brand is joined too; text with no brand, most of
+    /// every catalogue, comes back as it was.
+    func testBrandSwapJoinsEveryOccurrenceAndLeavesBrandlessTextAlone() {
+        XCTAssertEqual(L10n.keepingBrandUnbroken("同一 CLI Pulse 账户与 CLI Pulse Helper"),
+                       "同一 CLI\u{00A0}Pulse 账户与 CLI\u{00A0}Pulse Helper")
+        XCTAssertEqual(L10n.keepingBrandUnbroken("打开「通知」…"), "打开「通知」…")
+        XCTAssertEqual(L10n.keepingBrandUnbroken(""), "")
     }
 
     /// Text written to logs keeps the plain space, so it can still be grepped.
@@ -413,6 +426,21 @@ final class AppleSignInNameTests: XCTestCase {
         XCTAssertEqual(AppleSignInName.fullName(from: name(given: "小明", family: "王")), "王小明")
         XCTAssertEqual(AppleSignInName.fullName(from: name(given: "민준", family: "김")), "김민준")
         XCTAssertEqual(AppleSignInName.fullName(from: name(given: "花子", family: "佐々木")), "佐々木花子")
+    }
+
+    /// Katakana alone is how Japanese writes a foreign name, and the name keeps its
+    /// own given-first order. Reordering it would store "ジャクソンマイケル" as the account name.
+    func testKatakanaOnlyNamesAreForeignNamesAndKeepGivenFirstOrder() {
+        XCTAssertEqual(AppleSignInName.fullName(from: name(given: "マイケル", family: "ジャクソン")), "マイケル ジャクソン")
+        XCTAssertEqual(AppleSignInName.fullName(from: name(given: "ﾏｲｹﾙ", family: "ｼﾞｬｸｿﾝ")), "ﾏｲｹﾙ ｼﾞｬｸｿﾝ",
+                       "half-width katakana is still katakana")
+    }
+
+    /// Katakana beside Han or hiragana is a Japanese name with a katakana part.
+    func testKatakanaBesideHanOrHiraganaStaysFamilyFirst() {
+        XCTAssertEqual(AppleSignInName.fullName(from: name(given: "エミ", family: "山田")), "山田エミ")
+        XCTAssertEqual(AppleSignInName.fullName(from: name(given: "メイ", family: "さとう")), "さとうメイ")
+        XCTAssertEqual(AppleSignInName.fullName(from: name(given: "さくら", family: "やまだ")), "やまださくら")
     }
 
     func testOtherNamesKeepGivenFamilyOrder() {

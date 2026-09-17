@@ -61,8 +61,15 @@ public enum L10n {
     /// files, where reviewers cannot see it and the next translator would not
     /// type it. Applied to the format before arguments go in, so user data that
     /// happens to contain the words (a device named "CLI Pulse Helper") is left alone.
+    ///
+    /// Runs on every lookup, inside SwiftUI body evaluation on every platform, and
+    /// more than 1,500 of each catalogue's ~1,600 values have no brand in them. Those
+    /// return as they came after one search, without building a replaced copy; the
+    /// replacement starts at the first match, which is where the search stopped.
     static func keepingBrandUnbroken(_ text: String) -> String {
-        text.replacingOccurrences(of: "CLI Pulse", with: "CLI\u{00A0}Pulse")
+        guard let first = text.range(of: "CLI Pulse") else { return text }
+        return text.replacingOccurrences(
+            of: "CLI Pulse", with: "CLI\u{00A0}Pulse", range: first.lowerBound..<text.endIndex)
     }
 
     /// Looks a key up in the active locale, falling back to **English
