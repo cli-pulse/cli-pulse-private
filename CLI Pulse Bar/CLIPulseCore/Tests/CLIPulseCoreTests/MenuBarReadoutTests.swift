@@ -7,6 +7,9 @@ import XCTest
 @testable import CLIPulseCore
 
 final class MenuBarReadoutTests: XCTestCase {
+    /// The app name as `L10n` shows it: "CLI Pulse" joined by a no-break space
+    /// (`L10n.keepingBrandUnbroken`). VoiceOver reads it the same either way.
+    private let appName = "CLI\u{00A0}Pulse"
     private var savedLocaleOverride: String?
     private let now = Date(timeIntervalSince1970: 1_750_000_000)
 
@@ -48,13 +51,13 @@ final class MenuBarReadoutTests: XCTestCase {
         let r = readout(alerts: 3, mode: .percent, top: usage("Claude", quota: 100, remaining: 28))
         XCTAssertEqual(r, .unresolvedAlerts(3))
         XCTAssertEqual(r.visibleText, "3")
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "CLI Pulse、未解決のアラート 3 件")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "\(appName)、未解決のアラート 3 件")
     }
 
     func test_percentMode_saysTheShareIsWhatRemains() {
         let r = readout(mode: .percent, top: usage("Claude", quota: 100, remaining: 28))
         XCTAssertEqual(r.visibleText, "28%")
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "CLI Pulse、Claude、残り 28%")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "\(appName)、Claude、残り 28%")
     }
 
     /// "▲12%" / "≈" used to be read as "black up-pointing triangle 12 percent"
@@ -64,7 +67,7 @@ final class MenuBarReadoutTests: XCTestCase {
         let r = readout(mode: .pace, top: usage("Codex", quota: 100, remaining: 60, resetIn: 2 * 3600))
         XCTAssertEqual(r.visibleText, "▼20%")
         let spoken = r.accessibilityLabel(serverOnline: true)
-        XCTAssertEqual(spoken, "CLI Pulse、Codex、ペース: 20% 余裕")
+        XCTAssertEqual(spoken, "\(appName)、Codex、ペース: 20% 余裕")
         XCTAssertFalse(spoken.contains("▼"))
     }
 
@@ -73,34 +76,34 @@ final class MenuBarReadoutTests: XCTestCase {
     func test_paceModeFallback_saysTheShareIsUsed() {
         let r = readout(mode: .pace, top: usage("Cursor", quota: 100, remaining: 55))
         XCTAssertEqual(r.visibleText, "45%")
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "CLI Pulse、Cursor、45% 使用済み")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "\(appName)、Cursor、45% 使用済み")
     }
 
     func test_mostUsedMode_namesTheProvider() {
         let r = readout(mode: .mostUsed, top: usage("Gemini", quota: nil, remaining: nil))
         XCTAssertEqual(r.visibleText, "Gemini")
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "CLI Pulse、Gemini")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "\(appName)、Gemini")
     }
 
     /// Offline is shown only as a `wifi.slash` icon, which a listener never hears.
     func test_offlineIsSpoken_whenSignedIn() {
         XCTAssertEqual(readout(mode: .icon, top: nil).accessibilityLabel(serverOnline: false),
-                       "CLI Pulse、オフライン")
+                       "\(appName)、オフライン")
         XCTAssertEqual(readout(alerts: 1, mode: .icon, top: nil).accessibilityLabel(serverOnline: false),
-                       "CLI Pulse、未解決のアラート 1 件、オフライン")
+                       "\(appName)、未解決のアラート 1 件、オフライン")
     }
 
     func test_signedOut_isTheAppNameOnly() {
         let r = readout(signedIn: false, alerts: 3, mode: .percent, top: usage("Claude", quota: 100, remaining: 28))
         XCTAssertEqual(r, .signedOut)
         XCTAssertEqual(r.visibleText, "")
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: false), "CLI Pulse")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: false), appName)
     }
 
     func test_clausesUseTheLocaleSeparator_inChinese() {
         LocaleOverrideStore.shared.set("zh-Hans")
         let r = readout(alerts: 2, mode: .icon, top: nil)
-        XCTAssertEqual(r.accessibilityLabel(serverOnline: false), "CLI Pulse，2 条未解决告警，离线")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: false), "\(appName)，2 条未解决告警，离线")
     }
 
     // MARK: - The visible text is unchanged by the refactor

@@ -51,7 +51,9 @@ final class CostReportCSVLocalizationTests: XCTestCase {
 
     func test_wordsFollowTheAppLanguage() {
         let lines = report().components(separatedBy: "\n")
-        XCTAssertEqual(lines.first, "\u{FEFF}CLI Pulse コストレポート")
+        // The title is catalogue copy, so the brand keeps its no-break space
+        // (`L10n.keepingBrandUnbroken`) like every other displayed string.
+        XCTAssertEqual(lines.first, "\u{FEFF}CLI\u{00A0}Pulse コストレポート")
         // Two cells, label then timestamp, as the English report always had.
         XCTAssertEqual(lines[1], "生成,\(sharedISO8601Formatter.string(from: generatedAt))")
         for expected in [
