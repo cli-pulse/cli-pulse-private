@@ -94,7 +94,7 @@
 "sessions.select_hint" = "Elige una sesión de la lista para ver los detalles";
 "sessions.no_sessions" = "Sin sesiones";
 "sessions.empty_hint" = "Las sesiones aparecen cuando se detectan herramientas de IA en ejecución";
-"sessions.running" = "en ejecución";
+"sessions.running" = "En ejecución";
 "sessions.details" = "Detalles de sesión";
 "sessions.count_running" = "%d en ejecución";
 
@@ -435,7 +435,7 @@
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "Cuando está activado, tus otros dispositivos con sesión iniciada pueden enviar a los Mac de esta cuenta cuatro tipos de solicitud, y nada más:
-• fijar una velocidad objetivo del ventilador, o devolverlo a automático
+• impulsar el ventilador o devolverlo a automático
 • activar o desactivar el Modo de bajo consumo
 • activar o desactivar Mantener activo
 
@@ -558,7 +558,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "machine.controls_toggle" = "Controles de la máquina";
 "machine.controls_hint" = "Permite finalizar tus propios procesos desde la pestaña Máquina. Desactivado por defecto; cada acción pide confirmación. Solo en la versión de descarga directa (Developer ID).";
 "machine.remote_control_toggle" = "Control remoto de la máquina";
-"machine.remote_control_hint" = "Permite que tus otros dispositivos con sesión iniciada soliciten un impulso del ventilador o el Modo de bajo consumo en este Mac. Desactivado por defecto; limitado al ventilador y al Modo de bajo consumo, y cada impulso se revierte automáticamente. Solo en la versión de descarga directa (Developer ID).";
+"machine.remote_control_hint" = "Permite que tus otros dispositivos con sesión iniciada soliciten un impulso del ventilador, el Modo de bajo consumo o Mantener activo en este Mac. Desactivado por defecto; limitado al ventilador, al Modo de bajo consumo y a Mantener activo, y cada impulso se revierte automáticamente. Solo en la versión de descarga directa (Developer ID).";
 "machine.suspend" = "Suspender";
 "machine.resume" = "Reanudar";
 "machine.paused_badge" = "En pausa";
@@ -969,9 +969,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.git_consent_title" = "¿Activar el seguimiento de actividad de git?";
 "advanced.enable" = "Activar";
 "advanced.git_consent_body" = "CLI Pulse escaneará los registros de git de los proyectos con sesiones de IA activas. Solo salen de tu dispositivo el hash del commit, un HMAC de la ruta del proyecto, la marca de tiempo del commit y un indicador de commit de fusión. Nunca se suben los mensajes de commit, los diffs, las rutas de archivo ni la identidad del autor.";
-"advanced.remote_control" = "Solicitudes de máquina desde tus otros dispositivos";
+"advanced.remote_control" = "Solicitudes de control del Mac desde tus otros dispositivos";
 "advanced.remote_control_hint" = "Permite que tus dispositivos con sesión iniciada pidan a un Mac un impulso del ventilador, el Modo de bajo consumo o Mantener activo · desactivado por defecto";
-"advanced.remote_consent_title" = "¿Permitir solicitudes de máquina?";
+"advanced.remote_consent_title" = "¿Permitir solicitudes de control del Mac?";
 "advanced.token" = "Token";
 "advanced.providers_loaded" = "Proveedores cargados";
 "advanced.last_refresh" = "Última actualización";
@@ -1005,9 +1005,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.reset" = "Restablecer";
 "settings.privacy" = "Privacidad";
 "settings.test_webhook" = "Probar webhook";
-"settings.remote_control" = "Solicitudes de máquina desde tus otros dispositivos";
+"settings.remote_control" = "Enviar solicitudes de control a tus Mac";
 "settings.remote_control_iphone_hint" = "Solicita desde este iPhone a un Mac el impulso del ventilador, el Modo de bajo consumo o Mantener activo";
-"settings.privacy_redacted_hint" = "Tus Mac aceptan cuatro tipos de solicitud de tus otros dispositivos: fijar una velocidad objetivo del ventilador, devolverlo a automático, activar o desactivar el Modo de bajo consumo y activar o desactivar Mantener activo. Nada más sale de tu dispositivo: ni transcripciones, ni registros de sesión, ni salida del terminal.";
+"settings.privacy_redacted_hint" = "Tus Mac solo aceptan cuatro tipos de solicitud: impulsar el ventilador, devolverlo a automático, activar o desactivar el Modo de bajo consumo y activar o desactivar Mantener activo. Nada más sale de tu dispositivo: ni transcripciones, ni registros de sesión, ni salida del terminal.";
 "display.mode" = "Modo de visualización";
 "display.merge_menu_bar_icons" = "Combinar iconos de la barra de menús";
 "display.merge_menu_bar_hint" = "Un solo icono con selector de proveedores";
@@ -1205,7 +1205,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.detected_footer" = "Estas sesiones de Claude se están ejecutando en este Mac, pero no las inició CLI Pulse, así que el helper no puede enviarles entrada ni detenerlas de forma segura. Úsalas desde el terminal donde se abrieron.";
 "sessions.section_active" = "Activas";
 "sessions.section_recent" = "Recientes · últimos 30 min";
-"sessions.freshness_legend" = "En ejecución = proceso confirmado. Reciente = solo actividad en JSONL.";
+"sessions.freshness_legend" = "En ejecución = proceso confirmado. Actividad reciente = escritura en JSONL en los últimos 5 min. Reciente = escritura en JSONL en los últimos 30 min.";
 "sessions.send" = "Enviar";
 "sessions.approve_help" = "Aprueba la solicitud de permiso pendiente de Claude vinculada a esta sesión local (⌘↩).";
 "sessions.reject_help" = "Rechaza la solicitud de permiso pendiente de Claude. Claude seguirá esperando otra decisión o recurrirá a su propio aviso.";
@@ -1431,7 +1431,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "integrations.test_webhook_failed" = "La prueba del webhook falló: %@";
 "advanced.track_git_save_failed" = "No se pudo guardar el ajuste de seguimiento de actividad de git: %@";
 "settings.push_registration_failed" = "No se pudieron registrar las notificaciones push: %@";
-"advanced.remote_control_save_failed" = "No se pudo guardar el ajuste de solicitudes de máquina: %@";
+"advanced.remote_control_save_failed" = "No se pudo guardar el ajuste de solicitudes de control del Mac: %@";
 "remote.identity_create_failed" = "No se pudo crear la identidad del dispositivo: %@";
 "remote.listener_setup_failed" = "No se pudo configurar el receptor de conexiones: %@";
 "remote.turn_on_first" = "Primero activa el control remoto";
@@ -1452,8 +1452,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.percent_used" = "%d%% usado";
 "providers.resets_in" = "Se reinicia %@";
 "widget.complication_description" = "Cuota y alertas de un vistazo";
-"sessions.tier_badge_recent_activity" = "actividad reciente";
-"sessions.tier_badge_recent" = "reciente";
+"sessions.tier_badge_recent_activity" = "Actividad reciente";
+"sessions.tier_badge_recent" = "Reciente";
 "usage_dashboard.tokens_unit" = "tokens";
 "usage_dashboard.range_7d" = "7D";
 "usage_dashboard.range_30d" = "30D";
@@ -1628,9 +1628,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "alert_kind.budget_weekly_title" = "Presupuesto semanal superado — $%@";
 "alert_kind.device_cpu_message" = "El helper midió un uso de CPU del %@%%.";
 "alert_kind.device_cpu_title" = "El uso de CPU del dispositivo es elevado";
-"alert_kind.quota_message" = "El periodo de cuota «%1$@» se ha usado al %2$@%% (%3$@%% restante).";
-"alert_kind.quota_message_reset" = "El periodo de cuota «%1$@» se ha usado al %2$@%% (%3$@%% restante; reinicio: %4$@).";
-"alert_kind.quota_title" = "%1$@ %2$@ al %3$@%%";
+"alert_kind.quota_message" = "Se ha usado el %2$@%% de la cuota «%1$@» (queda un %3$@%%).";
+"alert_kind.quota_message_reset" = "Se ha usado el %2$@%% de la cuota «%1$@» (queda un %3$@%%; se reinicia: %4$@).";
+"alert_kind.quota_title" = "%1$@: cuota «%2$@» al %3$@%%";
 "alert_kind.session_cpu_message_process" = "La CPU del proceso de %2$@ es del %1$@%%.";
 "alert_kind.session_cpu_message_process_in_project" = "La CPU del proceso de %2$@ en %3$@ es del %1$@%%.";
 "alert_kind.session_cpu_message_system" = "%3$@ usa ~%1$@%% de la CPU total del sistema (%2$@ núcleos).";

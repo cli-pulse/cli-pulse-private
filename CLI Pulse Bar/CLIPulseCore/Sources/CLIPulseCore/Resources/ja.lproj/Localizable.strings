@@ -28,7 +28,7 @@
 
 /* ── Welcome Mode Choice (iter19 — shown on macOS Overview when unauth + no local mode picked) ── */
 "welcome_choice.title" = "CLI Pulse へようこそ";
-"welcome_choice.subtitle" = "AI ツールの使用状況を追跡する方法を選んでください：";
+"welcome_choice.subtitle" = "AI ツールの使用状況を追跡する方法を選んでください:";
 "welcome_choice.sign_in_title" = "サインインして同期";
 "welcome_choice.sign_in_body" = "同じアカウントの iPhone、Apple Watch、その他のデバイスで使用状況を追跡します。";
 "welcome_choice.local_mode_title" = "ローカルモードを使用";
@@ -79,7 +79,7 @@
 "diagnostics.check_notifications" = "通知";
 "diagnostics.check_realtime" = "ライブ接続";
 "diagnostics.fix_paired" = "サインインして Mac を同期してください。";
-"diagnostics.fix_remote_control" = "「設定 → プライバシー」で「他のデバイスからのマシンリクエスト」をオンにしてください。";
+"diagnostics.fix_remote_control" = "「設定 → プライバシー」で「Mac に操作リクエストを送信」をオンにしてください。";
 "diagnostics.fix_mac" = "Mac がスリープせず、オンラインで CLI Pulse が動作していることを確認してください。";
 "diagnostics.fix_helper" = "Mac に CLI Pulse ヘルパーをインストールまたは更新してください。";
 "diagnostics.fix_notifications" = "使用状況のアラートを受け取るには通知を許可してください。";
@@ -145,10 +145,10 @@
 "settings.notifications" = "通知";
 "settings.desktop_notifications" = "デスクトップ通知";
 "settings.desktop_notifications_hint" = "クォータ不足やエラー発生時に通知";
-"settings.session_quota_notifications" = "セッションクォータ通知";
+"settings.session_quota_notifications" = "セッションのクォータ通知";
 "settings.session_quota_hint" = "5時間のセッションクォータを使い切ったときに通知";
 "settings.alert_notifications" = "アラート通知";
-"settings.session_quota_alerts" = "セッションクォータアラート";
+"settings.session_quota_alerts" = "セッションのクォータアラート";
 "settings.check_provider_status" = "プロバイダーの状態を確認";
 "settings.cost_tracking" = "コスト追跡";
 "settings.display" = "表示";
@@ -368,10 +368,10 @@
 "auth.sign_in_github" = "GitHub でサインイン";
 "auth.sign_in_cancelled" = "サインインをキャンセルしました";
 "auth.sign_in_failed_generic" = "サインインに失敗しました。もう一度お試しください。";
-"auth.sign_in_failed_state_mismatch" = "サインインに失敗しました：セキュリティ確認が一致しません。もう一度お試しください。";
+"auth.sign_in_failed_state_mismatch" = "サインインに失敗しました: セキュリティ確認が一致しません。もう一度お試しください。";
 "auth.link_cancelled" = "連携をキャンセルしました";
 "auth.link_failed_generic" = "連携に失敗しました。もう一度お試しください。";
-"auth.link_failed_state_mismatch" = "連携に失敗しました：セキュリティ確認が一致しません。もう一度お試しください。";
+"auth.link_failed_state_mismatch" = "連携に失敗しました: セキュリティ確認が一致しません。もう一度お試しください。";
 
 /* ── 予測 ── */
 "forecast.title" = "コスト予測";
@@ -402,7 +402,7 @@
 "auth.apple_no_token" = "Apple 認証で ID トークンが返されませんでした";
 "auth.apple_nonce_failed" = "安全なサインイン用ノンスを生成できませんでした。もう一度お試しください。";
 "account.linked_accounts" = "連携済みアカウント";
-"account.linked_accounts_footer" = "Apple、Google、または GitHub を連携すると、どれでも同じ CLI Pulse アカウントにサインインできます。";
+"account.linked_accounts_footer" = "Apple、Google、GitHub を連携しておくと、どれを使っても同じ CLI Pulse アカウントにサインインできます。";
 "account.unlink_confirm_title" = "このアカウントの連携を解除しますか？";
 "account.unlink_with_provider" = "%@ の連携を解除";
 "account.unlink_message" = "%@ でサインインできなくなります。後で再連携できます。";
@@ -445,9 +445,9 @@
 "settings.reset" = "リセット";
 "settings.privacy" = "プライバシー";
 "settings.test_webhook" = "Webhook をテスト";
-"settings.remote_control" = "他のデバイスからのマシンリクエスト";
+"settings.remote_control" = "Mac に操作リクエストを送信";
 "settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
-"settings.privacy_redacted_hint" = "Mac が他のデバイスから受け付けるリクエストは次の4種類だけです：ファン回転数の指定、ファンを自動制御に戻す操作、低電力モード、スリープ防止。会話ログ、セッションログ、ターミナル出力を含め、それ以外のものはデバイスから一切送信されません。";
+"settings.privacy_redacted_hint" = "Mac が受け付けるリクエストは、ファン増速、ファンの自動制御への復帰、低電力モードのオン / オフ、スリープ防止のオン / オフの4種類だけです。会話ログ、セッションログ、ターミナル出力を含め、それ以外のものはデバイスから一切送信されません。";
 
 /* ── 表示追加 (i18n sweep) ── */
 "display.mode" = "表示モード";
@@ -553,7 +553,7 @@
 "onboarding_wizard.helper_hint" = "ヘッドレスサーバーや Claude Remote Approvals 用のオプションヘルパーをお探しですか？オンボーディング後に「設定 → ヘルパー」を開いてください。";
 "onboarding_wizard.done" = "完了";
 "onboarding_wizard.close" = "オンボーディングを閉じる";
-"onboarding_wizard.step_progress" = "全 %2$d ステップ中 %1$d ステップ目：%3$@";
+"onboarding_wizard.step_progress" = "全 %2$d ステップ中 %1$d ステップ目: %3$@";
 "onboarding_wizard.find_agents" = "エージェントを探す";
 "onboarding_wizard.set_up_later" = "後で設定";
 "onboarding_wizard.privacy_direct_title" = "使用量はプロバイダーへ直接問い合わせます";
@@ -617,9 +617,9 @@
 "advanced.git_consent_title" = "Git アクティビティ追跡を有効にしますか？";
 "advanced.enable" = "有効化";
 "advanced.git_consent_body" = "CLI Pulse は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
-"advanced.remote_control" = "他のデバイスからのマシンリクエスト";
+"advanced.remote_control" = "他のデバイスからの Mac 操作リクエスト";
 "advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます · デフォルトはオフ";
-"advanced.remote_consent_title" = "マシンリクエストを許可しますか？";
+"advanced.remote_consent_title" = "Mac 操作リクエストを許可しますか？";
 "advanced.token" = "トークン";
 "advanced.providers_loaded" = "プロバイダー読み込み済み";
 "advanced.last_refresh" = "最終更新";
@@ -800,7 +800,7 @@
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "オンにすると、サインイン済みの他のデバイスから、このアカウントの Mac に次の4種類のリクエストだけを送れます:
-• ファンの目標回転数を指定する、またはファンを自動制御に戻す
+• ファンを増速する、またはファンを自動制御に戻す
 • 低電力モードのオン / オフ
 • スリープ防止のオン / オフ
 
@@ -867,7 +867,7 @@
 "machine.controls_toggle" = "マシン制御";
 "machine.controls_hint" = "「マシン」タブから自分のプロセスを終了できるようにします。デフォルトはオフで、操作ごとに確認します。直接ダウンロード（Developer ID）版のみ。";
 "machine.remote_control_toggle" = "リモートマシン制御";
-"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速や低電力モードをリクエストできるようにします。デフォルトはオフ。ファンと低電力モードのみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）版のみ。";
+"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速、低電力モード、スリープ防止をリクエストできるようにします。デフォルトはオフ。ファン、低電力モード、スリープ防止のみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）版のみ。";
 "machine.suspend" = "一時停止";
 "machine.resume" = "再開";
 "machine.paused_badge" = "一時停止中";
@@ -1149,14 +1149,14 @@
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名インストール統計";
-"telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
-"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は次の4段階を報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモート操作を使う場合は、4 つのはい/いいえも送ります: この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は次の4段階を報告します: インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。リモート操作を使う場合は、4 つのはい/いいえも送ります: この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
 "telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。ID はランダムで、アンインストールすると削除されます。";
 "telemetry.toggle" = "匿名インストール統計を送信";
 "telemetry.toggle_local_only" = "オフ — ローカルのみモードがこれも対象にしています。";
 "telemetry.got_it" = "OK";
 "telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
-"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムで、アンインストールすると削除されます。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します: インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムで、アンインストールすると削除されます。リモート操作を使う場合は、4 つのはい/いいえも送ります: この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "リモート操作";
@@ -1251,7 +1251,7 @@
 "sessions.detected_footer" = "これらの Claude セッションはこの Mac で実行中ですが、CLI Pulse から起動されたものではないため、ヘルパーは安全に入力を送ったり停止したりできません。起動元のターミナルで操作してください。";
 "sessions.section_active" = "アクティブ";
 "sessions.section_recent" = "最近 · 過去 30 分";
-"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近 = JSONL に記録された活動のみ。";
+"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近の活動 = 5 分以内に JSONL への書き込みあり。最近 = 30 分以内に JSONL への書き込みあり。";
 "sessions.send" = "送信";
 "sessions.approve_help" = "このローカルセッションに紐づく保留中の Claude 権限リクエストを承認します（⌘↩）。";
 "sessions.reject_help" = "保留中の Claude 権限リクエストを拒否します。Claude は別の判断を待ち続けるか、自身のプロンプトに戻ります。";
@@ -1477,7 +1477,7 @@
 "integrations.test_webhook_failed" = "Webhook のテストに失敗しました: %@";
 "advanced.track_git_save_failed" = "Git アクティビティ追跡の設定を保存できませんでした: %@";
 "settings.push_registration_failed" = "プッシュ通知を登録できませんでした: %@";
-"advanced.remote_control_save_failed" = "マシンリクエストの設定を保存できませんでした: %@";
+"advanced.remote_control_save_failed" = "Mac 操作リクエストの設定を保存できませんでした: %@";
 "remote.identity_create_failed" = "デバイス ID を作成できませんでした: %@";
 "remote.listener_setup_failed" = "リスナーを設定できませんでした: %@";
 "remote.turn_on_first" = "先にリモート操作をオンにしてください";

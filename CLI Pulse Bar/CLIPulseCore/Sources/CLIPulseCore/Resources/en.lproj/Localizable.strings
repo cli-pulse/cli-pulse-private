@@ -94,7 +94,7 @@
 "sessions.select_hint" = "Choose a session from the list to see details";
 "sessions.no_sessions" = "No Sessions";
 "sessions.empty_hint" = "Sessions appear when AI tools are detected running";
-"sessions.running" = "running";
+"sessions.running" = "Running";
 "sessions.details" = "Session Details";
 "sessions.count_running" = "%d Running";
 
@@ -537,9 +537,9 @@
 "advanced.git_consent_title" = "Enable git activity tracking?";
 "advanced.enable" = "Enable";
 "advanced.git_consent_body" = "CLI Pulse will scan git logs in projects where AI sessions are active. Only the commit hash, an HMAC of the project path, the commit timestamp, and a merge-commit flag leave your device. Commit messages, diffs, file paths, and author identity are never uploaded.";
-"advanced.remote_control" = "Machine requests from your other devices";
+"advanced.remote_control" = "Mac control requests from your other devices";
 "advanced.remote_control_hint" = "Let your signed-in devices ask a Mac for fan boost, Low Power Mode or Keep Awake · default off";
-"advanced.remote_consent_title" = "Allow machine requests?";
+"advanced.remote_consent_title" = "Allow Mac control requests?";
 "advanced.token" = "Token";
 "advanced.providers_loaded" = "Providers loaded";
 "advanced.last_refresh" = "Last refresh";
@@ -581,9 +581,9 @@
 "settings.reset" = "Reset";
 "settings.privacy" = "Privacy";
 "settings.test_webhook" = "Test Webhook";
-"settings.remote_control" = "Machine requests from your other devices";
+"settings.remote_control" = "Send control requests to your Macs";
 "settings.remote_control_iphone_hint" = "Ask a Mac for fan boost, Low Power Mode or Keep Awake from this iPhone";
-"settings.privacy_redacted_hint" = "Your Macs accept four kinds of request from your other devices — fan target, revert fan to auto, Low Power Mode, Keep Awake. Nothing else leaves your device: no transcripts, session logs, or terminal output.";
+"settings.privacy_redacted_hint" = "Your Macs accept only four kinds of request: boost the fan, revert the fan to Auto, turn Low Power Mode on or off, and turn Keep Awake on or off. Nothing else leaves your device: no transcripts, session logs, or terminal output.";
 
 /* ── Display Mode additions ── */
 "display.mode" = "Display mode";
@@ -809,7 +809,7 @@
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
 "advanced.remote_consent_body" = "When this is on, your other signed-in devices can send this account's Macs four kinds of request, and nothing else:
-• set a fan target, or revert the fan to automatic
+• boost the fan, or revert the fan to Auto
 • turn Low Power Mode on or off
 • turn Keep Awake on or off
 
@@ -863,7 +863,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "machine.controls_toggle" = "Machine controls";
 "machine.controls_hint" = "Let the Machine tab end your own processes. Off by default; every action asks for confirmation. Direct-download (Developer ID) build only.";
 "machine.remote_control_toggle" = "Remote machine control";
-"machine.remote_control_hint" = "Let your other signed-in devices request fan boost or Low Power Mode on this Mac. Off by default; bounded to fan and Low Power Mode, and each boost auto-reverts. Direct-download (Developer ID) build only.";
+"machine.remote_control_hint" = "Let your other signed-in devices request fan boost, Low Power Mode or Keep Awake on this Mac. Off by default; bounded to fan, Low Power Mode and Keep Awake, and each boost auto-reverts. Direct-download (Developer ID) build only.";
 "machine.suspend" = "Suspend";
 "machine.resume" = "Resume";
 "machine.paused_badge" = "Paused";
@@ -1247,7 +1247,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "sessions.detected_footer" = "These Claude sessions are running on this Mac but were not started by CLI Pulse, so the helper can't safely send input or stop them. Use them in the originating terminal instead.";
 "sessions.section_active" = "Active";
 "sessions.section_recent" = "Recent · last 30 min";
-"sessions.freshness_legend" = "Running = process confirmed. Recent = JSONL activity only.";
+"sessions.freshness_legend" = "Running = process confirmed. Recent activity = JSONL written in the last 5 min. Recent = JSONL written in the last 30 min.";
 "sessions.send" = "Send";
 "sessions.approve_help" = "Approve the pending Claude permission request bound to this local session (⌘↩).";
 "sessions.reject_help" = "Reject the pending Claude permission request. Claude will continue waiting for a different decision or fall back to its own prompt.";
@@ -1473,7 +1473,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "integrations.test_webhook_failed" = "Webhook test failed: %@";
 "advanced.track_git_save_failed" = "Failed to save git tracking setting: %@";
 "settings.push_registration_failed" = "Failed to register for push notifications: %@";
-"advanced.remote_control_save_failed" = "Couldn't save the machine requests setting: %@";
+"advanced.remote_control_save_failed" = "Couldn't save the Mac control requests setting: %@";
 "remote.identity_create_failed" = "Could not create a device identity: %@";
 "remote.listener_setup_failed" = "Listener setup failed: %@";
 "remote.turn_on_first" = "Turn remote control on first";
@@ -1494,8 +1494,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "providers.percent_used" = "%d%% used";
 "providers.resets_in" = "Resets %@";
 "widget.complication_description" = "Quota & alerts at a glance";
-"sessions.tier_badge_recent_activity" = "recent activity";
-"sessions.tier_badge_recent" = "recent";
+"sessions.tier_badge_recent_activity" = "Recent activity";
+"sessions.tier_badge_recent" = "Recent";
 "usage_dashboard.tokens_unit" = "tokens";
 "usage_dashboard.range_7d" = "7D";
 "usage_dashboard.range_30d" = "30D";
