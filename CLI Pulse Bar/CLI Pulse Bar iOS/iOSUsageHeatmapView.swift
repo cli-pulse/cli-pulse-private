@@ -84,7 +84,7 @@ struct iOSUsageHeatmapCard: View {
     private func miniStat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(.system(size: 14, weight: .semibold)).monospacedDigit()
-            Text(label.uppercased())
+            Text(L10n.captionCase(label))
                 .font(.system(size: 8, weight: .medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
@@ -151,7 +151,7 @@ struct iOSUsageDashboardView: View {
                     Text(CostFormatter.format(DailyUsageStats.totalCost(archive)))
                         .font(.system(size: 20, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(PulseTheme.accent)
-                    Text(L10n.usageDashboard.totalCost.uppercased())
+                    Text(L10n.captionCase(L10n.usageDashboard.totalCost))
                         .font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
@@ -173,7 +173,7 @@ struct iOSUsageDashboardView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(tile.1).font(.system(size: 18, weight: .semibold)).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.6)
-                    Text(tile.0.uppercased()).font(.system(size: 9, weight: .medium))
+                    Text(L10n.captionCase(tile.0)).font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

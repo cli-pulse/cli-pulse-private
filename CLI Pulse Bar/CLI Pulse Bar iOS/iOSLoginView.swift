@@ -85,14 +85,12 @@ struct iOSLoginView: View {
                             if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential,
                                let identityTokenData = appleIDCredential.identityToken,
                                let identityToken = String(data: identityTokenData, encoding: .utf8) {
-                                let fullName = [appleIDCredential.fullName?.givenName, appleIDCredential.fullName?.familyName]
-                                    .compactMap { $0 }
-                                    .joined(separator: " ")
+                                let fullName = AppleSignInName.fullName(from: appleIDCredential.fullName)
                                 Task {
                                     await state.signInWithApple(
                                         identityToken: identityToken,
                                         nonce: nonce,
-                                        fullName: fullName.isEmpty ? nil : fullName,
+                                        fullName: fullName,
                                         email: appleIDCredential.email
                                     )
                                 }

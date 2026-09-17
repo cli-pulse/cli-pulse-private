@@ -108,7 +108,7 @@ public struct ProviderStatusComponentsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(provider.rawValue) \(L10n.providers.serviceStatus)"))
+        .accessibilityLabel(Text(L10n.providers.serviceStatusFor(provider.rawValue)))
     }
 
     @ViewBuilder private var expandedContent: some View {

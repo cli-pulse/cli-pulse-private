@@ -1766,3 +1766,30 @@
 "dashboard.risk_quota_low" = "%1$@ 할당량: %2$d%% 미만 남음";
 "dashboard.risk_device_offline" = "%@ 오프라인";
 "auth.demo_user_name" = "데모 사용자";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "세션 %d개";
+"watch.devices_count_one" = "기기 %d개";
+"watch.alerts_count_one" = "알림 %d개";
+"widget.alerts_summary_one" = "알림 %d개 • CLI Pulse";
+"yield.commits_count_one" = "커밋 %d개";
+"onboarding_wizard.undetected_providers_one" = "CLI Pulse에 최적화된 에이전트 중 %d개를 찾지 못했습니다";
+"providers.messages_short_one" = "%@ 메시지";
+"providers.tracked_count_one" = "%d개 추적 중";
+"watch.active_count_one" = "%d개 활성";
+"menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 → 공급자에서 편집하세요.";
+"sessions.hook_install_created" = "설치됨: 새 설정 파일을 만들었습니다 — %@";
+"sessions.hook_install_added" = "설치됨: 훅을 추가했습니다 — %@";
+"sessions.hook_install_replaced" = "설치됨: 이전 훅을 교체했습니다 — %@";
+"sessions.hook_install_noop" = "이미 설치되어 있어 변경 사항이 없습니다 — %@";
+"sessions.hook_uninstall_removed" = "훅 %d개를 제거했습니다 — %@";
+"sessions.hook_uninstall_removed_one" = "훅 %d개를 제거했습니다 — %@";
+"sessions.hook_uninstall_noop" = "제거할 훅이 없습니다 — %@";
+"app_updater.permission_notifications" = "알림";
+"app_updater.permission_accessibility" = "손쉬운 사용";
+"providers.service_status_for" = "%@ 서비스 상태";
+"watch.stale_no_timestamp" = "오래된 데이터";
+"widget.provider_usage_description" = "홈 화면에서 사용률을 빠르게 확인합니다.";
+"badge.confidence_high" = "신뢰도 높음";
+"badge.confidence_medium" = "신뢰도 보통";
+"badge.confidence_low" = "신뢰도 낮음";

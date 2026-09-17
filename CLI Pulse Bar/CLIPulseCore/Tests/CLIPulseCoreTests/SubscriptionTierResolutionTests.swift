@@ -63,7 +63,7 @@ final class SubscriptionTierResolutionTests: XCTestCase {
             tierResolutionState: .resolvedConfirmed
         )
         XCTAssertNotNil(warning)
-        XCTAssertTrue(warning?.contains("CLI Pulse Free plan limits") ?? false,
+        XCTAssertTrue(warning?.contains("CLI\u{00A0}Pulse Free plan limits") ?? false,  // brand joined at lookup
                       "banner copy must mention the CLI Pulse plan, not just 'free plan': \(String(describing: warning))")
         XCTAssertTrue(warning?.contains("4/3") ?? false,
                       "banner must name the provider count that tripped it: \(String(describing: warning))")

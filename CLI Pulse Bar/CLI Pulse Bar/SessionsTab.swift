@@ -1739,7 +1739,7 @@ struct SessionsTab: View {
                     // the detector flips to .wired and THIS installed banner is
                     // what remains on screen (review: codex).
                     if let lastInstall = lastInstallHookResult {
-                        Text(L10n.sessions.hookInstallResult(lastInstall.action, lastInstall.settingsPath))
+                        Text(L10n.sessions.hookInstallOutcome(action: lastInstall.action, settingsPath: lastInstall.settingsPath))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)
@@ -1806,7 +1806,7 @@ struct SessionsTab: View {
                     // the detector flips to .notWired and THIS install banner is
                     // what remains on screen (review: codex).
                     if let lastUninstall = lastUninstallHookResult {
-                        Text(L10n.sessions.hookUninstallResult(lastUninstall.action, lastUninstall.removed, lastUninstall.settingsPath))
+                        Text(L10n.sessions.hookUninstallOutcome(action: lastUninstall.action, removed: lastUninstall.removed, settingsPath: lastUninstall.settingsPath))
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                             .lineLimit(2)

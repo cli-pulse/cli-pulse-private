@@ -1796,3 +1796,30 @@
 "dashboard.risk_quota_low" = "%1$@ 配额：剩余不足 %2$d%%";
 "dashboard.risk_device_offline" = "%@ 已离线";
 "auth.demo_user_name" = "演示用户";
+
+/* ── composition ── */
+"watch.sessions_count_one" = "%d 个会话";
+"watch.devices_count_one" = "%d 台设备";
+"watch.alerts_count_one" = "%d 条告警";
+"widget.alerts_summary_one" = "%d 条告警 • CLI Pulse";
+"yield.commits_count_one" = "%d 次提交";
+"onboarding_wizard.undetected_providers_one" = "另有 %d 个已优化 Agent 未发现";
+"providers.messages_short_one" = "%@ 条消息";
+"providers.tracked_count_one" = "正在追踪 %d 个";
+"watch.active_count_one" = "%d 个活跃";
+"menu_bar.tier_migration_one" = "已保留你最常用的 %d 个服务商以适配免费方案。已禁用 %d 个——可在「设置 → 服务商」中编辑。";
+"sessions.hook_install_created" = "已安装：已新建设置文件 — %@";
+"sessions.hook_install_added" = "已安装：已添加 hook — %@";
+"sessions.hook_install_replaced" = "已安装：已替换旧版 hook — %@";
+"sessions.hook_install_noop" = "已安装，无需更改 — %@";
+"sessions.hook_uninstall_removed" = "已移除 %d 个 hook — %@";
+"sessions.hook_uninstall_removed_one" = "已移除 %d 个 hook — %@";
+"sessions.hook_uninstall_noop" = "没有需要移除的 hook — %@";
+"app_updater.permission_notifications" = "通知";
+"app_updater.permission_accessibility" = "辅助功能";
+"providers.service_status_for" = "%@ 服务状态";
+"watch.stale_no_timestamp" = "数据已过期";
+"widget.provider_usage_description" = "在主屏幕上快速查看使用百分比。";
+"badge.confidence_high" = "可信度：高";
+"badge.confidence_medium" = "可信度：中";
+"badge.confidence_low" = "可信度：低";

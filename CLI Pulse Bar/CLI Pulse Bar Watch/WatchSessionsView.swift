@@ -228,10 +228,13 @@ struct WatchSessionDetailView: View {
             }
 
             Section(L10n.sessions.details) {
-                WatchMetricRow(label: L10n.tab.providers, value: session.provider, icon: "cpu")
-                WatchMetricRow(label: L10n.dashboard.topProjects, value: session.project, icon: "folder")
-                WatchMetricRow(label: L10n.dashboard.onlineDevices, value: session.device_name, icon: "desktopcomputer")
-                WatchMetricRow(label: L10n.alerts.created, value: RelativeTime.format(session.started_at), icon: "clock")
+                // One session's fields: the singular detail labels the iPhone
+                // session detail uses, not the plural dashboard headings
+                // ("Top Projects: my-app") or the alert's "Created".
+                WatchMetricRow(label: L10n.detail.provider, value: session.provider, icon: "cpu")
+                WatchMetricRow(label: L10n.detail.project, value: session.project, icon: "folder")
+                WatchMetricRow(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
+                WatchMetricRow(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
             }
 
             Section(L10n.dashboard.quickStats) {
@@ -242,7 +245,7 @@ struct WatchSessionDetailView: View {
                 )
                 if showCost {
                     WatchMetricRow(
-                        label: L10n.dashboard.costToday,
+                        label: L10n.detail.cost,  // the session's whole cost, not today's
                         value: CostFormatter.format(session.estimated_cost),
                         icon: "dollarsign.circle",
                         valueColor: .green

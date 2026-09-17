@@ -76,7 +76,7 @@ struct DashboardStatStrip: View {
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
-                    Text(tile.label.uppercased())
+                    Text(L10n.captionCase(tile.label))
                         .font(.system(size: 8.5, weight: .medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -474,7 +474,7 @@ public struct CompactUsageCard: View {
     private func miniStat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-            Text(label.uppercased()).font(.system(size: 8)).foregroundStyle(.secondary)
+            Text(L10n.captionCase(label)).font(.system(size: 8)).foregroundStyle(.secondary)
         }
     }
 }

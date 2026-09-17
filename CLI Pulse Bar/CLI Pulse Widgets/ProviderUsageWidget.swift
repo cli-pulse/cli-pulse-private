@@ -13,7 +13,7 @@ struct ProviderUsageWidget: Widget {
                 .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName(L10n.widget.usageTitle)
-        .description(L10n.widget.usageDescription)
+        .description(L10n.widget.providerUsageDescription)
         .supportedFamilies([.systemSmall])
     }
 }

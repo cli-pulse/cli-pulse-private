@@ -539,24 +539,12 @@ struct ProviderTierCard: View {
 struct WatchAccountFreshnessLabel: View {
     let account: ProviderAccountUsage
 
-    private var timestamp: String? {
-        ProviderAccountPresentation.freshnessTimestamp(
-            for: account
-        )
-    }
-
     private var isStale: Bool {
         ProviderAccountPresentation.isStale(account)
     }
 
     private var text: String {
-        guard let timestamp else {
-            return L10n.watch.staleUpdated("—")
-        }
-        let relative = RelativeTime.format(timestamp)
-        return isStale
-            ? L10n.watch.staleUpdated(relative)
-            : L10n.dashboard.updated(relative)
+        ProviderAccountPresentation.freshnessLabel(for: account)
     }
 
     var body: some View {
@@ -876,10 +864,8 @@ struct WatchProviderDetailView: View {
                             .lineLimit(1)
                         }
                         if let quotaSnapshot {
-                            Text(
-                                "\(quotaSnapshot.remainingPercent)% "
-                                    + L10n.watch.remaining
-                            )
+                            // Whole-phrase key: "残り 40%" in ja/zh, not "40% 残り".
+                            Text(L10n.watch.percentLeft(quotaSnapshot.remainingPercent))
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -1000,8 +986,10 @@ struct WatchProviderDetailView: View {
                     icon: "calendar"
                 )
                 if showCost {
+                    // The section header already says "This Week"; "Cost Today"
+                    // here labelled a weekly number as today's.
                     WatchMetricRow(
-                        label: L10n.dashboard.costToday,
+                        label: L10n.detail.cost,
                         value: CostFormatter.format(provider.estimated_cost_week),
                         icon: "dollarsign.circle",
                         valueColor: .green

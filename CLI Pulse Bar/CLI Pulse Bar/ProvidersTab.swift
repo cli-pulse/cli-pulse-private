@@ -506,7 +506,7 @@ struct EnhancedProviderCard: View {
         if isClaude {
             if let msgs {
                 return CardMetric(
-                    primary: L10n.providers.messagesShort(CostFormatter.formatUsage(msgs)),
+                    primary: L10n.providers.messagesShort(msgs),
                     secondary: tokens.map { "\(CostFormatter.formatUsage($0)) I/O" },
                     breakdownTooltip: L10n.providers.claudeMetricHelp
                 )

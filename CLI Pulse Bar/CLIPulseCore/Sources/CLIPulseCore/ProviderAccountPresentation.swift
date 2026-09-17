@@ -144,6 +144,20 @@ public enum ProviderAccountPresentation {
         return newest?.timestamp ?? timestamps.first
     }
 
+    /// The Watch account row's freshness line: "Updated 5m ago", or
+    /// "Stale · updated 2h ago". An account with no observation time gets a
+    /// stale label of its own; putting a "—" in the time slot read "—更新" in
+    /// Chinese, and no word order suits a dash.
+    public static func freshnessLabel(for account: ProviderAccountUsage) -> String {
+        guard let timestamp = freshnessTimestamp(for: account) else {
+            return L10n.watch.staleNoTimestamp
+        }
+        let relative = RelativeTime.format(timestamp)
+        return isStale(account)
+            ? L10n.watch.staleUpdated(relative)
+            : L10n.dashboard.updated(relative)
+    }
+
     /// Missing or malformed observation time is stale by definition: a
     /// compact client cannot honestly present that snapshot as current.
     public static func isStale(
