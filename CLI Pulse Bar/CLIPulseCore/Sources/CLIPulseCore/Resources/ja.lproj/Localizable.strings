@@ -10,42 +10,42 @@
 
 /* ── 概要 / ダッシュボード ── */
 "dashboard.title" = "ダッシュボード";
-"dashboard.updated" = "%@ に更新";
+"dashboard.updated" = "更新: %@";
 "dashboard.server_online" = "サーバーオンライン";
 "dashboard.server_offline" = "サーバーオフライン";
 "dashboard.no_data" = "データなし";
 "dashboard.connect_helper" = "この Mac で AI ツールを使い始めると、使用状況がここに表示されます。";
 "dashboard.local_mode_ready_title" = "ローカルモードの準備完了";
-"dashboard.local_mode_ready_body" = "この Mac で Claude Code、Codex、Ollama などの AI ツールを使うと、使用状況がここに自動表示されます。設定からいつでもサインインすれば iPhone に同期できます。";
+"dashboard.local_mode_ready_body" = "この Mac で Claude Code、Codex、Ollama などの AI ツールを使うと、使用状況がここに自動で表示されます。設定からいつでもサインインして、このデータを iPhone に同期できます。";
 
 /* ── Local Mode Guide (iter18 — shown on macOS Overview while in unauth local mode) ── */
 "local_mode_guide.title" = "ローカルモード";
-"local_mode_guide.body" = "この Mac の使用状況をローカルで収集しています。設定からサインインすると複数の端末で同期できます。";
-"local_mode_guide.bullet1" = "この Mac で Claude Code、Codex、Ollama などの AI ツールを使う";
+"local_mode_guide.body" = "この Mac の使用状況をローカルで収集しています。設定からサインインすると、複数のデバイスで同期できます。";
+"local_mode_guide.bullet1" = "この Mac で Claude Code、Codex、Ollama などの AI ツールを実行してください";
 "local_mode_guide.bullet2" = "トークン数が表示されない場合は、設定でフォルダアクセスを許可してください";
-"local_mode_guide.bullet3" = "後でサインインすれば、使用状況を iPhone や他の端末に同期できます";
+"local_mode_guide.bullet3" = "後でサインインすると、使用状況を iPhone や他のデバイスに同期できます";
 "local_mode_guide.sign_in_cta" = "サインインして同期";
 
 /* ── Welcome Mode Choice (iter19 — shown on macOS Overview when unauth + no local mode picked) ── */
 "welcome_choice.title" = "CLI Pulse へようこそ";
 "welcome_choice.subtitle" = "AI ツールの使用状況を追跡する方法を選んでください：";
 "welcome_choice.sign_in_title" = "サインインして同期";
-"welcome_choice.sign_in_body" = "iPhone、Watch、その他の同じアカウントの端末で使用状況を追跡します。";
+"welcome_choice.sign_in_body" = "同じアカウントの iPhone、Apple Watch、その他のデバイスで使用状況を追跡します。";
 "welcome_choice.local_mode_title" = "ローカルモードを使用";
 "welcome_choice.local_mode_body" = "この Mac の使用状況のみ追跡します — アカウント不要、何もアップロードしません。";
 "welcome_choice.footnote" = "モードはいつでも設定から切り替えられます。";
-"dashboard.usage_today" = "本日の使用量";
-"dashboard.cost_today" = "本日のコスト";
+"dashboard.usage_today" = "今日の使用量";
+"dashboard.cost_today" = "今日のコスト";
 "dashboard.est_cost" = "推定コスト";
 "dashboard.requests" = "リクエスト";
 "dashboard.active_sessions" = "アクティブセッション";
 "dashboard.online_devices" = "デバイス";
 "dashboard.unresolved_alerts" = "アラート";
 "dashboard.cost_summary" = "コスト概要";
-"dashboard.today" = "本日";
+"dashboard.today" = "今日";
 "dashboard.30day_est" = "30日推定";
 "dashboard.provider_usage" = "プロバイダー使用量";
-"dashboard.top_projects" = "トッププロジェクト";
+"dashboard.top_projects" = "上位プロジェクト";
 "dashboard.no_projects" = "追跡中のプロジェクトはありません";
 "dashboard.risk_signals" = "リスクシグナル";
 "dashboard.activity" = "アクティビティ";
@@ -57,7 +57,7 @@
 /* ── プロバイダー ── */
 "providers.title" = "プロバイダー";
 "providers.show_all" = "すべて表示";
-"providers.hide_disabled" = "無効を非表示";
+"providers.hide_disabled" = "無効な項目を非表示";
 "providers.tracked" = "追跡中";
 "providers.no_providers" = "プロバイダーなし";
 "providers.no_data" = "プロバイダーデータなし";
@@ -73,13 +73,13 @@
 "diagnostics.overall_attention" = "要対応";
 "diagnostics.copy" = "サポート用にコピー";
 "diagnostics.check_paired" = "アカウント同期済み";
-"diagnostics.check_remote_control" = "リモートコントロール";
+"diagnostics.check_remote_control" = "リモート操作";
 "diagnostics.check_mac" = "Mac に到達可能";
 "diagnostics.check_helper" = "ヘルパー導入済み";
 "diagnostics.check_notifications" = "通知";
 "diagnostics.check_realtime" = "ライブ接続";
 "diagnostics.fix_paired" = "サインインして Mac を同期してください。";
-"diagnostics.fix_remote_control" = "設定 → プライバシーでリモートコントロールをオンにしてください。";
+"diagnostics.fix_remote_control" = "「設定 → プライバシー」で「他のデバイスからのマシンリクエスト」をオンにしてください。";
 "diagnostics.fix_mac" = "Mac がスリープせず、オンラインで CLI Pulse が動作していることを確認してください。";
 "diagnostics.fix_helper" = "Mac に CLI Pulse ヘルパーをインストールまたは更新してください。";
 "diagnostics.fix_notifications" = "使用状況のアラートを受け取るには通知を許可してください。";
@@ -93,10 +93,10 @@
 "sessions.select" = "セッションを選択";
 "sessions.select_hint" = "リストからセッションを選択して詳細を表示";
 "sessions.no_sessions" = "セッションなし";
-"sessions.empty_hint" = "AIツールの実行検出時にセッションが表示されます";
+"sessions.empty_hint" = "AI ツールの実行が検出されると、セッションが表示されます";
 "sessions.running" = "実行中";
 "sessions.details" = "セッション詳細";
-"sessions.count_running" = "%d 実行中";
+"sessions.count_running" = "%d 件実行中";
 
 /* ── アラート ── */
 "alerts.title" = "アラート";
@@ -104,7 +104,7 @@
 "alerts.no_alerts" = "アラートなし";
 "alerts.no_unresolved" = "未解決のアラートなし";
 "alerts.no_matching" = "一致するアラートなし";
-"alerts.open" = "未処理";
+"alerts.open" = "未解決";
 "alerts.resolved" = "解決済み";
 "alerts.all" = "すべて";
 "alerts.filter" = "フィルター";
@@ -118,7 +118,7 @@
 "alerts.actions" = "アクション";
 "alerts.severity_critical" = "重大";
 "alerts.severity_warning" = "警告";
-"alerts.unresolved_count" = "%d 未解決";
+"alerts.unresolved_count" = "未解決 %d 件";
 
 /* ── 設定 ── */
 "settings.title" = "設定";
@@ -137,7 +137,7 @@
 "settings.subscription" = "サブスクリプション";
 "settings.current_plan" = "現在のプラン";
 "settings.manage_subscription" = "サブスクリプション管理";
-"settings.upgrade_pro" = "Proにアップグレード";
+"settings.upgrade_pro" = "Pro にアップグレード";
 "settings.providers" = "プロバイダー";
 "settings.devices" = "デバイス";
 "settings.data_retention" = "データ保持";
@@ -146,13 +146,13 @@
 "settings.desktop_notifications" = "デスクトップ通知";
 "settings.desktop_notifications_hint" = "クォータ不足やエラー発生時に通知";
 "settings.session_quota_notifications" = "セッションクォータ通知";
-"settings.session_quota_hint" = "5時間のセッションクォータ消費時に通知";
+"settings.session_quota_hint" = "5時間のセッションクォータを使い切ったときに通知";
 "settings.alert_notifications" = "アラート通知";
 "settings.session_quota_alerts" = "セッションクォータアラート";
-"settings.check_provider_status" = "プロバイダーステータスを確認";
+"settings.check_provider_status" = "プロバイダーの状態を確認";
 "settings.cost_tracking" = "コスト追跡";
 "settings.display" = "表示";
-"settings.show_cost_estimates" = "コスト見積もりを表示";
+"settings.show_cost_estimates" = "推定コストを表示";
 "settings.menu_bar_mode" = "メニューバーモード";
 "settings.reorder_providers" = "プロバイダーの並べ替え";
 "settings.reorder_hint" = "ドラッグで並べ替え、タップで有効/無効";
@@ -160,12 +160,12 @@
 "settings.advanced" = "詳細";
 "settings.hide_personal_info" = "個人情報を隠す";
 "settings.force_refresh" = "すべてのデータを強制更新";
-"settings.about" = "について";
+"settings.about" = "情報";
 "settings.version" = "バージョン";
 "settings.build" = "ビルド";
 "settings.privacy_policy" = "プライバシーポリシー";
 "settings.terms_of_use" = "利用規約";
-"settings.github" = "GitHubリポジトリ";
+"settings.github" = "GitHub リポジトリ";
 "settings.sign_out" = "サインアウト";
 "settings.sign_in" = "サインイン";
 "settings.sign_in_email" = "メールでサインイン";
@@ -174,16 +174,16 @@
 "settings.appearance_system" = "システム";
 "settings.appearance_light" = "ライト";
 "settings.appearance_dark" = "ダーク";
-"settings.email" = "メール";
+"settings.email" = "メールアドレス";
 "settings.name" = "名前";
 
 /* ── 認証 / ログイン ── */
 "auth.title" = "CLI Pulse";
-"auth.subtitle" = "AIコーディングツールを監視";
+"auth.subtitle" = "AI コーディングツールを監視";
 "auth.or" = "または";
 "auth.try_demo" = "デモを試す";
 "auth.welcome" = "ようこそ";
-"auth.watch_hint" = "iPhoneでサインインするか、下に認証情報を入力";
+"auth.watch_hint" = "iPhone でサインインするか、下に認証情報を入力";
 "auth.send_code" = "認証コードを送信";
 "auth.verify_code" = "認証";
 "auth.enter_code" = "認証コードを入力";
@@ -198,10 +198,10 @@
 /* ── サブスクリプション ── */
 "subscription.title" = "サブスクリプション";
 "subscription.pro_title" = "CLI Pulse Pro";
-"subscription.unlock" = "CLI Pulseのフルパワーを解放";
+"subscription.unlock" = "CLI Pulse のすべての機能を解放";
 "subscription.monthly" = "月額";
 "subscription.yearly" = "年額";
-"subscription.yearly_save" = "年額（%@お得）";
+"subscription.yearly_save" = "年額（%@ お得）";
 "subscription.popular" = "人気";
 "subscription.not_available" = "利用不可";
 "subscription.restore" = "購入を復元";
@@ -209,20 +209,20 @@
 "subscription.free_description" = "個人利用向けの基本モニタリング";
 "subscription.pro" = "Pro";
 "subscription.pro_description" = "拡張履歴付きの高度なモニタリング";
-"subscription.team" = "チーム";
+"subscription.team" = "Team";
 "subscription.team_description" = "チーム向けフル機能モニタリング";
-"subscription.everything_in_pro" = "Proのすべての機能を含む";
-"subscription.unlimited_providers" = "無制限のプロバイダー";
+"subscription.everything_in_pro" = "Pro のすべての機能を含む";
+"subscription.unlimited_providers" = "プロバイダー数無制限";
 "subscription.home_screen_widgets" = "ホーム画面・ロック画面ウィジェット（iPhone）";
-"subscription.channel_grant" = "あなたの Pro プランは直接ダウンロード版 / Homebrew 版に付属するものです。購入ではなくこのチャネルへの贈り物なので、支払いも解約もありません。";
+"subscription.channel_grant" = "この Pro プランは直接ダウンロード版 / Homebrew 版に付属する特典で、購入したものではありません。支払いも解約も必要ありません。";
 "subscription.per_year" = "/年";
 "subscription.per_month" = "/月";
-"subscription.upgrade_pro" = "Proにアップグレード";
-"subscription.switch_pro" = "Proに切り替え";
+"subscription.upgrade_pro" = "Pro にアップグレード";
+"subscription.switch_pro" = "Pro に切り替え";
 
 /* ── について ── */
-"about.title" = "CLI Pulse Barについて";
-"about.description" = "メニューバーからAIコーディングツールを監視。Claude、Codex、Geminiなど20+プロバイダーの使用量、コスト、アラートを追跡。";
+"about.title" = "CLI Pulse Bar について";
+"about.description" = "メニューバーから AI コーディングツールを監視。Claude、Codex、Gemini など 20 以上のプロバイダーの使用量、コスト、アラートを追跡。";
 "about.copyright" = "© 2025 CLI Pulse コントリビューター";
 "about.report_issue" = "問題を報告";
 
@@ -230,7 +230,7 @@
 "widget.usage_title" = "使用量";
 "widget.usage_description" = "ロック画面で使用率をすばやく確認。";
 "widget.overview_title" = "使用概要";
-"widget.overview_description" = "AIコーディングツールの使用状況を一目で確認。";
+"widget.overview_description" = "AI コーディングツールの使用状況を一目で確認。";
 "widget.app_name" = "CLI Pulse";
 "widget.no_data" = "データなし";
 "widget.no_provider_data" = "プロバイダーデータなし";
@@ -253,7 +253,7 @@
 "common.save" = "保存";
 "common.delete" = "削除";
 "common.enabled" = "有効";
-"common.today" = "本日";
+"common.today" = "今日";
 "common.no_data" = "データなし";
 "common.navigation" = "ナビゲーション";
 "common.data" = "データ";
@@ -261,7 +261,7 @@
 "common.ok" = "OK";
 
 /* ── アカウント ── */
-"account.delete_account" = "アカウント削除";
+"account.delete_account" = "アカウントを削除";
 "account.delete_confirm_title" = "アカウント削除";
 "account.delete_confirm_message" = "アカウントとすべての関連データが完全に削除されます。この操作は元に戻せません。";
 "account.unlimited" = "無制限";
@@ -277,10 +277,10 @@
 "detail.errors" = "エラー";
 "detail.remaining" = "残り";
 "detail.remaining_value" = "残り %@";
-"detail.usage_today" = "%@ 本日";
+"detail.usage_today" = "今日 %@";
 
 /* ── クォータ ── */
-"quota.low" = "不足";
+"quota.low" = "残りわずか";
 "quota.moderate" = "中程度";
 "quota.ok" = "OK";
 
@@ -292,7 +292,7 @@
 "display.icon" = "アイコン";
 "display.percent" = "パーセント";
 "display.pace" = "ペース";
-"display.most_used" = "最も使用";
+"display.most_used" = "最多使用";
 
 /* ── ステータス ── */
 "status.running" = "実行中";
@@ -301,19 +301,19 @@
 "status.syncing" = "同期中";
 "status.online" = "オンライン";
 "status.offline" = "オフライン";
-"status.degraded" = "低下";
+"status.degraded" = "性能低下";
 "status.operational" = "正常";
 "status.down" = "停止";
 "status.disabled" = "無効";
 "status.ended" = "終了";
 
 /* ── バッジ ── */
-"badge.free" = "無料";
-"badge.pro" = "プロ";
-"badge.team" = "チーム";
+"badge.free" = "FREE";
+"badge.pro" = "PRO";
+"badge.team" = "TEAM";
 "badge.exact" = "正確";
 "badge.estimated" = "推定";
-"badge.unavailable" = "不可";
+"badge.unavailable" = "不明";
 "badge.high" = "高";
 "badge.medium" = "中";
 "badge.low" = "低";
@@ -326,46 +326,46 @@
 /* MARK: - First-run visibility (v1.49) */
 "first_run.title" = "CLI Pulse は実行中です";
 "first_run.body" = "画面上部のメニューバーにある CLI Pulse アイコンを探してください。クリックすると CLI の使用状況を確認できます。";
-"first_run.dismiss" = "わかりました";
+"first_run.dismiss" = "OK";
 
 "onboarding.how_it_works" = "CLI Pulse の仕組み";
 "onboarding.cloud_sync_title" = "クラウド同期";
-"onboarding.cloud_sync_desc" = "Mac アプリが AI ツールの使用状況をローカルでスキャンし、あなたのアカウントにアップロードします。同じアカウントでサインインしている端末（この iPhone を含む）に自動的に反映されます。";
+"onboarding.cloud_sync_desc" = "Mac アプリが AI ツールの使用状況をローカルでスキャンし、アカウントにアップロードします。同じアカウントでサインインしているデバイス（この iPhone を含む）に自動的に反映されます。";
 "onboarding.not_bluetooth" = "Bluetooth やデバイスの直接ペアリングではありません — 同期はアカウント単位です。";
 "onboarding.setup_steps_title" = "はじめに";
 "onboarding.step1_mac" = "Mac アプリでサインイン";
-"onboarding.step2_helper" = "この端末でも同じアカウントでサインイン";
+"onboarding.step2_helper" = "このデバイスでも同じアカウントでサインイン";
 "onboarding.step3_phone" = "データが自動的にここに表示されます";
 "onboarding.local_mode_title" = "ローカルモード";
-"onboarding.local_mode_desc" = "この Mac で実行中のAIツールを検出します。クラウド設定は不要です。";
+"onboarding.local_mode_desc" = "この Mac で実行中の AI ツールを検出します。クラウド設定は不要です。";
 "onboarding.cloud_mode_title" = "クラウド同期（オプション）";
-"onboarding.cloud_mode_desc" = "ヘルパースクリプトがデータをクラウドに同期し、iPhoneを含むすべてのデバイスで閲覧できます。";
+"onboarding.cloud_mode_desc" = "ヘルパースクリプトがデータをクラウドに同期し、iPhone を含むすべてのデバイスで閲覧できます。";
 "onboarding.ios_waiting" = "データ待機中";
-"onboarding.ios_waiting_desc" = "Mac アプリで同じアカウントにサインインすれば、使用データが自動的にここに表示されます — 手動ペアリングは不要です。";
+"onboarding.ios_waiting_desc" = "Mac アプリで同じアカウントにサインインすれば、使用データが自動的にここに表示されます。手動でのペアリングは不要です。";
 "onboarding.check_sync" = "同期ステータスを確認";
 "onboarding.set_up_sync" = "クラウド同期をセットアップ";
 "onboarding.synced_mode" = "クラウド同期 — デバイス間でデータ同期中";
-"onboarding.not_synced_hint" = "サインインすると、使用データがアカウントに同期されます。同じアカウントでサインインしている端末（iPhone を含む）にも自動で表示されます。";
+"onboarding.not_synced_hint" = "サインインすると、使用データがアカウントに同期されます。同じアカウントでサインインしているデバイス（iPhone を含む）にも自動で表示されます。";
 "onboarding.helper_not_connected_yet" = "ヘルパーがまだ接続されていません。上記のコマンドを実行してから、もう一度お試しください。";
 
 /* ── チーム ── */
 
 /* ── 連携 ── */
-"integrations.title" = "連携";
-"integrations.webhook_notifications" = "Webhook通知";
+"integrations.title" = "外部連携";
+"integrations.webhook_notifications" = "Webhook 通知";
 "integrations.webhook_hint" = "Discord、Slack、またはカスタムエンドポイントにアラートを送信";
 "integrations.webhook_url_placeholder" = "Webhook URL (Discord / Slack)";
-"integrations.test_webhook" = "Webhookをテスト";
+"integrations.test_webhook" = "Webhook をテスト";
 "integrations.event_filter" = "イベントフィルター";
-"integrations.event_filter_hint" = "一致するアラートのみWebhookを送信（空 = すべて）";
+"integrations.event_filter_hint" = "一致するアラートのみ Webhook を送信（空 = すべて）";
 "integrations.filter_severities" = "重大度";
 "integrations.filter_types" = "アラートの種類";
-"integrations.filter_providers" = "プロバ��ダー";
-"integrations.filter_all" = "す���て";
+"integrations.filter_providers" = "プロバイダー";
+"integrations.filter_all" = "すべて";
 
 /* ── Auth (OAuth) ── */
-"auth.sign_in_google" = "Googleでサインイン";
-"auth.sign_in_github" = "GitHubでサインイン";
+"auth.sign_in_google" = "Google でサインイン";
+"auth.sign_in_github" = "GitHub でサインイン";
 "auth.sign_in_cancelled" = "サインインをキャンセルしました";
 "auth.sign_in_failed_generic" = "サインインに失敗しました。もう一度お試しください。";
 "auth.sign_in_failed_state_mismatch" = "サインインに失敗しました：セキュリティ確認が一致しません。もう一度お試しください。";
@@ -384,7 +384,7 @@
 // v1.10 P3-2: accessibility labels
 "a11y.dismiss_error" = "エラーを閉じる";
 "a11y.dismiss_tier_warning" = "プラン制限の警告を閉じる";
-"a11y.configure_provider" = "%@を設定";
+"a11y.configure_provider" = "%@ を設定";
 "a11y.configuration_error_title" = "設定エラー";
 "a11y.configuration_error_body" = "SUPABASE_ANON_KEY が未設定です。API 呼び出しは失敗します。";
 
@@ -394,7 +394,7 @@
 "auth.use_password" = "パスワードでサインイン";
 "auth.password_label" = "パスワード";
 "auth.use_local_mode" = "ローカルモードを使用";
-"auth.use_local_mode_hint" = "この Mac の使用状況のみ表示します。複数端末で同期するには、後でサインインしてください。";
+"auth.use_local_mode_hint" = "この Mac の使用状況のみ表示します。複数のデバイスで同期するには、後でサインインしてください。";
 "auth.watch_phone_prompt" = "iPhone で CLI Pulse を開いてサインイン";
 "auth.watch_phone_unreachable" = "iPhone に接続できません。iPhone で CLI Pulse を開いているか確認するか、下から手動でサインインしてください。";
 "auth.watch_complete_sign_in" = "サインインを完了";
@@ -411,7 +411,7 @@
 "account.unlink" = "連携解除";
 "account.link" = "連携";
 "account.delete_long_message" = "アカウントとすべての関連データ（セッション、デバイス、アラート、チームメンバーシップを含む）が完全に削除されます。この操作は元に戻せません。";
-"account.delete_continue" = "続行";
+"account.delete_continue" = "続ける";
 "account.delete_confirm_step_title" = "削除を確認";
 "account.delete_confirm_placeholder" = "DELETE と入力して確認";
 "account.delete_confirm_button" = "アカウントを削除";
@@ -424,7 +424,7 @@
 "dashboard.export_cost_report" = "コストレポートを書き出す";
 "dashboard.export_sessions" = "セッションを書き出す";
 "dashboard.export_providers" = "プロバイダーを書き出す";
-"dashboard.export_pdf" = "PDFレポートを書き出す";
+"dashboard.export_pdf" = "PDF レポートを書き出す";
 "dashboard.export" = "書き出す";
 "dashboard.subscriptions" = "サブスクリプション";
 "dashboard.subscription_utilization" = "サブスクリプション使用率";
@@ -433,7 +433,7 @@
 
 /* ── 設定追加 (i18n sweep) ── */
 "settings.show_cost_summary" = "コスト概要を表示";
-"settings.show_cost_summary_hint" = "本日と30日の推定支出を表示";
+"settings.show_cost_summary_hint" = "今日と30日間の推定支出を表示";
 "settings.auto_poll_status" = "プロバイダーステータスページを自動取得";
 "settings.quota_alert_thresholds" = "クォータアラートしきい値";
 "settings.quota_alert_thresholds_hint" = "プロバイダーのクォータがこのパーセンテージを超えたときに警告を発します。";
@@ -444,16 +444,16 @@
 "settings.reset_thresholds_defaults" = "しきい値を既定値にリセット";
 "settings.reset" = "リセット";
 "settings.privacy" = "プライバシー";
-"settings.test_webhook" = "Webhookをテスト";
+"settings.test_webhook" = "Webhook をテスト";
 "settings.remote_control" = "他のデバイスからのマシンリクエスト";
 "settings.remote_control_iphone_hint" = "この iPhone から Mac にファン増速・低電力モード・スリープ防止を要求";
-"settings.privacy_redacted_hint" = "Mac が他のデバイスから受け付けるリクエストは4種類だけです — ファン目標、ファンを自動に戻す、低電力モード、スリープ防止。会話ログ、セッションログ、ターミナル出力を含め、それ以外のものはデバイスから一切送信されません。";
+"settings.privacy_redacted_hint" = "Mac が他のデバイスから受け付けるリクエストは次の4種類だけです：ファン回転数の指定、ファンを自動制御に戻す操作、低電力モード、スリープ防止。会話ログ、セッションログ、ターミナル出力を含め、それ以外のものはデバイスから一切送信されません。";
 
 /* ── 表示追加 (i18n sweep) ── */
 "display.mode" = "表示モード";
 "display.merge_menu_bar_icons" = "メニューバーアイコンを統合";
 "display.merge_menu_bar_hint" = "プロバイダー切替付きの単一アイコン";
-"display.reorder_hint" = "概要タブに表示するプロバイダーを選択。ドラッグで並び替え。";
+"display.reorder_hint" = "概要タブに表示するプロバイダーを選択。ドラッグで並べ替え。";
 
 /* ── サブスクリプション追加 (i18n sweep) ── */
 "subscription.loading_plans" = "プランを読み込み中…";
@@ -468,8 +468,8 @@
 "providers.accounts_count" = "%d アカウント";
 "providers.no_accounts_configured" = "このプロバイダーの CLIPulse アカウントは未設定です。";
 "providers.add_account" = "アカウントを追加";
-"providers.rerun_agent_setup" = "Agent 設定を再実行";
-"providers.rerun_agent_setup_hint" = "検出された Agent と監視中のアカウントを確認します。保存済みの認証情報は、編集した場合にのみ変更されます。";
+"providers.rerun_agent_setup" = "エージェント設定を再実行";
+"providers.rerun_agent_setup_hint" = "検出されたエージェントと監視中のアカウントを確認します。保存済みの認証情報は、編集した場合にのみ変更されます。";
 "providers.default_account" = "デフォルトアカウント";
 "providers.account_number" = "アカウント %d";
 "providers.plan_unconfirmed" = "プラン未確認";
@@ -481,7 +481,7 @@
 "providers.remove_account" = "アカウントを削除";
 "providers.remove_named_account" = "%@ を削除";
 "providers.remove_account_title" = "%@ · %@ を削除しますか？";
-"providers.remove_account_message" = "CLIPulse の設定と、このアカウントに紐づくローカルの Secret だけを削除します。プロバイダーのサブスクリプションは解約も変更もされません。";
+"providers.remove_account_message" = "CLIPulse の設定と、このアカウントに紐づくローカルの秘密情報だけを削除します。プロバイダーのサブスクリプションは解約も変更もされません。";
 "providers.provider_level_cost" = "トークン数とコストの合計はプロバイダー単位で、一度だけ表示されます。";
 "providers.most_constrained" = "残量が最少";
 "providers.remaining_percent" = "残り %d%%";
@@ -505,11 +505,11 @@
 "provider_config.manual_plan" = "手動プランラベル";
 "provider_config.manual_plan_placeholder" = "例: Max 20x、Pro";
 "provider_config.manual_plan_hint" = "表示用の代替情報のみです。取得したクォータやコストは変更しません。";
-"provider_config.api_key" = "APIキー";
+"provider_config.api_key" = "API キー";
 "provider_config.show_key" = "キーを表示";
 "provider_config.hide_key" = "キーを非表示";
 "provider_config.keychain_notice" = "Mac のキーチェーンにのみ保存されます。アップロードされません。";
-"provider_config.cookie_source" = "Cookieソース";
+"provider_config.cookie_source" = "Cookie ソース";
 "provider_config.manual_cookie_header" = "手動 Cookie ヘッダー";
 "provider_config.auto_import_note" = "サインイン済みのブラウザからセッション Cookie を自動取得します。macOS が一度キーチェーンへのアクセスを求めることがあります。見つからない場合は下に手動で貼り付けてください。";
 "provider_config.auto_import_failed" = "セッション Cookie を自動取得できませんでした。手動で貼り付けてください:";
@@ -522,12 +522,12 @@
 "provider_config.google_oauth" = "Google OAuth";
 "provider_config.disconnect" = "接続解除";
 "provider_config.connect_gemini" = "Gemini に接続";
-"provider_config.gemini_uses_google" = "Google アカウントを使用します。APIキーは不要です。";
+"provider_config.gemini_uses_google" = "Google アカウントを使用します。API キーは不要です。";
 "provider_config.gemini_cli_fallback" = "Gemini CLI フォールバック";
 "provider_config.gemini_cli_fallback_note" = "CLI Pulse の Gemini ログインを更新できない場合、Gemini CLI 自身の認証情報にフォールバックします。直接ダウンロード版のみ。";
 "provider_config.claude_code" = "Claude Code";
 "provider_config.connect_claude_code" = "Claude Code に接続";
-"provider_config.claude_keychain_hint" = "既存の Claude Code ログインを読み取ります。macOS が一度許可を求めます — 「常に許可」をタップしてください。";
+"provider_config.claude_keychain_hint" = "既存の Claude Code ログインを読み取ります。macOS が一度だけ許可を求めるので、「常に許可」をクリックしてください。";
 "provider_config.claude_read_failed" = "Claude Code の認証情報を読み取れませんでした。プロンプトを拒否した場合は再試行するか、まず Claude Code をインストール／起動してください。";
 "provider_config.test_connection" = "接続をテスト";
 "provider_config.testing" = "テスト中…";
@@ -550,7 +550,7 @@
 "onboarding_wizard.back_to_email" = "メール入力に戻る";
 "onboarding_wizard.all_set_title" = "準備完了";
 "onboarding_wizard.all_set_body" = "Mac アプリの実行中は同期が自動で行われます。同じアカウントで他のデバイスにサインインすれば、ペアリングや設定なしで使用状況がそこにも表示されます。";
-"onboarding_wizard.helper_hint" = "ヘッドレスサーバーや Claude Remote Approvals 用のオプションヘルパーをお探しですか？オンボーディング後、設定 → ヘルパーを開いてください。";
+"onboarding_wizard.helper_hint" = "ヘッドレスサーバーや Claude Remote Approvals 用のオプションヘルパーをお探しですか？オンボーディング後に「設定 → ヘルパー」を開いてください。";
 "onboarding_wizard.done" = "完了";
 "onboarding_wizard.close" = "オンボーディングを閉じる";
 "onboarding_wizard.step_progress" = "全 %2$d ステップ中 %1$d ステップ目：%3$@";
@@ -564,9 +564,9 @@
 "onboarding_wizard.discovery_subtitle" = "このパッシブスキャンでは、インストール済みの CLI、既知の設定パス、以前に許可したフォルダアクセス、既存の CLI Pulse メタデータを確認します。キーチェーンやブラウザを開いたり、ネットワークに接続したりすることはありません。";
 "onboarding_wizard.scanning" = "Codex、Claude、Gemini を探しています…";
 "onboarding_wizard.scan_again" = "再スキャン";
-"onboarding_wizard.no_agents_title" = "最適化済みのエージェントが見つかりません";
+"onboarding_wizard.no_agents_title" = "対応エージェントが見つかりません";
 "onboarding_wizard.no_agents_body" = "エージェントを選択せずに続行できます。後から設定でインストールまたは接続してください。";
-"onboarding_wizard.undetected_providers" = "最適化済みのエージェントのうち %d 個は見つかりませんでした";
+"onboarding_wizard.undetected_providers" = "対応エージェントのうち %d 個が見つかりませんでした";
 "onboarding_wizard.review_title" = "監視対象の確認";
 "onboarding_wizard.review_subtitle" = "以下のアカウントのみ有効になります。プランが未確認でも、セットアップが止まることはありません。";
 "onboarding_wizard.no_accounts_selected" = "アカウントが選択されていません。このまま設定を完了し、後で追加することもできます。";
@@ -582,8 +582,8 @@
 "onboarding_wizard.local_only_body" = "データ収集とダッシュボードはローカルのみで使います。Supabase 同期は行いません。後からサインインできます。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse アカウントにサインイン済みで、同期の準備ができています。";
 "onboarding_wizard.sign_in_for_sync" = "デバイス間同期を使うには、下からサインインしてください。";
-"onboarding_wizard.finish_title" = "Agent 設定の準備完了";
-"onboarding_wizard.finish_body" = "選択したアカウントを確認してから完了してください。Agent 設定は「設定」から再実行できます。";
+"onboarding_wizard.finish_title" = "エージェント設定の準備完了";
+"onboarding_wizard.finish_body" = "選択したアカウントを確認してから完了してください。エージェント設定は「設定」から再実行できます。";
 "onboarding_wizard.finish_local_body" = "後でサインインするまで、使用状況はこの Mac 内に留まります。";
 "onboarding_wizard.finish_sync_body" = "正規化された使用量が、この CLI Pulse アカウントでサインインしているデバイスに同期されます。";
 "onboarding_wizard.plan_unconfirmed" = "プラン未確認";
@@ -609,17 +609,17 @@
 /* ── 詳細設定 ── */
 "advanced.launch_at_login" = "ログイン時に起動";
 "advanced.background_sync" = "バックグラウンド同期を有効化";
-"advanced.background_sync_hint" = "iOS／Watch／Android 用にクラウドへ使用状況を同期";
+"advanced.background_sync_hint" = "iOS/Watch/Android 用にクラウドへ使用状況を同期";
 "advanced.full_details" = "詳細:";
 "advanced.hide_emails" = "UI でメールアドレスを非表示";
-"advanced.track_git" = "Git アクティビティを追跡 (Yield Score)";
+"advanced.track_git" = "Git アクティビティを追跡（Yield Score）";
 "advanced.track_git_hint" = "コミットメタデータのハッシュのみ — メッセージ、差分、パスはアップロードされません";
 "advanced.git_consent_title" = "Git アクティビティ追跡を有効にしますか？";
 "advanced.enable" = "有効化";
 "advanced.git_consent_body" = "CLI Pulse は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
 "advanced.remote_control" = "他のデバイスからのマシンリクエスト";
-"advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます · 既定はオフ";
-"advanced.remote_consent_title" = "マシンリクエストを許可しますか?";
+"advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます · デフォルトはオフ";
+"advanced.remote_consent_title" = "マシンリクエストを許可しますか？";
 "advanced.token" = "トークン";
 "advanced.providers_loaded" = "プロバイダー読み込み済み";
 "advanced.last_refresh" = "最終更新";
@@ -631,13 +631,13 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。";
 "yield.empty_body" = "コミットあたりの AI コストを追跡して Yield Score を表示します。";
-"yield.empty_enable_hint" = "設定 → プライバシー → Git アクティビティを追跡 で有効化。";
+"yield.empty_enable_hint" = "「設定 → プライバシー → Git アクティビティを追跡」で有効化。";
 "yield.view_detail" = "詳細を表示";
 "yield.detail_title" = "Yield Score 詳細";
 "yield.detail_body" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。マージコミットは集計から除外されます。";
 
 /* ── メニューバー ── */
-"menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 設定 → プロバイダー で編集してください。";
+"menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 「設定 → プロバイダー」で編集してください。";
 "menu_bar.over_plan_limits" = "CLI Pulse %1$@ プランの上限を超えています — プロバイダー: %2$d/%3$d。アップグレードするか使用を減らしてください。";
 "menu_bar.provider_limit_reached" = "CLI Pulse %1$@ プランで使えるプロバイダーは %2$d 個までです。さらに有効にするにはアップグレードしてください。";
 "menu_bar.edit" = "編集";
@@ -647,7 +647,7 @@
 /* ── ペアリング ── */
 "pairing.helper_intro" = "バックグラウンドヘルパーは使用状況をクラウドに同期し、iOS、Watch、Android で確認できるようにします。";
 "pairing.set_up_helper" = "バックグラウンドヘルパーをセットアップ";
-"pairing.manual_setup" = "手動セットアップ (ターミナル)";
+"pairing.manual_setup" = "手動セットアップ（ターミナル）";
 "pairing.your_code" = "コード:";
 "pairing.copy" = "クリップボードにコピー";
 
@@ -676,11 +676,11 @@
 "yield.no_commits" = "コミットなし";
 "yield.estimated_badge" = "· 推定";
 "yield.range_picker" = "範囲";
-"yield.empty_no_attribution" = "この期間にコミットが帰属していません。追跡対象のリポジトリでコードを書いてみてください。";
-"yield.detail_subtitle" = "%@ · コミット単価で並び替え (低いほど良い)";
+"yield.empty_no_attribution" = "この期間に紐づけられたコミットは 0 件です。追跡対象のリポジトリでコードを書いてみてください。";
+"yield.detail_subtitle" = "%@ · コミット単価で並べ替え（低いほど良い）";
 "yield.commits_count" = "%d コミット";
 "yield.commits_count_decimal" = "%.1f コミット";
-"yield.ambiguous_count" = "%d 件曖昧";
+"yield.ambiguous_count" = "曖昧 %d 件";
 "menu_bar.quit_full" = "CLI Pulse Bar を終了";
 
 /* ── iter22 bro範囲スイープ ── */
@@ -713,7 +713,7 @@
 "watch.live" = "ライブ";
 "watch.percent_left" = "残り %d%%";
 "watch.tokens_used" = "%@ トークン";
-"watch.connect_agents_on_mac" = "まずMacでコーディングエージェントを接続してください。";
+"watch.connect_agents_on_mac" = "まず Mac でコーディングエージェントを接続してください。";
 "watch.stale_updated" = "古いデータ · 更新 %@";
 "watch.tightest_account" = "残量最少: %@";
 "watch.unread" = "未読";
@@ -727,14 +727,14 @@
 "advanced.helper_not_running" = "停止中";
 "advanced.privacy_keys_title" = "プロバイダー API キーと Cookie";
 "advanced.privacy_keys_detail" = "macOS のキーチェーンにのみ保存 · アップロードされません";
-"advanced.privacy_logs_title" = "セッションログ (~/.codex/sessions、~/.claude/projects)";
+"advanced.privacy_logs_title" = "セッションログ（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "上記で許可したフォルダからデバイス内でスキャン";
-"advanced.privacy_metrics_title" = "使用量メトリクス (トークン数、コスト、モデル名)";
+"advanced.privacy_metrics_title" = "使用量メトリクス（トークン数、コスト、モデル名）";
 "advanced.privacy_metrics_detail" = "iPhone / Watch 用に CLI Pulse アカウントへ同期";
-"advanced.privacy_email_title" = "ログイン用メールアドレス";
+"advanced.privacy_email_title" = "サインイン用メールアドレス";
 "advanced.privacy_email_detail" = "サインイン用に認証バックエンドへ送信";
 "onboarding_wizard.privacy_keys_title" = "API キーはこの Mac に留まります";
-"onboarding_wizard.privacy_keys_detail" = "プロバイダー API キーとセッション Cookie (OpenAI、Anthropic、Google など) は macOS のキーチェーンにのみ保存されます。これらの提供元への直接通信に使われ、当社にアップロードされることはありません。";
+"onboarding_wizard.privacy_keys_detail" = "プロバイダーの API キーとセッション Cookie（OpenAI、Anthropic、Google など）は macOS のキーチェーンにのみ保存されます。これらのプロバイダーとの直接通信に使われ、当社にアップロードされることはありません。";
 "onboarding_wizard.privacy_logs_title" = "セッションログはデバイス内でスキャン";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse は ~/.codex/sessions/ と ~/.claude/projects/ をローカルで読み取ってトークン数を計算します。ファイル内容がデバイスから出ることはありません。";
 "onboarding_wizard.privacy_metrics_title" = "使用量メトリクスはアカウントと同期";
@@ -744,13 +744,13 @@
 "pdf.title" = "CLI Pulse 月次レポート";
 "pdf.generated" = "生成: %@";
 "pdf.summary" = "概要";
-"pdf.today_usage" = "本日の使用量";
-"pdf.today_estimated_cost" = "本日の推定コスト";
+"pdf.today_usage" = "今日の使用量";
+"pdf.today_estimated_cost" = "今日の推定コスト";
 "pdf.active_sessions" = "アクティブセッション";
 "pdf.online_devices" = "オンラインデバイス";
 "pdf.unresolved_alerts" = "未解決のアラート";
 "pdf.cost_forecast" = "コスト予測";
-"pdf.month_end_estimate" = "月末推定";
+"pdf.month_end_estimate" = "月末予測";
 "pdf.spent_so_far" = "これまでの支出";
 "pdf.confidence_range" = "信頼区間";
 "pdf.progress" = "進捗";
@@ -767,7 +767,7 @@
 "pdf.h_cost" = "コスト";
 "pdf.h_usage" = "使用量";
 "pdf.h_status" = "ステータス";
-"pdf.daily_trend" = "日次コスト推移 (過去30日)";
+"pdf.daily_trend" = "日次コスト推移（過去30日）";
 "pdf.footer" = "CLI Pulse v%@ • %@";
 
 /* ── フォルダーアクセス ── */
@@ -780,20 +780,20 @@
 "folder_access.rescan_title" = "トークンキャッシュを再スキャン";
 "folder_access.rescan_detail" = "合計値が正しくない場合に最初から再構築";
 "folder_access.force_rescan" = "強制再スキャン";
-"folder_access.panel_message" = "ホームフォルダーを選択して、CLI Pulse にすべての CLI ツール認証情報へのアクセスを許可します";
+"folder_access.panel_message" = "ホームフォルダを選択して、CLI Pulse にすべての CLI ツール認証情報へのアクセスを許可します";
 "folder_access.panel_prompt" = "アクセスを許可";
 "folder_access.banner_title" = "ローカルの使用量を読み取れません";
-"folder_access.banner_body" = "macOS がAIツールのログへのアクセスをブロックしているため、実際のトークン数とコストが表示されません。フォルダアクセスを許可して表示しましょう。";
+"folder_access.banner_body" = "macOS が AI ツールのログへのアクセスをブロックしているため、実際のトークン数とコストが表示されません。フォルダアクセスを許可して表示しましょう。";
 
 /* ── サブスクリプション請求切替 ── */
 "subscription.billing" = "請求";
 
 /* ── v1.14 Pro 永久ライセンス IAP ── */
 "subscription.lifetime" = "Pro ライフタイム";
-"subscription.lifetime_description" = "全プラットフォームでProの機能を永久に。買い切り、自動更新なし。";
+"subscription.lifetime_description" = "全プラットフォームで Pro の機能を永久に。買い切り、自動更新なし。";
 "subscription.lifetime_owned" = "Pro ライフタイムを所有しています";
 "subscription.one_time" = "買い切り";
-"subscription.one_time_badge" = "ONE-TIME";
+"subscription.one_time_badge" = "買い切り";
 "subscription.buy_lifetime" = "ライフタイムを購入";
 
 /* ── v1.18.2 D-2: Claude プロバイダーカードのピーク時間表示 ── */
@@ -821,32 +821,32 @@
 "usage_pace.in_reserve" = "%@%% 余裕";
 "usage_pace.lasts_until_reset" = "リセットまで持続";
 "usage_pace.runs_out_now" = "まもなく枯渇";
-"usage_pace.runs_out_in" = "%@で枯渇";
+"usage_pace.runs_out_in" = "あと %@ で枯渇";
 "usage_pace.projected_empty_now" = "まもなく空になる見込み";
-"usage_pace.projected_empty_in" = "%@で空になる見込み";
+"usage_pace.projected_empty_in" = "あと %@ で空になる見込み";
 "usage_pace.run_out_risk" = "≈ 枯渇リスク %@%%";
 "usage_pace.summary_with_right" = "ペース: %@ · %@";
 "usage_pace.summary_left_only" = "ペース: %@";
 
 /* System Monitor — Machine tab */
-"machine.subtitle" = "このMacの状態";
+"machine.subtitle" = "この Mac の状態";
 "machine.cpu" = "CPU";
 "machine.memory" = "メモリ";
 "machine.power" = "電力";
-"machine.cpu_temp" = "CPU温度";
-"machine.gpu_temp" = "GPU温度";
+"machine.cpu_temp" = "CPU 温度";
+"machine.gpu_temp" = "GPU 温度";
 "machine.fan" = "ファン";
 "machine.battery" = "バッテリー";
-"machine.charge" = "充電";
+"machine.charge" = "充電残量";
 "machine.health" = "状態";
 "machine.adapter" = "アダプタ";
 "machine.battery_temp" = "バッテリー温度";
 "machine.cycles_fmt" = "%@ 回";
 "machine.top_processes" = "上位プロセス";
 "machine.no_processes" = "プロセスデータなし";
-"machine.helper_unavailable" = "ヘルパーに接続できません —— マシン監視には CLI Pulse ヘルパーが必要です。";
-"machine.no_sensors_devid" = "このMacでは詳細センサー（温度・ファン・電力）を利用できません。";
-"machine.mas_affordance" = "詳細センサー（温度・ファン・電力）は直接ダウンロード版（Developer ID）が必要です。App Store版はサンドボックス制限のため読み取れません。";
+"machine.helper_unavailable" = "ヘルパーに接続できません — マシンの状態を表示するには CLI Pulse ヘルパーの実行が必要です。";
+"machine.no_sensors_devid" = "この Mac では詳細センサー（温度・ファン・電力）を利用できません。";
+"machine.mas_affordance" = "詳細センサー（温度・ファン・電力）には直接ダウンロード版（Developer ID）が必要です。App Store 版はサンドボックス制限のため読み取れません。";
 "machine.thermal_nominal" = "正常";
 "machine.thermal_fair" = "注意";
 "machine.thermal_serious" = "警告";
@@ -861,13 +861,13 @@
 "machine.kill_err_protected" = "このプロセスはシステムに保護されており、ここでは終了できません。";
 "machine.kill_err_not_permitted" = "このプロセスは別のユーザーのものです。終了できるのは自分のプロセスのみです。";
 "machine.kill_err_not_found" = "このプロセスはすでに実行されていません。";
-"machine.kill_err_rate_limited" = "操作が多すぎます。しばらくしてから再試行してください。";
+"machine.kill_err_rate_limited" = "操作が多すぎます。少し待ってからもう一度お試しください。";
 "machine.kill_err_not_confirmed" = "プロセスにシグナルを送信しましたが、まだ終了処理中の可能性があります。";
 "machine.kill_err_generic" = "プロセスを終了できませんでした。";
 "machine.controls_toggle" = "マシン制御";
 "machine.controls_hint" = "「マシン」タブから自分のプロセスを終了できるようにします。デフォルトはオフで、操作ごとに確認します。直接ダウンロード（Developer ID）版のみ。";
 "machine.remote_control_toggle" = "リモートマシン制御";
-"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速や低電力モードをリクエストできるようにします。デフォルトはオフ。ファンと低電力モードのみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）ビルドのみ。";
+"machine.remote_control_hint" = "サインイン済みの他のデバイスから、この Mac のファン増速や低電力モードをリクエストできるようにします。デフォルトはオフ。ファンと低電力モードのみに限定され、増速は自動的に元に戻ります。直接ダウンロード（Developer ID）版のみ。";
 "machine.suspend" = "一時停止";
 "machine.resume" = "再開";
 "machine.paused_badge" = "一時停止中";
@@ -882,14 +882,14 @@
 "machine.show_more" = "他 %@ 件を表示";
 "machine.show_less" = "表示を減らす";
 "machine.fan_control" = "ファン制御";
-"machine.fan_boosting" = "ブースト中";
+"machine.fan_boosting" = "増速中";
 "machine.fan_auto" = "自動";
 "machine.fan_cool" = "冷却";
 "machine.fan_full" = "全開";
-"machine.fan_hint" = "ブーストのみ。ファンは自動より遅くならず、「自動」をタップするかアプリを終了すると自動に戻ります。直接ダウンロード（Developer ID）版のみ。";
+"machine.fan_hint" = "増速のみ。ファンは自動より遅くならず、「自動」をクリックするかアプリを終了すると自動に戻ります。直接ダウンロード（Developer ID）版のみ。";
 "machine.fan_confirm_title" = "ファンを回しますか？";
-"machine.fan_confirm_message" = "「自動」をタップする（またはアプリを終了する）まで、ファンは大きな音で回り続けます。冷却を強めるだけで、システムより遅く回すことはありません。";
-"machine.fan_confirm_button" = "ファンをブースト";
+"machine.fan_confirm_message" = "「自動」をクリックする（またはアプリを終了する）まで、ファンは大きな音で回り続けます。冷却を強めるだけで、システムより遅く回すことはありません。";
+"machine.fan_confirm_button" = "ファンを増速";
 "machine.fan_err_generic" = "ファンの速度を変更できませんでした。";
 "machine.fan_install" = "ファン制御をインストール";
 "machine.fan_install_prompt" = "ファン制御には小さな特権ヘルパーが必要です。インストール時に承認を求められます。macOS はアプリが無断でインストールすることを許しません。";
@@ -907,24 +907,24 @@
 "machine.pressure_high" = "高い";
 "machine.low_power" = "低電力モード";
 "machine.fan_boost" = "ファン増速";
-"machine.last_updated_fmt" = "%@に更新";
+"machine.last_updated_fmt" = "更新: %@";
 "machine.remote_controls" = "コントロール";
-"machine.fan_target" = "ファン目標";
+"machine.fan_target" = "目標回転数";
 "machine.auto" = "自動";
 "machine.hold_duration" = "保持時間";
 "machine.apply_boost" = "増速を適用";
 "machine.revert_auto" = "自動に戻す";
 "machine.boost_confirm_title" = "ファンを増速しますか？";
-"machine.boost_confirm_body_fmt" = "%@ のファンを増速します。保持時間の経過後、または「戻す」をタップすると自動的に戻ります。";
+"machine.boost_confirm_body_fmt" = "%@ のファンを増速します。保持時間が過ぎるか、「自動に戻す」をタップすると自動制御に戻ります。";
 "machine.boost_confirm_button" = "増速";
 "machine.requesting" = "リクエスト済み — Mac は次回のチェックイン時に適用します";
 "machine.min_fmt" = "%@ 分";
 "machine.hours_fmt" = "%@ 時間";
 "machine.keep_awake" = "スリープ防止";
 "machine.keep_awake_hint" = "ディスプレイは消灯してもシステムは起動したまま。バッテリー使用時はフタを閉じるとスリープします。";
-"machine.keep_awake_on" = "防止中";
+"machine.keep_awake_on" = "スリープ防止中";
 "machine.keep_awake_indefinite" = "オフにするまで";
-"machine.keep_awake_lid" = "フタを閉じてもスリープしない(電源接続時のみ)";
+"machine.keep_awake_lid" = "フタを閉じてもスリープしない（電源接続時のみ）";
 "machine.keep_awake_ends_in_fmt" = "残り %@";
 "machine.command_failed" = "コマンドを送信できませんでした。もう一度お試しください。";
 "machine.no_readings" = "データがありません";
@@ -954,7 +954,7 @@
 "usage_dashboard.favorite_model" = "よく使うモデル";
 "usage_dashboard.messages" = "メッセージ数";
 "usage_dashboard.by_model" = "モデル別";
-"usage_dashboard.by_provider" = "プロバイダ別";
+"usage_dashboard.by_provider" = "プロバイダー別";
 "usage_dashboard.activity" = "アクティビティ";
 "usage_dashboard.trends" = "トレンド";
 "usage_dashboard.less" = "少";
@@ -967,24 +967,24 @@
 /* v1.42 Pulse Cat */
 "tab.pet" = "ペット";
 "pet.title" = "パルスキャット";
-"pet.subtitle" = "あなたの実際のAI利用がバイタルになるデスクトップ猫。";
+"pet.subtitle" = "あなたの実際の AI 利用がバイタルになるデスクトップ猫。";
 "pet.enable" = "パルスキャットをはじめる";
 "pet.enabled_toggle" = "パルスキャットを有効化";
-"pet.disabled_body" = "パルスキャットはオフです。オンにすると、週ごとのAI利用から猫が孵ります。";
+"pet.disabled_body" = "パルスキャットはオフです。オンにすると、週ごとの AI 利用から猫が孵ります。";
 "pet.sample_badge" = "サンプル";
 "pet.egg_title" = "タマゴが今週のあなたを見守っています";
-"pet.egg_body" = "AIツールを使い続けてください。活動的な一週間の終わりに、あなたの働き方に応じた猫が孵ります。";
+"pet.egg_body" = "AI ツールを使い続けてください。活動的な一週間の終わりに、あなたの働き方に応じた猫が孵ります。";
 "pet.egg_progress" = "アクティブ日 %@/%@";
-"pet.hatch_ready" = "孵化の準備ができました!";
+"pet.hatch_ready" = "孵化の準備ができました！";
 "pet.hatch_button" = "孵化する";
 "pet.owned_this_week" = "今週はすでに持っている猫と一致しました。タマゴは待ち続けます。";
 "pet.name_it_title" = "新しい猫に名前をつけよう";
 "pet.name_placeholder" = "名前";
 "pet.cattery" = "キャッテリー";
 "pet.cattery_count" = "%@/%@ 匹";
-"pet.usage_diet" = "ユーセージ・ダイエット(7日間)";
+"pet.usage_diet" = "使用量の内訳（7日間）";
 "pet.switch_companion" = "アクティブな相棒";
-"pet.why_hatched" = "なぜこの猫が孵ったの?";
+"pet.why_hatched" = "なぜこの猫が孵ったの？";
 "pet.locked" = "未孵化";
 "pet.owned_on" = "%@ に孵化";
 "pet.energy" = "エネルギー";
@@ -1009,8 +1009,8 @@
 "pet.form_polite" = "ていねいスマイル";
 "pet.form_smash" = "キーボード連打";
 "pet.form_pop" = "ポップ口";
-"pet.form_long" = "のびのびネコ";
-"pet.form_huh" = "はてなネコ";
+"pet.form_long" = "のびのび猫";
+"pet.form_huh" = "はてな猫";
 
 /* v1.42 Pulse Cat companion */
 "pet.companion_toggle" = "デスクトップの相棒を表示";
@@ -1096,17 +1096,17 @@
 "collector_status.shared_login_taken" = "共有ログイン使用中";
 "collector_status.shared_login_taken_hint" = "この Mac の %@ ログインは、すでに別のアカウントが使用しています。このアカウントには専用の API キーを設定するか、そのアカウントを削除してください。";
 "collector_status.not_set_up" = "未設定";
-"collector_status.not_set_up_hint" = "設定を開いてこのプロバイダを接続してください。";
+"collector_status.not_set_up_hint" = "設定を開いてこのプロバイダーを接続してください。";
 "collector_status.no_data" = "データが空でした";
 "collector_status.no_data_hint" = "チェックは実行されましたが、結果は空でした。一度使うと解決することが多いです。";
 "collector_status.access_blocked" = "アクセスがブロックされています";
-"collector_status.access_blocked_hint" = "設定でフォルダへのアクセスを許可してください。";
+"collector_status.access_blocked_hint" = "このツールのファイルを読み取るには、設定でフォルダへのアクセスを許可してください。";
 "collector_status.unreachable" = "接続できません";
 "collector_status.unreachable_hint" = "ネットワーク接続を確認してください。";
 "collector_status.cannot_read" = "応答を解析できません";
-"collector_status.cannot_read_hint" = "これは私たちの問題です。提供元が形式を変更しました。アップデートで修正します。";
+"collector_status.cannot_read_hint" = "これは私たちの問題です。プロバイダーが形式を変更しました。アップデートで修正します。";
 "collector_status.failed" = "チェックに失敗";
-"collector_status.failed_hint" = "プロバイダがエラーを返しました。通常は自然に解消します。";
+"collector_status.failed_hint" = "プロバイダーがエラーを返しました。通常は自然に解消します。";
 "collector_status.not_running" = "実行されていません";
 "collector_status.not_running_hint" = "%@ を起動すると、使用量がここに表示されます。";
 "collector_status.needs_key" = "API キーが必要";
@@ -1122,7 +1122,7 @@
 "launch_at_login_notice.keep" = "OK";
 
 /* v1.44 — why machine health is unavailable, told apart */
-"machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンヘルスは現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
+"machine.helper_lacks_machine_health" = "内蔵ヘルパーはセンサーを読み取らないため、マシンの状態は現在利用できません。この Mac の他の機能は正常に動作します。センサー対応は準備中です。";
 "machine.helper_unauthenticated" = "ヘルパーがこのアプリの認証情報を拒否しました。「設定 › 詳細」からヘルパーを再起動してください。";
 
 /* v1.50 W-C — この Mac を読み取る前の選択 */
@@ -1131,13 +1131,13 @@
 "local_scan_consent.files_title" = "直近 30 日のセッションログ";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "そこから割り出すもの";
-"local_scan_consent.derived_detail" = "トークン数、コスト見積もり、モデル名、日付。加えて各会話のファイルパス、プロジェクトフォルダ、セッション ID — セッション一覧に名前が付くのはこれらがあるからです。";
+"local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。加えて各会話のファイルパス、プロジェクトフォルダ、セッション ID — セッション一覧に名前が付くのはこれらがあるからです。";
 "local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
-"local_scan_consent.network_detail" = "残量をリアルタイムで表示するため、各 CLI がこの Mac に保存したトークンを使って提供元を呼び出します。期限切れのトークンを更新すると、その CLI の認証ファイルが書き換わります。";
+"local_scan_consent.network_detail" = "残量をリアルタイムで表示するため、各 CLI がこの Mac に保存したトークンを使ってプロバイダーに問い合わせます。期限切れのトークンを更新すると、その CLI の認証ファイルが書き換わります。";
 "local_scan_consent.keychain_title" = "キーチェーン内の Claude Code のトークン";
 "local_scan_consent.keychain_detail" = "macOS が最初に一度だけ確認します。拒否しても失われるのは Claude の残量表示だけです。";
 "local_scan_consent.telemetry_title" = "匿名の統計情報は別の話です";
-"local_scan_consent.telemetry_detail" = "この選択には含まれません。ファイルパスや提供元名は含まず、「設定 › プライバシー」でオフにできます。";
+"local_scan_consent.telemetry_detail" = "この選択には含まれません。ファイルパスやプロバイダー名は含まず、「設定 › プライバシー」でオフにできます。";
 "local_scan_consent.start" = "ローカルスキャンを開始";
 "local_scan_consent.not_now" = "今はしない";
 "local_scan_consent.change_later" = "どちらを選んでも、「設定 › プライバシー」でいつでも変更できます。";
@@ -1149,23 +1149,23 @@
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名インストール統計";
-"telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモートコントロールを使う場合は、4 つのはい/いいえも送ります:この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
-"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は次の4段階を報告します:インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。リモートコントロールを使う場合は、4 つのはい/いいえも送ります:この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
-"telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。id はランダムで、アンインストールすると削除されます。";
+"telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は次の4段階を報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。ID はランダムで、アンインストールすると削除されます。";
 "telemetry.toggle" = "匿名インストール統計を送信";
 "telemetry.toggle_local_only" = "オフ — ローカルのみモードがこれも対象にしています。";
-"telemetry.got_it" = "了解";
+"telemetry.got_it" = "OK";
 "telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
-"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します:インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。id はランダムで、アンインストールすると削除されます。リモートコントロールを使う場合は、4 つのはい/いいえも送ります:この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
+"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか — および現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムで、アンインストールすると削除されます。リモート操作を使う場合は、4 つのはい/いいえも送ります：この Mac に Wi-Fi 経由で接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したか。";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "リモート操作";
 "remote.nearby_macs" = "近くの Mac";
 "remote.pair_with_mac" = "Mac とペアリング";
-"remote.scan_hint" = "Mac で「設定 › リモート操作」を開き、「iPhone をペアリング」をタップして、表示されたコードをスキャンしてください。";
+"remote.scan_hint" = "Mac で「設定 › リモート操作」を開いて「iPhone をペアリング」をクリックし、表示されたコードをスキャンしてください。";
 "remote.paste_hint" = "またはペアリングリンクを貼り付け";
 "remote.compare_code" = "このコードが Mac に表示されているものと一致するか確認してください";
-"remote.approve_on_mac" = "コードが一致したら、Mac で「承認」をタップしてください。";
+"remote.approve_on_mac" = "コードが一致したら、Mac で「承認」をクリックしてください。";
 "remote.paired" = "ペアリング済み";
 "remote.not_paired" = "未ペアリング";
 "remote.ready_to_pair" = "ペアリング可能";
@@ -1201,7 +1201,7 @@
 "remote.approval_expired" = "期限切れ — Claude には拒否と伝わりました";
 "remote.control_off_on_mac" = "Mac でセッション制御がオフです";
 "remote.watch_only_link" = "この Mac ではこの iPhone は閲覧のみです";
-"remote.start_failed" = "セッションを開始できません";
+"remote.start_failed" = "セッションを開始できませんでした";
 "remote.session_ended" = "セッションが終了しました";
 "remote.err_mac_unreachable" = "この Mac に接続できません。スリープしていないか、CLI Pulse が起動しているか確認してください。";
 "remote.err_pairing_lost" = "この Mac はこの iPhone を認識しなくなりました。もう一度ペアリングしてください。";
@@ -1210,17 +1210,17 @@
 "remote.err_mac_needs_update" = "この Mac の CLI Pulse が古いバージョンです。更新してください。";
 "remote.err_too_fast" = "リクエストが多すぎます。少し待ってからもう一度お試しください。";
 "remote.err_unexpected" = "問題が発生しました。もう一度お試しください。";
-"remote.err_not_a_pairing_code" = "CLI Pulse のペアリングコードではありません。Mac で設定 › リモート操作を開き、「iPhone をペアリング」をタップしてください。";
+"remote.err_not_a_pairing_code" = "CLI Pulse のペアリングコードではありません。Mac で「設定 › リモート操作」を開き、「iPhone をペアリング」をクリックしてください。";
 "remote.no_sessions_control" = "セッションがありません。+ で開始できます。";
 "remote.no_providers" = "この Mac に利用できる CLI ツールがありません。";
 "remote.connect_by_address" = "アドレスで接続";
 "remote.address_hint" = "同じ Wi-Fi にないときは、Tailscale や VPN 経由でこの Mac に接続します。";
-"remote.address_placeholder" = "ホスト または ホスト:ポート";
+"remote.address_placeholder" = "ホストまたはホスト:ポート";
 "remote.address_invalid" = "このアプリが使えるアドレスではありません。";
 "remote.saved_address" = "保存済みのアドレス";
 "remote.reachable_at" = "接続先";
 "remote.tailnet_hint" = "これは Tailscale のアドレスです。ペアリング済みの iPhone は tailnet のどこからでも接続できます。";
-"remote.lan_only_hint" = "このアドレスはこのネットワーク内でのみ有効です。両方の端末に Tailscale を入れると、どこからでも接続できます。";
+"remote.lan_only_hint" = "このアドレスはこのネットワーク内でのみ有効です。両方のデバイスに Tailscale を入れると、どこからでもこの Mac に接続できます。";
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "sessions.new_codex_off_plan" = "Codex — OpenAI API（従量課金、プラン対象外）";
@@ -1251,7 +1251,7 @@
 "sessions.detected_footer" = "これらの Claude セッションはこの Mac で実行中ですが、CLI Pulse から起動されたものではないため、ヘルパーは安全に入力を送ったり停止したりできません。起動元のターミナルで操作してください。";
 "sessions.section_active" = "アクティブ";
 "sessions.section_recent" = "最近 · 過去 30 分";
-"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近 = JSONL のアクティビティのみ。";
+"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近 = JSONL に記録された活動のみ。";
 "sessions.send" = "送信";
 "sessions.approve_help" = "このローカルセッションに紐づく保留中の Claude 権限リクエストを承認します（⌘↩）。";
 "sessions.reject_help" = "保留中の Claude 権限リクエストを拒否します。Claude は別の判断を待ち続けるか、自身のプロンプトに戻ります。";
@@ -1329,7 +1329,7 @@
 "helper.built_in_version" = "内蔵 · v%@";
 "app_updater.update_available_badge" = "アップデート: %1$@ → %2$@";
 "app_updater.error_badge" = "エラー";
-"helper.install_intro" = "オプションの Companion CLI ヘルパーをインストールすると、メニューバーから claude、codex、gemini のセッションを操作できます。ヘルパーは Apple の公証を受けており、ホームフォルダーにインストールされるため、管理者パスワードは不要です。";
+"helper.install_intro" = "オプションの Companion CLI ヘルパーをインストールすると、メニューバーから claude、codex、gemini のセッションを操作できます。ヘルパーは Apple の公証を受けており、ホームフォルダにインストールされるため、管理者パスワードは不要です。";
 "helper.waiting_for_installer" = "macOS インストーラの完了を待っています…";
 "helper.running_unpaired_hint" = "インストール済みで実行中です。管理対象セッションを操作するには、上でこの Mac をペアリングしてください。";
 "helper.bundled_hint" = "CLI Pulse に内蔵 — アプリをアップデートすると自動的に更新されます。個別のインストールは不要です。";
@@ -1340,7 +1340,7 @@
 "app_updater.check_for_updates" = "アップデートを確認";
 "helper.update_button" = "Companion CLI をアップデート";
 "remote.allow_paired_iphones" = "ペアリング済みの iPhone でセッションの閲覧と操作を許可";
-"remote.mac_privacy_explainer" = "ペアリング済みの iPhone は、同じ Wi-Fi 上で、または自分のプライベートネットワーク（Tailscale、VPN）経由で下のアドレスを使ってこの Mac に接続します。出力はこの Mac から送信される前に機密情報が伏せられ、接続は 2 台の端末にしか存在しない鍵で暗号化されます。アドレスだけでは誰も接続できません。「操作」がオンの iPhone は、「セッション」タブでセッション制御がオンの間、セッションへの入力、開始・停止、承認への応答ができます。Anthropic を経由するのは、claude.ai で開くことを選んだセッションだけです。";
+"remote.mac_privacy_explainer" = "ペアリング済みの iPhone は、同じ Wi-Fi 上で、または自分のプライベートネットワーク（Tailscale、VPN）経由で下のアドレスを使ってこの Mac に接続します。出力はこの Mac から送信される前に機密情報が伏せられ、接続は 2 台のデバイスにしか存在しない鍵で暗号化されます。アドレスだけでは誰も接続できません。「操作」がオンの iPhone は、「セッション」タブでセッション制御がオンの間、セッションへの入力、開始・停止、承認への応答ができます。Anthropic を経由するのは、claude.ai で開くことを選んだセッションだけです。";
 "remote.pair_an_iphone" = "iPhone をペアリング…";
 "remote.copied" = "コピーしました";
 "remote.copy" = "コピー";
@@ -1372,26 +1372,26 @@
 "local_scan_consent.settings_toggle" = "この Mac の CLI 使用状況をスキャン";
 "local_scan_consent.settings_toggle_detail" = "~/.codex と ~/.claude にある直近 30 日のセッションログを読み取り、利用中のプロバイダーにリアルタイムの残量を問い合わせます。オフにすると、CLI Pulse はこの Mac の何も読み取りません。";
 "settings.local_only_mode" = "ローカルのみモード";
-"settings.local_only_mode_hint" = "アプリをまたぐデータソースをすべてスキップします。ホームフォルダー内のファイルによる使用量データは引き続き利用できます。";
+"settings.local_only_mode_hint" = "アプリをまたぐデータソースをすべてスキップします。ホームフォルダ内のファイルによる使用量データは引き続き利用できます。";
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
 "settings.skip_claude_keychain_forced" = "ローカルのみモードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "他のアプリが所有する Claude Code の OAuth 認証情報を CLI Pulse が読み取らないようにします。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
 "settings.block_claude_on_outdated_helper" = "ヘルパーが古い場合は管理対象の Claude をブロック";
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI ヘルパーが古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフ — 警告が表示されるだけです。";
-"cost.io_tokens_codexbar_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません (Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています)。CodexBar の「tokens」はキャッシュを含み、こちらは含まないため数値は異なります。コストはどちらも構成要素ごとの正規単価で計算しているため一致します。";
-"cost.io_tokens_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません (Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています)。";
+"cost.io_tokens_codexbar_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。CodexBar の「tokens」はキャッシュを含み、こちらは含まないため数値は異なります。コストはどちらも構成要素ごとの正規単価で計算しているため一致します。";
+"cost.io_tokens_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。";
 "dashboard.utilized_percent" = "使用率 %.0f%%";
 "dashboard.value_multiplier" = "· %@ の価値";
-"dashboard.api_equivalent_30d" = "API 換算 (30日)";
-"dashboard.all_in_monthly_est" = "月額総計 (推定)";
+"dashboard.api_equivalent_30d" = "API 換算（30日）";
+"dashboard.all_in_monthly_est" = "月額総計（推定）";
 "dashboard.all_in_monthly_help" = "使用量から算出した 30 日間の API 換算コストに、月額サブスクリプション料金を加えたものです。実際の請求額ではありません。Anthropic / OpenAI / Google が請求するのはサブスクリプション料金のみで、API 換算額は従量課金だった場合の費用を示します。";
 "onboarding_wizard.feature_usage_title" = "使用量トラッキング";
-"onboarding_wizard.feature_usage_desc" = "Claude、Codex、Gemini など 14+ プロバイダーのトークン使用量をリアルタイムで確認。";
+"onboarding_wizard.feature_usage_desc" = "Claude、Codex、Gemini など 14 以上のプロバイダーのトークン使用量をリアルタイムで確認。";
 "onboarding_wizard.feature_alerts_title" = "スマートアラート";
 "onboarding_wizard.feature_alerts_desc" = "クォータ残量の低下、コストの急増、セッションの失敗をお知らせします。";
 "onboarding_wizard.feature_devices_title" = "マルチデバイス";
 "onboarding_wizard.feature_devices_desc" = "すべての開発マシンをメニューバーから監視。";
-"onboarding_wizard.feature_cost_title" = "コスト見積もり";
+"onboarding_wizard.feature_cost_title" = "コスト推定";
 "onboarding_wizard.feature_cost_desc" = "プロバイダーごとの日次・週次の支出を把握。";
 "providers.claude_signed_in_connect_hint" = "%@ としてサインイン済み — 設定で Claude Code に接続してください";
 "providers.claude_quota_unavailable_hint" = "Claude のクォータを取得できません — 「設定 → Claude」で接続してください";
@@ -1489,7 +1489,7 @@
 "pairing.not_connected" = "未接続";
 "providers.tracked_count" = "%d 件を追跡中";
 "providers.messages_short" = "%@ メッセージ";
-"providers.claude_metric_help" = "メッセージ数 = ユーザー + アシスタントのログイベント（ストリーミングのチャンクを含む）— Claude Code の UI と同じ数え方です。I/O トークン = 入力 + 出力（キャッシュ読み取りを除く。キャッシュ読み取りは Claude の生トークン量の約 98% を占め、10% 割引で課金されます）。";
+"providers.claude_metric_help" = "メッセージ数 = ユーザー + アシスタントのログイベント（ストリーミングのチャンクを含む）— Claude Code の UI と同じ数え方です。I/O トークン = 入力 + 出力（キャッシュ読み取りを除く。キャッシュ読み取りは Claude の生トークン量の約 98% を占め、通常料金の 10% で課金されます）。";
 "providers.claude_no_scan_help" = "この期間のローカル Claude スキャンデータはまだありません。「設定 → CLI ツールアクセス」でアクセスを許可してから、「強制再スキャン」をクリックしてください。";
 "providers.io_tokens_help" = "入力 + 出力トークンのみ（OpenAI の課金方式に準拠）。10% の料金で課金されるキャッシュ入力は含みません。";
 "providers.no_scan_help" = "この期間のローカルスキャンデータはまだありません。";
@@ -1577,14 +1577,14 @@
 "app_updater.verify_build_mismatch" = "ビルド番号が一致しません（マニフェスト %1$@、アプリ %2$@）";
 "app_updater.verify_not_upgrade" = "新しいバージョンではありません（インストール済み %1$@、提供されたバージョン %2$@）";
 "folder_access.panel_message_directory" = "CLI Pulse に %@ の認証情報への読み取りアクセスを許可します";
-"folder_access.panel_message_home" = "CLI Pulse にホームフォルダーへの読み取りアクセスを許可して、ローカルの AI 使用ログ（~/.claude、~/.codex、~/.gemini）を読み取れるようにします。";
+"folder_access.panel_message_home" = "CLI Pulse にホームフォルダへの読み取りアクセスを許可して、ローカルの AI 使用ログ（~/.claude、~/.codex、~/.gemini）を読み取れるようにします。";
 "alerts.snooze_short" = "%d分";
 "machine.fan_max_fmt" = "最大 %d";
 "remote.listener_failed" = "リモート操作のリスナーでエラーが発生しました: %@";
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
-"alerts.critical_count_badge" = "重大: %d";
-"alerts.warning_count_badge" = "警告: %d";
+"alerts.critical_count_badge" = "重大 %d 件";
+"alerts.warning_count_badge" = "警告 %d 件";
 "account.deleting" = "アカウントを削除しています…";
 "usage_dashboard.chart_day" = "日付";
 "usage_dashboard.chart_tokens" = "トークン数";
@@ -1602,7 +1602,7 @@
 "pairing.error_too_many_attempts" = "失敗回数が多すぎます。新しいペアリングコードを生成してください";
 
 /* Quota tier names — localized at render time only; the stored name stays English */
-"quota_tier.ai_credits" = "AIクレジット";
+"quota_tier.ai_credits" = "AI クレジット";
 "quota_tier.billing_cycle" = "請求サイクル";
 "quota_tier.bonus" = "ボーナス";
 "quota_tier.bonus_credits" = "ボーナスクレジット";
@@ -1654,7 +1654,7 @@
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
    and they sit beside the suppression key. */
-"alert_kind.budget_daily_message" = "本日の支出 $%1$@ が日次予算 $%2$@ を超えています。";
+"alert_kind.budget_daily_message" = "今日の支出 $%1$@ が日次予算 $%2$@ を超えています。";
 "alert_kind.budget_daily_title" = "日次予算を超過 — $%@";
 "alert_kind.budget_weekly_message" = "過去 7 日間の支出合計 $%1$@ が週次予算 $%2$@ を超えています。";
 "alert_kind.budget_weekly_title" = "週次予算を超過 — $%@";
@@ -1667,7 +1667,7 @@
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 内の %2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_system" = "%3$@ がシステム全体の CPU（%2$@ コア）の約 %1$@%% を使用しています。";
 "alert_kind.session_cpu_title" = "%@ が CPU を大量に消費しています";
-"alert_kind.session_long_message" = "ヘルパーが長時間実行中のローカル Agent セッションを検出しました。";
+"alert_kind.session_long_message" = "ヘルパーが長時間実行中のローカルエージェントセッションを検出しました。";
 "alert_kind.session_long_title" = "%@ が長時間実行されています";
 "alert_kind.severity_critical" = "重大";
 "alert_kind.severity_info" = "情報";
