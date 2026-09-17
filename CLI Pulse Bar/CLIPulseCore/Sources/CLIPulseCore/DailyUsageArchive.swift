@@ -178,19 +178,19 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// Gregorian one already present, because on such a Mac the only Gregorian
     /// days so far came from cloud fill, which never outranks the local scan.
     /// Month rollups hold disjoint evicted days, so colliding months add up.
-    public func normalizingDayKeys(writtenIn source: Calendar = .current, now: Date = Date()) -> DailyUsageArchive {
+    public func normalizingDayKeys(writtenIn source: Calendar = .current) -> DailyUsageArchive {
         var out = self
         out.days = [:]
         var converted: [String: DayRollup] = [:]
         for (key, rollup) in days {
-            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source, now: now) else { continue }
+            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source) else { continue }
             if normalized == key { out.days[key] = rollup } else { converted[normalized] = rollup }
         }
         for (key, rollup) in converted { out.days[key] = rollup }
 
         out.months = [:]
         for (key, rollup) in months {
-            guard let day = DayKey.normalizedStoredKey(key + "-01", writtenIn: source, now: now) else { continue }
+            guard let day = DayKey.normalizedStoredKey(key + "-01", writtenIn: source) else { continue }
             let monthKey = String(day.prefix(7))
             var month = out.months[monthKey] ?? MonthRollup()
             month.tokens += rollup.tokens
@@ -200,7 +200,7 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
         }
 
         out.foldedThroughDay = foldedThroughDay.flatMap {
-            DayKey.normalizedStoredKey($0, writtenIn: source, now: now)
+            DayKey.normalizedStoredKey($0, writtenIn: source)
         }
         return out
     }

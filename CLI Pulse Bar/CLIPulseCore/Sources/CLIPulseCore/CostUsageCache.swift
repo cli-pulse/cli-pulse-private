@@ -98,13 +98,13 @@ enum CostUsageCacheIO {
             .appendingPathComponent("\(provider.lowercased())-v2.json", isDirectory: false)
     }
 
-    static func load(provider: String, cacheRoot: URL? = nil, now: Date = Date()) -> CostUsageCache {
+    static func load(provider: String, cacheRoot: URL? = nil) -> CostUsageCache {
         let url = cacheFileURL(provider: provider, cacheRoot: cacheRoot)
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(CostUsageCache.self, from: data),
               decoded.version == 1,
               decoded.pricingVersion == costUsageCachePricingVersion,
-              hasOnlyGregorianDayKeys(decoded, now: now) else {
+              hasOnlyGregorianDayKeys(decoded) else {
             // Either schema-version drift OR pricing-rules drift —
             // both invalidate the cached cost numbers, both heal
             // automatically by returning an empty cache here so the
@@ -121,10 +121,10 @@ enum CostUsageCacheIO {
     /// usage stays missing until it ages out of the window. Starting over costs
     /// one full re-parse, the same price a pricing bump pays; no version number
     /// is spent on it, and a cache that was already Gregorian is untouched.
-    static func hasOnlyGregorianDayKeys(_ cache: CostUsageCache, now: Date = Date()) -> Bool {
-        guard cache.days.keys.allSatisfy({ DayKey.isPlausible($0, now: now) }) else { return false }
+    static func hasOnlyGregorianDayKeys(_ cache: CostUsageCache) -> Bool {
+        guard cache.days.keys.allSatisfy(DayKey.isPlausible) else { return false }
         return cache.files.values.allSatisfy { file in
-            file.days.keys.allSatisfy { DayKey.isPlausible($0, now: now) }
+            file.days.keys.allSatisfy(DayKey.isPlausible)
         }
     }
 

@@ -2773,10 +2773,10 @@ public actor APIClient {
     /// real day, and the Buddhist ones sort after every real day, so kept they
     /// would fill the heatmap archive and the pet ledger with keys nothing
     /// ever looks up.
-    static func dailyUsageRows(from items: [[String: Any]], now: Date = Date()) -> [DailyUsage] {
+    static func dailyUsageRows(from items: [[String: Any]]) -> [DailyUsage] {
         items.compactMap { item -> DailyUsage? in
             guard let date = item["metric_date"] as? String,
-                  DayKey.isPlausible(date, now: now),
+                  DayKey.isPlausible(date),
                   let provider = item["provider"] as? String,
                   let model = item["model"] as? String else { return nil }
             return DailyUsage(

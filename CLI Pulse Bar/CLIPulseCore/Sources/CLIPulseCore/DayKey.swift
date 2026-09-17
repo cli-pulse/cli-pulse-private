@@ -105,19 +105,33 @@ public enum DayKey {
     /// calendar stays years outside the window.
     static let earliestPlausibleYear = 2020
 
-    /// Whether `key` names a real Gregorian date this app could have recorded:
-    /// no earlier than `earliestPlausibleYear`, no later than next year.
+    /// The last year a key can name. It is a fixed year, not "next year" by the
+    /// device clock: with the clock set years behind, a clock-relative bound
+    /// turns every real key into a foreign one that cannot be read back, and
+    /// the usage archive and the pet ledger drop them on load and save the
+    /// loss, while the scanner cache starts over on every scan.
     ///
-    /// Calendars other than Gregorian are years away in both directions — on
-    /// 2026-09-17 Japanese 8, ROC 115, Islamic 1448, Persian 1405, Ethiopic
-    /// 2019, Buddhist 2569, Hebrew 5787 — so a key outside that window was
-    /// written in one of them (`DayKeyTests` checks every calendar Foundation
-    /// offers). The upper bound is a year rather than days so a wrong device
-    /// clock never gets real history thrown away.
-    public static func isPlausible(_ key: String, now: Date = Date()) -> Bool {
-        guard let f = fields(of: key) else { return false }
-        let thisYear = calendar(in: TimeZone(secondsFromGMT: 0)!).component(.year, from: now)
-        guard f.year >= earliestPlausibleYear, f.year <= thisYear + 1 else { return false }
+    /// The nearest numbering above the window is Vikram Samvat, and Gujarati,
+    /// which counts from it: 2076 on 2020-01-01 and 2083 on 2026-09-17.
+    /// Foundation has offered both since macOS 26 and iOS 26, so a year like
+    /// 2400 would let their keys pass as Gregorian. Buddhist, the next one up,
+    /// starts at 2563. With 2075, a Vikram key for any day since 2020 stays
+    /// outside the window, and Gregorian keys fit through 2075.
+    static let latestPlausibleYear = 2075
+
+    /// Whether `key` names a real Gregorian date this app could have recorded,
+    /// in a year from `earliestPlausibleYear` through `latestPlausibleYear`.
+    ///
+    /// Other calendars number the years since 2020 outside that window — on
+    /// 2026-09-17 Japanese 8, ROC 115, Persian 1405, Islamic 1448, Indian 1948,
+    /// Ethiopic 2019, Vikram 2083, Buddhist 2569, Hebrew 5787 — so a key inside
+    /// it was written in Gregorian. Ethiopic alone enters it, in September 2027.
+    /// `DayKeyTests` checks every calendar Foundation offers, month by month
+    /// from 2020 through 2075. Nothing here reads the clock, so a wrong device
+    /// clock cannot make real history look foreign.
+    public static func isPlausible(_ key: String) -> Bool {
+        guard let f = fields(of: key),
+              f.year >= earliestPlausibleYear, f.year <= latestPlausibleYear else { return false }
         return date(from: key, hour: 12, in: TimeZone(secondsFromGMT: 0)!) != nil
     }
 
@@ -130,10 +144,8 @@ public enum DayKey {
     /// plausible, the Gregorian key of the day it names when read in
     /// `writtenIn`, and nil when neither reading gives a plausible day — the
     /// caller drops it rather than keep a key nothing will ever look up.
-    public static func normalizedStoredKey(_ key: String,
-                                           writtenIn source: Calendar = .current,
-                                           now: Date = Date()) -> String? {
-        if isPlausible(key, now: now) { return key }
+    public static func normalizedStoredKey(_ key: String, writtenIn source: Calendar = .current) -> String? {
+        if isPlausible(key) { return key }
         guard let f = fields(of: key) else { return nil }
         var comps = DateComponents()
         comps.year = f.year; comps.month = f.month; comps.day = f.day
@@ -144,6 +156,6 @@ public enum DayKey {
         let back = source.dateComponents([.year, .month, .day], from: date)
         guard back.year == f.year, back.month == f.month, back.day == f.day else { return nil }
         let converted = string(from: date, in: source.timeZone)
-        return isPlausible(converted, now: now) ? converted : nil
+        return isPlausible(converted) ? converted : nil
     }
 }

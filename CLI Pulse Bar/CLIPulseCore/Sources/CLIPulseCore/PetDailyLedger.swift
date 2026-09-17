@@ -173,12 +173,12 @@ public struct PetDailyLedger: Codable, Sendable, Equatable {
     /// the trailing week the hatch window reads out of the ledger. A converted
     /// day replaces a Gregorian one already present; the next scan re-ingests
     /// the trailing window with fresher timestamps either way.
-    public func normalizingDayKeys(writtenIn source: Calendar = .current, now: Date = Date()) -> PetDailyLedger {
+    public func normalizingDayKeys(writtenIn source: Calendar = .current) -> PetDailyLedger {
         var out = self
         out.days = [:]
         var converted: [String: PetDayRollup] = [:]
         for (key, rollup) in days {
-            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source, now: now) else { continue }
+            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source) else { continue }
             if normalized == key { out.days[key] = rollup } else { converted[normalized] = rollup }
         }
         for (key, rollup) in converted { out.days[key] = rollup }

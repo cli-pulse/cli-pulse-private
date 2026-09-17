@@ -23,6 +23,19 @@ private let foreignCalendars: [Calendar.Identifier] = [
     .islamic, .islamicCivil, .islamicTabular, .islamicUmmAlQura, .japanese, .persian, .republicOfChina,
 ]
 
+/// The calendars Foundation added in macOS 26 and iOS 26, by locale keyword so
+/// the tests compile with an SDK that predates their `Calendar.Identifier`
+/// cases. Vikram and Gujarati number the years closest above the Gregorian
+/// window (2076 on 2020-01-01).
+private let newerCalendarKeywords = [
+    "bangla", "dangi", "gujarati", "kannada", "malayalam", "marathi", "odia", "tamil", "telugu", "vikram", "vietnamese",
+]
+
+private func allForeignCalendars() -> [Calendar] {
+    foreignCalendars.map { Calendar(identifier: $0) }
+        + newerCalendarKeywords.map { Locale(identifier: "en_US@calendar=\($0)").calendar }
+}
+
 final class DayKeyTests: XCTestCase {
 
     func test_keys_and_formatters_are_gregorian_and_posix() throws {
@@ -44,41 +57,68 @@ final class DayKeyTests: XCTestCase {
         XCTAssertNil(DayKey.date(from: "not-a-date"))
     }
 
-    /// The window has to reject a key written in any calendar Foundation
-    /// offers, today, while accepting every real day the app can record.
-    func test_plausible_rejects_every_foreign_calendars_numbering() {
-        var numberedDifferently: Set<Calendar.Identifier> = []
-        for id in foreignCalendars {
-            let key = legacyKey(instant, in: calendar(id))
-            // Some OS versions number a calendar exactly like Gregorian (macOS 15
-            // does for .ethiopicAmeteAlem). A key written in it was already right,
-            // and keeping it is what isPlausible should do.
-            if key == "2026-09-17" { continue }
-            numberedDifferently.insert(id)
-            XCTAssertFalse(DayKey.isPlausible(key, now: instant), "\(id) wrote \(key)")
+    /// The window is a fixed range of years, so it has to reject a key written
+    /// in any calendar Foundation offers on every day it accepts, not just
+    /// today: the first of every month from 2020 through 2075, and 2075-12-31.
+    /// Ethiopic is the one known exception, from its year 2020, which starts in
+    /// September 2027 (see `DayKey.earliestPlausibleYear`). The keys at the end
+    /// pin the window itself.
+    func test_plausible_rejects_every_foreign_calendars_numbering() throws {
+        let utc = TimeZone(identifier: "UTC")!
+        let first = try XCTUnwrap(DayKey.date(from: "2020-01-01", hour: 12, in: utc))
+        let months = (DayKey.latestPlausibleYear - DayKey.earliestPlausibleYear + 1) * 12
+        var days = (0..<months).compactMap { DayKey.calendar(in: utc).date(byAdding: .month, value: $0, to: first) }
+        days.append(try XCTUnwrap(DayKey.date(from: "\(DayKey.latestPlausibleYear)-12-31", hour: 12, in: utc)))
+
+        var numberedDifferently: Set<String> = []
+        var ethiopicEntersWindow: String?
+        for var cal in allForeignCalendars() {
+            cal.timeZone = utc
+            for day in days {
+                let key = legacyKey(day, in: cal)
+                let gregorianKey = DayKey.string(from: day, in: utc)
+                // Some OS versions number a calendar exactly like Gregorian (macOS 15
+                // does for .ethiopicAmeteAlem). A key written in it was already right,
+                // and keeping it is what isPlausible should do.
+                if key == gregorianKey { continue }
+                numberedDifferently.insert("\(cal.identifier)")
+                guard DayKey.isPlausible(key) else { continue }
+                if cal.identifier == .ethiopicAmeteMihret {
+                    if ethiopicEntersWindow == nil { ethiopicEntersWindow = gregorianKey }
+                } else {
+                    XCTFail("\(cal.identifier) wrote \(key) on \(gregorianKey)")
+                    break
+                }
+            }
         }
+        XCTAssertGreaterThanOrEqual(ethiopicEntersWindow ?? "never", "2027-09-01")
+
         // The skip above must not empty the check: these are the calendars that
         // broke usage data, and they number years differently on every OS.
-        XCTAssertTrue(numberedDifferently.isSuperset(of: [.japanese, .republicOfChina, .buddhist, .persian, .hebrew]),
-                      "\(numberedDifferently)")
-        for key in ["2020-01-01", "2025-02-24", "2026-09-17", "2027-12-31"] {
-            XCTAssertTrue(DayKey.isPlausible(key, now: instant), key)
+        XCTAssertTrue(numberedDifferently.isSuperset(of: ["japanese", "roc", "buddhist", "persian", "hebrew"]),
+                      "\(numberedDifferently.sorted())")
+        if ProcessInfo.processInfo.isOperatingSystemAtLeast(OperatingSystemVersion(majorVersion: 26, minorVersion: 0, patchVersion: 0)) {
+            XCTAssertTrue(numberedDifferently.isSuperset(of: ["vikram", "gujarati"]), "\(numberedDifferently.sorted())")
         }
-        for key in ["2019-12-31", "2028-01-01", "2026-02-29", "2026-9-17", ""] {
-            XCTAssertFalse(DayKey.isPlausible(key, now: instant), key)
+
+        for key in ["2020-01-01", "2025-02-24", "2026-09-17", "2028-01-01", "2051-09-16", "2075-12-31"] {
+            XCTAssertTrue(DayKey.isPlausible(key), key)
+        }
+        for key in ["2019-12-31", "2076-01-01", "2083-06-22", "2569-09-17", "2026-02-29", "2026-9-17", ""] {
+            XCTAssertFalse(DayKey.isPlausible(key), key)
         }
     }
 
     /// A key read back in the calendar that wrote it names the right day — or,
     /// when it cannot be read back, no day at all. Never a wrong day.
     func test_stored_keys_convert_back_from_the_calendar_that_wrote_them() {
-        XCTAssertEqual(DayKey.normalizedStoredKey("0008-09-17", writtenIn: calendar(.japanese), now: instant), "2026-09-17")
-        XCTAssertEqual(DayKey.normalizedStoredKey("0115-09-17", writtenIn: calendar(.republicOfChina, "Asia/Taipei"), now: instant), "2026-09-17")
-        XCTAssertEqual(DayKey.normalizedStoredKey("2569-09-17", writtenIn: calendar(.buddhist, "Asia/Bangkok"), now: instant), "2026-09-17")
+        XCTAssertEqual(DayKey.normalizedStoredKey("0008-09-17", writtenIn: calendar(.japanese)), "2026-09-17")
+        XCTAssertEqual(DayKey.normalizedStoredKey("0115-09-17", writtenIn: calendar(.republicOfChina, "Asia/Taipei")), "2026-09-17")
+        XCTAssertEqual(DayKey.normalizedStoredKey("2569-09-17", writtenIn: calendar(.buddhist, "Asia/Bangkok")), "2026-09-17")
 
         for id in foreignCalendars {
             let cal = calendar(id)
-            let converted = DayKey.normalizedStoredKey(legacyKey(instant, in: cal), writtenIn: cal, now: instant)
+            let converted = DayKey.normalizedStoredKey(legacyKey(instant, in: cal), writtenIn: cal)
             if id == .chinese {
                 // Its year field is a 60-year cycle with no era in the key; losing
                 // the day is acceptable, inventing one is not.
@@ -89,10 +129,10 @@ final class DayKeyTests: XCTestCase {
         }
 
         // Already Gregorian: untouched even though the device calendar is Japanese.
-        XCTAssertEqual(DayKey.normalizedStoredKey("2026-09-16", writtenIn: calendar(.japanese), now: instant), "2026-09-16")
+        XCTAssertEqual(DayKey.normalizedStoredKey("2026-09-16", writtenIn: calendar(.japanese)), "2026-09-16")
         // The device is Gregorian again, so nothing can read year 8 back: drop it.
-        XCTAssertNil(DayKey.normalizedStoredKey("0008-09-17", writtenIn: calendar(.gregorian), now: instant))
-        XCTAssertNil(DayKey.normalizedStoredKey("0008-13-40", writtenIn: calendar(.japanese), now: instant))
+        XCTAssertNil(DayKey.normalizedStoredKey("0008-09-17", writtenIn: calendar(.gregorian)))
+        XCTAssertNil(DayKey.normalizedStoredKey("0008-13-40", writtenIn: calendar(.japanese)))
     }
 
     #if canImport(PDFKit) && !os(watchOS)
@@ -130,8 +170,7 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
         func row(_ date: String) -> [String: Any] {
             ["metric_date": date, "provider": "Claude", "model": "m", "input_tokens": 5, "cost": 1.0]
         }
-        let rows = APIClient.dailyUsageRows(from: [row("2026-09-17"), row("0008-09-17"), row("2569-09-17"), row("0115-09-16")],
-                                            now: instant)
+        let rows = APIClient.dailyUsageRows(from: [row("2026-09-17"), row("0008-09-17"), row("2569-09-17"), row("0115-09-16")])
         XCTAssertEqual(rows.map(\.date), ["2026-09-17"])
         XCTAssertEqual(rows.first?.inputTokens, 5)
     }
@@ -148,13 +187,13 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
         cache.files = ["/f.jsonl": CostUsageFileUsage(mtimeUnixMs: 1, size: 10, days: ["0008-09-17": ["gpt-5": [1, 0, 1]]],
                                                         parsedBytes: 10, lastModel: nil, lastTotals: nil, sessionId: nil)]
         CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: tempDir)
-        let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir, now: instant)
+        let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir)
         XCTAssertEqual(loaded.lastScanUnixMs, 0, "a cache holding 0008-09-17 must start over")
         XCTAssertTrue(loaded.files.isEmpty)
 
         cache.files["/f.jsonl"]?.days = ["2026-09-17": ["gpt-5": [1, 0, 1]]]
         CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: tempDir)
-        XCTAssertEqual(CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir, now: instant).lastScanUnixMs, 42,
+        XCTAssertEqual(CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir).lastScanUnixMs, 42,
                        "a Gregorian cache is kept")
     }
     #endif
@@ -170,7 +209,7 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
             months: ["0008-08": MonthRollup(tokens: 100), "2026-08": MonthRollup(tokens: 7)],
             foldedThroughDay: "0008-08-31")
 
-        let n = archive.normalizingDayKeys(writtenIn: calendar(.japanese), now: instant)
+        let n = archive.normalizingDayKeys(writtenIn: calendar(.japanese))
         XCTAssertEqual(n.days, ["2026-09-15": local15, "2026-09-17": local17],
                        "the local day replaces the cloud-filled copy of the same day")
         XCTAssertEqual(n.months, ["2026-08": MonthRollup(tokens: 107)])
@@ -183,7 +222,7 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
         var archive = DailyUsageArchive(days: ["2569-09-16": DayRollup(tokens: 3)],
                                         months: ["2569-08": MonthRollup(tokens: 9)],
                                         foldedThroughDay: "2569-08-31")
-            .normalizingDayKeys(writtenIn: calendar(.buddhist, "Asia/Bangkok"), now: instant)
+            .normalizingDayKeys(writtenIn: calendar(.buddhist, "Asia/Bangkok"))
         archive.mergeScanEntries([ScanEntry(date: "2026-09-17", provider: "Codex", model: "gpt-5",
                                             inputTokens: 40, cachedTokens: 0, outputTokens: 2, cost: 1, messages: 0)])
         XCTAssertEqual(archive.days["2026-09-17"]?.tokens, 42)
@@ -209,7 +248,7 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
             PetDayRollup(providers: ["Claude": PetProviderSlice(tokens: tokens, confidence: .high, observedAtUnixMs: 1)])
         }
         var ledger = PetDailyLedger(days: ["2569-09-15": day(15), "2569-09-16": day(16)])
-            .normalizingDayKeys(writtenIn: calendar(.buddhist, "Asia/Bangkok"), now: instant)
+            .normalizingDayKeys(writtenIn: calendar(.buddhist, "Asia/Bangkok"))
         XCTAssertEqual(ledger.days.keys.sorted(), ["2026-09-15", "2026-09-16"])
 
         ledger.ingest([PetObservation(providerRaw: "Claude", tokens: 17, messages: 0, costUSD: 0,
@@ -238,6 +277,64 @@ final class DayKeyStoredDataMigrationTests: XCTestCase {
         XCTAssertEqual(state.lastHatchDayKey, "2026-07-11")
         XCTAssertEqual(state.ownedDayKeys["loaf"], "2026-07-11")
         XCTAssertTrue(PetEngine.timingAllows(lastHatchDayKey: state.lastHatchDayKey, todayKey: "2026-09-17"))
+    }
+
+    // MARK: A device clock set years behind
+
+    /// With the device clock set years behind, today's keys lie years in the
+    /// clock's future. The first version of this migration accepted keys up to
+    /// "next year" by the clock, so with the clock at 2024-06-01 or 2001-01-01
+    /// `normalizedStoredKey("2026-09-16")` returned nil: every load dropped the
+    /// archive's days, months and fold marker and the pet ledger's days, the
+    /// next save made that permanent, and the scanner cache started over on
+    /// every scan. Nothing reads the clock now, so there is no clock to set
+    /// here; the keys move instead. Against a 2026 clock, keys from 2028 and
+    /// 2051 are those two clocks, and 2075 is the window's last year.
+    private static let yearsAfterTheClock = [2028, 2051, 2075]
+
+    func test_archive_load_keeps_days_years_after_the_clock() {
+        for year in Self.yearsAfterTheClock {
+            let archive = DailyUsageArchive(
+                days: ["\(year)-09-15": DayRollup(tokens: 15), "\(year)-09-16": DayRollup(tokens: 16)],
+                months: ["\(year)-08": MonthRollup(tokens: 100)],
+                foldedThroughDay: "\(year)-08-31")
+            XCTAssertTrue(DailyUsageArchiveIO.save(archive, root: tempDir))
+            let loaded = DailyUsageArchiveIO.load(root: tempDir)
+            XCTAssertEqual(loaded.days, archive.days, "\(year)")
+            XCTAssertEqual(loaded.months, archive.months, "\(year)")
+            XCTAssertEqual(loaded.foldedThroughDay, archive.foldedThroughDay, "\(year)")
+        }
+    }
+
+    func test_pet_ledger_load_keeps_days_years_after_the_clock() {
+        for year in Self.yearsAfterTheClock {
+            let ledger = PetDailyLedger(days: ["\(year)-09-15": PetDayRollup(), "\(year)-09-16": PetDayRollup()])
+            XCTAssertTrue(PetDailyLedgerIO.save(ledger, root: tempDir))
+            XCTAssertEqual(PetDailyLedgerIO.load(root: tempDir).days.keys.sorted(), ["\(year)-09-15", "\(year)-09-16"])
+        }
+    }
+
+    #if os(macOS)
+    func test_scanner_cache_keeps_keys_years_after_the_clock() {
+        for year in Self.yearsAfterTheClock {
+            var cache = CostUsageCache()
+            cache.lastScanUnixMs = 42
+            cache.days = ["\(year)-09-16": ["gpt-5": [1, 0, 1]]]
+            cache.files = ["/f.jsonl": CostUsageFileUsage(mtimeUnixMs: 1, size: 10, days: ["\(year)-09-16": ["gpt-5": [1, 0, 1]]],
+                                                            parsedBytes: 10, lastModel: nil, lastTotals: nil, sessionId: nil)]
+            CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: tempDir)
+            let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir)
+            XCTAssertEqual(loaded.lastScanUnixMs, 42, "\(year): the cache was thrown away")
+            XCTAssertEqual(loaded.files["/f.jsonl"]?.days.keys.sorted(), ["\(year)-09-16"])
+        }
+    }
+    #endif
+
+    func test_cloud_rows_years_after_the_clock_are_kept() {
+        let rows = APIClient.dailyUsageRows(from: Self.yearsAfterTheClock.map {
+            ["metric_date": "\($0)-09-16", "provider": "Claude", "model": "m", "input_tokens": 5, "cost": 1.0]
+        })
+        XCTAssertEqual(rows.map(\.date), Self.yearsAfterTheClock.map { "\($0)-09-16" })
     }
 }
 
