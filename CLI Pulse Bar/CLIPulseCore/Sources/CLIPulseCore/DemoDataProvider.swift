@@ -54,6 +54,12 @@ internal enum DemoDataProvider {
         // Session names are identifiers, the way a real one reads (a command or
         // a project), not English sentences: they are data, shown as-is in
         // every language, and they reappear inside the alert titles below.
+        //
+        // helper-heartbeat carries the long-running alert below, so it looks
+        // like a session that would trip it: the helpers only fire at 400 or
+        // more requests, and count a request per 45 s of runtime. Seven hours
+        // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
+        // which is when the alert says it was raised.
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
@@ -63,9 +69,9 @@ internal enum DemoDataProvider {
                           collection_confidence: "high"),
             SessionRecord(id: "s2", name: "helper-heartbeat", provider: "Gemini",
                           project: "cli-pulse-helper", device_name: "lab-server-01",
-                          started_at: timestamp(-3600), last_active_at: timestamp(),
+                          started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
                           status: "syncing", total_usage: 12800, estimated_cost: 0.10,
-                          cost_status: "Estimated", requests: 87, error_count: 0,
+                          cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
@@ -81,13 +87,16 @@ internal enum DemoDataProvider {
                           collection_confidence: "low"),
         ]
 
+        // CPU figures agree with the alerts below: the MacBook Pro's total sits
+        // above the ~46% its ios-dashboard session alone is using, and
+        // lab-server-01 reports the 91% its device-CPU alert quotes.
         let devices = [
             DeviceRecord(id: "d1", name: "MacBook Pro", type: "laptop", system: "macOS 15.4",
                          status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
-                         current_session_count: 2, cpu_usage: 42, memory_usage: 68),
+                         current_session_count: 2, cpu_usage: 58, memory_usage: 68),
             DeviceRecord(id: "d2", name: "lab-server-01", type: "server", system: "Ubuntu 24.04",
                          status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
-                         current_session_count: 1, cpu_usage: 23, memory_usage: 45),
+                         current_session_count: 1, cpu_usage: 91, memory_usage: 45),
             DeviceRecord(id: "d3", name: "build-box", type: "server", system: "macOS 14.7",
                          status: "offline", last_sync_at: timestamp(-3600), helper_version: "0.1.9",
                          current_session_count: 0, cpu_usage: nil, memory_usage: nil),

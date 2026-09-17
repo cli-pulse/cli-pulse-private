@@ -82,14 +82,14 @@ COPY = {
         "04_sessions": ("Every CLI run tracked",
                         "Live sessions with usage, cost and requests"),
         "05_alerts": ("Never miss a limit",
-                      "Alerts for quota, cost spikes and offline devices"),
+                      "Alerts for quota, CPU spikes and long-running sessions"),
     },
     "zh": {
         "01_overview": ("一屏看全", "用量、花费、会话 —— 还能远程操作你的 Mac"),
         "02_providers": ("实时额度,真实花费", "撞墙之前就知道还剩多少"),
         "03_cost": ("钱花在哪里", "按服务商拆分的花费、热门项目和风险信号"),
         "04_sessions": ("每一次 CLI 运行都在案", "实时会话,附用量、费用和请求数"),
-        "05_alerts": ("额度不再突然见底", "额度、费用突增、设备离线都会提醒"),
+        "05_alerts": ("额度不再突然见底", "额度将尽、CPU 占用过高、会话运行过久都会提醒"),
     },
 }
 

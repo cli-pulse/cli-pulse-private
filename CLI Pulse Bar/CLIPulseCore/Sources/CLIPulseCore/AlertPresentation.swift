@@ -23,7 +23,7 @@ import Foundation
 /// Retired kinds, rows from a newer client, and any template edit fall
 /// through to the stored text unchanged. That is a visible, honest
 /// degradation rather than a wrong translation — and
-/// `AlertPresentationRoundTripTests` runs the REAL generator output through
+/// `AlertPresentationTests` runs the REAL generator output through
 /// this type so a template edit fails CI instead of silently reverting a
 /// locale to English. Demo mode's rows are real producer templates too, and
 /// `DemoDataLocalizationTests` holds them to that.

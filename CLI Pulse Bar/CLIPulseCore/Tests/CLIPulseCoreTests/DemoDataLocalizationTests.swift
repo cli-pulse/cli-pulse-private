@@ -12,13 +12,18 @@ import XCTest
 /// fallback copy is English.
 final class DemoDataLocalizationTests: XCTestCase {
 
+    /// The override persists to UserDefaults.standard; put back whatever the
+    /// next suite would otherwise inherit from this one.
+    private var savedOverride: String?
+
     override func setUp() {
         super.setUp()
+        savedOverride = LocaleOverrideStore.shared.override
         LocaleOverrideStore.shared.set("ja")
     }
 
     override func tearDown() {
-        LocaleOverrideStore.shared.set(nil)
+        LocaleOverrideStore.shared.set(savedOverride)
         super.tearDown()
     }
 
@@ -123,15 +128,17 @@ final class DemoAccountNameTests: XCTestCase {
 
     private var suiteName = ""
     private var defaults: UserDefaults!
+    private var savedOverride: String?
 
     override func setUp() {
         super.setUp()
         suiteName = "DemoAccountNameTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
+        savedOverride = LocaleOverrideStore.shared.override
     }
 
     override func tearDown() {
-        LocaleOverrideStore.shared.set(nil)
+        LocaleOverrideStore.shared.set(savedOverride)
         defaults.removePersistentDomain(forName: suiteName)
         defaults = nil
         super.tearDown()
