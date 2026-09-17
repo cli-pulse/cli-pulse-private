@@ -298,6 +298,106 @@ final class UserInputNormalizationTests: XCTestCase {
     }
 }
 
+#if os(macOS)
+
+/// The call that sends the code, not only the helper that folds it.
+///
+/// `testFullWidthSignInCodeIsSentAsASCIIDigits` passes even when `verifyOTP`
+/// stops calling the helper, and the server then gets "１２３４５６" again. This
+/// one reads the body of the request that actually leaves `APIClient`.
+final class VerifyOTPRequestBodyTests: XCTestCase {
+
+    private var savedOverride: String?
+
+    override func setUp() {
+        super.setUp()
+        savedOverride = LocaleOverrideStore.shared.override
+        // The app in Japanese, with a Japanese input source in full-width mode.
+        LocaleOverrideStore.shared.set("ja")
+        VerifyOTPStubProtocol.reset()
+    }
+
+    override func tearDown() {
+        VerifyOTPStubProtocol.reset()
+        LocaleOverrideStore.shared.set(savedOverride)
+        super.tearDown()
+    }
+
+    func testFullWidthCodeLeavesAPIClientAsASCIIDigits() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [VerifyOTPStubProtocol.self]
+        let api = APIClient(
+            supabaseURL: "https://stub.cli-pulse.test",
+            supabaseAnonKey: "anon",
+            session: URLSession(configuration: config)
+        )
+
+        // The stub rejects the code, so the call throws before any profile fetch.
+        _ = try? await api.verifyOTP(email: "a@b.c", code: "　１２３ ４５６")
+
+        let bodies = VerifyOTPStubProtocol.verifyBodies()
+        XCTAssertEqual(bodies.count, 1, "exactly one request to /auth/v1/verify")
+        let body = try XCTUnwrap(bodies.first)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+        XCTAssertEqual(root["token"] as? String, "123456")
+        XCTAssertEqual(root["email"] as? String, "a@b.c")
+        XCTAssertEqual(root["type"] as? String, "email")
+    }
+}
+
+/// Records the body of every /auth/v1/verify request and answers 400.
+private final class VerifyOTPStubProtocol: URLProtocol {
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var bodies: [Data] = []
+
+    static func reset() {
+        lock.lock(); bodies = []; lock.unlock()
+    }
+
+    static func verifyBodies() -> [Data] {
+        lock.lock(); defer { lock.unlock() }
+        return bodies
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if request.url?.path == "/auth/v1/verify" {
+            let body = Self.materializedBody(of: request)
+            Self.lock.lock(); Self.bodies.append(body); Self.lock.unlock()
+        }
+        let url = request.url ?? URL(string: "https://stub.cli-pulse.test")!
+        let response = HTTPURLResponse(
+            url: url, statusCode: 400, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(#"{"error":"otp_invalid"}"#.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    /// URLSession hands a protocol the body as a stream, not as `httpBody`.
+    private static func materializedBody(of request: URLRequest) -> Data {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return Data() }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4_096)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
+}
+
+#endif
+
 /// Sign in with Apple names are written in the order of their own script.
 final class AppleSignInNameTests: XCTestCase {
 
