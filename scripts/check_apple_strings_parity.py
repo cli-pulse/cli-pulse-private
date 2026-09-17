@@ -52,9 +52,14 @@ And the tables the APP BUNDLES ship, which the system reads without L10n:
 
   * every `CLI Pulse Bar/<app>/<locale>.lproj/*.strings` gets the same syntax
     scan, two-reader agreement and duplicate check as the core catalogues;
-  * every App Intents literal (title, description, category, parameter title
-    and description, parameter summary, type name, shortTitle) is a key in the
-    app's en Localizable.strings, and every key there is still such a literal;
+  * every App Intents literal (title, description, category, search keywords,
+    parameter title, description and request dialogs, parameter summary, type
+    and display names, shortTitle, dialogs — initialised or computed) is a key
+    in the app's en Localizable.strings, and every key there is still such a
+    literal. Files are chosen by what their code uses, not by how the import
+    is spelled; every AppIntent must yield a title (and every AppEnum/AppEntity
+    a type name) the gate actually read; and a table with keys while nothing
+    was read fails rather than "matching";
   * every such table is a child of its PBXVariantGroup for all six locales, in
     the owning target's Resources phase — otherwise Xcode silently skips it;
   * the four hosts that render L10n declare exactly the six locales in
@@ -931,109 +936,316 @@ def code_argument_mismatches(root: Path, index: SwiftIndex, en: dict[str, str]) 
 
 # ── App Intents metadata ─────────────────────────────────────────────────────
 
-# Every place App Intents turns a Swift literal into a LocalizedStringResource,
-# which the system looks up BY ITS ENGLISH TEXT in the app's own
-# `<locale>.lproj/Localizable.strings`. Each pattern ends at the opening quote.
-INTENT_LITERAL_SITES = [
-    ("title", re.compile(r"\bstatic\s+(?:var|let)\s+title\s*:\s*LocalizedStringResource\s*=\s*(?=\")")),
-    ("LocalizedStringResource", re.compile(r"\bLocalizedStringResource\(\s*(?=\")")),
-    ("description", re.compile(r"\bIntentDescription\(\s*(?=\")")),
-    ("description", re.compile(r":\s*IntentDescription\s*=\s*(?=\")")),
-    ("categoryName", re.compile(r"\bcategoryName\s*:\s*(?=\")")),
-    ("parameterSummary", re.compile(r"\bSummary\(\s*(?=\")")),
-    ("typeDisplayRepresentation", re.compile(r"\bTypeDisplayRepresentation\s*=\s*(?=\")")),
-    ("typeDisplayRepresentation", re.compile(r"\bTypeDisplayRepresentation\(\s*name\s*:\s*(?=\")")),
-    ("DisplayRepresentation", re.compile(r"\bDisplayRepresentation\(\s*title\s*:\s*(?=\")")),
-    ("shortTitle", re.compile(r"\bshortTitle\s*:\s*(?=\")")),
-    ("IntentDialog", re.compile(r"\bIntentDialog\(\s*(?=\")")),
+# App Intents turns a Swift literal into a LocalizedStringResource, which the
+# system looks up BY ITS ENGLISH TEXT in the app's own
+# `<locale>.lproj/Localizable.strings`. The places it does that, in three shapes:
+
+# 1. A property typed as one of the localized types, initialised or computed
+#    from a literal: `static var title: LocalizedStringResource = "…"`, and the
+#    computed `{ "…" }` / `{ return "…" }` / `{ get { "…" } }` bodies. The site is
+#    named after the property.
+LOCALIZED_TYPES = r"(?:LocalizedStringResource|IntentDescription|IntentDialog|TypeDisplayRepresentation|DisplayRepresentation)"
+DECLARATION_SITE = re.compile(
+    r"\b(?:var|let)\s+`?(\w+)`?\s*:\s*" + LOCALIZED_TYPES + r"\??\s*"
+    r"(?:=\s*|\{\s*(?:get\s*\{\s*)?(?:return\s+)?)(?=#*\")")
+
+# 2. Calls. (site, callee ending at its "(", first argument unlabelled and
+#    localized?, labels whose literal is localized, labels taking an ARRAY of
+#    localized literals, prefix naming a labelled site).
+INTENT_CALLS = [
+    ("LocalizedStringResource", re.compile(r"\bLocalizedStringResource\("), True, (), (), ""),
+    ("description", re.compile(r"\bIntentDescription\("), True,
+     ("categoryName", "resultValueName"), ("searchKeywords",), ""),
+    ("IntentDialog", re.compile(r"\bIntentDialog\("), True, ("stringLiteral", "full", "supporting"), (), "IntentDialog "),
+    ("parameterSummary", re.compile(r"\bSummary\("), True, (), (), ""),
+    ("typeDisplayRepresentation", re.compile(r"\bTypeDisplayRepresentation\("), False,
+     ("name", "numericFormat"), (), "typeDisplayRepresentation "),
+    ("DisplayRepresentation", re.compile(r"\bDisplayRepresentation\("), False,
+     ("title", "subtitle"), ("synonyms",), "DisplayRepresentation "),
+    ("@Parameter", re.compile(r"@Parameter\s*\("), False,
+     ("title", "description", "requestValueDialog", "requestDisambiguationDialog"), (), "@Parameter "),
+    ("AppShortcut", re.compile(r"\bAppShortcut\("), False, ("shortTitle",), (), ""),
+    ("dialog", re.compile(r"\b(?:requestValue|needsValueError)\("), True, (), (), ""),
 ]
-PARAMETER_ATTRIBUTE = re.compile(r"@Parameter\s*\(")
+
+# 3. Labels that take a localized literal wherever they are written in an App
+#    Intents file — `.result(dialog: "…")`, `needsDisambiguationError(among:
+#    dialog:)`, `.init(title:subtitle:)` — so a call the list above does not
+#    name is still read. Calls above claim a literal first, for the better name.
+INTENT_LABEL_SITE = re.compile(
+    r"\b(dialog|requestValueDialog|requestDisambiguationDialog|requestConfirmationDialog|"
+    r"categoryName|resultValueName|shortTitle|subtitle)\s*:\s*(?=#*\")")
+INTENT_ARRAY_LABEL_SITE = re.compile(r"\b(searchKeywords|synonyms)\s*:\s*\[")
+
 SUMMARY_PARAMETER = re.compile(r"\\\(\\\.\$(\w+)\)")
 
+# Which files are read: any that USES App Intents, judged from its code (comments
+# and strings blanked) rather than from one spelling of its import line. Matching
+# `^import AppIntents` let `@preconcurrency import AppIntents` — or an intent in a
+# file that gets the module some other way — take a file, or every file, out of
+# the scan, and the gate then reported a match it had never looked for.
+APP_INTENTS_USE = re.compile(
+    r"\bimport\s+(?:(?:typealias|struct|class|enum|protocol|let|var|func)\s+)?AppIntents\b"
+    r"|\b(?:AppIntent|AppShortcutsProvider|AppShortcut|AppEnum|AppEntity|EntityQuery|IntentResult|"
+    r"IntentDescription|IntentDialog|LocalizedStringResource|TypeDisplayRepresentation|"
+    r"DisplayRepresentation|ParameterSummary)\b|@Parameter\b")
 
-def _intent_literals(src: str) -> list[tuple[str, str, int, bool]]:
-    """(site, table key, line, exempt) for every App Intents literal in one file.
+# What a conforming type must declare, and this gate must therefore READ. A type
+# whose required string it cannot read fails, so a form the lists above do not
+# know — `{ .init("…") }`, a raw string — is a failure to teach the gate, never an
+# intent quietly left out of the check.
+REQUIRED_MEMBERS = [
+    (re.compile(r"^\w*Intent$"), "title"),
+    (re.compile(r"^(?:AppEnum|AppEntity|TransientAppEntity|IndexedEntity|UniqueAppEntity|FileEntity)$"),
+     "typeDisplayRepresentation"),
+]
+TYPE_DECLARATION = re.compile(r"\b(struct|enum|class|actor|extension)\s+`?([A-Za-z_][\w.]*)`?([^{;]*)\{")
+# `class func`, `class override var` … are members, not types.
+NOT_TYPE_NAMES = {"var", "let", "func", "subscript", "init", "deinit", "static", "override", "final",
+                  "private", "fileprivate", "internal", "public", "open", "required", "convenience",
+                  "dynamic", "nonisolated", "lazy", "mutating"}
 
-    Exempt, but still counted as producing its key:
-      * `caseDisplayRepresentations` — the provider names (Claude, Codex…) are
-        proper nouns, and a missing key falls back to the literal, which is right;
-      * any type declaring `isDiscoverable = false` — the system never lists it.
-    """
-    no_comments, code = swift_masks(src)
-    exempt: list[tuple[int, int]] = []
-    for m in re.finditer(r"\bcaseDisplayRepresentations\b[^=\n]*=\s*\[", code):
-        exempt.append((m.start(), match_close(code, m.end() - 1)))
-    for m in re.finditer(r"\b(?:struct|enum|class|actor|extension)\s+\w+[^{]*\{", code):
+
+def _depth_zero(code: str, a: int, b: int) -> list[bool]:
+    """For each offset in code[a:b], whether it sits at bracket depth zero."""
+    flags, depth = [], 0
+    for k in range(a, b):
+        c = code[k]
+        if c in ")]}":
+            depth -= 1
+        flags.append(depth == 0)
+        if c in "([{":
+            depth += 1
+    return flags
+
+
+def _type_declarations(code: str):
+    """(keyword, type name, inherited names, header offset, body open, body close)."""
+    out = []
+    for m in TYPE_DECLARATION.finditer(code):
+        name = m.group(2).split(".")[-1]
+        if name in NOT_TYPE_NAMES:
+            continue
         close = match_close(code, m.end() - 1)
         if close < 0:
             continue
-        body = code[m.end():close - 1]
-        for d in re.finditer(r"\bstatic\s+(?:var|let)\s+isDiscoverable\s*(?::\s*Bool\s*)?=\s*false\b", body):
-            prefix = body[:d.start()]
-            if prefix.count("{") == prefix.count("}"):
-                exempt.append((m.start(), close))
+        header = re.sub(r"<[^<>]*>", "", m.group(3))
+        header = re.split(r"\bwhere\b", header)[0]
+        inherited = []
+        if header.strip().startswith(":"):
+            for part in re.split(r"[,&]", header.strip()[1:]):
+                part = part.strip().split(".")[-1].strip()
+                if re.fullmatch(r"\w+", part):
+                    inherited.append(part)
+        out.append((m.group(1), name, inherited, m.start(), m.end() - 1, close))
+    return out
 
-    sites: list[tuple[str, int]] = []
-    for site, rx in INTENT_LITERAL_SITES:
-        sites += [(site, m.end()) for m in rx.finditer(code)]
-    for m in PARAMETER_ATTRIBUTE.finditer(code):
+
+def _literal_sites(no_comments: str, code: str) -> dict[int, str]:
+    """Offset of the opening quote (or `#`) of every localized literal → site name."""
+    sites: dict[int, str] = {}
+
+    def value_at(a: int, b: int) -> int:
+        while a < b and code[a].isspace():
+            a += 1
+        return a
+
+    for site, rx, positional, labels, array_labels, prefix in INTENT_CALLS:
+        for m in rx.finditer(code):
+            close = match_close(code, m.end() - 1)
+            if close < 0:
+                continue
+            for n, (s, e) in enumerate(split_top_level(code, m.end(), close - 1)):
+                lab = re.match(r"\s*(\w+)\s*:(?!:)", code[s:e])
+                if lab is None:
+                    if n == 0 and positional:
+                        v = value_at(s, e)
+                        if code[v] in '"#':
+                            sites.setdefault(v, site)
+                    continue
+                v = value_at(s + lab.end(), e)
+                label = lab.group(1)
+                if label in labels and code[v] in '"#':
+                    sites.setdefault(v, prefix + label)
+                elif label in array_labels and code[v] == "[":
+                    inner = match_close(code, v)
+                    if inner < 0:
+                        continue
+                    for es, ee in split_top_level(code, v + 1, inner - 1):
+                        ev = value_at(es, ee)
+                        if code[ev] in '"#':
+                            sites.setdefault(ev, prefix + label)
+    for m in DECLARATION_SITE.finditer(code):
+        sites.setdefault(m.end(), m.group(1))
+    for m in INTENT_LABEL_SITE.finditer(code):
+        sites.setdefault(m.end(), m.group(1))
+    for m in INTENT_ARRAY_LABEL_SITE.finditer(code):
         close = match_close(code, m.end() - 1)
         if close < 0:
             continue
-        for label in re.finditer(r"\b(title|description)\s*:\s*(?=\")", code[m.end():close]):
-            sites.append((f"@Parameter {label.group(1)}", m.end() + label.end()))
-
-    found = []
-    for site, quote in sorted(sites, key=lambda s: s[1]):
-        literal = first_string_literal(no_comments, quote)
-        if literal is None:
-            continue
-        key = SUMMARY_PARAMETER.sub(r"${\1}", literal) if site == "parameterSummary" else literal
-        line = src.count("\n", 0, quote) + 1
-        found.append((site, key, line, any(a <= quote < b for a, b in exempt)))
-    return found
+        for s, e in split_top_level(code, m.end(), close - 1):
+            v = value_at(s, e)
+            if code[v] in '"#':
+                sites.setdefault(v, m.group(1))
+    return sites
 
 
-def intent_metadata_problems(root: Path) -> list[str]:
-    """App Intent names, descriptions, parameters and short titles with no entry in
-    the app's own Localizable.strings — and entries no intent asks for any more.
+class _IntentFile:
+    """One Swift file's App Intents strings, and the types it declares."""
+
+    def __init__(self, rel: str, src: str) -> None:
+        self.rel = rel
+        self.src = src
+        no_comments, code = swift_masks(src)
+        self.types = _type_declarations(code)
+
+        # Exempt, but still counted as producing its key:
+        #   * a case's NAME in `caseDisplayRepresentations` — the provider names
+        #     (Claude, Codex…) are proper nouns, and a missing key falls back to
+        #     the literal, which is right. A case's subtitle or synonyms are
+        #     ordinary words and are checked;
+        #   * everything in a type declaring `isDiscoverable = false` — the
+        #     system never lists it.
+        case_names: list[tuple[int, int]] = []
+        for m in re.finditer(r"\bcaseDisplayRepresentations\b[^=\n]*=\s*\[", code):
+            close = match_close(code, m.end() - 1)
+            if close >= 0:
+                case_names.append((m.start(), close))
+        exempt: list[tuple[int, int]] = []
+        self.hidden: set[str] = set()
+        for _, name, _, header, body_open, close in self.types:
+            body = code[body_open + 1:close - 1]
+            for d in re.finditer(r"\bstatic\s+(?:var|let)\s+isDiscoverable\s*(?::\s*Bool\s*)?=\s*false\b", body):
+                prefix = body[:d.start()]
+                if prefix.count("{") == prefix.count("}"):
+                    exempt.append((header, close))
+                    self.hidden.add(name)
+
+        # (site, key or None when unreadable, line, exempt, offset)
+        self.literals: list[tuple[str, str | None, int, bool, int]] = []
+        for at, site in sorted(_literal_sites(no_comments, code).items()):
+            literal = None
+            if no_comments[at] == '"' and not no_comments.startswith('"""', at):
+                literal = first_string_literal(no_comments, at)
+            if literal is not None and site == "parameterSummary":
+                literal = SUMMARY_PARAMETER.sub(r"${\1}", literal)
+            is_exempt = any(a <= at < b for a, b in exempt) or (
+                site.split()[-1] == "title" and any(a <= at < b for a, b in case_names))
+            self.literals.append((site, literal, self.line(at), is_exempt, at))
+
+        # Where each type declares the members REQUIRED_MEMBERS asks for:
+        # type name → member → [(start, end)] spans, each running from the
+        # declaration to the next member of the same body.
+        self.members: dict[str, dict[str, list[tuple[int, int]]]] = {}
+        boundary = re.compile(r"@\w+|\b(?:var|let|func|init|deinit|subscript|case|struct|enum|class|actor|"
+                              r"typealias|associatedtype|static|private|public|internal|fileprivate|package|"
+                              r"nonisolated|mutating|override|final|lazy|open)\b")
+        wanted = {member for _, member in REQUIRED_MEMBERS}
+        for _, name, _, _, body_open, close in self.types:
+            a, b = body_open + 1, close - 1
+            flat = _depth_zero(code, a, b)
+            starts = [a + m.start() for m in boundary.finditer(code[a:b]) if flat[m.start()]]
+            for m in re.finditer(r"\b(?:var|let)\s+`?(\w+)`?\b", code[a:b]):
+                if m.group(1) not in wanted or not flat[m.start()]:
+                    continue
+                begin = a + m.end()
+                end = next((s for s in starts if s >= begin), b)
+                self.members.setdefault(name, {}).setdefault(m.group(1), []).append((a + m.start(), end))
+
+    def line(self, at: int) -> int:
+        return self.src.count("\n", 0, at) + 1
+
+
+def intent_metadata_problems(root: Path, stats: dict | None = None) -> list[str]:
+    """App Intent names, descriptions, parameters, dialogs and short titles with no
+    entry in the app's own Localizable.strings — and entries no intent asks for.
 
     Only Shortcut phrases were tied to Swift. Renaming GetStatusIntent's title to
     "Get CLI Pulse Summary", rewording its Summary, adding a parameter
     description or changing a shortTitle all passed every gate, and each one
     shows English in Shortcuts and Spotlight on every non-English iPhone while
     the old translation becomes dead text.
+
+    A check that reads nothing must not report a match, so three things fail
+    instead of passing quietly: an app whose table declares keys while no
+    literal was read from it; an intent (or AppEnum/AppEntity) whose title (or
+    type name) the gate cannot read; and a literal it found but cannot parse.
+
+    `stats`, when given, receives app → (literals checked, exempt, files read).
     """
     problems: list[str] = []
     app_root = root / APP_ROOT_SUBPATH
     if not app_root.is_dir():
         return problems
     for app_dir in sorted(d for d in app_root.iterdir() if d.is_dir() and d.name != "CLIPulseCore"):
-        literals: list[tuple[str, str, str, int, bool]] = []
+        files: list[_IntentFile] = []
         for swift in sorted(app_dir.rglob("*.swift")):
             src = swift.read_text(encoding="utf-8", errors="replace")
-            if not re.search(r"^\s*import\s+AppIntents\b", src, re.M):
+            if not APP_INTENTS_USE.search(src):
                 continue
-            rel = swift.relative_to(app_root)
-            literals += [(str(rel), site, key, line, exempt) for site, key, line, exempt in _intent_literals(src)]
-        if not literals:
-            continue
+            if not APP_INTENTS_USE.search(swift_masks(src)[1]):
+                continue
+            files.append(_IntentFile(str(swift.relative_to(app_root)), src))
+
         table = app_dir / f"{BASE_LOCALE}.lproj" / STRINGS_FILE
         declared = set(_strings_keys_values(table)) if table.is_file() else set()
-        if not table.is_file():
+        literals = [(f, *lit) for f in files for lit in f.literals]
+        if stats is not None and literals:
+            exempted = sum(1 for lit in literals if lit[4])
+            stats[app_dir.name] = (len(literals) - exempted, exempted, len(files))
+        if declared and not literals:
+            # Reported once, in place of one orphan per key: the fault is the
+            # scan, not the keys.
+            problems.append(
+                f"{app_dir.name}/{BASE_LOCALE}.lproj/{STRINGS_FILE} declares {len(declared)} key(s), but no "
+                f"App Intents literal was read from any Swift file in {app_dir.name} ({len(files)} file(s) "
+                "use App Intents). Nothing was compared: either the intents are gone and the table is dead, "
+                "or they are written in a form this gate does not read")
+        if literals and not table.is_file():
             problems.append(f"{app_dir.name}: has App Intents but no {BASE_LOCALE}.lproj/{STRINGS_FILE}")
-        for rel, site, key, line, exempt in literals:
+
+        for f, site, key, line, exempt, _ in literals:
             if exempt:
                 continue
-            if "\\(" in key:
-                problems.append(f"{rel}:{line}: {site} {key!r} interpolates something other than a "
+            if key is None:
+                problems.append(f"{f.rel}:{line}: {site} is a literal this gate cannot read (raw, multi-line or "
+                                "unterminated), so its table entry is unchecked — write it as a plain \"…\"")
+            elif "\\(" in key:
+                problems.append(f"{f.rel}:{line}: {site} {key!r} interpolates something other than a "
                                 "parameter, so its table key cannot be derived")
             elif key not in declared:
-                problems.append(f"{rel}:{line}: {site} {key!r} has no entry in "
+                problems.append(f"{f.rel}:{line}: {site} {key!r} has no entry in "
                                 f"{app_dir.name}/{BASE_LOCALE}.lproj/{STRINGS_FILE}, so it shows English "
                                 "in every language")
-        produced = {key for _, _, key, _, _ in literals}
-        for key in sorted(declared - produced):
+
+        # Every conforming type's required string is one the gate read.
+        spans: dict[str, dict[str, list[tuple[_IntentFile, int, int]]]] = {}
+        hidden: set[str] = set()
+        for f in files:
+            hidden |= f.hidden
+            for name, members in f.members.items():
+                for member, ranges in members.items():
+                    spans.setdefault(name, {}).setdefault(member, []).extend((f, a, b) for a, b in ranges)
+        reported: set[tuple[str, str]] = set()
+        for f in files:
+            for _, name, inherited, header, _, _ in f.types:
+                if name in hidden:
+                    continue
+                for proto in inherited:
+                    for rx, member in REQUIRED_MEMBERS:
+                        if not rx.match(proto) or (name, member) in reported:
+                            continue
+                        read = any(g is lf and a <= at < b
+                                   for g, a, b in spans.get(name, {}).get(member, [])
+                                   for lf, *_, at in literals)
+                        if not read:
+                            reported.add((name, member))
+                            problems.append(
+                                f"{f.rel}:{f.line(header)}: {name} conforms to {proto}, but this gate reads no "
+                                f"{member} literal for it, so that name is checked in no language — declare "
+                                f"`static var {member}: … = \"…\"`, or teach the gate the form used")
+        produced = {key for _, _, key, _, _, _ in literals if key is not None}
+        for key in sorted(declared - produced) if literals else []:
             problems.append(f"{app_dir.name}/{BASE_LOCALE}.lproj/{STRINGS_FILE}: {key!r} is not written by any "
                             "App Intents literal any more — dead text, or a renamed literal whose "
                             "translations it orphaned")
@@ -1509,13 +1721,15 @@ def main() -> int:
             print(f"    {line}", file=sys.stderr)
         print("", file=sys.stderr)
 
-    intents = intent_metadata_problems(root)
+    intent_stats: dict[str, tuple[int, int, int]] = {}
+    intents = intent_metadata_problems(root, intent_stats)
     if intents:
         failed = True
-        print("FAIL — an App Intents string does not match the app's Localizable.strings.", file=sys.stderr)
-        print("       The system looks titles, descriptions, parameters and short titles up", file=sys.stderr)
-        print("       by their exact English text, so a renamed literal shows English in", file=sys.stderr)
-        print("       Shortcuts and Spotlight in every other language:\n", file=sys.stderr)
+        print("FAIL — an App Intents string does not match the app's Localizable.strings,", file=sys.stderr)
+        print("       or this gate could not read one it has to. The system looks titles,", file=sys.stderr)
+        print("       descriptions, parameters, dialogs and short titles up by their exact", file=sys.stderr)
+        print("       English text, so a renamed literal shows English in Shortcuts, Siri", file=sys.stderr)
+        print("       and Spotlight in every other language:\n", file=sys.stderr)
         for line in intents:
             print(f"    {line}", file=sys.stderr)
         print("", file=sys.stderr)
@@ -1551,7 +1765,13 @@ def main() -> int:
     print(f"     code: {len(keys_the_code_asks_for(root)) + len(expanded)} key(s) asked for "
           f"({len(expanded)} expanded from composed keys), every tr() argument agrees with en; "
           f"app bundles: {len(app_bundle_tables(root))} table(s) parse and are copied, "
-          f"App Intents literals and CFBundleLocalizations match.")
+          f"CFBundleLocalizations match.")
+    # The counts are part of the claim: "match" over zero literals read is what
+    # this line used to print when the scan found nothing.
+    read = "; ".join(f"{app}: {n} literal(s) read from {files} file(s) are keys in its "
+                     f"{BASE_LOCALE}.lproj/{STRINGS_FILE} ({x} exempt: hidden intents, case names)"
+                     for app, (n, x, files) in sorted(intent_stats.items()))
+    print(f"     App Intents — {read or 'no app declares any'}.")
     print(f"     key counts: {locales}")
     if debt:
         per_locale = ", ".join(f"{loc} {len(keys)}" for loc, keys in sorted(missing.items()))

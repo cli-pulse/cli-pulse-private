@@ -435,6 +435,10 @@ write_shortcuts() {  # write_shortcuts <app dir> <en value> <other-locale value>
         mkdir -p "$dir/$loc.lproj"
         local v="$other"; [ "$loc" = en ] && v="$en"
         printf '"Check ${applicationName} quota" = "%s";\n' "$v" > "$dir/$loc.lproj/AppShortcuts.strings"
+        # The shortTitle is looked up too. This fixture passed without it only
+        # because S.swift has no `import AppIntents` line, which kept the file
+        # out of the App Intents scan — the blind spot that scan now closes.
+        printf '"Q" = "%s";\n' "Q" > "$dir/$loc.lproj/Localizable.strings"
     done
 }
 
@@ -566,7 +570,7 @@ STRINGS
 }
 phone_case() { build_fixture "$TMP/case"; write_phone_app; }
 edit() {  # edit <file> <python expression over s>  — fails the case if nothing changed
-    python3 - "$1" "$2" <<'PY'
+    python3 - "$1" "$2" <<'PY' && return 0
 import sys
 p, expr = sys.argv[1], sys.argv[2]
 s = open(p, encoding="utf-8").read()
@@ -575,6 +579,11 @@ if t == s:
     sys.exit("edit was a no-op: " + expr)
 open(p, "w", encoding="utf-8").write(t)
 PY
+    # Counted, not just skipped: `edit … && expect_fail …` would otherwise drop
+    # a case whose plant no longer lands, and the total would quietly shrink.
+    echo "FAIL: [edit] the plant did not land in $1 — the case after it proves nothing."
+    fail=$((fail + 1))
+    return 1
 }
 
 phone_case
@@ -643,6 +652,135 @@ expect_fail "a table entry no intent asks for any more" "'Old intent name' is no
 phone_case
 edit "$APP/Intents/StatusIntent.swift" 's.replace("isDiscoverable: Bool = false", "isDiscoverable: Bool = true", 1)' &&
 expect_fail "an intent made discoverable without translations" "title 'Refresh the widget' has no entry"
+
+# ── Which files are read. They were chosen by `^\s*import\s+AppIntents`, so any
+# other spelling took a file out of the scan. With every file out, the gate
+# read zero literals, skipped the app, and printed "App Intents literals …
+# match". Measured on a copy of the real tree before this change: rc=0.
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("import AppIntents\n", "@preconcurrency import AppIntents\n", 1).replace("\"Get Pulse Status\"", "\"Get Pulse Summary\"", 1)' &&
+edit "$APP/Intents/Shortcuts.swift" 's.replace("import AppIntents\n", "@preconcurrency import AppIntents\n", 1).replace("shortTitle: \"Get Status\"", "shortTitle: \"Status Now\"", 1)' &&
+expect_fail "every intent file imported with @preconcurrency, and a title renamed" "title 'Get Pulse Summary' has no entry" &&
+expect_fail "…and the shortTitle renamed in the same tree" "shortTitle 'Status Now' has no entry"
+
+phone_case
+cat > "$APP/Intents/DashboardIntent.swift" <<'SWIFT'
+@preconcurrency import AppIntents
+
+struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Pulse Dashboard"
+    func perform() async throws -> some IntentResult { .result() }
+}
+SWIFT
+expect_fail "one new intent file whose import carries an attribute" "title 'Open Pulse Dashboard' has no entry"
+
+# A file can use App Intents without naming the module on an import line of its
+# own; the scan now goes by what the code uses.
+phone_case
+cat > "$APP/Intents/DashboardIntent.swift" <<'SWIFT'
+import WidgetKit
+
+struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource = "Open Pulse Dashboard"
+    func perform() async throws -> some IntentResult { .result() }
+}
+SWIFT
+expect_fail "an intent in a file with no AppIntents import line" "title 'Open Pulse Dashboard' has no entry"
+
+# Nothing read while the table declares keys is a failure, not a match.
+phone_case
+rm -r "$APP/Intents"
+expect_fail "a table with keys and no App Intents literal read anywhere" "declares 7 key(s), but no App Intents literal was read from any Swift file in Phone"
+
+# ── Sites the list did not have. Each passed before this change. ──────────
+# A new intent written with computed properties and a spoken dialog.
+add_dashboard_intent() {
+    cat >> "$APP/Intents/StatusIntent.swift" <<'SWIFT'
+
+struct DashboardIntent: AppIntent {
+    static var title: LocalizedStringResource { "Open Pulse Dashboard" }
+    static var description: IntentDescription { "Opens the dashboard." }
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        return .result(dialog: "Opening the dashboard.")
+    }
+}
+SWIFT
+}
+phone_case
+add_dashboard_intent
+expect_fail "a computed title { \"…\" }" "title 'Open Pulse Dashboard' has no entry" &&
+expect_fail "a computed description { \"…\" }" "description 'Opens the dashboard.' has no entry" &&
+expect_fail "a .result(dialog: \"…\")" "dialog 'Opening the dashboard.' has no entry"
+
+# …and the same intent with its three keys translated passes: the new sites
+# derive the key the system will look up, not merely "something".
+phone_case
+add_dashboard_intent
+for loc in en es ja ko zh-Hans zh-Hant; do
+    printf '"Open Pulse Dashboard" = "a";\n"Opens the dashboard." = "b";\n"Opening the dashboard." = "c";\n' >> "$APP/$loc.lproj/Localizable.strings"
+done
+expect_ok "positive control: computed title, description and dialog, all translated"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("@Parameter(title: \"Provider\")", "@Parameter(title: \"Provider\", requestValueDialog: \"Which provider?\")", 1)' &&
+expect_fail "a parameter requestValueDialog" "@Parameter requestValueDialog 'Which provider?' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("@Parameter(title: \"Provider\")", "@Parameter(title: \"Provider\",\n              requestDisambiguationDialog: \"Which one?\")", 1)' &&
+expect_fail "a parameter requestDisambiguationDialog, on its own line" "@Parameter requestDisambiguationDialog 'Which one?' has no entry"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("func perform() async throws -> some IntentResult { .result() }", "func perform() async throws -> some IntentResult & ProvidesDialog { .result(dialog: IntentDialog(stringLiteral: \"No data yet.\")) }", 1)' &&
+expect_fail "IntentDialog(stringLiteral:) given a literal" "IntentDialog stringLiteral 'No data yet.' has no entry"
+
+# Every element of the array, not only the first.
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("categoryName: \"Status\"\n", "categoryName: \"Status\",\n        searchKeywords: [\"usage\", \"quota\"]\n", 1)' &&
+expect_fail "the second of an IntentDescription's searchKeywords" "searchKeywords 'quota' has no entry"
+
+add_entity() {  # add_entity <displayRepresentation body>
+    cat >> "$APP/Intents/StatusIntent.swift" <<SWIFT
+
+struct AccountEntity: AppEntity {
+    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Provider"
+    var id: String
+    var displayRepresentation: DisplayRepresentation {
+        $1
+    }
+}
+SWIFT
+}
+phone_case
+add_entity 'DisplayRepresentation(title: "Provider", subtitle: "Quota source")'
+expect_fail "a DisplayRepresentation(title:subtitle:) subtitle" "subtitle 'Quota source' has no entry"
+
+phone_case
+add_entity '.init(title: "Provider", subtitle: "Quota source")'
+expect_fail "a subtitle written through .init(title:subtitle:)" "subtitle 'Quota source' has no entry"
+
+# A provider's NAME in caseDisplayRepresentations is a proper noun and exempt;
+# a subtitle there is an ordinary word and is not.
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("DisplayRepresentation(title: \"Claude\")", "DisplayRepresentation(title: \"Claude\", subtitle: \"Anthropic account\")", 1)' &&
+expect_fail "a subtitle inside caseDisplayRepresentations" "DisplayRepresentation subtitle 'Anthropic account' has no entry"
+
+# ── A required name the gate cannot read fails, whatever the form. ─────────
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Get Provider Quota\"", "static var title: LocalizedStringResource { .init(\"Get Provider Quota\") }", 1)' &&
+expect_fail "an intent title in a form no site reads" "QuotaIntent conforms to AppIntent, but this gate reads no title literal"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var typeDisplayRepresentation: TypeDisplayRepresentation = \"Provider\"", "static var typeDisplayRepresentation: TypeDisplayRepresentation { .init(name: \"Provider\") }", 1)' &&
+expect_fail "an AppEnum type name in a form no site reads" "IntentProvider conforms to AppEnum, but this gate reads no typeDisplayRepresentation literal"
+
+# The system never lists a hidden intent, so its title need not be readable.
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("static var title: LocalizedStringResource = \"Refresh the widget\"", "static var title: LocalizedStringResource { .init(\"Refresh the widget\") }", 1)' &&
+expect_ok "positive control: a hidden intent's unreadable title is not required"
+
+phone_case
+edit "$APP/Intents/StatusIntent.swift" 's.replace("\"Get today\x27s usage.\"", "#\"Get today\x27s usage.\"#", 1)' &&
+expect_fail "a raw-string literal at a site" "description is a literal this gate cannot read"
 
 # ── CFBundleLocalizations. The macOS app, Watch and widgets have no .lproj. ─
 build_fixture "$TMP/case"
