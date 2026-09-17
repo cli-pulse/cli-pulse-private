@@ -275,6 +275,7 @@
     <string name="quota_tier_opus_weekly">Opus（每周）</string>
     <string name="quota_tier_opus_only">仅 Opus</string>
     <string name="quota_tier_other_models">其他</string>
+    <string name="quota_tier_overall">总体</string>
     <string name="quota_tier_plan_included">方案配额</string>
     <string name="quota_tier_professional_voices">专业音色</string>
     <string name="quota_tier_purchased">已购买</string>

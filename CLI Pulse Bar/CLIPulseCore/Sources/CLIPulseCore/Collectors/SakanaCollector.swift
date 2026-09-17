@@ -196,13 +196,14 @@ public struct SakanaCollector: ProviderCollector, Sendable {
 
         let primary = s.fiveHour ?? s.weekly
         let primaryRemaining = Int((100 - max(0, min(100, primary?.usedPercent ?? 0))).rounded())
-        var status = "\(s.fiveHour != nil ? "5h" : "Weekly") \(primaryRemaining)% left"
+        var segments = [CollectorStatusText.windowPercentLeft(s.fiveHour != nil ? .fiveHour : .weekly, primaryRemaining)]
         if s.fiveHour != nil, let w = s.weekly {
-            status += " · Weekly \(Int((100 - max(0, min(100, w.usedPercent))).rounded()))% left"
+            segments.append(CollectorStatusText.windowPercentLeft(.weekly, Int((100 - max(0, min(100, w.usedPercent))).rounded())))
         }
         if let credit = s.payAsYouGoCreditUSD, credit > 0 {
-            status += String(format: " · $%.2f credit", credit)
+            segments.append(CollectorStatusText.credit(String(format: "$%.2f", credit)))
         }
+        let status = CollectorStatusText.join(segments)
         let planType = [s.planName, s.priceLabel]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

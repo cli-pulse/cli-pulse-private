@@ -682,8 +682,7 @@ struct WatchAccountQuotaDetail: View {
     let providerColor: Color
 
     private var planLabel: String {
-        account.planEvidence.displayValue
-            ?? account.planEvidence.rawValue
+        account.planEvidence.localizedDisplay
             ?? L10n.providers.planUnconfirmed
     }
 
@@ -875,8 +874,7 @@ struct WatchProviderDetailView: View {
                 if let account {
                     HStack(spacing: 4) {
                         Text(
-                            account.planEvidence.displayValue
-                                ?? account.planEvidence.rawValue
+                            account.planEvidence.localizedDisplay
                                 ?? L10n.providers.planUnconfirmed
                         )
                         .lineLimit(1)

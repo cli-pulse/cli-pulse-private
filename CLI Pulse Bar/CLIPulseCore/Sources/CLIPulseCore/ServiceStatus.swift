@@ -85,6 +85,24 @@ public enum ServiceStatusIndicator: String, Codable, CaseIterable, Sendable {
         case .operational, .unknown: return false
         }
     }
+
+    /// The severity as a word in the reader's language — the badge text.
+    ///
+    /// Deliberately not the status page's own `description` ("Partially
+    /// Degraded Service", "Minor Service Outage"): that is the vendor's English
+    /// with an open vocabulary. This is the same ladder
+    /// `init(statuspageComponentStatus:)` collapses component statuses onto, so
+    /// the badge and the component rows under it use the same words.
+    public var localizedLabel: String {
+        switch self {
+        case .operational: return L10n.status.operational
+        case .maintenance: return L10n.status.maintenance
+        case .minor: return L10n.status.degraded
+        case .major: return L10n.status.partialOutage
+        case .critical: return L10n.status.majorOutage
+        case .unknown: return L10n.status.unknown
+        }
+    }
 }
 
 // MARK: - Snapshot
@@ -94,6 +112,7 @@ public struct ServiceStatusSnapshot: Equatable, Sendable {
     public let provider: ProviderKind
     public let indicator: ServiceStatusIndicator
     /// Human description from the status page, e.g. "All Systems Operational".
+    /// The vendor's English: shown only as secondary detail, never as the label.
     public let description: String
     /// `page.updated_at` from the status document, if present/parseable.
     public let updatedAt: Date?
@@ -112,6 +131,12 @@ public struct ServiceStatusSnapshot: Equatable, Sendable {
         self.description = description
         self.updatedAt = updatedAt
         self.pageURL = pageURL
+    }
+
+    /// Hover text for the badge: the localized severity, then the status page's
+    /// own wording as detail when it has any.
+    public var badgeHelp: String {
+        description.isEmpty ? indicator.localizedLabel : indicator.localizedLabel + "\n" + description
     }
 }
 

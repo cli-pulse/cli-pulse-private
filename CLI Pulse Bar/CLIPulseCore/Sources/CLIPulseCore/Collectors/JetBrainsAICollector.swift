@@ -150,7 +150,7 @@ public struct JetBrainsAICollector: ProviderCollector, Sendable {
             ))
         }
 
-        let statusText = "\(quota.current)/\(quota.maximum) credits used"
+        let statusText = CollectorStatusText.creditsUsedOf("\(quota.current)", "\(quota.maximum)")
 
         let usage = ProviderUsage(
             provider: ProviderKind.jetbrainsAI.rawValue,

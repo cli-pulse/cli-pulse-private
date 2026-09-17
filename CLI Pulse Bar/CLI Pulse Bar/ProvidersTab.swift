@@ -274,7 +274,7 @@ struct ProviderAccountQuotaSummaryView: View {
             $0.id == config.accountID
         }
         let plan =
-            usage?.planEvidence.displayValue
+            usage?.planEvidence.displayValue.map(L10n.providers.planDisplay)
             ?? config.planOverride
             ?? L10n.providers.planUnconfirmed
 

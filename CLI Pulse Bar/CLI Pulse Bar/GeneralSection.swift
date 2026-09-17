@@ -190,9 +190,9 @@ struct GeneralSection: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 70, alignment: .leading)
-                            ForEach(["Critical", "Warning", "Info"], id: \.self) { severity in
+                            ForEach(WebhookEventFilter.selectableSeverities, id: \.self) { severity in
                                 filterChip(
-                                    label: severity,
+                                    label: WebhookEventFilter.severityLabel(severity),
                                     isSelected: state.webhookEventFilter.severities.contains(severity),
                                     color: severity == "Critical" ? .red : (severity == "Warning" ? .orange : .blue)
                                 ) {
@@ -207,8 +207,8 @@ struct GeneralSection: View {
                                 .font(.system(size: 10))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 70, alignment: .leading)
-                            ForEach(["cost_spike", "quota_exceeded", "session_long", "device_offline"], id: \.self) { type in
-                                filterChip(label: type.replacingOccurrences(of: "_", with: " "), isSelected: state.webhookEventFilter.types.contains(type)) {
+                            ForEach(WebhookEventFilter.selectableTypes, id: \.self) { type in
+                                filterChip(label: WebhookEventFilter.typeLabel(type), isSelected: state.webhookEventFilter.types.contains(type)) {
                                     toggleFilterItem(&state.webhookEventFilter.types, type)
                                 }
                             }

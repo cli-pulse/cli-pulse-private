@@ -293,14 +293,14 @@ public struct AlibabaTokenPlanCollector: ProviderCollector, Sendable {
                 cost_status_today: "Unavailable", cost_status_week: "Unavailable",
                 quota: totalInt, remaining: remainingInt, plan_type: plan, reset_time: resetISO,
                 tiers: [TierDTO(name: "Token Plan", quota: totalInt, remaining: remainingInt, reset_time: resetISO)],
-                status_text: "\(compact(Double(usedInt)))/\(compact(total)) credits used",
+                status_text: CollectorStatusText.creditsUsedOf(compact(Double(usedInt)), compact(total)),
                 trend: [], recent_sessions: [], recent_errors: [],
                 metadata: ProviderMetadata(display_name: "Alibaba Token Plan", category: "cloud",
                                            supports_exact_cost: false, supports_quota: true))
             return CollectorResult(usage: usage, dataKind: .quota)
         }
         // No cap ⇒ status-only.
-        let statusText = s.remaining.map { "\(compact($0)) credits left" } ?? "Connected"
+        let statusText = s.remaining.map { CollectorStatusText.creditsLeft(compact($0)) } ?? "Connected"
         let usage = ProviderUsage(
             provider: ProviderKind.alibabaTokenPlan.rawValue,
             today_usage: 0, week_usage: 0, estimated_cost_today: 0, estimated_cost_week: 0,

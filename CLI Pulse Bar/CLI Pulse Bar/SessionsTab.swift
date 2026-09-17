@@ -1427,7 +1427,7 @@ struct SessionsTab: View {
         // now-confirmed-good helper. On failure, fall through to the
         // remote-queue path so the user still gets a session.
         var newSessionId: String? = nil
-        let label = "Local \(ProviderDisplay.displayName(for: provider)) session"
+        let label = ProviderDisplay.localStartClientLabel(for: provider)
 
         if state.selfDeviceId != nil {
             switch await state.requestLocalClaudeSessionStart(
@@ -1926,21 +1926,13 @@ private struct ManagedSessionRow: View {
     /// helper-spawned sessions whose `client_label` and
     /// `device_name` are both "CLI Pulse Helper". Codex flagged
     /// the previous "CLI Pulse Helper · CLI Pulse Helper" rendering
-    /// as confusing.
+    /// as confusing. The labels this app sends itself ("Local Claude
+    /// session", "in-app-terminal") are translated there too.
     private var displayLabel: String {
-        let label = session.client_label?.trimmingCharacters(in: .whitespaces) ?? ""
-        let device = session.device_name?.trimmingCharacters(in: .whitespaces) ?? ""
-        // v1.15 round-4: provider-aware fallback / "X on <device>"
-        // formatting. Pre-fix this hardcoded "Claude" so a Codex
-        // session with no client_label rendered as "Claude session"
-        // and a Codex row whose label collapsed-with-device-name
-        // rendered as "Claude on Mac" instead of "Codex on Mac".
-        let providerName = ProviderDisplay.displayName(for: session.provider)
-        if label.isEmpty { return L10n.sessions.rowFallbackLabel(providerName) }
-        if !device.isEmpty && label.caseInsensitiveCompare(device) == .orderedSame {
-            return L10n.sessions.rowLabelOnDevice(providerName, device)
-        }
-        return label
+        ProviderDisplay.managedRowLabel(
+            clientLabel: session.client_label,
+            deviceName: session.device_name,
+            provider: session.provider)
     }
 
     private var showSecondaryDevice: Bool {

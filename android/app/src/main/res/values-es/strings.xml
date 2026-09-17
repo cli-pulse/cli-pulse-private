@@ -274,6 +274,7 @@
     <string name="quota_tier_opus_weekly">Opus (semanal)</string>
     <string name="quota_tier_opus_only">Solo Opus</string>
     <string name="quota_tier_other_models">Otros</string>
+    <string name="quota_tier_overall">General</string>
     <string name="quota_tier_plan_included">Plan</string>
     <string name="quota_tier_professional_voices">Voces profesionales</string>
     <string name="quota_tier_purchased">Comprados</string>

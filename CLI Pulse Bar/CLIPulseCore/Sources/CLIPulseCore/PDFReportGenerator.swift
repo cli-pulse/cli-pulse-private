@@ -202,14 +202,7 @@ public enum PDFReportGenerator {
         let topSessions = sessions.sorted { $0.estimated_cost > $1.estimated_cost }.prefix(15)
         for s in topSessions {
             checkSpace(16)
-            let row = [
-                s.provider,
-                s.project,
-                CostFormatter.format(s.estimated_cost),
-                formatTokens(s.total_usage),
-                s.status,
-            ]
-            y = drawTableRow(row, at: y, x: margin, colWidths: sessionColWidths, fontSize: 9, context: context)
+            y = drawTableRow(topSessionRow(s), at: y, x: margin, colWidths: sessionColWidths, fontSize: 9, context: context)
         }
         y -= 12
 
@@ -390,6 +383,19 @@ public enum PDFReportGenerator {
     }
 
     // MARK: - Utilities
+
+    /// One row of the Top Sessions table, under localized headers. The status is
+    /// the stored English token ("running", "Idle"), so it goes through the same
+    /// mapper every on-screen session row uses; CSV exports keep the raw value.
+    static func topSessionRow(_ s: SessionRecord) -> [String] {
+        [
+            s.provider,
+            s.project,
+            CostFormatter.format(s.estimated_cost),
+            formatTokens(s.total_usage),
+            L10n.status.localized(s.status),
+        ]
+    }
 
     private static func formatTokens(_ value: Int) -> String {
         TokenFormatter.format(value)

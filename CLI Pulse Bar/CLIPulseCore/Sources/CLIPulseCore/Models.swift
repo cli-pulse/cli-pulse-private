@@ -689,15 +689,26 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
         id.hasPrefix("proc-")
     }
 
+    /// The `name` `CostUsageScanner` gives a session it rebuilt from JSONL logs.
+    /// Stored English, like every other model value; `displayName` translates it.
+    public static func jsonlSessionName(provider: String) -> String {
+        "\(provider) session"
+    }
+
     /// Display name for the Sessions panel row. Helper-emitted proc-*
     /// rows have `name = command line truncated to 48 chars`, which
     /// surfaces unfriendly strings like `/Users/jason/Library/Application Support/C...`
     /// or `./Codex Computer Use.app/Contents/Shar...`. Replace with
     /// "{provider} · {project}" when we have provider info, falling
     /// back to "{provider} process" if project is empty/generic.
-    /// JSONL-synthesized rows already carry friendly names like
-    /// "Claude session" — leave those alone.
+    /// JSONL-synthesized rows carry the English name "Claude session", which
+    /// is rendered through the same fallback label managed rows use. Keyed on
+    /// the `jsonl-` id as well as the exact name, so a real process or cloud
+    /// session that happens to be called "Claude session" keeps its own name.
     public var displayName: String {
+        if id.hasPrefix("jsonl-"), name == Self.jsonlSessionName(provider: provider) {
+            return L10n.sessions.rowFallbackLabel(provider)
+        }
         guard hasProcessHeuristicMetrics else { return name }
         let cleanProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
         if !cleanProject.isEmpty {
@@ -1168,6 +1179,26 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
 
     public var isEmpty: Bool {
         severities.isEmpty && types.isEmpty && providers.isEmpty
+    }
+
+    /// The values the Settings chips offer. They are what gets stored, synced by
+    /// `pushSettingsToServer` and matched by the webhook sender, so they stay raw;
+    /// `severityLabel` and `typeLabel` are what the chips show.
+    public static let selectableSeverities = ["Critical", "Warning", "Info"]
+    public static let selectableTypes = ["cost_spike", "quota_exceeded", "session_long", "device_offline"]
+
+    public static func severityLabel(_ raw: String) -> String {
+        AlertPresentation.severityLabel(raw)
+    }
+
+    public static func typeLabel(_ raw: String) -> String {
+        switch raw {
+        case "cost_spike": return L10n.integrations.eventTypeCostSpike
+        case "quota_exceeded": return L10n.integrations.eventTypeQuotaExceeded
+        case "session_long": return L10n.integrations.eventTypeSessionLong
+        case "device_offline": return L10n.integrations.eventTypeDeviceOffline
+        default: return raw
+        }
     }
 }
 

@@ -98,6 +98,31 @@ final class AlertPresentationTests: XCTestCase {
         }
     }
 
+    /// A provider with a quota but no per-tier data gets the synthetic tier name
+    /// "Overall". It reaches the Alerts tab through the tier mapper like any other
+    /// window, so it needs a translation; the record keeps the English.
+    func testTheSyntheticOverallTierRendersInTheReadersLanguage() {
+        let provider = ProviderUsage(
+            provider: "OpenRouter", today_usage: 0, week_usage: 0,
+            estimated_cost_today: 0, estimated_cost_week: 0,
+            cost_status_today: "normal", cost_status_week: "normal",
+            quota: 100, remaining: 15, tiers: [],
+            status_text: "Operational",
+            trend: [], recent_sessions: [], recent_errors: [])
+        let dicts = AlertGenerator.evaluateQuotaAlerts(providers: [provider], thresholds: [80, 95])
+        guard let alert = dicts.first.flatMap(AlertGenerator.makeAlertRecord(from:)) else {
+            return XCTFail("no tierless quota alert fired, so this proves nothing")
+        }
+        XCTAssertTrue(alert.message.contains("'Overall'"), alert.message)
+        withChinese {
+            let shown = AlertPresentation.text(for: alert)
+            XCTAssertTrue(shown.recognized)
+            XCTAssertFalse(shown.title.contains("Overall"), "still English: \(shown.title)")
+            XCTAssertTrue(shown.message.contains(L10n.quotaTier.overall), shown.message)
+            XCTAssertTrue(alert.message.contains("'Overall'"), "the stored message was changed")
+        }
+    }
+
     // MARK: - The producers this bundle cannot execute
 
     /// helper/system_collector.py:391, :410, :439
@@ -181,6 +206,44 @@ final class AlertPresentationTests: XCTestCase {
             }
             XCTAssertEqual(AlertPresentation.severityLabel("Catastrophic"), "Catastrophic")
             XCTAssertEqual(AlertPresentation.sourceKindLabel("meteor"), "meteor")
+        }
+    }
+
+    /// `sourceKindLabel` was written, translated and tested while the only screen
+    /// showing `source_kind` rendered the raw token, so the test above passed and
+    /// iPhone users read "provider" / "session" chips in every language. A label
+    /// helper is only a fix if a view calls it: each public one needs a caller in
+    /// the app or core sources, and the two raw renders it replaced must not return.
+    func testEveryLabelHelperHasACallerOutsideTests() throws {
+        let appRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+            .deletingLastPathComponent()   // CLI Pulse Bar
+        let helperSource = try String(contentsOf: appRoot
+            .appendingPathComponent("CLIPulseCore/Sources/CLIPulseCore/AlertPresentation.swift"), encoding: .utf8)
+        let names = try NSRegularExpression(pattern: #"public static func (\w+Label)\("#)
+            .matches(in: helperSource, range: NSRange(helperSource.startIndex..., in: helperSource))
+            .compactMap { Range($0.range(at: 1), in: helperSource).map { String(helperSource[$0]) } }
+        XCTAssertEqual(Set(names), ["severityLabel", "sourceKindLabel"], "positive control: helpers not found")
+
+        var sources: [String: String] = [:]
+        let files = FileManager.default.enumerator(at: appRoot, includingPropertiesForKeys: nil)
+        while let url = files?.nextObject() as? URL {
+            let path = url.path
+            guard url.pathExtension == "swift", !path.contains("/Tests/"), !path.contains("/.build/"),
+                  url.lastPathComponent != "AlertPresentation.swift" else { continue }
+            sources[path] = try String(contentsOf: url, encoding: .utf8)
+        }
+        XCTAssertGreaterThan(sources.count, 50, "positive control: app sources not found under \(appRoot.path)")
+
+        for name in names {
+            XCTAssertTrue(sources.values.contains { $0.contains("AlertPresentation.\(name)(") },
+                          "AlertPresentation.\(name) has no caller outside tests")
+        }
+        for (path, text) in sources {
+            XCTAssertFalse(text.contains("text: sourceKind)"), "raw source_kind rendered in \(path)")
+            XCTAssertFalse(text.contains("Text(alert.severity)"), "raw severity rendered in \(path)")
         }
     }
 

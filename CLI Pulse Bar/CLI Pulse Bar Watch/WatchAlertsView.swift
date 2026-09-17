@@ -160,7 +160,7 @@ struct AlertCard: View {
                     .lineLimit(2)
 
                 HStack(spacing: 6) {
-                    Text(alert.severity)
+                    Text(AlertPresentation.severityLabel(alert.severity))
                         .font(.system(size: 8, weight: .bold))
                         .padding(.horizontal, 5)
                         .padding(.vertical, 1)

@@ -168,12 +168,12 @@ public struct LLMProxyCollector: ProviderCollector, Sendable {
     static func buildResult(_ s: Stats) -> CollectorResult {
         var parts: [String] = []
         if let pct = s.minRemainingPercent {
-            parts.append("\(Int(max(0, min(100, pct)).rounded()))% left")
+            parts.append(CollectorStatusText.percentLeft(Int(max(0, min(100, pct)).rounded())))
         }
-        parts.append("\(s.activeKeys)/\(s.totalKeys) keys")
-        if s.totalRequests > 0 { parts.append("\(formatInt(s.totalRequests)) req") }
-        if s.totalTokens > 0 { parts.append("\(formatInt(s.totalTokens)) tok") }
-        let statusText = parts.joined(separator: " · ")
+        parts.append(CollectorStatusText.keysOf("\(s.activeKeys)", "\(s.totalKeys)"))
+        if s.totalRequests > 0 { parts.append(CollectorStatusText.requestsShort(formatInt(s.totalRequests))) }
+        if s.totalTokens > 0 { parts.append(CollectorStatusText.tokensShort(formatInt(s.totalTokens))) }
+        let statusText = CollectorStatusText.join(parts)
 
         let resetISO = s.nextResetAt.map { sharedISO8601Formatter.string(from: $0) }
         let cost = s.approxCostUSD

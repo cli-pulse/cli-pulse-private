@@ -242,7 +242,7 @@ public struct PerplexityCollector: ProviderCollector, Sendable {
             plan_type: s.planName ?? "Unknown",
             reset_time: resetISO,
             tiers: tiers,
-            status_text: String(format: "$%.2f balance", s.balanceCents / 100.0),
+            status_text: CollectorStatusText.balance(String(format: "$%.2f", s.balanceCents / 100.0)),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
                 display_name: "Perplexity", category: "cloud",

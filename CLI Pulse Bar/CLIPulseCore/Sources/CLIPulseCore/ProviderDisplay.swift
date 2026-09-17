@@ -56,6 +56,48 @@ public enum ProviderDisplay {
         L10n.sessions.rowFallbackLabel(displayName(for: provider))
     }
 
+    /// The `client_label` this app sends when it starts a managed session from
+    /// the Sessions tab's New Local menu. It is stored by the helper and
+    /// returned to every viewer, Mac and iPhone alike, so it stays English;
+    /// `clientLabelDisplay` translates it where it is shown.
+    public static func localStartClientLabel(for provider: String) -> String {
+        "Local \(displayName(for: provider)) session"
+    }
+
+    /// The `client_label` sent for a session started in the in-app terminal
+    /// window. An identifier rather than copy, and translated the same way.
+    public static let inAppTerminalClientLabel = "in-app-terminal"
+
+    /// A managed session's `client_label` as shown to the reader. The two labels
+    /// this app writes itself are rendered in the reader's language; anything
+    /// else — an iPhone's own device name, a label from another client — is the
+    /// sender's text and is shown as written.
+    public static func clientLabelDisplay(_ label: String, provider: String) -> String {
+        if label == inAppTerminalClientLabel {
+            return L10n.sessions.rowInAppTerminalLabel(displayName(for: provider))
+        }
+        if label == localStartClientLabel(for: provider) {
+            return L10n.sessions.rowLocalLabel(displayName(for: provider))
+        }
+        return label
+    }
+
+    /// Row title for a managed session in the Mac Sessions tab.
+    ///
+    /// An empty label falls back to "<Provider> session". A label equal to the
+    /// device name reads "<Provider> on <device>" rather than repeating the
+    /// device twice ("CLI Pulse Helper · CLI Pulse Helper").
+    public static func managedRowLabel(clientLabel: String?, deviceName: String?, provider: String) -> String {
+        let label = clientLabel?.trimmingCharacters(in: .whitespaces) ?? ""
+        let device = deviceName?.trimmingCharacters(in: .whitespaces) ?? ""
+        let providerName = displayName(for: provider)
+        if label.isEmpty { return L10n.sessions.rowFallbackLabel(providerName) }
+        if !device.isEmpty && label.caseInsensitiveCompare(device) == .orderedSame {
+            return L10n.sessions.rowLabelOnDevice(providerName, device)
+        }
+        return clientLabelDisplay(label, provider: provider)
+    }
+
     /// Section header for the managed-sessions list. Pre-v1.15 the UI
     /// hardcoded `"Managed Claude sessions"`. With multi-CLI shipping,
     /// the static header drops the provider name (it's unknown until

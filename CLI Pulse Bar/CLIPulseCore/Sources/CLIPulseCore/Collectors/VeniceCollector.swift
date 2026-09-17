@@ -156,26 +156,27 @@ public struct VeniceCollector: ProviderCollector, Sendable {
     static func statusText(_ r: BalanceResponse) -> String {
         let active = r.consumptionCurrency?.uppercased()
         if !r.canConsume {
-            return "Balance unavailable for API calls"
+            return CollectorStatusText.balanceUnavailableForAPICalls
         }
         if active == "USD", let usd = r.balances.usd, usd > 0 {
-            return String(format: "$%.2f USD remaining", usd)
+            return CollectorStatusText.remaining(String(format: "$%.2f USD", usd))
         }
         if active != "USD",
            let diem = r.balances.diem,
            let allocation = r.diemEpochAllocation, allocation > 0 {
+            // DIEM and its epoch allocation are Venice's own terms, shown as written.
             return String(format: "DIEM %.2f / %.2f epoch allocation", diem, allocation)
         }
         if active == "DIEM", let diem = r.balances.diem, diem > 0 {
-            return String(format: "DIEM %.2f remaining", diem)
+            return CollectorStatusText.remaining(String(format: "DIEM %.2f", diem))
         }
         if let diem = r.balances.diem, diem > 0 {
-            return String(format: "DIEM %.2f remaining", diem)
+            return CollectorStatusText.remaining(String(format: "DIEM %.2f", diem))
         }
         if let usd = r.balances.usd, usd > 0 {
-            return String(format: "$%.2f USD remaining", usd)
+            return CollectorStatusText.remaining(String(format: "$%.2f USD", usd))
         }
-        return "No Venice API balance available"
+        return CollectorStatusText.noVeniceBalance
     }
 
     // MARK: - Result building (.credits, nil-gauge + cap-aware per-currency tiers)

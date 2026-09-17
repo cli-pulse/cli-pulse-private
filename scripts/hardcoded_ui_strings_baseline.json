@@ -50,6 +50,18 @@
    "reason": "NEEDS_JUDGMENT: App Intents metadata: AppEnum.typeDisplayRepresentation is a compile-time LocalizedStringResource and needs a main-bundle string catalog."
   },
   {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSAlertsTab.swift",
+   "literal": "\"dollarsign.circle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by sourceKindIcon for the budget source-kind chip; the chip text is AlertPresentation.sourceKindLabel."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSAlertsTab.swift",
+   "literal": "\"gauge.with.needle\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: SF Symbol name returned by sourceKindIcon for the quota source-kind chip; the chip text is AlertPresentation.sourceKindLabel."
+  },
+  {
    "path": "CLI Pulse Bar/CLI Pulse Bar iOS/iOSMainView.swift",
    "literal": "\"CLI Pulse\"",
    "count": 1,

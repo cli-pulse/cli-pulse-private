@@ -33,16 +33,14 @@ public struct ServiceStatusBadge: View {
                     Circle()
                         .fill(tint)
                         .frame(width: 5, height: 5)
-                    if !snapshot.description.isEmpty {
-                        Text(snapshot.description)
-                            .font(.system(size: 9, weight: .medium))
-                            .foregroundStyle(tint)
-                            .lineLimit(1)
-                    }
+                    Text(snapshot.indicator.localizedLabel)
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(tint)
+                        .lineLimit(1)
                 }
-                .help(snapshot.description)
+                .help(snapshot.badgeHelp)
                 .accessibilityElement()
-                .accessibilityLabel(Text(verbatim: "\(provider.rawValue): \(snapshot.description)"))
+                .accessibilityLabel(Text(verbatim: "\(provider.rawValue): \(snapshot.indicator.localizedLabel)"))
             }
         }
         // Fetch this provider's status on appear (and if the provider identity

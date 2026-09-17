@@ -115,7 +115,7 @@ public struct WarpCollector: ProviderCollector, Sendable {
             quota: w.isUnlimited ? nil : w.requestLimit, remaining: w.isUnlimited ? nil : remaining,
             plan_type: w.isUnlimited ? "Unlimited" : "Free",
             reset_time: w.nextRefreshTime, tiers: tiers,
-            status_text: w.isUnlimited ? "Unlimited" : "\(w.requestsUsed)/\(w.requestLimit) used",
+            status_text: w.isUnlimited ? CollectorStatusText.unlimited : CollectorStatusText.usedOf("\(w.requestsUsed)", "\(w.requestLimit)"),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Warp", category: "cloud",
                                        supports_exact_cost: false, supports_quota: !w.isUnlimited))

@@ -279,6 +279,7 @@
     <string name="quota_tier_opus_weekly">Opus (Weekly)</string>
     <string name="quota_tier_opus_only">Opus only</string>
     <string name="quota_tier_other_models">Other</string>
+    <string name="quota_tier_overall">Overall</string>
     <string name="quota_tier_plan_included">Plan</string>
     <string name="quota_tier_professional_voices">Professional voices</string>
     <string name="quota_tier_purchased">Purchased</string>

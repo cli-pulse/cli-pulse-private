@@ -317,7 +317,7 @@ public struct CommandCodeCollector: ProviderCollector, Sendable {
                 cost_status_today: "Unavailable", cost_status_week: "Exact",
                 quota: units(cap), remaining: units(remainingUSD),
                 plan_type: plan.displayName, reset_time: resetISO, tiers: tiers,
-                status_text: "\(plan.displayName) · \(formatUSD(usedUSD)) of \(formatUSD(cap))",
+                status_text: CollectorStatusText.join([plan.displayName, CollectorStatusText.amountOf(formatUSD(usedUSD), formatUSD(cap))]),
                 trend: [], recent_sessions: [], recent_errors: [],
                 metadata: ProviderMetadata(
                     display_name: "Command Code", category: "cloud",
@@ -338,7 +338,7 @@ public struct CommandCodeCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: nil, remaining: units(totalUSD),
             plan_type: "Free", reset_time: resetISO, tiers: poolTiers,
-            status_text: "\(formatUSD(totalUSD)) remaining",
+            status_text: CollectorStatusText.remaining(formatUSD(totalUSD)),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
                 display_name: "Command Code", category: "cloud",

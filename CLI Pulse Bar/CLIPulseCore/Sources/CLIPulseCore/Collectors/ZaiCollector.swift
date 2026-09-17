@@ -115,7 +115,7 @@ public struct ZaiCollector: ProviderCollector, Sendable {
             quota: total > 0 ? total : nil, remaining: primary?.remaining,
             plan_type: z.planName, reset_time: primary?.nextResetTime.map { iso.string(from: $0) },
             tiers: tiers,
-            status_text: primary.map { "\($0.usage)/\($0.usage + $0.remaining) used" } ?? "Unknown",
+            status_text: primary.map { CollectorStatusText.usedOf("\($0.usage)", "\($0.usage + $0.remaining)") } ?? "Unknown",
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "z.ai", category: "cloud",
                                        supports_exact_cost: false, supports_quota: true))

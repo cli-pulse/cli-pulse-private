@@ -36,6 +36,14 @@ public struct ProviderPlanEvidence: Codable, Equatable, Sendable {
         self.confidence = confidence
         self.observedAt = observedAt
     }
+
+    /// The plan as shown to the reader, or nil when nothing was detected.
+    /// The stored values stay as detected; the generic words collectors write
+    /// when a vendor reports no plan name ("API key", "Credits") are rendered
+    /// through `L10n.providers.planDisplay`, and vendor plan names pass through.
+    public var localizedDisplay: String? {
+        (displayValue ?? rawValue).map(L10n.providers.planDisplay)
+    }
 }
 
 /// Privacy boundary for values promoted from heterogeneous collector output

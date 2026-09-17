@@ -219,10 +219,12 @@ public struct T3ChatCollector: ProviderCollector, Sendable {
             TierDTO(name: "Monthly", quota: 100, remaining: rMonth, reset_time: resetMonthISO,
                     windowMinutes: nil, role: nil),
         ]
-        var status = "4h \(r4h)% left · Month \(rMonth)% left"
+        // Named like the two tiers above, so the line and the bars agree.
+        var segments = [CollectorStatusText.windowPercentLeft(.fourHour, r4h), CollectorStatusText.windowPercentLeft(.monthly, rMonth)]
         if let band = c.usageBand?.trimmingCharacters(in: .whitespacesAndNewlines), !band.isEmpty {
-            status += " · \(band)"
+            segments.append(band)
         }
+        let status = CollectorStatusText.join(segments)
         let usage = ProviderUsage(
             provider: ProviderKind.t3chat.rawValue,
             today_usage: 0, week_usage: 0,

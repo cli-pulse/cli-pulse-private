@@ -369,7 +369,7 @@ public struct GrokCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: 100, remaining: remaining, plan_type: "Grok", reset_time: resetISO,
             tiers: [TierDTO(name: "Credits", quota: 100, remaining: remaining, reset_time: resetISO)],
-            status_text: "\(remaining)% left",
+            status_text: CollectorStatusText.percentLeft(remaining),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "Grok", category: "cloud",
                                        supports_exact_cost: false, supports_quota: true))

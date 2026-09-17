@@ -24,7 +24,7 @@ struct DisplaySection: View {
                     set: { state.menuBarDisplayMode = $0 }
                 )) {
                     ForEach(MenuBarDisplayMode.allCases, id: \.self) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.localizedName).tag(mode)
                     }
                 }
                 .pickerStyle(.menu)

@@ -154,8 +154,10 @@ public struct CrofCollector: ProviderCollector, Sendable {
                 ? [TierDTO(name: "Requests", quota: quotaInt,
                            remaining: remainingInt, reset_time: resetISO)]
                 : [],
-            status_text: String(
-                format: "$%.2f credits · %d requests left", r.credits, remainingInt),
+            status_text: CollectorStatusText.join([
+                CollectorStatusText.credits(String(format: "$%.2f", r.credits)),
+                CollectorStatusText.requestsLeft(remainingInt),
+            ]),
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(
                 display_name: "Crof", category: "cloud",

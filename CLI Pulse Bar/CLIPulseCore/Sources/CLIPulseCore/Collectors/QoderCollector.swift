@@ -180,12 +180,14 @@ public struct QoderCollector: ProviderCollector, Sendable {
 
     static func buildResult(_ s: Snapshot) -> CollectorResult {
         let unit = s.unit?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let unitSuffix = (unit?.isEmpty == false) ? " \(unit!)" : " credits"
         let total = creditInt(s.totalCredits)
         let remaining = min(total, creditInt(s.remainingCredits))
         let reset = s.resetsAt.map { sharedISO8601Formatter.string(from: $0) }
         let tier = TierDTO(name: "Credits", quota: total, remaining: remaining, reset_time: reset)
-        let status = "\(remaining) / \(total)\(unitSuffix) left"
+        // A unit Qoder names itself is its word, shown as written.
+        let status = (unit?.isEmpty == false)
+            ? CollectorStatusText.unitsLeftOf("\(remaining)", "\(total)", unit: unit!)
+            : CollectorStatusText.creditsLeftOf("\(remaining)", "\(total)")
 
         let usage = ProviderUsage(
             provider: ProviderKind.qoder.rawValue,

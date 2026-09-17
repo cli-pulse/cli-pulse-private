@@ -1,0 +1,35 @@
+{
+ "_about": "Status-line literals collectors may write without a CollectorStatusText builder, each with why it must stay as written. Read by scripts/check_collector_status_text.py; an entry whose literal is gone fails, so this list can only shrink. Literals are normalized: interpolations and printf specifiers become {}.",
+ "entries": [
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/AbacusCollector.swift",
+   "literal": "{} compute points",
+   "reason": "\"Compute Points\" is Abacus AI's own billing unit, the same term scripts/quota_tier_names.json passes through for its tier, so the line keeps matching the vendor's billing page."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/AbacusCollector.swift",
+   "literal": "{}/{} compute points",
+   "reason": "\"Compute Points\" is Abacus AI's own billing unit, the same term scripts/quota_tier_names.json passes through for its tier, so the line keeps matching the vendor's billing page."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/OpenCodeGoCollector.swift",
+   "literal": "${} Zen",
+   "reason": "Zen is OpenCode's product name; the segment is an amount plus that name, with no word of ours to translate. The rest of the line goes through builders."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/VeniceCollector.swift",
+   "literal": "DIEM {} / {} epoch allocation",
+   "reason": "DIEM and its epoch allocation are Venice's own token and staking terms (the tier passthrough \"DIEM Balance\" in scripts/quota_tier_names.json is the same decision)."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "{} · Unlimited edit predictions",
+   "reason": "\"Edit Predictions\" is Zed's product name, passed through as a tier name in scripts/quota_tier_names.json; the plan name in front is Zed's too. The overdue-invoices segment appended after it goes through a builder."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/ZedCollector.swift",
+   "literal": "{} · {} / {} edit predictions",
+   "reason": "\"Edit Predictions\" is Zed's product name, passed through as a tier name in scripts/quota_tier_names.json; the plan name in front is Zed's too. The overdue-invoices segment appended after it goes through a builder."
+  }
+ ]
+}

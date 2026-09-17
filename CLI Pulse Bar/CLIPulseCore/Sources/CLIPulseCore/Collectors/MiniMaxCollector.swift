@@ -127,7 +127,7 @@ public struct MiniMaxCollector: ProviderCollector, Sendable {
             cost_status_today: "Unavailable", cost_status_week: "Unavailable",
             quota: m.total > 0 ? m.total : nil, remaining: m.modelRemains,
             plan_type: "Coding Plan", reset_time: m.endTime, tiers: tiers,
-            status_text: m.total > 0 ? "\(used)/\(m.total) used" : "Unknown",
+            status_text: m.total > 0 ? CollectorStatusText.usedOf("\(used)", "\(m.total)") : "Unknown",
             trend: [], recent_sessions: [], recent_errors: [],
             metadata: ProviderMetadata(display_name: "MiniMax", category: "cloud",
                                        supports_exact_cost: false, supports_quota: true))

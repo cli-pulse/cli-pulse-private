@@ -259,7 +259,7 @@ public struct ManusCollector: ProviderCollector, Sendable {
     // MARK: - Result building (.quota when a pool is capped; else .statusOnly)
 
     static func buildResult(_ r: ManusCreditsResponse) -> CollectorResult {
-        let balanceText = "Balance: \(creditCountString(r.totalCredits)) credits"
+        let balanceText = CollectorStatusText.balanceOfCredits(creditCountString(r.totalCredits))
         // plan_type inferred from the subscription pool (no plan name in the
         // payload) — mirrors the Perplexity precedent (Gemini C-8 R1 Q1).
         let planType = r.proMonthlyCredits > 0 ? "Pro" : "Free"
@@ -274,11 +274,11 @@ public struct ManusCollector: ProviderCollector, Sendable {
 
         let refreshDetail: String? = r.maxRefreshCredits > 0 ? {
             let label = (r.refreshInterval?.isEmpty == false) ? r.refreshInterval!.capitalized : "Refresh"
-            return "\(label): \(creditCountString(r.refreshCredits))/\(creditCountString(r.maxRefreshCredits))"
+            return CollectorStatusText.poolCount(label, creditCountString(r.refreshCredits), creditCountString(r.maxRefreshCredits))
         }() : nil
 
         func statusText(_ extra: String?) -> String {
-            [balanceText, extra].compactMap { $0 }.joined(separator: " · ")
+            CollectorStatusText.join([balanceText, extra].compactMap { $0 })
         }
 
         // 1) Monthly pro pool is the primary gauge.

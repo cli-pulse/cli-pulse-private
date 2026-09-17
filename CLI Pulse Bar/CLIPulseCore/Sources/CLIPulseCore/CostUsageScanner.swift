@@ -1756,7 +1756,7 @@ public enum CostUsageScanner {
             let requests = max(1, c.messageCount)
             return SessionRecord(
                 id: id,
-                name: "\(c.provider) session",
+                name: SessionRecord.jsonlSessionName(provider: c.provider),
                 provider: c.provider,
                 project: c.projectName,
                 device_name: deviceName,

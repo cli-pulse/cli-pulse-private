@@ -276,6 +276,7 @@
     <string name="quota_tier_opus_weekly">Opus（週次）</string>
     <string name="quota_tier_opus_only">Opus のみ</string>
     <string name="quota_tier_other_models">その他</string>
+    <string name="quota_tier_overall">全体</string>
     <string name="quota_tier_plan_included">プラン内</string>
     <string name="quota_tier_professional_voices">プロ音声</string>
     <string name="quota_tier_purchased">購入分</string>

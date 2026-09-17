@@ -196,7 +196,7 @@ public struct MiMoCollector: ProviderCollector, Sendable {
     {
         let plan = (planCode?.isEmpty == false) ? planCode! : "MiMo"
         let balanceText: String = {
-            guard let balance else { return "balance unavailable" }
+            guard let balance else { return CollectorStatusText.balanceUnavailable }
             let cur = currency.isEmpty ? "" : "\(currency) "
             return "\(cur)\(String(format: "%.2f", balance))"
         }()
@@ -212,7 +212,7 @@ public struct MiMoCollector: ProviderCollector, Sendable {
                 quota: limit, remaining: remaining,
                 plan_type: plan, reset_time: resetISO,
                 tiers: [TierDTO(name: "Token Plan", quota: limit, remaining: remaining, reset_time: resetISO)],
-                status_text: "\(Self.compact(used))/\(Self.compact(limit)) tokens · \(balanceText)",
+                status_text: CollectorStatusText.join([CollectorStatusText.tokensOf(Self.compact(used), Self.compact(limit)), balanceText]),
                 trend: [], recent_sessions: [], recent_errors: [],
                 metadata: ProviderMetadata(
                     display_name: "MiMo", category: "cloud",
@@ -221,7 +221,12 @@ public struct MiMoCollector: ProviderCollector, Sendable {
         }
 
         // No live token plan ⇒ status-only balance.
-        let status = expired ? "\(balanceText) · plan expired" : "\(balanceText) balance"
+        let status: String
+        if expired {
+            status = CollectorStatusText.join([balanceText, CollectorStatusText.planExpired])
+        } else {
+            status = balance == nil ? CollectorStatusText.balanceUnavailable : CollectorStatusText.balance(balanceText)
+        }
         let usage = ProviderUsage(
             provider: ProviderKind.mimo.rawValue,
             today_usage: 0, week_usage: 0,

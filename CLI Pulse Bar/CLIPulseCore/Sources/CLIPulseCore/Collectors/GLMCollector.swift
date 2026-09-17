@@ -109,10 +109,10 @@ public struct GLMCollector: ProviderCollector, Sendable {
 
         if let balance = u.balance {
             let currency = u.currency ?? "CNY"
-            statusText = String(format: "%.2f %@ remaining", balance, currency)
+            statusText = CollectorStatusText.remaining(String(format: "%.2f %@", balance, currency))
             dataKind = .credits
         } else if u.modelCount > 0 {
-            statusText = "\(u.modelCount) models available"
+            statusText = CollectorStatusText.modelsAvailable(u.modelCount)
             dataKind = .statusOnly
         } else {
             statusText = "Connected"
