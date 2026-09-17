@@ -1773,7 +1773,7 @@
 "server_error.unavailable" = "服务器暂时不可用（HTTP %d），请稍后再试。";
 "server_error.failed" = "服务器返回错误（HTTP %d）。";
 "server_error.network" = "无法连接服务器，请检查网络连接。";
-"server_error.device_not_paired" = "这台 Mac 已不再与你的账户配对。如需恢复同步，请在设置中重新设置云同步。";
+"server_error.device_not_paired" = "这台 Mac 已不再与你的账户配对。如需恢复同步，请在「设置」中重新设置云同步。";
 "advanced.helper_sync_failed" = "后台同步失败，将自动重试。";
 "sessions.hook_settings_unreadable" = "无法读取 %@";
 "sessions.hook_settings_invalid_json" = "%@ 不是有效的 JSON";
@@ -1893,12 +1893,12 @@
 "status_text.tokens_short" = "%@ token";
 "status_text.requests_per_minute" = "%@ 次请求/分钟";
 "status_text.tokens_per_minute" = "%@ token/分钟";
-"status_text.cache_per_minute" = "缓存 %@/分钟";
+"status_text.cache_per_minute" = "%@ 次缓存命中/分钟";
 "status_text.models_available" = "%d 个可用模型";
 "status_text.models_available_one" = "%d 个可用模型";
 "status_text.models_installed" = "已安装 %d 个模型";
 "status_text.models_installed_one" = "已安装 %d 个模型";
-"status_text.running_installed" = "%1$d 个运行中，已安装 %2$d 个";
+"status_text.running_installed" = "运行中 %1$d 个，已安装 %2$d 个";
 "status_text.active_sessions" = "%d 个活跃会话";
 "status_text.active_sessions_one" = "%d 个活跃会话";
 "status_text.unlimited" = "无限";

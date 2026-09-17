@@ -637,7 +637,7 @@
 "yield.detail_body" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。マージコミットは集計から除外されます。";
 
 /* ── メニューバー ── */
-"menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 「設定 → プロバイダー」で編集してください。";
+"menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効にしました — 「設定 → プロバイダー」で編集できます。";
 "menu_bar.over_plan_limits" = "CLI Pulse %1$@ プランの上限を超えています — プロバイダー: %2$d/%3$d。アップグレードするか使用を減らしてください。";
 "menu_bar.provider_limit_reached" = "CLI Pulse %1$@ プランで使えるプロバイダーは %2$d 個までです。さらに有効にするにはアップグレードしてください。";
 "menu_bar.edit" = "編集";
@@ -1792,7 +1792,7 @@
 "sessions.hook_settings_unreadable" = "%@ を読み込めませんでした";
 "sessions.hook_settings_invalid_json" = "%@ は有効な JSON ではありません";
 "sessions.hook_settings_root_not_object" = "%@ の最上位が JSON オブジェクトではありません";
-"collector_error.no_projects_for_key" = "%@: この API キーにプロジェクトがありません";
+"collector_error.no_projects_for_key" = "%@: この API キーに紐づくプロジェクトがありません";
 "collector_error.no_quota_for_project" = "%@: このプロジェクトのクォータデータがありません";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "一部のシステムの文言は、CLI Pulse の再起動後に切り替わります。";
@@ -1821,7 +1821,7 @@
 "providers.messages_short_one" = "%@ メッセージ";
 "providers.tracked_count_one" = "%d 件を追跡中";
 "watch.active_count_one" = "%d 件アクティブ";
-"menu_bar.tier_migration_one" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効化 — 「設定 → プロバイダー」で編集してください。";
+"menu_bar.tier_migration_one" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効にしました — 「設定 → プロバイダー」で編集できます。";
 "sessions.hook_install_created" = "インストール済み: 設定ファイルを新規作成しました — %@";
 "sessions.hook_install_added" = "インストール済み: フックを追加しました — %@";
 "sessions.hook_install_replaced" = "インストール済み: 古いフックを置き換えました — %@";
@@ -1863,7 +1863,7 @@
 "providers.plan_account" = "アカウント";
 "providers.plan_project_count" = "プロジェクト %d 件";
 "sessions.row_local_label" = "ローカルの %@ セッション";
-"sessions.row_in_app_terminal_label" = "%@ アプリ内ターミナル";
+"sessions.row_in_app_terminal_label" = "アプリ内ターミナルの %@";
 "integrations.event_type_cost_spike" = "コスト急増";
 "integrations.event_type_quota_exceeded" = "クォータ超過";
 "integrations.event_type_session_long" = "長時間セッション";

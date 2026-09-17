@@ -1794,7 +1794,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "menu_bar.tier_migration_one" = "Se conservaron tus %d proveedores más usados para ajustarse al plan gratuito. Se desactivó %d: edítalo en Ajustes → Proveedores.";
 "sessions.hook_install_created" = "Instalado: se creó un archivo de ajustes nuevo — %@";
 "sessions.hook_install_added" = "Instalado: se añadió el hook — %@";
-"sessions.hook_install_replaced" = "Instalado: se reemplazó el hook anterior — %@";
+"sessions.hook_install_replaced" = "Instalado: se reemplazó el hook desactualizado — %@";
 "sessions.hook_install_noop" = "Ya estaba instalado; no se cambió nada — %@";
 "sessions.hook_uninstall_removed" = "Se quitaron %d hooks — %@";
 "sessions.hook_uninstall_removed_one" = "Se quitó %d hook — %@";
@@ -1833,11 +1833,11 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.plan_account" = "Cuenta";
 "providers.plan_project_count" = "%d proyectos";
 "sessions.row_local_label" = "Sesión local de %@";
-"sessions.row_in_app_terminal_label" = "Terminal integrado de %@";
+"sessions.row_in_app_terminal_label" = "%@ en el terminal integrado";
 "integrations.event_type_cost_spike" = "Pico de costo";
 "integrations.event_type_quota_exceeded" = "Cuota superada";
 "integrations.event_type_session_long" = "Sesión larga";
-"integrations.event_type_device_offline" = "Dispositivo sin conexión";
+"integrations.event_type_device_offline" = "Dispositivo fuera de línea";
 "quota_tier.overall" = "General";
 "status_text.percent_left" = "%d%% restante";
 "status_text.window_percent_left" = "%1$@: %2$d%% restante";
@@ -1882,7 +1882,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "status_text.models_available_one" = "%d modelo disponible";
 "status_text.models_installed" = "%d modelos instalados";
 "status_text.models_installed_one" = "%d modelo instalado";
-"status_text.running_installed" = "%1$d en ejecución, %2$d instalados";
+"status_text.running_installed" = "En ejecución: %1$d, instalados: %2$d";
 "status_text.active_sessions" = "%d sesiones activas";
 "status_text.active_sessions_one" = "%d sesión activa";
 "status_text.unlimited" = "Ilimitado";
