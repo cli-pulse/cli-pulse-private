@@ -220,19 +220,23 @@ public final class CurrencyConverter: @unchecked Sendable {
         usd * lock.withLock { rates[cur.rawValue] ?? cur.fallbackRate }
     }
 
-    /// An amount the way the reader's locale writes money.
+    /// An amount the way the reader writes money.
     ///
-    /// Where the locale puts the currency after the number, as Spain does, the
-    /// locale's own currency format is used whole: "1,75 US$", "92,00 €". The
-    /// symbol-first "$1,75" that came before mixed two conventions, an American
-    /// symbol in front of a Spanish decimal comma, and matched neither.
+    /// In Spanish, where the locale puts the currency after the number, as
+    /// Spain does, the locale's own currency format is used whole: "1,75 US$",
+    /// "92,00 €". The symbol-first "$1,75" that came before mixed two
+    /// conventions, an American symbol in front of a Spanish decimal comma, and
+    /// matched neither. Spanish that writes it first, as in Mexico, is below.
     ///
-    /// Where the locale puts it in front, as English, Japanese, Chinese and
-    /// Korean do, the symbol stays `DisplayCurrency.symbol` and only the digits
-    /// follow the locale: "$1,234.56", "¥71.50". Those locales' own formats
-    /// would name the same currencies differently, "CN¥" for a Japanese
-    /// reader's yuan and "US$" for a Korean reader's dollar, against the plain
-    /// symbols this setting shows.
+    /// Every other language keeps `DisplayCurrency.symbol` in front, and only
+    /// the digits follow the locale: "$1,234.56", "¥71.50", and "$12,34" for
+    /// English on a German region. The choice is by language, not by where the
+    /// region's format puts the symbol: on the Mac the display locale is the
+    /// system's, so an English-UI developer in Germany or Sweden would
+    /// otherwise read "12,34 US$" and "88,23 CN¥" for the symbols they chose.
+    /// Those locales' own formats also name the same currencies differently,
+    /// "CN¥" for a Japanese reader's yuan and "US$" for a Korean reader's
+    /// dollar.
     ///
     /// Display only. The one producer that prints a cost into stored text,
     /// `AlertGenerator.evaluateBudgetAlerts`, has no caller outside tests: the
@@ -243,13 +247,20 @@ public final class CurrencyConverter: @unchecked Sendable {
         fractionDigits: Int,
         locale: Locale = LocaleOverrideStore.shared.displayLocale
     ) -> String {
-        let localeStyle = value.formatted(
-            .currency(code: cur.rawValue).precision(.fractionLength(fractionDigits)).locale(locale))
-        if Self.startsWithDigits(localeStyle) {
-            return localeStyle
+        if let language = locale.language.languageCode?.identifier,
+           Self.languagesWithOwnCurrencyOrder.contains(language) {
+            let localeStyle = value.formatted(
+                .currency(code: cur.rawValue).precision(.fractionLength(fractionDigits)).locale(locale))
+            if Self.startsWithDigits(localeStyle) {
+                return localeStyle
+            }
         }
         return cur.symbol + value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
     }
+
+    /// Languages that write an amount in their region's own currency order
+    /// where it puts the currency after the number. See `amount`.
+    static let languagesWithOwnCurrencyOrder: Set<String> = ["es"]
 
     /// Whether a formatted amount leads with its number, ignoring a sign and
     /// spacing or direction marks: "1,75 US$" does, "US$1.75" does not.

@@ -99,6 +99,27 @@ final class CurrencyConverterTests: XCTestCase {
         XCTAssertEqual(c.format(1.75, locale: Locale(identifier: "es_MX")), "$1.75", "Spanish in Mexico writes it first")
     }
 
+    /// English on a European region writes its own currency after the number
+    /// too ("12,34 US$" in en_DE), and on the Mac the display locale is the
+    /// system's, so English-UI developers in Germany, Spain or Sweden saw
+    /// "12,34 US$", "88,27 CN¥" and "1.852 JP¥" instead of the symbols they
+    /// chose. Only Spanish takes the locale's currency order; every other
+    /// language keeps the chosen symbol in front and the region's digits.
+    func test_format_englishOnAEuropeanRegion_keepsTheChosenSymbolInFront() {
+        let c = makeConverter()
+        c.setCurrency(.usd)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "$12,34")
+        XCTAssertEqual(c.formatWholeUnits(1_852, locale: Locale(identifier: "en_SE")), "$1\u{00A0}852")
+        c.setCurrency(.cny)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "¥88,23")
+        c.setCurrency(.jpy)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "¥1.851")
+        for identifier in ["en_DE", "en_ES", "en_IT", "en_SE", "en_PL", "en_DK", "en_FI", "en_150", "ja_DE", "ko_ES", "zh-Hans_FR"] {
+            let shown = c.format(12.34, locale: Locale(identifier: identifier))
+            XCTAssertTrue(shown.hasPrefix(DisplayCurrency.jpy.symbol), "\(identifier): \(shown)")
+        }
+    }
+
     func test_startsWithDigits() {
         XCTAssertTrue(CurrencyConverter.startsWithDigits("1,75\u{00A0}US$"))
         XCTAssertTrue(CurrencyConverter.startsWithDigits("-1,75\u{00A0}€"))
