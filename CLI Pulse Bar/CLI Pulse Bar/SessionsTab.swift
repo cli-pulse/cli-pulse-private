@@ -1885,7 +1885,9 @@ struct SessionsTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Toggle("", isOn: Binding(
+            // Titled for VoiceOver; `.labelsHidden()` hides the title from
+            // sight only, since the Text above already shows it.
+            Toggle(L10n.sessions.localFastPathTitle, isOn: Binding(
                 get: { state.localControlEnabled },
                 set: { newValue in
                     Task { await state.setLocalControlEnabled(newValue) }

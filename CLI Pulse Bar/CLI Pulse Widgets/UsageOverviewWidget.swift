@@ -54,6 +54,7 @@ struct UsageOverviewWidgetView: View {
 
                 let topProvider = entry.data.providers.first
                 let percent = topProvider?.usagePercent ?? 0
+                let usedPercent = Int(percent * 100)
 
                 Circle()
                     .trim(from: 0, to: min(percent, 1.0))
@@ -65,17 +66,24 @@ struct UsageOverviewWidgetView: View {
                     .rotationEffect(.degrees(-90))
 
                 VStack(spacing: 0) {
-                    Text("\(Int(percent * 100))")
+                    Text("\(usedPercent)")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                     Text("%")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
+                // One element that says whose share this is and that it is
+                // USED — the number and its "%" are separate Texts, and the
+                // medium widget's bars count the other way (what is left).
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(L10n.a11y.percentUsed(topProvider?.name, usedPercent))
             }
 
             Text(entry.data.providers.first?.name ?? L10n.widget.noData)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
+                // The ring's label already names the provider.
+                .accessibilityHidden(entry.data.providers.first != nil)
 
             Text(formatUsage(entry.data.totalUsageToday))
                 .font(.caption2)
@@ -108,9 +116,13 @@ struct UsageOverviewWidgetView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    WidgetMiniStat(icon: "terminal", value: "\(entry.data.activeSessions)", color: .blue)
+                    WidgetMiniStat(icon: "terminal", value: "\(entry.data.activeSessions)",
+                                   accessibilityText: L10n.intents.activeSessions(entry.data.activeSessions),
+                                   color: .blue)
                     if entry.data.unresolvedAlerts > 0 {
-                        WidgetMiniStat(icon: "bell.badge", value: "\(entry.data.unresolvedAlerts)", color: .red)
+                        WidgetMiniStat(icon: "bell.badge", value: "\(entry.data.unresolvedAlerts)",
+                                       accessibilityText: L10n.intents.openAlerts(entry.data.unresolvedAlerts),
+                                       color: .red)
                     }
                     Spacer()
                     if #available(iOS 17.0, *) {
@@ -120,6 +132,7 @@ struct UsageOverviewWidgetView: View {
                         }
                         .buttonStyle(.plain)
                         .tint(WidgetTheme.accent)
+                        .accessibilityLabel(L10n.common.refresh)
                     }
                 }
             }
@@ -172,6 +185,7 @@ struct UsageOverviewWidgetView: View {
                     }
                     .buttonStyle(.plain)
                     .tint(WidgetTheme.accent)
+                    .accessibilityLabel(L10n.common.refresh)
                 }
             }
 
@@ -223,6 +237,9 @@ struct UsageOverviewWidgetView: View {
 struct WidgetMiniStat: View {
     let icon: String
     let value: String
+    /// What the number counts, in words ("3 active sessions"). Only the icon
+    /// says so on screen, and VoiceOver reads a bare "3".
+    let accessibilityText: String
     let color: Color
 
     var body: some View {
@@ -233,6 +250,8 @@ struct WidgetMiniStat: View {
             Text(value)
                 .font(.caption2.weight(.bold).monospacedDigit())
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
     }
 }
 
@@ -261,13 +280,16 @@ struct ProviderCountdownBars: View {
                         .foregroundStyle(.green)
                 }
             }
-            countdownRow(L10n.widget.window5h, used: provider.sessionUsed)
-            countdownRow(L10n.widget.windowWeekly, used: provider.weeklyUsed)
+            // The row labels are abbreviations ("5h", "Wk") sized for an 18pt
+            // column; VoiceOver gets the full window names instead.
+            countdownRow(L10n.widget.window5h, spokenName: L10n.quotaTier.window5h, used: provider.sessionUsed)
+            countdownRow(L10n.widget.windowWeekly, spokenName: L10n.quotaTier.weekly, used: provider.weeklyUsed)
         }
     }
 
-    private func countdownRow(_ label: String, used: Double) -> some View {
+    private func countdownRow(_ label: String, spokenName: String, used: Double) -> some View {
         let remaining = max(0, min(1, 1 - used))
+        let remainingPercent = Int((remaining * 100).rounded())
         return HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 8, weight: .bold))
@@ -284,10 +306,12 @@ struct ProviderCountdownBars: View {
                 }
             }
             .frame(height: compact ? 4 : 5)
-            Text("\(Int((remaining * 100).rounded()))%")
+            Text("\(remainingPercent)%")
                 .font(.system(size: compact ? 9 : 10, weight: .bold).monospacedDigit())
                 .frame(width: 30, alignment: .trailing)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.a11y.percentRemaining(spokenName, remainingPercent))
     }
 }
 

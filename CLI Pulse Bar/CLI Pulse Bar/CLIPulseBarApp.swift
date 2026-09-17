@@ -421,30 +421,26 @@ private struct MenuBarLabel: View {
     @ObservedObject var providerState: ProviderState
 
     var body: some View {
+        // One readout per render, so the text and its spoken label cannot
+        // disagree (the pace verdict depends on the clock).
+        let readout = appState.menuBarReadout
         HStack(spacing: 3) {
             Image(systemName: appState.menuBarIcon)
                 .symbolRenderingMode(.hierarchical)
-            let label = appState.menuBarLabel
+            let label = readout.visibleText
             if !label.isEmpty {
                 Text(label)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
             }
         }
-        // v1.10 P3-3: VoiceOver reads the menu-bar widget as a single
-        // "CLI Pulse, {label}" element (e.g. "CLI Pulse, 3" when 3 alerts
-        // are unresolved) instead of announcing the raw SF Symbol name.
-        // Use `.ignore` + explicit label because we're entirely replacing
-        // the readout — `.combine` + label would make the combine redundant.
+        // VoiceOver reads the menu-bar widget as one element. The visible
+        // "3" / "72%" / "▲12%" carries no noun — its meaning is in the icon
+        // and the display mode — so the label says what the number is, in
+        // the user's language ("CLI Pulse, 3 open alerts, Offline").
+        // `.ignore` + explicit label because we're entirely replacing the
+        // readout — `.combine` + label would make the combine redundant.
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(menuBarAccessibilityLabel)
-    }
-
-    private var menuBarAccessibilityLabel: String {
-        let label = appState.menuBarLabel
-        if label.isEmpty {
-            return "CLI Pulse"
-        }
-        return "CLI Pulse, \(label)"
+        .accessibilityLabel(readout.accessibilityLabel(serverOnline: appState.serverOnline))
     }
 }
 

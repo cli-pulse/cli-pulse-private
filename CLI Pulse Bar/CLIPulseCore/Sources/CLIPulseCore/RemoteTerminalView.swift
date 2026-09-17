@@ -80,6 +80,12 @@ public final class RemoteTerminalView: UIView {
             injectionTime: .atDocumentStart,
             forMainFrameOnly: true)
         config.userContentController.addUserScript(scrollbackScript)
+        // Localized VoiceOver strings for xterm.js — both platforms inject
+        // these, unlike the scrollback override (see TerminalWebStrings).
+        config.userContentController.addUserScript(WKUserScript(
+            source: TerminalWebStrings.userScriptSource(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true))
         config.userContentController.add(messageHandler, name: "terminal")
 
         self.webView = WKWebView(frame: .zero, configuration: config)

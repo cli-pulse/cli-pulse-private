@@ -1808,3 +1808,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "badge.confidence_medium" = "Confianza media";
 "badge.confidence_low" = "Confianza baja";
 "cost.unavailable" = "No disponible";
+
+/* ── a11y-exports ── */
+"dashboard.cost_report_title" = "Informe de costos de CLI Pulse";
+"terminal.input_label" = "Entrada del terminal";
+"terminal.too_much_output" = "Hay demasiada salida para leerla en voz alta: recorre las filas manualmente.";

@@ -64,6 +64,26 @@
         ? window.TERMINAL_CONFIG : {};
       var scrollback = (typeof config.scrollback === 'number' && config.scrollback > 0)
         ? config.scrollback : 5000;
+
+      // Localized screen-reader strings, injected by the native side as
+      //   window.TERMINAL_STRINGS = { promptLabel, tooMuchOutput }
+      // (TerminalWebStrings.swift). xterm.js reads promptLabel when
+      // term.open() creates its input textarea — that becomes the
+      // aria-label VoiceOver announces — so this must run before open().
+      // Without an injection (preview / standalone) xterm keeps English.
+      // TerminalWebStringsTests runs the block between these markers
+      // against the vendored xterm.js.
+      // <terminal-strings>
+      var injectedStrings = (typeof window.TERMINAL_STRINGS === 'object' && window.TERMINAL_STRINGS !== null)
+        ? window.TERMINAL_STRINGS : {};
+      if (typeof injectedStrings.promptLabel === 'string' && injectedStrings.promptLabel) {
+        Terminal.strings.promptLabel = injectedStrings.promptLabel;
+      }
+      if (typeof injectedStrings.tooMuchOutput === 'string' && injectedStrings.tooMuchOutput) {
+        Terminal.strings.tooMuchOutput = injectedStrings.tooMuchOutput;
+      }
+      // </terminal-strings>
+
       var term = new Terminal({
         fontFamily: '"SF Mono", Menlo, monospace',
         fontSize: 13,

@@ -131,7 +131,10 @@ public struct MachineHealthView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: L10n.machine.keepAwake, icon: "moon.zzz.fill")
             HStack(spacing: 8) {
-                Toggle(isOn: Binding(
+                // The switch and the picker carry their names for VoiceOver;
+                // `.labelsHidden()` hides them from sight only, because the
+                // SectionHeader above already shows the title.
+                Toggle(L10n.machine.keepAwake, isOn: Binding(
                     get: { keepAwake.isActive },
                     set: { on in
                         if on {
@@ -141,7 +144,7 @@ public struct MachineHealthView: View {
                             keepAwake.disable()
                         }
                     }
-                )) { EmptyView() }
+                ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
@@ -153,7 +156,8 @@ public struct MachineHealthView: View {
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 } else {
-                    Picker("", selection: $keepAwakeTTLMinutes) {
+                    // Same title as the iPhone Machine screen's picker.
+                    Picker(L10n.machine.holdDuration, selection: $keepAwakeTTLMinutes) {
                         Text(L10n.machine.keepAwakeIndefinite).tag(0)
                         Text(L10n.machine.minutes(30)).tag(30)
                         Text(L10n.machine.hours(1)).tag(60)
@@ -347,7 +351,7 @@ public struct MachineHealthView: View {
                 #if DEVID_BUILD
                 if machineControlsEnabled && lpmAvailable {
                     if lpmBusy { ProgressView().controlSize(.mini) }
-                    Toggle("", isOn: Binding(
+                    Toggle(L10n.machine.lowPower, isOn: Binding(
                         get: { lowPowerOn },
                         set: { newVal in
                             guard !lpmBusy else { return }

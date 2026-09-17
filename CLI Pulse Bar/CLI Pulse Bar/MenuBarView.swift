@@ -607,6 +607,11 @@ struct MenuBarView: View {
                     .foregroundStyle(.tertiary)
             }
             .buttonStyle(.plain)
+            // Same name and tooltip as the signed-out footer's twin; without
+            // them VoiceOver announces the SF Symbol ("power") in the system
+            // language instead of the app's.
+            .accessibilityLabel(L10n.menuBar.quit)
+            .help(L10n.menuBar.quit)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)

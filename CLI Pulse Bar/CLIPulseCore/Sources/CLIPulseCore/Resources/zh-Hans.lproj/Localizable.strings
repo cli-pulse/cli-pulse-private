@@ -1824,3 +1824,8 @@
 "badge.confidence_medium" = "可信度：中";
 "badge.confidence_low" = "可信度：低";
 "cost.unavailable" = "不可用";
+
+/* ── a11y-exports ── */
+"dashboard.cost_report_title" = "CLI Pulse 费用报告";
+"terminal.input_label" = "终端输入";
+"terminal.too_much_output" = "输出内容过多，无法朗读。请手动移到各行阅读。";

@@ -81,6 +81,7 @@ struct LockScreenWidgetView: View {
     private var circularView: some View {
         let topProvider = entry.data.providers.first
         let percent = topProvider?.usagePercent ?? 0
+        let usedPercent = Int(percent * 100)
 
         return ZStack {
             AccessoryWidgetBackground()
@@ -89,11 +90,15 @@ struct LockScreenWidgetView: View {
                 Image(systemName: topProvider?.iconName ?? "waveform.path.ecg")
                     .font(.system(size: 10))
             } currentValueLabel: {
-                Text("\(Int(percent * 100))")
+                Text("\(usedPercent)")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
             }
             .gaugeStyle(.accessoryCircular)
         }
+        // The gauge's only label is a provider icon, so VoiceOver read a bare
+        // number: say whose it is and that it is the USED share.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.a11y.percentUsed(topProvider?.name, usedPercent))
     }
 
     // MARK: - Rectangular: Provider summary
@@ -114,12 +119,13 @@ struct LockScreenWidgetView: View {
                     .font(.caption2)
             } else {
                 ForEach(providers) { p in
+                    let usedPercent = Int(p.usagePercent * 100)
                     HStack(spacing: 4) {
                         Text(p.name)
                             .font(.caption2)
                             .lineLimit(1)
                         Spacer()
-                        Text("\(Int(p.usagePercent * 100))%")
+                        Text("\(usedPercent)%")
                             .font(.caption2.weight(.bold).monospacedDigit())
 
                         Gauge(value: min(p.usagePercent, 1.0)) {
@@ -128,6 +134,8 @@ struct LockScreenWidgetView: View {
                         .gaugeStyle(.accessoryLinear)
                         .frame(width: 40)
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L10n.a11y.percentUsed(p.name, usedPercent))
                 }
             }
         }

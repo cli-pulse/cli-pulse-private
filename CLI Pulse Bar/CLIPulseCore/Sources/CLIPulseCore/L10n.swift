@@ -361,6 +361,9 @@ public enum L10n {
         public static var manage: String { tr("dashboard.manage") }
         public static var noUnresolvedAlerts: String { tr("dashboard.no_unresolved_alerts") }
         public static var exportCostReport: String { tr("dashboard.export_cost_report") }
+        /// First line of the cost report CSV (`ExportService.exportCostReportCSV`).
+        /// Not `pdf.title`: that says "Monthly Report", and this file is not one.
+        public static var costReportTitle: String { tr("dashboard.cost_report_title") }
         public static var exportSessions: String { tr("dashboard.export_sessions") }
         public static var exportProviders: String { tr("dashboard.export_providers") }
         public static var exportPdf: String { tr("dashboard.export_pdf") }
@@ -2041,6 +2044,27 @@ public enum L10n {
         }
         public static var configurationErrorTitle: String { tr("a11y.configuration_error_title") }
         public static var configurationErrorBody: String { tr("a11y.configuration_error_body") }
+
+        /// One spoken label built from whole clauses, joined by the locale's own
+        /// separator ("、" in ja, "，" in zh) — the same composition the Siri
+        /// status reply uses, so no clause is ever glued to another in English
+        /// word order. Empty clauses are dropped.
+        public static func clauses(_ parts: [String]) -> String {
+            parts.filter { !$0.isEmpty }.joined(separator: intents.clauseSeparator)
+        }
+
+        /// "Claude, 45% used". For rings and gauges that draw a bare number:
+        /// they show the USED share while the countdown bars beside them show
+        /// what is LEFT, and only the words can tell a listener which is which.
+        /// `subject` is the provider or window the number belongs to, if any.
+        public static func percentUsed(_ subject: String?, _ percent: Int) -> String {
+            clauses([subject ?? "", providers.percentUsed(percent)])
+        }
+
+        /// "Weekly, 60% remaining". The counterpart of `percentUsed`.
+        public static func percentRemaining(_ subject: String?, _ percent: Int) -> String {
+            clauses([subject ?? "", providers.remainingPercent(percent)])
+        }
     }
 
     // CodexBar-parity Phase A / G4 — pace/forecast text. en-only this
@@ -2216,6 +2240,11 @@ public enum L10n {
         public static func sessionGoneMessage(_ a0: String) -> String { tr("terminal.session_gone_message", a0) }
         public static var helperUnreachableTitle: String { tr("terminal.helper_unreachable_title") }
         public static var helperUnreachableMessage: String { tr("terminal.helper_unreachable_message") }
+        // xterm.js's two built-in English strings, handed to the web view by
+        // `TerminalWebStrings`: the VoiceOver name of the terminal's input, and
+        // what its screen-reader live region says when output floods it.
+        public static var inputLabel: String { tr("terminal.input_label") }
+        public static var tooMuchOutput: String { tr("terminal.too_much_output") }
     }
 
     public enum inAppTerminal {
