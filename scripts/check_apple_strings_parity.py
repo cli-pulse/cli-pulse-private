@@ -647,7 +647,7 @@ def split_top_level(code: str, a: int, b: int) -> list[tuple[int, int]]:
             spans.append((start, k))
             start = k + 1
     spans.append((start, b))
-    return [(s, e) for s, e in spans if code[s:e].strip() or s != e]
+    return [(s, e) for s, e in spans if code[s:e].strip()]
 
 
 def first_string_literal(text: str, at: int) -> str | None:
@@ -702,8 +702,8 @@ class SwiftIndex:
                     depth += 1
                 elif c in "})]":
                     depth -= 1
-                elif depth == 0 and code.startswith("case", k) and not code[k - 1].isalnum() \
-                        and not code[k + 4].isalnum() and code[k + 4] != "_":
+                elif depth == 0 and code.startswith("case", k) and not (code[k - 1].isalnum() or code[k - 1] == "_") \
+                        and k + 4 < body_close and not (code[k + 4].isalnum() or code[k + 4] == "_"):
                     end = k + 4
                     while end < body_close - 1 and code[end] not in "\n;{}":
                         if code[end] == "(":
@@ -965,7 +965,9 @@ def _intent_literals(src: str) -> list[tuple[str, str, int, bool]]:
         exempt.append((m.start(), match_close(code, m.end() - 1)))
     for m in re.finditer(r"\b(?:struct|enum|class|actor|extension)\s+\w+[^{]*\{", code):
         close = match_close(code, m.end() - 1)
-        body = code[m.end():close - 1] if close > 0 else ""
+        if close < 0:
+            continue
+        body = code[m.end():close - 1]
         for d in re.finditer(r"\bstatic\s+(?:var|let)\s+isDiscoverable\s*(?::\s*Bool\s*)?=\s*false\b", body):
             prefix = body[:d.start()]
             if prefix.count("{") == prefix.count("}"):
@@ -976,6 +978,8 @@ def _intent_literals(src: str) -> list[tuple[str, str, int, bool]]:
         sites += [(site, m.end()) for m in rx.finditer(code)]
     for m in PARAMETER_ATTRIBUTE.finditer(code):
         close = match_close(code, m.end() - 1)
+        if close < 0:
+            continue
         for label in re.finditer(r"\b(title|description)\s*:\s*(?=\")", code[m.end():close]):
             sites.append((f"@Parameter {label.group(1)}", m.end() + label.end()))
 
