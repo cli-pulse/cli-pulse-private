@@ -33,7 +33,9 @@ struct ProviderUsageWidgetView: View {
     }
 
     private var content: some View {
-        VStack(spacing: 8) {
+        let usedPercent = Int(entry.provider.usagePercent * 100)
+
+        return VStack(spacing: 8) {
             ZStack {
                 // Background ring
                 Circle()
@@ -67,14 +69,22 @@ struct ProviderUsageWidgetView: View {
                     Image(systemName: entry.provider.iconName)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(WidgetTheme.providerColor(entry.provider.name))
-                    Text("\(Int(entry.provider.usagePercent * 100))%")
+                    Text("\(usedPercent)%")
                         .font(.system(size: 15, weight: .bold, design: .rounded))
                 }
+                // One element that says whose share this is and that it is
+                // USED. The "used" word below belongs to the token count and
+                // only appears when there is a quota, while the host can supply
+                // a percentage without one.
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(L10n.a11y.percentUsed(entry.provider.name, usedPercent))
             }
 
             Text(entry.provider.name)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
+                // The ring's label already names the provider.
+                .accessibilityHidden(true)
 
             HStack(spacing: 4) {
                 Text(entry.provider.formattedUsage)
@@ -85,6 +95,11 @@ struct ProviderUsageWidgetView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            // "120K" is a bare abbreviation, and "used" follows it only with a
+            // quota: one element that names the count either way.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L10n.a11y.tokenUsage(entry.provider.formattedUsage,
+                                                     showsUsed: entry.provider.quota != nil))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

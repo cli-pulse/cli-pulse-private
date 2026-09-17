@@ -172,6 +172,7 @@ struct iOSProvidersTab: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel(L10n.common.moreOptions)
                 }
                 ToolbarItem(placement: .secondaryAction) {
                     Text(

@@ -1358,38 +1358,18 @@ public final class AppState: ObservableObject {
 
     // MARK: - Menu Bar
 
+    /// What the menu bar item shows, resolved once so the view can render the
+    /// same readout as text and as its VoiceOver label (see `MenuBarReadout`).
+    public var menuBarReadout: MenuBarReadout {
+        MenuBarReadout.resolve(
+            isSignedIn: isAuthenticated && isPaired,
+            unresolvedAlertCount: alerts.filter { !$0.is_resolved }.count,
+            mode: menuBarDisplayMode,
+            mostUsedProvider: mostUsedProvider)
+    }
+
     public var menuBarLabel: String {
-        guard isAuthenticated, isPaired else { return "" }
-        let unresolvedCount = alerts.filter { !$0.is_resolved }.count
-        if unresolvedCount > 0 {
-            return "\(unresolvedCount)"
-        }
-        switch menuBarDisplayMode {
-        case .percent:
-            if let top = mostUsedProvider, top.usagePercent > 0 {
-                return "\(Int((1.0 - top.usagePercent) * 100))%"
-            }
-            return ""
-        case .mostUsed:
-            return mostUsedProvider?.provider ?? ""
-        case .pace:
-            // v1.23 G4: CodexBar-parity pace forecast. Prefer the
-            // ultra-compact engine label ("▲12%"/"▼8%"/"≈"); fall back
-            // to the prior remaining-% rendering when the engine has no
-            // verdict (non-Codex/Claude top provider, or no reset
-            // anchor) so behavior is unchanged for those cases.
-            if let top = mostUsedProvider {
-                if let paceLabel = top.paceMenuLabel() {
-                    return paceLabel
-                }
-                if top.usagePercent > 0 {
-                    return String(format: "%.0f%%", top.usagePercent * 100)
-                }
-            }
-            return ""
-        case .icon:
-            return ""
-        }
+        menuBarReadout.visibleText
     }
 
     public var menuBarIcon: String {

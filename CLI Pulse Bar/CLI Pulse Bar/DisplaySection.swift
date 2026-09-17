@@ -17,7 +17,9 @@ struct DisplaySection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: Binding(
+                // Titled for VoiceOver; `.labelsHidden()` hides the title from
+                // sight only, since the Text beside it already shows it.
+                Picker(L10n.display.mode, selection: Binding(
                     get: { state.menuBarDisplayMode },
                     set: { state.menuBarDisplayMode = $0 }
                 )) {
@@ -27,6 +29,7 @@ struct DisplaySection: View {
                 }
                 .pickerStyle(.menu)
                 .controlSize(.small)
+                .labelsHidden()
                 .frame(width: 120)
             }
 

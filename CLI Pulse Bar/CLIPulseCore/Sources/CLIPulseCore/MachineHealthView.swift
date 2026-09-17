@@ -131,7 +131,10 @@ public struct MachineHealthView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeader(title: L10n.machine.keepAwake, icon: "moon.zzz.fill")
             HStack(spacing: 8) {
-                Toggle(isOn: Binding(
+                // The switch and the picker carry their names for VoiceOver;
+                // `.labelsHidden()` hides them from sight only, because the
+                // SectionHeader above already shows the title.
+                Toggle(L10n.machine.keepAwake, isOn: Binding(
                     get: { keepAwake.isActive },
                     set: { on in
                         if on {
@@ -141,7 +144,7 @@ public struct MachineHealthView: View {
                             keepAwake.disable()
                         }
                     }
-                )) { EmptyView() }
+                ))
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .labelsHidden()
@@ -153,7 +156,8 @@ public struct MachineHealthView: View {
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 } else {
-                    Picker("", selection: $keepAwakeTTLMinutes) {
+                    // Same title as the iPhone Machine screen's picker.
+                    Picker(L10n.machine.holdDuration, selection: $keepAwakeTTLMinutes) {
                         Text(L10n.machine.keepAwakeIndefinite).tag(0)
                         Text(L10n.machine.minutes(30)).tag(30)
                         Text(L10n.machine.hours(1)).tag(60)
@@ -347,7 +351,7 @@ public struct MachineHealthView: View {
                 #if DEVID_BUILD
                 if machineControlsEnabled && lpmAvailable {
                     if lpmBusy { ProgressView().controlSize(.mini) }
-                    Toggle("", isOn: Binding(
+                    Toggle(L10n.machine.lowPower, isOn: Binding(
                         get: { lowPowerOn },
                         set: { newVal in
                             guard !lpmBusy else { return }
@@ -448,7 +452,8 @@ public struct MachineHealthView: View {
             HStack(spacing: 8) {
                 SectionHeader(title: L10n.machine.topProcesses, icon: "list.bullet")
                 if !procs.isEmpty {
-                    Picker("", selection: $sortKey) {
+                    // Named for VoiceOver only (`.labelsHidden()` below).
+                    Picker(L10n.machine.sortBy, selection: $sortKey) {
                         Text(L10n.machine.cpu).tag(ProcessSortKey.cpu)
                         Text(L10n.machine.memory).tag(ProcessSortKey.memory)
                     }
@@ -595,6 +600,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.resume)
+            .accessibilityLabel(L10n.machine.resume)
             .disabled(anyActionInFlight)
         } else if offerSuspend, proc.isRunning {
             // Suspend can freeze dependent processes → inline confirm card.
@@ -609,6 +615,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.suspend)
+            .accessibilityLabel(L10n.machine.suspend)
             .disabled(anyActionInFlight)
         }
         // End Process — available on any same-UID row when kill is supported.
@@ -624,6 +631,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .help(L10n.machine.endProcess)
+            .accessibilityLabel(L10n.machine.endProcess)
             .disabled(anyActionInFlight)
         }
     }
@@ -724,6 +732,7 @@ public struct MachineHealthView: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.tertiary)
+            .accessibilityLabel(L10n.a11y.dismissError)
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -901,6 +910,9 @@ public struct MachineHealthView: View {
                             }
                         })
                     .disabled(fanBusy)
+                    // Unnamed, and valued as a position in its range ("40%").
+                    .accessibilityLabel(L10n.machine.fanTarget)
+                    .accessibilityValue(L10n.a11y.fanRPM(Int(min(max(fanSliderRPM, minR), maxR))))
                     Text("\(Int(min(max(fanSliderRPM, minR), maxR))) rpm")
                         .font(.system(size: 9, design: .monospaced)).foregroundStyle(.secondary)
                         .frame(width: 64, alignment: .trailing)

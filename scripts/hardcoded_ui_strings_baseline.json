@@ -80,18 +80,6 @@
    "reason": "KEEP_PROPER_NOUN: Brand name, used as the argument to the localized unlink strings."
   },
   {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/CLIPulseBarApp.swift",
-   "literal": "\"CLI Pulse\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Product name, used as the VoiceOver label."
-  },
-  {
-   "path": "CLI Pulse Bar/CLI Pulse Bar/CLIPulseBarApp.swift",
-   "literal": "\"CLI Pulse, \\(label)\"",
-   "count": 1,
-   "reason": "KEEP_PROPER_NOUN: Product name plus the computed menu-bar value. There are no translatable words (round-1 decision)."
-  },
-  {
    "path": "CLI Pulse Bar/CLI Pulse Bar/PairingSection.swift",
    "literal": "\"python3 /tmp/cli_pulse_helper.py daemon\"",
    "count": 1,

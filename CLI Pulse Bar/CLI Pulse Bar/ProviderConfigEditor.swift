@@ -149,13 +149,16 @@ struct ProviderConfigEditor: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: $sourceMode) {
+                // Titled for VoiceOver; `.labelsHidden()` hides the title from
+                // sight only, since the Text beside it already shows it.
+                Picker(L10n.providerConfig.dataSource, selection: $sourceMode) {
                     ForEach(descriptor.supportedSources, id: \.self) { src in
                         Text(src.localizedName).tag(src)
                     }
                 }
                 .pickerStyle(.menu)
                 .controlSize(.small)
+                .labelsHidden()
                 .frame(width: 100)
             }
 
@@ -228,6 +231,8 @@ struct ProviderConfigEditor: View {
                         }
                         .buttonStyle(.plain)
                         .help(showAPIKey ? L10n.providerConfig.hideKey : L10n.providerConfig.showKey)
+                        // `.help` is spoken as a hint after the name, not as the name.
+                        .accessibilityLabel(showAPIKey ? L10n.providerConfig.hideKey : L10n.providerConfig.showKey)
                     }
                     .padding(.vertical, 1)
                     #else
@@ -259,7 +264,7 @@ struct ProviderConfigEditor: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                     Spacer()
-                    Picker("", selection: Binding(
+                    Picker(L10n.providerConfig.cookieSource, selection: Binding(
                         get: { cookieSource ?? .safari },
                         set: { cookieSource = $0 }
                     )) {
@@ -269,6 +274,7 @@ struct ProviderConfigEditor: View {
                     }
                     .pickerStyle(.menu)
                     .controlSize(.small)
+                    .labelsHidden()
                     .frame(width: 100)
                 }
 

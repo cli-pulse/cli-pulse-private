@@ -54,33 +54,72 @@ public enum ExportService {
         providers: [ProviderUsage],
         sessions: [SessionRecord]
     ) -> URL? {
-        var csv = "CLI Pulse Cost Report\n"
-        csv += "Generated,\(sharedISO8601Formatter.string(from: Date()))\n\n"
+        writeTemp(costReportCSV(dashboard: dashboard, providers: providers, sessions: sessions),
+                  name: "cli-pulse-cost-report.csv")
+    }
+
+    /// The two kinds of CSV in this file are localized differently, on purpose.
+    ///
+    /// The sessions / providers / alerts exports above are DATA files: their
+    /// header rows are column identifiers that a script, an import or a pivot
+    /// table keys on, so they stay English in every language.
+    ///
+    /// This cost report is a DOCUMENT: the CSV twin of the PDF report, offered
+    /// beside it under the same translated Export menu, and read by a person in
+    /// Numbers or Excel. So its title, section headings, row labels, column
+    /// headers and "N/A" are translated, from the keys the PDF already uses
+    /// (plus a title and a "Generated" label of its own; the PDF's versions are
+    /// "Monthly Report" and a single "Generated: %@" string).
+    /// Only the words are: every value cell stays raw — numbers unformatted so
+    /// a spreadsheet can still sum them, the timestamp ISO 8601, and session
+    /// status as the server sends it (the PDF keeps it raw too), so a filter on
+    /// it does not depend on the language the file was exported in.
+    ///
+    /// It starts with a UTF-8 byte-order mark. Excel opens a CSV without one in
+    /// the system's legacy code page, which would turn every translated heading
+    /// into mojibake for exactly the ja/zh/ko readers this is for; Numbers and
+    /// other readers skip the mark.
+    static func costReportCSV(
+        dashboard: DashboardSummary?,
+        providers: [ProviderUsage],
+        sessions: [SessionRecord],
+        generatedAt: Date = Date()
+    ) -> String {
+        func row(_ cells: [String]) -> String {
+            cells.joined(separator: ",") + "\n"
+        }
+        let na = esc(L10n.pdf.na)
+
+        var csv = "\u{FEFF}" + row([esc(L10n.dashboard.costReportTitle)])
+        // Label and timestamp in two cells, as the English report always had
+        // them, so the timestamp stays a value a spreadsheet can read on its own.
+        csv += row([esc(L10n.dashboard.costReportGenerated), sharedISO8601Formatter.string(from: generatedAt)]) + "\n"
 
         if let d = dashboard {
-            csv += "Summary\n"
-            csv += "Today Usage,\(d.total_usage_today)\n"
-            csv += "Today Cost,$\(d.total_estimated_cost_today)\n"
-            csv += "Active Sessions,\(d.active_sessions)\n"
-            csv += "Online Devices,\(d.online_devices)\n"
-            csv += "Unresolved Alerts,\(d.unresolved_alerts)\n\n"
+            csv += row([esc(L10n.pdf.summary)])
+            csv += row([esc(L10n.pdf.todayUsage), "\(d.total_usage_today)"])
+            csv += row([esc(L10n.pdf.todayEstimatedCost), "$\(d.total_estimated_cost_today)"])
+            csv += row([esc(L10n.pdf.activeSessions), "\(d.active_sessions)"])
+            csv += row([esc(L10n.pdf.onlineDevices), "\(d.online_devices)"])
+            csv += row([esc(L10n.pdf.unresolvedAlerts), "\(d.unresolved_alerts)"]) + "\n"
         }
 
-        csv += "Provider Breakdown\n"
-        csv += "Provider,Week Usage,Est. Cost,Remaining,Quota\n"
+        csv += row([esc(L10n.pdf.providerBreakdown)])
+        csv += row([L10n.pdf.hProvider, L10n.pdf.hWeekUsage, L10n.pdf.hEstCost,
+                    L10n.pdf.hRemaining, L10n.pdf.hQuota].map(esc))
         for p in providers {
-            csv += "\(esc(p.provider)),\(p.week_usage),\(p.estimated_cost_week),"
-            csv += "\(p.remaining.map(String.init) ?? "N/A"),\(p.quota.map(String.init) ?? "N/A")\n"
+            csv += row([esc(p.provider), "\(p.week_usage)", "\(p.estimated_cost_week)",
+                        p.remaining.map(String.init) ?? na, p.quota.map(String.init) ?? na])
         }
 
-        csv += "\nTop Sessions by Cost\n"
-        csv += "Provider,Project,Cost,Usage,Status\n"
+        csv += "\n" + row([esc(L10n.pdf.topSessions)])
+        csv += row([L10n.pdf.hProvider, L10n.pdf.hProject, L10n.pdf.hCost,
+                    L10n.pdf.hUsage, L10n.pdf.hStatus].map(esc))
         let topSessions = sessions.sorted { $0.estimated_cost > $1.estimated_cost }.prefix(20)
         for s in topSessions {
-            csv += "\(esc(s.provider)),\(esc(s.project)),\(s.estimated_cost),\(s.total_usage),\(esc(s.status))\n"
+            csv += row([esc(s.provider), esc(s.project), "\(s.estimated_cost)", "\(s.total_usage)", esc(s.status)])
         }
-
-        return writeTemp(csv, name: "cli-pulse-cost-report.csv")
+        return csv
     }
 
     // MARK: - PDF Report

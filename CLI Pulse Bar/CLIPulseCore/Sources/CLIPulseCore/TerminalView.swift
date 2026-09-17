@@ -94,6 +94,12 @@ public final class TerminalView: NSView {
         // `ready` post would fire into the void.
         let messageHandler = BridgeHandler()
         config.userContentController.add(messageHandler, name: "terminal")
+        // Localized VoiceOver strings for xterm.js, set before index.html
+        // opens the terminal (see TerminalWebStrings).
+        config.userContentController.addUserScript(WKUserScript(
+            source: TerminalWebStrings.userScriptSource(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true))
 
         self.webView = WKWebView(frame: .zero, configuration: config)
         self.messageHandler = messageHandler

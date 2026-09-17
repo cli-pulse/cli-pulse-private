@@ -41,7 +41,9 @@ struct GeneralSection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: Binding(
+                // Titled for VoiceOver; `.labelsHidden()` hides the title from
+                // sight only, since the Text beside it already shows it.
+                Picker(L10n.settings.refreshCadence, selection: Binding(
                     get: { state.refreshInterval },
                     set: { state.updateRefreshInterval($0) }
                 )) {
@@ -54,6 +56,7 @@ struct GeneralSection: View {
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
+                .labelsHidden()
                 .frame(width: 300)
             }
 
@@ -63,7 +66,7 @@ struct GeneralSection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: Binding(
+                Picker(L10n.settings.currency, selection: Binding(
                     get: { state.displayCurrency },
                     set: { state.setDisplayCurrency($0) }
                 )) {
@@ -73,6 +76,7 @@ struct GeneralSection: View {
                 }
                 .pickerStyle(.menu)
                 .controlSize(.small)
+                .labelsHidden()
                 .frame(width: 120)
             }
 

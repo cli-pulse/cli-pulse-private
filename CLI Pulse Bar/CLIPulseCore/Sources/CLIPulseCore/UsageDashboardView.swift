@@ -161,11 +161,14 @@ struct DashboardTrends: View {
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Picker("", selection: $rangeDays) {
+                // Titled with the heading beside it so VoiceOver names the
+                // control; `.labelsHidden()` keeps the title off screen.
+                Picker(L10n.usageDashboard.trends, selection: $rangeDays) {
                     ForEach(ranges, id: \.days) { Text($0.label).tag($0.days) }
                     Text(L10n.usageDashboard.all).tag(-1)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
                 .fixedSize()
             }
             chart

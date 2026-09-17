@@ -1794,3 +1794,12 @@
 "badge.confidence_medium" = "신뢰도 보통";
 "badge.confidence_low" = "신뢰도 낮음";
 "cost.unavailable" = "확인 불가";
+
+/* ── a11y-exports ── */
+"dashboard.cost_report_title" = "CLI Pulse 비용 보고서";
+"dashboard.cost_report_generated" = "생성 시간";
+"terminal.input_label" = "터미널 입력";
+"terminal.too_much_output" = "출력이 너무 많아 음성으로 읽을 수 없습니다. 각 행으로 직접 이동해 읽으세요.";
+"machine.sort_by" = "정렬 기준";
+"common.clear_search" = "검색어 지우기";
+"common.more_options" = "추가 옵션";

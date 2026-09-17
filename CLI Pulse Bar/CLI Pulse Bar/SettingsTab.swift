@@ -288,14 +288,15 @@ struct SettingsTab: View {
 
                 Divider()
 
-                // Section picker
-                Picker("", selection: $settingsSection) {
+                // Section picker. Titled for VoiceOver only (`.labelsHidden()`).
+                Picker(L10n.settings.title, selection: $settingsSection) {
                     ForEach(SettingsSection.allCases, id: \.self) { section in
                         Text(section.label)
                     }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
+                .labelsHidden()
 
                 switch settingsSection {
                 case .general:

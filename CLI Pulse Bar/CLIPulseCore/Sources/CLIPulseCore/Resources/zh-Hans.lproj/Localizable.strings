@@ -1824,3 +1824,12 @@
 "badge.confidence_medium" = "可信度：中";
 "badge.confidence_low" = "可信度：低";
 "cost.unavailable" = "不可用";
+
+/* ── a11y-exports ── */
+"dashboard.cost_report_title" = "CLI Pulse 费用报告";
+"dashboard.cost_report_generated" = "生成时间";
+"terminal.input_label" = "终端输入";
+"terminal.too_much_output" = "输出内容过多，无法朗读。请手动逐行浏览。";
+"machine.sort_by" = "排序方式";
+"common.clear_search" = "清除搜索内容";
+"common.more_options" = "更多选项";

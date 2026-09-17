@@ -201,6 +201,9 @@ public enum L10n {
         public static var batteryTemp: String { tr("machine.battery_temp") }
         public static func cyclesFmt(_ n: String) -> String { tr("machine.cycles_fmt", n) }
         public static var topProcesses: String { tr("machine.top_processes") }
+        /// VoiceOver name of the CPU / Memory segmented picker beside "Top
+        /// Processes"; the picker is `.labelsHidden()`, so it is never shown.
+        public static var sortBy: String { tr("machine.sort_by") }
         public static var noProcesses: String { tr("machine.no_processes") }
         public static var helperUnavailable: String { tr("machine.helper_unavailable") }
         /// v1.44: the helper answered but does not implement
@@ -361,6 +364,13 @@ public enum L10n {
         public static var manage: String { tr("dashboard.manage") }
         public static var noUnresolvedAlerts: String { tr("dashboard.no_unresolved_alerts") }
         public static var exportCostReport: String { tr("dashboard.export_cost_report") }
+        /// First line of the cost report CSV (`ExportService.exportCostReportCSV`).
+        /// Not `pdf.title`: that says "Monthly Report", and this file is not one.
+        public static var costReportTitle: String { tr("dashboard.cost_report_title") }
+        /// The label cell of the cost report CSV's "Generated,<ISO timestamp>"
+        /// row. Not `pdf.generated`: that is "Generated: %@", one string, and
+        /// the CSV keeps the timestamp in a cell of its own, as it always had.
+        public static var costReportGenerated: String { tr("dashboard.cost_report_generated") }
         public static var exportSessions: String { tr("dashboard.export_sessions") }
         public static var exportProviders: String { tr("dashboard.export_providers") }
         public static var exportPdf: String { tr("dashboard.export_pdf") }
@@ -1538,6 +1548,8 @@ public enum L10n {
         public static var disconnect: String { tr("common.disconnect") }
         public static var noProviderSelected: String { tr("common.no_provider_selected") }
         public static var disabled: String { tr("common.disabled") }
+        public static var clearSearch: String { tr("common.clear_search") }
+        public static var moreOptions: String { tr("common.more_options") }
     }
 
     // MARK: - Cost Section (iter22)
@@ -2041,6 +2053,72 @@ public enum L10n {
         }
         public static var configurationErrorTitle: String { tr("a11y.configuration_error_title") }
         public static var configurationErrorBody: String { tr("a11y.configuration_error_body") }
+
+        /// One spoken label built from whole clauses, joined by the locale's own
+        /// separator ("、" in ja, "，" in zh) — the same composition the Siri
+        /// status reply uses, so no clause is ever glued to another in English
+        /// word order. Empty clauses are dropped.
+        public static func clauses(_ parts: [String]) -> String {
+            parts.filter { !$0.isEmpty }.joined(separator: intents.clauseSeparator)
+        }
+
+        /// "Claude, 45% used". For rings and gauges that draw a bare number:
+        /// they show the USED share while the countdown bars beside them show
+        /// what is LEFT, and only the words can tell a listener which is which.
+        /// `subject` is the provider or window the number belongs to, if any.
+        public static func percentUsed(_ subject: String?, _ percent: Int) -> String {
+            clauses([subject ?? "", providers.percentUsed(percent)])
+        }
+
+        /// "Weekly, 60% remaining". The counterpart of `percentUsed`.
+        public static func percentRemaining(_ subject: String?, _ percent: Int) -> String {
+            clauses([subject ?? "", providers.remainingPercent(percent)])
+        }
+
+        /// "Claude, 45% used", or "No data" when the widget snapshot has no
+        /// provider. The widgets that show the top provider's share (the Lock
+        /// Screen gauge, the small overview ring) still draw 0 then, and "0% used"
+        /// would state a fact the widget does not have.
+        public static func percentUsedOrNoData(_ provider: String?, _ percent: Int) -> String {
+            guard let provider else { return widget.noData }
+            return percentUsed(provider, percent)
+        }
+
+        /// "Claude, 45% used, 3 active sessions". The Lock Screen inline widget
+        /// shows "Claude 45% • 3 sessions", which says neither that the share is
+        /// used (the circular and rectangular families of the same widget now do)
+        /// nor gets "1 sessions" right; this is what VoiceOver reads instead.
+        /// With no provider (`nil`) it is "No data, 0 active sessions", as the
+        /// gauge beside it says, not a 0% the widget never measured.
+        public static func usageAndSessions(_ provider: String?, percentUsed percent: Int, activeSessions: Int) -> String {
+            clauses([percentUsedOrNoData(provider, percent), intents.activeSessions(activeSessions)])
+        }
+
+        /// "Usage Today, 1.2M". The overview widgets draw today's totals as bare
+        /// abbreviations; only the large widget puts a title above them.
+        public static func usageToday(_ formatted: String) -> String {
+            clauses([dashboard.usageToday, formatted])
+        }
+
+        /// "Cost Today, $1.25". The counterpart of `usageToday`.
+        public static func costToday(_ formatted: String) -> String {
+            clauses([dashboard.costToday, formatted])
+        }
+
+        /// "Usage, 120K, used". The single-provider widget's token count, which
+        /// the screen follows with "used" only when the provider has a quota;
+        /// the spoken form says the same, and never the bare "120K".
+        public static func tokenUsage(_ formatted: String, showsUsed: Bool) -> String {
+            clauses([widget.usageTitle, formatted, showsUsed ? widget.used : ""])
+        }
+
+        /// "1800 RPM", or "Auto, 1800 RPM" while the iPhone slider follows the
+        /// live fan. The value of the fan target sliders, which VoiceOver would
+        /// otherwise read as a position in their range ("40%"). The unit stays
+        /// as it is printed beside them, in every language.
+        public static func fanRPM(_ rpm: Int, auto: Bool = false) -> String {
+            clauses([auto ? machine.auto : "", "\(rpm) RPM"])
+        }
     }
 
     // CodexBar-parity Phase A / G4 — pace/forecast text. en-only this
@@ -2216,6 +2294,11 @@ public enum L10n {
         public static func sessionGoneMessage(_ a0: String) -> String { tr("terminal.session_gone_message", a0) }
         public static var helperUnreachableTitle: String { tr("terminal.helper_unreachable_title") }
         public static var helperUnreachableMessage: String { tr("terminal.helper_unreachable_message") }
+        // xterm.js's two built-in English strings, handed to the web view by
+        // `TerminalWebStrings`: the VoiceOver name of the terminal's input, and
+        // what its screen-reader live region says when output floods it.
+        public static var inputLabel: String { tr("terminal.input_label") }
+        public static var tooMuchOutput: String { tr("terminal.too_much_output") }
     }
 
     public enum inAppTerminal {

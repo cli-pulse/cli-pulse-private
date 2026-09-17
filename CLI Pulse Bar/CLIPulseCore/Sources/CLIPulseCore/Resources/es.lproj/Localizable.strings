@@ -602,7 +602,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "machine.remote_controls" = "Controles";
 "machine.fan_target" = "Velocidad objetivo";
 "machine.auto" = "Automático";
-"machine.hold_duration" = "Mantener";
+"machine.hold_duration" = "Mantener durante";
 "machine.apply_boost" = "Aplicar impulso";
 "machine.revert_auto" = "Volver a automático";
 "machine.boost_confirm_title" = "¿Impulsar el ventilador?";
@@ -1808,3 +1808,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "badge.confidence_medium" = "Confianza media";
 "badge.confidence_low" = "Confianza baja";
 "cost.unavailable" = "No disponible";
+
+/* ── a11y-exports ── */
+"dashboard.cost_report_title" = "Informe de costos de CLI Pulse";
+"dashboard.cost_report_generated" = "Generado";
+"terminal.input_label" = "Entrada del terminal";
+"terminal.too_much_output" = "Hay demasiada salida para leerla en voz alta: recorre las filas manualmente.";
+"machine.sort_by" = "Ordenar por";
+"common.clear_search" = "Borrar búsqueda";
+"common.more_options" = "Más opciones";
