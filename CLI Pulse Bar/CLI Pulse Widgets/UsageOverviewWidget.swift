@@ -54,7 +54,8 @@ struct UsageOverviewWidgetView: View {
 
                 let topProvider = entry.data.providers.first
                 let percent = topProvider?.usagePercent ?? 0
-                let usedPercent = Int(percent * 100)
+                // The quota alert's rule: "93" for a window its alert calls 93%.
+                let usedPercent = QuotaPercent.usedAndLeft(usedFraction: percent).used
 
                 Circle()
                     .trim(from: 0, to: min(percent, 1.0))
@@ -303,7 +304,9 @@ struct ProviderCountdownBars: View {
 
     private func countdownRow(_ label: String, spokenName: String, used: Double) -> some View {
         let remaining = max(0, min(1, 1 - used))
-        let remainingPercent = Int((remaining * 100).rounded())
+        // Left is what the alert's rounded used leaves, not rounded on its own:
+        // 57.5% used is "42%", as the app's tier row says, not "43%".
+        let remainingPercent = QuotaPercent.usedAndLeft(usedFraction: used).left
         return HStack(spacing: 4) {
             Text(label)
                 .font(.system(size: 8, weight: .bold))

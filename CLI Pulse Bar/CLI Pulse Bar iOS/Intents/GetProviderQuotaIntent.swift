@@ -67,7 +67,8 @@ struct GetProviderQuotaIntent: AppIntent {
 
         let spoken: String
         if let remaining = cached.remaining, let quota = cached.quota, quota > 0 {
-            let percent = Int((1.0 - cached.usagePercent) * 100)
+            // The quota alert's rule, so Siri says the "8%" the app shows.
+            let percent = QuotaPercent.usedAndLeft(quota: quota, remaining: remaining)?.left ?? 0
             spoken = L10n.intents.providerQuotaLeft(target, TokenFormatter.format(remaining), percent)
         } else {
             spoken = L10n.intents.providerUsageNoQuota(target, TokenFormatter.format(cached.usage))

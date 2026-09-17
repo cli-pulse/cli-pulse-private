@@ -422,7 +422,9 @@ struct ProviderTierCard: View {
                 if let overallRemainingFraction {
                     Text(
                         L10n.watch.percentLeft(
-                            Int(overallRemainingFraction * 100)
+                            WatchRingMath.remainingPercentInt(
+                                remainingFraction: overallRemainingFraction
+                            )
                         )
                     )
                         .font(WatchTheme.monoNumber(size: 12))
@@ -479,7 +481,10 @@ struct ProviderTierCard: View {
                     value: fraction,
                     color: overallColor,
                     detail: L10n.watch.percentLeft(
-                        Int(fraction * 100)
+                        WatchRingMath.remainingPercentInt(
+                            quota: quota,
+                            remaining: remaining
+                        )
                     )
                 )
             } else if provider.quota != nil {

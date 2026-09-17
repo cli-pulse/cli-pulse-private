@@ -59,13 +59,69 @@ final class ProviderConfigModelTests: XCTestCase {
         XCTAssertEqual(TokenFormatter.format(12_300_000_000, locale: en), "12.3B")
     }
 
-    /// The suffix stays K/M/B in every language; the decimal separator is the
-    /// reader's. In Spain "154.1K" reads as a thousands group.
-    func testTokenFormatterTakesTheLocaleDecimalSeparatorButKeepsTheSuffix() {
-        XCTAssertEqual(TokenFormatter.format(154_100, locale: Locale(identifier: "es_ES")), "154,1K")
-        XCTAssertEqual(TokenFormatter.format(16_800_000, locale: Locale(identifier: "es_ES")), "16,8M")
+    /// Japanese, Chinese and Korean keep K/M/B, the way their developer tools
+    /// and the provider dashboards quote token counts, and never 万/萬/만; the
+    /// decimal separator is the reader's.
+    func testTokenFormatterKeepsTheSuffixInJapaneseChineseAndKorean() {
         XCTAssertEqual(TokenFormatter.format(245_000, locale: Locale(identifier: "ja_JP")), "245K")
         XCTAssertEqual(TokenFormatter.format(8_600_000, locale: Locale(identifier: "zh-Hans_CN")), "8.6M")
+        XCTAssertEqual(TokenFormatter.format(154_100, locale: Locale(identifier: "zh-Hant_TW")), "154.1K")
+        XCTAssertEqual(TokenFormatter.format(154_100, locale: Locale(identifier: "ko_KR")), "154.1K")
+        XCTAssertEqual(TokenFormatter.format(1_200_000_000, locale: Locale(identifier: "ja_JP")), "1.2B")
+    }
+
+    /// Spanish read "154,1K" and "16,8M": an English suffix after a Spanish
+    /// comma. It now writes the quantity the way Spanish does, for the reader's
+    /// region, and keeps the rounding rule. ICU separates the word with a
+    /// no-break space, compared here as a space.
+    func testTokenFormatterWritesSpanishCountsInSpanish() {
+        let spain = Locale(identifier: "es_ES")
+        func inSpain(_ count: Int) -> String { spaced(TokenFormatter.format(count, locale: spain)) }
+        XCTAssertEqual(inSpain(999), "999")
+        XCTAssertEqual(inSpain(1_000), "1 mil")
+        XCTAssertEqual(inSpain(154_100), "154,1 mil")
+        XCTAssertEqual(inSpain(16_800_000), "16,8 M")
+        XCTAssertEqual(inSpain(999_949), "999,9 mil")
+        XCTAssertEqual(inSpain(999_999), "1 M", "rolls over like the other languages")
+        XCTAssertEqual(spaced(TokenFormatter.format(154_100, locale: Locale(identifier: "es_MX"))), "154.1 k",
+                       "Mexico's own separator and abbreviation")
+    }
+
+    /// Above a thousand million, CLDR's Spanish forms read "1.2k M" and
+    /// "8.6k M" in Mexico, the US and most of Latin America, and switch
+    /// between "8600 M" and "12,3 mil M" in Spain. Spanish counts those in
+    /// millions ("mil millones" is a thousand millions, and a "billón" is
+    /// 10^12), so they stay in millions with the region's grouping, up to the
+    /// billón, which CLDR writes as Spanish does.
+    func testTokenFormatterKeepsSpanishThousandsOfMillionsInMillions() {
+        func text(_ count: Int, _ identifier: String) -> String {
+            spaced(TokenFormatter.format(count, locale: Locale(identifier: identifier)))
+        }
+        XCTAssertEqual(text(1_234_000_000, "es_MX"), "1,234 M")
+        XCTAssertEqual(text(8_600_000_000, "es_MX"), "8,600 M")
+        XCTAssertEqual(text(1_234_000_000, "es_US"), "1,234 M")
+        XCTAssertEqual(text(8_600_000_000, "es_US"), "8,600 M")
+        XCTAssertEqual(text(12_300_000_000, "es_US"), "12,300 M")
+        XCTAssertEqual(text(1_200_000_000, "es_AR"), "1.200 M")
+        XCTAssertEqual(text(8_600_000_000, "es_ES"), "8600 M", "Spain groups from five digits")
+        XCTAssertEqual(text(12_300_000_000, "es_ES"), "12.300 M")
+        XCTAssertEqual(text(999_949_999, "es_MX"), "999.9 M", "below a thousand million: unchanged")
+        XCTAssertEqual(text(999_950_000, "es_MX"), "1,000 M", "rolls into a thousand millions, not \"1k M\"")
+        XCTAssertEqual(text(1_000_000_000_000, "es_MX"), "1 B", "a billón is 10^12 in Spanish")
+
+        for identifier in ["es_ES", "es_MX", "es_US", "es_419", "es_AR", "es_CO"] {
+            var count = 1_000_000_000.0
+            while count < 999_000_000_000 {
+                let shown = text(Int(count), identifier)
+                XCTAssertTrue(shown.hasSuffix(" M") && !shown.contains("k") && !shown.contains("mil"),
+                              "\(identifier) \(Int(count)): \(shown)")
+                count *= 1.37
+            }
+        }
+    }
+
+    private func spaced(_ text: String) -> String {
+        text.replacingOccurrences(of: "\u{00A0}", with: " ").replacingOccurrences(of: "\u{202F}", with: " ")
     }
 
     // MARK: - SubscriptionUtilization

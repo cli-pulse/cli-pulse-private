@@ -1924,3 +1924,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 
 /* ── hardcoded-scanner ── */
 "alert_kind.notification_title" = "CLI Pulse: %@";
+
+/* ── overview-hourly ── */
+"dashboard.hourly_activity" = "Hourly activity";

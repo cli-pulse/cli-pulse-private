@@ -69,17 +69,64 @@ final class CurrencyConverterTests: XCTestCase {
         XCTAssertEqual(c.format(0.001, locale: en), "<¥1")   // 0-decimal smallest unit is 1
     }
 
-    /// Only the digits follow the reader. The symbol stays where
-    /// `DisplayCurrency.symbol` puts it, so a Japanese reader's CNY is still
-    /// "¥", not a locale's "CN¥", and Spain does not move it behind the number.
-    func test_format_digitsFollowTheLocale_symbolStaysInFront() {
+    /// Spain read "$1,75": an American symbol in front of a Spanish decimal
+    /// comma. A locale that writes the currency after the number now gets its
+    /// own currency format whole, the smallest-unit "<" included.
+    func test_format_localeThatWritesTheCurrencyAfterTheNumber_getsItsOwnFormat() {
+        let spain = Locale(identifier: "es_ES")
         let c = makeConverter()
         c.setCurrency(.usd)
-        XCTAssertEqual(c.format(12_345.67, locale: Locale(identifier: "es_ES")), "$12.345,67")
+        XCTAssertEqual(c.format(1.75, locale: spain), "1,75\u{00A0}US$")
+        XCTAssertEqual(c.format(12_345.67, locale: spain), "12.345,67\u{00A0}US$")
+        XCTAssertEqual(c.format(0.001, locale: spain), "<0,01\u{00A0}US$")
+        XCTAssertEqual(c.formatWholeUnits(146.7, locale: spain), "147\u{00A0}US$")
         c.setCurrency(.eur)
-        XCTAssertEqual(c.format(100, locale: Locale(identifier: "es_ES")), "€92,00")
+        XCTAssertEqual(c.format(100, locale: spain), "92,00\u{00A0}€")
+    }
+
+    /// Where the locale writes the symbol first, the symbol stays
+    /// `DisplayCurrency.symbol` and only the digits follow the reader: a
+    /// Japanese reader's CNY is "¥", not the locale's "CN¥", and a Korean
+    /// reader's dollar is "$", not "US$".
+    func test_format_localeThatWritesTheSymbolFirst_keepsTheChosenSymbol() {
+        let c = makeConverter()
         c.setCurrency(.cny)
         XCTAssertEqual(c.format(10, locale: Locale(identifier: "ja_JP")), "¥71.50")
+        XCTAssertEqual(c.format(10, locale: Locale(identifier: "zh-Hant_TW")), "¥71.50")
+        c.setCurrency(.usd)
+        XCTAssertEqual(c.format(1.75, locale: Locale(identifier: "ko_KR")), "$1.75")
+        XCTAssertEqual(c.format(1_234.5, locale: Locale(identifier: "zh-Hans_CN")), "$1,234.50")
+        XCTAssertEqual(c.format(1.75, locale: Locale(identifier: "es_MX")), "$1.75", "Spanish in Mexico writes it first")
+    }
+
+    /// English on a European region writes its own currency after the number
+    /// too ("12,34 US$" in en_DE), and on the Mac the display locale is the
+    /// system's, so English-UI developers in Germany, Spain or Sweden saw
+    /// "12,34 US$", "88,27 CN¥" and "1.852 JP¥" instead of the symbols they
+    /// chose. Only Spanish takes the locale's currency order; every other
+    /// language keeps the chosen symbol in front and the region's digits.
+    func test_format_englishOnAEuropeanRegion_keepsTheChosenSymbolInFront() {
+        let c = makeConverter()
+        c.setCurrency(.usd)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "$12,34")
+        XCTAssertEqual(c.formatWholeUnits(1_852, locale: Locale(identifier: "en_SE")), "$1\u{00A0}852")
+        c.setCurrency(.cny)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "¥88,23")
+        c.setCurrency(.jpy)
+        XCTAssertEqual(c.format(12.34, locale: Locale(identifier: "en_DE")), "¥1.851")
+        for identifier in ["en_DE", "en_ES", "en_IT", "en_SE", "en_PL", "en_DK", "en_FI", "en_150", "ja_DE", "ko_ES", "zh-Hans_FR"] {
+            let shown = c.format(12.34, locale: Locale(identifier: identifier))
+            XCTAssertTrue(shown.hasPrefix(DisplayCurrency.jpy.symbol), "\(identifier): \(shown)")
+        }
+    }
+
+    func test_startsWithDigits() {
+        XCTAssertTrue(CurrencyConverter.startsWithDigits("1,75\u{00A0}US$"))
+        XCTAssertTrue(CurrencyConverter.startsWithDigits("-1,75\u{00A0}€"))
+        XCTAssertTrue(CurrencyConverter.startsWithDigits("\u{200F}1,75 €"))
+        XCTAssertFalse(CurrencyConverter.startsWithDigits("US$1.75"))
+        XCTAssertFalse(CurrencyConverter.startsWithDigits("元 1,234.50"))
+        XCTAssertFalse(CurrencyConverter.startsWithDigits(""))
     }
 
     func test_formatWholeUnits_convertsBeforeRounding() {
@@ -151,9 +198,9 @@ final class CurrencyConverterTests: XCTestCase {
         CurrencyConverter(defaults: watchDefaults).adoptAndRemember(currencyCode: "EUR", rate: 0.9)
 
         let relaunched = CurrencyConverter(defaults: watchDefaults)
-        XCTAssertEqual(relaunched.format(100, locale: spain), "$100,00", "control: a new process starts in dollars")
+        XCTAssertEqual(relaunched.format(100, locale: spain), "100,00\u{00A0}US$", "control: a new process starts in dollars")
         relaunched.restoreAdopted()
-        XCTAssertEqual(relaunched.format(100, locale: spain), "€90,00")
+        XCTAssertEqual(relaunched.format(100, locale: spain), "90,00\u{00A0}€")
     }
 
     /// Dollars from an iPhone app that sends no currency are kept too, so a
@@ -166,7 +213,7 @@ final class CurrencyConverterTests: XCTestCase {
 
         let relaunched = CurrencyConverter(defaults: watchDefaults)
         relaunched.restoreAdopted()
-        XCTAssertEqual(relaunched.format(10, locale: Locale(identifier: "es_ES")), "$10,00")
+        XCTAssertEqual(relaunched.format(10, locale: Locale(identifier: "es_ES")), "10,00\u{00A0}US$")
     }
 
     func test_adopt_keepsItsOwnRateWhenTheHandedOneIsUnusable() {

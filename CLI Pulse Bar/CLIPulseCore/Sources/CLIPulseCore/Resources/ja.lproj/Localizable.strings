@@ -1928,3 +1928,6 @@
 
 /* ── hardcoded-scanner ── */
 "alert_kind.notification_title" = "CLI Pulse: %@";
+
+/* ── overview-hourly ── */
+"dashboard.hourly_activity" = "時間別アクティビティ";

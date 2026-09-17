@@ -699,7 +699,8 @@ struct iOSOverviewTab: View {
                 Image(systemName: "chart.bar.fill")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PulseTheme.accent)
-                Text(L10n.dashboard.activity)
+                // Its own title: the heatmap card above is "Activity" too.
+                Text(L10n.dashboard.hourlyActivity)
                     .font(.subheadline.weight(.semibold))
             }
             ActivityTimelineChart(trend: trend, style: .iOS)

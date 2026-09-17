@@ -1898,3 +1898,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* ── hardcoded-scanner ── */
 "alert_kind.notification_title" = "CLI Pulse: %@";
+
+/* ── overview-hourly ── */
+"dashboard.hourly_activity" = "Actividad por hora";

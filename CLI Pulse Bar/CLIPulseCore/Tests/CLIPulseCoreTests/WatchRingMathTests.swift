@@ -46,12 +46,17 @@ final class WatchRingMathTests: XCTestCase {
         XCTAssertEqual(WatchRingMath.remainingFraction(usagePercent: 1.3), 0.0, accuracy: 1e-9)
     }
 
-    func test_remainingPercentInt_truncatesLikeComplication() {
-        // Int(0.385 * 100) == 38 (truncation, matching the complication's
-        // Int(remaining * 100)). Both surfaces must show "38".
+    /// Left is what remains of the ROUNDED used percentage, the rule the quota
+    /// alert prints. Truncating left read 7% for a window 92.1% used, beside an
+    /// alert saying 8% remaining. The complication calls this same function.
+    func test_remainingPercentInt_isWhatRemainsOfRoundedUse() {
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: 0.921), 8)
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(remainingFraction: 0.079), 8)
         XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: 0.615), 38)
         XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: 0.0), 100)
         XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: 1.0), 0)
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: 1.3), 0)
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(usagePercent: -0.2), 100)
     }
 
     // MARK: - per-tier quota/remaining math
@@ -80,9 +85,31 @@ final class WatchRingMathTests: XCTestCase {
         XCTAssertEqual(WatchRingMath.usagePercent(quota: 100, remaining: -10), 1.0, accuracy: 1e-9)
     }
 
-    func test_tierRemainingPercentInt_truncates() {
+    func test_tierRemainingPercentInt_isWhatRemainsOfRoundedUse() {
         XCTAssertEqual(WatchRingMath.remainingPercentInt(quota: 100, remaining: 38), 38)
         XCTAssertEqual(WatchRingMath.remainingPercentInt(quota: 3, remaining: 1), 33)
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(quota: 1_000, remaining: 79), 8, "92.1% used")
+        XCTAssertEqual(WatchRingMath.remainingPercentInt(quota: 0, remaining: 0), 0)
+    }
+
+    /// A tier row reads the counts and the ring reads a fraction of the same
+    /// window. They must never disagree by one, including on an exact half,
+    /// where `0.575 * 100` lands just below 57.5.
+    func test_countsAndFractionsOfOneWindow_showTheSameLeft() {
+        var disagreements: [String] = []
+        for quota in 1...400 {
+            for remaining in 0...quota {
+                let counts = WatchRingMath.remainingPercentInt(quota: quota, remaining: remaining)
+                let fraction = WatchRingMath.remainingPercentInt(
+                    usagePercent: WatchRingMath.usagePercent(quota: quota, remaining: remaining))
+                let remainingFraction = WatchRingMath.remainingPercentInt(
+                    remainingFraction: WatchRingMath.remainingFraction(quota: quota, remaining: remaining))
+                if counts != fraction || counts != remainingFraction {
+                    disagreements.append("\(remaining)/\(quota): \(counts) \(fraction) \(remainingFraction)")
+                }
+            }
+        }
+        XCTAssertEqual(disagreements, [], "\(disagreements.count) windows")
     }
 
     // MARK: - tier (must match the shipped > 0.9 / > 0.7 boundaries)

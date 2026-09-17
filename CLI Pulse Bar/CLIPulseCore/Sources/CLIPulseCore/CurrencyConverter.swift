@@ -220,19 +220,55 @@ public final class CurrencyConverter: @unchecked Sendable {
         usd * lock.withLock { rates[cur.rawValue] ?? cur.fallbackRate }
     }
 
-    /// The symbol stays where `DisplayCurrency.symbol` puts it, in front, in
-    /// every language: a locale's own currency style would turn a Japanese
-    /// reader's CNY into "CN¥" and move the symbol behind the number in Spain,
-    /// against the choice this setting makes. Only the digits follow the
-    /// reader: "$1,234.56", or "$1234,56" in Spain, where an en_US comma reads
-    /// as the decimal point.
+    /// An amount the way the reader writes money.
+    ///
+    /// In Spanish, where the locale puts the currency after the number, as
+    /// Spain does, the locale's own currency format is used whole: "1,75 US$",
+    /// "92,00 €". The symbol-first "$1,75" that came before mixed two
+    /// conventions, an American symbol in front of a Spanish decimal comma, and
+    /// matched neither. Spanish that writes it first, as in Mexico, is below.
+    ///
+    /// Every other language keeps `DisplayCurrency.symbol` in front, and only
+    /// the digits follow the locale: "$1,234.56", "¥71.50", and "$12,34" for
+    /// English on a German region. The choice is by language, not by where the
+    /// region's format puts the symbol: on the Mac the display locale is the
+    /// system's, so an English-UI developer in Germany or Sweden would
+    /// otherwise read "12,34 US$" and "88,23 CN¥" for the symbols they chose.
+    /// Those locales' own formats also name the same currencies differently,
+    /// "CN¥" for a Japanese reader's yuan and "US$" for a Korean reader's
+    /// dollar.
+    ///
+    /// Display only. The one producer that prints a cost into stored text,
+    /// `AlertGenerator.evaluateBudgetAlerts`, has no caller outside tests: the
+    /// app's budget alerts are written by the server's `evaluate_budget_alerts`.
     private func amount(
         _ value: Double,
         in cur: DisplayCurrency,
         fractionDigits: Int,
         locale: Locale = LocaleOverrideStore.shared.displayLocale
     ) -> String {
-        cur.symbol + value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
+        if let language = locale.language.languageCode?.identifier,
+           Self.languagesWithOwnCurrencyOrder.contains(language) {
+            let localeStyle = value.formatted(
+                .currency(code: cur.rawValue).precision(.fractionLength(fractionDigits)).locale(locale))
+            if Self.startsWithDigits(localeStyle) {
+                return localeStyle
+            }
+        }
+        return cur.symbol + value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
+    }
+
+    /// Languages that write an amount in their region's own currency order
+    /// where it puts the currency after the number. See `amount`.
+    static let languagesWithOwnCurrencyOrder: Set<String> = ["es"]
+
+    /// Whether a formatted amount leads with its number, ignoring a sign and
+    /// spacing or direction marks: "1,75 US$" does, "US$1.75" does not.
+    static func startsWithDigits(_ formatted: String) -> Bool {
+        let skipped = CharacterSet.whitespaces
+            .union(CharacterSet(charactersIn: "-\u{2212}+\u{200E}\u{200F}\u{061C}"))
+        guard let first = formatted.unicodeScalars.first(where: { !skipped.contains($0) }) else { return false }
+        return CharacterSet.decimalDigits.contains(first)
     }
 
     // MARK: - Rate fetch (daily, cached 24h, non-blocking)

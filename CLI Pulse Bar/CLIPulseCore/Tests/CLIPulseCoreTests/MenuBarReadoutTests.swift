@@ -106,16 +106,31 @@ final class MenuBarReadoutTests: XCTestCase {
         XCTAssertEqual(r.accessibilityLabel(serverOnline: false), "\(appName)，2 条未解决告警，离线")
     }
 
-    // MARK: - The visible text is unchanged by the refactor
+    // MARK: - The menu bar reads a window as its quota alert does
 
-    /// The readout replaced inline formatting in `AppState.menuBarLabel`; the
-    /// menu bar must show exactly what it showed before, at every percentage.
-    func test_visibleText_matchesThePreviousFormatting() {
-        for remaining in 0...200 {
-            let top = usage("Cursor", quota: 200, remaining: remaining)
-            let used = top.usagePercent
-            let expectedPercentMode = used > 0 ? "\(Int((1.0 - used) * 100))%" : ""
-            let expectedPaceMode = used > 0 ? String(format: "%.0f%%", used * 100) : ""
+    /// A window 92.1% used. Its quota alert says "92% used (8% remaining)" and
+    /// the Mac Providers tier row "8% left", but percent mode truncated its own
+    /// subtraction and the menu bar showed "7%".
+    func test_percentMode_showsTheRemainingPercentTheAlertShows() {
+        let r = readout(mode: .percent, top: usage("Codex", quota: 1_000, remaining: 79))
+        XCTAssertEqual(r.visibleText, "8%")
+        XCTAssertEqual(r.accessibilityLabel(serverOnline: true), "\(appName)、Codex、残り 8%")
+    }
+
+    /// Every window of a 200 quota, against the expression the quota alert
+    /// used before `QuotaPercent` existed: percent mode shows what the alert
+    /// calls remaining, and the pace fallback what it calls used. Percent mode
+    /// truncated, so 14 of 200 left (93% used) showed "6%" beside an alert
+    /// saying 7% remaining; the pace fallback rounded half to even from a
+    /// fraction, so 15 of 200 left showed "92%" beside an alert at 93%, and 85
+    /// of 200 left "57%" beside 58%.
+    func test_visibleText_usesTheQuotaAlertsNumbers() {
+        let quota = 200
+        for remaining in 0...quota {
+            let top = usage("Cursor", quota: quota, remaining: remaining)
+            let alertUsed = Int(round(100.0 * Double(quota - remaining) / Double(quota)))
+            let expectedPercentMode = top.usagePercent > 0 ? "\(max(0, 100 - alertUsed))%" : ""
+            let expectedPaceMode = top.usagePercent > 0 ? "\(alertUsed)%" : ""
             XCTAssertEqual(readout(mode: .percent, top: top).visibleText, expectedPercentMode, "remaining \(remaining)")
             XCTAssertEqual(readout(mode: .pace, top: top).visibleText, expectedPaceMode, "remaining \(remaining)")
         }

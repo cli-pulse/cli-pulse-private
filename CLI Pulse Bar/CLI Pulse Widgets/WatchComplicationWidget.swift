@@ -79,7 +79,7 @@ struct WatchComplicationView: View {
                     Image(systemName: topProvider?.iconName ?? "waveform.path.ecg")
                         .font(.system(size: 9))
                 } currentValueLabel: {
-                    Text("\(Int(remaining * 100))")
+                    Text("\(WatchRingMath.remainingPercentInt(usagePercent: percent))")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
                 }
                 .gaugeStyle(.accessoryCircular)
@@ -121,7 +121,7 @@ struct WatchComplicationView: View {
                             .lineLimit(1)
                         Spacer()
                         let remaining = max(0, 1.0 - p.usagePercent)
-                        Text("\(Int(remaining * 100))%")
+                        Text("\(WatchRingMath.remainingPercentInt(usagePercent: p.usagePercent))%")
                             .font(.caption2.weight(.bold).monospacedDigit())
 
                         Gauge(value: remaining) {
@@ -141,7 +141,7 @@ struct WatchComplicationView: View {
         let topProvider = entry.data.providers.first
         let remaining = topProvider.map { max(0, 1.0 - $0.usagePercent) } ?? 1.0
 
-        return Text("\(Int(remaining * 100))%")
+        return Text("\(WatchRingMath.remainingPercentInt(remainingFraction: remaining))%")
             .font(.system(size: 14, weight: .bold, design: .rounded))
             .widgetLabel {
                 Gauge(value: remaining) {
@@ -159,7 +159,7 @@ struct WatchComplicationView: View {
             return Text(L10n.widget.alertsSummary(alerts))
         }
         let topProvider = entry.data.providers.first
-        let remaining = topProvider.map { Int(max(0, 1.0 - $0.usagePercent) * 100) } ?? 100
+        let remaining = topProvider.map { WatchRingMath.remainingPercentInt(usagePercent: $0.usagePercent) } ?? 100
         let name = topProvider?.name ?? L10n.widget.quotaFallback
         return Text(L10n.widget.percentLeft(name, remaining))
     }

@@ -53,6 +53,28 @@ final class OverviewFormattersTests: XCTestCase {
         }
     }
 
+    /// Spain's hour skeleton is the bare number, so the Spanish axis read
+    /// "22 10 21". An hour with no word or day period gets its minutes, which is
+    /// how Spain writes a time of day; locales whose hour already says what it
+    /// is keep their form. Read in UTC so the hours are exact.
+    func testHourLabelWithoutAnHourWord_showsMinutes() {
+        let spain = Locale(identifier: "es_ES")
+        let ten = Date(timeIntervalSince1970: 22 * 3600)
+        let morning = Date(timeIntervalSince1970: 9 * 3600)
+        XCTAssertEqual(DisplayFormat.hour(ten, locale: spain, timeZone: DisplayFormat.utc), "22:00")
+        XCTAssertEqual(DisplayFormat.hour(morning, locale: spain, timeZone: DisplayFormat.utc), "9:00")
+        XCTAssertEqual(OverviewFormatters.hourLabel("2026-04-21T14junk", locale: spain), "14:00",
+                       "the fallback path formats the same way")
+        XCTAssertEqual(DisplayFormat.hour(ten, locale: Locale(identifier: "ja_JP"), timeZone: DisplayFormat.utc), "22時")
+        XCTAssertEqual(DisplayFormat.hour(ten, locale: Locale(identifier: "zh-Hans_CN"), timeZone: DisplayFormat.utc), "22时")
+        let korea = DisplayFormat.hour(ten, locale: Locale(identifier: "ko_KR"), timeZone: DisplayFormat.utc)
+        XCTAssertTrue(korea.hasPrefix("오후") && korea.hasSuffix("10시"), korea)
+        let mexico = DisplayFormat.hour(ten, locale: Locale(identifier: "es_MX"), timeZone: DisplayFormat.utc)
+        XCTAssertTrue(mexico.hasPrefix("10") && mexico.hasSuffix("p.m."), "es_MX keeps its day period: \(mexico)")
+        let us = DisplayFormat.hour(ten, locale: Locale(identifier: "en_US"), timeZone: DisplayFormat.utc)
+        XCTAssertTrue(us.hasPrefix("10") && us.hasSuffix("PM") && !us.contains(":"), "en_US unchanged: \(us)")
+    }
+
     /// Callers that pass no locale get the app's display language.
     func testHourLabelDefaultsToTheDisplayLanguage() {
         LocaleOverrideStore.shared.set("ja")

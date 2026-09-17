@@ -1914,3 +1914,6 @@
 
 /* ── hardcoded-scanner ── */
 "alert_kind.notification_title" = "CLI Pulse：%@";
+
+/* ── overview-hourly ── */
+"dashboard.hourly_activity" = "每小時活動";

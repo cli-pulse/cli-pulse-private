@@ -188,7 +188,7 @@
 "auth.verify_code" = "인증";
 "auth.enter_code" = "인증 코드 입력";
 "auth.code_sent" = "전송됨";
-"auth.code_sent_to" = "인증 코드가 %@(으)로 전송되었습니다";
+"auth.code_sent_to" = "%@ 주소로 인증 코드가 전송되었습니다";
 "auth.resend_code" = "재전송";
 "auth.back_to_email" = "돌아가기";
 "auth.code_placeholder" = "코드 입력";
@@ -338,7 +338,7 @@
 
 "onboarding.how_it_works" = "CLI Pulse 작동 방식";
 "onboarding.cloud_sync_title" = "클라우드 동기화";
-"onboarding.cloud_sync_desc" = "Mac 앱이 AI 도구 사용 내역을 로컬에서 스캔하고 계정에 업로드합니다. 같은 계정으로 로그인된 모든 기기(이 iPhone 포함)에 자동으로 표시됩니다.";
+"onboarding.cloud_sync_desc" = "Mac 앱이 AI 도구 사용 내역을 로컬에서 스캔하고 계정에 업로드합니다. 이 iPhone 등 같은 계정으로 로그인된 모든 기기에 자동으로 표시됩니다.";
 "onboarding.not_bluetooth" = "Bluetooth 또는 직접 기기 페어링이 아닙니다 — 동기화는 계정 단위입니다.";
 "onboarding.setup_steps_title" = "시작하기";
 "onboarding.step1_mac" = "Mac 앱에서 로그인";
@@ -413,7 +413,7 @@
 "account.linked_accounts_footer" = "Apple, Google 또는 GitHub을 연결하면 어느 것으로든 동일한 CLI Pulse 계정에 로그인할 수 있습니다.";
 "account.unlink_confirm_title" = "이 계정의 연결을 해제할까요?";
 "account.unlink_with_provider" = "%@ 연결 해제";
-"account.unlink_message" = "더 이상 %@(으)로 로그인할 수 없습니다. 나중에 다시 연결할 수 있습니다.";
+"account.unlink_message" = "더 이상 %@ 계정으로 로그인할 수 없습니다. 나중에 다시 연결할 수 있습니다.";
 "account.linked_status" = "연결됨";
 "account.not_linked_status" = "연결되지 않음";
 "account.unlink" = "연결 해제";
@@ -811,7 +811,7 @@
 "advanced.privacy_email_title" = "로그인 이메일";
 "advanced.privacy_email_detail" = "로그인할 수 있도록 인증 서버로 전송";
 "onboarding_wizard.privacy_keys_title" = "API 키는 이 Mac에만 저장됩니다";
-"onboarding_wizard.privacy_keys_detail" = "공급자 API 키와 세션 쿠키(OpenAI, Anthropic, Google 등)는 macOS 키체인에만 저장됩니다. 해당 공급자를 직접 호출하는 데 사용되며, 저희에게 업로드되지 않습니다.";
+"onboarding_wizard.privacy_keys_detail" = "OpenAI, Anthropic, Google 등 공급자의 API 키와 세션 쿠키는 macOS 키체인에만 저장됩니다. 해당 공급자를 직접 호출하는 데 사용되며, 저희에게 업로드되지 않습니다.";
 "onboarding_wizard.privacy_logs_title" = "세션 로그는 기기 내에서 스캔됩니다";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse는 토큰 수를 계산하기 위해 ~/.codex/sessions/ 및 ~/.claude/projects/ 폴더를 로컬에서 읽습니다. 파일 내용은 기기 밖으로 나가지 않습니다.";
 "onboarding_wizard.privacy_metrics_title" = "사용량 지표는 계정과 동기화됩니다";
@@ -1333,7 +1333,7 @@
 "onboarding_wizard.feature_devices_desc" = "메뉴 막대에서 모든 개발 머신을 모니터링하세요.";
 "onboarding_wizard.feature_cost_title" = "비용 추정";
 "onboarding_wizard.feature_cost_desc" = "공급자별 일간 및 주간 지출을 추적하세요.";
-"providers.claude_signed_in_connect_hint" = "%@(으)로 로그인됨 — 설정에서 Claude Code를 연결하세요";
+"providers.claude_signed_in_connect_hint" = "%@ 계정으로 로그인됨 — 설정에서 Claude Code를 연결하세요";
 "providers.claude_quota_unavailable_hint" = "Claude 할당량을 확인할 수 없습니다 — 설정 → Claude에서 연결하세요";
 "provider_config.error_claude_no_token" = "사용 가능한 Claude OAuth 토큰이 없습니다";
 "provider_config.error_claude_http_status" = "Claude API가 HTTP %d 응답을 반환했습니다";
@@ -1608,9 +1608,9 @@
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
    and they sit beside the suppression key. */
-"alert_kind.budget_daily_message" = "오늘 지출($%1$@)이 일간 예산($%2$@)을 초과했습니다.";
+"alert_kind.budget_daily_message" = "오늘 지출이 일간 예산을 초과했습니다. 지출 $%1$@, 예산 $%2$@.";
 "alert_kind.budget_daily_title" = "일간 예산 초과 — $%@";
-"alert_kind.budget_weekly_message" = "최근 7일 지출 합계($%1$@)가 주간 예산($%2$@)을 초과했습니다.";
+"alert_kind.budget_weekly_message" = "최근 7일 지출 합계가 주간 예산을 초과했습니다. 합계 $%1$@, 예산 $%2$@.";
 "alert_kind.budget_weekly_title" = "주간 예산 초과 — $%@";
 "alert_kind.device_cpu_message" = "헬퍼가 측정한 CPU 사용률은 %@%%입니다.";
 "alert_kind.device_cpu_title" = "기기 CPU 사용률이 높습니다";
@@ -1884,3 +1884,6 @@
 
 /* ── hardcoded-scanner ── */
 "alert_kind.notification_title" = "CLI Pulse: %@";
+
+/* ── overview-hourly ── */
+"dashboard.hourly_activity" = "시간별 활동";

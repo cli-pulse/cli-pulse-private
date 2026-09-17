@@ -253,7 +253,11 @@ struct ProviderAccountQuotaSummaryView: View {
                     Text(
                         "\(accountDisplayLabel(for: mostConstrained.id)) · "
                         + L10n.providers.remainingPercent(
-                            Int((fraction * 100).rounded())
+                            // The tier rows' rule, so this is the "42% left"
+                            // they show for the same window, not 43.
+                            QuotaPercent.usedAndLeft(
+                                usedFraction: 1 - fraction
+                            ).left
                         )
                     )
                     .font(.caption2)
@@ -873,7 +877,7 @@ struct EnhancedProviderCard: View {
         parts.append(config.isEnabled ? L10n.common.enabled : L10n.common.disabled)
         parts.append(L10n.providers.localizedStatusText(provider.status_text))
         if let quota = provider.quota, quota > 0 {
-            let pct = Int(round(provider.usagePercent * 100))
+            let pct = QuotaPercent.usedAndLeft(usedFraction: provider.usagePercent).used
             parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
@@ -939,9 +943,10 @@ struct EnhancedProviderCard: View {
     }
 
     private func tierDetail(_ tier: UsageTier) -> String? {
-        guard let remaining = tier.remaining, let quota = tier.quota, quota > 0 else { return nil }
-        let pctLeft = Int(100.0 * Double(remaining) / Double(quota))
-        var result = L10n.watch.percentLeft(pctLeft)
+        guard let remaining = tier.remaining, let quota = tier.quota,
+              let percent = QuotaPercent.usedAndLeft(quota: quota, remaining: remaining) else { return nil }
+        // The quota alert's rule, so "8% left" here matches its "(8% remaining)".
+        var result = L10n.watch.percentLeft(percent.left)
         if let reset = tier.resetTime,
            let resetText = RelativeTime.formatReset(reset) {
             result += " · " + L10n.providers.resetsIn(resetText)

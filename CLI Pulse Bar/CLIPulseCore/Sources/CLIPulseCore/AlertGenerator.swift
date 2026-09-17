@@ -266,7 +266,11 @@ public enum AlertGenerator {
             }
 
             for tier in tiersToCheck {
-                let usedPct = Int(round(100.0 * Double(tier.quota - tier.remaining) / Double(tier.quota)))
+                // `QuotaPercent` is the rule the provider cards and the Watch
+                // read the same window with. It gives the numbers this alert
+                // always printed, so stored titles and messages do not change.
+                guard let percent = QuotaPercent.usedAndLeft(quota: tier.quota, remaining: tier.remaining) else { continue }
+                let usedPct = percent.used
                 guard let crossed = sortedThresholds.first(where: { usedPct >= $0 }) else { continue }
                 // Severity is positional, not absolute: the highest configured
                 // threshold the user crossed is Critical; any lower threshold
@@ -281,7 +285,7 @@ public enum AlertGenerator {
                     "type": "Quota Warning",
                     "severity": severity,
                     "title": "\(provider.provider) \(tier.name) at \(usedPct)%",
-                    "message": "Quota window '\(tier.name)' is \(usedPct)% used (\(max(0, 100 - usedPct))% remaining)\(resetSuffix).",
+                    "message": "Quota window '\(tier.name)' is \(usedPct)% used (\(percent.left)% remaining)\(resetSuffix).",
                     "created_at": now,
                     "related_provider": provider.provider,
                     "source_kind": "quota",

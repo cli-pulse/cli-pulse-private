@@ -1085,16 +1085,46 @@ public struct CostSummary: Sendable {
 /// and a value that rounds up to 1000 moves to the next suffix ("1M", not
 /// "1000K").
 ///
-/// The K/M/B suffixes stay in every language: token counts are quoted that way
-/// in Japanese, Chinese and Korean developer tools too ("200K context"), and
-/// the provider dashboards users compare against do the same. The number
-/// itself takes the display locale's separator, so Spain reads "154,1K".
+/// The K/M/B suffixes stay in Japanese, Chinese and Korean: token counts are
+/// quoted that way in their developer tools too ("200K context"), and the
+/// provider dashboards users compare against do the same. Those languages' own
+/// compact forms count in 万 and 億, which would put "15.4万" beside a dashboard
+/// saying "154K". The number itself takes the display locale's separator.
+///
+/// Spanish is the exception. Its K and B read as English ("154,1K" is not how
+/// Spanish writes a quantity, and a Spanish billion is 10^12), so it takes the
+/// language's own compact form for the reader's region: "154,1 mil" and
+/// "16,8 M" in Spain, "154.1 k" in Mexico, from CLDR, with the same rounding.
+///
+/// Except from a thousand millions up. CLDR writes those "1.2k M" and
+/// "8.6k M" for Mexico, the US and most of Latin America, and switches between
+/// "8600 M" and "12,3 mil M" in Spain; Spanish says "mil millones" and counts
+/// them in millions. So they stay in millions, whole, with the region's
+/// grouping and CLDR's own million abbreviation: "8600 M" and "12.300 M" in
+/// Spain, "8,600 M" in Mexico. From 10^12 CLDR's "B" is the Spanish billón, and
+/// is used as it is.
 public enum TokenFormatter {
+    /// Languages whose own compact number form is used instead of K/M/B.
+    static let languagesWithOwnCompactForm: Set<String> = ["es"]
+
     public static func format(
         _ count: Int,
         locale: Locale = LocaleOverrideStore.shared.displayLocale
     ) -> String {
         guard count >= 1_000 else { return "\(count)" }
+        if let language = locale.language.languageCode?.identifier,
+           languagesWithOwnCompactForm.contains(language) {
+            let compact = FloatingPointFormatStyle<Double>.number
+                .notation(.compactName).precision(.fractionLength(0...1)).locale(locale)
+            let millions = (Double(count) / 1e6).rounded()
+            // From where one decimal of millions reaches 1000 ("1k M" in
+            // Mexico) up to the billón.
+            if Double(count) >= 999_950_000, millions < 1_000_000,
+               let inMillions = inWholeMillions(millions, compact: compact, locale: locale) {
+                return inMillions
+            }
+            return Double(count).formatted(compact)
+        }
         let units: [(divisor: Double, suffix: String)] = [(1e3, "K"), (1e6, "M"), (1e9, "B")]
         var index = units.lastIndex { Double(count) >= $0.divisor } ?? 0
         var value = (Double(count) / units[index].divisor * 10).rounded() / 10
@@ -1103,5 +1133,20 @@ public enum TokenFormatter {
             value = (Double(count) / units[index].divisor * 10).rounded() / 10
         }
         return value.formatted(.number.precision(.fractionLength(0...1)).locale(locale)) + units[index].suffix
+    }
+
+    /// `millions` written with the locale's grouping inside the locale's own
+    /// compact form for one million ("1 M" becomes "8600 M" in Spain, "8,600 M"
+    /// in Mexico), so the abbreviation and its spacing stay CLDR's. `nil` if
+    /// that form does not contain the locale's "1".
+    private static func inWholeMillions(
+        _ millions: Double,
+        compact: FloatingPointFormatStyle<Double>,
+        locale: Locale
+    ) -> String? {
+        let oneMillion = Double(1_000_000).formatted(compact)
+        guard let one = oneMillion.range(of: 1.formatted(.number.locale(locale))) else { return nil }
+        return oneMillion.replacingCharacters(
+            in: one, with: millions.formatted(.number.precision(.fractionLength(0)).locale(locale)))
     }
 }

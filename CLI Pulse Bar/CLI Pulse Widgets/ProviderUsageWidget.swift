@@ -33,7 +33,8 @@ struct ProviderUsageWidgetView: View {
     }
 
     private var content: some View {
-        let usedPercent = Int(entry.provider.usagePercent * 100)
+        // The quota alert's rule: "93" for a window its alert calls 93%.
+        let usedPercent = QuotaPercent.usedAndLeft(usedFraction: entry.provider.usagePercent).used
 
         return VStack(spacing: 8) {
             ZStack {

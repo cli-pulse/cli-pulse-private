@@ -76,9 +76,9 @@ struct iOSSessionsTab: View {
 
     @ViewBuilder
     private var analyticsSection: some View {
+        // No "Sessions" headline: the navigation title right above already
+        // says it, and the Active and Recent headers lead the list.
         VStack(alignment: .leading, spacing: 8) {
-            Text(L10n.tab.sessions)
-                .font(.headline)
             if state.sessions.isEmpty {
                 ContentUnavailableView {
                     Label(L10n.sessions.noSessions, systemImage: "terminal")
@@ -154,7 +154,8 @@ struct iOSSessionsTab: View {
 
     private var sessionList: some View {
         List {
-            Section(L10n.tab.sessions) {
+            // Untitled: the sidebar's navigation title is "Sessions" already.
+            Section {
                 ForEach(state.sessions) { session in
                     HStack(spacing: 10) {
                         Image(systemName: session.providerKind?.iconName ?? "terminal")
