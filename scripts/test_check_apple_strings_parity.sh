@@ -177,6 +177,17 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 printf '"wizard.broken" = "Can"t do that";\n' >> "$F"
 assert_changed "unescaped quote" "$F" "$B" && expect_fail "unescaped quote" "does not parse"
 
+# ── syntax C. a replacement character parses, and still shows as a diamond ──
+# ja shipped す���て for すべて: valid UTF-8, a full key count, broken on screen.
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/ja.lproj/Localizable.strings"
+B="$(shasum "$F" | cut -d' ' -f1)"
+printf '"wizard.mangled" = "す\xef\xbf\xbdて";\n' >> "$F"
+for L in en es ko zh-Hans zh-Hant; do
+  printf '"wizard.mangled" = "ok";\n' >> "$TMP/case/$RES/$L.lproj/Localizable.strings"
+done
+assert_changed "replacement character" "$F" "$B" && expect_fail "replacement character" "U+FFFD replacement character"
+
 # ── syntax B. an escaped quote is LEGAL and must stay accepted ────────────
 # The opposite failure: a syntax check strict enough to reject `\"` would
 # reject shipped copy (providers.show_all_hint, remote.scan_hint) and the

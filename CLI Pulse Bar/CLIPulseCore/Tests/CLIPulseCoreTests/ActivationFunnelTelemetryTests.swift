@@ -620,7 +620,9 @@ final class TelemetryDisclosureLocalizationTests: XCTestCase {
     func test_everyTranslationNamesTheNewMilestones() {
         let helperWord = ["es": "helper", "ja": "ヘルパー", "ko": "헬퍼",
                           "zh-Hans": "helper", "zh-Hant": "helper"]
-        let costWord = ["es": "coste", "ja": "コスト", "ko": "비용",
+        // es says "costo" everywhere since the catalogue review unified it (it was
+        // 34 costo to 9 coste), so the needle follows the catalogue's word.
+        let costWord = ["es": "costo", "ja": "コスト", "ko": "비용",
                         "zh-Hans": "费用", "zh-Hant": "費用"]
 
         for (locale, needle) in helperWord {

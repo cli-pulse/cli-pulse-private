@@ -245,6 +245,30 @@ def unparseable(res_dir: Path) -> list[str]:
     return broken
 
 
+def replacement_characters(root: Path) -> list[str]:
+    """Values that carry U+FFFD, the character a decoder substitutes for bytes it
+    could not read.
+
+    It is valid UTF-8, so the syntax scanner accepts it and every key still
+    counts. On screen it is a black diamond: ja `integrations.filter_all` shipped
+    as す���て and `integrations.filter_providers` as プロバ��ダー, both mangled
+    somewhere between a translator and the file. No catalogue has a legitimate use
+    for it.
+    """
+    found: list[str] = []
+    tables = sorted((root / RES_SUBPATH).glob("*.lproj/*.strings"))
+    tables += sorted((root / APP_ROOT_SUBPATH).glob("*/*.lproj/*.strings"))
+    for path in tables:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            continue  # unparseable() reports undecodable files
+        for number, line in enumerate(lines, 1):
+            if "\ufffd" in line:
+                found.append(f"{path.relative_to(root)}:{number}: {line.strip()[:80]}")
+    return found
+
+
 def collect(res_dir: Path) -> dict[str, list[str]]:
     catalogues: dict[str, list[str]] = {}
     for lproj in sorted(res_dir.glob("*.lproj")):
@@ -513,6 +537,15 @@ def main() -> int:
             print(f"    {line}", file=sys.stderr)
         print("\n    Usually an unescaped \" inside a value. Use \\\" or a typographic", file=sys.stderr)
         print("    quote, then re-run.\n", file=sys.stderr)
+        return 1
+
+    mangled = replacement_characters(root)
+    if mangled:
+        print("FAIL — U+FFFD replacement character in a catalogue. It parses, so nothing", file=sys.stderr)
+        print("       else notices, but users see a black diamond where a letter was:\n", file=sys.stderr)
+        for line in mangled:
+            print(f"    {line}", file=sys.stderr)
+        print("\n    Retype the word from the source text.\n", file=sys.stderr)
         return 1
 
     catalogues = collect(res_dir)
