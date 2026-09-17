@@ -115,8 +115,11 @@ final class DataTokenDisplayTests: XCTestCase {
 
     // MARK: - Menu bar display mode
 
-    /// The Settings picker listed `rawValue` ("Most Used"), which is the persisted
-    /// Codable value; `localizedName` is what it shows now.
+    /// `rawValue` ("Most Used") is the persisted Codable value, so it must not
+    /// move, and every mode needs a translated name. This does not show that the
+    /// Settings picker uses that name: `localizedName` was translated before the
+    /// picker called it. `testViewsRenderTheseTokensThroughTheirMappers` pins the
+    /// picker.
     func testMenuBarDisplayModesHaveLocalizedNamesAndKeepTheirRawValues() {
         XCTAssertEqual(MenuBarDisplayMode.allCases.map(\.rawValue), ["Icon", "Percent", "Pace", "Most Used"])
         withLocale("zh-Hans") {
@@ -229,5 +232,125 @@ final class DataTokenDisplayTests: XCTestCase {
             XCTAssertEqual(WebhookEventFilter.typeLabel("device_offline"), "设备离线")
             XCTAssertEqual(WebhookEventFilter.typeLabel("some_new_type"), "some_new_type")
         }
+    }
+
+    // MARK: - The views that render these tokens
+
+    /// Each mapper above is tested on its own, and none of that shows a screen
+    /// calls it: `AlertPresentation.sourceKindLabel` was translated and tested
+    /// while the iPhone chip still showed "provider". Most of these renders live
+    /// in app targets this bundle cannot run, so the wiring is checked in their
+    /// source. Each entry names the call the fix put in the view and the raw
+    /// render it replaced; both halves are needed, because a view can call the
+    /// mapper in one place and show the raw token in another.
+    func testViewsRenderTheseTokensThroughTheirMappers() throws {
+        struct Wiring {
+            let file: String
+            let mapped: String
+            /// How many renders in the file go through `mapped`, at least.
+            var count = 1
+            var raw: [String] = []
+        }
+        let wirings: [Wiring] = [
+            Wiring(file: "CLI Pulse Bar/DisplaySection.swift",
+                   mapped: "Text(mode.localizedName)", raw: ["Text(mode.rawValue)"]),
+            // The list rows already mapped the status; the detail badge is the fourth.
+            Wiring(file: "CLI Pulse Bar iOS/iOSSessionsTab.swift",
+                   mapped: "text: L10n.status.localized(session.status),", count: 4,
+                   raw: ["text: session.status,"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/ServiceStatusBadge.swift",
+                   mapped: "Text(snapshot.indicator.localizedLabel)", raw: ["Text(snapshot.description)"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/ServiceStatusBadge.swift",
+                   mapped: ".help(snapshot.badgeHelp)", raw: [".help(snapshot.description)"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/ServiceStatusBadge.swift",
+                   mapped: #"\(provider.rawValue): \(snapshot.indicator.localizedLabel)"#,
+                   raw: [#"\(snapshot.description)""#]),
+            Wiring(file: "CLI Pulse Bar/GeneralSection.swift",
+                   mapped: "label: WebhookEventFilter.severityLabel(severity),", raw: ["label: severity,"]),
+            Wiring(file: "CLI Pulse Bar/GeneralSection.swift",
+                   mapped: "label: WebhookEventFilter.typeLabel(type),", raw: ["type.replacingOccurrences"]),
+            Wiring(file: "CLI Pulse Bar iOS/iOSProvidersTab.swift", mapped: "account.planEvidence.localizedDisplay"),
+            Wiring(file: "CLI Pulse Bar Watch/QuotaRingsView.swift",
+                   mapped: "account.planEvidence.localizedDisplay", count: 2),
+            Wiring(file: "CLI Pulse Bar/ProvidersTab.swift",
+                   mapped: "planEvidence.displayValue.map(L10n.providers.planDisplay)"),
+            Wiring(file: "CLI Pulse Bar/ProviderSettingsSection.swift",
+                   mapped: "planEvidence.displayValue.map(L10n.providers.planDisplay)"),
+            Wiring(file: "CLI Pulse Bar/OnboardingWizardView.swift",
+                   mapped: "planEvidence.displayValue.map(L10n.providers.planDisplay)"),
+            Wiring(file: "CLI Pulse Bar/SessionsTab.swift", mapped: "ProviderDisplay.managedRowLabel("),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+                   mapped: "ProviderDisplay.clientLabelDisplay($0, provider: s.provider)",
+                   raw: ["Text(s.clientLabel ?? s.id)"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/LANRemoteScreens.swift",
+                   mapped: "ProviderDisplay.clientLabelDisplay($0, provider: session.provider)",
+                   raw: [".navigationTitle(session.clientLabel ?? session.id)"]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/PDFReportGenerator.swift",
+                   mapped: "drawTableRow(topSessionRow(s),"),
+            // The display mappers recognize these labels by exact match, so the
+            // senders must build them with the same helpers or the translation
+            // silently stops.
+            Wiring(file: "CLI Pulse Bar/SessionsTab.swift",
+                   mapped: "ProviderDisplay.localStartClientLabel(for: provider)",
+                   raw: [#""Local \(ProviderDisplay.displayName(for: provider)) session""#]),
+            Wiring(file: "CLI Pulse Bar/CLIPulseBarApp.swift",
+                   mapped: "clientLabel: ProviderDisplay.inAppTerminalClientLabel",
+                   raw: [#"clientLabel: "in-app-terminal""#]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/TerminalSessionAdapter.swift",
+                   mapped: "clientLabel: ProviderDisplay.inAppTerminalClientLabel",
+                   raw: [#"clientLabel: "in-app-terminal""#]),
+            Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/CostUsageScanner.swift",
+                   mapped: "name: SessionRecord.jsonlSessionName(provider: c.provider),",
+                   raw: [#"name: "\(c.provider) session""#]),
+        ]
+
+        let sources = try appSources()
+        for wiring in wirings {
+            let path = Self.appRoot.appendingPathComponent(wiring.file).path
+            guard let text = sources[path] else {
+                XCTFail("\(wiring.file) not found; the check would prove nothing")
+                continue
+            }
+            XCTAssertGreaterThanOrEqual(text.components(separatedBy: wiring.mapped).count - 1, wiring.count,
+                                        "\(wiring.file) no longer renders through `\(wiring.mapped)`")
+            for raw in wiring.raw {
+                XCTAssertFalse(text.contains(raw), "\(wiring.file) renders the raw token again: `\(raw)`")
+            }
+        }
+
+        // Plan evidence holds what was detected, so any new screen that reads it
+        // must map it too. APIClient reads it as data: it uploads the plan and
+        // builds the provider's plan_type, which is mapped where it is shown.
+        let unmappedDisplay = try NSRegularExpression(
+            pattern: #"planEvidence\.displayValue(?!\.map\(L10n\.providers\.planDisplay\))"#)
+        var mappedSites = 0
+        for (path, text) in sources where !path.hasSuffix("/APIClient.swift") {
+            let range = NSRange(text.startIndex..., in: text)
+            XCTAssertEqual(unmappedDisplay.numberOfMatches(in: text, range: range), 0,
+                           "planEvidence.displayValue is shown without planDisplay in \(path)")
+            XCTAssertFalse(text.contains("planEvidence.rawValue"),
+                           "planEvidence.rawValue is shown without planDisplay in \(path)")
+            mappedSites += text.components(separatedBy: "planEvidence.displayValue.map(").count - 1
+        }
+        XCTAssertGreaterThanOrEqual(mappedSites, 3, "positive control: the mapped plan renders were not found")
+    }
+
+    private static let appRoot = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // CLIPulseCoreTests
+        .deletingLastPathComponent()   // Tests
+        .deletingLastPathComponent()   // CLIPulseCore
+        .deletingLastPathComponent()   // CLI Pulse Bar
+
+    /// Every Swift source of the apps and CLIPulseCore, keyed by path, tests excluded.
+    private func appSources() throws -> [String: String] {
+        var sources: [String: String] = [:]
+        let files = FileManager.default.enumerator(at: Self.appRoot, includingPropertiesForKeys: nil)
+        while let url = files?.nextObject() as? URL {
+            let path = url.path
+            guard url.pathExtension == "swift", !path.contains("/Tests/"), !path.contains("/.build/") else { continue }
+            sources[path] = try String(contentsOf: url, encoding: .utf8)
+        }
+        XCTAssertGreaterThan(sources.count, 50, "positive control: app sources not found under \(Self.appRoot.path)")
+        return sources
     }
 }

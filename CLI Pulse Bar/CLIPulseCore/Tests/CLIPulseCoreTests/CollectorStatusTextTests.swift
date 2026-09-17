@@ -114,7 +114,12 @@ final class CollectorStatusTextTests: XCTestCase {
     /// A vendor's words keep their place and their spelling next to ours.
     func testVendorSegmentsAreKeptVerbatim() {
         XCTAssertEqual(render(S.join(["Pro", S.amountOf("$18.00", "$30.00")]), in: "zh-Hans"),
-                       "Pro · $30.00 中的 $18.00")
+                       "Pro · 已使用 $18.00（共 $30.00）")
+        // Both producers mean an amount used against a cap (Command Code above,
+        // Bedrock's budget here), so the Chinese says "used … (of …)" rather than
+        // "the $18 inside $30".
+        XCTAssertEqual(render(S.join([S.thisMonth("$25.00"), S.amountOf("25%", "$100")]), in: "zh-Hant"),
+                       "本月 $25.00 · 已使用 25%（共 $100）")
         XCTAssertEqual(render(S.join(["Pro · 400 / 1000 edit predictions", S.overdueInvoices]), in: "zh-Hans"),
                        "Pro · 400 / 1000 edit predictions · ⚠︎ 有逾期账单")
         XCTAssertEqual(render(S.join([S.windowPercentLeft(.fourHour, 80), "normal"]), in: "ja"),

@@ -1877,7 +1877,7 @@
 "status_text.balance_of_credits" = "余额：%@ 积分";
 "status_text.this_month" = "本月 %@";
 "status_text.remaining" = "剩余 %@";
-"status_text.amount_of" = "%2$@ 中的 %1$@";
+"status_text.amount_of" = "已使用 %1$@（共 %2$@）";
 "status_text.in_deficit" = "欠费：%@";
 "status_text.uncollected" = "待扣费：%@";
 "status_text.today" = "今日 %@";

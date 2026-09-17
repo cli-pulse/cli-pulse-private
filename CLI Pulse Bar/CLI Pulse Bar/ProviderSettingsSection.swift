@@ -227,7 +227,7 @@ struct ProviderSettingsSection: View {
 
                 HStack(spacing: 4) {
                     Text(
-                        usage?.planEvidence.displayValue
+                        usage?.planEvidence.displayValue.map(L10n.providers.planDisplay)
                             ?? config.planOverride
                             ?? L10n.providers.planUnconfirmed
                     )
