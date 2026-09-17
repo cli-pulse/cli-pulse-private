@@ -227,6 +227,37 @@ jobs:
         # the total wall time is still under 2 min.
         run: swift test
 
+      - name: Swift test under the Japanese, ROC and Buddhist calendars
+        working-directory: CLI Pulse Bar/CLIPulseCore
+        env:
+          CLI_PULSE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'ci-stub-anon-key' }}
+        # Day keys ("2026-09-17": metric_date, p_user_today, the usage archive,
+        # Codex's YYYY/MM/DD directories) must be Gregorian whatever calendar the
+        # user picked. Code that reads Calendar.current or a bare DateFormatter()
+        # passes on this Gregorian runner whether or not it is right, so the run
+        # above cannot catch it coming back; nor can a source guard, since there
+        # are too many ways to read the device calendar. Run the same bundle again
+        # with the device calendar forced. Only the calendar changes (en_US keeps
+        # every English-format assertion meaningful). CLIPULSE_EXPECT_CALENDAR
+        # makes DayKeyDeviceCalendarTests fail if -AppleLocale did not take,
+        # instead of the whole run passing under Gregorian. Must run before the
+        # DEVID_BUILD step, which rebuilds the bundle with other flags.
+        run: |
+          swift build --build-tests
+          bin="$(swift build --show-bin-path)"
+          bundle="$(find "$bin" -maxdepth 1 -name '*.xctest' -print -quit)"
+          if [ -z "$bundle" ]; then echo "::error::no .xctest bundle in $bin"; exit 1; fi
+          status=0
+          for cal in japanese roc buddhist; do
+            echo "::group::xctest -AppleLocale en_US@calendar=$cal"
+            if ! CLIPULSE_EXPECT_CALENDAR="$cal" xcrun xctest -AppleLocale "en_US@calendar=$cal" -XCTest All "$bundle"; then
+              echo "::error::CLIPulseCore tests fail under the $cal calendar"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status
+
       - name: Swift test (DEVID_BUILD full suite)
         working-directory: CLI Pulse Bar/CLIPulseCore
         env:

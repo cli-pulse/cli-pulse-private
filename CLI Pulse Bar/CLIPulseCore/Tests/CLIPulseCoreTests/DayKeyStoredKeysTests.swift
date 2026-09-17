@@ -47,10 +47,20 @@ final class DayKeyTests: XCTestCase {
     /// The window has to reject a key written in any calendar Foundation
     /// offers, today, while accepting every real day the app can record.
     func test_plausible_rejects_every_foreign_calendars_numbering() {
+        var numberedDifferently: Set<Calendar.Identifier> = []
         for id in foreignCalendars {
             let key = legacyKey(instant, in: calendar(id))
+            // Some OS versions number a calendar exactly like Gregorian (macOS 15
+            // does for .ethiopicAmeteAlem). A key written in it was already right,
+            // and keeping it is what isPlausible should do.
+            if key == "2026-09-17" { continue }
+            numberedDifferently.insert(id)
             XCTAssertFalse(DayKey.isPlausible(key, now: instant), "\(id) wrote \(key)")
         }
+        // The skip above must not empty the check: these are the calendars that
+        // broke usage data, and they number years differently on every OS.
+        XCTAssertTrue(numberedDifferently.isSuperset(of: [.japanese, .republicOfChina, .buddhist, .persian, .hebrew]),
+                      "\(numberedDifferently)")
         for key in ["2020-01-01", "2025-02-24", "2026-09-17", "2027-12-31"] {
             XCTAssertTrue(DayKey.isPlausible(key, now: instant), key)
         }

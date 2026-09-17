@@ -22,7 +22,9 @@ import Foundation
 ///
 /// This file is the one place allowed to build a key: `DayKeySourceGuardTests`
 /// fails if a `"yyyy-MM-dd"` formatter or a `%04d-%02d-%02d` key appears
-/// anywhere else in the app's sources.
+/// anywhere else in the app's sources. That guard only knows those spellings;
+/// the device calendar can leak into a key many other ways, so swift-ci.yml
+/// also runs the whole test suite under the Japanese, ROC and Buddhist calendars.
 public enum DayKey {
 
     /// A Gregorian calendar with the POSIX locale in `timeZone`. Use it for any

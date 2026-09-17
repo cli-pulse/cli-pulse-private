@@ -82,17 +82,20 @@ final class DayKeyInjectedCalendarTests: XCTestCase {
 
 /// Code that reads the device calendar (`Calendar.current`, a bare
 /// `DateFormatter()`) rather than taking one. On a Gregorian machine these pass
-/// whether or not the code is fixed; they prove something when the test process
-/// runs under another calendar. Foundation reads `-AppleLocale` from the
-/// command line, so after `swift build --build-tests`:
+/// whether or not the code is fixed — and so does every other test that reaches
+/// such code — so they prove something only when the test process runs under
+/// another calendar. Foundation reads `-AppleLocale` from the command line, and
+/// swift-ci.yml runs the whole bundle that way under the Japanese, ROC and
+/// Buddhist calendars after `swift test`. Locally, after `swift build --build-tests`:
 ///
-///     CLIPULSE_EXPECT_CALENDAR=japanese xcrun xctest -AppleLocale "ja_JP@calendar=japanese" \
-///         -XCTest CLIPulseCoreTests.DayKeyDeviceCalendarTests <path to CLIPulseCoreTests.xctest>
+///     CLIPULSE_EXPECT_CALENDAR=japanese xcrun xctest -AppleLocale "en_US@calendar=japanese" \
+///         -XCTest All "$(swift build --show-bin-path)"/*.xctest
 ///
-/// (`roc` with `zh_TW@calendar=roc`, `buddhist` with `th_TH@calendar=buddhist`).
-/// The flag goes before `-XCTest`: xctest reads its last argument as the bundle
-/// path. The environment variable makes the run fail if the flag did not take,
-/// instead of passing under Gregorian.
+/// (`roc`, `buddhist`; a class name instead of `All` narrows the run). The flag
+/// goes before `-XCTest`: xctest reads its last argument as the bundle path. The
+/// environment variable makes the run fail if the flag did not take, instead of
+/// passing under Gregorian. A source guard cannot stand in for this run: the
+/// ways to read the device calendar are too many to list.
 final class DayKeyDeviceCalendarTests: XCTestCase {
 
     override func setUp() {
