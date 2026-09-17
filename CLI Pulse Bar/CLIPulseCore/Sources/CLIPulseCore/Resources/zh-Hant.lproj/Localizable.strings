@@ -897,7 +897,7 @@
 "machine.remote_controls" = "控制";
 "machine.fan_target" = "風扇目標";
 "machine.auto" = "自動";
-"machine.hold_duration" = "保持";
+"machine.hold_duration" = "保持時長";
 "machine.apply_boost" = "套用加速";
 "machine.revert_auto" = "還原自動";
 "machine.boost_confirm_title" = "加速風扇？";
@@ -1827,8 +1827,9 @@
 
 /* ── a11y-exports ── */
 "dashboard.cost_report_title" = "CLI Pulse 成本報告";
+"dashboard.cost_report_generated" = "產生時間";
 "terminal.input_label" = "終端機輸入";
-"terminal.too_much_output" = "輸出內容過多，無法朗讀。請手動移到各列閱讀。";
+"terminal.too_much_output" = "輸出內容過多，無法朗讀。請手動逐列瀏覽。";
 "machine.sort_by" = "排序方式";
 "common.clear_search" = "清除搜尋內容";
 "common.more_options" = "更多選項";

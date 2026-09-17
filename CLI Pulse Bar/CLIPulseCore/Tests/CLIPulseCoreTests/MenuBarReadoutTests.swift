@@ -127,6 +127,16 @@ final class MenuBarReadoutTests: XCTestCase {
         XCTAssertEqual(L10n.a11y.percentUsed(nil, 0), "已使用 0%")
     }
 
+    /// With no provider in the snapshot the Lock Screen gauge and the small
+    /// overview ring still draw 0; they must say there is no data, not "0% used".
+    func test_gaugeWithNoProvider_saysNoData_notZeroUsed() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(L10n.a11y.percentUsedOrNoData(nil, 0), "暂无数据")
+        XCTAssertEqual(L10n.a11y.percentUsedOrNoData("Claude", 45), "Claude，已使用 45%")
+        XCTAssertEqual(L10n.a11y.usageAndSessions(nil, percentUsed: 0, activeSessions: 0),
+                       "暂无数据，0 个活跃会话")
+    }
+
     /// The Lock Screen inline widget shows "Claude 45% • 3 sessions"; what it
     /// says must name the share as used and count sessions with a plural form.
     func test_inlineWidgetLabel_saysUsedAndCountsSessions() {
@@ -169,11 +179,13 @@ final class MenuBarReadoutTests: XCTestCase {
 
     // MARK: - Names of controls whose titles are hidden (`.labelsHidden()`)
 
-    /// The process sort picker has no visible title of its own, so its spoken
-    /// name is a new key; the Alerts filter reuses an existing one.
-    func test_hiddenControlTitles_resolveInJapanese() {
+    /// Pins only the translation of `machine.sort_by`, the one key the picker
+    /// change added (the process sort picker has no visible title of its own).
+    /// It is not coverage of the pickers themselves: it passes with every
+    /// Picker change reverted. What fails when a picker goes back to
+    /// `Picker("", …)` is `UnnamedControlsSweepTests`.
+    func test_machineSortByTranslation_resolvesInJapanese() {
         XCTAssertEqual(L10n.machine.sortBy, "並べ替え")
-        XCTAssertEqual(L10n.alerts.filter, "フィルター")
     }
 
     /// Icon-only buttons whose symbol has no word on screen. Without a label

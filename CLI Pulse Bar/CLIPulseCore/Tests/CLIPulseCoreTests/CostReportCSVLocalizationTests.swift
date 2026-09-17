@@ -52,7 +52,8 @@ final class CostReportCSVLocalizationTests: XCTestCase {
     func test_wordsFollowTheAppLanguage() {
         let lines = report().components(separatedBy: "\n")
         XCTAssertEqual(lines.first, "\u{FEFF}CLI Pulse コストレポート")
-        XCTAssertEqual(lines[1], "生成: \(sharedISO8601Formatter.string(from: generatedAt))")
+        // Two cells, label then timestamp, as the English report always had.
+        XCTAssertEqual(lines[1], "生成,\(sharedISO8601Formatter.string(from: generatedAt))")
         for expected in [
             "概要",
             "今日の使用量,12345",

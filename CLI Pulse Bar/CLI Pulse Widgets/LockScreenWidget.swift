@@ -96,9 +96,10 @@ struct LockScreenWidgetView: View {
             .gaugeStyle(.accessoryCircular)
         }
         // The gauge's only label is a provider icon, so VoiceOver read a bare
-        // number: say whose it is and that it is the USED share.
+        // number: say whose it is and that it is the USED share. With no
+        // provider it draws 0 but says "No data".
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(L10n.a11y.percentUsed(topProvider?.name, usedPercent))
+        .accessibilityLabel(L10n.a11y.percentUsedOrNoData(topProvider?.name, usedPercent))
     }
 
     // MARK: - Rectangular: Provider summary
@@ -151,9 +152,10 @@ struct LockScreenWidgetView: View {
         return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.data.activeSessions))")
             // The terse line says neither that the share is used (the circular
             // and rectangular families do) nor what the count is; VoiceOver
-            // gets the whole clauses instead.
+            // gets the whole clauses instead ("No data" in place of the 0%
+            // drawn when there is no provider).
             .accessibilityLabel(L10n.a11y.usageAndSessions(
-                name, percentUsed: percent, activeSessions: entry.data.activeSessions))
+                topProvider?.name, percentUsed: percent, activeSessions: entry.data.activeSessions))
     }
 }
 

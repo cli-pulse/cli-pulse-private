@@ -75,15 +75,17 @@ struct UsageOverviewWidgetView: View {
                 // One element that says whose share this is and that it is
                 // USED — the number and its "%" are separate Texts, and the
                 // medium widget's bars count the other way (what is left).
+                // With no provider the ring draws 0 but says "No data".
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel(L10n.a11y.percentUsed(topProvider?.name, usedPercent))
+                .accessibilityLabel(L10n.a11y.percentUsedOrNoData(topProvider?.name, usedPercent))
             }
 
             Text(entry.data.providers.first?.name ?? L10n.widget.noData)
                 .font(.caption2.weight(.semibold))
                 .lineLimit(1)
-                // The ring's label already names the provider.
-                .accessibilityHidden(entry.data.providers.first != nil)
+                // The ring's label already names the provider, or says "No
+                // data"; reading this too would say it twice.
+                .accessibilityHidden(true)
 
             Text(formatUsage(entry.data.totalUsageToday))
                 .font(.caption2)

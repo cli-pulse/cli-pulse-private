@@ -367,6 +367,10 @@ public enum L10n {
         /// First line of the cost report CSV (`ExportService.exportCostReportCSV`).
         /// Not `pdf.title`: that says "Monthly Report", and this file is not one.
         public static var costReportTitle: String { tr("dashboard.cost_report_title") }
+        /// The label cell of the cost report CSV's "Generated,<ISO timestamp>"
+        /// row. Not `pdf.generated`: that is "Generated: %@", one string, and
+        /// the CSV keeps the timestamp in a cell of its own, as it always had.
+        public static var costReportGenerated: String { tr("dashboard.cost_report_generated") }
         public static var exportSessions: String { tr("dashboard.export_sessions") }
         public static var exportProviders: String { tr("dashboard.export_providers") }
         public static var exportPdf: String { tr("dashboard.export_pdf") }
@@ -2071,12 +2075,23 @@ public enum L10n {
             clauses([subject ?? "", providers.remainingPercent(percent)])
         }
 
+        /// "Claude, 45% used", or "No data" when the widget snapshot has no
+        /// provider. The widgets that show the top provider's share (the Lock
+        /// Screen gauge, the small overview ring) still draw 0 then, and "0% used"
+        /// would state a fact the widget does not have.
+        public static func percentUsedOrNoData(_ provider: String?, _ percent: Int) -> String {
+            guard let provider else { return widget.noData }
+            return percentUsed(provider, percent)
+        }
+
         /// "Claude, 45% used, 3 active sessions". The Lock Screen inline widget
         /// shows "Claude 45% • 3 sessions", which says neither that the share is
         /// used (the circular and rectangular families of the same widget now do)
         /// nor gets "1 sessions" right; this is what VoiceOver reads instead.
-        public static func usageAndSessions(_ subject: String?, percentUsed percent: Int, activeSessions: Int) -> String {
-            clauses([percentUsed(subject, percent), intents.activeSessions(activeSessions)])
+        /// With no provider (`nil`) it is "No data, 0 active sessions", as the
+        /// gauge beside it says, not a 0% the widget never measured.
+        public static func usageAndSessions(_ provider: String?, percentUsed percent: Int, activeSessions: Int) -> String {
+            clauses([percentUsedOrNoData(provider, percent), intents.activeSessions(activeSessions)])
         }
 
         /// "Usage Today, 1.2M". The overview widgets draw today's totals as bare

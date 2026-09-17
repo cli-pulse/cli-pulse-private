@@ -1837,6 +1837,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 
 /* ── a11y-exports ── */
 "dashboard.cost_report_title" = "CLI Pulse Cost Report";
+"dashboard.cost_report_generated" = "Generated";
 "terminal.input_label" = "Terminal input";
 "terminal.too_much_output" = "Too much output to announce, navigate to rows manually to read";
 "machine.sort_by" = "Sort by";

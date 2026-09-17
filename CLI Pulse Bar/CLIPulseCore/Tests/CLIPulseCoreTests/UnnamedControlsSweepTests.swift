@@ -4,12 +4,13 @@
 // the symbol's own description ("power", "square.and.arrow.up", "Share") in the
 // SYSTEM language, whatever language the app is set to; `.help` adds a hint
 // after that name, it does not replace it. A `Slider` with no label is
-// "adjustable, 40%".
+// "adjustable, 40%", and a `Picker("", …)` is "pop-up button, USD":
+// `.labelsHidden()` only hides a title from sight, so an empty one is no name.
 //
 // Review of this PR found each of these fixed at the site a finding named and
-// left at the others: the Quit button, then eleven more icon-only controls and
-// both fan sliders. So the class is swept, across every Apple UI source, rather
-// than the sites pinned one by one.
+// left at the others: nine more `Picker("")`s, then eleven more icon-only
+// controls beside the Quit button, and both fan sliders. So the class is swept,
+// across every Apple UI source, rather than the sites pinned one by one.
 //
 // A structural test, not a locale one: the names themselves are asserted in ja
 // in MenuBarReadoutTests.
@@ -95,10 +96,19 @@ final class UnnamedControlsSweepTests: XCTestCase {
                 .accessibilityLabel(L10n.machine.fanTarget)
             // Button { } label: { Image(systemName: "in a comment") }
             let s = "label: { Image(systemName: \\"in a string\\") }"
+            Picker("", selection: $mode) {
+                Text(L10n.a).tag(0)
+            }
+            .labelsHidden()
+            Picker("", selection: $mode) { items }
+                .labelsHidden()
+                .accessibilityLabel(L10n.display.mode)
+            Picker(L10n.alerts.filter, selection: $filter) { items }.labelsHidden()
+            let t = "Picker(\\"\\", selection: $x)"
             """
         let findings = Self.scan(source)
-        XCTAssertEqual(findings.filter { !$0.named }.map(\.line), [1, 6, 7])
-        XCTAssertEqual(findings.filter(\.named).map(\.line), [8, 18, 19])
+        XCTAssertEqual(findings.filter { !$0.named }.map(\.line), [1, 6, 7, 26])
+        XCTAssertEqual(findings.filter(\.named).map(\.line), [8, 18, 19, 30])
     }
 
     // MARK: - Scanner
@@ -109,10 +119,10 @@ final class UnnamedControlsSweepTests: XCTestCase {
         let named: Bool
     }
 
-    /// Finds icon-only `label:` closures, `Button(action:) { Image }` and
-    /// `Slider(…)` calls, and says whether each carries a name. Works on the
-    /// source with string literals and comments blanked out, so neither can
-    /// open a brace or look like a modifier.
+    /// Finds icon-only `label:` closures, `Button(action:) { Image }`,
+    /// `Slider(…)` and `Picker("", …)` calls, and says whether each carries a
+    /// name. Works on the source with string literals and comments blanked
+    /// out, so neither can open a brace or look like a modifier.
     static func scan(_ source: String) -> [Finding] {
         let code = blankStringsAndComments(Array(source.utf8))
         let masked = String(decoding: code, as: UTF8.self)
@@ -155,6 +165,19 @@ final class UnnamedControlsSweepTests: XCTestCase {
                 findings.append(Finding(line: line(at: start), kind: "Slider without a label",
                                         named: chainNames(code, after: parenClose + 1)))
             }
+        }
+        // `Picker("", …)`: the masked text keeps the quote marks and blanks
+        // what is between them, so `""` here is an empty title and nothing else.
+        for start in offsets(of: #"\bPicker\s*\(\s*""\s*,"#, in: masked) {
+            guard let parenOpen = code[start...].firstIndex(of: openParen),
+                  let parenClose = matching(code, from: parenOpen) else { continue }
+            var end = parenClose
+            if let next = nextNonSpace(code, from: parenClose + 1), code[next] == openBrace,
+               let close = matching(code, from: next) {
+                end = close
+            }
+            findings.append(Finding(line: line(at: start), kind: "Picker with an empty title",
+                                    named: chainNames(code, after: end + 1)))
         }
         return findings.sorted { $0.line < $1.line }
     }

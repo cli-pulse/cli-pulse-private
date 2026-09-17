@@ -67,7 +67,9 @@ public enum ExportService {
     /// This cost report is a DOCUMENT: the CSV twin of the PDF report, offered
     /// beside it under the same translated Export menu, and read by a person in
     /// Numbers or Excel. So its title, section headings, row labels, column
-    /// headers and "N/A" are translated, from the keys the PDF already uses.
+    /// headers and "N/A" are translated, from the keys the PDF already uses
+    /// (plus a title and a "Generated" label of its own; the PDF's versions are
+    /// "Monthly Report" and a single "Generated: %@" string).
     /// Only the words are: every value cell stays raw — numbers unformatted so
     /// a spreadsheet can still sum them, the timestamp ISO 8601, and session
     /// status as the server sends it (the PDF keeps it raw too), so a filter on
@@ -89,7 +91,9 @@ public enum ExportService {
         let na = esc(L10n.pdf.na)
 
         var csv = "\u{FEFF}" + row([esc(L10n.dashboard.costReportTitle)])
-        csv += row([esc(L10n.pdf.generated(sharedISO8601Formatter.string(from: generatedAt)))]) + "\n"
+        // Label and timestamp in two cells, as the English report always had
+        // them, so the timestamp stays a value a spreadsheet can read on its own.
+        csv += row([esc(L10n.dashboard.costReportGenerated), sharedISO8601Formatter.string(from: generatedAt)]) + "\n"
 
         if let d = dashboard {
             csv += row([esc(L10n.pdf.summary)])

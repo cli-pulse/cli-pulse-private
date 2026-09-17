@@ -419,6 +419,10 @@ private struct MenuBarLabel: View {
     @ObservedObject var authState: AuthState
     @ObservedObject var alertState: AlertState
     @ObservedObject var providerState: ProviderState
+    /// Observed so the spoken label below follows a language switch from the
+    /// popover's globe menu at once, as MenuBarView does. Without it the label
+    /// stays in the old language until one of the four stores above publishes.
+    @ObservedObject private var localeOverride = LocaleOverrideStore.shared
 
     var body: some View {
         // One readout per render, so the text and its spoken label cannot
