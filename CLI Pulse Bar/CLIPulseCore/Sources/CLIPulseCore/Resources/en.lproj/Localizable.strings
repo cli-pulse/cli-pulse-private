@@ -1839,3 +1839,4 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "dashboard.cost_report_title" = "CLI Pulse Cost Report";
 "terminal.input_label" = "Terminal input";
 "terminal.too_much_output" = "Too much output to announce, navigate to rows manually to read";
+"machine.sort_by" = "Sort by";

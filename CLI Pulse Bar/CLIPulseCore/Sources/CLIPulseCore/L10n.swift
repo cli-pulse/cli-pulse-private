@@ -201,6 +201,9 @@ public enum L10n {
         public static var batteryTemp: String { tr("machine.battery_temp") }
         public static func cyclesFmt(_ n: String) -> String { tr("machine.cycles_fmt", n) }
         public static var topProcesses: String { tr("machine.top_processes") }
+        /// VoiceOver name of the CPU / Memory segmented picker beside "Top
+        /// Processes"; the picker is `.labelsHidden()`, so it is never shown.
+        public static var sortBy: String { tr("machine.sort_by") }
         public static var noProcesses: String { tr("machine.no_processes") }
         public static var helperUnavailable: String { tr("machine.helper_unavailable") }
         /// v1.44: the helper answered but does not implement
@@ -2064,6 +2067,14 @@ public enum L10n {
         /// "Weekly, 60% remaining". The counterpart of `percentUsed`.
         public static func percentRemaining(_ subject: String?, _ percent: Int) -> String {
             clauses([subject ?? "", providers.remainingPercent(percent)])
+        }
+
+        /// "Claude, 45% used, 3 active sessions". The Lock Screen inline widget
+        /// shows "Claude 45% • 3 sessions", which says neither that the share is
+        /// used (the circular and rectangular families of the same widget now do)
+        /// nor gets "1 sessions" right; this is what VoiceOver reads instead.
+        public static func usageAndSessions(_ subject: String?, percentUsed percent: Int, activeSessions: Int) -> String {
+            clauses([percentUsed(subject, percent), intents.activeSessions(activeSessions)])
         }
     }
 

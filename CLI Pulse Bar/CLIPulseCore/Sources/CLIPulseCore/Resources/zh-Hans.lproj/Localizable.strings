@@ -1829,3 +1829,4 @@
 "dashboard.cost_report_title" = "CLI Pulse 费用报告";
 "terminal.input_label" = "终端输入";
 "terminal.too_much_output" = "输出内容过多，无法朗读。请手动移到各行阅读。";
+"machine.sort_by" = "排序方式";

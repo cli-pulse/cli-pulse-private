@@ -1813,3 +1813,4 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "dashboard.cost_report_title" = "Informe de costos de CLI Pulse";
 "terminal.input_label" = "Entrada del terminal";
 "terminal.too_much_output" = "Hay demasiada salida para leerla en voz alta: recorre las filas manualmente.";
+"machine.sort_by" = "Ordenar por";

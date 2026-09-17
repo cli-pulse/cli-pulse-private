@@ -452,7 +452,8 @@ public struct MachineHealthView: View {
             HStack(spacing: 8) {
                 SectionHeader(title: L10n.machine.topProcesses, icon: "list.bullet")
                 if !procs.isEmpty {
-                    Picker("", selection: $sortKey) {
+                    // Named for VoiceOver only (`.labelsHidden()` below).
+                    Picker(L10n.machine.sortBy, selection: $sortKey) {
                         Text(L10n.machine.cpu).tag(ProcessSortKey.cpu)
                         Text(L10n.machine.memory).tag(ProcessSortKey.memory)
                     }

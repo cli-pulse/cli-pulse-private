@@ -51,13 +51,15 @@ struct AlertsTab: View {
 
                 // Filter + Resolve All
                 HStack {
-                    Picker("", selection: $filter) {
+                    // Titled for VoiceOver only (`.labelsHidden()`).
+                    Picker(L10n.alerts.filter, selection: $filter) {
                         ForEach(AlertFilter.allCases, id: \.self) { f in
                             Text(f.label)
                         }
                     }
                     .pickerStyle(.segmented)
                     .controlSize(.small)
+                    .labelsHidden()
 
                     if filter == .open && !filteredAlerts.isEmpty {
                         Button {

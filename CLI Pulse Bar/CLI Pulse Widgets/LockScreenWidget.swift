@@ -149,6 +149,11 @@ struct LockScreenWidgetView: View {
         let name = topProvider?.name ?? L10n.auth.title
 
         return Text(verbatim: "\(name) \(percent)% • \(L10n.watch.sessionsCount(entry.data.activeSessions))")
+            // The terse line says neither that the share is used (the circular
+            // and rectangular families do) nor what the count is; VoiceOver
+            // gets the whole clauses instead.
+            .accessibilityLabel(L10n.a11y.usageAndSessions(
+                name, percentUsed: percent, activeSessions: entry.data.activeSessions))
     }
 }
 

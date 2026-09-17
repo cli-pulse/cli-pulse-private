@@ -1799,3 +1799,4 @@
 "dashboard.cost_report_title" = "CLI Pulse 비용 보고서";
 "terminal.input_label" = "터미널 입력";
 "terminal.too_much_output" = "출력이 너무 많아 음성으로 읽을 수 없습니다. 각 행으로 직접 이동해 읽으세요.";
+"machine.sort_by" = "정렬 기준";

@@ -126,4 +126,27 @@ final class MenuBarReadoutTests: XCTestCase {
         XCTAssertEqual(L10n.a11y.percentRemaining(L10n.quotaTier.weekly, 60), "每周，剩余 60%")
         XCTAssertEqual(L10n.a11y.percentUsed(nil, 0), "已使用 0%")
     }
+
+    /// The Lock Screen inline widget shows "Claude 45% • 3 sessions"; what it
+    /// says must name the share as used and count sessions with a plural form.
+    func test_inlineWidgetLabel_saysUsedAndCountsSessions() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(L10n.a11y.usageAndSessions("Claude", percentUsed: 45, activeSessions: 3),
+                       "Claude，已使用 45%，3 个活跃会话")
+        // Spanish is where the singular differs ("1 sesiones" would be wrong).
+        LocaleOverrideStore.shared.set("es")
+        XCTAssertEqual(L10n.a11y.usageAndSessions("Claude", percentUsed: 45, activeSessions: 1),
+                       "Claude, 45% usado, 1 sesión activa")
+        XCTAssertEqual(L10n.a11y.usageAndSessions("Claude", percentUsed: 45, activeSessions: 2),
+                       "Claude, 45% usado, 2 sesiones activas")
+    }
+
+    // MARK: - Names of controls whose titles are hidden (`.labelsHidden()`)
+
+    /// The process sort picker has no visible title of its own, so its spoken
+    /// name is a new key; the Alerts filter reuses an existing one.
+    func test_hiddenControlTitles_resolveInJapanese() {
+        XCTAssertEqual(L10n.machine.sortBy, "並べ替え")
+        XCTAssertEqual(L10n.alerts.filter, "フィルター")
+    }
 }
