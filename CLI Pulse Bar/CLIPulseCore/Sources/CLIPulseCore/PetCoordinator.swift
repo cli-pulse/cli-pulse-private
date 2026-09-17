@@ -93,13 +93,34 @@ public actor PetCoordinator {
 
     /// Deterministically rebuild state by replaying events in order. Unknown
     /// schema versions are skipped (can't be safely interpreted).
-    public static func rebuild(from events: [PetEvent]) -> PetState {
+    public static func rebuild(from events: [PetEvent], writtenIn calendar: Calendar = .current) -> PetState {
         var s = PetState()
         for e in events where e.schemaVersion == PetEvent.currentSchemaVersion {
             switch e.kind {
             case .hatch:
                 if let raw = e.form, let form = PetForm(rawValue: raw) {
-                    s = PetEngine.applyHatch(form, on: s, dayKey: e.dayKey)
+                    // The log is append-only, so a hatch recorded before day keys
+                    // were pinned to Gregorian keeps its device-calendar key
+                    // (`2569-07-11` under Buddhist numbering). Read it back in
+                    // Gregorian; `PetEngine.timingAllows` compares it with a
+                    // Gregorian today and would otherwise wait 543 years.
+                    //
+                    // The conversion happens here, on every replay, and is never
+                    // written back: the log keeps the raw key, and replaying it
+                    // again gives the same state. When the device has since moved
+                    // to a calendar that cannot read the key (the Thai user now on
+                    // Gregorian), the cat stays owned and keeps the raw key for
+                    // display, but the key does not time the next hatch. Left as
+                    // `lastHatchDayKey` it would block every hatch for 543 years;
+                    // this follows `timingAllows`, which lets an unparseable key
+                    // through rather than wedge the feature.
+                    if let dayKey = DayKey.normalizedStoredKey(e.dayKey, writtenIn: calendar) {
+                        s = PetEngine.applyHatch(form, on: s, dayKey: dayKey)
+                    } else {
+                        let lastReadableHatch = s.lastHatchDayKey
+                        s = PetEngine.applyHatch(form, on: s, dayKey: e.dayKey)
+                        s.lastHatchDayKey = lastReadableHatch
+                    }
                 }
             case .setActive:
                 if let raw = e.form, s.ownedForms.contains(raw) { s.activeForm = raw }

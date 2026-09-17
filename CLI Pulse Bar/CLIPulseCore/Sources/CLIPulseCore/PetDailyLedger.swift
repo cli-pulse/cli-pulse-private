@@ -166,6 +166,25 @@ public struct PetDailyLedger: Codable, Sendable, Equatable {
         prune(retainDays: retainDays)
     }
 
+    /// The ledger with every day key in Gregorian numbering (see
+    /// `DailyUsageArchive.normalizingDayKeys`). Matters more here than anywhere:
+    /// `prune` keeps the lexically newest keys, so Buddhist-numbered days
+    /// (`2569-…`) written before `DayKey` would outlive every real day and push
+    /// the trailing week the hatch window reads out of the ledger. A converted
+    /// day replaces a Gregorian one already present; the next scan re-ingests
+    /// the trailing window with fresher timestamps either way.
+    public func normalizingDayKeys(writtenIn source: Calendar = .current) -> PetDailyLedger {
+        var out = self
+        out.days = [:]
+        var converted: [String: PetDayRollup] = [:]
+        for (key, rollup) in days {
+            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source) else { continue }
+            if normalized == key { out.days[key] = rollup } else { converted[normalized] = rollup }
+        }
+        for (key, rollup) in converted { out.days[key] = rollup }
+        return out
+    }
+
     /// Drops the oldest days beyond the retention window. Day keys are compared
     /// LEXICALLY (== chronological for zero-padded ISO keys).
     private mutating func prune(retainDays: Int) {
@@ -273,7 +292,7 @@ public enum PetDailyLedgerIO {
         else {
             return PetDailyLedger()
         }
-        return decoded
+        return decoded.normalizingDayKeys()
     }
 
     @discardableResult

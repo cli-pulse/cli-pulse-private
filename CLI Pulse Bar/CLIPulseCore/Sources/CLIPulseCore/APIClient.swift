@@ -608,18 +608,16 @@ public actor APIClient {
         let p_user_today: String
     }
 
-    /// Today as `YYYY-MM-DD` in the device's current calendar.
-    /// Matches the same Calendar.current convention CostUsageScanner uses
-    /// when writing `metric_date` (CostUsageScanner.swift line ~450), so
-    /// the server's date comparison aligns with the writer's intent.
+    /// Today as `YYYY-MM-DD`, with the day boundary in `calendar`'s time zone.
+    /// Matches `CostUsageScanner.DayRange.dayKey`, which writes `metric_date`,
+    /// so the server's date comparison aligns with the writer's intent.
+    ///
+    /// Only the calendar's time zone is used. The numbering is always
+    /// Gregorian (`DayKey`): the server compares this against a SQL `date`, and
+    /// the device's own calendar would send the year 0008 under Japanese
+    /// numbering.
     static func localTodayKey(now: Date = Date(), calendar: Calendar = .current) -> String {
-        let comps = calendar.dateComponents([.year, .month, .day], from: now)
-        return String(
-            format: "%04d-%02d-%02d",
-            comps.year ?? 1970,
-            comps.month ?? 1,
-            comps.day ?? 1
-        )
+        DayKey.string(from: now, in: calendar.timeZone)
     }
 
     private struct ProviderSummaryPayload: Decodable {
@@ -2759,22 +2757,37 @@ public actor APIClient {
             guard (200...299).contains(status) else { return [] }
 
             guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
-            return items.compactMap { item -> DailyUsage? in
-                guard let date = item["metric_date"] as? String,
-                      let provider = item["provider"] as? String,
-                      let model = item["model"] as? String else { return nil }
-                return DailyUsage(
-                    date: date,
-                    provider: provider,
-                    model: model,
-                    inputTokens: (item["input_tokens"] as? Int) ?? 0,
-                    cachedTokens: (item["cached_tokens"] as? Int) ?? 0,
-                    outputTokens: (item["output_tokens"] as? Int) ?? 0,
-                    cost: (item["cost"] as? Double) ?? 0
-                )
-            }
+            return Self.dailyUsageRows(from: items)
         } catch {
             return []
+        }
+    }
+
+    /// Decodes `get_daily_usage` rows, skipping any whose `metric_date` names
+    /// no plausible Gregorian day.
+    ///
+    /// A Mac set to another calendar uploaded its rows dated in that
+    /// calendar's numbering until day keys were pinned to Gregorian
+    /// (0008-09-17 for 2026-09-17 under Japanese, 2569-09-17 under Buddhist).
+    /// Those rows stay on the server until someone deletes them. They name no
+    /// real day, and the Buddhist ones sort after every real day, so kept they
+    /// would fill the heatmap archive and the pet ledger with keys nothing
+    /// ever looks up.
+    static func dailyUsageRows(from items: [[String: Any]]) -> [DailyUsage] {
+        items.compactMap { item -> DailyUsage? in
+            guard let date = item["metric_date"] as? String,
+                  DayKey.isPlausible(date),
+                  let provider = item["provider"] as? String,
+                  let model = item["model"] as? String else { return nil }
+            return DailyUsage(
+                date: date,
+                provider: provider,
+                model: model,
+                inputTokens: (item["input_tokens"] as? Int) ?? 0,
+                cachedTokens: (item["cached_tokens"] as? Int) ?? 0,
+                outputTokens: (item["output_tokens"] as? Int) ?? 0,
+                cost: (item["cost"] as? Double) ?? 0
+            )
         }
     }
 
@@ -2788,10 +2801,7 @@ public actor APIClient {
         let safeUserId = Self.sanitizeParam(userId)
         let calendar = Calendar(identifier: .gregorian)
         guard let cutoff = calendar.date(byAdding: .day, value: -days, to: Date()) else { return [] }
-        let isoFormatter = DateFormatter()
-        isoFormatter.dateFormat = "yyyy-MM-dd"
-        isoFormatter.timeZone = TimeZone(identifier: "UTC")
-        let cutoffStr = isoFormatter.string(from: cutoff)
+        let cutoffStr = DayKey.string(from: cutoff, in: DayKey.utc)
         let path = "/rest/v1/yield_score_daily?user_id=eq.\(safeUserId)&day=gte.\(cutoffStr)&select=provider,day,total_cost,weighted_commit_count,raw_commit_count,ambiguous_commit_count&order=day.desc"
         do {
             let rows: [YieldScoreRow] = try await restGet(path)

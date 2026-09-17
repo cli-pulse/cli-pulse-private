@@ -27,7 +27,8 @@ final class ForecastLocalFallbackTests: XCTestCase {
         components.month = 5
         components.day = 5
         components.timeZone = TimeZone.current
-        return Calendar.current.date(from: components)!
+        // Gregorian: under the Japanese calendar, year 2026 is Reiwa 2026 (AD 4044).
+        return Calendar(identifier: .gregorian).date(from: components)!
     }()
 
     private static func dayKey(year: Int, month: Int, day: Int) -> String {

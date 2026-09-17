@@ -118,23 +118,12 @@ public enum DisplayFormat {
         Date.FormatStyle(locale: locale, calendar: locale.calendar, timeZone: timeZone)
     }
 
-    /// Midnight UTC of a `yyyy-MM-dd` key, read by splitting rather than with a
-    /// date formatter: a key is Gregorian and POSIX by definition, so there is
-    /// nothing locale-dependent to parse, and a formatter left to any other
-    /// calendar misreads the year.
+    /// Midnight UTC of a `yyyy-MM-dd` key. A key is Gregorian and POSIX by
+    /// definition, so `DayKey` reads it: a date formatter left to any other
+    /// calendar misreads the year, and `DayKey.swift` is the one place allowed
+    /// to take a key apart. A key that does not name a real day (2026-02-30,
+    /// which a lenient calendar rolls into March) is nil.
     static func date(ofDayKey dayKey: String) -> Date? {
-        let parts = dayKey.split(separator: "-", omittingEmptySubsequences: false)
-        guard parts.count == 3, parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,
-              let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2])
-        else { return nil }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = utc
-        let components = DateComponents(year: year, month: month, day: day)
-        // `date(from:)` rolls 2026-02-30 over into March; a key that does not
-        // survive the round trip is not a day.
-        guard let date = calendar.date(from: components),
-              calendar.dateComponents([.year, .month, .day], from: date) == components
-        else { return nil }
-        return date
+        DayKey.date(from: dayKey, in: utc)
     }
 }

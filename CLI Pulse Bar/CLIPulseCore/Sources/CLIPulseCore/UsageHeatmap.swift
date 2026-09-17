@@ -42,10 +42,8 @@ public struct UsageHeatmapGrid: View {
         self.showMonthLabels = showMonthLabels
     }
 
-    private static let monthFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(secondsFromGMT: 0)
-        return f
-    }()
+    private static let monthFmt: DateFormatter = DayKey.formatter(in: DayKey.utc)
+    private static let monthCalendar: Calendar = DayKey.calendar(in: DayKey.utc)
 
     public var body: some View {
         let today = DailyUsageStats.localDayKey()
@@ -91,10 +89,10 @@ public struct UsageHeatmapGrid: View {
 
     @ViewBuilder
     private func monthLabels(_ columns: [[String]]) -> some View {
-        let symbols = Self.shortMonthSymbols(locale: locale)
+        let names = Self.shortMonthNames(locale: locale)
         HStack(spacing: gap) {
             ForEach(Array(columns.enumerated()), id: \.offset) { idx, _ in
-                let label = monthLabel(forColumn: idx, columns: columns, symbols: symbols)
+                let label = monthLabel(forColumn: idx, columns: columns, names: names)
                 Text(label)
                     .font(.system(size: 8))
                     .foregroundStyle(.secondary)
@@ -105,36 +103,44 @@ public struct UsageHeatmapGrid: View {
     }
 
     /// Show a short month name on the first column whose Sunday falls in a new month.
-    private func monthLabel(forColumn idx: Int, columns: [[String]], symbols: [String]) -> String {
+    private func monthLabel(forColumn idx: Int, columns: [[String]], names: [String]) -> String {
         guard let month = monthComponent(columns[idx].first) else { return "" }
         if idx == 0 {
-            return Self.shortMonth(month, symbols: symbols)
+            return Self.name(ofMonth: month, in: names)
         }
-        guard let prev = monthComponent(columns[idx - 1].first) else { return Self.shortMonth(month, symbols: symbols) }
-        return month != prev ? Self.shortMonth(month, symbols: symbols) : ""
+        guard let prev = monthComponent(columns[idx - 1].first) else { return Self.name(ofMonth: month, in: names) }
+        return month != prev ? Self.name(ofMonth: month, in: names) : ""
     }
 
     private func monthComponent(_ dayKey: String?) -> Int? {
         guard let dayKey, let date = Self.monthFmt.date(from: dayKey) else { return nil }
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(secondsFromGMT: 0)!
-        return cal.component(.month, from: date)
+        return Self.monthCalendar.component(.month, from: date)
     }
 
-    /// Month names in `locale`. A bare `DateFormatter()` uses the system
-    /// language, which put "Jan Feb Mar" under Chinese headings when the app
-    /// was switched to 简体中文 on an English Mac.
-    static func shortMonthSymbols(locale: Locale) -> [String] {
+    /// Short month names for Gregorian months 1-12, in `locale`'s language.
+    ///
+    /// The view passes its environment locale, which the macOS roots set from
+    /// `LocaleOverrideStore.displayLocale` and which is the system locale on
+    /// iPhone. A bare `DateFormatter()` used the system language, which put
+    /// "Jan Feb Mar" under Chinese headings when the app was switched to 简体中文
+    /// on an English Mac.
+    ///
+    /// The month numbers come from day keys, which are Gregorian, so the names
+    /// must be too. A `DateFormatter` left to its locale uses the locale's
+    /// calendar: under Persian (fa_IR's default) its ninth short name is Azar,
+    /// under islamic-umalqura (ar_SA's) Ramadan, and September's column was
+    /// labelled with them. Only the calendar is pinned, after `locale` (setting
+    /// the locale resets it); the language is still the locale's.
+    static func shortMonthNames(locale: Locale) -> [String] {
         let f = DateFormatter()
         f.locale = locale
-        // After `locale`, which resets the calendar: `monthComponent` counts
-        // Gregorian months, so the names must be Gregorian too.
         f.calendar = Calendar(identifier: .gregorian)
-        return f.shortMonthSymbols ?? []
+        return f.shortStandaloneMonthSymbols ?? []
     }
 
-    static func shortMonth(_ month: Int, symbols: [String]) -> String {
-        guard month >= 1, month <= symbols.count else { return "" }
-        return symbols[month - 1]
+    static func name(ofMonth month: Int, in names: [String]) -> String {
+        guard month >= 1, month <= names.count else { return "" }
+        return names[month - 1]
     }
 }
 

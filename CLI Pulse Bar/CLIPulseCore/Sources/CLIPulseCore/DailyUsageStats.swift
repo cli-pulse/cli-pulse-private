@@ -161,13 +161,7 @@ public enum DailyUsageStats {
         (a.days[dayKey]?.tokens ?? 0) > 0
     }
 
-    private static let keyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(secondsFromGMT: 0)
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
+    private static let keyFormatter: DateFormatter = DayKey.formatter(in: DayKey.utc)
 
     /// The previous calendar day's key ("yyyy-MM-dd" → "yyyy-MM-dd"), or nil if unparseable.
     public static func previousDay(_ dayKey: String) -> String? { shift(dayKey, byDays: -1) }
@@ -184,24 +178,22 @@ public enum DailyUsageStats {
         return keyFormatter.string(from: shifted)
     }
 
-    private static let utcCalendar: Calendar = {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(secondsFromGMT: 0)!
-        return c
-    }()
+    private static let utcCalendar: Calendar = DayKey.calendar(in: DayKey.utc)
 
     // MARK: - Heatmap grid helpers
 
-    /// Today's key in the LOCAL calendar — matches the scanner's day-key basis
-    /// (CostUsageScanner buckets by Calendar.current), so archive lookups line up.
-    /// NOTE: the grid's weekday/shift math (below) assumes Gregorian y/m/d
-    /// numbering, as does the scanner. A user whose macOS Region uses a
-    /// non-Gregorian calendar would see misaligned weekday columns (dictionary
-    /// lookups still match, since both sides share the numbering). Rare enough to
-    /// defer; a real fix pins the scanner to Gregorian too.
+    /// Today's key with the day boundary in `calendar`'s time zone — the same
+    /// basis the scanner buckets by (`CostUsageScanner.DayRange.dayKey`), so
+    /// archive lookups line up.
+    ///
+    /// Only the calendar's time zone is used; the numbering is always Gregorian
+    /// (`DayKey`). It once followed the calendar, on the theory that lookups
+    /// still matched because the scanner used the same numbering. They matched
+    /// inside the process and nowhere else: the server's rows, other devices
+    /// and Codex's directories are all Gregorian, and the grid's weekday math
+    /// below assumes it too.
     public static func localDayKey(_ date: Date = Date(), calendar: Calendar = .current) -> String {
-        let comps = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+        DayKey.string(from: date, in: calendar.timeZone)
     }
 
     /// Weekday index of a key: 0 = Sunday … 6 = Saturday. nil if unparseable.

@@ -165,7 +165,7 @@ public enum CostUsageScanner {
     /// Main entry point. Scans Codex and Claude JSONL logs for the last N days.
     public static func scan(options: Options = Options()) -> CostUsageScanResult {
         let now = Date()
-        let since = Calendar.current.date(byAdding: .day, value: -options.daysToScan, to: now) ?? now
+        let since = DayKey.calendar().date(byAdding: .day, value: -options.daysToScan, to: now) ?? now
         let range = DayRange(since: since, until: now)
 
         var allEntries: [CostUsageScanResult.DailyEntry] = []
@@ -382,14 +382,15 @@ public enum CostUsageScanner {
         init(since: Date, until: Date) {
             self.sinceKey = Self.dayKey(from: since)
             self.untilKey = Self.dayKey(from: until)
-            self.scanSinceKey = Self.dayKey(from: Calendar.current.date(byAdding: .day, value: -1, to: since) ?? since)
-            self.scanUntilKey = Self.dayKey(from: Calendar.current.date(byAdding: .day, value: 1, to: until) ?? until)
+            let cal = DayKey.calendar()
+            self.scanSinceKey = Self.dayKey(from: cal.date(byAdding: .day, value: -1, to: since) ?? since)
+            self.scanUntilKey = Self.dayKey(from: cal.date(byAdding: .day, value: 1, to: until) ?? until)
         }
 
+        /// Gregorian whatever the device calendar: these keys are uploaded as
+        /// `metric_date` and compared with the dates in Codex's file names.
         public static func dayKey(from date: Date) -> String {
-            let cal = Calendar.current
-            let comps = cal.dateComponents([.year, .month, .day], from: date)
-            return String(format: "%04d-%02d-%02d", comps.year ?? 1970, comps.month ?? 1, comps.day ?? 1)
+            DayKey.string(from: date)
         }
 
         static func isInRange(dayKey: String, since: String, until: String) -> Bool {
@@ -517,9 +518,7 @@ public enum CostUsageScanner {
         comps.year = year; comps.month = month; comps.day = day
         comps.hour = hour; comps.minute = minute; comps.second = second
         guard let date = comps.date else { return nil }
-        let local = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        guard let ly = local.year, let lm = local.month, let ld = local.day else { return nil }
-        return String(format: "%04d-%02d-%02d", ly, lm, ld)
+        return DayRange.dayKey(from: date)
     }
 
     private static let isoBox: ISOFormatterBox = ISOFormatterBox()
@@ -941,23 +940,24 @@ public enum CostUsageScanner {
         var out: [URL] = []
         var seen: Set<String> = []
 
-        // Date-partitioned: YYYY/MM/DD/*.jsonl
+        // Date-partitioned: YYYY/MM/DD/*.jsonl. The Codex CLI names these
+        // directories in Gregorian numbering, so the walk must too — under the
+        // Japanese calendar the device's own numbering looks in 0008/09/17.
         if FileManager.default.fileExists(atPath: root.path) {
+            let cal = DayKey.calendar()
             var date = parseDayKey(scanSinceKey) ?? Date()
             let untilDate = parseDayKey(scanUntilKey) ?? date
             while date <= untilDate {
-                let comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
-                let y = String(format: "%04d", comps.year ?? 1970)
-                let m = String(format: "%02d", comps.month ?? 1)
-                let d = String(format: "%02d", comps.day ?? 1)
-                let dayDir = root.appendingPathComponent(y).appendingPathComponent(m).appendingPathComponent(d)
+                // "2026-09-17" -> 2026/09/17
+                let dayDir = DayKey.string(from: date).split(separator: "-")
+                    .reduce(root) { $0.appendingPathComponent(String($1), isDirectory: true) }
                 if let items = try? FileManager.default.contentsOfDirectory(at: dayDir, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
                     for item in items where item.pathExtension.lowercased() == "jsonl" && !seen.contains(item.path) {
                         seen.insert(item.path)
                         out.append(item)
                     }
                 }
-                date = Calendar.current.date(byAdding: .day, value: 1, to: date) ?? untilDate.addingTimeInterval(1)
+                date = cal.date(byAdding: .day, value: 1, to: date) ?? untilDate.addingTimeInterval(1)
             }
         }
 
@@ -1414,13 +1414,7 @@ public enum CostUsageScanner {
     // MARK: - Helpers
 
     private static func parseDayKey(_ key: String) -> Date? {
-        let parts = key.split(separator: "-")
-        guard parts.count == 3, let y = Int(parts[0]), let m = Int(parts[1]), let d = Int(parts[2]) else { return nil }
-        var comps = DateComponents()
-        comps.calendar = Calendar.current
-        comps.timeZone = TimeZone.current
-        comps.year = y; comps.month = m; comps.day = d; comps.hour = 12
-        return comps.date
+        DayKey.date(from: key, hour: 12)
     }
 
     // MARK: - Active Session Candidates

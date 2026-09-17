@@ -39,7 +39,7 @@ final class CostUsageScannerSessionSynthTests: XCTestCase {
         mtime: Date,
         tokens: (input: Int, cached: Int, output: Int) = (1000, 0, 500)
     ) throws -> URL {
-        let cal = Calendar.current
+        let cal = Calendar(identifier: .gregorian)   // Codex's directories are Gregorian
         let comps = cal.dateComponents([.year, .month, .day], from: date)
         let dir = codexSessionsRoot
             .appendingPathComponent(String(format: "%04d", comps.year ?? 1970), isDirectory: true)

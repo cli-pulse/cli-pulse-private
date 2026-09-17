@@ -108,6 +108,11 @@ final class DisplayFormatTests: XCTestCase {
     }
 
     func test_dayKey_defaultsToTheDisplayLanguage() {
+        // The display locale keeps the system's calendar, so a Japanese-calendar
+        // Mac shows 令和8年 here, as intended. Pin a Gregorian system locale: this
+        // test is about the language, and swift-ci.yml also runs the suite under
+        // the Japanese, ROC and Buddhist calendars.
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
         LocaleOverrideStore.shared.set("ja")
         let shown = DisplayFormat.day("2026-09-17")
         XCTAssertEqual(shown, "2026年9月17日")

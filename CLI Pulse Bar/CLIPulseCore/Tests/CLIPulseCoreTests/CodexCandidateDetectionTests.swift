@@ -31,7 +31,8 @@ final class CodexCandidateDetectionTests: XCTestCase {
     // MARK: - Date-partitioned layout
 
     private func writeRolloutFile(at date: Date, sessionId: String, cwd: String?) throws -> URL {
-        let comps = Calendar.current.dateComponents([.year, .month, .day], from: date)
+        // The Codex CLI names its directories in Gregorian numbering.
+        let comps = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
         let y = String(format: "%04d", comps.year ?? 1970)
         let m = String(format: "%02d", comps.month ?? 1)
         let d = String(format: "%02d", comps.day ?? 1)
@@ -125,7 +126,7 @@ final class CodexCandidateDetectionTests: XCTestCase {
         // just falling back to the "Codex" placeholder project label.
         let now = Date()
         let mtime = now.addingTimeInterval(-30)
-        let comps = Calendar.current.dateComponents([.year, .month, .day], from: mtime)
+        let comps = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: mtime)
         let y = String(format: "%04d", comps.year ?? 1970)
         let m = String(format: "%02d", comps.month ?? 1)
         let d = String(format: "%02d", comps.day ?? 1)

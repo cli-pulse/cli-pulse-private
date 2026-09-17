@@ -2570,10 +2570,8 @@ extension AppState {
 
         if let scan = costUsageScanResult, !scan.entries.isEmpty {
             // Use precise data from local JSONL log scanning
-            let cal = Calendar.current
             let now = Date()
-            let todayComps = cal.dateComponents([.year, .month, .day], from: now)
-            let todayKey = String(format: "%04d-%02d-%02d", todayComps.year ?? 1970, todayComps.month ?? 1, todayComps.day ?? 1)
+            let todayKey = DayKey.string(from: now)   // the scanner's Gregorian keys
             let todayEntries = scan.entries.filter { $0.date == todayKey }
             var todayByProv: [String: Double] = [:]
             for entry in todayEntries {

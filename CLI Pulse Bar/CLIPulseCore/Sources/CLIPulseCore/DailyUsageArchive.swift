@@ -163,6 +163,48 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
         pruneAndFold(retainDays: retainDays)
     }
 
+    // MARK: Keys written before day keys were pinned to Gregorian
+
+    /// The archive with every key in Gregorian numbering.
+    ///
+    /// Until `DayKey`, a Mac set to another calendar recorded days under that
+    /// calendar's numbering. Left alone those keys never reach the heatmap,
+    /// sit beside the Gregorian copies the scanner now writes (counted twice in
+    /// lifetime totals), and under the Buddhist calendar — Thailand's default —
+    /// they sort after every real day: `foldedThroughDay = "2569-…"` would make
+    /// every later merge skip its day as already folded. Each key is re-read in
+    /// the calendar that wrote it (`writtenIn`, the device's) and rekeyed; a key
+    /// that still names no plausible day is dropped. A converted day replaces a
+    /// Gregorian one already present, because on such a Mac the only Gregorian
+    /// days so far came from cloud fill, which never outranks the local scan.
+    /// Month rollups hold disjoint evicted days, so colliding months add up.
+    public func normalizingDayKeys(writtenIn source: Calendar = .current) -> DailyUsageArchive {
+        var out = self
+        out.days = [:]
+        var converted: [String: DayRollup] = [:]
+        for (key, rollup) in days {
+            guard let normalized = DayKey.normalizedStoredKey(key, writtenIn: source) else { continue }
+            if normalized == key { out.days[key] = rollup } else { converted[normalized] = rollup }
+        }
+        for (key, rollup) in converted { out.days[key] = rollup }
+
+        out.months = [:]
+        for (key, rollup) in months {
+            guard let day = DayKey.normalizedStoredKey(key + "-01", writtenIn: source) else { continue }
+            let monthKey = String(day.prefix(7))
+            var month = out.months[monthKey] ?? MonthRollup()
+            month.tokens += rollup.tokens
+            month.cost += rollup.cost
+            month.messages += rollup.messages
+            out.months[monthKey] = month
+        }
+
+        out.foldedThroughDay = foldedThroughDay.flatMap {
+            DayKey.normalizedStoredKey($0, writtenIn: source)
+        }
+        return out
+    }
+
     /// Evicts days older than the retention window into their month rollup.
     private mutating func pruneAndFold(retainDays: Int) {
         guard days.count > retainDays else { return }
@@ -254,7 +296,7 @@ public enum DailyUsageArchiveIO {
         else {
             return DailyUsageArchive()
         }
-        return decoded
+        return decoded.normalizingDayKeys()
     }
 
     @discardableResult

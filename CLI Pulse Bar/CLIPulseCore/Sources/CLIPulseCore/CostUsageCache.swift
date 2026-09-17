@@ -103,7 +103,8 @@ enum CostUsageCacheIO {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(CostUsageCache.self, from: data),
               decoded.version == 1,
-              decoded.pricingVersion == costUsageCachePricingVersion else {
+              decoded.pricingVersion == costUsageCachePricingVersion,
+              hasOnlyGregorianDayKeys(decoded) else {
             // Either schema-version drift OR pricing-rules drift —
             // both invalidate the cached cost numbers, both heal
             // automatically by returning an empty cache here so the
@@ -111,6 +112,20 @@ enum CostUsageCacheIO {
             return CostUsageCache()
         }
         return decoded
+    }
+
+    /// A cache written while the scanner still followed the device calendar
+    /// holds keys like `0008-09-17` (Japanese) or `2569-09-17` (Buddhist). The
+    /// Gregorian scanner prunes those from `days`, but each file's entry keeps
+    /// them along with its parsed offset, so the file is never re-read and its
+    /// usage stays missing until it ages out of the window. Starting over costs
+    /// one full re-parse, the same price a pricing bump pays; no version number
+    /// is spent on it, and a cache that was already Gregorian is untouched.
+    static func hasOnlyGregorianDayKeys(_ cache: CostUsageCache) -> Bool {
+        guard cache.days.keys.allSatisfy(DayKey.isPlausible) else { return false }
+        return cache.files.values.allSatisfy { file in
+            file.days.keys.allSatisfy(DayKey.isPlausible)
+        }
     }
 
     static func save(provider: String, cache: CostUsageCache, cacheRoot: URL? = nil) {

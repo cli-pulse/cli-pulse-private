@@ -50,14 +50,17 @@ final class DataRefreshManagerCharacterizationTests: XCTestCase {
     /// `todayYMD()` + `ymd(daysAgo:)` below.
     private let testNow = Date(timeIntervalSince1970: 1_774_065_600)  // 2026-04-21 noon UTC
 
+    // Gregorian like production's keys (`DayKey`); `Calendar.current` numbers
+    // the year 8 under the Japanese calendar.
     private func todayYMD() -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: testNow)
+        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: testNow)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
     private func ymd(daysAgo: Int) -> String {
-        let d = Calendar.current.date(byAdding: .day, value: -daysAgo, to: testNow)!
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: d)
+        let gregorian = Calendar(identifier: .gregorian)
+        let d = gregorian.date(byAdding: .day, value: -daysAgo, to: testNow)!
+        let c = gregorian.dateComponents([.year, .month, .day], from: d)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 

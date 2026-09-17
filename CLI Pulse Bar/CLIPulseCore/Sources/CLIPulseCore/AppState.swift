@@ -246,9 +246,7 @@ public final class AppState: ObservableObject {
         guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
         let filtered: [CostUsageScanResult.DailyEntry] = {
             if let date = onDate {
-                let cal = Calendar.current
-                let comps = cal.dateComponents([.year, .month, .day], from: date)
-                let key = String(format: "%04d-%02d-%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+                let key = DayKey.string(from: date)   // the scanner's Gregorian keys
                 return scan.entries.filter { $0.provider == provider && $0.date == key }
             }
             return scan.entries.filter { $0.provider == provider }
@@ -268,9 +266,7 @@ public final class AppState: ObservableObject {
         guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
         let filtered: [CostUsageScanResult.DailyEntry] = {
             if let date = onDate {
-                let cal = Calendar.current
-                let comps = cal.dateComponents([.year, .month, .day], from: date)
-                let key = String(format: "%04d-%02d-%02d", comps.year ?? 0, comps.month ?? 0, comps.day ?? 0)
+                let key = DayKey.string(from: date)   // the scanner's Gregorian keys
                 return scan.entries.filter { $0.provider == provider && $0.date == key }
             }
             return scan.entries.filter { $0.provider == provider }
