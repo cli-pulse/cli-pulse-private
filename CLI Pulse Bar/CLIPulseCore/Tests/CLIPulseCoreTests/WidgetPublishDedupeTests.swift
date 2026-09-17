@@ -21,6 +21,8 @@ final class WidgetPublishDedupeTests: XCTestCase {
         usageToday: Int = 500,
         isPro: Bool = false,
         providers: [PublishedWidgetProviderData]? = nil,
+        currency: String? = "USD",
+        fxRate: Double? = 1,
         at date: Date
     ) -> PublishedWidgetData {
         PublishedWidgetData(
@@ -30,7 +32,9 @@ final class WidgetPublishDedupeTests: XCTestCase {
             unresolvedAlerts: 1,
             providers: providers ?? [provider("claude"), provider("codex")],
             lastUpdated: date,
-            isPro: isPro)
+            isPro: isPro,
+            displayCurrency: currency,
+            fxRate: fxRate)
     }
 
     func testIdenticalContentDiffersOnlyByTimestampIsSame() {
@@ -60,6 +64,32 @@ final class WidgetPublishDedupeTests: XCTestCase {
         XCTAssertFalse(payload(isPro: false, at: now).hasSameContent(as: payload(isPro: true, at: now)))
     }
 
+    /// A new display currency, or a fetched rate, changes every cost the
+    /// widget shows, so it must not be skipped as "nothing changed".
+    func testDisplayCurrencyOrRateChangeBreaksContent() {
+        let now = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(payload(currency: "USD", at: now).hasSameContent(as: payload(currency: "CNY", at: now)))
+        XCTAssertFalse(payload(currency: "CNY", fxRate: 7.15, at: now)
+            .hasSameContent(as: payload(currency: "CNY", fxRate: 7.0, at: now)))
+    }
+
+    /// The payload the app publishes names the currency the app shows costs in.
+    @MainActor
+    func testPayloadCarriesTheAppsDisplayCurrencyAndRate() {
+        let runtime = CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: ["CFBundleIdentifier": "com.example.clipulse"],
+            environment: [:]
+        )
+        let state = AppState(runtimeEnvironment: runtime)
+        let converter = CurrencyConverter(defaults: UserDefaults(suiteName: "fx-\(UUID().uuidString)")!)
+        converter.setCurrency(.jpy)
+
+        let published = state.widgetPayload(converter: converter)
+
+        XCTAssertEqual(published.displayCurrency, "JPY")
+        XCTAssertEqual(published.fxRate, 150)
+    }
+
     func testTotalsChangeBreaksContent() {
         let now = Date(timeIntervalSince1970: 1_000)
         XCTAssertFalse(payload(usageToday: 500, at: now).hasSameContent(as: payload(usageToday: 600, at: now)))
@@ -87,7 +117,8 @@ final class WidgetPublishDedupeTests: XCTestCase {
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         let keys = Set(obj?.keys ?? [:].keys)
         for k in ["totalUsageToday", "totalCostToday", "activeSessions",
-                  "unresolvedAlerts", "providers", "lastUpdated", "isPro"] {
+                  "unresolvedAlerts", "providers", "lastUpdated", "isPro",
+                  "displayCurrency", "fxRate"] {
             XCTAssertTrue(keys.contains(k), "missing widget key \(k)")
         }
         // v1.52.1 — the swarm counts left the contract when the feature was

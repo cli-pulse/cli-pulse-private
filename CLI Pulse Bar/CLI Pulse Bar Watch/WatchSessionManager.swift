@@ -347,9 +347,16 @@ final class WatchSessionManager: NSObject, ObservableObject {
         else {
             return
         }
+        // Read out here: the context dictionary is not Sendable.
+        let currencyCode = context[CurrencyConverter.contextCurrencyKey] as? String
+        let fxRate = context[CurrencyConverter.contextRateKey] as? Double
 
         DispatchQueue.main.async {
             guard self.accept(identity) else { return }
+            // Before the views re-render below. WatchConnectivity hands the last
+            // context back at every activation, so the choice survives a
+            // relaunch; an iPhone app too old to send it leaves dollars.
+            CurrencyConverter.shared.adopt(currencyCode: currencyCode, rate: fxRate)
             if self.lastReceivedIdentity != identity {
                 self.clearCachedData()
             }

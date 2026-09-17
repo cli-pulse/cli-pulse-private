@@ -17,9 +17,24 @@ public enum DisplayFormat {
 
     // MARK: - Numbers
 
-    /// `String(format:)` for shown text: `%f` takes the display locale's
-    /// decimal separator ("12,5 W" in Spain). `%d` is unchanged, since
-    /// Foundation only groups digits for the `'` flag.
+    /// A decimal as the reader writes it: "2.5", "2,5" in Spain. Grouped like
+    /// any quantity ("1,234.5"), so it is for amounts, never for a code.
+    public static func decimal(
+        _ value: Double,
+        fractionDigits: Int,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
+    }
+
+    /// `String(format:)` in the display locale, for a literal format of
+    /// measurements: "12,5 W" in Spain.
+    ///
+    /// A locale groups every numeric conversion, `%d` as much as `%f`:
+    /// "51,000" in the US, "51.000" in Spain. So this is not for catalogue
+    /// values, whose `%d` can be an OSStatus or a byte count (`L10n.tr` formats
+    /// those without a locale), nor for any format with a number meant to be
+    /// read or searched as written.
     public static func string(_ format: String, _ arguments: CVarArg...) -> String {
         string(format, arguments: arguments)
     }

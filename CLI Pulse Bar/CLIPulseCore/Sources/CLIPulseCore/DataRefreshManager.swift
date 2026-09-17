@@ -2719,27 +2719,7 @@ extension AppState {
         guard runtimeEnvironment.capabilities.allowsWidgetPublishing else {
             return
         }
-        let widgetProviders = providers.prefix(10).map { provider in
-            PublishedWidgetProviderData(
-                name: provider.provider,
-                usage: provider.today_usage,
-                quota: provider.quota,
-                costToday: provider.estimated_cost_today,
-                iconName: provider.providerKind?.iconName ?? "cpu",
-                percent: provider.usagePercent,
-                weeklyPercent: WatchRingMath.weeklyUsagePercent(provider)
-            )
-        }
-
-        let data = PublishedWidgetData(
-            totalUsageToday: dashboard?.total_usage_today ?? 0,
-            totalCostToday: dashboard?.total_estimated_cost_today ?? 0,
-            activeSessions: dashboard?.active_sessions ?? 0,
-            unresolvedAlerts: alerts.filter { !$0.is_resolved }.count,
-            providers: Array(widgetProviders),
-            lastUpdated: Date(),
-            isPro: subscriptionManager.isProOrAbove
-        )
+        let data = widgetPayload()
 
         // Skip redundant publishes: when only `lastUpdated` differs nothing
         // user-visible changed, so there's no reason to wake cfprefsd or the
@@ -2760,6 +2740,34 @@ extension AppState {
             WidgetCenter.shared.reloadAllTimelines()
             #endif
         }
+    }
+
+    /// What `publishWidgetData` writes, without writing it.
+    func widgetPayload(converter: CurrencyConverter = .shared) -> PublishedWidgetData {
+        let widgetProviders = providers.prefix(10).map { provider in
+            PublishedWidgetProviderData(
+                name: provider.provider,
+                usage: provider.today_usage,
+                quota: provider.quota,
+                costToday: provider.estimated_cost_today,
+                iconName: provider.providerKind?.iconName ?? "cpu",
+                percent: provider.usagePercent,
+                weeklyPercent: WatchRingMath.weeklyUsagePercent(provider)
+            )
+        }
+
+        let currency = converter.handoff()
+        return PublishedWidgetData(
+            totalUsageToday: dashboard?.total_usage_today ?? 0,
+            totalCostToday: dashboard?.total_estimated_cost_today ?? 0,
+            activeSessions: dashboard?.active_sessions ?? 0,
+            unresolvedAlerts: alerts.filter { !$0.is_resolved }.count,
+            providers: Array(widgetProviders),
+            lastUpdated: Date(),
+            isPro: subscriptionManager.isProOrAbove,
+            displayCurrency: currency.currencyCode,
+            fxRate: currency.rate
+        )
     }
 
     func sendNotification(for alert: AlertRecord) {
@@ -3343,6 +3351,13 @@ struct PublishedWidgetData: Codable, Equatable {
     // WidgetData.isPro. The watch complication reads the same blob but
     // ignores this flag.
     let isPro: Bool
+    /// The display currency and the rate the app converts with
+    /// (`CurrencyConverter.handoff`). The extension cannot read the app's
+    /// defaults, so without these its costs were dollars whatever the user
+    /// chose. Keys must match WidgetData; an extension that predates them
+    /// ignores them.
+    var displayCurrency: String? = nil
+    var fxRate: Double? = nil
 
     /// Equal in every user-visible field EXCEPT `lastUpdated` — drives the
     /// publish-path dedupe so an unchanged refresh skips the cfprefsd write
@@ -3354,5 +3369,7 @@ struct PublishedWidgetData: Codable, Equatable {
             && unresolvedAlerts == other.unresolvedAlerts
             && providers == other.providers
             && isPro == other.isPro
+            && displayCurrency == other.displayCurrency
+            && fxRate == other.fxRate
     }
 }

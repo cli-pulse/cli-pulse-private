@@ -36,9 +36,32 @@ final class DisplayFormatTests: XCTestCase {
         readInSpain()
         XCTAssertEqual(DisplayFormat.string("%.1f W", 12.5), "12,5 W")
         XCTAssertEqual(DisplayFormat.string("%.2f · %.2f", 1.52, 1.4), "1,52 · 1,40")
-        XCTAssertEqual(DisplayFormat.string("%d%%", 1234), "1234%", "%d must stay ungrouped")
-        XCTAssertEqual(L10n.yield.commitsCountDecimal(2.5), "2,5 commits", "catalogue %f ignores the display locale")
+        XCTAssertEqual(DisplayFormat.decimal(2.5, fractionDigits: 1), "2,5")
+        XCTAssertEqual(L10n.yield.commitsCountDecimal(2.5), "2,5 commits", "a catalogue decimal ignores the display locale")
+        XCTAssertEqual(L10n.dashboard.utilizedPercent(42.4), "42% utilizado")
         XCTAssertEqual(CostFormatter.formatUsage(154_100), "154,1K")
+    }
+
+    /// A catalogue `%d` is as often an OSStatus, a byte count or an RPM as a
+    /// count, and must read as the number: "estado -25.308" cannot be searched
+    /// for. A locale groups `%d` too, so `L10n` formats arguments without one.
+    ///
+    /// Each check first shows the region really would group that number:
+    /// Spanish leaves four digits alone ("1234"), so a four-digit case there
+    /// could not fail.
+    func test_catalogueIntegers_stayUngroupedInTheReadersRegion() {
+        readInSpain()
+        XCTAssertEqual(DisplayFormat.string("%d", -25_308), "-25.308", "control: Spain groups five digits")
+        XCTAssertEqual(L10n.collectorStatus.zedKeychainReadFailed(-25_308),
+                       "Zed: no se pudo leer el Llavero (estado -25308)")
+        XCTAssertEqual(L10n.collectorCredential.text(.zedKeychainReadFailed(-25_308), english: false),
+                       "Zed: no se pudo leer el Llavero (estado -25308)")
+
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "ja_JP") }
+        LocaleOverrideStore.shared.set("ja")
+        XCTAssertEqual(DisplayFormat.string("%d", 5_779), "5,779", "control: Japan groups four digits")
+        XCTAssertEqual(L10n.machine.fanMaxRpm(5_779), "最大 5779 rpm")
+        XCTAssertEqual(L10n.dashboard.utilizedPercent(42), "使用率 42%")
     }
 
     /// With no in-app language the system's own region applies.

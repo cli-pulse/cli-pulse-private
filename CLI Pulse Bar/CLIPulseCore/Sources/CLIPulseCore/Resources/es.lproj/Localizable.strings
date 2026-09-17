@@ -504,7 +504,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "yield.empty_no_attribution" = "0 commits atribuidos en este periodo. Prueba a escribir algo de código en un repositorio con seguimiento.";
 "yield.detail_subtitle" = "%@ · ordenado por costo por commit (menor es mejor)";
 "yield.commits_count" = "%d commits";
-"yield.commits_count_decimal" = "%.1f commits";
+"yield.commits_count_decimal" = "%@ commits";
 "yield.ambiguous_count" = "Ambiguos: %d";
 "menu_bar.quit_full" = "Salir de CLI Pulse Bar";
 "common.no_provider_selected" = "Ningún proveedor seleccionado";
@@ -1334,7 +1334,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.block_claude_on_outdated_helper_hint" = "Si el helper de Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto — solo verás un aviso.";
 "cost.io_tokens_codexbar_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo. La cifra de «tokens» de CodexBar incluye la caché y la nuestra no, así que los números serán distintos. El costo se calcula en ambos con el precio completo de cada componente y coincide.";
 "cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo.";
-"dashboard.utilized_percent" = "%.0f%% utilizado";
+"dashboard.utilized_percent" = "%@%% utilizado";
 "dashboard.value_multiplier" = "· %@ de valor";
 "dashboard.api_equivalent_30d" = "Equivalente en API (30 d)";
 "dashboard.all_in_monthly_est" = "Total mensual (est.)";

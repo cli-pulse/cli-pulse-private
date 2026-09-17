@@ -92,6 +92,53 @@ final class CurrencyConverterTests: XCTestCase {
         XCTAssertEqual(c.spokenFormat(0.004, as: .usd), "1セント未満")
     }
 
+    // MARK: - Handoff to the widgets and the Watch
+
+    /// The widgets and the Watch showed "$7.31" to a user who picked yuan: they
+    /// run in processes that cannot read the app's defaults. The app hands its
+    /// converter's currency and rate over, and the other process formats with
+    /// both. The rate travels too: the app's fetched 7.0 is not the fallback
+    /// 7.15 the other process would otherwise convert at.
+    func test_handoff_letsAnotherProcessShowTheAppsCurrencyAtTheAppsRate() {
+        let appDefaults = UserDefaults(suiteName: "fx-\(UUID().uuidString)")!
+        appDefaults.set(["CNY": 7.0], forKey: CurrencyConverter.ratesKey)
+        let app = CurrencyConverter(defaults: appDefaults)
+        app.setCurrency(.cny)
+        let handoff = app.handoff()
+        XCTAssertEqual(handoff.currencyCode, "CNY")
+        XCTAssertEqual(handoff.rate, 7.0)
+
+        let widget = makeConverter()
+        XCTAssertEqual(widget.format(10, locale: en), "$10.00", "control: a new process shows dollars")
+        widget.adopt(currencyCode: handoff.currencyCode, rate: handoff.rate)
+
+        XCTAssertEqual(widget.format(10, locale: en), "¥70.00")
+        XCTAssertEqual(widget.format(10, locale: en), app.format(10, locale: en))
+        // The Watch's hero rung, which went through its own "$" before.
+        XCTAssertEqual(WatchPulseFormat.abbreviatedCost(146.03, converter: widget, locale: en), "¥1,022")
+    }
+
+    /// A payload from an app that predates the handoff has no currency. That
+    /// app showed dollars there, so dollars it stays, even in a process that
+    /// adopted something else earlier.
+    func test_adopt_withoutACurrency_showsDollars() {
+        let c = makeConverter()
+        c.adopt(currencyCode: "JPY", rate: 150)
+        XCTAssertEqual(c.format(10, locale: en), "¥1,500")
+        c.adopt(currencyCode: nil, rate: nil)
+        XCTAssertEqual(c.format(10, locale: en), "$10.00")
+        c.adopt(currencyCode: "XYZ", rate: 3)
+        XCTAssertEqual(c.format(10, locale: en), "$10.00")
+    }
+
+    func test_adopt_keepsItsOwnRateWhenTheHandedOneIsUnusable() {
+        let c = makeConverter()
+        for bad in [nil, 0, -1, Double.nan, Double.infinity] as [Double?] {
+            c.adopt(currencyCode: "EUR", rate: bad)
+            XCTAssertEqual(c.rate(), 0.92, accuracy: 0.0001, String(describing: bad))
+        }
+    }
+
     func test_storedCurrency_readsTheAppsOwnKey() {
         let suite = UserDefaults(suiteName: "fx-\(UUID().uuidString)")!
         XCTAssertEqual(DisplayCurrency.stored(in: suite), .usd)

@@ -24,9 +24,8 @@ public enum WatchPulseFormat {
     ///
     /// The whole-unit rung goes through the same converter as the full rung
     /// instead of writing "$" itself, so the two rungs cannot name different
-    /// currencies. The Watch shows dollars today either way: the display
-    /// currency lives in the iPhone app's defaults and is not in the payload
-    /// the phone sends.
+    /// currencies. On the Watch that converter holds the currency the iPhone
+    /// sent with its context (`CurrencyConverter.adopt`).
     public static func abbreviatedCost(
         _ cost: Double,
         converter: CurrencyConverter = .shared,

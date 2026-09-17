@@ -793,10 +793,25 @@ public final class AppState: ObservableObject {
         displayCurrencyRaw = currency.rawValue
         CurrencyConverter.shared.setCurrency(currency)
         objectWillChange.send()   // re-render the popover's cost labels immediately
+        republishWidgetDataForCurrency()
         if runtimeEnvironment.capabilities.allowsCurrencyNetworkRefresh {
-            Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+            Task { [weak self] in
+                await CurrencyConverter.shared.refreshRatesIfStale()
+                self?.republishWidgetDataForCurrency()
+            }
         }
     }
+
+    /// The widget payload carries the display currency and rate, so a new
+    /// choice or a fetched rate reaches the widgets now rather than at the next
+    /// data refresh. Only once a refresh has published: before that there is
+    /// no data here, and publishing would replace the widgets' last good
+    /// numbers with zeros. The dedupe skips it when nothing changed.
+    func republishWidgetDataForCurrency() {
+        guard lastPublishedWidgetData != nil else { return }
+        publishWidgetData()
+    }
+
     @AppStorage("cli_pulse_show_cost") public var showCost = true
     @AppStorage("cli_pulse_notifications") public var notificationsEnabled = true
     @AppStorage("cli_pulse_check_provider_status") public var checkProviderStatus = true
@@ -1005,7 +1020,10 @@ public final class AppState: ObservableObject {
         // v1.40 PR-7: sync the display currency + refresh FX rates (cached 24h).
         CurrencyConverter.shared.setCurrency(displayCurrency)
         if runtime.capabilities.allowsCurrencyNetworkRefresh {
-            Task { await CurrencyConverter.shared.refreshRatesIfStale() }
+            Task { [weak self] in
+                await CurrencyConverter.shared.refreshRatesIfStale()
+                self?.republishWidgetDataForCurrency()
+            }
         }
 
         // v1.10 P2-3 slice 2: the `subscriptionCancellable` forwarder that

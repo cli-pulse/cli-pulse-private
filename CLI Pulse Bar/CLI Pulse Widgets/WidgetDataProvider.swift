@@ -17,6 +17,12 @@ struct WidgetData: Codable {
     /// legacy payload (nil) or a paid user shows content; only an explicit
     /// `false` locks. The watch complication ignores this (stays free).
     var isPro: Bool? = nil
+    /// The app's display currency and the rate it converts with. This
+    /// extension cannot read the app's defaults, so the app sends both;
+    /// `WidgetStorage.load` applies them. A payload from before they existed
+    /// has neither, and costs show in dollars as that app did here.
+    var displayCurrency: String? = nil
+    var fxRate: Double? = nil
 
     static let empty = WidgetData(
         totalUsageToday: 0,
@@ -80,9 +86,8 @@ struct WidgetProviderData: Codable, Identifiable {
 
     var formattedUsage: String { TokenFormatter.format(usage) }
 
-    /// Through the app's formatter, so a cost reads the same here as in the app
-    /// (separators, "<$0.01"). Always dollars for now: the display currency is
-    /// kept in the app's own defaults, which this extension cannot read.
+    /// Through the app's formatter, so a cost reads the same here as in the app:
+    /// separators, "<$0.01", and the display currency the payload carried.
     var formattedCost: String { CostFormatter.format(costToday) }
 }
 
@@ -105,6 +110,9 @@ enum WidgetStorage {
               let decoded = try? JSONDecoder().decode(WidgetData.self, from: data) else {
             return .empty
         }
+        // Every widget in this process renders the payload loaded here, so the
+        // shared converter that `CostFormatter` uses takes its currency.
+        CurrencyConverter.shared.adopt(currencyCode: decoded.displayCurrency, rate: decoded.fxRate)
         return decoded
     }
 }

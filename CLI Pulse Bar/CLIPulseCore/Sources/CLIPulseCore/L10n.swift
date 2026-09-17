@@ -20,10 +20,15 @@ public enum L10n {
     /// language switcher (footer button on macOS) can swap the
     /// `.lproj` bundle at runtime. When `override == nil` the store
     /// returns the same default bundle, preserving prior behavior.
-    /// A `%f` in the value takes the display locale's decimal separator.
+    ///
+    /// Arguments format without a locale, on purpose. A locale would group
+    /// every `%d` as well as `%f` ("status -25,308", "max 5,779 rpm",
+    /// "expected 12.345.678"), and an OSStatus or a byte count that is grepped
+    /// for must read as the number. A decimal the reader sees is formatted by
+    /// its accessor with `DisplayFormat.decimal` and reaches the value as `%@`.
     private static func tr(_ key: String, _ args: CVarArg...) -> String {
         let format = resolve(key)
-        return args.isEmpty ? format : DisplayFormat.string(format, arguments: args)
+        return args.isEmpty ? format : String(format: format, arguments: args)
     }
 
     /// `tr` with a choice of language: the active locale, or English regardless of
@@ -36,9 +41,7 @@ public enum L10n {
         } else {
             format = resolve(key)
         }
-        guard !args.isEmpty else { return format }
-        // Logged text keeps POSIX numbers ("2.5") so it greps the same everywhere.
-        return english ? String(format: format, arguments: args) : DisplayFormat.string(format, arguments: args)
+        return args.isEmpty ? format : String(format: format, arguments: args)
     }
 
     /// Looks a key up in the active locale, falling back to **English
@@ -316,7 +319,9 @@ public enum L10n {
         public static var subscriptionUtilization: String { tr("dashboard.subscription_utilization") }
         public static var totalMonthly: String { tr("dashboard.total_monthly") }
         public static var noEnabledWithData: String { tr("dashboard.no_enabled_with_data") }
-        public static func utilizedPercent(_ a0: Double) -> String { tr("dashboard.utilized_percent", a0) }
+        public static func utilizedPercent(_ a0: Double) -> String {
+            tr("dashboard.utilized_percent", DisplayFormat.decimal(a0, fractionDigits: 0))
+        }
         public static func valueMultiplier(_ a0: String) -> String { tr("dashboard.value_multiplier", a0) }
         public static var apiEquivalent30d: String { tr("dashboard.api_equivalent_30d") }
         public static var allInMonthlyEst: String { tr("dashboard.all_in_monthly_est") }
@@ -1794,7 +1799,9 @@ public enum L10n {
         public static var emptyNoAttribution: String { tr("yield.empty_no_attribution") }
         public static func detailSubtitle(_ rangeLabel: String) -> String { tr("yield.detail_subtitle", rangeLabel) }
         public static func commitsCount(_ count: Int) -> String { tr("yield.commits_count", count) }
-        public static func commitsCountDecimal(_ count: Double) -> String { tr("yield.commits_count_decimal", count) }
+        public static func commitsCountDecimal(_ count: Double) -> String {
+            tr("yield.commits_count_decimal", DisplayFormat.decimal(count, fractionDigits: 1))
+        }
         public static func ambiguousCount(_ count: Int) -> String { tr("yield.ambiguous_count", count) }
         public static var rangeLast7Days: String { tr("yield.range_last_7_days") }
         public static var rangeLast30Days: String { tr("yield.range_last_30_days") }

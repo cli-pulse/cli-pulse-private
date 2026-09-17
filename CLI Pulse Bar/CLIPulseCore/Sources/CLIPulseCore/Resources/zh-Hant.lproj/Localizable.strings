@@ -679,7 +679,7 @@
 "yield.empty_no_attribution" = "此期間沒有歸因到任何提交。請在已追蹤的儲存庫中寫些程式碼。";
 "yield.detail_subtitle" = "%@ · 依每次提交成本排序（越低越好）";
 "yield.commits_count" = "%d 次提交";
-"yield.commits_count_decimal" = "%.1f 次提交";
+"yield.commits_count_decimal" = "%@ 次提交";
 "yield.ambiguous_count" = "%d 項歧義";
 "menu_bar.quit_full" = "結束 CLI Pulse Bar";
 
@@ -1366,7 +1366,7 @@
 "settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI helper 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 會話（否則會在不提示的情況下改用 Claude API）。預設關閉 — 你只會看到一則警告。";
 "cost.io_tokens_codexbar_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。CodexBar 的「tokens」數值包含快取，我們的不包含，所以兩邊數字會不同。兩邊的費用都依各組成部分的完整單價計算，結果一致。";
 "cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。";
-"dashboard.utilized_percent" = "使用率 %.0f%%";
+"dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· 價值 %@";
 "dashboard.api_equivalent_30d" = "API 等價費用（30 天）";
 "dashboard.all_in_monthly_est" = "每月總計（預估）";

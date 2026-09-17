@@ -9,7 +9,8 @@ import Foundation
 
 public enum DisplayCurrency: String, CaseIterable, Codable, Sendable {
     /// Where the app keeps the choice: its own standard defaults. The widget
-    /// extension and the Watch run in other processes and cannot read it.
+    /// extension and the Watch run in other processes and cannot read it, so
+    /// the app hands them the choice with its data (`CurrencyConverter.adopt`).
     public static let defaultsKey = "cli_pulse_display_currency"
 
     /// The stored choice, read directly. For code that runs in the app's process
@@ -104,6 +105,44 @@ public final class CurrencyConverter: @unchecked Sendable {
     }
 
     public func currentCurrency() -> DisplayCurrency { lock.withLock { currency } }
+
+    // MARK: - Another process's choice
+
+    /// Keys of the display currency and its rate in the Watch's application
+    /// context. The widget payload carries the same pair as `displayCurrency`
+    /// and `fxRate`.
+    public static let contextCurrencyKey = "display_currency"
+    public static let contextRateKey = "fx_rate"
+
+    /// What the app formats costs with, for a process that shows them but
+    /// cannot read the app's defaults or fetch rates of its own: the widget
+    /// extension and the Watch. The rate goes along so a cost reads the same
+    /// amount there as in the app, not one converted at a stale fallback.
+    public func handoff() -> (currencyCode: String, rate: Double) {
+        lock.withLock { (currency.rawValue, rates[currency.rawValue] ?? currency.fallbackRate) }
+    }
+
+    /// Formats costs the way the app's `handoff()` described. With no currency
+    /// (a payload from an app that predates this), costs are in dollars,
+    /// which is what that app showed there. So is a code this version does not
+    /// know, and its rate is not the dollar's, so it is dropped with it. An
+    /// unusable rate keeps the one this process already has for the currency.
+    public func adopt(currencyCode: String?, rate: Double?) {
+        let known = currencyCode.flatMap(DisplayCurrency.init(rawValue:))
+        let adopted = known ?? .usd
+        let changed: Bool = lock.withLock {
+            var changed = currency != adopted
+            currency = adopted
+            if known != nil, let rate, rate.isFinite, rate > 0, rates[adopted.rawValue] != rate {
+                rates[adopted.rawValue] = rate
+                changed = true
+            }
+            return changed
+        }
+        if changed {
+            NotificationCenter.default.post(name: .displayCurrencyDidChange, object: nil)
+        }
+    }
 
     // MARK: - Convert + format (called at display time)
 

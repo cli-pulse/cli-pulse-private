@@ -679,7 +679,7 @@
 "yield.empty_no_attribution" = "此期间没有归因到任何提交。请在已追踪的仓库中写些代码。";
 "yield.detail_subtitle" = "%@ · 按每次提交成本排序（越低越好）";
 "yield.commits_count" = "%d 次提交";
-"yield.commits_count_decimal" = "%.1f 次提交";
+"yield.commits_count_decimal" = "%@ 次提交";
 "yield.ambiguous_count" = "%d 次归因不明";
 "menu_bar.quit_full" = "退出 CLI Pulse Bar";
 
@@ -1366,7 +1366,7 @@
 "settings.block_claude_on_outdated_helper_hint" = "当 Companion CLI helper 版本过旧、无法以你的 Max/Pro 方案运行 Claude 时，阻止启动托管 Claude 会话（否则会在不提示的情况下改用 Claude API）。默认关闭 — 你只会看到一条警告。";
 "cost.io_tokens_codexbar_help" = "I/O token = 输入 + 输出。不含缓存读取（缓存读取约占 Claude 原始 token 量的 98%，但按 10% 的价格计费——已计入费用）。CodexBar 的「tokens」数值包含缓存，我们的不包含，所以两边数字会不同。两边的费用都按各组成部分的完整单价计算，结果一致。";
 "cost.io_tokens_help" = "I/O token = 输入 + 输出。不含缓存读取（缓存读取约占 Claude 原始 token 量的 98%，但按 10% 的价格计费——已计入费用）。";
-"dashboard.utilized_percent" = "使用率 %.0f%%";
+"dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· 价值 %@";
 "dashboard.api_equivalent_30d" = "API 等价费用（30 天）";
 "dashboard.all_in_monthly_est" = "月度总计（预估）";

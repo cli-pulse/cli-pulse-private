@@ -211,8 +211,8 @@ struct UsageOverviewWidgetView: View {
         TokenFormatter.format(usage)
     }
 
-    /// Dollars, like `WidgetProviderData.formattedCost`: the display currency
-    /// does not reach this extension.
+    /// In the display currency the payload carried, like
+    /// `WidgetProviderData.formattedCost`.
     private func formatCost(_ cost: Double) -> String {
         CostFormatter.format(cost)
     }

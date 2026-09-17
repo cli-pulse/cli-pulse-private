@@ -679,7 +679,7 @@
 "yield.empty_no_attribution" = "この期間に紐づけられたコミットは 0 件です。追跡対象のリポジトリでコードを書いてみてください。";
 "yield.detail_subtitle" = "%@ · コミット単価で並べ替え（低いほど良い）";
 "yield.commits_count" = "%d コミット";
-"yield.commits_count_decimal" = "%.1f コミット";
+"yield.commits_count_decimal" = "%@ コミット";
 "yield.ambiguous_count" = "曖昧 %d 件";
 "menu_bar.quit_full" = "CLI Pulse Bar を終了";
 
@@ -1380,7 +1380,7 @@
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI ヘルパーが古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフ — 警告が表示されるだけです。";
 "cost.io_tokens_codexbar_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。CodexBar の「tokens」はキャッシュを含み、こちらは含まないため数値は異なります。コストはどちらも構成要素ごとの正規単価で計算しているため一致します。";
 "cost.io_tokens_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。";
-"dashboard.utilized_percent" = "使用率 %.0f%%";
+"dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· %@ の価値";
 "dashboard.api_equivalent_30d" = "API 換算（30日）";
 "dashboard.all_in_monthly_est" = "月額総計（推定）";
