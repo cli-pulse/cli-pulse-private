@@ -289,6 +289,8 @@ final class AlertPresentationTests: XCTestCase {
             XCTAssertNotEqual(tier, "Weekly", "zh-Hans override is not in effect")
             XCTAssertTrue(shown.message.contains(tier), "tier not localized: \(shown.message)")
             XCTAssertTrue(shown.title.contains("Claude"), "provider lost: \(shown.title)")
+            // Quoted, not two bare nouns side by side ("Claude 每周 已使用 85%").
+            XCTAssertTrue(shown.title.contains("Claude「\(tier)」"), "tier not quoted: \(shown.title)")
             XCTAssertEqual(a.id, "quota-Claude-Weekly-80", "the record was mutated")
             XCTAssertEqual(a.message, "Quota window 'Weekly' is 85% used (15% remaining).")
         }

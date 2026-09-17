@@ -32,7 +32,7 @@
 "welcome_choice.sign_in_title" = "로그인하여 동기화";
 "welcome_choice.sign_in_body" = "iPhone, Watch 등 같은 계정의 모든 기기에서 사용량을 추적합니다.";
 "welcome_choice.local_mode_title" = "로컬 모드 사용";
-"welcome_choice.local_mode_body" = "이 Mac의 사용량만 추적합니다 — 계정 불필요, 아무것도 업로드되지 않습니다.";
+"welcome_choice.local_mode_body" = "이 Mac의 사용량만 추적합니다 — 계정이 필요 없고 아무것도 업로드되지 않습니다.";
 "welcome_choice.footnote" = "설정에서 언제든지 모드를 전환할 수 있습니다.";
 "dashboard.usage_today" = "오늘 사용량";
 "dashboard.cost_today" = "오늘 비용";
@@ -349,7 +349,7 @@
 "onboarding.cloud_mode_title" = "클라우드 동기화 (선택 사항)";
 "onboarding.cloud_mode_desc" = "헬퍼 스크립트가 데이터를 클라우드에 동기화하여 iPhone을 포함한 모든 기기에서 볼 수 있습니다.";
 "onboarding.ios_waiting" = "데이터 대기 중";
-"onboarding.ios_waiting_desc" = "Mac 앱에서 같은 계정으로 로그인하면 사용 데이터가 자동으로 여기에 표시됩니다 — 수동 페어링 불필요.";
+"onboarding.ios_waiting_desc" = "Mac 앱에서 같은 계정으로 로그인하면 사용 데이터가 자동으로 여기에 표시되며, 따로 페어링할 필요가 없습니다.";
 "onboarding.check_sync" = "동기화 상태 확인";
 "onboarding.set_up_sync" = "클라우드 동기화 설정";
 "onboarding.synced_mode" = "클라우드 동기화 — 기기 간 데이터 동기화 중";
@@ -434,7 +434,7 @@
 /* ── v1.18.2 D-2: Claude 카드의 Anthropic 피크 시간 표시기 ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 목표 회전수 설정 또는 팬을 자동으로 되돌리기\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n기기를 절대 벗어나지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n• 전체 프로젝트 경로\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 권한 승인도 활성화했습니다. 두 기능 모두 종료되었습니다.";
+"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 부스트(목표 회전수 설정) 또는 팬 자동 모드 복귀\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n기기를 절대 벗어나지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n• 전체 프로젝트 경로\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 권한 승인도 활성화했습니다. 두 기능 모두 종료되었습니다.";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "정상 페이스";
@@ -586,7 +586,7 @@
 "machine.fan_boost" = "팬 부스트";
 "machine.last_updated_fmt" = "%@ 업데이트됨";
 "machine.remote_controls" = "제어";
-"machine.fan_target" = "팬 목표";
+"machine.fan_target" = "목표 회전수";
 "machine.auto" = "자동";
 "machine.hold_duration" = "유지 시간";
 "machine.apply_boost" = "부스트 적용";
@@ -991,9 +991,9 @@
 "settings.reset" = "재설정";
 "settings.privacy" = "개인정보 보호";
 "settings.test_webhook" = "Webhook 테스트";
-"settings.remote_control" = "다른 기기에서 보내는 Mac 제어 요청";
+"settings.remote_control" = "Mac에 제어 요청 보내기";
 "settings.remote_control_iphone_hint" = "이 iPhone에서 Mac에 팬 부스트, 저전력 모드 또는 잠자기 방지 요청";
-"settings.privacy_redacted_hint" = "Mac은 다른 기기에서 보낸 네 가지 요청만 받습니다 — 팬 목표, 팬을 자동으로 되돌리기, 저전력 모드, 잠자기 방지. 그 외에는 아무것도 기기를 벗어나지 않으며, 대화 기록, 세션 로그, 터미널 출력도 전송되지 않습니다.";
+"settings.privacy_redacted_hint" = "Mac은 네 가지 요청만 받습니다: 팬 부스트, 팬 자동 모드 복귀, 저전력 모드 켜기 / 끄기, 잠자기 방지 켜기 / 끄기. 그 외에는 아무것도 기기를 벗어나지 않으며, 대화 기록, 세션 로그, 터미널 출력도 전송되지 않습니다.";
 "display.mode" = "표시 모드";
 "display.merge_menu_bar_icons" = "메뉴 막대 아이콘 합치기";
 "display.merge_menu_bar_hint" = "공급자 전환 기능이 있는 단일 아이콘";
@@ -1191,7 +1191,7 @@
 "sessions.detected_footer" = "이 Claude 세션들은 이 Mac에서 실행 중이지만 CLI Pulse가 시작한 것이 아니어서 헬퍼가 안전하게 입력을 보내거나 중지할 수 없습니다. 원래 실행한 터미널에서 사용하세요.";
 "sessions.section_active" = "활성";
 "sessions.section_recent" = "최근 · 지난 30분";
-"sessions.freshness_legend" = "실행 중 = 프로세스 확인됨. 최근 = JSONL 활동만 있음.";
+"sessions.freshness_legend" = "실행 중 = 프로세스 확인됨. 최근 활동 = 5분 이내 JSONL 기록 있음. 최근 = 30분 이내 JSONL 기록 있음.";
 "sessions.send" = "보내기";
 "sessions.approve_help" = "이 로컬 세션에 연결된 대기 중인 Claude 권한 요청을 승인합니다(⌘↩).";
 "sessions.reject_help" = "대기 중인 Claude 권한 요청을 거부합니다. Claude는 다른 결정을 계속 기다리거나 자체 프롬프트로 돌아갑니다.";
@@ -1614,15 +1614,15 @@
 "alert_kind.budget_weekly_title" = "주간 예산 초과 — $%@";
 "alert_kind.device_cpu_message" = "헬퍼가 측정한 CPU 사용률은 %@%%입니다.";
 "alert_kind.device_cpu_title" = "기기 CPU 사용률이 높습니다";
-"alert_kind.quota_message" = "‘%1$@’ 사용량이 %2$@%%입니다(%3$@%% 남음).";
-"alert_kind.quota_message_reset" = "‘%1$@’ 사용량이 %2$@%%입니다(%3$@%% 남음, %4$@ 리셋).";
-"alert_kind.quota_title" = "%1$@ %2$@ %3$@%% 도달";
-"alert_kind.session_cpu_message_process" = "%2$@의 프로세스 CPU는 %1$@%%입니다.";
-"alert_kind.session_cpu_message_process_in_project" = "%3$@의 %2$@ 프로세스 CPU는 %1$@%%입니다.";
-"alert_kind.session_cpu_message_system" = "%3$@의 CPU 사용률은 시스템 전체(%2$@ 코어) 대비 약 %1$@%%입니다.";
+"alert_kind.quota_message" = "%1$@ 사용량이 %2$@%%에 도달했습니다(%3$@%% 남음).";
+"alert_kind.quota_message_reset" = "%1$@ 사용량이 %2$@%%에 도달했습니다(%3$@%% 남음, %4$@ 리셋).";
+"alert_kind.quota_title" = "%1$@ %2$@ 사용량 %3$@%% 도달";
+"alert_kind.session_cpu_message_process" = "%2$@ 프로세스의 CPU 사용률은 %1$@%%입니다.";
+"alert_kind.session_cpu_message_process_in_project" = "%3$@의 %2$@ 프로세스 CPU 사용률은 %1$@%%입니다.";
+"alert_kind.session_cpu_message_system" = "%3$@ 세션이 시스템 전체 CPU(%2$@코어)의 약 %1$@%%를 사용하고 있습니다.";
 "alert_kind.session_cpu_title" = "%@의 CPU 사용률이 높습니다";
 "alert_kind.session_long_message" = "헬퍼가 오래 실행 중인 로컬 에이전트 세션을 감지했습니다.";
-"alert_kind.session_long_title" = "%@이(가) 오랫동안 실행 중입니다";
+"alert_kind.session_long_title" = "%@ 세션이 오랫동안 실행 중입니다";
 "alert_kind.severity_critical" = "심각";
 "alert_kind.severity_info" = "정보";
 "alert_kind.severity_warning" = "경고";

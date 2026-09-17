@@ -208,10 +208,44 @@ final class SessionFreshnessTierTests: XCTestCase {
     }
 
     func test_badge_strings_are_short_and_distinct() {
-        XCTAssertEqual(FreshnessTier.activeProcess.badge, "running")
-        XCTAssertEqual(FreshnessTier.activeJsonl.badge,   "recent activity")
-        XCTAssertEqual(FreshnessTier.recentJsonl.badge,   "recent")
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+        LocaleOverrideStore.shared.set("en")
+
+        // Sentence case, like the status pill ("Running") the process rows show
+        // beside them.
+        XCTAssertEqual(FreshnessTier.activeProcess.badge, "Running")
+        XCTAssertEqual(FreshnessTier.activeJsonl.badge,   "Recent activity")
+        XCTAssertEqual(FreshnessTier.recentJsonl.badge,   "Recent")
         XCTAssertEqual(FreshnessTier.hidden.badge,        "")
+    }
+
+    /// The legend under the list explains the chips, so it has to name each
+    /// chip exactly as the chip reads. It used to explain one state ("Recent =
+    /// JSONL activity only") for two different chips, and zh-Hant joined the two
+    /// names with a slash without saying how they differ.
+    ///
+    /// Referential on purpose: it reads the badge and the status pill, not a
+    /// copy of their text, so rewording a badge without the legend fails here.
+    func test_legend_names_every_badge_it_explains_in_every_locale() {
+        let saved = LocaleOverrideStore.shared.override
+        defer { LocaleOverrideStore.shared.set(saved) }
+
+        for locale in ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"] {
+            LocaleOverrideStore.shared.set(locale)
+            let legend = L10n.sessions.freshnessLegend
+            XCTAssertFalse(legend.hasPrefix("sessions."), "\(locale) renders the raw key")
+            // Process-confirmed rows show the status pill, not tier.badge.
+            let names = [L10n.status.localized("running"),
+                         FreshnessTier.activeJsonl.badge,
+                         FreshnessTier.recentJsonl.badge]
+            for name in names {
+                XCTAssertFalse(name.isEmpty)
+                // "<name> =", every legend's form. A bare `contains` would let
+                // "Recent" pass on the strength of "Recent activity".
+                XCTAssertTrue(legend.contains("\(name) ="), "\(locale) legend does not define \"\(name)\": \(legend)")
+            }
+        }
     }
 
     // MARK: - Claude Code 2.x user-Library binaries are NOT artifacts

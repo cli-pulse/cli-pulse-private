@@ -6,7 +6,7 @@
    `\(\.$provider)` interpolation in GetProviderQuotaIntent.parameterSummary. */
 
 "Get CLI Pulse Status" = "取得 CLI Pulse 狀態";
-"Get today's total usage, cost, active sessions, and unresolved alerts across all providers." = "取得所有服務商今日的總用量、費用、活躍會話和未解決告警。";
+"Get today's total usage, cost, active sessions, and unresolved alerts across all providers." = "取得所有服務商今日的總用量、費用、活躍會話和未解決警示。";
 "Status" = "狀態";
 "Get Provider Quota" = "取得服務商配額";
 "Check how much quota is remaining for a specific provider (Claude, Codex, Gemini, and more)." = "查看指定服務商（Claude、Codex、Gemini 等）的剩餘配額。";
