@@ -897,7 +897,7 @@
 "machine.remote_controls" = "控制";
 "machine.fan_target" = "風扇目標";
 "machine.auto" = "自動";
-"machine.hold_duration" = "保持時長";
+"machine.hold_duration" = "保持時間";
 "machine.apply_boost" = "套用加速";
 "machine.revert_auto" = "還原自動";
 "machine.boost_confirm_title" = "加速風扇？";
@@ -1773,7 +1773,7 @@
 "server_error.unavailable" = "伺服器暫時無法使用（HTTP %d），請稍後再試。";
 "server_error.failed" = "伺服器回傳錯誤（HTTP %d）。";
 "server_error.network" = "無法連線到伺服器，請檢查網路連線。";
-"server_error.device_not_paired" = "這台 Mac 已不再與你的帳戶配對。若要恢復同步，請在設定中重新設定雲端同步。";
+"server_error.device_not_paired" = "這台 Mac 已不再與你的帳戶配對。若要恢復同步，請在「設定」中重新設定雲端同步。";
 "advanced.helper_sync_failed" = "背景同步失敗，將自動重試。";
 "sessions.hook_settings_unreadable" = "無法讀取 %@";
 "sessions.hook_settings_invalid_json" = "%@ 不是有效的 JSON";
@@ -1823,7 +1823,7 @@
 "badge.confidence_high" = "可信度：高";
 "badge.confidence_medium" = "可信度：中";
 "badge.confidence_low" = "可信度：低";
-"cost.unavailable" = "不可用";
+"cost.unavailable" = "無法取得";
 
 /* ── a11y-exports ── */
 "dashboard.cost_report_title" = "CLI Pulse 成本報告";
@@ -1838,7 +1838,7 @@
 "providers.plan_api_key" = "API 金鑰";
 "providers.plan_paid" = "付費";
 "providers.plan_free" = "免費";
-"providers.plan_legacy" = "舊版";
+"providers.plan_legacy" = "舊方案";
 "providers.plan_unknown" = "未知";
 "providers.plan_local" = "本機";
 "providers.plan_credits" = "點數";
@@ -1849,7 +1849,7 @@
 "providers.plan_account" = "帳戶";
 "providers.plan_project_count" = "%d 個專案";
 "sessions.row_local_label" = "本機 %@ 會話";
-"sessions.row_in_app_terminal_label" = "%@ App 內終端機";
+"sessions.row_in_app_terminal_label" = "%@（App 內終端機）";
 "integrations.event_type_cost_spike" = "費用激增";
 "integrations.event_type_quota_exceeded" = "配額超限";
 "integrations.event_type_session_long" = "會話時間過長";

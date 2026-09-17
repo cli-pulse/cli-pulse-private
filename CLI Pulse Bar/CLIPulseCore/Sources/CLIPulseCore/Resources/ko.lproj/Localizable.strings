@@ -1831,7 +1831,7 @@
 "status_text.credits_used_of" = "%1$@/%2$@ 크레딧 사용됨";
 "status_text.keys_of" = "%1$@/%2$@ 키";
 "status_text.characters_of" = "%1$@ / %2$@자";
-"status_text.characters_of_overage" = "%1$@ / %2$@자(초과 사용: %3$@ %4$@)";
+"status_text.characters_of_overage" = "%1$@ / %2$@자(초과 요금: %3$@ %4$@)";
 "status_text.credits_left_of" = "%1$@ / %2$@ 크레딧 남음";
 "status_text.units_left_of" = "%1$@ / %2$@ %3$@ 남음";
 "status_text.pool_count" = "%1$@: %2$@/%3$@";
