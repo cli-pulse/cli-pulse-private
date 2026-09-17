@@ -111,6 +111,28 @@ final class CollectorErrorLocalizationTests: XCTestCase {
         }
     }
 
+    /// "解析失败：Deepgram: no projects for this API key" called a setup problem a
+    /// parse failure, in two languages. The setup conditions have their own case.
+    func testSetupProblemsAreLocalizedAndNotCalledParseFailures() {
+        withChinese {
+            let noProjects = CollectorError.noData(provider: "Deepgram", reason: .noProjectsForKey)
+            XCTAssertEqual(noProjects.localizedDescription, "Deepgram：此 API 密钥下没有项目")
+            XCTAssertEqual(noProjects.logText, "Deepgram: no projects for this API key")
+
+            let noQuota = CollectorError.noData(provider: "Vertex AI", reason: .noQuotaForProject)
+            XCTAssertEqual(noQuota.localizedDescription, "Vertex AI：此项目没有配额数据")
+            XCTAssertEqual(noQuota.logText, "Vertex AI: no quota data for this project")
+
+            let parseWrapper = L10n.collectorError.parseFailed("")
+            for error in [noProjects, noQuota] {
+                XCTAssertFalse(error.localizedDescription.hasPrefix(parseWrapper), "still wrapped as a parse failure")
+            }
+        }
+        // The uploaded device diagnostic keeps the bucket these reported under before.
+        XCTAssertEqual(CollectorFailureCategory.categorize(
+            CollectorError.noData(provider: "Deepgram", reason: .noProjectsForKey)), .parse)
+    }
+
     func testCredentialCasesStillCategorizeAsAuth() {
         let problem = CredentialProblem(nil, .sessionRejected)
         XCTAssertEqual(CollectorFailureCategory.categorize(CollectorError.missingCredentials(problem)), .auth)

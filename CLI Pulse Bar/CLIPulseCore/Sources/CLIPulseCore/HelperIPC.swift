@@ -317,13 +317,26 @@ public enum HelperIPC {
     public struct Status: Codable, Sendable {
         public let state: State
         public let lastSync: Date?
+        /// English detail for diagnosis. Helpers from before `errorCode` wrote
+        /// display text here instead, formatted in the helper's own language.
         public let error: String?
         public let helperVersion: String?
+        /// Stable token from `HelperSyncFailure.code(for:)`; the app renders it in
+        /// the user's language. Optional so a status written by an older helper,
+        /// which lacks the key, still decodes — and older apps ignore it.
+        public let errorCode: String?
 
-        public init(state: State, lastSync: Date? = nil, error: String? = nil, helperVersion: String? = nil) {
+        public init(
+            state: State,
+            lastSync: Date? = nil,
+            error: String? = nil,
+            errorCode: String? = nil,
+            helperVersion: String? = nil
+        ) {
             self.state = state
             self.lastSync = lastSync
             self.error = error
+            self.errorCode = errorCode
             self.helperVersion = helperVersion
         }
     }

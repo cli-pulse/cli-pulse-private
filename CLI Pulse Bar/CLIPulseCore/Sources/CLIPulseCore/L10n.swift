@@ -673,6 +673,12 @@ public enum L10n {
         public static var updateHelperHelp: String { tr("sessions.update_helper_help") }
         public static var hookParseErrorTitle: String { tr("sessions.hook_parse_error_title") }
         public static var hookParseErrorDetail: String { tr("sessions.hook_parse_error_detail") }
+        /// `ClaudeHookDetector.ParseProblem`: the path or file name is interpolated as is.
+        public static func hookSettingsUnreadable(_ path: String) -> String { tr("sessions.hook_settings_unreadable", path) }
+        public static func hookSettingsInvalidJSON(_ fileName: String) -> String { tr("sessions.hook_settings_invalid_json", fileName) }
+        public static func hookSettingsRootNotObject(_ fileName: String) -> String {
+            tr("sessions.hook_settings_root_not_object", fileName)
+        }
         public static var hookInstalledTitle: String { tr("sessions.hook_installed_title") }
         public static var hookInstalledDetail: String { tr("sessions.hook_installed_detail") }
         public static func hookInstallResult(_ a0: String, _ a1: String) -> String { tr("sessions.hook_install_result", a0, a1) }
@@ -856,11 +862,6 @@ public enum L10n {
         public static var resendCode: String { tr("auth.resend_code") }
         public static var backToEmail: String { tr("auth.back_to_email") }
         public static var codePlaceholder: String { tr("auth.code_placeholder") }
-        /// The app's own backend returned an unexpected status during sign-in.
-        /// Positional specifiers: the status and the body may swap order.
-        public static func errorHTTPStatus(_ status: Int, _ body: String) -> String {
-            tr("auth.error_http_status", status, body)
-        }
         public static var passwordOptional: String { tr("auth.password_optional") }
         public static var passwordPlaceholder: String { tr("auth.password_placeholder") }
         public static var signInGoogle: String { tr("auth.sign_in_google") }
@@ -892,6 +893,27 @@ public enum L10n {
         public static var errorInvalidResponse: String { tr("auth.error_invalid_response") }
         public static var errorSessionExpired: String { tr("auth.error_session_expired") }
         public static var errorNotSignedIn: String { tr("auth.error_not_signed_in") }
+    }
+
+    // MARK: - Server errors
+
+    /// `ServerErrorReason`: what a failed Supabase response means, instead of the
+    /// response body. Session expiry reuses `auth.errorSessionExpired`.
+    public enum serverError {
+        public static var codeInvalidOrExpired: String { tr("server_error.code_invalid_or_expired") }
+        public static var rateLimited: String { tr("server_error.rate_limited") }
+        public static var invalidCredentials: String { tr("server_error.invalid_credentials") }
+        public static var invalidEmail: String { tr("server_error.invalid_email") }
+        public static var invalidInput: String { tr("server_error.invalid_input") }
+        public static var identityAlreadyLinked: String { tr("server_error.identity_already_linked") }
+        public static var lastIdentity: String { tr("server_error.last_identity") }
+        public static var linkingDisabled: String { tr("server_error.linking_disabled") }
+        public static var timeout: String { tr("server_error.timeout") }
+        public static func unavailable(_ status: Int) -> String { tr("server_error.unavailable", status) }
+        public static func failed(_ status: Int) -> String { tr("server_error.failed", status) }
+        public static var network: String { tr("server_error.network") }
+        /// `ServerErrorReason.deviceNotPaired`: only the Mac's helper hits it.
+        public static var deviceNotPaired: String { tr("server_error.device_not_paired") }
     }
 
     // MARK: - Subscription
@@ -1715,6 +1737,8 @@ public enum L10n {
         public static func syncMinutesAgo(_ minutes: Int) -> String { tr("advanced.sync_minutes_ago", minutes) }
         public static var helperRunning: String { tr("advanced.helper_running") }
         public static var helperNotRunning: String { tr("advanced.helper_not_running") }
+        /// A helper sync error whose stored code this build does not recognise.
+        public static var helperSyncFailed: String { tr("advanced.helper_sync_failed") }
         public static var privacyKeysTitle: String { tr("advanced.privacy_keys_title") }
         public static var privacyKeysDetail: String { tr("advanced.privacy_keys_detail") }
         public static var privacyLogsTitle: String { tr("advanced.privacy_logs_title") }
@@ -1803,7 +1827,6 @@ public enum L10n {
         public static var yourCode: String { tr("pairing.your_code") }
         public static var copy: String { tr("pairing.copy") }
         public static var notConnected: String { tr("pairing.not_connected") }
-        public static func errorHttpStatus(_ a0: Int, _ a1: String, _ a2: String) -> String { tr("pairing.error_http_status", a0, a1, a2) }
         public static func errorParseFailed(_ a0: String) -> String { tr("pairing.error_parse_failed", a0) }
         public static func errorInvalidURL(_ a0: String) -> String { tr("pairing.error_invalid_url", a0) }
         public static var errorInvalidCode: String { tr("pairing.error_invalid_code") }
@@ -2145,6 +2168,13 @@ public enum L10n {
         }
         public static func parseFailed(_ detail: String, english: Bool = false) -> String {
             tr("collector_error.parse_failed", english: english, detail)
+        }
+        /// `CollectorError.noData`: setup problems the user can fix, not parse failures.
+        public static func noProjectsForKey(_ provider: String, english: Bool = false) -> String {
+            tr("collector_error.no_projects_for_key", english: english, provider)
+        }
+        public static func noQuotaForProject(_ provider: String, english: Bool = false) -> String {
+            tr("collector_error.no_quota_for_project", english: english, provider)
         }
     }
 

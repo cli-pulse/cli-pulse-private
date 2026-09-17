@@ -98,7 +98,11 @@ struct iOSLoginView: View {
                                 }
                             }
                         case .failure(let error):
-                            state.lastError = error.localizedDescription
+                            // Dismissing the sheet is not an error; anything else
+                            // is a system sentence with a raw domain and code.
+                            if let message = AppleSignInFailure.signInMessage(for: error) {
+                                state.lastError = message
+                            }
                         }
                     }
                     .signInWithAppleButtonStyle(.black)

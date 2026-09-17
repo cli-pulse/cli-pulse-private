@@ -325,7 +325,7 @@ public struct VertexAICollector: ProviderCollector, Sendable {
             accessToken: accessToken, projectId: projectId, filter: limitFilter))
 
         guard !usage.isEmpty, !limit.isEmpty else {
-            throw CollectorError.parseFailed("Vertex AI: no quota data for this project")
+            throw CollectorError.noData(provider: "Vertex AI", reason: .noQuotaForProject)
         }
         guard let pct = Self.maxPercent(usage: usage, limit: limit) else {
             throw CollectorError.parseFailed("Vertex AI: no matched quota series")

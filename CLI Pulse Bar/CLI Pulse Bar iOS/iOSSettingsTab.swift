@@ -846,9 +846,9 @@ struct LinkedAccountsSection: View {
                     await state.linkAppleIdentity(identityToken: token, nonce: nonce)
                 }
             case .failure(let error):
-                let ns = error as NSError
-                if ns.code == ASAuthorizationError.canceled.rawValue { return }
-                localError = error.localizedDescription
+                if let message = AppleSignInFailure.linkMessage(for: error) {
+                    localError = message
+                }
             }
         }
         .signInWithAppleButtonStyle(.whiteOutline)

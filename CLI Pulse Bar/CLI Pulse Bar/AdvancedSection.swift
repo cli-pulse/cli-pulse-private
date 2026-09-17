@@ -72,7 +72,9 @@ struct AdvancedSection: View {
                             Text(ago < 60 ? L10n.advanced.syncJustNow : L10n.advanced.syncMinutesAgo(ago / 60))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.secondary)
-                        } else if let error = status.error {
+                        } else if let error = HelperSyncFailure.displayText(
+                            code: status.errorCode, storedText: status.error
+                        ) {
                             Text(error)
                                 .font(.system(size: 9))
                                 .foregroundStyle(.red)

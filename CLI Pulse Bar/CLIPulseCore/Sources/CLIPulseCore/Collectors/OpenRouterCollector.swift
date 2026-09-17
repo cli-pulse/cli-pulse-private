@@ -189,6 +189,16 @@ public enum CollectorError: LocalizedError, Sendable {
     /// failures within the backoff window (1h) throw this case so the
     /// dispatcher knows not to spam.
     case silentBackoff(CredentialProblem)
+    /// The request worked and the account has nothing to measure — a setup
+    /// problem the user can fix. These used to be `parseFailed` with an English
+    /// sentence as the payload, so Test Connection called a configuration
+    /// problem a parse failure, in two languages at once.
+    case noData(provider: String, reason: NoDataReason)
+
+    public enum NoDataReason: Sendable {
+        case noProjectsForKey
+        case noQuotaForProject
+    }
 
     public var errorDescription: String? {
         switch self {
@@ -198,6 +208,7 @@ public enum CollectorError: LocalizedError, Sendable {
         case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg)
         case .notSignedIn(let problem): return problem.localizedText
         case .silentBackoff(let problem): return problem.localizedText
+        case .noData(let provider, let reason): return Self.noDataText(provider, reason, english: false)
         }
     }
 
@@ -211,6 +222,14 @@ public enum CollectorError: LocalizedError, Sendable {
         case .invalidURL(let url): return L10n.collectorError.invalidURL(url, english: true)
         case .httpError(let status, let provider): return L10n.collectorError.httpStatus(provider, status, english: true)
         case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg, english: true)
+        case .noData(let provider, let reason): return Self.noDataText(provider, reason, english: true)
+        }
+    }
+
+    private static func noDataText(_ provider: String, _ reason: NoDataReason, english: Bool) -> String {
+        switch reason {
+        case .noProjectsForKey: return L10n.collectorError.noProjectsForKey(provider, english: english)
+        case .noQuotaForProject: return L10n.collectorError.noQuotaForProject(provider, english: english)
         }
     }
 

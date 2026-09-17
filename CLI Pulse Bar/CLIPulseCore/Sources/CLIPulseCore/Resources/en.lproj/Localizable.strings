@@ -1524,7 +1524,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "machine.uptime_hours_minutes_fmt" = "%1$dh %2$dm";
 "machine.uptime_minutes_fmt" = "%dm";
 "yield.cost_per_commit" = "%@ / commit";
-"pairing.error_http_status" = "HTTP %1$d from %2$@: %3$@";
 "pairing.error_parse_failed" = "Parse failed: %@";
 "pairing.error_invalid_url" = "Invalid URL for %@";
 "sessions.preview_empty_claude" = "Claude is running. Waiting for conversational output…";
@@ -1645,7 +1644,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_error.parse_failed" = "Parse failed: %@";
 "provider_config.error_gemini_token_refresh_failed" = "Token refresh failed (HTTP %d)";
 "provider_config.error_gemini_no_refresh_token" = "No refresh token available";
-"auth.error_http_status" = "HTTP %1$d: %2$@";
 
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
@@ -1771,3 +1769,24 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_credential.auth_file_missing_access_token" = "%@ auth.json not found or has no access token";
 "collector_credential.api_key_not_configured" = "%@ API key not configured";
 "collector_credential.detail" = "%@";
+
+/* ── error-text ── */
+"server_error.code_invalid_or_expired" = "The verification code is incorrect or has expired. Request a new code.";
+"server_error.rate_limited" = "Too many requests. Wait a moment and try again.";
+"server_error.invalid_credentials" = "Incorrect email or password.";
+"server_error.invalid_email" = "Enter a valid email address.";
+"server_error.invalid_input" = "The server didn't accept that request. Check what you entered and try again.";
+"server_error.identity_already_linked" = "That account is already linked to a CLI Pulse account.";
+"server_error.last_identity" = "You can't unlink your only sign-in method. Link another account first.";
+"server_error.linking_disabled" = "Account linking isn't available right now.";
+"server_error.timeout" = "The server took too long to respond. Please try again.";
+"server_error.unavailable" = "The server is temporarily unavailable (HTTP %d). Please try again later.";
+"server_error.failed" = "The server returned an error (HTTP %d).";
+"server_error.network" = "Couldn't reach the server. Check your network connection.";
+"server_error.device_not_paired" = "This Mac is no longer paired with your account. Pair it again in Settings to resume syncing.";
+"advanced.helper_sync_failed" = "Background sync failed. It will try again automatically.";
+"sessions.hook_settings_unreadable" = "Couldn't read %@";
+"sessions.hook_settings_invalid_json" = "%@ isn't valid JSON";
+"sessions.hook_settings_root_not_object" = "%@ doesn't contain a JSON object at the top level";
+"collector_error.no_projects_for_key" = "%@: no projects for this API key";
+"collector_error.no_quota_for_project" = "%@: no quota data for this project";

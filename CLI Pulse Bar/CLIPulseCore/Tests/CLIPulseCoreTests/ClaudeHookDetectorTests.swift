@@ -365,11 +365,57 @@ final class ClaudeHookDetectorTests: XCTestCase {
     func testParseErrorMessageNonEmpty() throws {
         let url = tmpSettingsURL()
         try "[\"not\", \"object\"]".write(to: url, atomically: true, encoding: .utf8)
-        if case .parseError(let detail) = ClaudeHookDetector.currentStatus(at: url) {
-            XCTAssertFalse(detail.isEmpty, "parse-error detail must be non-empty for the banner to render usefully")
+        if case .parseError(let problem) = ClaudeHookDetector.currentStatus(at: url) {
+            XCTAssertFalse(problem.localizedText.isEmpty,
+                           "parse-error text must be non-empty for the banner to render usefully")
         } else {
             XCTFail("expected parseError for non-object root")
         }
+    }
+
+    /// The banner's middle line was an English sentence ("settings.json is not
+    /// valid JSON") between a localized title and hint. Asserted under zh-Hans,
+    /// where a broken lookup cannot hide behind English fallback copy.
+    func testParseProblemsRenderInTheUILanguageAndKeepTheFileName() throws {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+
+        let invalid = tmpSettingsURL()
+        try "{ not valid json".write(to: invalid, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ClaudeHookDetector.currentStatus(at: invalid), .parseError(.invalidJSON(fileName: "settings.json")))
+
+        let array = tmpSettingsURL()
+        try #"["array"]"#.write(to: array, atomically: true, encoding: .utf8)
+        XCTAssertEqual(ClaudeHookDetector.currentStatus(at: array), .parseError(.rootNotObject(fileName: "settings.json")))
+
+        XCTAssertEqual(ClaudeHookDetector.ParseProblem.invalidJSON(fileName: "settings.json").localizedText,
+                       "settings.json 不是有效的 JSON")
+        XCTAssertEqual(ClaudeHookDetector.ParseProblem.rootNotObject(fileName: "settings.json").localizedText,
+                       "settings.json 的顶层不是 JSON 对象")
+        XCTAssertNil(ClaudeHookDetector.ParseProblem.invalidJSON(fileName: "settings.json").technicalDetail)
+    }
+
+    /// An unreadable file (here: a directory where the file should be) shows a
+    /// localized sentence with the path, and keeps the system's own reason as
+    /// secondary detail rather than splicing it into the sentence.
+    func testUnreadableSettingsKeepTheSystemReasonAsSecondaryDetail() throws {
+        let store = LocaleOverrideStore.shared
+        let previous = store.override
+        store.set("zh-Hans")
+        defer { store.set(previous) }
+
+        let url = tmpSettingsURL()
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        guard case .parseError(let problem) = ClaudeHookDetector.currentStatus(at: url),
+              case .unreadable(let path, let reason) = problem else {
+            return XCTFail("expected an unreadable parse problem")
+        }
+        XCTAssertEqual(path, url.path)
+        XCTAssertEqual(problem.localizedText, "无法读取 \(url.path)")
+        XCTAssertEqual(problem.technicalDetail, reason)
+        XCTAssertFalse(problem.localizedText.contains(reason), "the system reason is spliced into the sentence")
     }
 }
 
