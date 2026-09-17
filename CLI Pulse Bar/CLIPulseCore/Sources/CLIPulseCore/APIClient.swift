@@ -885,7 +885,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
         }
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
@@ -926,7 +926,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
         }
     }
 
@@ -943,7 +943,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)
         }
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
@@ -983,7 +983,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: errorBody)
         }
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
@@ -1027,7 +1027,7 @@ public actor APIClient {
             return try await me(retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
 
         let user = try decode(SupabaseUser.self, from: data)
@@ -1682,7 +1682,7 @@ public actor APIClient {
         )
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         // The native Swift Login Item (CLIPulseHelper) is the primary helper.
         // Provide the pairing code for the app to pass to the embedded helper.
@@ -1759,7 +1759,7 @@ public actor APIClient {
         request.httpBody = try encoder.encode(EmptyBody())
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         // Revoke server-side token after account deletion
         await signOutServer()
@@ -1934,7 +1934,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
         }
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
@@ -1982,7 +1982,7 @@ public actor APIClient {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: body)
         }
 
         let auth = try decode(SupabaseAuthResponse.self, from: data)
@@ -2038,7 +2038,7 @@ public actor APIClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         let user = try decode(SupabaseUserWithIdentities.self, from: data)
         return (user.identities ?? []).compactMap { raw in
@@ -2082,7 +2082,7 @@ public actor APIClient {
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         struct AuthorizeResponse: Decodable { let url: String }
         let payload = try decode(AuthorizeResponse.self, from: data)
@@ -2106,7 +2106,7 @@ public actor APIClient {
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         let auth = try decode(SupabaseAuthResponse.self, from: data)
         self.accessToken = auth.access_token
@@ -2144,7 +2144,7 @@ public actor APIClient {
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         if let auth = try? decode(SupabaseAuthResponse.self, from: data) {
             self.accessToken = auth.access_token
@@ -2168,7 +2168,7 @@ public actor APIClient {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw APIError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
     }
 
@@ -2831,7 +2831,7 @@ public actor APIClient {
             return try await restGet(path, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         return try decode(Response.self, from: data)
     }
@@ -2852,7 +2852,7 @@ public actor APIClient {
             return try await restPatch(path, body: body, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
     }
@@ -2896,7 +2896,7 @@ public actor APIClient {
             return try await restPost(path, body: body, extraHeaders: extraHeaders, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
     }
@@ -2921,7 +2921,7 @@ public actor APIClient {
             return try await rpcRaw(function, retried: true)
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
     }
@@ -2988,7 +2988,7 @@ public actor APIClient {
             )
         }
         guard let httpOK = http, (200...299).contains(httpOK.statusCode) else {
-            throw APIError.httpError(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
+            throw Self.httpFailure(status: http?.statusCode ?? 0, body: String(data: data, encoding: .utf8) ?? "")
         }
         return try decode(Response.self, from: data)
     }
@@ -3018,6 +3018,22 @@ public actor APIClient {
         throw lastError ?? APIError.invalidResponse
     }
 
+    /// Every non-2xx Supabase response is thrown through here, so it reaches the
+    /// log once and the screen never: `APIError.errorDescription` shows a
+    /// localized `ServerErrorReason` instead.
+    ///
+    /// Only the status and the machine code are public. The body is `.private`:
+    /// PostgREST echoes a rejected row back ("Failing row contains (…)"), and the
+    /// provider-account callers promise "response details omitted" because those
+    /// rows carry labels that are often email addresses.
+    private static func httpFailure(status: Int, body: String) -> APIError {
+        let code = ServerErrorReason.serverCode(in: body) ?? "none"
+        apiLogger.warning(
+            "Supabase HTTP \(status, privacy: .public) [\(code, privacy: .public)]: \(String(body.prefix(512)), privacy: .private)"
+        )
+        return .httpError(status: status, body: body)
+    }
+
     private func applyHeaders(_ request: inout URLRequest) {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
@@ -3042,7 +3058,9 @@ public enum APIError: LocalizedError, Equatable {
         case .invalidResponse:
             return L10n.auth.errorInvalidResponse
         case .httpError(let status, let body):
-            return L10n.auth.errorHTTPStatus(status, body)
+            // Never the body: it is English server JSON in every language. The
+            // payload stays on the case for code that parses it.
+            return ServerErrorReason.classify(status: status, body: body).localizedText(status: status)
         case .tokenExpired:
             return L10n.auth.errorSessionExpired
         case .notAuthenticated:

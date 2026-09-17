@@ -160,7 +160,10 @@ public enum CollectorFailureCategory: String, Sendable, Equatable {
                 return .auth
             case .httpError(let status, _):
                 return (status == 401 || status == 403) ? .auth : .http
-            case .parseFailed:
+            case .parseFailed, .noData:
+                // `.noData` was thrown as `.parseFailed` until it got its own
+                // case; it keeps the bucket so the device diagnostic the helper
+                // uploads does not change meaning.
                 return .parse
             case .invalidURL:
                 return .other

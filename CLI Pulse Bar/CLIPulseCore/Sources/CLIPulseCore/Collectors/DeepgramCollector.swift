@@ -97,7 +97,7 @@ public struct DeepgramCollector: ProviderCollector, Sendable {
 
             let projects = try await Self.fetchProjects(token: token)
             guard !projects.isEmpty else {
-                throw CollectorError.parseFailed("Deepgram: no projects for this API key")
+                throw CollectorError.noData(provider: "Deepgram", reason: .noProjectsForKey)
             }
             let capped = Array(projects.prefix(Self.maxProjects))
 

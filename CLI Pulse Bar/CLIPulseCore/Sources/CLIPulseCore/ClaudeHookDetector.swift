@@ -39,7 +39,33 @@ public enum ClaudeHookDetector {
         /// JSON / non-object root / unreadable). Banner asks the
         /// user to fix the file by hand — the install CLI also
         /// refuses to overwrite a malformed file.
-        case parseError(String)
+        case parseError(ParseProblem)
+    }
+
+    /// Why the settings file could not be used. Typed rather than a ready-made
+    /// sentence: the banner around it is localized, and an English
+    /// "settings.json is not valid JSON" sat between a Chinese title and a
+    /// Chinese hint.
+    public enum ParseProblem: Sendable, Equatable {
+        /// `reason` is the system's own description of the read failure.
+        case unreadable(path: String, reason: String)
+        case invalidJSON(fileName: String)
+        case rootNotObject(fileName: String)
+
+        /// The sentence the banner shows, in the UI language.
+        public var localizedText: String {
+            switch self {
+            case .unreadable(let path, _): return L10n.sessions.hookSettingsUnreadable(path)
+            case .invalidJSON(let fileName): return L10n.sessions.hookSettingsInvalidJSON(fileName)
+            case .rootNotObject(let fileName): return L10n.sessions.hookSettingsRootNotObject(fileName)
+            }
+        }
+
+        /// Technical detail to show beneath the sentence, when there is any.
+        public var technicalDetail: String? {
+            if case .unreadable(_, let reason) = self, !reason.isEmpty { return reason }
+            return nil
+        }
     }
 
     /// Marker the helper writes into the hook command at install
@@ -71,13 +97,13 @@ public enum ClaudeHookDetector {
         do {
             data = try Data(contentsOf: location)
         } catch {
-            return .parseError("could not read \(location.path): \(error.localizedDescription)")
+            return .parseError(.unreadable(path: location.path, reason: error.localizedDescription))
         }
         guard let raw = try? JSONSerialization.jsonObject(with: data) else {
-            return .parseError("\(location.lastPathComponent) is not valid JSON")
+            return .parseError(.invalidJSON(fileName: location.lastPathComponent))
         }
         guard let dict = raw as? [String: Any] else {
-            return .parseError("\(location.lastPathComponent) root is not a JSON object")
+            return .parseError(.rootNotObject(fileName: location.lastPathComponent))
         }
         guard let hooks = dict["hooks"] as? [String: Any] else {
             return .notWired

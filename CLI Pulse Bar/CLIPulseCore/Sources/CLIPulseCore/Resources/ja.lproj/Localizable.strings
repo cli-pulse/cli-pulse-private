@@ -1528,7 +1528,6 @@
 "machine.uptime_hours_minutes_fmt" = "%1$d時間%2$d分";
 "machine.uptime_minutes_fmt" = "%d分";
 "yield.cost_per_commit" = "%@ / コミット";
-"pairing.error_http_status" = "%2$@ が HTTP %1$d を返しました: %3$@";
 "pairing.error_parse_failed" = "応答を解析できませんでした: %@";
 "pairing.error_invalid_url" = "%@ の URL が無効です";
 "sessions.preview_empty_claude" = "Claude は実行中です。会話の出力を待っています…";
@@ -1649,7 +1648,6 @@
 "collector_error.parse_failed" = "解析に失敗しました: %@";
 "provider_config.error_gemini_token_refresh_failed" = "トークンの更新に失敗しました（HTTP %d）";
 "provider_config.error_gemini_no_refresh_token" = "利用可能なリフレッシュトークンがありません";
-"auth.error_http_status" = "HTTP %1$d: %2$@";
 
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
@@ -1775,3 +1773,24 @@
 "collector_credential.auth_file_missing_access_token" = "%@ の auth.json が見つからないか、アクセストークンがありません";
 "collector_credential.api_key_not_configured" = "%@ の API キーが設定されていません";
 "collector_credential.detail" = "%@";
+
+/* ── error-text ── */
+"server_error.code_invalid_or_expired" = "認証コードが正しくないか、有効期限が切れています。新しいコードをリクエストしてください。";
+"server_error.rate_limited" = "リクエストが多すぎます。少し待ってからもう一度お試しください。";
+"server_error.invalid_credentials" = "メールアドレスまたはパスワードが正しくありません。";
+"server_error.invalid_email" = "有効なメールアドレスを入力してください。";
+"server_error.invalid_input" = "サーバーがリクエストを受け付けませんでした。入力内容を確認して、もう一度お試しください。";
+"server_error.identity_already_linked" = "そのアカウントはすでに CLI Pulse アカウントに連携されています。";
+"server_error.last_identity" = "唯一のサインイン方法は連携を解除できません。先に別のアカウントを連携してください。";
+"server_error.linking_disabled" = "現在、アカウントの連携は利用できません。";
+"server_error.timeout" = "サーバーの応答に時間がかかりすぎました。もう一度お試しください。";
+"server_error.unavailable" = "サーバーが一時的に利用できません（HTTP %d）。しばらくしてからもう一度お試しください。";
+"server_error.failed" = "サーバーがエラーを返しました（HTTP %d）。";
+"server_error.network" = "サーバーに接続できませんでした。ネットワーク接続を確認してください。";
+"server_error.device_not_paired" = "この Mac とアカウントのペアリングが解除されています。同期を再開するには、設定でクラウド同期をもう一度セットアップしてください。";
+"advanced.helper_sync_failed" = "バックグラウンド同期に失敗しました。自動的に再試行されます。";
+"sessions.hook_settings_unreadable" = "%@ を読み込めませんでした";
+"sessions.hook_settings_invalid_json" = "%@ は有効な JSON ではありません";
+"sessions.hook_settings_root_not_object" = "%@ の最上位が JSON オブジェクトではありません";
+"collector_error.no_projects_for_key" = "%@: この API キーにプロジェクトがありません";
+"collector_error.no_quota_for_project" = "%@: このプロジェクトのクォータデータがありません";

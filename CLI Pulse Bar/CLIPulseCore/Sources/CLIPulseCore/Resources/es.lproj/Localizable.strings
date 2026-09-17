@@ -1482,7 +1482,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "machine.uptime_hours_minutes_fmt" = "%1$d h %2$d min";
 "machine.uptime_minutes_fmt" = "%d min";
 "yield.cost_per_commit" = "%@ / commit";
-"pairing.error_http_status" = "%2$@ devolvió HTTP %1$d: %3$@";
 "pairing.error_parse_failed" = "No se pudo analizar la respuesta: %@";
 "pairing.error_invalid_url" = "URL no válida para %@";
 "sessions.preview_empty_claude" = "Claude se está ejecutando. Esperando la salida de la conversación…";
@@ -1619,7 +1618,6 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_error.parse_failed" = "No se pudieron analizar los datos: %@";
 "provider_config.error_gemini_token_refresh_failed" = "Error al renovar el token (HTTP %d)";
 "provider_config.error_gemini_no_refresh_token" = "No hay ningún token de actualización disponible";
-"auth.error_http_status" = "HTTP %1$d: %2$@";
 
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
@@ -1745,3 +1743,24 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_credential.auth_file_missing_access_token" = "No se encontró el auth.json de %@ o no contiene un token de acceso";
 "collector_credential.api_key_not_configured" = "Clave API de %@ no configurada";
 "collector_credential.detail" = "%@";
+
+/* ── error-text ── */
+"server_error.code_invalid_or_expired" = "El código de verificación no es correcto o ha caducado. Solicita uno nuevo.";
+"server_error.rate_limited" = "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.";
+"server_error.invalid_credentials" = "Correo o contraseña incorrectos.";
+"server_error.invalid_email" = "Introduce una dirección de correo válida.";
+"server_error.invalid_input" = "El servidor no aceptó la solicitud. Revisa lo que has introducido e inténtalo de nuevo.";
+"server_error.identity_already_linked" = "Esa cuenta ya está vinculada a una cuenta de CLI Pulse.";
+"server_error.last_identity" = "No puedes desvincular tu único método de inicio de sesión. Vincula antes otra cuenta.";
+"server_error.linking_disabled" = "La vinculación de cuentas no está disponible en este momento.";
+"server_error.timeout" = "El servidor tardó demasiado en responder. Inténtalo de nuevo.";
+"server_error.unavailable" = "El servidor no está disponible temporalmente (HTTP %d). Inténtalo de nuevo más tarde.";
+"server_error.failed" = "El servidor devolvió un error (HTTP %d).";
+"server_error.network" = "No se pudo conectar con el servidor. Comprueba tu conexión de red.";
+"server_error.device_not_paired" = "Este Mac ya no está vinculado a tu cuenta. En Ajustes, vuelve a configurar la sincronización en la nube para reanudarla.";
+"advanced.helper_sync_failed" = "Error en la sincronización en segundo plano. Se volverá a intentar automáticamente.";
+"sessions.hook_settings_unreadable" = "No se pudo leer %@";
+"sessions.hook_settings_invalid_json" = "%@ no es un JSON válido";
+"sessions.hook_settings_root_not_object" = "%@ no contiene un objeto JSON en el nivel superior";
+"collector_error.no_projects_for_key" = "%@: no hay proyectos para esta clave API";
+"collector_error.no_quota_for_project" = "%@: no hay datos de cuota para este proyecto";

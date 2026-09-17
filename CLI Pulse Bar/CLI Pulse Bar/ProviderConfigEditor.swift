@@ -482,9 +482,15 @@ struct ProviderConfigEditor: View {
                             sharedCredentialFallbackDisabled = true
                         } catch is CancellationError {
                             // User cancelled — ignore
-                        } catch let e as ASWebAuthenticationSessionError
-                                    where e.code == .canceledLogin {
-                            // User dismissed the browser sheet — ignore
+                        } catch let e as ASWebAuthenticationSessionError {
+                            // nil when the user dismissed the browser sheet;
+                            // otherwise our own line, not the system's domain
+                            // and code (those go to the log).
+                            geminiError = WebAuthSessionFailure.message(
+                                for: e,
+                                generic: L10n.providerConfig
+                                    .errorGeminiSessionStartFailed
+                            )
                         } catch {
                             geminiError = error.localizedDescription
                         }

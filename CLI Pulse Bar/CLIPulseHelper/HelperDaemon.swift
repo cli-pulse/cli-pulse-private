@@ -328,11 +328,31 @@ final class HelperDaemon {
             ))
 
         } catch {
-            logger.error("Sync failed: \(error.localizedDescription)")
+            // Store a token, not text: this process never sees the in-app
+            // language, so the app renders the token in its own. The English
+            // detail is for the log (the HTTP body was already logged where it
+            // was thrown, which is why it is left out here).
+            let code = HelperSyncFailure.code(for: error)
+            let detail = Self.englishDetail(for: error)
+            logger.error("Sync failed [\(code, privacy: .public)]: \(detail, privacy: .public)")
             HelperIPC.writeStatus(HelperIPC.Status(
-                state: .error, lastSync: nil, error: error.localizedDescription, helperVersion: "1.0.0"
+                state: .error, lastSync: nil, error: detail, errorCode: code, helperVersion: "1.0.0"
             ))
         }
+    }
+
+    /// The failure without its HTTP body, in English whatever the system
+    /// language: the case name and status for helper errors, domain and code
+    /// for everything else.
+    private static func englishDetail(for error: Error) -> String {
+        if let helperError = error as? HelperAPIError {
+            if case let .httpError(status, function, _) = helperError {
+                return "\(function) HTTP \(status)"
+            }
+            return String(describing: helperError)
+        }
+        let nsError = error as NSError
+        return "\(nsError.domain) \(nsError.code)"
     }
 
     // MARK: - Provider Quota Collection

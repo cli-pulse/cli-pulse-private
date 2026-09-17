@@ -1514,7 +1514,6 @@
 "machine.uptime_hours_minutes_fmt" = "%1$d小時%2$d分鐘";
 "machine.uptime_minutes_fmt" = "%d分鐘";
 "yield.cost_per_commit" = "%@ / 次提交";
-"pairing.error_http_status" = "%2$@ 回傳 HTTP %1$d：%3$@";
 "pairing.error_parse_failed" = "回應解析失敗：%@";
 "pairing.error_invalid_url" = "%@ 的 URL 無效";
 "sessions.preview_empty_claude" = "Claude 正在執行。正在等待對話輸出…";
@@ -1635,7 +1634,6 @@
 "collector_error.parse_failed" = "解析失敗：%@";
 "provider_config.error_gemini_token_refresh_failed" = "權杖更新失敗（HTTP %d）";
 "provider_config.error_gemini_no_refresh_token" = "沒有可用的更新權杖";
-"auth.error_http_status" = "HTTP %1$d：%2$@";
 
 /* Alert templates — localized at render time by AlertPresentation. The stored
    title/message stay English: they are the webhook payload, they cross devices,
@@ -1761,3 +1759,24 @@
 "collector_credential.auth_file_missing_access_token" = "找不到 %@ auth.json，或其中沒有存取權杖";
 "collector_credential.api_key_not_configured" = "尚未設定 %@ API 金鑰";
 "collector_credential.detail" = "%@";
+
+/* ── error-text ── */
+"server_error.code_invalid_or_expired" = "驗證碼錯誤或已過期，請重新取得驗證碼。";
+"server_error.rate_limited" = "請求過於頻繁，請稍候再試。";
+"server_error.invalid_credentials" = "電子郵件或密碼錯誤。";
+"server_error.invalid_email" = "請輸入有效的電子郵件地址。";
+"server_error.invalid_input" = "伺服器未接受此請求，請檢查輸入內容後重試。";
+"server_error.identity_already_linked" = "該帳戶已關聯到 CLI Pulse 帳戶。";
+"server_error.last_identity" = "無法取消關聯你唯一的登入方式，請先關聯其他帳戶。";
+"server_error.linking_disabled" = "目前無法關聯帳戶。";
+"server_error.timeout" = "伺服器回應逾時，請重試。";
+"server_error.unavailable" = "伺服器暫時無法使用（HTTP %d），請稍後再試。";
+"server_error.failed" = "伺服器回傳錯誤（HTTP %d）。";
+"server_error.network" = "無法連線到伺服器，請檢查網路連線。";
+"server_error.device_not_paired" = "這台 Mac 已不再與你的帳戶配對。若要恢復同步，請在設定中重新設定雲端同步。";
+"advanced.helper_sync_failed" = "背景同步失敗，將自動重試。";
+"sessions.hook_settings_unreadable" = "無法讀取 %@";
+"sessions.hook_settings_invalid_json" = "%@ 不是有效的 JSON";
+"sessions.hook_settings_root_not_object" = "%@ 的最上層不是 JSON 物件";
+"collector_error.no_projects_for_key" = "%@：此 API 金鑰下沒有專案";
+"collector_error.no_quota_for_project" = "%@：此專案沒有配額資料";

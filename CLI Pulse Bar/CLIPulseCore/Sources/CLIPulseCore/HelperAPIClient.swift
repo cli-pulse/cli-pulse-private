@@ -545,6 +545,13 @@ public actor HelperAPIClient {
         }
         guard (200...299).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
+            // The error's description never shows the body. The log keeps the
+            // machine code in public and the body private: a rejected
+            // provider-account row is echoed back in it, labels and all.
+            let code = ServerErrorReason.serverCode(in: body) ?? "none"
+            helperLogger.warning(
+                "\(function, privacy: .public) returned HTTP \(http.statusCode, privacy: .public) [\(code, privacy: .public)]: \(String(body.prefix(512)), privacy: .private)"
+            )
             throw HelperAPIError.httpError(status: http.statusCode, function: function, body: body)
         }
 
@@ -633,7 +640,10 @@ public enum HelperAPIError: LocalizedError {
         switch self {
         case .notConfigured: return L10n.a11y.configurationErrorBody
         case .invalidURL(let fn): return L10n.pairing.errorInvalidURL(fn)
-        case .httpError(let s, let fn, let body): return L10n.pairing.errorHttpStatus(s, fn, String(body.prefix(200)))
+        case .httpError(let status, _, let body):
+            // Not the body, which is English PostgREST JSON, and not the RPC name,
+            // which means nothing to the user; both are logged where this is thrown.
+            return ServerErrorReason.classify(status: status, body: body).localizedText(status: status)
         case .parseFailed(let msg): return L10n.pairing.errorParseFailed(msg)
         case .pairingRejected(let code, let message):
             // The server sends English text with a stable code

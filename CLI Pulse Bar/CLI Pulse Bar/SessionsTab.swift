@@ -1667,9 +1667,9 @@ struct SessionsTab: View {
     /// returned `.parseError`. Does NOT offer the install button —
     /// running the install on malformed JSON would just raise
     /// `ValueError` upstream, so we tell the user to repair the
-    /// file by hand first. The detector's parse-error message
-    /// (e.g. "settings.json is not valid JSON") gives the user
-    /// enough to find + fix the issue.
+    /// file by hand first. The detector's parse problem (e.g.
+    /// settings.json is not valid JSON), rendered in the UI language,
+    /// gives the user enough to find + fix the issue.
     private var approvalHookFixSettingsBanner: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 8) {
@@ -1679,11 +1679,21 @@ struct SessionsTab: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(L10n.sessions.hookParseErrorTitle)
                         .font(.system(size: 11, weight: .semibold))
-                    Text(approvalHookParseErrorMessage)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .textSelection(.enabled)
+                    if let problem = approvalHookParseProblem {
+                        Text(problem.localizedText)
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
+                        // The system's own read-failure text, kept but secondary.
+                        if let detail = problem.technicalDetail {
+                            Text(detail)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
                     Text(L10n.sessions.hookParseErrorDetail)
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
@@ -1751,15 +1761,14 @@ struct SessionsTab: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
-    /// Detail string from the detector's `.parseError(...)` case.
-    /// Returns empty string for any non-parse-error state (the
-    /// surrounding view only renders this when the case actually
-    /// matches, but the helper is defensive).
-    private var approvalHookParseErrorMessage: String {
-        if case .parseError(let detail) = state.claudeApprovalHookStatus {
-            return detail
+    /// The detector's `.parseError(...)` problem, or nil for any other state
+    /// (the surrounding view only renders the banner when the case matches,
+    /// but the accessor is defensive).
+    private var approvalHookParseProblem: ClaudeHookDetector.ParseProblem? {
+        if case .parseError(let problem) = state.claudeApprovalHookStatus {
+            return problem
         }
-        return ""
+        return nil
     }
 
     /// One-time setup nudge: helper supports approvals, but

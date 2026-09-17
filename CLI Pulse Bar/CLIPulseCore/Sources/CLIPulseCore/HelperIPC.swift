@@ -18,7 +18,11 @@ public enum HelperIPC {
 
     public static let suiteName = "group.yyh.CLI-Pulse"
 
-    /// Helper status JSON: { "state": "running"|"idle"|"error", "lastSync": ISO8601, "error": "..." }
+    /// Helper status: `Status` encoded with a default `JSONEncoder` —
+    /// { "state": "running"|"idle"|"error", "lastSync": Date, "error": English
+    /// detail for diagnosis, "errorCode": `HelperSyncFailure` token, "helperVersion" }.
+    /// The app shows `errorCode`, rendered in its own language, and falls back
+    /// to `error` only for a status from a helper that predates `errorCode`.
     public static let statusKey = "helper_status"
 
     /// Helper config (HelperConfig encoded as JSON data)
@@ -317,13 +321,26 @@ public enum HelperIPC {
     public struct Status: Codable, Sendable {
         public let state: State
         public let lastSync: Date?
+        /// English detail for diagnosis. Helpers from before `errorCode` wrote
+        /// display text here instead, formatted in the helper's own language.
         public let error: String?
         public let helperVersion: String?
+        /// Stable token from `HelperSyncFailure.code(for:)`; the app renders it in
+        /// the user's language. Optional so a status written by an older helper,
+        /// which lacks the key, still decodes — and older apps ignore it.
+        public let errorCode: String?
 
-        public init(state: State, lastSync: Date? = nil, error: String? = nil, helperVersion: String? = nil) {
+        public init(
+            state: State,
+            lastSync: Date? = nil,
+            error: String? = nil,
+            errorCode: String? = nil,
+            helperVersion: String? = nil
+        ) {
             self.state = state
             self.lastSync = lastSync
             self.error = error
+            self.errorCode = errorCode
             self.helperVersion = helperVersion
         }
     }

@@ -846,9 +846,9 @@ struct LinkedAccountsSection: View {
                     await state.linkAppleIdentity(identityToken: token, nonce: nonce)
                 }
             case .failure(let error):
-                let ns = error as NSError
-                if ns.code == ASAuthorizationError.canceled.rawValue { return }
-                localError = error.localizedDescription
+                if let message = AppleSignInFailure.linkMessage(for: error) {
+                    localError = message
+                }
             }
         }
         .signInWithAppleButtonStyle(.whiteOutline)
@@ -890,11 +890,13 @@ struct LinkedAccountsSection: View {
             ) { callbackURL, error in
                 Task { @MainActor in self.webAuthSession = nil }
                 if let error {
-                    if (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue {
-                        return
+                    // Closing the sheet shows nothing; any other session error is
+                    // the app's own line, not the system's domain and code.
+                    Task { @MainActor in
+                        if let message = WebAuthSessionFailure.linkMessage(for: error) {
+                            self.localError = message
+                        }
                     }
-                    // Surface the system error description (already user-facing, no callback URL).
-                    Task { @MainActor in self.localError = error.localizedDescription }
                     return
                 }
                 guard let callbackURL else {
