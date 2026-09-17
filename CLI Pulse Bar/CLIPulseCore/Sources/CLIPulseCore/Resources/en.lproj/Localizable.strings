@@ -1833,3 +1833,4 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "badge.confidence_high" = "High confidence";
 "badge.confidence_medium" = "Medium confidence";
 "badge.confidence_low" = "Low confidence";
+"cost.unavailable" = "Unavailable";

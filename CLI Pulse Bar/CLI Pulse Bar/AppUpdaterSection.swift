@@ -80,7 +80,7 @@ struct AppUpdaterSection: View {
                                 Task.detached { NSWorkspace.shared.open(url) }
                             }
                         } label: {
-                            Text(L10n.appUpdater.openPermission(L10n.appUpdater.permissionName(perm)))
+                            Text(L10n.appUpdater.openPermissionButton(perm))
                                 .font(.system(size: 10))
                         }
                         .buttonStyle(.link)

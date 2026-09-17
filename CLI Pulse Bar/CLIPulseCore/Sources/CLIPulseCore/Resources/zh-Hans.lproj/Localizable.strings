@@ -1345,7 +1345,7 @@
 "app_updater.title" = "应用更新（Beta 渠道）";
 "app_updater.permissions_regrant_title" = "切换渠道后需要重新授予权限";
 "app_updater.permissions_regrant_body" = "从 App Store 版迁移会重置 macOS 权限。请重新授予：%@。";
-"app_updater.open_permission" = "打开 %@…";
+"app_updater.open_permission" = "打开「%@」…";
 "app_updater.devid_channel_title" = "你正在使用 Developer ID Beta 渠道。";
 "app_updater.mas_auto_update_warning" = "如需继续使用此版本，请在「系统设置 → App Store」中关闭 CLI Pulse 的自动更新，否则 App Store 版本可能会覆盖这个 Beta 版。";
 "app_updater.open_app_store_settings" = "打开 App Store 设置…";
@@ -1823,3 +1823,4 @@
 "badge.confidence_high" = "可信度：高";
 "badge.confidence_medium" = "可信度：中";
 "badge.confidence_low" = "可信度：低";
+"cost.unavailable" = "不可用";

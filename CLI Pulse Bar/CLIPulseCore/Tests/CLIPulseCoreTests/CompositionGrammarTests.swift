@@ -130,13 +130,56 @@ final class CompositionGrammarTests: XCTestCase {
         XCTAssertEqual(L10n.appUpdater.permissionList(["Accessibility"]), "アクセシビリティ")
     }
 
-    /// `cost_status` is a server token; the macOS tile printed it as-is.
+    /// The re-grant buttons. The CJK templates kept the space they needed when the
+    /// argument was the English id, so the translated name read "打开 通知…" and
+    /// "アクセシビリティ を開く…". The name is quoted as a pane name instead.
+    func testOpenPermissionButtonHasNoSpaceInsideTheCJKPhrase() {
+        use("zh-Hans")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "打开「通知」…")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "打开「辅助功能」…")
+        use("zh-Hant")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "開啟「輔助使用」…")
+        use("ja")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "「通知」を開く…")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "「アクセシビリティ」を開く…")
+        // Languages that separate words keep the space.
+        use("ko")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Accessibility"), "손쉬운 사용 열기…")
+        use("es")
+        XCTAssertEqual(L10n.appUpdater.openPermissionButton("Notifications"), "Abrir Notificaciones…")
+    }
+
+    /// `cost_status` is a server token; the badge shows it as its capsule abbreviation.
     func testCostStatusTokenIsShownTranslated() {
         use("zh-Hant")
         XCTAssertEqual(CostStatusBadge.label(for: "Estimated"), L10n.badge.estimated)
         XCTAssertEqual(CostStatusBadge.label(for: "Exact"), L10n.badge.exact)
         XCTAssertEqual(CostStatusBadge.label(for: "Unavailable"), L10n.badge.unavailable)
         XCTAssertFalse(CostStatusBadge.label(for: "Estimated").lowercased().contains("estimated"))
+    }
+
+    /// The macOS cost tile printed the token in English, then briefly the badge's
+    /// abbreviation as plain text: "EST" beside a price reads as a time zone, and
+    /// es "ESTIMADO" shouts. Plain text gets the sentence-case words.
+    func testCostStatusAsPlainTextIsSentenceCaseNotTheBadgeAbbreviation() {
+        use("es")
+        XCTAssertEqual(L10n.cost.statusLabel("Estimated"), "Estimado")
+        XCTAssertEqual(L10n.cost.statusLabel("Exact"), "Exacto")
+        XCTAssertEqual(L10n.cost.statusLabel("Unavailable"), "No disponible")
+        XCTAssertNotEqual(L10n.cost.statusLabel("Estimated"), L10n.badge.estimated)
+        XCTAssertNotEqual(L10n.cost.statusLabel("Unavailable"), L10n.badge.unavailable)
+
+        use("en")
+        XCTAssertEqual(L10n.cost.statusLabel("Estimated"), "Estimated")
+        XCTAssertNotEqual(L10n.cost.statusLabel("Estimated"), "EST")
+        XCTAssertEqual(L10n.cost.statusLabel("Unavailable"), "Unavailable")
+
+        use("zh-Hant")
+        XCTAssertEqual(L10n.cost.statusLabel("Estimated"), "預估")
+        use("ja")
+        XCTAssertEqual(L10n.cost.statusLabel("Unavailable"), "不明")
+        XCTAssertEqual(L10n.cost.statusLabel("SomethingNew"), "SomethingNew",
+                       "an unknown token is shown as it arrived, as the subtitle did before")
     }
 
     // MARK: - Word order and labels

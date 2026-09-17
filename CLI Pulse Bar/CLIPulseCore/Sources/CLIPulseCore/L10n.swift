@@ -1562,6 +1562,19 @@ public enum L10n {
             case .estimated: return estimated
             }
         }
+        /// `cost_status` ("Exact"/"Estimated"/"Unavailable", a server token) as plain
+        /// text, such as the macOS cost tile's subtitle. Not `CostStatusBadge`'s
+        /// words: those are capsule abbreviations ("EST", "ESTIMADO") that read as a
+        /// time zone or as shouting outside the capsule. An unknown token is shown
+        /// as it arrived, which is what the subtitle did before.
+        public static func statusLabel(_ token: String) -> String {
+            switch token {
+            case "Exact":       return exact
+            case "Estimated":   return estimated
+            case "Unavailable": return tr("cost.unavailable")
+            default:            return token
+            }
+        }
         public static var ioTokensCodexBarHelp: String { tr("cost.io_tokens_codexbar_help") }
         public static var ioTokensHelp: String { tr("cost.io_tokens_help") }
     }
@@ -2127,6 +2140,10 @@ public enum L10n {
         public static var permissionsRegrantTitle: String { tr("app_updater.permissions_regrant_title") }
         public static func permissionsRegrantBody(_ a0: String) -> String { tr("app_updater.permissions_regrant_body", a0) }
         public static func openPermission(_ a0: String) -> String { tr("app_updater.open_permission", a0) }
+        /// The re-grant button for one permission id. The CJK templates quote the
+        /// name (「通知」) with no space: the argument is always a translated name
+        /// now, and a bare "打开通知" reads as "turn notifications on".
+        public static func openPermissionButton(_ id: String) -> String { openPermission(permissionName(id)) }
         /// Display name for a permission id from `AppPermissionMigrationChecker`.
         /// The ids stay English: `systemSettingsURL(for:)` matches on them.
         public static func permissionName(_ id: String) -> String {

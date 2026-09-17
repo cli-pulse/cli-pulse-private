@@ -1359,7 +1359,7 @@
 "app_updater.title" = "アプリのアップデート（ベータチャネル）";
 "app_updater.permissions_regrant_title" = "チャネル切り替え後は権限の再許可が必要です";
 "app_updater.permissions_regrant_body" = "App Store 版から移行すると macOS の権限がリセットされます。次の権限を再度許可してください: %@。";
-"app_updater.open_permission" = "%@ を開く…";
+"app_updater.open_permission" = "「%@」を開く…";
 "app_updater.devid_channel_title" = "Developer ID ベータチャネルを使用中です。";
 "app_updater.mas_auto_update_warning" = "このまま使い続けるには、「システム設定 → App Store」で CLI Pulse の自動アップデートをオフにしてください。オフにしないと、App Store 版がこのベータ版を上書きすることがあります。";
 "app_updater.open_app_store_settings" = "App Store の設定を開く…";
@@ -1837,3 +1837,4 @@
 "badge.confidence_high" = "信頼度: 高";
 "badge.confidence_medium" = "信頼度: 中";
 "badge.confidence_low" = "信頼度: 低";
+"cost.unavailable" = "不明";

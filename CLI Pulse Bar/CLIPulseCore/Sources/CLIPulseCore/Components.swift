@@ -506,10 +506,10 @@ public struct CostStatusBadge: View {
 
     private var label: String { Self.label(for: status) }
 
-    /// `cost_status` is a server token ("Exact"/"Estimated"/"Unavailable"). Every
-    /// place that shows it goes through here, so the macOS tile subtitle cannot
-    /// print the English word again.
-    public static func label(for status: String) -> String {
+    /// `cost_status` is a server token ("Exact"/"Estimated"/"Unavailable"). These
+    /// are the capsule's abbreviations ("EST", "N/A"); plain text uses
+    /// `L10n.cost.statusLabel(_:)`, so this stays internal to the badge.
+    static func label(for status: String) -> String {
         switch status {
         case "Exact": return L10n.badge.exact
         case "Estimated": return L10n.badge.estimated

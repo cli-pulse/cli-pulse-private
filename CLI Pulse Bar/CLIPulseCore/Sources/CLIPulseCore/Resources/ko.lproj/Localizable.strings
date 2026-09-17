@@ -1793,3 +1793,4 @@
 "badge.confidence_high" = "신뢰도 높음";
 "badge.confidence_medium" = "신뢰도 보통";
 "badge.confidence_low" = "신뢰도 낮음";
+"cost.unavailable" = "확인 불가";
