@@ -222,8 +222,12 @@ public final class LocaleOverrideStore: ObservableObject {
     }
 
     /// The catalogues this app ships. Kept here rather than in the telemetry
-    /// layer because it is a fact about the resource bundle, and
-    /// `L10nFallbackTests` already pins the same list against what is on disk.
+    /// layer because it is a fact about the resource bundle.
+    ///
+    /// The language menu, `resolvedLocalization` and `L10nFallbackTests` all
+    /// read this list, so it must match the `.lproj` directories on disk:
+    /// `LanguageChoiceTests` compares the two, and a catalogue added without
+    /// an entry here fails CI instead of silently missing from the menu.
     public static let shippedLocalizations = ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"]
 
     /// One row of the language menu.
@@ -249,7 +253,7 @@ public final class LocaleOverrideStore: ObservableObject {
 
     /// The language menu, built from `shippedLocalizations`. A catalogue added
     /// there without a native name drops out of this list, and
-    /// `LocaleOverrideStoreTests` fails: a hand-written menu once offered four
+    /// `LanguageChoiceTests` fails: a hand-written menu once offered four
     /// of six shipped languages, with no 한국어 and no Español.
     public static let languageOptions: [LanguageOption] = shippedLocalizations.compactMap { id in
         nativeNames[id].map { LanguageOption(id: id, nativeName: $0) }
@@ -277,7 +281,9 @@ public final class LocaleOverrideStore: ObservableObject {
         return candidates
     }
 
-    private static func resourceBundle() -> Bundle {
+    /// Internal, not private, so tests can list the `.lproj` directories the
+    /// bundle really ships.
+    static func resourceBundle() -> Bundle {
         #if SWIFT_PACKAGE
         return .module
         #else

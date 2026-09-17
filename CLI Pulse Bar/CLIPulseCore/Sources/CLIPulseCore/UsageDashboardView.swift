@@ -283,7 +283,7 @@ public struct UsageDashboardView: View {
             // Keying on the override rebuilds them in the new language. The
             // archive and count-up state live on this view and survive; the
             // trends card's range picker goes back to its default.
-            .id(localeOverride.override)
+            .languageKeyed(localeOverride.override)
             .padding(.horizontal, 26)
             .padding(.vertical, 22)
     }

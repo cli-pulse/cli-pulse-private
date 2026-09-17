@@ -28,6 +28,30 @@ public extension View {
     func displayLocaleRoot() -> some View {
         modifier(DisplayLocaleRoot())
     }
+
+    /// Rebuilds this view when the language changes.
+    ///
+    /// Observing `LocaleOverrideStore` re-evaluates the observing view's body,
+    /// but SwiftUI skips a child whose inputs compare equal, so a child that
+    /// builds `L10n` text from unchanged values (a tab that takes only
+    /// environment objects, a read-only card) keeps its old language. A new
+    /// identity forces a fresh body, at the price of the child's own @State:
+    /// apply it below any state a switch must keep, such as typed sign-in
+    /// details.
+    ///
+    /// Pass `language` from a store the caller observes, so the caller is
+    /// re-evaluated on a switch. Inside a `ForEach`, pass the row's own id as
+    /// `row` too: a lazy stack reads an explicit `.id` as the row identity, and
+    /// the language alone would give every row the same one.
+    func languageKeyed(_ language: String?, row: AnyHashable? = nil) -> some View {
+        id(LanguageKey(row: row, language: language))
+    }
+}
+
+/// The identity `languageKeyed` gives a view.
+private struct LanguageKey: Hashable {
+    let row: AnyHashable?
+    let language: String?
 }
 
 #if os(macOS)

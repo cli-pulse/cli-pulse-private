@@ -11,7 +11,9 @@ struct MenuBarView: View {
     /// `Text(L10n.*)` inside it) whenever the user picks a new
     /// language from the footer picker. Child views whose inputs did not
     /// change are not re-evaluated, so the content below them is keyed on
-    /// `localeOverride.override` (see `languageKeyed`).
+    /// `localeOverride.override` (see `languageKeyed`): the tab content, not
+    /// this view, whose @State (a dismissed wizard or upgrade card) must
+    /// survive a switch.
     @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     /// v1.30.2 (RC-2): the MenuBarExtra(.window) popover becomes the key
     /// window when it opens. `controlActiveState` flips to `.key`/`.active`
@@ -663,16 +665,5 @@ struct MenuBarView: View {
                     .foregroundStyle(.tertiary)
             }
         }
-    }
-}
-
-private extension View {
-    /// Rebuilds the content when the language changes. Tab views take only
-    /// environment objects, so SwiftUI skips their bodies when `MenuBarView`
-    /// redraws and their `L10n` text would stay in the old language. Applied
-    /// to the content, not to `MenuBarView` itself, whose @State (a dismissed
-    /// wizard or upgrade card) must survive a switch.
-    func languageKeyed(_ override: String?) -> some View {
-        id(override)
     }
 }

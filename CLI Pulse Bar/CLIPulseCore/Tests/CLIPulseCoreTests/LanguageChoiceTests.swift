@@ -48,6 +48,31 @@ final class LanguageChoiceTests: XCTestCase {
         )
     }
 
+    /// The menu reads `shippedLocalizations`, so the list itself has to match
+    /// the catalogues on disk. Pinning the menu to the list alone would stay
+    /// green if a seventh `.lproj` shipped and only the other copies of the
+    /// list (the parity gate's) were updated: the menu would silently leave
+    /// that language out, the defect this menu was rebuilt to fix.
+    func test_shippedLocalizations_areTheCataloguesInTheResourceBundle() throws {
+        let resources = try XCTUnwrap(LocaleOverrideStore.resourceBundle().resourceURL)
+        let onDisk = try FileManager.default
+            .contentsOfDirectory(at: resources, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "lproj" }
+            .map { $0.deletingPathExtension().lastPathComponent }
+            .filter { $0.caseInsensitiveCompare("Base") != .orderedSame }
+            // SwiftPM lowercases the directory names (zh-hans.lproj). Anything
+            // not in the list keeps its own name so the failure names it.
+            .map { name in
+                LocaleOverrideStore.shippedLocalizations
+                    .first { $0.caseInsensitiveCompare(name) == .orderedSame } ?? name
+            }
+
+        XCTAssertEqual(
+            Set(onDisk), Set(LocaleOverrideStore.shippedLocalizations),
+            "LocaleOverrideStore.shippedLocalizations does not match the .lproj directories in \(resources.path)"
+        )
+    }
+
     // MARK: - Display locale
 
     func test_displayLocale_isTheOverrideLanguage() {
@@ -88,7 +113,9 @@ final class LanguageChoiceTests: XCTestCase {
     }
 
     /// The usage heatmap's month row read "Jan Feb Mar" under Chinese headings.
-    func test_heatmapMonthLabels_followTheDisplayLocale() {
+    /// This pins the symbol lookup only; that the view feeds it the locale its
+    /// root put in the environment is `DisplayLocaleRootTests`.
+    func test_heatmapMonthSymbols_areInTheLocaleTheyAreGiven() {
         LocaleOverrideStore.shared.set("ja")
         let symbols = UsageHeatmapGrid.shortMonthSymbols(locale: LocaleOverrideStore.shared.displayLocale)
         XCTAssertEqual(UsageHeatmapGrid.shortMonth(9, symbols: symbols), "9月")
