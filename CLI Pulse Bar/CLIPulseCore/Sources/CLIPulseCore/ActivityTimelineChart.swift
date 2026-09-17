@@ -54,6 +54,9 @@ public struct ActivityTimelineChart: View {
     private let trend: [UsagePoint]
     private let style: Style
     private let showLabels: Bool
+    /// The display locale on macOS (its roots apply `displayLocaleRoot()`),
+    /// the system locale on iPhone.
+    @Environment(\.locale) private var locale
 
     public init(trend: [UsagePoint], style: Style, showLabels: Bool = true) {
         self.trend = trend
@@ -90,17 +93,17 @@ public struct ActivityTimelineChart: View {
             // Hour labels: first, optionally middle, last.
             if showLabels, trend.count >= 2 {
                 HStack {
-                    Text(OverviewFormatters.hourLabel(trend.first?.timestamp ?? ""))
+                    Text(OverviewFormatters.hourLabel(trend.first?.timestamp ?? "", locale: locale))
                         .font(style.labelFont)
                         .foregroundStyle(.quaternary)
                     Spacer()
                     if trend.count > 2 {
-                        Text(OverviewFormatters.hourLabel(trend[trend.count / 2].timestamp))
+                        Text(OverviewFormatters.hourLabel(trend[trend.count / 2].timestamp, locale: locale))
                             .font(style.labelFont)
                             .foregroundStyle(.quaternary)
                         Spacer()
                     }
-                    Text(OverviewFormatters.hourLabel(trend.last?.timestamp ?? ""))
+                    Text(OverviewFormatters.hourLabel(trend.last?.timestamp ?? "", locale: locale))
                         .font(style.labelFont)
                         .foregroundStyle(.quaternary)
                 }

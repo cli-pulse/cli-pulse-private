@@ -675,7 +675,7 @@
 "yield.empty_no_attribution" = "0 commits attributed in this window. Try writing some code in a tracked repo.";
 "yield.detail_subtitle" = "%@ · ranked by cost per commit (lower is better)";
 "yield.commits_count" = "%d commits";
-"yield.commits_count_decimal" = "%.1f commits";
+"yield.commits_count_decimal" = "%@ commits";
 "yield.ambiguous_count" = "%d ambiguous";
 "menu_bar.quit_full" = "Quit CLI Pulse Bar";
 
@@ -1376,7 +1376,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "settings.block_claude_on_outdated_helper_hint" = "When the Companion CLI helper is too old to run Claude on your Max/Pro plan, prevent starting managed Claude sessions (which would silently use the Claude API). Off by default — you'll only see a warning.";
 "cost.io_tokens_codexbar_help" = "I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost). CodexBar's 'tokens' figure rolls cache in; ours doesn't, so the numbers will differ. Cost is computed with full per-component pricing on both sides and matches.";
 "cost.io_tokens_help" = "I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost).";
-"dashboard.utilized_percent" = "%.0f%% utilized";
+"dashboard.utilized_percent" = "%@%% utilized";
 "dashboard.value_multiplier" = "· %@ value";
 "dashboard.api_equivalent_30d" = "API equivalent (30d)";
 "dashboard.all_in_monthly_est" = "All-in monthly (est.)";
@@ -1792,3 +1792,12 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_error.no_quota_for_project" = "%@: no quota data for this project";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "Some system text changes after CLI Pulse restarts.";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$dd %2$dh";
+"usage_pace.eta_days" = "%dd";
+"usage_pace.eta_hours_minutes" = "%1$dh %2$dm";
+"usage_pace.eta_hours" = "%dh";
+"usage_pace.eta_minutes" = "%dm";
+"usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
+"intents.less_than_amount" = "less than %@";

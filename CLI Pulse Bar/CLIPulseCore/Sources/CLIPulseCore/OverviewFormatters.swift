@@ -43,17 +43,6 @@ public enum OverviewFormatters {
         return f
     }()
 
-    nonisolated(unsafe) private static let hourFormatter: DateFormatter = {
-        let f = DateFormatter()
-        // `hourLabel` has a stable, locale-independent output contract
-        // ("3pm"). Without POSIX, the `a` token follows the device language
-        // and can render labels such as "3下午" on a Chinese system.
-        // Leave `timeZone` unset so the existing device-local behavior stays.
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "ha"
-        return f
-    }()
-
     /// v1.10.7: minimum bar fraction given to providers with nonzero token
     /// usage but zero cost (free tiers, promo periods, or providers whose
     /// `estimated_cost_today` hasn't rolled up server-side yet). Keeps them
@@ -118,22 +107,33 @@ public enum OverviewFormatters {
         return 0
     }
 
-    /// Convert an ISO-8601 timestamp to a short hour label like "3pm".
-    /// Falls back to extracting the HH substring if parsing fails, then
-    /// to the raw timestamp as last resort. Matches the behavior both
-    /// macOS `OverviewTab.hourLabel` and iOS `iOSOverviewTab.hourLabel`
-    /// were duplicating before v1.9.7.
-    public static func hourLabel(_ timestamp: String) -> String {
-        if let date = isoFormatterFractional.date(from: timestamp) {
-            return hourFormatter.string(from: date).lowercased()
-        }
-        if let date = isoFormatterBasic.date(from: timestamp) {
-            return hourFormatter.string(from: date).lowercased()
+    /// Convert an ISO-8601 timestamp to a short hour label in `locale`:
+    /// "3 PM", "15時", "오후 3시", "下午3时". The hour is the device's local one.
+    ///
+    /// These labels used to be a fixed English "3pm" in every language. That
+    /// was a workaround: the fixed `ha` pattern put the day period after the
+    /// hour ("3下午") under Chinese, and pinning it to POSIX traded that for
+    /// English. `DisplayFormat.hour` asks each locale for its own order.
+    ///
+    /// Falls back to the timestamp's HH digits read as that hour, then to the
+    /// raw timestamp. Matches the behavior both macOS `OverviewTab.hourLabel`
+    /// and iOS `iOSOverviewTab.hourLabel` were duplicating before v1.9.7.
+    public static func hourLabel(
+        _ timestamp: String,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        if let date = isoFormatterFractional.date(from: timestamp) ?? isoFormatterBasic.date(from: timestamp) {
+            return DisplayFormat.hour(date, locale: locale)
         }
         if timestamp.count >= 13 {
             let hourStart = timestamp.index(timestamp.startIndex, offsetBy: 11)
             let hourEnd = timestamp.index(hourStart, offsetBy: 2)
-            return String(timestamp[hourStart..<hourEnd]) + "h"
+            // The digits are already a wall-clock hour, so they are shown in
+            // UTC on the epoch day rather than converted to the device's zone.
+            if let hour = Int(timestamp[hourStart..<hourEnd]), (0..<24).contains(hour) {
+                return DisplayFormat.hour(Date(timeIntervalSince1970: TimeInterval(hour * 3600)),
+                                          locale: locale, timeZone: DisplayFormat.utc)
+            }
         }
         return timestamp
     }

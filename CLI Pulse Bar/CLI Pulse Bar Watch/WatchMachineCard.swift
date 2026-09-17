@@ -66,7 +66,7 @@ struct WatchMachineDetailView: View {
                 WatchMetricRow(label: L10n.machine.uptime, value: MachineFormat.uptime(up), icon: "clock")
             }
             if let load = d.loadAvg1m {
-                WatchMetricRow(label: L10n.machine.load, value: String(format: "%.2f", load), icon: "gauge.medium")
+                WatchMetricRow(label: L10n.machine.load, value: DisplayFormat.string("%.2f", load), icon: "gauge.medium")
             }
             if let mp = d.memoryPressure {
                 WatchMetricRow(label: L10n.machine.memPressure, value: MachineFormat.memPressureLabel(mp),

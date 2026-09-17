@@ -21,11 +21,20 @@ public enum WatchPulseFormat {
     /// Below `$10` the full two-decimal string is kept (cents matter at
     /// small amounts), delegating to `CostFormatter.format` so the
     /// `<$0.01` / 2-dp conventions stay identical to every other surface.
-    public static func abbreviatedCost(_ cost: Double) -> String {
-        if cost >= 10 {
-            return "$\(Int(cost.rounded()))"
+    ///
+    /// The whole-unit rung goes through the same converter as the full rung
+    /// instead of writing "$" itself, so the two rungs cannot name different
+    /// currencies. On the Watch that converter holds the currency the iPhone
+    /// sent with its context (`CurrencyConverter.adopt`).
+    public static func abbreviatedCost(
+        _ cost: Double,
+        converter: CurrencyConverter = .shared,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        if converter.convert(cost) >= 10 {
+            return converter.formatWholeUnits(cost, locale: locale)
         }
-        return CostFormatter.format(cost)
+        return converter.format(cost, locale: locale)
     }
 
     /// Week-to-date estimated cost across providers (the dashboard has no

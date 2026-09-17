@@ -37,6 +37,8 @@ extension PetFamily {
 public struct PetTab: View {
     @StateObject private var vm = PetViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The display locale on macOS roots, the system locale on iPhone.
+    @Environment(\.locale) private var locale
     @State private var showNameSheet = false
     @State private var nameDraft = ""
     // Live-persisted (not a one-time snapshot) so an auto-show / relaunch is
@@ -282,8 +284,10 @@ public struct PetTab: View {
             VStack(alignment: .leading, spacing: 6) {
                 Divider()
                 Text(L10n.pet.whyHatched).font(.subheadline).bold()
-                if let date = vm.model.state.ownedDayKeys[form.rawValue] {
-                    Text(L10n.pet.ownedOn(date)).font(.caption).foregroundStyle(.secondary)
+                if let dayKey = vm.model.state.ownedDayKeys[form.rawValue] {
+                    // The stored key is data; the reader gets a date ("Sep 17, 2026").
+                    Text(L10n.pet.ownedOn(DisplayFormat.day(dayKey, locale: locale) ?? dayKey))
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 let dom = why.dominant?.localizedName ?? L10n.pet.familyOther
                 let tempo = why.tempo == .burst ? L10n.pet.vitalSprint : L10n.pet.vitalWorking

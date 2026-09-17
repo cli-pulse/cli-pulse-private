@@ -8,6 +8,10 @@ struct CLIPulseWatchApp: App {
 
     init() {
         SentryLogger.start(platform: .watchOS)
+        // The iPhone's display currency as the last context delivered it, so
+        // the costs this Watch persisted do not show in dollars until
+        // WatchConnectivity activates and hands that context back.
+        CurrencyConverter.shared.restoreAdopted()
     }
 
     var body: some Scene {

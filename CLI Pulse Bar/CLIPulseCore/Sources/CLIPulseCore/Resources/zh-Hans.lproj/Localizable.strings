@@ -679,7 +679,7 @@
 "yield.empty_no_attribution" = "此期间没有归因到任何提交。请在已追踪的仓库中写些代码。";
 "yield.detail_subtitle" = "%@ · 按每次提交成本排序（越低越好）";
 "yield.commits_count" = "%d 次提交";
-"yield.commits_count_decimal" = "%.1f 次提交";
+"yield.commits_count_decimal" = "%@ 次提交";
 "yield.ambiguous_count" = "%d 次归因不明";
 "menu_bar.quit_full" = "退出 CLI Pulse Bar";
 
@@ -807,9 +807,9 @@
 "usage_pace.in_reserve" = "结余 %@%%";
 "usage_pace.lasts_until_reset" = "可用至重置";
 "usage_pace.runs_out_now" = "即将耗尽";
-"usage_pace.runs_out_in" = "%@ 后耗尽";
+"usage_pace.runs_out_in" = "%@后耗尽";
 "usage_pace.projected_empty_now" = "预计即将用尽";
-"usage_pace.projected_empty_in" = "预计 %@ 后用尽";
+"usage_pace.projected_empty_in" = "预计 %@后用尽";
 "usage_pace.run_out_risk" = "≈ 耗尽风险 %@%%";
 "usage_pace.summary_with_right" = "节奏：%@ · %@";
 "usage_pace.summary_left_only" = "节奏：%@";
@@ -972,7 +972,7 @@
 "pet.switch_companion" = "当前伙伴";
 "pet.why_hatched" = "这只猫为什么会孵化？";
 "pet.locked" = "尚未孵化";
-"pet.owned_on" = "%@ 孵化";
+"pet.owned_on" = "%@孵化";
 "pet.energy" = "活力";
 "pet.hunger" = "饱食度";
 "pet.mood" = "心情";
@@ -1366,7 +1366,7 @@
 "settings.block_claude_on_outdated_helper_hint" = "当 Companion CLI helper 版本过旧、无法以你的 Max/Pro 方案运行 Claude 时，阻止启动托管 Claude 会话（否则会在不提示的情况下改用 Claude API）。默认关闭 — 你只会看到一条警告。";
 "cost.io_tokens_codexbar_help" = "I/O token = 输入 + 输出。不含缓存读取（缓存读取约占 Claude 原始 token 量的 98%，但按 10% 的价格计费——已计入费用）。CodexBar 的「tokens」数值包含缓存，我们的不包含，所以两边数字会不同。两边的费用都按各组成部分的完整单价计算，结果一致。";
 "cost.io_tokens_help" = "I/O token = 输入 + 输出。不含缓存读取（缓存读取约占 Claude 原始 token 量的 98%，但按 10% 的价格计费——已计入费用）。";
-"dashboard.utilized_percent" = "使用率 %.0f%%";
+"dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· 价值 %@";
 "dashboard.api_equivalent_30d" = "API 等价费用（30 天）";
 "dashboard.all_in_monthly_est" = "月度总计（预估）";
@@ -1782,3 +1782,12 @@
 "collector_error.no_quota_for_project" = "%@：此项目没有配额数据";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "部分系统文字在重新打开 CLI Pulse 后才会切换。";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$d 天 %2$d 小时";
+"usage_pace.eta_days" = "%d 天";
+"usage_pace.eta_hours_minutes" = "%1$d 小时 %2$d 分钟";
+"usage_pace.eta_hours" = "%d 小时";
+"usage_pace.eta_minutes" = "%d 分钟";
+"usage_dashboard.day_tooltip" = "%1$@：%2$@ token · %3$@";
+"intents.less_than_amount" = "不到 %@";

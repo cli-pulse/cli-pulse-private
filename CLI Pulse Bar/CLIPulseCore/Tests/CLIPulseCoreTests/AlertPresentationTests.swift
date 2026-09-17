@@ -231,16 +231,66 @@ final class AlertPresentationTests: XCTestCase {
         }
     }
 
-    func testQuotaAlertWithAResetTimeKeepsIt() {
+    /// The reset used to reach the sentence as the stored UTC timestamp:
+    /// "配额窗口「5 小时窗口」已使用 96%（剩余 4%，2026-09-16T14:00:00Z 重置）。"
+    /// It is shown as a local date and time now, while the record keeps the ISO.
+    func testQuotaAlertShowsTheResetAsALocalDateAndTime() {
         withChinese {
+            let message = "Quota window '5h Window' is 96% used (4% remaining) (resets 2026-09-16T14:00:00.000Z)."
+            let a = record(id: "quota-Codex-5h Window-95", type: "Quota Warning",
+                           title: "Codex 5h Window at 96%", message: message, provider: "Codex")
+            let shown = AlertPresentation.text(for: a)
+            XCTAssertTrue(shown.recognized)
+            XCTAssertFalse(shown.message.contains("2026-09-16T14"), "raw timestamp shown: \(shown.message)")
+            let reset = ISO8601DateFormatter().date(from: "2026-09-16T14:00:00Z")!
+            let local = DisplayFormat.dateTime(reset)
+            XCTAssertTrue(local.contains("9月16日") || local.contains("9月17日"),
+                          "not a Chinese date: \(local)")
+            XCTAssertTrue(shown.message.contains("\(local) 重置"), "reset not shown as a date: \(shown.message)")
+            XCTAssertEqual(a.message, message, "the stored English was changed")
+        }
+    }
+
+    /// Spanish read "se reinicia el …", which suits a date from Spain ("el 16
+    /// sept, 22:00") but not one from a US region, where the month comes first:
+    /// "se reinicia el sept 16, 10:00 p.m.". Nor a kept vendor reset: "el
+    /// Friday". No article may stand right before the reset.
+    func testSpanishQuotaResetReadsWithAMonthFirstDate() {
+        let store = LocaleOverrideStore.shared
+        let previousOverride = store.override
+        let previousSystemLocale = LocaleOverrideStore.systemLocale
+        defer {
+            store.set(previousOverride)
+            LocaleOverrideStore.systemLocale = previousSystemLocale
+        }
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
+        store.set("es")
+
+        let local = DisplayFormat.dateTime(ISO8601DateFormatter().date(from: "2026-09-16T14:00:00Z")!)
+        XCTAssertTrue(local.hasPrefix("sept"), "control: month first on a US region: \(local)")
+        for (reset, shownReset) in [("2026-09-16T14:00:00Z", local), ("Friday", "Friday")] {
             let a = record(id: "quota-Codex-5h Window-95", type: "Quota Warning",
                            title: "Codex 5h Window at 96%",
-                           message: "Quota window '5h Window' is 96% used (4% remaining) (resets 2026-09-16T14:00:00Z).",
+                           message: "Quota window '5h Window' is 96% used (4% remaining) (resets \(reset)).",
                            provider: "Codex")
             let shown = AlertPresentation.text(for: a)
             XCTAssertTrue(shown.recognized)
-            XCTAssertTrue(shown.message.contains("2026-09-16T14:00:00Z"),
-                          "the reset time was dropped: \(shown.message)")
+            XCTAssertFalse(shown.message.contains("remaining"), "control: not the English text: \(shown.message)")
+            XCTAssertTrue(shown.message.contains(shownReset), "reset lost: \(shown.message)")
+            XCTAssertFalse(shown.message.contains("el \(shownReset)"), shown.message)
+        }
+    }
+
+    /// A reset that is not ISO-8601 is a vendor's own wording: kept, not dropped.
+    func testQuotaAlertKeepsANonISOResetAsWritten() {
+        withChinese {
+            let a = record(id: "quota-Claude-Weekly-80", type: "Quota Warning",
+                           title: "Claude Weekly at 85%",
+                           message: "Quota window 'Weekly' is 85% used (15% remaining) (resets Friday).",
+                           provider: "Claude")
+            let shown = AlertPresentation.text(for: a)
+            XCTAssertTrue(shown.recognized)
+            XCTAssertTrue(shown.message.contains("Friday 重置"), "the reset text was lost: \(shown.message)")
         }
     }
 }

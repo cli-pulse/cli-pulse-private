@@ -40,6 +40,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
                                                 name: .cliPulseDidSignOut, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleDidRefresh(_:)),
                                                 name: .cliPulseDidRefresh, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleDisplayCurrencyDidChange(_:)),
+                                                name: .displayCurrencyDidChange, object: nil)
     }
 
     /// Activate the WCSession if supported (iPhone only).
@@ -82,15 +84,32 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         // user sees "Pull to refresh" forever.
         guard let state = (notification.object as? AppState) ?? appState else { return }
         Task { @MainActor in
-            self.sendDashboardToWatch(
-                userID: state.userId,
-                dashboard: state.dashboard,
-                providers: state.providers,
-                sessions: state.sessions,
-                alerts: state.alerts,
-                devices: state.devices
-            )
+            self.forwardSnapshot(of: state)
         }
+    }
+
+    /// A new display currency, or a fetched rate, reaches the Watch now rather
+    /// than at the next refresh. Posted from any thread (the rate fetch is
+    /// async), and at launch before any data has loaded: resending then would
+    /// replace the Watch's cached numbers with an empty snapshot, so it waits
+    /// for a first refresh.
+    @objc private func handleDisplayCurrencyDidChange(_ notification: Notification) {
+        Task { @MainActor in
+            guard let state = self.appState, state.lastRefresh != nil else { return }
+            self.forwardSnapshot(of: state)
+        }
+    }
+
+    @MainActor
+    private func forwardSnapshot(of state: AppState) {
+        sendDashboardToWatch(
+            userID: state.userId,
+            dashboard: state.dashboard,
+            providers: state.providers,
+            sessions: state.sessions,
+            alerts: state.alerts,
+            devices: state.devices
+        )
     }
 
     // MARK: - Send Auth to Watch
@@ -250,6 +269,11 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         if let data = try? encoder.encode(deviceSummaries) {
             context["devices"] = data
         }
+        // The Watch cannot read this app's defaults or fetch rates, and without
+        // these showed every cost in dollars whatever the user chose.
+        let currency = CurrencyConverter.shared.handoff()
+        context[CurrencyConverter.contextCurrencyKey] = currency.currencyCode
+        context[CurrencyConverter.contextRateKey] = currency.rate
 
         guard WCSession.isSupported() else { return }
         pendingLock.lock()

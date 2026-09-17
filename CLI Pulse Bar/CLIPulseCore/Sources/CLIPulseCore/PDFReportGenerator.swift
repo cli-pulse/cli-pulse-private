@@ -232,8 +232,11 @@ public enum PDFReportGenerator {
                 let cost = costByDate[date] ?? 0
                 let barWidth = maxCost > 0 ? CGFloat(cost / maxCost) * (contentWidth - 130) : 0
 
-                // Date label
-                _ = drawText(String(date.suffix(5)), at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
+                // Date label. The key's "MM-DD" tail read as day 09 of month 17
+                // in Spanish; the label now puts month and day in the reader's
+                // order ("9/17", "17/9"), and a malformed key shows as it is.
+                let dateLabel = DisplayFormat.day(date, style: .numeric) ?? date
+                _ = drawText(dateLabel, at: CGPoint(x: margin, y: y), fontSize: 8, color: .gray, context: context)
 
                 // Bar
                 context.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 1.0, alpha: 0.7))
@@ -389,12 +392,7 @@ public enum PDFReportGenerator {
     // MARK: - Utilities
 
     private static func formatTokens(_ value: Int) -> String {
-        if value >= 1_000_000 {
-            return String(format: "%.1fM", Double(value) / 1_000_000)
-        } else if value >= 1_000 {
-            return String(format: "%.1fK", Double(value) / 1_000)
-        }
-        return "\(value)"
+        TokenFormatter.format(value)
     }
 
     private static func dateString(_ date: Date) -> String {

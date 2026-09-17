@@ -347,9 +347,18 @@ final class WatchSessionManager: NSObject, ObservableObject {
         else {
             return
         }
+        // Read out here: the context dictionary is not Sendable.
+        let currencyCode = context[CurrencyConverter.contextCurrencyKey] as? String
+        let fxRate = context[CurrencyConverter.contextRateKey] as? Double
 
         DispatchQueue.main.async {
             guard self.accept(identity) else { return }
+            // Before the views re-render below. An iPhone app too old to send
+            // the currency leaves dollars. It is also kept for the next launch
+            // (`CLIPulseWatchApp.init`): WatchConnectivity hands this context
+            // back only once the session activates, after the persisted costs
+            // have already been shown.
+            CurrencyConverter.shared.adoptAndRemember(currencyCode: currencyCode, rate: fxRate)
             if self.lastReceivedIdentity != identity {
                 self.clearCachedData()
             }

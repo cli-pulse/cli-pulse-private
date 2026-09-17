@@ -490,7 +490,7 @@
 "yield.empty_no_attribution" = "이 기간에 귀속된 커밋이 없습니다. 추적 중인 저장소에서 코드를 작성해 보세요.";
 "yield.detail_subtitle" = "%@ · 커밋당 비용순 정렬 (낮을수록 좋음)";
 "yield.commits_count" = "커밋 %d개";
-"yield.commits_count_decimal" = "커밋 %.1f개";
+"yield.commits_count_decimal" = "커밋 %@개";
 "yield.ambiguous_count" = "모호 %d건";
 "menu_bar.quit_full" = "CLI Pulse Bar 종료";
 "common.no_provider_selected" = "선택된 공급자 없음";
@@ -1320,7 +1320,7 @@
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI 헬퍼가 너무 오래되어 Max/Pro 플랜으로 Claude를 실행할 수 없을 때 관리형 Claude 세션 시작을 막습니다(그대로 시작하면 알리지 않고 Claude API를 사용합니다). 기본값은 꺼짐 — 경고만 표시됩니다.";
 "cost.io_tokens_codexbar_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨). CodexBar의 'tokens' 수치는 캐시를 포함하고 CLI Pulse는 포함하지 않으므로 숫자가 다릅니다. 비용은 양쪽 모두 구성 요소별 전체 단가로 계산되므로 일치합니다.";
 "cost.io_tokens_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨).";
-"dashboard.utilized_percent" = "사용률 %.0f%%";
+"dashboard.utilized_percent" = "사용률 %@%%";
 "dashboard.value_multiplier" = "· %@ 가치";
 "dashboard.api_equivalent_30d" = "API 환산 (30일)";
 "dashboard.all_in_monthly_est" = "월 총액 (추정)";
@@ -1752,3 +1752,12 @@
 "collector_error.no_quota_for_project" = "%@: 이 프로젝트의 할당량 데이터 없음";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "일부 시스템 텍스트는 CLI Pulse를 다시 시작한 후에 바뀝니다.";
+
+/* ── formatting ── */
+"usage_pace.eta_days_hours" = "%1$d일 %2$d시간";
+"usage_pace.eta_days" = "%d일";
+"usage_pace.eta_hours_minutes" = "%1$d시간 %2$d분";
+"usage_pace.eta_hours" = "%d시간";
+"usage_pace.eta_minutes" = "%d분";
+"usage_dashboard.day_tooltip" = "%1$@: %2$@ 토큰 · %3$@";
+"intents.less_than_amount" = "%@ 미만";

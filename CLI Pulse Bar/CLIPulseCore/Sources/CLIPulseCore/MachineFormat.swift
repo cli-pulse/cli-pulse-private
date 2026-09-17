@@ -18,6 +18,16 @@ public enum MachineFormat {
         String(format: "%.0f GB", Double(bytes) / 1_073_741_824.0)
     }
 
+    /// A process's CPU share for the Mac's process list: "12.5%", "12,5%" in
+    /// Spain. Never grouped: a busy process on a many-core Mac passes 1000%,
+    /// and "1,234.5%" does not fit the row's fixed 48pt column.
+    public static func processCPU(
+        _ percent: Double,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        percent.formatted(.number.precision(.fractionLength(1)).grouping(.never).locale(locale)) + "%"
+    }
+
     /// Localized memory-pressure label (nominal/warn/critical → Normal/Elevated/High).
     public static func memPressureLabel(_ level: String) -> String {
         switch level {

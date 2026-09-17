@@ -18,8 +18,12 @@ struct GetStatusIntent: AppIntent {
             return .result(value: L10n.intents.noDataValue, dialog: dialog)
         }
 
-        let usage = formatUsage(snapshot.totalUsageToday)
-        let cost = formatCost(snapshot.totalCostToday)
+        let usage = TokenFormatter.format(snapshot.totalUsageToday)
+        // In the currency the app shows. This intent is compiled into the iOS
+        // app target, so it runs in the app's process and reads the app's own
+        // defaults; it reads the choice directly because Siri can run it without
+        // the app's `AppState` ever having applied it.
+        let cost = CurrencyConverter.shared.spokenFormat(snapshot.totalCostToday, as: .stored())
         let sessions = snapshot.activeSessions
         let alerts = snapshot.unresolvedAlerts
 
@@ -35,24 +39,5 @@ struct GetStatusIntent: AppIntent {
 
         let dialog = IntentDialog(stringLiteral: spoken)
         return .result(value: spoken, dialog: dialog)
-    }
-
-    private func formatUsage(_ usage: Int) -> String {
-        if usage >= 1_000_000 {
-            return String(format: "%.1fM", Double(usage) / 1_000_000)
-        } else if usage >= 1_000 {
-            return String(format: "%.0fK", Double(usage) / 1_000)
-        }
-        return "\(usage)"
-    }
-
-    private func formatCost(_ cost: Double) -> String {
-        // Stays USD, deferred with the widget/watch to a future app-group
-        // currency-sync pass. (An earlier note here said this intent ran in a
-        // separate extension process without CLIPulseCore. It does not: it is
-        // compiled into the iOS app target, which links CLIPulseCore — checked
-        // against the project's target membership.)
-        if cost < 0.01 { return L10n.intents.lessThanOneCent }
-        return String(format: "$%.2f", cost)
     }
 }

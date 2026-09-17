@@ -1,3 +1,4 @@
+import CLIPulseCore
 import Foundation
 import WidgetKit
 
@@ -16,6 +17,12 @@ struct WidgetData: Codable {
     /// legacy payload (nil) or a paid user shows content; only an explicit
     /// `false` locks. The watch complication ignores this (stays free).
     var isPro: Bool? = nil
+    /// The app's display currency and the rate it converts with. This
+    /// extension cannot read the app's defaults, so the app sends both;
+    /// `WidgetStorage.load` applies them. A payload from before they existed
+    /// has neither, and costs show in dollars as that app did here.
+    var displayCurrency: String? = nil
+    var fxRate: Double? = nil
 
     static let empty = WidgetData(
         totalUsageToday: 0,
@@ -77,19 +84,11 @@ struct WidgetProviderData: Codable, Identifiable {
     /// the payload carries no weekly value (legacy or no weekly tier).
     var weeklyUsed: Double { min(1, max(0, weeklyPercent ?? usagePercent)) }
 
-    var formattedUsage: String {
-        if usage >= 1_000_000 {
-            return String(format: "%.1fM", Double(usage) / 1_000_000)
-        } else if usage >= 1_000 {
-            return String(format: "%.0fK", Double(usage) / 1_000)
-        }
-        return "\(usage)"
-    }
+    var formattedUsage: String { TokenFormatter.format(usage) }
 
-    var formattedCost: String {
-        if costToday < 0.01 { return "$0.00" }
-        return String(format: "$%.2f", costToday)
-    }
+    /// Through the app's formatter, so a cost reads the same here as in the app:
+    /// separators, "<$0.01", and the display currency the payload carried.
+    var formattedCost: String { CostFormatter.format(costToday) }
 }
 
 // MARK: - App Group Storage
@@ -111,6 +110,9 @@ enum WidgetStorage {
               let decoded = try? JSONDecoder().decode(WidgetData.self, from: data) else {
             return .empty
         }
+        // Every widget in this process renders the payload loaded here, so the
+        // shared converter that `CostFormatter` uses takes its currency.
+        CurrencyConverter.shared.adopt(currencyCode: decoded.displayCurrency, rate: decoded.fxRate)
         return decoded
     }
 }

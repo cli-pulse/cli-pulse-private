@@ -8,6 +8,18 @@
 import Foundation
 
 public enum DisplayCurrency: String, CaseIterable, Codable, Sendable {
+    /// Where the app keeps the choice: its own standard defaults. The widget
+    /// extension and the Watch run in other processes and cannot read it, so
+    /// the app hands them the choice with its data (`CurrencyConverter.adopt`).
+    public static let defaultsKey = "cli_pulse_display_currency"
+
+    /// The stored choice, read directly. For code that runs in the app's process
+    /// without `AppState` having set up `CurrencyConverter.shared`, such as an
+    /// App Intent launched by Siri in the background.
+    public static func stored(in defaults: UserDefaults = .standard) -> DisplayCurrency {
+        defaults.string(forKey: defaultsKey).flatMap(DisplayCurrency.init(rawValue:)) ?? .usd
+    }
+
     case usd = "USD"
     case cny = "CNY"
     case eur = "EUR"
@@ -35,6 +47,9 @@ public enum DisplayCurrency: String, CaseIterable, Codable, Sendable {
         default: return 2
         }
     }
+
+    /// The smallest amount shown without a "<": one cent, or one whole unit.
+    var smallestUnit: Double { fractionDigits == 0 ? 1.0 : 0.01 }
 
     /// Hardcoded fallback (approx. 2026) units per 1 USD — used until/if a live
     /// fetch succeeds.
@@ -91,6 +106,70 @@ public final class CurrencyConverter: @unchecked Sendable {
 
     public func currentCurrency() -> DisplayCurrency { lock.withLock { currency } }
 
+    // MARK: - Another process's choice
+
+    /// Keys of the display currency and its rate in the Watch's application
+    /// context. The widget payload carries the same pair as `displayCurrency`
+    /// and `fxRate`.
+    public static let contextCurrencyKey = "display_currency"
+    public static let contextRateKey = "fx_rate"
+
+    /// What the app formats costs with, for a process that shows them but
+    /// cannot read the app's defaults or fetch rates of its own: the widget
+    /// extension and the Watch. The rate goes along so a cost reads the same
+    /// amount there as in the app, not one converted at a stale fallback.
+    public func handoff() -> (currencyCode: String, rate: Double) {
+        lock.withLock { (currency.rawValue, rates[currency.rawValue] ?? currency.fallbackRate) }
+    }
+
+    /// Formats costs the way the app's `handoff()` described. With no currency
+    /// (a payload from an app that predates this), costs are in dollars,
+    /// which is what that app showed there. So is a code this version does not
+    /// know, and its rate is not the dollar's, so it is dropped with it. An
+    /// unusable rate keeps the one this process already has for the currency.
+    public func adopt(currencyCode: String?, rate: Double?) {
+        let known = currencyCode.flatMap(DisplayCurrency.init(rawValue:))
+        let adopted = known ?? .usd
+        let changed: Bool = lock.withLock {
+            var changed = currency != adopted
+            currency = adopted
+            if known != nil, let rate, rate.isFinite, rate > 0, rates[adopted.rawValue] != rate {
+                rates[adopted.rawValue] = rate
+                changed = true
+            }
+            return changed
+        }
+        if changed {
+            NotificationCenter.default.post(name: .displayCurrencyDidChange, object: nil)
+        }
+    }
+
+    /// Where `adoptAndRemember` keeps what it adopted, in this process's own
+    /// defaults. Kept apart from `DisplayCurrency.defaultsKey`, which holds a
+    /// choice the user made in this process rather than one handed to it.
+    static let adoptedCurrencyKey = "cli_pulse_adopted_display_currency"
+    static let adoptedRateKey = "cli_pulse_adopted_fx_rate"
+
+    /// `adopt`, and keep the result for `restoreAdopted()` at the next launch.
+    ///
+    /// For the Watch. It shows the costs it persisted as soon as it launches,
+    /// but WatchConnectivity hands the last context back only once the session
+    /// activates, so without this those costs read in dollars until then. The
+    /// widget extension needs neither: every payload it loads carries the pair.
+    public func adoptAndRemember(currencyCode: String?, rate: Double?) {
+        adopt(currencyCode: currencyCode, rate: rate)
+        let adopted = handoff()
+        defaults.set(adopted.currencyCode, forKey: Self.adoptedCurrencyKey)
+        defaults.set(adopted.rate, forKey: Self.adoptedRateKey)
+    }
+
+    /// Applies what `adoptAndRemember` last kept. Call once at launch, before
+    /// anything formats a cost. With nothing kept, dollars stay.
+    public func restoreAdopted() {
+        guard let code = defaults.string(forKey: Self.adoptedCurrencyKey) else { return }
+        adopt(currencyCode: code, rate: defaults.object(forKey: Self.adoptedRateKey) as? Double)
+    }
+
     // MARK: - Convert + format (called at display time)
 
     /// Units per 1 USD for the active currency (falls back to the hardcoded rate).
@@ -102,24 +181,58 @@ public final class CurrencyConverter: @unchecked Sendable {
 
     /// Formats a USD cost in the active display currency. Mirrors CostFormatter's
     /// "<$0.01" small-value convention, adapted to the currency's smallest unit.
-    public func format(_ usd: Double) -> String {
-        let (cur, converted): (DisplayCurrency, Double) = lock.withLock {
-            (currency, usd * (rates[currency.rawValue] ?? currency.fallbackRate))
-        }
-        let smallest = cur.fractionDigits == 0 ? 1.0 : 0.01
-        if usd > 0, converted < smallest {
-            return "<\(cur.symbol)\(Self.number(smallest, digits: cur.fractionDigits))"
-        }
-        return "\(cur.symbol)\(Self.number(converted, digits: cur.fractionDigits))"
+    public func format(_ usd: Double, locale: Locale = LocaleOverrideStore.shared.displayLocale) -> String {
+        format(usd, as: currentCurrency(), locale: locale)
     }
 
-    private static func number(_ value: Double, digits: Int) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .decimal
-        f.locale = Locale(identifier: "en_US")
-        f.minimumFractionDigits = digits
-        f.maximumFractionDigits = digits
-        return f.string(from: NSNumber(value: value)) ?? String(format: "%.\(digits)f", value)
+    /// `format(_:)` in a given currency rather than the active one.
+    public func format(
+        _ usd: Double,
+        as cur: DisplayCurrency,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        let converted = convert(usd, to: cur)
+        let smallest = cur.smallestUnit
+        if usd > 0, converted < smallest {
+            return "<" + amount(smallest, in: cur, fractionDigits: cur.fractionDigits, locale: locale)
+        }
+        return amount(converted, in: cur, fractionDigits: cur.fractionDigits, locale: locale)
+    }
+
+    /// The active currency in whole units, for a glance with no room for cents:
+    /// "$146", "¥1,044".
+    public func formatWholeUnits(_ usd: Double, locale: Locale = LocaleOverrideStore.shared.displayLocale) -> String {
+        let cur = currentCurrency()
+        return amount(convert(usd, to: cur).rounded(), in: cur, fractionDigits: 0, locale: locale)
+    }
+
+    /// A cost as Siri says it. The dollar keeps its "less than one cent" floor;
+    /// another currency says "less than ¥0.01", because a cent is not its unit
+    /// and a spoken "<" is not a word.
+    public func spokenFormat(_ usd: Double, as cur: DisplayCurrency) -> String {
+        guard convert(usd, to: cur) < cur.smallestUnit else { return format(usd, as: cur) }
+        return cur == .usd
+            ? L10n.intents.lessThanOneCent
+            : L10n.intents.lessThanAmount(amount(cur.smallestUnit, in: cur, fractionDigits: cur.fractionDigits))
+    }
+
+    func convert(_ usd: Double, to cur: DisplayCurrency) -> Double {
+        usd * lock.withLock { rates[cur.rawValue] ?? cur.fallbackRate }
+    }
+
+    /// The symbol stays where `DisplayCurrency.symbol` puts it, in front, in
+    /// every language: a locale's own currency style would turn a Japanese
+    /// reader's CNY into "CN¥" and move the symbol behind the number in Spain,
+    /// against the choice this setting makes. Only the digits follow the
+    /// reader: "$1,234.56", or "$1234,56" in Spain, where an en_US comma reads
+    /// as the decimal point.
+    private func amount(
+        _ value: Double,
+        in cur: DisplayCurrency,
+        fractionDigits: Int,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        cur.symbol + value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
     }
 
     // MARK: - Rate fetch (daily, cached 24h, non-blocking)

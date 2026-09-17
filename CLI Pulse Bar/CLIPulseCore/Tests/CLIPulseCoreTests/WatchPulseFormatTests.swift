@@ -4,6 +4,21 @@ import XCTest
 /// Coverage for the Pulse-home pure helpers (watch app target is CI-only).
 final class WatchPulseFormatTests: XCTestCase {
 
+    private var savedSystemLocale: (() -> Locale)!
+
+    /// The cost rungs format in the display locale, whose separators come from
+    /// the Mac's region: pinned to CI's en_US, or "$9.60" fails in Germany.
+    override func setUp() {
+        super.setUp()
+        savedSystemLocale = LocaleOverrideStore.systemLocale
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.systemLocale = savedSystemLocale
+        super.tearDown()
+    }
+
     // MARK: - activityLevel
 
     func test_activityLevel_zeroSessionsIsCalm() {
@@ -53,6 +68,19 @@ final class WatchPulseFormatTests: XCTestCase {
     func test_abbreviatedCost_boundaryAtTen() {
         // Exactly $10 abbreviates to whole dollars.
         XCTAssertEqual(WatchPulseFormat.abbreviatedCost(10.0), "$10")
+    }
+
+    /// The whole-unit rung wrote "$" itself, so it could name a different
+    /// currency than the full rung beside it.
+    func test_abbreviatedCost_wholeUnitsUseTheActiveCurrency() {
+        let converter = CurrencyConverter(defaults: UserDefaults(suiteName: "fx-\(UUID().uuidString)")!)
+        let en = Locale(identifier: "en_US")
+        converter.setCurrency(.cny)
+        // 146.03 USD × 7.15 = 1044.11; 1 USD = 7.15 CNY stays below the 10-unit rung.
+        XCTAssertEqual(WatchPulseFormat.abbreviatedCost(146.03, converter: converter, locale: en), "¥1,044")
+        XCTAssertEqual(WatchPulseFormat.abbreviatedCost(1, converter: converter, locale: en), "¥7.15")
+        converter.setCurrency(.jpy)
+        XCTAssertEqual(WatchPulseFormat.abbreviatedCost(0.1, converter: converter, locale: en), "¥15")
     }
 
     // MARK: - weekToDateCost

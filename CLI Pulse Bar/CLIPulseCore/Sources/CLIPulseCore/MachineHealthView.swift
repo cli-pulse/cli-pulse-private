@@ -230,7 +230,7 @@ public struct MachineHealthView: View {
             MetricCard(title: L10n.machine.memory, value: "\(snap.memoryPercent)%",
                        subtitle: memoryDetail(snap), icon: "memorychip", color: PulseTheme.secondaryAccent)
             if snap.can("power"), let watts = snap.systemPowerW {
-                MetricCard(title: L10n.machine.power, value: String(format: "%.1f W", watts),
+                MetricCard(title: L10n.machine.power, value: DisplayFormat.string("%.1f W", watts),
                            subtitle: powerDetail(snap), icon: "bolt.fill", color: .yellow)
             }
             if snap.can("temps"), let temp = snap.cpuTempC {
@@ -302,8 +302,8 @@ public struct MachineHealthView: View {
                             MetricCard(title: L10n.machine.uptime, value: formatUptime(up), icon: "clock", color: PulseTheme.accent)
                         }
                         if let la = snap.loadAvg, let one = la.first {
-                            MetricCard(title: L10n.machine.load, value: String(format: "%.2f", one),
-                                       subtitle: la.count >= 3 ? String(format: "%.2f · %.2f", la[1], la[2]) : nil,
+                            MetricCard(title: L10n.machine.load, value: DisplayFormat.string("%.2f", one),
+                                       subtitle: la.count >= 3 ? DisplayFormat.string("%.2f · %.2f", la[1], la[2]) : nil,
                                        icon: "speedometer", color: .teal)
                         }
                         if let mp = snap.memoryPressure {
@@ -510,7 +510,7 @@ public struct MachineHealthView: View {
                 Text(String(format: "%.0f MB", proc.rssMB))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
-                Text(String(format: "%.1f%%", proc.cpuPercent))
+                Text(MachineFormat.processCPU(proc.cpuPercent))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(proc.cpuPercent >= 80 ? .orange : .primary)
                     .frame(width: 48, alignment: .trailing)
@@ -1139,15 +1139,15 @@ public struct MachineHealthView: View {
     private func memoryDetail(_ snap: MachineSnapshot) -> String? {
         guard snap.memoryTotalBytes > 0 else { return nil }
         let gib = 1_073_741_824.0
-        return String(format: "%.1f / %.1f GB", Double(snap.memoryUsedBytes) / gib, Double(snap.memoryTotalBytes) / gib)
+        return DisplayFormat.string("%.1f / %.1f GB", Double(snap.memoryUsedBytes) / gib, Double(snap.memoryTotalBytes) / gib)
     }
 
     private func powerDetail(_ snap: MachineSnapshot) -> String? {
         guard let cpu = snap.cpuPowerW else { return nil }
         if let gpu = snap.gpuPowerW {
-            return String(format: "CPU %.1f · GPU %.1f", cpu, gpu)
+            return DisplayFormat.string("CPU %.1f · GPU %.1f", cpu, gpu)
         }
-        return String(format: "CPU %.1f W", cpu)
+        return DisplayFormat.string("CPU %.1f W", cpu)
     }
 
     private func tempColor(_ celsius: Double) -> Color {

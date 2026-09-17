@@ -9,7 +9,24 @@ import XCTest
 ///
 /// Currency is ALWAYS two decimal places. These assertions pin that so the
 /// 1-decimal form can't silently come back.
+///
+/// Digits follow the display locale, whose separators come from the Mac's
+/// region, so the region is pinned to CI's en_US: on a Mac set to Germany or
+/// Spain "$9.60" reads "$9,60" and these would fail for a reason they do not test.
 final class CostFormatterTests: XCTestCase {
+
+    private var savedSystemLocale: (() -> Locale)!
+
+    override func setUp() {
+        super.setUp()
+        savedSystemLocale = LocaleOverrideStore.systemLocale
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.systemLocale = savedSystemLocale
+        super.tearDown()
+    }
 
     func testValuesAtOrAboveOneDollarUseTwoDecimals() {
         XCTAssertEqual(CostFormatter.format(9.6), "$9.60")

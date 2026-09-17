@@ -20,6 +20,12 @@ public enum L10n {
     /// language switcher (footer button on macOS) can swap the
     /// `.lproj` bundle at runtime. When `override == nil` the store
     /// returns the same default bundle, preserving prior behavior.
+    ///
+    /// Arguments format without a locale, on purpose. A locale would group
+    /// every `%d` as well as `%f` ("status -25,308", "max 5,779 rpm",
+    /// "expected 12.345.678"), and an OSStatus or a byte count that is grepped
+    /// for must read as the number. A decimal the reader sees is formatted by
+    /// its accessor with `DisplayFormat.decimal` and reaches the value as `%@`.
     private static func tr(_ key: String, _ args: CVarArg...) -> String {
         let format = resolve(key)
         return args.isEmpty ? format : String(format: format, arguments: args)
@@ -313,7 +319,9 @@ public enum L10n {
         public static var subscriptionUtilization: String { tr("dashboard.subscription_utilization") }
         public static var totalMonthly: String { tr("dashboard.total_monthly") }
         public static var noEnabledWithData: String { tr("dashboard.no_enabled_with_data") }
-        public static func utilizedPercent(_ a0: Double) -> String { tr("dashboard.utilized_percent", a0) }
+        public static func utilizedPercent(_ a0: Double) -> String {
+            tr("dashboard.utilized_percent", DisplayFormat.decimal(a0, fractionDigits: 0))
+        }
         public static func valueMultiplier(_ a0: String) -> String { tr("dashboard.value_multiplier", a0) }
         public static var apiEquivalent30d: String { tr("dashboard.api_equivalent_30d") }
         public static var allInMonthlyEst: String { tr("dashboard.all_in_monthly_est") }
@@ -336,6 +344,10 @@ public enum L10n {
         public static var longestStreak: String { tr("usage_dashboard.longest_streak") }
         public static var peakDay: String { tr("usage_dashboard.peak_day") }
         public static var favoriteModel: String { tr("usage_dashboard.favorite_model") }
+        /// Heatmap cell hover text: date, token count, cost.
+        public static func dayTooltip(_ date: String, _ tokens: String, _ cost: String) -> String {
+            tr("usage_dashboard.day_tooltip", date, tokens, cost)
+        }
         public static var messages: String { tr("usage_dashboard.messages") }
         // Sections
         public static var byModel: String { tr("usage_dashboard.by_model") }
@@ -1787,7 +1799,9 @@ public enum L10n {
         public static var emptyNoAttribution: String { tr("yield.empty_no_attribution") }
         public static func detailSubtitle(_ rangeLabel: String) -> String { tr("yield.detail_subtitle", rangeLabel) }
         public static func commitsCount(_ count: Int) -> String { tr("yield.commits_count", count) }
-        public static func commitsCountDecimal(_ count: Double) -> String { tr("yield.commits_count_decimal", count) }
+        public static func commitsCountDecimal(_ count: Double) -> String {
+            tr("yield.commits_count_decimal", DisplayFormat.decimal(count, fractionDigits: 1))
+        }
         public static func ambiguousCount(_ count: Int) -> String { tr("yield.ambiguous_count", count) }
         public static var rangeLast7Days: String { tr("yield.range_last_7_days") }
         public static var rangeLast30Days: String { tr("yield.range_last_30_days") }
@@ -1908,6 +1922,18 @@ public enum L10n {
         public static func summaryLeftOnly(_ left: String) -> String {
             tr("usage_pace.summary_left_only", left)
         }
+        // The countdown inside `runsOutIn` / `projectedEmptyIn`. Keys of their
+        // own rather than `machine.uptime_*`, so rewording uptime cannot change
+        // pace text.
+        public static func etaDaysHours(_ days: Int, _ hours: Int) -> String {
+            tr("usage_pace.eta_days_hours", days, hours)
+        }
+        public static func etaDays(_ days: Int) -> String { tr("usage_pace.eta_days", days) }
+        public static func etaHoursMinutes(_ hours: Int, _ minutes: Int) -> String {
+            tr("usage_pace.eta_hours_minutes", hours, minutes)
+        }
+        public static func etaHours(_ hours: Int) -> String { tr("usage_pace.eta_hours", hours) }
+        public static func etaMinutes(_ minutes: Int) -> String { tr("usage_pace.eta_minutes", minutes) }
     }
 
     // MARK: - Local scan consent (v1.50 W-C)
@@ -2293,6 +2319,11 @@ public enum L10n {
         public static var clauseSeparator: String { tr("intents.clause_separator") }
         public static var sentenceEnd: String { tr("intents.sentence_end") }
         public static var lessThanOneCent: String { tr("intents.less_than_one_cent") }
+        /// "less than ¥0.01": the spoken small-cost floor for a currency other than
+        /// the dollar, whose floor keeps its own words (`lessThanOneCent`).
+        public static func lessThanAmount(_ amount: String) -> String {
+            tr("intents.less_than_amount", amount)
+        }
 
         public static func providerNotConfigured(_ provider: String) -> String {
             tr("intents.provider_not_configured", provider)
