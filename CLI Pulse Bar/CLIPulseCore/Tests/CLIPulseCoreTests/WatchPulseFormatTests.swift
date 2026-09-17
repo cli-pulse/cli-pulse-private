@@ -4,6 +4,21 @@ import XCTest
 /// Coverage for the Pulse-home pure helpers (watch app target is CI-only).
 final class WatchPulseFormatTests: XCTestCase {
 
+    private var savedSystemLocale: (() -> Locale)!
+
+    /// The cost rungs format in the display locale, whose separators come from
+    /// the Mac's region: pinned to CI's en_US, or "$9.60" fails in Germany.
+    override func setUp() {
+        super.setUp()
+        savedSystemLocale = LocaleOverrideStore.systemLocale
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.systemLocale = savedSystemLocale
+        super.tearDown()
+    }
+
     // MARK: - activityLevel
 
     func test_activityLevel_zeroSessionsIsCalm() {

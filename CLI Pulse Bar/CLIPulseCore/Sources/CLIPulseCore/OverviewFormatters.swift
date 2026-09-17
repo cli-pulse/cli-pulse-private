@@ -132,7 +132,7 @@ public enum OverviewFormatters {
             // UTC on the epoch day rather than converted to the device's zone.
             if let hour = Int(timestamp[hourStart..<hourEnd]), (0..<24).contains(hour) {
                 return DisplayFormat.hour(Date(timeIntervalSince1970: TimeInterval(hour * 3600)),
-                                          locale: locale, timeZone: TimeZone(secondsFromGMT: 0)!)
+                                          locale: locale, timeZone: DisplayFormat.utc)
             }
         }
         return timestamp

@@ -1789,5 +1789,5 @@
 "usage_pace.eta_hours_minutes" = "%1$d 小时 %2$d 分钟";
 "usage_pace.eta_hours" = "%d 小时";
 "usage_pace.eta_minutes" = "%d 分钟";
-"usage_dashboard.day_tooltip" = "%1$@：%2$@ Token · %3$@";
+"usage_dashboard.day_tooltip" = "%1$@：%2$@ token · %3$@";
 "intents.less_than_amount" = "不到 %@";

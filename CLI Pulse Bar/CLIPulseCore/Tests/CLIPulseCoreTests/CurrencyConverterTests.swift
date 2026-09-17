@@ -11,8 +11,19 @@ final class CurrencyConverterTests: XCTestCase {
     /// rounding, so they format as en_US wherever they run.
     private let en = Locale(identifier: "en_US")
 
+    private var savedSystemLocale: (() -> Locale)!
+
+    /// A test that formats through the display locale (the spoken format) gets
+    /// its separators from the Mac's region, so that is pinned to CI's en_US.
+    override func setUp() {
+        super.setUp()
+        savedSystemLocale = LocaleOverrideStore.systemLocale
+        LocaleOverrideStore.systemLocale = { Locale(identifier: "en_US") }
+    }
+
     override func tearDown() {
         LocaleOverrideStore.shared.set(nil)
+        LocaleOverrideStore.systemLocale = savedSystemLocale
         super.tearDown()
     }
 
@@ -129,6 +140,33 @@ final class CurrencyConverterTests: XCTestCase {
         XCTAssertEqual(c.format(10, locale: en), "$10.00")
         c.adopt(currencyCode: "XYZ", rate: 3)
         XCTAssertEqual(c.format(10, locale: en), "$10.00")
+    }
+
+    /// The Watch showed the costs it persisted in dollars after a relaunch,
+    /// until WatchConnectivity activated and handed the last context back.
+    /// What it adopted is now kept and applied at launch.
+    func test_adoptedCurrency_isAppliedAgainAfterARelaunch() {
+        let watchDefaults = UserDefaults(suiteName: "fx-\(UUID().uuidString)")!
+        let spain = Locale(identifier: "es_ES")
+        CurrencyConverter(defaults: watchDefaults).adoptAndRemember(currencyCode: "EUR", rate: 0.9)
+
+        let relaunched = CurrencyConverter(defaults: watchDefaults)
+        XCTAssertEqual(relaunched.format(100, locale: spain), "$100,00", "control: a new process starts in dollars")
+        relaunched.restoreAdopted()
+        XCTAssertEqual(relaunched.format(100, locale: spain), "€90,00")
+    }
+
+    /// Dollars from an iPhone app that sends no currency are kept too, so a
+    /// relaunch does not bring back a currency adopted before them.
+    func test_rememberedDollars_replaceAnEarlierCurrency() {
+        let watchDefaults = UserDefaults(suiteName: "fx-\(UUID().uuidString)")!
+        let watch = CurrencyConverter(defaults: watchDefaults)
+        watch.adoptAndRemember(currencyCode: "JPY", rate: 140)
+        watch.adoptAndRemember(currencyCode: nil, rate: nil)
+
+        let relaunched = CurrencyConverter(defaults: watchDefaults)
+        relaunched.restoreAdopted()
+        XCTAssertEqual(relaunched.format(10, locale: Locale(identifier: "es_ES")), "$10,00")
     }
 
     func test_adopt_keepsItsOwnRateWhenTheHandedOneIsUnusable() {

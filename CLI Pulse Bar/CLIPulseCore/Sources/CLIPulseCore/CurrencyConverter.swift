@@ -144,6 +144,32 @@ public final class CurrencyConverter: @unchecked Sendable {
         }
     }
 
+    /// Where `adoptAndRemember` keeps what it adopted, in this process's own
+    /// defaults. Kept apart from `DisplayCurrency.defaultsKey`, which holds a
+    /// choice the user made in this process rather than one handed to it.
+    static let adoptedCurrencyKey = "cli_pulse_adopted_display_currency"
+    static let adoptedRateKey = "cli_pulse_adopted_fx_rate"
+
+    /// `adopt`, and keep the result for `restoreAdopted()` at the next launch.
+    ///
+    /// For the Watch. It shows the costs it persisted as soon as it launches,
+    /// but WatchConnectivity hands the last context back only once the session
+    /// activates, so without this those costs read in dollars until then. The
+    /// widget extension needs neither: every payload it loads carries the pair.
+    public func adoptAndRemember(currencyCode: String?, rate: Double?) {
+        adopt(currencyCode: currencyCode, rate: rate)
+        let adopted = handoff()
+        defaults.set(adopted.currencyCode, forKey: Self.adoptedCurrencyKey)
+        defaults.set(adopted.rate, forKey: Self.adoptedRateKey)
+    }
+
+    /// Applies what `adoptAndRemember` last kept. Call once at launch, before
+    /// anything formats a cost. With nothing kept, dollars stay.
+    public func restoreAdopted() {
+        guard let code = defaults.string(forKey: Self.adoptedCurrencyKey) else { return }
+        adopt(currencyCode: code, rate: defaults.object(forKey: Self.adoptedRateKey) as? Double)
+    }
+
     // MARK: - Convert + format (called at display time)
 
     /// Units per 1 USD for the active currency (falls back to the hardcoded rate).

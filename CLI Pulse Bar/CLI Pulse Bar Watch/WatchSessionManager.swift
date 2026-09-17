@@ -353,10 +353,12 @@ final class WatchSessionManager: NSObject, ObservableObject {
 
         DispatchQueue.main.async {
             guard self.accept(identity) else { return }
-            // Before the views re-render below. WatchConnectivity hands the last
-            // context back at every activation, so the choice survives a
-            // relaunch; an iPhone app too old to send it leaves dollars.
-            CurrencyConverter.shared.adopt(currencyCode: currencyCode, rate: fxRate)
+            // Before the views re-render below. An iPhone app too old to send
+            // the currency leaves dollars. It is also kept for the next launch
+            // (`CLIPulseWatchApp.init`): WatchConnectivity hands this context
+            // back only once the session activates, after the persisted costs
+            // have already been shown.
+            CurrencyConverter.shared.adoptAndRemember(currencyCode: currencyCode, rate: fxRate)
             if self.lastReceivedIdentity != identity {
                 self.clearCachedData()
             }

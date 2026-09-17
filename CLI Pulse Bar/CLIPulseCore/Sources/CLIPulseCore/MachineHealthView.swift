@@ -510,7 +510,7 @@ public struct MachineHealthView: View {
                 Text(String(format: "%.0f MB", proc.rssMB))
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.secondary)
-                Text(DisplayFormat.string("%.1f%%", proc.cpuPercent))
+                Text(MachineFormat.processCPU(proc.cpuPercent))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(proc.cpuPercent >= 80 ? .orange : .primary)
                     .frame(width: 48, alignment: .trailing)

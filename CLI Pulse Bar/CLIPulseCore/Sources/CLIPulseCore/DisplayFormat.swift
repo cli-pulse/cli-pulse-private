@@ -106,7 +106,9 @@ public enum DisplayFormat {
 
     // MARK: - Helpers
 
-    private static let utc = TimeZone(secondsFromGMT: 0)!
+    /// UTC. Unlike `TimeZone(secondsFromGMT: 0)`, `.gmt` is not optional, so
+    /// nothing here force-unwraps.
+    static let utc: TimeZone = .gmt
 
     /// The locale's calendar rather than the device's: with an in-app language
     /// the display locale carries the user's calendar already, and a formatter
