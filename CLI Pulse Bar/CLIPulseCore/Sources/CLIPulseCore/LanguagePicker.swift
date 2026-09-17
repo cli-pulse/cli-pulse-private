@@ -4,15 +4,24 @@
 import SwiftUI
 
 /// Puts `LocaleOverrideStore.displayLocale` into the SwiftUI environment, so
-/// `Text(date, style:)`, `.formatted()` and views reading `\.locale` format in
-/// the language the user picked rather than the system's.
+/// views that format through the environment, such as `Text(date, style:)`,
+/// `Text(_:format:)` and anything reading `\.locale`, use the language the
+/// user picked rather than the system's.
+///
+/// Nothing that returns a `String` reads the environment. `.formatted()`,
+/// a `FormatStyle` and a `DateFormatter` or `NumberFormatter` all use the
+/// process's current locale unless told otherwise, and that follows the choice
+/// only from the next launch, never on a live switch (nor after System
+/// Default is picked in a session that launched with a choice). Give them the
+/// locale explicitly: `.locale(LocaleOverrideStore.shared.displayLocale)` on a
+/// format style, or `formatter.locale = LocaleOverrideStore.shared.displayLocale`.
 ///
 /// Apply it to the content of every macOS scene and `NSHostingView` root. It
 /// observes the store, so the environment updates on a switch without a
 /// relaunch. It does not rebuild the content: a view that only builds
 /// `L10n` strings in `body` and has nothing else that changed is not
-/// re-evaluated by an environment change, which is why `MenuBarView` and
-/// `UsageDashboardView` also key their content on the override.
+/// re-evaluated by an environment change. Such a view either observes the
+/// store itself or is rebuilt with `languageKeyed`.
 public struct DisplayLocaleRoot: ViewModifier {
     @ObservedObject private var store = LocaleOverrideStore.shared
 

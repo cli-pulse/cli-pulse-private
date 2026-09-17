@@ -10,9 +10,11 @@ import SwiftUI
 /// iter22 (2026-05-01): added the in-app language switcher requested by
 /// manual smoke. Persisted to standard UserDefaults so the choice
 /// survives restarts. Publishes `objectWillChange` on every change so
-/// observing views re-render localized strings without a relaunch:
-/// `MenuBarView` and `UsageDashboardView` observe it directly, and every
-/// macOS scene root observes it through `displayLocaleRoot()`.
+/// observing views re-render localized strings without a relaunch. Observing
+/// it directly: `MenuBarView`, `SettingsTab`, `OnboardingWizardView` and
+/// `LegacyOnboardingWizardView` in the app target, and `MachineHealthView`,
+/// `UsageDashboardView` and `LanguagePickerMenu` here. Every macOS scene root
+/// observes it through `displayLocaleRoot()`.
 ///
 /// Three things follow the choice, at different speeds:
 /// * CLIPulseCore's own strings (`bundle`) switch live.
@@ -35,6 +37,11 @@ public final class LocaleOverrideStore: ObservableObject {
     /// defaults domain first. It is the same key System Settings' per-app
     /// language writes.
     static let appleLanguagesKey = "AppleLanguages"
+
+    /// What this store last wrote to `AppleLanguages`, in a key only the app
+    /// writes. `AppleLanguages` alone cannot say who set it: System Settings'
+    /// per-app language writes the same key, and that one is the user's.
+    static let mirroredLanguagesKey = "cli_pulse_mirrored_apple_languages"
 
     /// `nil` means "follow system default". Non-nil values are the
     /// matching `.lproj` directory name, e.g. `"en"`, `"ja"`,
@@ -80,11 +87,11 @@ public final class LocaleOverrideStore: ObservableObject {
         }
         if mirrorsAppleLanguages {
             if let newValue {
-                defaults.set([newValue], forKey: Self.appleLanguagesKey)
+                writeMirror([newValue])
             } else {
                 // System Default: drop our pin so the system-wide list applies
                 // again from the next launch.
-                defaults.removeObject(forKey: Self.appleLanguagesKey)
+                removeMirror()
             }
         }
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
@@ -94,15 +101,56 @@ public final class LocaleOverrideStore: ObservableObject {
     /// macOS frameworks supply (alert buttons, open/save panels, system error
     /// descriptions) follows the chosen language after the next launch.
     ///
+    /// That key sets the language of the whole app process, not just of those
+    /// frameworks. From the next launch after a choice:
+    /// * `Locale.current` and `Locale.autoupdatingCurrent` take the chosen
+    ///   language (on the user's region), and so does `.formatted()`;
+    /// * Sentry reports that language in its culture context;
+    /// * `URLSession` sends it as `Accept-Language` on every request that does
+    ///   not set its own (the CLI Pulse backend does not read the header);
+    /// * system error text, including `error.localizedDescription` interpolated
+    ///   into log lines, is in that language.
+    ///
+    /// Stored and sent values do not change, but only because of how today's
+    /// formatters are written: every `NumberFormatter` pins `en_US` or
+    /// `en_US_POSIX`, and the date formatters without a pinned locale use a
+    /// fixed `yyyy-MM-dd` pattern, which reads the same in every shipped
+    /// language (the calendar follows the region, not the language). A new
+    /// formatter whose output is stored, synced, compared or sent must pin
+    /// `en_US_POSIX`, or it will write the user's language after a restart.
+    ///
     /// Called once at app launch, after any defaults migration. An override
-    /// chosen before this existed is brought into step here. With no override
-    /// nothing is written or removed, so a per-app language set in System
-    /// Settings is left alone.
+    /// chosen before this existed is brought into step here.
+    ///
+    /// With no override, `AppleLanguages` is removed only if it still holds
+    /// what this store wrote (see `mirroredLanguagesKey`). That clears a pin
+    /// the override outlived, after a downgrade to a build without the mirror
+    /// or a `defaults delete` of the override, which would otherwise keep the
+    /// app in the old language with System Default checked. A per-app language
+    /// set in System Settings is a different value and is left alone.
     public func mirrorToAppleLanguages() {
         mirrorsAppleLanguages = true
         if let override {
-            defaults.set([override], forKey: Self.appleLanguagesKey)
+            writeMirror([override])
+        } else {
+            removeMirror()
         }
+    }
+
+    private func writeMirror(_ languages: [String]) {
+        defaults.set(languages, forKey: Self.appleLanguagesKey)
+        defaults.set(languages, forKey: Self.mirroredLanguagesKey)
+    }
+
+    /// Removes `AppleLanguages` while it is still the value this store wrote,
+    /// and forgets that value either way: once the key holds something else,
+    /// it is not ours to remove.
+    private func removeMirror() {
+        guard let mirrored = defaults.stringArray(forKey: Self.mirroredLanguagesKey) else { return }
+        if defaults.stringArray(forKey: Self.appleLanguagesKey) == mirrored {
+            defaults.removeObject(forKey: Self.appleLanguagesKey)
+        }
+        defaults.removeObject(forKey: Self.mirroredLanguagesKey)
     }
 
     /// The `.lproj` that "System Default" means right now, when the resource
@@ -204,13 +252,23 @@ public final class LocaleOverrideStore: ObservableObject {
     /// back from `preferredLocalizations` cannot be used as-is. Anything
     /// unrecognised becomes `nil` rather than being reported verbatim; the
     /// telemetry column is a closed set and the server rejects the rest.
+    ///
+    /// After System Default is picked in a session that launched with a
+    /// choice, this is the system list's catalogue, the one `bundle` now
+    /// shows, not the launch-pinned bundle's. Telemetry reports that value.
     public static var resolvedLocalization: String? {
-        if let override = shared.override,
+        resolvedLocalization(for: shared)
+    }
+
+    /// `resolvedLocalization` for a given store, so tests can reach the
+    /// System Default branch without touching `shared`.
+    static func resolvedLocalization(for store: LocaleOverrideStore) -> String? {
+        if let override = store.override,
            let canonical = canonicalLocalization(override),
            bundle(forLocalization: override) != nil {
             return canonical
         }
-        if let live = shared.liveSystemLocalization {
+        if let live = store.liveSystemLocalization {
             return live
         }
         for candidate in resourceBundle().preferredLocalizations {

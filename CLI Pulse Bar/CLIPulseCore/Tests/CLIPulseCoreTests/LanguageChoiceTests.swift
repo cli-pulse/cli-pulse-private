@@ -32,6 +32,11 @@ final class LanguageChoiceTests: XCTestCase {
         defaults.persistentDomain(forName: suiteName)?["AppleLanguages"] as? [String]
     }
 
+    /// The app-owned record of what the store last wrote to `AppleLanguages`.
+    private var recordedMirror: [String]? {
+        defaults.persistentDomain(forName: suiteName)?[LocaleOverrideStore.mirroredLanguagesKey] as? [String]
+    }
+
     // MARK: - The menu
 
     /// The menu was once four hand-written buttons with no 한국어 and no
@@ -139,11 +144,55 @@ final class LanguageChoiceTests: XCTestCase {
 
         store.set("ko")
         XCTAssertEqual(writtenAppleLanguages, ["ko"])
+        XCTAssertEqual(recordedMirror, ["ko"], "what was mirrored must be recorded, or launch cannot tell it from System Settings")
         store.set("zh-Hant")
         XCTAssertEqual(writtenAppleLanguages, ["zh-Hant"])
+        XCTAssertEqual(recordedMirror, ["zh-Hant"])
 
         store.set(nil)
         XCTAssertNil(writtenAppleLanguages)
+        XCTAssertNil(recordedMirror)
+    }
+
+    /// The pin can outlive the choice: a downgrade to a build without the
+    /// mirror, where System Default removes only the override, or a
+    /// `defaults delete` of the override key. The app then launched in 日本語
+    /// with System Default checked, and picking System Default again did
+    /// nothing because it already was the choice.
+    func test_mirroringAtLaunch_removesAPinTheChoiceOutlived() {
+        defaults.set(["ja"], forKey: "AppleLanguages")
+        defaults.set(["ja"], forKey: LocaleOverrideStore.mirroredLanguagesKey)
+
+        let store = LocaleOverrideStore(defaults: defaults)
+        store.mirrorToAppleLanguages()
+
+        XCTAssertNil(writtenAppleLanguages, "a pin the app wrote survived the choice it mirrored")
+        XCTAssertNil(recordedMirror)
+    }
+
+    /// Once `AppleLanguages` holds something other than what the app wrote,
+    /// the user set it in System Settings, and it is theirs.
+    func test_mirroringAtLaunch_leavesALanguageChangedInSystemSettingsSinceAlone() {
+        defaults.set(["ko"], forKey: "AppleLanguages")
+        defaults.set(["ja"], forKey: LocaleOverrideStore.mirroredLanguagesKey)
+
+        let store = LocaleOverrideStore(defaults: defaults)
+        store.mirrorToAppleLanguages()
+
+        XCTAssertEqual(writtenAppleLanguages, ["ko"])
+        XCTAssertNil(recordedMirror, "the record no longer describes the key, so it must not linger")
+    }
+
+    func test_systemDefault_leavesALanguageChangedInSystemSettingsSinceAlone() {
+        let store = LocaleOverrideStore(defaults: defaults)
+        store.mirrorToAppleLanguages()
+        store.set("ja")
+        defaults.set(["zh-Hant"], forKey: "AppleLanguages")
+
+        store.set(nil)
+
+        XCTAssertEqual(writtenAppleLanguages, ["zh-Hant"])
+        XCTAssertNil(recordedMirror)
     }
 
     /// Someone who picked a language before the mirror existed gets system text
@@ -176,6 +225,25 @@ final class LanguageChoiceTests: XCTestCase {
 
         XCTAssertEqual(NSLocalizedString("tab.overview", bundle: store.bundle, comment: ""), "개요")
         XCTAssertEqual(store.displayLocale.language.languageCode, .korean)
+    }
+
+    /// Install telemetry reports the catalogue the user sees. After System
+    /// Default in a session that launched with 日本語, that is the system
+    /// list's, not the Japanese the bundle was pinned to at launch.
+    func test_resolvedLocalization_afterSystemDefault_isTheSystemListsCatalogue() throws {
+        // A language the bundle would not pick by itself, so a report that
+        // ignored the live branch could not pass by matching it.
+        let bundleOwn = LocaleOverrideStore.resolvedLocalization(for: LocaleOverrideStore(defaults: defaults))
+        let candidates: [String] = ["ko", "es"]
+        let system = try XCTUnwrap(candidates.first { $0 != bundleOwn })
+        defaults.set("ja", forKey: "cli_pulse_locale_override")
+        let store = LocaleOverrideStore(defaults: defaults, systemPreferredLanguages: { [system, "en-US"] })
+        store.mirrorToAppleLanguages()
+        XCTAssertEqual(LocaleOverrideStore.resolvedLocalization(for: store), "ja")
+
+        store.set(nil)
+
+        XCTAssertEqual(LocaleOverrideStore.resolvedLocalization(for: store), system)
     }
 
     func test_systemLocalization_picksTheShippedCatalogueForAPreferenceList() {

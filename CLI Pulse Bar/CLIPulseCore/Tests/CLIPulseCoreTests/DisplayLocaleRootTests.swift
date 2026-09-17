@@ -11,7 +11,8 @@ import XCTest
 ///   so views format in the chosen language (a source guard: CI runs in en,
 ///   where a root without it formats exactly like one with it);
 /// * a view reads the locale that root put in its environment;
-/// * a child whose inputs did not change is rebuilt when keyed on the language.
+/// * a child whose inputs did not change is rebuilt when keyed on the language;
+/// * a view holding state a switch must keep redraws in place instead.
 ///
 /// The source scans stand in for running the app: `CLIPulseBarApp.swift` is in
 /// the app target, which `swift test` does not build.
@@ -125,7 +126,13 @@ final class DisplayLocaleRootTests: XCTestCase {
     private enum BodyLog {
         static var headers: [String] = []
         static var cards: [String] = []
+        /// Each holder's @State as its body saw it, tagged with the host it is
+        /// in: a closed host can still redraw on a switch. Kept alive, so a new
+        /// object cannot reuse an old one's address.
+        static var holderState: [(host: UUID, token: StateToken)] = []
     }
+
+    private final class StateToken {}
 
     /// Stands in for the wizard's read-only account card: plain value inputs,
     /// no closures, text built from `L10n`.
@@ -190,6 +197,130 @@ final class DisplayLocaleRootTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(BodyLog.cards.filter { $0 == koCard }.count, 2,
                                     "a card was not rebuilt in the new language: \(BodyLog.cards)")
     }
+
+    // MARK: - State a switch must keep
+
+    /// Stands in for the Settings tab: observes the store, keeps @State that a
+    /// switch must not lose (typed sign-in details), and keys only the content
+    /// below it.
+    private struct StateHolder: View {
+        let host: UUID
+        @ObservedObject private var store = LocaleOverrideStore.shared
+        @State private var token = StateToken()
+
+        var body: some View {
+            BodyLog.holderState.append((host, token))
+            return ValueOnlyCard(row: 0)
+                .languageKeyed(store.override)
+                .frame(width: 300, height: 200)
+        }
+    }
+
+    /// Stands in for the popover: shows the holder either as it is or keyed on
+    /// the language, which is how the Machine and Settings tabs were shown.
+    private struct HolderShell: View {
+        @ObservedObject private var store = LocaleOverrideStore.shared
+        let host: UUID
+        let keysTheHolder: Bool
+
+        var body: some View {
+            if keysTheHolder {
+                StateHolder(host: host).languageKeyed(store.override)
+            } else {
+                StateHolder(host: host)
+            }
+        }
+    }
+
+    /// Keying a view on the language replaces its @State. That is how a switch
+    /// ended a fan boost (the Machine tab's fan client stops its heartbeat when
+    /// it goes away) and cleared the Settings tab's sign-in fields. Kept above
+    /// the key, the state survives while the content under it is still rebuilt
+    /// in the new language.
+    @MainActor
+    func test_stateAboveTheLanguageKey_survivesASwitch_andTheContentBelowIsRebuilt() throws {
+        let bundle = try XCTUnwrap(LocaleOverrideStore.bundle(forLocalization: "ko"))
+        let koCard = NSLocalizedString("tab.overview", bundle: bundle, comment: "")
+
+        func switchLanguage(keysTheHolder: Bool) -> (distinctStates: Int, cardRebuilt: Bool) {
+            let id = UUID()
+            LocaleOverrideStore.shared.set("ja")
+            let host = HostedWindow(HolderShell(host: id, keysTheHolder: keysTheHolder))
+            defer { host.close() }
+            host.pump { BodyLog.holderState.contains { $0.host == id } }
+
+            BodyLog.cards = []
+            LocaleOverrideStore.shared.set("ko")
+            host.pump { BodyLog.cards.contains(koCard) }
+            // Let every update the switch caused land before counting.
+            host.pump(for: 0.2)
+            let distinct = BodyLog.holderState.filter { $0.host == id }.reduce(into: [StateToken]()) { seen, entry in
+                if !seen.contains(where: { $0 === entry.token }) { seen.append(entry.token) }
+            }
+            return (distinct.count, BodyLog.cards.contains(koCard))
+        }
+
+        let kept = switchLanguage(keysTheHolder: false)
+        XCTAssertEqual(kept.distinctStates, 1, "the holder's @State was replaced by a switch")
+        XCTAssertTrue(kept.cardRebuilt, "the content below the key kept its old language")
+
+        let keyed = switchLanguage(keysTheHolder: true)
+        XCTAssertGreaterThan(keyed.distinctStates, 1, "keying the holder no longer replaces its state, so this test proves nothing")
+    }
+
+    /// The Machine tab is no longer keyed on the language, so it has to redraw
+    /// itself: a switch must reach its labels in place.
+    ///
+    /// Compared as pixels: the title and subtitle at the top left, against a
+    /// fresh Machine tab opened in each language. It refreshes every two
+    /// seconds, and a refresh redraws it in whatever language is current, so
+    /// each switch must show within 0.5 s, and three in a row take less than
+    /// one refresh interval: at most one of them could ride on a refresh.
+    @MainActor
+    func test_machineTab_redrawsInTheNewLanguageInPlace() throws {
+        // No helper: this test must not talk to one running on the machine, and
+        // without a snapshot nothing but the title and subtitle is in the crop.
+        let helperRoot = FileManager.default.temporaryDirectory
+            .appending(path: "machine-tab-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: helperRoot, withIntermediateDirectories: true)
+        let previousRoot = ProcessInfo.processInfo.environment["CLIPULSE_HELPER_ROOT"]
+        setenv("CLIPULSE_HELPER_ROOT", helperRoot.path, 1)
+        defer {
+            if let previousRoot { setenv("CLIPULSE_HELPER_ROOT", previousRoot, 1) } else { unsetenv("CLIPULSE_HELPER_ROOT") }
+            try? FileManager.default.removeItem(at: helperRoot)
+        }
+
+        // Title and subtitle, clear of the thermal badge on the right and of
+        // whatever the tab shows below its header.
+        let header = CGRect(x: 0, y: 0, width: 180, height: 44)
+
+        /// The header of a Machine tab opened fresh in `language`.
+        func reference(_ language: String) throws -> Data {
+            LocaleOverrideStore.shared.set(language)
+            let fresh = HostedWindow(MachineHealthView())
+            defer { fresh.close() }
+            fresh.pump(for: 0.3)
+            return try XCTUnwrap(fresh.pixels(in: header), "the Machine tab did not draw")
+        }
+        let references = try ["ja": reference("ja"), "ko": reference("ko")]
+        XCTAssertEqual(try reference("ja"), references["ja"], "two fresh tabs draw differently, so comparing them proves nothing")
+        XCTAssertNotEqual(references["ja"], references["ko"], "the header looks the same in both languages, so comparing it proves nothing")
+
+        LocaleOverrideStore.shared.set("ja")
+        let host = HostedWindow(MachineHealthView())
+        defer { host.close() }
+        host.pump { host.pixels(in: header) == references["ja"] }
+        XCTAssertEqual(host.pixels(in: header), references["ja"], "the Machine tab never drew its header")
+        // Let the first refresh land, which redraws the tab too.
+        host.pump(for: 0.3)
+
+        for language in ["ko", "ja", "ko"] {
+            LocaleOverrideStore.shared.set(language)
+            host.pump(timeout: 0.5) { host.pixels(in: header) == references[language] }
+            XCTAssertEqual(host.pixels(in: header), references[language],
+                           "the Machine tab did not redraw in \(language) after a switch")
+        }
+    }
 }
 
 // MARK: - Hosting
@@ -215,14 +346,34 @@ private final class HostedWindow {
     func close() { window.close() }
 
     /// Spins the run loop, where SwiftUI applies updates, until `done` holds or
-    /// two seconds pass.
-    func pump(until done: () -> Bool) {
-        let deadline = Date().addingTimeInterval(2)
+    /// `timeout` seconds pass.
+    func pump(timeout: TimeInterval = 2, until done: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
         window.contentView?.layoutSubtreeIfNeeded()
         while !done(), Date() < deadline {
             RunLoop.main.run(until: Date().addingTimeInterval(0.02))
             window.contentView?.layoutSubtreeIfNeeded()
         }
+    }
+
+    /// Spins the run loop for `seconds`.
+    func pump(for seconds: TimeInterval) {
+        pump(timeout: seconds) { false }
+    }
+
+    /// What the window draws in `rect`, measured from the top left, or `nil`
+    /// when it drew nothing there.
+    func pixels(in rect: CGRect) -> Data? {
+        guard let view = window.contentView else { return nil }
+        view.layoutSubtreeIfNeeded()
+        let local = view.isFlipped
+            ? rect
+            : CGRect(x: rect.minX, y: view.bounds.height - rect.maxY, width: rect.width, height: rect.height)
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: local) else { return nil }
+        view.cacheDisplay(in: local, to: rep)
+        guard let bytes = rep.bitmapData else { return nil }
+        let data = Data(bytes: bytes, count: rep.bytesPerRow * rep.pixelsHigh)
+        return Set(data).count > 1 ? data : nil
     }
 }
 

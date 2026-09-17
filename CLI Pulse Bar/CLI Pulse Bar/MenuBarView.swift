@@ -11,9 +11,9 @@ struct MenuBarView: View {
     /// `Text(L10n.*)` inside it) whenever the user picks a new
     /// language from the footer picker. Child views whose inputs did not
     /// change are not re-evaluated, so the content below them is keyed on
-    /// `localeOverride.override` (see `languageKeyed`): the tab content, not
-    /// this view, whose @State (a dismissed wizard or upgrade card) must
-    /// survive a switch.
+    /// `localeOverride.override` (see `languageKeyed`): most of the tab
+    /// content (see `tabContent`), not this view, whose @State (a dismissed
+    /// wizard or upgrade card) must survive a switch.
     @ObservedObject private var localeOverride = LocaleOverrideStore.shared
     /// v1.30.2 (RC-2): the MenuBarExtra(.window) popover becomes the key
     /// window when it opens. `controlActiveState` flips to `.key`/`.active`
@@ -307,28 +307,16 @@ struct MenuBarView: View {
                     // immediately visible.
                     VStack(spacing: 0) {
                         tabBar
-                        Group {
-                            switch state.selectedTab {
-                            case .overview:    OverviewTab()
-                            case .machine:     MachineHealthView()
-                            case .providers:   ProvidersTab()
-                            case .sessions:    SessionsTab()
-                            case .alerts:      AlertsTab()
-                            case .pet:         PetTab()
-                            case .settings:
-                                agentSettingsTab
-                            }
-                        }
-                        .environmentObject(state)
-                        .languageKeyed(localeOverride.override)
-                        .frame(maxHeight: .infinity)
+                        tabContent
+                            .environmentObject(state)
+                            .frame(maxHeight: .infinity)
                     }
                 } else {
                     VStack(spacing: 0) {
                         tabBar
+                        // Not keyed: see `tabContent`.
                         agentSettingsTab
                             .environmentObject(state)
-                            .languageKeyed(localeOverride.override)
                             .frame(maxHeight: .infinity)
                     }
                 }
@@ -445,33 +433,46 @@ struct MenuBarView: View {
             tabBar
 
             // Tab Content
-            Group {
-                switch state.selectedTab {
-                case .overview:
-                    OverviewTab()
-                case .machine:
-                    MachineHealthView()
-                case .providers:
-                    ProvidersTab()
-                case .sessions:
-                    SessionsTab()
-                case .alerts:
-                    AlertsTab()
-                case .pet:
-                    PetTab()
-                case .settings:
-                    agentSettingsTab
-                }
-            }
-            .environmentObject(state)
-            .languageKeyed(localeOverride.override)
-            .frame(maxHeight: .infinity)
+            tabContent
+                .environmentObject(state)
+                .frame(maxHeight: .infinity)
 
             // Footer
             footer
 
             // Resize handle
             resizeHandle
+        }
+    }
+
+    /// The selected tab, for the connected and the signed-out shells.
+    ///
+    /// A tab that takes no input changing with the language keeps its old body
+    /// on a switch, so most tabs are keyed on the language and rebuilt, which
+    /// resets their own scroll position and expanded sections. Two are not,
+    /// because rebuilding them loses state a switch must keep, so they observe
+    /// the store and redraw in place instead:
+    /// * Machine: its fan client's deinit stops the heartbeat that holds an
+    ///   active fan boost.
+    /// * Settings: it holds the typed email, password and code, and keys only
+    ///   the sections below that state.
+    @ViewBuilder
+    private var tabContent: some View {
+        switch state.selectedTab {
+        case .overview:
+            OverviewTab().languageKeyed(localeOverride.override)
+        case .machine:
+            MachineHealthView()
+        case .providers:
+            ProvidersTab().languageKeyed(localeOverride.override)
+        case .sessions:
+            SessionsTab().languageKeyed(localeOverride.override)
+        case .alerts:
+            AlertsTab().languageKeyed(localeOverride.override)
+        case .pet:
+            PetTab().languageKeyed(localeOverride.override)
+        case .settings:
+            agentSettingsTab
         }
     }
 
