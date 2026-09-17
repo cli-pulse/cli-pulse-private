@@ -29,7 +29,7 @@ public enum PDFReportGenerator {
         for date: Date,
         existing: (URL) -> Bool = { FileManager.default.fileExists(atPath: $0.path) }
     ) -> (preferred: URL, fallback: URL) {
-        let baseName = "cli-pulse-report-\(dateString(date))"
+        let baseName = reportBaseName(for: date)
         let temp = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString)-\(baseName).pdf")
         #if canImport(AppKit)
@@ -395,10 +395,12 @@ public enum PDFReportGenerator {
         TokenFormatter.format(value)
     }
 
-    private static func dateString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: date)
+    /// `cli-pulse-report-2026-09-17`: the export's file name without extension,
+    /// shared by the macOS save panel and the default destination. The date is
+    /// a Gregorian day key so the name sorts and reads the same on every Mac —
+    /// under the Japanese calendar it used to come out as 0008-09-17.
+    public static func reportBaseName(for date: Date, in timeZone: TimeZone = .current) -> String {
+        "cli-pulse-report-\(DayKey.string(from: date, in: timeZone))"
     }
 }
 #endif

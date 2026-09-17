@@ -11,11 +11,11 @@ public struct YieldScoreRow: Codable, Sendable, Hashable {
     public let ambiguous_commit_count: Int
 
     public var providerKind: ProviderKind? { ProviderKind(rawValue: provider) }
+    /// UTC midnight of `day`. Parsed in Gregorian numbering whatever the
+    /// device calendar: a bare formatter under the Japanese calendar read
+    /// "2026-09-17" as the year 4044, and every row fell outside the window.
     public var dayDate: Date? {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f.date(from: day)
+        DayKey.formatter(in: TimeZone(identifier: "UTC")!).date(from: day)
     }
 }
 

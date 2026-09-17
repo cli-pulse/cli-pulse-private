@@ -42,10 +42,7 @@ public struct UsageHeatmapGrid: View {
         self.showMonthLabels = showMonthLabels
     }
 
-    private static let monthFmt: DateFormatter = {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; f.timeZone = TimeZone(secondsFromGMT: 0)
-        return f
-    }()
+    private static let monthFmt: DateFormatter = DayKey.formatter(in: TimeZone(secondsFromGMT: 0)!)
 
     public var body: some View {
         let today = DailyUsageStats.localDayKey()

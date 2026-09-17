@@ -93,13 +93,19 @@ public actor PetCoordinator {
 
     /// Deterministically rebuild state by replaying events in order. Unknown
     /// schema versions are skipped (can't be safely interpreted).
-    public static func rebuild(from events: [PetEvent]) -> PetState {
+    public static func rebuild(from events: [PetEvent], writtenIn calendar: Calendar = .current) -> PetState {
         var s = PetState()
         for e in events where e.schemaVersion == PetEvent.currentSchemaVersion {
             switch e.kind {
             case .hatch:
                 if let raw = e.form, let form = PetForm(rawValue: raw) {
-                    s = PetEngine.applyHatch(form, on: s, dayKey: e.dayKey)
+                    // The log is append-only, so a hatch recorded before day keys
+                    // were pinned to Gregorian keeps its device-calendar key
+                    // (`2569-07-11` under Buddhist numbering). Read it back in
+                    // Gregorian; `PetEngine.timingAllows` compares it with a
+                    // Gregorian today and would otherwise wait 543 years.
+                    let dayKey = DayKey.normalizedStoredKey(e.dayKey, writtenIn: calendar) ?? e.dayKey
+                    s = PetEngine.applyHatch(form, on: s, dayKey: dayKey)
                 }
             case .setActive:
                 if let raw = e.form, s.ownedForms.contains(raw) { s.activeForm = raw }

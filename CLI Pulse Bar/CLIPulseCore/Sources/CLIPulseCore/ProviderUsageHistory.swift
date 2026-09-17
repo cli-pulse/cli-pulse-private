@@ -37,16 +37,16 @@ public enum ProviderUsageHistory {
     }
 
     /// Convenience: series ending at the device's local "today" (the same
-    /// `yyyy-MM-dd`/`Calendar.current` convention `APIClient.localTodayKey`
-    /// uses). UI call sites use this; tests use the explicit-`todayKey` form.
+    /// Gregorian `yyyy-MM-dd` key `APIClient.localTodayKey` sends). UI call
+    /// sites use this; tests use the explicit-`todayKey` form.
     public static func series(from daily: [DailyUsage], provider: String, days: Int = 30) -> [DayPoint] {
         series(from: daily, provider: provider, days: days,
                todayKey: currentLocalDayKey(), calendar: .current)
     }
 
+    /// Only `calendar`'s time zone is used; the numbering is Gregorian (`DayKey`).
     static func currentLocalDayKey(calendar: Calendar = .current, now: Date = Date()) -> String {
-        let c = calendar.dateComponents([.year, .month, .day], from: now)
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        DayKey.string(from: now, in: calendar.timeZone)
     }
 
     /// Build the series for `provider` over the most recent `days` calendar days
@@ -72,12 +72,10 @@ public enum ProviderUsageHistory {
             byDay[row.date] = agg
         }
 
-        // 2) contiguous day window ending at todayKey
-        let fmt = DateFormatter()
-        fmt.calendar = calendar
-        fmt.timeZone = calendar.timeZone
-        fmt.locale = Locale(identifier: "en_US_POSIX")
-        fmt.dateFormat = "yyyy-MM-dd"
+        // 2) contiguous day window ending at todayKey. The formatter takes only
+        // the calendar's time zone: the rows are keyed in Gregorian numbering,
+        // and a formatter given a Japanese calendar reads "2026" as Reiwa 2026.
+        let fmt = DayKey.formatter(in: calendar.timeZone)
 
         guard let today = fmt.date(from: todayKey) else {
             // Unparseable today key: degrade to the present rows in date order,

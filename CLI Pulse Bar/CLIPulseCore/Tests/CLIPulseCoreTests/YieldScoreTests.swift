@@ -139,8 +139,11 @@ final class YieldScoreTests: XCTestCase {
         provider: String, daysAgo: Int, cost: Double, weighted: Double,
         raw: Int, ambig: Int, now: Date
     ) -> YieldScoreRow {
-        let day = Calendar.current.date(byAdding: .day, value: -daysAgo, to: now)!
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let day = Calendar(identifier: .gregorian).date(byAdding: .day, value: -daysAgo, to: now)!
+        // The server's `day` column is a Gregorian date. A bare formatter follows
+        // the device calendar and wrote 0008-04-… under Japanese numbering.
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withFullDate]
         f.timeZone = TimeZone(identifier: "UTC")
         return YieldScoreRow(
             provider: provider, day: f.string(from: day),

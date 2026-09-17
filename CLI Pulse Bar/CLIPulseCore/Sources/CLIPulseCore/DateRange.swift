@@ -17,10 +17,10 @@ import Foundation
 public enum DateRange {
 
     /// Calendar-day YMD string like "2026-04-21" used as scan-result keys.
+    /// Only `calendar`'s time zone is used: keys are Gregorian whatever the
+    /// device calendar (`DayKey`), because the scanner writes them that way.
     public static func ymd(_ date: Date, calendar: Calendar = .current) -> String {
-        let c = calendar.dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d",
-                      c.year ?? 1970, c.month ?? 1, c.day ?? 1)
+        DayKey.string(from: date, in: calendar.timeZone)
     }
 
     /// Earliest inclusive date in a rolling-week window anchored at `now`.

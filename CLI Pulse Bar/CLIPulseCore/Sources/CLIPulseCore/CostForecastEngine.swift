@@ -43,7 +43,11 @@ public enum CostForecastEngine {
         localOverrides: [String: Double] = [:],
         referenceDate: Date = Date()
     ) -> CostForecast? {
-        let calendar = Calendar.current
+        // Gregorian, not Calendar.current: the loop below rebuilds the day keys
+        // the rows are stored under, and those are Gregorian (`DayKey`). Under
+        // the Japanese calendar `.year` is 8, every lookup missed, and the
+        // forecast read $0 for the month.
+        let calendar = DayKey.calendar()
         let year = calendar.component(.year, from: referenceDate)
         let month = calendar.component(.month, from: referenceDate)
         let dayOfMonth = calendar.component(.day, from: referenceDate)
@@ -63,15 +67,11 @@ public enum CostForecastEngine {
         }
 
         // Build time series for current month: day_of_month -> cost
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        dateFormatter.timeZone = TimeZone.current
-
         var dataPoints: [(x: Double, y: Double)] = []
         var actualToDate: Double = 0
 
         for day in 1...dayOfMonth {
-            let dateString = String(format: "%04d-%02d-%02d", year, month, day)
+            let dateString = DayKey.string(year: year, month: month, day: day)
             let cost = costByDate[dateString] ?? 0
             actualToDate += cost
             dataPoints.append((x: Double(day), y: cost))

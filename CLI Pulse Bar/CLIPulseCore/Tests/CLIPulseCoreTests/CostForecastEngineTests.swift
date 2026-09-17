@@ -11,7 +11,8 @@ final class CostForecastEngineTests: XCTestCase {
         comps.month = month
         comps.day = day
         comps.hour = 12
-        return Calendar.current.date(from: comps)!
+        // Gregorian like the day keys: under the Japanese calendar 2026 is AD 4044.
+        return Calendar(identifier: .gregorian).date(from: comps)!
     }
 
     private func makeDailyUsage(date: String, cost: Double) -> DailyUsage {

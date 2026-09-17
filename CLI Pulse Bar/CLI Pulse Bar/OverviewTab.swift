@@ -228,12 +228,7 @@ struct OverviewTab: View {
         #if canImport(AppKit)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
-        let dateString: String = {
-            let f = DateFormatter()
-            f.dateFormat = "yyyy-MM-dd"
-            return f.string(from: Date())
-        }()
-        panel.nameFieldStringValue = "cli-pulse-report-\(dateString).pdf"
+        panel.nameFieldStringValue = "\(PDFReportGenerator.reportBaseName(for: Date())).pdf"
         let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
         panel.directoryURL = downloads
         panel.canCreateDirectories = true
