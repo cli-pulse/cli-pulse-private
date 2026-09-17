@@ -2694,6 +2694,23 @@ public enum L10n {
         public static var noOpenAlerts: String { tr("intents.no_open_alerts") }
         public static var clauseSeparator: String { tr("intents.clause_separator") }
         public static var sentenceEnd: String { tr("intents.sentence_end") }
+
+        /// The whole spoken answer of "Get CLI Pulse Status": whole clauses joined
+        /// by the locale's own separator.
+        ///
+        /// It lives here rather than in `GetStatusIntent.perform` so that
+        /// `IntentSpeechTests` tests the code Siri actually runs. The intent is in
+        /// the iOS app target, which `swift test` does not build, and the test used
+        /// to assert on a private copy of this composition — which stays green
+        /// whatever the intent does.
+        public static func statusSummary(usage: String, cost: String, sessions: Int, alerts: Int) -> String {
+            var clauses = [statusToday(usage, cost)]
+            if sessions > 0 {
+                clauses.append(activeSessions(sessions))
+            }
+            clauses.append(alerts > 0 ? openAlerts(alerts) : noOpenAlerts)
+            return clauses.joined(separator: clauseSeparator) + sentenceEnd
+        }
         public static var lessThanOneCent: String { tr("intents.less_than_one_cent") }
         /// "less than ¥0.01": the spoken small-cost floor for a currency other than
         /// the dollar, whose floor keeps its own words (`lessThanOneCent`).

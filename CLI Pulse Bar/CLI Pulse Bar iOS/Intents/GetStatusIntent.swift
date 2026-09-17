@@ -24,18 +24,15 @@ struct GetStatusIntent: AppIntent {
         // defaults; it reads the choice directly because Siri can run it without
         // the app's `AppState` ever having applied it.
         let cost = CurrencyConverter.shared.spokenFormat(snapshot.totalCostToday, as: .stored())
-        let sessions = snapshot.activeSessions
-        let alerts = snapshot.unresolvedAlerts
-
-        // Whole clauses joined by the locale's own separator. This used to be one
-        // English string grown by `+=` with inline plurals, which no translation
-        // can follow; the English output is unchanged.
-        var clauses = [L10n.intents.statusToday(usage, cost)]
-        if sessions > 0 {
-            clauses.append(L10n.intents.activeSessions(sessions))
-        }
-        clauses.append(alerts > 0 ? L10n.intents.openAlerts(alerts) : L10n.intents.noOpenAlerts)
-        let spoken = clauses.joined(separator: L10n.intents.clauseSeparator) + L10n.intents.sentenceEnd
+        // Composed in CLIPulseCore, where `IntentSpeechTests` exercises this exact
+        // function; `IntentSpeechTests` also reads this file and fails if the
+        // answer is ever assembled here again.
+        let spoken = L10n.intents.statusSummary(
+            usage: usage,
+            cost: cost,
+            sessions: snapshot.activeSessions,
+            alerts: snapshot.unresolvedAlerts
+        )
 
         let dialog = IntentDialog(stringLiteral: spoken)
         return .result(value: spoken, dialog: dialog)
