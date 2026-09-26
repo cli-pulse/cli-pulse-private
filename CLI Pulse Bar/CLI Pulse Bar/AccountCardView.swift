@@ -28,20 +28,16 @@ struct AccountCardView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
+                // `isPaired` is the account's flag; this Mac may not be
+                // paired itself (`ThisMacPairing`).
                 StatusBadge(
-                    text: isSyncing ? L10n.settings.paired : L10n.settings.notPaired,
-                    color: isSyncing ? .green : .orange
+                    text: authState.isThisMacSyncing ? L10n.settings.paired : L10n.settings.notPaired,
+                    color: authState.isThisMacSyncing ? .green : .orange
                 )
             }
         }
         .padding(8)
         .background(PulseTheme.cardBackground.opacity(0.5))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    /// The badge reads "Synced". `isPaired` is the account's flag, so on a Mac
-    /// that is not itself paired (`ThisMacPairing`) green would be false.
-    private var isSyncing: Bool {
-        authState.isPaired && authState.thisMacPairing == .notNeeded
     }
 }

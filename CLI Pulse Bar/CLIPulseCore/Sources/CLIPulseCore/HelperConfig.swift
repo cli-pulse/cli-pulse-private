@@ -164,6 +164,64 @@ public struct HelperConfig: Codable, Sendable {
         return cfg
     }
 
+    /// The device this Mac's helper is paired as, when that pairing belongs to
+    /// `authenticatedUserId` — read from the app-group record alone. It never
+    /// touches the Keychain, so it cannot be told "no" by a keychain that is
+    /// merely locked.
+    ///
+    /// For deciding WHETHER this Mac is paired (`ThisMacPairing`), not for
+    /// syncing: a caller that sends `p_device_id` must use `loadIfMatches`,
+    /// which also needs the secret. The two differ only when the record is here
+    /// and its secret cannot be read. A failed read looks the same whether the
+    /// secret is gone or the login keychain is locked (it can be while the
+    /// screen is, and `refreshAll` keeps running then), and treating the second
+    /// as "not paired" would offer to pair this Mac again and leave a second
+    /// device row behind.
+    public static func pairedDeviceId(
+        authenticatedUserId: String?,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
+    ) -> String? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return pairedDeviceIdAllowed(
+            authenticatedUserId: authenticatedUserId,
+            persistence: livePersistence(
+                runtimeEnvironment: runtimeEnvironment
+            )
+        )
+    }
+
+    internal static func pairedDeviceId(
+        authenticatedUserId: String?,
+        runtimeEnvironment: CLIPulseRuntimeEnvironment,
+        persistence: PersistenceAccess
+    ) -> String? {
+        guard runtimeEnvironment.allowsHelperConfigurationAccess else {
+            return nil
+        }
+        return pairedDeviceIdAllowed(
+            authenticatedUserId: authenticatedUserId,
+            persistence: persistence
+        )
+    }
+
+    private static func pairedDeviceIdAllowed(
+        authenticatedUserId: String?,
+        persistence: PersistenceAccess
+    ) -> String? {
+        guard
+            let auth = authenticatedUserId, !auth.isEmpty,
+            let data = persistence.loadStoredData(),
+            let stored = try? JSONDecoder().decode(StoredConfig.self, from: data),
+            stored.userId == auth,
+            !stored.deviceId.isEmpty
+        else {
+            return nil
+        }
+        return stored.deviceId
+    }
+
     /// Write config: non-secret fields to UserDefaults, secret to Keychain.
     public static func save(
         _ config: HelperConfig,

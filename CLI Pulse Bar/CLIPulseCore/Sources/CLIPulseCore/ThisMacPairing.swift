@@ -21,16 +21,22 @@ import Foundation
 /// row and sets `paired = true` without reading it.
 ///
 /// Pure so every state is unit-tested; `AppState.refreshThisMacPairing()` feeds
-/// it from the app group and the Keychain.
+/// it from the app group. It never reads the Keychain (`HelperConfig.pairedDeviceId`).
 public enum ThisMacPairing {
     public enum State: Equatable, Sendable {
         /// Nothing for Settings to add: signed out, the account itself is not
         /// paired (Settings already shows the pairing flow), this build or
         /// runtime cannot pair a Mac, or this Mac syncs as its own device.
         case notNeeded
-        /// The account is paired, but this Mac holds no helper credentials for
-        /// it: never paired here, paired to another account, or the Keychain
-        /// secret is gone. The helper uploads nothing for this account.
+        /// The account is paired, but this Mac holds no pairing record for it:
+        /// never paired here, or its helper is paired to another account. The
+        /// helper uploads nothing for this account.
+        ///
+        /// A record whose Keychain secret cannot be read does not count: that
+        /// read also fails while the login keychain is locked, and offering to
+        /// pair for that would add a second device row for this Mac. A secret
+        /// that is really gone is rare, and shows as the helper running
+        /// without a sync.
         case notSetUp
         /// This Mac's helper credentials are for the signed-in account, and the
         /// server said the device is gone or its secret no longer matches.
@@ -42,8 +48,9 @@ public enum ThisMacPairing {
     ///   - canPairThisMac: the runtime allows helper registration and this is
     ///     not Demo mode. False in the QA runtime, where the pairing button is
     ///     a no-op and the app group belongs to production.
-    ///   - pairedDeviceId: the device of this Mac's helper credentials when they
-    ///     belong to the signed-in account (`HelperConfig.loadIfMatches`), else nil.
+    ///   - pairedDeviceId: the device this Mac's helper is paired as when that
+    ///     pairing belongs to the signed-in account (`HelperConfig.pairedDeviceId`),
+    ///     else nil.
     ///   - helperStatus: the helper's last written status (`HelperIPC.readStatus()`).
     public static func state(
         isAuthenticated: Bool,
@@ -62,22 +69,26 @@ public enum ThisMacPairing {
     /// Only the server's "Device not found or unauthorized" counts. A network
     /// failure, a timeout or any other HTTP error says nothing about pairing and
     /// clears itself on the next good sync, so it must not offer to pair again —
-    /// that would leave a second device row behind. A helper from before
-    /// `Status.errorCode` wrote English text only; it is not parsed, so such a
-    /// helper simply shows no repair until it is relaunched with this build.
+    /// that would leave a second device row behind.
+    ///
+    /// A helper from before `Status.errorCode` — every helper released so far,
+    /// and one that keeps running after the app updates in place — stored only
+    /// text. That text carries the server's body verbatim, and the body is
+    /// judged by the same rule the token comes from
+    /// (`HelperSyncFailure.legacyTextReportsDeviceGone`), so the Macs broken
+    /// today are offered the repair without waiting for their helper to restart.
     private static func helperReportsDeviceGone(
         _ status: HelperIPC.Status?,
         pairedDeviceId: String
     ) -> Bool {
-        guard
-            let status,
-            status.state == .error,
-            let code = status.errorCode,
-            let (_, reason) = HelperSyncFailure.httpParts(of: code),
-            reason == .deviceNotPaired
-        else {
-            return false
+        guard let status, status.state == .error else { return false }
+        let deviceGone: Bool
+        if let code = status.errorCode {
+            deviceGone = HelperSyncFailure.httpParts(of: code)?.1 == .deviceNotPaired
+        } else {
+            deviceGone = HelperSyncFailure.legacyTextReportsDeviceGone(status.error)
         }
+        guard deviceGone else { return false }
         // A status about a device this Mac has since replaced is stale: the
         // helper can still write one for the old credentials if it read them
         // just before the app re-paired. A status without a device (a helper

@@ -405,26 +405,26 @@ extension AppState {
     }
 
     /// Re-read whether this Mac has to be paired although the account is (see
-    /// `ThisMacPairing`). One app-group read and, only when the answer depends
-    /// on it, one Keychain lookup — the same one `syncDailyUsage` makes every
-    /// refresh. Called when Settings appears, after every refresh (the helper's
-    /// sync posts one), on sign-in, and right after this Mac pairs.
+    /// `ThisMacPairing`). Two app-group reads, only when the answer depends on
+    /// them, and never the Keychain (`HelperConfig.pairedDeviceId`). Called when
+    /// Settings appears, after every refresh (the helper's sync posts one), on
+    /// sign-in, and right after this Mac pairs.
     public func refreshThisMacPairing() {
         #if os(macOS)
         let canPairThisMac = runtimeEnvironment.capabilities.allowsHelperRegistration
             && !isDemoMode
-        let needsCredentials = isAuthenticated && isPaired && canPairThisMac
+        let needsReads = isAuthenticated && isPaired && canPairThisMac
         let next = ThisMacPairing.state(
             isAuthenticated: isAuthenticated,
             isPaired: isPaired,
             canPairThisMac: canPairThisMac,
-            pairedDeviceId: needsCredentials
-                ? HelperConfig.loadIfMatches(
+            pairedDeviceId: needsReads
+                ? HelperConfig.pairedDeviceId(
                     authenticatedUserId: userId,
                     runtimeEnvironment: runtimeEnvironment
-                )?.deviceId
+                )
                 : nil,
-            helperStatus: needsCredentials ? HelperIPC.readStatus() : nil
+            helperStatus: needsReads ? HelperIPC.readStatus() : nil
         )
         if authState.thisMacPairing != next {
             authState.thisMacPairing = next

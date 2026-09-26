@@ -246,7 +246,7 @@ struct SettingsTab: View {
             // paired. This Mac may still need pairing — its own device removed,
             // or never paired here — and then it needs the pairing flow as well
             // as the settings of a paired account (`ThisMacPairing`).
-            if !authState.isPaired || authState.thisMacPairing != .notNeeded {
+            if authState.showsPairingFlow {
                 Divider()
                 PairingSection(helperEnabled: $helperEnabled)
             }

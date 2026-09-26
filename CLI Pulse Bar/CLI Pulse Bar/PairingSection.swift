@@ -43,7 +43,7 @@ struct PairingSection: View {
                 }
             }
 
-            if showsPairingFlow {
+            if authState.showsPairingFlow {
                 // Local vs Cloud is a choice for an account that has not
                 // picked cloud yet; repairing this Mac is not that choice.
                 if !authState.isPaired {
@@ -84,13 +84,6 @@ struct PairingSection: View {
             //  renders while this Mac is unpaired, which would hide the
             //  helper install card from everyone who actually needs it.)
         }
-    }
-
-    /// The Set Up Cloud Sync flow is for an unpaired account, and for a paired
-    /// account whose pairing does not include this Mac. Both run the same
-    /// flow: `register_helper` adds a device either way.
-    private var showsPairingFlow: Bool {
-        !authState.isPaired || authState.thisMacPairing != .notNeeded
     }
 
     private func hint(_ text: String) -> some View {
@@ -150,71 +143,78 @@ struct PairingSection: View {
                 }
             }
 
-            Divider()
+            // Repairing this Mac, only the button above can do it. What
+            // follows — a terminal fallback, the code, "Check Sync Status" — is
+            // for an account that is not paired yet: `checkPairingStatus` asks
+            // whether the ACCOUNT is paired, which here it already is, so it
+            // would drop the code and come back to this screen unchanged.
+            if !authState.isPaired {
+                Divider()
 
-            // Manual fallback for users who prefer terminal
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(info.install_command)
-                            .font(.system(size: 8.5, design: .monospaced))
-                            .textSelection(.enabled)
-                            .lineLimit(3)
-                        Spacer(minLength: 4)
-                        copyButton(text: info.install_command)
+                // Manual fallback for users who prefer terminal
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(info.install_command)
+                                .font(.system(size: 8.5, design: .monospaced))
+                                .textSelection(.enabled)
+                                .lineLimit(3)
+                            Spacer(minLength: 4)
+                            copyButton(text: info.install_command)
+                        }
+                        .padding(8)
+                        .background(Color.black.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        HStack {
+                            Text("python3 /tmp/cli_pulse_helper.py daemon")
+                                .font(.system(size: 9, design: .monospaced))
+                                .textSelection(.enabled)
+                            Spacer(minLength: 4)
+                            copyButton(text: "python3 /tmp/cli_pulse_helper.py daemon")
+                        }
+                        .padding(8)
+                        .background(Color.black.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .padding(8)
-                    .background(Color.black.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                    HStack {
-                        Text("python3 /tmp/cli_pulse_helper.py daemon")
-                            .font(.system(size: 9, design: .monospaced))
-                            .textSelection(.enabled)
-                        Spacer(minLength: 4)
-                        copyButton(text: "python3 /tmp/cli_pulse_helper.py daemon")
-                    }
-                    .padding(8)
-                    .background(Color.black.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-            } label: {
-                Text(L10n.pairing.manualSetup)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            // Pairing code display
-            HStack {
-                Text(L10n.pairing.yourCode)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Text(info.code)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundStyle(PulseTheme.accent)
-                Spacer()
-                copyButton(text: info.code)
-            }
-            .padding(8)
-            .background(PulseTheme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            Button {
-                Task { await state.checkPairingStatus() }
-            } label: {
-                HStack {
-                    if state.isLoading { ProgressView().controlSize(.small) }
-                    Image(systemName: "checkmark.circle")
+                } label: {
+                    Text(L10n.pairing.manualSetup)
                         .font(.system(size: 10))
-                    Text(L10n.onboarding.checkSync)
-                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+
+                // Pairing code display
+                HStack {
+                    Text(L10n.pairing.yourCode)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text(info.code)
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(PulseTheme.accent)
+                    Spacer()
+                    copyButton(text: info.code)
+                }
+                .padding(8)
+                .background(PulseTheme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                Button {
+                    Task { await state.checkPairingStatus() }
+                } label: {
+                    HStack {
+                        if state.isLoading { ProgressView().controlSize(.small) }
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 10))
+                        Text(L10n.onboarding.checkSync)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PulseTheme.accent)
+                .disabled(state.isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(PulseTheme.accent)
-            .disabled(state.isLoading)
         }
         .padding(10)
         .background(PulseTheme.cardBackground.opacity(0.5))

@@ -1906,4 +1906,4 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pairing.this_mac_removed" = "Este Mac ya no está vinculado a tu cuenta";
 "pairing.this_mac_removed_hint" = "Ha dejado de sincronizarse. Vuelve a configurar la sincronización en la nube para reanudarla.";
 "pairing.this_mac_not_set_up" = "Este Mac aún no está vinculado a tu cuenta";
-"pairing.this_mac_not_set_up_hint" = "Tu cuenta está vinculada en otro dispositivo. Configura la sincronización en la nube para añadir también este Mac y que sus sesiones y alertas aparezcan en tus otros dispositivos.";
+"pairing.this_mac_not_set_up_hint" = "Tu cuenta ya tiene otro dispositivo vinculado. Configura la sincronización en la nube para añadir también este Mac y que sus sesiones y alertas aparezcan en tus otros dispositivos.";

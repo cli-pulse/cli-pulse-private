@@ -114,12 +114,58 @@ final class ThisMacPairingTests: XCTestCase {
         }
     }
 
-    /// A helper from before `errorCode` stored display text, the PostgREST body
-    /// included. It is not parsed: such a helper shows no repair until it runs
-    /// this build, rather than having English text decide anything.
-    func testTheTextOfAHelperFromBeforeErrorCodeIsNotParsed() {
-        let legacy = failure(nil, deviceId: nil, text: "HTTP 400 from helper_sync: \(deviceGoneBody)")
-        XCTAssertEqual(decide(pairedDeviceId: device, status: legacy), .notNeeded)
+    /// What a helper from before `errorCode` stored for an HTTP failure:
+    /// `error.localizedDescription`, i.e. `pairing.error_http_status` ("HTTP %1$d
+    /// from %2$@: %3$@") with the body cut at 200 characters. That is every
+    /// helper released so far, and it keeps running after the app updates.
+    private func legacyText(_ status: Int, _ function: String, _ body: String) -> String {
+        "HTTP \(status) from \(function): \(body.prefix(200))"
+    }
+
+    /// The Macs broken today run such a helper. Its text carries the server's
+    /// body, which decides it by the rule the token comes from.
+    func testTheTextOfAHelperFromBeforeErrorCodeOffersTheRepair() {
+        for function in ["helper_heartbeat", "helper_sync"] {
+            let legacy = failure(nil, deviceId: nil, text: legacyText(400, function, deviceGoneBody))
+            XCTAssertEqual(decide(pairedDeviceId: device, status: legacy), .deviceRemoved, function)
+        }
+        // Nor does the wrapper's wording (its old ja format, say).
+        let ja = failure(nil, deviceId: nil, text: "helper_sync が HTTP 400 を返しました: \(deviceGoneBody)")
+        XCTAssertEqual(decide(pairedDeviceId: device, status: ja), .deviceRemoved)
+    }
+
+    /// Only that exact failure. Another P0001, another code with the same
+    /// words, a network error, a truncated body or loose words in the text do
+    /// not count, and neither does it on a status that is not an error.
+    func testNoOtherTextOfAnOldHelperOffersTheRepair() {
+        let texts = [
+            legacyText(400, "helper_sync", #"{"code":"P0001","details":null,"hint":null,"message":"Too many sessions (max 500)"}"#),
+            legacyText(400, "helper_sync", #"{"code":"P0002","message":"Device not found or unauthorized"}"#),
+            legacyText(503, "helper_sync", "<html>Device not found or unauthorized P0001</html>"),
+            legacyText(400, "helper_sync", String(deviceGoneBody.prefix(60))),
+            "The Internet connection appears to be offline.",
+            "P0001 Device not found or unauthorized",
+            "",
+        ]
+        for text in texts {
+            XCTAssertEqual(
+                decide(pairedDeviceId: device, status: failure(nil, deviceId: nil, text: text)),
+                .notNeeded,
+                text
+            )
+        }
+        let notAnError = HelperIPC.Status(
+            state: .running, lastSync: nil, error: legacyText(400, "helper_sync", deviceGoneBody),
+            errorCode: nil, helperVersion: "1.0.0"
+        )
+        XCTAssertEqual(decide(pairedDeviceId: device, status: notAnError), .notNeeded)
+    }
+
+    /// When there is a token, the token decides; the text beside it is only
+    /// English detail for diagnosis.
+    func testATokenOutranksTheTextBesideIt() {
+        let status = failure("network", deviceId: device, text: legacyText(400, "helper_sync", deviceGoneBody))
+        XCTAssertEqual(decide(pairedDeviceId: device, status: status), .notNeeded)
     }
 
     /// The helper writes the token only with `.error`. A status claiming to be
@@ -134,9 +180,9 @@ final class ThisMacPairingTests: XCTestCase {
 
     // MARK: - This Mac was never paired to this account
 
-    /// A second Mac on an account another device paired, a Mac whose helper is
-    /// paired to another account, or one whose secret is gone: no credentials
-    /// for this account, whatever the helper last wrote.
+    /// A second Mac on an account another device paired, or a Mac whose helper
+    /// is paired to another account: no pairing record for this account,
+    /// whatever the helper last wrote.
     func testAPairedAccountWithoutCredentialsOnThisMacOffersPairing() {
         XCTAssertEqual(decide(pairedDeviceId: nil, status: nil), .notSetUp)
         XCTAssertEqual(decide(pairedDeviceId: "", status: nil), .notSetUp)
@@ -235,12 +281,14 @@ final class ThisMacPairingCopyTests: XCTestCase {
 final class ThisMacPairingAppStateTests: XCTestCase {
 
     /// The test process is not the production app, so it cannot pair a Mac —
-    /// like the QA runtime. Signed in to a paired account, it must still not ask.
-    func testARuntimeThatCannotPairLeavesTheStateAlone() {
+    /// like the QA runtime. Signed in to a paired account, it must still not
+    /// ask, and a refresh clears whatever was there.
+    func testARuntimeThatCannotPairClearsTheState() {
         let state = AppState()
         XCTAssertFalse(state.runtimeEnvironment.capabilities.allowsHelperRegistration)
         state.isAuthenticated = true
         state.isPaired = true
+        state.authState.thisMacPairing = .deviceRemoved
         state.refreshThisMacPairing()
         XCTAssertEqual(state.authState.thisMacPairing, .notNeeded)
     }
@@ -274,3 +322,186 @@ final class ThisMacPairingAppStateTests: XCTestCase {
         XCTAssertEqual(state.authState.thisMacPairing, .notNeeded)
     }
 }
+
+/// The views read these two instead of each spelling the rule out; the app
+/// target has no unit tests, so this is where the rule is pinned.
+@MainActor
+final class ThisMacPairingViewPredicateTests: XCTestCase {
+
+    func testTheTruthTable() {
+        let rows: [(isPaired: Bool, state: ThisMacPairing.State, showsFlow: Bool, syncing: Bool)] = [
+            (false, .notNeeded, true, false),
+            (true, .notNeeded, false, true),
+            (true, .notSetUp, true, false),
+            (true, .deviceRemoved, true, false),
+        ]
+        for row in rows {
+            let auth = AuthState()
+            auth.isPaired = row.isPaired
+            auth.thisMacPairing = row.state
+            XCTAssertEqual(auth.showsPairingFlow, row.showsFlow, "\(row)")
+            XCTAssertEqual(auth.isThisMacSyncing, row.syncing, "\(row)")
+        }
+    }
+}
+
+/// Settings › Advanced › Background Sync, read in zh-Hans (a broken lookup
+/// would still produce English and pass under en).
+final class HelperStatusLineTests: XCTestCase {
+    private var previousOverride: String?
+    private let now = Date(timeIntervalSince1970: 1_800_000_000)
+    private let device = "8f0c3a52-1111-4c1e-9d7e-3b1f5d0a2c44"
+    private let deviceGoneBody = #"{"code":"P0001","details":null,"hint":null,"message":"Device not found or unauthorized"}"#
+
+    override func setUp() {
+        super.setUp()
+        previousOverride = LocaleOverrideStore.shared.override
+        LocaleOverrideStore.shared.set("zh-Hans")
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(previousOverride)
+        super.tearDown()
+    }
+
+    /// With no pairing the helper still wrote "running, synced now" (and one
+    /// paired to another account syncs that one). On a Mac not set up for this
+    /// account that read "Synced just now" in green under "This Mac isn't
+    /// paired with your account yet".
+    func testAMacNotSetUpForThisAccountIsNeverShownAsSynced() {
+        let claims = [
+            HelperIPC.Status(state: .running, lastSync: now, helperVersion: "1.0.0"),
+            HelperIPC.Status(state: .running, lastSync: now.addingTimeInterval(-300), helperVersion: "1.0.0", deviceId: "other-account-device"),
+            HelperIPC.Status(state: .running, lastSync: nil, helperVersion: "1.0.0"),
+        ]
+        for status in claims {
+            let line = HelperStatusLine.make(status: status, thisMacPairing: .notSetUp, now: now)
+            XCTAssertEqual(line, HelperStatusLine(tone: .attention, text: "未同步", isError: false))
+            XCTAssertEqual(line.text, L10n.settings.notPaired)
+        }
+    }
+
+    func testAPairedMacShowsWhatTheHelperDid() {
+        XCTAssertEqual(
+            HelperStatusLine.make(
+                status: HelperIPC.Status(state: .running, lastSync: now.addingTimeInterval(-10), helperVersion: "1.0.0", deviceId: device),
+                thisMacPairing: .notNeeded, now: now
+            ),
+            HelperStatusLine(tone: .good, text: "刚刚同步", isError: false)
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(
+                status: HelperIPC.Status(state: .running, lastSync: now.addingTimeInterval(-180), helperVersion: "1.0.0", deviceId: device),
+                thisMacPairing: .notNeeded, now: now
+            ),
+            HelperStatusLine(tone: .good, text: "3 分钟前同步", isError: false)
+        )
+        // What a helper with no pairing writes now: running, no sync.
+        XCTAssertEqual(
+            HelperStatusLine.make(
+                status: HelperIPC.Status(state: .running, lastSync: nil, helperVersion: "1.0.0"),
+                thisMacPairing: .notNeeded, now: now
+            ),
+            HelperStatusLine(tone: .good, text: "运行中", isError: false)
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(
+                status: HelperIPC.Status(state: .idle, helperVersion: "1.0.0"),
+                thisMacPairing: .notNeeded, now: now
+            ),
+            HelperStatusLine(tone: .inactive, text: "未运行", isError: false)
+        )
+    }
+
+    /// The removed Mac's failure reads as the line above it does, from a
+    /// current helper's token and from an old helper's text alike.
+    func testTheDeviceGoneFailureIsShownInTheUsersLanguage() {
+        let expected = HelperStatusLine(
+            tone: .failure,
+            text: "这台 Mac 已不再与你的账户配对。如需恢复同步，请在「设置」中重新设置云同步。",
+            isError: true
+        )
+        let current = HelperIPC.Status(
+            state: .error, lastSync: nil, error: "helper_sync HTTP 400",
+            errorCode: "http_400_device_not_paired", helperVersion: "1.0.0", deviceId: device
+        )
+        XCTAssertEqual(HelperStatusLine.make(status: current, thisMacPairing: .deviceRemoved, now: now), expected)
+        let legacy = HelperIPC.Status(
+            state: .error, lastSync: nil, error: "HTTP 400 from helper_sync: \(deviceGoneBody)",
+            errorCode: nil, helperVersion: "1.0.0"
+        )
+        XCTAssertEqual(HelperStatusLine.make(status: legacy, thisMacPairing: .deviceRemoved, now: now), expected)
+    }
+}
+
+#if os(macOS)
+/// `ThisMacPairing` decides from the app-group record alone. A Keychain read
+/// fails while the login keychain is locked just as it does when the secret is
+/// gone, and reading that as "not paired" would offer to pair again and add a
+/// second device row for this Mac.
+final class HelperConfigPairedDeviceIdTests: XCTestCase {
+    private let user = "00000000-0000-0000-0000-aaaaaaaaaaaa"
+    private let otherUser = "00000000-0000-0000-0000-bbbbbbbbbbbb"
+
+    private var productionRuntime: CLIPulseRuntimeEnvironment {
+        CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: ["CFBundleIdentifier": "yyh.CLI-Pulse"],
+            environment: [:]
+        )
+    }
+
+    private func persistence(userId: String?, deviceId: String = "device-A") -> HelperConfig.PersistenceAccess {
+        struct Stored: Codable {
+            let deviceId: String
+            let userId: String
+            let deviceName: String
+            let helperVersion: String
+        }
+        let data = userId.map {
+            try! JSONEncoder().encode(
+                Stored(deviceId: deviceId, userId: $0, deviceName: "Mac", helperVersion: "1.0.0")
+            )
+        }
+        return HelperConfig.PersistenceAccess(
+            loadStoredData: { data },
+            saveStoredData: { _ in XCTFail("must not write") },
+            removeStoredData: { XCTFail("must not remove") },
+            loadSecret: {
+                XCTFail("must not read the Keychain")
+                return nil
+            },
+            saveSecret: { _ in XCTFail("must not write the Keychain") },
+            removeSecret: { XCTFail("must not touch the Keychain") },
+            loadLegacyFileData: {
+                XCTFail("must not read the legacy file")
+                return nil
+            }
+        )
+    }
+
+    private func deviceId(_ auth: String?, _ persistence: HelperConfig.PersistenceAccess) -> String? {
+        HelperConfig.pairedDeviceId(
+            authenticatedUserId: auth,
+            runtimeEnvironment: productionRuntime,
+            persistence: persistence
+        )
+    }
+
+    /// The record is enough: the secret is never read, so a locked keychain
+    /// cannot make a paired Mac look unpaired.
+    func testARecordForTheSignedInAccountIsThePairing() {
+        XCTAssertEqual(deviceId(user, persistence(userId: user)), "device-A")
+    }
+
+    func testNoRecordOrAnotherAccountsRecordIsNoPairing() {
+        XCTAssertNil(deviceId(user, persistence(userId: nil)))
+        XCTAssertNil(deviceId(user, persistence(userId: otherUser)))
+        XCTAssertNil(deviceId(user, persistence(userId: user, deviceId: "")))
+    }
+
+    func testNoSignedInAccountIsNoPairing() {
+        XCTAssertNil(deviceId(nil, persistence(userId: user)))
+        XCTAssertNil(deviceId("", persistence(userId: user)))
+    }
+}
+#endif
