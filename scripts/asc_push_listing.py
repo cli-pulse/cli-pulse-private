@@ -76,6 +76,12 @@ APPINFO_FIELDS = [f for f in listing.FIELDS if f.resource == "appInfo"]
 
 _TIMEOUT = 120
 _RETRIES = 3
+# Only these are sent again after a timeout or a dropped connection. A POST
+# creates a localization; if the first one landed and only the response was
+# lost, a second POST gets 409 and the locale is reported FAILED although the
+# store holds the right text. So a POST is sent once, and the read-back after
+# the writes says whether it landed.
+_IDEMPOTENT = frozenset({"GET", "PATCH"})
 
 
 def die(msg: str, code: int = 2) -> "NoReturn":  # noqa: F821
@@ -106,18 +112,25 @@ class ASC:
         del tok
 
     def _send(self, method: str, path: str, **kw):
+        """The response, or None for a POST that timed out (see _IDEMPOTENT)."""
         url = path if path.startswith("http") else BASE + path
+        attempts = _RETRIES if method in _IDEMPOTENT else 1
         last = None
-        for attempt in range(1, _RETRIES + 1):
+        for attempt in range(1, attempts + 1):
             try:
                 return self._requests.request(method, url, headers=self._headers,
                                               timeout=_TIMEOUT, **kw)
             except (self._requests.Timeout, self._requests.ConnectionError) as exc:
                 last = exc
                 print(f"  {method} {path}: {type(exc).__name__} "
-                      f"(attempt {attempt}/{_RETRIES})", file=sys.stderr)
-                time.sleep(5 * attempt)
-        die(f"{method} {path} failed after {_RETRIES} attempts: {type(last).__name__}")
+                      f"(attempt {attempt}/{attempts})", file=sys.stderr)
+                if attempt < attempts:
+                    time.sleep(5 * attempt)
+        if method not in _IDEMPOTENT:
+            print(f"  {method} {path}: not sent again, because a create may already "
+                  "have landed; the read-back below shows whether it did", file=sys.stderr)
+            return None
+        die(f"{method} {path} failed after {attempts} attempts: {type(last).__name__}")
 
     def get(self, path: str, **params) -> dict:
         r = self._send("GET", path, params=params)
@@ -127,6 +140,8 @@ class ASC:
 
     def write(self, method: str, path: str, body: dict) -> dict | None:
         r = self._send(method, path, json=body)
+        if r is None:
+            return None
         if r.status_code >= 300:
             print(f"    {method} {path} -> {r.status_code}")
             try:

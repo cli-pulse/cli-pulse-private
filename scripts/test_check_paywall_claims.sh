@@ -299,6 +299,33 @@ assert_changed "withdrawn Team tier in store description" \
     "$TMP/case/$DESCRIPTION_REL" "$before" \
     && expect_fail "withdrawn Team tier in store description" "withdrawn from sale"
 
+# ── 4e/4f. a price written the local way, in a translated listing ───────────
+# The scan used to know only "$4.99". A Japanese or Spanish listing writes
+# ¥600 or 4,99 €, which that pattern could not see. Each case copies the real
+# locale file into the fixture and plants the price into its subscription line.
+plant_locale_price() {
+    local name="$1" locale="$2" anchor="$3" price="$4"
+    build_fixture "$TMP/case"
+    local rel="CLI Pulse Bar/appstore/$locale/description.txt"
+    mkdir -p "$TMP/case/$(dirname "$rel")"
+    cp "$ROOT/$rel" "$TMP/case/$rel"
+    local before
+    before="$(shasum "$TMP/case/$rel" | cut -d' ' -f1)"
+    python3 - "$TMP/case/$rel" "$anchor" "$price" <<'PLANT'
+import sys
+p, anchor, price = sys.argv[1:4]
+s = open(p, encoding="utf-8").read()
+assert anchor in s, "fixture lost the locale anchor: " + anchor
+open(p, "w", encoding="utf-8").write(s.replace(anchor, anchor + price, 1))
+PLANT
+    assert_changed "$name" "$TMP/case/$rel" "$before" \
+        && expect_fail "$name" "hardcodes a price"
+}
+plant_locale_price "yen price in the Japanese description" ja \
+    "CLI Pulse Pro は自動更新サブスクリプションです。" "月額 ¥600。"
+plant_locale_price "trailing-euro price in the Spanish description" es \
+    "CLI Pulse Pro está disponible como suscripción de renovación automática." " Solo 4,99 € al mes."
+
 echo "test_check_paywall_claims: $pass passed, $fail failed."
 [ "$fail" -eq 0 ] || exit 1
 exit 0

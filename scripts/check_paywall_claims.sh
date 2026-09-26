@@ -392,6 +392,19 @@ fi
 # a withdrawn tier in the Korean listing sells it just as well — and the en-US
 # description is still REQUIRED, so a move of the tree cannot turn this into a
 # scan of nothing.
+#
+# A translated listing would write a price the local way, so the price pattern
+# is not only "$4.99": it takes a currency symbol before a number (¥600, €4.99,
+# ₩1,500, £3.99, $4.99), a symbol or 円/元/원 after one (4,99 €, 600円, 30元,
+# 5,000원), and USD / US$. The alternatives are spelled out rather than put in a
+# [...] bracket: in the C locale grep reads a bracket byte by byte, and the
+# bytes of € or 円 would then match inside ordinary CJK text.
+#
+# NOT covered: a tier name translated into another language (チーム, 团队,
+# "Equipo"). The check looks for the brand form "CLI Pulse Team", which is how
+# every listing names a tier today; asc_listing_preflight.py's SKU-vs-copy
+# check is English-only for the same reason.
+price_pattern='(\$|¥|￥|€|£|₩) ?[0-9]|[0-9]([.,][0-9]{1,2})? ?(€|円|元|원)|US\$|USD ?[0-9]|[0-9] ?USD'
 canonical_desc="$ROOT/CLI Pulse Bar/appstore/en-US/description.txt"
 if [ ! -f "$canonical_desc" ]; then
     echo "ERROR: canonical App Store description missing:"
@@ -415,9 +428,9 @@ while IFS= read -r src; do
     rel="${src#"$ROOT"/}"
     body="$(sed 's/#.*$//' "$src")"
 
-    if printf '%s' "$body" | grep -qE '\$[0-9]+\.[0-9]{2}'; then
+    if printf '%s' "$body" | grep -qE "$price_pattern"; then
         echo "ERROR: $rel hardcodes a price in the App Store description."
-        printf '%s' "$body" | grep -nE '\$[0-9]+\.[0-9]{2}' | sed 's/^/         /'
+        printf '%s' "$body" | grep -nE "$price_pattern" | sed 's/^/         /'
         echo "       Prices live in App Store Connect and change there; a copy"
         echo "       here silently goes stale. On 2026-08-28 every figure in this"
         echo "       file was 4-5x the real price. Say what TERMS.md says instead:"

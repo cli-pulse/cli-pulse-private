@@ -18,7 +18,9 @@ checks what the pusher WOULD send:
   * --locale limits the writes to the named locales;
   * a write the store silently drops is caught by the read-back and fails;
   * with no editable app info, the version text is written but the run reports
-    the subtitle as not applied and exits non-zero.
+    the subtitle as not applied and exits non-zero;
+  * the real client retries a timed-out GET or PATCH but sends a POST (a create)
+    only once, so a create that landed without its response is not sent again.
 
 Runs with a bare python3 (no jwt/requests needed); CI runs it in repo-hygiene.yml.
 """
@@ -165,6 +167,7 @@ def check(name: str, cond: bool, detail: str = "") -> None:
         failed += 1
 
 
+RealASC = pusher.ASC
 pusher.ASC = FakeASC
 ALL = list(listing.LOCALE_SOURCES)
 NEW = [loc for loc in ALL if loc not in ("en-US", "zh-Hans")]
@@ -276,6 +279,75 @@ check("without an editable app info the run is incomplete, and says why",
       and not any("appInfoLocalizations" in p for _, p, _ in FakeASC.writes), out)
 check("... while the version text is still written",
       any(p == "/appStoreVersionLocalizations/vl-en" for _, p, _ in FakeASC.writes))
+
+# 11. the real client's retry rule, with the HTTP layer faked
+class _Timeout(Exception):
+    pass
+
+
+class _ConnectionError(Exception):
+    pass
+
+
+class _FlakyRequests:
+    """Stands in for the `requests` module: the first `fail` calls time out."""
+    Timeout = _Timeout
+    ConnectionError = _ConnectionError
+
+    def __init__(self, fail: int) -> None:
+        self.fail = fail
+        self.calls: list[str] = []
+
+    def request(self, method, url, **kw):
+        self.calls.append(method)
+        if len(self.calls) <= self.fail:
+            raise _Timeout()
+
+        class _Resp:
+            status_code = 200
+            text = "{}"
+
+            @staticmethod
+            def json():
+                return {}
+        return _Resp()
+
+
+def real_client(fail: int):
+    client = RealASC.__new__(RealASC)   # skip __init__: no key, no jwt
+    client._requests = _FlakyRequests(fail)
+    client._headers = {}
+    return client
+
+
+real_sleep = pusher.time.sleep
+pusher.time.sleep = lambda _s: None
+try:
+    c = real_client(fail=1)
+    with contextlib.redirect_stderr(io.StringIO()):
+        res = c.write("PATCH", "/appStoreVersionLocalizations/x", {"data": {}})
+    check("a PATCH that times out once is sent again and succeeds",
+          res == {} and c._requests.calls == ["PATCH", "PATCH"], str(c._requests.calls))
+
+    c = real_client(fail=1)
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+        res = c.write("POST", "/appStoreVersionLocalizations", {"data": {}})
+    check("a POST that times out is sent once, reported, and not retried",
+          res is None and c._requests.calls == ["POST"] and "not sent again" in err.getvalue(),
+          f"{c._requests.calls} {err.getvalue()}")
+
+    c = real_client(fail=pusher._RETRIES)
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            c.get("/apps/x")
+        gave_up = False
+    except SystemExit:
+        gave_up = True
+    check(f"a GET that times out {pusher._RETRIES} times gives up",
+          gave_up and c._requests.calls == ["GET"] * pusher._RETRIES, str(c._requests.calls))
+finally:
+    pusher.time.sleep = real_sleep
 
 print(f"test_asc_push_listing: {passed} passed, {failed} failed.")
 sys.exit(1 if failed else 0)
