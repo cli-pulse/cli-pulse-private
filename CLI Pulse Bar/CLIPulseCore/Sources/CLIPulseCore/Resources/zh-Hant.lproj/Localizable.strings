@@ -1114,7 +1114,7 @@
 /* v1.50 W-C — 在讀取這台 Mac 之前的選擇 */
 "local_scan_consent.title" = "在 CLI Pulse 讀取這台 Mac 之前";
 "local_scan_consent.subtitle" = "目前還沒有讀取任何內容。開始掃描會啟用以下這些。";
-"local_scan_consent.files_title" = "最近 30 天的工作階段紀錄";
+"local_scan_consent.files_title" = "最近 30 天的工作階段日誌";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。CLI Pulse 解析其中的用量紀錄，並把結果快取在這台 Mac 上。";
 "local_scan_consent.derived_title" = "會從中得出什麼";
 "local_scan_consent.derived_detail" = "token 數、費用估算、模型名稱和日期，以及每段對話的檔案路徑、專案資料夾和工作階段 ID —— 「工作階段」清單就是靠這些來命名的。";
@@ -1356,7 +1356,7 @@
 "app_updater.download_update" = "下載更新";
 "app_updater.install_update_quits" = "安裝更新（將結束 CLI Pulse）";
 "local_scan_consent.settings_toggle" = "掃描這台 Mac 上的 CLI 使用情況";
-"local_scan_consent.settings_toggle_detail" = "讀取 ~/.codex 與 ~/.claude 下最近 30 天的工作階段紀錄，並向你使用的服務商查詢即時配額。關閉後，CLI Pulse 不會讀取這台 Mac 上的任何內容。";
+"local_scan_consent.settings_toggle_detail" = "讀取 ~/.codex 與 ~/.claude 下最近 30 天的工作階段日誌，並向你使用的服務商查詢即時配額。關閉後，CLI Pulse 不會讀取這台 Mac 上的任何內容。";
 "settings.local_only_mode" = "僅本機模式";
 "settings.local_only_mode_hint" = "略過所有跨 App 的資料來源。你個人專屬資料夾中檔案的用量資料仍可正常統計。";
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
