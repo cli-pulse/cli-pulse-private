@@ -19,12 +19,14 @@ ANDROID_TABLE="$ANDROID_DIR/strings.xml"
 MANIFEST="scripts/zh_hant_terms.json"
 pass=0; fail=0
 
-# A copy of exactly what the gate reads in the real tree.
+# A copy of exactly what the gate reads in the real tree (build output is not).
 new_tree() {
   T="$(mktemp -d)"
   (cd "$ROOT" && {
-      find "CLI Pulse Bar" -path '*/.build' -prune -o -path '*/zh-Hant.lproj/*.strings' -print
-      find android -path '*/build' -prune -o -path '*/values-zh-rTW/*.xml' -print
+      find "CLI Pulse Bar" \( -name .build -o -name build -o -name DerivedData \) -prune \
+           -o -path '*/zh-Hant.lproj/*.strings' -print
+      find android \( -name .build -o -name build -o -name DerivedData \) -prune \
+           -o -path '*/values-zh-rTW/*.xml' -print
       echo "$MANIFEST"
     } | tar -cf - -T -) | tar -xf - -C "$T"
 }
@@ -115,6 +117,34 @@ expect_fail "a zh-Hant table in a new app target is found without editing the ga
 new_tree; apple_add "$CORE_TABLE" '"zz.quoted" = "他說 \"好\" 然後開了會話";'
 expect_fail "a value with escaped quotes is read to its end" "zz.quoted: uses 會話"
 
+# `//` inside a value is text, not a comment: blanking from there to the end of
+# the line would hide everything after a URL.
+new_tree; apple_add "$CORE_TABLE" '"zz.url" = "請開啟 https://claude.ai 並更新會話 Cookie";'
+expect_fail "a word after a URL's // in a value is still scanned" "zz.url: uses 會話"
+
+# ── an escaped or differently quoted word is still that word ────────────────────
+new_tree; apple_add "$CORE_TABLE" '"zz.escaped" = "\U6703\U8a71";'
+expect_fail "Apple: a word written as \\U escapes is decoded and caught" "zz.escaped: uses 會話"
+
+new_tree; apple_add "$CORE_TABLE" 'zz_unquoted = "會話";'
+expect_fail "Apple: an entry with an unquoted key is scanned" "zz_unquoted: uses 會話"
+
+new_tree; android_add "<string name='zz_single'>告警</string>"
+expect_fail "Android: a single-quoted name attribute is scanned" "zz_single: uses 告警"
+
+new_tree; android_add '<string name="zz_ncr">&#21578;&#x8b66;</string>'
+expect_fail "Android: numeric character references are decoded and caught" "zz_ncr: uses 告警"
+
+new_tree; android_add '<string name="zz_uesc">\u544a\u8b66</string>'
+expect_fail "Android: \\u escapes are decoded and caught" "zz_uesc: uses 告警"
+
+# Decoding shortens the value, so a finding's line must be counted in the file,
+# not by adding the decoded offset to the raw one; and &#10; stays undecoded, so a
+# newline is only counted where the file has one.
+new_tree; android_add '<string name="zz_nlesc">&#x7B2C;&#x4E00;&#x884C;&#10;&#x7B2C;&#x4E8C;&#x884C;
+    再開會話</string>'
+expect_fail "a finding in a decoded value keeps the file's line number" "strings.xml:$(( $(grep -n zz_nlesc "$T/$ANDROID_TABLE" | cut -d: -f1) + 1 )): zz_nlesc: uses 會話"
+
 new_tree; android_add '<plurals name="zz_count"><item quantity="other">%d 個會話</item></plurals>'
 expect_fail "an Android plural item is scanned, labelled by quantity" "zz_count[other]: uses 會話"
 
@@ -141,6 +171,26 @@ printf '<resources>\n    <string name="zz_bcp">會話</string>\n</resources>\n' 
 expect_fail "the BCP-47 values-b+zh+Hant directory is scanned too" "values-b+zh+Hant/strings.xml:2: zz_bcp: uses 會話"
 
 # ── what is NOT a finding ───────────────────────────────────────────────────────
+# Build output is not the source. The owner's checkout carries App Store archives
+# under `CLI Pulse Bar/build/appstore/*.xcarchive`, each with an older catalogue.
+new_tree
+for d in "CLI Pulse Bar/build/appstore/x.xcarchive/Products/zh-Hant.lproj" \
+         "CLI Pulse Bar/CLIPulseCore/.build/debug/x.bundle/zh-Hant.lproj" \
+         "CLI Pulse Bar/DerivedData/x/zh-Hant.lproj"; do
+  mkdir -p "$T/$d"; printf '"tab.sessions" = "會話";\n"tab.alerts" = "告警";\n' > "$T/$d/Localizable.strings"
+done
+mkdir -p "$T/android/app/build/intermediates/res/values-zh-rTW"
+printf '<resources>\n    <string name="tab_alerts">告警</string>\n</resources>\n' \
+  > "$T/android/app/build/intermediates/res/values-zh-rTW/strings.xml"
+expect_pass "old catalogues in build/, .build/ and DerivedData/ are not scanned"
+
+# ...but that is judged below the root: a checkout that itself sits under a
+# directory named `build` (a CI workspace, say) is still read. If it were not,
+# there would be no tables and the gate would fail.
+new_tree; NEST="$(mktemp -d)"; mkdir -p "$NEST/build"; mv "$T" "$NEST/build/repo"; T="$NEST/build/repo"
+expect_pass "a checkout under a directory named build is still scanned"
+rm -rf "$NEST"
+
 new_tree
 apple_add "$CORE_TABLE" '/* 會話 was the old word; 告警 is mainland */'
 apple_add "$CORE_TABLE" '/* "zz.retired" = "會話"; */'
@@ -158,6 +208,13 @@ expect_fail "...while Apple, which says 程序, rejects it" "zz.process: uses �
 new_tree; edit "$CORE_TABLE" 's.replace("使用你的 Google 帳戶，", "使用你的 Google 帳戶或其他帳戶，", 1)'
 expect_fail "an allowlisted phrase excuses itself, not another 帳戶 in the same string" "provider_config.gemini_uses_google: uses 帳戶"
 
+# The allowlist names a (file, key): the same phrase under any other key is a finding.
+new_tree; apple_add "$CORE_TABLE" '"zz.other" = "登入你的 Google 帳戶與服務帳戶";'
+n_other="$(python3 "$GUARD" --root "$T" 2>&1 | grep -c 'zz.other: uses 帳戶')"
+if [ "$n_other" = 2 ]; then pass=$((pass+1)); echo "  ok    an allowlisted phrase under another key is still a finding"
+else fail=$((fail+1)); echo "  FAIL  an allowlisted phrase under another key is still a finding (want 2 findings, got $n_other)"; fi
+rm -rf "$T"
+
 new_tree; edit "$CORE_TABLE" 's.replace("使用你的 Google 帳戶，", "使用你的 Google 帳號，", 1)'
 expect_fail "an allowlist entry whose phrase is gone fails as stale" '"Google 帳戶" no longer appears — stale entry'
 
@@ -169,6 +226,11 @@ expect_fail "an allowlist entry excusing a word nobody forbids fails" "which app
 
 new_tree; manifest_edit 'm["allowlist"].append(dict(m["allowlist"][0]))'
 expect_fail "an allowlist entry listed twice fails" "is listed twice"
+
+# A phrase that stops short of the variant would mask part of the forbidden word
+# and so excuse it without naming it.
+new_tree; manifest_edit 'm["allowlist"][0]["phrase"] = "Google 帳"'
+expect_fail "an allowlist phrase that does not contain its variant fails" "the phrase must contain the variant it excuses"
 
 # ── the manifest itself ─────────────────────────────────────────────────────────
 new_tree; manifest_edit 'next(c for c in m["concepts"] if c["concept"] == "process")["android"]["forbid"].append("程序")'

@@ -1,5 +1,5 @@
 {
- "_about": "Traditional Chinese (Taiwan) terminology for the Apple apps (every zh-Hant.lproj table) and the Android app (values-zh-rTW). One entry per concept: the term each platform uses, the variants it must not use, and the evidence the choice rests on. Read by scripts/check_zh_hant_terms.py, which fails on any forbidden variant in a string VALUE. The allowlist names a (file, key, phrase) where a forbidden sequence is legitimately part of a different word, with the reason; an entry whose phrase is gone fails, so it can only shrink. Changing a term means changing it here, with new evidence, in the same pull request as the catalogues. Counts were measured 2026-09-26: macOS = the 5,549 .loctable files under /System and /Applications/Safari.app that carry a zh_TW table (365,533 strings; a count is the number of strings containing the term); Android = platforms/android-36/data/res/values-zh-rTW/strings.xml from the SDK.",
+ "_about": "Traditional Chinese (Taiwan) terminology for the Apple apps (every zh-Hant.lproj table) and the Android app (values-zh-rTW). One entry per concept: the term each platform uses, the variants it must not use, and the evidence the choice rests on. Read by scripts/check_zh_hant_terms.py, which fails on any forbidden variant in a string VALUE. The allowlist names a (file, key, phrase) where a forbidden sequence is legitimately part of a different word, with the reason; an entry whose phrase is gone fails, so it can only shrink. Changing a term means changing it here, with new evidence, in the same pull request as the catalogues. Every count is the number of strings that contain the term, however often it occurs in each. macOS (measured 2026-09-27 on macOS 27): the 5,549 .loctable files under /System and /Applications/Safari.app that carry a zh_TW table, counting every leaf string, plural and device variants included (365,533 strings). Android: platforms/android-36/data/res/values-zh-rTW/strings.xml from the SDK, counting each <string> and each plural or array <item> (2,503 strings). counts_before: the string values this gate reads on origin/main 5dbc0bf9, comments excluded (1,757 Apple and 268 Android strings).",
  "concepts": [
   {
    "concept": "session",
@@ -12,41 +12,41 @@
   {
    "concept": "alert",
    "english": "alert",
-   "apple": {"use": "警示", "forbid": ["告警"]},
-   "android": {"use": "警示", "forbid": ["告警"]},
-   "evidence": "macOS zh_TW: 警示 34, 警報 44, 告警 0. Android framework zh-rTW: 警示 4, 告警 0. 告警 is the mainland word, and zh-Hans keeps it. History: #582 moved Android zh-rTW to 告警 while #593 moved Apple zh-Hant to 警示; both now say 警示.",
-   "counts_before": {"apple": {"告警": 0, "警示": 29}, "android": {"告警": 12}}
+   "apple": {"use": "警示", "forbid": ["告警", "警報"]},
+   "android": {"use": "警示", "forbid": ["告警", "警報"]},
+   "evidence": "macOS zh_TW: 警示 34, 告警 0, 警報 44, but none of the 44 is an on-screen alert: 37 are 警報器 (Home's smoke and CO alarm devices), 5 are 緊急警報 (government emergency alerts) and 2 are 「%lu個警報感測器」 (alarm sensors). Apple's word for an alert is 警示, and 警報 is forbidden too so that a recount cannot flip the tab to the bigger number. Android framework zh-rTW: 警示 4, 告警 0, 警報 0. 告警 is the mainland word, and zh-Hans keeps it. History: #582 moved Android zh-rTW to 告警 while #593 moved Apple zh-Hant to 警示; both now say 警示.",
+   "counts_before": {"apple": {"告警": 0, "警報": 0, "警示": 28}, "android": {"告警": 12, "警報": 0}}
   },
   {
    "concept": "account",
    "english": "account (the CLI Pulse account, and a provider account)",
    "apple": {"use": "帳號", "forbid": ["帳戶", "賬號", "賬戶", "账号", "账户"]},
    "android": {"use": "帳號", "forbid": ["帳戶", "賬號", "賬戶", "账号", "账户"]},
-   "evidence": "macOS zh_TW: 帳號 5,469, 帳戶 0 (Apple's own product is 「Apple帳號」). Android framework zh-rTW: 帳戶 43, 帳號 0, so on Android 帳號 is a product decision rather than the platform's word: one name for the CLI Pulse account in both phone apps. The Tauri desktop keeps Microsoft's 帳戶 and is not scanned here. A vendor's own product name keeps its 帳戶 (Google 帳戶, GCP 服務帳戶): see the allowlist.",
-   "counts_before": {"apple": {"帳號": 78, "帳戶": 2}, "android": {"帳號": 11, "帳戶": 0}}
+   "evidence": "macOS zh_TW: 帳號 5,469, 帳戶 0 (Apple's own product is 「Apple帳號」). Android framework zh-rTW: 帳戶 32, 帳號 0, so on Android 帳號 is a product decision rather than the platform's word: one name for the CLI Pulse account in both phone apps. The Tauri desktop keeps Microsoft's 帳戶 and is not scanned here. A vendor's own product name keeps its 帳戶 (Google 帳戶, GCP 服務帳戶): see the allowlist.",
+   "counts_before": {"apple": {"帳號": 67, "帳戶": 2}, "android": {"帳號": 10, "帳戶": 0}}
   },
   {
    "concept": "process",
    "english": "process (an OS process)",
    "apple": {"use": "程序", "forbid": ["處理程序", "处理程序"]},
    "android": {"use": "處理程序", "forbid": []},
-   "evidence": "macOS zh_TW: 程序 383 strings, 4 of them 處理程序, all four Apple Intelligence intent summaries (「（處理程序：${processInstanceIdentifier}）」). Android framework zh-rTW writes 處理程序 (StrictMode 「處理程序 %1$s 已違反…」, the kill-background-processes permission) and also bare 程序 (the ANR and heap-dump dialogs); Windows says 處理程序. So Apple forbids 處理程序 and Android keeps it, and Android forbids nothing here because 處理程序 contains 程序.",
-   "counts_before": {"apple": {"程序": 29, "處理程序": 0}, "android": {"處理程序": 2}}
+   "evidence": "macOS zh_TW: 程序 383 strings, 4 of them 處理程序, all four Apple Intelligence intent summaries (「（處理程序：${processInstanceIdentifier}）」). Android framework zh-rTW: 程序 10, 3 of them 處理程序 (StrictMode 「處理程序 %1$s 已違反…」, the kill-background-processes permission); the rest are bare 程序 (the ANR and heap-dump dialogs). Windows says 處理程序. So Apple forbids 處理程序 and Android keeps it, and Android forbids nothing here because 處理程序 contains 程序.",
+   "counts_before": {"apple": {"程序": 25, "處理程序": 0}, "android": {"處理程序": 2}}
   },
   {
    "concept": "provider",
    "english": "provider (an AI service such as Claude or Codex)",
    "apple": {"use": "服務商", "forbid": ["供應商", "提供者", "提供商", "服务商", "供应商"]},
    "android": {"use": "服務商", "forbid": ["供應商", "提供者", "提供商", "服务商", "供应商"]},
-   "evidence": "No platform has a word for an AI service. macOS zh_TW: 服務商 0, 供應商 133 (Home's electricity 「供應商」, 「網際網路服務供應商」), 提供者 110 (News 「新聞提供者」), 提供商 1. Android framework zh-rTW: 供應商 15 (「無線服務供應商」), 提供者 5 (「位置提供者」), 服務商 0. 服務商 is the short form of 服務供應商 (macOS 34) and what the Apple catalogue already said 77 times; Android's four 提供者 (the Providers screen, its empty state and two PDF headings) were changed to match.",
-   "counts_before": {"apple": {"服務商": 77}, "android": {"服務商": 3, "提供者": 4}}
+   "evidence": "No platform has a word for an AI service. macOS zh_TW: 服務商 0, 供應商 141 (Home's electricity 「供應商」, 「網際網路服務供應商」), 提供者 114 (News 「新聞提供者」), 提供商 1. Android framework zh-rTW: 供應商 15 (「無線服務供應商」), 提供者 5 (「位置提供者」), 服務商 0. 服務商 is the short form of 服務供應商 (macOS 34) and what the Apple catalogue already said in 72 strings; Android's four 提供者 (the Providers screen, its empty state and two PDF headings) were changed to match.",
+   "counts_before": {"apple": {"服務商": 72}, "android": {"服務商": 3, "提供者": 4}}
   },
   {
    "concept": "settings",
    "english": "Settings",
    "apple": {"use": "設定", "forbid": ["設置", "设置"]},
    "android": {"use": "設定", "forbid": ["設置", "设置"]},
-   "evidence": "macOS zh_TW: 設定 10,756 (the Settings app is 「設定」), 設置 57 (the mainland spelling, left in a few old AirPort and Maps strings). Android framework zh-rTW: 設定 159, 設置 0.",
+   "evidence": "macOS zh_TW: 設定 10,756 (the Settings app is 「設定」), 設置 63 (the mainland spelling, scattered across about 30 components, at most 12 strings in any one: ClassroomKit, then SiriSetup 10 and AirPort Utility 4). Android framework zh-rTW: 設定 152, 設置 0.",
    "counts_before": {"apple": {"設置": 0}, "android": {"設置": 0}}
   }
  ],

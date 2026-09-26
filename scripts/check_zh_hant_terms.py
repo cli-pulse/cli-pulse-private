@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""
+r"""
 Traditional Chinese terminology — one word per concept, recorded with its evidence.
 
-The zh-Hant (Taiwan) word for "session" changed three times in a month, each
-time by a reviewer's opinion: #557 unified the Apple catalogue on 會話, #582
-moved Android zh-rTW to 告警 for alerts, #593 moved Apple back to 警示. A
-language reviewer reads one catalogue at a time, so nothing stopped the next
-review from flipping a term back, or from leaving half the strings on the old
-one. Counting the platforms' own zh_TW tables settles these questions; this gate
-makes the answer stick.
+The zh-Hant (Taiwan) words for session and alert changed three times in a
+month, each time by a reviewer's opinion: #557 unified the Apple catalogue on
+會話 for sessions, #582 moved Android zh-rTW to 告警 for alerts, #593 moved
+Apple back to 警示. A language reviewer reads one catalogue at a time, so
+nothing stopped the next review from flipping a term back, or from leaving half
+the strings on the old one. Counting the platforms' own zh_TW tables settles
+these questions; this gate makes the answer stick.
 
 `scripts/zh_hant_terms.json` records, per concept, the term each platform uses,
 the variants it must not use, and the evidence (counts from macOS's and
@@ -16,7 +16,9 @@ Android's own zh_TW strings). This gate reads every Apple `zh-Hant.lproj/*.strin
 table under `CLI Pulse Bar/` — CLIPulseCore's catalogue AND the tables an app
 target ships from its own bundle (App Intents names, Siri phrases, permission
 prompts) — and every Android `values-zh-rTW` resource file, and fails on a
-forbidden variant anywhere in a string value, listing file:line: key.
+forbidden variant anywhere in a string value, listing file:line: key. Build
+output (`build/`, `.build/`, `DerivedData/`, e.g. an App Store .xcarchive that
+carries an old copy of the catalogue) is not scanned: it is not the source.
 
 WHAT IT CHECKS
   1. no string value contains a forbidden variant for its platform, unless the
@@ -30,6 +32,11 @@ WHAT IT CHECKS
      處理程序 contains 程序, which is why Android forbids nothing for process);
   4. each platform has at least one table, and every term in use appears in it
      at least once — a moved directory FAILS instead of scanning nothing.
+
+A value is matched after decoding what the platform itself decodes, so an
+escaped word is still that word: `\U6703` in an Apple table, `\u6703`,
+`&#26371;` and `&#x6703;` in an Android one. Apple keys may be unquoted
+(`key = "value";`) and Android attributes single-quoted (`name='x'`).
 
 It does not judge whether a sentence reads well; that is a review job. It stops
 a decided term from being undone, silently or one string at a time.
@@ -55,14 +62,33 @@ PLATFORMS = ("apple", "android")
 # classic qualifier, the BCP-47 form, and either with further qualifiers.
 ANDROID_DIR = re.compile(r"^values-(?:zh-rTW|b\+zh\+Hant(?:\+TW)?)(?:-.+)?$")
 
-STRINGS_ENTRY = re.compile(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;')
+# Build output is not the source: an .xcarchive or a Gradle intermediate carries
+# a copy of an older catalogue. Matched against path parts relative to the root,
+# so a checkout that itself lives under a directory named `build` is still read.
+SKIP_DIRS = {".build", "build", "DerivedData"}
+
+# The key is quoted or a bare token, as OpenStep plists allow (`key = "v";`).
+STRINGS_ENTRY = re.compile(r'(?:"(?P<qkey>(?:[^"\\]|\\.)*)"|(?P<key>[^\s;,={}()"/]+))'
+                           r'\s*=\s*"(?P<value>(?:[^"\\]|\\.)*)"\s*;')
 XML_COMMENT = re.compile(r"<!--.*?-->", re.S)
+_NAME = r"""\bname=(?:"(?P<name>[^"]+)"|'(?P<sname>[^']+)')"""
 # `<string(?=\s)`, not `<string\b`: the word boundary also matches `<string-array`.
-XML_STRING = re.compile(r'<string(?=\s)[^>]*?\bname="([^"]+)"[^>]*?(?<!/)>(.*?)</string>', re.S)
-XML_PLURALS = re.compile(r'<plurals\b[^>]*?\bname="([^"]+)"[^>]*>(.*?)</plurals>', re.S)
-XML_ARRAY = re.compile(r'<(?:string-)?array\b[^>]*?\bname="([^"]+)"[^>]*>(.*?)</(?:string-)?array>', re.S)
+XML_STRING = re.compile(r'<string(?=\s)[^>]*?' + _NAME + r'[^>]*?(?<!/)>(?P<body>.*?)</string>', re.S)
+XML_PLURALS = re.compile(r'<plurals\b[^>]*?' + _NAME + r'[^>]*>(?P<body>.*?)</plurals>', re.S)
+XML_ARRAY = re.compile(r'<(?:string-)?array\b[^>]*?' + _NAME + r'[^>]*>(?P<body>.*?)</(?:string-)?array>', re.S)
 XML_ITEM = re.compile(r'<item\b([^>]*?)(?<!/)>(.*?)</item>', re.S)
-QUANTITY = re.compile(r'\bquantity="(\w+)"')
+QUANTITY = re.compile(r"""\bquantity=["'](\w+)["']""")
+# `\U6703` (Apple), `\u6703`, `&#26371;`, `&#x6703;` (Android). Only code
+# points from U+0080 up are decoded: every term is CJK, and leaving control
+# characters alone keeps a decoded value's newlines where the file has them.
+ESCAPE = re.compile(r"\\[uU]([0-9A-Fa-f]{4})|&#[xX]([0-9A-Fa-f]+);|&#([0-9]+);")
+
+
+def decode(value: str) -> str:
+    def one(m: re.Match) -> str:
+        cp = int(m.group(1) or m.group(2), 16) if (m.group(1) or m.group(2)) else int(m.group(3))
+        return chr(cp) if 0x80 <= cp <= 0x10FFFF and not 0xD800 <= cp <= 0xDFFF else m.group(0)
+    return ESCAPE.sub(one, value)
 
 
 def blank_strings_comments(src: str) -> str:
@@ -111,33 +137,42 @@ def blank_xml_comments(src: str) -> str:
 def apple_entries(text: str) -> list[tuple[str, int, str]]:
     """(key, offset of the value, value) for every entry of a `.strings` table."""
     src = blank_strings_comments(text)
-    return [(m.group(1), m.start(2), m.group(2)) for m in STRINGS_ENTRY.finditer(src)]
+    return [(m.group("qkey") if m.group("qkey") is not None else m.group("key"), m.start("value"), m.group("value"))
+            for m in STRINGS_ENTRY.finditer(src)]
 
 
 def android_entries(text: str) -> list[tuple[str, int, str]]:
     """(label, offset of the text, text) for every string, plural item and array
     item. A plural item is labelled name[quantity], an array item name[index]."""
     src = blank_xml_comments(text)
-    out = [(m.group(1), m.start(2), m.group(2)) for m in XML_STRING.finditer(src)]
+
+    def name(m: re.Match) -> str:
+        return m.group("name") or m.group("sname")
+
+    out = [(name(m), m.start("body"), m.group("body")) for m in XML_STRING.finditer(src)]
     for m in XML_PLURALS.finditer(src):
-        for it in XML_ITEM.finditer(m.group(2)):
+        for it in XML_ITEM.finditer(m.group("body")):
             q = QUANTITY.search(it.group(1))
-            out.append((f"{m.group(1)}[{q.group(1) if q else '?'}]", m.start(2) + it.start(2), it.group(2)))
+            out.append((f"{name(m)}[{q.group(1) if q else '?'}]", m.start("body") + it.start(2), it.group(2)))
     for m in XML_ARRAY.finditer(src):
-        for idx, it in enumerate(XML_ITEM.finditer(m.group(2))):
-            out.append((f"{m.group(1)}[{idx}]", m.start(2) + it.start(2), it.group(2)))
+        for idx, it in enumerate(XML_ITEM.finditer(m.group("body"))):
+            out.append((f"{name(m)}[{idx}]", m.start("body") + it.start(2), it.group(2)))
     return sorted(out, key=lambda e: e[1])
+
+
+def is_build_output(path: Path, root: Path) -> bool:
+    return not SKIP_DIRS.isdisjoint(path.relative_to(root).parts)
 
 
 def tables(root: Path) -> dict[str, list[Path]]:
     apple_root = root / APPLE_ROOT
     apple = sorted(p for p in apple_root.rglob("zh-Hant.lproj/*.strings")
-                   if "/.build/" not in p.as_posix()) if apple_root.is_dir() else []
+                   if not is_build_output(p, root)) if apple_root.is_dir() else []
     android_root = root / ANDROID_ROOT
     android: list[Path] = []
     if android_root.is_dir():
         for d in sorted(android_root.rglob("values-*")):
-            if d.is_dir() and ANDROID_DIR.match(d.name) and "/build/" not in d.as_posix():
+            if d.is_dir() and ANDROID_DIR.match(d.name) and not is_build_output(d, root):
                 android.extend(sorted(d.glob("*.xml")))
     return {"apple": apple, "android": android}
 
@@ -217,8 +252,9 @@ def main() -> int:
         for path in paths:
             rel = path.relative_to(root).as_posix()
             text = path.read_text(encoding="utf-8")
-            for key, offset, value in read(text):
+            for key, offset, raw in read(text):
                 scanned += 1
+                value = decode(raw)
                 masked = value
                 for idx, e in enumerate(allowlist):
                     if (e.get("platform"), e.get("file"), e.get("key")) == (platform, rel, key) \
@@ -230,7 +266,7 @@ def main() -> int:
                 for concept, use, bad in rules:
                     at = masked.find(bad)
                     while at != -1:
-                        line = text.count("\n", 0, offset + at) + 1
+                        line = text.count("\n", 0, offset) + value.count("\n", 0, at) + 1
                         errors.append(f'{rel}:{line}: {key}: uses {bad} — {concept} is {use} on {platform} '
                                       f'(「{value[max(0, at - 8):at + len(bad) + 8]}」)')
                         at = masked.find(bad, at + len(bad))
