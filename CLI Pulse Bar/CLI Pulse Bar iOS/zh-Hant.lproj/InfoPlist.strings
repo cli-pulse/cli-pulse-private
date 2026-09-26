@@ -4,4 +4,4 @@
    iOS resolves them from the system language. */
 
 "NSCameraUsageDescription" = "CLI Pulse 會使用相機掃描你 Mac 上顯示的配對碼。";
-"NSLocalNetworkUsageDescription" = "CLI Pulse 會在目前連接的 Wi-Fi 網路上尋找你的 Mac，讓你透過 iPhone 查看 Mac 上的 CLI 會話。";
+"NSLocalNetworkUsageDescription" = "CLI Pulse 會在目前連接的 Wi-Fi 網路上尋找你的 Mac，讓你透過 iPhone 查看 Mac 上的 CLI 工作階段。";
