@@ -89,14 +89,24 @@ public enum ThisMacPairing {
             deviceGone = HelperSyncFailure.legacyTextReportsDeviceGone(status.error)
         }
         guard deviceGone else { return false }
-        // A status about a device this Mac has since replaced is stale: the
-        // helper can still write one for the old credentials if it read them
-        // just before the app re-paired. A status without a device (a helper
-        // from before `Status.deviceId`) cannot say, so it is believed; the app
-        // clears it when it pairs (`HelperIPC.clearStatus()`).
-        if let statusDevice = status.deviceId, statusDevice != pairedDeviceId {
-            return false
-        }
-        return true
+        return !isAboutAReplacedDevice(status, pairedDeviceId: pairedDeviceId)
+    }
+
+    /// Whether `status` was written for a device other than the one this Mac is
+    /// paired as for the signed-in account: the helper can still write one for
+    /// the old credentials if it read them just before the app re-paired. Such
+    /// a status says nothing about the current pairing.
+    ///
+    /// A status without a device (a helper from before `Status.deviceId`), or a
+    /// Mac without a pairing for this account, cannot say, so it counts; the
+    /// app clears the status when it pairs (`HelperIPC.clearStatus()`).
+    public static func isAboutAReplacedDevice(
+        _ status: HelperIPC.Status,
+        pairedDeviceId: String?
+    ) -> Bool {
+        guard let statusDevice = status.deviceId,
+              let pairedDeviceId, !pairedDeviceId.isEmpty
+        else { return false }
+        return statusDevice != pairedDeviceId
     }
 }

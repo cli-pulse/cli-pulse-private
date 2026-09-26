@@ -359,7 +359,9 @@ public struct HelperConfig: Codable, Sendable {
         #endif
     }
 
-    private static func livePersistence(
+    /// Internal so `AppState.refreshThisMacPairing` can take a stand-in in
+    /// tests and still go through the same reader in the app.
+    internal static func livePersistence(
         runtimeEnvironment: CLIPulseRuntimeEnvironment
     ) -> PersistenceAccess {
         let accessGroup = runtimeEnvironment.keychainAccessGroup

@@ -35,14 +35,26 @@ public struct HelperStatusLine: Equatable, Sendable {
         self.isError = isError
     }
 
+    /// - Parameter pairedDeviceId: the device this Mac is paired as for the
+    ///   signed-in account (`HelperConfig.pairedDeviceId`), or nil.
     public static func make(
         status: HelperIPC.Status,
         thisMacPairing: ThisMacPairing.State,
+        pairedDeviceId: String?,
         now: Date = Date()
     ) -> HelperStatusLine {
         if thisMacPairing == .notSetUp {
             // The words the account card's badge uses for the same fact.
             return HelperStatusLine(tone: .attention, text: L10n.settings.notPaired, isError: false)
+        }
+        if ThisMacPairing.isAboutAReplacedDevice(status, pairedDeviceId: pairedDeviceId) {
+            // Written for the pairing this Mac has just replaced: a sync, or
+            // "no longer paired" in red while the account card, which ignores
+            // it (`ThisMacPairing`), says "Synced". Until the helper writes one
+            // for the current pairing, only whether it runs is known.
+            return status.state == .idle
+                ? HelperStatusLine(tone: .inactive, text: L10n.advanced.helperNotRunning, isError: false)
+                : HelperStatusLine(tone: .good, text: L10n.advanced.helperRunning, isError: false)
         }
         let tone: Tone
         switch status.state {

@@ -65,10 +65,17 @@ struct AdvancedSection: View {
 
                 if let status = HelperIPC.readStatus() {
                     // `HelperStatusLine`: on a Mac that is not paired for this
-                    // account, the helper's "synced" is not this account's.
+                    // account, the helper's "synced" is not this account's, and
+                    // a status written for a device this Mac has since replaced
+                    // is not about its pairing. The device id is an app-group
+                    // read, never the Keychain.
                     let line = HelperStatusLine.make(
                         status: status,
-                        thisMacPairing: authState.thisMacPairing
+                        thisMacPairing: authState.thisMacPairing,
+                        pairedDeviceId: HelperConfig.pairedDeviceId(
+                            authenticatedUserId: authState.userId,
+                            runtimeEnvironment: state.runtimeEnvironment
+                        )
                     )
                     HStack(spacing: 4) {
                         Circle()

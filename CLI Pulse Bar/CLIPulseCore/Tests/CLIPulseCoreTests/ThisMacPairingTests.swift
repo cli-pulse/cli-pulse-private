@@ -314,6 +314,76 @@ final class ThisMacPairingAppStateTests: XCTestCase {
         XCTAssertEqual(state.authState.thisMacPairing, .notNeeded)
     }
 
+    #if os(macOS)
+    /// The production runtime's own path, with a stand-in for this Mac's app
+    /// group whose Keychain read fails the test: a locked login keychain must
+    /// not turn a paired Mac into "not set up" (and a second device row). The
+    /// reader is the one the app uses, so going back to `loadIfMatches`, which
+    /// needs the secret, fails here.
+    func testTheProductionPathDecidesFromTheAppGroupRecordAlone() {
+        let user = "00000000-0000-0000-0000-aaaaaaaaaaaa"
+        let device = "8f0c3a52-1111-4c1e-9d7e-3b1f5d0a2c44"
+        let suiteName = "ThisMacPairingAppStateTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(
+            runtimeEnvironment: TestRuntimeFixtures.productionApp,
+            defaults: defaults,
+            performLaunchSetup: false
+        )
+        XCTAssertTrue(state.runtimeEnvironment.capabilities.allowsHelperRegistration)
+        XCTAssertFalse(state.isDemoMode)
+        state.isAuthenticated = true
+        state.isPaired = true
+        state.userId = user
+
+        func record(for userId: String?) -> HelperConfig.PersistenceAccess {
+            struct Stored: Codable {
+                let deviceId: String
+                let userId: String
+                let deviceName: String
+                let helperVersion: String
+            }
+            let data = userId.map {
+                try! JSONEncoder().encode(
+                    Stored(deviceId: device, userId: $0, deviceName: "Mac", helperVersion: "1.0.0")
+                )
+            }
+            return HelperConfig.PersistenceAccess(
+                loadStoredData: { data },
+                saveStoredData: { _ in XCTFail("must not write") },
+                removeStoredData: { XCTFail("must not remove") },
+                loadSecret: {
+                    XCTFail("must not read the Keychain")
+                    return nil
+                },
+                saveSecret: { _ in XCTFail("must not write the Keychain") },
+                removeSecret: { XCTFail("must not touch the Keychain") },
+                loadLegacyFileData: {
+                    XCTFail("must not read the legacy file")
+                    return nil
+                }
+            )
+        }
+        let deviceGone = HelperIPC.Status(
+            state: .error, lastSync: nil, error: "helper_sync HTTP 400",
+            errorCode: "http_400_device_not_paired", helperVersion: "1.0.0", deviceId: device
+        )
+
+        state.refreshThisMacPairing(helperConfig: record(for: user), readHelperStatus: { nil })
+        XCTAssertEqual(state.authState.thisMacPairing, .notNeeded)
+
+        state.refreshThisMacPairing(helperConfig: record(for: user), readHelperStatus: { deviceGone })
+        XCTAssertEqual(state.authState.thisMacPairing, .deviceRemoved)
+
+        state.refreshThisMacPairing(helperConfig: record(for: "00000000-0000-0000-0000-bbbbbbbbbbbb"), readHelperStatus: { nil })
+        XCTAssertEqual(state.authState.thisMacPairing, .notSetUp)
+
+        state.refreshThisMacPairing(helperConfig: record(for: nil), readHelperStatus: { nil })
+        XCTAssertEqual(state.authState.thisMacPairing, .notSetUp)
+    }
+    #endif
+
     /// A different account signing in next must not inherit this Mac's repair.
     func testSigningOutForgetsTheState() {
         let state = AppState()
@@ -375,7 +445,7 @@ final class HelperStatusLineTests: XCTestCase {
             HelperIPC.Status(state: .running, lastSync: nil, helperVersion: "1.0.0"),
         ]
         for status in claims {
-            let line = HelperStatusLine.make(status: status, thisMacPairing: .notSetUp, now: now)
+            let line = HelperStatusLine.make(status: status, thisMacPairing: .notSetUp, pairedDeviceId: nil, now: now)
             XCTAssertEqual(line, HelperStatusLine(tone: .attention, text: "未同步", isError: false))
             XCTAssertEqual(line.text, L10n.settings.notPaired)
         }
@@ -385,14 +455,14 @@ final class HelperStatusLineTests: XCTestCase {
         XCTAssertEqual(
             HelperStatusLine.make(
                 status: HelperIPC.Status(state: .running, lastSync: now.addingTimeInterval(-10), helperVersion: "1.0.0", deviceId: device),
-                thisMacPairing: .notNeeded, now: now
+                thisMacPairing: .notNeeded, pairedDeviceId: device, now: now
             ),
             HelperStatusLine(tone: .good, text: "刚刚同步", isError: false)
         )
         XCTAssertEqual(
             HelperStatusLine.make(
                 status: HelperIPC.Status(state: .running, lastSync: now.addingTimeInterval(-180), helperVersion: "1.0.0", deviceId: device),
-                thisMacPairing: .notNeeded, now: now
+                thisMacPairing: .notNeeded, pairedDeviceId: device, now: now
             ),
             HelperStatusLine(tone: .good, text: "3 分钟前同步", isError: false)
         )
@@ -400,14 +470,14 @@ final class HelperStatusLineTests: XCTestCase {
         XCTAssertEqual(
             HelperStatusLine.make(
                 status: HelperIPC.Status(state: .running, lastSync: nil, helperVersion: "1.0.0"),
-                thisMacPairing: .notNeeded, now: now
+                thisMacPairing: .notNeeded, pairedDeviceId: device, now: now
             ),
             HelperStatusLine(tone: .good, text: "运行中", isError: false)
         )
         XCTAssertEqual(
             HelperStatusLine.make(
                 status: HelperIPC.Status(state: .idle, helperVersion: "1.0.0"),
-                thisMacPairing: .notNeeded, now: now
+                thisMacPairing: .notNeeded, pairedDeviceId: device, now: now
             ),
             HelperStatusLine(tone: .inactive, text: "未运行", isError: false)
         )
@@ -425,12 +495,139 @@ final class HelperStatusLineTests: XCTestCase {
             state: .error, lastSync: nil, error: "helper_sync HTTP 400",
             errorCode: "http_400_device_not_paired", helperVersion: "1.0.0", deviceId: device
         )
-        XCTAssertEqual(HelperStatusLine.make(status: current, thisMacPairing: .deviceRemoved, now: now), expected)
+        XCTAssertEqual(HelperStatusLine.make(status: current, thisMacPairing: .deviceRemoved, pairedDeviceId: device, now: now), expected)
         let legacy = HelperIPC.Status(
             state: .error, lastSync: nil, error: "HTTP 400 from helper_sync: \(deviceGoneBody)",
             errorCode: nil, helperVersion: "1.0.0"
         )
-        XCTAssertEqual(HelperStatusLine.make(status: legacy, thisMacPairing: .deviceRemoved, now: now), expected)
+        XCTAssertEqual(HelperStatusLine.make(status: legacy, thisMacPairing: .deviceRemoved, pairedDeviceId: device, now: now), expected)
+    }
+
+    /// A helper that read the old credentials just before this Mac re-paired
+    /// writes its failure for the old device. The account card ignores it
+    /// (`ThisMacPairing`) and says "Synced"; this line said, in red, that the
+    /// Mac is no longer paired. Until the helper writes for the current
+    /// pairing, it says only whether the helper runs.
+    func testAStatusWrittenForTheDeviceThisMacReplacedIsNotShown() {
+        let replaced = "0b7e2d10-2222-4a55-8c3b-6e9f1a2b3c4d"
+        let running = HelperStatusLine(tone: .good, text: "运行中", isError: false)
+        let staleFailure = HelperIPC.Status(
+            state: .error, lastSync: nil, error: "helper_sync HTTP 400",
+            errorCode: "http_400_device_not_paired", helperVersion: "1.0.0", deviceId: replaced
+        )
+        XCTAssertEqual(ThisMacPairing.state(
+            isAuthenticated: true, isPaired: true, canPairThisMac: true,
+            pairedDeviceId: device, helperStatus: staleFailure
+        ), .notNeeded, "the card and this line must read the status the same way")
+        XCTAssertEqual(
+            HelperStatusLine.make(status: staleFailure, thisMacPairing: .notNeeded, pairedDeviceId: device, now: now),
+            running
+        )
+        let staleSync = HelperIPC.Status(
+            state: .running, lastSync: now.addingTimeInterval(-10), helperVersion: "1.0.0", deviceId: replaced
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(status: staleSync, thisMacPairing: .notNeeded, pairedDeviceId: device, now: now),
+            running
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(
+                status: HelperIPC.Status(state: .idle, helperVersion: "1.0.0", deviceId: replaced),
+                thisMacPairing: .notNeeded, pairedDeviceId: device, now: now
+            ),
+            HelperStatusLine(tone: .inactive, text: "未运行", isError: false)
+        )
+        // The same failure for the current device, or with no device to
+        // compare (an older helper, or no pairing read), is still shown.
+        let removedLine = HelperStatusLine(
+            tone: .failure,
+            text: "这台 Mac 已不再与你的账户配对。如需恢复同步，请在「设置」中重新设置云同步。",
+            isError: true
+        )
+        let current = HelperIPC.Status(
+            state: .error, lastSync: nil, error: "helper_sync HTTP 400",
+            errorCode: "http_400_device_not_paired", helperVersion: "1.0.0", deviceId: device
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(status: current, thisMacPairing: .deviceRemoved, pairedDeviceId: device, now: now),
+            removedLine
+        )
+        XCTAssertEqual(
+            HelperStatusLine.make(status: staleFailure, thisMacPairing: .notNeeded, pairedDeviceId: nil, now: now),
+            removedLine
+        )
+    }
+}
+
+/// A pairing code the server will never accept used to stay on screen: every
+/// click of "Set Up Background Helper" was refused again, and on a Mac repaired
+/// while its account is paired nothing else replaced the code. Read in zh-Hans,
+/// where a broken lookup cannot pass as English.
+@MainActor
+final class SpentPairingCodeTests: XCTestCase {
+    private var previousOverride: String?
+
+    override func setUp() {
+        super.setUp()
+        previousOverride = LocaleOverrideStore.shared.override
+        LocaleOverrideStore.shared.set("zh-Hans")
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(previousOverride)
+        super.tearDown()
+    }
+
+    /// The codes `register_helper` (migrate_v0.19) returns, and which of them
+    /// mean the code is finished.
+    func testWhichRefusalsSpendTheCode() {
+        let spent = ["invalid_code", "expired", "too_many_failed_attempts"]
+        for code in spent {
+            XCTAssertTrue(HelperAPIError.pairingRejected(code: code, message: code).spendsPairingCode, code)
+        }
+        let retryable: [HelperAPIError] = [
+            .pairingRejected(code: "rate_limited", message: "wait"),
+            .pairingRejected(code: "something_new", message: "?"),
+            .httpError(status: 503, function: "register_helper", body: ""),
+            .httpError(status: 400, function: "register_helper", body: "{}"),
+            .notConfigured,
+            .invalidURL("register_helper"),
+            .parseFailed("missing fields"),
+        ]
+        for error in retryable {
+            XCTAssertFalse(error.spendsPairingCode, error.diagnosticCode)
+        }
+    }
+
+    func testASpentCodeIsDroppedAndItsReasonShownBesideSetUpCloudSync() {
+        let rows: [(code: String, text: String)] = [
+            ("expired", "配对码已过期"),
+            ("invalid_code", "配对码无效"),
+            ("too_many_failed_attempts", "失败次数过多，请生成新的配对码"),
+        ]
+        for row in rows {
+            let state = AppState()
+            state.pairingInfo = PairingInfo(code: "PAIR-1234", install_command: "install")
+            let error = HelperAPIError.pairingRejected(code: row.code, message: "English from the server")
+            XCTAssertTrue(state.discardPairingCodeIfSpent(error), row.code)
+            XCTAssertNil(state.pairingInfo, row.code)
+            XCTAssertEqual(state.pairingError, row.text, row.code)
+        }
+    }
+
+    func testAnyOtherFailureKeepsTheCodeForAnotherTry() {
+        let failures: [Error] = [
+            HelperAPIError.pairingRejected(code: "rate_limited", message: "wait"),
+            HelperAPIError.httpError(status: 503, function: "register_helper", body: ""),
+            URLError(.notConnectedToInternet),
+        ]
+        for failure in failures {
+            let state = AppState()
+            state.pairingInfo = PairingInfo(code: "PAIR-1234", install_command: "install")
+            XCTAssertFalse(state.discardPairingCodeIfSpent(failure), "\(failure)")
+            XCTAssertEqual(state.pairingInfo?.code, "PAIR-1234", "\(failure)")
+            XCTAssertNil(state.pairingError, "\(failure)")
+        }
     }
 }
 

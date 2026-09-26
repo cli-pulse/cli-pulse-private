@@ -263,7 +263,12 @@ struct PairingSection: View {
             state.refreshThisMacPairing()
             await state.checkPairingStatus()
         } catch {
-            nativePairingError = error.localizedDescription
+            // A code the server will never accept is dropped, and its reason
+            // shown under "Set Up Cloud Sync" (`state.pairingError`), which gets
+            // a new one. Anything else stays on this card for another try.
+            if !state.discardPairingCodeIfSpent(error) {
+                nativePairingError = error.localizedDescription
+            }
             // Activation diagnosis (2026-07-26): 64% of signups never register a
             // device, and a failure here is the one moment we know a user TRIED
             // and was stopped — yet it was previously invisible outside this red
