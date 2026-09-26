@@ -299,9 +299,11 @@ assert_changed "withdrawn Team tier in store description" \
     "$TMP/case/$DESCRIPTION_REL" "$before" \
     && expect_fail "withdrawn Team tier in store description" "withdrawn from sale"
 
-# ── 4e/4f. a price written the local way, in a translated listing ───────────
+# ── 4e-4j. a price written the local way, in a translated listing ───────────
 # The scan used to know only "$4.99". A Japanese or Spanish listing writes
-# ¥600 or 4,99 €, which that pattern could not see. Each case copies the real
+# ¥600 or 4,99 €, and a Chinese, Korean or Spanish one names a foreign
+# currency as a word (4.99 美元, 150 美金, 4.99달러, 4,99 dólares); the first
+# pattern could see none of these. Each case copies the real
 # locale file into the fixture and plants the price into its subscription line.
 plant_locale_price() {
     local name="$1" locale="$2" anchor="$3" price="$4"
@@ -325,6 +327,14 @@ plant_locale_price "yen price in the Japanese description" ja \
     "CLI Pulse Pro は自動更新サブスクリプションです。" "月額 ¥600。"
 plant_locale_price "trailing-euro price in the Spanish description" es \
     "CLI Pulse Pro está disponible como suscripción de renovación automática." " Solo 4,99 € al mes."
+plant_locale_price "US dollars as a word in the Simplified Chinese description" zh-Hans \
+    "CLI Pulse Pro 提供自动续期订阅。" "每月 4.99 美元。"
+plant_locale_price "US dollars as a word in the Traditional Chinese description" zh-Hant \
+    "CLI Pulse Pro 提供自動續訂的訂閱方案。" "每月 150 美金。"
+plant_locale_price "dollars as a word in the Korean description" ko \
+    "CLI Pulse Pro는 자동 갱신 구독으로 제공됩니다." " 월 4.99달러."
+plant_locale_price "dollars as a word in the Spanish description" es \
+    "CLI Pulse Pro está disponible como suscripción de renovación automática." " Solo 4,99 dólares al mes."
 
 echo "test_check_paywall_claims: $pass passed, $fail failed."
 [ "$fail" -eq 0 ] || exit 1

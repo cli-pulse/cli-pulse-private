@@ -80,8 +80,16 @@ _RETRIES = 3
 # creates a localization; if the first one landed and only the response was
 # lost, a second POST gets 409 and the locale is reported FAILED although the
 # store holds the right text. So a POST is sent once, and the read-back after
-# the writes says whether it landed.
+# the writes decides whether it landed and whether the run fails.
 _IDEMPOTENT = frozenset({"GET", "PATCH"})
+
+
+def _created(res: dict | None) -> str:
+    """Status for a create. A create is not counted as a failure here: when its
+    response is lost it may still have landed, and one the store rejected leaves
+    the locale missing. The read-back sees both cases and counts only a text
+    that is really not on the store."""
+    return "ok" if res is not None else "not confirmed; the read-back below decides"
 
 
 def die(msg: str, code: int = 2) -> "NoReturn":  # noqa: F821
@@ -370,6 +378,7 @@ def main() -> int:
                     res = asc.write("PATCH", f"/appInfoLocalizations/{lid}", {"data": {
                         "type": "appInfoLocalizations", "id": lid, "attributes": fields}})
                     print(f"  [{loc}] PATCH subtitle: {'ok' if res is not None else 'FAILED'}")
+                    failures += res is None
                 else:
                     attrs = {"locale": loc, "name": listing.APP_NAME, **fields}
                     if en_info.get("privacyPolicyUrl"):
@@ -378,9 +387,7 @@ def main() -> int:
                         "type": "appInfoLocalizations", "attributes": attrs,
                         "relationships": {"appInfo": {"data": {
                             "type": "appInfos", "id": editable_info["id"]}}}}})
-                    print(f"  [{loc}] CREATE app info localization: "
-                          f"{'ok' if res is not None else 'FAILED'}")
-                failures += res is None
+                    print(f"  [{loc}] CREATE app info localization: {_created(res)}")
 
     for loc, fields in changes.items():
         if loc in vlocs:
@@ -388,6 +395,7 @@ def main() -> int:
             res = asc.write("PATCH", f"/appStoreVersionLocalizations/{lid}", {"data": {
                 "type": "appStoreVersionLocalizations", "id": lid, "attributes": fields}})
             print(f"  [{loc}] PATCH {', '.join(fields)}: {'ok' if res is not None else 'FAILED'}")
+            failures += res is None
         else:
             attrs = {"locale": loc, **fields}
             for url_attr in ("supportUrl", "marketingUrl"):
@@ -397,8 +405,7 @@ def main() -> int:
                 "type": "appStoreVersionLocalizations", "attributes": attrs,
                 "relationships": {"appStoreVersion": {"data": {
                     "type": "appStoreVersions", "id": ver["id"]}}}}})
-            print(f"  [{loc}] CREATE localization: {'ok' if res is not None else 'FAILED'}")
-        failures += res is None
+            print(f"  [{loc}] CREATE localization: {_created(res)}")
 
     # ── 3. verify by reading back ─────────────────────────────────────────────
     print("\nVERIFY (read back)")

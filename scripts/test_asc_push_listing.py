@@ -20,7 +20,9 @@ checks what the pusher WOULD send:
   * with no editable app info, the version text is written but the run reports
     the subtitle as not applied and exits non-zero;
   * the real client retries a timed-out GET or PATCH but sends a POST (a create)
-    only once, so a create that landed without its response is not sent again.
+    only once, so a create that landed without its response is not sent again;
+  * such a create does not fail the run when the read-back finds its text, and
+    a create the store refused fails the run through the read-back.
 
 Runs with a bare python3 (no jwt/requests needed); CI runs it in repo-hygiene.yml.
 """
@@ -280,7 +282,43 @@ check("without an editable app info the run is incomplete, and says why",
 check("... while the version text is still written",
       any(p == "/appStoreVersionLocalizations/vl-en" for _, p, _ in FakeASC.writes))
 
-# 11. the real client's retry rule, with the HTTP layer faked
+# 11. a create whose response is lost, or that the store rejects: the read-back decides
+class _UnconfirmedCreates(FakeASC):
+    """ja's two creates come back as None: `land` says whether they reached the store
+    (the response was lost) or not (the store refused them)."""
+    land = True
+
+    def write(self, method, path, body):
+        if method == "POST" and body["data"]["attributes"].get("locale") == "ja":
+            if _UnconfirmedCreates.land:
+                FakeASC.write(self, method, path, body)
+            else:
+                FakeASC.writes.append((method, path, copy.deepcopy(body)))
+            return None
+        return FakeASC.write(self, method, path, body)
+
+
+pusher.ASC = _UnconfirmedCreates
+try:
+    fresh()
+    _UnconfirmedCreates.land = True
+    code, out = run("--apply", "--version", "1.54.0", "--platform", "IOS")
+    check("a create that landed without its response does not fail the run",
+          code == 0 and "not confirmed" in out and "APPLY OK" in out
+          and "MISMATCH" not in out, out)
+
+    fresh()
+    _UnconfirmedCreates.land = False
+    code, out = run("--apply", "--version", "1.54.0", "--platform", "IOS")
+    check("a create the store refused fails the run through the read-back",
+          code == 1 and "MISMATCH [ja] description" in out
+          and "MISMATCH [ja] subtitle" in out and "APPLY INCOMPLETE" in out, out)
+finally:
+    pusher.ASC = FakeASC
+    _UnconfirmedCreates.land = True
+
+
+# 12. the real client's retry rule, with the HTTP layer faked
 class _Timeout(Exception):
     pass
 

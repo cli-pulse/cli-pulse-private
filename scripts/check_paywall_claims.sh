@@ -396,15 +396,19 @@ fi
 # A translated listing would write a price the local way, so the price pattern
 # is not only "$4.99": it takes a currency symbol before a number (¥600, €4.99,
 # ₩1,500, £3.99, $4.99), a symbol or 円/元/원 after one (4,99 €, 600円, 30元,
-# 5,000원), and USD / US$. The alternatives are spelled out rather than put in a
-# [...] bracket: in the C locale grep reads a bracket byte by byte, and the
-# bytes of € or 円 would then match inside ordinary CJK text.
+# 5,000원), USD / US$, and a currency written as a word after a number, the
+# way CJK and Spanish copy usually names a foreign currency (4.99 美元, 150 美金,
+# 600 日元/日圓, 4.99 ドル, 4.99달러, 4,99 dólares, 4,99 euros, 99 pesos). The
+# alternatives are spelled out rather than put in a [...] bracket: in the C
+# locale grep reads a bracket byte by byte, and the bytes of € or 円 would then
+# match inside ordinary CJK text.
 #
 # NOT covered: a tier name translated into another language (チーム, 团队,
 # "Equipo"). The check looks for the brand form "CLI Pulse Team", which is how
 # every listing names a tier today; asc_listing_preflight.py's SKU-vs-copy
 # check is English-only for the same reason.
 price_pattern='(\$|¥|￥|€|£|₩) ?[0-9]|[0-9]([.,][0-9]{1,2})? ?(€|円|元|원)|US\$|USD ?[0-9]|[0-9] ?USD'
+price_pattern="$price_pattern"'|[0-9] ?(美元|美金|日元|日圓|港元|港幣|ドル|달러|dólar|dolar|euro|Euro|peso)'
 canonical_desc="$ROOT/CLI Pulse Bar/appstore/en-US/description.txt"
 if [ ! -f "$canonical_desc" ]; then
     echo "ERROR: canonical App Store description missing:"
