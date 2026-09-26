@@ -2176,6 +2176,13 @@ extension AppState {
                 for: expectedUserID
             )
         }
+        // Every helper cycle posts `didSyncNotificationName`, which starts a
+        // refresh that ends here. The helper posts it just before its own
+        // upload, whose status usually lands while this refresh is still
+        // collecting; one that lands later is read at the end of the next.
+        // That is what lets Settings show — and clear — "this Mac is no longer
+        // paired" without being reopened.
+        refreshThisMacPairing()
         #endif
         // Let platform bridges (notably iOS's PhoneSessionManager) forward the
         // freshly-loaded snapshot to the Apple Watch via WCSession. No userInfo

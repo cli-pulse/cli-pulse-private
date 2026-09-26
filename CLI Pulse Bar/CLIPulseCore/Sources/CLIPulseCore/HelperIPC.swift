@@ -20,7 +20,8 @@ public enum HelperIPC {
 
     /// Helper status: `Status` encoded with a default `JSONEncoder` —
     /// { "state": "running"|"idle"|"error", "lastSync": Date, "error": English
-    /// detail for diagnosis, "errorCode": `HelperSyncFailure` token, "helperVersion" }.
+    /// detail for diagnosis, "errorCode": `HelperSyncFailure` token, "helperVersion",
+    /// "deviceId": the paired device the sync ran as }.
     /// The app shows `errorCode`, rendered in its own language, and falls back
     /// to `error` only for a status from a helper that predates `errorCode`.
     public static let statusKey = "helper_status"
@@ -329,19 +330,26 @@ public enum HelperIPC {
         /// the user's language. Optional so a status written by an older helper,
         /// which lacks the key, still decodes — and older apps ignore it.
         public let errorCode: String?
+        /// The paired device (`HelperConfig.deviceId`) the sync ran as, so the
+        /// app can tell a failure of the current pairing from one of the device
+        /// it just replaced (`ThisMacPairing`). Nil when there was no pairing to
+        /// sync as, and in a status from a helper that predates the field.
+        public let deviceId: String?
 
         public init(
             state: State,
             lastSync: Date? = nil,
             error: String? = nil,
             errorCode: String? = nil,
-            helperVersion: String? = nil
+            helperVersion: String? = nil,
+            deviceId: String? = nil
         ) {
             self.state = state
             self.lastSync = lastSync
             self.error = error
             self.errorCode = errorCode
             self.helperVersion = helperVersion
+            self.deviceId = deviceId
         }
     }
 
@@ -358,6 +366,14 @@ public enum HelperIPC {
               let data = try? JSONEncoder().encode(status) else { return }
         defaults.set(data, forKey: statusKey)
         // No deprecated `synchronize()` — see writeCollectorResults.
+    }
+
+    /// Forget the helper's last status. The app calls this when it pairs this
+    /// Mac: whatever the helper last wrote was about the pairing just replaced,
+    /// and a helper from before `Status.deviceId` cannot say so. Until the
+    /// helper's next cycle there is no status, which Settings shows as nothing.
+    public static func clearStatus() {
+        UserDefaults(suiteName: suiteName)?.removeObject(forKey: statusKey)
     }
 
     /// Post a sync notification via DistributedNotificationCenter.

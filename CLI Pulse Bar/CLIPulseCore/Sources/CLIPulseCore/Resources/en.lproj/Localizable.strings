@@ -1927,3 +1927,9 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 
 /* ── overview-hourly ── */
 "dashboard.hourly_activity" = "Hourly activity";
+
+/* ── this-mac-pairing ── */
+"pairing.this_mac_removed" = "This Mac is no longer paired with your account";
+"pairing.this_mac_removed_hint" = "It has stopped syncing. Set up cloud sync again to resume.";
+"pairing.this_mac_not_set_up" = "This Mac isn't paired with your account yet";
+"pairing.this_mac_not_set_up_hint" = "Your account is paired on another device. Set up cloud sync to add this Mac too, so its sessions and alerts show on your other devices.";

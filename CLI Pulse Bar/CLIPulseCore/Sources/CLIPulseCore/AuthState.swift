@@ -24,6 +24,10 @@ public final class AuthState: ObservableObject {
     @Published public var userId: String = ""
     @Published public var userName: String = ""
     @Published public var userEmail: String = ""
+    /// Whether THIS Mac still has to be paired although `isPaired` (the
+    /// account's flag) is true. Kept current by `AppState.refreshThisMacPairing()`;
+    /// always `.notNeeded` off macOS.
+    @Published public var thisMacPairing: ThisMacPairing.State = .notNeeded
 
     public init() {}
 }

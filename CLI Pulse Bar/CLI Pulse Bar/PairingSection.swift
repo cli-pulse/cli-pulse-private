@@ -22,20 +22,33 @@ struct PairingSection: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.settings.connection, icon: "link")
 
-            // Current mode indicator
-            if authState.isPaired {
-                modeIndicator(icon: "cloud.fill", text: L10n.onboarding.syncedMode, color: PulseTheme.accent)
-            } else if state.isLocalMode {
-                modeIndicator(icon: "desktopcomputer", text: L10n.onboarding.localModeDesc, color: .green)
-                Text(L10n.onboarding.notSyncedHint)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            } else {
-                modeIndicator(icon: "questionmark.circle", text: L10n.pairing.notConnected, color: .orange)
+            // Current mode indicator. The account can count as paired while
+            // this Mac is not (`ThisMacPairing`); the "syncing across devices"
+            // line would then be false, so this Mac's own state comes first.
+            switch authState.thisMacPairing {
+            case .deviceRemoved:
+                modeIndicator(icon: "exclamationmark.triangle.fill", text: L10n.pairing.thisMacRemoved, color: .orange)
+                hint(L10n.pairing.thisMacRemovedHint)
+            case .notSetUp:
+                modeIndicator(icon: "desktopcomputer", text: L10n.pairing.thisMacNotSetUp, color: .orange)
+                hint(L10n.pairing.thisMacNotSetUpHint)
+            case .notNeeded:
+                if authState.isPaired {
+                    modeIndicator(icon: "cloud.fill", text: L10n.onboarding.syncedMode, color: PulseTheme.accent)
+                } else if state.isLocalMode {
+                    modeIndicator(icon: "desktopcomputer", text: L10n.onboarding.localModeDesc, color: .green)
+                    hint(L10n.onboarding.notSyncedHint)
+                } else {
+                    modeIndicator(icon: "questionmark.circle", text: L10n.pairing.notConnected, color: .orange)
+                }
             }
 
-            if !authState.isPaired {
-                HowItWorksCard()
+            if showsPairingFlow {
+                // Local vs Cloud is a choice for an account that has not
+                // picked cloud yet; repairing this Mac is not that choice.
+                if !authState.isPaired {
+                    HowItWorksCard()
+                }
 
                 Divider()
 
@@ -68,9 +81,23 @@ struct PairingSection: View {
             }
             // (v1.16: Companion CLI Helper UI lives in SettingsTab's
             //  authenticatedSection, NOT here — PairingSection only
-            //  renders for unpaired users, which would hide the helper
-            //  install card from everyone who actually needs it.)
+            //  renders while this Mac is unpaired, which would hide the
+            //  helper install card from everyone who actually needs it.)
         }
+    }
+
+    /// The Set Up Cloud Sync flow is for an unpaired account, and for a paired
+    /// account whose pairing does not include this Mac. Both run the same
+    /// flow: `register_helper` adds a device either way.
+    private var showsPairingFlow: Bool {
+        !authState.isPaired || authState.thisMacPairing != .notNeeded
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func modeIndicator(icon: String, text: String, color: Color) -> some View {
@@ -219,6 +246,11 @@ struct PairingSection: View {
                 config,
                 runtimeEnvironment: state.runtimeEnvironment
             )
+            // Whatever the helper last wrote was about the pairing this one
+            // replaces — for a Mac repaired here, "device not found". Left in
+            // place it would keep this Mac looking unpaired until the helper's
+            // next cycle, up to two minutes after it paired.
+            HelperIPC.clearStatus()
             HelperLogin.setEnabled(
                 true,
                 in: state.runtimeEnvironment
@@ -226,6 +258,9 @@ struct PairingSection: View {
             helperEnabled = HelperLogin.isEnabled(
                 in: state.runtimeEnvironment
             )
+            // For an account that was already paired, `checkPairingStatus`
+            // changes nothing visible: this is what clears the repair state.
+            state.refreshThisMacPairing()
             await state.checkPairingStatus()
         } catch {
             nativePairingError = error.localizedDescription

@@ -404,6 +404,34 @@ extension AppState {
         isLoading = false
     }
 
+    /// Re-read whether this Mac has to be paired although the account is (see
+    /// `ThisMacPairing`). One app-group read and, only when the answer depends
+    /// on it, one Keychain lookup — the same one `syncDailyUsage` makes every
+    /// refresh. Called when Settings appears, after every refresh (the helper's
+    /// sync posts one), on sign-in, and right after this Mac pairs.
+    public func refreshThisMacPairing() {
+        #if os(macOS)
+        let canPairThisMac = runtimeEnvironment.capabilities.allowsHelperRegistration
+            && !isDemoMode
+        let needsCredentials = isAuthenticated && isPaired && canPairThisMac
+        let next = ThisMacPairing.state(
+            isAuthenticated: isAuthenticated,
+            isPaired: isPaired,
+            canPairThisMac: canPairThisMac,
+            pairedDeviceId: needsCredentials
+                ? HelperConfig.loadIfMatches(
+                    authenticatedUserId: userId,
+                    runtimeEnvironment: runtimeEnvironment
+                )?.deviceId
+                : nil,
+            helperStatus: needsCredentials ? HelperIPC.readStatus() : nil
+        )
+        if authState.thisMacPairing != next {
+            authState.thisMacPairing = next
+        }
+        #endif
+    }
+
     public func signOut() {
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
@@ -726,6 +754,11 @@ extension AppState {
         // is idempotent + no-ops when nothing's cached.
         flushPendingPushTokenIfAvailable()
 
+        // A Mac signing in to an account another device already paired lands
+        // on a Settings screen that is already open; say at once whether this
+        // Mac is paired too, rather than after the first refresh.
+        refreshThisMacPairing()
+
         // Notify iOS companion to forward auth to watch
         NotificationCenter.default.post(
             name: .cliPulseDidAuthenticate,
@@ -795,6 +828,7 @@ extension AppState {
         otpEmail = ""
         pairingInfo = nil
         pairingError = nil
+        authState.thisMacPairing = .notNeeded
         lastError = nil
         // Clear tier-migration state so a different account signing in on
         // the same device starts clean — otherwise they'd see the prior

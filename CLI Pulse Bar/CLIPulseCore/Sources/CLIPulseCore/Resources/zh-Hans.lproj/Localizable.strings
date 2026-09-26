@@ -1917,3 +1917,9 @@
 
 /* ── overview-hourly ── */
 "dashboard.hourly_activity" = "每小时活动";
+
+/* ── this-mac-pairing ── */
+"pairing.this_mac_removed" = "这台 Mac 已不再与你的账户配对";
+"pairing.this_mac_removed_hint" = "它已停止同步。重新设置云同步即可恢复。";
+"pairing.this_mac_not_set_up" = "这台 Mac 尚未与你的账户配对";
+"pairing.this_mac_not_set_up_hint" = "你的账户已在另一台设备上配对。设置云同步即可添加这台 Mac，让它的会话和告警也显示在你的其他设备上。";

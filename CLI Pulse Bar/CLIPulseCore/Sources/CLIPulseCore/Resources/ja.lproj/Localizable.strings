@@ -1931,3 +1931,9 @@
 
 /* ── overview-hourly ── */
 "dashboard.hourly_activity" = "時間別アクティビティ";
+
+/* ── this-mac-pairing ── */
+"pairing.this_mac_removed" = "この Mac とアカウントのペアリングが解除されています";
+"pairing.this_mac_removed_hint" = "同期が停止しています。再開するには、クラウド同期をもう一度セットアップしてください。";
+"pairing.this_mac_not_set_up" = "この Mac はまだアカウントとペアリングされていません";
+"pairing.this_mac_not_set_up_hint" = "アカウントは別のデバイスでペアリング済みです。クラウド同期をセットアップしてこの Mac も追加すると、この Mac のセッションとアラートも他のデバイスに表示されます。";
