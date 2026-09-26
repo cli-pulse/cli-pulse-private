@@ -404,4 +404,15 @@ def main():
 
 
 if __name__ == "__main__":
+    # This script WRITES to App Store Connect as soon as it starts. It has no
+    # dry run and used to ignore every argument, --help included. On 2026-09-27
+    # a `--help` meant only to check that it still imported ran it for real
+    # (the live listing did not change, because nothing it tried to write to
+    # was editable). So it now does nothing unless --apply is the only argument.
+    if sys.argv[1:] != ["--apply"]:
+        print((__doc__ or "").strip(), file=sys.stderr)
+        print("\nRefusing to run without --apply: this script writes to App Store "
+              "Connect and has no dry run.\nFor listing text, use "
+              "scripts/asc_push_listing.py, which shows a diff first.", file=sys.stderr)
+        sys.exit(2)
     main()
