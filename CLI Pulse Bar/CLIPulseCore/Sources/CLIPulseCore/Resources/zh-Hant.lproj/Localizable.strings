@@ -1899,8 +1899,8 @@
 "status_text.models_installed" = "已安裝 %d 個模型";
 "status_text.models_installed_one" = "已安裝 %d 個模型";
 "status_text.running_installed" = "%1$d 個執行中，已安裝 %2$d 個";
-"status_text.active_sessions" = "%d 個活躍工作階段";
-"status_text.active_sessions_one" = "%d 個活躍工作階段";
+"status_text.active_sessions" = "%d 個活躍";
+"status_text.active_sessions_one" = "%d 個活躍";
 "status_text.unlimited" = "無限";
 "status_text.balance_unavailable" = "無法取得餘額";
 "status_text.balance_unavailable_api" = "餘額無法用於 API 呼叫";
