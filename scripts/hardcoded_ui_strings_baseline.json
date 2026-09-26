@@ -1476,6 +1476,12 @@
    "literal": "\"Google\"",
    "count": 1,
    "reason": "KEEP_PROPER_NOUN: sign-in provider brand name in SettingsScreen.providerDisplayName, shown in Linked Accounts."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/QASnapshotRenderer.swift",
+   "literal": "\"Window content only; the window's title is \\\"\\(localizedTitle)\\\".\"",
+   "count": 1,
+   "reason": "KEEP_DEBUG_OR_QA_ONLY: The whole file is inside #if CLIPULSE_QA_RENDER, defined only by the app's Debug QA configuration (scripts/ci_check_qa_scheme.py fails CI if any other configuration defines it). The text goes into the offscreen renderer's manifest.json for reviewers, never onto a screen."
   }
  ]
 }

@@ -34,6 +34,9 @@ struct OnboardingWizardView: View {
     @State private var otpCode = ""
     @State private var password = ""
     @State private var usePasswordLogin = false
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
 
     private static let seededConfigsKey =
         "cli_pulse_agent_setup_seeded_provider_configs_v2"
@@ -101,7 +104,27 @@ struct OnboardingWizardView: View {
         .onDisappear {
             clearCredentialBuffers()
         }
+        #if CLIPULSE_QA_RENDER
+        .onAppear(perform: applyQARenderViewState)
+        #endif
     }
+
+    #if CLIPULSE_QA_RENDER
+    /// QA build only: put the wizard where a user who clicked through it
+    /// would be, for the offscreen renderer. Accounts are discovered only on
+    /// the discovery page, so a later page drawn on its own needs discovery
+    /// run first, as it would have run on the way there.
+    private func applyQARenderViewState() {
+        guard let qaRenderViewState else { return }
+        if qaRenderViewState.onboardingRunsDiscovery, currentStep != .discovery {
+            performDiscovery()
+        }
+        if let finish = qaRenderViewState.onboardingFinish {
+            selectedMode = finish == .sync ? .sync : .local
+            showingCompletion = true
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var stepContent: some View {
@@ -1113,6 +1136,9 @@ struct LegacyOnboardingWizardView: View {
     // Code", label never changes); `.password` opt-in for App Store
     // reviewers. Mirrors `SettingsTab.loginSection` and `iOSLoginView`.
     @State private var usePasswordLogin = false
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
 
     var body: some View {
         // iter13 hotfix (2026-04-29): every step previously trapped the
@@ -1211,6 +1237,14 @@ struct LegacyOnboardingWizardView: View {
                 }
             }
         }
+        #if CLIPULSE_QA_RENDER
+        // QA build only: open on the page the offscreen renderer asks for.
+        .onAppear {
+            if let page = qaRenderViewState?.legacyOnboardingStep {
+                step = page
+            }
+        }
+        #endif
     }
 
     // MARK: - Step 0: Welcome

@@ -6,7 +6,12 @@ import os.log
 
 private let logger = Logger(subsystem: "com.clipulse.bar", category: "AppLifecycle")
 
+// The QA build (`Debug QA`) starts at `CLIPulseQAEntryPoint`
+// (QASnapshotRenderer.swift), which calls `CLIPulseBarApp.main()` unless it
+// was launched to render the views offscreen. Every other build starts here.
+#if !CLIPULSE_QA_RENDER
 @main
+#endif
 struct CLIPulseBarApp: App {
     @StateObject private var appState: AppState
     @Environment(\.openWindow) private var openWindow
@@ -454,7 +459,10 @@ private struct MenuBarLabel: View {
 /// need to read `appState.editingProviderAccountID` directly. Reading a @Published
 /// property from inside a Scene closure can cause the App body to re-evaluate
 /// on every state change, destabilizing MenuBarExtra.
-private struct ProviderConfigWindowContent: View {
+///
+/// Internal rather than private so the QA build's offscreen renderer can draw
+/// the same window root.
+struct ProviderConfigWindowContent: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
 

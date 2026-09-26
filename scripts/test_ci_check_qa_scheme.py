@@ -121,6 +121,46 @@ class QASchemeContractTests(unittest.TestCase):
         )
         self.assert_rejected(project_text=mutated)
 
+    def test_render_mode_must_stay_compiled_into_qa(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10008 /* Debug QA */",
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLIPULSE_QA_RENDER";',
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited)";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_render_mode_must_keep_inherited_conditions(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10008 /* Debug QA */",
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLIPULSE_QA_RENDER";',
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = CLIPULSE_QA_RENDER;",
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_render_mode_must_not_reach_release(self) -> None:
+        # G10006 is the app's Release configuration: the Mac App Store and
+        # Developer ID builds.
+        mutated = replace_after(
+            self.project_text,
+            "G10006 /* Release */ = {",
+            "buildSettings = {",
+            "buildSettings = {\n\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = "
+            '"$(inherited) CLIPULSE_QA_RENDER";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_render_mode_must_not_reach_plain_debug(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10005 /* Debug */ = {",
+            "buildSettings = {",
+            "buildSettings = {\n\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = "
+            '"$(inherited) CLIPULSE_QA_RENDER";',
+        )
+        self.assert_rejected(project_text=mutated)
+
 
 if __name__ == "__main__":
     unittest.main()

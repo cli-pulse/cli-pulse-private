@@ -90,9 +90,12 @@ jobs:
           fi
 
           if [[ "$FULL" == "true" ]]; then
-            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS"},{"scheme":"CLI Pulse iOS","destination":"generic/platform=iOS Simulator"},{"scheme":"CLI Pulse Watch","destination":"generic/platform=watchOS Simulator"},{"scheme":"CLI Pulse Widgets","destination":"platform=macOS"},{"scheme":"CLIPulseHelper","destination":"platform=macOS"}]}'
+            # CLIPulse QA builds its own `Debug QA` configuration: the offscreen
+            # renderer (QASnapshotRenderer.swift) compiles only there, so no other
+            # build in this workflow would notice it stop compiling.
+            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLI Pulse iOS","destination":"generic/platform=iOS Simulator","configuration":"Debug"},{"scheme":"CLI Pulse Watch","destination":"generic/platform=watchOS Simulator","configuration":"Debug"},{"scheme":"CLI Pulse Widgets","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLIPulseHelper","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLIPulse QA","destination":"platform=macOS","configuration":"Debug QA"}]}'
           else
-            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS"}]}'
+            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS","configuration":"Debug"}]}'
           fi
 
           {
@@ -293,7 +296,7 @@ jobs:
             -project "CLI Pulse Bar.xcodeproj" \
             -scheme "${{ matrix.scheme }}" \
             -destination "${{ matrix.destination }}" \
-            -configuration Debug \
+            -configuration "${{ matrix.configuration }}" \
             -quiet \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \

@@ -26,6 +26,10 @@ PROJECT_CONFIG_LIST_ID = "G10001"
 PROJECT_QA_CONFIG_ID = "G10007"
 QA_CONFIGURATION = "Debug QA"
 QA_HOME = "/private/tmp/clipulse-qa-home"
+# The offscreen renderer (CLI Pulse Bar/QASnapshotRenderer.swift) and its view
+# hooks compile only where this condition is defined. See
+# docs/qa/macos-offscreen-renders.md.
+QA_RENDER_CONDITION = "CLIPULSE_QA_RENDER"
 
 
 class QAContractError(ValueError):
@@ -140,6 +144,40 @@ def target_product_name(project_text: str) -> str:
     ).strip()
 
 
+def validate_render_condition(project_text: str) -> None:
+    """The render mode exists in the QA app and nowhere else.
+
+    `CLIPULSE_QA_RENDER` must be an active compilation condition of the app's
+    Debug QA configuration, and must not appear in any other object of the
+    project: not in Debug, not in Release (which the Mac App Store and
+    Developer ID builds use), not in another target. The QA build's entry
+    point is compiled from the same condition, so a configuration that gained
+    it would also start somewhere else than `CLIPulseBarApp`.
+    """
+    qa_body = object_body(project_text, APP_QA_CONFIG_ID)
+    conditions = build_settings(project_text, APP_QA_CONFIG_ID).get(
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS", ""
+    ).split()
+    require(
+        QA_RENDER_CONDITION in conditions,
+        f"app Debug QA configuration must define {QA_RENDER_CONDITION} in "
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS",
+    )
+    require(
+        "$(inherited)" in conditions,
+        "app Debug QA SWIFT_ACTIVE_COMPILATION_CONDITIONS must keep $(inherited) "
+        "so DEBUG still reaches the QA build",
+    )
+    total = len(re.findall(rf"\b{QA_RENDER_CONDITION}\b", project_text))
+    inside = len(re.findall(rf"\b{QA_RENDER_CONDITION}\b", qa_body))
+    require(
+        total == inside,
+        f"{QA_RENDER_CONDITION} may appear only in the app's Debug QA "
+        f"configuration ({APP_QA_CONFIG_ID}); found {total - inside} other "
+        "occurrence(s)",
+    )
+
+
 def validate_project(project_text: str) -> str:
     expected_product_name = target_product_name(project_text)
 
@@ -213,6 +251,7 @@ def validate_project(project_text: str) -> str:
         },
         "helper Debug QA configuration",
     )
+    validate_render_condition(project_text)
     return expected_product_name
 
 

@@ -31,7 +31,9 @@ public final class LocaleOverrideStore: ObservableObject {
     /// Nothing in the app subscribes today: views observe the store itself.
     public static let didChangeNotification = Notification.Name("CLIPulseLocaleOverrideDidChange")
 
-    private static let defaultsKey = "cli_pulse_locale_override"
+    /// Internal, not private, so the QA renderer can require it as a launch
+    /// argument (`QARenderSnapshot`) without repeating the literal.
+    static let defaultsKey = "cli_pulse_locale_override"
 
     /// The key macOS reads a process's UI languages from, in the app's own
     /// defaults domain first. It is the same key System Settings' per-app
