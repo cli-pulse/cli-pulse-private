@@ -106,6 +106,19 @@ jobs:
       - run: bash scripts/check_release_notes_platforms.sh
       - run: bash scripts/test_check_release_notes_platforms.sh
 
+      # The App Store listing itself — description, keywords, subtitle and
+      # promotional text, one directory per locale under CLI Pulse Bar/appstore/.
+      # Same guideline as the step above, plus App Store Connect's own length
+      # limits, keyword format, and English left behind in a translation. The
+      # full preflight compares these with the live store and needs the ASC key,
+      # so it runs on the owner's machine at release time; this is the half that
+      # needs no key, so a bad text fails at review instead of halfway through
+      # the release push. It also fails if a pusher regrows an inline copy of
+      # any listing text — two copies is how the store was once told the app
+      # was self-hosted.
+      - run: python3 scripts/asc_listing_preflight.py --texts-only
+      - run: bash scripts/test_asc_listing_preflight.sh
+
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys
       # across four shipped locales — es and ko carried 3 of the 80 first-run

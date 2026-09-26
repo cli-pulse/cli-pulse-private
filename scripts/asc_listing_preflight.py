@@ -468,7 +468,10 @@ def main() -> int:
     print()
     if failed:
         print("PREFLIGHT FAILED — the store does not agree with the repo, or with itself.")
-        print("Fix by re-pushing the affected metadata/screenshots to App Store Connect.")
+        print("Listing text: scripts/asc_push_listing.py shows the per-field diff (dry run),")
+        print("then --apply --version <X.Y.Z> --platform IOS|MAC_OS writes the editable version.")
+        print("At release time, re-run this with --version <X.Y.Z>: the live version keeps")
+        print("the old text until the new one ships.")
         return 1
     print("PREFLIGHT OK — live listing agrees with the repo and sells only purchasable tiers.")
     return 0
