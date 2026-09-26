@@ -118,6 +118,10 @@ jobs:
       # was self-hosted.
       - run: python3 scripts/asc_listing_preflight.py --texts-only
       - run: bash scripts/test_asc_listing_preflight.sh
+      # The pusher's write path can only run for real during a release, so it
+      # is exercised here against a fake App Store Connect: refusal on a live
+      # version, create-don't-delete, only changed fields, read-back.
+      - run: python3 scripts/test_asc_push_listing.py
 
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys

@@ -327,38 +327,28 @@ def main() -> int:
         die(f"{plat} {args.version} has no {listing.PRIMARY_LOCALE} localization to copy "
             "URLs from. Nothing was written.", 1)
     en_attrs = en_row["attributes"]
+    # Every precondition is checked before the first write, so a refusal never
+    # leaves a half-pushed listing behind.
+    elocs: dict[str, dict] = {}
+    en_info: dict = {}
+    if info_changes and editable_info is not None:
+        elocs = appinfo_locs(asc, editable_info["id"])
+        en_info = elocs.get(listing.PRIMARY_LOCALE, {}).get("attributes", {})
+        if en_info.get("name") != listing.APP_NAME:
+            die(f"en-US app name is {en_info.get('name')!r}, expected "
+                f"{listing.APP_NAME!r}; refusing to copy it into new locales. "
+                "Nothing was written.", 1)
 
     failures = 0
     print(f"\nAPPLY {plat} {args.version}")
-    for loc, fields in changes.items():
-        if loc in vlocs:
-            lid = vlocs[loc]["id"]
-            res = asc.write("PATCH", f"/appStoreVersionLocalizations/{lid}", {"data": {
-                "type": "appStoreVersionLocalizations", "id": lid, "attributes": fields}})
-            print(f"  [{loc}] PATCH {', '.join(fields)}: {'ok' if res is not None else 'FAILED'}")
-        else:
-            attrs = {"locale": loc, **fields}
-            for url_attr in ("supportUrl", "marketingUrl"):
-                if en_attrs.get(url_attr):
-                    attrs[url_attr] = en_attrs[url_attr]
-            res = asc.write("POST", "/appStoreVersionLocalizations", {"data": {
-                "type": "appStoreVersionLocalizations", "attributes": attrs,
-                "relationships": {"appStoreVersion": {"data": {
-                    "type": "appStoreVersions", "id": ver["id"]}}}}})
-            print(f"  [{loc}] CREATE localization: {'ok' if res is not None else 'FAILED'}")
-        failures += res is None
-
+    # App info first: a new locale gets its name and privacy policy URL before
+    # its version text, which is the order App Store Connect's own UI uses.
     if info_changes:
         if editable_info is None:
             print("  subtitle: NOT written — App Store Connect has no editable appInfo. "
                   "It opens one with a new version; run again then.")
             failures += 1
         else:
-            elocs = appinfo_locs(asc, editable_info["id"])
-            en_info = elocs.get(listing.PRIMARY_LOCALE, {}).get("attributes", {})
-            if en_info.get("name") != listing.APP_NAME:
-                die(f"en-US app name is {en_info.get('name')!r}, expected "
-                    f"{listing.APP_NAME!r}; refusing to copy it into new locales.", 1)
             for loc, fields in info_changes.items():
                 if loc in elocs:
                     lid = elocs[loc]["id"]
@@ -376,6 +366,24 @@ def main() -> int:
                     print(f"  [{loc}] CREATE app info localization: "
                           f"{'ok' if res is not None else 'FAILED'}")
                 failures += res is None
+
+    for loc, fields in changes.items():
+        if loc in vlocs:
+            lid = vlocs[loc]["id"]
+            res = asc.write("PATCH", f"/appStoreVersionLocalizations/{lid}", {"data": {
+                "type": "appStoreVersionLocalizations", "id": lid, "attributes": fields}})
+            print(f"  [{loc}] PATCH {', '.join(fields)}: {'ok' if res is not None else 'FAILED'}")
+        else:
+            attrs = {"locale": loc, **fields}
+            for url_attr in ("supportUrl", "marketingUrl"):
+                if en_attrs.get(url_attr):
+                    attrs[url_attr] = en_attrs[url_attr]
+            res = asc.write("POST", "/appStoreVersionLocalizations", {"data": {
+                "type": "appStoreVersionLocalizations", "attributes": attrs,
+                "relationships": {"appStoreVersion": {"data": {
+                    "type": "appStoreVersions", "id": ver["id"]}}}}})
+            print(f"  [{loc}] CREATE localization: {'ok' if res is not None else 'FAILED'}")
+        failures += res is None
 
     # ── 3. verify by reading back ─────────────────────────────────────────────
     print("\nVERIFY (read back)")

@@ -161,7 +161,7 @@ expect_fail "Google Play in the promotional text" "names 'Google Play'"
 build_fixture; mutate "zh-Hans/description.txt" 's.replace("在 Mac 上可以看", "在 Mac 和安卓上可以看", 1)'
 expect_fail "安卓 in the Chinese description" "names '安卓'"
 
-build_fixture; mutate "ko/description.txt" 's.replace("Mac은 물론", "Mac과 윈도우는 물론", 1)'
+build_fixture; mutate "ko/description.txt" 's.replace("Mac뿐 아니라", "Mac과 윈도우뿐 아니라", 1)'
 expect_fail "윈도우 in the Korean description" "names '윈도우'"
 
 build_fixture; mutate "en-US/description.txt" 's.replace("an activity heatmap", "an activity heatmap across quota windows", 1)'

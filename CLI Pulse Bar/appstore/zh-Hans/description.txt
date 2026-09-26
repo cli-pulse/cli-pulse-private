@@ -1,4 +1,4 @@
-CLI Pulse 帮你看清 AI 编程工具用了多少、花了多少：Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等数十家服务商的配额、重置时间和预估费用，在 Mac 上可以看，在 iPhone、iPad 和 Apple Watch 上也能看。
+CLI Pulse 帮你盯住 AI 编程工具：每项配额用了多少、什么时候重置、你的用量花了多少钱。支持 Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等数十家服务商，在 Mac 上可以看，在 iPhone、iPad 和 Apple Watch 上也能看。
 
 在 Mac 上
 · 各服务商的配额和重置时间，在菜单栏一点即看

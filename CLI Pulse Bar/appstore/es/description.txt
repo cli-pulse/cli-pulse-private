@@ -1,4 +1,4 @@
-CLI Pulse te muestra cuánto has usado tus herramientas de programación con IA y cuánto te están costando: cuotas, horas de reinicio y costo estimado de Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama y decenas de proveedores más, en tu Mac y también en tu iPhone, iPad y Apple Watch.
+CLI Pulse lleva la cuenta de tus herramientas de programación con IA: cuánto has usado de cada cuota, cuándo se reinicia y cuánto te está costando tu uso. Funciona con Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama y decenas de proveedores más, en tu Mac y también en tu iPhone, iPad y Apple Watch.
 
 EN TU MAC
 • La cuota y la hora de reinicio de cada proveedor, a un clic en la barra de menús
@@ -9,7 +9,7 @@ EN TU MAC
 • Alertas cuando queda poca cuota, cuando el uso o el costo se disparan, o cuando el gasto supera un presupuesto que tú defines
 • Informes de costos que puedes exportar en CSV o PDF
 • Gato Pulse, un gato de escritorio opcional cuyo ánimo sigue tu uso real de IA
-• Sin cuenta: en modo local, tus datos de uso se quedan en este Mac
+• Sin necesidad de cuenta: en modo local, tus datos de uso se quedan en este Mac
 
 EN IPHONE, IPAD Y APPLE WATCH
 • Las mismas cuotas, costos, sesiones y alertas, sincronizados desde tu Mac

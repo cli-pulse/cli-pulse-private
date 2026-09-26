@@ -1,8 +1,8 @@
-CLI Pulse 讓你看清 AI 程式設計工具用了多少、花了多少：Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等數十家服務商的配額、重置時間與預估費用，在 Mac 上可以看，在 iPhone、iPad 和 Apple Watch 上也能看。
+CLI Pulse 幫你掌握 AI 程式設計工具的狀況：每項配額用了多少、什麼時候重置，以及你的用量花了多少錢。支援 Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等數十家服務商，在 Mac 上可以看，在 iPhone、iPad 和 Apple Watch 上也能看。
 
 在 Mac 上
 • 各服務商的配額與重置時間，在選單列點一下就能看到
-• 用量節奏：配額能不能撐到重置，或是還有多久會用完
+• 節奏：配額能不能撐到重置，或是還有多久會用完
 • 根據 Claude Code 與 Codex 的日誌估算費用，全部在你的 Mac 上計算
 • 各服務商的用量歷史、活動熱度圖與費用預測
 • 依專案列出進行中與最近的工作階段，並附上用量與預估費用
@@ -31,7 +31,7 @@ CLI Pulse 免費版最多可以新增三家服務商。CLI Pulse Pro 不限服�
 
 CLI Pulse Pro 提供自動續訂的訂閱方案。可選方案、價格與計費週期，以購買當下 App Store 與 App 內顯示的內容為準。
 
-付款會在確認購買時向你的 Apple ID 帳號收取。除非在目前週期結束前至少 24 小時關閉自動續訂，否則訂閱會自動續訂。續訂費用會在目前週期結束前 24 小時內向你的帳號收取。購買後，可以前往 App Store 的帳號設定管理或取消訂閱。
+確認購買時，費用將從你的 Apple ID 帳號收取。除非在目前週期結束前至少 24 小時關閉自動續訂，否則訂閱會自動續訂。續訂費用會在目前週期結束前 24 小時內從你的帳號收取。購買後，可以前往 App Store 的帳號設定管理或取消訂閱。
 
 使用條款：https://cli-pulse.github.io/cli-pulse/terms.html
 隱私權政策：https://cli-pulse.github.io/cli-pulse/privacy.html

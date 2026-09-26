@@ -1,7 +1,7 @@
-CLI Pulse shows how much of your AI coding tools you have used and what it is costing you: quotas, reset times and estimated cost for Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama and dozens of other providers, on your Mac and on your iPhone, iPad and Apple Watch.
+CLI Pulse keeps track of your AI coding tools: how much of each quota you have used, when it resets and what your usage is costing you. It works with Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama and dozens of other providers, on your Mac and on your iPhone, iPad and Apple Watch.
 
 ON YOUR MAC
-- Every provider's quota and reset time, one click away in the menu bar
+- Your providers' quotas and reset times, one click away in the menu bar
 - Pace: whether your quota will last until it resets, or when it will run out
 - Estimated cost from your Claude Code and Codex logs, calculated on your Mac
 - Usage history for each provider, an activity heatmap and a cost forecast
