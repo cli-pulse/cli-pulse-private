@@ -1,37 +1,37 @@
 CLI Pulse keeps track of your AI coding tools: how much of each quota you have used, when it resets and what your usage is costing you. It works with Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama and dozens of other providers, on your Mac and on your iPhone, iPad and Apple Watch.
 
-ON YOUR MAC
+On your Mac
 - Your providers' quotas and reset times, one click away in the menu bar
 - Pace: whether your quota will last until it resets, or when it will run out
 - Estimated cost from your Claude Code and Codex logs, calculated on your Mac
 - Usage history for each provider, an activity heatmap and a cost forecast
 - Active and recent sessions by project, with usage and estimated cost
-- Alerts when a quota runs low, when usage or cost spikes, or when spending passes a budget you set
+- Alerts when a quota crosses a threshold you choose and, when you are signed in, when your daily cost suddenly jumps
 - Cost reports you can export as CSV or PDF
-- Pulse Cat, an optional desktop cat whose mood follows your real AI usage
+- Pulse Cat, an optional desktop cat whose vitals follow your real AI usage
 - No account needed: in local mode your usage stays on this Mac
 
-ON IPHONE, IPAD AND APPLE WATCH
+On iPhone, iPad and Apple Watch
 - The same quotas, costs, sessions and alerts, synced from your Mac
 - Home Screen and Lock Screen widgets (Pro)
 - Siri and Shortcuts: ask for today's status or for one provider's remaining quota
-- Apple Watch: quota rings, alerts and sessions on your wrist, plus complications
+- Apple Watch: quota rings, alerts and sessions on your wrist
 
 The iPhone, iPad and Apple Watch apps show what CLI Pulse collects on your Mac. Install it on your Mac and sign in with the same account on each device. Try Demo shows the app with sample data before you connect a Mac.
 
-PRIVACY
+Privacy
 - Your provider API keys and the contents of your session logs never leave your Mac
 - When you sign in, usage figures sync to your CLI Pulse account over an encrypted connection
 - No ads and no third-party analytics SDKs
 
-FREE AND PRO
+Free and Pro
 CLI Pulse is free for up to three providers. CLI Pulse Pro adds unlimited providers and the Home Screen and Lock Screen widgets.
 
-SUBSCRIPTION INFORMATION
+Subscription information
 
 CLI Pulse Pro is available as an auto-renewing subscription. Available plans, pricing, and billing periods are shown in the App Store and in the app at the time of purchase.
 
-Payment will be charged to your Apple ID account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
+Payment will be charged to your Apple Account at the confirmation of purchase. Subscription automatically renews unless auto-renew is turned off at least 24 hours before the end of the current period. Your account will be charged for renewal within 24 hours prior to the end of the current period. You can manage and cancel your subscriptions by going to your account settings on the App Store after purchase.
 
 Terms of Use: https://cli-pulse.github.io/cli-pulse/terms.html
 Privacy Policy: https://cli-pulse.github.io/cli-pulse/privacy.html

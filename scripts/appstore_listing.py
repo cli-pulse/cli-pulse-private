@@ -25,9 +25,13 @@ a sibling `description.ios.txt` / `description.macos.txt` (same for the
 promotional text). None exists today: the iOS and macOS listings carry the same
 text, written so that every claim is true on both (it says what happens on the
 Mac and what happens on iPhone, iPad and Apple Watch). Add an override only when
-a sentence would be false on one platform — the macOS App Store build cannot do
-Remote Control, for example, so a description that advertises it must be an
-`.ios.txt` override, never the shared file.
+a sentence would be false on one platform, such as a promotional text that
+tells people to add a Home Screen widget (the Mac app has none).
+
+A feature that only the direct-download (Developer ID) Mac build has, such as
+Remote Control or fan control, is not advertised in any App Store listing,
+override or not. The App Store Mac build cannot do it, and an iPhone listing
+that sells it would depend on software sold outside the App Store.
 
 Keywords and the subtitle have no per-platform form: the subtitle belongs to the
 app record (appInfoLocalizations), shared by both platforms, and one keyword
@@ -71,6 +75,12 @@ PRIMARY_LOCALE = "en-US"
 # would also drift the way the two copies of the English description once did.
 # The one regional concession is in keywords, which are search terms rather
 # than prose: the list carries Spain's "coste" next to the subtitle's "costo".
+#
+# Keeping the shared text neutral means avoiding the forms where Spain and Latin
+# America differ. The Mac takes the neutral possessive ("tu Mac"): Spain writes
+# "este Mac / un Mac" and Apple Latin America "esta Mac / una Mac". The one
+# deliberate Spain form is "pantalla de bloqueo" (es_419: "pantalla bloqueada"),
+# kept because it is what the app's own es.lproj says.
 LOCALE_SOURCES: dict[str, str] = {
     "en-US": "en-US",
     "zh-Hans": "zh-Hans",
@@ -153,7 +163,7 @@ _EN_FUNCTION_WORDS = frozenset("""
 # Product and platform names that legitimately stay Latin inside CJK text.
 _ALLOWED_LATIN_NAMES = (
     "CLI Pulse Pro", "CLI Pulse", "Claude Code", "Claude", "Codex", "Gemini",
-    "Cursor", "Copilot", "OpenRouter", "Ollama", "Apple Watch", "Apple ID",
+    "Cursor", "Copilot", "OpenRouter", "Ollama", "Apple Watch", "Apple Account",
     "App Store", "iPhone", "iPad", "Mac", "Siri", "API", "SDK", "CSV", "PDF",
     "LLM", "Token", "AI", "Pro",
 )

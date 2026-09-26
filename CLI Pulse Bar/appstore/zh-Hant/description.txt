@@ -1,4 +1,4 @@
-CLI Pulse 幫你掌握 AI 程式設計工具的狀況：每項配額用了多少、什麼時候重置，以及你的用量花了多少錢。支援 Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等數十家服務商，在 Mac 上可以看，在 iPhone、iPad 和 Apple Watch 上也能看。
+CLI Pulse 幫你掌握 AI 程式設計工具的狀況：每項配額用了多少、什麼時候重置，以及你的用量花了多少錢。支援 Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等數十家服務商，並可在 Mac、iPhone、iPad 與 Apple Watch 上使用。
 
 在 Mac 上
 • 各服務商的配額與重置時間，在選單列點一下就能看到
@@ -6,18 +6,18 @@ CLI Pulse 幫你掌握 AI 程式設計工具的狀況：每項配額用了多少
 • 根據 Claude Code 與 Codex 的日誌估算費用，全部在你的 Mac 上計算
 • 各服務商的用量歷史、活動熱度圖與費用預測
 • 依專案列出進行中與最近的工作階段，並附上用量與預估費用
-• 配額快用完、用量或費用暴增、支出超過你設定的預算時發出警示
-• 費用報告可匯出為 CSV 或 PDF
-• 脈衝貓：可選用的桌面貓，牠的心情會隨著你真實的 AI 用量變化
+• 配額超過你設定的臨界值時發出警示，登入後當日費用暴增時也會發出警示
+• 成本報告可匯出為 CSV 或 PDF
+• 脈衝貓：可選用的桌面貓，牠的狀態來自你真實的 AI 用量
 • 不需要帳號：使用本機模式時，用量資料只會留在這台 Mac 上
 
 在 iPhone、iPad 與 Apple Watch 上
 • 同樣的配額、費用、工作階段與警示，從你的 Mac 同步過來
 • 主畫面與鎖定畫面小工具（Pro）
 • Siri 與捷徑：查詢今天的狀態，或某家服務商的剩餘配額
-• Apple Watch：在手腕上查看配額圓環、警示與工作階段，還支援錶面複雜功能
+• Apple Watch：在手腕上查看配額圓環、警示與工作階段
 
-iPhone、iPad 與 Apple Watch 上顯示的是 Mac 上的 CLI Pulse 所收集的資料。請在 Mac 上安裝 CLI Pulse，並在每台裝置上登入同一個帳號。連接 Mac 之前，可以先點「試用示範模式」，用範例資料看看。
+iPhone、iPad 與 Apple Watch 上顯示的是 Mac 上的 CLI Pulse 所收集的資料。請在 Mac 上安裝 CLI Pulse，並在每台裝置上登入同一個帳號。連接 Mac 之前，可以先點一下「試用示範模式」，用範例資料體驗 App。
 
 隱私
 • 服務商的 API 金鑰與工作階段日誌的內容絕不會離開你的 Mac
@@ -25,13 +25,13 @@ iPhone、iPad 與 Apple Watch 上顯示的是 Mac 上的 CLI Pulse 所收集的�
 • 沒有廣告，也沒有第三方分析 SDK
 
 免費版與 Pro
-CLI Pulse 免費版最多可以新增三家服務商。CLI Pulse Pro 不限服務商數量，並解鎖主畫面與鎖定畫面小工具。
+CLI Pulse 免費版最多可啟用三個服務商。CLI Pulse Pro 不限服務商數量，並解鎖主畫面與鎖定畫面小工具。
 
 訂閱資訊
 
 CLI Pulse Pro 提供自動續訂的訂閱方案。可選方案、價格與計費週期，以購買當下 App Store 與 App 內顯示的內容為準。
 
-確認購買時，費用將從你的 Apple ID 帳號收取。除非在目前週期結束前至少 24 小時關閉自動續訂，否則訂閱會自動續訂。續訂費用會在目前週期結束前 24 小時內從你的帳號收取。購買後，可以前往 App Store 的帳號設定管理或取消訂閱。
+確認購買時，費用將從你的 Apple 帳號收取。除非在目前週期結束前至少 24 小時關閉自動續訂，否則訂閱會自動續訂。續訂費用會在目前週期結束前 24 小時內從你的帳號收取。購買後，可以前往 App Store 的帳號設定管理或取消訂閱。
 
 使用條款：https://cli-pulse.github.io/cli-pulse/terms.html
 隱私權政策：https://cli-pulse.github.io/cli-pulse/privacy.html

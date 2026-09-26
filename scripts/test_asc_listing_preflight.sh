@@ -158,7 +158,7 @@ expect_fail "Android in the Spanish description" "names 'Android'"
 build_fixture; mutate "en-US/promotional_text.txt" '"Also on Google Play. " + s[:120]'
 expect_fail "Google Play in the promotional text" "names 'Google Play'"
 
-build_fixture; mutate "zh-Hans/description.txt" 's.replace("在 Mac 上可以看", "在 Mac 和安卓上可以看", 1)'
+build_fixture; mutate "zh-Hans/description.txt" 's.replace("可在 Mac、iPhone", "可在 Mac、安卓、iPhone", 1)'
 expect_fail "安卓 in the Chinese description" "names '安卓'"
 
 build_fixture; mutate "ko/description.txt" 's.replace("Mac뿐 아니라", "Mac과 윈도우뿐 아니라", 1)'
@@ -171,7 +171,7 @@ expect_fail "the word 'windows' (matches the release-notes guard)" "names 'Windo
 build_fixture; mutate "ja/description.txt" 's.replace("\n\nプライバシー", "\n\nYour usage data syncs to your own account over an encrypted connection.\n\nプライバシー", 1)'
 expect_fail "an English sentence left in the Japanese description" "looks like untranslated English"
 
-build_fixture; mutate "es/description.txt" 's.replace("\n\nPRIVACIDAD", "\n\nThe same quotas and alerts, synced from your Mac to the phone.\n\nPRIVACIDAD", 1)'
+build_fixture; mutate "es/description.txt" 's.replace("\n\nPrivacidad", "\n\nThe same quotas and alerts, synced from your Mac to the phone.\n\nPrivacidad", 1)'
 expect_fail "an English sentence left in the Spanish description" "looks like untranslated English"
 
 build_fixture; mutate "zh-Hant/description.txt" 's.replace("\n\n隱私", "\n\nReal time usage monitoring across major providers\n\n隱私", 1)'

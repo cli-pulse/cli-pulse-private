@@ -151,8 +151,10 @@ zh-Hans, zh-Hant, ja, ko, es — `es/` feeds both es-ES and es-MX). The layout,
 the ASC locale mapping and the checks are in `scripts/appstore_listing.py`;
 every pusher reads the files through it. iOS and macOS share one text per
 locale, so every claim must be true on both — a sentence true on one platform
-only goes in a `description.ios.txt` / `description.macos.txt` override (the
-macOS App Store build cannot do Remote Control, for example).
+only goes in a `description.ios.txt` / `description.macos.txt` override (a line
+telling people to add a Home Screen widget, for example: the Mac app has none).
+Features that only the direct-download Mac build has (Remote Control, fan
+control) are not advertised in any App Store listing, override or not.
 
 ```bash
 python3 scripts/asc_push_listing.py                     # dry run: per-locale, per-field diff
