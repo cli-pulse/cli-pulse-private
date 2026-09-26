@@ -40,7 +40,7 @@ RESUBMIT_REL="CLI Pulse Bar/scripts/resubmit.py"
 # 4c/4d plant into THIS file — planting into the pushers now changes a file
 # that no longer contains a description, which is precisely the no-op mutation
 # `assert_changed` exists to reject (and did, on the first run after the move).
-DESCRIPTION_REL="CLI Pulse Bar/appstore/description_en-US.txt"
+DESCRIPTION_REL="CLI Pulse Bar/appstore/en-US/description.txt"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
 # registered enforcement files, and any .swift/.strings/.kt/.xml under the two

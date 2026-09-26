@@ -385,14 +385,22 @@ fi
 # Python files and reported a pass. So the canonical file is scanned, is
 # REQUIRED to exist, and the pushers are still scanned so that an inline copy
 # growing back is caught here as well as by asc_listing_preflight.py.
-canonical_desc="$ROOT/CLI Pulse Bar/appstore/description_en-US.txt"
+#
+# 2026-09-26: the listing became one directory per locale
+# (`CLI Pulse Bar/appstore/<locale>/`, see scripts/appstore_listing.py), in six
+# languages. Every description and promotional text in every locale is scanned —
+# a withdrawn tier in the Korean listing sells it just as well — and the en-US
+# description is still REQUIRED, so a move of the tree cannot turn this into a
+# scan of nothing.
+canonical_desc="$ROOT/CLI Pulse Bar/appstore/en-US/description.txt"
 if [ ! -f "$canonical_desc" ]; then
     echo "ERROR: canonical App Store description missing:"
-    echo "       CLI Pulse Bar/appstore/description_en-US.txt"
+    echo "       CLI Pulse Bar/appstore/en-US/description.txt"
     echo "       Refusing to pass — this check would be scanning nothing."
     exit 1
 fi
-description_sources="$canonical_desc
+description_sources="$(find "$ROOT/CLI Pulse Bar/appstore" -mindepth 2 -maxdepth 2 -type f \
+    \( -name 'description*.txt' -o -name 'promotional_text*.txt' \) -print 2>/dev/null | sort)
 $(find "$ROOT/CLI Pulse Bar/scripts" -maxdepth 1 \
     \( -name 'appstore_metadata.py' -o -name 'resubmit.py' \) -print 2>/dev/null)"
 
