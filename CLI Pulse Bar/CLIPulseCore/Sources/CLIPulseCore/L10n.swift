@@ -1012,6 +1012,9 @@ public enum L10n {
         public static var refreshCadence: String { tr("settings.refresh_cadence") }
         public static var refreshInterval: String { tr("settings.refresh_interval") }
         public static var refreshAdaptive: String { tr("settings.refresh_adaptive") }
+        /// One of the fixed refresh intervals, in minutes, as short as a segment
+        /// needs: "5 min", "5 分钟", "5分", "5분".
+        public static func refreshMinutesShort(_ minutes: Int) -> String { tr("settings.refresh_minutes_short", minutes) }
         public static var currency: String { tr("settings.currency") }
         public static var subscription: String { tr("settings.subscription") }
         public static var currentPlan: String { tr("settings.current_plan") }
@@ -1881,6 +1884,10 @@ public enum L10n {
         public static var welcomeTitle: String { tr("onboarding_wizard.welcome_title") }
         public static var welcomeSubtitle: String { tr("onboarding_wizard.welcome_subtitle") }
         public static var welcomeAccountsBody: String { tr("onboarding_wizard.welcome_accounts_body") }
+        /// Setup v2's welcome bullet about syncing or staying on this Mac. It
+        /// used to reuse `welcome_choice.subtitle`, the lead-in to the two mode
+        /// cards, which ends in a colon that introduced nothing here.
+        public static var welcomeTrackingBody: String { tr("onboarding_wizard.welcome_tracking_body") }
         public static var getStarted: String { tr("onboarding_wizard.get_started") }
         public static var whatDoes: String { tr("onboarding_wizard.what_does") }
         public static var `continue`: String { tr("onboarding_wizard.continue") }

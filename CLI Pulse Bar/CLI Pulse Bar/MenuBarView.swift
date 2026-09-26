@@ -57,6 +57,19 @@ struct MenuBarView: View {
         min(max(CGFloat(storedHeight), 400), Self.maxMenuBarHeight)
     }
 
+    /// How tall the statistics card's explanation may grow before it scrolls.
+    ///
+    /// The popover's height is fixed, and on first launch the card shares it with
+    /// the setup wizard, whose welcome page needs about 340 points, and the
+    /// footer. At the default 580 the whole explanation did not fit in any
+    /// language, so the stack overflowed at both ends: the card's title went off
+    /// the top and the footer with the language menu off the bottom. What is
+    /// left after the wizard, the footer and the card's own title, switch and
+    /// buttons goes to the explanation; a taller popover shows more of it.
+    private var telemetryExplanationMaxHeight: CGFloat {
+        max(90, effectiveHeight - 480)
+    }
+
     var body: some View {
         Group {
             VStack(spacing: 0) {
@@ -71,7 +84,9 @@ struct MenuBarView: View {
                 // before it: the telemetry gate refuses to send while
                 // `hasSeenDisclosure` is false.
                 if !telemetryDisclosureSeen {
-                    AnonymousTelemetryDisclosureCard {
+                    AnonymousTelemetryDisclosureCard(
+                        explanationMaxHeight: telemetryExplanationMaxHeight
+                    ) {
                         let store = UserDefaultsAnonymousTelemetryStore()
                         store.hasSeenDisclosure = true
                         telemetryDisclosureSeen = true

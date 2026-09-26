@@ -30,7 +30,7 @@
 "welcome_choice.title" = "Welcome to CLI Pulse";
 "welcome_choice.subtitle" = "Pick how you'd like to track your AI tool usage:";
 "welcome_choice.sign_in_title" = "Sign in to sync";
-"welcome_choice.sign_in_body" = "Track usage across iPhone, Watch, and other devices on the same account.";
+"welcome_choice.sign_in_body" = "Track usage across iPhone, Apple Watch, and other devices on the same account.";
 "welcome_choice.local_mode_title" = "Use local mode";
 "welcome_choice.local_mode_body" = "Track usage on this Mac only — no account, nothing uploaded.";
 "welcome_choice.footnote" = "You can switch between modes any time from Settings.";
@@ -221,8 +221,8 @@
 "subscription.switch_pro" = "Switch to Pro";
 
 /* ── About ── */
-"about.title" = "About CLI Pulse Bar";
-"about.description" = "Monitor your AI coding tools from the menu bar. Track usage, costs, and alerts across 20+ providers including Claude, Codex, and Gemini.";
+"about.title" = "About CLI Pulse";
+"about.description" = "Monitor your AI coding tools from the menu bar. Track usage, costs, and alerts across Claude, Codex, Gemini, and many more providers.";
 "about.copyright" = "© 2025 CLI Pulse Contributors";
 "about.report_issue" = "Report an Issue";
 
@@ -456,6 +456,7 @@
 "onboarding_wizard.welcome_title" = "Welcome to CLI Pulse";
 "onboarding_wizard.welcome_subtitle" = "Monitor your AI coding tool usage,\ncosts, and quotas in one place.";
 "onboarding_wizard.welcome_accounts_body" = "Find and configure personal and work accounts for Codex, Claude, and Gemini.";
+"onboarding_wizard.welcome_tracking_body" = "Sync usage across your devices, or keep it all on this Mac.";
 "onboarding_wizard.get_started" = "Get Started";
 "onboarding_wizard.what_does" = "What CLI Pulse does";
 "onboarding_wizard.continue" = "Continue";
@@ -463,14 +464,14 @@
 "onboarding_wizard.privacy_title" = "Your data, your control";
 "onboarding_wizard.privacy_body" = "Here's exactly what stays on your Mac and what syncs to your account.";
 "onboarding_wizard.sign_in_title" = "Sign In";
-"onboarding_wizard.sign_in_subtitle" = "Sign in to sync your data — we'll create your account on first verify.";
+"onboarding_wizard.sign_in_subtitle" = "Sign in to sync your data. New here? Your account is created when you verify your email.";
 "onboarding_wizard.skip" = "Skip for now";
 "onboarding_wizard.code_sent_to" = "Code sent to %@";
 "onboarding_wizard.verify" = "Verify";
 "onboarding_wizard.back_to_email" = "Back to email";
 "onboarding_wizard.all_set_title" = "You're All Set";
 "onboarding_wizard.all_set_body" = "Sync runs automatically while the Mac app is running. Sign in to any other device with the same account and your usage data appears there too — no pairing or setup needed.";
-"onboarding_wizard.helper_hint" = "Looking for the optional helper for headless servers or Claude Remote Approvals? Open Settings → Helper after onboarding.";
+"onboarding_wizard.helper_hint" = "Want to run claude, codex, and gemini sessions from the menu bar? After setup, install the optional helper in Settings › Companion CLI.";
 "onboarding_wizard.done" = "Done";
 "onboarding_wizard.close" = "Close onboarding";
 "onboarding_wizard.step_progress" = "Step %d of %d: %@";
@@ -491,15 +492,15 @@
 "onboarding_wizard.review_subtitle" = "Only the accounts below will be enabled. An unconfirmed plan never blocks setup.";
 "onboarding_wizard.no_accounts_selected" = "No accounts selected. You can still finish setup and add one later.";
 "onboarding_wizard.connection_title" = "Connect Selected Accounts";
-"onboarding_wizard.connection_subtitle" = "Connection is always user-initiated. Opening account settings may request provider credentials or a browser sign-in.";
+"onboarding_wizard.connection_subtitle" = "Nothing connects until you choose to. Opening account settings may ask for provider credentials or open a browser to sign in.";
 "onboarding_wizard.connection_optional" = "You may continue now and connect any remaining account later.";
 "onboarding_wizard.open_account_settings" = "Open Account Settings";
-"onboarding_wizard.mode_title" = "Choose Where CLIPulse Runs";
+"onboarding_wizard.mode_title" = "Choose How CLI Pulse Syncs";
 "onboarding_wizard.mode_subtitle" = "This choice changes sync behavior, not how provider credentials are stored.";
 "onboarding_wizard.sync_mode_title" = "Sync Across Devices";
 "onboarding_wizard.sync_mode_body" = "Sign in to sync normalized metrics to iPhone and Apple Watch. Provider credentials never leave this Mac.";
 "onboarding_wizard.local_only_title" = "Only This Mac";
-"onboarding_wizard.local_only_body" = "Keep collection and dashboards local. No Supabase sync; you can sign in later.";
+"onboarding_wizard.local_only_body" = "Collection and dashboards stay on this Mac. No cloud sync; you can sign in later.";
 "onboarding_wizard.signed_in_ready" = "Your CLI Pulse account is signed in and ready to sync.";
 "onboarding_wizard.sign_in_for_sync" = "Sign in below to use cross-device sync.";
 "onboarding_wizard.finish_title" = "Agent Setup Ready";
@@ -551,7 +552,7 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "Cost is estimated from token usage when an exact API price isn't available.";
 "yield.empty_body" = "Track AI cost per commit to see your yield score.";
-"yield.empty_enable_hint" = "Enable in Settings → Privacy → Track git activity.";
+"yield.empty_enable_hint" = "Turn on Track git activity in Settings › Advanced.";
 "yield.view_detail" = "View detail";
 "yield.detail_title" = "Yield Score Detail";
 "yield.detail_body" = "Cost is estimated from token usage when an exact API price isn't available. Merge commits are excluded from attribution.";
@@ -602,7 +603,7 @@
 "providers.account_configuration" = "Agent Accounts";
 "providers.accounts_count_one" = "%d account";
 "providers.accounts_count" = "%d accounts";
-"providers.no_accounts_configured" = "No CLIPulse account configured for this provider.";
+"providers.no_accounts_configured" = "No CLI Pulse account configured for this provider.";
 "providers.add_account" = "Add account";
 "providers.rerun_agent_setup" = "Run Agent Setup Again";
 "providers.rerun_agent_setup_hint" = "Review detected agents and monitored accounts. Saved credentials change only when you edit them.";
@@ -617,7 +618,7 @@
 "providers.remove_account" = "Remove account";
 "providers.remove_named_account" = "Remove %@";
 "providers.remove_account_title" = "Remove %@ · %@?";
-"providers.remove_account_message" = "This removes only the CLIPulse configuration and local account-scoped secrets. It does not cancel or change your provider subscription.";
+"providers.remove_account_message" = "This removes only the CLI Pulse configuration and local account-scoped secrets. It does not cancel or change your provider subscription.";
 "providers.provider_level_cost" = "Token and cost totals are provider-level and shown once.";
 "providers.most_constrained" = "Most constrained";
 "providers.remaining_percent" = "%d%% remaining";
@@ -677,7 +678,7 @@
 "yield.commits_count" = "%d commits";
 "yield.commits_count_decimal" = "%@ commits";
 "yield.ambiguous_count" = "%d ambiguous";
-"menu_bar.quit_full" = "Quit CLI Pulse Bar";
+"menu_bar.quit_full" = "Quit CLI Pulse";
 
 /* ── iter22 broader sweep ── */
 "common.no_provider_selected" = "No provider selected";
@@ -726,9 +727,9 @@
 "advanced.privacy_logs_title" = "Session logs (~/.codex/sessions, ~/.claude/projects)";
 "advanced.privacy_logs_detail" = "Scanned on-device via the folders you grant above";
 "advanced.privacy_metrics_title" = "Usage metrics (token counts, cost, model names)";
-"advanced.privacy_metrics_detail" = "Synced to your CLI Pulse account for iPhone / Watch";
+"advanced.privacy_metrics_detail" = "Synced to your CLI Pulse account for iPhone and Apple Watch";
 "advanced.privacy_email_title" = "Your login email";
-"advanced.privacy_email_detail" = "Sent to our auth backend so you can sign in";
+"advanced.privacy_email_detail" = "Sent to our sign-in service so you can sign in";
 "onboarding_wizard.privacy_keys_title" = "API keys stay on this Mac";
 "onboarding_wizard.privacy_keys_detail" = "Provider API keys and session cookies (OpenAI, Anthropic, Google, etc.) live only in your macOS Keychain. They're used to call those providers directly — never uploaded to us.";
 "onboarding_wizard.privacy_logs_title" = "Session logs scanned on-device";
@@ -958,6 +959,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "usage_dashboard.all" = "All";
 
 "settings.refresh_adaptive" = "Adaptive";
+"settings.refresh_minutes_short" = "%d min";
 "settings.currency" = "Currency";
 
 /* v1.42 Pulse Cat */
@@ -1127,16 +1129,16 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.files_title" = "Session logs, last 30 days";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/ and ~/.config/claude/projects/. CLI Pulse parses them for usage records and caches the results on this Mac.";
 "local_scan_consent.derived_title" = "What it works out from them";
-"local_scan_consent.derived_detail" = "Token counts, cost estimates, model names and dates — plus each conversation's file path, project folder and session id, which is how the Sessions list can name them.";
+"local_scan_consent.derived_detail" = "Token counts, cost estimates, model names, and dates — plus each conversation's file path, project folder, and session ID, which is how the Sessions list can name them.";
 "local_scan_consent.network_title" = "Provider websites, using credentials already on this Mac";
 "local_scan_consent.network_detail" = "For live quota, CLI Pulse calls the providers you use with the tokens their own CLIs stored here. Renewing an expired token rewrites that CLI's credential file.";
 "local_scan_consent.keychain_title" = "Your Keychain, for Claude Code's token";
 "local_scan_consent.keychain_detail" = "macOS asks you first, once. Declining costs you Claude's quota numbers and nothing else.";
 "local_scan_consent.telemetry_title" = "Anonymous statistics are a separate thing";
-"local_scan_consent.telemetry_detail" = "They are not part of this choice, they carry no file paths or provider names, and Settings › Privacy turns them off.";
+"local_scan_consent.telemetry_detail" = "They're separate from this choice: they include no file paths or provider names, and you can turn them off in Settings › Privacy.";
 "local_scan_consent.start" = "Start local scan";
 "local_scan_consent.not_now" = "Not now";
-"local_scan_consent.change_later" = "Either way, Settings › Privacy changes it at any time.";
+"local_scan_consent.change_later" = "Either way, you can change this any time in Settings › Privacy.";
 "local_scan_consent.declined_title" = "Local scan is off";
 "local_scan_consent.declined_body" = "CLI Pulse is not reading anything on this Mac, so there is nothing to show yet.";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
@@ -1147,12 +1149,12 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "telemetry.disclosure_title" = "Anonymous install statistics";
 "telemetry.disclosure_body" = "CLI Pulse reports how far it got: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show. It also reports which language it is displaying in. If you use remote control, it adds four yes/no facts: whether a phone reached this Mac over your Wi-Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude. That's how we tell where the app stops working for people — there's no account involved, so otherwise we can't.";
 "telemetry.disclosure_body_local_only" = "Local-only mode is on, so CLI Pulse is sending nothing at all. Without it, it would report four steps: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in, and, if you use remote control, whether a phone reached this Mac over your Wi-Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude.";
-"telemetry.not_collected" = "No file paths, project names, provider names, token counts or costs. Nothing that identifies you or your machine. The id is random and is deleted when you uninstall.";
+"telemetry.not_collected" = "No file paths, project names, provider names, token counts or costs. Nothing that identifies you or your machine. The ID is random and is deleted when you uninstall.";
 "telemetry.toggle" = "Send anonymous install statistics";
 "telemetry.toggle_local_only" = "Off — local-only mode covers this too.";
 "telemetry.got_it" = "Got it";
 "telemetry.change_later" = "You can change this any time in Settings › Privacy.";
-"telemetry.settings_body" = "How far the app got, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in. If you use remote control: whether a phone reached this Mac over your Wi-Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude. No file paths, project names, provider names, token counts or cost amounts. The id is random and is deleted when you uninstall.";
+"telemetry.settings_body" = "How far the app got, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in. If you use remote control: whether a phone reached this Mac over your Wi-Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude. No file paths, project names, provider names, token counts or cost amounts. The ID is random and is deleted when you uninstall.";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "Remote Control";
@@ -1315,7 +1317,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "sessions.transport_stale_help" = "This row was started by a previous helper process. The current helper does not own its PTY, so Send / Stop / Approve here are disabled. Stop the underlying Claude process from the terminal directly.";
 "sessions.row_not_controllable" = "· not controllable";
 "sessions.row_tap_to_control" = "· tap to control";
-"helper.title" = "Managed CLI Helper";
+"helper.title" = "Companion CLI";
 "app_updater.checking" = "Checking…";
 "helper.not_responding" = "Not responding";
 "app_updater.downloading_percent" = "Downloading %d%%";
@@ -1382,7 +1384,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "dashboard.all_in_monthly_est" = "All-in monthly (est.)";
 "dashboard.all_in_monthly_help" = "API-equivalent 30-day cost from your usage PLUS monthly subscription cost. This is NOT a real bill — Anthropic / OpenAI / Google charge subscription cost only; the API-equivalent figure shows what your usage would have cost on pay-as-you-go.";
 "onboarding_wizard.feature_usage_title" = "Usage Tracking";
-"onboarding_wizard.feature_usage_desc" = "Real-time token usage across Claude, Codex, Gemini, and 14+ providers.";
+"onboarding_wizard.feature_usage_desc" = "Real-time token usage across Claude, Codex, Gemini, and many more providers.";
 "onboarding_wizard.feature_alerts_title" = "Smart Alerts";
 "onboarding_wizard.feature_alerts_desc" = "Get notified when quotas run low, costs spike, or sessions fail.";
 "onboarding_wizard.feature_devices_title" = "Multi-Device";

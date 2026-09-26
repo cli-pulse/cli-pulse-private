@@ -126,8 +126,6 @@ struct SettingsTab: View {
 
     private var loginSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: L10n.settings.server, icon: "server.rack")
-
             SectionHeader(title: L10n.settings.signIn, icon: "person.circle")
 
             if usePasswordLogin {

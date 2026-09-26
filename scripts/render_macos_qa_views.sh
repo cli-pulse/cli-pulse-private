@@ -50,6 +50,17 @@ done
 
 [[ -n "$app" && -n "$out" ]] || die "--app and --out are required (see --help)"
 [[ ${#languages[@]} -gt 0 ]] || languages=("${ALL_LANGUAGES[@]}")
+# Checked before anything else happens, because each language names a folder
+# under --out that --replace deletes: "--lang .." would have removed the parent
+# of the output folder, and "--lang ''" the output folder itself. The app also
+# refuses a language it does not ship, but only after that deletion.
+seen=" "
+for lang in "${languages[@]}"; do
+    [[ " ${ALL_LANGUAGES[*]} " == *" $lang "* ]] \
+        || die "unknown language '$lang' (one of: ${ALL_LANGUAGES[*]})"
+    [[ "$seen" != *" $lang "* ]] || die "language '$lang' given twice"
+    seen+="$lang "
+done
 [[ "$appearance" == light || "$appearance" == dark ]] || die "--appearance must be light or dark"
 [[ "$timeout_seconds" =~ ^[0-9]+$ ]] || die "--timeout must be a number of seconds"
 

@@ -45,14 +45,10 @@ struct DisplaySection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
-
-            Divider()
-
-            SectionHeader(title: L10n.settings.appearance, icon: "paintbrush")
-
 
             Divider()
 

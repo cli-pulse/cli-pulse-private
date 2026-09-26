@@ -30,7 +30,7 @@
 "welcome_choice.title" = "CLI Pulse에 오신 것을 환영합니다";
 "welcome_choice.subtitle" = "AI 도구 사용량을 추적할 방법을 선택하세요:";
 "welcome_choice.sign_in_title" = "로그인하여 동기화";
-"welcome_choice.sign_in_body" = "iPhone, Watch 등 같은 계정의 모든 기기에서 사용량을 추적합니다.";
+"welcome_choice.sign_in_body" = "iPhone, Apple Watch 등 같은 계정의 모든 기기에서 사용량을 추적합니다.";
 "welcome_choice.local_mode_title" = "로컬 모드 사용";
 "welcome_choice.local_mode_body" = "이 Mac의 사용량만 추적합니다 — 계정이 필요 없고 아무것도 업로드되지 않습니다.";
 "welcome_choice.footnote" = "설정에서 언제든지 모드를 전환할 수 있습니다.";
@@ -229,8 +229,8 @@
 "subscription.buy_lifetime" = "평생 이용권 구매";
 
 /* ── 정보 ── */
-"about.title" = "CLI Pulse Bar 정보";
-"about.description" = "메뉴 막대에서 AI 코딩 도구를 모니터링합니다. Claude, Codex, Gemini 등 20개 이상 공급자의 사용량, 비용, 알림을 추적합니다.";
+"about.title" = "CLI Pulse 정보";
+"about.description" = "메뉴 막대에서 AI 코딩 도구를 모니터링합니다. Claude, Codex, Gemini 등 여러 공급자의 사용량, 비용, 알림을 추적합니다.";
 "about.copyright" = "© 2025 CLI Pulse 기여자";
 "about.report_issue" = "문제 보고";
 
@@ -492,7 +492,7 @@
 "yield.commits_count" = "커밋 %d개";
 "yield.commits_count_decimal" = "커밋 %@개";
 "yield.ambiguous_count" = "모호 %d건";
-"menu_bar.quit_full" = "CLI Pulse Bar 종료";
+"menu_bar.quit_full" = "CLI Pulse 종료";
 "common.no_provider_selected" = "선택된 공급자 없음";
 "cost.exact" = "정확";
 "cost.estimated" = "추정";
@@ -639,6 +639,7 @@
 "usage_dashboard.all" = "전체";
 
 "settings.refresh_adaptive" = "자동 조정";
+"settings.refresh_minutes_short" = "%d분";
 "settings.currency" = "통화";
 
 /* v1.42 Pulse Cat */
@@ -765,7 +766,7 @@
 "providers.account_configuration" = "에이전트 계정";
 "providers.accounts_count_one" = "계정 %d개";
 "providers.accounts_count" = "계정 %d개";
-"providers.no_accounts_configured" = "이 공급자에 설정된 CLIPulse 계정이 없습니다.";
+"providers.no_accounts_configured" = "이 공급자에 설정된 CLI Pulse 계정이 없습니다.";
 "providers.add_account" = "계정 추가";
 "providers.rerun_agent_setup" = "에이전트 설정 다시 실행";
 "providers.rerun_agent_setup_hint" = "감지된 에이전트와 모니터링 계정을 검토합니다. 저장된 자격 증명은 직접 편집할 때만 변경됩니다.";
@@ -780,7 +781,7 @@
 "providers.remove_account" = "계정 제거";
 "providers.remove_named_account" = "%@ 제거";
 "providers.remove_account_title" = "%@ · %@ 계정을 제거할까요?";
-"providers.remove_account_message" = "CLIPulse 설정과 이 계정에 연결된 로컬 비밀 정보만 제거합니다. 공급자 구독은 취소되거나 변경되지 않습니다.";
+"providers.remove_account_message" = "CLI Pulse 설정과 이 계정에 연결된 로컬 비밀 정보만 제거합니다. 공급자 구독은 취소되거나 변경되지 않습니다.";
 "providers.provider_level_cost" = "토큰 및 비용 합계는 공급자 단위이며 한 번만 표시됩니다.";
 "providers.most_constrained" = "잔여량이 가장 적음";
 "providers.remaining_percent" = "%d%% 남음";
@@ -807,7 +808,7 @@
 "advanced.privacy_logs_title" = "세션 로그 (~/.codex/sessions, ~/.claude/projects)";
 "advanced.privacy_logs_detail" = "위에서 접근을 허용한 폴더를 통해 기기에서 스캔";
 "advanced.privacy_metrics_title" = "사용량 지표 (토큰 수, 비용, 모델 이름)";
-"advanced.privacy_metrics_detail" = "iPhone / Watch에서 볼 수 있도록 CLI Pulse 계정에 동기화";
+"advanced.privacy_metrics_detail" = "iPhone과 Apple Watch에서 볼 수 있도록 CLI Pulse 계정에 동기화";
 "advanced.privacy_email_title" = "로그인 이메일";
 "advanced.privacy_email_detail" = "로그인할 수 있도록 인증 서버로 전송";
 "onboarding_wizard.privacy_keys_title" = "API 키는 이 Mac에만 저장됩니다";
@@ -876,6 +877,7 @@
 "onboarding_wizard.welcome_title" = "CLI Pulse에 오신 것을 환영합니다";
 "onboarding_wizard.welcome_subtitle" = "AI 코딩 도구의 사용량, 비용, 할당량을\n한곳에서 모니터링하세요.";
 "onboarding_wizard.welcome_accounts_body" = "Codex, Claude, Gemini의 개인용 및 업무용 계정을 찾아 각각 설정합니다.";
+"onboarding_wizard.welcome_tracking_body" = "사용량을 여러 기기에 동기화하거나 이 Mac에만 둘 수 있습니다.";
 "onboarding_wizard.get_started" = "시작하기";
 "onboarding_wizard.what_does" = "CLI Pulse로 할 수 있는 일";
 "onboarding_wizard.continue" = "계속";
@@ -890,7 +892,7 @@
 "onboarding_wizard.back_to_email" = "이메일 입력으로 돌아가기";
 "onboarding_wizard.all_set_title" = "모든 준비 완료";
 "onboarding_wizard.all_set_body" = "Mac 앱이 실행 중일 때 동기화가 자동으로 진행됩니다. 다른 기기에서 같은 계정으로 로그인하면 사용 데이터가 그곳에도 표시됩니다 — 페어링이나 설정이 필요 없습니다.";
-"onboarding_wizard.helper_hint" = "헤드리스 서버나 Claude 원격 승인을 위한 선택 사항인 헬퍼가 필요하신가요? 온보딩이 끝나면 설정 → 헬퍼를 여세요.";
+"onboarding_wizard.helper_hint" = "메뉴 막대에서 claude, codex, gemini 세션을 제어하고 싶으신가요? 초기 설정을 마친 후 설정 › Companion CLI에서 선택 사항인 헬퍼를 설치하세요.";
 "onboarding_wizard.done" = "완료";
 "onboarding_wizard.close" = "온보딩 닫기";
 "onboarding_wizard.step_progress" = "%d/%d단계: %@";
@@ -914,12 +916,12 @@
 "onboarding_wizard.connection_subtitle" = "연결은 항상 사용자가 직접 시작합니다. 계정 설정을 열면 공급자 자격 증명이나 브라우저 로그인을 요청할 수 있습니다.";
 "onboarding_wizard.connection_optional" = "지금 계속 진행하고 남은 계정은 나중에 연결할 수 있습니다.";
 "onboarding_wizard.open_account_settings" = "계정 설정 열기";
-"onboarding_wizard.mode_title" = "CLIPulse 실행 방식 선택";
+"onboarding_wizard.mode_title" = "CLI Pulse 실행 방식 선택";
 "onboarding_wizard.mode_subtitle" = "이 선택은 동기화 방식만 바꾸며, 공급자 자격 증명의 저장 방식은 바뀌지 않습니다.";
 "onboarding_wizard.sync_mode_title" = "기기 간 동기화";
 "onboarding_wizard.sync_mode_body" = "로그인하면 정규화된 지표를 iPhone과 Apple Watch에 동기화합니다. 공급자 자격 증명은 이 Mac 밖으로 나가지 않습니다.";
 "onboarding_wizard.local_only_title" = "이 Mac에서만";
-"onboarding_wizard.local_only_body" = "데이터 수집과 대시보드를 로컬에만 유지합니다. Supabase 동기화는 하지 않으며, 나중에 로그인할 수 있습니다.";
+"onboarding_wizard.local_only_body" = "데이터 수집과 대시보드를 로컬에만 유지합니다. 클라우드 동기화는 하지 않으며, 나중에 로그인할 수 있습니다.";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 계정에 로그인되어 있으며 동기화할 준비가 되었습니다.";
 "onboarding_wizard.sign_in_for_sync" = "기기 간 동기화를 사용하려면 아래에서 로그인하세요.";
 "onboarding_wizard.finish_title" = "에이전트 설정 준비 완료";
@@ -965,7 +967,7 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "정확한 API 가격을 알 수 없으면 토큰 사용량으로 비용을 추정합니다.";
 "yield.empty_body" = "커밋당 AI 비용을 추적하여 Yield Score를 확인하세요.";
-"yield.empty_enable_hint" = "설정 → 개인정보 보호 → Git 활동 추적에서 켜세요.";
+"yield.empty_enable_hint" = "설정 › 고급에서 Git 활동 추적을 켜세요.";
 "yield.view_detail" = "상세 보기";
 "yield.detail_title" = "Yield Score 상세";
 "yield.detail_body" = "정확한 API 가격을 알 수 없으면 토큰 사용량으로 비용을 추정합니다. 병합 커밋은 귀속 대상에서 제외됩니다.";
@@ -1259,7 +1261,7 @@
 "sessions.transport_stale_help" = "이 행은 이전 헬퍼 프로세스가 시작한 것입니다. 현재 헬퍼가 해당 PTY를 소유하지 않으므로 여기서는 보내기 / 중지 / 승인을 사용할 수 없습니다. 터미널에서 해당 Claude 프로세스를 직접 중지하세요.";
 "sessions.row_not_controllable" = "· 제어 불가";
 "sessions.row_tap_to_control" = "· 클릭하여 제어";
-"helper.title" = "관리형 CLI 헬퍼";
+"helper.title" = "Companion CLI";
 "app_updater.checking" = "확인 중…";
 "helper.not_responding" = "응답 없음";
 "app_updater.downloading_percent" = "다운로드 중 %d%%";
@@ -1326,7 +1328,7 @@
 "dashboard.all_in_monthly_est" = "월 총액 (추정)";
 "dashboard.all_in_monthly_help" = "사용량 기준 30일 API 환산 비용에 월 구독 비용을 더한 값입니다. 실제 청구액이 아닙니다. Anthropic / OpenAI / Google은 구독 비용만 청구하며, API 환산 금액은 사용량을 종량제로 결제했을 때의 비용을 나타냅니다.";
 "onboarding_wizard.feature_usage_title" = "사용량 추적";
-"onboarding_wizard.feature_usage_desc" = "Claude, Codex, Gemini 등 14개 이상 공급자의 토큰 사용량을 실시간으로 확인하세요.";
+"onboarding_wizard.feature_usage_desc" = "Claude, Codex, Gemini 등 여러 공급자의 토큰 사용량을 실시간으로 확인하세요.";
 "onboarding_wizard.feature_alerts_title" = "스마트 알림";
 "onboarding_wizard.feature_alerts_desc" = "할당량 부족, 비용 급증, 세션 실패 시 알려 드립니다.";
 "onboarding_wizard.feature_devices_title" = "여러 기기";

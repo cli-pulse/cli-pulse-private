@@ -168,8 +168,13 @@ def validate_render_condition(project_text: str) -> None:
         "app Debug QA SWIFT_ACTIVE_COMPILATION_CONDITIONS must keep $(inherited) "
         "so DEBUG still reaches the QA build",
     )
-    total = len(re.findall(rf"\b{QA_RENDER_CONDITION}\b", project_text))
-    inside = len(re.findall(rf"\b{QA_RENDER_CONDITION}\b", qa_body))
+    # Plain substring counts, not word matches: in `-DCLIPULSE_QA_RENDER`, the
+    # spelling OTHER_SWIFT_FLAGS uses, there is no word boundary between the D
+    # and the C, and a `\b` pattern let that reach Release unnoticed. A longer
+    # name that merely starts with the condition is counted too, which fails
+    # closed.
+    total = project_text.count(QA_RENDER_CONDITION)
+    inside = qa_body.count(QA_RENDER_CONDITION)
     require(
         total == inside,
         f"{QA_RENDER_CONDITION} may appear only in the app's Debug QA "

@@ -30,7 +30,7 @@
 "welcome_choice.title" = "欢迎使用 CLI Pulse";
 "welcome_choice.subtitle" = "选择你想要的 AI 工具使用追踪方式：";
 "welcome_choice.sign_in_title" = "登录以同步";
-"welcome_choice.sign_in_body" = "在 iPhone、Watch 等登录同一账户的设备间同步使用情况。";
+"welcome_choice.sign_in_body" = "在 iPhone、Apple Watch 等登录同一账户的设备间同步使用情况。";
 "welcome_choice.local_mode_title" = "使用本地模式";
 "welcome_choice.local_mode_body" = "只追踪这台 Mac 的使用情况——无需账户，不上传任何数据。";
 "welcome_choice.footnote" = "可以随时在「设置」里切换模式。";
@@ -221,8 +221,8 @@
 "subscription.switch_pro" = "切换到 Pro";
 
 /* ── 关于 ── */
-"about.title" = "关于 CLI Pulse Bar";
-"about.description" = "从菜单栏监控你的 AI 编程工具。追踪 Claude、Codex、Gemini 等 20 多家服务商的用量、费用和告警。";
+"about.title" = "关于 CLI Pulse";
+"about.description" = "从菜单栏监控你的 AI 编程工具。追踪 Claude、Codex、Gemini 等众多服务商的用量、费用和告警。";
 "about.copyright" = "© 2025 CLI Pulse 贡献者";
 "about.report_issue" = "报告问题";
 
@@ -466,7 +466,7 @@
 "providers.account_configuration" = "Agent 账户";
 "providers.accounts_count_one" = "%d 个账户";
 "providers.accounts_count" = "%d 个账户";
-"providers.no_accounts_configured" = "尚未为此服务商配置 CLIPulse 账户。";
+"providers.no_accounts_configured" = "尚未为此服务商配置 CLI Pulse 账户。";
 "providers.add_account" = "添加账户";
 "providers.rerun_agent_setup" = "重新运行 Agent 设置";
 "providers.rerun_agent_setup_hint" = "重新查看检测到的 Agent 和监控账户；仅在你主动编辑时才会更改已保存的凭据。";
@@ -481,7 +481,7 @@
 "providers.remove_account" = "移除账户";
 "providers.remove_named_account" = "移除 %@";
 "providers.remove_account_title" = "移除 %@ · %@？";
-"providers.remove_account_message" = "只会移除 CLIPulse 配置和该账户在本机保存的密钥，不会取消或更改服务商订阅。";
+"providers.remove_account_message" = "只会移除 CLI Pulse 配置和该账户在本机保存的密钥，不会取消或更改服务商订阅。";
 "providers.provider_level_cost" = "Token 与费用为服务商级数据，只显示一次。";
 "providers.most_constrained" = "最紧张账户";
 "providers.remaining_percent" = "剩余 %d%%";
@@ -536,6 +536,7 @@
 "onboarding_wizard.welcome_title" = "欢迎使用 CLI Pulse";
 "onboarding_wizard.welcome_subtitle" = "集中监控 AI 编程工具的\n用量、费用与配额。";
 "onboarding_wizard.welcome_accounts_body" = "发现并分别设置 Codex、Claude 和 Gemini 的个人与工作账户。";
+"onboarding_wizard.welcome_tracking_body" = "可以跨设备同步用量，也可以只留在这台 Mac 上。";
 "onboarding_wizard.get_started" = "开始使用";
 "onboarding_wizard.what_does" = "CLI Pulse 能做什么";
 "onboarding_wizard.continue" = "继续";
@@ -550,7 +551,7 @@
 "onboarding_wizard.back_to_email" = "返回邮箱";
 "onboarding_wizard.all_set_title" = "全部就绪";
 "onboarding_wizard.all_set_body" = "Mac 应用运行时数据会自动同步。在任何其他设备上用同一账户登录，使用数据就会出现——无需配对或额外设置。";
-"onboarding_wizard.helper_hint" = "需要为无界面服务器或 Claude 远程审批使用可选 helper？引导完成后请打开「设置 → Helper」。";
+"onboarding_wizard.helper_hint" = "想在菜单栏中操作 claude、codex 和 gemini 会话？完成设置后，可在「设置 › Companion CLI」中安装可选的 helper。";
 "onboarding_wizard.done" = "完成";
 "onboarding_wizard.close" = "关闭引导";
 "onboarding_wizard.step_progress" = "第 %d 步，共 %d 步：%@";
@@ -574,12 +575,12 @@
 "onboarding_wizard.connection_subtitle" = "连接始终由你主动发起。打开账户设置后，系统可能请求服务商凭据或浏览器登录。";
 "onboarding_wizard.connection_optional" = "你可以先继续，稍后再连接尚未完成的账户。";
 "onboarding_wizard.open_account_settings" = "打开账户设置";
-"onboarding_wizard.mode_title" = "选择 CLIPulse 运行方式";
+"onboarding_wizard.mode_title" = "选择 CLI Pulse 的运行方式";
 "onboarding_wizard.mode_subtitle" = "此选择只影响同步方式，不会改变服务商凭据的存储位置。";
 "onboarding_wizard.sync_mode_title" = "跨设备同步";
 "onboarding_wizard.sync_mode_body" = "登录后将归一化指标同步到 iPhone 和 Apple Watch；服务商凭据绝不会离开这台 Mac。";
 "onboarding_wizard.local_only_title" = "仅此 Mac";
-"onboarding_wizard.local_only_body" = "采集与仪表盘都留在本机，不进行 Supabase 同步；以后仍可登录。";
+"onboarding_wizard.local_only_body" = "采集与仪表盘都留在本机，不进行云同步；以后仍可登录。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 账户已登录，可以开始同步。";
 "onboarding_wizard.sign_in_for_sync" = "请在下方登录以启用跨设备同步。";
 "onboarding_wizard.finish_title" = "Agent 设置已就绪";
@@ -631,7 +632,7 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "当无法获取精确的 API 价格时，成本根据 token 用量估算。";
 "yield.empty_body" = "追踪每次提交的 AI 成本以查看你的 Yield Score。";
-"yield.empty_enable_hint" = "在「设置 → 隐私 → 追踪 git 活动」中启用。";
+"yield.empty_enable_hint" = "在「设置 › 高级」中打开「追踪 git 活动」。";
 "yield.view_detail" = "查看详情";
 "yield.detail_title" = "Yield Score 详情";
 "yield.detail_body" = "当无法获取精确的 API 价格时，成本根据 token 用量估算。合并提交不计入归因。";
@@ -681,7 +682,7 @@
 "yield.commits_count" = "%d 次提交";
 "yield.commits_count_decimal" = "%@ 次提交";
 "yield.ambiguous_count" = "%d 次归因不明";
-"menu_bar.quit_full" = "退出 CLI Pulse Bar";
+"menu_bar.quit_full" = "退出 CLI Pulse";
 
 /* ── iter22 广义清扫 ── */
 "common.no_provider_selected" = "未选择服务商";
@@ -730,7 +731,7 @@
 "advanced.privacy_logs_title" = "会话日志（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "通过你授权的文件夹在本机扫描";
 "advanced.privacy_metrics_title" = "使用指标（token 数、费用、模型名）";
-"advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 账户，供 iPhone / Watch 使用";
+"advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 账户，供 iPhone 和 Apple Watch 使用";
 "advanced.privacy_email_title" = "登录邮箱";
 "advanced.privacy_email_detail" = "发送至认证后端用于登录";
 "onboarding_wizard.privacy_keys_title" = "API 密钥仅留在本机";
@@ -948,6 +949,7 @@
 "usage_dashboard.all" = "全部";
 
 "settings.refresh_adaptive" = "自适应";
+"settings.refresh_minutes_short" = "%d 分钟";
 "settings.currency" = "货币";
 
 /* v1.42 Pulse Cat */
@@ -1305,7 +1307,7 @@
 "sessions.transport_stale_help" = "此行由之前的 helper 进程启动。当前 helper 并不持有它的 PTY，因此这里的发送 / 停止 / 批准均已停用。请直接在终端中停止对应的 Claude 进程。";
 "sessions.row_not_controllable" = "· 无法控制";
 "sessions.row_tap_to_control" = "· 点击以控制";
-"helper.title" = "托管 CLI Helper";
+"helper.title" = "Companion CLI";
 "app_updater.checking" = "正在检查…";
 "helper.not_responding" = "无响应";
 "app_updater.downloading_percent" = "正在下载 %d%%";
@@ -1372,7 +1374,7 @@
 "dashboard.all_in_monthly_est" = "月度总计（预估）";
 "dashboard.all_in_monthly_help" = "按你的用量折算的 30 天 API 等价费用，加上每月订阅费用。这不是真实账单——Anthropic / OpenAI / Google 只收取订阅费；API 等价数值表示你的用量若按量付费会花多少。";
 "onboarding_wizard.feature_usage_title" = "用量追踪";
-"onboarding_wizard.feature_usage_desc" = "实时查看 Claude、Codex、Gemini 等 14+ 服务商的 token 用量。";
+"onboarding_wizard.feature_usage_desc" = "实时查看 Claude、Codex、Gemini 等众多服务商的 token 用量。";
 "onboarding_wizard.feature_alerts_title" = "智能告警";
 "onboarding_wizard.feature_alerts_desc" = "配额不足、费用激增或会话失败时及时通知你。";
 "onboarding_wizard.feature_devices_title" = "多设备";

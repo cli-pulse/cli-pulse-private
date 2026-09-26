@@ -1030,7 +1030,10 @@ private struct QARenderMenuPicture: View {
 /// Refuses every request made through the shared URL session while the
 /// renderer runs, and remembers where it would have gone (scheme, host and
 /// path; never the query). The QA runtime already blocks production
-/// endpoints and collectors; this makes "nothing went out" checkable.
+/// endpoints and collectors; this lists what reached `URLSession.shared`
+/// anyway. It does not see sessions built from their own configuration, such
+/// as APIClient's, so an empty list is not proof that nothing went out; the
+/// process's sockets are (docs/qa/macos-offscreen-renders.md).
 final class QARenderRefusingURLProtocol: URLProtocol {
     private static let lock = NSLock()
     private static var refusedURLs: [String] = []

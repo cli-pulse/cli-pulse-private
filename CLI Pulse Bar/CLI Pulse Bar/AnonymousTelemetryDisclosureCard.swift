@@ -15,6 +15,17 @@ import CLIPulseCore
 /// inline, and gets out of the way.
 struct AnonymousTelemetryDisclosureCard: View {
     @ObservedObject private var settings = PrivacySettings.shared
+    /// The tallest the explanation may be before it scrolls inside the card.
+    /// `nil` lets it take all the height it needs.
+    ///
+    /// The card sits above whatever the popover shows, first of all the setup
+    /// wizard, inside a popover of fixed height (580 points by default). Laid out
+    /// at full length, the explanation plus the wizard's welcome page did not
+    /// fit: in every language the card lost its title off the top, the wizard's
+    /// subtitle was cut to one line, and the footer that holds the language menu
+    /// was pushed out of the popover. Capped, the explanation scrolls, and the
+    /// title, the switch, Got it and the wizard all stay on screen.
+    var explanationMaxHeight: CGFloat? = nil
     let onDismiss: () -> Void
 
     /// `localOnlyMode` forces telemetry off inside the telemetry store, whatever
@@ -37,17 +48,7 @@ struct AnonymousTelemetryDisclosureCard: View {
                 Text(L10n.telemetry.disclosureTitle)
                     .font(.headline)
 
-                Text(suppressedByLocalOnly
-                     ? L10n.telemetry.disclosureBodyLocalOnly
-                     : L10n.telemetry.disclosureBody)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(L10n.telemetry.notCollected)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                explanation
 
                 // Disabled rather than hidden when local-only mode is on, so the
                 // master switch's effect is visible instead of a control that
@@ -57,21 +58,25 @@ struct AnonymousTelemetryDisclosureCard: View {
                          ? L10n.telemetry.toggleLocalOnly
                          : L10n.telemetry.toggle)
                         .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .disabled(suppressedByLocalOnly)
                 .padding(.top, 2)
 
-                HStack(spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Button(L10n.telemetry.gotIt, action: onDismiss)
                         .buttonStyle(.borderedProminent)
                         .tint(PulseTheme.accent)
                         .controlSize(.small)
 
+                    // Wraps instead of ending in "Settings › Priv…": the path is
+                    // the one thing in this line a reader needs whole.
                     Text(L10n.telemetry.changeLater)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(.top, 2)
             }
@@ -88,5 +93,40 @@ struct AnonymousTelemetryDisclosureCard: View {
                 .stroke(PulseTheme.accent.opacity(0.22), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
+    }
+
+    private var explanationText: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(suppressedByLocalOnly
+                 ? L10n.telemetry.disclosureBodyLocalOnly
+                 : L10n.telemetry.disclosureBody)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text(L10n.telemetry.notCollected)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The explanation whole when it fits under `explanationMaxHeight`, and in a
+    /// scroll view of that height when it does not.
+    @ViewBuilder
+    private var explanation: some View {
+        if let explanationMaxHeight {
+            ViewThatFits(in: .vertical) {
+                explanationText
+                ScrollView(.vertical) {
+                    explanationText
+                        .padding(.trailing, 4)
+                }
+            }
+            .frame(maxHeight: explanationMaxHeight)
+        } else {
+            explanationText
+        }
     }
 }

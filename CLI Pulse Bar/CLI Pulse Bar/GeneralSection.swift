@@ -9,6 +9,9 @@ struct GeneralSection: View {
     @EnvironmentObject var state: AppState
     @State private var alertThresholds: AlertThresholds = AlertThresholdsStore.load()
 
+    /// The fixed refresh intervals the picker offers, in minutes.
+    static let refreshMinutes = [1, 2, 5, 10, 30]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.settings.connection, icon: "server.rack")
@@ -36,28 +39,30 @@ struct GeneralSection: View {
                     .foregroundStyle(state.serverOnline ? .green : .red)
             }
 
-            HStack {
+            // The label sits above the picker. Beside a 300-point picker it had
+            // about 30 points left, and broke inside its words in every
+            // language ("Refre/sh Caden/ce", "새로고/침 주기").
+            VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.settings.refreshCadence)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
-                Spacer()
                 // Titled for VoiceOver; `.labelsHidden()` hides the title from
-                // sight only, since the Text beside it already shows it.
+                // sight only, since the Text above it already shows it.
                 Picker(L10n.settings.refreshCadence, selection: Binding(
                     get: { state.refreshInterval },
                     set: { state.updateRefreshInterval($0) }
                 )) {
                     Text(L10n.settings.refreshAdaptive).tag(0)   // v1.40 PR-8: 2–30 min by usage
-                    Text("1m").tag(60)
-                    Text("2m").tag(120)
-                    Text("5m").tag(300)
-                    Text("10m").tag(600)
-                    Text("30m").tag(1800)
+                    // Minutes in the reader's own abbreviation: a bare "1m"
+                    // reads as a metre in Chinese and Japanese.
+                    ForEach(Self.refreshMinutes, id: \.self) { minutes in
+                        Text(L10n.settings.refreshMinutesShort(minutes)).tag(minutes * 60)
+                    }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
-                .frame(width: 300)
+                .frame(maxWidth: .infinity)
             }
 
             // v1.40 PR-7: display currency (costs convert at display time; storage stays USD).
@@ -92,6 +97,7 @@ struct GeneralSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -104,6 +110,7 @@ struct GeneralSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -122,6 +129,7 @@ struct GeneralSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -134,6 +142,7 @@ struct GeneralSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -153,6 +162,7 @@ struct GeneralSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)

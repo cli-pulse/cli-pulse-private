@@ -250,7 +250,7 @@ struct OnboardingWizardView: View {
             VStack(alignment: .leading, spacing: 9) {
                 setupValue(
                     icon: "gauge.with.dots.needle.67percent",
-                    text: L10n.welcomeChoice.subtitle
+                    text: L10n.onboardingWizard.welcomeTrackingBody
                 )
                 setupValue(
                     icon: "person.2.badge.gearshape",
@@ -1259,10 +1259,13 @@ struct LegacyOnboardingWizardView: View {
             Text(L10n.onboardingWizard.welcomeTitle)
                 .font(.title2.weight(.semibold))
 
+            // Wraps rather than truncating when the popover is short of room,
+            // as it is on first launch with the statistics card above it.
             Text(L10n.onboardingWizard.welcomeSubtitle)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
 
@@ -1661,8 +1664,11 @@ struct LegacyOnboardingWizardView: View {
                 .padding(.horizontal, 20)
 
             // Optional-helper hint as a low-key footnote. Don't bury it
-            // (some users genuinely want headless / Remote-Approvals
-            // setups) but don't lead with it either.
+            // (some users want to run CLI sessions from the menu bar) but
+            // don't lead with it either. It names the Settings section by its
+            // title, Companion CLI; it used to send people to a "Helper"
+            // section that does not exist, for Remote Approvals, which v1.52.1
+            // retired.
             Text(L10n.onboardingWizard.helperHint)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

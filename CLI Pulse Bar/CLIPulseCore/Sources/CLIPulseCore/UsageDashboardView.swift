@@ -184,10 +184,17 @@ struct DashboardTrends: View {
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 120)
         } else {
+            // Each provider in the colour it has everywhere else, the By Provider
+            // bars right above included. Left to Swift Charts, the series took
+            // the default palette in the order they were first seen, which
+            // changed from launch to launch (Codex blue in one run, green in the
+            // next) and never matched the rest of the app.
+            let providers = Self.providers(in: points)
             Chart(points) { p in
                 BarMark(x: .value(L10n.usageDashboard.chartDay, p.day), y: .value(L10n.usageDashboard.chartTokens, p.tokens))
                     .foregroundStyle(by: .value(L10n.usageDashboard.chartProvider, p.provider))
             }
+            .chartForegroundStyleScale(domain: providers, range: providers.map { PulseTheme.providerColor($0) })
             .chartXAxis(.hidden)
             .chartYAxis {
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
@@ -217,13 +224,19 @@ struct DashboardTrends: View {
         var id: String { "\(day)|\(provider)" }
     }
 
+    /// The providers in `points`, in a fixed order. `perProvider` is a
+    /// dictionary, whose order Swift changes with every process.
+    private static func providers(in points: [TrendPoint]) -> [String] {
+        Array(Set(points.map(\.provider))).sorted()
+    }
+
     private func trendPoints() -> [TrendPoint] {
         let sortedDays = archive.days.keys.sorted()
         let window = rangeDays < 0 ? sortedDays : Array(sortedDays.suffix(rangeDays))
         var points: [TrendPoint] = []
         for dayKey in window {
             guard let day = archive.days[dayKey] else { continue }
-            for (provider, slice) in day.perProvider where slice.tokens > 0 {
+            for (provider, slice) in day.perProvider.sorted(by: { $0.key < $1.key }) where slice.tokens > 0 {
                 points.append(TrendPoint(day: dayKey, provider: provider, tokens: slice.tokens))
             }
         }
@@ -454,8 +467,14 @@ public struct CompactUsageCard: View {
                         miniStat("\(DailyUsageStats.activeDays(a))", L10n.usageDashboard.activeDays)
                     }
                 } else {
-                    Text(L10n.usageDashboard.scope)
-                        .font(.caption).foregroundStyle(.secondary)
+                    // Says there is nothing yet. The scope line alone read as a
+                    // subtitle, as if the card were still loading.
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(L10n.usageDashboard.empty)
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(L10n.usageDashboard.scope)
+                            .font(.caption2).foregroundStyle(.tertiary)
+                    }
                 }
             }
             .padding(10)

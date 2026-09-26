@@ -151,6 +151,18 @@ class QASchemeContractTests(unittest.TestCase):
         )
         self.assert_rejected(project_text=mutated)
 
+    def test_render_mode_must_not_reach_release_through_other_swift_flags(self) -> None:
+        # `-DCLIPULSE_QA_RENDER` has no word boundary before the name, so a
+        # `\b` count missed it.
+        mutated = replace_after(
+            self.project_text,
+            "G10006 /* Release */ = {",
+            "buildSettings = {",
+            "buildSettings = {\n\t\t\t\tOTHER_SWIFT_FLAGS = "
+            '"$(inherited) -DCLIPULSE_QA_RENDER";',
+        )
+        self.assert_rejected(project_text=mutated)
+
     def test_render_mode_must_not_reach_plain_debug(self) -> None:
         mutated = replace_after(
             self.project_text,

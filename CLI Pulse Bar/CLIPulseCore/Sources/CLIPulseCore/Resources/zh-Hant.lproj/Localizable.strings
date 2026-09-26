@@ -30,7 +30,7 @@
 "welcome_choice.title" = "歡迎使用 CLI Pulse";
 "welcome_choice.subtitle" = "選擇你想要的 AI 工具使用追蹤方式：";
 "welcome_choice.sign_in_title" = "登入以同步";
-"welcome_choice.sign_in_body" = "在使用同一帳號的 iPhone、Watch 等裝置間同步使用情況。";
+"welcome_choice.sign_in_body" = "在使用同一帳號的 iPhone、Apple Watch 等裝置間同步使用情況。";
 "welcome_choice.local_mode_title" = "使用本機模式";
 "welcome_choice.local_mode_body" = "只追蹤這台 Mac 的使用情況——無需帳號，不上傳任何資料。";
 "welcome_choice.footnote" = "可以隨時在「設定」裡切換模式。";
@@ -221,8 +221,8 @@
 "subscription.switch_pro" = "切換到 Pro";
 
 /* ── 關於 ── */
-"about.title" = "關於 CLI Pulse Bar";
-"about.description" = "從選單列監控你的 AI 程式設計工具。追蹤 Claude、Codex、Gemini 等 20+ 服務商的用量、費用和警示。";
+"about.title" = "關於 CLI Pulse";
+"about.description" = "從選單列監控你的 AI 程式設計工具。追蹤 Claude、Codex、Gemini 等眾多服務商的用量、費用和警示。";
 "about.copyright" = "© 2025 CLI Pulse 貢獻者";
 "about.report_issue" = "回報問題";
 
@@ -463,13 +463,13 @@
 
 /* ── 服務商補充 (i18n sweep) ── */
 "providers.configure_hint" = "為每個服務商設定資料來源、憑證和顯示方式。";
-"providers.account_configuration" = "Agent 帳號";
+"providers.account_configuration" = "AI 工具帳號";
 "providers.accounts_count_one" = "%d 個帳號";
 "providers.accounts_count" = "%d 個帳號";
-"providers.no_accounts_configured" = "尚未為此服務商設定 CLIPulse 帳號。";
+"providers.no_accounts_configured" = "尚未為此服務商設定 CLI Pulse 帳號。";
 "providers.add_account" = "新增帳號";
-"providers.rerun_agent_setup" = "重新執行 Agent 設定";
-"providers.rerun_agent_setup_hint" = "重新檢視偵測到的 Agent 與監控帳號；只有在你主動編輯時，才會變更已儲存的憑證。";
+"providers.rerun_agent_setup" = "重新執行 AI 工具設定";
+"providers.rerun_agent_setup_hint" = "重新檢視偵測到的 AI 工具與監控帳號；只有在你主動編輯時，才會變更已儲存的憑證。";
 "providers.default_account" = "預設帳號";
 "providers.account_number" = "帳號 %d";
 "providers.plan_unconfirmed" = "方案未確認";
@@ -481,13 +481,13 @@
 "providers.remove_account" = "移除帳號";
 "providers.remove_named_account" = "移除 %@";
 "providers.remove_account_title" = "移除 %@ · %@？";
-"providers.remove_account_message" = "只會移除 CLIPulse 設定和此帳號在本機的專屬機密資訊，不會取消或變更服務商訂閱。";
+"providers.remove_account_message" = "只會移除 CLI Pulse 設定和此帳號在本機的專屬機密資訊，不會取消或變更服務商訂閱。";
 "providers.provider_level_cost" = "Token 與成本為服務商層級資料，只顯示一次。";
 "providers.most_constrained" = "配額最吃緊";
 "providers.remaining_percent" = "剩餘 %d%%";
 "providers.source_label" = "來源：%@";
 "providers.source_provider_api" = "服務商 API";
-"providers.source_account_metadata" = "帳號中繼資料";
+"providers.source_account_metadata" = "帳號後設資料";
 "providers.source_local_credential" = "Mac 本機憑證";
 "providers.source_web_fallback" = "網頁備援";
 "providers.source_user_confirmed" = "使用者確認";
@@ -536,6 +536,7 @@
 "onboarding_wizard.welcome_title" = "歡迎使用 CLI Pulse";
 "onboarding_wizard.welcome_subtitle" = "在一處監控 AI 程式設計工具的\n使用量、成本與配額。";
 "onboarding_wizard.welcome_accounts_body" = "偵測並分別設定 Codex、Claude 與 Gemini 的個人與工作帳號。";
+"onboarding_wizard.welcome_tracking_body" = "可以跨裝置同步使用量，也可以只留在這台 Mac 上。";
 "onboarding_wizard.get_started" = "開始使用";
 "onboarding_wizard.what_does" = "CLI Pulse 能做什麼";
 "onboarding_wizard.continue" = "繼續";
@@ -550,23 +551,23 @@
 "onboarding_wizard.back_to_email" = "重新輸入電子郵件";
 "onboarding_wizard.all_set_title" = "全部就緒";
 "onboarding_wizard.all_set_body" = "Mac App 執行時資料會自動同步。在任何其他裝置上用同一帳號登入，用量資料就會出現——無需配對或額外設定。";
-"onboarding_wizard.helper_hint" = "需要為無介面伺服器或 Claude 遠端批准使用選用的 helper？引導完成後請開啟「設定 → Helper」。";
+"onboarding_wizard.helper_hint" = "想從選單列操作 claude、codex 和 gemini 工作階段嗎？完成設定後，可在「設定 › Companion CLI」中安裝選用的 helper。";
 "onboarding_wizard.done" = "完成";
 "onboarding_wizard.close" = "關閉引導";
 "onboarding_wizard.step_progress" = "第 %d 步，共 %d 步：%@";
-"onboarding_wizard.find_agents" = "尋找我的 Agent";
+"onboarding_wizard.find_agents" = "尋找我的 AI 工具";
 "onboarding_wizard.set_up_later" = "稍後設定";
 "onboarding_wizard.privacy_direct_title" = "用量檢查直接向服務商查詢";
-"onboarding_wizard.privacy_direct_detail" = "只有在你連線該帳號後，CLI Pulse 才會向對應服務商請求配額與方案中繼資料。";
+"onboarding_wizard.privacy_direct_detail" = "只有在你連線該帳號後，CLI Pulse 才會向對應服務商請求配額與方案後設資料。";
 "onboarding_wizard.privacy_raw_title" = "原始工作階段內容不會上傳";
 "onboarding_wizard.privacy_raw_detail" = "本機日誌只在這台 Mac 上處理；同步模式只上傳正規化後的用量、配額、成本、模型與時間欄位。";
-"onboarding_wizard.discovery_title" = "你的 Coding Agent";
-"onboarding_wizard.discovery_subtitle" = "此被動掃描會檢查已安裝的 CLI、已知的設定路徑、先前授予的資料夾存取權限，以及既有的 CLI Pulse 中繼資料，不會開啟鑰匙圈或瀏覽器，也不會連網。";
+"onboarding_wizard.discovery_title" = "你的 AI 程式設計工具";
+"onboarding_wizard.discovery_subtitle" = "此被動掃描會檢查已安裝的 CLI、已知的設定路徑、先前授予的資料夾存取權限，以及既有的 CLI Pulse 後設資料，不會開啟鑰匙圈或瀏覽器，也不會連網。";
 "onboarding_wizard.scanning" = "正在尋找 Codex、Claude 與 Gemini…";
 "onboarding_wizard.scan_again" = "重新掃描";
-"onboarding_wizard.no_agents_title" = "未找到最佳化支援的 Agent";
-"onboarding_wizard.no_agents_body" = "你可以不選擇 Agent 直接繼續，之後再到「設定」中安裝或連線。";
-"onboarding_wizard.undetected_providers" = "另有 %d 個最佳化支援的 Agent 未找到";
+"onboarding_wizard.no_agents_title" = "未找到最佳化支援的 AI 工具";
+"onboarding_wizard.no_agents_body" = "你可以不選擇 AI 工具直接繼續，之後再到「設定」中安裝或連線。";
+"onboarding_wizard.undetected_providers" = "另有 %d 個最佳化支援的 AI 工具未找到";
 "onboarding_wizard.review_title" = "確認監控帳號";
 "onboarding_wizard.review_subtitle" = "只會啟用下方列出的帳號；方案未確認也不會阻擋完成設定。";
 "onboarding_wizard.no_accounts_selected" = "尚未選擇帳號。你仍可完成設定，之後再新增。";
@@ -574,16 +575,16 @@
 "onboarding_wizard.connection_subtitle" = "連線一律由你主動發起。開啟帳號設定後，可能會要求服務商憑證或瀏覽器登入。";
 "onboarding_wizard.connection_optional" = "你可以先繼續，稍後再連線尚未完成的帳號。";
 "onboarding_wizard.open_account_settings" = "開啟帳號設定";
-"onboarding_wizard.mode_title" = "選擇 CLIPulse 的執行方式";
+"onboarding_wizard.mode_title" = "選擇 CLI Pulse 的執行方式";
 "onboarding_wizard.mode_subtitle" = "此選擇只影響同步方式，不會改變服務商憑證的儲存方式。";
 "onboarding_wizard.sync_mode_title" = "跨裝置同步";
 "onboarding_wizard.sync_mode_body" = "登入後即可將正規化指標同步到 iPhone 與 Apple Watch；服務商憑證絕不會離開這台 Mac。";
 "onboarding_wizard.local_only_title" = "僅限這台 Mac";
-"onboarding_wizard.local_only_body" = "資料收集與儀表板都留在本機，不進行 Supabase 同步；之後仍可登入。";
+"onboarding_wizard.local_only_body" = "資料收集與儀表板都留在本機，不會同步到雲端；之後仍可登入。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 帳號已登入，可以開始同步。";
 "onboarding_wizard.sign_in_for_sync" = "請在下方登入以使用跨裝置同步。";
-"onboarding_wizard.finish_title" = "Agent 設定已就緒";
-"onboarding_wizard.finish_body" = "確認已選擇的帳號後即可完成。之後可在「設定」中重新執行 Agent 設定。";
+"onboarding_wizard.finish_title" = "AI 工具設定已就緒";
+"onboarding_wizard.finish_body" = "確認已選擇的帳號後即可完成。之後可在「設定」中重新執行 AI 工具設定。";
 "onboarding_wizard.finish_local_body" = "用量資料會保留在這台 Mac 上，直到你之後選擇登入。";
 "onboarding_wizard.finish_sync_body" = "正規化後的用量會同步到以此 CLI Pulse 帳號登入的裝置。";
 "onboarding_wizard.plan_unconfirmed" = "方案未確認";
@@ -613,7 +614,7 @@
 "advanced.full_details" = "詳細資訊：";
 "advanced.hide_emails" = "在介面中隱藏電子郵件地址";
 "advanced.track_git" = "追蹤 git 活動（Yield Score）";
-"advanced.track_git_hint" = "僅上傳雜湊後的提交中繼資料——不上傳訊息、diff 或路徑";
+"advanced.track_git_hint" = "僅上傳雜湊後的提交後設資料——不上傳訊息、diff 或路徑";
 "advanced.git_consent_title" = "啟用 git 活動追蹤？";
 "advanced.enable" = "啟用";
 "advanced.git_consent_body" = "CLI Pulse 會在有 AI 工作階段運作的專案中掃描 git 日誌。只有提交雜湊、專案路徑的 HMAC、提交時間戳記以及合併提交標記會離開你的裝置。提交訊息、diff、檔案路徑和作者身分永遠不會上傳。";
@@ -631,7 +632,7 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "當無法取得精確的 API 價格時，成本會根據 token 使用量估算。";
 "yield.empty_body" = "追蹤每次提交的 AI 成本以檢視你的 Yield Score。";
-"yield.empty_enable_hint" = "在「設定 → 隱私 → 追蹤 git 活動」中啟用。";
+"yield.empty_enable_hint" = "在「設定 › 進階」中開啟「追蹤 git 活動」。";
 "yield.view_detail" = "檢視詳情";
 "yield.detail_title" = "Yield Score 詳情";
 "yield.detail_body" = "當無法取得精確的 API 價格時，成本會根據 token 使用量估算。合併提交不計入歸因。";
@@ -681,7 +682,7 @@
 "yield.commits_count" = "%d 次提交";
 "yield.commits_count_decimal" = "%@ 次提交";
 "yield.ambiguous_count" = "%d 項歧義";
-"menu_bar.quit_full" = "結束 CLI Pulse Bar";
+"menu_bar.quit_full" = "結束 CLI Pulse";
 
 /* ── iter22 廣義清掃 ── */
 "common.no_provider_selected" = "未選擇服務商";
@@ -713,7 +714,7 @@
 "watch.live" = "即時";
 "watch.percent_left" = "剩餘 %d%%";
 "watch.tokens_used" = "%@ tokens";
-"watch.connect_agents_on_mac" = "請先在 Mac 上連接 Coding Agent。";
+"watch.connect_agents_on_mac" = "請先在 Mac 上連接 AI 程式設計工具。";
 "watch.stale_updated" = "資料已過期 · 上次更新 %@";
 "watch.tightest_account" = "配額最緊張：%@";
 "watch.unread" = "未讀";
@@ -730,7 +731,7 @@
 "advanced.privacy_logs_title" = "工作階段日誌（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "透過你授權的資料夾在本機掃描";
 "advanced.privacy_metrics_title" = "使用指標（token 數、成本、模型名）";
-"advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 帳號，供 iPhone / Watch 使用";
+"advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 帳號，供 iPhone 與 Apple Watch 使用";
 "advanced.privacy_email_title" = "登入用的電子郵件";
 "advanced.privacy_email_detail" = "傳送至認證後端用於登入";
 "onboarding_wizard.privacy_keys_title" = "API 金鑰僅留在本機";
@@ -948,6 +949,7 @@
 "usage_dashboard.all" = "全部";
 
 "settings.refresh_adaptive" = "自適應";
+"settings.refresh_minutes_short" = "%d 分鐘";
 "settings.currency" = "貨幣";
 
 /* v1.42 Pulse Cat */
@@ -1305,7 +1307,7 @@
 "sessions.transport_stale_help" = "此列由先前的 helper 程序啟動。目前的 helper 並未持有它的 PTY，因此這裡的傳送 / 停止 / 批准皆已停用。請直接在終端機中停止對應的 Claude 程序。";
 "sessions.row_not_controllable" = "· 無法控制";
 "sessions.row_tap_to_control" = "· 點按以控制";
-"helper.title" = "託管 CLI Helper";
+"helper.title" = "Companion CLI";
 "app_updater.checking" = "正在檢查…";
 "helper.not_responding" = "沒有回應";
 "app_updater.downloading_percent" = "正在下載 %d%%";
@@ -1372,7 +1374,7 @@
 "dashboard.all_in_monthly_est" = "每月總計（預估）";
 "dashboard.all_in_monthly_help" = "依你的用量換算的 30 天 API 等價費用，加上每月訂閱費用。這不是實際帳單——Anthropic / OpenAI / Google 只收取訂閱費；API 等價數值代表你的用量若以用量計費會花多少。";
 "onboarding_wizard.feature_usage_title" = "用量追蹤";
-"onboarding_wizard.feature_usage_desc" = "即時查看 Claude、Codex、Gemini 等 14+ 服務商的 token 用量。";
+"onboarding_wizard.feature_usage_desc" = "即時查看 Claude、Codex、Gemini 等眾多服務商的 token 用量。";
 "onboarding_wizard.feature_alerts_title" = "智慧警示";
 "onboarding_wizard.feature_alerts_desc" = "配額不足、費用暴增或工作階段失敗時即時通知你。";
 "onboarding_wizard.feature_devices_title" = "多裝置";
@@ -1803,7 +1805,7 @@
 "watch.alerts_count_one" = "%d 則警示";
 "widget.alerts_summary_one" = "%d 則警示 • CLI Pulse";
 "yield.commits_count_one" = "%d 次提交";
-"onboarding_wizard.undetected_providers_one" = "另有 %d 個最佳化支援的 Agent 未找到";
+"onboarding_wizard.undetected_providers_one" = "另有 %d 個最佳化支援的 AI 工具未找到";
 "providers.messages_short_one" = "%@ 則訊息";
 "providers.tracked_count_one" = "正在追蹤 %d 個";
 "watch.active_count_one" = "%d 個活躍";
