@@ -16,6 +16,12 @@ LAYOUT
         simulator captures, 1320x2868 on the 6.9" iPhone 17 Pro Max
     CLI Pulse Bar/screenshots/ios-composed/<lang>/NN_<screen>_1290x2796.png
         the marketing panels App Store Connect gets, in its APP_IPHONE_67 set
+    CLI Pulse Bar/screenshots/ios-composed/<lang>/compose.json
+        written by the compositor only when every panel of the set passed
+        (captions fit, every glyph drawn, corners clean): each panel's md5,
+        with the captions, faces and sizes it was drawn with. A failing run
+        deletes it. A set without it, or with a panel whose md5 it does not
+        record, is not uploadable, whatever its PNG headers say.
 
 `<lang>` is one of LANGS, the app's six languages. SHOT_SOURCES maps each App
 Store Connect locale to the language whose panels it shows: seven locales, six
@@ -34,13 +40,16 @@ LEGACY_COMPOSED names them for the release preflight in the meantime.
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
 Exactly 1290x2796 pixels, 8-bit RGB with no alpha channel and no transparency
-chunk, a real PNG, at most 10 MB. App Store Connect refuses an image with an
+chunk, a real PNG, at most 10 MB, and the file compose.json says the last clean
+compose run wrote. App Store Connect refuses an image with an
 alpha channel for screenshots, and it refuses it after the old set may already
 have been deleted, so this is checked before anything is sent. Read straight
 from the PNG header: no Pillow, so it also runs on a bare CI runner.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import struct
 import sys
 import zlib
@@ -82,6 +91,7 @@ DISPLAY_TYPE = "APP_IPHONE_67"
 CANVAS = (1290, 2796)
 MAX_BYTES = 10 * 1000 * 1000
 SUFFIX = f"_{CANVAS[0]}x{CANVAS[1]}.png"
+MANIFEST = "compose.json"
 
 
 def canonical_lang(lang: str) -> str:
@@ -186,9 +196,46 @@ def panel_problems(path: Path) -> list[str]:
     return out
 
 
+def md5_of(path: Path) -> str:
+    return hashlib.md5(path.read_bytes()).hexdigest()
+
+
+def write_manifest(directory: Path, lang: str, record: dict | None = None) -> None:
+    """Record `directory`'s five panels as the output of a clean compose run.
+    Only the compositor calls this, and only when every panel passed; tests
+    call it to build a set that stands for one."""
+    panels = {composed_name(s): md5_of(directory / composed_name(s)) for s in stems()}
+    data = {"lang": canonical_lang(lang), "panels": panels, **(record or {})}
+    (directory / MANIFEST).write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True)
+                                      + "\n", encoding="utf-8")
+
+
+def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
+    """Whether the set is what the last clean compose run wrote."""
+    d = composed_dir(lang, root)
+    path = d / MANIFEST
+    if not path.is_file():
+        return [f"{MANIFEST} is missing: these panels are not the output of a clean compose "
+                "run (compose_appstore_ios_screenshots.py writes it only when every panel "
+                "passed, and deletes it when a run fails)"]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        recorded = dict(data["panels"])
+        lang_ok = data.get("lang") == canonical_lang(lang)
+    except (ValueError, KeyError, TypeError) as exc:
+        return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
+    out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
+    for p in expected_composed(lang, root):
+        if p.is_file() and recorded.get(p.name) != md5_of(p):
+            out.append(f"{p.name}: not the file the last clean compose run wrote "
+                       f"(its md5 is not the one {MANIFEST} records)")
+    return out
+
+
 def set_problems(lang: str, root: Path | None = None) -> list[str]:
     """Problems with one language's composed set: every panel present and
-    uploadable, nothing else in the directory that a push would skip."""
+    uploadable, nothing else in the directory that a push would skip, and
+    every panel the one a clean compose run wrote (compose.json)."""
     d = composed_dir(lang, root)
     if not d.is_dir():
         return [f"{d.relative_to(screenshots_dir(root).parent)}/ does not exist"]
@@ -200,7 +247,7 @@ def set_problems(lang: str, root: Path | None = None) -> list[str]:
     extra = sorted(p.name for p in d.glob("*.png") if p not in expected)
     for name in extra:
         out.append(f"{name}: not one of the {len(SCREENS)} panels; remove it or add its screen")
-    return out
+    return out + manifest_problems(lang, root)
 
 
 def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str, str]]:

@@ -164,22 +164,20 @@ struct iOSProvidersTab: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button {
-                            showDisabled.toggle()
-                        } label: {
-                            Label(showDisabled ? L10n.providers.hideDisabled : L10n.providers.showAll, systemImage: showDisabled ? "eye.slash" : "eye")
+                        // The tracked count heads the menu. As a toolbar item
+                        // of its own (.secondaryAction), iOS 26 folded it into
+                        // a second "•••" overflow button next to this one.
+                        Section(L10n.providers.trackedCount(providerState.enabledProviderCount)) {
+                            Button {
+                                showDisabled.toggle()
+                            } label: {
+                                Label(showDisabled ? L10n.providers.hideDisabled : L10n.providers.showAll, systemImage: showDisabled ? "eye.slash" : "eye")
+                            }
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
                     .accessibilityLabel(L10n.common.moreOptions)
-                }
-                ToolbarItem(placement: .secondaryAction) {
-                    Text(
-                        L10n.providers.trackedCount(providerState.enabledProviderCount)
-                    )
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
             }
             .refreshable {

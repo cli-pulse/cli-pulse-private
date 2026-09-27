@@ -35,9 +35,18 @@ Then, one locale at a time:
   * reads the set back and fails unless it holds exactly the new panels, in
     order, each COMPLETE with the md5 and size that were sent.
 If the new ones cannot all be uploaded, it deletes what it added and leaves the
-old set as it was. The one exception is a set that would exceed App Store
-Connect's 10 screenshots with both present: then the old ones go first, after
-the local checks above passed, and the run says so.
+old set as it was, whatever stopped it: a refused write, a panel the store
+failed to process, or a read that ended the run (a 5xx, a lost connection,
+Ctrl-C). It says which screenshots it could not delete, if any. The token is
+minted again before it is 15 minutes old and on a 401 (asc_push_listing.py).
+The one exception is a set that would exceed App Store Connect's 10
+screenshots with both present: then the old ones go first, after the local
+checks above passed, and the run says so.
+
+A rerun after a run that stopped halfway starts from what the set holds:
+uploads that never finished are deleted first (the store shows none of them),
+and panels already uploaded with the same name and md5 are reused rather than
+counted against the limit (plan_set).
 
 It touches the APP_IPHONE_67 set only. iPad, Apple Watch and Mac sets are listed
 and left alone, as is every locale not selected or not in the repo.
@@ -142,7 +151,8 @@ def matches(live: list[dict], panels: list[Panel]) -> bool:
 # ── one locale's upload ──────────────────────────────────────────────────────
 
 def upload(asc, set_id: str, panel: Panel) -> str | None:
-    """Reserve, PUT, commit. The new screenshot's id, or None."""
+    """Reserve, PUT, commit. The new screenshot's id, or None. A reservation
+    that does not end committed is deleted again, whatever stopped it."""
     res = asc.write("POST", "/appScreenshots", {"data": {
         "type": "appScreenshots",
         "attributes": {"fileName": panel.name, "fileSize": panel.size},
@@ -152,33 +162,56 @@ def upload(asc, set_id: str, panel: Panel) -> str | None:
         print(f"    reserve {panel.name}: FAILED")
         return None
     shot_id = res["data"]["id"]
-    ops = (res["data"].get("attributes") or {}).get("uploadOperations") or []
-    if not ops:
-        print(f"    reserve {panel.name}: no upload operations returned")
-        _discard(asc, [shot_id])
-        return None
-    data = panel.path.read_bytes()
-    for op in ops:
-        offset, length = int(op["offset"]), int(op["length"])
-        if not asc.upload_part(op, data[offset:offset + length]):
-            _discard(asc, [shot_id])
+    committed = None
+    try:
+        ops = (res["data"].get("attributes") or {}).get("uploadOperations") or []
+        if not ops:
+            print(f"    reserve {panel.name}: no upload operations returned")
             return None
-    committed = asc.write("PATCH", f"/appScreenshots/{shot_id}", {"data": {
-        "type": "appScreenshots", "id": shot_id,
-        "attributes": {"uploaded": True, "sourceFileChecksum": panel.md5}}})
-    if committed is None:
-        print(f"    commit {panel.name}: FAILED")
-        _discard(asc, [shot_id])
-        return None
+        data = panel.path.read_bytes()
+        for op in ops:
+            offset, length = int(op["offset"]), int(op["length"])
+            if not asc.upload_part(op, data[offset:offset + length]):
+                return None
+        committed = asc.write("PATCH", f"/appScreenshots/{shot_id}", {"data": {
+            "type": "appScreenshots", "id": shot_id,
+            "attributes": {"uploaded": True, "sourceFileChecksum": panel.md5}}})
+        if committed is None:
+            print(f"    commit {panel.name}: FAILED")
+            return None
+    finally:
+        if committed is None and _discard(asc, [shot_id]):
+            print(f"    could NOT delete the unfinished {panel.name} ({shot_id}); "
+                  "a rerun deletes it before uploading")
     print(f"    uploaded {panel.name}  {panel.size} B  md5 {panel.md5}")
     return shot_id
 
 
-def _discard(asc, ids: list[str]) -> bool:
-    ok = True
+def _discard(asc, ids: list[str]) -> list[str]:
+    """Delete these screenshots; the ids that could NOT be deleted. Never
+    raises: it runs while another failure is already being reported."""
+    left = []
     for i in ids:
-        ok = asc.delete(f"/appScreenshots/{i}") and ok
-    return ok
+        try:
+            ok = asc.delete(f"/appScreenshots/{i}")
+        except BaseException as exc:   # noqa: BLE001 - a cleanup must not mask the cause
+            print(f"    DELETE /appScreenshots/{i}: {type(exc).__name__}")
+            ok = False
+        if not ok:
+            left.append(i)
+    return left
+
+
+def _rolled_back(asc, loc: str, new_ids: list[str], old_gone: bool) -> str:
+    """Remove this run's uploads after a failure; say truthfully what the set
+    now holds."""
+    left = _discard(asc, new_ids)
+    old = "the live set was already deleted" if old_gone else "the live set is untouched"
+    if not left:
+        return f"removed the {len(new_ids)} added; {old}"
+    return (f"could NOT remove {len(left)} of the {len(new_ids)} added ({', '.join(left)}); "
+            f"they are still in the set. {old.capitalize()}. A rerun reuses the complete "
+            "ones and deletes the rest before uploading")
 
 
 def wait_complete(asc, ids: list[str]) -> bool:
@@ -205,42 +238,91 @@ def wait_complete(asc, ids: list[str]) -> bool:
     return True
 
 
-def replace_set(asc, loc: str, set_id: str, old: list[dict], panels: list[Panel]) -> bool:
-    old_ids = [r["id"] for r in old]
-    delete_first = len(old_ids) + len(panels) > MAX_PER_SET
+def plan_set(live: list[dict], panels: list[Panel]) -> tuple[list[str], dict[int, str], list[str]]:
+    """What to do with the rows a set holds now, before anything is uploaded:
+    (debris, reused, old).
+
+    debris  rows that are not COMPLETE: an earlier run's upload that never
+            finished. The store shows none of them, so they go first.
+    reused  panel index -> the id of a COMPLETE row with that panel's file name
+            and md5: an earlier run already uploaded it. Not uploaded again.
+    old     every other COMPLETE row: the set being replaced. Deleted only once
+            the new panels are all COMPLETE (unless the set would overflow).
+    So a run that stopped halfway (a lost connection, an expired token) leaves
+    nothing the next run trips over: it neither exceeds the 10-per-set limit
+    nor has to delete the live set first because of its own leftovers."""
+    debris = [r["id"] for r in live if state_of(r) != "COMPLETE"]
+    reused: dict[int, str] = {}
+    taken: set[str] = set()
+    for n, panel in enumerate(panels):
+        for r in live:
+            a = r.get("attributes") or {}
+            if (r["id"] not in taken and state_of(r) == "COMPLETE"
+                    and (a.get("fileName"), a.get("sourceFileChecksum")) == (panel.name, panel.md5)):
+                reused[n] = r["id"]
+                taken.add(r["id"])
+                break
+    old = [r["id"] for r in live if state_of(r) == "COMPLETE" and r["id"] not in taken]
+    return debris, reused, old
+
+
+def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel]) -> bool:
+    debris, reused, old_ids = plan_set(live, panels)
+    if debris:
+        print(f"  [{loc}] {len(debris)} unfinished upload(s) from an earlier run: deleting them first")
+        left = _discard(asc, debris)
+        if left:
+            print(f"  [{loc}] could not delete {', '.join(left)}; nothing else was changed")
+            return False
+    if reused:
+        print(f"  [{loc}] {len(reused)} panel(s) already uploaded by an earlier run: reusing them")
+    to_upload = [n for n in range(len(panels)) if n not in reused]
+    delete_first = len(old_ids) + len(reused) + len(to_upload) > MAX_PER_SET
     if delete_first:
-        print(f"  [{loc}] {len(old_ids)} live + {len(panels)} new would exceed {MAX_PER_SET}: "
+        print(f"  [{loc}] {len(old_ids)} live + {len(to_upload)} new would exceed {MAX_PER_SET}: "
               "deleting the live ones first (the local panels already passed every check)")
-        if not _discard(asc, old_ids):
+        left = _discard(asc, old_ids)
+        if left:
+            print(f"  [{loc}] could not delete {', '.join(left)}; nothing was uploaded")
             return False
+
+    # From the first upload until every new panel is COMPLETE, any failure,
+    # including one that ends the process (a GET that dies, Ctrl-C), removes
+    # what this run added before it is reported.
     new_ids: list[str] = []
-    for panel in panels:
-        sid = upload(asc, set_id, panel)
-        if sid is None:
-            print(f"  [{loc}] upload failed; removing the {len(new_ids)} added, "
-                  + ("the live set was already gone" if delete_first else "the live set is untouched"))
-            _discard(asc, new_ids)
+    try:
+        for n in to_upload:
+            sid = upload(asc, set_id, panels[n])
+            if sid is None:
+                print(f"  [{loc}] upload failed; " + _rolled_back(asc, loc, new_ids, delete_first))
+                return False
+            new_ids.append(sid)
+        if not wait_complete(asc, new_ids):
+            print(f"  [{loc}] processing failed; " + _rolled_back(asc, loc, new_ids, delete_first))
             return False
-        new_ids.append(sid)
-    if not wait_complete(asc, new_ids):
-        print(f"  [{loc}] processing failed; removing the new ones, "
-              + ("the live set was already gone" if delete_first else "the live set is untouched"))
-        _discard(asc, new_ids)
-        return False
+    except BaseException as exc:
+        print(f"  [{loc}] stopped by {type(exc).__name__} while uploading; "
+              + _rolled_back(asc, loc, new_ids, delete_first))
+        raise
+
+    by_index = dict(reused)
+    by_index.update(zip(to_upload, new_ids))
+    order_ids = [by_index[n] for n in range(len(panels))]
     if not delete_first and old_ids:
-        if not _discard(asc, old_ids):
-            print(f"  [{loc}] could not delete every old screenshot; the read-back decides")
+        left = _discard(asc, old_ids)
+        if left:
+            print(f"  [{loc}] could not delete {len(left)} old screenshot(s); the read-back decides")
     order = asc.write("PATCH", f"/appScreenshotSets/{set_id}/relationships/appScreenshots",
-                      {"data": [{"type": "appScreenshots", "id": i} for i in new_ids]})
+                      {"data": [{"type": "appScreenshots", "id": i} for i in order_ids]})
     if order is None:
         print(f"  [{loc}] setting the order FAILED")
     after = set_rows(asc, set_id)
-    ok = [r["id"] for r in after] == new_ids and matches(after, panels)
+    ok = [r["id"] for r in after] == order_ids and matches(after, panels)
     if not ok:
         print(f"  [{loc}] MISMATCH after upload: the set holds "
               + ", ".join(f"{(r.get('attributes') or {}).get('fileName')}[{state_of(r)}]" for r in after))
         return False
-    print(f"  [{loc}] OK: {len(new_ids)} screenshot(s), in order, COMPLETE, checksums match")
+    print(f"  [{loc}] OK: {len(order_ids)} screenshot(s), in order, COMPLETE, checksums match")
     return True
 
 

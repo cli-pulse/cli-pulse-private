@@ -31,6 +31,12 @@ internal enum DemoDataProvider {
         // generator with a tier name the tier mapper translates. Without a tier
         // the generator falls back to the synthetic "Overall", which is left
         // untranslated on purpose (scripts/quota_tier_names.json).
+        //
+        // Gemini likewise carries the window GeminiCollector reports, named by
+        // model family ("Pro", a vendor term shown as-is in every language).
+        // Without a tier the Providers screen made up a bar labelled
+        // "Default", which told nobody anything. At 71% used it stays under the
+        // 80% warning threshold, so no alert is added.
         let providers = [
             ProviderUsage(provider: "Codex", today_usage: 85900, week_usage: 462000,
                           estimated_cost_today: 1.03, estimated_cost_week: 5.54,
@@ -42,7 +48,9 @@ internal enum DemoDataProvider {
             ProviderUsage(provider: "Gemini", today_usage: 43400, week_usage: 214000,
                           estimated_cost_today: 0.35, estimated_cost_week: 1.71,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
-                          quota: 300000, remaining: 86000, status_text: "71% used",
+                          quota: 300000, remaining: 86000,
+                          tiers: [TierDTO(name: "Pro", quota: 300000, remaining: 86000)],
+                          status_text: "71% used",
                           trend: trend(base: 43000), recent_sessions: ["helper-heartbeat"], recent_errors: []),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
                           estimated_cost_today: 0.37, estimated_cost_week: 1.98,
@@ -60,6 +68,12 @@ internal enum DemoDataProvider {
         // more requests, and count a request per 45 s of runtime. Seven hours
         // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
         // which is when the alert says it was raised.
+        //
+        // Two sessions sit in the Sessions tab's Recent tier (last written 5
+        // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
+        // which failed shortly before build-box went offline, and a finished
+        // docs-refresh. Without them the Active section was the whole list and
+        // the lower half of the screen was empty.
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
@@ -75,7 +89,7 @@ internal enum DemoDataProvider {
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
-                          started_at: timestamp(-7200), last_active_at: timestamp(-3600),
+                          started_at: timestamp(-7200), last_active_at: timestamp(-1200),
                           status: "failed", total_usage: 8400, estimated_cost: 0.10,
                           cost_status: "Estimated", requests: 56, error_count: 3,
                           collection_confidence: "high"),
@@ -85,6 +99,12 @@ internal enum DemoDataProvider {
                           status: "running", total_usage: 6200, estimated_cost: 0.09,
                           cost_status: "Estimated", requests: 38, error_count: 0,
                           collection_confidence: "low"),
+            SessionRecord(id: "s5", name: "docs-refresh", provider: "Claude",
+                          project: "cli-pulse-docs", device_name: "MacBook Pro",
+                          started_at: timestamp(-2700), last_active_at: timestamp(-720),
+                          status: "idle", total_usage: 4100, estimated_cost: 0.06,
+                          cost_status: "Estimated", requests: 21, error_count: 0,
+                          collection_confidence: "high"),
         ]
 
         // CPU figures agree with the alerts below: the MacBook Pro's total sits
@@ -98,7 +118,7 @@ internal enum DemoDataProvider {
                          status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
                          current_session_count: 1, cpu_usage: 91, memory_usage: 45),
             DeviceRecord(id: "d3", name: "build-box", type: "server", system: "macOS 14.7",
-                         status: "offline", last_sync_at: timestamp(-3600), helper_version: "0.1.9",
+                         status: "offline", last_sync_at: timestamp(-900), helper_version: "0.1.9",
                          current_session_count: 0, cpu_usage: nil, memory_usage: nil),
         ]
 

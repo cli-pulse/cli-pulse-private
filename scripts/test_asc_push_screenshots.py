@@ -14,8 +14,15 @@ of the endpoints the pusher uses and checks what it WOULD do:
     deletes a single old one, sets the order, verifies md5 and size, touches
     only APP_IPHONE_67, gives es-ES and es-MX the same Spanish files, and a
     second run writes nothing;
+  * a set no clean compose run wrote (no compose.json) is refused like one
+    App Store Connect would refuse;
   * a panel App Store Connect fails to process: the new ones are removed and
-    the old set is left exactly as it was;
+    the old set is left exactly as it was; the same when a read ends the run
+    (a 5xx) or Ctrl-C lands mid-upload; a refused cleanup is reported with
+    the ids left, never as "untouched";
+  * a rerun after a run that stopped halfway reuses the panels it already
+    uploaded, deletes unfinished uploads first, and never has to delete the
+    live set first because of its own leftovers;
   * a set that would exceed 10 with both present deletes the old ones first;
   * a locale without an iPhone set gets one created;
   * --locale limits the writes;
@@ -70,10 +77,12 @@ def make_panels(lang: str, *, bad: str | None = None, width: int = 1290) -> None
         # Different pixel data per language so md5s differ between sets.
         shots.write_png(p, width if i == 0 else 1290, 2796 + 0 * i, color_type=color)
         p.write_bytes(p.read_bytes() + lang.encode() + bytes([i]))  # trailing bytes: unique md5
+    if bad != "no-manifest":
+        shots.write_manifest(shots.composed_dir(lang, TMP), lang)
 
 
 def fresh_repo(**kw) -> None:
-    for p in TMP.rglob("*.png"):
+    for p in [*TMP.rglob("*.png"), *TMP.rglob(shots.MANIFEST)]:
         p.unlink()
     for lang in shots.LANGS:
         make_panels(lang, **(kw if lang == "ja" else {}))
@@ -90,6 +99,9 @@ class FakeASC:
     log: list = []           # ("POST"/"PATCH"/"DELETE"/"PUT", path or id)
     uploads: dict = {}       # shot id -> bytes received
     fail_processing: set = set()   # fileNames App Store Connect marks FAILED
+    fail_get: set = set()          # screenshot ids whose GET ends the run (a 5xx: die)
+    fail_delete = False            # every DELETE is refused
+    interrupt_upload_of: str | None = None   # a fileName whose part PUT raises Ctrl-C
     constructed = 0
     next_id = 0
 
@@ -115,6 +127,8 @@ class FakeASC:
             sid = path.split("/")[2]
             return {"data": [self._shot(i) for i in s["sets"][sid]["shots"]]}
         if path.startswith("/appScreenshots/"):
+            if path.split("/")[2] in FakeASC.fail_get:
+                listing_pusher.die(f"GET {path} -> 503: Service Unavailable")
             return {"data": self._shot(path.split("/")[2])}
         raise AssertionError(f"unexpected GET {path}")
 
@@ -173,6 +187,8 @@ class FakeASC:
     def delete(self, path: str) -> bool:
         s = FakeASC.store
         FakeASC.log.append(("DELETE", path))
+        if FakeASC.fail_delete:
+            return False
         i = path.split("/")[2]
         shot = s["shots"].pop(i)
         s["sets"][shot["set"]]["shots"].remove(i)
@@ -181,6 +197,8 @@ class FakeASC:
     def upload_part(self, op: dict, chunk: bytes) -> bool:
         i = op["url"].split("/")[3]
         FakeASC.log.append(("PUT", i))
+        if FakeASC.store["shots"][i]["fileName"] == FakeASC.interrupt_upload_of:
+            raise KeyboardInterrupt
         FakeASC.uploads[i] = FakeASC.uploads.get(i, b"") + chunk
         return True
 
@@ -220,6 +238,9 @@ def fresh(**kw) -> None:
     FakeASC.log = []
     FakeASC.uploads = {}
     FakeASC.fail_processing = set()
+    FakeASC.fail_get = set()
+    FakeASC.fail_delete = False
+    FakeASC.interrupt_upload_of = None
     FakeASC.constructed = 0
 
 
@@ -273,6 +294,11 @@ try:
     code, out = run("--apply", "--version", "1.54.0")
     check("a panel of the wrong size: refused, store never contacted",
           code == 1 and FakeASC.constructed == 0 and "1284x2796" in out, out)
+    fresh_repo(bad="no-manifest")
+    fresh()
+    code, out = run("--apply", "--version", "1.54.0")
+    check("a set no clean compose run wrote (no compose.json): refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "compose.json is missing" in out, out)
     fresh_repo()
 
     # 3. editability
@@ -343,6 +369,69 @@ try:
     check("a panel the store fails: run fails, the new ones are removed, the old set is intact",
           code == 1 and set_files("ja") == [(f"old_{n}.png", "0" * 32) for n in range(5)]
           and "the live set is untouched" in out and "App Store Connect FAILED it" in out, out)
+
+    # 7b. a read that ends the run while the new panels are processing
+    fresh()
+    FakeASC.fail_get = {"shot-3"}
+    FakeASC.next_id = 0
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a GET that dies mid-run: the new ones are removed first, the old set is intact",
+          code == 2 and set_files("ja") == [(f"old_{n}.png", "0" * 32) for n in range(5)]
+          and "stopped by SystemExit" in out and "removed the 5 added; the live set is untouched" in out,
+          out)
+
+    # 7c. the cleanup itself is refused: the run must not claim a clean set
+    fresh()
+    FakeASC.fail_processing = {"03_cost_1290x2796.png"}
+    FakeASC.fail_delete = True
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a refused cleanup is reported with the ids left, never as 'untouched'",
+          code == 1 and "could NOT remove 5 of the 5 added" in out
+          and "the live set is untouched" not in out and len(set_files("ja")) == 10, out)
+
+    # 7d. Ctrl-C in the middle of an upload
+    fresh()
+    FakeASC.interrupt_upload_of = "04_sessions_1290x2796.png"
+    interrupted = False
+    try:
+        run("--apply", "--version", "1.54.0", "--locale", "ja")
+    except KeyboardInterrupt:
+        interrupted = True
+    check("Ctrl-C mid-upload: the reserved panel and the ones before it are removed, then it stops",
+          interrupted and set_files("ja") == [(f"old_{n}.png", "0" * 32) for n in range(5)],
+          str(set_files("ja")))
+
+    # 7e. a rerun after a run that stopped with both sets in place (5 old + 5 new)
+    fresh()
+    ja_set = "set-ja"
+    for n, (p, m) in enumerate(zip(shots.expected_composed("ja", TMP), md5s("ja"))):
+        i = f"left-{n}"
+        FakeASC.store["shots"][i] = {"fileName": p.name, "fileSize": p.stat().st_size,
+                                     "state": "COMPLETE", "sourceFileChecksum": m, "set": ja_set}
+        FakeASC.store["sets"][ja_set]["shots"].append(i)
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a rerun reuses what the stopped run uploaded: no upload, no delete-first, old ones gone",
+          code == 0 and "reusing them" in out and "would exceed" not in out
+          and not any(m == "POST" for m, _ in FakeASC.log)
+          and set_files("ja") == list(zip([p.name for p in shots.expected_composed("ja", TMP)], md5s("ja")))
+          and all(f"old-ja-{n}" not in FakeASC.store["shots"] for n in range(5)), out)
+
+    # 7f. unfinished uploads from a stopped run are deleted before anything else
+    fresh()
+    for n in range(3):
+        i = f"debris-{n}"
+        FakeASC.store["shots"][i] = {"fileName": f"0{n + 1}_x.png", "fileSize": 9,
+                                     "state": "AWAITING_UPLOAD", "set": ja_set}
+        FakeASC.store["sets"][ja_set]["shots"].append(i)
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    first_debris = min((i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE" and "debris" in p),
+                       default=10**6)
+    first_post = min((i for i, (m, p) in enumerate(FakeASC.log) if m == "POST"), default=-1)
+    first_old = min((i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE" and "old-ja" in p),
+                    default=-1)
+    check("unfinished uploads go first; the live set still goes only after the new one is in",
+          code == 0 and first_debris < first_post < first_old and "would exceed" not in out
+          and [n for n, _ in set_files("ja")] == [p.name for p in shots.expected_composed("ja", TMP)], out)
 
     # 8. 8 old + 5 new > 10: old first
     fresh(old_per_set=8)

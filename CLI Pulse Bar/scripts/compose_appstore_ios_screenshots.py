@@ -16,11 +16,10 @@ Usage:
 
 (`--locale` is the old name of `--lang`, and `zh` of `zh-Hans`.)
 
-Exit 1 if any caption does not fit or any character would render as tofu. The
-PNGs are still written so the failure can be looked at, but nothing about a
-failing run is fit to upload.
+Exit 1 if any caption does not fit or any character would render as tofu.
+The output directory then keeps no set a push would accept (see 5).
 
-Four things this script learned the hard way, each of which silently produces a
+Five things this script learned the hard way, each of which silently produces a
 listing you would not ship:
 
 1. TEXT THAT DOES NOT FIT IS NOT A LAYOUT PROBLEM, IT IS A CROPPED SENTENCE.
@@ -30,11 +29,16 @@ listing you would not ship:
    still does not fit fails the run.
 
 2. A FONT WITHOUT THE GLYPH DRAWS A BOX, AND SAYS NOTHING.
-   SFNS.ttf has no CJK; Heiti SC draws Traditional characters with Mainland
-   shapes. Each language names its faces by family and style, and every
-   character of every caption is checked against the chosen face by comparing
-   its bitmap with that face's .notdef box. Measuring a width is not a check:
-   the box has a width too (see has_glyph).
+   SFNS.ttf has no CJK. Each language names its faces by family and style, and
+   every character of every caption is checked against the chosen face by
+   comparing its bitmap with that face's .notdef box. Measuring a width is not
+   a check: the box has a width too (see has_glyph).
+
+   A GLYPH IN THE OTHER REGION'S SHAPE IS NOT A BOX, AND PASSES THAT CHECK.
+   PingFang SC has a glyph for every Traditional character tried, 臺 included,
+   drawn pixel for pixel like PingFang TC's. So coverage cannot tell an SC face
+   from a TC one; REGIONAL_PROBES can: 說 is drawn differently in the two, and
+   the chosen Chinese face must draw it unlike every face of the other region.
 
 3. A LINE MAY NOT START WITH 。 OR 」, NOR BREAK "CLI Pulse" IN TWO.
    Chinese and Japanese wrap between any two characters except where kinsoku
@@ -42,11 +46,25 @@ listing you would not ship:
    ending with an opening bracket), and never inside a Latin word or a brand
    name. Korean and Spanish wrap only at spaces. Breaks after a comma or 、 are
    preferred, and an invisible U+200B in a caption marks a preferred break.
+   A line ending in a full-width 、 or 。 is centred on its ink: the mark sits
+   in the left half of its em, so centring the advance width pushed the
+   visible line about half an em left of the one under it.
 
 4. A CAPTION IS A CLAIM. The copy below says only what the screen under it
    shows. The macOS App Store build cannot do remote control and the listing
    does not sell it (scripts/appstore_listing.py), so neither does a caption,
    although the iPhone's Overview shows the Remote Control row.
+
+5. A FAILED RUN MUST NOT LEAVE A SET THAT LOOKS UPLOADABLE.
+   The pusher checks what a PNG is (size, colour type), not what is drawn on
+   it, so a panel with a cut-off caption passed it. A run now composes into a
+   staging directory and swaps the whole set into the output directory only
+   when every panel passed, together with compose.json (file name -> md5 of
+   each panel). A failing run leaves its panels in <out>.rejected/ to be
+   looked at, and deletes compose.json from <out>, so the set a previous run
+   left there cannot be pushed as if it were this run's: set_problems in
+   scripts/appstore_screenshots.py, which the pusher and --require-shots use,
+   refuses a set without compose.json or with a panel it does not list.
 """
 
 from __future__ import annotations
@@ -54,7 +72,9 @@ from __future__ import annotations
 import argparse
 import functools
 import glob
+import shutil
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -119,32 +139,32 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                       "Alerts for quota, CPU spikes and long-running sessions"),
     },
     "zh-Hans": {
-        "01_overview": ("一屏看全", "用量、费用、会话和告警，打开就能看到"),
-        "02_providers": ("实时掌握配额与费用", "用完之前，就知道还剩多少"),
-        "03_cost": ("钱花在哪里", "按服务商拆分的费用、主要项目和风险信号"),
-        "04_sessions": ("每次 CLI 运行都有记录", "活跃会话的用量、费用和请求数，一目了然"),
+        "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，打开就能看到"),
+        "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
+        "03_cost": ("钱都花在了哪里", "按服务商细分的费用、主要项目和风险信号"),
+        "04_sessions": ("每个会话都有账可查", "活跃会话的用量、费用和请求数"),
         "05_alerts": ("配额不再突然见底", "配额将尽、CPU 占用过高、会话运行过久，都会发出告警"),
     },
     "zh-Hant": {
-        "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，打開就能看到"),
-        "02_providers": ("即時掌握配額與費用", "用完之前，就知道還剩多少"),
-        "03_cost": ("錢花在哪裡", "依服務商區分的費用、高用量專案與風險訊號"),
-        "04_sessions": ("每次 CLI 執行都有紀錄", "活躍工作階段的用量、費用與請求數，一目了然"),
+        "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，一頁看完"),
+        "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
+        "03_cost": ("錢花在哪裡", "各服務商的費用、高用量專案與風險訊號"),
+        "04_sessions": ("每次 CLI 執行都有紀錄", "活躍工作階段的用量、費用與請求數"),
         "05_alerts": ("配額不再突然見底", "配額將盡、CPU 使用率過高、工作階段執行過久，都會發出警示"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で", "使用量、コスト、セッション、アラートを\u200bひとつの画面に"),
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
-        "03_cost": ("コストの行き先がわかる", "プロバイダー別のコスト、\u200b上位プロジェクト、\u200bリスクシグナル"),
+        "03_cost": ("コストの内訳がわかる", "プロバイダー別のコスト、\u200b上位プロジェクト、\u200bリスクシグナル"),
         "04_sessions": ("CLI の実行をすべて記録", "アクティブなセッションの\u200b使用量、コスト、リクエスト数"),
-        "05_alerts": ("上限を見逃さない", "クォータ残量、CPU の急上昇、\u200b長時間続くセッションをアラートでお知らせ"),
+        "05_alerts": ("上限を見逃さない", "クォータ残量の低下、CPU の高負荷、\u200b長時間実行中のセッションを通知"),
     },
     "ko": {
         "01_overview": ("모든 것을 한눈에", "사용량, 비용, 세션, 알림을 한 화면에서"),
-        "02_providers": ("할당량과 비용을 실시간으로", "한도에 닿기 전에 남은 양을 확인하세요"),
-        "03_cost": ("비용이 어디에 쓰이는지 파악", "공급자별 비용, 상위 프로젝트, 위험 신호"),
+        "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
+        "03_cost": ("비용이 어디에 드는지", "공급자별 비용, 상위 프로젝트, 위험 신호"),
         "04_sessions": ("모든 CLI 실행을 기록", "활성 세션의 사용량, 비용, 요청 수"),
-        "05_alerts": ("한도를 놓치지 마세요", "할당량, CPU 급증, 오래 실행되는 세션까지 알려 드려요"),
+        "05_alerts": ("할당량이 바닥나기 전에", "CPU 과부하와 오래 실행 중인 세션도 알려 드려요"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
@@ -152,11 +172,11 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("Cuotas y costos en vivo",
                          "Descubre cuánto te queda antes de llegar al límite"),
         "03_cost": ("En qué se va tu dinero",
-                    "Costo por proveedor, proyectos principales y señales de riesgo"),
+                    "Costo por proveedor y proyecto, con señales de riesgo"),
         "04_sessions": ("Cada ejecución, registrada",
                         "Sesiones activas con su uso, costo y solicitudes"),
         "05_alerts": ("Sin sorpresas con la cuota",
-                      "Alertas de cuota, picos de CPU y sesiones demasiado largas"),
+                      "Alertas de cuota, picos de CPU y sesiones de larga duración"),
     },
 }
 
@@ -269,8 +289,8 @@ HIRAGINO_W3 = "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc"
 SD_GOTHIC = "/System/Library/Fonts/AppleSDGothicNeo.ttc"
 
 # Most preferred first; the first face that can draw every character of the
-# language's captions wins. Region-specific faces for Chinese: PingFang TC and
-# Heiti TC draw 說/臺 the way Taiwan writes them; the SC faces do not.
+# language's captions (and, for Chinese, in its own region's shapes; see
+# REGIONAL_PROBES) wins.
 FACES: dict[str, dict[str, list[Face]]] = {
     "en": {"title": [Face(SF, weight=600)], "subtitle": [Face(SF, weight=400)]},
     "es": {"title": [Face(SF, weight=600)], "subtitle": [Face(SF, weight=400)]},
@@ -292,11 +312,21 @@ FACES: dict[str, dict[str, list[Face]]] = {
     },
 }
 
-# A character each language's faces MUST draw, beyond its captions: the one
-# that tells the script apart (Simplified 额, Traditional-only 臺, kana, Hangul,
-# Spanish ñ and ¿). The check runs on the captions too; this keeps it honest
-# when a caption happens to use only shared characters.
+# A character each language's faces MUST draw, beyond its captions: one of the
+# script (Simplified 额, Traditional 臺, kana, Hangul, Spanish ñ and ¿). The
+# check runs on the captions too; this keeps it honest when a caption happens
+# to use only shared characters. It is a COVERAGE probe only: PingFang SC draws
+# 臺 too, in the same shape as PingFang TC, so it cannot tell the regions apart.
 PROBES = {"en": "A", "es": "ñ¿", "zh-Hans": "额", "zh-Hant": "臺說", "ja": "あア", "ko": "한"}
+
+# What does tell them apart: a character both regions write, in two shapes.
+# 說 (兌 in Taiwan, 兑 on the Mainland) is drawn differently by PingFang SC and
+# TC and by Heiti SC and TC; 臺 is not (measured). The face chosen for one
+# region must draw it unlike every face of the other region's candidates that
+# is on this machine, so a Mainland face cannot pass for a Taiwan one, or the
+# reverse, just because it has the glyph.
+REGIONAL_PROBES: dict[str, tuple[str, str]] = {"zh-Hant": ("說", "zh-Hans"),
+                                               "zh-Hans": ("說", "zh-Hant")}
 
 # An unassigned codepoint, so every font renders it as .notdef.
 NOTDEF_PROBE = "\U000f0000"
@@ -316,16 +346,35 @@ def has_glyph(font, ch: str) -> bool:
     Rendering an unassigned codepoint shows what .notdef looks like in THIS
     font; a character whose bitmap differs from it is genuinely present.
     """
-    def rendered(c: str) -> bytes:
-        img = Image.new("L", (160, 160), 0)
-        ImageDraw.Draw(img).text((16, 16), c, font=font, fill=255)
-        return img.tobytes()
-
     try:
-        real, notdef = rendered(ch), rendered(NOTDEF_PROBE)
+        real, notdef = _bitmap(font, ch), _bitmap(font, NOTDEF_PROBE)
     except Exception:
         return False
     return any(real) and real != notdef
+
+
+def _bitmap(font, ch: str) -> bytes:
+    img = Image.new("L", (160, 160), 0)
+    ImageDraw.Draw(img).text((16, 16), ch, font=font, fill=255)
+    return img.tobytes()
+
+
+def regional_problem(lang: str, role: str, face: Face) -> str | None:
+    """Why `face` does not draw `lang`'s regional forms, or None. Only Chinese
+    has a probe; see REGIONAL_PROBES."""
+    if lang not in REGIONAL_PROBES:
+        return None
+    ch, other = REGIONAL_PROBES[lang]
+    mine = _bitmap(load_face(face, 64), ch)
+    others = [f for f in FACES[other][role] if load_face(f, 64) is not None]
+    if not others:
+        return (f"cannot tell whether {face.family or face.path} draws {lang}'s shapes: "
+                f"no {other} face on this machine to compare {ch} with")
+    same = [f.family or f.path for f in others if _bitmap(load_face(f, 64), ch) == mine]
+    if same:
+        return (f"{face.family or face.path} draws {ch} exactly like {', '.join(same)} ({other}): "
+                f"it has the glyph, in the other region's shape")
+    return None
 
 
 def _paths(face: Face) -> list[str]:
@@ -387,6 +436,10 @@ def pick_faces(lang: str) -> tuple[dict[str, Face], list[str]]:
             if missing:
                 tried.append(f"{face.family or Path(face.path).name}: cannot draw {''.join(missing[:12])!r}")
                 continue
+            wrong_region = regional_problem(lang, role, face)
+            if wrong_region:
+                tried.append(wrong_region)
+                continue
             chosen[role] = face
             break
         else:
@@ -412,12 +465,40 @@ def line_height(font) -> int:
     return round(font.size * LINE_BOX)
 
 
+# Full-width marks whose ink sits at the left of their em. At the end of a line
+# the empty right part is not part of the line anyone sees.
+TRAILING_BLANK_PUNCT = frozenset("、。，．")
+
+
+def centering_width(text: str, font) -> float:
+    """The width to centre `text` on: its advance, less the blank right part of
+    a trailing full-width 、 or 。. Centring the advance put a line ending in
+    、 about half an em left of the line under it."""
+    width = font.getlength(text)
+    if text and text[-1] in TRAILING_BLANK_PUNCT:
+        width -= trailing_blank(font, text[-1])
+    return width
+
+
+def trailing_blank(font, ch: str) -> float:
+    """The blank part of `ch`'s advance to the right of its ink. Measured on a
+    rendering: Pillow's getbbox reports these marks' advance box, not ink."""
+    size = int(font.size * 3)
+    x0 = font.size
+    img = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(img).text((x0, font.size * 2), ch, font=font, fill=255, anchor="ls")
+    ink = img.getbbox()
+    if ink is None:
+        return 0.0
+    return max(0.0, font.getlength(ch) - (ink[2] - x0))
+
+
 def draw_centered(draw, y, text, font, color) -> int:
     """Draw one centred line whose box starts at `y`; return where it ends."""
     ascent, descent = font.getmetrics()
     box = line_height(font)
     baseline = y + (box - (ascent + descent)) / 2 + ascent
-    x = (CANVAS_W - font.getlength(text)) / 2
+    x = (CANVAS_W - centering_width(text, font)) / 2
     draw.text((x, baseline), text, font=font, fill=color, anchor="ls")
     return y + box
 
@@ -552,6 +633,36 @@ def compose_one(src: Path, dst: Path, lang: str, faces: dict[str, Face],
     return problems
 
 
+def rejected_dir(out_dir: Path) -> Path:
+    """Where a failing run leaves its panels, next to `out_dir`, for a look."""
+    return out_dir.with_name(out_dir.name + ".rejected")
+
+
+def withdraw_set(out_dir: Path) -> None:
+    """A run for this set failed: whatever an earlier run left in `out_dir` is
+    no longer what the captions and captures say, so it must not be pushed.
+    Removing compose.json is what set_problems (and so the pusher) refuses."""
+    manifest = out_dir / shots.MANIFEST
+    if manifest.exists():
+        manifest.unlink()
+        print(f"  {out_dir}: removed {shots.MANIFEST}; the panels there are an earlier "
+              "run's and will not be pushed")
+
+
+def publish_set(staging: Path, out_dir: Path, lang: str, record: dict) -> None:
+    """Swap a set that passed every check into `out_dir`, whole: the manifest
+    first (inside staging), then one rename. The set that was there goes."""
+    shots.write_manifest(staging, lang, record)
+    staging.chmod(0o755)   # mkdtemp makes it 0700
+    previous = out_dir.with_name(f".{out_dir.name}.previous")
+    shutil.rmtree(previous, ignore_errors=True)
+    if out_dir.exists():
+        out_dir.rename(previous)
+    staging.rename(out_dir)
+    shutil.rmtree(previous, ignore_errors=True)
+    shutil.rmtree(rejected_dir(out_dir), ignore_errors=True)
+
+
 def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[str]:
     lang = shots.canonical_lang(lang)
     in_dir = in_dir or shots.raw_dir(lang)
@@ -560,6 +671,7 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
     for p in problems:
         print(f"FAIL {p}")
     if problems:
+        withdraw_set(out_dir)
         return problems
 
     srcs = sorted(p for p in in_dir.glob("[0-9][0-9]_*.png"))
@@ -574,6 +686,7 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
     for p in problems:
         print(f"FAIL {p}")
     if not srcs or unknown:
+        withdraw_set(out_dir)
         return problems
 
     t_size, s_size, size_problems = set_sizes(lang, faces, [p.stem for p in srcs])
@@ -584,10 +697,31 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
     face_names = ", ".join(f"{r}={f.family or Path(f.path).stem}" for r, f in faces.items())
     print(f"[{lang}] {len(srcs)} capture(s) from {in_dir} [{face_names}; "
           f"title {t_size}pt, subtitle {s_size}pt]")
-    for src in srcs:
-        problems += compose_one(src, out_dir / shots.composed_name(src.stem), lang, faces,
-                                t_size, s_size, reserved_lines)
-    return problems
+
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.staging-", dir=out_dir.parent))
+    try:
+        for src in srcs:
+            problems += compose_one(src, staging / shots.composed_name(src.stem), lang, faces,
+                                    t_size, s_size, reserved_lines)
+        if problems:
+            rejected = rejected_dir(out_dir)
+            shutil.rmtree(rejected, ignore_errors=True)
+            staging.rename(rejected)
+            print(f"  [{lang}] NOT PUBLISHED: this run's panels are in {rejected} for a look; "
+                  f"{out_dir} was not updated")
+            withdraw_set(out_dir)
+            return problems
+        publish_set(staging, out_dir, lang, {
+            "faces": {r: f.family or Path(f.path).stem for r, f in faces.items()},
+            "title_pt": t_size, "subtitle_pt": s_size,
+            "captions": {st: list(COPY[lang][st]) for st in expected},
+            "captures": {p.name: shots.md5_of(p) for p in srcs},
+        })
+        print(f"  [{lang}] published to {out_dir} with {shots.MANIFEST}")
+        return problems
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
 def main() -> int:

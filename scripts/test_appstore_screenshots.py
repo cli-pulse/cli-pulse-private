@@ -11,10 +11,13 @@
     Traditional Chinese captions use the decided terms (scripts/zh_hant_terms.json);
     lines wrap where each script allows it (kinsoku in Chinese and Japanese,
     spaces in Korean and Spanish, never inside "CLI Pulse" or a Latin word);
+  * a composed set is uploadable only with the compose.json a clean compose
+    run writes, and only with the panels it records;
   * on macOS with Pillow only: every caption's every character has a glyph in
-    the chosen face, and a Latin-only face is refused for Traditional Chinese
-    (the negative control for that check). On any other machine these are
-    reported as NOT RUN, never as passed.
+    the chosen face; a Latin-only face, and a face of the other Chinese region,
+    is refused (the negative controls); a trailing 、 is centred on its ink; a
+    failing compose run publishes nothing and withdraws the earlier set. On any
+    other machine these are reported as NOT RUN, never as passed.
 
 Bare python3 for everything else; CI runs it in repo-hygiene.yml.
 """
@@ -123,6 +126,7 @@ root = tmp / "repo"
 for lang in shots.LANGS:
     for p in shots.expected_composed(lang, root):
         shots.write_png(p, 1290, 2796)
+    shots.write_manifest(shots.composed_dir(lang, root), lang)
 check("a complete tree satisfies --require-shots for every listing locale",
       shots.require_shots_problems(listing.LOCALE_SOURCES, root) == [],
       str(shots.require_shots_problems(listing.LOCALE_SOURCES, root)))
@@ -132,6 +136,31 @@ probs = shots.require_shots_problems(listing.LOCALE_SOURCES, root)
 check("a missing panel and a stray one are both reported, against their locales",
       ("ko", "ko: 04_sessions_1290x2796.png: missing") in probs
       and any(loc == "ja" and "06_settings" in why for loc, why in probs), str(probs))
+
+# compose.json: the set is what a clean compose run wrote, or it is not uploadable.
+m_root = tmp / "manifest"
+for p in shots.expected_composed("en", m_root):
+    shots.write_png(p, 1290, 2796)
+check("valid PNGs without compose.json are not a set",
+      any("compose.json is missing" in x for x in shots.set_problems("en", m_root)),
+      str(shots.set_problems("en", m_root)))
+shots.write_manifest(shots.composed_dir("en", m_root), "en")
+check("the same PNGs with compose.json are", shots.set_problems("en", m_root) == [],
+      str(shots.set_problems("en", m_root)))
+changed = shots.expected_composed("en", m_root)[2]
+changed.write_bytes(changed.read_bytes() + b"x")
+check("a panel replaced after the compose run is refused, by name",
+      any(x.startswith("03_cost_1290x2796.png: not the file") for x in shots.set_problems("en", m_root)),
+      str(shots.set_problems("en", m_root)))
+shots.write_manifest(shots.composed_dir("en", m_root), "en")
+(shots.composed_dir("en", m_root) / shots.MANIFEST).write_text(
+    (shots.composed_dir("en", m_root) / shots.MANIFEST).read_text().replace('"lang": "en"', '"lang": "ja"'))
+check("a compose.json written for another language is refused",
+      any("not 'en'" in x for x in shots.set_problems("en", m_root)), str(shots.set_problems("en", m_root)))
+(shots.composed_dir("en", m_root) / shots.MANIFEST).write_text("{not json")
+check("an unreadable compose.json is refused",
+      any("unreadable" in x for x in shots.set_problems("en", m_root)), str(shots.set_problems("en", m_root)))
+
 es_probs = shots.require_shots_problems(["es-ES", "es-MX"], tmp / "empty")
 check("es-ES and es-MX both fail when the Spanish set is missing",
       {loc for loc, _ in es_probs} == {"es-ES", "es-MX"}, str(es_probs))
@@ -248,8 +277,78 @@ if fonts_here:
         font = compose.load_face(compose.Face(compose.SF), 64)
         check("negative control: SF has no 臺, and the check says so",
               not compose.has_glyph(font, "臺") and compose.has_glyph(font, "A"))
+
+        # PingFang SC has every Traditional glyph the captions use, so coverage
+        # alone would accept it for Taiwan; the regional probe must not.
+        compose.FACES["zh-Hant"] = {r: [f for f in compose.FACES["zh-Hans"][r]]
+                                    for r in ("title", "subtitle")}
+        sc_font = compose.load_face(compose.FACES["zh-Hans"]["title"][0], 64)
+        check("PingFang SC has a glyph for every zh-Hant caption character (why coverage is not enough)",
+              all(compose.has_glyph(sc_font, c) for c in compose.caption_chars("zh-Hant")))
+        _, probs = compose.pick_faces("zh-Hant")
+        check("negative control: a Simplified (SC) face is refused for Traditional Chinese",
+              len(probs) == 2 and all("other region's shape" in p for p in probs), str(probs))
     finally:
         compose.FACES["zh-Hant"] = saved_faces
+    saved_sc = compose.FACES["zh-Hans"]
+    try:
+        compose.FACES["zh-Hans"] = {r: list(saved_faces[r]) for r in ("title", "subtitle")}
+        _, probs = compose.pick_faces("zh-Hans")
+        check("negative control: a Traditional (TC) face is refused for Simplified Chinese",
+              len(probs) == 2 and all("other region's shape" in p for p in probs), str(probs))
+    finally:
+        compose.FACES["zh-Hans"] = saved_sc
+
+    # A line ending in 、 is centred on its ink, not on its advance.
+    ja_sub = compose.load_face(compose.pick_faces("ja")[0]["subtitle"], 46)
+    plain, trailing = "使用量、コスト", "使用量、コスト、"
+    blank = compose.trailing_blank(ja_sub, "、")
+    check("a trailing 、 does not count its blank half when centring",
+          ja_sub.size * 0.4 < blank < ja_sub.size * 0.8
+          and abs(compose.centering_width(trailing, ja_sub)
+                  - (ja_sub.getlength(trailing) - blank)) < 0.01
+          and compose.centering_width(plain, ja_sub) == ja_sub.getlength(plain),
+          f"blank {blank} at {ja_sub.size}pt")
+
+    # A failing compose run publishes nothing and withdraws the earlier set.
+    from PIL import Image as _Image
+    raw = tmp / "compose-raw"
+    for st in shots.stems():
+        raw.mkdir(parents=True, exist_ok=True)
+        _Image.new("RGB", (1320, 2868), (240, 242, 246)).save(raw / f"{st}.png")
+    out = tmp / "compose-out" / "ko"
+    import contextlib
+    import io
+    with contextlib.redirect_stdout(io.StringIO()):
+        good_run = compose.compose_lang("ko", raw, out)
+    manifest = out / shots.MANIFEST
+    check("a clean compose run publishes the set with compose.json",
+          good_run == [] and manifest.is_file()
+          and sorted(p.name for p in out.glob("*.png")) == [shots.composed_name(s) for s in shots.stems()]
+          and not compose.rejected_dir(out).exists()
+          and not any(p.name.startswith(".ko.") for p in out.parent.iterdir()),
+          str(good_run))
+    before = {p.name: p.read_bytes() for p in out.glob("*.png")}
+    saved_copy = compose.COPY["ko"]["03_cost"]
+    try:
+        compose.COPY["ko"]["03_cost"] = (saved_copy[0], "공급자별 " * 60)
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            bad_run = compose.compose_lang("ko", raw, out)
+    finally:
+        compose.COPY["ko"]["03_cost"] = saved_copy
+    check("a failing run leaves the published panels as they were, and withdraws compose.json",
+          bad_run and {p.name: p.read_bytes() for p in out.glob("*.png")} == before
+          and not manifest.exists(), log.getvalue())
+    check("... and puts its own panels in <out>.rejected for a look",
+          sorted(p.name for p in compose.rejected_dir(out).glob("*.png"))
+          == [shots.composed_name(s) for s in shots.stems()], log.getvalue())
+    check("... and leaves no staging directory behind",
+          not any(p.name.startswith(".ko.") for p in out.parent.iterdir()),
+          str(list(out.parent.iterdir())))
+    with contextlib.redirect_stdout(io.StringIO()):
+        again = compose.compose_lang("ko", raw, out)
+    check("the next clean run publishes again and clears the rejected panels",
+          again == [] and manifest.is_file() and not compose.rejected_dir(out).exists(), str(again))
 else:
     not_run += 1
     print("NOT RUN: glyph coverage (needs macOS system fonts and Pillow); "

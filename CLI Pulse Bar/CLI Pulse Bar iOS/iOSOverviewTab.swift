@@ -690,6 +690,9 @@ struct iOSOverviewTab: View {
                 }
                 RiskSignalsList(signals: dash.risk_signals, style: .iOS)
             }
+            // Full width like every other card; without it the card hugged
+            // its two short lines and stopped halfway across the screen.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(Color.orange.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))

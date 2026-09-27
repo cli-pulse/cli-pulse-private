@@ -167,6 +167,60 @@ final class ScreenshotLaunchTests: XCTestCase {
         }
     }
 
+    /// READY is a claim about what is on screen, so it is checked against the
+    /// state rather than printed on a timer: a launch that ended up elsewhere
+    /// reports ERROR, and the capture script stops instead of photographing it.
+    @MainActor
+    func test_readyIsPrintedOnlyWhenTheAppIsOnTheRequestedScreen() throws {
+        let suite = "ScreenshotLaunchTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        func applied(_ screen: Launch.Screen) -> AppState {
+            let state = AppState(
+                runtimeEnvironment: productionRuntime.restrictedForScreenshotCapture(),
+                defaults: defaults,
+                performLaunchSetup: false)
+            Launch.apply(Launch.Request(screen: screen), to: state)
+            return state
+        }
+
+        for screen in Launch.Screen.allCases {
+            XCTAssertEqual(Launch.readinessLine(for: Launch.Request(screen: screen), state: applied(screen)),
+                           "\(Launch.readyMarker) \(screen.rawValue)")
+        }
+
+        let movedAway = applied(.alerts)
+        movedAway.selectedTab = .overview
+        let line = Launch.readinessLine(for: Launch.Request(screen: .alerts), state: movedAway)
+        XCTAssertTrue(line.hasPrefix("\(Launch.errorMarker) alerts:"), line)
+        XCTAssertTrue(line.contains("on the Overview tab, not Alerts"), line)
+
+        let leftDemo = applied(.providers)
+        leftDemo.isDemoMode = false
+        leftDemo.isAuthenticated = false
+        let left = Launch.readinessLine(for: Launch.Request(screen: .providers), state: leftDemo)
+        XCTAssertTrue(left.hasPrefix(Launch.errorMarker), left)
+        XCTAssertTrue(left.contains("not in Demo mode") && left.contains("not signed in"), left)
+    }
+
+    /// The Recent tier on the Sessions screen and a named Gemini window on
+    /// Providers are part of what the screenshots show; without them the
+    /// Sessions panel was half empty and Gemini's bar said "Default".
+    func test_demoDataFillsTheScreensItIsPhotographedOn() throws {
+        let demo = DemoDataProvider.generate()
+        let buckets = SessionFreshnessTierClassifier.partition(demo.sessions, now: Date())
+        XCTAssertEqual(buckets.active.count, 3, "the Active section")
+        XCTAssertEqual(buckets.recent.map(\.name), ["docs-refresh", "api-gateway"],
+                       "the Recent section, most recent first")
+        XCTAssertEqual(demo.dashboard.active_sessions, buckets.active.count,
+                       "the Sessions tile counts what the Active section lists")
+
+        let gemini = try XCTUnwrap(demo.providers.first { $0.provider == "Gemini" })
+        XCTAssertEqual(gemini.tiers.map(\.name), ["Pro"], "the window GeminiCollector reports, by model family")
+        XCTAssertFalse(demo.alerts.contains { $0.id.hasPrefix("quota-") && $0.related_provider == "Gemini" },
+                       "Gemini at 71% must stay under the 80% warning threshold")
+    }
+
     // MARK: - Compiled out of Release
 
     /// Every use of the capture launch sits inside `#if DEBUG`, in the package

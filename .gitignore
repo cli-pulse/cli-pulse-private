@@ -188,3 +188,11 @@ HelperSwift/Package.resolved
 /scripts/dev/xcode_devid_fan_embed.sh
 /scripts/dev/*_tmp.*
 /CLI Pulse Bar/scripts/submit_v1_10_7.py
+
+# ── App Store screenshot composing (compose_appstore_ios_screenshots.py) ────
+# A failing run leaves its panels in <lang>.rejected/ to be looked at, and a
+# run works in hidden .<lang>.staging-*/ and .<lang>.previous/ directories
+# that it removes itself unless interrupted. None of them is a set to upload
+# or commit; the set is <lang>/ with its compose.json.
+/CLI Pulse Bar/screenshots/ios-composed/*.rejected/
+/CLI Pulse Bar/screenshots/ios-composed/.*

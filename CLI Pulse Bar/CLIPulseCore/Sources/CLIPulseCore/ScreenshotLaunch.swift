@@ -35,10 +35,12 @@ public enum ScreenshotLaunch {
     public static let demoArgument = "-CLIPulseScreenshotDemo"
     public static let screenArgument = "-CLIPulseScreenshotScreen"
 
-    /// Written to stdout once the requested screen has had time to lay out.
-    /// The capture script waits for it instead of guessing with a sleep.
+    /// Written to stdout once the requested screen has had time to lay out,
+    /// and only if the app is on it (see `readinessLine`). The capture script
+    /// waits for it instead of guessing with a sleep.
     public static let readyMarker = "CLIPULSE_SCREENSHOT_READY"
-    /// Written to stdout, before exiting, when the arguments are wrong.
+    /// Written to stdout when the arguments are wrong (before exiting), or
+    /// when the app is not on the requested screen when it would be ready.
     public static let errorMarker = "CLIPULSE_SCREENSHOT_ERROR"
 
     /// The screens of the App Store set, in listing order. The capture script
@@ -187,6 +189,25 @@ public enum ScreenshotLaunch {
         state.selectedTab = request.screen.tab
     }
 
+    /// The line the capture script waits for: READY only if `state` is still
+    /// what `apply` made it (Demo mode, signed in to it, on the requested
+    /// tab). Otherwise an ERROR naming what is on screen instead, so a later
+    /// change that resets the tab or leaves Demo after launch stops the
+    /// capture rather than filing the wrong screen under this one's name.
+    @MainActor
+    public static func readinessLine(for request: Request, state: AppState) -> String {
+        var wrong: [String] = []
+        if !state.isDemoMode { wrong.append("not in Demo mode") }
+        if !state.isAuthenticated { wrong.append("not signed in") }
+        if state.selectedTab != request.screen.tab {
+            wrong.append("on the \(state.selectedTab.rawValue) tab, not \(request.screen.tab.rawValue)")
+        }
+        guard wrong.isEmpty else {
+            return "\(errorMarker) \(request.screen.rawValue): \(wrong.joined(separator: "; "))"
+        }
+        return "\(readyMarker) \(request.screen.rawValue)"
+    }
+
     /// Unbuffered: `print` is block-buffered when stdout is a file, which is
     /// exactly how `simctl launch --stdout=` hands it to the script.
     static func emit(_ line: String) {
@@ -202,16 +223,21 @@ public enum ScreenshotLaunch {
 // MARK: - Views
 
 extension ScreenshotLaunch {
-    /// Announces the requested screen as ready, once, after `readyDelay`.
-    /// Attach to the app's root view.
+    /// Announces the requested screen, once, after `readyDelay`: READY if
+    /// the app is on it, ERROR if not (`readinessLine`). Attach to the app's
+    /// root view.
     public struct ReadySignal: ViewModifier {
-        public init() {}
+        private let state: AppState
+
+        public init(state: AppState) {
+            self.state = state
+        }
 
         public func body(content: Content) -> some View {
             content.task {
                 guard let request = ScreenshotLaunch.activeRequest else { return }
                 try? await Task.sleep(nanoseconds: UInt64(ScreenshotLaunch.readyDelay * 1_000_000_000))
-                ScreenshotLaunch.emit("\(ScreenshotLaunch.readyMarker) \(request.screen.rawValue)")
+                ScreenshotLaunch.emit(ScreenshotLaunch.readinessLine(for: request, state: state))
             }
         }
     }
@@ -219,17 +245,26 @@ extension ScreenshotLaunch {
     /// Scrolls the enclosing `ScrollView` to the requested screen's target, if
     /// the target is in this content. Attach inside the `ScrollView`.
     public struct ScrollToTarget: ViewModifier {
+        /// Blank space added below the content during a capture that scrolls.
+        /// The Cost Summary is near the end of the Overview, so the scroll
+        /// stopped at the bottom with the card above it cut in half under the
+        /// navigation bar. With this room the target reaches the top.
+        static let tailRoom: CGFloat = 800
+
         public init() {}
 
         public func body(content: Content) -> some View {
+            let target = ScreenshotLaunch.activeRequest?.screen.scrollTarget
             ScrollViewReader { proxy in
-                content.task {
-                    guard let target = ScreenshotLaunch.activeRequest?.screen.scrollTarget else { return }
-                    // One layout pass first: scrolling to a view that has not
-                    // been measured yet does nothing.
-                    try? await Task.sleep(nanoseconds: 300_000_000)
-                    proxy.scrollTo(target, anchor: .top)
-                }
+                content
+                    .padding(.bottom, target == nil ? 0 : Self.tailRoom)
+                    .task {
+                        guard let target else { return }
+                        // One layout pass first: scrolling to a view that has
+                        // not been measured yet does nothing.
+                        try? await Task.sleep(nanoseconds: 300_000_000)
+                        proxy.scrollTo(target, anchor: .top)
+                    }
             }
         }
     }

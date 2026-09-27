@@ -75,7 +75,7 @@ struct CLIPulseApp: App {
                     LANPairingFlowView(browser: pairingBrowser, initialPayload: payload)
                 }
                 #if DEBUG
-                .modifier(ScreenshotLaunch.ReadySignal())
+                .modifier(ScreenshotLaunch.ReadySignal(state: appState))
                 #endif
                 // Outermost, so the pairing sheet is covered too: SwiftUI on
                 // iPhone otherwise splits Korean words across lines.
