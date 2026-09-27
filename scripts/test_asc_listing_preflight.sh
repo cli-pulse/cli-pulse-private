@@ -372,6 +372,34 @@ expect_fail "--require-shots with a set a clean compose run did not write" "[zh-
 build_fixture; panels en zh-Hans zh-Hant ja ko es
 printf 'x' >> "$CASE/CLI Pulse Bar/screenshots/ios-composed/ko/02_providers_1290x2796.png"
 expect_fail "--require-shots with a panel changed after the compose run" "[ko] ko: 02_providers_1290x2796.png: not the file the last clean compose run wrote"
+
+# A caption edited in the compositor after its set was composed: every panel is
+# still the file compose.json records, but the words drawn on it are not COPY,
+# and the pusher trusts this same check.
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+mkdir -p "$CASE/CLI Pulse Bar/scripts"
+cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" "$CASE/CLI Pulse Bar/scripts/"
+expect_fail "--require-shots with a compose.json that records no captions" "[en-US] en: 01_overview, 02_providers, 03_cost, 04_sessions, 05_alerts: the caption drawn is not the compositor's COPY"
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+root = pathlib.Path(sys.argv[2])
+copy = s.caption_copy(root)
+for lang in s.LANGS:
+    s.write_manifest(s.composed_dir(lang, root), lang,
+                     {"captions": {st: list(pair) for st, pair in copy[lang].items()}})
+PY
+expect_pass "--require-shots with every set's captions the compositor's COPY"
+python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+old = '"03_cost": ("Where the money goes",'
+assert s.count(old) == 1, "the mutation target moved; update this case"
+p.write_text(s.replace(old, '"03_cost": ("Where your money goes",'), encoding="utf-8")
+PY
+expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 03_cost: the caption drawn is not the compositor's COPY"
 EXTRA=""
 
 echo "test_asc_listing_preflight: $pass passed, $fail failed."

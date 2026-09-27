@@ -21,7 +21,9 @@ LAYOUT
         (captions fit, every glyph drawn, corners clean): each panel's md5,
         with the captions, faces and sizes it was drawn with. A failing run
         deletes it. A set without it, or with a panel whose md5 it does not
-        record, is not uploadable, whatever its PNG headers say.
+        record, is not uploadable, whatever its PNG headers say. Nor is one
+        whose recorded captions are not the compositor's COPY any more: a
+        caption edited without recomposing leaves the old words in the image.
 
 `<lang>` is one of LANGS, the app's six languages. SHOT_SOURCES maps each App
 Store Connect locale to the language whose panels it shows: seven locales, six
@@ -48,6 +50,7 @@ from the PNG header: no Pillow, so it also runs on a bare CI runner.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import struct
@@ -57,6 +60,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 SCREENSHOTS_REL = "CLI Pulse Bar/screenshots"
+COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py"
 
 # The App Store set, in listing order: NN is the 1-based position. The Swift
 # enum ScreenshotLaunch.Screen and the capture script name the same five.
@@ -194,6 +198,27 @@ def write_manifest(directory: Path, lang: str, record: dict | None = None) -> No
                                       + "\n", encoding="utf-8")
 
 
+def caption_copy(root: Path | None = None) -> dict | None:
+    """The compositor's COPY table ({lang: {stem: (title, subtitle)}}), read
+    from its source rather than imported, so a bare CI runner without Pillow
+    reads it too. None when the tree has no compositor (a test fixture)."""
+    path = (root or REPO) / COMPOSITOR_REL
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        elif isinstance(node, ast.Assign):
+            targets = node.targets
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "COPY" for t in targets) and node.value is not None:
+            return ast.literal_eval(node.value)
+    return None
+
+
 def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     """Whether the set is what the last clean compose run wrote."""
     d = composed_dir(lang, root)
@@ -209,6 +234,15 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     except (ValueError, KeyError, TypeError) as exc:
         return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
     out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
+    copy = caption_copy(root)
+    if copy is not None and canonical_lang(lang) in copy:
+        want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()}
+        drawn = data.get("captions")
+        stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])
+        if stale:
+            out.append(f"{', '.join(stale)}: the caption drawn is not the compositor's COPY "
+                       f"(edited without recomposing; run compose_appstore_ios_screenshots.py "
+                       f"--lang {canonical_lang(lang)})")
     for p in expected_composed(lang, root):
         if p.is_file() and recorded.get(p.name) != md5_of(p):
             out.append(f"{p.name}: not the file the last clean compose run wrote "
