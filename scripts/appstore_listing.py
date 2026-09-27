@@ -7,6 +7,7 @@ layout is written down exactly once:
   - scripts/asc_push_listing.py          pushes the texts to App Store Connect
   - scripts/asc_listing_preflight.py     validates them (CI) and compares them
                                           with the live store (release time)
+  - scripts/asc_submit.py                sets What's New (see WHAT'S NEW below)
   - CLI Pulse Bar/scripts/appstore_metadata.py, resubmit.py   the older pushers
 
 LAYOUT
@@ -53,6 +54,31 @@ The English terms must stay a superset of `check_release_notes_platforms.sh`;
 The English-leftover heuristic exists because a translated listing that still
 carries one untranslated English paragraph looks like a machine did it, and
 nothing else would notice: every other check here passes on English text.
+
+WHAT'S NEW
+----------
+Release notes live at the repo root, one directory per release:
+
+    whatsnew_<version>/<locale>.txt         iOS text for that ASC locale   <= 4000
+    whatsnew_<version>/macos-<locale>.txt   macOS text, when the two differ <= 4000
+
+`<locale>` is an App Store Connect locale (a key of LOCALE_SOURCES), so es-ES
+and es-MX are two files. While they share one listing directory they must say
+the same thing, for the reason given at LOCALE_SOURCES.
+
+A directory with no macos-*.txt at all carries one text per locale for both
+platforms, and the Mac reads <locale>.txt. A directory with any macos-*.txt has
+split the platforms, and then every locale needs its macos- file: the Mac does
+NOT fall back to <locale>.txt, because in a split directory that is the iPhone
+text (Siri, widgets, the Providers tab) and a missing Mac file is an omission.
+`load_whatsnew()` is the one place that decides which file a locale gets;
+`asc_submit.py` writes what it returns and nothing else.
+
+The What's New checks are the listing's (2.3.10 platform names in every
+language, English left in a translation) plus: the macOS text may not name a
+feature only the direct-download Mac build has (the App Store build is sandboxed
+without network.server and cannot offer Remote Control), and zh-Hant uses the
+terms recorded in scripts/zh_hant_terms.json.
 """
 from __future__ import annotations
 
@@ -448,6 +474,163 @@ def summary_rows(root: Path | None = None) -> list[tuple[str, dict[str, int]]]:
             counts[f.file] = len(read_text(p)) if p.exists() else -1
         rows.append((src, counts))
     return rows
+
+
+# ── What's New ───────────────────────────────────────────────────────────────
+# Layout and rules: WHAT'S NEW in the module docstring.
+
+WHATSNEW_LIMIT = 4000          # App Store Connect's limit for whatsNew
+WHATSNEW_MAC_PREFIX = "macos-"
+PLATFORM_LABEL = {"IOS": "iOS", "MAC_OS": "macOS"}
+
+# Features only the direct-download (Developer ID) Mac build has. The App Store
+# Mac build cannot offer them, so its What's New may not name them. A tripwire
+# for the obvious wording in each language, not a proof: a sentence can sell
+# the feature without these words, which is what review is for. Latin terms
+# match case-insensitively on word boundaries; the others as plain substrings.
+DEVID_ONLY_TERMS_LATIN: tuple[str, ...] = (
+    "Remote Control", "control remoto", "fan control", "fan speed", "fan boost",
+    "ventilador",
+)
+DEVID_ONLY_TERMS_LOCALIZED: tuple[str, ...] = (
+    "远程控制", "远程操作", "遠端控制", "遠端操作", "リモート操作", "リモートコントロール",
+    "원격 제어", "원격 조작", "风扇", "風扇", "ファンの回転", "ファン回転", "팬 속도", "팬 부스트",
+)
+ZH_HANT_TERMS_REL = "scripts/zh_hant_terms.json"
+
+
+@dataclass(frozen=True)
+class WhatsNewText:
+    locale: str
+    file: str   # file name inside the directory, e.g. "macos-ja.txt"
+    text: str
+
+
+def _terms_in(text: str, latin: tuple[str, ...], localized: tuple[str, ...]) -> list[str]:
+    hits = []
+    for term in latin:
+        pat = r"(?<![A-Za-z0-9_])" + re.escape(term).replace(r"\ ", r"\s+") + r"(?![A-Za-z0-9_])"
+        if re.search(pat, text, flags=re.IGNORECASE):
+            hits.append(term)
+    hits.extend(t for t in localized if t in text)
+    return hits
+
+
+def devid_only_terms_in(text: str) -> list[str]:
+    return _terms_in(text, DEVID_ONLY_TERMS_LATIN, DEVID_ONLY_TERMS_LOCALIZED)
+
+
+def zh_hant_forbidden_terms(root: Path | None = None) -> dict[str, str]:
+    """variant -> the word to use instead, from the Apple half of the zh-Hant
+    terminology manifest. Empty if the manifest is missing, which the manifest's
+    own gate (check_zh_hant_terms.py) already fails on."""
+    path = (root or REPO) / ZH_HANT_TERMS_REL
+    if not path.exists():
+        path = REPO / ZH_HANT_TERMS_REL
+    if not path.exists():
+        return {}
+    import json  # noqa: PLC0415 - only this check needs it
+    out: dict[str, str] = {}
+    for concept in json.loads(path.read_text(encoding="utf-8")).get("concepts", []):
+        apple = concept.get("apple") or {}
+        for bad in apple.get("forbid", []):
+            out[bad] = apple.get("use", "")
+    return out
+
+
+def whatsnew_is_split(d: Path) -> bool:
+    """True when the directory carries separate macOS texts (any macos-*.txt)."""
+    return any(p.name.startswith(WHATSNEW_MAC_PREFIX) for p in d.glob("*.txt"))
+
+
+def whatsnew_file(d: Path, locale: str, platform: str) -> Path:
+    """The file that must supply `locale`'s What's New on `platform`."""
+    if platform == "MAC_OS" and whatsnew_is_split(d):
+        return d / f"{WHATSNEW_MAC_PREFIX}{locale}.txt"
+    return d / f"{locale}.txt"
+
+
+def load_whatsnew(d: Path, platform: str, root: Path | None = None
+                  ) -> tuple[dict[str, WhatsNewText], list[Problem]]:
+    """Every store locale's What's New for `platform` (IOS or MAC_OS), and every
+    reason not to send it. Problems name the file; an empty list means every
+    locale in LOCALE_SOURCES has a valid text."""
+    if not d.is_dir():
+        return {}, [Problem(str(d), "What's New directory not found")]
+    split = whatsnew_is_split(d)
+    # Unsplit, one file serves both platforms: word it the same way for both,
+    # so whatsnew_problems() reports it once.
+    label = PLATFORM_LABEL[platform] if split else "iOS or macOS"
+    texts: dict[str, WhatsNewText] = {}
+    problems: list[Problem] = []
+    zh_hant_bad = zh_hant_forbidden_terms(root)
+    for locale in LOCALE_SOURCES:
+        path = whatsnew_file(d, locale, platform)
+        where = f"{d.name}/{path.name}"
+        if not path.exists():
+            why = f"missing: {locale} has no {label} What's New"
+            if split and platform == "MAC_OS":
+                why += (f" (this directory has macOS texts, so the Mac does not fall back "
+                        f"to {locale}.txt, which is the iPhone text)")
+            problems.append(Problem(where, why))
+            continue
+        text = read_text(path)
+        if not text:
+            problems.append(Problem(where, "empty"))
+            continue
+        texts[locale] = WhatsNewText(locale, path.name, text)
+        if len(text) > WHATSNEW_LIMIT:
+            problems.append(Problem(where, f"{len(text)} characters, over App Store Connect's "
+                                           f"limit of {WHATSNEW_LIMIT}"))
+        for term in platform_terms_in(text):
+            problems.append(Problem(where, f"names '{term}' — Guideline 2.3.10: What's New may "
+                                           "not mention other platforms (macOS 1.52.0 was "
+                                           "rejected for this)"))
+        if platform == "MAC_OS":
+            for term in devid_only_terms_in(text):
+                problems.append(Problem(where, f"names '{term}', which only the direct-download "
+                                               "Mac build has; the App Store Mac build cannot "
+                                               "offer it"))
+        if locale != PRIMARY_LOCALE:
+            cjk = LOCALE_SOURCES[locale] in ("zh-Hans", "zh-Hant", "ja", "ko")
+            for line in english_lines(text, cjk)[:3]:
+                problems.append(Problem(where, f"looks like untranslated English: {line[:90]!r}"))
+        if LOCALE_SOURCES[locale] == "zh-Hant":
+            for bad, use in zh_hant_bad.items():
+                if bad in text:
+                    problems.append(Problem(where, f"uses '{bad}'; zh-Hant says '{use}' "
+                                                   f"({ZH_HANT_TERMS_REL})"))
+    # Locales that share a listing directory share the What's New as well.
+    by_source: dict[str, list[str]] = {}
+    for locale, src in LOCALE_SOURCES.items():
+        by_source.setdefault(src, []).append(locale)
+    for src, locales in by_source.items():
+        present = [loc for loc in locales if loc in texts]
+        if len({texts[loc].text for loc in present}) > 1:
+            names = ", ".join(texts[loc].file for loc in present)
+            problems.append(Problem(f"{d.name}/{texts[present[-1]].file}",
+                                    f"{names} differ; {', '.join(locales)} share the listing "
+                                    f"directory '{src}/', so they carry one text"))
+    return texts, problems
+
+
+def whatsnew_problems(d: Path, root: Path | None = None) -> list[Problem]:
+    """Every problem with a What's New directory, for both platforms."""
+    problems: list[Problem] = []
+    for platform in PLATFORM_LABEL:
+        problems += load_whatsnew(d, platform, root)[1]
+    if d.is_dir():
+        expected = {f"{loc}.txt" for loc in LOCALE_SOURCES}
+        expected |= {f"{WHATSNEW_MAC_PREFIX}{loc}.txt" for loc in LOCALE_SOURCES}
+        for extra in sorted(p for p in d.glob("*.txt") if p.name not in expected):
+            problems.append(Problem(f"{d.name}/{extra.name}",
+                                    "unexpected file: not <locale>.txt or macos-<locale>.txt for "
+                                    "an App Store locale (" + ", ".join(LOCALE_SOURCES) + ")"))
+    unique: list[Problem] = []
+    for p in problems:           # a shared file is read for both platforms
+        if p not in unique:
+            unique.append(p)
+    return unique
 
 
 if __name__ == "__main__":

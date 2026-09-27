@@ -58,6 +58,15 @@ no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
                     English in a translated text, and no pusher carrying an
                     inline copy of any of it. See scripts/appstore_listing.py.
                     Negative controls: scripts/test_asc_listing_preflight.sh.
+   What's New       with --whatsnew-dir DIR, first, and a failure ends the run:
+                    every store locale has its iOS <locale>.txt and macOS
+                    macos-<locale>.txt (or one shared <locale>.txt when the
+                    directory has no macOS texts), non-empty and within 4000
+                    characters, no other platform named in any language, no
+                    English left in a translation, nothing only the
+                    direct-download Mac build has in a macOS text, the zh-Hant
+                    terms, and es-ES equal to es-MX. Repo-only, no key; the
+                    same checks asc_submit.py runs before its first write.
 
 READ-ONLY. Every request is a GET. This script never mutates App Store Connect;
 pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
@@ -68,6 +77,7 @@ Usage:
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
+    python3 scripts/asc_listing_preflight.py --texts-only --whatsnew-dir whatsnew_154
 Exit 0 = the store agrees with itself and with the repo. 1 = drift, or invalid
 repo texts. 2 = could not check (missing key/网络), which is NOT a pass.
 """
@@ -238,6 +248,27 @@ def subtitles(asc: ASC, prefer_unreleased: bool) -> dict[str, str]:
             for r in rows}
 
 
+def check_whatsnew(d: Path, root: Path | None = None) -> bool:
+    """The What's New check (--whatsnew-dir): both platforms, every store locale.
+
+    It runs before everything else and a failure ends the run, because the
+    release step it guards (asc_submit.py --submit) refuses on the same
+    problems: listing them here, days earlier, is the point."""
+    problems = listing.whatsnew_problems(d, root)
+    split = d.is_dir() and listing.whatsnew_is_split(d)
+    print(f"What's New in {d}/ ({'separate iOS and macOS texts' if split else 'one text per locale for both platforms'}):")
+    for plat, label in listing.PLATFORM_LABEL.items():
+        texts, _ = listing.load_whatsnew(d, plat, root)
+        row = "  ".join(f"{loc}={len(texts[loc].text) if loc in texts else '-'}"
+                        for loc in listing.LOCALE_SOURCES)
+        print(f"  {label:6} {row}   (characters, limit {listing.WHATSNEW_LIMIT})")
+    for p in problems:
+        print(f"  FAIL  {p}")
+    if not problems:
+        print(f"  ok    {len(listing.LOCALE_SOURCES)} locale(s) x 2 platforms ready")
+    return not problems
+
+
 def check_repo_texts(root: Path | None = None) -> bool:
     """Check 0: the repo's listing texts, and that no pusher carries its own copy.
 
@@ -365,6 +396,9 @@ def sha(data: bytes) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--whatsnew-dir", type=Path,
+                    help="also check a release's What's New directory (e.g. whatsnew_154), "
+                         "first; repo-only, works with --texts-only")
     ap.add_argument("--platform", choices=["MAC_OS", "IOS"], help="check one platform only")
     ap.add_argument("--skip-screenshots", action="store_true",
                     help="skip check 3 (it downloads every live screenshot)")
@@ -377,6 +411,9 @@ def main() -> int:
                     help="also require every listing locale's five composed iPhone panels "
                          "(check 4; repo-only, works with --texts-only)")
     args = ap.parse_args()
+    if args.whatsnew_dir is not None and not check_whatsnew(args.whatsnew_dir, args.root):
+        print("WHAT'S NEW INVALID — fix the files above; asc_submit.py would refuse them too.")
+        return 1
 
     if args.root and not args.texts_only:
         ap.error("--root only makes sense with --texts-only")
