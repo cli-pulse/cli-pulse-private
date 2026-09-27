@@ -349,6 +349,28 @@ if fonts_here:
         again = compose.compose_lang("ko", raw, out)
     check("the next clean run publishes again and clears the rejected panels",
           again == [] and manifest.is_file() and not compose.rejected_dir(out).exists(), str(again))
+    # A panel that raises (a truncated capture, Ctrl-C) is a failed run too.
+    saved_one = compose.compose_one
+    calls = {"n": 0}
+
+    def raising_compose_one(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 3:
+            raise OSError("truncated capture")
+        return saved_one(*a, **k)
+    raised = None
+    try:
+        compose.compose_one = raising_compose_one
+        with contextlib.redirect_stdout(io.StringIO()):
+            compose.compose_lang("ko", raw, out)
+    except OSError as e:
+        raised = e
+    finally:
+        compose.compose_one = saved_one
+    check("a panel that raises withdraws the published set's compose.json and re-raises",
+          raised is not None and calls["n"] == 3 and not manifest.exists()
+          and not any(p.name.startswith(".ko.") for p in out.parent.iterdir()),
+          f"raised={raised!r} manifest={manifest.exists()}")
 else:
     not_run += 1
     print("NOT RUN: glyph coverage (needs macOS system fonts and Pillow); "

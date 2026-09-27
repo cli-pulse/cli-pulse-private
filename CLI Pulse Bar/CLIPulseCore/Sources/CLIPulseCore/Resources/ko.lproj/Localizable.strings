@@ -628,7 +628,7 @@
 "usage_dashboard.total_cost" = "총 비용";
 "usage_dashboard.active_days" = "사용 일수";
 "usage_dashboard.current_streak" = "연속 사용일";
-"usage_dashboard.longest_streak" = "최장 연속 일수";
+"usage_dashboard.longest_streak" = "최장 연속 사용일";
 "usage_dashboard.peak_day" = "최대 사용일";
 "usage_dashboard.favorite_model" = "자주 쓰는 모델";
 "usage_dashboard.messages" = "메시지 수";

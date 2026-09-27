@@ -720,6 +720,12 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
         })
         print(f"  [{lang}] published to {out_dir} with {shots.MANIFEST}")
         return problems
+    except BaseException:
+        # A panel that raised (a truncated capture, Ctrl-C) is a failed run
+        # too: the set already in out_dir may no longer match COPY, so it must
+        # not stay pushable.
+        withdraw_set(out_dir)
+        raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
 

@@ -29,7 +29,9 @@
 #                which DELETES ITS DATA there (sign-in, settings, caches), so
 #                every capture starts from the same, empty preferences.
 #   --force      use the simulator even though an app is running on it,
-#                CLI Pulse included (another session may be using it)
+#                CLI Pulse included (another session may be using it). iOS's
+#                own com.apple.* jobs (Spotlight, widget rendering) do not
+#                count, since an idle booted device always runs some
 #
 # Refuses a Release build: without DEBUG the capture arguments are ignored and
 # every "screenshot" would be the sign-in screen.
@@ -136,16 +138,18 @@ if [ -n "$want_screens" ]; then
 fi
 
 # ── launch logs ─────────────────────────────────────────────────────────────
-# The app's stdout (where the READY line arrives) goes to a file the simulated
-# process opens itself, and inside a simulator /tmp and $TMPDIR are the
-# device's own, not the Mac's: a log under them stays empty and every capture
-# times out waiting (measured: /var/folders/…/T and /private/tmp stayed empty,
-# a path under the home directory got READY in 4 s). So the default is under
-# ~/Library/Logs (made below, once the cleanup is in place), and a --log-dir
-# under a temp path is refused before anything boots.
+# The app's stdout (where the READY line arrives) goes to the file named by
+# `simctl launch --stdout`. Measured with the same app and launch: a file under
+# /var/folders/…/T ($TMPDIR) or /private/tmp stayed empty, so every capture
+# would time out waiting, while a file under the home directory got READY in
+# 4 s, and so did this script's default, ~/Library/Logs/clipulse-capture.*.
+# (The likely reason is that a simulated process sees the device's own temp
+# directories, but only the measurement is established.) So the default is
+# under ~/Library/Logs (made below, once the cleanup is in place), and a
+# --log-dir under a temp path is refused before anything boots.
 case "$LOG_DIR" in
   /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*)
-    die "--log-dir $LOG_DIR is under a temp directory, which inside the simulator is the device's own; the app's READY line would never arrive there. Use a path under your home directory." ;;
+    die "--log-dir $LOG_DIR is under a temp directory; the app's READY line never arrives in a log there (measured), so every capture would time out. Use a path under your home directory." ;;
 esac
 
 # ── the simulator ───────────────────────────────────────────────────────────
@@ -227,8 +231,12 @@ if echo "$device_line" | grep -q "(Booted)"; then
   # instance of its own running at this point (it terminates the app before
   # every launch), so a running CLI Pulse is someone else's, and the default
   # reinstall below would kill it and delete its data.
+  # iOS itself always runs a few UIKitApplication jobs on an idle booted
+  # device (com.apple.Spotlight and com.apple.chrono.WidgetRenderer-Default,
+  # read on two idle simulators), so com.apple.* jobs are left out; counting
+  # them made every booted device look busy and --force the routine answer.
   others="$(xcrun simctl spawn "$UDID" launchctl list 2>/dev/null \
-    | grep -o 'UIKitApplication:[^[]*' || true)"
+    | grep -o 'UIKitApplication:[^[]*' | grep -v '^UIKitApplication:com\.apple\.' || true)"
   if [ -n "$others" ] && [ "$FORCE" -ne 1 ]; then
     echo "$others" | sed 's/^/  running: /' >&2
     die "the simulator is running apps; another session may be using it. Pick another --device or --udid, or --force."
