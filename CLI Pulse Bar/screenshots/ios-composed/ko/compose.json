@@ -9,7 +9,7 @@
    "한도까지 얼마나 남았는지 바로 확인하세요"
   ],
   "03_cost": [
-   "비용이 어디에 드는지",
+   "비용, 어디에 쓰이나요?",
    "공급자별 비용, 상위 프로젝트, 위험 신호"
   ],
   "04_sessions": [
@@ -18,7 +18,7 @@
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
-   "CPU 과부하와 오래 실행 중인 세션도 알려 드려요"
+   "CPU 사용률 급증과 오래 실행 중인 세션도 알려 드려요"
   ]
  },
  "captures": {
@@ -36,9 +36,9 @@
  "panels": {
   "01_overview_1290x2796.png": "bcf009a116de0a6dfa2e7eafcf1c33ca",
   "02_providers_1290x2796.png": "692c8eac37dde719cff414cc81119525",
-  "03_cost_1290x2796.png": "ab60341e22362370f483a4b9221cdeeb",
+  "03_cost_1290x2796.png": "71885b112f13e7712f07ee0bb0f21a21",
   "04_sessions_1290x2796.png": "161c57181fc3e04b5b3f5389b4952097",
-  "05_alerts_1290x2796.png": "ae57fb4a4da85adb0dfd120243429e69"
+  "05_alerts_1290x2796.png": "12767bfbce082ae45b149d87d793f70b"
  },
  "subtitle_pt": 46,
  "title_pt": 100
