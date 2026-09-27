@@ -35,7 +35,8 @@ Usage:
   python3 scripts/asc_submit.py --submit macos --build <BUILD_ID> --version 1.54.0 --whatsnew-dir whatsnew_154
   (the same with --apply writes and submits)
 
-The release order around this script is in AGENTS.md ("Releasing a version").
+The release order around this script is in AGENTS.md ("Releasing a version to
+the App Store").
 
 WHAT'S NEW
 ----------

@@ -184,6 +184,95 @@ export EN_DESC="$CASE/$LISTING_REL/en-US/description.txt"
 build_fixture; mutate "zh-Hans/description.txt" 'open(__import__("os").environ["EN_DESC"], encoding="utf-8").read().splitlines()[0] + "\n" + s'
 expect_fail "the English first line pasted into a translation" "English description's first line verbatim"
 
+# ── What's New (--whatsnew-dir) ──────────────────────────────────────────────
+# The fixture is the real whatsnew_154/: fourteen release notes in seven
+# languages, so the positive control is also the false-positive test of the
+# platform-name, English-leftover and zh-Hant checks on real text. These run
+# with their own helpers because the listing cases above use run_check.
+WN="$CASE/whatsnew_154"
+wn_fixture() { build_fixture; cp -R "$ROOT/whatsnew_154" "$WN"; }
+wn_check() {
+    python3 "$PREFLIGHT" --texts-only --root "$CASE" --whatsnew-dir "$WN" >"$TMP/out" 2>&1
+}
+wn_pass() {
+    if wn_check; then
+        echo "ok:   [$1] passes."; pass=$((pass + 1))
+    else
+        echo "FAIL: [$1] was rejected, but it should pass:"; sed 's/^/        /' "$TMP/out"
+        fail=$((fail + 1))
+    fi
+}
+wn_fail() {   # wn_fail <name> <substring the rejection must contain>
+    if wn_check; then
+        echo "FAIL: [$1] the check PASSED broken release notes."; fail=$((fail + 1))
+    elif grep -qF -- "$2" "$TMP/out"; then
+        echo "ok:   [$1] rejected, for the right reason."; pass=$((pass + 1))
+    else
+        echo "FAIL: [$1] rejected, but not for '$2':"; sed 's/^/        /' "$TMP/out"
+        fail=$((fail + 1))
+    fi
+}
+wn_mutate() {   # wn_mutate <file in the notes dir> <python expression over s>
+    python3 - "$WN/$1" "$2" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1]); s = p.read_text(encoding="utf-8")
+new = eval(sys.argv[2], {"s": s})
+if new == s:
+    sys.exit(f"mutation of {p} changed nothing — the case would prove nothing")
+p.write_text(new, encoding="utf-8")
+PY
+}
+
+wn_fixture
+wn_pass "whatsnew_154 as committed (iOS and macOS, seven locales)"
+grep -qF "TEXTS OK" "$TMP/out" && { echo "ok:   [What's New passing lets the listing check run]"; pass=$((pass + 1)); } \
+    || { echo "FAIL: [What's New passing lets the listing check run]"; fail=$((fail + 1)); }
+
+wn_fixture; rm "$WN"/macos-*.txt
+wn_pass "no macOS texts at all: one text per locale serves both platforms"
+
+wn_fixture; rm "$WN/macos-ja.txt"
+wn_fail "a split directory missing one macOS text" "macos-ja.txt: missing: ja has no macOS What's New"
+
+wn_fixture; rm "$WN/es-MX.txt"
+wn_fail "a store locale without its iOS text" "es-MX.txt: missing"
+
+wn_fixture; : > "$WN/ko.txt"
+wn_fail "an empty text" "ko.txt: empty"
+
+wn_fixture; wn_mutate "macos-es-ES.txt" 's + "\n" + "Más texto. " * 400'
+wn_fail "a text over 4000 characters" "limit of 4000"
+
+wn_fixture; wn_mutate "macos-en-US.txt" 's + "\n• New: Remote Control from your iPhone.\n"'
+wn_fail "Remote Control in the macOS text" "names 'Remote Control', which only the direct-download"
+
+wn_fixture; wn_mutate "macos-ja.txt" 's + "\n・リモート操作に対応しました。\n"'
+wn_fail "リモート操作 in the Japanese macOS text" "names 'リモート操作'"
+
+wn_fixture; wn_mutate "en-US.txt" 's + "\n• Fixed: Remote Control reconnects after a restart.\n"'
+wn_pass "Remote Control in the iOS text (the direct-download check is macOS only)"
+
+wn_fixture; wn_mutate "ko.txt" 's + "\n• 안드로이드 앱도 같은 수정이 적용되었습니다.\n"'
+wn_fail "안드로이드 in Korean (the bash release-notes guard is Latin-only)" "names '안드로이드'"
+
+wn_fixture; wn_mutate "zh-Hans.txt" 's.replace("• 翻译：", "• Also on Google Play. 翻译：", 1)'
+wn_fail "Google Play in the Chinese text" "names 'Google Play'"
+
+wn_fixture; wn_mutate "ja.txt" 's + "\nThe usage history chart is now filled in for every account.\n"'
+wn_fail "an English sentence left in the Japanese text" "looks like untranslated English"
+
+wn_fixture; wn_mutate "es-MX.txt" 's.replace("Casi todo en esta versión", "Casi todo en esta versión nueva", 1)'
+wn_fail "es-MX no longer equal to es-ES" "share the listing directory 'es/'"
+
+wn_fixture; wn_mutate "macos-zh-Hant.txt" 's.replace("工作階段", "會話", 1)'
+wn_fail "a Mainland term in zh-Hant" "uses '會話'; zh-Hant says '工作階段'"
+
+wn_fixture; cp "$WN/en-US.txt" "$WN/fr-FR.txt"
+wn_fail "a file for a locale the store listing does not have" "fr-FR.txt: unexpected file"
+
+wn_fixture; rm -r "$WN"
+wn_fail "a directory that is not there" "What's New directory not found"
+
 # ── pushers must read the files, not carry copies ────────────────────────────
 build_fixture
 kw="$(cat "$CASE/$LISTING_REL/en-US/keywords.txt")"

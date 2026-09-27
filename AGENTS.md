@@ -143,6 +143,65 @@ If a task is specifically about the public repo, keep it distribution-only.
 - If a release tag must be recreated, ensure it is recreated on a
   distribution-only commit.
 
+## Releasing a version to the App Store — the order
+
+Four scripts write to App Store Connect, and the order matters. The listing and
+screenshot pushers write only to an editable version, and a submitted version
+is waiting for review and no longer editable, so the submission goes last. Each
+script is a dry run unless given `--apply`: run it dry first, read what it
+would change, then run it again with `--apply`. The 1.54.0 release, per
+platform (IOS / MAC_OS, `ios` / `macos`):
+
+```bash
+# 0. Repo only, no key: listing texts and the release notes
+python3 scripts/asc_listing_preflight.py --texts-only --whatsnew-dir whatsnew_154
+
+# 1. The version row. App Store Connect gives it the previous version's locales
+#    (en-US and zh-Hans for 1.53.0); nothing else is written.
+python3 scripts/asc_submit.py --create-version ios --version 1.54.0          # then --apply
+
+# 2. Listing texts. This creates the zh-Hant, ja, ko, es-ES and es-MX locales.
+python3 scripts/asc_push_listing.py --version 1.54.0 --platform IOS
+python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
+
+# 3. iPhone screenshots, per locale (scripts/asc_push_screenshots.py, #601)
+python3 scripts/asc_push_screenshots.py --version 1.54.0                     # then --apply
+
+# 4. The store against the repo, for the version being prepared
+python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154
+
+# 5. What's New, build, submission, once the build is VALID (--list-builds ios)
+python3 scripts/asc_submit.py --submit ios --build <BUILD_ID> --version 1.54.0 \
+    --whatsnew-dir whatsnew_154                                              # then --apply
+```
+
+Repeat 1, 2 and 5 with `macos` / `MAC_OS`. Both versions are created with
+`releaseType` MANUAL: after approval the owner releases them in App Store
+Connect.
+
+**What's New** lives in `whatsnew_<version>/`: `<locale>.txt` is the iOS text
+and `macos-<locale>.txt` the macOS text, one file per App Store locale (seven:
+es-ES and es-MX are separate files and must be identical, like the listing's
+shared `es/`). The Mac falls back to `<locale>.txt` only in a directory with no
+`macos-*.txt` at all; in a split directory a missing Mac file is refused, since
+the fallback would be the iPhone text. `scripts/appstore_listing.py`
+(`load_whatsnew`) decides which file a locale gets and checks them: at most 4000
+characters, no other platform named in any of the six languages (Guideline
+2.3.10; `check_release_notes_platforms.sh` only knows the Latin spellings), no
+English left in a translation, the zh-Hant terms, and nothing in the macOS text
+that only the direct-download Mac build has (Remote Control, fan control).
+
+`asc_submit.py --submit` refuses before its first write when the texts fail
+those checks, the version is missing or not editable, any localization of the
+version has no text for that platform, a repo locale is not on the version yet
+(step 2 has not run; `--allow-missing-locales` overrides), or the build is not
+`VALID` or is for another platform or version. With `--apply` it writes What's
+New where it differs, reads it back, and only then attaches the build and
+submits. The old `--whatsnew` fallback file is retired: it is how English notes
+once reached every storefront. Tests: `scripts/test_asc_submit.py` (offline,
+against a fake App Store Connect; not yet a step in `repo-hygiene.yml`) and the
+What's New cases in `scripts/test_asc_listing_preflight.sh`.
+
 ## App Store listing — texts, pusher, preflight
 
 The listing texts (description, keywords, subtitle, promotional text) live in
@@ -165,7 +224,8 @@ python3 scripts/asc_listing_preflight.py --version 1.54.0   # before every ASC s
 
 The pusher writes only to an editable version (PREPARE_FOR_SUBMISSION /
 *_REJECTED), creates missing locales, never deletes one, and never touches
-What's New (that is `asc_submit.py --whatsnew-dir`).
+What's New (that is `asc_submit.py --whatsnew-dir`; the order of the release
+steps is in "Releasing a version to the App Store" above).
 
 `scripts/check_paywall_claims.sh` guards the repo *sources*. It cannot see what
 App Store Connect is actually serving, and the gap between those two has bitten
