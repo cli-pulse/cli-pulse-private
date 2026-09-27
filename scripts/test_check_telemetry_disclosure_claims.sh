@@ -183,6 +183,33 @@ B="$(shasum "$F" | cut -d' ' -f1)"
 perl -0pi -e 's/(case helperConnected = "p_helper_connected"\n)/$1        case deviceModel\n/' "$F"
 assert_changed "implicit case" "$F" "$B" && expect_fail "implicit case" "deviceModel"
 
+# ── 3d. wrap-only characters are not a missing phrase ─────────────────────
+#    The copy writes "Wi‑Fi" with U+2011 NON-BREAKING HYPHEN so the word never
+#    splits across lines, and the registry says "Wi-Fi". A guard comparing code
+#    points failed the build over a character no reader can see (2026-09-27).
+#    Planted here: a U+2011 inside a registered phrase and a U+00A0 inside
+#    another. The guard must still pass...
+build_fixture "$TMP/case"
+F="$TMP/case/$RES/en.lproj/Localizable.strings"
+A="$TMP/case/scripts/telemetry_disclosure.allow"
+B="$(shasum "$F" | cut -d' ' -f1)"
+perl -CSD -pi -e 's/the helper connected/the helper re\x{2011}connected/g; s/found a CLI/found\x{00A0}a CLI/g' "$F"
+perl -pi -e 's/^helperConnected  \| helper connected /helperConnected  | helper re-connected /' "$A"
+if assert_changed "wrap-only characters" "$F" "$B"; then
+    if grep -q "helper re-connected" "$A" && python3 "$GUARD" --root "$TMP/case" >/dev/null 2>&1; then
+        echo "ok:   [wrap-only characters] U+2011 and U+00A0 read as - and space."
+        pass=$((pass + 1))
+    else
+        echo "FAIL: [wrap-only characters] guard rejected copy that differs only in how it wraps."
+        python3 "$GUARD" --root "$TMP/case" 2>&1 | sed 's/^/      /'
+        fail=$((fail + 1))
+    fi
+fi
+#    ...and the same tree with the word actually gone must still fail, so the
+#    normalisation cannot have made the phrase check vacuous.
+perl -CSD -pi -e 's/the helper re\x{2011}connected, and //g' "$F"
+expect_fail "wrap-only characters, phrase gone" "helperConnected"
+
 # ── 6b. the catalogue going missing must not be a silent pass ─────────────
 build_fixture "$TMP/case"
 rm "$TMP/case/$RES/en.lproj/Localizable.strings"

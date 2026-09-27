@@ -114,9 +114,24 @@ def parse_cases(block: str) -> list[str]:
     return names
 
 
+# Characters that change how a line wraps and nothing about what it says. The
+# copy writes "Wi‑Fi" with U+2011 NON-BREAKING HYPHEN so the word never splits
+# across lines; to a reader that is the same word as the registry's "Wi-Fi",
+# and it must be the same word to this guard, or keeping a word whole breaks
+# the build the day it lands (it did, 2026-09-27).
+TYPOGRAPHIC = str.maketrans({
+    "‐": "-",   # HYPHEN
+    "‑": "-",   # NON-BREAKING HYPHEN
+    " ": " ",   # NO-BREAK SPACE
+    " ": " ",   # NARROW NO-BREAK SPACE
+    "⁠": None,  # WORD JOINER
+})
+
+
 def collapse(text: str) -> str:
-    """Whitespace-collapsed source, so a line-wrapped Swift literal matches."""
-    return re.sub(r"\s+", " ", text.replace("\\\n", " "))
+    """Whitespace-collapsed source, so a line-wrapped Swift literal matches,
+    with wrap-only characters read as the plain ones they stand for."""
+    return re.sub(r"\s+", " ", text.replace("\\\n", " ").translate(TYPOGRAPHIC))
 
 
 def main() -> int:
@@ -151,7 +166,7 @@ def main() -> int:
         if len(parts) != 3:
             print(f"FATAL: malformed registry line: {raw}", file=sys.stderr)
             return 2
-        registry[parts[0]] = parts[1]
+        registry[parts[0]] = collapse(parts[1])
 
     # Check 3: each surface must still render its localized copy.
     unrendered: list[str] = []
