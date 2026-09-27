@@ -78,7 +78,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import appstore_listing as listing  # noqa: E402
-from asc_push_listing import EDITABLE_STATES  # noqa: E402
+from asc_push_listing import EDITABLE_STATES, version_state  # noqa: E402
 
 # Imported when App Store Connect is actually contacted (_deps), so the tests
 # run on a bare python3 with a stand-in for `requests`.
@@ -236,7 +236,7 @@ def create_version(platform_key: str, version: str, apply: bool,
     ver = find_version(plat, version)
     if ver:
         print(f"[{plat}] version {version} exists: {ver['id']} "
-              f"state={ver['attributes'].get('appStoreState')} — nothing to create")
+              f"state={version_state(ver['attributes'])} — nothing to create")
         return True
     if not apply:
         print(f"[{plat}] DRY RUN — version {version} does not exist; --apply would create it "
@@ -278,6 +278,11 @@ def _check_build(plat: str, build_id: str, version: str) -> tuple[str, list[str]
     problems = []
     if state != "VALID":
         problems.append(f"build {build_id} is {state}, not VALID: still processing, or rejected")
+    # A build whose platform or version the store did not report cannot be
+    # checked, so it is refused rather than attached on trust.
+    if not pre.get("platform") or not pre.get("version"):
+        problems.append(f"build {build_id}: App Store Connect did not say which platform and "
+                        "version it belongs to (no preReleaseVersion), so it cannot be checked")
     if pre.get("platform") and pre["platform"] != plat:
         problems.append(f"build {build_id} belongs to {pre['platform']}, not {plat}")
     if pre.get("version") and pre["version"] != version:
@@ -309,7 +314,7 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
               "listing (asc_push_listing.py). Nothing was written.")
         return False
     ver_id = ver["id"]
-    state = ver["attributes"].get("appStoreState")
+    state = version_state(ver["attributes"])
     print(f"[{plat}] version {version}  id={ver_id}  state={state}")
     if state not in EDITABLE_STATES:
         refusals.append(f"version {version} is {state}; What's New can only be set while it is "

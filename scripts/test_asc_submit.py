@@ -351,11 +351,20 @@ try:
         code, out = submit(f, "ios", NOTES, "--apply")
         check(f"{name} is refused with zero writes", code == 1 and not f.writes and needle in out,
               out)
+    f = FakeASC(build={"version": "108", "processingState": "VALID", "pre": {}})
+    code, out = submit(f, "ios", NOTES, "--apply")
+    check("a build the store gives no platform or version for is refused with zero writes",
+          code == 1 and not f.writes and "cannot be checked" in out, out)
     f = FakeASC()
     f.builds = {}
     code, out = submit(f, "ios", NOTES, "--apply")
     check("a build id that does not exist is refused with zero writes",
           code == 1 and not f.writes and "does not exist" in out, out)
+    f = FakeASC()
+    f.versions["v1"]["appVersionState"] = f.versions["v1"].pop("appStoreState")
+    code, out = submit(f, "ios", NOTES)
+    check("the version state falls back to appVersionState, as in asc_push_listing",
+          code == 0 and not f.writes and "state=PREPARE_FOR_SUBMISSION" in out, out)
 
     # 11. texts that fail the checks never reach the store
     def planted(name: str, file: str, edit) -> Path:
