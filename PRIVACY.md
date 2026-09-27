@@ -67,9 +67,9 @@ Pulse deletes it**; reinstalling produces a new, unrelated one. We cannot connec
 it to you, and we cannot connect two installs to each other.
 
 **Turning it off:** Settings → Privacy → "Send anonymous install statistics".
-Off means nothing is sent at all. **Local-only mode also turns it off** — you do
-not need to set both. The app tells you about this on first launch, before it
-sends anything.
+Off means nothing is sent at all. **Strict privacy mode (called Local-only mode
+in earlier versions) also turns it off** — you do not need to set both. The app
+tells you about this on first launch, before it sends anything.
 
 ---
 
@@ -202,7 +202,7 @@ than scanning locally. Signing out does not revoke it — use the Settings toggl
   activity" toggle. Off by default; the toggle stops uploads immediately.
 - **Disable anonymous install statistics:** Settings → Privacy → "Send
   anonymous install statistics". On by default, disclosed on first launch
-  before anything is sent. Local-only mode disables it too.
+  before anything is sent. Strict privacy mode disables it too.
 - **Delete API keys:** Remove any provider config in Settings → Providers;
   the Keychain entry is deleted.
 - **Delete your account:** Settings → Account → Delete Account purges the

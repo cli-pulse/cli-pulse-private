@@ -62,6 +62,83 @@ final class MacSettingsCopyTests: XCTestCase {
         }
     }
 
+    /// The third welcome bullet reused the privacy page's card title, which has
+    /// no final stop, under two bullets that end in one.
+    func test_theSetupWelcomeBullets_allEndAsSentences() {
+        eachLocalization { localization in
+            let bullets = [L10n.onboardingWizard.welcomeTrackingBody,
+                           L10n.onboardingWizard.welcomeAccountsBody,
+                           L10n.onboardingWizard.welcomeKeysBody]
+            for bullet in bullets {
+                XCTAssertFalse(bullet.hasPrefix("onboarding_wizard."), "\(localization) renders the raw key")
+                XCTAssertTrue(bullet.hasSuffix(".") || bullet.hasSuffix("。"), "\(localization): \(bullet)")
+            }
+            XCTAssertNotEqual(L10n.onboardingWizard.welcomeKeysBody,
+                              L10n.onboardingWizard.privacyKeysTitle, localization)
+        }
+    }
+
+    /// Settings had two sections called "Privacy": the card at the top of
+    /// every page, with the switches, and a header inside Advanced over the
+    /// where-your-data-goes rows. "Settings › Privacy" in the statistics and
+    /// scan-consent copy could mean either.
+    func test_onlyOneSettingsSectionIsCalledPrivacy() {
+        eachLocalization { localization in
+            XCTAssertFalse(L10n.advanced.dataTitle.hasPrefix("advanced."), "\(localization) renders the raw key")
+            XCTAssertNotEqual(L10n.advanced.dataTitle, L10n.settings.privacy, localization)
+        }
+    }
+
+    /// Settings › Privacy had a switch called "Local-only mode", and the
+    /// no-account way of using the app is "local mode" everywhere else. A
+    /// signed-in user reading the switch would think it stops syncing, which it
+    /// does not: it skips other apps' credentials and turns off the anonymous
+    /// statistics. The switch no longer says "local", and the three strings
+    /// that refer to it by name use its current name.
+    func test_thePrivacySwitch_isNotNamedLikeLocalMode() {
+        let localWord = ["en": "local", "es": "local", "ja": "ローカル", "ko": "로컬",
+                         "zh-Hans": "本地", "zh-Hant": "本機"]
+        eachLocalization { localization in
+            let name = L10n.settings.localOnlyMode
+            XCTAssertNotNil(localWord[localization], "\(localization) has no entry here")
+            let word = localWord[localization] ?? "?"
+            XCTAssertTrue(L10n.welcomeChoice.localModeTitle.localizedCaseInsensitiveContains(word),
+                          "\(localization): control, the local-mode title no longer says \(word)")
+            XCTAssertFalse(name.localizedCaseInsensitiveContains(word), "\(localization): \(name)")
+            for reference in [L10n.telemetry.toggleLocalOnly,
+                              L10n.telemetry.disclosureBodyLocalOnly,
+                              L10n.settings.skipClaudeKeychainForced] {
+                XCTAssertTrue(reference.localizedCaseInsensitiveContains(name),
+                              "\(localization): \"\(reference)\" does not name the switch \"\(name)\"")
+            }
+        }
+    }
+
+    /// The iPhone's usage heatmap is the history synced to the account, fetched
+    /// from the server. It was captioned with the Mac's "Claude + Codex local
+    /// history", which is what the Mac's own heatmap holds and was not true on
+    /// the phone.
+    func test_theIPhoneHeatmap_hasItsOwnCaptions() {
+        eachLocalization { localization in
+            XCTAssertFalse(L10n.usageDashboard.scopeSynced.hasPrefix("usage_dashboard."), localization)
+            XCTAssertFalse(L10n.usageDashboard.emptySynced.hasPrefix("usage_dashboard."), localization)
+            XCTAssertNotEqual(L10n.usageDashboard.scopeSynced, L10n.usageDashboard.scope, localization)
+            XCTAssertNotEqual(L10n.usageDashboard.emptySynced, L10n.usageDashboard.empty, localization)
+            XCTAssertFalse(L10n.usageDashboard.scopeSynced.contains("Codex"), localization)
+        }
+    }
+
+    /// The English legend and helper hint were rewritten without the file
+    /// format ("JSONL") and the internal "local fast path"; five catalogues kept
+    /// translating the old wording.
+    func test_theSessionsHints_doNotNameTheFileFormat() {
+        eachLocalization { localization in
+            XCTAssertFalse(L10n.sessions.freshnessLegend.contains("JSONL"),
+                           "\(localization): \(L10n.sessions.freshnessLegend)")
+            XCTAssertFalse(L10n.sessions.startHelperHint.isEmpty, localization)
+        }
+    }
+
     /// The refresh picker showed "1m" … "30m" in every language, which reads as
     /// metres in Chinese and Japanese.
     func test_theRefreshIntervals_areInTheReadersMinutes() {
@@ -148,6 +225,21 @@ final class MacSettingsCopyTests: XCTestCase {
             XCTAssertTrue(entries.contains { $0.value.contains("Wi\u{2011}Fi") }, "\(localization): control, no Wi\u{2011}Fi found")
             for (key, value) in entries {
                 XCTAssertFalse(value.contains("Wi-Fi"), "\(localization) \(key): \(value)")
+            }
+        }
+    }
+
+    /// "Apple Watch" broke at its space in the Chinese, Japanese and Korean
+    /// setup copy, "Apple" ending one line and "Watch" starting the next. Those
+    /// catalogues write it with a no-break space (U+00A0), so the name moves to
+    /// the next line whole. English and Spanish break at spaces anyway and keep
+    /// the plain one.
+    func test_appleWatch_isNeverSplitInCJKOrKorean() throws {
+        for localization in ["ja", "ko", "zh-Hans", "zh-Hant"] {
+            let entries = try values(localization)
+            XCTAssertTrue(entries.contains { $0.value.contains("Apple\u{00A0}Watch") }, "\(localization): control, none found")
+            for (key, value) in entries {
+                XCTAssertFalse(value.contains("Apple Watch"), "\(localization) \(key): \(value)")
             }
         }
     }

@@ -666,19 +666,11 @@ struct EnhancedProviderCard: View {
                                 ?? config.kind.rawValue
                         )
                     )
-                } else if accountConfigs.count > 1 {
-                    Text(
-                        L10n.providers.accountsCount(
-                            accountConfigs.count
-                        )
-                    )
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(Color.secondary.opacity(0.1))
-                    .clipShape(Capsule())
                 }
+                // More than one account: no count badge here. The accounts row
+                // below (`ProviderAccountQuotaSummaryView`) is shown in exactly
+                // that case and already opens with "2 accounts", so a badge said
+                // it twice, one line apart.
             }
 
             // v1.44 W3: what actually happened to this provider's collector.

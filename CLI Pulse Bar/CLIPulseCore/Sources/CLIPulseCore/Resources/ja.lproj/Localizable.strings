@@ -30,9 +30,9 @@
 "welcome_choice.title" = "CLI Pulse へようこそ";
 "welcome_choice.subtitle" = "AI ツールの使用状況を追跡する方法を選んでください。";
 "welcome_choice.sign_in_title" = "サインインして同期";
-"welcome_choice.sign_in_body" = "同じアカウントの iPhone、Apple Watch、その他のデバイスで使用状況を追跡します。";
+"welcome_choice.sign_in_body" = "同じアカウントの iPhone、Apple Watch、その他のデバイスで使用状況を追跡します。";
 "welcome_choice.local_mode_title" = "ローカルモードを使用";
-"welcome_choice.local_mode_body" = "この Mac の使用状況のみ追跡します — アカウント不要、何もアップロードしません。";
+"welcome_choice.local_mode_body" = "この Mac の使用状況だけを追跡します。アカウントは不要で、何もアップロードしません。";
 "welcome_choice.footnote" = "モードはいつでも設定から切り替えられます。";
 "dashboard.usage_today" = "今日の使用量";
 "dashboard.cost_today" = "今日のコスト";
@@ -518,7 +518,7 @@
 "provider_config.cap_exact_cost" = "正確なコスト";
 "provider_config.cap_credits" = "クレジット";
 "provider_config.cap_status_poll" = "ステータス取得";
-"provider_config.requires_helper_sync" = "クォータ・ティアデータにはバックエンドヘルパー同期が必要です。";
+"provider_config.requires_helper_sync" = "クォータとプランの情報は、ヘルパーがサーバーと同期すると表示されます。";
 "provider_config.google_oauth" = "Google OAuth";
 "provider_config.disconnect" = "接続解除";
 "provider_config.connect_gemini" = "Gemini に接続";
@@ -537,6 +537,7 @@
 "onboarding_wizard.welcome_subtitle" = "AI コーディングツールの使用量、\nコスト、クォータを一カ所で監視。";
 "onboarding_wizard.welcome_accounts_body" = "Codex、Claude、Gemini の個人用・仕事用アカウントを検出して、それぞれ設定します。";
 "onboarding_wizard.welcome_tracking_body" = "使用量をデバイス間で同期することも、この Mac だけに留めることもできます。";
+"onboarding_wizard.welcome_keys_body" = "API キーはこの Mac の外に出ません。";
 "onboarding_wizard.get_started" = "はじめる";
 "onboarding_wizard.what_does" = "CLI Pulse でできること";
 "onboarding_wizard.continue" = "続ける";
@@ -544,7 +545,7 @@
 "onboarding_wizard.privacy_title" = "あなたのデータ、あなたの管理";
 "onboarding_wizard.privacy_body" = "Mac に残るデータと、アカウントに同期されるデータを正確に説明します。";
 "onboarding_wizard.sign_in_title" = "サインイン";
-"onboarding_wizard.sign_in_subtitle" = "サインインしてデータを同期 — 初回認証時にアカウントが作成されます。";
+"onboarding_wizard.sign_in_subtitle" = "サインインしてデータを同期します。初めての方は、メールアドレスを確認した時点でアカウントが作成されます。";
 "onboarding_wizard.skip" = "今はスキップ";
 "onboarding_wizard.code_sent_to" = "%@ にコードを送信しました";
 "onboarding_wizard.verify" = "認証";
@@ -553,14 +554,14 @@
 "onboarding_wizard.all_set_body" = "Mac アプリの実行中は同期が自動で行われます。同じアカウントで他のデバイスにサインインすれば、ペアリングや設定なしで使用状況がそこにも表示されます。";
 "onboarding_wizard.helper_hint" = "メニューバーから claude、codex、gemini のセッションを操作したい場合は、セットアップ後に「設定 › Companion CLI」でオプションのヘルパーをインストールしてください。";
 "onboarding_wizard.done" = "完了";
-"onboarding_wizard.close" = "オンボーディングを閉じる";
+"onboarding_wizard.close" = "セットアップを閉じる";
 "onboarding_wizard.step_progress" = "全 %2$d ステップ中 %1$d ステップ目: %3$@";
 "onboarding_wizard.find_agents" = "エージェントを探す";
 "onboarding_wizard.set_up_later" = "後で設定";
 "onboarding_wizard.privacy_direct_title" = "使用量はプロバイダーへ直接問い合わせます";
 "onboarding_wizard.privacy_direct_detail" = "CLI Pulse は、アカウントを接続した後にのみ、各プロバイダーにクォータとプランのメタデータを要求します。";
 "onboarding_wizard.privacy_raw_title" = "セッションの生データはアップロードされません";
-"onboarding_wizard.privacy_raw_detail" = "ローカルログはこの Mac 上で処理されます。同期モードでアップロードされるのは、正規化された使用量、クォータ、コスト、モデル、タイムスタンプの各フィールドのみです。";
+"onboarding_wizard.privacy_raw_detail" = "ローカルログはこの Mac 上で処理されます。同期モードでアップロードされるのは、使用量・クォータ・コスト・モデル名・タイムスタンプの集計値だけです。";
 "onboarding_wizard.discovery_title" = "お使いのコーディングエージェント";
 "onboarding_wizard.discovery_subtitle" = "このパッシブスキャンでは、インストール済みの CLI、既知の設定パス、以前に許可したフォルダアクセス、既存の CLI Pulse メタデータを確認します。キーチェーンやブラウザを開いたり、ネットワークに接続したりすることはありません。";
 "onboarding_wizard.scanning" = "Codex、Claude、Gemini を探しています…";
@@ -575,10 +576,10 @@
 "onboarding_wizard.connection_subtitle" = "接続は常にユーザー自身の操作で開始されます。アカウント設定を開くと、プロバイダーの認証情報やブラウザでのサインインを求められることがあります。";
 "onboarding_wizard.connection_optional" = "このまま続行し、残りのアカウントは後で接続できます。";
 "onboarding_wizard.open_account_settings" = "アカウント設定を開く";
-"onboarding_wizard.mode_title" = "CLI Pulse の動作モードを選択";
+"onboarding_wizard.mode_title" = "CLI Pulse の同期方法を選択";
 "onboarding_wizard.mode_subtitle" = "この選択で変わるのは同期の動作だけで、プロバイダーの認証情報の保存方法は変わりません。";
 "onboarding_wizard.sync_mode_title" = "デバイス間で同期";
-"onboarding_wizard.sync_mode_body" = "サインインすると、正規化されたメトリクスを iPhone と Apple Watch に同期します。プロバイダーの認証情報がこの Mac から出ることはありません。";
+"onboarding_wizard.sync_mode_body" = "サインインすると、使用量の集計を iPhone と Apple Watch に同期します。プロバイダーの認証情報がこの Mac から出ることはありません。";
 "onboarding_wizard.local_only_title" = "この Mac のみ";
 "onboarding_wizard.local_only_body" = "データ収集とダッシュボードはこの Mac 内だけで使います。クラウド同期は行いません。後からサインインできます。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse アカウントにサインイン済みで、同期の準備ができています。";
@@ -586,7 +587,7 @@
 "onboarding_wizard.finish_title" = "エージェント設定の準備完了";
 "onboarding_wizard.finish_body" = "選択したアカウントを確認してから完了してください。エージェント設定は「設定」から再実行できます。";
 "onboarding_wizard.finish_local_body" = "後でサインインするまで、使用状況はこの Mac 内に留まります。";
-"onboarding_wizard.finish_sync_body" = "正規化された使用量が、この CLI Pulse アカウントでサインインしているデバイスに同期されます。";
+"onboarding_wizard.finish_sync_body" = "使用量の集計が、この CLI Pulse アカウントでサインインしているデバイスに同期されます。";
 "onboarding_wizard.plan_unconfirmed" = "プラン未確認";
 "onboarding_wizard.default_account" = "デフォルトアカウント";
 "onboarding_wizard.enable_monitoring" = "監視を有効にする";
@@ -610,7 +611,7 @@
 /* ── 詳細設定 ── */
 "advanced.launch_at_login" = "ログイン時に起動";
 "advanced.background_sync" = "バックグラウンド同期を有効化";
-"advanced.background_sync_hint" = "iOS/Watch/Android 用にクラウドへ使用状況を同期";
+"advanced.background_sync_hint" = "iPhone、Apple Watch、Android 用にクラウドへ使用状況を同期";
 "advanced.full_details" = "詳細:";
 "advanced.hide_emails" = "UI でメールアドレスを非表示";
 "advanced.track_git" = "Git アクティビティを追跡（Yield Score）";
@@ -619,7 +620,7 @@
 "advanced.enable" = "有効化";
 "advanced.git_consent_body" = "CLI Pulse は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
 "advanced.remote_control" = "他のデバイスからの Mac 操作リクエスト";
-"advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます · デフォルトはオフ";
+"advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます。デフォルトはオフです。";
 "advanced.remote_consent_title" = "Mac 操作リクエストを許可しますか？";
 "advanced.token" = "認証トークン";
 "advanced.providers_loaded" = "プロバイダー読み込み済み";
@@ -646,7 +647,7 @@
 "menu_bar.quit" = "CLI Pulse を終了";
 
 /* ── ペアリング ── */
-"pairing.helper_intro" = "バックグラウンドヘルパーは使用状況をクラウドに同期し、iOS、Watch、Android で確認できるようにします。";
+"pairing.helper_intro" = "バックグラウンドヘルパーは使用状況をクラウドに同期し、iPhone、Apple Watch、Android で確認できるようにします。";
 "pairing.set_up_helper" = "バックグラウンドヘルパーをセットアップ";
 "pairing.manual_setup" = "手動セットアップ（ターミナル）";
 "pairing.your_code" = "コード:";
@@ -727,11 +728,12 @@
 "advanced.helper_running" = "実行中";
 "advanced.helper_not_running" = "停止中";
 "advanced.privacy_keys_title" = "プロバイダー API キーと Cookie";
-"advanced.privacy_keys_detail" = "macOS のキーチェーンにのみ保存 · アップロードされません";
+"advanced.privacy_keys_detail" = "macOS のキーチェーンにのみ保存され、アップロードされません";
+"advanced.data_title" = "データの行き先";
 "advanced.privacy_logs_title" = "セッションログ（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "CLI Pulse にアクセスを許可したフォルダだけを、この Mac 上でスキャン";
 "advanced.privacy_metrics_title" = "使用量メトリクス（トークン数、コスト、モデル名）";
-"advanced.privacy_metrics_detail" = "iPhone と Apple Watch 用に CLI Pulse アカウントへ同期";
+"advanced.privacy_metrics_detail" = "iPhone と Apple Watch 用に CLI Pulse アカウントへ同期";
 "advanced.privacy_email_title" = "サインイン用メールアドレス";
 "advanced.privacy_email_detail" = "サインイン用に認証バックエンドへ送信";
 "onboarding_wizard.privacy_keys_title" = "API キーはこの Mac に留まります";
@@ -739,7 +741,7 @@
 "onboarding_wizard.privacy_logs_title" = "セッションログはデバイス内でスキャン";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse は ~/.codex/sessions/ と ~/.claude/projects/ をローカルで読み取ってトークン数を計算します。ファイル内容がデバイスから出ることはありません。";
 "onboarding_wizard.privacy_metrics_title" = "使用量メトリクスはアカウントと同期";
-"onboarding_wizard.privacy_metrics_detail" = "トークン数、コスト推定、モデル名、日付が CLI Pulse アカウントに送信され、iPhone と Apple Watch で同じ履歴を表示できます。";
+"onboarding_wizard.privacy_metrics_detail" = "トークン数、コスト推定、モデル名、日付が CLI Pulse アカウントに送信され、iPhone と Apple Watch で同じ履歴を表示できます。";
 
 /* ── Apple 共有 PDF レポート ── */
 "pdf.title" = "CLI Pulse 月次レポート";
@@ -845,7 +847,7 @@
 "machine.cycles_fmt" = "%@ 回";
 "machine.top_processes" = "上位プロセス";
 "machine.no_processes" = "プロセスデータなし";
-"machine.helper_unavailable" = "ヘルパーに接続できません — マシンの状態を表示するには CLI Pulse ヘルパーの実行が必要です。";
+"machine.helper_unavailable" = "ヘルパーに接続できません。マシンの状態を表示するには、ヘルパーを実行してください。";
 "machine.no_sensors_devid" = "この Mac では詳細センサー（温度・ファン・電力）を利用できません。";
 "machine.mas_affordance" = "詳細センサー（温度・ファン・電力）には直接ダウンロード版（Developer ID）が必要です。App Store 版はサンドボックス制限のため読み取れません。";
 "machine.thermal_nominal" = "正常";
@@ -946,6 +948,8 @@
 "usage_dashboard.open" = "使用状況ダッシュボードを開く";
 "usage_dashboard.scope" = "Claude + Codex ローカル履歴";
 "usage_dashboard.empty" = "ローカル使用履歴がまだありません";
+"usage_dashboard.scope_synced" = "CLI Pulse アカウントに同期済み";
+"usage_dashboard.empty_synced" = "同期された使用履歴はまだありません";
 "usage_dashboard.total_tokens" = "総トークン";
 "usage_dashboard.total_cost" = "総コスト";
 "usage_dashboard.active_days" = "アクティブ日数";
@@ -1133,9 +1137,9 @@
 "local_scan_consent.files_title" = "直近 30 日のセッションログ";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "そこから割り出すもの";
-"local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。加えて各会話のファイルパス、プロジェクトフォルダ、セッション ID — セッション一覧に名前が付くのはこれらがあるからです。";
+"local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。さらに、セッション一覧に名前を表示するため、各会話のファイルパス、プロジェクトフォルダ、セッション ID も使います。";
 "local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
-"local_scan_consent.network_detail" = "残量をリアルタイムで表示するため、各 CLI がこの Mac に保存したトークンを使ってプロバイダーに問い合わせます。期限切れのトークンを更新すると、その CLI の認証ファイルが書き換わります。";
+"local_scan_consent.network_detail" = "リアルタイムの残量を表示するため、各 CLI がこの Mac に保存したトークンを使ってプロバイダーに問い合わせます。期限が切れたトークンを CLI Pulse が更新すると、その CLI の認証ファイルが書き換わります。";
 "local_scan_consent.keychain_title" = "キーチェーン内の Claude Code のトークン";
 "local_scan_consent.keychain_detail" = "macOS が最初に一度だけ確認します。拒否しても失われるのは Claude の残量表示だけです。";
 "local_scan_consent.telemetry_title" = "匿名の統計情報は別扱いです";
@@ -1152,10 +1156,10 @@
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名インストール統計";
 "telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
-"telemetry.disclosure_body_local_only" = "ローカルのみモードがオンなので、CLI Pulse は何も送信しません。オフにした場合は、次の4段階と現在表示している言語を報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
+"telemetry.disclosure_body_local_only" = "プライバシー強化モードがオンなので、CLI Pulse は何も送信しません。オフにした場合は、次の4段階と現在表示している言語を報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
 "telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。ID はランダムで、アンインストールすると削除されます。";
 "telemetry.toggle" = "匿名インストール統計を送信";
-"telemetry.toggle_local_only" = "オフ — ローカルのみモードがこれも対象にしています。";
+"telemetry.toggle_local_only" = "オフ（プライバシー強化モードでこれもオフになります）";
 "telemetry.got_it" = "OK";
 "telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
 "telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムで、アンインストールすると削除されます。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
@@ -1234,7 +1238,7 @@
 "sessions.local_pill_active" = "ローカル: 有効";
 "sessions.local_pill_off" = "ローカル: オフ";
 "sessions.new_local_help" = "ローカルヘルパー経由でこの Mac 上に新しい Claude Code セッションを起動します（UDS、Supabase を経由しません）。";
-"sessions.start_helper_hint" = "ローカルヘルパーを起動すると、ローカル高速パスで Claude セッションを操作できます。";
+"sessions.start_helper_hint" = "ローカルヘルパーを起動すると、この Mac で Claude のセッションを直接操作できます。";
 "sessions.wrap_terminal_title" = "ターミナルセッションを取り込む";
 "sessions.wrapped_empty" = "取り込まれたセッションはまだありません。新しいターミナルを開いて `claude` または `codex` を実行すると、ここに表示されアタッチできます。";
 "sessions.shell_integration_on" = "シェル統合: オン";
@@ -1253,7 +1257,7 @@
 "sessions.detected_footer" = "これらの Claude セッションはこの Mac で実行中ですが、CLI Pulse から起動されたものではないため、ヘルパーは安全に入力を送ったり停止したりできません。起動元のターミナルで操作してください。";
 "sessions.section_active" = "アクティブ";
 "sessions.section_recent" = "最近 · 過去 30 分";
-"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近の活動 = 5 分以内に JSONL への書き込みあり。最近 = 30 分以内に JSONL への書き込みあり。";
+"sessions.freshness_legend" = "実行中 = プロセスを確認済み。最近の活動 = 過去 5 分以内にログを記録。最近 = 過去 30 分以内にログを記録。";
 "sessions.send" = "送信";
 "sessions.approve_help" = "このローカルセッションに紐づく保留中の Claude 権限リクエストを承認します（⌘↩）。";
 "sessions.reject_help" = "保留中の Claude 権限リクエストを拒否します。Claude は別の判断を待ち続けるか、自身のプロンプトに戻ります。";
@@ -1373,10 +1377,10 @@
 "app_updater.install_update_quits" = "アップデートをインストール（CLI Pulse を終了します）";
 "local_scan_consent.settings_toggle" = "この Mac の CLI 使用状況をスキャン";
 "local_scan_consent.settings_toggle_detail" = "~/.codex と ~/.claude にある直近 30 日のセッションログを読み取り、利用中のプロバイダーにリアルタイムの残量を問い合わせます。オフにすると、CLI Pulse はこの Mac の何も読み取りません。";
-"settings.local_only_mode" = "ローカルのみモード";
-"settings.local_only_mode_hint" = "アプリをまたぐデータソースをすべてスキップします。ホームフォルダ内のファイルによる使用量データは引き続き利用できます。";
+"settings.local_only_mode" = "プライバシー強化モード";
+"settings.local_only_mode_hint" = "CLI Pulse が Claude Code のキーチェーン項目を自動で読み取ることはなく、匿名の統計情報も送信しません。ホームフォルダ内のログファイルからの使用量と、アカウントへの同期はそのまま使えます。";
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
-"settings.skip_claude_keychain_forced" = "ローカルのみモードにより強制的にオンになっています。";
+"settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "他のアプリが所有する Claude Code の OAuth 認証情報を CLI Pulse が読み取らないようにします。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
 "settings.block_claude_on_outdated_helper" = "ヘルパーが古い場合は管理対象の Claude をブロック";
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI ヘルパーが古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフで、警告が表示されるだけです。";

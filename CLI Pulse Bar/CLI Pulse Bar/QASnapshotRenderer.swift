@@ -662,6 +662,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         await capture(
             panel, surface: surface, index: index,
             note: "Panel content with the Demo archive (DemoDataProvider.dailyUsage), 480 points wide."
+                + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
+                + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
+                + " so the \"Claude + Codex\" caption is true there. The headline counts up over 2.2 s."
         )
     }
 

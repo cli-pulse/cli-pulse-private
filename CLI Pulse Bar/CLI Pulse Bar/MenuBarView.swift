@@ -267,12 +267,21 @@ struct MenuBarView: View {
     /// always did, with scrolling off. The wizard keeps its place in the view
     /// tree either way, so acknowledging the card does not reset a step or a
     /// half-typed sign-in.
+    ///
+    /// Scrolling is turned off by giving the scroll view no axes, not with
+    /// `.scrollDisabled`. That modifier travels down the environment and, as
+    /// documented from macOS 13, disables every scroll view inside too: the
+    /// wizards' own page lists (the account list on the discovery page shows
+    /// about two of five accounts at the default height). macOS 27 happens to
+    /// spare a nested list; macOS 13 and 14, which this app supports, were not
+    /// measured, and the axes cannot disable anything but this one view. It is
+    /// the same `ScrollView` type either way, so the wizard keeps its identity.
     private func scrollingUnderDisclosure<Wizard: View>(
         @ViewBuilder _ wizard: () -> Wizard
     ) -> some View {
         let content = wizard()
         return GeometryReader { viewport in
-            ScrollView(.vertical) {
+            ScrollView(telemetryDisclosureSeen ? [] : .vertical) {
                 VStack(spacing: 0) {
                     if !telemetryDisclosureSeen {
                         telemetryDisclosureCard(explanationMaxHeight: nil)
@@ -281,7 +290,6 @@ struct MenuBarView: View {
                         .frame(height: viewport.size.height)
                 }
             }
-            .scrollDisabled(telemetryDisclosureSeen)
         }
     }
 

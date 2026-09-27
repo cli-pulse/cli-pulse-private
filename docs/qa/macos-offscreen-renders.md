@@ -137,7 +137,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `window-about` | About |
 | `window-subscription` | Subscription (the QA build loads no StoreKit products); drawn at 460×700 |
 | `window-provider-codex`, `-claude`, `-gemini` | Provider account editor |
-| `panel-usage-dashboard` | The usage dashboard panel that slides out of the popover, dark as always. Drawn from the Demo archive so its layout can be read with data; the real panel, and the Overview's usage card, read this Mac's local-scan archive, which the QA home leaves empty |
+| `panel-usage-dashboard` | The usage dashboard panel that slides out of the popover, dark as always. Drawn from the Demo archive so its layout can be read with data; the real panel, and the Overview's usage card, read this Mac's local-scan archive, which the QA home leaves empty. The Demo archive has Gemini in it and the local-scan archive never does (the scanner records Claude and Codex), so the "Claude + Codex" caption over Gemini rows is the render's, not the app's. The headline number counts up for 2.2 seconds and may be caught short of the total below it |
 | `window-first-run-welcome` | Where-the-app-lives window shown once after install |
 | `language-menu` | The globe menu's items, read from its real `NSMenu` (see below) |
 

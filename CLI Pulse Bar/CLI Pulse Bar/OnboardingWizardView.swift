@@ -258,7 +258,7 @@ struct OnboardingWizardView: View {
                 )
                 setupValue(
                     icon: "lock.shield",
-                    text: L10n.onboardingWizard.privacyKeysTitle
+                    text: L10n.onboardingWizard.welcomeKeysBody
                 )
             }
             .padding(.horizontal, 16)

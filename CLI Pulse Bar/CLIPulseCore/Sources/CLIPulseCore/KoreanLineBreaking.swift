@@ -67,7 +67,9 @@ import SwiftUI
 ///   pixel-identical;
 /// - under Korean's own rule on iOS (what the widgets use), SwiftUI breaks at
 ///   the joiner: particle splits went from 104 to 178. On macOS 27 under that
-///   rule it made no difference (45 either way). The Watch was not measured.
+///   rule, in a separate sweep (12 of the strings, widths 90 to 400 points in
+///   steps of 2, 1,872 layouts, drawn in a test process), it made no
+///   difference: 45 either way. The Watch was not measured.
 /// Not adopted. It would put U+2060 into every Korean string the iPhone app
 /// shows, accessibility labels included, and into text that crosses to the
 /// Watch (`DashboardSummary.risk_signals`). What it does to braille output and

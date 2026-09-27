@@ -104,7 +104,7 @@ struct AdvancedSection: View {
                 Divider()
             }
 
-            SectionHeader(title: L10n.settings.privacy, icon: "lock.shield")
+            SectionHeader(title: L10n.advanced.dataTitle, icon: "lock.shield")
 
             VStack(alignment: .leading, spacing: 6) {
                 privacyRow(

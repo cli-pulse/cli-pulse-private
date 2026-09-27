@@ -9,10 +9,27 @@ import CLIPulseCore
 /// never activates — the disclosure is a hard precondition in code, not a
 /// promise in a document.
 ///
-/// It is deliberately not a modal with an OK button. A blocking dialog on
-/// first launch, before the user has seen the app do anything, buys consent
-/// that is really just impatience. This states what happens, offers the switch
-/// inline, and gets out of the way.
+/// It is deliberately not a modal. A blocking dialog on first launch, before
+/// the user has seen the app do anything, buys consent that is really just
+/// impatience. This states what happens and puts the switch next to the text.
+///
+/// On first launch it does come first, and that is a choice with a cost. Above
+/// the setup wizard the card reads in full and the wizard follows it in the
+/// same scroll view (`MenuBarView.scrollingUnderDisclosure`); at the default
+/// 580-point popover only the wizard's page dots and close button show below
+/// the card until it is scrolled or acknowledged. So in practice the way into
+/// the app runs past this text, and "Got it" is the obvious next click. What
+/// keeps that from being the impatient consent a modal would buy:
+/// - nothing is gated on it: the wizard is one scroll away and works with the
+///   card still showing;
+/// - the switch is inline, beside the button, not a Settings trip away;
+/// - nothing is sent until "Got it" is pressed (`hasSeenDisclosure`), whatever
+///   the switch says, so scrolling past the card sends nothing.
+/// The alternative was a card capped at a few lines above the wizard, which
+/// still overflowed the popover on the longer wizard pages and left most of
+/// this text behind a nested scroll. Reading the notice in full was judged
+/// worth the wizard sitting below it; if that changes, collapse the card to a
+/// one-line banner that expands rather than capping its text again.
 struct AnonymousTelemetryDisclosureCard: View {
     @ObservedObject private var settings = PrivacySettings.shared
     /// The tallest the explanation may be before it scrolls inside the card.

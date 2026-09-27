@@ -32,7 +32,7 @@
 "welcome_choice.sign_in_title" = "Inicia sesión para sincronizar";
 "welcome_choice.sign_in_body" = "Registra el uso en el iPhone, el Apple Watch y otros dispositivos con la misma cuenta.";
 "welcome_choice.local_mode_title" = "Usar modo local";
-"welcome_choice.local_mode_body" = "Registra el uso solo en este Mac — sin cuenta, no se sube nada.";
+"welcome_choice.local_mode_body" = "Registra el uso solo en este Mac, sin cuenta y sin subir nada.";
 "welcome_choice.footnote" = "Puedes cambiar de modo en cualquier momento desde Ajustes.";
 "dashboard.usage_today" = "Uso hoy";
 "dashboard.cost_today" = "Costo hoy";
@@ -79,7 +79,7 @@
 "diagnostics.check_notifications" = "Notificaciones";
 "diagnostics.check_realtime" = "Conexión en vivo";
 "diagnostics.fix_paired" = "Inicia sesión y sincroniza tu Mac.";
-"diagnostics.fix_remote_control" = "Activa el control remoto en Ajustes › Privacidad.";
+"diagnostics.fix_remote_control" = "Activa el control remoto en Ajustes › Privacidad.";
 "diagnostics.fix_mac" = "Asegúrate de que tu Mac esté activo, en línea y ejecutando CLI Pulse.";
 "diagnostics.fix_helper" = "Instala o actualiza el helper de CLI Pulse en tu Mac.";
 "diagnostics.fix_notifications" = "Permite las notificaciones para recibir alertas de uso.";
@@ -213,7 +213,7 @@
 "subscription.team_description" = "Supervisión con todas las funciones para equipos";
 "subscription.everything_in_pro" = "Todo lo de Pro";
 "subscription.unlimited_providers" = "Proveedores ilimitados";
-"subscription.home_screen_widgets" = "Widgets de pantalla de inicio y bloqueo (iPhone)";
+"subscription.home_screen_widgets" = "Widgets de la pantalla de inicio y de la pantalla bloqueada (iPhone)";
 "subscription.channel_grant" = "Tu plan Pro viene con la versión de descarga directa / Homebrew: es un regalo para este canal, no una compra. Nada que pagar, nada que cancelar.";
 "subscription.per_year" = "/año";
 "subscription.per_month" = "/mes";
@@ -333,7 +333,7 @@
 /* ── Incorporación / Configuración de sincronización ── */
 /* MARK: - First-run visibility (v1.49) */
 "first_run.title" = "CLI Pulse está en ejecución";
-"first_run.body" = "Busca el icono de CLI Pulse en la barra de menús, en la parte superior de la pantalla. Haz clic para ver tu uso de CLI.";
+"first_run.body" = "Busca el icono de CLI Pulse en la barra de menús, en la parte superior de la pantalla, y haz clic en él para ver el uso de tus CLI.";
 "first_run.dismiss" = "Entendido";
 
 "onboarding.how_it_works" = "Cómo funciona CLI Pulse";
@@ -402,7 +402,7 @@
 "auth.use_password" = "Iniciar sesión con contraseña";
 "auth.password_label" = "Contraseña";
 "auth.use_local_mode" = "Usar modo local";
-"auth.use_local_mode_hint" = "Mostrar el uso solo de este Mac. Inicia sesión más tarde para sincronizar entre dispositivos.";
+"auth.use_local_mode_hint" = "Muestra solo el uso de este Mac. Puedes iniciar sesión más tarde para sincronizar entre dispositivos.";
 "auth.watch_phone_prompt" = "Abre CLI Pulse en tu iPhone para iniciar sesión";
 "auth.watch_phone_unreachable" = "iPhone no disponible. Asegúrate de que CLI Pulse esté abierto en tu iPhone, o inicia sesión manualmente abajo.";
 "auth.watch_complete_sign_in" = "Completar inicio de sesión";
@@ -535,7 +535,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "machine.cycles_fmt" = "%@ ciclos";
 "machine.top_processes" = "Procesos principales";
 "machine.no_processes" = "Sin datos de procesos";
-"machine.helper_unavailable" = "Helper no disponible: el estado de la máquina requiere que el helper de CLI Pulse esté en ejecución.";
+"machine.helper_unavailable" = "No se puede conectar con el helper. El estado de la máquina necesita que esté en ejecución.";
 "machine.no_sensors_devid" = "Los sensores detallados (temperatura, ventiladores, potencia) no están disponibles en este Mac.";
 "machine.mas_affordance" = "Los sensores detallados (temperatura, ventiladores, potencia) requieren la versión de descarga directa (Developer ID). La versión de App Store no puede leerlos por el sandbox.";
 "machine.thermal_nominal" = "Normal";
@@ -636,6 +636,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "usage_dashboard.open" = "Abrir panel de uso";
 "usage_dashboard.scope" = "Historial local de Claude + Codex";
 "usage_dashboard.empty" = "Aún no hay historial de uso local";
+"usage_dashboard.scope_synced" = "Sincronizado con tu cuenta de CLI Pulse";
+"usage_dashboard.empty_synced" = "Aún no hay historial de uso sincronizado";
 "usage_dashboard.total_tokens" = "Tokens totales";
 "usage_dashboard.total_cost" = "Costo total";
 "usage_dashboard.active_days" = "Días activos";
@@ -819,10 +821,11 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.helper_not_running" = "No está en ejecución";
 "advanced.privacy_keys_title" = "Claves API y cookies de proveedores";
 "advanced.privacy_keys_detail" = "Solo se guardan en el Llavero de macOS · nunca se suben";
+"advanced.data_title" = "Adónde van tus datos";
 "advanced.privacy_logs_title" = "Registros de sesión (~/.codex/sessions, ~/.claude/projects)";
 "advanced.privacy_logs_detail" = "Se escanean en este Mac, solo en las carpetas a las que diste acceso a CLI Pulse";
 "advanced.privacy_metrics_title" = "Métricas de uso (recuento de tokens, costo, nombres de modelo)";
-"advanced.privacy_metrics_detail" = "Se sincronizan con tu cuenta de CLI Pulse para iPhone y Apple Watch";
+"advanced.privacy_metrics_detail" = "Se sincronizan con tu cuenta de CLI Pulse para verlas en el iPhone y el Apple Watch";
 "advanced.privacy_email_title" = "Tu correo de inicio de sesión";
 "advanced.privacy_email_detail" = "Se envía a nuestro servidor de autenticación para que puedas iniciar sesión";
 "onboarding_wizard.privacy_keys_title" = "Las claves API se quedan en este Mac";
@@ -892,6 +895,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "onboarding_wizard.welcome_subtitle" = "Supervisa el uso, los costos y las cuotas de tus\nherramientas de programación con IA en un solo lugar.";
 "onboarding_wizard.welcome_accounts_body" = "Detecta y configura cuentas personales y de trabajo para Codex, Claude y Gemini.";
 "onboarding_wizard.welcome_tracking_body" = "Sincroniza el uso entre tus dispositivos o guárdalo solo en este Mac.";
+"onboarding_wizard.welcome_keys_body" = "Las claves API se quedan en este Mac.";
 "onboarding_wizard.get_started" = "Comenzar";
 "onboarding_wizard.what_does" = "Qué hace CLI Pulse";
 "onboarding_wizard.continue" = "Continuar";
@@ -931,7 +935,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "onboarding_wizard.connection_optional" = "Puedes continuar ahora y conectar más tarde las cuentas pendientes.";
 "onboarding_wizard.open_account_settings" = "Abrir ajustes de la cuenta";
 "onboarding_wizard.mode_title" = "Elige cómo se sincroniza CLI Pulse";
-"onboarding_wizard.mode_subtitle" = "Esta elección cambia cómo se sincroniza, no cómo se guardan las credenciales del proveedor.";
+"onboarding_wizard.mode_subtitle" = "Solo cambia la sincronización; las credenciales de los proveedores se guardan igual.";
 "onboarding_wizard.sync_mode_title" = "Sincronizar entre dispositivos";
 "onboarding_wizard.sync_mode_body" = "Inicia sesión para sincronizar métricas normalizadas con el iPhone y el Apple Watch. Las credenciales de los proveedores nunca salen de este Mac.";
 "onboarding_wizard.local_only_title" = "Solo este Mac";
@@ -963,7 +967,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "onboarding_wizard.later" = "Más tarde";
 "advanced.launch_at_login" = "Abrir al iniciar sesión";
 "advanced.background_sync" = "Activar sincronización en segundo plano";
-"advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para iOS/Watch/Android";
+"advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para el iPhone, el Apple Watch y Android";
 "advanced.full_details" = "Detalles completos:";
 "advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
 "advanced.track_git" = "Seguimiento de actividad de git (Yield Score)";
@@ -972,7 +976,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.enable" = "Activar";
 "advanced.git_consent_body" = "CLI Pulse escaneará los registros de git de los proyectos con sesiones de IA activas. Solo salen de tu dispositivo el hash del commit, un HMAC de la ruta del proyecto, la marca de tiempo del commit y un indicador de commit de fusión. Nunca se suben los mensajes de commit, los diffs, las rutas de archivo ni la identidad del autor.";
 "advanced.remote_control" = "Solicitudes de control del Mac desde tus otros dispositivos";
-"advanced.remote_control_hint" = "Permite que tus dispositivos con sesión iniciada pidan a un Mac un impulso del ventilador, el Modo de bajo consumo o Mantener activo · desactivado por defecto";
+"advanced.remote_control_hint" = "Permite que tus dispositivos con sesión iniciada pidan a un Mac un impulso del ventilador, el Modo de bajo consumo o Mantener activo. Desactivado por defecto.";
 "advanced.remote_consent_title" = "¿Permitir solicitudes de control del Mac?";
 "advanced.token" = "Token";
 "advanced.providers_loaded" = "Proveedores cargados";
@@ -1063,7 +1067,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* v1.50 W-C — la decisión previa a cualquier lectura de este Mac */
 "local_scan_consent.title" = "Antes de que CLI Pulse lea este Mac";
-"local_scan_consent.subtitle" = "Todavía no se ha leído nada. Esto es lo que activa iniciar el análisis.";
+"local_scan_consent.subtitle" = "Todavía no se ha leído nada. Esto es lo que se pone en marcha al iniciar el análisis.";
 "local_scan_consent.files_title" = "Registros de sesión de los últimos 30 días";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/ y ~/.config/claude/projects/. CLI Pulse extrae de ahí los registros de uso y guarda el resultado en caché en este Mac.";
 "local_scan_consent.derived_title" = "Lo que deduce de ellos";
@@ -1073,10 +1077,10 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.keychain_title" = "Tu Llavero, para el token de Claude Code";
 "local_scan_consent.keychain_detail" = "macOS te lo pregunta primero, una vez. Rechazarlo solo te cuesta las cifras de cuota de Claude.";
 "local_scan_consent.telemetry_title" = "Las estadísticas anónimas son otra cosa";
-"local_scan_consent.telemetry_detail" = "No forman parte de esta decisión, no llevan rutas de archivo ni nombres de proveedor, y se desactivan en Ajustes › Privacidad.";
+"local_scan_consent.telemetry_detail" = "No forman parte de esta decisión, no llevan rutas de archivo ni nombres de proveedor, y se desactivan en Ajustes › Privacidad.";
 "local_scan_consent.start" = "Iniciar análisis local";
 "local_scan_consent.not_now" = "Ahora no";
-"local_scan_consent.change_later" = "Elijas lo que elijas, puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
+"local_scan_consent.change_later" = "Elijas lo que elijas, puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
 "local_scan_consent.declined_title" = "El análisis local está desactivado";
 "local_scan_consent.declined_body" = "CLI Pulse no está leyendo nada en este Mac, así que todavía no hay nada que mostrar.";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
@@ -1106,12 +1110,12 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "Estadísticas de instalación anónimas";
 "telemetry.disclosure_body" = "CLI Pulse informa hasta dónde llegó: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar. También informa en qué idioma se está mostrando. Si usas el control remoto, añade cuatro datos de sí/no: si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude. Así sabemos dónde deja de funcionar la app: no hay ninguna cuenta de por medio, así que de otro modo no podríamos saberlo.";
-"telemetry.disclosure_body_local_only" = "El modo solo local está activado, así que CLI Pulse no envía absolutamente nada. Sin él, informaría de cuatro pasos: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar, además del idioma en que se muestra. Si usas el control remoto, también informaría de si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude.";
+"telemetry.disclosure_body_local_only" = "El modo de privacidad estricta está activado, así que CLI Pulse no envía absolutamente nada. Sin él, informaría de cuatro pasos: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar, además del idioma en que se muestra. Si usas el control remoto, también informaría de si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude.";
 "telemetry.not_collected" = "Sin rutas de archivos, nombres de proyectos, nombres de proveedores, recuentos de tokens ni importes. Nada que te identifique a ti ni a tu equipo. El id es aleatorio y se elimina al desinstalar.";
 "telemetry.toggle" = "Enviar estadísticas de instalación anónimas";
-"telemetry.toggle_local_only" = "Desactivado — el modo solo local ya cubre esto.";
+"telemetry.toggle_local_only" = "Desactivado: el modo de privacidad estricta ya cubre esto.";
 "telemetry.got_it" = "Entendido";
-"telemetry.change_later" = "Puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
+"telemetry.change_later" = "Puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
 "telemetry.settings_body" = "Hasta dónde llegó la app, sin ninguna cuenta y sin nada que te identifique a ti ni a tu equipo: que CLI Pulse se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar, además del idioma en que se muestra. Si usas el control remoto: si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude. Sin rutas de archivos, nombres de proyectos, nombres de proveedores, recuentos de tokens ni importes. El id es aleatorio y se elimina al desinstalar.";
 
 /* Remote control (LAN, M0) */
@@ -1188,7 +1192,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.local_pill_active" = "local: activa";
 "sessions.local_pill_off" = "local: desactivada";
 "sessions.new_local_help" = "Inicia una nueva sesión de Claude Code en este Mac mediante el helper local (UDS, sin pasar por Supabase).";
-"sessions.start_helper_hint" = "Inicia el helper local para controlar una sesión de Claude por la ruta rápida local.";
+"sessions.start_helper_hint" = "Inicia el helper local para controlar las sesiones de Claude directamente en este Mac.";
 "sessions.wrap_terminal_title" = "Integrar sesiones de terminal";
 "sessions.wrapped_empty" = "Aún no hay sesiones integradas. Abre un terminal nuevo y ejecuta `claude` o `codex`: aparecerá aquí para conectarte.";
 "sessions.shell_integration_on" = "Integración con la shell activada";
@@ -1207,7 +1211,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.detected_footer" = "Estas sesiones de Claude se están ejecutando en este Mac, pero no las inició CLI Pulse, así que el helper no puede enviarles entrada ni detenerlas de forma segura. Úsalas desde el terminal donde se abrieron.";
 "sessions.section_active" = "Activas";
 "sessions.section_recent" = "Recientes · últimos 30 min";
-"sessions.freshness_legend" = "En ejecución = proceso confirmado. Activa = escritura en JSONL en los últimos 5 min. Reciente = escritura en JSONL en los últimos 30 min.";
+"sessions.freshness_legend" = "En ejecución = proceso confirmado. Activa = registro escrito en los últimos 5 min. Reciente = registro escrito en los últimos 30 min.";
 "sessions.send" = "Enviar";
 "sessions.approve_help" = "Aprueba la solicitud de permiso pendiente de Claude vinculada a esta sesión local (⌘↩).";
 "sessions.reject_help" = "Rechaza la solicitud de permiso pendiente de Claude. Claude seguirá esperando otra decisión o recurrirá a su propio aviso.";
@@ -1327,13 +1331,13 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "app_updater.install_update_quits" = "Instalar actualización (cierra CLI Pulse)";
 "local_scan_consent.settings_toggle" = "Analizar el uso de CLI en este Mac";
 "local_scan_consent.settings_toggle_detail" = "Lee los registros de sesión de los últimos 30 días en ~/.codex y ~/.claude y consulta la cuota en tiempo real a los proveedores que usas. Si está desactivado, CLI Pulse no lee nada en este Mac.";
-"settings.local_only_mode" = "Modo solo local";
-"settings.local_only_mode_hint" = "Omite todas las fuentes de datos de otras apps. Los datos de uso de los archivos de tu carpeta de inicio siguen funcionando.";
+"settings.local_only_mode" = "Modo de privacidad estricta";
+"settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta el elemento de Claude Code en el Llavero y no envía estadísticas anónimas. El uso que se lee de los registros de tu carpeta de inicio y la sincronización con tu cuenta siguen igual.";
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
-"settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo solo local.";
+"settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";
 "settings.block_claude_on_outdated_helper" = "Bloquear Claude gestionado si el helper está desactualizado";
-"settings.block_claude_on_outdated_helper_hint" = "Si el helper de Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto — solo verás un aviso.";
+"settings.block_claude_on_outdated_helper_hint" = "Si el helper de Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto: solo verás un aviso.";
 "cost.io_tokens_codexbar_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo. La cifra de «tokens» de CodexBar incluye la caché y la nuestra no, así que los números serán distintos. El costo se calcula en ambos con el precio completo de cada componente y coincide.";
 "cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo.";
 "dashboard.utilized_percent" = "%@%% utilizado";
@@ -1567,7 +1571,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "folder_access.rescan_title" = "Volver a escanear la caché de tokens";
 "folder_access.title" = "Acceso a herramientas CLI";
 "pairing.copy" = "Copiar al portapapeles";
-"pairing.helper_intro" = "El helper en segundo plano sincroniza tus datos de uso con la nube para que puedas verlos en iOS, Watch y Android.";
+"pairing.helper_intro" = "El helper en segundo plano sincroniza tus datos de uso con la nube para que puedas verlos en el iPhone, el Apple Watch y Android.";
 "pairing.manual_setup" = "Configuración manual (Terminal)";
 "pairing.set_up_helper" = "Configurar el helper en segundo plano";
 "pairing.your_code" = "Tu código:";
