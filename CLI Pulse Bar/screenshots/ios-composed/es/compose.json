@@ -6,7 +6,7 @@
   ],
   "02_providers": [
    "Cuotas y costos en vivo",
-   "Descubre cuánto te queda antes de llegar al límite"
+   "Consulta cuánto te queda antes de llegar al límite"
   ],
   "03_cost": [
    "En qué se va tu dinero",
@@ -26,7 +26,7 @@
   "02_providers.png": "033dbb05e92700ad41e2eb0688a9d60c",
   "03_cost.png": "9ca90d8e9a97a6c8304e2c1a98e7c7de",
   "04_sessions.png": "698093f1b40363514e42ec4850076fdb",
-  "05_alerts.png": "d73407fe8ceadc0720eab7e02466984b"
+  "05_alerts.png": "87e99456788aaeb1970181ef1d65ee63"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -35,10 +35,10 @@
  "lang": "es",
  "panels": {
   "01_overview_1290x2796.png": "e4327506a02667cbc1e10d3ca5c63431",
-  "02_providers_1290x2796.png": "1561c7822312daecd3ff41b18e9bb8d1",
+  "02_providers_1290x2796.png": "70a15c05fe8a8d1caad4da7886a56860",
   "03_cost_1290x2796.png": "f1dba4051d7653cf8aec141e4d41f379",
   "04_sessions_1290x2796.png": "2b225cf6153e5539515cab891c6efa9f",
-  "05_alerts_1290x2796.png": "20be0f9182655974b3f2cacf0417d2f9"
+  "05_alerts_1290x2796.png": "8be8004963cf9137a9d0050e626167bc"
  },
  "subtitle_pt": 46,
  "title_pt": 96
