@@ -1,0 +1,21 @@
+Most of this release is about reading CLI Pulse in your own language. In Chinese, Japanese, Korean and Spanish, parts of the app still showed English, or showed dates and numbers in the wrong form.
+
+• Translated: labels and messages that were still in English. Each language was then reviewed as a whole, and hundreds of wrong or inconsistent phrasings were fixed. Traditional Chinese now uses the terms of Taiwan's Apple software, and Korean no longer breaks lines in the middle of a word.
+
+• Provider status, quota names, plan badges, alerts and notifications appear in your language. They used to show the English they were stored in, such as "Operational" or "Weekly", and so did Try Demo's sample alerts.
+
+• Errors appear in your language instead of the server's raw reply ("HTTP 403: {"code":403,…}"). A sign-in code typed in full-width digits is accepted, and Sign in with Apple saves Chinese, Japanese and Korean names family name first.
+
+• Dates, times, numbers and money follow your language and region: the hourly chart, quota reset times (your local time, not a UTC timestamp), token counts, and number and currency formats in Spanish. Widgets and Apple Watch show costs in the currency you chose in the app, and Siri speaks it.
+
+• Fixed: with the Japanese, Republic of China or Buddhist calendar, the usage history chart showed zeros and the cost forecast read $0.
+
+• Siri and Shortcuts work in your language: action names, the phrases you say and Siri's answers. Siri used to recognize only the English phrases. The system permission prompts are translated too.
+
+• VoiceOver: widgets say whether a percentage is used or left, and name the 5-hour and weekly quotas in full instead of "5h" and "Wk". A count of one is singular: "1 session", not "1 sessions".
+
+• Quota percentages agree. A quota 92.1% used said "8% remaining" in its alert and "7% left" on its card. Cards, widgets, Apple Watch and Siri now round the same way as the alert.
+
+• The activity heatmap is filled in under Try Demo instead of showing an empty card, and after you switch accounts it no longer shows the previous account's days.
+
+• On iOS 26 the Providers tab has one ••• button instead of two. The Risk Signals card spans the full width, and the hourly chart is titled "Hourly Activity" instead of repeating the heatmap's "Activity".

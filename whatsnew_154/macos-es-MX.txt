@@ -1,0 +1,21 @@
+Ahora puedes elegir en tu Mac cualquiera de los idiomas de CLI Pulse, y todos se leen como deben. En chino, japonés, coreano y español, partes de la app seguían en inglés o mostraban fechas y números con un formato que no era el de tu idioma.
+
+• Novedad: el menú de idioma (el globo en la parte inferior de la ventana de CLI Pulse) muestra los seis idiomas; faltaban 한국어 y Español. Está disponible desde el primer inicio y antes de iniciar sesión, y las fechas y los números siguen tu elección. Los botones propios de macOS cambian al reiniciar la app.
+
+• Traducción: se tradujeron las etiquetas y los mensajes que seguían en inglés. Después se revisó cada idioma completo y se corrigieron cientos de traducciones erróneas o incoherentes. El chino tradicional usa ahora los términos del software de Apple en Taiwán, y en macOS 14 o posterior el coreano ya no corta las líneas en mitad de una palabra.
+
+• El estado de los proveedores, los nombres de las cuotas, las insignias de plan, los nombres de las sesiones, las alertas y sus notificaciones aparecen en tu idioma, igual que los datos de ejemplo de «Probar demo» y el informe de costos exportado. Los errores ya no muestran la respuesta tal cual del servidor («HTTP 403: {"code":403,…}»).
+
+• Fechas, horas, números e importes siguen tu idioma y tu región: las horas, la hora de reinicio de las cuotas (en tu hora local, no como marca de tiempo UTC), las estimaciones de ritmo, la frecuencia de actualización («5 min», no «5m»), los recuentos de tokens, y los separadores y el formato de moneda en español.
+
+• Corrección: si tu Mac usa el calendario japonés, el de la República de China o el budista, el uso y el costo de Codex aparecían en cero, y el uso diario se subía con una fecha incorrecta, así que tu iPhone nunca lo veía.
+
+• VoiceOver: CLI Pulse en la barra de menús dice qué significa su número (alertas sin resolver, cuota restante, fuera de línea), y los interruptores y menús desplegables que no tenían nombre ahora lo tienen.
+
+• Los porcentajes de las cuotas coinciden: la barra de menús, las tarjetas de proveedores y las alertas redondean igual, así que ya no aparece «92% usado» junto a «7% restante».
+
+• Novedad: Ajustes ofrece «Configurar sincronización en la nube» cuando tu Mac se quitó de tu cuenta, o cuando tu cuenta se sincroniza en otro dispositivo pero tu Mac nunca se configuró. Antes, Ajustes no ofrecía ninguna forma de hacerlo.
+
+• En el primer inicio, el aviso de estadísticas de instalación anónimas ya no aparece cortado y el menú de idioma sigue en pantalla. También se ordenaron Ajustes, las etiquetas de los meses del mapa de calor y el título del gráfico por horas.
+
+• Cambio de nombre: «Modo solo local» en Ajustes ahora se llama «Modo de privacidad estricta». El nombre anterior parecía decir «dejar de sincronizar», y nunca hizo eso: impide que CLI Pulse lea por su cuenta el elemento de Claude Code en el Llavero y desactiva las estadísticas anónimas.
