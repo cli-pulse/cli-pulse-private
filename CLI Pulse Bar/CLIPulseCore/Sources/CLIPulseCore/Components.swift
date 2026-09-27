@@ -507,7 +507,7 @@ public struct CostStatusBadge: View {
     private var label: String { Self.label(for: status) }
 
     /// `cost_status` is a server token ("Exact"/"Estimated"/"Unavailable"). These
-    /// are the capsule's abbreviations ("EST", "N/A"); plain text uses
+    /// are the capsule's short forms ("ESTIMATE", "N/A"); plain text uses
     /// `L10n.cost.statusLabel(_:)`, so this stays internal to the badge.
     static func label(for status: String) -> String {
         switch status {

@@ -175,6 +175,9 @@ final class CompositionGrammarTests: XCTestCase {
         use("en")
         XCTAssertEqual(L10n.cost.statusLabel("Estimated"), "Estimated")
         XCTAssertNotEqual(L10n.cost.statusLabel("Estimated"), "EST")
+        // The capsule too: the iPhone's "Cost Today EST" tile and "92% used EST"
+        // provider rows read as a time zone in the App Store screenshots.
+        XCTAssertNotEqual(CostStatusBadge.label(for: "Estimated"), "EST")
         XCTAssertEqual(L10n.cost.statusLabel("Unavailable"), "Unavailable")
 
         use("zh-Hant")
