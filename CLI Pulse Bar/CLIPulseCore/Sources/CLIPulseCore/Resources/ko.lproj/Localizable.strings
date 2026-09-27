@@ -79,7 +79,7 @@
 "diagnostics.check_notifications" = "알림";
 "diagnostics.check_realtime" = "실시간 연결";
 "diagnostics.fix_paired" = "로그인하고 Mac을 동기화하세요.";
-"diagnostics.fix_remote_control" = "설정 → 개인정보 보호에서 원격 제어를 켜세요.";
+"diagnostics.fix_remote_control" = "설정 › 개인정보 보호에서 원격 제어를 켜세요.";
 "diagnostics.fix_mac" = "Mac이 깨어 있고 온라인 상태이며 CLI Pulse가 실행 중인지 확인하세요.";
 "diagnostics.fix_helper" = "Mac에 CLI Pulse 헬퍼를 설치하거나 업데이트하세요.";
 "diagnostics.fix_notifications" = "사용량 알림을 받으려면 알림을 허용하세요.";
@@ -360,12 +360,12 @@
 
 /* ── 연동 ── */
 "integrations.title" = "연동";
-"integrations.webhook_notifications" = "Webhook 알림";
+"integrations.webhook_notifications" = "웹후크 알림";
 "integrations.webhook_hint" = "Discord, Slack 또는 사용자 지정 엔드포인트로 알림 전송";
-"integrations.webhook_url_placeholder" = "Webhook URL (Discord / Slack)";
-"integrations.test_webhook" = "Webhook 테스트";
+"integrations.webhook_url_placeholder" = "웹후크 URL (Discord / Slack)";
+"integrations.test_webhook" = "웹후크 테스트";
 "integrations.event_filter" = "이벤트 필터";
-"integrations.event_filter_hint" = "일치하는 알림에만 Webhook 전송 (비어 있으면 전체)";
+"integrations.event_filter_hint" = "일치하는 알림에만 웹후크 전송 (비어 있으면 전체)";
 "integrations.filter_severities" = "심각도";
 "integrations.filter_types" = "알림 유형";
 "integrations.filter_providers" = "공급자";
@@ -675,7 +675,7 @@
 "pet.mood_content" = "만족";
 "pet.mood_watchful" = "주시 중";
 "pet.mood_windy" = "바람 부는";
-"pet.conf_live" = "방금 업데이트";
+"pet.conf_live" = "방금 업데이트됨";
 "pet.conf_stale" = "마지막 관측 %@ 전";
 "pet.conf_unavailable" = "활동을 볼 수 없어요 — 접근 권한 확인";
 "pet.copy_summary" = "요약 복사";
@@ -797,7 +797,7 @@
 "providers.grant_access_title" = "토큰 수와 비용을 보려면 접근 권한을 허용하세요";
 "providers.grant_access_body" = "CLI Pulse가 ~/.codex/sessions/ 및 ~/.claude/projects/에 대한 읽기 권한이 필요합니다.";
 "providers.open_settings" = "설정 열기";
-"menu_bar.tier_migration" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 → 공급자에서 편집하세요.";
+"menu_bar.tier_migration" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";
 "providers.quota_data_unavailable" = "할당량 데이터 없음";
 "advanced.sync_just_now" = "방금 동기화됨";
 "advanced.sync_minutes_ago" = "%d분 전 동기화됨";
@@ -806,7 +806,7 @@
 "advanced.privacy_keys_title" = "공급자 API 키 및 쿠키";
 "advanced.privacy_keys_detail" = "macOS 키체인에만 저장 · 업로드되지 않음";
 "advanced.privacy_logs_title" = "세션 로그 (~/.codex/sessions, ~/.claude/projects)";
-"advanced.privacy_logs_detail" = "위에서 접근을 허용한 폴더를 통해 기기에서 스캔";
+"advanced.privacy_logs_detail" = "CLI Pulse에 접근을 허용한 폴더만 이 Mac에서 스캔";
 "advanced.privacy_metrics_title" = "사용량 지표 (토큰 수, 비용, 모델 이름)";
 "advanced.privacy_metrics_detail" = "iPhone과 Apple Watch에서 볼 수 있도록 CLI Pulse 계정에 동기화";
 "advanced.privacy_email_title" = "로그인 이메일";
@@ -992,7 +992,7 @@
 "settings.reset_thresholds_defaults" = "임계값을 기본값으로 재설정";
 "settings.reset" = "재설정";
 "settings.privacy" = "개인정보 보호";
-"settings.test_webhook" = "Webhook 테스트";
+"settings.test_webhook" = "웹후크 테스트";
 "settings.remote_control" = "Mac에 제어 요청 보내기";
 "settings.remote_control_iphone_hint" = "이 iPhone에서 Mac에 팬 부스트, 저전력 모드 또는 잠자기 방지 요청";
 "settings.privacy_redacted_hint" = "Mac은 네 가지 요청만 받습니다: 팬 부스트, 팬 자동 모드 복귀, 저전력 모드 켜기 / 끄기, 잠자기 방지 켜기 / 끄기. 그 외에는 아무것도 기기를 벗어나지 않으며, 대화 기록, 세션 로그, 터미널 출력도 전송되지 않습니다.";
@@ -1091,14 +1091,14 @@
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "익명 설치 통계";
-"telemetry.disclosure_body" = "CLI Pulse는 어디까지 진행됐는지만 보고합니다. 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi-Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 계정이 없기 때문에 이것이 없으면 앱이 어디서 멈추는지 알 수 없습니다.";
-"telemetry.disclosure_body_local_only" = "로컬 전용 모드가 켜져 있어 CLI Pulse는 아무것도 보내지 않습니다. 끄면 네 단계를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지 — 그리고 현재 표시 중인 언어입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi-Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
+"telemetry.disclosure_body" = "CLI Pulse는 어디까지 진행됐는지만 보고합니다. 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 계정을 쓰지 않으므로, 이 정보가 없으면 앱이 어디에서 멈추는지 알 수 없습니다.";
+"telemetry.disclosure_body_local_only" = "로컬 전용 모드가 켜져 있어 CLI Pulse는 아무것도 보내지 않습니다. 끄면 네 단계를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지 — 그리고 현재 표시 중인 언어입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
 "telemetry.not_collected" = "파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. 사용자나 기기를 식별할 수 있는 정보도 없습니다. ID는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
 "telemetry.toggle" = "익명 설치 통계 보내기";
 "telemetry.toggle_local_only" = "꺼짐 — 로컬 전용 모드가 이 항목까지 포함합니다.";
 "telemetry.got_it" = "확인";
 "telemetry.change_later" = "설정 › 개인정보 보호에서 언제든지 변경할 수 있습니다.";
-"telemetry.settings_body" = "앱이 어디까지 진행됐는지만, 계정 없이 그리고 사용자나 기기를 식별할 수 있는 정보 없이 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지 — 그리고 현재 표시 중인 언어입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi-Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. ID는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
+"telemetry.settings_body" = "앱이 어디까지 진행됐는지만, 계정 없이 그리고 사용자나 기기를 식별할 수 있는 정보 없이 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지 — 그리고 현재 표시 중인 언어입니다. 원격 제어를 사용하면 네 가지 예/아니오가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. ID는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "원격 제어";
@@ -1117,7 +1117,7 @@
 "remote.connected" = "연결됨";
 "remote.disconnected" = "연결 끊김";
 "remote.no_sessions" = "세션이 없습니다. Mac의 세션 탭에서 시작하세요.";
-"remote.no_macs" = "이 Wi-Fi에서 Mac을 찾을 수 없습니다. Mac에서 설정 › 원격 제어를 켜세요.";
+"remote.no_macs" = "이 Wi‑Fi에서 Mac을 찾을 수 없습니다. Mac에서 설정 › 원격 제어를 켜세요.";
 "remote.local_network_denied" = "로컬 네트워크 접근이 꺼져 있습니다. Mac을 찾으려면 설정에서 켜세요.";
 "remote.open_settings" = "설정 열기";
 "remote.pairing_succeeded" = "페어링 완료";
@@ -1156,7 +1156,7 @@
 "remote.no_sessions_control" = "아직 세션이 없습니다. +를 탭하여 시작하세요.";
 "remote.no_providers" = "이 Mac에 사용할 수 있는 CLI 도구가 없습니다.";
 "remote.connect_by_address" = "주소로 연결";
-"remote.address_hint" = "같은 Wi-Fi가 아닐 때 Tailscale이나 VPN으로 이 Mac에 연결합니다.";
+"remote.address_hint" = "같은 Wi‑Fi가 아닐 때 Tailscale이나 VPN으로 이 Mac에 연결합니다.";
 "remote.address_placeholder" = "호스트 또는 호스트:포트";
 "remote.address_invalid" = "이 앱이 사용할 수 있는 주소가 아닙니다.";
 "remote.saved_address" = "저장된 주소";
@@ -1230,12 +1230,12 @@
 "sessions.helper_not_running_title" = "헬퍼가 실행되고 있지 않음";
 "sessions.helper_not_running_detail" = "CLI Pulse가 이 Mac의 로컬 헬퍼에 연결할 수 없어 관리형 세션을 시작하거나, 입력을 보내거나, 스트리밍할 수 없습니다. 헬퍼를 시작하면 다시 제어할 수 있습니다.";
 "sessions.open_helper_setup" = "헬퍼 설정 열기";
-"sessions.open_helper_setup_help" = "설정 → 고급을 열어 백그라운드 헬퍼를 켜세요.";
+"sessions.open_helper_setup_help" = "설정 › 고급을 열어 백그라운드 헬퍼를 켜세요.";
 "sessions.helper_old_version" = "이전 버전";
 "sessions.oauth_floor_title" = "관리형 Claude가 플랜이 아닌 Claude API로 실행되고 있습니다";
 "sessions.oauth_floor_detail" = "이 Mac의 Companion CLI 헬퍼(%@)가 %@보다 오래되어 관리형 Claude 세션이 Max/Pro 구독 대신 Claude API를 사용합니다. 플랜으로 실행하려면 헬퍼를 업데이트하세요.";
 "sessions.update_helper" = "헬퍼 업데이트";
-"sessions.update_helper_help" = "설정 → Companion CLI를 열어 백그라운드 헬퍼를 업데이트하세요.";
+"sessions.update_helper_help" = "설정 › Companion CLI를 열어 백그라운드 헬퍼를 업데이트하세요.";
 "sessions.hook_parse_error_title" = "Claude 설정 파일을 읽을 수 없습니다";
 "sessions.hook_parse_error_detail" = "승인 라우팅은 이 파일에 의존합니다. 텍스트 편집기에서 ~/.claude/settings.json을 열어 JSON을 수정하면 이 배너는 자동으로 사라집니다. CLI Pulse는 손상된 파일 위에 설치하지 않습니다.";
 "sessions.hook_installed_title" = "외부 승인 훅 활성화됨";
@@ -1282,7 +1282,7 @@
 "app_updater.check_for_updates" = "업데이트 확인";
 "helper.update_button" = "Companion CLI 업데이트";
 "remote.allow_paired_iphones" = "페어링된 iPhone에서 세션 보기 및 제어 허용";
-"remote.mac_privacy_explainer" = "페어링된 iPhone은 같은 Wi-Fi에서, 또는 아래 주소를 사용해 자체 사설 네트워크(Tailscale, VPN)를 통해 이 Mac에 연결합니다. 출력은 이 Mac을 떠나기 전에 민감한 정보가 가려지며, 연결은 두 기기에만 있는 키로 암호화됩니다. 주소만으로는 아무도 들어올 수 없습니다. '제어'가 켜진 휴대폰은 세션 탭에서 세션 제어가 켜져 있는 동안 세션에 입력하고, 세션을 시작·중지하고, 승인 요청에 응답할 수 있습니다. Anthropic을 거치는 것은 claude.ai에서 열기로 선택한 세션뿐입니다.";
+"remote.mac_privacy_explainer" = "페어링된 iPhone은 같은 Wi‑Fi에서, 또는 아래 주소를 사용해 자체 사설 네트워크(Tailscale, VPN)를 통해 이 Mac에 연결합니다. 출력은 이 Mac을 떠나기 전에 민감한 정보가 가려지며, 연결은 두 기기에만 있는 키로 암호화됩니다. 주소만으로는 아무도 들어올 수 없습니다. '제어'가 켜진 휴대폰은 세션 탭에서 세션 제어가 켜져 있는 동안 세션에 입력하고, 세션을 시작·중지하고, 승인 요청에 응답할 수 있습니다. Anthropic을 거치는 것은 claude.ai에서 열기로 선택한 세션뿐입니다.";
 "remote.pair_an_iphone" = "iPhone 페어링…";
 "remote.copied" = "복사됨";
 "remote.copy" = "복사";
@@ -1303,7 +1303,7 @@
 "app_updater.permissions_regrant_body" = "App Store 버전에서 옮겨 오면 macOS 권한이 초기화됩니다. 다음 권한을 다시 허용해 주세요: %@.";
 "app_updater.open_permission" = "'%@' 열기…";
 "app_updater.devid_channel_title" = "Developer ID 베타 채널을 사용 중입니다.";
-"app_updater.mas_auto_update_warning" = "이 버전을 계속 사용하려면 시스템 설정 → App Store에서 CLI Pulse의 자동 업데이트를 끄세요. 그렇지 않으면 App Store 버전이 이 베타를 덮어쓸 수 있습니다.";
+"app_updater.mas_auto_update_warning" = "이 버전을 계속 사용하려면 시스템 설정 › App Store에서 CLI Pulse의 자동 업데이트를 끄세요. 그렇지 않으면 App Store 버전이 이 베타를 덮어쓸 수 있습니다.";
 "app_updater.open_app_store_settings" = "App Store 설정 열기…";
 "app_updater.up_to_date" = "v%@ 최신 버전";
 "app_updater.ready_to_install" = "설치 준비 완료";
@@ -1314,7 +1314,7 @@
 "local_scan_consent.settings_toggle" = "이 Mac의 CLI 사용량 스캔";
 "local_scan_consent.settings_toggle_detail" = "~/.codex와 ~/.claude 아래의 최근 30일간 세션 로그를 읽고, 사용 중인 공급자에게 실시간 할당량을 조회합니다. 끄면 CLI Pulse는 이 Mac에서 아무것도 읽지 않습니다.";
 "settings.local_only_mode" = "로컬 전용 모드";
-"settings.local_only_mode_hint" = "앱 간 데이터 소스를 모두 건너뜁니다. 홈 폴더에 있는 파일의 사용량 데이터는 계속 작동합니다.";
+"settings.local_only_mode_hint" = "앱 간 데이터 소스를 모두 건너뜁니다. 홈 폴더의 파일에서 읽는 사용량은 계속 표시됩니다.";
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "로컬 전용 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
@@ -1336,7 +1336,7 @@
 "onboarding_wizard.feature_cost_title" = "비용 추정";
 "onboarding_wizard.feature_cost_desc" = "공급자별 일간 및 주간 지출을 추적하세요.";
 "providers.claude_signed_in_connect_hint" = "%@ 계정으로 로그인됨 — 설정에서 Claude Code를 연결하세요";
-"providers.claude_quota_unavailable_hint" = "Claude 할당량을 확인할 수 없습니다 — 설정 → Claude에서 연결하세요";
+"providers.claude_quota_unavailable_hint" = "Claude 할당량을 확인할 수 없습니다 — 설정 › Claude에서 연결하세요";
 "provider_config.error_claude_no_token" = "사용 가능한 Claude OAuth 토큰이 없습니다";
 "provider_config.error_claude_http_status" = "Claude API가 HTTP %d 응답을 반환했습니다";
 "provider_config.error_claude_parse_failed" = "Claude 데이터를 해석하지 못했습니다: %@";
@@ -1372,7 +1372,7 @@
 "in_app_terminal.not_ready_body" = "백그라운드 헬퍼가 실행 중이어야 하며 로컬 세션 제어가 켜져 있어야 합니다. 설정을 열어 구성하세요.";
 "in_app_terminal.claude_blocked_title" = "관리형 Claude가 차단됨 — 헬퍼가 오래됨";
 "in_app_terminal.claude_api_warning_title" = "관리형 Claude는 플랜이 아닌 Claude API를 사용합니다";
-"in_app_terminal.claude_helper_outdated_body" = "이 Mac의 Companion CLI 헬퍼(%1$@)가 %2$@보다 오래되어 관리형 Claude 세션이 Max/Pro 구독 대신 Claude API로 실행됩니다. 설정 → Companion CLI에서 헬퍼를 업데이트하세요.";
+"in_app_terminal.claude_helper_outdated_body" = "이 Mac의 Companion CLI 헬퍼(%1$@)가 %2$@보다 오래되어 관리형 Claude 세션이 Max/Pro 구독 대신 Claude API로 실행됩니다. 설정 › Companion CLI에서 헬퍼를 업데이트하세요.";
 "in_app_terminal.start_anyway" = "그래도 시작";
 "in_app_terminal.open_terminal_here" = "여기서 터미널 열기";
 "in_app_terminal.choose_working_directory" = "%@ 세션의 작업 디렉터리를 선택하세요";
@@ -1415,8 +1415,8 @@
 "subscription.pro_monthly" = "Pro 월간";
 "subscription.pro_yearly" = "Pro 연간";
 "dashboard.no_ai_tools_detected" = "AI 도구가 감지되지 않았습니다. 코딩 세션을 시작하면 데이터가 표시됩니다.";
-"integrations.save_settings_failed" = "Webhook 설정을 저장하지 못했습니다: %@";
-"integrations.test_webhook_failed" = "Webhook 테스트 실패: %@";
+"integrations.save_settings_failed" = "웹후크 설정을 저장하지 못했습니다: %@";
+"integrations.test_webhook_failed" = "웹후크 테스트 실패: %@";
 "advanced.track_git_save_failed" = "Git 활동 추적 설정을 저장하지 못했습니다: %@";
 "settings.push_registration_failed" = "푸시 알림을 등록하지 못했습니다: %@";
 "advanced.remote_control_save_failed" = "Mac 제어 요청 설정을 저장하지 못했습니다: %@";
@@ -1432,7 +1432,7 @@
 "providers.tracked_count" = "%d개 추적 중";
 "providers.messages_short" = "%@ 메시지";
 "providers.claude_metric_help" = "메시지 = 사용자 + 어시스턴트 로그 이벤트(스트리밍 청크 포함) — Claude Code UI의 집계 방식과 같습니다. I/O 토큰 = 입력 + 출력(캐시 읽기 제외. 캐시 읽기는 Claude 원시 토큰량의 약 98%를 차지하며 10% 할인된 요금으로 청구됩니다).";
-"providers.claude_no_scan_help" = "이 기간의 로컬 Claude 스캔 데이터가 아직 없습니다. 설정 → CLI 도구 접근에서 권한을 허용한 후 강제 재스캔을 클릭하세요.";
+"providers.claude_no_scan_help" = "이 기간의 로컬 Claude 스캔 데이터가 아직 없습니다. 설정 › CLI 도구 접근에서 권한을 허용한 후 강제 재스캔을 클릭하세요.";
 "providers.io_tokens_help" = "입력 + 출력 토큰만 포함합니다(OpenAI 과금 방식과 동일). 10% 요율로 청구되는 캐시 입력은 제외됩니다.";
 "providers.no_scan_help" = "이 기간의 로컬 스캔 데이터가 아직 없습니다.";
 "providers.api_token_count_help" = "공급자 API가 보고한 토큰 수입니다.";
@@ -1779,7 +1779,7 @@
 "providers.messages_short_one" = "%@ 메시지";
 "providers.tracked_count_one" = "%d개 추적 중";
 "watch.active_count_one" = "%d개 활성";
-"menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 → 공급자에서 편집하세요.";
+"menu_bar.tier_migration_one" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";
 "sessions.hook_install_created" = "설치됨: 새 설정 파일을 만들었습니다 — %@";
 "sessions.hook_install_added" = "설치됨: 훅을 추가했습니다 — %@";
 "sessions.hook_install_replaced" = "설치됨: 이전 훅을 교체했습니다 — %@";

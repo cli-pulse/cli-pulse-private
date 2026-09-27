@@ -21,8 +21,11 @@ struct GeneralSection: View {
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Spacer()
+                // Not monospaced: the name is translated ("Supabase (도쿄)",
+                // "Supabase（东京）"), and in SF Mono the CJK falls back to another
+                // font while the brackets stay fixed-width and look misplaced.
                 Text(L10n.settings.serverName)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
             }
 

@@ -117,6 +117,41 @@ final class MacSettingsCopyTests: XCTestCase {
         }
     }
 
+    /// Settings paths were written with "›" in some strings and "→" in others,
+    /// in every language. They all use "›" now, the separator the popover's
+    /// own telemetry and scan-consent copy used, with two exceptions: the
+    /// version badge's arrow is not a path, and the English Claude quota hint
+    /// is also the sentinel the collector writes as data
+    /// (`ClaudeStatusSentinel.quotaUnavailable`), which status text already
+    /// stored and other devices' apps match on.
+    func test_settingsPaths_useOneSeparator() throws {
+        let notPaths: Set<String> = ["app_updater.update_available_badge"]
+        for localization in LocaleOverrideStore.shippedLocalizations {
+            let entries = try values(localization)
+            XCTAssertTrue(entries.contains { $0.value.contains(" › ") }, "\(localization): no path found, the scan reads nothing")
+            for (key, value) in entries where !notPaths.contains(key) {
+                if localization == "en", key == "providers.claude_quota_unavailable_hint" {
+                    XCTAssertEqual(value, ClaudeStatusSentinel.quotaUnavailable)
+                    continue
+                }
+                XCTAssertFalse(value.contains("→"), "\(localization) \(key): \(value)")
+            }
+        }
+    }
+
+    /// "Wi-Fi" broke at its hyphen in the zh-Hant statistics notice, "Wi-" at
+    /// the end of one line and "Fi" starting the next. Every catalogue writes it
+    /// with a non-breaking hyphen (U+2011), as Apple's own tables do.
+    func test_wiFi_isNeverSplitAtItsHyphen() throws {
+        for localization in LocaleOverrideStore.shippedLocalizations {
+            let entries = try values(localization)
+            XCTAssertTrue(entries.contains { $0.value.contains("Wi\u{2011}Fi") }, "\(localization): control, no Wi\u{2011}Fi found")
+            for (key, value) in entries {
+                XCTAssertFalse(value.contains("Wi-Fi"), "\(localization) \(key): \(value)")
+            }
+        }
+    }
+
     /// Two screens gave two different provider counts (14+ in setup, 20+ in
     /// About) while Settings listed dozens. A count written into copy goes stale
     /// the day a provider is added, so the copy names none.

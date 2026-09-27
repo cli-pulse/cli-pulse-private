@@ -123,7 +123,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 
 | id | what |
 | --- | --- |
-| `first-launch` | First open on a new install: anonymous-statistics notice over the setup wizard |
+| `first-launch` | First open on a new install: the anonymous-statistics notice, which scrolls together with the setup wizard below it (`-p2` is the wizard) |
 | `setup-step-1` … `setup-step-5` | The production setup wizard: welcome, features, privacy, sign in, all set |
 | `setup-v2-welcome` … `setup-v2-sync-mode` | Setup v2, off in production and on in QA; discovery onwards as the existing-user flow with three of the five accounts chosen |
 | `setup-v2-finished-local`, `-sync` | Setup v2's finish page, local-only and cloud-sync |
@@ -137,7 +137,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `window-about` | About |
 | `window-subscription` | Subscription (the QA build loads no StoreKit products); drawn at 460×700 |
 | `window-provider-codex`, `-claude`, `-gemini` | Provider account editor |
-| `panel-usage-dashboard` | The usage dashboard panel that slides out of the popover, Demo archive, dark as always |
+| `panel-usage-dashboard` | The usage dashboard panel that slides out of the popover, dark as always. Drawn from the Demo archive so its layout can be read with data; the real panel, and the Overview's usage card, read this Mac's local-scan archive, which the QA home leaves empty |
 | `window-first-run-welcome` | Where-the-app-lives window shown once after install |
 | `language-menu` | The globe menu's items, read from its real `NSMenu` (see below) |
 

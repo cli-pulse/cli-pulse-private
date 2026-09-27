@@ -79,7 +79,7 @@
 "diagnostics.check_notifications" = "通知";
 "diagnostics.check_realtime" = "即時連線";
 "diagnostics.fix_paired" = "請登入並同步你的 Mac。";
-"diagnostics.fix_remote_control" = "在「設定 → 隱私」中開啟遠端控制。";
+"diagnostics.fix_remote_control" = "在「設定 › 隱私」中開啟遠端控制。";
 "diagnostics.fix_mac" = "請確保你的 Mac 處於喚醒、連線狀態並正在執行 CLI Pulse。";
 "diagnostics.fix_helper" = "請在你的 Mac 上安裝或更新 CLI Pulse helper。";
 "diagnostics.fix_notifications" = "允許通知，用量警示才能送達。";
@@ -482,7 +482,7 @@
 "providers.remove_named_account" = "移除 %@";
 "providers.remove_account_title" = "移除 %@ · %@？";
 "providers.remove_account_message" = "只會移除 CLI Pulse 設定和此帳號在本機的專屬機密資訊，不會取消或變更服務商訂閱。";
-"providers.provider_level_cost" = "Token 與成本為服務商層級資料，只顯示一次。";
+"providers.provider_level_cost" = "token 與成本為服務商層級資料，只顯示一次。";
 "providers.most_constrained" = "配額最吃緊";
 "providers.remaining_percent" = "剩餘 %d%%";
 "providers.source_label" = "來源：%@";
@@ -603,7 +603,7 @@
 "onboarding_wizard.signal_existing" = "已有 CLI Pulse 設定";
 "onboarding_wizard.signal_connected" = "已知連線";
 "onboarding_wizard.upgrade_title" = "現已支援多個帳號";
-"onboarding_wizard.upgrade_body" = "無需重新走完整個首次引導，即可檢查 Codex、Claude 與 Gemini 帳號。";
+"onboarding_wizard.upgrade_body" = "不必重跑完整的首次設定，即可檢查 Codex、Claude 與 Gemini 帳號。";
 "onboarding_wizard.check_accounts" = "檢查我的帳號";
 "onboarding_wizard.later" = "稍後再說";
 
@@ -619,7 +619,7 @@
 "advanced.enable" = "啟用";
 "advanced.git_consent_body" = "CLI Pulse 會在有 AI 工作階段運作的專案中掃描 git 日誌。只有提交雜湊、專案路徑的 HMAC、提交時間戳記以及合併提交標記會離開你的裝置。提交訊息、diff、檔案路徑和作者身分永遠不會上傳。";
 "advanced.remote_control" = "來自其他裝置的 Mac 控制請求";
-"advanced.remote_control_hint" = "允許已登入的裝置請求 Mac 提升風扇轉速、進入低耗電模式或保持喚醒 · 預設關閉";
+"advanced.remote_control_hint" = "允許已登入的裝置請求這台 Mac 提升風扇轉速、進入低耗電模式或保持喚醒。預設關閉。";
 "advanced.remote_consent_title" = "要允許向 Mac 傳送控制請求嗎？";
 "advanced.token" = "權杖";
 "advanced.providers_loaded" = "已載入服務商";
@@ -638,7 +638,7 @@
 "yield.detail_body" = "當無法取得精確的 API 價格時，成本會根據 token 使用量估算。合併提交不計入歸因。";
 
 /* ── 選單列 ── */
-"menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 → 服務商」中編輯。";
+"menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";
 "menu_bar.over_plan_limits" = "已超出 CLI Pulse %1$@ 方案限制——服務商：%2$d/%3$d。請升級或減少使用。";
 "menu_bar.provider_limit_reached" = "你的 CLI Pulse %1$@ 方案最多支援 %2$d 個服務商。升級後可啟用更多。";
 "menu_bar.edit" = "編輯";
@@ -739,7 +739,7 @@
 "onboarding_wizard.privacy_logs_title" = "工作階段日誌在本機掃描";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse 在本機讀取 ~/.codex/sessions/ 與 ~/.claude/projects/ 計算 token 數。檔案內容絕不會離開你的裝置。";
 "onboarding_wizard.privacy_metrics_title" = "使用指標會同步到你的帳號";
-"onboarding_wizard.privacy_metrics_detail" = "Token 數、成本預估、模型名和日期會傳送到你的 CLI Pulse 帳號，讓 iPhone 與 Apple Watch 看到相同的歷史。";
+"onboarding_wizard.privacy_metrics_detail" = "token 數、成本預估、模型名和日期會傳送到你的 CLI Pulse 帳號，讓 iPhone 與 Apple Watch 看到相同的歷史。";
 
 /* ── Apple 共享 PDF 報告 ── */
 "pdf.title" = "CLI Pulse 每月報告";
@@ -831,7 +831,7 @@
 "machine.cycles_fmt" = "%@ 次循環";
 "machine.top_processes" = "高佔用程序";
 "machine.no_processes" = "沒有程序資料";
-"machine.helper_unavailable" = "無法連線 helper —— 機器健康狀態需要 CLI Pulse helper 正在執行。";
+"machine.helper_unavailable" = "無法連線到 helper。機器健康狀態需要 CLI Pulse helper 在執行中。";
 "machine.no_sensors_devid" = "此 Mac 無法提供詳細感測器（溫度、風扇、功耗）。";
 "machine.mas_affordance" = "詳細感測器（溫度、風扇、功耗）需使用直接下載（Developer ID）版本。App Store 版本受沙盒限制無法讀取。";
 "machine.thermal_nominal" = "正常";
@@ -932,11 +932,11 @@
 "usage_dashboard.open" = "開啟用量儀表板";
 "usage_dashboard.scope" = "Claude + Codex 本機歷史";
 "usage_dashboard.empty" = "尚無本機用量歷史";
-"usage_dashboard.total_tokens" = "Token 總數";
+"usage_dashboard.total_tokens" = "token 總數";
 "usage_dashboard.total_cost" = "總花費";
 "usage_dashboard.active_days" = "活躍天數";
-"usage_dashboard.current_streak" = "連續天數";
-"usage_dashboard.longest_streak" = "最長連續";
+"usage_dashboard.current_streak" = "目前連續天數";
+"usage_dashboard.longest_streak" = "最長連續天數";
 "usage_dashboard.peak_day" = "尖峰單日";
 "usage_dashboard.favorite_model" = "常用模型";
 "usage_dashboard.messages" = "訊息數";
@@ -1001,7 +1001,7 @@
 "pet.form_huh" = "歪頭疑惑貓";
 
 /* v1.42 Pulse Cat companion */
-"pet.companion_toggle" = "顯示桌面陪伴";
+"pet.companion_toggle" = "在桌面顯示貓咪";
 "pet.companion_clickthrough" = "讓滑鼠點按穿透桌面陪伴";
 "pet.companion_clickthrough_hint" = "需要再次操作時在此關閉。";
 /* v1.42 Pulse Cat future-drop forms */
@@ -1137,14 +1137,14 @@
 
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名安裝統計";
-"telemetry.disclosure_body" = "CLI Pulse 只回報它走到了哪一步：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。我們靠這個判斷 App 在哪一步卡住了 —— 這裡不涉及帳號，否則我們無從得知。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi-Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
-"telemetry.disclosure_body_local_only" = "僅本機模式已開啟，CLI Pulse 什麼都不會傳送。若關閉僅本機模式，它會回報四個步驟：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi-Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
+"telemetry.disclosure_body" = "CLI Pulse 只回報它走到了哪一步：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。我們靠這個判斷 App 在哪一步卡住了 —— 這裡不涉及帳號，否則我們無從得知。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
+"telemetry.disclosure_body_local_only" = "僅本機模式已開啟，CLI Pulse 什麼都不會傳送。若關閉僅本機模式，它會回報四個步驟：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
 "telemetry.not_collected" = "不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額，也不含任何能識別你或你機器的資訊。該 ID 是隨機產生的，解除安裝即刪除。";
 "telemetry.toggle" = "傳送匿名安裝統計";
 "telemetry.toggle_local_only" = "已關閉 —— 僅本機模式已經涵蓋了這一項。";
 "telemetry.got_it" = "知道了";
 "telemetry.change_later" = "你隨時可以在「設定 › 隱私」中變更。";
-"telemetry.settings_body" = "只回報 App 走到了哪一步，不涉及帳號，也不含任何能識別你或你機器的資訊：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額。該 ID 是隨機產生的，解除安裝即刪除。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi-Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
+"telemetry.settings_body" = "只回報 App 走到了哪一步，不涉及帳號，也不含任何能識別你或你機器的資訊：是否被安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額。該 ID 是隨機產生的，解除安裝即刪除。如果你使用遠端控制，還會加上四個是/否：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的專用網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "遠端控制";
@@ -1163,7 +1163,7 @@
 "remote.connected" = "已連線";
 "remote.disconnected" = "已中斷";
 "remote.no_sessions" = "沒有工作階段。請在 Mac 的「工作階段」分頁啟動一個。";
-"remote.no_macs" = "此 Wi-Fi 上找不到 Mac。請在 Mac 上開啟「設定 › 遠端控制」。";
+"remote.no_macs" = "此 Wi‑Fi 上找不到 Mac。請在 Mac 上開啟「設定 › 遠端控制」。";
 "remote.local_network_denied" = "區域網路權限已關閉。請在「設定」中開啟以尋找 Mac。";
 "remote.open_settings" = "打開設定";
 "remote.pairing_succeeded" = "配對成功";
@@ -1202,7 +1202,7 @@
 "remote.no_sessions_control" = "還沒有工作階段。點 + 啟動一個。";
 "remote.no_providers" = "這台 Mac 沒有可用的 CLI 工具。";
 "remote.connect_by_address" = "透過位址連線";
-"remote.address_hint" = "不在同一 Wi-Fi 時，透過 Tailscale 或 VPN 連線這台 Mac。";
+"remote.address_hint" = "不在同一 Wi‑Fi 時，透過 Tailscale 或 VPN 連線這台 Mac。";
 "remote.address_placeholder" = "主機或 主機:連接埠";
 "remote.address_invalid" = "這不是本 App 可用的位址。";
 "remote.saved_address" = "已儲存的位址";
@@ -1239,7 +1239,7 @@
 "sessions.detected_footer" = "這些 Claude 工作階段正在這台 Mac 上執行，但不是由 CLI Pulse 啟動的，因此 helper 無法安全地傳送輸入或停止它們。請在啟動它們的終端機中操作。";
 "sessions.section_active" = "活躍";
 "sessions.section_recent" = "最近 · 過去 30 分鐘";
-"sessions.freshness_legend" = "執行中 = 已確認程序存在。近期活動 = 5 分鐘內有 JSONL 寫入。最近 = 30 分鐘內有 JSONL 寫入。";
+"sessions.freshness_legend" = "執行中 = 已確認程序存在。剛剛活動 = 5 分鐘內有 JSONL 寫入。稍早活動 = 30 分鐘內有 JSONL 寫入。";
 "sessions.send" = "傳送";
 "sessions.approve_help" = "批准與此本機工作階段關聯的待處理 Claude 權限請求（⌘↩）。";
 "sessions.reject_help" = "拒絕待處理的 Claude 權限請求。Claude 會繼續等待其他決定，或改用它自己的提示。";
@@ -1276,12 +1276,12 @@
 "sessions.helper_not_running_title" = "helper 未執行";
 "sessions.helper_not_running_detail" = "CLI Pulse 無法連線這台 Mac 上的本機 helper，因此託管工作階段無法啟動、傳送輸入或串流輸出。啟動 helper 即可恢復控制。";
 "sessions.open_helper_setup" = "開啟 helper 設定";
-"sessions.open_helper_setup_help" = "開啟「設定 → 進階」以啟用背景 helper。";
+"sessions.open_helper_setup_help" = "開啟「設定 › 進階」以啟用背景 helper。";
 "sessions.helper_old_version" = "舊版本";
 "sessions.oauth_floor_title" = "託管 Claude 正在使用 Claude API，而非你的方案";
 "sessions.oauth_floor_detail" = "這台 Mac 的 Companion CLI helper（%@）低於 %@，因此託管 Claude 工作階段會使用 Claude API，而非你的 Max/Pro 訂閱。更新 helper 即可改用你的方案。";
 "sessions.update_helper" = "更新 helper";
-"sessions.update_helper_help" = "開啟「設定 → Companion CLI」以更新背景 helper。";
+"sessions.update_helper_help" = "開啟「設定 › Companion CLI」以更新背景 helper。";
 "sessions.hook_parse_error_title" = "無法讀取 Claude 設定檔";
 "sessions.hook_parse_error_detail" = "批准路由仰賴這個檔案。請用文字編輯器開啟 ~/.claude/settings.json 並修正 JSON，此橫幅會自動消失。CLI Pulse 不會在格式錯誤的檔案上執行安裝。";
 "sessions.hook_installed_title" = "外部批准 hook 已啟用";
@@ -1328,7 +1328,7 @@
 "app_updater.check_for_updates" = "檢查更新";
 "helper.update_button" = "更新 Companion CLI";
 "remote.allow_paired_iphones" = "允許已配對的 iPhone 觀看及控制工作階段";
-"remote.mac_privacy_explainer" = "已配對的 iPhone 可在同一 Wi-Fi 下，或透過你自己的私人網路（Tailscale、VPN）使用下方位址連線這台 Mac。輸出內容在離開這台 Mac 之前會先遮蔽敏感資訊，連線則以只存在於這兩台裝置上的金鑰加密 —— 光有位址誰也連不進來。開啟「控制」的手機可以對工作階段輸入內容、啟動和停止它們，以及回應批准請求，前提是「工作階段」分頁中的工作階段控制已開啟。只有你選擇在 claude.ai 開啟的工作階段才會經過 Anthropic。";
+"remote.mac_privacy_explainer" = "已配對的 iPhone 可在同一 Wi‑Fi 下，或透過你自己的私人網路（Tailscale、VPN）使用下方位址連線這台 Mac。輸出內容在離開這台 Mac 之前會先遮蔽敏感資訊，連線則以只存在於這兩台裝置上的金鑰加密 —— 光有位址誰也連不進來。開啟「控制」的手機可以對工作階段輸入內容、啟動和停止它們，以及回應批准請求，前提是「工作階段」分頁中的工作階段控制已開啟。只有你選擇在 claude.ai 開啟的工作階段才會經過 Anthropic。";
 "remote.pair_an_iphone" = "配對 iPhone…";
 "remote.copied" = "已複製";
 "remote.copy" = "複製";
@@ -1349,7 +1349,7 @@
 "app_updater.permissions_regrant_body" = "從 App Store 版移轉會重設 macOS 權限。請重新授予：%@。";
 "app_updater.open_permission" = "開啟「%@」…";
 "app_updater.devid_channel_title" = "你目前使用的是 Developer ID Beta 管道。";
-"app_updater.mas_auto_update_warning" = "若要繼續使用此版本，請在「系統設定 → App Store」中關閉 CLI Pulse 的自動更新，否則 App Store 版本可能會覆蓋這個 Beta 版。";
+"app_updater.mas_auto_update_warning" = "若要繼續使用此版本，請在「系統設定 › App Store」中關閉 CLI Pulse 的自動更新，否則 App Store 版本可能會覆蓋這個 Beta 版。";
 "app_updater.open_app_store_settings" = "開啟 App Store 設定…";
 "app_updater.up_to_date" = "v%@ 已是最新版本";
 "app_updater.ready_to_install" = "已可安裝";
@@ -1364,7 +1364,7 @@
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
 "settings.skip_claude_keychain_forced" = "已由僅本機模式強制開啟。";
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
-"settings.block_claude_on_outdated_helper" = "helper 過舊時阻擋託管 Claude";
+"settings.block_claude_on_outdated_helper" = "Helper 過舊時阻擋託管 Claude";
 "settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI helper 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 工作階段（否則會在不提示的情況下改用 Claude API）。預設關閉 — 你只會看到一則警告。";
 "cost.io_tokens_codexbar_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。CodexBar 的「tokens」數值包含快取，我們的不包含，所以兩邊數字會不同。兩邊的費用都依各組成部分的完整單價計算，結果一致。";
 "cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。";
@@ -1382,7 +1382,7 @@
 "onboarding_wizard.feature_cost_title" = "費用預估";
 "onboarding_wizard.feature_cost_desc" = "依服務商追蹤每日與每週支出。";
 "providers.claude_signed_in_connect_hint" = "已登入為 %@ — 請在設定中連線 Claude Code";
-"providers.claude_quota_unavailable_hint" = "Claude 配額無法使用 — 請在「設定 → Claude」中連線";
+"providers.claude_quota_unavailable_hint" = "Claude 配額無法使用 — 請在「設定 › Claude」中連線";
 "provider_config.error_claude_no_token" = "沒有可用的 Claude OAuth 權杖";
 "provider_config.error_claude_http_status" = "Claude API 回傳 HTTP %d";
 "provider_config.error_claude_parse_failed" = "Claude 資料解析失敗：%@";
@@ -1418,7 +1418,7 @@
 "in_app_terminal.not_ready_body" = "背景 helper 必須正在執行，且需啟用本機工作階段控制。請開啟「設定」進行設定。";
 "in_app_terminal.claude_blocked_title" = "託管 Claude 已被阻擋 — helper 版本過舊";
 "in_app_terminal.claude_api_warning_title" = "託管 Claude 將使用 Claude API，而非你的方案";
-"in_app_terminal.claude_helper_outdated_body" = "這台 Mac 上的 Companion CLI helper（%1$@）低於 %2$@，因此託管 Claude 工作階段會使用 Claude API，而非你的 Max/Pro 訂閱。請在「設定 → Companion CLI」中更新 helper。";
+"in_app_terminal.claude_helper_outdated_body" = "這台 Mac 上的 Companion CLI helper（%1$@）低於 %2$@，因此託管 Claude 工作階段會使用 Claude API，而非你的 Max/Pro 訂閱。請在「設定 › Companion CLI」中更新 helper。";
 "in_app_terminal.start_anyway" = "仍要啟動";
 "in_app_terminal.open_terminal_here" = "在此開啟終端機";
 "in_app_terminal.choose_working_directory" = "選擇 %@ 工作階段的工作目錄";
@@ -1478,7 +1478,7 @@
 "providers.tracked_count" = "正在追蹤 %d 個";
 "providers.messages_short" = "%@ 則訊息";
 "providers.claude_metric_help" = "訊息數 = 使用者 + 助理日誌事件（含串流分塊）— 與 Claude Code 介面的統計方式一致。I/O token = 輸入 + 輸出（不含快取讀取；快取讀取約占 Claude 原始 token 量的 98%，以 10% 的價格計費）。";
-"providers.claude_no_scan_help" = "此時間範圍尚無本機 Claude 掃描資料。請在「設定 → CLI 工具存取權限」中授權，然後點按「強制重新掃描」。";
+"providers.claude_no_scan_help" = "此時間範圍尚無本機 Claude 掃描資料。請在「設定 › CLI 工具存取權限」中授權，然後點按「強制重新掃描」。";
 "providers.io_tokens_help" = "僅計輸入 + 輸出 token（與 OpenAI 計費方式一致）。不含快取輸入，快取輸入以 10% 費率計費。";
 "providers.no_scan_help" = "此時間範圍尚無本機掃描資料。";
 "providers.api_token_count_help" = "由服務商 API 回報的 token 數。";
@@ -1486,13 +1486,13 @@
 "providers.percent_used" = "已使用 %d%%";
 "providers.resets_in" = "%@ 重置";
 "widget.complication_description" = "配額和警示一目了然";
-"sessions.tier_badge_recent_activity" = "近期活動";
-"sessions.tier_badge_recent" = "最近";
-"usage_dashboard.tokens_unit" = "Token";
-"usage_dashboard.range_7d" = "7天";
-"usage_dashboard.range_30d" = "30天";
-"usage_dashboard.range_90d" = "90天";
-"usage_dashboard.range_1y" = "1年";
+"sessions.tier_badge_recent_activity" = "剛剛活動";
+"sessions.tier_badge_recent" = "稍早活動";
+"usage_dashboard.tokens_unit" = "token";
+"usage_dashboard.range_7d" = "7 天";
+"usage_dashboard.range_30d" = "30 天";
+"usage_dashboard.range_90d" = "90 天";
+"usage_dashboard.range_1y" = "1 年";
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "sessions.row_process_label" = "%@ 程序";
@@ -1574,7 +1574,7 @@
 "alerts.warning_count_badge" = "警告 %d 則";
 "account.deleting" = "正在刪除帳號…";
 "usage_dashboard.chart_day" = "日期";
-"usage_dashboard.chart_tokens" = "Token 數";
+"usage_dashboard.chart_tokens" = "token 數";
 "usage_dashboard.chart_provider" = "服務商";
 "folder_access.dir_clipulse_config" = "CLI Pulse 設定";
 "folder_access.dir_clipulse_data" = "CLI Pulse 資料";
@@ -1622,7 +1622,7 @@
 "quota_tier.sonnet_weekly" = "Sonnet（每週）";
 "quota_tier.tariff_credits" = "方案點數";
 "quota_tier.time_limit" = "時數";
-"quota_tier.tokens" = "Token";
+"quota_tier.tokens" = "token";
 "quota_tier.voice_slots" = "語音名額";
 "quota_tier.voucher_balance" = "抵用券";
 "quota_tier.weekly" = "每週";
@@ -1653,7 +1653,7 @@
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 程序的 CPU 使用率為 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 佔用約 %1$@%% 的系統總 CPU（%2$@ 核）。";
 "alert_kind.session_cpu_title" = "%@ 正佔用大量 CPU";
-"alert_kind.session_long_message" = "helper 偵測到長時間執行的本機 Agent 工作階段。";
+"alert_kind.session_long_message" = "helper 偵測到長時間執行的本機 AI 工具工作階段。";
 "alert_kind.session_long_title" = "%@ 執行時間過長";
 "alert_kind.severity_critical" = "嚴重";
 "alert_kind.severity_info" = "資訊";
@@ -1809,7 +1809,7 @@
 "providers.messages_short_one" = "%@ 則訊息";
 "providers.tracked_count_one" = "正在追蹤 %d 個";
 "watch.active_count_one" = "%d 個活躍";
-"menu_bar.tier_migration_one" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 → 服務商」中編輯。";
+"menu_bar.tier_migration_one" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";
 "sessions.hook_install_created" = "已安裝：已建立新的設定檔 — %@";
 "sessions.hook_install_added" = "已安裝：已加入 hook — %@";
 "sessions.hook_install_replaced" = "已安裝：已取代舊版 hook — %@";

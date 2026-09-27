@@ -22,13 +22,29 @@ import SwiftUI
 /// `L10n` strings in `body` and has nothing else that changed is not
 /// re-evaluated by an environment change. Such a view either observes the
 /// store itself or is rebuilt with `languageKeyed`.
+///
+/// On macOS 14 and later it also keeps Korean words whole when text wraps
+/// (`keepsKoreanWordsWhole`): the Mac split them between syllables too. macOS 13
+/// has no `typesettingLanguage` and keeps the system's rule. The menu bar
+/// readout (the `MenuBarExtra` label) is not under this root and is unaffected.
 public struct DisplayLocaleRoot: ViewModifier {
     @ObservedObject private var store = LocaleOverrideStore.shared
 
     public init() {}
 
+    @ViewBuilder
     public func body(content: Content) -> some View {
+        #if os(macOS)
+        if #available(macOS 14.0, *) {
+            content
+                .environment(\.locale, store.displayLocale)
+                .keepsKoreanWordsWhole(localization: LocaleOverrideStore.resolvedLocalization)
+        } else {
+            content.environment(\.locale, store.displayLocale)
+        }
+        #else
         content.environment(\.locale, store.displayLocale)
+        #endif
     }
 }
 

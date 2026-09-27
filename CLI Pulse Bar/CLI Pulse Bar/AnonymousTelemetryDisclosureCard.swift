@@ -18,13 +18,15 @@ struct AnonymousTelemetryDisclosureCard: View {
     /// The tallest the explanation may be before it scrolls inside the card.
     /// `nil` lets it take all the height it needs.
     ///
-    /// The card sits above whatever the popover shows, first of all the setup
-    /// wizard, inside a popover of fixed height (580 points by default). Laid out
-    /// at full length, the explanation plus the wizard's welcome page did not
-    /// fit: in every language the card lost its title off the top, the wizard's
-    /// subtitle was cut to one line, and the footer that holds the language menu
-    /// was pushed out of the popover. Capped, the explanation scrolls, and the
-    /// title, the switch, Got it and the wizard all stay on screen.
+    /// The card sits above whatever the popover shows, inside a popover of fixed
+    /// height (580 points by default). Laid out at full length above the setup
+    /// wizard's welcome page, the two did not fit: in every language the card
+    /// lost its title off the top, the wizard's subtitle was cut to one line,
+    /// and the footer that holds the language menu was pushed out of the
+    /// popover. Above a wizard the card is now `nil` here and scrolls together
+    /// with the wizard (`MenuBarView.scrollingUnderDisclosure`), so it reads in
+    /// full; above the tab views, which scroll on their own, the explanation is
+    /// capped and scrolls inside the card.
     var explanationMaxHeight: CGFloat? = nil
     let onDismiss: () -> Void
 
