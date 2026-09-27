@@ -1,10 +1,10 @@
 Casi todo en esta versión busca que puedas usar CLI Pulse en tu propio idioma. En chino, japonés, coreano y español, partes de la app seguían en inglés o mostraban fechas y números con un formato que no era el de tu idioma.
 
-• Traducción: se tradujeron las etiquetas y los mensajes que seguían en inglés. Después se revisó cada idioma completo y se corrigieron cientos de traducciones erróneas o incoherentes. El chino tradicional usa ahora los términos del software de Apple en Taiwán, y el coreano ya no corta las líneas en mitad de una palabra.
+• Traducción: se tradujeron las etiquetas y los mensajes que seguían en inglés. Después se revisó cada idioma completo y se corrigieron cientos de traducciones erróneas o incoherentes. El chino tradicional usa ahora los términos del software de Apple en Taiwán, y en la app el coreano ya no corta las líneas en medio de una palabra.
 
-• El estado de los proveedores, los nombres de las cuotas, las insignias de plan, las alertas y sus notificaciones aparecen en tu idioma. Antes mostraban el inglés con el que se guardaron, como «Operational» o «Weekly», y lo mismo pasaba con las alertas de ejemplo de «Probar demo».
+• El estado de los proveedores, los nombres de las cuotas, las insignias de plan, las alertas y sus notificaciones aparecen en tu idioma. Antes se mostraban en inglés, como «Operational» o «Weekly», y lo mismo pasaba con las alertas de ejemplo de «Probar demo».
 
-• Los errores aparecen en tu idioma y ya no como la respuesta tal cual del servidor («HTTP 403: {"code":403,…}»). Se acepta el código de inicio de sesión escrito con dígitos de ancho completo, e «Iniciar sesión con Apple» guarda los nombres chinos, japoneses y coreanos con el apellido primero.
+• Los errores aparecen en tu idioma, y ya no como la respuesta sin procesar del servidor («HTTP 403: {"code":403,…}»). Se acepta el código de verificación escrito con dígitos de ancho completo, e «Iniciar sesión con Apple» guarda los nombres chinos, japoneses y coreanos con el apellido primero.
 
 • Fechas, horas, números e importes siguen tu idioma y tu región: el gráfico por horas, la hora de reinicio de las cuotas (en tu hora local, no como marca de tiempo UTC), los recuentos de tokens, y los separadores y el formato de moneda en español. Los widgets y el Apple Watch muestran los costos en la moneda que elegiste en la app, y Siri también responde en esa moneda.
 
@@ -18,4 +18,4 @@ Casi todo en esta versión busca que puedas usar CLI Pulse en tu propio idioma. 
 
 • El mapa de calor de actividad se llena con datos de ejemplo en «Probar demo» en lugar de mostrar una tarjeta vacía, y al cambiar de cuenta ya no muestra los días de la cuenta anterior.
 
-• En iOS 26, la pestaña Proveedores tiene un solo botón ••• en lugar de dos, la tarjeta Señales de riesgo ocupa todo el ancho y el gráfico por horas se titula «Actividad por hora» en lugar de repetir el «Actividad» del mapa de calor.
+• En iOS 26, la pestaña Proveedores tiene un solo botón ••• en lugar de dos. Además, la tarjeta Señales de riesgo ahora ocupa todo el ancho, como las demás, y el gráfico por horas se titula «Actividad por hora» en lugar de repetir el título «Actividad» del mapa de calor.

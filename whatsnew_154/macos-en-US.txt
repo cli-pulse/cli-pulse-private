@@ -1,21 +1,19 @@
-Every language CLI Pulse ships can now be chosen on the Mac, and each of them reads properly. In Chinese, Japanese, Korean and Spanish, parts of the app still showed English, or showed dates and numbers in the wrong form.
-
-• New: the language menu (the globe at the bottom of the CLI Pulse window) lists all six languages; 한국어 and Español were missing. It is there from the first launch and before you sign in, and dates and numbers follow your choice. macOS's own buttons follow after you restart the app.
-
-• Translated: labels and messages that were still in English. Each language was then reviewed as a whole, and hundreds of wrong or inconsistent phrasings were fixed. Traditional Chinese now uses the terms of Taiwan's Apple software, and on macOS 14 and later Korean no longer breaks lines in the middle of a word.
-
-• Provider status, quota names, plan badges, session names, alerts and notifications appear in your language, and so do Try Demo's sample data and the exported cost report. Errors no longer show the server's raw reply ("HTTP 403: {"code":403,…}").
-
-• Dates, times, numbers and money follow your language and region: hours, quota reset times (your local time, not a UTC timestamp), pace estimates, refresh intervals ("5 min", not "5m"), token counts, and number and currency formats in Spanish.
-
-• Fixed: on a Mac using the Japanese, Republic of China or Buddhist calendar, Codex usage and cost read zero, and daily usage was uploaded under the wrong date, so your iPhone never saw it.
-
-• VoiceOver: the menu bar item says what its number means (unresolved alerts, quota left, offline), and switches and pop-up menus that had no name now have one.
+Quota percentages now agree everywhere, and every language CLI Pulse supports can be chosen on the Mac. In Chinese, Japanese, Korean and Spanish, the parts of the app that still showed English, or wrote dates and numbers the wrong way, are fixed.
 
 • Quota percentages agree: the menu bar, provider cards and alerts now round the same way, so "92% used" no longer sits beside "7% left".
 
 • New: Settings offers Set Up Cloud Sync when this Mac was removed from your account, or when your account syncs on another device but this Mac was never set up. Before, Settings had no way to do it.
 
-• At first launch the anonymous statistics notice is no longer cut off, and the language menu stays on screen. Settings, the heatmap's month labels and the hourly chart's title are tidied up.
+• New: the language menu (the globe at the bottom of the CLI Pulse menu bar panel) lists all six languages; 한국어 and Español were missing. It is there from the first launch and before you sign in, and dates and numbers follow your choice. Some system text switches after you restart the app.
 
-• Renamed: "Local-only mode" in Settings is now "Strict privacy mode". The old name read as "stop syncing", which it never did. It stops CLI Pulse reading Claude Code's keychain item on its own, and turns off the anonymous statistics.
+• Renamed: "Local-only mode" in Settings is now "Strict privacy mode". The old name suggested it stopped syncing, which it never did. It stops CLI Pulse from reading Claude Code's keychain item on its own, and turns off the anonymous statistics.
+
+• Fixed: on a Mac using the Japanese, Minguo (Republic of China) or Buddhist calendar, Codex usage and cost read zero, and daily usage was uploaded under the wrong date, so your iPhone never saw it.
+
+• VoiceOver: the menu bar item says what its number means (unresolved alerts, quota left, offline), and switches and pop-up menus that had no name now have one.
+
+• Translated: provider status, quota names, plan badges, session names, alerts, notifications and the exported cost report, wherever they were still in English. Each language was then reviewed as a whole, and hundreds of wrong or inconsistent phrasings were fixed. Traditional Chinese now uses the same terms as Apple's software in Taiwan, and on macOS 14 and later Korean no longer breaks lines mid-word. Errors no longer show the server's raw reply (such as HTTP 403: {"code":403,…}).
+
+• Dates, times, numbers and money follow your language and region, including the hourly chart, quota reset times (your local time, not UTC), pace estimates, refresh intervals ("5 min", not "5m") and token counts.
+
+• At first launch the anonymous statistics notice is no longer cut off. The heatmap's month labels no longer wrap or run off the card, and the hourly chart is titled "Hourly Activity" instead of a second "Activity".
