@@ -8,7 +8,9 @@ from pathlib import Path
 
 from scripts.ci_check_qa_scheme import (
     QAContractError,
+    tracked_files_outside_project,
     validate_contract_texts,
+    validate_render_condition_outside_project,
 )
 
 
@@ -172,6 +174,48 @@ class QASchemeContractTests(unittest.TestCase):
             '"$(inherited) CLIPULSE_QA_RENDER";',
         )
         self.assert_rejected(project_text=mutated)
+
+
+class RenderConditionOutsideProjectTests(unittest.TestCase):
+    """The render condition could also be switched on without touching the
+    project file: an xcconfig, or an `xcodebuild` override in a release script
+    or workflow. The runtime guard would still refuse to render, but the build
+    would ship the renderer and start at a different `@main`."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.files = tracked_files_outside_project(REPO_ROOT)
+
+    def test_the_tracked_scripts_and_workflows_are_accepted(self) -> None:
+        # Control: the scan reads real files, and the tree is clean today.
+        self.assertTrue(any(path.endswith(".sh") for path in self.files))
+        self.assertTrue(any(path.startswith(".github/workflows/") for path in self.files))
+        validate_render_condition_outside_project(self.files)
+
+    def assert_leak_rejected(self, path: str, text: str) -> None:
+        files = dict(self.files)
+        files[path] = text
+        with self.assertRaises(QAContractError) as caught:
+            validate_render_condition_outside_project(files)
+        self.assertIn(path, str(caught.exception))
+
+    def test_an_xcconfig_must_not_define_it(self) -> None:
+        self.assert_leak_rejected(
+            "CLI Pulse Bar/Release.xcconfig",
+            "SWIFT_ACTIVE_COMPILATION_CONDITIONS = $(inherited) CLIPULSE_QA_RENDER\n",
+        )
+
+    def test_a_release_script_must_not_pass_it_to_xcodebuild(self) -> None:
+        self.assert_leak_rejected(
+            "scripts/build_devid_dmg.sh",
+            'xcodebuild archive SWIFT_ACTIVE_COMPILATION_CONDITIONS="$(inherited) CLIPULSE_QA_RENDER"\n',
+        )
+
+    def test_a_workflow_must_not_pass_it_through_other_swift_flags(self) -> None:
+        self.assert_leak_rejected(
+            ".github/workflows/release.yml",
+            "run: xcodebuild OTHER_SWIFT_FLAGS=-DCLIPULSE_QA_RENDER\n",
+        )
 
 
 if __name__ == "__main__":
