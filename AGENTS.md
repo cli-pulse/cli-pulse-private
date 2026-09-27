@@ -292,10 +292,10 @@ submission only).
 
 The raw captures and the composed sets are committed (`ios-raw/<lang>/`,
 `ios-composed/<lang>/` with `compose.json`), and CI fails if a listing locale's
-set is missing or not what a clean compose run wrote. CI does **not** compare
-the captions `compose.json` records with `COPY`, so a caption change in
-`compose_appstore_ios_screenshots.py` needs its recompose committed with it by
-hand (`--all` recomposes from the committed captures; no simulator needed). The
+set is missing or not what a clean compose run wrote, including a set whose
+recorded captions are no longer the compositor's `COPY`: a caption change in
+`compose_appstore_ios_screenshots.py` needs its recompose committed with it
+(`--all` recomposes from the committed captures; no simulator needed). The
 hand-shot 1.53.0 set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired
 with the first capture in this layout.
 
