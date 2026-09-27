@@ -1369,7 +1369,7 @@
 "settings.skip_claude_keychain_forced" = "已由嚴格隱私模式強制開啟。";
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
 "settings.block_claude_on_outdated_helper" = "Helper 過舊時阻擋託管 Claude";
-"settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI helper 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 工作階段（否則會在不提示的情況下改用 Claude API）。預設關閉——你只會看到一則警告。";
+"settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 工作階段（否則會在不提示的情況下改用 Claude API）。預設關閉——你只會看到一則警告。";
 "cost.io_tokens_codexbar_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。CodexBar 的「tokens」數值包含快取，我們的不包含，所以兩邊數字會不同。兩邊的費用都依各組成部分的完整單價計算，結果一致。";
 "cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。";
 "dashboard.utilized_percent" = "使用率 %@%%";
@@ -1528,7 +1528,7 @@
 "sessions.preview_empty_gemini" = "Gemini 正在執行。正在等待對話輸出…";
 "sessions.oauth_floor_blocked" = "託管 Claude 已被阻擋：這台 Mac 的 helper（%1$@）低於 %2$@，會使用 Claude API 執行 Claude，而非你的 Max/Pro 方案。請在「設定」中更新 Companion CLI（或在「隱私」中關閉此阻擋）。";
 "sessions.wrapped_attach_failed" = "無法連接 %@ — 工作階段可能已結束";
-"helper.unreachable_detail" = "無法連線 Companion CLI helper（已探測 %@）。本機掃描不受影響。請點「重新檢查」；如果問題持續，請解除安裝後重新安裝。";
+"helper.unreachable_detail" = "無法連線 Companion CLI（已探測 %@）。本機掃描不受影響。請點「重新檢查」；如果問題持續，請解除安裝後重新安裝。";
 "helper.uninstaller_reveal_manual" = "請在 Finder 中手動開啟解除安裝程式（已為你顯示）。它位於 %@。";
 "app_updater.error_manifest_http" = "取得更新清單失敗（HTTP %d）";
 "helper.pkg_download_http" = "下載安裝套件失敗（HTTP %d）";

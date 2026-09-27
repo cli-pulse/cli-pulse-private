@@ -136,6 +136,9 @@ final class MacSettingsCopyTests: XCTestCase {
             XCTAssertFalse(L10n.sessions.freshnessLegend.contains("JSONL"),
                            "\(localization): \(L10n.sessions.freshnessLegend)")
             XCTAssertFalse(L10n.sessions.startHelperHint.isEmpty, localization)
+            XCTAssertFalse(L10n.sessions.startHelperHint
+                            .localizedCaseInsensitiveContains(L10n.sessions.localFastPathTitle),
+                           "\(localization): \(L10n.sessions.startHelperHint)")
         }
     }
 

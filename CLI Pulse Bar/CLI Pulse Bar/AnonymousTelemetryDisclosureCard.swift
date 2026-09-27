@@ -16,13 +16,15 @@ import CLIPulseCore
 /// On first launch it does come first, and that is a choice with a cost. Above
 /// the setup wizard the card reads in full and the wizard follows it in the
 /// same scroll view (`MenuBarView.scrollingUnderDisclosure`); at the default
-/// 580-point popover only the wizard's page dots and close button show below
-/// the card until it is scrolled or acknowledged. So in practice the way into
+/// 580-point popover, in English, Japanese and Spanish only the wizard's page
+/// dots and close button show below the card until it is scrolled or
+/// acknowledged, and the shorter Chinese and Korean cards leave the wizard's
+/// icon and welcome title in view as well. So in practice the way into
 /// the app runs past this text, and "Got it" is the obvious next click. What
 /// keeps that from being the impatient consent a modal would buy:
 /// - nothing is gated on it: the wizard is one scroll away and works with the
 ///   card still showing;
-/// - the switch is inline, beside the button, not a Settings trip away;
+/// - the switch is inline, directly above the button, not a Settings trip away;
 /// - nothing is sent until "Got it" is pressed (`hasSeenDisclosure`), whatever
 ///   the switch says, so scrolling past the card sends nothing.
 /// The alternative was a card capped at a few lines above the wizard, which

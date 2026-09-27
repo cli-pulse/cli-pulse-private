@@ -1096,7 +1096,7 @@
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "익명 설치 통계";
 "telemetry.disclosure_body" = "CLI Pulse는 어디까지 진행됐는지만 보고합니다. 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 계정을 쓰지 않으므로, 이 정보가 없으면 앱이 어디에서 멈추는지 알 수 없습니다.";
-"telemetry.disclosure_body_local_only" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 아무것도 보내지 않습니다. 끄면 네 단계를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
+"telemetry.disclosure_body_local_only" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 아무것도 보내지 않습니다. 끄면 네 단계와 현재 표시 언어를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
 "telemetry.not_collected" = "파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. 사용자나 기기를 식별할 수 있는 정보도 없습니다. ID는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
 "telemetry.toggle" = "익명 설치 통계 보내기";
 "telemetry.toggle_local_only" = "꺼짐: 엄격한 개인정보 보호 모드가 이 항목도 끕니다.";
@@ -1323,7 +1323,7 @@
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
 "settings.block_claude_on_outdated_helper" = "헬퍼가 오래된 경우 관리형 Claude 차단";
-"settings.block_claude_on_outdated_helper_hint" = "Companion CLI 헬퍼가 너무 오래되어 Max/Pro 플랜으로 Claude를 실행할 수 없을 때 관리형 Claude 세션 시작을 막습니다(그대로 시작하면 알리지 않고 Claude API를 사용합니다). 기본값은 꺼짐 — 경고만 표시됩니다.";
+"settings.block_claude_on_outdated_helper_hint" = "Companion CLI가 너무 오래되어 Max/Pro 플랜으로 Claude를 실행할 수 없을 때 관리형 Claude 세션 시작을 막습니다(그대로 시작하면 알리지 않고 Claude API를 사용합니다). 기본값은 꺼짐 — 경고만 표시됩니다.";
 "cost.io_tokens_codexbar_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨). CodexBar의 'tokens' 수치는 캐시를 포함하고 CLI Pulse는 포함하지 않으므로 숫자가 다릅니다. 비용은 양쪽 모두 구성 요소별 전체 단가로 계산되므로 일치합니다.";
 "cost.io_tokens_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨).";
 "dashboard.utilized_percent" = "사용률 %@%%";
@@ -1482,7 +1482,7 @@
 "sessions.preview_empty_gemini" = "Gemini가 실행 중입니다. 대화 출력을 기다리는 중…";
 "sessions.oauth_floor_blocked" = "관리형 Claude가 차단되었습니다: 이 Mac의 헬퍼(%1$@)가 %2$@보다 오래되어 Max/Pro 플랜이 아닌 Claude API로 Claude를 실행합니다. 설정에서 Companion CLI를 업데이트하세요(또는 개인정보 보호에서 차단을 끄세요).";
 "sessions.wrapped_attach_failed" = "%@에 연결할 수 없습니다 — 세션이 종료되었을 수 있습니다";
-"helper.unreachable_detail" = "Companion CLI 헬퍼에 연결할 수 없습니다(%@ 확인함). 로컬 스캔에는 영향이 없습니다. '다시 확인'을 눌러 보고, 문제가 계속되면 제거 후 다시 설치하세요.";
+"helper.unreachable_detail" = "Companion CLI에 연결할 수 없습니다(%@ 확인함). 로컬 스캔에는 영향이 없습니다. '다시 확인'을 눌러 보고, 문제가 계속되면 제거 후 다시 설치하세요.";
 "helper.uninstaller_reveal_manual" = "Finder에서 제거 프로그램을 직접 여세요(표시됨). 위치: %@";
 "app_updater.error_manifest_http" = "매니페스트를 가져오지 못했습니다(HTTP %d)";
 "helper.pkg_download_http" = "패키지를 다운로드하지 못했습니다(HTTP %d)";

@@ -1337,7 +1337,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";
 "settings.block_claude_on_outdated_helper" = "Bloquear Claude gestionado si el helper está desactualizado";
-"settings.block_claude_on_outdated_helper_hint" = "Si el helper de Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto: solo verás un aviso.";
+"settings.block_claude_on_outdated_helper_hint" = "Si Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto: solo verás un aviso.";
 "cost.io_tokens_codexbar_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo. La cifra de «tokens» de CodexBar incluye la caché y la nuestra no, así que los números serán distintos. El costo se calcula en ambos con el precio completo de cada componente y coincide.";
 "cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo.";
 "dashboard.utilized_percent" = "%@%% utilizado";
@@ -1496,7 +1496,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.preview_empty_gemini" = "Gemini se está ejecutando. Esperando la salida de la conversación…";
 "sessions.oauth_floor_blocked" = "Claude gestionado está bloqueado: el helper de este Mac (%1$@) es anterior a %2$@ y ejecutaría Claude con la API, no con tu plan Max/Pro. Actualiza Companion CLI en Ajustes (o desactiva el bloqueo en Privacidad).";
 "sessions.wrapped_attach_failed" = "No se pudo conectar a %@: es posible que la sesión haya terminado";
-"helper.unreachable_detail" = "No se puede conectar con el helper de Companion CLI (se comprobó %@). El análisis local no se ve afectado. Prueba «Volver a comprobar»; si persiste, desinstálalo y vuelve a instalarlo.";
+"helper.unreachable_detail" = "No se puede conectar con Companion CLI (se comprobó %@). El análisis local no se ve afectado. Prueba «Volver a comprobar»; si persiste, desinstálalo y vuelve a instalarlo.";
 "helper.uninstaller_reveal_manual" = "Abre manualmente el desinstalador desde Finder (ya se muestra). Está en %@.";
 "app_updater.error_manifest_http" = "No se pudo obtener el manifiesto (HTTP %d)";
 "helper.pkg_download_http" = "No se pudo descargar el paquete (HTTP %d)";

@@ -1383,7 +1383,7 @@
 "settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "他のアプリが所有する Claude Code の OAuth 認証情報を CLI Pulse が読み取らないようにします。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
 "settings.block_claude_on_outdated_helper" = "ヘルパーが古い場合は管理対象の Claude をブロック";
-"settings.block_claude_on_outdated_helper_hint" = "Companion CLI ヘルパーが古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフで、警告が表示されるだけです。";
+"settings.block_claude_on_outdated_helper_hint" = "Companion CLI が古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフで、警告が表示されるだけです。";
 "cost.io_tokens_codexbar_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。CodexBar の「tokens」はキャッシュを含み、こちらは含まないため数値は異なります。コストはどちらも構成要素ごとの正規単価で計算しているため一致します。";
 "cost.io_tokens_help" = "I/O トークン = 入力 + 出力。キャッシュ読み取りは含みません（Claude の生トークン量の約 98% を占めますが、料金は 10% で、コストには含まれています）。";
 "dashboard.utilized_percent" = "使用率 %@%%";
@@ -1542,7 +1542,7 @@
 "sessions.preview_empty_gemini" = "Gemini は実行中です。会話の出力を待っています…";
 "sessions.oauth_floor_blocked" = "管理対象の Claude はブロックされています: この Mac のヘルパー（%1$@）は %2$@ より古いため、Max/Pro プランではなく Claude API で Claude を実行します。「設定」で Companion CLI をアップデートしてください（または「プライバシー」でブロックをオフにしてください）。";
 "sessions.wrapped_attach_failed" = "%@ にアタッチできませんでした — セッションが終了した可能性があります";
-"helper.unreachable_detail" = "Companion CLI ヘルパーに接続できません（%@ を確認しました）。ローカルスキャンには影響ありません。「再確認」を試し、解決しない場合はアンインストールして再インストールしてください。";
+"helper.unreachable_detail" = "Companion CLI に接続できません（%@ を確認しました）。ローカルスキャンには影響ありません。「再確認」を試し、解決しない場合はアンインストールして再インストールしてください。";
 "helper.uninstaller_reveal_manual" = "Finder でアンインストーラを手動で開いてください（表示済み）。場所: %@";
 "app_updater.error_manifest_http" = "マニフェストの取得に失敗しました（HTTP %d）";
 "helper.pkg_download_http" = "パッケージのダウンロードに失敗しました（HTTP %d）";

@@ -248,8 +248,9 @@ struct iOSUsageDashboardView: View {
             } else {
                 Image(systemName: "square.grid.3x3")
                     .font(.system(size: 34)).foregroundStyle(.tertiary)
+                // No "Synced to your account" caption here: under a headline
+                // saying nothing has synced yet, it read as a contradiction.
                 Text(L10n.usageDashboard.emptySynced).font(.headline)
-                Text(L10n.usageDashboard.scopeSynced).font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }
