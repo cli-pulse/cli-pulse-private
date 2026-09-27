@@ -31,6 +31,7 @@
 		A10049 /* AdvancedSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10049 /* AdvancedSection.swift */; };
 		A10051 /* LocalModeGuideCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10051 /* LocalModeGuideCard.swift */; };
 		A10102 /* LocalScanConsentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10102 /* LocalScanConsentView.swift */; };
+		A10103 /* QASnapshotRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10103 /* QASnapshotRenderer.swift */; };
 		A10052 /* WelcomeModeChoice.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10052 /* WelcomeModeChoice.swift */; };
 		A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10053 /* AnonymousTelemetryDisclosureCard.swift */; };
 		A10100 /* AgentDiscoveryStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10100 /* AgentDiscoveryStepView.swift */; };
@@ -210,6 +211,7 @@
 		B10049 /* AdvancedSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdvancedSection.swift; sourceTree = "<group>"; };
 		B10051 /* LocalModeGuideCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModeGuideCard.swift; sourceTree = "<group>"; };
 		B10102 /* LocalScanConsentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalScanConsentView.swift; sourceTree = "<group>"; };
+		B10103 /* QASnapshotRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QASnapshotRenderer.swift; sourceTree = "<group>"; };
 		B10052 /* WelcomeModeChoice.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeModeChoice.swift; sourceTree = "<group>"; };
 		B10053 /* AnonymousTelemetryDisclosureCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnonymousTelemetryDisclosureCard.swift; sourceTree = "<group>"; };
 		B10100 /* AgentDiscoveryStepView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentDiscoveryStepView.swift; sourceTree = "<group>"; };
@@ -378,6 +380,7 @@
 				B10049 /* AdvancedSection.swift */,
 				B10051 /* LocalModeGuideCard.swift */,
 				B10102 /* LocalScanConsentView.swift */,
+				B10103 /* QASnapshotRenderer.swift */,
 				B10052 /* WelcomeModeChoice.swift */,
 				B10053 /* AnonymousTelemetryDisclosureCard.swift */,
 				B10020 /* ProviderConfigEditor.swift */,
@@ -743,6 +746,7 @@
 				A10049 /* AdvancedSection.swift in Sources */,
 				A10051 /* LocalModeGuideCard.swift in Sources */,
 				A10102 /* LocalScanConsentView.swift in Sources */,
+				A10103 /* QASnapshotRenderer.swift in Sources */,
 				A10052 /* WelcomeModeChoice.swift in Sources */,
 				A10053 /* AnonymousTelemetryDisclosureCard.swift in Sources */,
 				A10020 /* ProviderConfigEditor.swift in Sources */,
@@ -1090,6 +1094,7 @@
 				PRODUCT_NAME = "CLIPulse QA";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLIPULSE_QA_RENDER";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.9;
 			};

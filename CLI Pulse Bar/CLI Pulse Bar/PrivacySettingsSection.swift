@@ -42,6 +42,7 @@ struct PrivacySettingsSection: View {
                 ) {
                     Text(L10n.localScanConsent.settingsToggle)
                         .font(.system(size: 11))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -60,6 +61,7 @@ struct PrivacySettingsSection: View {
             Toggle(isOn: $settings.localOnlyMode) {
                 Text(L10n.settings.localOnlyMode)
                     .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -73,6 +75,7 @@ struct PrivacySettingsSection: View {
             Toggle(isOn: $settings.skipClaudeKeychain) {
                 Text(L10n.settings.skipClaudeKeychain)
                     .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -97,6 +100,7 @@ struct PrivacySettingsSection: View {
             Toggle(isOn: $settings.blockClaudeOnOutdatedHelper) {
                 Text(L10n.settings.blockClaudeOnOutdatedHelper)
                     .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -116,6 +120,7 @@ struct PrivacySettingsSection: View {
             Toggle(isOn: $settings.anonymousTelemetryEnabled) {
                 Text(L10n.telemetry.toggle)
                     .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)

@@ -34,6 +34,9 @@ struct OnboardingWizardView: View {
     @State private var otpCode = ""
     @State private var password = ""
     @State private var usePasswordLogin = false
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
 
     private static let seededConfigsKey =
         "cli_pulse_agent_setup_seeded_provider_configs_v2"
@@ -101,7 +104,27 @@ struct OnboardingWizardView: View {
         .onDisappear {
             clearCredentialBuffers()
         }
+        #if CLIPULSE_QA_RENDER
+        .onAppear(perform: applyQARenderViewState)
+        #endif
     }
+
+    #if CLIPULSE_QA_RENDER
+    /// QA build only: put the wizard where a user who clicked through it
+    /// would be, for the offscreen renderer. Accounts are discovered only on
+    /// the discovery page, so a later page drawn on its own needs discovery
+    /// run first, as it would have run on the way there.
+    private func applyQARenderViewState() {
+        guard let qaRenderViewState else { return }
+        if qaRenderViewState.onboardingRunsDiscovery, currentStep != .discovery {
+            performDiscovery()
+        }
+        if let finish = qaRenderViewState.onboardingFinish {
+            selectedMode = finish == .sync ? .sync : .local
+            showingCompletion = true
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var stepContent: some View {
@@ -227,7 +250,7 @@ struct OnboardingWizardView: View {
             VStack(alignment: .leading, spacing: 9) {
                 setupValue(
                     icon: "gauge.with.dots.needle.67percent",
-                    text: L10n.welcomeChoice.subtitle
+                    text: L10n.onboardingWizard.welcomeTrackingBody
                 )
                 setupValue(
                     icon: "person.2.badge.gearshape",
@@ -235,7 +258,7 @@ struct OnboardingWizardView: View {
                 )
                 setupValue(
                     icon: "lock.shield",
-                    text: L10n.onboardingWizard.privacyKeysTitle
+                    text: L10n.onboardingWizard.welcomeKeysBody
                 )
             }
             .padding(.horizontal, 16)
@@ -1113,6 +1136,9 @@ struct LegacyOnboardingWizardView: View {
     // Code", label never changes); `.password` opt-in for App Store
     // reviewers. Mirrors `SettingsTab.loginSection` and `iOSLoginView`.
     @State private var usePasswordLogin = false
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
 
     var body: some View {
         // iter13 hotfix (2026-04-29): every step previously trapped the
@@ -1211,6 +1237,14 @@ struct LegacyOnboardingWizardView: View {
                 }
             }
         }
+        #if CLIPULSE_QA_RENDER
+        // QA build only: open on the page the offscreen renderer asks for.
+        .onAppear {
+            if let page = qaRenderViewState?.legacyOnboardingStep {
+                step = page
+            }
+        }
+        #endif
     }
 
     // MARK: - Step 0: Welcome
@@ -1225,10 +1259,13 @@ struct LegacyOnboardingWizardView: View {
             Text(L10n.onboardingWizard.welcomeTitle)
                 .font(.title2.weight(.semibold))
 
+            // Wraps rather than truncating when the popover is short of room,
+            // as it is on first launch with the statistics card above it.
             Text(L10n.onboardingWizard.welcomeSubtitle)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
 
@@ -1627,8 +1664,11 @@ struct LegacyOnboardingWizardView: View {
                 .padding(.horizontal, 20)
 
             // Optional-helper hint as a low-key footnote. Don't bury it
-            // (some users genuinely want headless / Remote-Approvals
-            // setups) but don't lead with it either.
+            // (some users want to run CLI sessions from the menu bar) but
+            // don't lead with it either. It names the Settings section by its
+            // title, Companion CLI; it used to send people to a "Helper"
+            // section that does not exist, for Remote Approvals, which v1.52.1
+            // retired.
             Text(L10n.onboardingWizard.helperHint)
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

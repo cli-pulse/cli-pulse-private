@@ -28,6 +28,7 @@ struct AdvancedSection: View {
                 Toggle(isOn: $launchAtLogin) {
                     Text(L10n.advanced.launchAtLogin)
                         .font(.system(size: 11))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -53,6 +54,7 @@ struct AdvancedSection: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
@@ -102,7 +104,7 @@ struct AdvancedSection: View {
                 Divider()
             }
 
-            SectionHeader(title: L10n.settings.privacy, icon: "lock.shield")
+            SectionHeader(title: L10n.advanced.dataTitle, icon: "lock.shield")
 
             VStack(alignment: .leading, spacing: 6) {
                 privacyRow(
@@ -150,6 +152,7 @@ struct AdvancedSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -172,6 +175,7 @@ struct AdvancedSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -229,6 +233,7 @@ struct AdvancedSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -268,6 +273,7 @@ struct AdvancedSection: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .toggleStyle(.switch)
             .controlSize(.small)
@@ -290,6 +296,7 @@ struct AdvancedSection: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)

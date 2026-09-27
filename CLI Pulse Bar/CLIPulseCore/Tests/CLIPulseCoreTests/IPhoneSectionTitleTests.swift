@@ -51,7 +51,31 @@ final class IPhoneSectionTitleTests: XCTestCase {
         }
         LocaleOverrideStore.shared.set("zh-Hans")
         XCTAssertEqual(L10n.dashboard.hourlyActivity, "每小时活动")
-        XCTAssertEqual(L10n.dashboard.activity, "活动", "macOS and the Watch keep the shared title")
+        XCTAssertEqual(L10n.dashboard.activity, "活动", "the Watch keeps the shared title")
+    }
+
+    /// The Mac Overview has the same two cards in the same order: the usage card
+    /// (`CompactUsageCard`, titled Activity) and the hourly chart right below it,
+    /// which was titled Activity as well. Seen in the offscreen renders in all
+    /// six languages.
+    func test_theMacHourlyCard_isNotTitledLikeTheUsageCardAboveIt() throws {
+        let app = Self.iOSApp.deletingLastPathComponent().appending(path: "CLI Pulse Bar")
+        let overview = try String(contentsOf: app.appending(path: "OverviewTab.swift"), encoding: .utf8)
+        let start = try XCTUnwrap(overview.range(of: "private func activityTimeline("))
+        let card = String(overview[start.upperBound...].prefix(300))
+        XCTAssertTrue(card.contains("SectionHeader(title: L10n.dashboard.hourlyActivity"), card)
+        XCTAssertFalse(card.contains("L10n.dashboard.activity"), card)
+
+        let usageCard = try XCTUnwrap(overview.range(of: "CompactUsageCard()"))
+        let timeline = try XCTUnwrap(overview.range(of: "activityTimeline(dash.trend)"))
+        XCTAssertLessThan(usageCard.lowerBound, timeline.lowerBound,
+                          "the two cards this keeps apart are no longer in this order")
+
+        let core = Self.iOSApp.deletingLastPathComponent()
+            .appending(path: "CLIPulseCore/Sources/CLIPulseCore/UsageDashboardView.swift")
+        let compact = try String(contentsOf: core, encoding: .utf8)
+        XCTAssertTrue(compact.contains("Text(L10n.usageDashboard.activity)"),
+                      "the usage card title this is kept apart from has moved")
     }
 
     func test_theSessionsScreen_saysSessionsOnce() throws {

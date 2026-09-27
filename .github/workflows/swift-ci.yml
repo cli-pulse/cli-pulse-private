@@ -2,11 +2,13 @@ name: Swift CI
 
 # Cost-control v1: feature-branch pushes and draft PRs run a cheap
 # smoke gate (CLIPulseCore tests + the macOS app build only). The
-# full 5-scheme matrix runs only for pushes to main, non-draft PRs,
-# the draft→ready transition, and manual dispatch.
+# full 6-scheme matrix (the five app schemes plus CLIPulse QA) runs
+# only for pushes to main, non-draft PRs, the draft→ready transition,
+# and manual dispatch.
 #
-# macOS runners cost 10x. Reducing 6 jobs → 2 on the common case
-# saves ~67% of macOS-minute burn per feature-branch iteration.
+# macOS runners cost 10x. Reducing 7 jobs (core tests + 6 builds) → 2
+# on the common case saves ~71% of that macOS-minute burn per
+# feature-branch iteration.
 
 on:
   push:
@@ -90,9 +92,12 @@ jobs:
           fi
 
           if [[ "$FULL" == "true" ]]; then
-            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS"},{"scheme":"CLI Pulse iOS","destination":"generic/platform=iOS Simulator"},{"scheme":"CLI Pulse Watch","destination":"generic/platform=watchOS Simulator"},{"scheme":"CLI Pulse Widgets","destination":"platform=macOS"},{"scheme":"CLIPulseHelper","destination":"platform=macOS"}]}'
+            # CLIPulse QA builds its own `Debug QA` configuration: the offscreen
+            # renderer (QASnapshotRenderer.swift) compiles only there, so no other
+            # build in this workflow would notice it stop compiling.
+            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLI Pulse iOS","destination":"generic/platform=iOS Simulator","configuration":"Debug"},{"scheme":"CLI Pulse Watch","destination":"generic/platform=watchOS Simulator","configuration":"Debug"},{"scheme":"CLI Pulse Widgets","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLIPulseHelper","destination":"platform=macOS","configuration":"Debug"},{"scheme":"CLIPulse QA","destination":"platform=macOS","configuration":"Debug QA"}]}'
           else
-            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS"}]}'
+            MATRIX='{"include":[{"scheme":"CLI Pulse Bar","destination":"platform=macOS","configuration":"Debug"}]}'
           fi
 
           {
@@ -293,7 +298,7 @@ jobs:
             -project "CLI Pulse Bar.xcodeproj" \
             -scheme "${{ matrix.scheme }}" \
             -destination "${{ matrix.destination }}" \
-            -configuration Debug \
+            -configuration "${{ matrix.configuration }}" \
             -quiet \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGN_IDENTITY="" \

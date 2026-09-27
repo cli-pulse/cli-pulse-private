@@ -785,9 +785,11 @@ struct OverviewTab: View {
 
     // MARK: - Activity Timeline
 
+    /// Titled "Hourly activity": the usage card right above it is titled
+    /// Activity, and the two read as the same card twice.
     private func activityTimeline(_ trend: [UsagePoint]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: L10n.dashboard.activity, icon: "chart.bar.fill")
+            SectionHeader(title: L10n.dashboard.hourlyActivity, icon: "chart.bar.fill")
             ActivityTimelineChart(trend: trend, style: .macOS)
         }
         .padding(10)

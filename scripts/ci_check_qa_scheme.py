@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -26,6 +27,10 @@ PROJECT_CONFIG_LIST_ID = "G10001"
 PROJECT_QA_CONFIG_ID = "G10007"
 QA_CONFIGURATION = "Debug QA"
 QA_HOME = "/private/tmp/clipulse-qa-home"
+# The offscreen renderer (CLI Pulse Bar/QASnapshotRenderer.swift) and its view
+# hooks compile only where this condition is defined. See
+# docs/qa/macos-offscreen-renders.md.
+QA_RENDER_CONDITION = "CLIPULSE_QA_RENDER"
 
 
 class QAContractError(ValueError):
@@ -140,6 +145,84 @@ def target_product_name(project_text: str) -> str:
     ).strip()
 
 
+def validate_render_condition(project_text: str) -> None:
+    """The render mode exists in the QA app and nowhere else.
+
+    `CLIPULSE_QA_RENDER` must be an active compilation condition of the app's
+    Debug QA configuration, and must not appear in any other object of the
+    project: not in Debug, not in Release (which the Mac App Store and
+    Developer ID builds use), not in another target. The QA build's entry
+    point is compiled from the same condition, so a configuration that gained
+    it would also start somewhere else than `CLIPulseBarApp`.
+    """
+    qa_body = object_body(project_text, APP_QA_CONFIG_ID)
+    conditions = build_settings(project_text, APP_QA_CONFIG_ID).get(
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS", ""
+    ).split()
+    require(
+        QA_RENDER_CONDITION in conditions,
+        f"app Debug QA configuration must define {QA_RENDER_CONDITION} in "
+        "SWIFT_ACTIVE_COMPILATION_CONDITIONS",
+    )
+    require(
+        "$(inherited)" in conditions,
+        "app Debug QA SWIFT_ACTIVE_COMPILATION_CONDITIONS must keep $(inherited) "
+        "so DEBUG still reaches the QA build",
+    )
+    # Plain substring counts, not word matches: in `-DCLIPULSE_QA_RENDER`, the
+    # spelling OTHER_SWIFT_FLAGS uses, there is no word boundary between the D
+    # and the C, and a `\b` pattern let that reach Release unnoticed. A longer
+    # name that merely starts with the condition is counted too, which fails
+    # closed.
+    total = project_text.count(QA_RENDER_CONDITION)
+    inside = qa_body.count(QA_RENDER_CONDITION)
+    require(
+        total == inside,
+        f"{QA_RENDER_CONDITION} may appear only in the app's Debug QA "
+        f"configuration ({APP_QA_CONFIG_ID}); found {total - inside} other "
+        "occurrence(s)",
+    )
+
+
+# Where a build setting can be given outside project.pbxproj: an xcconfig
+# attached to a configuration, an `xcodebuild ... SWIFT_ACTIVE_COMPILATION_CONDITIONS=`
+# override in a release script, or the same override in a workflow. None of
+# them may name the render condition. The QA scheme's Debug QA configuration
+# is the only place it is defined, and `validate_render_condition` holds that
+# for the project file itself.
+OUTSIDE_PROJECT_PATTERNS = ("*.xcconfig", "*.sh", ".github/workflows/*.yml", ".github/workflows/*.yaml")
+
+
+def render_condition_leaks(files: dict[str, str]) -> list[str]:
+    """Paths among `files` (path -> text) that name the render condition."""
+    return sorted(path for path, text in files.items() if QA_RENDER_CONDITION in text)
+
+
+def tracked_files_outside_project(repo_root: Path) -> dict[str, str]:
+    """The tracked files matching `OUTSIDE_PROJECT_PATTERNS`, path -> text."""
+    listing = subprocess.run(
+        ["git", "-C", str(repo_root), "ls-files", "-z", "--", *OUTSIDE_PROJECT_PATTERNS],
+        check=True,
+        capture_output=True,
+    ).stdout.decode("utf-8")
+    files: dict[str, str] = {}
+    for relative in filter(None, listing.split("\0")):
+        path = repo_root / relative
+        if path.is_file():
+            files[relative] = path.read_text(encoding="utf-8", errors="replace")
+    require(files, "found no tracked scripts or workflows to scan; the listing is broken")
+    return files
+
+
+def validate_render_condition_outside_project(files: dict[str, str]) -> None:
+    leaks = render_condition_leaks(files)
+    require(
+        not leaks,
+        f"{QA_RENDER_CONDITION} may be defined only by the app's Debug QA "
+        f"configuration in project.pbxproj; also named in: {', '.join(leaks)}",
+    )
+
+
 def validate_project(project_text: str) -> str:
     expected_product_name = target_product_name(project_text)
 
@@ -213,6 +296,7 @@ def validate_project(project_text: str) -> str:
         },
         "helper Debug QA configuration",
     )
+    validate_render_condition(project_text)
     return expected_product_name
 
 
@@ -396,7 +480,10 @@ def main() -> int:
             PROJECT_FILE.read_text(encoding="utf-8"),
             SCHEME_FILE.read_text(encoding="utf-8"),
         )
-    except (OSError, QAContractError) as error:
+        validate_render_condition_outside_project(
+            tracked_files_outside_project(REPO_ROOT)
+        )
+    except (OSError, QAContractError, subprocess.CalledProcessError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1
     print(

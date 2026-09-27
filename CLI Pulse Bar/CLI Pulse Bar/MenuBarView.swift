@@ -57,29 +57,43 @@ struct MenuBarView: View {
         min(max(CGFloat(storedHeight), 400), Self.maxMenuBarHeight)
     }
 
+    /// How tall the statistics card's explanation may grow before it scrolls,
+    /// when the card sits above the tab views or the scan consent (someone
+    /// updating from a version before the card, or who closed the setup
+    /// wizard). Those scroll and give way; the card at full length would have
+    /// taken most of the popover. Above a setup wizard the card is not capped:
+    /// see `scrollingUnderDisclosure`.
+    private var telemetryExplanationMaxHeight: CGFloat {
+        max(90, effectiveHeight - 480)
+    }
+
+    /// v1.45: shown once, above whichever branch the popover takes, so it
+    /// reaches onboarding / connected / not-connected users alike. This is a
+    /// menu bar app — there is no window at launch — so the first time the menu
+    /// is opened is the earliest honest moment to say this. Nothing has been
+    /// sent before it: the telemetry gate refuses to send while
+    /// `hasSeenDisclosure` is false.
+    private func telemetryDisclosureCard(explanationMaxHeight: CGFloat?) -> some View {
+        AnonymousTelemetryDisclosureCard(explanationMaxHeight: explanationMaxHeight) {
+            let store = UserDefaultsAnonymousTelemetryStore()
+            store.hasSeenDisclosure = true
+            telemetryDisclosureSeen = true
+            AnonymousTelemetryCoordinator.shared?
+                .disclosureAcknowledged(providerState: providerState)
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 10)
+    }
+
     var body: some View {
         Group {
             VStack(spacing: 0) {
                 if !SupabaseConstants.isConfigured {
                     configurationErrorBanner
                 }
-                // v1.45: shown once, above whichever branch is taken below,
-                // so it reaches onboarding / connected / not-connected
-                // users alike. This is a menu bar app — there is no window
-                // at launch — so the first time the menu is opened is the
-                // earliest honest moment to say this. Nothing has been sent
-                // before it: the telemetry gate refuses to send while
-                // `hasSeenDisclosure` is false.
-                if !telemetryDisclosureSeen {
-                    AnonymousTelemetryDisclosureCard {
-                        let store = UserDefaultsAnonymousTelemetryStore()
-                        store.hasSeenDisclosure = true
-                        telemetryDisclosureSeen = true
-                        AnonymousTelemetryCoordinator.shared?
-                            .disclosureAcknowledged(providerState: providerState)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.top, 10)
+                // A setup wizard carries the card itself (`scrollingUnderDisclosure`).
+                if !telemetryDisclosureSeen && !bodyIsASetupWizard {
+                    telemetryDisclosureCard(explanationMaxHeight: telemetryExplanationMaxHeight)
                 }
                 // iter17 (2026-04-29): route via `state.isLocalMode`
                 // even when unauthenticated — that's the new
@@ -94,31 +108,29 @@ struct MenuBarView: View {
                 // and sees their local Mac collector data. The
                 // signed-in-but-unpaired-non-local-mode branch
                 // (PairingSection flow) stays in `notConnectedView`.
-                if shouldPresentAgentSetup {
-                    // Not keyed on the language: the wizard holds typed
-                    // credentials in @State, so it observes the store itself.
-                    OnboardingWizardView(
-                        setupState: $agentSetupState,
-                        onStateChange: { updatedState in
-                            agentSetupStore.save(updatedState)
-                        },
-                        onClose: {
-                            agentSetupDismissedForSession = true
-                        },
-                        onFinished: {
-                            agentSetupDismissedForSession = false
-                        }
-                    )
-                    .environmentObject(state)
+                if popoverBody == .agentSetup {
+                    scrollingUnderDisclosure {
+                        // Not keyed on the language: the wizard holds typed
+                        // credentials in @State, so it observes the store itself.
+                        OnboardingWizardView(
+                            setupState: $agentSetupState,
+                            onStateChange: { updatedState in
+                                agentSetupStore.save(updatedState)
+                            },
+                            onClose: {
+                                agentSetupDismissedForSession = true
+                            },
+                            onFinished: {
+                                agentSetupDismissedForSession = false
+                            }
+                        )
+                        .environmentObject(state)
+                    }
                     // The first run is where someone on a Mac set to another
                     // language most needs the language menu, so every popover
                     // state carries a footer with it.
                     basicFooter
-                } else if LocalCollectionPolicy.shouldPresentDisclosure(
-                    isAuthenticated: authState.isAuthenticated,
-                    isLocalMode: state.isLocalMode,
-                    consent: state.localScanConsent
-                ) {
+                } else if popoverBody == .localScanConsent {
                     // v1.50 W-C. `isLocalMode` is true, so the branch below
                     // would otherwise render the dashboard — for someone who
                     // arrived here by pressing the wizard's close button on
@@ -133,7 +145,7 @@ struct MenuBarView: View {
                         .environmentObject(state)
                         .languageKeyed(localeOverride.override)
                     basicFooter
-                } else if state.isLocalMode || authState.isPaired {
+                } else if popoverBody == .connected {
                     connectedView
                 } else {
                     notConnectedView
@@ -213,6 +225,74 @@ struct MenuBarView: View {
         return false
     }
 
+    /// What the popover shows under the statistics card, decided in one place
+    /// so the card can tell whether a setup wizard is below it.
+    private enum PopoverBody { case agentSetup, localScanConsent, connected, notConnected }
+
+    private var popoverBody: PopoverBody {
+        if shouldPresentAgentSetup { return .agentSetup }
+        if LocalCollectionPolicy.shouldPresentDisclosure(
+            isAuthenticated: authState.isAuthenticated,
+            isLocalMode: state.isLocalMode,
+            consent: state.localScanConsent
+        ) {
+            return .localScanConsent
+        }
+        if state.isLocalMode || authState.isPaired { return .connected }
+        return .notConnected
+    }
+
+    /// The first-run wizard of the not-connected branch (the production one;
+    /// setup v2 is `.agentSetup`).
+    private var showsLegacyOnboarding: Bool {
+        !authState.isAuthenticated && agentSetupState.route == .legacyOnboarding
+    }
+
+    private var bodyIsASetupWizard: Bool {
+        switch popoverBody {
+        case .agentSetup: return true
+        case .notConnected: return showsLegacyOnboarding
+        case .localScanConsent, .connected: return false
+        }
+    }
+
+    /// A setup wizard with the statistics card above it, scrolling together.
+    ///
+    /// On first launch the card and the wizard did not fit the popover's fixed
+    /// height in any language: the stack overflowed at both ends, so the card
+    /// lost its title off the top, the wizard's subtitle was cut to one line,
+    /// and the footer with the language menu fell off the bottom. Here the card
+    /// reads in full, the wizard below it is exactly as tall as the popover's
+    /// body, and once the card is acknowledged the wizard fills that body as it
+    /// always did, with scrolling off. The wizard keeps its place in the view
+    /// tree either way, so acknowledging the card does not reset a step or a
+    /// half-typed sign-in.
+    ///
+    /// Scrolling is turned off by giving the scroll view no axes, not with
+    /// `.scrollDisabled`. That modifier travels down the environment and, as
+    /// documented from macOS 13, disables every scroll view inside too: the
+    /// wizards' own page lists (the account list on the discovery page shows
+    /// about two of five accounts at the default height). macOS 27 happens to
+    /// spare a nested list; macOS 13 and 14, which this app supports, were not
+    /// measured, and the axes cannot disable anything but this one view. It is
+    /// the same `ScrollView` type either way, so the wizard keeps its identity.
+    private func scrollingUnderDisclosure<Wizard: View>(
+        @ViewBuilder _ wizard: () -> Wizard
+    ) -> some View {
+        let content = wizard()
+        return GeometryReader { viewport in
+            ScrollView(telemetryDisclosureSeen ? [] : .vertical) {
+                VStack(spacing: 0) {
+                    if !telemetryDisclosureSeen {
+                        telemetryDisclosureCard(explanationMaxHeight: nil)
+                    }
+                    content
+                        .frame(height: viewport.size.height)
+                }
+            }
+        }
+    }
+
     private var shouldShowAgentSetupUpgrade: Bool {
         guard !agentSetupDismissedForSession else { return false }
         return agentSetupState.route == .upgradePrompt
@@ -285,10 +365,11 @@ struct MenuBarView: View {
             // the bottom of the popover, matching the connected view's
             // footer placement.
             Group {
-                if !authState.isAuthenticated
-                    && agentSetupState.route == .legacyOnboarding {
-                    LegacyOnboardingWizardView()
-                        .environmentObject(state)
+                if showsLegacyOnboarding {
+                    scrollingUnderDisclosure {
+                        LegacyOnboardingWizardView()
+                            .environmentObject(state)
+                    }
                 } else if !authState.isAuthenticated {
                     // iter14 hotfix (2026-04-29): signed-out + onboarding
                     // already done. Pre-iter14 this branch ignored

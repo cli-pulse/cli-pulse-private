@@ -51,7 +51,7 @@ struct iOSUsageHeatmapCard: View {
                     HStack { Spacer(); ProgressView(); Spacer() }
                         .frame(height: rowHeight)
                 } else {
-                    Text(L10n.usageDashboard.scope)
+                    Text(L10n.usageDashboard.emptySynced)
                         .font(.caption).foregroundStyle(.secondary)
                         .frame(height: rowHeight, alignment: .center)
                         .frame(maxWidth: .infinity)
@@ -143,7 +143,7 @@ struct iOSUsageDashboardView: View {
                     Text(CostFormatter.formatUsage(DailyUsageStats.totalTokens(archive)))
                         .font(.system(size: 30, weight: .semibold)).monospacedDigit()
                         .lineLimit(1).minimumScaleFactor(0.5)
-                    Text(L10n.usageDashboard.tokensUnit + " · " + L10n.usageDashboard.scope)
+                    Text(L10n.usageDashboard.tokensUnit + " · " + L10n.usageDashboard.scopeSynced)
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -248,8 +248,9 @@ struct iOSUsageDashboardView: View {
             } else {
                 Image(systemName: "square.grid.3x3")
                     .font(.system(size: 34)).foregroundStyle(.tertiary)
-                Text(L10n.usageDashboard.empty).font(.headline)
-                Text(L10n.usageDashboard.scope).font(.caption).foregroundStyle(.secondary)
+                // No "Synced to your account" caption here: under a headline
+                // saying nothing has synced yet, it read as a contradiction.
+                Text(L10n.usageDashboard.emptySynced).font(.headline)
                     .multilineTextAlignment(.center)
             }
         }

@@ -87,29 +87,54 @@ public struct UsageHeatmapGrid: View {
                                               CurrencyConverter.shared.format(day.cost, locale: locale))
     }
 
+    /// One slot per column, each as wide as the column's step in the grid
+    /// (`cell + gap`, the last one `cell`), so every label starts over its own
+    /// column. The name is sized to itself before it is framed, so it never
+    /// wraps and runs on over the empty slots after it.
+    ///
+    /// The row used to frame each name to `cell + gap` and then space the
+    /// frames by another `gap`, so labels drifted `gap` further right with every
+    /// column, and a name wider than its frame wrapped inside it: "Ma/r",
+    /// "Au/g", and September pushed past the card's edge as "S/p" or "9".
     @ViewBuilder
     private func monthLabels(_ columns: [[String]]) -> some View {
         let names = Self.shortMonthNames(locale: locale)
-        HStack(spacing: gap) {
+        let labeled = Set(Self.labeledColumns(months: columns.map { monthComponent($0.first) }))
+        HStack(spacing: 0) {
             ForEach(Array(columns.enumerated()), id: \.offset) { idx, _ in
-                let label = monthLabel(forColumn: idx, columns: columns, names: names)
-                Text(label)
+                let month = labeled.contains(idx) ? monthComponent(columns[idx].first) : nil
+                Text(month.map { Self.name(ofMonth: $0, in: names) } ?? "")
                     .font(.system(size: 8))
                     .foregroundStyle(.secondary)
-                    .frame(width: cell + gap, alignment: .leading)
+                    .lineLimit(1)
                     .fixedSize()
+                    .frame(width: idx == columns.count - 1 ? cell : cell + gap, alignment: .leading)
             }
         }
     }
 
-    /// Show a short month name on the first column whose Sunday falls in a new month.
-    private func monthLabel(forColumn idx: Int, columns: [[String]], names: [String]) -> String {
-        guard let month = monthComponent(columns[idx].first) else { return "" }
-        if idx == 0 {
-            return Self.name(ofMonth: month, in: names)
+    /// The columns that carry a month name: the first column whose week starts
+    /// in a new month, and the first column when its month runs on for a while.
+    ///
+    /// A name takes about three columns. So a month that starts in one of the
+    /// last `room - 1` columns goes unnamed rather than run past the grid's
+    /// edge, and the first column's month is named only when the next name is
+    /// at least `room` columns away, or it would be printed over.
+    static func labeledColumns(months: [Int?], room: Int = 3) -> [Int] {
+        var starts: [Int] = []
+        for (idx, month) in months.enumerated() {
+            guard let month else { continue }
+            if idx == 0 || month != months[idx - 1] {
+                starts.append(idx)
+            }
         }
-        guard let prev = monthComponent(columns[idx - 1].first) else { return Self.name(ofMonth: month, in: names) }
-        return month != prev ? Self.name(ofMonth: month, in: names) : ""
+        var labeled: [Int] = []
+        for (position, idx) in starts.enumerated() {
+            guard idx + room <= months.count else { continue }
+            if idx == 0, position + 1 < starts.count, starts[position + 1] < room { continue }
+            labeled.append(idx)
+        }
+        return labeled
     }
 
     private func monthComponent(_ dayKey: String?) -> Int? {

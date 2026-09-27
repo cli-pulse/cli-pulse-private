@@ -19,6 +19,9 @@ struct SettingsTab: View {
     @State private var launchAtLogin = false
     @State private var helperEnabled = false
     @State private var settingsSection: SettingsSection = .general
+    #if CLIPULSE_QA_RENDER
+    @Environment(\.qaRenderViewState) private var qaRenderViewState
+    #endif
     // Delete-account state moved to DangerZoneSection.swift (v1.10 P2-2)
     // showGitTrackingConsent state moved to AdvancedSection (v1.10 P2-2 slice 6)
     // alertThresholds state moved to GeneralSection.swift (v1.10 P2-2 slice 5)
@@ -64,7 +67,23 @@ struct SettingsTab: View {
             // so the fields bound to it keep what was typed.
             .languageKeyed(localeOverride.override)
         }
+        #if CLIPULSE_QA_RENDER
+        .onAppear(perform: applyQARenderViewState)
+        #endif
     }
+
+    #if CLIPULSE_QA_RENDER
+    /// QA build only: open on the section and sign-in mode the offscreen
+    /// renderer asks for, as a user would by clicking.
+    private func applyQARenderViewState() {
+        guard let qaRenderViewState else { return }
+        if let raw = qaRenderViewState.settingsSection,
+           let section = SettingsSection(rawValue: raw) {
+            settingsSection = section
+        }
+        usePasswordLogin = qaRenderViewState.usePasswordLogin
+    }
+    #endif
 
     private var agentSetupRerunCard: some View {
         Button(action: onRerunAgentSetup) {
@@ -107,8 +126,6 @@ struct SettingsTab: View {
 
     private var loginSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: L10n.settings.server, icon: "server.rack")
-
             SectionHeader(title: L10n.settings.signIn, icon: "person.circle")
 
             if usePasswordLogin {
