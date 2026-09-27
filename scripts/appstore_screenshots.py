@@ -58,7 +58,10 @@ import sys
 import zlib
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+# CHECKOUT is this checkout. REPO starts as the same path, but tests point it at
+# a fixture tree; only CHECKOUT is known to carry the compositor.
+CHECKOUT = Path(__file__).resolve().parent.parent
+REPO = CHECKOUT
 SCREENSHOTS_REL = "CLI Pulse Bar/screenshots"
 COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py"
 
@@ -235,7 +238,14 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
         return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
     out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
     copy = caption_copy(root)
-    if copy is not None and canonical_lang(lang) in copy:
+    if copy is None or canonical_lang(lang) not in copy:
+        # A fixture tree may have no compositor. This checkout always has one,
+        # so here a missing file, a missing COPY or a missing language fails
+        # instead of quietly switching the caption check off.
+        if (root or REPO) == CHECKOUT:
+            out.append(f"the captions cannot be checked: {COMPOSITOR_REL} is missing, "
+                       f"unparsable, or has no COPY for {canonical_lang(lang)!r}")
+    else:
         want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()}
         drawn = data.get("captions")
         stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])

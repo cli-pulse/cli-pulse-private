@@ -177,6 +177,22 @@ finally:
     shots.SHOT_SOURCES.clear()
     shots.SHOT_SOURCES.update(saved)
 
+# The caption check reads COPY from the compositor. A fixture root may have no
+# compositor and skips it (m_root above); the real repo must not, or moving the
+# compositor would switch the check off without a word.
+UNCHECKABLE = "the captions cannot be checked"
+check("on the real repo the caption check has the compositor's COPY to compare with",
+      not any(UNCHECKABLE in x for x in shots.manifest_problems("en")),
+      str(shots.manifest_problems("en")))
+saved_rel = shots.COMPOSITOR_REL
+try:
+    shots.COMPOSITOR_REL = "CLI Pulse Bar/scripts/no_such_compositor.py"
+    check("on the real repo a missing compositor fails instead of skipping the caption check",
+          any(UNCHECKABLE in x for x in shots.manifest_problems("en")),
+          str(shots.manifest_problems("en")))
+finally:
+    shots.COMPOSITOR_REL = saved_rel
+
 # ── captions ─────────────────────────────────────────────────────────────────
 
 check("every language has a caption for every screen, and no other",
