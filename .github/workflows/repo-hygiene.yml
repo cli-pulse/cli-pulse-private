@@ -131,6 +131,11 @@ jobs:
       # itself NOT RUN here rather than passing.
       - run: python3 scripts/test_asc_push_screenshots.py
       - run: python3 scripts/test_appstore_screenshots.py
+      # The review submitter, the same way: What's New per platform from
+      # --whatsnew-dir, every refusal before the first write (texts, version
+      # state, store locales, the build's state, platform and version), only
+      # changed locales written, read back before the build is attached.
+      - run: python3 scripts/test_asc_submit.py
 
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys

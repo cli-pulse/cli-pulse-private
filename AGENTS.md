@@ -195,11 +195,12 @@ that only the direct-download Mac build has (Remote Control, fan control).
 those checks, the version is missing or not editable, any localization of the
 version has no text for that platform, a repo locale is not on the version yet
 (step 2 has not run; `--allow-missing-locales` overrides), or the build is not
-`VALID` or is for another platform or version. With `--apply` it writes What's
-New where it differs, reads it back, and only then attaches the build and
-submits. The old `--whatsnew` fallback file is retired: it is how English notes
-once reached every storefront. Tests: `scripts/test_asc_submit.py` (offline,
-against a fake App Store Connect; not yet a step in `repo-hygiene.yml`) and the
+`VALID`, is for another platform or version, or the store does not say which
+platform and version it belongs to. With `--apply` it writes What's New where it
+differs, reads it back, and only then attaches the build and submits. The old
+`--whatsnew` fallback file is retired: it is how English notes once reached
+every storefront. Tests, both run by `repo-hygiene.yml`:
+`scripts/test_asc_submit.py` (offline, against a fake App Store Connect) and the
 What's New cases in `scripts/test_asc_listing_preflight.sh`.
 
 ## App Store listing — texts, pusher, preflight
