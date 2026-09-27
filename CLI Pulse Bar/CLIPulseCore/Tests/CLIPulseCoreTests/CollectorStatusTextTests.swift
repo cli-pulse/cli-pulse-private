@@ -176,6 +176,11 @@ final class CollectorStatusTextTests: XCTestCase {
         XCTAssertEqual(render(S.activeSessions(1), in: "es"), "1 sesión activa")
         XCTAssertEqual(render(S.activeSessions(3), in: "es"), "3 sesiones activas")
         XCTAssertEqual(render(S.activeSessions(3), in: "zh-Hans"), "3 个活跃会话")
+        // zh-Hant leaves the noun out, like the English and like watch.active_count.
+        // 「狀態 … 3 個活躍工作階段」 needs 148 pt on the Watch's 140 pt provider status
+        // row (QuotaRingsView) and wraps mid-word there; 「3 個活躍」 fits in 93 pt.
+        XCTAssertEqual(render(S.activeSessions(1), in: "zh-Hant"), "1 個活躍")
+        XCTAssertEqual(render(S.activeSessions(3), in: "zh-Hant"), "3 個活躍")
     }
 
     /// Anchored: a line that merely contains a template is not that template.

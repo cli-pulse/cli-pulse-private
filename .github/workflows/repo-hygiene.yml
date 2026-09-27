@@ -166,6 +166,24 @@ jobs:
       - run: python3 scripts/check_hardcoded_ui_strings.py
       - run: bash scripts/test_check_hardcoded_ui_strings.sh
 
+      # Traditional Chinese terminology. The zh-Hant word for a concept changed
+      # three times in a month, each time on a reviewer's opinion: #557 put the
+      # Apple catalogue on 會話 for "session", #582 moved Android to 告警 for
+      # "alert", #593 moved Apple back to 警示. Neither gate above can see that:
+      # the keys all exist, and every value is Chinese.
+      #
+      # scripts/zh_hant_terms.json records the word each platform uses per
+      # concept, the variants it may not use, and the evidence (counts from
+      # macOS's and Android's own zh_TW strings). This fails on a forbidden
+      # variant in any Apple zh-Hant.lproj table — the app-bundle tables too —
+      # or Android values-zh-rTW resource, and on an allowlist entry that no
+      # longer matches. Changing a term means changing the manifest and its
+      # evidence, which is a reviewable decision instead of a drive-by.
+      # Path-blind for the usual reason: the PR that rewords a string is a
+      # localization PR, and the Android half touches nothing swift-ci watches.
+      - run: python3 scripts/check_zh_hant_terms.py
+      - run: bash scripts/test_check_zh_hant_terms.sh
+
       # Quota tier names are display strings that are ALSO identity: the alert
       # suppression_key, a ForEach id, a cloud upload, and the input to the
       # "week" match that finds the weekly window. So the stored name stays
