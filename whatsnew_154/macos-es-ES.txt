@@ -18,4 +18,4 @@ Ahora puedes elegir en tu Mac cualquiera de los idiomas de CLI Pulse, y todos se
 
 • En el primer inicio, el aviso de estadísticas de instalación anónimas ya no aparece cortado y el menú de idioma sigue en pantalla. También se ordenaron Ajustes, las etiquetas de los meses del mapa de calor y el título del gráfico por horas.
 
-• Cambio de nombre: «Modo solo local» en Ajustes ahora se llama «Modo de privacidad estricta». El nombre anterior parecía decir «dejar de sincronizar», y nunca hizo eso: impide que CLI Pulse lea por su cuenta el elemento de Claude Code en el Llavero y desactiva las estadísticas anónimas.
+• Cambio de nombre: «Modo solo local» en Ajustes ahora se llama «Modo de privacidad estricta». El nombre anterior sonaba a «dejar de sincronizar», algo que nunca hizo. Lo que hace es impedir que CLI Pulse lea por su cuenta el elemento de Claude Code en el Llavero y desactivar las estadísticas anónimas.
