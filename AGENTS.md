@@ -143,11 +143,29 @@ If a task is specifically about the public repo, keep it distribution-only.
 - If a release tag must be recreated, ensure it is recreated on a
   distribution-only commit.
 
-## App Store listing preflight — run before every ASC submission
+## App Store listing — texts, pusher, preflight
+
+The listing texts (description, keywords, subtitle, promotional text) live in
+`CLI Pulse Bar/appstore/<locale>/`, one directory per app language (en-US,
+zh-Hans, zh-Hant, ja, ko, es — `es/` feeds both es-ES and es-MX). The layout,
+the ASC locale mapping and the checks are in `scripts/appstore_listing.py`;
+every pusher reads the files through it. iOS and macOS share one text per
+locale, so every claim must be true on both — a sentence true on one platform
+only goes in a `description.ios.txt` / `description.macos.txt` override (a line
+telling people to add a Home Screen widget, for example: the Mac app has none).
+Features that only the direct-download Mac build has (Remote Control, fan
+control) are not advertised in any App Store listing, override or not.
 
 ```bash
-python3 scripts/asc_listing_preflight.py
+python3 scripts/asc_push_listing.py                     # dry run: per-locale, per-field diff
+python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
+python3 scripts/asc_listing_preflight.py --texts-only   # what CI runs; no key needed
+python3 scripts/asc_listing_preflight.py --version 1.54.0   # before every ASC submission
 ```
+
+The pusher writes only to an editable version (PREPARE_FOR_SUBMISSION /
+*_REJECTED), creates missing locales, never deletes one, and never touches
+What's New (that is `asc_submit.py --whatsnew-dir`).
 
 `scripts/check_paywall_claims.sh` guards the repo *sources*. It cannot see what
 App Store Connect is actually serving, and the gap between those two has bitten
@@ -165,8 +183,9 @@ cannot answer:
 1. **SKU-vs-copy** — the description must not name a tier whose SKU is not
    `APPROVED`. This compares the store's words against the store's own product
    catalogue, so it needs no repo source and cannot go stale.
-2. **Description drift** — live en-US vs both repo pushers
-   (`appstore_metadata.py`, `resubmit.py`).
+2. **Listing drift** — every live locale's description, keywords, promotional
+   text and subtitle vs `CLI Pulse Bar/appstore/<locale>/`, and every repo
+   locale present on the store.
 3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
    same name, compared on decoded pixels because ASC re-encodes on ingest.
 
@@ -175,8 +194,11 @@ subscription paragraph *and* newer than the repo on the privacy section.
 Pushing either side verbatim would have regressed the other. Read both lists the
 script prints before acting.
 
-It needs the ASC key, so it cannot run in CI — it is a release-time step on the
-owner's machine. Exit 2 means it could not check, which is not a pass.
+The store comparison needs the ASC key, so it cannot run in CI — it is a
+release-time step on the owner's machine. Exit 2 means it could not check, which
+is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
+Guideline 2.3.10 platform names in six languages, untranslated English, inline
+copies in pushers) runs in `repo-hygiene.yml`.
 
 ## Active vs Archived
 

@@ -8,6 +8,7 @@ import time
 import requests
 import os
 import hashlib
+import sys
 
 API_KEY_ID = "DMMFP6XTXX"
 API_ISSUER = "c5671c11-49ec-47d9-bd38-5e3c1a249416"
@@ -21,25 +22,25 @@ with open(API_KEY_PATH) as f:
     _key = f.read()
 
 # ── App Store description ─────────────────────────────────────────────────
-# Single source of truth: `CLI Pulse Bar/appstore/description_en-US.txt`.
+# Single source of truth: `CLI Pulse Bar/appstore/en-US/description.txt`, loaded
+# through `scripts/appstore_listing.py`. (For listing text in general, prefer
+# `scripts/asc_push_listing.py`, which diffs first and covers every locale.)
 #
 # This used to be a literal here AND a second literal in the sibling pusher,
-# and the two drifted. On 2026-09-01 this file said "Optional cloud sync via
-# your CLI Pulse account" while `resubmit.py` said "All data stays on your
+# and the two drifted. On 2026-09-01 this file said "All data stays on your
 # local network / No cloud sync or third-party analytics / Connects to your
 # self-hosted CLI Pulse backend" — three claims that are false about the
 # shipping app. Whichever script ran last decided what the App Store said
 # about our privacy posture.
 #
-# `scripts/asc_listing_preflight.py` now fails if either pusher regrows an
-# inline description literal.
-def _load_description() -> str:
-    path = (pathlib.Path(__file__).resolve().parent.parent
-            / "appstore" / "description_en-US.txt")
-    text = path.read_text(encoding="utf-8").strip()
-    if not text:
-        raise SystemExit(f"empty App Store description at {path}")
-    return text
+# `scripts/asc_listing_preflight.py --texts-only` (CI) fails if a pusher
+# regrows an inline copy of any listing text.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "scripts"))
+import appstore_listing  # noqa: E402
+
+
+def _load_description(platform) -> str:
+    return appstore_listing.load_field("description", "en-US", platform)
 
 
 def token():
@@ -308,11 +309,10 @@ def main():
                     ios_vid = v["id"]
 
     # Update description with subscription info for each version
-    DESCRIPTION = _load_description()
-
-    for vid in [mac_vid, ios_vid]:
+    for vid, plat in [(mac_vid, "MAC_OS"), (ios_vid, "IOS")]:
         if not vid:
             continue
+        DESCRIPTION = _load_description(plat)
         r = get(f"/appStoreVersions/{vid}/appStoreVersionLocalizations")
         for loc in r.get("data", []):
             if loc["attributes"]["locale"] == "en-US":
@@ -404,4 +404,15 @@ def main():
 
 
 if __name__ == "__main__":
+    # This script WRITES to App Store Connect as soon as it starts. It has no
+    # dry run and used to ignore every argument, --help included. On 2026-09-27
+    # a `--help` meant only to check that it still imported ran it for real
+    # (the live listing did not change, because nothing it tried to write to
+    # was editable). So it now does nothing unless --apply is the only argument.
+    if sys.argv[1:] != ["--apply"]:
+        print((__doc__ or "").strip(), file=sys.stderr)
+        print("\nRefusing to run without --apply: this script writes to App Store "
+              "Connect and has no dry run.\nFor listing text, use "
+              "scripts/asc_push_listing.py, which shows a diff first.", file=sys.stderr)
+        sys.exit(2)
     main()

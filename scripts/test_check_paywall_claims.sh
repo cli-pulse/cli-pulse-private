@@ -40,7 +40,7 @@ RESUBMIT_REL="CLI Pulse Bar/scripts/resubmit.py"
 # 4c/4d plant into THIS file — planting into the pushers now changes a file
 # that no longer contains a description, which is precisely the no-op mutation
 # `assert_changed` exists to reject (and did, on the first run after the move).
-DESCRIPTION_REL="CLI Pulse Bar/appstore/description_en-US.txt"
+DESCRIPTION_REL="CLI Pulse Bar/appstore/en-US/description.txt"
 
 # Build the fixture: the guard only reads the paywall, the registry, the
 # registered enforcement files, and any .swift/.strings/.kt/.xml under the two
@@ -298,6 +298,43 @@ PLANT
 assert_changed "withdrawn Team tier in store description" \
     "$TMP/case/$DESCRIPTION_REL" "$before" \
     && expect_fail "withdrawn Team tier in store description" "withdrawn from sale"
+
+# ── 4e-4j. a price written the local way, in a translated listing ───────────
+# The scan used to know only "$4.99". A Japanese or Spanish listing writes
+# ¥600 or 4,99 €, and a Chinese, Korean or Spanish one names a foreign
+# currency as a word (4.99 美元, 150 美金, 4.99달러, 4,99 dólares); the first
+# pattern could see none of these. Each case copies the real
+# locale file into the fixture and plants the price into its subscription line.
+plant_locale_price() {
+    local name="$1" locale="$2" anchor="$3" price="$4"
+    build_fixture "$TMP/case"
+    local rel="CLI Pulse Bar/appstore/$locale/description.txt"
+    mkdir -p "$TMP/case/$(dirname "$rel")"
+    cp "$ROOT/$rel" "$TMP/case/$rel"
+    local before
+    before="$(shasum "$TMP/case/$rel" | cut -d' ' -f1)"
+    python3 - "$TMP/case/$rel" "$anchor" "$price" <<'PLANT'
+import sys
+p, anchor, price = sys.argv[1:4]
+s = open(p, encoding="utf-8").read()
+assert anchor in s, "fixture lost the locale anchor: " + anchor
+open(p, "w", encoding="utf-8").write(s.replace(anchor, anchor + price, 1))
+PLANT
+    assert_changed "$name" "$TMP/case/$rel" "$before" \
+        && expect_fail "$name" "hardcodes a price"
+}
+plant_locale_price "yen price in the Japanese description" ja \
+    "CLI Pulse Pro は自動更新サブスクリプションです。" "月額 ¥600。"
+plant_locale_price "trailing-euro price in the Spanish description" es \
+    "CLI Pulse Pro está disponible como suscripción de renovación automática." " Solo 4,99 € al mes."
+plant_locale_price "US dollars as a word in the Simplified Chinese description" zh-Hans \
+    "CLI Pulse Pro 提供自动续期订阅。" "每月 4.99 美元。"
+plant_locale_price "US dollars as a word in the Traditional Chinese description" zh-Hant \
+    "CLI Pulse Pro 提供自動續訂的訂閱方案。" "每月 150 美金。"
+plant_locale_price "dollars as a word in the Korean description" ko \
+    "CLI Pulse Pro는 자동 갱신 구독으로 제공됩니다." " 월 4.99달러."
+plant_locale_price "dollars as a word in the Spanish description" es \
+    "CLI Pulse Pro está disponible como suscripción de renovación automática." " Solo 4,99 dólares al mes."
 
 echo "test_check_paywall_claims: $pass passed, $fail failed."
 [ "$fail" -eq 0 ] || exit 1

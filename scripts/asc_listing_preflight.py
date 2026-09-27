@@ -33,20 +33,34 @@ CHECKS
                     purchasable (state != APPROVED). This needs no repo source
                     at all: it compares the store's words to the store's own
                     product catalogue, so it is true by construction.
-2. Description drift the live en-US description must match the repo source that
-                    claims to produce it.
+2. Listing drift     every live localization's description, keywords,
+                    promotional text and subtitle must match the repo text
+                    for that locale (CLI Pulse Bar/appstore/<locale>/), and
+                    every locale the repo carries must exist on the store.
 3. Screenshot drift  every live screenshot must be byte-identical to the local
                     composed PNG of the same name. Catches "regenerated but
                     never uploaded", which is the case that keeps recurring.
 
+Before any of that it validates the repo texts themselves — the part that needs
+no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
+
+0. Repo texts        for every locale directory: all four files present and
+                    non-empty, App Store Connect's length limits, keyword
+                    format, no Guideline 2.3.10 platform names, no leftover
+                    English in a translated text, and no pusher carrying an
+                    inline copy of any of it. See scripts/appstore_listing.py.
+                    Negative controls: scripts/test_asc_listing_preflight.sh.
+
 READ-ONLY. Every request is a GET. This script never mutates App Store Connect;
-uploading remains a deliberate, owner-driven action.
+pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
-    python3 scripts/asc_listing_preflight.py                 # all platforms
+    python3 scripts/asc_listing_preflight.py --texts-only    # repo only, no key (CI)
+    python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
-Exit 0 = the store agrees with itself and with the repo. 1 = drift. 2 = could
-not check (missing key/网络), which is NOT a pass.
+    python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
+Exit 0 = the store agrees with itself and with the repo. 1 = drift, or invalid
+repo texts. 2 = could not check (missing key/网络), which is NOT a pass.
 """
 from __future__ import annotations
 
@@ -57,12 +71,25 @@ import sys
 import time
 from pathlib import Path
 
-try:
-    import jwt
-    import requests
-except ImportError as exc:  # pragma: no cover - environment problem, not drift
-    print(f"FATAL: missing dependency ({exc}). pip install pyjwt requests", file=sys.stderr)
-    raise SystemExit(2)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import appstore_listing as listing  # noqa: E402
+
+# jwt/requests are imported only when App Store Connect is actually contacted,
+# so `--texts-only` runs on a bare CI runner.
+jwt = None
+requests = None
+
+
+def _load_http_deps() -> None:
+    global jwt, requests
+    try:
+        import jwt as _jwt  # noqa: PLC0415
+        import requests as _requests  # noqa: PLC0415
+    except ImportError as exc:  # pragma: no cover - environment problem, not drift
+        print(f"FATAL: missing dependency ({exc}). pip install pyjwt requests", file=sys.stderr)
+        raise SystemExit(2)
+    jwt, requests = _jwt, _requests
+
 
 REPO = Path(__file__).resolve().parent.parent
 KEY_ID = "DMMFP6XTXX"
@@ -71,6 +98,7 @@ APP_ID = "6761163709"
 BASE = "https://api.appstoreconnect.apple.com/v1"
 
 KEY_CANDIDATES = [
+    Path.home() / ".appstoreconnect/private_keys/AuthKey_DMMFP6XTXX.p8",
     Path.home() / "Library/Application Support/CLI-Pulse-Secrets"
     / "asc-api-key-DMMFP6XTXX-2026-07-08.p8",
     Path.home() / "Library/Mobile Documents/com~apple~CloudDocs/Downloads"
@@ -155,15 +183,26 @@ def purchasable_products(asc: ASC) -> dict[str, str]:
     return out
 
 
-def live_versions(asc: ASC, platform: str | None):
+def live_versions(asc: ASC, platform: str | None, version: str | None = None):
+    """The version to check per platform: the live one, or `version` if named.
+
+    Naming the version is how this runs usefully at release time: the texts are
+    pushed to the version being prepared, and the live one still shows the old
+    text until the new one ships.
+    """
     plats = [platform] if platform else ["MAC_OS", "IOS"]
     for plat in plats:
-        vers = asc.get(
-            f"/apps/{APP_ID}/appStoreVersions",
-            limit=10,
-            **{"filter[platform]": plat,
-               "fields[appStoreVersions]": "versionString,appStoreState,platform"},
-        )
+        params = {"filter[platform]": plat,
+                  "fields[appStoreVersions]": "versionString,appStoreState,platform"}
+        if version:
+            params["filter[versionString]"] = version
+        vers = asc.get(f"/apps/{APP_ID}/appStoreVersions", limit=10, **params)
+        if version:
+            if not vers["data"]:
+                print(f"  note: {plat} has no version {version} — skipped")
+                continue
+            yield plat, vers["data"][0]
+            continue
         live = [v for v in vers["data"] if v["attributes"]["appStoreState"] in LIVE_STATES]
         if not live:
             print(f"  note: no live version for {plat} (nothing serving) — skipped")
@@ -171,57 +210,43 @@ def live_versions(asc: ASC, platform: str | None):
         yield plat, live[0]
 
 
-DESCRIPTION_SOURCES = ("appstore_metadata.py", "resubmit.py")
+def subtitles(asc: ASC, prefer_unreleased: bool) -> dict[str, str]:
+    """locale -> subtitle, from the app info that goes with the checked version."""
+    infos = asc.get(f"/apps/{APP_ID}/appInfos")["data"]
+
+    def state(row):
+        a = row["attributes"]
+        return a.get("state") or a.get("appStoreState") or ""
+    live = [i for i in infos if state(i) in LIVE_STATES | {"READY_FOR_DISTRIBUTION"}]
+    other = [i for i in infos if i not in live]
+    pick = (other or live) if prefer_unreleased else (live or other)
+    if not pick:
+        return {}
+    rows = asc.get(f"/appInfos/{pick[0]['id']}/appInfoLocalizations", limit=50)["data"]
+    return {r["attributes"]["locale"]: (r["attributes"].get("subtitle") or "").strip()
+            for r in rows}
 
 
-def repo_descriptions() -> dict[str, str]:
-    """The description the repo would push, plus a check that there is only one.
+def check_repo_texts(root: Path | None = None) -> bool:
+    """Check 0: the repo's listing texts, and that no pusher carries its own copy.
 
-    There used to be two: a literal in `appstore_metadata.py` and another in
-    `resubmit.py`. They drifted, and not cosmetically — on 2026-09-01 the
-    second one claimed "All data stays on your local network", "No cloud sync
-    or third-party analytics" and "Connects to your self-hosted CLI Pulse
-    backend", none of which is true of the shipping app. Whichever script ran
-    last decided what the App Store said about our privacy posture.
-
-    Both now read `CLI Pulse Bar/appstore/description_en-US.txt`, and this
-    refuses to pass if either one regrows an inline copy.
+    The inline-copy ratchet used to live here as a description-only check of two
+    pushers. It now covers every field of every locale, in three pushers, and it
+    runs in CI because it needs no key — a copy growing back is caught at review,
+    not at the next release.
     """
-    canonical = REPO / "CLI Pulse Bar/appstore/description_en-US.txt"
-    if not canonical.exists():
-        die(f"canonical App Store description missing: {canonical}")
-    text = canonical.read_text(encoding="utf-8").strip()
-    if not text:
-        die(f"canonical App Store description is empty: {canonical}")
-
-    # Ratchet: an inline literal in a pusher is how the drift happened. The
-    # marker is the description's own first sentence, so a copy-paste is
-    # caught no matter what variable it is assigned to.
-    MARKER = "CLI Pulse monitors your AI coding tool usage"
-    for name in DESCRIPTION_SOURCES:
-        src = REPO / "CLI Pulse Bar/scripts" / name
-        if not src.exists():
-            die(f"repo description pusher missing: {src}")
-        body = src.read_text(encoding="utf-8")
-        if MARKER in body:
-            die(f"{name} carries an inline App Store description again. "
-                f"Both pushers must read {canonical.name}; two copies is how "
-                "the store ended up being told the app was self-hosted.")
-
-    out = {"en-US": text}
-    # Every other locale the repo carries a canonical file for. The store has a
-    # zh-Hans description too, and on 2026-09-01 it was STILL selling the
-    # withdrawn Team tier and carried a broken "¥/月" price placeholder with no
-    # number in it — long after en-US had been cleaned up — because nothing
-    # ever read anything but en-US.
-    for extra in sorted((REPO / "CLI Pulse Bar/appstore").glob("description_*.txt")):
-        locale = extra.stem[len("description_"):]
-        if locale == "en-US":
-            continue
-        body = extra.read_text(encoding="utf-8").strip()
-        if body:
-            out[locale] = body
-    return out
+    problems = listing.validate(root) + listing.inline_copy_problems(root)
+    print("repo listing texts (characters):")
+    for src, counts in listing.summary_rows(root):
+        locales = [loc for loc, d in listing.LOCALE_SOURCES.items() if d == src]
+        print(f"  {src:8} " + "  ".join(f"{k[:-4]}={v}" for k, v in counts.items())
+              + f"   -> {', '.join(locales)}")
+    for p in problems:
+        print(f"  FAIL  {p}")
+    if not problems:
+        print(f"  ok    {len(listing.source_dirs())} locale dir(s) valid for "
+              f"{len(listing.LOCALE_SOURCES)} App Store locale(s)")
+    return not problems
 
 
 def sha(data: bytes) -> str:
@@ -233,8 +258,21 @@ def main() -> int:
     ap.add_argument("--platform", choices=["MAC_OS", "IOS"], help="check one platform only")
     ap.add_argument("--skip-screenshots", action="store_true",
                     help="skip check 3 (it downloads every live screenshot)")
+    ap.add_argument("--version", help="check this versionString instead of the live version")
+    ap.add_argument("--texts-only", action="store_true",
+                    help="check 0 only: validate the repo texts, no App Store Connect (CI)")
+    ap.add_argument("--root", type=Path,
+                    help="repo root to validate (with --texts-only; for the self-test)")
     args = ap.parse_args()
 
+    if args.root and not args.texts_only:
+        ap.error("--root only makes sense with --texts-only")
+    texts_ok = check_repo_texts(args.root)
+    if args.texts_only:
+        print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
+        return 0 if texts_ok else 1
+
+    _load_http_deps()
     asc = ASC()
     products = purchasable_products(asc)
     buyable = {pid for pid, st in products.items() if st == "APPROVED"}
@@ -243,33 +281,40 @@ def main() -> int:
         mark = "OK " if st == "APPROVED" else "NOT"
         print(f"   {mark}  {st:<28} {pid}")
 
-    repo_descs = repo_descriptions()
-    print("repo canonical descriptions: " +
-          ", ".join(f"{n} ({len(d)} chars)" for n, d in sorted(repo_descs.items())))
-    # The old "the pushers disagree with each other" note is gone: there is now
-    # exactly one file per locale and the pushers read them, so the only way to
-    # disagree is an inline literal — which `repo_descriptions` refuses outright.
-
-    failed = False
+    failed = not texts_ok
     checked_any = False
+    live_subtitles = subtitles(asc, prefer_unreleased=bool(args.version))
 
-    for plat, ver in live_versions(asc, args.platform):
+    for plat, ver in live_versions(asc, args.platform, args.version):
         vs = ver["attributes"]["versionString"]
-        print(f"\n=== LIVE {plat} v{vs} ===")
+        print(f"\n=== {'LIVE ' if not args.version else ''}{plat} v{vs} "
+              f"({ver['attributes'].get('appStoreState')}) ===")
         locs = asc.get(
             f"/appStoreVersions/{ver['id']}/appStoreVersionLocalizations",
-            limit=20,
-            **{"fields[appStoreVersionLocalizations]": "locale,description"},
+            limit=50,
+            **{"fields[appStoreVersionLocalizations]":
+               "locale,description,keywords,promotionalText"},
         )
         by_locale = {}
+        rows_by_locale = {}
         for row in locs["data"]:
             lc = row["attributes"].get("locale")
             body = (row["attributes"].get("description") or "").strip()
+            if lc:
+                rows_by_locale[lc] = row["attributes"]
             if lc and body:
                 by_locale[lc] = body
         if "en-US" not in by_locale:
             die(f"{plat} v{vs} has no en-US localization with a description; cannot check.")
         checked_any = True
+
+        # A locale the repo translates and the store does not carry is drift too:
+        # the translation exists, and nobody in that storefront can read it.
+        for locale in listing.LOCALE_SOURCES:
+            if locale not in rows_by_locale:
+                print(f"  FAIL  [{locale}] the repo has a listing for this locale; the store "
+                      "has no localization. Push it: scripts/asc_push_listing.py")
+                failed = True
 
         # EVERY localization, not just en-US. Checking one and printing a pass
         # is how the Chinese listing went on selling the withdrawn Team tier —
@@ -295,12 +340,27 @@ def main() -> int:
                 else:
                     print(f"  ok    [{locale}] mentions '{word}' and it is purchasable")
 
-            # ── 2. description drift, against THIS locale's canonical text ──
-            canon = repo_descs.get(locale)
-            if canon is None:
-                print(f"  note  [{locale}] no canonical repo text — not compared. "
-                      f"Add CLI Pulse Bar/appstore/description_{locale}.txt to cover it.")
-            elif desc == canon:
+            # ── 2. listing drift, against THIS locale's repo text ─────────
+            if locale not in listing.LOCALE_SOURCES:
+                print(f"  note  [{locale}] no repo text for this locale — not compared. "
+                      "Add it to LOCALE_SOURCES in scripts/appstore_listing.py.")
+                continue
+            live_attrs = dict(rows_by_locale.get(locale, {}))
+            live_attrs["subtitle"] = live_subtitles.get(locale, "")
+            for f in listing.FIELDS:
+                if f.attribute == "description":
+                    continue
+                want = listing.load_field(f.attribute, locale, plat)
+                got = (live_attrs.get(f.attribute) or "").strip()
+                if got == want:
+                    print(f"  ok    [{locale}] live {f.attribute} matches the repo")
+                else:
+                    print(f"  FAIL  [{locale}] live {f.attribute} differs from the repo")
+                    print(f"          store: {got[:150]!r}")
+                    print(f"          repo:  {want[:150]!r}")
+                    failed = True
+            canon = listing.load_field("description", locale, plat)
+            if desc == canon:
                 print(f"  ok    [{locale}] live description matches the repo source")
             else:
                 print(f"  FAIL  [{locale}] live description differs from the repo source "
@@ -408,7 +468,10 @@ def main() -> int:
     print()
     if failed:
         print("PREFLIGHT FAILED — the store does not agree with the repo, or with itself.")
-        print("Fix by re-pushing the affected metadata/screenshots to App Store Connect.")
+        print("Listing text: scripts/asc_push_listing.py shows the per-field diff (dry run),")
+        print("then --apply --version <X.Y.Z> --platform IOS|MAC_OS writes the editable version.")
+        print("At release time, re-run this with --version <X.Y.Z>: the live version keeps")
+        print("the old text until the new one ships.")
         return 1
     print("PREFLIGHT OK — live listing agrees with the repo and sells only purchasable tiers.")
     return 0

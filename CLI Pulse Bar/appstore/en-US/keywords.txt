@@ -1,0 +1,1 @@
+claude,codex,gemini,quota,tokens,limit,rate,tracker,spend,llm,api,agent,menubar,developer,dashboard

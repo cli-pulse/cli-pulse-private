@@ -385,14 +385,39 @@ fi
 # Python files and reported a pass. So the canonical file is scanned, is
 # REQUIRED to exist, and the pushers are still scanned so that an inline copy
 # growing back is caught here as well as by asc_listing_preflight.py.
-canonical_desc="$ROOT/CLI Pulse Bar/appstore/description_en-US.txt"
+#
+# 2026-09-26: the listing became one directory per locale
+# (`CLI Pulse Bar/appstore/<locale>/`, see scripts/appstore_listing.py), in six
+# languages. Every description and promotional text in every locale is scanned —
+# a withdrawn tier in the Korean listing sells it just as well — and the en-US
+# description is still REQUIRED, so a move of the tree cannot turn this into a
+# scan of nothing.
+#
+# A translated listing would write a price the local way, so the price pattern
+# is not only "$4.99": it takes a currency symbol before a number (¥600, €4.99,
+# ₩1,500, £3.99, $4.99), a symbol or 円/元/원 after one (4,99 €, 600円, 30元,
+# 5,000원), USD / US$, and a currency written as a word after a number, the
+# way CJK and Spanish copy usually names a foreign currency (4.99 美元, 150 美金,
+# 600 日元/日圓, 4.99 ドル, 4.99달러, 4,99 dólares, 4,99 euros, 99 pesos). The
+# alternatives are spelled out rather than put in a [...] bracket: in the C
+# locale grep reads a bracket byte by byte, and the bytes of € or 円 would then
+# match inside ordinary CJK text.
+#
+# NOT covered: a tier name translated into another language (チーム, 团队,
+# "Equipo"). The check looks for the brand form "CLI Pulse Team", which is how
+# every listing names a tier today; asc_listing_preflight.py's SKU-vs-copy
+# check is English-only for the same reason.
+price_pattern='(\$|¥|￥|€|£|₩) ?[0-9]|[0-9]([.,][0-9]{1,2})? ?(€|円|元|원)|US\$|USD ?[0-9]|[0-9] ?USD'
+price_pattern="$price_pattern"'|[0-9] ?(美元|美金|日元|日圓|港元|港幣|ドル|달러|dólar|dolar|euro|Euro|peso)'
+canonical_desc="$ROOT/CLI Pulse Bar/appstore/en-US/description.txt"
 if [ ! -f "$canonical_desc" ]; then
     echo "ERROR: canonical App Store description missing:"
-    echo "       CLI Pulse Bar/appstore/description_en-US.txt"
+    echo "       CLI Pulse Bar/appstore/en-US/description.txt"
     echo "       Refusing to pass — this check would be scanning nothing."
     exit 1
 fi
-description_sources="$canonical_desc
+description_sources="$(find "$ROOT/CLI Pulse Bar/appstore" -mindepth 2 -maxdepth 2 -type f \
+    \( -name 'description*.txt' -o -name 'promotional_text*.txt' \) -print 2>/dev/null | sort)
 $(find "$ROOT/CLI Pulse Bar/scripts" -maxdepth 1 \
     \( -name 'appstore_metadata.py' -o -name 'resubmit.py' \) -print 2>/dev/null)"
 
@@ -407,9 +432,9 @@ while IFS= read -r src; do
     rel="${src#"$ROOT"/}"
     body="$(sed 's/#.*$//' "$src")"
 
-    if printf '%s' "$body" | grep -qE '\$[0-9]+\.[0-9]{2}'; then
+    if printf '%s' "$body" | grep -qE "$price_pattern"; then
         echo "ERROR: $rel hardcodes a price in the App Store description."
-        printf '%s' "$body" | grep -nE '\$[0-9]+\.[0-9]{2}' | sed 's/^/         /'
+        printf '%s' "$body" | grep -nE "$price_pattern" | sed 's/^/         /'
         echo "       Prices live in App Store Connect and change there; a copy"
         echo "       here silently goes stale. On 2026-08-28 every figure in this"
         echo "       file was 4-5x the real price. Say what TERMS.md says instead:"

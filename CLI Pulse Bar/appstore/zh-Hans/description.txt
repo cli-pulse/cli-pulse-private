@@ -1,0 +1,37 @@
+CLI Pulse 帮你盯住 AI 编程工具：每项配额用了多少、什么时候重置、你的用量花了多少钱。支持 Claude、Codex、Gemini、Cursor、Copilot、OpenRouter、Ollama 等数十家服务商，可在 Mac、iPhone、iPad 和 Apple Watch 上使用。
+
+在 Mac 上
+· 各服务商的配额和重置时间，在菜单栏一点即看
+· 用量节奏：配额能不能撑到重置，或者还有多久用完
+· 根据 Claude Code 和 Codex 的日志估算费用，全部在你的 Mac 上计算
+· 各服务商的用量历史、活动热力图和费用预测
+· 按项目列出进行中和最近的会话，附带用量与预估费用
+· 配额用量超过你设定的阈值，或登录后当日费用激增时，都会发出告警
+· 费用报告可导出为 CSV 或 PDF
+· 脉冲猫：可选的桌面猫，它的状态来自你真实的 AI 用量
+· 无需账户：使用本地模式时，用量数据只留在这台 Mac 上
+
+在 iPhone、iPad 和 Apple Watch 上
+· 同样的配额、费用、会话和告警，从你的 Mac 同步过来
+· 主屏幕与锁定屏幕小组件（Pro）
+· Siri 与快捷指令：查询今天的状态，或某家服务商的剩余配额
+· Apple Watch：在手腕上查看配额圆环、告警和会话
+
+iPhone、iPad 和 Apple Watch 上显示的是 Mac 上的 CLI Pulse 收集到的数据。请在 Mac 上安装 CLI Pulse，并在每台设备上登录同一个账户。连接 Mac 之前，可以先点按「试用演示」，用示例数据体验 App。
+
+隐私
+· 服务商的 API 密钥和会话日志的内容永远不会离开你的 Mac
+· 登录后，用量数据通过加密连接同步到你的 CLI Pulse 账户
+· 没有广告，没有第三方分析 SDK
+
+免费版与 Pro
+CLI Pulse 免费版最多可启用三个服务商。CLI Pulse Pro 不限服务商数量，并解锁主屏幕与锁定屏幕小组件。
+
+订阅信息
+
+CLI Pulse Pro 提供自动续期订阅。可选方案、价格与计费周期以 App Store 和 App 内购买时显示的为准。
+
+付款将在确认购买时记入你的 Apple 账户。除非在当前周期结束前至少 24 小时关闭自动续期，否则订阅将自动续期。账户将在当前周期结束前 24 小时内被扣费续期。购买后可在 App Store 账户设置中管理和取消订阅。
+
+使用条款：https://cli-pulse.github.io/cli-pulse/terms.html
+隐私政策：https://cli-pulse.github.io/cli-pulse/privacy.html

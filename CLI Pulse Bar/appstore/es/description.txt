@@ -1,0 +1,37 @@
+CLI Pulse sigue de cerca tus herramientas de programación con IA: cuánto has usado de cada cuota, cuándo se reinicia y cuánto te está costando. Funciona con Claude, Codex, Gemini, Cursor, Copilot, OpenRouter, Ollama y decenas de proveedores más, en tu Mac y también en tu iPhone, iPad y Apple Watch.
+
+En tu Mac
+• La cuota y la hora de reinicio de cada proveedor, a un clic en la barra de menús
+• Ritmo: si tu cuota durará hasta el reinicio o cuándo se agotará
+• Costo estimado a partir de los registros de Claude Code y Codex, calculado en tu Mac
+• Historial de uso de cada proveedor, un mapa de calor de actividad y un pronóstico de costos
+• Sesiones activas y recientes por proyecto, con su uso y su costo estimado
+• Alertas cuando una cuota supera un umbral que tú eliges y, con la sesión iniciada, cuando tu costo diario se dispara
+• Informes de costos que puedes exportar en CSV o PDF
+• Gato Pulse, un gato de escritorio opcional cuyas constantes vitales reflejan tu uso real de IA
+• Sin necesidad de cuenta: en modo local, tus datos de uso se quedan en tu Mac
+
+En iPhone, iPad y Apple Watch
+• Las mismas cuotas, costos, sesiones y alertas, sincronizados desde tu Mac
+• Widgets para la pantalla de inicio y la pantalla de bloqueo (Pro)
+• Siri y Atajos: consulta el estado de hoy o la cuota restante de un proveedor
+• Apple Watch: anillos de cuota, alertas y sesiones en tu muñeca
+
+Las apps para iPhone, iPad y Apple Watch muestran lo que CLI Pulse recopila en tu Mac. Instala CLI Pulse en tu Mac e inicia sesión con la misma cuenta en cada dispositivo. Con «Probar demo» puedes ver la app con datos de ejemplo antes de conectar tu Mac.
+
+Privacidad
+• Las claves de API de tus proveedores y el contenido de tus registros de sesión nunca salen de tu Mac
+• Al iniciar sesión, tus datos de uso se sincronizan con tu cuenta de CLI Pulse mediante una conexión cifrada
+• Sin anuncios y sin SDK de analítica de terceros
+
+Gratis y Pro
+CLI Pulse es gratis para hasta tres proveedores. CLI Pulse Pro añade proveedores ilimitados y los widgets para la pantalla de inicio y la pantalla de bloqueo.
+
+Información de la suscripción
+
+CLI Pulse Pro está disponible como suscripción de renovación automática. Los planes disponibles, los precios y los periodos de facturación se muestran en el App Store y en la app en el momento de la compra.
+
+El pago se cargará a tu cuenta de Apple al confirmar la compra. La suscripción se renueva automáticamente a menos que desactives la renovación automática al menos 24 horas antes de que termine el periodo actual. La renovación se cargará a tu cuenta dentro de las 24 horas previas al final del periodo actual. Puedes gestionar y cancelar tus suscripciones en los ajustes de tu cuenta del App Store después de la compra.
+
+Términos de uso: https://cli-pulse.github.io/cli-pulse/terms.html
+Política de privacidad: https://cli-pulse.github.io/cli-pulse/privacy.html
