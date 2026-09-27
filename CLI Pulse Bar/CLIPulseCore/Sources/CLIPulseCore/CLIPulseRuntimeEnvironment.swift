@@ -535,6 +535,31 @@ public struct CLIPulseRuntimeEnvironment: Equatable, Sendable {
     }
 }
 
+#if DEBUG
+extension CLIPulseRuntimeEnvironment {
+    /// The environment an App Store screenshot capture runs in (see
+    /// `ScreenshotLaunch`). DEBUG builds only.
+    ///
+    /// The same app and bundle, with the quarantine capability set: nothing
+    /// restores a session, refreshes, collects, publishes widget data, starts
+    /// StoreKit or sends telemetry, and the API client resolves to the invalid
+    /// local endpoint `127.0.0.1:0`. So a capture cannot reach the network, and
+    /// cannot pick up the account signed in on the simulator it runs on: Demo
+    /// mode is entered explicitly and nothing else ever replaces its data.
+    public func restrictedForScreenshotCapture() -> Self {
+        Self(
+            channel: channel,
+            bundleIdentifier: bundleIdentifier,
+            fixedUserHome: fixedUserHome,
+            resolvedFixedUserHome: resolvedFixedUserHome,
+            capabilities: .quarantine,
+            allowsProductionCloudEndpoints: false,
+            shouldResetQAExperience: false
+        )
+    }
+}
+#endif
+
 enum RuntimeExperiencePolicy {
     enum LocalModeStrategy: Equatable, Sendable {
         case liveCollection

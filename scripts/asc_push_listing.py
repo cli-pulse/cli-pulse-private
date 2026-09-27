@@ -35,7 +35,9 @@ and then it:
     hold the repo text.
 
 The texts live in CLI Pulse Bar/appstore/<locale>/ — see scripts/appstore_listing.py
-for the layout and why es-ES and es-MX share one Spanish text.
+for the layout and why es-ES and es-MX share one Spanish text. The iPhone
+screenshots are pushed by the sibling scripts/asc_push_screenshots.py, with this
+script's client and the same editability rule.
 
 The ASC API key is read from ~/.appstoreconnect/private_keys/ (headless-safe),
 then the owner's secrets directory, then iCloud Drive. The signed token is never

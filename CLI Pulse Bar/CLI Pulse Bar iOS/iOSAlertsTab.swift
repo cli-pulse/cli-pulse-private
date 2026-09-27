@@ -35,7 +35,14 @@ struct iOSAlertsTab: View {
             // sign-in, and unambiguously *about* the thing the notification
             // would carry. See `AppState.alertsTabDidAppear()` for why it is
             // no longer attached to the Remote Control switch.
-            .task { state.alertsTabDidAppear() }
+            .task {
+                #if DEBUG
+                // A screenshot capture is signed in to Demo, so it would get
+                // the system prompt on top of the screen being photographed.
+                guard ScreenshotLaunch.activeRequest == nil else { return }
+                #endif
+                state.alertsTabDidAppear()
+            }
     }
 
     private var alertsContent: some View {

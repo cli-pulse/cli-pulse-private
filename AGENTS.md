@@ -200,6 +200,27 @@ is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
 copies in pushers) runs in `repo-hygiene.yml`.
 
+### iPhone screenshots (six languages)
+
+Captured without a tap from a DEBUG simulator build, composed with per-language
+captions, pushed per locale. Layout and locale mapping: `scripts/appstore_screenshots.py`.
+
+```bash
+"CLI Pulse Bar/scripts/capture_ios_screenshots.sh"            # -> screenshots/ios-raw/<lang>/
+python3 "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" --all   # -> ios-composed/<lang>/
+python3 scripts/asc_push_screenshots.py --version 1.54.0     # dry run: per-locale files + md5
+python3 scripts/asc_push_screenshots.py --apply --version 1.54.0
+python3 scripts/asc_listing_preflight.py --texts-only --require-shots
+```
+
+The capture launches the app with `-CLIPulseScreenshotDemo YES
+-CLIPulseScreenshotScreen <screen>` (compiled out of Release; see
+`ScreenshotLaunch.swift`), which enters the shipped Demo mode on that screen with
+no network and no permission prompt. The pusher replaces only the
+`APP_IPHONE_67` set, uploads and waits for the new panels before deleting the
+old, and refuses while the version waits for review (withdraw the iOS
+submission only).
+
 ## Active vs Archived
 
 ### Active

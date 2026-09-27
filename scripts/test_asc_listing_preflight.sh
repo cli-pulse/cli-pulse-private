@@ -230,6 +230,50 @@ case "$coverage" in
         fail=$((fail + 1)) ;;
 esac
 
+# ── --require-shots: every listing locale's iPhone panels ────────────────────
+# Off by default (no panels exist in the new layout until the six-language
+# capture lands), so the default run must stay green without them, and the flag
+# must turn a missing, stray or unuploadable panel into a failure.
+run_check() {
+    python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
+}
+panels() {   # panels <lang...>: write the five valid panels for each language
+    python3 - "$ROOT" "$CASE" "$@" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+for lang in sys.argv[3:]:
+    for p in s.expected_composed(lang, pathlib.Path(sys.argv[2])):
+        s.write_png(p, 1290, 2796)
+PY
+}
+
+EXTRA=""; build_fixture
+expect_pass "no iPhone panels, --require-shots not given"
+
+EXTRA="--require-shots"; build_fixture
+expect_fail "--require-shots with no panels at all" "[en-US] en: screenshots/ios-composed/en/ does not exist"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+expect_pass "--require-shots with all six languages' panels"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko
+expect_fail "--require-shots without the Spanish set (es-ES and es-MX)" "[es-MX] es:"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+rm "$CASE/CLI Pulse Bar/screenshots/ios-composed/ko/03_cost_1290x2796.png"
+expect_fail "--require-shots with one panel missing" "[ko] ko: 03_cost_1290x2796.png: missing"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+s.write_png(s.expected_composed("ja", pathlib.Path(sys.argv[2]))[0], 1290, 2796, color_type=6)
+PY
+expect_fail "--require-shots with a panel that has alpha" "[ja] ja: 01_overview_1290x2796.png: RGBA"
+EXTRA=""
+
 echo "test_asc_listing_preflight: $pass passed, $fail failed."
 [ "$fail" -eq 0 ] || exit 1
 exit 0

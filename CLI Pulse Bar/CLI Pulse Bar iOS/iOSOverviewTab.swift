@@ -60,6 +60,9 @@ struct iOSOverviewTab: View {
 
                         if state.showCost {
                             costSection
+                                #if DEBUG
+                                .id(ScreenshotLaunch.ScrollTarget.costSummary)
+                                #endif
 
                             // v1.14 (2026-05-08): cross-platform parity with macOS
                             // Overview. The forecast is computed from cloud
@@ -94,6 +97,9 @@ struct iOSOverviewTab: View {
                     }
                 }
                 .padding(.vertical)
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ScrollToTarget())
+                #endif
             }
             .navigationTitle(L10n.dashboard.title)
             .toolbar {
