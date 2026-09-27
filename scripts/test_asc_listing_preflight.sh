@@ -320,9 +320,9 @@ case "$coverage" in
 esac
 
 # ── --require-shots: every listing locale's iPhone panels ────────────────────
-# Off by default (no panels exist in the new layout until the six-language
-# capture lands), so the default run must stay green without them, and the flag
-# must turn a missing, stray or unuploadable panel into a failure.
+# A flag (CI passes it; the fixtures above carry listing texts only), so the
+# run without it must stay green without panels, and the flag must turn a
+# missing, stray or unuploadable panel into a failure.
 run_check() {
     python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
 }

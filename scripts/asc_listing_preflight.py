@@ -47,7 +47,8 @@ CHECKS
 4. iPhone panels    with --require-shots only: every locale with listing texts
                     has its five composed iPhone screenshots, each one App
                     Store Connect would accept (scripts/appstore_screenshots.py),
-                    or deliberately falls back to en-US's. Repo-only.
+                    or deliberately falls back to en-US's. Repo-only; CI runs
+                    it together with --texts-only.
 
 Before any of that it validates the repo texts themselves — the part that needs
 no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
@@ -72,8 +73,8 @@ READ-ONLY. Every request is a GET. This script never mutates App Store Connect;
 pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
-    python3 scripts/asc_listing_preflight.py --texts-only    # repo only, no key (CI)
-    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone panels
+    python3 scripts/asc_listing_preflight.py --texts-only    # repo texts only, no key
+    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone panels (CI)
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
@@ -135,8 +136,8 @@ TIER_CLAIMS = {
 # Where the composed marketing PNGs live, by ASC display type.
 LOCAL_SHOTS = {
     "APP_DESKTOP": REPO / "CLI Pulse Bar/screenshots/macos/composed",
-    # APP_IPHONE_67 is per locale: shots.preflight_dir(<language>) — the
-    # six-language panels once they land, the 1.53.0 directories until then.
+    # APP_IPHONE_67 is per locale: shots.composed_dir(<language>), the
+    # six-language panels (scripts/appstore_screenshots.py).
     "APP_IPAD_PRO_3GEN_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
     "APP_IPAD_PRO_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
 }
@@ -294,11 +295,11 @@ def check_repo_texts(root: Path | None = None) -> bool:
 def check_repo_shots(root: Path | None = None) -> bool:
     """Check 4 (--require-shots): every locale with listing texts has its five
     composed iPhone panels, each uploadable (1290x2796, RGB, no alpha, <=10 MB),
-    or is mapped to FALLBACK and shows en-US's. Repo-only, so it can run in CI.
-
-    Off by default until the six-language capture has landed: turned on before
-    that, it would be red for a reason nobody can fix in the meantime, and a
-    permanently red gate gets switched off rather than fixed."""
+    or is mapped to FALLBACK and shows en-US's. Repo-only, so it runs in CI:
+    repo-hygiene.yml passes --require-shots since the six-language capture for
+    1.54.0 landed. It stays a flag rather than the default so that a listing-text
+    change can still be checked on its own (test_asc_listing_preflight.sh
+    builds text-only fixtures), not because the panels may be missing."""
     problems = shots.require_shots_problems(listing.LOCALE_SOURCES, root)
     print("repo iPhone screenshots (--require-shots):")
     for loc in listing.LOCALE_SOURCES:
@@ -563,7 +564,7 @@ def main() -> int:
                         print(f"  note  [{locale}] has an iPhone set of its own, but "
                               "SHOT_SOURCES says it shows en-US's — not compared")
                         continue
-                    local_dir = shots.preflight_dir(iphone_lang or "en")
+                    local_dir = shots.composed_dir(iphone_lang or "en")
                 elif is_en:
                     local_dir = LOCAL_SHOTS.get(dtype)
                 else:

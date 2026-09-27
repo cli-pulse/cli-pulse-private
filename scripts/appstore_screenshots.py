@@ -32,10 +32,10 @@ A locale may instead be mapped to FALLBACK: it then gets no set of its own and
 App Store Connect shows it the primary locale's (en-US) screenshots. That is a
 decision, recorded here, not a gap: `--require-shots` accepts it and says so.
 
-The 1.53.0 set predates this layout: English in screenshots/ios/ (raw) and
-screenshots/ios/composed/, Simplified Chinese in screenshots/ios-zh/. Those
-directories stay until the first capture in this layout replaces them;
-LEGACY_COMPOSED names them for the release preflight in the meantime.
+The 1.53.0 set (English in screenshots/ios/, Simplified Chinese in
+screenshots/ios-zh/, shot by hand) was retired when the first six-language
+capture in this layout landed for 1.54.0. Nothing reads those paths any more;
+the release preflight compares the live store with ios-composed/<lang>/ only.
 
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
@@ -81,12 +81,6 @@ SHOT_SOURCES: dict[str, str | None] = {
     "es-MX": "es",
 }
 
-# The 1.53.0 panels, by language (see the module docstring).
-LEGACY_COMPOSED: dict[str, str] = {
-    "en": "ios/composed",
-    "zh-Hans": "ios-zh/composed",
-}
-
 DISPLAY_TYPE = "APP_IPHONE_67"
 CANVAS = (1290, 2796)
 MAX_BYTES = 10 * 1000 * 1000
@@ -129,16 +123,6 @@ def composed_dir(lang: str, root: Path | None = None) -> Path:
 def expected_composed(lang: str, root: Path | None = None) -> list[Path]:
     d = composed_dir(lang, root)
     return [d / composed_name(s) for s in stems()]
-
-
-def preflight_dir(lang: str, root: Path | None = None) -> Path:
-    """The panels the store should be showing for `lang`: this layout's if it
-    has any, else the 1.53.0 directory."""
-    new = composed_dir(lang, root)
-    if new.is_dir() and any(new.glob("*.png")):
-        return new
-    legacy = LEGACY_COMPOSED.get(canonical_lang(lang))
-    return screenshots_dir(root) / legacy if legacy else new
 
 
 # ── the PNG header ───────────────────────────────────────────────────────────

@@ -116,7 +116,14 @@ jobs:
       # the release push. It also fails if a pusher regrows an inline copy of
       # any listing text — two copies is how the store was once told the app
       # was self-hosted.
-      - run: python3 scripts/asc_listing_preflight.py --texts-only
+      #
+      # --require-shots: every listing locale also has its five composed iPhone
+      # panels in CLI Pulse Bar/screenshots/ios-composed/<lang>/, each one App
+      # Store Connect would accept and the one a clean compose run recorded in
+      # compose.json. A missing or stray panel, a set a failed compose run
+      # withdrew, or a panel edited after the run fails here instead of at the
+      # release push.
+      - run: python3 scripts/asc_listing_preflight.py --texts-only --require-shots
       - run: bash scripts/test_asc_listing_preflight.sh
       # The pusher's write path can only run for real during a release, so it
       # is exercised here against a fake App Store Connect: refusal on a live
