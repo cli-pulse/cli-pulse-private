@@ -1,0 +1,23 @@
+Quota percentages now agree everywhere, and in Chinese, Japanese, Korean and Spanish the parts of CLI Pulse that still showed English, or wrote dates and numbers the wrong way, are fixed.
+
+• Quota percentages agree. A quota 92.1% used said "8% remaining" in its alert and "7% left" on its card. Cards, widgets, Apple Watch and Siri now round the same way as the alert.
+
+• Widgets and Apple Watch now show costs in the currency you chose in the app, and Siri uses it too.
+
+• The activity heatmap is filled in under Try Demo instead of showing an empty card, and after you switch accounts it no longer shows the previous account's activity.
+
+• On iOS 26, the Providers tab has one ••• button instead of two. The Risk Signals card now spans the full width like the other cards, and the hourly chart is titled "Hourly Activity" instead of repeating the heatmap's "Activity".
+
+• VoiceOver: widgets say whether a percentage is used or left, and call the weekly quota "Weekly", not "Wk".
+
+• On the Lock Screen and Apple Watch, a single session now reads "1 session", not "1 sessions".
+
+• Fixed: with the Japanese, Minguo (Republic of China) or Buddhist calendar, the usage history chart showed zeros and the cost forecast read zero.
+
+• Translated: provider status, quota names, plan badges, alerts, notifications and Try Demo's sample alerts, wherever they still appeared in English. Each language was then reviewed as a whole, and hundreds of wrong or inconsistent phrasings were fixed. Traditional Chinese now uses the same terms as Apple's software in Taiwan, and in the app Korean no longer breaks lines mid-word.
+
+• Errors appear as a message in your language instead of the server's raw reply (such as HTTP 403: {"code":403,…}), and a verification code typed in full-width digits is accepted.
+
+• Dates, times, numbers and money follow your language and region, including the hourly chart, quota reset times (your local time, not UTC) and token counts.
+
+• Siri and Shortcuts now work in Chinese, Japanese, Korean and Spanish: action names, the phrases you say and Siri's answers. The system permission prompts are translated too.

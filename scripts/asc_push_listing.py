@@ -30,7 +30,8 @@ and then it:
   * NEVER deletes a locale, and never touches What's New — that is
     scripts/asc_submit.py's job (--whatsnew-dir). A locale created here has no
     What's New yet; App Store Connect requires one before an UPDATE can be
-    submitted, and asc_submit.py fills unmapped locales from its fallback text;
+    submitted, and asc_submit.py refuses to submit until --whatsnew-dir has a
+    text for every locale of the version;
   * re-reads everything it wrote and exits non-zero if the store does not now
     hold the repo text.
 
@@ -336,7 +337,8 @@ def main() -> int:
         if ver is None:
             msg = f"{plat}: no version {args.version or ''} in App Store Connect"
             if args.apply:
-                die(msg + ". Create it first (App Store Connect or asc_submit.py).", 1)
+                die(msg + ". Create it first: scripts/asc_submit.py --create-version "
+                    "ios|macos --version X.Y.Z --apply (or in App Store Connect).", 1)
             print(f"\n=== {msg} — skipped")
             continue
         vs = ver["attributes"]["versionString"]
