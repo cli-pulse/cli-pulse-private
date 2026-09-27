@@ -12,7 +12,7 @@ Casi todo en esta versión busca que puedas usar CLI Pulse en tu propio idioma. 
 
 • Siri y Atajos funcionan en tu idioma: los nombres de las acciones, las frases que dices y las respuestas de Siri. Antes, Siri solo reconocía las frases en inglés. También se tradujeron los avisos de permisos del sistema.
 
-• VoiceOver: los widgets indican si un porcentaje es lo usado o lo que queda, y si hay una sola sesión la nombran en singular: «1 sesión activa», no «1 sesiones».
+• VoiceOver: los widgets indican si un porcentaje es lo usado o lo que queda, y si hay una sola sesión la nombran en singular («1 sesión activa»).
 
 • Los porcentajes de las cuotas coinciden en todas partes. Una misma cuota podía indicar en su alerta que quedaba un 8% y en su tarjeta un 7%; ahora las tarjetas, los widgets, el Apple Watch y Siri redondean igual que la alerta.
 

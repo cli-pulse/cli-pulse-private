@@ -8,7 +8,9 @@ Quota percentages now agree everywhere, and in Chinese, Japanese, Korean and Spa
 
 • On iOS 26, the Providers tab has one ••• button instead of two. The Risk Signals card now spans the full width like the other cards, and the hourly chart is titled "Hourly Activity" instead of repeating the heatmap's "Activity".
 
-• VoiceOver: widgets say whether a percentage is used or left, and call the weekly quota "Weekly", not "Wk". On the Lock Screen and Apple Watch, one session is "1 session", not "1 sessions".
+• VoiceOver: widgets say whether a percentage is used or left, and call the weekly quota "Weekly", not "Wk".
+
+• On the Lock Screen and Apple Watch, a single session now reads "1 session", not "1 sessions".
 
 • Fixed: with the Japanese, Minguo (Republic of China) or Buddhist calendar, the usage history chart showed zeros and the cost forecast read zero.
 
