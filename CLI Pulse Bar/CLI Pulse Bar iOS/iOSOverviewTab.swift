@@ -60,6 +60,9 @@ struct iOSOverviewTab: View {
 
                         if state.showCost {
                             costSection
+                                #if DEBUG
+                                .id(ScreenshotLaunch.ScrollTarget.costSummary)
+                                #endif
 
                             // v1.14 (2026-05-08): cross-platform parity with macOS
                             // Overview. The forecast is computed from cloud
@@ -94,6 +97,9 @@ struct iOSOverviewTab: View {
                     }
                 }
                 .padding(.vertical)
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ScrollToTarget())
+                #endif
             }
             .navigationTitle(L10n.dashboard.title)
             .toolbar {
@@ -684,6 +690,9 @@ struct iOSOverviewTab: View {
                 }
                 RiskSignalsList(signals: dash.risk_signals, style: .iOS)
             }
+            // Full width like every other card; without it the card hugged
+            // its two short lines and stopped halfway across the screen.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
             .background(Color.orange.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: 12))

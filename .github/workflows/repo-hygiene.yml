@@ -122,6 +122,15 @@ jobs:
       # is exercised here against a fake App Store Connect: refusal on a live
       # version, create-don't-delete, only changed fields, read-back.
       - run: python3 scripts/test_asc_push_listing.py
+      # The iPhone screenshots, the same way: the pusher against a fake App
+      # Store Connect (new panels uploaded and COMPLETE before an old one is
+      # deleted, only the iPhone set touched, a failed upload leaves the old set
+      # intact), and the pipeline's pure parts (the capture script's screens and
+      # languages, the PNG checks, caption coverage and terms, line breaking).
+      # The glyph-coverage half of the second needs macOS fonts and reports
+      # itself NOT RUN here rather than passing.
+      - run: python3 scripts/test_asc_push_screenshots.py
+      - run: python3 scripts/test_appstore_screenshots.py
 
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys

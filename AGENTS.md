@@ -200,6 +200,34 @@ is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
 copies in pushers) runs in `repo-hygiene.yml`.
 
+### iPhone screenshots (six languages)
+
+Captured without a tap from a DEBUG simulator build, composed with per-language
+captions, pushed per locale. Layout and locale mapping: `scripts/appstore_screenshots.py`.
+
+```bash
+"CLI Pulse Bar/scripts/capture_ios_screenshots.sh"            # -> screenshots/ios-raw/<lang>/
+python3 "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" --all   # -> ios-composed/<lang>/
+python3 scripts/asc_push_screenshots.py --version 1.54.0     # dry run: per-locale files + md5
+python3 scripts/asc_push_screenshots.py --apply --version 1.54.0
+python3 scripts/asc_listing_preflight.py --texts-only --require-shots
+```
+
+The capture launches the app with `-CLIPulseScreenshotDemo YES
+-CLIPulseScreenshotScreen <screen>` (compiled out of Release; see
+`ScreenshotLaunch.swift`), which enters the shipped Demo mode on that screen with
+no network and no permission prompt. The capture uninstalls CLI Pulse from the
+simulator first (its data there goes) and refuses a device with any app running
+on it, CLI Pulse included, unless `--force` (iOS's own `com.apple.*` jobs do not
+count). The compositor publishes a set only when every panel passed, with a
+`compose.json` of their md5s; a failing or interrupted run leaves its panels in
+`ios-composed/<lang>.rejected/` or discards them, withdraws the old
+`compose.json`, and nothing pushes a set without one. The pusher replaces only
+the `APP_IPHONE_67` set, uploads and waits for the new panels before deleting
+the old, removes its own uploads on any failure (a rerun reuses the finished
+ones), and refuses while the version waits for review (withdraw the iOS
+submission only).
+
 ## Active vs Archived
 
 ### Active

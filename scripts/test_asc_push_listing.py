@@ -384,6 +384,68 @@ try:
         gave_up = True
     check(f"a GET that times out {pusher._RETRIES} times gives up",
           gave_up and c._requests.calls == ["GET"] * pusher._RETRIES, str(c._requests.calls))
+
+    # 13. the token: at most 20 minutes, so a long run mints it again.
+    class _StatusRequests(_FlakyRequests):
+        """Answers with the given status codes in turn, then 200."""
+        def __init__(self, statuses: list[int]) -> None:
+            super().__init__(0)
+            self.statuses = list(statuses)
+            self.auth: list[str] = []
+
+        def request(self, method, url, **kw):
+            self.auth.append(kw["headers"].get("Authorization", ""))
+            resp = super().request(method, url, **kw)
+            if self.statuses:
+                resp.status_code = self.statuses.pop(0)
+            return resp
+
+    def minting_client(statuses: list[int], age: float = 0.0):
+        c = RealASC.__new__(RealASC)
+        c._requests = _StatusRequests(statuses)
+        c._key = object()   # stands for the key file; _mint is replaced below
+        c.mints = 0
+
+        def fake_mint() -> None:
+            c.mints += 1
+            c._headers = {"Authorization": f"Bearer token-{c.mints}"}
+            c._minted_at = pusher.time.monotonic()
+        c._mint = fake_mint
+        fake_mint()
+        c._minted_at -= age
+        return c
+
+    c = minting_client([], age=pusher.TOKEN_RENEW_AFTER + 1)
+    c.get("/apps/x")
+    check("a token older than TOKEN_RENEW_AFTER is minted again before the request",
+          c.mints == 2 and c._requests.auth == ["Bearer token-2"], str(c._requests.auth))
+    c = minting_client([])
+    c.get("/apps/x")
+    check("a young token is used as it is", c.mints == 1 and c._requests.auth == ["Bearer token-1"])
+    c = minting_client([401])
+    with contextlib.redirect_stderr(io.StringIO()):
+        c.get("/apps/x")
+    check("a 401 mints a new token and sends once more, with it",
+          c.mints == 2 and c._requests.auth == ["Bearer token-1", "Bearer token-2"],
+          str(c._requests.auth))
+    c = minting_client([401, 401])
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            c.get("/apps/x")
+        refused = False
+    except SystemExit:
+        refused = True
+    check("a second 401 is not retried again: the GET fails",
+          refused and c._requests.calls == ["GET", "GET"], str(c._requests.calls))
+    c = real_client(fail=0)
+    c._requests = _StatusRequests([401])
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            c.get("/apps/x")
+        refused = False
+    except SystemExit:
+        refused = True
+    check("a client without a key (the tests' stand-in) does not try to mint", refused)
 finally:
     pusher.time.sleep = real_sleep
 

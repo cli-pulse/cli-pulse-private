@@ -1670,7 +1670,7 @@
 "alert_kind.session_cpu_message_process" = "%2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 内の %2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_system" = "%3$@ がシステム全体の CPU（%2$@ コア）の約 %1$@%% を使用しています。";
-"alert_kind.session_cpu_title" = "%@ が CPU を大量に消費しています";
+"alert_kind.session_cpu_title" = "%@ が CPU を大量消費中";
 "alert_kind.session_long_message" = "ヘルパーが長時間実行中のローカルエージェントセッションを検出しました。";
 "alert_kind.session_long_title" = "%@ が長時間実行されています";
 "alert_kind.severity_critical" = "重大";

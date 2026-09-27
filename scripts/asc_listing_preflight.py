@@ -37,9 +37,17 @@ CHECKS
                     promotional text and subtitle must match the repo text
                     for that locale (CLI Pulse Bar/appstore/<locale>/), and
                     every locale the repo carries must exist on the store.
-3. Screenshot drift  every live screenshot must be byte-identical to the local
-                    composed PNG of the same name. Catches "regenerated but
-                    never uploaded", which is the case that keeps recurring.
+3. Screenshot drift  every live screenshot must match the local composed PNG
+                    of the same name (decoded pixels; ASC re-encodes). The
+                    iPhone set per locale, against that locale's language
+                    (scripts/appstore_screenshots.py); Mac and iPad on en-US.
+                    Catches "regenerated but never uploaded", which is the
+                    case that keeps recurring.
+
+4. iPhone panels    with --require-shots only: every locale with listing texts
+                    has its five composed iPhone screenshots, each one App
+                    Store Connect would accept (scripts/appstore_screenshots.py),
+                    or deliberately falls back to en-US's. Repo-only.
 
 Before any of that it validates the repo texts themselves — the part that needs
 no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
@@ -56,6 +64,7 @@ pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
     python3 scripts/asc_listing_preflight.py --texts-only    # repo only, no key (CI)
+    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone panels
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
@@ -73,6 +82,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import appstore_listing as listing  # noqa: E402
+import appstore_screenshots as shots  # noqa: E402
 
 # jwt/requests are imported only when App Store Connect is actually contacted,
 # so `--texts-only` runs on a bare CI runner.
@@ -115,7 +125,8 @@ TIER_CLAIMS = {
 # Where the composed marketing PNGs live, by ASC display type.
 LOCAL_SHOTS = {
     "APP_DESKTOP": REPO / "CLI Pulse Bar/screenshots/macos/composed",
-    "APP_IPHONE_67": REPO / "CLI Pulse Bar/screenshots/ios/composed",
+    # APP_IPHONE_67 is per locale: shots.preflight_dir(<language>) — the
+    # six-language panels once they land, the 1.53.0 directories until then.
     "APP_IPAD_PRO_3GEN_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
     "APP_IPAD_PRO_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
 }
@@ -249,6 +260,105 @@ def check_repo_texts(root: Path | None = None) -> bool:
     return not problems
 
 
+def check_repo_shots(root: Path | None = None) -> bool:
+    """Check 4 (--require-shots): every locale with listing texts has its five
+    composed iPhone panels, each uploadable (1290x2796, RGB, no alpha, <=10 MB),
+    or is mapped to FALLBACK and shows en-US's. Repo-only, so it can run in CI.
+
+    Off by default until the six-language capture has landed: turned on before
+    that, it would be red for a reason nobody can fix in the meantime, and a
+    permanently red gate gets switched off rather than fixed."""
+    problems = shots.require_shots_problems(listing.LOCALE_SOURCES, root)
+    print("repo iPhone screenshots (--require-shots):")
+    for loc in listing.LOCALE_SOURCES:
+        lang = shots.SHOT_SOURCES.get(loc, "?")
+        where = ("FALLBACK: shows en-US's panels" if lang is shots.FALLBACK
+                 else f"{shots.composed_dir(lang, root).relative_to(root or REPO)}")
+        print(f"  {loc:8} -> {where}")
+    for loc, why in problems:
+        print(f"  FAIL  [{loc}] {why}")
+    if not problems:
+        print(f"  ok    {len(listing.LOCALE_SOURCES)} locale(s) have their "
+              f"{len(shots.SCREENS)} panels")
+    return not problems
+
+
+def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
+                local_dir: Path | None) -> bool:
+    """Compare one live screenshot set with the local composed PNGs of the same
+    names. True if anything failed."""
+    failed = False
+    live_shots = asc.get(
+        f"/appScreenshotSets/{screenshot_set['id']}/appScreenshots",
+        limit=50,
+        **{"fields[appScreenshots]": "fileName,imageAsset"},
+    )
+    tag = f"[{locale}] {dtype}"
+    if local_dir is None or not local_dir.is_dir():
+        print(f"  note  {tag}: {len(live_shots['data'])} live shot(s), no local dir mapped "
+              "— not compared")
+        return False
+
+    # Drift also runs the other way: a composed screenshot that exists
+    # in the repo and is NOT on the store. Reported as a note, not a
+    # failure — 1.52.1 deliberately ships 8 of the 9 macOS shots,
+    # leaving out the paywall one because the only machine available to
+    # re-shoot it is on a non-USD storefront and the en-US set is the
+    # fallback every storefront without its own screenshots sees. A
+    # permanently-red gate gets `continue-on-error`'d, which is the
+    # same failure as a green gate that guards nothing.
+    live_names = {(x["attributes"].get("fileName") or "") for x in live_shots["data"]}
+    for extra in sorted(local_dir.glob("*.png")):
+        if extra.name not in live_names:
+            print(f"  note  {tag} {extra.name}: in the repo, not on the store "
+                  f"(never uploaded, or deliberately withheld)")
+    for shot in live_shots["data"]:
+        a = shot["attributes"]
+        name = a.get("fileName") or "?"
+        asset = a.get("imageAsset") or {}
+        tmpl = asset.get("templateUrl")
+        local = local_dir / name
+        if not local.exists():
+            print(f"  note  {tag} {name}: live, but no local file at {local.relative_to(REPO)}")
+            continue
+        if not tmpl:
+            print(f"  FAIL  {tag} {name}: live shot has no downloadable asset URL")
+            failed = True
+            continue
+        w = asset.get("width") or 2880
+        h = asset.get("height") or 1800
+        url = tmpl.replace("{w}", str(w)).replace("{h}", str(h)).replace("{f}", "png")
+        try:
+            blob = requests.get(url, timeout=60).content
+        except Exception as exc:  # noqa: BLE001
+            die(f"could not download {name}: {exc}")
+        # ASC re-encodes on ingest, so bytes rarely match exactly. Compare
+        # dimensions + a perceptual-ish digest of the decoded pixels when
+        # Pillow is available; otherwise report so nobody reads silence
+        # as agreement.
+        try:
+            from PIL import Image  # noqa: PLC0415
+            import io  # noqa: PLC0415
+            live_img = Image.open(io.BytesIO(blob)).convert("RGB")
+            local_img = Image.open(local).convert("RGB")
+            box = (256, 256)
+            lv = sha(live_img.resize(box).tobytes())
+            lc = sha(local_img.resize(box).tobytes())
+            if lv == lc:
+                print(f"  ok    {tag} {name}: live matches local")
+            else:
+                print(f"  FAIL  {tag} {name}: live screenshot differs from the local composed PNG")
+                print(f"          local:  {local.relative_to(REPO)}")
+                print(f"          live:   {url}")
+                print("          Regenerated locally but never uploaded, or vice versa.")
+                failed = True
+        except ImportError:
+            print(f"  note  {tag} {name}: Pillow not installed, cannot compare pixels "
+                  "(pip install pillow). NOT treated as a pass.")
+            failed = True
+    return failed
+
+
 def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
@@ -263,14 +373,26 @@ def main() -> int:
                     help="check 0 only: validate the repo texts, no App Store Connect (CI)")
     ap.add_argument("--root", type=Path,
                     help="repo root to validate (with --texts-only; for the self-test)")
+    ap.add_argument("--require-shots", action="store_true",
+                    help="also require every listing locale's five composed iPhone panels "
+                         "(check 4; repo-only, works with --texts-only)")
     args = ap.parse_args()
 
     if args.root and not args.texts_only:
         ap.error("--root only makes sense with --texts-only")
     texts_ok = check_repo_texts(args.root)
+    shots_ok = True
+    if args.require_shots:
+        shots_ok = check_repo_shots(args.root)
+    else:
+        print("repo iPhone screenshots: not checked (--require-shots)")
     if args.texts_only:
         print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
-        return 0 if texts_ok else 1
+        if args.require_shots:
+            print("SHOTS OK" if shots_ok else "SHOTS INCOMPLETE — capture and compose them: "
+                  "CLI Pulse Bar/scripts/capture_ios_screenshots.sh, then "
+                  "compose_appstore_ios_screenshots.py --all")
+        return 0 if texts_ok and shots_ok else 1
 
     _load_http_deps()
     asc = ASC()
@@ -281,7 +403,7 @@ def main() -> int:
         mark = "OK " if st == "APPROVED" else "NOT"
         print(f"   {mark}  {st:<28} {pid}")
 
-    failed = not texts_ok
+    failed = not (texts_ok and shots_ok)
     checked_any = False
     live_subtitles = subtitles(asc, prefer_unreleased=bool(args.version))
 
@@ -385,82 +507,31 @@ def main() -> int:
                 failed = True
 
         # ── 3. screenshot drift ───────────────────────────────────────────
-        # Screenshots hang off the en-US localization; the other locales
-        # inherit them, so one pass over en-US covers the set.
+        # The iPhone set is per locale (scripts/appstore_screenshots.py maps
+        # each locale to its language's panels; a locale with no set of its own
+        # is shown en-US's). The Mac and iPad sets exist on en-US only, which
+        # every other locale inherits, so those are compared there alone.
         if args.skip_screenshots:
             continue
-        en_loc = next(x for x in locs["data"]
-                      if x["attributes"].get("locale") == "en-US")
-        sets = asc.get(f"/appStoreVersionLocalizations/{en_loc['id']}/appScreenshotSets", limit=20)
-        for st in sets["data"]:
-            dtype = st["attributes"].get("screenshotDisplayType")
-            local_dir = LOCAL_SHOTS.get(dtype)
-            shots = asc.get(
-                f"/appScreenshotSets/{st['id']}/appScreenshots",
-                limit=50,
-                **{"fields[appScreenshots]": "fileName,imageAsset"},
-            )
-            if local_dir is None or not local_dir.is_dir():
-                print(f"  note  {dtype}: {len(shots['data'])} live shot(s), no local dir mapped — not compared")
-                continue
-
-            # Drift also runs the other way: a composed screenshot that exists
-            # in the repo and is NOT on the store. Reported as a note, not a
-            # failure — 1.52.1 deliberately ships 8 of the 9 macOS shots,
-            # leaving out the paywall one because the only machine available to
-            # re-shoot it is on a non-USD storefront and the en-US set is the
-            # fallback every storefront without its own screenshots sees. A
-            # permanently-red gate gets `continue-on-error`'d, which is the
-            # same failure as a green gate that guards nothing.
-            live_names = {(x["attributes"].get("fileName") or "") for x in shots["data"]}
-            for extra in sorted(local_dir.glob("*.png")):
-                if extra.name not in live_names:
-                    print(f"  note  {extra.name}: in the repo, not on the store "
-                          f"(never uploaded, or deliberately withheld)")
-            for shot in shots["data"]:
-                a = shot["attributes"]
-                name = a.get("fileName") or "?"
-                asset = a.get("imageAsset") or {}
-                tmpl = asset.get("templateUrl")
-                local = local_dir / name
-                if not local.exists():
-                    print(f"  note  {name}: live, but no local file at {local.relative_to(REPO)}")
+        for loc_row in locs["data"]:
+            locale = loc_row["attributes"].get("locale")
+            is_en = locale == "en-US"
+            iphone_lang = shots.SHOT_SOURCES.get(locale, shots.FALLBACK)
+            sets = asc.get(f"/appStoreVersionLocalizations/{loc_row['id']}/appScreenshotSets",
+                           limit=20)
+            for st in sets["data"]:
+                dtype = st["attributes"].get("screenshotDisplayType")
+                if dtype == shots.DISPLAY_TYPE:
+                    if iphone_lang is shots.FALLBACK and not is_en:
+                        print(f"  note  [{locale}] has an iPhone set of its own, but "
+                              "SHOT_SOURCES says it shows en-US's — not compared")
+                        continue
+                    local_dir = shots.preflight_dir(iphone_lang or "en")
+                elif is_en:
+                    local_dir = LOCAL_SHOTS.get(dtype)
+                else:
                     continue
-                if not tmpl:
-                    print(f"  FAIL  {name}: live shot has no downloadable asset URL")
-                    failed = True
-                    continue
-                w = asset.get("width") or 2880
-                h = asset.get("height") or 1800
-                url = tmpl.replace("{w}", str(w)).replace("{h}", str(h)).replace("{f}", "png")
-                try:
-                    blob = requests.get(url, timeout=60).content
-                except Exception as exc:  # noqa: BLE001
-                    die(f"could not download {name}: {exc}")
-                # ASC re-encodes on ingest, so bytes rarely match exactly. Compare
-                # dimensions + a perceptual-ish digest of the decoded pixels when
-                # Pillow is available; otherwise report so nobody reads silence
-                # as agreement.
-                try:
-                    from PIL import Image  # noqa: PLC0415
-                    import io  # noqa: PLC0415
-                    live_img = Image.open(io.BytesIO(blob)).convert("RGB")
-                    local_img = Image.open(local).convert("RGB")
-                    box = (256, 256)
-                    lv = sha(live_img.resize(box).tobytes())
-                    lc = sha(local_img.resize(box).tobytes())
-                    if lv == lc:
-                        print(f"  ok    {name}: live matches local")
-                    else:
-                        print(f"  FAIL  {name}: live screenshot differs from the local composed PNG")
-                        print(f"          local:  {local.relative_to(REPO)}")
-                        print(f"          live:   {url}")
-                        print("          Regenerated locally but never uploaded, or vice versa.")
-                        failed = True
-                except ImportError:
-                    print(f"  note  {name}: Pillow not installed, cannot compare pixels "
-                          "(pip install pillow). NOT treated as a pass.")
-                    failed = True
+                failed |= compare_set(asc, locale, st, dtype, local_dir)
 
     if not checked_any:
         die("no live version was checked on any platform.")

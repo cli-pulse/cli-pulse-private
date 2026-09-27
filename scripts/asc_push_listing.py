@@ -35,7 +35,9 @@ and then it:
     hold the repo text.
 
 The texts live in CLI Pulse Bar/appstore/<locale>/ — see scripts/appstore_listing.py
-for the layout and why es-ES and es-MX share one Spanish text.
+for the layout and why es-ES and es-MX share one Spanish text. The iPhone
+screenshots are pushed by the sibling scripts/asc_push_screenshots.py, with this
+script's client and the same editability rule.
 
 The ASC API key is read from ~/.appstoreconnect/private_keys/ (headless-safe),
 then the owner's secrets directory, then iCloud Drive. The signed token is never
@@ -76,6 +78,12 @@ APPINFO_FIELDS = [f for f in listing.FIELDS if f.resource == "appInfo"]
 
 _TIMEOUT = 120
 _RETRIES = 3
+# An App Store Connect token may live 20 minutes at most. A run that uploads
+# screenshots for seven locales and waits for each to be processed can take
+# longer than that, and a request with an expired token is refused (401): so a
+# token is minted again once it is this old, and once more on a 401.
+TOKEN_LIFETIME = 1200
+TOKEN_RENEW_AFTER = 900
 # Only these are sent again after a timeout or a dropped connection. A POST
 # creates a localization; if the first one landed and only the response was
 # lost, a second POST gets 409 and the locale is reported FAILED although the
@@ -108,19 +116,43 @@ class ASC:
         except ImportError as exc:
             die(f"missing dependency ({exc}). pip install pyjwt requests")
         self._requests = requests
+        self._jwt = jwt
         key = next((p for p in KEY_CANDIDATES if p.exists()), None)
         if key is None:
             die("no ASC API key found. Looked in:\n  " + "\n  ".join(map(str, KEY_CANDIDATES)))
+        self._key = key
+        self._mint()
+
+    def _mint(self) -> None:
+        """A fresh token in the headers. The token itself is never kept
+        anywhere else, and never printed."""
         now = int(time.time())
-        tok = jwt.encode(
-            {"iss": ISSUER, "iat": now, "exp": now + 1200, "aud": "appstoreconnect-v1"},
-            key.read_text(), algorithm="ES256", headers={"kid": KEY_ID, "typ": "JWT"},
+        tok = self._jwt.encode(
+            {"iss": ISSUER, "iat": now, "exp": now + TOKEN_LIFETIME, "aud": "appstoreconnect-v1"},
+            self._key.read_text(), algorithm="ES256", headers={"kid": KEY_ID, "typ": "JWT"},
         )
         self._headers = {"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}
+        self._minted_at = time.monotonic()
         del tok
 
+    def _can_mint(self) -> bool:
+        # A client made without __init__ (the tests' stand-in) has no key.
+        return getattr(self, "_key", None) is not None
+
     def _send(self, method: str, path: str, **kw):
-        """The response, or None for a POST that timed out (see _IDEMPOTENT)."""
+        """The response, or None for a POST that timed out (see _IDEMPOTENT).
+        A 401 is answered by minting a new token and sending once more: the
+        request was refused unread, so even a POST cannot have landed."""
+        if self._can_mint() and time.monotonic() - self._minted_at > TOKEN_RENEW_AFTER:
+            self._mint()
+        r = self._send_once(method, path, **kw)
+        if r is not None and r.status_code == 401 and self._can_mint():
+            print(f"  {method} {path}: 401, minting a new token and sending again", file=sys.stderr)
+            self._mint()
+            r = self._send_once(method, path, **kw)
+        return r
+
+    def _send_once(self, method: str, path: str, **kw):
         url = path if path.startswith("http") else BASE + path
         attempts = _RETRIES if method in _IDEMPOTENT else 1
         last = None

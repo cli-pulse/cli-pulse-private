@@ -19,6 +19,19 @@ struct CLIPulseApp: App {
     @UIApplicationDelegateAdaptor(iOSAppDelegate.self) private var appDelegate
 
     init() {
+        #if DEBUG
+        // App Store screenshot capture (ScreenshotLaunch): Demo mode on the
+        // requested screen, in an environment that cannot reach the network.
+        // Nothing below runs for it, so no watch bridge and no delegate hand-off.
+        if let request = ScreenshotLaunch.requestOrExit() {
+            let state = AppState(
+                runtimeEnvironment: CLIPulseRuntimeEnvironment.current.restrictedForScreenshotCapture()
+            )
+            ScreenshotLaunch.apply(request, to: state)
+            _appState = StateObject(wrappedValue: state)
+            return
+        }
+        #endif
         SentryLogger.start(platform: .iOS)
         let state = AppState()
         _appState = StateObject(wrappedValue: state)
@@ -61,6 +74,9 @@ struct CLIPulseApp: App {
                 .sheet(item: $pendingPairing) { payload in
                     LANPairingFlowView(browser: pairingBrowser, initialPayload: payload)
                 }
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ReadySignal(state: appState))
+                #endif
                 // Outermost, so the pairing sheet is covered too: SwiftUI on
                 // iPhone otherwise splits Korean words across lines.
                 .keepsKoreanWordsWhole()
