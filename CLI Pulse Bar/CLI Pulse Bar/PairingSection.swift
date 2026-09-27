@@ -22,20 +22,33 @@ struct PairingSection: View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.settings.connection, icon: "link")
 
-            // Current mode indicator
-            if authState.isPaired {
-                modeIndicator(icon: "cloud.fill", text: L10n.onboarding.syncedMode, color: PulseTheme.accent)
-            } else if state.isLocalMode {
-                modeIndicator(icon: "desktopcomputer", text: L10n.onboarding.localModeDesc, color: .green)
-                Text(L10n.onboarding.notSyncedHint)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            } else {
-                modeIndicator(icon: "questionmark.circle", text: L10n.pairing.notConnected, color: .orange)
+            // Current mode indicator. The account can count as paired while
+            // this Mac is not (`ThisMacPairing`); the "syncing across devices"
+            // line would then be false, so this Mac's own state comes first.
+            switch authState.thisMacPairing {
+            case .deviceRemoved:
+                modeIndicator(icon: "exclamationmark.triangle.fill", text: L10n.pairing.thisMacRemoved, color: .orange)
+                hint(L10n.pairing.thisMacRemovedHint)
+            case .notSetUp:
+                modeIndicator(icon: "desktopcomputer", text: L10n.pairing.thisMacNotSetUp, color: .orange)
+                hint(L10n.pairing.thisMacNotSetUpHint)
+            case .notNeeded:
+                if authState.isPaired {
+                    modeIndicator(icon: "cloud.fill", text: L10n.onboarding.syncedMode, color: PulseTheme.accent)
+                } else if state.isLocalMode {
+                    modeIndicator(icon: "desktopcomputer", text: L10n.onboarding.localModeDesc, color: .green)
+                    hint(L10n.onboarding.notSyncedHint)
+                } else {
+                    modeIndicator(icon: "questionmark.circle", text: L10n.pairing.notConnected, color: .orange)
+                }
             }
 
-            if !authState.isPaired {
-                HowItWorksCard()
+            if authState.showsPairingFlow {
+                // Local vs Cloud is a choice for an account that has not
+                // picked cloud yet; repairing this Mac is not that choice.
+                if !authState.isPaired {
+                    HowItWorksCard()
+                }
 
                 Divider()
 
@@ -68,9 +81,16 @@ struct PairingSection: View {
             }
             // (v1.16: Companion CLI Helper UI lives in SettingsTab's
             //  authenticatedSection, NOT here — PairingSection only
-            //  renders for unpaired users, which would hide the helper
-            //  install card from everyone who actually needs it.)
+            //  renders while this Mac is unpaired, which would hide the
+            //  helper install card from everyone who actually needs it.)
         }
+    }
+
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private func modeIndicator(icon: String, text: String, color: Color) -> some View {
@@ -123,71 +143,78 @@ struct PairingSection: View {
                 }
             }
 
-            Divider()
+            // Repairing this Mac, only the button above can do it. What
+            // follows — a terminal fallback, the code, "Check Sync Status" — is
+            // for an account that is not paired yet: `checkPairingStatus` asks
+            // whether the ACCOUNT is paired, which here it already is, so it
+            // would drop the code and come back to this screen unchanged.
+            if !authState.isPaired {
+                Divider()
 
-            // Manual fallback for users who prefer terminal
-            DisclosureGroup {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text(info.install_command)
-                            .font(.system(size: 8.5, design: .monospaced))
-                            .textSelection(.enabled)
-                            .lineLimit(3)
-                        Spacer(minLength: 4)
-                        copyButton(text: info.install_command)
+                // Manual fallback for users who prefer terminal
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text(info.install_command)
+                                .font(.system(size: 8.5, design: .monospaced))
+                                .textSelection(.enabled)
+                                .lineLimit(3)
+                            Spacer(minLength: 4)
+                            copyButton(text: info.install_command)
+                        }
+                        .padding(8)
+                        .background(Color.black.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                        HStack {
+                            Text("python3 /tmp/cli_pulse_helper.py daemon")
+                                .font(.system(size: 9, design: .monospaced))
+                                .textSelection(.enabled)
+                            Spacer(minLength: 4)
+                            copyButton(text: "python3 /tmp/cli_pulse_helper.py daemon")
+                        }
+                        .padding(8)
+                        .background(Color.black.opacity(0.3))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
                     }
-                    .padding(8)
-                    .background(Color.black.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                    HStack {
-                        Text("python3 /tmp/cli_pulse_helper.py daemon")
-                            .font(.system(size: 9, design: .monospaced))
-                            .textSelection(.enabled)
-                        Spacer(minLength: 4)
-                        copyButton(text: "python3 /tmp/cli_pulse_helper.py daemon")
-                    }
-                    .padding(8)
-                    .background(Color.black.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-            } label: {
-                Text(L10n.pairing.manualSetup)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-            }
-
-            // Pairing code display
-            HStack {
-                Text(L10n.pairing.yourCode)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
-                Text(info.code)
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .foregroundStyle(PulseTheme.accent)
-                Spacer()
-                copyButton(text: info.code)
-            }
-            .padding(8)
-            .background(PulseTheme.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-
-            Button {
-                Task { await state.checkPairingStatus() }
-            } label: {
-                HStack {
-                    if state.isLoading { ProgressView().controlSize(.small) }
-                    Image(systemName: "checkmark.circle")
+                } label: {
+                    Text(L10n.pairing.manualSetup)
                         .font(.system(size: 10))
-                    Text(L10n.onboarding.checkSync)
-                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 6)
+
+                // Pairing code display
+                HStack {
+                    Text(L10n.pairing.yourCode)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Text(info.code)
+                        .font(.system(size: 14, weight: .bold, design: .monospaced))
+                        .foregroundStyle(PulseTheme.accent)
+                    Spacer()
+                    copyButton(text: info.code)
+                }
+                .padding(8)
+                .background(PulseTheme.cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                Button {
+                    Task { await state.checkPairingStatus() }
+                } label: {
+                    HStack {
+                        if state.isLoading { ProgressView().controlSize(.small) }
+                        Image(systemName: "checkmark.circle")
+                            .font(.system(size: 10))
+                        Text(L10n.onboarding.checkSync)
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PulseTheme.accent)
+                .disabled(state.isLoading)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(PulseTheme.accent)
-            .disabled(state.isLoading)
         }
         .padding(10)
         .background(PulseTheme.cardBackground.opacity(0.5))
@@ -219,6 +246,11 @@ struct PairingSection: View {
                 config,
                 runtimeEnvironment: state.runtimeEnvironment
             )
+            // Whatever the helper last wrote was about the pairing this one
+            // replaces — for a Mac repaired here, "device not found". Left in
+            // place it would keep this Mac looking unpaired until the helper's
+            // next cycle, up to two minutes after it paired.
+            HelperIPC.clearStatus()
             HelperLogin.setEnabled(
                 true,
                 in: state.runtimeEnvironment
@@ -226,9 +258,17 @@ struct PairingSection: View {
             helperEnabled = HelperLogin.isEnabled(
                 in: state.runtimeEnvironment
             )
+            // For an account that was already paired, `checkPairingStatus`
+            // changes nothing visible: this is what clears the repair state.
+            state.refreshThisMacPairing()
             await state.checkPairingStatus()
         } catch {
-            nativePairingError = error.localizedDescription
+            // A code the server will never accept is dropped, and its reason
+            // shown under "Set Up Cloud Sync" (`state.pairingError`), which gets
+            // a new one. Anything else stays on this card for another try.
+            if !state.discardPairingCodeIfSpent(error) {
+                nativePairingError = error.localizedDescription
+            }
             // Activation diagnosis (2026-07-26): 64% of signups never register a
             // device, and a failure here is the one moment we know a user TRIED
             // and was stopped — yet it was previously invisible outside this red

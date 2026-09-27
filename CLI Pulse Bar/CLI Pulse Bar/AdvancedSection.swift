@@ -11,6 +11,7 @@ import CLIPulseCore
 /// `HelperLogin.toggle()` services that also fire from PairingSection.
 struct AdvancedSection: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var authState: AuthState
     @EnvironmentObject var providerState: ProviderState
     @Binding var launchAtLogin: Bool
     @Binding var helperEnabled: Bool
@@ -63,23 +64,29 @@ struct AdvancedSection: View {
                 }
 
                 if let status = HelperIPC.readStatus() {
+                    // `HelperStatusLine`: on a Mac that is not paired for this
+                    // account, the helper's "synced" is not this account's, and
+                    // a status written for a device this Mac has since replaced
+                    // is not about its pairing. The device id is an app-group
+                    // read, never the Keychain.
+                    let line = HelperStatusLine.make(
+                        status: status,
+                        thisMacPairing: authState.thisMacPairing,
+                        pairedDeviceId: HelperConfig.pairedDeviceId(
+                            authenticatedUserId: authState.userId,
+                            runtimeEnvironment: state.runtimeEnvironment
+                        )
+                    )
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(status.state == .running ? Color.green : (status.state == .error ? Color.red : Color.gray))
+                            .fill(dotColor(line.tone))
                             .frame(width: 6, height: 6)
-                        if let lastSync = status.lastSync {
-                            let ago = Int(Date().timeIntervalSince(lastSync))
-                            Text(ago < 60 ? L10n.advanced.syncJustNow : L10n.advanced.syncMinutesAgo(ago / 60))
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                        } else if let error = HelperSyncFailure.displayText(
-                            code: status.errorCode, storedText: status.error
-                        ) {
-                            Text(error)
+                        if line.isError {
+                            Text(line.text)
                                 .font(.system(size: 9))
                                 .foregroundStyle(.red)
                         } else {
-                            Text(status.state == .running ? L10n.advanced.helperRunning : L10n.advanced.helperNotRunning)
+                            Text(line.text)
                                 .font(.system(size: 9))
                                 .foregroundStyle(.secondary)
                         }
@@ -447,6 +454,15 @@ struct AdvancedSection: View {
     /// reads the same key.
     private var remoteControlConsentBody: String {
         L10n.advanced.remoteConsentBody
+    }
+
+    private func dotColor(_ tone: HelperStatusLine.Tone) -> Color {
+        switch tone {
+        case .good: return .green
+        case .attention: return .orange
+        case .failure: return .red
+        case .inactive: return .gray
+        }
     }
 
     /// v1.9.4 privacy disclosure row. Green = stays on device,

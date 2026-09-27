@@ -28,9 +28,11 @@ struct AccountCardView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
+                // `isPaired` is the account's flag; this Mac may not be
+                // paired itself (`ThisMacPairing`).
                 StatusBadge(
-                    text: authState.isPaired ? L10n.settings.paired : L10n.settings.notPaired,
-                    color: authState.isPaired ? .green : .orange
+                    text: authState.isThisMacSyncing ? L10n.settings.paired : L10n.settings.notPaired,
+                    color: authState.isThisMacSyncing ? .green : .orange
                 )
             }
         }

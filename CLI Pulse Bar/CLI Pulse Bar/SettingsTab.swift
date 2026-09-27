@@ -242,10 +242,16 @@ struct SettingsTab: View {
         VStack(alignment: .leading, spacing: 12) {
             AccountCardView()
 
-            if !authState.isPaired {
+            // `isPaired` is the ACCOUNT's flag, true while any of its devices is
+            // paired. This Mac may still need pairing — its own device removed,
+            // or never paired here — and then it needs the pairing flow as well
+            // as the settings of a paired account (`ThisMacPairing`).
+            if authState.showsPairingFlow {
                 Divider()
                 PairingSection(helperEnabled: $helperEnabled)
-            } else {
+            }
+
+            if authState.isPaired {
                 Divider()
 
                 SubscriptionSection()
@@ -313,6 +319,9 @@ struct SettingsTab: View {
             Divider()
             DangerZoneSection()
         }
+        // Between refreshes the helper may have written a new status, or the
+        // pairing may have changed; opening Settings is when that must be right.
+        .onAppear { state.refreshThisMacPairing() }
     }
 
     // MARK: - Pairing

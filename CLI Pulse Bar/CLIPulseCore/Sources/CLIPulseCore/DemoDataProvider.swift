@@ -308,6 +308,9 @@ extension AppState {
         userEmail = "demo@clipulse.app"
         serverOnline = true
         lastRefresh = Date()
+        // Demo mode cannot pair, so Settings — and every screenshot of it —
+        // shows the paired account without a repair line.
+        refreshThisMacPairing()
 
         applyDemoData(DemoDataProvider.generate())
         buildProviderDetails()

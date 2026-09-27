@@ -344,6 +344,13 @@ final class QARuntimeSideEffectPolicyTests: XCTestCase {
                 persistence: persistence
             )
         )
+        XCTAssertNil(
+            HelperConfig.pairedDeviceId(
+                authenticatedUserId: "qa-user",
+                runtimeEnvironment: runtime,
+                persistence: persistence
+            )
+        )
         XCTAssertEqual(persistenceInteractionCount, 0)
     }
 

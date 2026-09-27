@@ -24,6 +24,24 @@ public final class AuthState: ObservableObject {
     @Published public var userId: String = ""
     @Published public var userName: String = ""
     @Published public var userEmail: String = ""
+    /// Whether THIS Mac still has to be paired although `isPaired` (the
+    /// account's flag) is true. Kept current by `AppState.refreshThisMacPairing()`;
+    /// always `.notNeeded` off macOS.
+    @Published public var thisMacPairing: ThisMacPairing.State = .notNeeded
+
+    /// Settings shows the Set Up Cloud Sync flow: for an account that is not
+    /// paired, and for a paired account whose pairing does not include this Mac.
+    /// Both run the same flow; `register_helper` adds a device either way.
+    public var showsPairingFlow: Bool {
+        !isPaired || thisMacPairing != .notNeeded
+    }
+
+    /// The account card may say "Synced". `isPaired` alone is the account's
+    /// flag, true while any of its devices is paired, so on a Mac that is not
+    /// itself paired green would be false.
+    public var isThisMacSyncing: Bool {
+        isPaired && thisMacPairing == .notNeeded
+    }
 
     public init() {}
 }

@@ -1887,3 +1887,9 @@
 
 /* ── overview-hourly ── */
 "dashboard.hourly_activity" = "시간별 활동";
+
+/* ── this-mac-pairing ── */
+"pairing.this_mac_removed" = "이 Mac은 더 이상 계정과 페어링되어 있지 않습니다";
+"pairing.this_mac_removed_hint" = "동기화가 중단되었습니다. 다시 시작하려면 클라우드 동기화를 다시 설정하세요.";
+"pairing.this_mac_not_set_up" = "이 Mac은 아직 계정과 페어링되지 않았습니다";
+"pairing.this_mac_not_set_up_hint" = "계정은 다른 기기에서 페어링되어 있습니다. 클라우드 동기화를 설정해 이 Mac도 추가하면 이 Mac의 세션과 알림도 다른 기기에 표시됩니다.";

@@ -1917,3 +1917,9 @@
 
 /* ── overview-hourly ── */
 "dashboard.hourly_activity" = "每小時活動";
+
+/* ── this-mac-pairing ── */
+"pairing.this_mac_removed" = "這台 Mac 已不再與你的帳號配對";
+"pairing.this_mac_removed_hint" = "它已停止同步。重新設定雲端同步即可恢復。";
+"pairing.this_mac_not_set_up" = "這台 Mac 尚未與你的帳號配對";
+"pairing.this_mac_not_set_up_hint" = "你的帳號已在另一台裝置上配對。設定雲端同步即可加入這台 Mac，讓它的工作階段和警示也顯示在你的其他裝置上。";

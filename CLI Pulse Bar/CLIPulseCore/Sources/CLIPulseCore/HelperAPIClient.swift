@@ -636,6 +636,19 @@ public enum HelperAPIError: LocalizedError {
         }
     }
 
+    /// The server's word that this pairing code can never succeed, so trying it
+    /// again only repeats the refusal (`register_helper`, migrate_v0.19): it is
+    /// unknown (already used, or deleted), it expired (the server deletes it
+    /// then, so the next try says unknown), or it is locked after five failed
+    /// attempts. `rate_limited` is not: the same code works a minute later.
+    public var spendsPairingCode: Bool {
+        guard case .pairingRejected(let code, _) = self else { return false }
+        switch code {
+        case "invalid_code", "expired", "too_many_failed_attempts": return true
+        default: return false
+        }
+    }
+
     public var errorDescription: String? {
         switch self {
         case .notConfigured: return L10n.a11y.configurationErrorBody

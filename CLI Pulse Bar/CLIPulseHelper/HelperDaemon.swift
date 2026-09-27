@@ -179,8 +179,10 @@ final class HelperDaemon {
 
         guard let config = HelperConfig.load() else {
             logger.info("No helper config found — collected local provider data only")
+            // No `lastSync`: nothing was synced, and Settings › Advanced reads
+            // any `lastSync` as "Synced just now". It now says "Running".
             HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, lastSync: Date(), helperVersion: "1.0.0"
+                state: .running, lastSync: nil, helperVersion: "1.0.0"
             ))
             return
         }
@@ -322,9 +324,12 @@ final class HelperDaemon {
                 )
             }
 
-            // Update status
+            // Update status. `deviceId` says which pairing this was: the app
+            // must not read a failure of a device it has since replaced as a
+            // failure of the current one (`ThisMacPairing`).
             HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, lastSync: Date(), helperVersion: "1.0.0"
+                state: .running, lastSync: Date(), helperVersion: "1.0.0",
+                deviceId: config.deviceId
             ))
 
         } catch {
@@ -336,7 +341,8 @@ final class HelperDaemon {
             let detail = Self.englishDetail(for: error)
             logger.error("Sync failed [\(code, privacy: .public)]: \(detail, privacy: .public)")
             HelperIPC.writeStatus(HelperIPC.Status(
-                state: .error, lastSync: nil, error: detail, errorCode: code, helperVersion: "1.0.0"
+                state: .error, lastSync: nil, error: detail, errorCode: code, helperVersion: "1.0.0",
+                deviceId: config.deviceId
             ))
         }
     }

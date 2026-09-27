@@ -404,6 +404,69 @@ extension AppState {
         isLoading = false
     }
 
+    /// After "Set Up Background Helper" failed: drop a code the server will
+    /// never accept (`HelperAPIError.spendsPairingCode`), so Settings goes back
+    /// to "Set Up Cloud Sync" — which asks for a new one — with the reason
+    /// beside it. Returns false, and keeps the code, for any other failure.
+    ///
+    /// `pairingInfo` outlives the popover. A code left open for more than ten
+    /// minutes, then tried, was refused on every later click ("expired", then
+    /// "invalid"), and nothing on that screen replaced it: on a Mac repaired
+    /// while its account is paired, "Check Sync Status" is not shown, and where
+    /// it is, it keeps the code.
+    @discardableResult
+    public func discardPairingCodeIfSpent(_ error: Error) -> Bool {
+        guard let apiError = error as? HelperAPIError, apiError.spendsPairingCode else {
+            return false
+        }
+        pairingInfo = nil
+        pairingError = apiError.localizedDescription
+        return true
+    }
+
+    /// Re-read whether this Mac has to be paired although the account is (see
+    /// `ThisMacPairing`). Two app-group reads, only when the answer depends on
+    /// them, and never the Keychain (`HelperConfig.pairedDeviceId`). Called when
+    /// Settings appears, after every refresh (the helper's sync posts one), on
+    /// sign-in, and right after this Mac pairs.
+    public func refreshThisMacPairing() {
+        #if os(macOS)
+        refreshThisMacPairing(
+            helperConfig: HelperConfig.livePersistence(runtimeEnvironment: runtimeEnvironment),
+            readHelperStatus: HelperIPC.readStatus
+        )
+        #endif
+    }
+
+    #if os(macOS)
+    /// The reads are passed in so a test can run the production runtime's path
+    /// without this Mac's app group, and fail if it ever reads the Keychain.
+    internal func refreshThisMacPairing(
+        helperConfig: HelperConfig.PersistenceAccess,
+        readHelperStatus: () -> HelperIPC.Status?
+    ) {
+        let canPairThisMac = runtimeEnvironment.capabilities.allowsHelperRegistration
+            && !isDemoMode
+        let needsReads = isAuthenticated && isPaired && canPairThisMac
+        let next = ThisMacPairing.state(
+            isAuthenticated: isAuthenticated,
+            isPaired: isPaired,
+            canPairThisMac: canPairThisMac,
+            pairedDeviceId: needsReads
+                ? HelperConfig.pairedDeviceId(
+                    authenticatedUserId: userId,
+                    runtimeEnvironment: runtimeEnvironment,
+                    persistence: helperConfig
+                )
+                : nil,
+            helperStatus: needsReads ? readHelperStatus() : nil
+        )
+        if authState.thisMacPairing != next {
+            authState.thisMacPairing = next
+        }
+    }
+    #endif
+
     public func signOut() {
         stopRefreshLoop()
         dataRefreshManager.cancelInFlightRefresh()
@@ -726,6 +789,11 @@ extension AppState {
         // is idempotent + no-ops when nothing's cached.
         flushPendingPushTokenIfAvailable()
 
+        // A Mac signing in to an account another device already paired lands
+        // on a Settings screen that is already open; say at once whether this
+        // Mac is paired too, rather than after the first refresh.
+        refreshThisMacPairing()
+
         // Notify iOS companion to forward auth to watch
         NotificationCenter.default.post(
             name: .cliPulseDidAuthenticate,
@@ -795,6 +863,7 @@ extension AppState {
         otpEmail = ""
         pairingInfo = nil
         pairingError = nil
+        authState.thisMacPairing = .notNeeded
         lastError = nil
         // Clear tier-migration state so a different account signing in on
         // the same device starts clean — otherwise they'd see the prior

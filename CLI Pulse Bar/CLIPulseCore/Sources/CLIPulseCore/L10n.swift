@@ -2125,6 +2125,14 @@ public enum L10n {
         public static var errorCodeExpired: String { tr("pairing.error_code_expired") }
         public static var errorRateLimited: String { tr("pairing.error_rate_limited") }
         public static var errorTooManyAttempts: String { tr("pairing.error_too_many_attempts") }
+        /// `ThisMacPairing.State.deviceRemoved`: the account is paired, this
+        /// Mac's own device is gone. The line above the Set Up Cloud Sync button.
+        public static var thisMacRemoved: String { tr("pairing.this_mac_removed") }
+        public static var thisMacRemovedHint: String { tr("pairing.this_mac_removed_hint") }
+        /// `ThisMacPairing.State.notSetUp`: the account is paired from another
+        /// device, and this Mac never was (or is paired to another account).
+        public static var thisMacNotSetUp: String { tr("pairing.this_mac_not_set_up") }
+        public static var thisMacNotSetUpHint: String { tr("pairing.this_mac_not_set_up_hint") }
     }
 
     // MARK: - Watch

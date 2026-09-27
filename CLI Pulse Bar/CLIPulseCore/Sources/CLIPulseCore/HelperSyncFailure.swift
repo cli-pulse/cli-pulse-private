@@ -33,11 +33,19 @@ public enum HelperSyncFailure {
     /// What Settings shows for a stored status, or `nil` when there is nothing to show.
     ///
     /// - `code == nil`: a helper from before the field. Its stored text is the
-    ///   only thing there is, so it is shown as before.
+    ///   only thing there is, so it is shown as before — except the device-gone
+    ///   failure (`legacyTextReportsDeviceGone`), shown as a current helper's.
     /// - a code this build does not know (a newer helper): a generic localized
     ///   line, not the English detail stored beside it.
     public static func displayText(code: String?, storedText: String?) -> String? {
-        guard let code else { return storedText }
+        guard let code else {
+            // The one old failure Settings now offers a fix for is shown the way
+            // a current helper's is, not as the raw server JSON beside that fix.
+            if legacyTextReportsDeviceGone(storedText) {
+                return ServerErrorReason.deviceNotPaired.localizedText(status: 400)
+            }
+            return storedText
+        }
         if code == networkCode {
             return L10n.serverError.network
         }
@@ -56,6 +64,31 @@ public enum HelperSyncFailure {
             if !rejected.isEmpty { return rejected }
         }
         return L10n.advanced.helperSyncFailed
+    }
+
+    /// Whether the text a helper from before `errorCode` stored is the server's
+    /// "Device not found or unauthorized".
+    ///
+    /// Every helper released so far (1.53.0 and earlier) is such a helper, and
+    /// macOS does not restart the Login Item when the app updates in place, so
+    /// on the Macs broken today it keeps running after this build is installed.
+    /// It stored `error.localizedDescription`; for an HTTP failure that is
+    /// "HTTP 400 from helper_sync: <body>", the PostgREST body verbatim (cut at
+    /// 200 characters, far more than this one needs) whatever the wrapper's
+    /// language. The body is judged by `ServerErrorReason.classify`, the same
+    /// rule a current helper's token comes from — P0001 with exactly that
+    /// message — so no other failure, and no wording of the wrapper, counts.
+    static func legacyTextReportsDeviceGone(_ storedText: String?) -> Bool {
+        guard
+            let storedText,
+            let open = storedText.firstIndex(of: "{"),
+            let close = storedText.lastIndex(of: "}"),
+            open < close
+        else {
+            return false
+        }
+        let body = String(storedText[open...close])
+        return ServerErrorReason.classify(status: 400, body: body) == .deviceNotPaired
     }
 
     static let networkCode = "network"
