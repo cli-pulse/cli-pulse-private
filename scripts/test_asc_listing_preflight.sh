@@ -320,9 +320,9 @@ case "$coverage" in
 esac
 
 # ── --require-shots: every listing locale's iPhone panels ────────────────────
-# Off by default (no panels exist in the new layout until the six-language
-# capture lands), so the default run must stay green without them, and the flag
-# must turn a missing, stray or unuploadable panel into a failure.
+# A flag (CI passes it; the fixtures above carry listing texts only), so the
+# run without it must stay green without panels, and the flag must turn a
+# missing, stray or unuploadable panel into a failure.
 run_check() {
     python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
 }
@@ -372,6 +372,78 @@ expect_fail "--require-shots with a set a clean compose run did not write" "[zh-
 build_fixture; panels en zh-Hans zh-Hant ja ko es
 printf 'x' >> "$CASE/CLI Pulse Bar/screenshots/ios-composed/ko/02_providers_1290x2796.png"
 expect_fail "--require-shots with a panel changed after the compose run" "[ko] ko: 02_providers_1290x2796.png: not the file the last clean compose run wrote"
+
+# A caption edited in the compositor after its set was composed: every panel is
+# still the file compose.json records, but the words drawn on it are not COPY,
+# and the pusher trusts this same check.
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+mkdir -p "$CASE/CLI Pulse Bar/scripts"
+cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" "$CASE/CLI Pulse Bar/scripts/"
+expect_fail "--require-shots with a compose.json that records no captions" "[en-US] en: 01_overview, 02_providers, 03_cost, 04_sessions, 05_alerts: the caption drawn is not the compositor's COPY"
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+root = pathlib.Path(sys.argv[2])
+copy = s.caption_copy(root)
+for lang in s.LANGS:
+    s.write_manifest(s.composed_dir(lang, root), lang,
+                     {"captions": {st: list(pair) for st, pair in copy[lang].items()}})
+PY
+expect_pass "--require-shots with every set's captions the compositor's COPY"
+python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+old = '"03_cost": ("Where the money goes",'
+assert s.count(old) == 1, "the mutation target moved; update this case"
+p.write_text(s.replace(old, '"03_cost": ("Where your money goes",'), encoding="utf-8")
+PY
+expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 03_cost: the caption drawn is not the compositor's COPY"
+
+# The raw captures are committed so that a set can be recomposed without a
+# simulator (compose --all), which holds only while ios-raw/<lang>/ holds the
+# captures compose.json records the panels were drawn from. The fixture is the
+# real tree's screenshots and compositor, so the positive control is the
+# committed state itself; each case then breaks one capture.
+real_shots() {
+    build_fixture
+    mkdir -p "$CASE/CLI Pulse Bar/screenshots" "$CASE/CLI Pulse Bar/scripts"
+    cp -R "$ROOT/CLI Pulse Bar/screenshots/ios-raw" "$ROOT/CLI Pulse Bar/screenshots/ios-composed" \
+        "$CASE/CLI Pulse Bar/screenshots/"
+    cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" "$CASE/CLI Pulse Bar/scripts/"
+}
+RAW="$CASE/CLI Pulse Bar/screenshots/ios-raw"
+
+real_shots
+expect_pass "--require-shots with the committed panels and raw captures"
+
+# The likeliest slip: a capture of the right screen, from the wrong language.
+real_shots; cp "$RAW/zh-Hans/01_overview.png" "$RAW/zh-Hant/01_overview.png"
+expect_fail "--require-shots with another language's capture in place of a raw capture" "[zh-Hant] zh-Hant: screenshots/ios-raw/zh-Hant/01_overview.png: not the capture compose.json records"
+
+real_shots; printf 'x' >> "$RAW/ja/02_providers.png"
+expect_fail "--require-shots with a raw capture changed after the compose run" "[ja] ja: screenshots/ios-raw/ja/02_providers.png: not the capture compose.json records"
+
+real_shots; rm "$RAW/ko/05_alerts.png"
+expect_fail "--require-shots with a raw capture missing" "[ko] ko: screenshots/ios-raw/ko/05_alerts.png: missing"
+
+real_shots; rm -r "$RAW/es"
+expect_fail "--require-shots with a language's raw captures all missing (es-ES and es-MX)" "[es-MX] es: screenshots/ios-raw/es/01_overview.png: missing"
+
+real_shots; cp "$RAW/en/01_overview.png" "$RAW/en/06_settings.png"
+expect_fail "--require-shots with a stray raw capture the compositor would refuse" "[en-US] en: screenshots/ios-raw/en/06_settings.png: not a capture of the set"
+
+# And the tree CI actually checks: this checkout, where a compose.json that
+# records no captures would fail rather than skip (test_appstore_screenshots.py).
+if python3 "$PREFLIGHT" --texts-only --require-shots >"$TMP/out" 2>&1; then
+    echo "ok:   [--require-shots on this checkout itself] passes."
+    pass=$((pass + 1))
+else
+    echo "FAIL: [--require-shots on this checkout itself] was rejected:"
+    sed 's/^/        /' "$TMP/out"
+    fail=$((fail + 1))
+fi
 EXTRA=""
 
 echo "test_asc_listing_preflight: $pass passed, $fail failed."

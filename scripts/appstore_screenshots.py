@@ -21,7 +21,13 @@ LAYOUT
         (captions fit, every glyph drawn, corners clean): each panel's md5,
         with the captions, faces and sizes it was drawn with. A failing run
         deletes it. A set without it, or with a panel whose md5 it does not
-        record, is not uploadable, whatever its PNG headers say.
+        record, is not uploadable, whatever its PNG headers say. Nor is one
+        whose recorded captions are not the compositor's COPY any more: a
+        caption edited without recomposing leaves the old words in the image.
+        It also records the md5 of each raw capture the panels were drawn
+        from, and --require-shots fails when ios-raw/<lang>/ no longer holds
+        exactly those (capture_problems): they are committed so that a set
+        can be recomposed without a simulator.
 
 `<lang>` is one of LANGS, the app's six languages. SHOT_SOURCES maps each App
 Store Connect locale to the language whose panels it shows: seven locales, six
@@ -32,10 +38,10 @@ A locale may instead be mapped to FALLBACK: it then gets no set of its own and
 App Store Connect shows it the primary locale's (en-US) screenshots. That is a
 decision, recorded here, not a gap: `--require-shots` accepts it and says so.
 
-The 1.53.0 set predates this layout: English in screenshots/ios/ (raw) and
-screenshots/ios/composed/, Simplified Chinese in screenshots/ios-zh/. Those
-directories stay until the first capture in this layout replaces them;
-LEGACY_COMPOSED names them for the release preflight in the meantime.
+The 1.53.0 set (English in screenshots/ios/, Simplified Chinese in
+screenshots/ios-zh/, shot by hand) was retired when the first six-language
+capture in this layout landed for 1.54.0. Nothing reads those paths any more;
+the release preflight compares the live store with ios-composed/<lang>/ only.
 
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
@@ -48,6 +54,7 @@ from the PNG header: no Pillow, so it also runs on a bare CI runner.
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import struct
@@ -55,8 +62,12 @@ import sys
 import zlib
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+# CHECKOUT is this checkout. REPO starts as the same path, but tests point it at
+# a fixture tree; only CHECKOUT is known to carry the compositor.
+CHECKOUT = Path(__file__).resolve().parent.parent
+REPO = CHECKOUT
 SCREENSHOTS_REL = "CLI Pulse Bar/screenshots"
+COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py"
 
 # The App Store set, in listing order: NN is the 1-based position. The Swift
 # enum ScreenshotLaunch.Screen and the capture script name the same five.
@@ -79,12 +90,6 @@ SHOT_SOURCES: dict[str, str | None] = {
     "ko": "ko",
     "es-ES": "es",
     "es-MX": "es",
-}
-
-# The 1.53.0 panels, by language (see the module docstring).
-LEGACY_COMPOSED: dict[str, str] = {
-    "en": "ios/composed",
-    "zh-Hans": "ios-zh/composed",
 }
 
 DISPLAY_TYPE = "APP_IPHONE_67"
@@ -129,16 +134,6 @@ def composed_dir(lang: str, root: Path | None = None) -> Path:
 def expected_composed(lang: str, root: Path | None = None) -> list[Path]:
     d = composed_dir(lang, root)
     return [d / composed_name(s) for s in stems()]
-
-
-def preflight_dir(lang: str, root: Path | None = None) -> Path:
-    """The panels the store should be showing for `lang`: this layout's if it
-    has any, else the 1.53.0 directory."""
-    new = composed_dir(lang, root)
-    if new.is_dir() and any(new.glob("*.png")):
-        return new
-    legacy = LEGACY_COMPOSED.get(canonical_lang(lang))
-    return screenshots_dir(root) / legacy if legacy else new
 
 
 # ── the PNG header ───────────────────────────────────────────────────────────
@@ -210,6 +205,27 @@ def write_manifest(directory: Path, lang: str, record: dict | None = None) -> No
                                       + "\n", encoding="utf-8")
 
 
+def caption_copy(root: Path | None = None) -> dict | None:
+    """The compositor's COPY table ({lang: {stem: (title, subtitle)}}), read
+    from its source rather than imported, so a bare CI runner without Pillow
+    reads it too. None when the tree has no compositor (a test fixture)."""
+    path = (root or REPO) / COMPOSITOR_REL
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        elif isinstance(node, ast.Assign):
+            targets = node.targets
+        else:
+            continue
+        if any(isinstance(t, ast.Name) and t.id == "COPY" for t in targets) and node.value is not None:
+            return ast.literal_eval(node.value)
+    return None
+
+
 def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     """Whether the set is what the last clean compose run wrote."""
     d = composed_dir(lang, root)
@@ -225,10 +241,68 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     except (ValueError, KeyError, TypeError) as exc:
         return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
     out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
+    copy = caption_copy(root)
+    if copy is None or canonical_lang(lang) not in copy:
+        # A fixture tree may have no compositor. This checkout always has one,
+        # so here a missing file, a missing COPY or a missing language fails
+        # instead of quietly switching the caption check off.
+        if (root or REPO) == CHECKOUT:
+            out.append(f"the captions cannot be checked: {COMPOSITOR_REL} is missing, "
+                       f"unparsable, or has no COPY for {canonical_lang(lang)!r}")
+    else:
+        want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()}
+        drawn = data.get("captions")
+        stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])
+        if stale:
+            out.append(f"{', '.join(stale)}: the caption drawn is not the compositor's COPY "
+                       f"(edited without recomposing; run compose_appstore_ios_screenshots.py "
+                       f"--lang {canonical_lang(lang)})")
     for p in expected_composed(lang, root):
         if p.is_file() and recorded.get(p.name) != md5_of(p):
             out.append(f"{p.name}: not the file the last clean compose run wrote "
                        f"(its md5 is not the one {MANIFEST} records)")
+    return out
+
+
+def capture_problems(lang: str, root: Path | None = None) -> list[str]:
+    """Whether ios-raw/<lang>/ holds the captures the set was composed from:
+    every capture compose.json records under "captures", with that md5, and no
+    other the compositor would read. The raw captures are committed so that a
+    caption fix is a recompose (`--all`), not a recapture; that holds only
+    while they are the ones behind the committed panels. For --require-shots
+    (CI), not the pusher: what it uploads is the panels.
+
+    A set without a readable compose.json is manifest_problems' to report. A
+    fixture tree may record no captures and is not checked; this checkout's
+    compose.json always records them, so there a missing record fails."""
+    try:
+        data = json.loads((composed_dir(lang, root) / MANIFEST).read_text(encoding="utf-8"))
+        recorded = data.get("captures")
+    except (OSError, ValueError, AttributeError):
+        return []
+    raw = raw_dir(lang, root)
+    where = raw.relative_to(screenshots_dir(root).parent)
+    if not isinstance(recorded, dict):
+        if (root or REPO) == CHECKOUT:
+            return [f"{MANIFEST} records no captures, so {where}/ cannot be checked against "
+                    f"it; recompose: compose_appstore_ios_screenshots.py --lang {canonical_lang(lang)}"]
+        return []
+    out = []
+    for name in [s + ".png" for s in stems()]:
+        path = raw / name
+        if name not in recorded:
+            out.append(f"{MANIFEST} records no capture {name}")
+        elif not path.is_file():
+            out.append(f"{where}/{name}: missing; {MANIFEST} records it as the capture "
+                       f"its panel was composed from")
+        elif md5_of(path) != recorded[name]:
+            out.append(f"{where}/{name}: not the capture {MANIFEST} records (md5 "
+                       f"{md5_of(path)}, recorded {recorded[name]}); recompose from it, "
+                       f"or restore the recorded one")
+    stray = sorted({p.name for p in raw.glob("[0-9][0-9]_*.png")} - {s + ".png" for s in stems()})
+    for name in stray:
+        out.append(f"{where}/{name}: not a capture of the set; the compositor refuses "
+                   f"a directory holding it")
     return out
 
 
@@ -251,7 +325,8 @@ def set_problems(lang: str, root: Path | None = None) -> list[str]:
 
 
 def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str, str]]:
-    """(locale, problem) for every listing locale without a complete set."""
+    """(locale, problem) for every listing locale without a complete set, or
+    whose set's raw captures are not the committed ones (capture_problems)."""
     out: list[tuple[str, str]] = []
     for loc in locales:
         if loc not in SHOT_SOURCES:
@@ -261,7 +336,8 @@ def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str,
         lang = SHOT_SOURCES[loc]
         if lang is FALLBACK:
             continue
-        out.extend((loc, f"{lang}: {why}") for why in set_problems(lang, root))
+        out.extend((loc, f"{lang}: {why}")
+                   for why in set_problems(lang, root) + capture_problems(lang, root))
     return out
 
 

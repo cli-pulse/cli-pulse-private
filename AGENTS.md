@@ -259,7 +259,8 @@ The store comparison needs the ASC key, so it cannot run in CI — it is a
 release-time step on the owner's machine. Exit 2 means it could not check, which
 is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
-copies in pushers) runs in `repo-hygiene.yml`.
+copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
+listing locale's five composed iPhone panels and their `compose.json`).
 
 ### iPhone screenshots (six languages)
 
@@ -288,6 +289,19 @@ the `APP_IPHONE_67` set, uploads and waits for the new panels before deleting
 the old, removes its own uploads on any failure (a rerun reuses the finished
 ones), and refuses while the version waits for review (withdraw the iOS
 submission only).
+
+The raw captures and the composed sets are committed (`ios-raw/<lang>/`,
+`ios-composed/<lang>/` with `compose.json`), and CI fails if a listing locale's
+set is missing or not what a clean compose run wrote, including a set whose
+recorded captions are no longer the compositor's `COPY`: a caption change in
+`compose_appstore_ios_screenshots.py` needs its recompose committed with it
+(`--all` recomposes from the committed captures; no simulator needed). CI also
+fails when `ios-raw/<lang>/` is not exactly the captures that `compose.json`
+records the set was drawn from (by md5: a missing, changed or stray capture),
+so a recapture needs its recompose committed with it too, and the committed
+captures are always the ones behind the committed panels. The hand-shot 1.53.0
+set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired with the first
+capture in this layout.
 
 ## Active vs Archived
 

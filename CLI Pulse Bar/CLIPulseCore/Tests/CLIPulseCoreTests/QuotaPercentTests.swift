@@ -83,6 +83,32 @@ final class QuotaPercentTests: XCTestCase {
         XCTAssertTrue(shown.contains(row), "tier row \(row) is not the alert's \(shown)")
     }
 
+    /// In English the alert said "(8% remaining)" beside a tier row saying
+    /// "8% left", and quoted the window in straight ticks ('Weekly') that read
+    /// as a code token on the Alerts tab. Only the display text changed: the
+    /// stored English is the matcher's input and stays as it was.
+    func test_inEnglish_theAlertSaysLeft_likeTheTierRow() throws {
+        LocaleOverrideStore.shared.set("en")
+        let provider = ProviderUsage(
+            provider: "Codex", today_usage: 0, week_usage: 0,
+            estimated_cost_today: 0, estimated_cost_week: 0,
+            cost_status_today: "normal", cost_status_week: "normal",
+            quota: nil, remaining: nil,
+            tiers: [TierDTO(name: "Weekly", quota: 1_000, remaining: 79)],
+            status_text: "Operational",
+            trend: [], recent_sessions: [], recent_errors: [])
+        let dict = try XCTUnwrap(AlertGenerator.evaluateQuotaAlerts(providers: [provider], thresholds: [80]).first)
+        let alert = try XCTUnwrap(AlertGenerator.makeAlertRecord(from: dict))
+        XCTAssertEqual(alert.message, "Quota window 'Weekly' is 92% used (8% remaining).", "the stored English changed")
+
+        let shown = AlertPresentation.text(for: alert)
+        XCTAssertTrue(shown.recognized)
+        let row = L10n.watch.percentLeft(WatchRingMath.remainingPercentInt(quota: 1_000, remaining: 79))
+        XCTAssertEqual(row, "8% left", "control: not the English catalogue")
+        XCTAssertTrue(shown.message.contains(row), "tier row \(row) is not the alert's \(shown.message)")
+        XCTAssertFalse(shown.message.contains("'"), "straight ticks: \(shown.message)")
+    }
+
     /// The iPhone and Mac provider tabs live in app targets `swift test` does
     /// not build, so their tier rows are checked in the source: both must take
     /// the percentage from `QuotaPercent` rather than work it out again.

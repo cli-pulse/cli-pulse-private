@@ -1632,7 +1632,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "alert_kind.budget_daily_title" = "Presupuesto diario superado — $%@";
 "alert_kind.budget_weekly_message" = "El gasto de los últimos 7 días, $%1$@, supera tu presupuesto semanal de $%2$@.";
 "alert_kind.budget_weekly_title" = "Presupuesto semanal superado — $%@";
-"alert_kind.device_cpu_message" = "El helper midió un uso de CPU del %@%%.";
+"alert_kind.device_cpu_message" = "Se midió un uso de CPU del %@%%.";
 "alert_kind.device_cpu_title" = "El uso de CPU del dispositivo es elevado";
 "alert_kind.quota_message" = "Se ha usado el %2$@%% de la cuota «%1$@» (queda un %3$@%%).";
 "alert_kind.quota_message_reset" = "Se ha usado el %2$@%% de la cuota «%1$@» (queda un %3$@%%; se reinicia: %4$@).";
@@ -1641,7 +1641,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "alert_kind.session_cpu_message_process_in_project" = "La CPU del proceso de %2$@ en %3$@ es del %1$@%%.";
 "alert_kind.session_cpu_message_system" = "%3$@ usa ~%1$@%% de la CPU total del sistema (%2$@ núcleos).";
 "alert_kind.session_cpu_title" = "%@ está consumiendo mucha CPU";
-"alert_kind.session_long_message" = "El helper detectó una sesión de agente local de larga duración.";
+"alert_kind.session_long_message" = "Se detectó una sesión de agente local de larga duración.";
 "alert_kind.session_long_title" = "%@ lleva mucho tiempo en ejecución";
 "alert_kind.severity_critical" = "Crítico";
 "alert_kind.severity_info" = "Info";

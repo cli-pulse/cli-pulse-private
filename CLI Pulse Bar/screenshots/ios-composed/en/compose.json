@@ -1,0 +1,45 @@
+{
+ "captions": {
+  "01_overview": [
+   "Everything at a glance",
+   "Usage, cost, sessions and alerts, all on one screen"
+  ],
+  "02_providers": [
+   "Live quotas and costs",
+   "See what’s left before you hit the wall"
+  ],
+  "03_cost": [
+   "Where the money goes",
+   "Per-provider cost, top projects and risk signals"
+  ],
+  "04_sessions": [
+   "Every CLI run tracked",
+   "Active sessions with usage, cost and requests"
+  ],
+  "05_alerts": [
+   "Never miss a limit",
+   "Quota, CPU spike and long-running session alerts"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "1304a57c3b55e08ceebd38823390b42a",
+  "02_providers.png": "6fc31672b9e31008e62319b859fcee43",
+  "03_cost.png": "ae56361ed741c5dd5d21e69c4c6ba81b",
+  "04_sessions.png": "2b821b5b0c5ff7f2bef1dd96dec1c72e",
+  "05_alerts.png": "9b4a3099297abb475617f9b5879f7347"
+ },
+ "faces": {
+  "subtitle": "SFNS",
+  "title": "SFNS"
+ },
+ "lang": "en",
+ "panels": {
+  "01_overview_1290x2796.png": "0e8ab56457e5f5cb7f544936fcd039e4",
+  "02_providers_1290x2796.png": "dc14ed6d49f0f2b7bca8385fdcaab011",
+  "03_cost_1290x2796.png": "f4fd9cb0d0ecb7e58b4bccab05775355",
+  "04_sessions_1290x2796.png": "7c1a35f3276db25b71dd6fc6c8cf71a4",
+  "05_alerts_1290x2796.png": "5b3409a382e77eaa510ff102dfc639d0"
+ },
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

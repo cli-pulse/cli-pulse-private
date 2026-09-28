@@ -1575,7 +1575,7 @@
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "alerts.critical_count_badge" = "严重 %d 条";
-"alerts.warning_count_badge" = "%d 条警告";
+"alerts.warning_count_badge" = "警告 %d 条";
 "account.deleting" = "正在删除账户…";
 "usage_dashboard.chart_day" = "日期";
 "usage_dashboard.chart_tokens" = "token 数";
@@ -1657,7 +1657,7 @@
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 进程的 CPU 占用为 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 占用了约 %1$@%% 的系统总 CPU（共 %2$@ 核）。";
 "alert_kind.session_cpu_title" = "%@ 正占用大量 CPU";
-"alert_kind.session_long_message" = "检测到一个长时间运行的本地 Agent 会话。";
+"alert_kind.session_long_message" = "检测到长时间运行的本地 AI 工具会话。";
 "alert_kind.session_long_title" = "%@ 已运行很长时间";
 "alert_kind.severity_critical" = "严重";
 "alert_kind.severity_info" = "信息";

@@ -19,7 +19,7 @@ Usage:
 Exit 1 if any caption does not fit or any character would render as tofu.
 The output directory then keeps no set a push would accept (see 5).
 
-Five things this script learned the hard way, each of which silently produces a
+Six things this script learned the hard way, each of which silently produces a
 listing you would not ship:
 
 1. TEXT THAT DOES NOT FIT IS NOT A LAYOUT PROBLEM, IT IS A CROPPED SENTENCE.
@@ -65,6 +65,13 @@ listing you would not ship:
    left there cannot be pushed as if it were this run's: set_problems in
    scripts/appstore_screenshots.py, which the pusher and --require-shots use,
    refuses a set without compose.json or with a panel it does not list.
+
+6. PANELS ARE SEEN SIDE BY SIDE, SO THEIR HEADLINES MUST LINE UP.
+   Every panel of a set reserves room for the set's tallest subtitle, so the
+   phone sits at the same place on each. Centring a shorter caption in that
+   room dropped its headline half a line below its neighbours' in every set
+   mixing one- and two-line subtitles. The headline now sits at the top of
+   the room on every panel (caption_layout).
 """
 
 from __future__ import annotations
@@ -130,20 +137,20 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "01_overview": ("Everything at a glance",
                         "Usage, cost, sessions and alerts, all on one screen"),
         "02_providers": ("Live quotas and costs",
-                         "See what's left before you hit the wall"),
+                         "See what’s left before you hit the wall"),
         "03_cost": ("Where the money goes",
                     "Per-provider cost, top projects and risk signals"),
         "04_sessions": ("Every CLI run tracked",
                         "Active sessions with usage, cost and requests"),
         "05_alerts": ("Never miss a limit",
-                      "Alerts for quota, CPU spikes and long-running sessions"),
+                      "Quota, CPU spike and long-running session alerts"),
     },
     "zh-Hans": {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，打开就能看到"),
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_cost": ("钱都花在了哪里", "按服务商细分的费用、主要项目和风险信号"),
         "04_sessions": ("每个会话都有账可查", "活跃会话的用量、费用和请求数"),
-        "05_alerts": ("配额不再突然见底", "配额将尽、CPU 占用过高、会话运行过久，都会发出告警"),
+        "05_alerts": ("配额不再突然见底", "配额将尽、CPU 过高、会话过久，都会告警"),
     },
     "zh-Hant": {
         "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，一頁看完"),
@@ -157,20 +164,20 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
         "03_cost": ("コストの内訳がわかる", "プロバイダー別のコスト、\u200b上位プロジェクト、\u200bリスクシグナル"),
         "04_sessions": ("CLI の実行をすべて記録", "アクティブなセッションの\u200b使用量、コスト、リクエスト数"),
-        "05_alerts": ("上限を見逃さない", "クォータ残量の低下、CPU の高負荷、\u200b長時間実行中のセッションを通知"),
+        "05_alerts": ("上限の接近を見逃さない", "クォータ残量の低下、CPU の高負荷、\u200b長時間実行中のセッションを通知"),
     },
     "ko": {
         "01_overview": ("모든 것을 한눈에", "사용량, 비용, 세션, 알림을 한 화면에서"),
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
-        "03_cost": ("비용이 어디에 드는지", "공급자별 비용, 상위 프로젝트, 위험 신호"),
+        "03_cost": ("비용, 어디에 쓰이나요?", "공급자별 비용, 상위 프로젝트, 위험 신호"),
         "04_sessions": ("모든 CLI 실행을 기록", "활성 세션의 사용량, 비용, 요청 수"),
-        "05_alerts": ("할당량이 바닥나기 전에", "CPU 과부하와 오래 실행 중인 세션도 알려 드려요"),
+        "05_alerts": ("할당량이 바닥나기 전에", "CPU 사용률 급증과 오래 실행 중인 세션도 알려 드려요"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
                         "Uso, costos, sesiones y alertas en una sola pantalla"),
         "02_providers": ("Cuotas y costos en vivo",
-                         "Descubre cuánto te queda antes de llegar al límite"),
+                         "Consulta cuánto te queda antes de llegar al límite"),
         "03_cost": ("En qué se va tu dinero",
                     "Costo por proveedor y proyecto, con señales de riesgo"),
         "04_sessions": ("Cada ejecución, registrada",
@@ -541,6 +548,33 @@ def set_sub_lines(lang: str, faces: dict[str, Face], stems_: list[str], s_size: 
                for st in stems_)
 
 
+@dataclass(frozen=True)
+class CaptionLayout:
+    title_y: int                # top of the title's line box
+    sub_ys: tuple[int, ...]     # top of each subtitle line's box
+    shot_top: int               # where the space for the phone starts
+
+
+def caption_layout(title_box: int, sub_box: int, sub_lines: int,
+                   reserved_lines: int) -> CaptionLayout:
+    """Where one panel's caption and phone go, from its line boxes (pure; tested
+    without Pillow). `reserved_lines` is the set's tallest subtitle
+    (set_sub_lines), and every panel reserves room for that many lines.
+
+    The headline is pinned to the top of that room, the subtitle follows
+    directly under it, and whatever a shorter subtitle leaves over stays empty
+    below it, so the headline sits at the same height on every panel of the
+    set (see 6 in the module docstring). The phone's place depends only on
+    the room."""
+    reserved_lines = max(reserved_lines, sub_lines)
+    title_y = TEXT_TOP_MARGIN
+    first_sub = title_y + title_box + TITLE_TO_SUB_GAP
+    sub_ys = tuple(first_sub + i * (sub_box + SUB_LINE_GAP) for i in range(sub_lines))
+    room = (title_box + TITLE_TO_SUB_GAP
+            + reserved_lines * sub_box + (reserved_lines - 1) * SUB_LINE_GAP)
+    return CaptionLayout(title_y, sub_ys, TEXT_TOP_MARGIN + room + TEXT_TO_SHOT_GAP)
+
+
 def set_sizes(lang: str, faces: dict[str, Face], stems_: list[str]) -> tuple[int, int, list[str]]:
     """One title size and one subtitle size for the whole set, the largest at
     which every caption fits: a carousel whose panels change type size from
@@ -597,23 +631,16 @@ def compose_one(src: Path, dst: Path, lang: str, faces: dict[str, Face],
         problems.append(f"subtitle overflows at {s_size}pt: {subtitle!r}")
         sub_lines = [subtitle.replace(ZWSP, "")]
 
-    def block(lines: int) -> int:
-        return (line_height(title_font) + TITLE_TO_SUB_GAP
-                + lines * line_height(sub_font) + (lines - 1) * SUB_LINE_GAP)
-
-    # The text is centred in a block as tall as the set's tallest caption, so
-    # the phone below starts at the same height on every panel of the set.
-    reserved = block(max(reserved_lines, len(sub_lines)))
-    y = TEXT_TOP_MARGIN + (reserved - block(len(sub_lines))) // 2
-    y = draw_centered(draw, y, title, title_font, TITLE_COLOR)
-    y += TITLE_TO_SUB_GAP
-    for i, line in enumerate(sub_lines):
-        y = draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR)
-        if i != len(sub_lines) - 1:
-            y += SUB_LINE_GAP
+    # Headline at the same height on every panel of the set, and the phone
+    # too: see caption_layout.
+    layout = caption_layout(line_height(title_font), line_height(sub_font),
+                            len(sub_lines), reserved_lines)
+    draw_centered(draw, layout.title_y, title, title_font, TITLE_COLOR)
+    for y, line in zip(layout.sub_ys, sub_lines):
+        draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR)
 
     shot = Image.open(src).convert("RGB")
-    top = TEXT_TOP_MARGIN + reserved + TEXT_TO_SHOT_GAP
+    top = layout.shot_top
     avail_h = CANVAS_H - top - 80
     avail_w = CANVAS_W - SIDE_MARGIN * 2
     scale = min(avail_w / shot.width, avail_h / shot.height)
