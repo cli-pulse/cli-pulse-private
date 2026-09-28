@@ -315,7 +315,7 @@ struct OverviewTab: View {
             )
             // Same as iOS: the status line carries "estimated", so the title
             // does not. The status is a server token; this line is plain text, so
-            // it gets the sentence-case words, not the badge's "EST".
+            // it gets the sentence-case words, not the badge's capsule text.
             MetricCard(
                 title: L10n.dashboard.costToday,
                 value: CostFormatter.format(dash.total_estimated_cost_today),

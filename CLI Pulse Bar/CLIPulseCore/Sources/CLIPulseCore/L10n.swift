@@ -1724,9 +1724,9 @@ public enum L10n {
         }
         /// `cost_status` ("Exact"/"Estimated"/"Unavailable", a server token) as plain
         /// text, such as the macOS cost tile's subtitle. Not `CostStatusBadge`'s
-        /// words: those are capsule abbreviations ("EST", "ESTIMADO") that read as a
-        /// time zone or as shouting outside the capsule. An unknown token is shown
-        /// as it arrived, which is what the subtitle did before.
+        /// words: those are all-caps capsule labels ("ESTIMATE", "ESTIMADO") that
+        /// shout outside the capsule. An unknown token is shown as it arrived,
+        /// which is what the subtitle did before.
         public static func statusLabel(_ token: String) -> String {
             switch token {
             case "Exact":       return exact
