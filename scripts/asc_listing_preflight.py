@@ -39,14 +39,17 @@ CHECKS
                     every locale the repo carries must exist on the store.
 3. Screenshot drift  every live screenshot must match the local composed PNG
                     of the same name (decoded pixels; ASC re-encodes). The
-                    iPhone set per locale, against that locale's language
-                    (scripts/appstore_screenshots.py); Mac and iPad on en-US.
+                    iPhone set (APP_IPHONE_67) and the Mac set (APP_DESKTOP)
+                    per locale, each against that locale's language
+                    (scripts/appstore_screenshots.py); iPad on en-US.
                     Catches "regenerated but never uploaded", which is the
                     case that keeps recurring.
 
-4. iPhone panels    with --require-shots only: every locale with listing texts
-                    has its five composed iPhone screenshots, each one App
-                    Store Connect would accept (scripts/appstore_screenshots.py),
+4. Panels           with --require-shots only: every locale with listing texts
+                    has its five composed iPhone screenshots and its six Mac
+                    ones, each one App Store Connect would accept, drawn from
+                    the committed raws (and, for the Mac, from a clean store
+                    render: scripts/appstore_screenshots.py render_problems),
                     or deliberately falls back to en-US's. Repo-only; CI runs
                     it together with --texts-only.
 
@@ -74,7 +77,7 @@ pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
     python3 scripts/asc_listing_preflight.py --texts-only    # repo texts only, no key
-    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone panels (CI)
+    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone and Mac panels (CI)
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
@@ -133,11 +136,11 @@ TIER_CLAIMS = {
     "Lifetime": "lifetime",
 }
 
-# Where the composed marketing PNGs live, by ASC display type.
+# Where the composed marketing PNGs live, by ASC display type, for the sets
+# that exist on en-US only. APP_IPHONE_67 and APP_DESKTOP are per locale:
+# shots.composed_dir(<language>, platform=...), the six-language panels
+# (scripts/appstore_screenshots.py).
 LOCAL_SHOTS = {
-    "APP_DESKTOP": REPO / "CLI Pulse Bar/screenshots/macos/composed",
-    # APP_IPHONE_67 is per locale: shots.composed_dir(<language>), the
-    # six-language panels (scripts/appstore_screenshots.py).
     "APP_IPAD_PRO_3GEN_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
     "APP_IPAD_PRO_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
 }
@@ -293,28 +296,34 @@ def check_repo_texts(root: Path | None = None) -> bool:
 
 
 def check_repo_shots(root: Path | None = None) -> bool:
-    """Check 4 (--require-shots): every locale with listing texts has its five
-    composed iPhone panels, each uploadable (1290x2796, RGB, no alpha, <=10 MB),
-    or is mapped to FALLBACK and shows en-US's; and the committed raw captures
-    are the ones the set's compose.json records it was drawn from (md5), so it
-    can be recomposed without a simulator. Repo-only, so it runs in CI:
-    repo-hygiene.yml passes --require-shots since the six-language capture for
-    1.54.0 landed. It stays a flag rather than the default so that a listing-text
-    change can still be checked on its own (test_asc_listing_preflight.sh
-    builds text-only fixtures), not because the panels may be missing."""
-    problems = shots.require_shots_problems(listing.LOCALE_SOURCES, root)
-    print("repo iPhone screenshots (--require-shots):")
-    for loc in listing.LOCALE_SOURCES:
-        lang = shots.SHOT_SOURCES.get(loc, "?")
-        where = ("FALLBACK: shows en-US's panels" if lang is shots.FALLBACK
-                 else f"{shots.composed_dir(lang, root).relative_to(root or REPO)}")
-        print(f"  {loc:8} -> {where}")
-    for loc, why in problems:
-        print(f"  FAIL  [{loc}] {why}")
-    if not problems:
-        print(f"  ok    {len(listing.LOCALE_SOURCES)} locale(s) have their "
-              f"{len(shots.SCREENS)} panels")
-    return not problems
+    """Check 4 (--require-shots): every locale with listing texts has its
+    composed iPhone panels (five, 1290x2796) and Mac panels (six, 2880x1800),
+    each uploadable (RGB, no alpha, <=10 MB), or is mapped to FALLBACK and
+    shows en-US's; and the committed raws are the ones each set's compose.json
+    records it was drawn from (md5), so it can be recomposed without a
+    simulator or a QA build. The Mac raws must also still be a clean store
+    render (render.json: no DEVID_BUILD, no remote control, Claude and Codex
+    local history only, no warnings). Repo-only, so it runs in CI:
+    repo-hygiene.yml passes --require-shots. It stays a flag rather than the
+    default so that a listing-text change can still be checked on its own
+    (test_asc_listing_preflight.sh builds text-only fixtures), not because the
+    panels may be missing."""
+    ok = True
+    for plat in shots.PLATFORMS.values():
+        problems = shots.require_shots_problems(listing.LOCALE_SOURCES, root, platform=plat)
+        print(f"repo {plat.name} screenshots, {plat.display_type} (--require-shots):")
+        for loc in listing.LOCALE_SOURCES:
+            lang = shots.SHOT_SOURCES.get(loc, "?")
+            where = ("FALLBACK: shows en-US's panels" if lang is shots.FALLBACK
+                     else f"{shots.composed_dir(lang, root, platform=plat).relative_to(root or REPO)}")
+            print(f"  {loc:8} -> {where}")
+        for loc, why in problems:
+            print(f"  FAIL  [{loc}] {why}")
+        if not problems:
+            print(f"  ok    {len(listing.LOCALE_SOURCES)} locale(s) have their "
+                  f"{len(plat.screens)} {plat.name} panels")
+        ok &= not problems
+    return ok
 
 
 def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
@@ -411,7 +420,7 @@ def main() -> int:
     ap.add_argument("--root", type=Path,
                     help="repo root to validate (with --texts-only; for the self-test)")
     ap.add_argument("--require-shots", action="store_true",
-                    help="also require every listing locale's five composed iPhone panels "
+                    help="also require every listing locale's composed iPhone and Mac panels "
                          "(check 4; repo-only, works with --texts-only)")
     args = ap.parse_args()
     if args.whatsnew_dir is not None and not check_whatsnew(args.whatsnew_dir, args.root):
@@ -425,15 +434,17 @@ def main() -> int:
     if args.require_shots:
         shots_ok = check_repo_shots(args.root)
     else:
-        print("repo iPhone screenshots: not checked (--require-shots)")
+        print("repo iPhone and Mac screenshots: not checked (--require-shots)")
     if args.texts_only:
         print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
         if args.require_shots:
             print("SHOTS OK" if shots_ok else "SHOTS INCOMPLETE — see each FAIL line above. "
-                  "Missing panels or captures: CLI Pulse Bar/scripts/capture_ios_screenshots.sh, "
-                  "then compose_appstore_ios_screenshots.py --all. Stale captions, or captures "
-                  "that are not the recorded ones: recompose from ios-raw (--all), no "
-                  "simulator needed.")
+                  "Missing iPhone panels or captures: CLI Pulse Bar/scripts/capture_ios_screenshots.sh, "
+                  "then compose_appstore_ios_screenshots.py --all. Missing Mac panels or renders: "
+                  "scripts/render_macos_qa_views.sh --set store, then "
+                  "compose_appstore_macos_screenshots.py --all. Stale captions, or captures "
+                  "that are not the recorded ones: recompose from ios-raw / macos-raw (--all), "
+                  "no simulator or QA build needed.")
         return 0 if texts_ok and shots_ok else 1
 
     _load_http_deps()
@@ -549,26 +560,27 @@ def main() -> int:
                 failed = True
 
         # ── 3. screenshot drift ───────────────────────────────────────────
-        # The iPhone set is per locale (scripts/appstore_screenshots.py maps
-        # each locale to its language's panels; a locale with no set of its own
-        # is shown en-US's). The Mac and iPad sets exist on en-US only, which
-        # every other locale inherits, so those are compared there alone.
+        # The iPhone and Mac sets are per locale (scripts/appstore_screenshots.py
+        # maps each locale to its language's panels; a locale with no set of
+        # its own is shown en-US's). The iPad set exists on en-US only, which
+        # every other locale inherits, so it is compared there alone.
         if args.skip_screenshots:
             continue
+        per_locale = {p.display_type: p for p in shots.PLATFORMS.values()}
         for loc_row in locs["data"]:
             locale = loc_row["attributes"].get("locale")
             is_en = locale == "en-US"
-            iphone_lang = shots.SHOT_SOURCES.get(locale, shots.FALLBACK)
+            shot_lang = shots.SHOT_SOURCES.get(locale, shots.FALLBACK)
             sets = asc.get(f"/appStoreVersionLocalizations/{loc_row['id']}/appScreenshotSets",
                            limit=20)
             for st in sets["data"]:
                 dtype = st["attributes"].get("screenshotDisplayType")
-                if dtype == shots.DISPLAY_TYPE:
-                    if iphone_lang is shots.FALLBACK and not is_en:
-                        print(f"  note  [{locale}] has an iPhone set of its own, but "
+                if dtype in per_locale:
+                    if shot_lang is shots.FALLBACK and not is_en:
+                        print(f"  note  [{locale}] has a {dtype} set of its own, but "
                               "SHOT_SOURCES says it shows en-US's — not compared")
                         continue
-                    local_dir = shots.composed_dir(iphone_lang or "en")
+                    local_dir = shots.composed_dir(shot_lang or "en", platform=per_locale[dtype])
                 elif is_en:
                     local_dir = LOCAL_SHOTS.get(dtype)
                 else:

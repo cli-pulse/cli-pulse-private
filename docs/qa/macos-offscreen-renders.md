@@ -75,7 +75,8 @@ In render mode the process:
 - sets its activation policy to `.prohibited` (no Dock icon, no menu bar, never
   frontmost) and never creates `CLIPulseBarApp`, so there is no status item;
 - draws each view in a borderless `NSWindow` that is never ordered in, through
-  `NSHostingView` and `cacheDisplay`, at 2 pixels per point;
+  `NSHostingView` and `cacheDisplay`, at 2 pixels per point (3 for the store
+  set), with the window reporting that backing scale whatever the screen;
 - uses the QA runtime, which already refuses the helper, collectors, StoreKit,
   telemetry, widgets and production endpoints, and in addition switches off
   notifications (the Alerts tab would ask macOS for permission, a prompt on
@@ -168,13 +169,98 @@ confirmation alerts and the pet naming sheet (they need a window on screen),
 Settings' Companion CLI section (hidden in QA) and pairing section (needs a
 real sign-in), and the remote-control card when the build does not offer it.
 
+## The store set: the Mac App Store screenshots
+
+`--set store` (the app's `-CLIPulseRenderSet store`) draws the raw material of
+the Mac App Store screenshots instead of every view:
+
+```bash
+scripts/render_macos_qa_views.sh --set store \
+  --app "build/qa/Build/Products/Debug QA/CLIPulse QA.app"
+```
+
+It writes `CLI Pulse Bar/screenshots/macos-raw/<lang>/` (or `--out`), rendering
+each language into a hidden staging directory beside it and swapping it in
+whole only when the app exited 0; a failed language is left in
+`<lang>.rejected/` with its log, and the folder stays as it was. Measured on
+2026-09-28: about 25 seconds per language.
+
+**Why a subset.** The QA build is not the Mac App Store build. It is Debug
+(`DEBUG` is defined), unsandboxed (`MASSandboxGate.isSandboxed` is false) and on
+the `qa` channel; the Mac App Store build is Release, sandboxed and production.
+Neither defines `DEVID_BUILD`: it is passed only by `build_signed_app.sh` for the
+Developer ID archive, `ci_check_qa_scheme.py` fails if either `Debug QA`
+configuration gains it, and the store set refuses to run (exit 64) in a build
+that has it. So the store set draws only surfaces whose visible UI depends on
+none of the three differences (`QARenderSnapshot.storeCatalog`, checked by
+`storeSurfaceProblem`):
+
+| file | what |
+| --- | --- |
+| `01_overview.png` | Overview, first page |
+| `02_providers.png` | Providers, first page |
+| `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page, and the usage panel that slides out to its left |
+| `04_cost.png` | Overview, last page (flush with the bottom) |
+| `05_alerts.png` | Alerts |
+| `06_pulse_cat.png` | Pet, first page |
+
+Left out, and why: Sessions (offers helper control of Claude sessions and,
+unsandboxed, the in-app terminal; the Mac App Store build ships neither),
+Machine (reads a helper the QA build refuses, and shows a different affordance
+sandboxed), Settings (Companion CLI is hidden in QA and shown in the Mac App
+Store build), the provider editor (a QA-only banner), Subscription (no StoreKit
+products in QA), setup and signed-out pages (setup v2 is on in QA and off in
+production), Pet after its first page (the Debug build's test buttons), the
+language menu (drawn from menu items, not a screenshot).
+
+**What is different from the review set.**
+
+- 3 pixels per point, and the offscreen window reports that backing scale
+  itself (`QARenderWindow`). Views rasterize their layers at their window's
+  scale; a window never ordered in takes the main screen's, which was 1 on a
+  Mac whose main display is not Retina, and a 3x bitmap then held 1x text blown
+  up threefold. `render.json` records `windowBackingScale`, and the App Store
+  pipeline refuses anything but 3.
+- The popover height is pinned to its default, 580 points
+  (`cli_pulse_menubar_height`).
+- **The local usage history.** The Overview's Activity card and the usage panel
+  read this Mac's local-scan archive (`DailyUsageArchiveManager`), which the QA
+  home leaves empty ("No local usage history yet"). Before anything reads it,
+  the store set writes `QARenderSnapshot.storeLocalScanSample` there: the Demo
+  archive's days without Gemini, so Claude and Codex only (what the scanner
+  records, which keeps the panel's own "Claude + Codex local history" line
+  true), with Claude's message counts, today's figures equal to the Demo
+  dashboard's. It writes only when both the home and the archive's directory
+  resolve (realpath) inside `/private/tmp/clipulse-qa-home`, reads the archive
+  back through the app's own manager, and refuses a history holding any other
+  provider, no days or no messages, before and after drawing.
+- The usage panel is built as `DashboardPanelController` builds it: from the
+  local history the app loaded, 520 points wide (its width whenever the popover
+  sits at the right of an ordinary screen), dark, with its close button, and
+  drawn only once two drawings half a second apart are identical (its headline
+  counts up for 2.2 seconds).
+- Stricter exit: any warning, refused request or blank-looking render fails the
+  run (5, 3), and so does a local history it could not write or read back (66).
+
+`render.json` (instead of `manifest.json`) adds `set: "store"`, the `variant`
+the build measured about itself (`devidBuild`, `debugBuild`, `sandboxed`,
+`channel`, `remoteControlAvailable`, the popover and panel sizes, the panel's
+settle, and the local history's days, providers and messages), and `shots`: each
+shot's page and every file's md5. The App Store compositor
+(`compose_appstore_macos_screenshots.py`) and `asc_listing_preflight.py
+--require-shots` refuse raws whose `render.json` is not a clean store render in
+that language (`render_problems` in `scripts/appstore_screenshots.py`). How the
+panels are composed and pushed: AGENTS.md, "Mac screenshots (six languages)".
+
 ## Exit status
 
 The app: 0 clean; 3 some render looks blank; 4 a coverage warning (for example
-`SettingsTab` gained a section the catalog does not name); 64 refused; 65 the
-language was not in effect; 70 watchdog (15 minutes); 73 output directory not
-usable or not empty; 74 manifest not written. The script returns 2 if any
-language did not exit 0.
+`SettingsTab` gained a section the catalog does not name); 5 a store-set
+warning; 64 refused (including the store set in a `DEVID_BUILD` build); 65 the
+language was not in effect; 66 the store set's local history could not be
+written inside the QA home or read back; 67 a store shot that is not allowed;
+70 watchdog (15 minutes); 73 output directory not usable or not empty; 74
+manifest not written. The script returns 2 if any language did not exit 0.
 
 ## Adding a view
 

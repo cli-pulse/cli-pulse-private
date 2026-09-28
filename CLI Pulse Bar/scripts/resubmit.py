@@ -349,17 +349,13 @@ def main():
         select_build(ios_vid, "iOS")
 
     # Step 3: Update screenshots
-    # macOS
+    # macOS: not here any more. This used to push AppKit mockups from
+    # ~/Desktop/CLIPulseBar-Screenshots to en-US's APP_DESKTOP set, which would
+    # replace the real six-language set. The Mac panels are pushed per locale,
+    # dry run first, by scripts/asc_push_screenshots.py --platform MAC_OS.
     if mac_vid:
-        r = get(f"/appStoreVersions/{mac_vid}/appStoreVersionLocalizations")
-        for loc in r.get("data", []):
-            if loc["attributes"]["locale"] == "en-US":
-                mac_loc = loc["id"]
-                mac_dir = os.path.expanduser("~/Desktop/CLIPulseBar-Screenshots")
-                if os.path.isdir(mac_dir):
-                    files = sorted([os.path.join(mac_dir, f) for f in os.listdir(mac_dir) if f.endswith("_2880x1800.png")])
-                    if files:
-                        upload_screenshots(mac_loc, files, "APP_DESKTOP")
+        print("  macOS screenshots: not uploaded here; use "
+              "scripts/asc_push_screenshots.py --platform MAC_OS --version <X.Y.Z>")
 
     # iOS
     if ios_vid:

@@ -1,32 +1,44 @@
 #!/usr/bin/env python3
-"""Push the composed iPhone screenshots to App Store Connect, per locale.
+"""Push the composed iPhone or Mac screenshots to App Store Connect, per locale.
 
 The sibling of scripts/asc_push_listing.py, which pushes the listing text: same
 key, same client, same editability rule. Which files go to which locale is
 scripts/appstore_screenshots.py (en-US <- en, es-ES and es-MX <- es, ...).
 
+Two platforms, one per run: --platform IOS (the default of a dry run) pushes
+the iPhone panels to the iOS version's APP_IPHONE_67 sets; --platform MAC_OS
+pushes the Mac panels (screenshots/macos-composed/) to the macOS version's
+APP_DESKTOP sets. A write must name its platform.
+
 DEFAULT IS A DRY RUN. It validates every local panel, GETs what each locale's
-iPhone set (APP_IPHONE_67) holds now, and prints per locale what would be
-replaced, with the size and md5 of every file on both sides. Nothing is written.
+set holds now, and prints per locale what would be replaced, with the size and
+md5 of every file on both sides. Nothing is written.
 
-    python3 scripts/asc_push_screenshots.py                     # the version being prepared
+    python3 scripts/asc_push_screenshots.py                     # iPhone, the version being prepared
     python3 scripts/asc_push_screenshots.py --version 1.54.0 --locale ja,ko
+    python3 scripts/asc_push_screenshots.py --platform MAC_OS --version 1.54.0
 
-WRITING needs --apply and --version:
+WRITING needs --apply, --platform and --version:
 
-    python3 scripts/asc_push_screenshots.py --apply --version 1.54.0
+    python3 scripts/asc_push_screenshots.py --apply --platform IOS --version 1.54.0
+    python3 scripts/asc_push_screenshots.py --apply --platform MAC_OS --version 1.54.0
 
 and then, before the first write, it:
   * refuses unless every selected locale's panels are all there and uploadable:
-    1290x2796, 8-bit RGB, no alpha, at most 10 MB. App Store Connect rejects an
-    alpha channel only after the upload, by which time a script that deleted
-    first has left the listing without screenshots;
-  * refuses unless that iOS version is editable (PREPARE_FOR_SUBMISSION,
+    the platform's canvas (1290x2796 iPhone, 2880x1800 Mac), 8-bit RGB, no
+    alpha, at most 10 MB. App Store Connect rejects an alpha channel only after
+    the upload, by which time a script that deleted first has left the listing
+    without screenshots;
+  * for the Mac, refuses unless the panels were composed from renders of this
+    very version: each set's compose.json records the app version that drew
+    them, and the popover's footer shows it ("CLI Pulse v1.54.0");
+  * refuses unless that platform's version is editable (PREPARE_FOR_SUBMISSION,
     DEVELOPER_REJECTED, REJECTED, METADATA_REJECTED). WAITING_FOR_REVIEW is not:
     App Store Connect refuses screenshot writes (409) while a version waits for
-    review, and only the iOS submission needs withdrawing, never the Mac one;
+    review, and only the affected platform's submission needs withdrawing;
   * refuses unless every selected locale already has a localization on that
-    version (screenshots hang off it; asc_push_listing.py creates it).
+    version (screenshots hang off it; asc_push_listing.py creates it). A
+    locale with no set of the platform's display type yet gets one.
 
 Then, one locale at a time:
   * uploads the new panels first (reserve, PUT the parts App Store Connect
@@ -43,8 +55,9 @@ failed to process, or a read that ended the run (a 5xx, a lost connection,
 Ctrl-C). It says which screenshots it could not delete, if any. The token is
 minted again before it is 15 minutes old and on a 401 (asc_push_listing.py).
 The one exception is a set that would exceed App Store Connect's 10
-screenshots with both present: then the old ones go first, after the local
-checks above passed, and the run says so.
+screenshots with both present: then only as many old ones as the new ones need
+room for go first (the carousel's last ones), after the local checks above
+passed, the rest after the new ones are COMPLETE, and the run says so.
 
 A rerun after a run that stopped halfway starts from what the set holds:
 uploads that never finished are deleted first (the store shows none of them),
@@ -54,8 +67,10 @@ name and size whose checksum is not filled in yet is most likely that panel,
 uploaded by the run just before: the rerun waits for its checksum and then
 decides, rather than replacing it.
 
-It touches the APP_IPHONE_67 set only. iPad, Apple Watch and Mac sets are listed
-and left alone, as is every locale not selected or not in the repo.
+It touches the platform's one display type (APP_IPHONE_67 or APP_DESKTOP) on
+that platform's version only. Every other set (iPad, Apple Watch, the other
+platform) is listed and left alone, as is every locale not selected or not in
+the repo.
 
 Exit: 0 = dry run clean / apply verified. 1 = invalid panels, refused, or a
 write that failed or did not stick. 2 = could not reach App Store Connect.
@@ -73,7 +88,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import appstore_screenshots as shots  # noqa: E402
 import asc_push_listing as pusher  # noqa: E402
 
-DISPLAY_TYPE = shots.DISPLAY_TYPE
+DISPLAY_TYPE = shots.DISPLAY_TYPE   # the iPhone's; a run uses its platform's
 MAX_PER_SET = 10
 POLL_SECONDS = 5
 POLL_TIMEOUT = 600
@@ -119,10 +134,10 @@ class Panel:
         return self.path.name
 
 
-def local_panels(lang: str) -> tuple[list[Panel], list[str]]:
-    problems = shots.set_problems(lang)
+def local_panels(lang: str, platform: shots.Platform = shots.IPHONE) -> tuple[list[Panel], list[str]]:
+    problems = shots.set_problems(lang, platform=platform)
     panels = []
-    for p in shots.expected_composed(lang):
+    for p in shots.expected_composed(lang, platform=platform):
         if p.is_file():
             data = p.read_bytes()
             panels.append(Panel(p, len(data), hashlib.md5(data).hexdigest()))
@@ -225,11 +240,16 @@ def _discard(asc, ids: list[str]) -> list[str]:
     return left
 
 
-def _rolled_back(asc, loc: str, new_ids: list[str], old_gone: bool) -> str:
+def _rolled_back(asc, loc: str, new_ids: list[str], old_gone: int, old_total: int = 0) -> str:
     """Remove this run's uploads after a failure; say truthfully what the set
-    now holds."""
+    now holds. `old_gone` is how many of the live set were deleted first."""
     left = _discard(asc, new_ids)
-    old = "the live set was already deleted" if old_gone else "the live set is untouched"
+    if not old_gone:
+        old = "the live set is untouched"
+    elif old_gone >= old_total:
+        old = "the live set was already deleted"
+    else:
+        old = f"{old_gone} of the live set's {old_total} were already deleted to make room"
     if not left:
         return f"removed the {len(new_ids)} added; {old}"
     return (f"could NOT remove {len(left)} of the {len(new_ids)} added ({', '.join(left)}); "
@@ -323,7 +343,11 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
             print(f"  [{loc}] OK: the set already holds the {len(panels)} panels, in order; "
                   "nothing to do")
             return True
-    debris, reused, old_ids, _ = plan_set(live, panels)
+    debris, reused, old_ids, still = plan_set(live, panels)
+    # Rows the wait above settled are now reused or old. One that still has no
+    # checksum (it appeared while waiting) takes a place in the set like an old
+    # one and goes with them, so the room below counts it.
+    old_ids += still
     if debris:
         print(f"  [{loc}] {len(debris)} unfinished upload(s) from an earlier run: deleting them first")
         left = _discard(asc, debris)
@@ -333,11 +357,19 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
     if reused:
         print(f"  [{loc}] {len(reused)} panel(s) already uploaded by an earlier run: reusing them")
     to_upload = [n for n in range(len(panels)) if n not in reused]
-    delete_first = len(old_ids) + len(reused) + len(to_upload) > MAX_PER_SET
-    if delete_first:
-        print(f"  [{loc}] {len(old_ids)} live + {len(to_upload)} new would exceed {MAX_PER_SET}: "
-              "deleting the live ones first (the local panels already passed every check)")
-        left = _discard(asc, old_ids)
+    # Room for the new panels: only the overflow goes before the upload (the
+    # carousel's last ones), the rest once the new panels are COMPLETE.
+    overflow = len(old_ids) + len(reused) + len(to_upload) - MAX_PER_SET
+    first = old_ids[len(old_ids) - overflow:] if overflow > 0 else []
+    old_ids = [i for i in old_ids if i not in first]
+    delete_first = len(first)
+    old_total = len(first) + len(old_ids)
+    if first:
+        print(f"  [{loc}] {old_total} live + {len(to_upload)} new would exceed {MAX_PER_SET}: "
+              f"deleting {len(first)} of the live ones first to make room (the local panels "
+              "already passed every check); the other "
+              f"{len(old_ids)} go once the new ones are COMPLETE")
+        left = _discard(asc, first)
         if left:
             print(f"  [{loc}] could not delete {', '.join(left)}; nothing was uploaded")
             return False
@@ -350,21 +382,23 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
         for n in to_upload:
             sid = upload(asc, set_id, panels[n])
             if sid is None:
-                print(f"  [{loc}] upload failed; " + _rolled_back(asc, loc, new_ids, delete_first))
+                print(f"  [{loc}] upload failed; "
+                      + _rolled_back(asc, loc, new_ids, delete_first, old_total))
                 return False
             new_ids.append(sid)
         if not wait_complete(asc, new_ids):
-            print(f"  [{loc}] processing failed; " + _rolled_back(asc, loc, new_ids, delete_first))
+            print(f"  [{loc}] processing failed; "
+                  + _rolled_back(asc, loc, new_ids, delete_first, old_total))
             return False
     except BaseException as exc:
         print(f"  [{loc}] stopped by {type(exc).__name__} while uploading; "
-              + _rolled_back(asc, loc, new_ids, delete_first))
+              + _rolled_back(asc, loc, new_ids, delete_first, old_total))
         raise
 
     by_index = dict(reused)
     by_index.update(zip(to_upload, new_ids))
     order_ids = [by_index[n] for n in range(len(panels))]
-    if not delete_first and old_ids:
+    if old_ids:
         left = _discard(asc, old_ids)
         if left:
             print(f"  [{loc}] could not delete {len(left)} old screenshot(s); the read-back decides")
@@ -386,47 +420,82 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
+def version_problems(plan_langs: dict[str, str], version: str | None,
+                     platform: shots.Platform) -> list[str]:
+    """The Mac panels show the version that drew them in the popover's footer,
+    so they may go only to that version (compose.json records it). The iPhone
+    panels carry no version."""
+    if platform is not shots.MAC or not version:
+        return []
+    out = []
+    for loc, lang in plan_langs.items():
+        drawn = shots.composed_app_version(lang, platform=platform)
+        if drawn != version:
+            out.append(f"{loc}: the {lang} panels were drawn by {drawn or 'an unrecorded version'}, "
+                       f"not {version} (the popover's footer says so); render and compose "
+                       "them again for this version")
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--version", help="iOS versionString, e.g. 1.54.0 (required with --apply)")
+    ap.add_argument("--platform", choices=sorted(shots.PLATFORMS),
+                    help="IOS (iPhone panels, APP_IPHONE_67) or MAC_OS (Mac panels, APP_DESKTOP); "
+                         "required with --apply, IOS for a dry run without it")
+    ap.add_argument("--version", help="versionString, e.g. 1.54.0 (required with --apply)")
     ap.add_argument("--locale", action="append",
                     help="limit to these ASC locales (comma-separated or repeated)")
     ap.add_argument("--apply", action="store_true", help="WRITE to App Store Connect")
     args = ap.parse_args()
 
+    if args.apply and not args.platform:
+        die("--apply needs --platform IOS|MAC_OS. A write names exactly one platform.", 1)
     if args.apply and not args.version:
         die("--apply needs --version <X.Y.Z>. A write names exactly one version.", 1)
+    plat = shots.PLATFORMS[args.platform or "IOS"]
+    display_type = plat.display_type
     locales = parse_locales(args.locale)
 
     # 1. The local panels, before anything else.
     plan: dict[str, list[Panel]] = {}
+    plan_langs: dict[str, str] = {}
     problems: list[str] = []
-    print(f"local panels ({DISPLAY_TYPE}, {shots.CANVAS[0]}x{shots.CANVAS[1]}):")
+    print(f"local panels ({plat.name}, {display_type}, {plat.canvas[0]}x{plat.canvas[1]}):")
     for loc in locales:
         lang = shots.SHOT_SOURCES.get(loc, shots.FALLBACK)
         if lang is shots.FALLBACK:
             print(f"  [{loc}] no set of its own: App Store Connect shows it en-US's")
             continue
-        panels, probs = local_panels(lang)
+        panels, probs = local_panels(lang, plat)
         plan[loc] = panels
-        print(f"  [{loc}] <- {shots.composed_dir(lang).relative_to(shots.REPO)}")
+        plan_langs[loc] = lang
+        where = shots.composed_dir(lang, platform=plat).relative_to(shots.REPO)
+        drawn = shots.composed_app_version(lang, platform=plat) if plat is shots.MAC else None
+        print(f"  [{loc}] <- {where}" + (f"  (drawn by {drawn})" if plat is shots.MAC else ""))
         for p in panels:
             print(f"      {p.name}  {p.size} B  md5 {p.md5}")
         for why in probs:
             print(f"      INVALID {why}")
             problems.append(f"{loc}: {why}")
+    for why in version_problems(plan_langs, args.version, plat):
+        print(f"  INVALID {why}")
+        problems.append(why)
     if problems and args.apply:
         die(f"{len(problems)} problem(s) with the local panels; nothing was written or deleted.", 1)
 
     # 2. The store.
     asc = ShotsASC()
-    ver = pusher.pick_version(asc, "IOS", args.version)
+    ver = pusher.pick_version(asc, plat.asc_platform, args.version)
     if ver is None:
-        die(f"IOS: no version {args.version or ''} in App Store Connect", 1)
+        die(f"{plat.asc_platform}: no version {args.version or ''} in App Store Connect", 1)
     vs = ver["attributes"]["versionString"]
     st = pusher.version_state(ver["attributes"])
     editable = st in pusher.EDITABLE_STATES
-    print(f"\n=== IOS {vs}  state={st} ({'editable' if editable else 'NOT editable'})")
+    if not args.version:
+        for why in version_problems(plan_langs, vs, plat):
+            print(f"  INVALID {why}")
+            problems.append(why)
+    print(f"\n=== {plat.asc_platform} {vs}  state={st} ({'editable' if editable else 'NOT editable'})")
     vlocs = pusher.version_locs(asc, ver["id"])
 
     todo: list[tuple[str, str | None, list[dict]]] = []
@@ -441,12 +510,12 @@ def main() -> int:
         sets = asc.get(f"/appStoreVersionLocalizations/{row['id']}/appScreenshotSets",
                        limit=50)["data"]
         target = next((s for s in sets
-                       if s["attributes"].get("screenshotDisplayType") == DISPLAY_TYPE), None)
+                       if s["attributes"].get("screenshotDisplayType") == display_type), None)
         others = [s["attributes"].get("screenshotDisplayType") for s in sets if s is not target]
         live = set_rows(asc, target["id"]) if target else []
         same = matches(live, panels)
         unsettled = plan_set(live, panels)[3]
-        print(f"  [{loc}] {DISPLAY_TYPE}: {len(live)} live -> {len(panels)} new"
+        print(f"  [{loc}] {display_type}: {len(live)} live -> {len(panels)} new"
               + ("  (same; nothing to do)" if same else "  (replace)")
               + (f"; {len(unsettled)} COMPLETE without a checksum yet, which --apply "
                  "waits for before deciding" if unsettled and not same else ""))
@@ -455,6 +524,16 @@ def main() -> int:
                 a = r.get("attributes") or {}
                 print(f"      live  {a.get('fileName')}  {a.get('fileSize')} B  "
                       f"md5 {a.get('sourceFileChecksum')}  {state_of(r)}")
+        if not same and target is None:
+            print(f"      no {display_type} set yet: --apply creates one")
+        if not same:
+            # An unsettled row is counted as the panel it most likely is (reused).
+            debris, reused, old_ids, _ = plan_set(live, panels)
+            overflow = len(old_ids) + len(panels) - MAX_PER_SET
+            if overflow > 0:
+                print(f"      {len(old_ids)} live + {len(panels) - len(reused)} new would exceed "
+                      f"{MAX_PER_SET}: --apply deletes {overflow} of the live ones first, the "
+                      f"other {len(old_ids) - overflow} once the new ones are COMPLETE")
         if others:
             print(f"      untouched: {', '.join(sorted(o or '?' for o in others))}")
         if not same:
@@ -467,25 +546,27 @@ def main() -> int:
 
     # 3. Apply: every precondition before the first write.
     if not editable:
-        hint = (" Withdraw the iOS submission first (the Mac one can stay in review)."
+        other = "Mac" if plat is shots.IPHONE else "iOS"
+        mine = "iOS" if plat is shots.IPHONE else "macOS"
+        hint = (f" Withdraw the {mine} submission first (the {other} one can stay in review)."
                 if st == "WAITING_FOR_REVIEW" else "")
-        die(f"IOS {vs} is {st}; screenshots can only be written to "
+        die(f"{plat.asc_platform} {vs} is {st}; screenshots can only be written to "
             f"{sorted(pusher.EDITABLE_STATES)}.{hint} Nothing was written.", 1)
     if missing_locs:
-        die(f"no localization for {', '.join(missing_locs)} on IOS {vs}; push the listing "
-            "text first. Nothing was written.", 1)
+        die(f"no localization for {', '.join(missing_locs)} on {plat.asc_platform} {vs}; push "
+            "the listing text first. Nothing was written.", 1)
 
-    print(f"\nAPPLY IOS {vs}")
+    print(f"\nAPPLY {plat.asc_platform} {vs}")
     failures = 0
     for loc, set_id, live in todo:
         if set_id is None:
             res = asc.write("POST", "/appScreenshotSets", {"data": {
                 "type": "appScreenshotSets",
-                "attributes": {"screenshotDisplayType": DISPLAY_TYPE},
+                "attributes": {"screenshotDisplayType": display_type},
                 "relationships": {"appStoreVersionLocalization": {"data": {
                     "type": "appStoreVersionLocalizations", "id": vlocs[loc]["id"]}}}}})
             if not res or "data" not in res:
-                print(f"  [{loc}] creating the {DISPLAY_TYPE} set FAILED")
+                print(f"  [{loc}] creating the {display_type} set FAILED")
                 failures += 1
                 break
             set_id = res["data"]["id"]

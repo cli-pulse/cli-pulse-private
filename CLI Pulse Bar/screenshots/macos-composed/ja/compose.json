@@ -1,0 +1,59 @@
+{
+ "app": {
+  "build": "107",
+  "version": "1.54.0"
+ },
+ "captions": {
+  "01_overview": [
+   "すべてをひと目で",
+   "使用量、コスト、セッション、アラートを​メニューバーからワンクリックで確認"
+  ],
+  "02_providers": [
+   "クォータとコストを把握",
+   "上限に達する前に、​残りがわかる"
+  ],
+  "03_usage_history": [
+   "使用履歴をワンクリックで",
+   "ヒートマップ、​連続日数、​よく使うモデルを Claude と Codex のローカル履歴から"
+  ],
+  "04_cost": [
+   "コストの内訳がわかる",
+   "プロバイダー別のコスト、​上位プロジェクト、​リスクシグナル"
+  ],
+  "05_alerts": [
+   "上限の接近を見逃さない",
+   "クォータのアラートは​確認、スヌーズ、解決がその場でできる"
+  ],
+  "06_pulse_cat": [
+   "パルスキャットに会おう",
+   "エネルギーとおなかの具合が AI の使い方で変わる​デスクトップ猫"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "46a85b482bcb7b78ad334626c8fcd23a",
+  "02_providers.png": "fba2070a85c896d4e1e0a4dd43cc5a01",
+  "03_usage_history.panel.png": "7e4c94be28dd9da6324eaded7a1a6d86",
+  "03_usage_history.png": "46a85b482bcb7b78ad334626c8fcd23a",
+  "04_cost.png": "9fa85e1e177c95df385ca992aa3d6a4e",
+  "05_alerts.png": "0245ad1b9ac0c5895d49a02964070d0b",
+  "06_pulse_cat.png": "60a02828aed1ffe5ebcd0214fbfa87a5"
+ },
+ "faces": {
+  "subtitle": "Hiragino Sans",
+  "title": "Hiragino Sans"
+ },
+ "lang": "ja",
+ "panels": {
+  "01_overview_2880x1800.png": "ec11f192db5bded1df558b82b1f76c7f",
+  "02_providers_2880x1800.png": "d2da0408c74ce359aa7c9b67d71ccb41",
+  "03_usage_history_2880x1800.png": "3d771c75ba368d47f45a82647d123b04",
+  "04_cost_2880x1800.png": "6aaac6edf1b7f04a98ad601008e3d380",
+  "05_alerts_2880x1800.png": "125101bf8d5eadff347cbba84b1e458c",
+  "06_pulse_cat_2880x1800.png": "ae2f6baad4e01797b98c5ff2a15eaa2a"
+ },
+ "pillow": "10.4.0",
+ "px_per_pt": 2.2707,
+ "render": "29da7ff85e7c9c3c2849ba9bae55da9e",
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

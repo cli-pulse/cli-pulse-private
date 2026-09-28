@@ -1,0 +1,59 @@
+{
+ "app": {
+  "build": "107",
+  "version": "1.54.0"
+ },
+ "captions": {
+  "01_overview": [
+   "关键数据，一屏总览",
+   "用量、费用、会话和告警，在菜单栏一点即看"
+  ],
+  "02_providers": [
+   "实时掌握配额与费用",
+   "离上限还有多远，一眼就知道"
+  ],
+  "03_usage_history": [
+   "用量历史，一点就展开",
+   "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"
+  ],
+  "04_cost": [
+   "钱都花在了哪里",
+   "按服务商细分的费用、主要项目和风险信号"
+  ],
+  "05_alerts": [
+   "配额不再突然见底",
+   "配额告警可以确认、稍后提醒或直接解决"
+  ],
+  "06_pulse_cat": [
+   "认识一下脉冲猫",
+   "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "631a609858e5aa9dd6f93329716351ff",
+  "02_providers.png": "4b98b5daaebdf06a2d4bf970f7525fbf",
+  "03_usage_history.panel.png": "0360e87d3c6d04c6164b380870e761cb",
+  "03_usage_history.png": "631a609858e5aa9dd6f93329716351ff",
+  "04_cost.png": "ecb692466d641b5d2b76f4f5d1845486",
+  "05_alerts.png": "c447c2c32992e4675ee00db75a26a396",
+  "06_pulse_cat.png": "2a8d1399822366953c2edb2fa7794bb0"
+ },
+ "faces": {
+  "subtitle": "PingFang SC",
+  "title": "PingFang SC"
+ },
+ "lang": "zh-Hans",
+ "panels": {
+  "01_overview_2880x1800.png": "c005881cea29d55c4c9f9f68a511ca62",
+  "02_providers_2880x1800.png": "91016ab45d750440670729ead79b22bc",
+  "03_usage_history_2880x1800.png": "c436e0a471205427fc18051245244e1e",
+  "04_cost_2880x1800.png": "b313eb6fd3bdc2d83dc61c90a99aae75",
+  "05_alerts_2880x1800.png": "5b9eebdce1ed4821f9ace187de2ca746",
+  "06_pulse_cat_2880x1800.png": "692267cbce389944d41e7df3107e0511"
+ },
+ "pillow": "10.4.0",
+ "px_per_pt": 2.2707,
+ "render": "1da3d2dfd4d1ac15233ab262d8ad0925",
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

@@ -1,14 +1,20 @@
 #!/usr/bin/env python3
-"""The iPhone App Store screenshots: which exist, where they live, what makes one uploadable.
+"""The App Store screenshots, iPhone and Mac: which exist, where they live, what makes one uploadable.
 
 One module, imported by everything that makes, checks or pushes them, so the
 layout is written down exactly once:
 
-  - CLI Pulse Bar/scripts/capture_ios_screenshots.sh     captures the raw PNGs
+  - CLI Pulse Bar/scripts/capture_ios_screenshots.sh     captures the raw iPhone PNGs
     (bash; scripts/test_appstore_screenshots.py holds its lists to this one)
-  - CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py   composes the panels
-  - scripts/asc_push_screenshots.py                      uploads the panels
+  - scripts/render_macos_qa_views.sh --set store         renders the raw Mac PNGs
+  - CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py     composes the iPhone panels
+  - CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py   composes the Mac panels
+  - scripts/asc_push_screenshots.py --platform IOS|MAC_OS   uploads the panels
   - scripts/asc_listing_preflight.py --require-shots     checks every locale has them
+
+Two platforms (Platform): IPHONE, the default of every function below, and MAC.
+The module-level names SCREENS, CANVAS, DISPLAY_TYPE, SUFFIX and COMPOSITOR_REL
+are the iPhone's, as they were before the Mac set existed.
 
 LAYOUT
 ------
@@ -29,6 +35,15 @@ LAYOUT
         exactly those (capture_problems): they are committed so that a set
         can be recomposed without a simulator.
 
+    CLI Pulse Bar/screenshots/macos-raw/<lang>/NN_<screen>.png, render.json
+        the QA build's offscreen renders of the real Mac views (the store set,
+        docs/qa/macos-offscreen-renders.md): 380x580-point popovers at 3x,
+        03_usage_history.panel.png beside the third, and the renderer's
+        render.json with each file's md5 and the facts of the build that drew
+        them (render_problems)
+    CLI Pulse Bar/screenshots/macos-composed/<lang>/NN_<screen>_2880x1800.png
+        the Mac panels, in the APP_DESKTOP set, with compose.json as above
+
 `<lang>` is one of LANGS, the app's six languages. SHOT_SOURCES maps each App
 Store Connect locale to the language whose panels it shows: seven locales, six
 sets, because es-ES and es-MX share the Spanish images exactly as they share the
@@ -45,7 +60,7 @@ the release preflight compares the live store with ios-composed/<lang>/ only.
 
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
-Exactly 1290x2796 pixels, 8-bit RGB with no alpha channel and no transparency
+Exactly its platform's canvas (1290x2796 iPhone, 2880x1800 Mac) in pixels, 8-bit RGB with no alpha channel and no transparency
 chunk, a real PNG, at most 10 MB, and the file compose.json says the last clean
 compose run wrote. App Store Connect refuses an image with an
 alpha channel for screenshots, and it refuses it after the old set may already
@@ -60,6 +75,7 @@ import json
 import struct
 import sys
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 
 # CHECKOUT is this checkout. REPO starts as the same path, but tests point it at
@@ -98,6 +114,62 @@ MAX_BYTES = 10 * 1000 * 1000
 SUFFIX = f"_{CANVAS[0]}x{CANVAS[1]}.png"
 MANIFEST = "compose.json"
 
+# ── the Mac set ──────────────────────────────────────────────────────────────
+# The Swift store catalog (QARenderSnapshot.storeCatalog) draws the same six in
+# the same order; scripts/test_appstore_screenshots.py holds the two together.
+MAC_SCREENS: tuple[str, ...] = ("overview", "providers", "usage_history", "cost", "alerts", "pulse_cat")
+MAC_COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py"
+# Screens drawn with the usage panel beside the popover: its raw file is
+# NN_<screen>.panel.png, next to the popover's.
+MAC_PANEL_SCREENS: tuple[str, ...] = ("usage_history",)
+RENDER_MANIFEST = "render.json"
+# What render.json must say (render_problems): the store set, at 3x, with the
+# popover at its default size and the panel at DashboardPanelController's
+# width, drawn by a build without DEVID_BUILD and without remote control, from
+# a local usage history holding only what the scanner records.
+MAC_RENDER_SCALE = 3
+MAC_POPOVER_PT = (380, 580)
+MAC_PANEL_WIDTH_PT = 520
+LOCAL_SCAN_PROVIDERS = frozenset({"Claude", "Codex"})
+
+
+@dataclass(frozen=True)
+class Platform:
+    name: str                  # for messages
+    asc_platform: str          # App Store Connect's platform
+    display_type: str          # the screenshot set this platform's panels go to
+    canvas: tuple[int, int]
+    screens_var: str           # the module-level tuple naming the screens
+    compositor_var: str        # the module-level path of the compositor (tests repoint it)
+    raw_subdir: str
+    composed_subdir: str
+    panel_screens: tuple[str, ...] = ()
+    render_manifest: str | None = None
+
+    @property
+    def screens(self) -> tuple[str, ...]:
+        return globals()[self.screens_var]
+
+    @property
+    def compositor_rel(self) -> str:
+        return globals()[self.compositor_var]
+
+    @property
+    def suffix(self) -> str:
+        return f"_{self.canvas[0]}x{self.canvas[1]}.png"
+
+    @property
+    def compositor_name(self) -> str:
+        return Path(self.compositor_rel).name
+
+
+IPHONE = Platform("iPhone", "IOS", DISPLAY_TYPE, CANVAS, "SCREENS", "COMPOSITOR_REL",
+                  "ios-raw", "ios-composed")
+MAC = Platform("Mac", "MAC_OS", "APP_DESKTOP", (2880, 1800), "MAC_SCREENS", "MAC_COMPOSITOR_REL",
+               "macos-raw", "macos-composed", panel_screens=MAC_PANEL_SCREENS,
+               render_manifest=RENDER_MANIFEST)
+PLATFORMS: dict[str, Platform] = {p.asc_platform: p for p in (IPHONE, MAC)}
+
 
 def canonical_lang(lang: str) -> str:
     lang = LANG_ALIASES.get(lang, lang)
@@ -111,29 +183,44 @@ def stem(index: int, screen: str) -> str:
     return f"{index:02d}_{screen}"
 
 
-def stems() -> list[str]:
-    return [stem(i, s) for i, s in enumerate(SCREENS, start=1)]
+def stems(platform: Platform = IPHONE) -> list[str]:
+    return [stem(i, s) for i, s in enumerate(platform.screens, start=1)]
 
 
-def composed_name(stem_: str) -> str:
-    return stem_ + SUFFIX
+def composed_name(stem_: str, platform: Platform = IPHONE) -> str:
+    return stem_ + platform.suffix
+
+
+def panel_raw_names(platform: Platform = IPHONE) -> list[str]:
+    """The raw files drawn beside a screen's own (`NN_<screen>.panel.png`)."""
+    return [f"{st}.panel.png" for st, screen in zip(stems(platform), platform.screens)
+            if screen in platform.panel_screens]
+
+
+def raw_names(platform: Platform = IPHONE) -> list[str]:
+    """Every raw PNG the compositor reads, in listing order."""
+    names = []
+    for st in stems(platform):
+        names.append(st + ".png")
+        names += [n for n in panel_raw_names(platform) if n.startswith(st + ".")]
+    return names
 
 
 def screenshots_dir(root: Path | None = None) -> Path:
     return (root or REPO) / SCREENSHOTS_REL
 
 
-def raw_dir(lang: str, root: Path | None = None) -> Path:
-    return screenshots_dir(root) / "ios-raw" / canonical_lang(lang)
+def raw_dir(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> Path:
+    return screenshots_dir(root) / platform.raw_subdir / canonical_lang(lang)
 
 
-def composed_dir(lang: str, root: Path | None = None) -> Path:
-    return screenshots_dir(root) / "ios-composed" / canonical_lang(lang)
+def composed_dir(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> Path:
+    return screenshots_dir(root) / platform.composed_subdir / canonical_lang(lang)
 
 
-def expected_composed(lang: str, root: Path | None = None) -> list[Path]:
-    d = composed_dir(lang, root)
-    return [d / composed_name(s) for s in stems()]
+def expected_composed(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> list[Path]:
+    d = composed_dir(lang, root, platform)
+    return [d / composed_name(s, platform) for s in stems(platform)]
 
 
 # ── the PNG header ───────────────────────────────────────────────────────────
@@ -169,7 +256,7 @@ def png_info(path: Path) -> dict:
     return info
 
 
-def panel_problems(path: Path) -> list[str]:
+def panel_problems(path: Path, platform: Platform = IPHONE) -> list[str]:
     """Why App Store Connect would refuse this panel. Empty = uploadable."""
     if not path.is_file():
         return ["missing"]
@@ -181,8 +268,9 @@ def panel_problems(path: Path) -> list[str]:
         info = png_info(path)
     except (ValueError, struct.error) as exc:
         return out + [str(exc)]
-    if (info["width"], info["height"]) != CANVAS:
-        out.append(f"{info['width']}x{info['height']}, expected {CANVAS[0]}x{CANVAS[1]}")
+    canvas = platform.canvas
+    if (info["width"], info["height"]) != canvas:
+        out.append(f"{info['width']}x{info['height']}, expected {canvas[0]}x{canvas[1]}")
     if info["color_type"] != 2 or info["bit_depth"] != 8:
         kind = COLOR_TYPES.get(info["color_type"], f"colour type {info['color_type']}")
         out.append(f"{kind}, {info['bit_depth']}-bit; expected 8-bit RGB")
@@ -195,21 +283,23 @@ def md5_of(path: Path) -> str:
     return hashlib.md5(path.read_bytes()).hexdigest()
 
 
-def write_manifest(directory: Path, lang: str, record: dict | None = None) -> None:
-    """Record `directory`'s five panels as the output of a clean compose run.
+def write_manifest(directory: Path, lang: str, record: dict | None = None,
+                   platform: Platform = IPHONE) -> None:
+    """Record `directory`'s panels as the output of a clean compose run.
     Only the compositor calls this, and only when every panel passed; tests
     call it to build a set that stands for one."""
-    panels = {composed_name(s): md5_of(directory / composed_name(s)) for s in stems()}
+    panels = {composed_name(s, platform): md5_of(directory / composed_name(s, platform))
+              for s in stems(platform)}
     data = {"lang": canonical_lang(lang), "panels": panels, **(record or {})}
     (directory / MANIFEST).write_text(json.dumps(data, ensure_ascii=False, indent=1, sort_keys=True)
                                       + "\n", encoding="utf-8")
 
 
-def caption_copy(root: Path | None = None) -> dict | None:
+def caption_copy(root: Path | None = None, platform: Platform = IPHONE) -> dict | None:
     """The compositor's COPY table ({lang: {stem: (title, subtitle)}}), read
     from its source rather than imported, so a bare CI runner without Pillow
     reads it too. None when the tree has no compositor (a test fixture)."""
-    path = (root or REPO) / COMPOSITOR_REL
+    path = (root or REPO) / platform.compositor_rel
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"))
     except (OSError, SyntaxError, ValueError):
@@ -226,13 +316,13 @@ def caption_copy(root: Path | None = None) -> dict | None:
     return None
 
 
-def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
+def manifest_problems(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> list[str]:
     """Whether the set is what the last clean compose run wrote."""
-    d = composed_dir(lang, root)
+    d = composed_dir(lang, root, platform)
     path = d / MANIFEST
     if not path.is_file():
         return [f"{MANIFEST} is missing: these panels are not the output of a clean compose "
-                "run (compose_appstore_ios_screenshots.py writes it only when every panel "
+                f"run ({platform.compositor_name} writes it only when every panel "
                 "passed, and deletes it when a run fails)"]
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -241,13 +331,13 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     except (ValueError, KeyError, TypeError) as exc:
         return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
     out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
-    copy = caption_copy(root)
+    copy = caption_copy(root, platform)
     if copy is None or canonical_lang(lang) not in copy:
         # A fixture tree may have no compositor. This checkout always has one,
         # so here a missing file, a missing COPY or a missing language fails
         # instead of quietly switching the caption check off.
         if (root or REPO) == CHECKOUT:
-            out.append(f"the captions cannot be checked: {COMPOSITOR_REL} is missing, "
+            out.append(f"the captions cannot be checked: {platform.compositor_rel} is missing, "
                        f"unparsable, or has no COPY for {canonical_lang(lang)!r}")
     else:
         want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()}
@@ -255,17 +345,17 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
         stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])
         if stale:
             out.append(f"{', '.join(stale)}: the caption drawn is not the compositor's COPY "
-                       f"(edited without recomposing; run compose_appstore_ios_screenshots.py "
+                       f"(edited without recomposing; run {platform.compositor_name} "
                        f"--lang {canonical_lang(lang)})")
-    for p in expected_composed(lang, root):
+    for p in expected_composed(lang, root, platform):
         if p.is_file() and recorded.get(p.name) != md5_of(p):
             out.append(f"{p.name}: not the file the last clean compose run wrote "
                        f"(its md5 is not the one {MANIFEST} records)")
     return out
 
 
-def capture_problems(lang: str, root: Path | None = None) -> list[str]:
-    """Whether ios-raw/<lang>/ holds the captures the set was composed from:
+def capture_problems(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> list[str]:
+    """Whether ios-raw/<lang>/ (macos-raw/<lang>/) holds the captures the set was composed from:
     every capture compose.json records under "captures", with that md5, and no
     other the compositor would read. The raw captures are committed so that a
     caption fix is a recompose (`--all`), not a recapture; that holds only
@@ -274,21 +364,26 @@ def capture_problems(lang: str, root: Path | None = None) -> list[str]:
 
     A set without a readable compose.json is manifest_problems' to report. A
     fixture tree may record no captures and is not checked; this checkout's
-    compose.json always records them, so there a missing record fails."""
+    compose.json always records them, so there a missing record fails.
+
+    The Mac set also records its render.json (under "render"), and that must
+    still be the one there and still pass render_problems: the facts it states
+    about the build that drew the raws are what makes them the App Store
+    build's."""
     try:
-        data = json.loads((composed_dir(lang, root) / MANIFEST).read_text(encoding="utf-8"))
+        data = json.loads((composed_dir(lang, root, platform) / MANIFEST).read_text(encoding="utf-8"))
         recorded = data.get("captures")
     except (OSError, ValueError, AttributeError):
         return []
-    raw = raw_dir(lang, root)
+    raw = raw_dir(lang, root, platform)
     where = raw.relative_to(screenshots_dir(root).parent)
     if not isinstance(recorded, dict):
         if (root or REPO) == CHECKOUT:
             return [f"{MANIFEST} records no captures, so {where}/ cannot be checked against "
-                    f"it; recompose: compose_appstore_ios_screenshots.py --lang {canonical_lang(lang)}"]
+                    f"it; recompose: {platform.compositor_name} --lang {canonical_lang(lang)}"]
         return []
     out = []
-    for name in [s + ".png" for s in stems()]:
+    for name in raw_names(platform):
         path = raw / name
         if name not in recorded:
             out.append(f"{MANIFEST} records no capture {name}")
@@ -299,32 +394,156 @@ def capture_problems(lang: str, root: Path | None = None) -> list[str]:
             out.append(f"{where}/{name}: not the capture {MANIFEST} records (md5 "
                        f"{md5_of(path)}, recorded {recorded[name]}); recompose from it, "
                        f"or restore the recorded one")
-    stray = sorted({p.name for p in raw.glob("[0-9][0-9]_*.png")} - {s + ".png" for s in stems()})
+    stray = sorted({p.name for p in raw.glob("[0-9][0-9]_*.png")} - set(raw_names(platform)))
     for name in stray:
         out.append(f"{where}/{name}: not a capture of the set; the compositor refuses "
                    f"a directory holding it")
+    if platform.render_manifest:
+        render = raw / platform.render_manifest
+        want = data.get("render")
+        if not render.is_file():
+            out.append(f"{where}/{platform.render_manifest}: missing; the raws cannot be "
+                       "shown to be the App Store build's without it")
+        elif want != md5_of(render):
+            out.append(f"{where}/{platform.render_manifest}: not the one {MANIFEST} records "
+                       f"(md5 {md5_of(render)}, recorded {want})")
+        out += [f"{where}/{platform.render_manifest}: {why}"
+                for why in render_problems(lang, root, platform)]
     return out
 
 
-def set_problems(lang: str, root: Path | None = None) -> list[str]:
+def render_problems(lang: str, root: Path | None = None, platform: Platform = MAC,
+                    directory: Path | None = None) -> list[str]:
+    """Why macos-raw/<lang>/ is not a store set this pipeline may compose from.
+
+    render.json is written by the QA build's store set (QASnapshotRenderer),
+    which measures the build it runs in. It must say: the store set, in this
+    language, the catalogue in effect; drawn at 3x with the popover at 380x580
+    points and the panel 520 wide and settled; no DEVID_BUILD, no remote
+    control; no warning, refused request or blank-looking render; a local
+    usage history of Claude and Codex only (what the scanner records), with
+    days and messages in it; and exactly these raw files, with these md5s."""
+    raw = directory or raw_dir(lang, root, platform)
+    path = raw / (platform.render_manifest or RENDER_MANIFEST)
+    if not path.is_file():
+        return [f"{path.name} is missing (render it: scripts/render_macos_qa_views.sh --set store)"]
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        variant = data.get("variant") or {}
+        shots_ = data.get("shots") or []
+        renders = {r.get("file"): r for r in data.get("renders") or []}
+    except (ValueError, AttributeError, TypeError) as exc:
+        return [f"{path.name} is unreadable ({type(exc).__name__})"]
+    lang = canonical_lang(lang)
+    out = []
+
+    def want(cond: bool, why: str) -> None:
+        if not cond:
+            out.append(why)
+
+    want(data.get("set") == "store", f"set is {data.get('set')!r}, not the store set")
+    want(data.get("language") == lang and data.get("localeOverride") == lang
+         and data.get("resolvedLocalization") == lang,
+         f"drawn in {data.get('language')!r} (override {data.get('localeOverride')!r}, "
+         f"catalogue {data.get('resolvedLocalization')!r}), not {lang!r}")
+    want(data.get("localizationActive") is True, "the catalogue was not in effect")
+    want(data.get("scale") == MAC_RENDER_SCALE, f"drawn at {data.get('scale')}x, not {MAC_RENDER_SCALE}x")
+    want(data.get("windowBackingScale") == MAC_RENDER_SCALE,
+         f"the window's backing scale was {data.get('windowBackingScale')}, so the views "
+         f"rasterized at that scale, not {MAC_RENDER_SCALE}x")
+    want(data.get("warnings") == [], f"warnings: {data.get('warnings')}")
+    want(data.get("blockedRequests") == [], f"refused requests: {data.get('blockedRequests')}")
+    blank = sorted(f for f, r in renders.items() if r.get("suspectBlank") is not False)
+    want(not blank, f"looks blank: {', '.join(str(b) for b in blank)}")
+    want(variant.get("devidBuild") is False, "drawn by a build with DEVID_BUILD (the Developer ID build)")
+    want(variant.get("remoteControlAvailable") is False,
+         "drawn by a build offering remote control, which the Mac App Store build does not")
+    want((variant.get("popoverWidth"), variant.get("popoverHeight")) == MAC_POPOVER_PT,
+         f"popover {variant.get('popoverWidth')}x{variant.get('popoverHeight')} points, "
+         f"not {MAC_POPOVER_PT[0]}x{MAC_POPOVER_PT[1]}")
+    want(variant.get("panelWidth") == MAC_PANEL_WIDTH_PT,
+         f"panel {variant.get('panelWidth')} points wide, not {MAC_PANEL_WIDTH_PT}")
+    want(variant.get("panelSettled") is True, "the usage panel was still changing when drawn")
+    days = variant.get("localScanDays")
+    want(isinstance(days, int) and days > 0,
+         "no local usage history, so the Activity card and the panel say there is none")
+    providers = variant.get("localScanProviders")
+    want(isinstance(providers, list) and providers and set(providers) <= LOCAL_SCAN_PROVIDERS,
+         f"local usage history of {providers}: the scanner records only "
+         f"{' and '.join(sorted(LOCAL_SCAN_PROVIDERS))}")
+    want(isinstance(variant.get("localScanMessages"), int) and variant.get("localScanMessages") > 0,
+         "the local usage history has no messages")
+
+    ids = [s.get("id") for s in shots_]
+    want(ids == stems(platform), f"shots {ids}, expected {stems(platform)}")
+    for s in shots_:
+        sid = s.get("id")
+        files = [(s.get("file"), s.get("md5"), f"{sid}.png")]
+        is_panel_shot = any(sid == st for st, sc in zip(stems(platform), platform.screens)
+                            if sc in platform.panel_screens)
+        if is_panel_shot:
+            files.append((s.get("panelFile"), s.get("panelMD5"), f"{sid}.panel.png"))
+        elif s.get("panelFile"):
+            out.append(f"{sid}: carries a panel ({s.get('panelFile')}); only "
+                       f"{', '.join(panel_raw_names(platform))} may")
+        for name, md5, expected in files:
+            if name != expected:
+                out.append(f"{sid}: file {name!r}, expected {expected!r}")
+                continue
+            f = raw / name
+            if not f.is_file():
+                out.append(f"{name}: missing")
+            elif md5_of(f) != md5:
+                out.append(f"{name}: not the file the render wrote (md5 {md5_of(f)}, "
+                           f"{path.name} says {md5})")
+            r = renders.get(name) or {}
+            if expected.endswith(".panel.png"):
+                size_ok = (r.get("width") == MAC_PANEL_WIDTH_PT
+                           and r.get("pixelWidth") == MAC_PANEL_WIDTH_PT * MAC_RENDER_SCALE)
+            else:
+                size_ok = ((r.get("width"), r.get("height")) == MAC_POPOVER_PT
+                           and (r.get("pixelWidth"), r.get("pixelHeight"))
+                           == (MAC_POPOVER_PT[0] * MAC_RENDER_SCALE, MAC_POPOVER_PT[1] * MAC_RENDER_SCALE))
+            if not size_ok:
+                out.append(f"{name}: drawn {r.get('width')}x{r.get('height')} points / "
+                           f"{r.get('pixelWidth')}x{r.get('pixelHeight')} px")
+    stray = sorted(p.name for p in raw.iterdir()
+                   if not p.name.startswith(".") and p.name not in set(raw_names(platform)) | {path.name}) \
+        if raw.is_dir() else []
+    want(not stray, f"not part of the store set: {', '.join(stray)}")
+    return out
+
+
+def set_problems(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> list[str]:
     """Problems with one language's composed set: every panel present and
     uploadable, nothing else in the directory that a push would skip, and
     every panel the one a clean compose run wrote (compose.json)."""
-    d = composed_dir(lang, root)
+    d = composed_dir(lang, root, platform)
     if not d.is_dir():
         return [f"{d.relative_to(screenshots_dir(root).parent)}/ does not exist"]
     out = []
-    expected = expected_composed(lang, root)
+    expected = expected_composed(lang, root, platform)
     for p in expected:
-        for why in panel_problems(p):
+        for why in panel_problems(p, platform):
             out.append(f"{p.name}: {why}")
     extra = sorted(p.name for p in d.glob("*.png") if p not in expected)
     for name in extra:
-        out.append(f"{name}: not one of the {len(SCREENS)} panels; remove it or add its screen")
-    return out + manifest_problems(lang, root)
+        out.append(f"{name}: not one of the {len(platform.screens)} panels; remove it or add its screen")
+    return out + manifest_problems(lang, root, platform)
 
 
-def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str, str]]:
+def composed_app_version(lang: str, root: Path | None = None, platform: Platform = MAC) -> str | None:
+    """The app version the set's raws were drawn by, as compose.json records
+    it (the Mac set: its footer reads "CLI Pulse v<version>"). None if unrecorded."""
+    try:
+        data = json.loads((composed_dir(lang, root, platform) / MANIFEST).read_text(encoding="utf-8"))
+        return (data.get("app") or {}).get("version")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def require_shots_problems(locales, root: Path | None = None,
+                           platform: Platform = IPHONE) -> list[tuple[str, str]]:
     """(locale, problem) for every listing locale without a complete set, or
     whose set's raw captures are not the committed ones (capture_problems)."""
     out: list[tuple[str, str]] = []
@@ -337,7 +556,7 @@ def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str,
         if lang is FALLBACK:
             continue
         out.extend((loc, f"{lang}: {why}")
-                   for why in set_problems(lang, root) + capture_problems(lang, root))
+                   for why in set_problems(lang, root, platform) + capture_problems(lang, root, platform))
     return out
 
 
@@ -365,9 +584,13 @@ def write_png(path: Path, width: int, height: int, color_type: int = 2, trns: bo
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import appstore_listing as listing  # noqa: E402
-    problems = require_shots_problems(listing.LOCALE_SOURCES)
-    for loc, lang in SHOT_SOURCES.items():
-        print(f"{loc:8} -> {lang or 'FALLBACK (en-US panels)'}")
-    for loc, why in problems:
-        print(f"FAIL  [{loc}] {why}")
-    sys.exit(1 if problems else 0)
+    failed = False
+    for plat in PLATFORMS.values():
+        problems = require_shots_problems(listing.LOCALE_SOURCES, platform=plat)
+        print(f"{plat.name} ({plat.display_type}):")
+        for loc, lang in SHOT_SOURCES.items():
+            print(f"  {loc:8} -> {lang or 'FALLBACK (en-US panels)'}")
+        for loc, why in problems:
+            print(f"FAIL  [{loc}] {why}")
+        failed |= bool(problems)
+    sys.exit(1 if failed else 0)

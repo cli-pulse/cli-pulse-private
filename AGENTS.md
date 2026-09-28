@@ -167,8 +167,9 @@ python3 scripts/asc_submit.py --create-version ios --version 1.54.0 \
 python3 scripts/asc_push_listing.py --version 1.54.0 --platform IOS
 python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
 
-# 3. iPhone screenshots, per locale (scripts/asc_push_screenshots.py, #601)
-python3 scripts/asc_push_screenshots.py --version 1.54.0                     # then --apply
+# 3. Screenshots, per locale (scripts/asc_push_screenshots.py): iPhone on IOS,
+#    the six-language Mac set on MAC_OS
+python3 scripts/asc_push_screenshots.py --platform IOS --version 1.54.0      # then --apply
 
 # 4. The store against the repo, for the version being prepared
 python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154
@@ -178,7 +179,8 @@ python3 scripts/asc_submit.py --submit ios --build <BUILD_ID> --version 1.54.0 \
     --whatsnew-dir whatsnew_154                                              # then --apply
 ```
 
-Repeat 1, 2 and 5 with `macos` / `MAC_OS`. Both versions are created with
+Repeat 1, 2, 3 and 5 with `macos` / `MAC_OS` (step 3 then pushes the Mac
+set: see "Mac screenshots" below). Both versions are created with
 `--release-type AFTER_APPROVAL` (the owner's choice for 1.53.0 and 1.54.0): App
 Store Connect releases each one as soon as it is approved. `asc_submit.py`
 defaults to MANUAL, which waits for the owner to release it in App Store
@@ -267,7 +269,9 @@ release-time step on the owner's machine. Exit 2 means it could not check, which
 is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
 copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
-listing locale's five composed iPhone panels and their `compose.json`).
+listing locale's five composed iPhone panels and six composed Mac panels, their
+`compose.json`, the committed raws they were drawn from, and for the Mac a
+`render.json` that says a clean store render drew them).
 
 ### iPhone screenshots (six languages)
 
@@ -278,7 +282,7 @@ captions, pushed per locale. Layout and locale mapping: `scripts/appstore_screen
 "CLI Pulse Bar/scripts/capture_ios_screenshots.sh"            # -> screenshots/ios-raw/<lang>/
 python3 "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" --all   # -> ios-composed/<lang>/
 python3 scripts/asc_push_screenshots.py --version 1.54.0     # dry run: per-locale files + md5
-python3 scripts/asc_push_screenshots.py --apply --version 1.54.0
+python3 scripts/asc_push_screenshots.py --apply --platform IOS --version 1.54.0
 python3 scripts/asc_listing_preflight.py --texts-only --require-shots
 ```
 
@@ -311,6 +315,66 @@ so a recapture needs its recompose committed with it too, and the committed
 captures are always the ones behind the committed panels. The hand-shot 1.53.0
 set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired with the first
 capture in this layout.
+
+### Mac screenshots (six languages)
+
+The Mac App Store set is drawn from the real SwiftUI views by the QA build's
+offscreen renderer (docs/qa/macos-offscreen-renders.md, "The store set"), with
+Demo data, composed with the iPhone set's caption code, and pushed per locale to
+the macOS version's `APP_DESKTOP` sets. Seven store locales, six sets (es-ES and
+es-MX share `es`).
+
+```bash
+xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" -scheme "CLIPulse QA" \
+  -configuration "Debug QA" -destination platform=macOS -derivedDataPath build/qa   # restore Package.resolved after
+scripts/render_macos_qa_views.sh --set store --app "build/qa/Build/Products/Debug QA/CLIPulse QA.app"
+                                                   # -> screenshots/macos-raw/<lang>/ (+ render.json)
+python3 "CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py" --all   # -> macos-composed/<lang>/
+python3 scripts/asc_push_screenshots.py --platform MAC_OS --version 1.54.0     # dry run
+python3 scripts/asc_push_screenshots.py --apply --platform MAC_OS --version 1.54.0
+python3 scripts/asc_listing_preflight.py --texts-only --require-shots
+```
+
+**It shows only what the Mac App Store build has.** The QA build is Debug,
+unsandboxed and on the `qa` channel, so the store set (`-CLIPulseRenderSet
+store`, `QARenderSnapshot.storeCatalog`) draws only surfaces whose visible UI is
+the same in the Mac App Store build: Overview (first and last page), Providers,
+Alerts, the first page of Pet, and the usage panel that slides out of the
+Overview. It leaves out Sessions (sells helper control and, unsandboxed, the
+in-app terminal), Machine (reads a helper; differs sandboxed), Settings
+(Companion CLI is hidden in QA only), the provider editor (a QA-only banner),
+Subscription (no StoreKit products in QA), setup and signed-out pages (setup v2
+flags are on in QA), and every Pet page after the first (the Debug build's test
+buttons). `QARenderSnapshot.storeSurfaceProblem` refuses anything else, and
+`QARenderSnapshotTests` plants each one. The store set refuses to run in a build
+with `DEVID_BUILD`, and **`DEVID_BUILD` must never be defined in either `Debug
+QA` configuration** (`scripts/ci_check_qa_scheme.py` fails if it is). The
+Overview's Activity card and the usage panel read this Mac's local-scan archive,
+so the store set writes a sample one (Claude and Codex only, what the scanner
+records) inside the QA home before the app reads it, and refuses to write it
+anywhere else.
+
+Each language's `render.json` records what the build that drew it measured:
+`devidBuild`, `remoteControlAvailable`, the language in effect, the backing
+scale, the local history's providers, the panel's settle, every file's md5,
+warnings and refused requests. The compositor and `--require-shots` refuse raws
+whose `render.json` is not a clean store render (`render_problems` in
+`scripts/appstore_screenshots.py`). A Mac `compose.json` also records the app
+version that drew the set; the footer of every popover shows it ("CLI Pulse
+v1.54.0"), so the pusher refuses `--apply --platform MAC_OS` unless it equals
+`--version`: **each release that pushes Mac screenshots renders and composes
+them again.** The raws and the sets are committed like the iPhone's; a caption
+change in `compose_appstore_macos_screenshots.py` needs its recompose committed
+with it (`--all`, from the committed raws; no QA build needed). The pusher
+creates a missing `APP_DESKTOP` set, and when the old set and the new one would
+not fit in App Store Connect's 10 it deletes only the overflow first (the rest
+once the new ones are COMPLETE).
+
+The v1.28 set (`screenshots/macos/`: English only, captured from a real signed-in
+account, with the removed Swarm tab) and its generators
+(`compose_appstore_screenshots.py`, `capture_macos_screenshots.sh`,
+`generate_screenshots.swift`) were retired with the first set in this layout;
+`appstore_metadata.py` and `resubmit.py` no longer upload Mac screenshots.
 
 ## Active vs Archived
 
