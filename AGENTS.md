@@ -158,9 +158,12 @@ python3 scripts/asc_listing_preflight.py --texts-only --whatsnew-dir whatsnew_15
 
 # 1. The version row. App Store Connect gives it the previous version's locales
 #    (en-US and zh-Hans for 1.53.0); nothing else is written.
-python3 scripts/asc_submit.py --create-version ios --version 1.54.0          # then --apply
+python3 scripts/asc_submit.py --create-version ios --version 1.54.0 \
+    --release-type AFTER_APPROVAL                                            # then --apply
 
 # 2. Listing texts. This creates the zh-Hant, ja, ko, es-ES and es-MX locales.
+#    App Store Connect then adds them, empty and without URLs, to the Mac
+#    version as well; the MAC_OS run fills those in.
 python3 scripts/asc_push_listing.py --version 1.54.0 --platform IOS
 python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
 
@@ -176,8 +179,10 @@ python3 scripts/asc_submit.py --submit ios --build <BUILD_ID> --version 1.54.0 \
 ```
 
 Repeat 1, 2 and 5 with `macos` / `MAC_OS`. Both versions are created with
-`releaseType` MANUAL: after approval the owner releases them in App Store
-Connect.
+`--release-type AFTER_APPROVAL` (the owner's choice for 1.53.0 and 1.54.0): App
+Store Connect releases each one as soon as it is approved. `asc_submit.py`
+defaults to MANUAL, which waits for the owner to release it in App Store
+Connect, so the flag has to be passed.
 
 **What's New** lives in `whatsnew_<version>/`: `<locale>.txt` is the iOS text
 and `macos-<locale>.txt` the macOS text, one file per App Store locale (seven:
@@ -224,9 +229,11 @@ python3 scripts/asc_listing_preflight.py --version 1.54.0   # before every ASC s
 ```
 
 The pusher writes only to an editable version (PREPARE_FOR_SUBMISSION /
-*_REJECTED), creates missing locales, never deletes one, and never touches
-What's New (that is `asc_submit.py --whatsnew-dir`; the order of the release
-steps is in "Releasing a version to the App Store" above).
+*_REJECTED), creates missing locales, never deletes one, gives a localization
+with no support or marketing URL en-US's (the store will not submit a version
+while any localization lacks a support URL, and the read-back checks it), and
+never touches What's New (that is `asc_submit.py --whatsnew-dir`; the order of
+the release steps is in "Releasing a version to the App Store" above).
 
 `scripts/check_paywall_claims.sh` guards the repo *sources*. It cannot see what
 App Store Connect is actually serving, and the gap between those two has bitten
@@ -288,7 +295,9 @@ count). The compositor publishes a set only when every panel passed, with a
 the `APP_IPHONE_67` set, uploads and waits for the new panels before deleting
 the old, removes its own uploads on any failure (a rerun reuses the finished
 ones), and refuses while the version waits for review (withdraw the iOS
-submission only).
+submission only). App Store Connect reports a panel COMPLETE before it fills
+in its checksum, so the read-back, and a rerun that finds such a panel, wait
+for the checksum rather than calling it a mismatch or replacing it.
 
 The raw captures and the composed sets are committed (`ios-raw/<lang>/`,
 `ios-composed/<lang>/` with `compose.json`), and CI fails if a listing locale's

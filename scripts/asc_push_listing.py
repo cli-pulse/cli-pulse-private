@@ -21,19 +21,27 @@ and then it:
   * refuses unless that version's appStoreState is editable
     (PREPARE_FOR_SUBMISSION, DEVELOPER_REJECTED, REJECTED, METADATA_REJECTED).
     A live version's text is not ours to rewrite from a script;
-  * PATCHes only the fields that differ, on locales that exist;
+  * PATCHes only the fields that differ, on locales that exist, and gives a
+    localization with no supportUrl or marketingUrl the version's en-US one
+    (App Store Connect will not submit a version while a localization has no
+    support URL). A URL a locale already has is left as it is;
   * CREATES the appStoreVersionLocalization for a locale ASC does not have yet,
     copying supportUrl and marketingUrl from the version's en-US localization;
   * sets the subtitle on the EDITABLE appInfo only (the one App Store Connect
     opens alongside a new version), creating a missing appInfoLocalization
-    with name "CLI Pulse" and privacyPolicyUrl copied from its en-US row;
+    with name "CLI Pulse" and privacyPolicyUrl copied from its en-US row.
+    Creating one makes App Store Connect create an EMPTY version localization
+    for that locale itself, on every editable version of both platforms. So
+    the version is read again after the app info writes, and a row the store
+    made is PATCHed (texts and URLs) rather than created, which would get 409.
+    The other platform's copy is filled in by that platform's run;
   * NEVER deletes a locale, and never touches What's New — that is
     scripts/asc_submit.py's job (--whatsnew-dir). A locale created here has no
     What's New yet; App Store Connect requires one before an UPDATE can be
     submitted, and asc_submit.py refuses to submit until --whatsnew-dir has a
     text for every locale of the version;
   * re-reads everything it wrote and exits non-zero if the store does not now
-    hold the repo text.
+    hold the repo text, or a localization has no support URL.
 
 The texts live in CLI Pulse Bar/appstore/<locale>/ — see scripts/appstore_listing.py
 for the layout and why es-ES and es-MX share one Spanish text. The iPhone
@@ -76,6 +84,8 @@ EDITABLE_STATES = {"PREPARE_FOR_SUBMISSION", "DEVELOPER_REJECTED", "REJECTED",
 LIVE_STATES = {"READY_FOR_SALE", "READY_FOR_DISTRIBUTION", "PENDING_DEVELOPER_RELEASE"}
 VERSION_FIELDS = [f for f in listing.FIELDS if f.resource == "version"]
 APPINFO_FIELDS = [f for f in listing.FIELDS if f.resource == "appInfo"]
+# Not in the repo: a localization without one takes the version's en-US one.
+URL_ATTRS = ("supportUrl", "marketingUrl")
 
 _TIMEOUT = 120
 _RETRIES = 3
@@ -282,6 +292,24 @@ def compare_block(locale: str, platform: str, live_row: dict | None, fields,
     return changed
 
 
+def missing_urls(attrs: dict, en_attrs: dict) -> dict[str, str]:
+    """en-US's support and marketing URL, for each one this localization has
+    none of. A URL it already has is its own and stays."""
+    return {a: en_attrs[a] for a in URL_ATTRS if norm(en_attrs.get(a)) and not norm(attrs.get(a))}
+
+
+def version_fields(attrs: dict, locale: str, platform: str, en_attrs: dict) -> dict[str, str]:
+    """What one existing version localization still lacks: each repo text it
+    does not hold, and en-US's URLs where it has none."""
+    fields = {}
+    for f in VERSION_FIELDS:
+        want = listing.load_field(f.attribute, locale, platform)
+        if norm(attrs.get(f.attribute)) != want:
+            fields[f.attribute] = want
+    fields.update(missing_urls(attrs, en_attrs))
+    return fields
+
+
 # ── main ─────────────────────────────────────────────────────────────────────
 
 def parse_locales(raw: list[str] | None) -> list[str]:
@@ -346,10 +374,16 @@ def main() -> int:
         tag = "editable" if st in EDITABLE_STATES else "NOT editable"
         print(f"\n=== {plat} {vs}  state={st} ({tag})")
         vlocs = version_locs(asc, ver["id"])
+        en_urls = vlocs.get(listing.PRIMARY_LOCALE, {}).get("attributes", {})
         changes: dict[str, dict[str, str]] = {}
         for loc in locales:
             print(f"  [{loc}]" + ("" if loc in vlocs else "  — no localization on this version yet"))
             ch = compare_block(loc, plat, vlocs.get(loc), VERSION_FIELDS, args.full_diff)
+            if loc in vlocs:
+                urls = missing_urls(vlocs[loc]["attributes"], en_urls)
+                for attr, url in urls.items():
+                    print(f"    {attr:<16} ADD       none here; en-US's {url}")
+                ch.update(urls)
             if ch:
                 changes[loc] = ch
                 pending_writes += len(ch)
@@ -423,34 +457,66 @@ def main() -> int:
                             "type": "appInfos", "id": editable_info["id"]}}}}})
                     print(f"  [{loc}] CREATE app info localization: {_created(res)}")
 
+    # The app info writes above may have made App Store Connect create some of
+    # the version localizations planned as creates (empty, with no URLs; on
+    # 2026-09-28 all five 1.54.0 creates then got 409 DUPLICATE). Read the
+    # version again and PATCH what the store made.
+    if any(loc not in vlocs for loc in changes):
+        fresh = version_locs(asc, ver["id"])
+        for loc in [x for x in changes if x not in vlocs and x in fresh]:
+            changes[loc] = version_fields(fresh[loc]["attributes"], loc, plat, en_attrs)
+            print(f"  [{loc}] on the version now (App Store Connect adds an empty one when "
+                  "an app info localization is created): PATCH rather than create")
+        vlocs = fresh
+
+    def patch(loc: str, lid: str, fields: dict[str, str]) -> bool:
+        res = asc.write("PATCH", f"/appStoreVersionLocalizations/{lid}", {"data": {
+            "type": "appStoreVersionLocalizations", "id": lid, "attributes": fields}})
+        print(f"  [{loc}] PATCH {', '.join(fields)}: {'ok' if res is not None else 'FAILED'}")
+        return res is None
+
     for loc, fields in changes.items():
         if loc in vlocs:
-            lid = vlocs[loc]["id"]
-            res = asc.write("PATCH", f"/appStoreVersionLocalizations/{lid}", {"data": {
-                "type": "appStoreVersionLocalizations", "id": lid, "attributes": fields}})
-            print(f"  [{loc}] PATCH {', '.join(fields)}: {'ok' if res is not None else 'FAILED'}")
-            failures += res is None
-        else:
-            attrs = {"locale": loc, **fields}
-            for url_attr in ("supportUrl", "marketingUrl"):
-                if en_attrs.get(url_attr):
-                    attrs[url_attr] = en_attrs[url_attr]
-            res = asc.write("POST", "/appStoreVersionLocalizations", {"data": {
-                "type": "appStoreVersionLocalizations", "attributes": attrs,
-                "relationships": {"appStoreVersion": {"data": {
-                    "type": "appStoreVersions", "id": ver["id"]}}}}})
+            if fields:
+                failures += patch(loc, vlocs[loc]["id"], fields)
+            continue
+        attrs = {"locale": loc, **fields, **missing_urls({}, en_attrs)}
+        res = asc.write("POST", "/appStoreVersionLocalizations", {"data": {
+            "type": "appStoreVersionLocalizations", "attributes": attrs,
+            "relationships": {"appStoreVersion": {"data": {
+                "type": "appStoreVersions", "id": ver["id"]}}}}})
+        row = None if res is not None else version_locs(asc, ver["id"]).get(loc)
+        if row is None:
             print(f"  [{loc}] CREATE localization: {_created(res)}")
+            continue
+        # Not confirmed, yet the locale is there: the store made it after the
+        # read above (409), or ours landed and only the response was lost.
+        rest = version_fields(row["attributes"], loc, plat, en_attrs)
+        print(f"  [{loc}] CREATE localization: not confirmed, but the version has this locale "
+              + ("now" if rest else "now, with the repo text"))
+        if rest:
+            failures += patch(loc, row["id"], rest)
 
     # ── 3. verify by reading back ─────────────────────────────────────────────
     print("\nVERIFY (read back)")
     after = version_locs(asc, ver["id"])
+    en_after = after.get(listing.PRIMARY_LOCALE, {}).get("attributes", {})
     for loc in locales:
+        got_attrs = after.get(loc, {}).get("attributes", {})
         for f in VERSION_FIELDS:
             want = listing.load_field(f.attribute, loc, plat)
-            got = norm(after.get(loc, {}).get("attributes", {}).get(f.attribute))
+            got = norm(got_attrs.get(f.attribute))
             if got != want:
                 print(f"  MISMATCH [{loc}] {f.attribute}: store {len(got)} chars, repo {len(want)}")
                 failures += 1
+        if not norm(got_attrs.get("supportUrl")):
+            print(f"  MISMATCH [{loc}] supportUrl: none; App Store Connect will not submit the "
+                  "version until every localization has one"
+                  + ("" if norm(en_after.get("supportUrl")) else " (en-US has none to copy)"))
+            failures += 1
+        if norm(en_after.get("marketingUrl")) and not norm(got_attrs.get("marketingUrl")):
+            print(f"  MISMATCH [{loc}] marketingUrl: none, en-US has one")
+            failures += 1
     if editable_info is not None:
         after_info = appinfo_locs(asc, editable_info["id"])
         for loc in locales:
@@ -465,7 +531,8 @@ def main() -> int:
         print(f"  note: no What's New yet on {', '.join(missing_whatsnew)} — set it with "
               "scripts/asc_submit.py --whatsnew-dir before submitting an update.")
     if failures:
-        print(f"\nAPPLY INCOMPLETE: {failures} write(s) failed or did not stick.")
+        print(f"\nAPPLY INCOMPLETE: {failures} problem(s) above: a write that failed or did "
+              "not stick, or a localization with no support URL.")
         return 1
     print("\nAPPLY OK: the store now holds the repo text for every selected locale.")
     return 0
