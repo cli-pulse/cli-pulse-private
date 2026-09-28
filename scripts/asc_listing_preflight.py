@@ -295,7 +295,9 @@ def check_repo_texts(root: Path | None = None) -> bool:
 def check_repo_shots(root: Path | None = None) -> bool:
     """Check 4 (--require-shots): every locale with listing texts has its five
     composed iPhone panels, each uploadable (1290x2796, RGB, no alpha, <=10 MB),
-    or is mapped to FALLBACK and shows en-US's. Repo-only, so it runs in CI:
+    or is mapped to FALLBACK and shows en-US's; and the committed raw captures
+    are the ones the set's compose.json records it was drawn from (md5), so it
+    can be recomposed without a simulator. Repo-only, so it runs in CI:
     repo-hygiene.yml passes --require-shots since the six-language capture for
     1.54.0 landed. It stays a flag rather than the default so that a listing-text
     change can still be checked on its own (test_asc_listing_preflight.sh

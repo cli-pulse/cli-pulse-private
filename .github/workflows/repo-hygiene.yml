@@ -122,7 +122,9 @@ jobs:
       # Store Connect would accept and the one a clean compose run recorded in
       # compose.json. A missing or stray panel, a set a failed compose run
       # withdrew, or a panel edited after the run fails here instead of at the
-      # release push.
+      # release push. So does a raw capture in ios-raw/<lang>/ that is not the
+      # one compose.json records the set was drawn from: they are committed so
+      # a set can be recomposed without a simulator.
       - run: python3 scripts/asc_listing_preflight.py --texts-only --require-shots
       - run: bash scripts/test_asc_listing_preflight.sh
       # The pusher's write path can only run for real during a release, so it

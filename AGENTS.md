@@ -295,9 +295,13 @@ The raw captures and the composed sets are committed (`ios-raw/<lang>/`,
 set is missing or not what a clean compose run wrote, including a set whose
 recorded captions are no longer the compositor's `COPY`: a caption change in
 `compose_appstore_ios_screenshots.py` needs its recompose committed with it
-(`--all` recomposes from the committed captures; no simulator needed). The
-hand-shot 1.53.0 set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired
-with the first capture in this layout.
+(`--all` recomposes from the committed captures; no simulator needed). CI also
+fails when `ios-raw/<lang>/` is not exactly the captures that `compose.json`
+records the set was drawn from (by md5: a missing, changed or stray capture),
+so a recapture needs its recompose committed with it too, and the committed
+captures are always the ones behind the committed panels. The hand-shot 1.53.0
+set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired with the first
+capture in this layout.
 
 ## Active vs Archived
 

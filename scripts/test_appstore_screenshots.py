@@ -197,6 +197,23 @@ try:
 finally:
     shots.COMPOSITOR_REL = saved_rel
 
+# The raw-capture check (--require-shots; test_asc_listing_preflight.sh breaks
+# the real captures one way at a time). Same split as the caption check: a
+# fixture set may record no captures and is not checked, this checkout's may not.
+check("on the real repo every raw capture is the one its compose.json records",
+      all(shots.capture_problems(lang) == [] for lang in shots.LANGS),
+      str({lang: shots.capture_problems(lang) for lang in shots.LANGS}))
+check("a fixture set that records no captures is not checked for them",
+      shots.capture_problems("en", root) == [], str(shots.capture_problems("en", root)))
+saved_checkout = shots.CHECKOUT
+try:
+    shots.CHECKOUT = root
+    check("on the real repo a compose.json that records no captures fails, and --require-shots says so",
+          any("records no captures" in why for loc, why in shots.require_shots_problems(["en-US"], root)),
+          str(shots.require_shots_problems(["en-US"], root)))
+finally:
+    shots.CHECKOUT = saved_checkout
+
 # ── captions ─────────────────────────────────────────────────────────────────
 
 check("every language has a caption for every screen, and no other",

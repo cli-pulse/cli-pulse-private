@@ -24,6 +24,10 @@ LAYOUT
         record, is not uploadable, whatever its PNG headers say. Nor is one
         whose recorded captions are not the compositor's COPY any more: a
         caption edited without recomposing leaves the old words in the image.
+        It also records the md5 of each raw capture the panels were drawn
+        from, and --require-shots fails when ios-raw/<lang>/ no longer holds
+        exactly those (capture_problems): they are committed so that a set
+        can be recomposed without a simulator.
 
 `<lang>` is one of LANGS, the app's six languages. SHOT_SOURCES maps each App
 Store Connect locale to the language whose panels it shows: seven locales, six
@@ -260,6 +264,48 @@ def manifest_problems(lang: str, root: Path | None = None) -> list[str]:
     return out
 
 
+def capture_problems(lang: str, root: Path | None = None) -> list[str]:
+    """Whether ios-raw/<lang>/ holds the captures the set was composed from:
+    every capture compose.json records under "captures", with that md5, and no
+    other the compositor would read. The raw captures are committed so that a
+    caption fix is a recompose (`--all`), not a recapture; that holds only
+    while they are the ones behind the committed panels. For --require-shots
+    (CI), not the pusher: what it uploads is the panels.
+
+    A set without a readable compose.json is manifest_problems' to report. A
+    fixture tree may record no captures and is not checked; this checkout's
+    compose.json always records them, so there a missing record fails."""
+    try:
+        data = json.loads((composed_dir(lang, root) / MANIFEST).read_text(encoding="utf-8"))
+        recorded = data.get("captures")
+    except (OSError, ValueError, AttributeError):
+        return []
+    raw = raw_dir(lang, root)
+    where = raw.relative_to(screenshots_dir(root).parent)
+    if not isinstance(recorded, dict):
+        if (root or REPO) == CHECKOUT:
+            return [f"{MANIFEST} records no captures, so {where}/ cannot be checked against "
+                    f"it; recompose: compose_appstore_ios_screenshots.py --lang {canonical_lang(lang)}"]
+        return []
+    out = []
+    for name in [s + ".png" for s in stems()]:
+        path = raw / name
+        if name not in recorded:
+            out.append(f"{MANIFEST} records no capture {name}")
+        elif not path.is_file():
+            out.append(f"{where}/{name}: missing; {MANIFEST} records it as the capture "
+                       f"its panel was composed from")
+        elif md5_of(path) != recorded[name]:
+            out.append(f"{where}/{name}: not the capture {MANIFEST} records (md5 "
+                       f"{md5_of(path)}, recorded {recorded[name]}); recompose from it, "
+                       f"or restore the recorded one")
+    stray = sorted({p.name for p in raw.glob("[0-9][0-9]_*.png")} - {s + ".png" for s in stems()})
+    for name in stray:
+        out.append(f"{where}/{name}: not a capture of the set; the compositor refuses "
+                   f"a directory holding it")
+    return out
+
+
 def set_problems(lang: str, root: Path | None = None) -> list[str]:
     """Problems with one language's composed set: every panel present and
     uploadable, nothing else in the directory that a push would skip, and
@@ -279,7 +325,8 @@ def set_problems(lang: str, root: Path | None = None) -> list[str]:
 
 
 def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str, str]]:
-    """(locale, problem) for every listing locale without a complete set."""
+    """(locale, problem) for every listing locale without a complete set, or
+    whose set's raw captures are not the committed ones (capture_problems)."""
     out: list[tuple[str, str]] = []
     for loc in locales:
         if loc not in SHOT_SOURCES:
@@ -289,7 +336,8 @@ def require_shots_problems(locales, root: Path | None = None) -> list[tuple[str,
         lang = SHOT_SOURCES[loc]
         if lang is FALLBACK:
             continue
-        out.extend((loc, f"{lang}: {why}") for why in set_problems(lang, root))
+        out.extend((loc, f"{lang}: {why}")
+                   for why in set_problems(lang, root) + capture_problems(lang, root))
     return out
 
 
