@@ -564,9 +564,8 @@ def caption_layout(title_box: int, sub_box: int, sub_lines: int,
     The headline is pinned to the top of that room, the subtitle follows
     directly under it, and whatever a shorter subtitle leaves over stays empty
     below it, so the headline sits at the same height on every panel of the
-    set (see 6 in the module docstring: centring the caption in the room
-    dropped the one-line panels' headlines half a line, in zh-Hant 01-04, ja 02
-    and es 01/02/04). The phone's place depends only on the room."""
+    set (see 6 in the module docstring). The phone's place depends only on
+    the room."""
     reserved_lines = max(reserved_lines, sub_lines)
     title_y = TEXT_TOP_MARGIN
     first_sub = title_y + title_box + TITLE_TO_SUB_GAP

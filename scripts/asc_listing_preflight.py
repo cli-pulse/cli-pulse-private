@@ -429,9 +429,11 @@ def main() -> int:
     if args.texts_only:
         print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
         if args.require_shots:
-            print("SHOTS OK" if shots_ok else "SHOTS INCOMPLETE — capture and compose them: "
-                  "CLI Pulse Bar/scripts/capture_ios_screenshots.sh, then "
-                  "compose_appstore_ios_screenshots.py --all")
+            print("SHOTS OK" if shots_ok else "SHOTS INCOMPLETE — see each FAIL line above. "
+                  "Missing panels or captures: CLI Pulse Bar/scripts/capture_ios_screenshots.sh, "
+                  "then compose_appstore_ios_screenshots.py --all. Stale captions, or captures "
+                  "that are not the recorded ones: recompose from ios-raw (--all), no "
+                  "simulator needed.")
         return 0 if texts_ok and shots_ok else 1
 
     _load_http_deps()

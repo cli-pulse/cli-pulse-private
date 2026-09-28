@@ -27,10 +27,13 @@ Bare python3 for everything else; CI runs it in repo-hygiene.yml.
 """
 from __future__ import annotations
 
+import ast
+import inspect
 import json
 import re
 import sys
 import tempfile
+import textwrap
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -312,6 +315,17 @@ alone = compose.caption_layout(t_box, s_box, 1, 1)
 check("a set of one-line subtitles reserves one line, so its phone starts one line higher",
       alone.title_y == one.title_y
       and alone.shot_top == one.shot_top - s_box - compose.SUB_LINE_GAP, f"{alone} vs {one}")
+# The checks above test caption_layout alone; the pixel test that proves
+# compose_one draws with it needs macOS fonts and is NOT RUN in CI. So check
+# the source too: compose_one calls caption_layout and uses none of the
+# spacing constants it owns, which any caption layout of its own would need.
+_one = ast.parse(textwrap.dedent(inspect.getsource(compose.compose_one)))
+_calls = {n.func.id for n in ast.walk(_one) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+_owned = {"TEXT_TOP_MARGIN", "TITLE_TO_SUB_GAP", "SUB_LINE_GAP", "TEXT_TO_SHOT_GAP"}
+_used = {n.id for n in ast.walk(_one) if isinstance(n, ast.Name)} & _owned
+check("compose_one places its caption and phone with caption_layout, not its own arithmetic",
+      "caption_layout" in _calls and not _used,
+      f"calls caption_layout: {'caption_layout' in _calls}; uses {sorted(_used)}")
 
 # ── fonts (macOS with Pillow only) ───────────────────────────────────────────
 
