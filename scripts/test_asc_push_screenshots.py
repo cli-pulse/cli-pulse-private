@@ -48,6 +48,7 @@ import contextlib
 import copy
 import hashlib
 import io
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -117,6 +118,7 @@ class FakeASC:
     # with sourceFileChecksum null, for this many reads of its set.
     checksum_lag = 0
     lag: dict = {}                 # shot id -> set reads left without its checksum
+    wrong_checksum: set = set()    # fileNames a set read reports with another file's checksum
     constructed = 0
     next_id = 0
 
@@ -145,6 +147,8 @@ class FakeASC:
                 if FakeASC.lag.get(r["id"], 0) > 0:
                     FakeASC.lag[r["id"]] -= 1
                     r["attributes"]["sourceFileChecksum"] = None
+                elif r["attributes"]["fileName"] in FakeASC.wrong_checksum:
+                    r["attributes"]["sourceFileChecksum"] = "e" * 32
             return {"data": rows}
         if path.startswith("/appScreenshots/"):
             if path.split("/")[2] in FakeASC.fail_get:
@@ -264,6 +268,7 @@ def fresh(**kw) -> None:
     FakeASC.interrupt_upload_of = None
     FakeASC.checksum_lag = 0
     FakeASC.lag = {}
+    FakeASC.wrong_checksum = set()
     FakeASC.constructed = 0
 
 
@@ -706,6 +711,8 @@ try:
     check("a failure after making room removes only the new panels, and says 4 of the 8 were already gone",
           code == 1 and len(left) == 4 and all(n.startswith("MAC_OS_APP_DESKTOP_") for n, _ in left)
           and "4 of the live set's 8 were already deleted to make room" in out, out)
+    check("... and the room was made from the carousel's end: its first four are the ones left",
+          [n for n, _ in left] == [f"MAC_OS_APP_DESKTOP_{n:02d}.png" for n in range(4)], str(left))
     fresh_mac(old={"ja": 3})
     FakeASC.fail_processing = {"05_alerts_2880x1800.png"}
     code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
@@ -738,6 +745,77 @@ try:
     code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
     check("Mac apply while macOS waits for review is refused with zero writes and the macOS hint",
           code == 1 and not writes() and "Withdraw the macOS submission" in out, out)
+
+    # M8. the read-back sees another file's checksum: MISMATCH, exit 1
+    fresh_mac_repo()
+    fresh_mac(old={"ja": 2})
+    FakeASC.wrong_checksum = {"03_usage_history_2880x1800.png"}
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("a Mac read-back that does not match what was sent fails, saying MISMATCH",
+          code == 1 and "MISMATCH after upload" in out and "APPLY OK" not in out, out)
+
+    # M9. what the panels were composed from: render.json beside the raws must
+    # still be the one compose.json records, and a clean store render
+    def with_raws(lang: str, **over) -> None:
+        raw = shots.raw_dir(lang, TMP, platform=MAC)
+        for name in shots.raw_names(MAC):
+            h = 2586 if name.endswith(".panel.png") else 3 * (551 if name == "04_cost.png" else 580)
+            shots.write_png(raw / name, 1560 if name.endswith(".panel.png") else 1140, h)
+            (raw / name).write_bytes((raw / name).read_bytes() + name.encode())
+        renders, rows = [], []
+        for st in shots.stems(MAC):
+            h = 551 if st == "04_cost" else 580
+            renders.append({"file": f"{st}.png", "width": 380, "height": h, "pixelWidth": 1140,
+                            "pixelHeight": 3 * h, "suspectBlank": False})
+            row = {"id": st, "file": f"{st}.png", "md5": shots.md5_of(raw / f"{st}.png"),
+                   "page": "lastAligned" if st == "04_cost" else "first"}
+            if st == "04_cost":
+                row["popoverHeight"] = 551
+            if (raw / f"{st}.panel.png").exists():
+                renders.append({"file": f"{st}.panel.png", "width": 520, "height": 862,
+                                "pixelWidth": 1560, "pixelHeight": 2586, "suspectBlank": False})
+                row.update(panelFile=f"{st}.panel.png", panelMD5=shots.md5_of(raw / f"{st}.panel.png"))
+            rows.append(row)
+        variant = {"devidBuild": False, "debugBuild": True, "sandboxed": False, "channel": "qa",
+                   "remoteControlAvailable": False, "popoverWidth": 380, "popoverHeight": 580,
+                   "panelWidth": 520, "panelSettled": True, "localScanDays": 250,
+                   "localScanProviders": ["Claude", "Codex"], "localScanMessages": 15659,
+                   "scrollerStyle": "overlay", "panelBackdropLuminance": 0.12}
+        variant.update(over)
+        (raw / shots.RENDER_MANIFEST).write_text(json.dumps({
+            "set": "store", "language": lang, "localeOverride": lang, "resolvedLocalization": lang,
+            "displayLocale": f"{lang}_{shots.MAC_REGIONS[lang]}", "localizationActive": True,
+            "scale": 3, "windowBackingScale": 3, "warnings": [], "blockedRequests": [],
+            "renders": renders, "shots": rows, "app": {"version": "1.54.0", "build": "107"},
+            "variant": variant}))
+        d = shots.composed_dir(lang, TMP, platform=MAC)
+        shots.write_manifest(d, lang, {
+            "app": {"version": "1.54.0", "build": "107"},
+            "captures": {n: shots.md5_of(raw / n) for n in shots.raw_names(MAC)},
+            "render": shots.md5_of(raw / shots.RENDER_MANIFEST)}, platform=MAC)
+
+    fresh_mac_repo()
+    with_raws("ja")
+    fresh_mac(old={})
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("Mac panels whose raws and clean render.json are the recorded ones are pushed",
+          code == 0 and "APPLY OK" in out and mac_files("ja") == mac_want("ja"), out)
+    fresh_mac_repo()
+    with_raws("ja", devidBuild=True)
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("negative control: raws drawn by a Developer ID build are refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "DEVID_BUILD" in out, out)
+    fresh_mac_repo()
+    with_raws("ja")
+    f = shots.raw_dir("ja", TMP, platform=MAC) / shots.RENDER_MANIFEST
+    f.write_text(f.read_text().replace('"devidBuild": false', '"devidBuild": true'))
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("negative control: a render.json edited after the panels were composed is refused",
+          code == 1 and FakeASC.constructed == 0 and "not the one compose.json records" in out, out)
+    for p_ in TMP.rglob(shots.RENDER_MANIFEST):
+        p_.unlink()
 finally:
     shots.REPO = REAL_REPO
     pusher.ShotsASC = RealShotsASC

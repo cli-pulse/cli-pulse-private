@@ -200,7 +200,7 @@ none of the three differences (`QARenderSnapshot.storeCatalog`, checked by
 | `01_overview.png` | Overview, first page |
 | `02_providers.png` | Providers, first page |
 | `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page, and the usage panel that slides out to its left |
-| `04_cost.png` | Overview, last page (flush with the bottom) |
+| `04_cost.png` | Overview, scrolled to its end, in a slightly shorter popover so it opens above a card (`lastAligned`, below) |
 | `05_alerts.png` | Alerts |
 | `06_pulse_cat.png` | Pet, first page |
 
@@ -222,7 +222,28 @@ language menu (drawn from menu items, not a screenshot).
   up threefold. `render.json` records `windowBackingScale`, and the App Store
   pipeline refuses anything but 3.
 - The popover height is pinned to its default, 580 points
-  (`cli_pulse_menubar_height`).
+  (`cli_pulse_menubar_height`), except for `04_cost`. The Overview scrolled
+  flush to its end opened on half a line of the Yield Score card (its fill is
+  the background colour, so only its text shows), cut through by the tab bar.
+  A `lastAligned` page is drawn once at 580, its rows under the tab bar are
+  classified (`QARenderSnapshot.rowKind`: background, text, card), and it is
+  drawn again in a popover shortened by `alignedTrim`, so its top edge falls in
+  the background just above the first card (Provider Usage). It must then open
+  on nothing but background above that card, or the run fails. Users drag the
+  popover anywhere from 400 to 900 points, so the shorter one is a real state;
+  `render.json` records its height (`shots[].popoverHeight`, about 552), and
+  the compositor draws it at the set's scale, top-aligned with the others.
+- Overlay scroll bars: the script passes `-AppleShowScrollBars WhenScrolling`.
+  A Mac set to show scroll bars "Always" (the render Mac of 2026-09-28 was)
+  gives every scrolling tab a legacy scroller's gutter, which the offscreen
+  drawing leaves empty: the content sat 12 points from the left edge and 29
+  from the right. `variant.scrollerStyle` must be `overlay`.
+- Each language on its own region: `-AppleLocale` (`locale_for` in the script,
+  the iPhone capture's list: en_US, zh_CN, zh_TW, ja_JP, ko_KR, es_MX), so
+  separators, the clock and the first weekday are that region's, not the
+  render Mac's. `displayLocale` must name it. Spanish serves es-ES and es-MX
+  with one set, drawn on Mexico's region like the app's own Spanish ("costo"),
+  so es-ES shoppers see "12,175,297", not Spain's "12.175.297".
 - **The local usage history.** The Overview's Activity card and the usage panel
   read this Mac's local-scan archive (`DailyUsageArchiveManager`), which the QA
   home leaves empty ("No local usage history yet"). Before anything reads it,
@@ -238,25 +259,32 @@ language menu (drawn from menu items, not a screenshot).
   local history the app loaded, 520 points wide (its width whenever the popover
   sits at the right of an ordinary screen), dark, with its close button, and
   drawn only once two drawings half a second apart are identical (its headline
-  counts up for 2.2 seconds).
+  counts up for 2.2 seconds). Its HUD backdrop (`NSVisualEffectView`,
+  `.behindWindow`) has no desktop behind it offscreen and drew as a flat
+  mid-gray slab, so the renderer switches it to `.withinWindow` over the
+  panel's dark fill; `variant.panelBackdropLuminance` (measured in the corner)
+  must be at most 0.25 (it measures 0.13; the gray slab was about 0.36).
 - Stricter exit: any warning, refused request or blank-looking render fails the
   run (5, 3), and so does a local history it could not write or read back (66).
 
 `render.json` (instead of `manifest.json`) adds `set: "store"`, the `variant`
 the build measured about itself (`devidBuild`, `debugBuild`, `sandboxed`,
 `channel`, `remoteControlAvailable`, the popover and panel sizes, the panel's
-settle, and the local history's days, providers and messages), and `shots`: each
-shot's page and every file's md5. The App Store compositor
+settle and backdrop luminance, the scroll bar style, and the local history's
+days, providers and messages), `displayLocale`, and `shots`: each shot's page,
+a shortened popover's height and every file's md5. The App Store compositor
 (`compose_appstore_macos_screenshots.py`) and `asc_listing_preflight.py
 --require-shots` refuse raws whose `render.json` is not a clean store render in
-that language (`render_problems` in `scripts/appstore_screenshots.py`). How the
+that language (`render_problems` in `scripts/appstore_screenshots.py`), and so
+does `asc_push_screenshots.py --platform MAC_OS` before it contacts the store. How the
 panels are composed and pushed: AGENTS.md, "Mac screenshots (six languages)".
 
 ## Exit status
 
 The app: 0 clean; 3 some render looks blank; 4 a coverage warning (for example
 `SettingsTab` gained a section the catalog does not name); 5 a store-set
-warning; 64 refused (including the store set in a `DEVID_BUILD` build); 65 the
+warning (including legacy scroll bars, a gray usage panel, and a cost page
+that cannot open above a card); 64 refused (including the store set in a `DEVID_BUILD` build); 65 the
 language was not in effect; 66 the store set's local history could not be
 written inside the QA home or read back; 67 a store shot that is not allowed;
 70 watchdog (15 minutes); 73 output directory not usable or not empty; 74

@@ -355,11 +355,14 @@ records) inside the QA home before the app reads it, and refuses to write it
 anywhere else.
 
 Each language's `render.json` records what the build that drew it measured:
-`devidBuild`, `remoteControlAvailable`, the language in effect, the backing
-scale, the local history's providers, the panel's settle, every file's md5,
-warnings and refused requests. The compositor and `--require-shots` refuse raws
-whose `render.json` is not a clean store render (`render_problems` in
-`scripts/appstore_screenshots.py`). A Mac `compose.json` also records the app
+`devidBuild`, `remoteControlAvailable`, the language in effect and the region
+it was formatted on (`-AppleLocale`, the iPhone capture's regions; Spanish on
+Mexico's for both es-ES and es-MX), the backing scale, overlay scroll bars, the
+local history's providers, the panel's settle and dark backdrop, the cost
+shot's shortened popover (so the Overview scrolled to its end opens above a
+card), every file's md5, warnings and refused requests. The compositor,
+`--require-shots` and the Mac pusher refuse raws whose `render.json` is not a
+clean store render (`render_problems` in `scripts/appstore_screenshots.py`). A Mac `compose.json` also records the app
 version that drew the set; the footer of every popover shows it ("CLI Pulse
 v1.54.0"), so the pusher refuses `--apply --platform MAC_OS` unless it equals
 `--version`: **each release that pushes Mac screenshots renders and composes
@@ -369,6 +372,16 @@ with it (`--all`, from the committed raws; no QA build needed). The pusher
 creates a missing `APP_DESKTOP` set, and when the old set and the new one would
 not fit in App Store Connect's 10 it deletes only the overflow first (the rest
 once the new ones are COMPLETE).
+
+**What that costs the repository.** This repository is public and its history
+keeps every committed PNG. One Mac set is about 46 MB (the raws about 27 MB, of
+which the six 3x usage panels are about 15 MB; the composed panels about 20
+MB), and because the footer carries the version, each release that pushes Mac
+screenshots adds a new one rather than reusing blobs. Push new Mac screenshots
+only in releases whose Mac UI changed; a release that keeps the listing's
+screenshots needs no render. If that becomes routine, move the raws out of git
+(a release asset, with render.json's md5s committed) rather than keep adding
+them.
 
 The v1.28 set (`screenshots/macos/`: English only, captured from a real signed-in
 account, with the removed Swarm tab) and its generators

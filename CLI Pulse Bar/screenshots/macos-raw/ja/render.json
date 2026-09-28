@@ -13,12 +13,14 @@
 
   ],
   "dataSource" : "DemoDataProvider, the same demo data as the iPhone app's Try Demo, entered the way the QA build enters local mode, with the five sample accounts switched on. The local usage history behind the Activity card and the usage panel is QARenderSnapshot.storeLocalScanSample (Claude and Codex, what the scanner records), written into the QA home before the app read it.",
+  "displayLocale" : "ja_JP@measure=metric",
   "forcedSettings" : {
     "cli_pulse_check_provider_status" : "false: provider status badges would otherwise fetch public status pages. They draw nothing unless a provider has an incident.",
     "cli_pulse_menubar_height" : "580: the popover's default height, pinned; users can drag it between 400 and 900.",
+    "cli_pulse_menubar_height (04_cost)" : "553: this shot's popover, shortened from 580 so the page scrolled to the end opens on the space above a card, not through a line of text. Users can drag the popover between 400 and 900.",
     "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
   },
-  "generatedAt" : "2026-09-28T13:46:07Z",
+  "generatedAt" : "2026-09-28T16:03:11Z",
   "language" : "ja",
   "localeOverride" : "ja",
   "localizationActive" : true,
@@ -100,12 +102,12 @@
     },
     {
       "file" : "04_cost.png",
-      "height" : 580,
+      "height" : 553,
       "id" : "04_cost",
       "kind" : "popover",
       "page" : 3,
       "pageCount" : 3,
-      "pixelHeight" : 1740,
+      "pixelHeight" : 1659,
       "pixelWidth" : 1140,
       "suspectBlank" : false,
       "width" : 380
@@ -143,7 +145,7 @@
     {
       "file" : "01_overview.png",
       "id" : "01_overview",
-      "md5" : "46a85b482bcb7b78ad334626c8fcd23a",
+      "md5" : "336697ffcc47c4c9882d1dfbd767707c",
       "page" : "first",
       "pageCount" : 3,
       "pageIndex" : 1,
@@ -152,7 +154,7 @@
     {
       "file" : "02_providers.png",
       "id" : "02_providers",
-      "md5" : "fba2070a85c896d4e1e0a4dd43cc5a01",
+      "md5" : "7372c8dd7bafad5cd9cc4f4083253680",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -161,27 +163,28 @@
     {
       "file" : "03_usage_history.png",
       "id" : "03_usage_history",
-      "md5" : "46a85b482bcb7b78ad334626c8fcd23a",
+      "md5" : "336697ffcc47c4c9882d1dfbd767707c",
       "page" : "first",
       "pageCount" : 3,
       "pageIndex" : 1,
       "panelFile" : "03_usage_history.panel.png",
-      "panelMD5" : "7e4c94be28dd9da6324eaded7a1a6d86",
+      "panelMD5" : "b922481cb603c6ae92614d075a51ab70",
       "surface" : "demo-overview"
     },
     {
       "file" : "04_cost.png",
       "id" : "04_cost",
-      "md5" : "9fa85e1e177c95df385ca992aa3d6a4e",
-      "page" : "last",
+      "md5" : "c47d60fe375066ff609fe74f0ca6b1af",
+      "page" : "lastAligned",
       "pageCount" : 3,
       "pageIndex" : 3,
+      "popoverHeight" : 553,
       "surface" : "demo-overview"
     },
     {
       "file" : "05_alerts.png",
       "id" : "05_alerts",
-      "md5" : "0245ad1b9ac0c5895d49a02964070d0b",
+      "md5" : "a4922bfc413d0efc7ee49eca73f2821f",
       "page" : "first",
       "pageCount" : 1,
       "pageIndex" : 1,
@@ -190,7 +193,7 @@
     {
       "file" : "06_pulse_cat.png",
       "id" : "06_pulse_cat",
-      "md5" : "60a02828aed1ffe5ebcd0214fbfa87a5",
+      "md5" : "b81d3debeb1bb51c54e79ea080eefc81",
       "page" : "first",
       "pageCount" : 7,
       "pageIndex" : 1,
@@ -205,18 +208,20 @@
     "debugBuild" : true,
     "devidBuild" : false,
     "localScanDays" : 250,
-    "localScanMessages" : 15659,
+    "localScanMessages" : 15531,
     "localScanProviders" : [
       "Claude",
       "Codex"
     ],
+    "panelBackdropLuminance" : 0.13,
     "panelSettleSeconds" : 3,
     "panelSettled" : true,
     "panelWidth" : 520,
     "popoverHeight" : 580,
     "popoverWidth" : 380,
     "remoteControlAvailable" : false,
-    "sandboxed" : false
+    "sandboxed" : false,
+    "scrollerStyle" : "overlay"
   },
   "warnings" : [
 

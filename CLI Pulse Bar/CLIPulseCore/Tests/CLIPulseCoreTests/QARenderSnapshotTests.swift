@@ -237,7 +237,74 @@ final class QARenderSnapshotTests: XCTestCase {
         )
         let cost = QARenderSnapshot.storeCatalog[3]
         XCTAssertEqual(cost.surface, .demo(.overview))
-        XCTAssertEqual(cost.page, .last, "the cost shot is the Overview scrolled to its end")
+        XCTAssertEqual(cost.page, .lastAligned,
+                       "the cost shot is the Overview scrolled to its end, opening above a card")
+        XCTAssertEqual(QARenderSnapshot.storeCatalog.filter { $0.page != .first }.map(\.id), ["04_cost"])
+    }
+
+    // MARK: - Framing the page scrolled to the end
+
+    private static let white: UInt32 = 0xFFFF_FFFF
+
+    private func row(_ width: Int, ink: Int = 0, card: Int = 0) -> [UInt32] {
+        // `card` pixels a faint shade off white, `ink` pixels dark grey.
+        (0..<width).map { x in
+            x < ink ? 0x5050_50FF : (x < ink + card ? 0xFEFE_FEFF : Self.white)
+        }
+    }
+
+    func testRowsAreBlankInkOrCard() {
+        XCTAssertEqual(QARenderSnapshot.rowKind(row(100), background: Self.white), .blank)
+        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, ink: 3), background: Self.white), .ink,
+                       "a few dark pixels are a line of text")
+        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, card: 60), background: Self.white), .card,
+                       "a faint shade across most of the row is a card's shadow or fill")
+        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, card: 20), background: Self.white), .blank,
+                       "a faint shade across part of it is neither")
+        XCTAssertEqual(QARenderSnapshot.rowKind([], background: Self.white), .blank)
+    }
+
+    func testAPageWhoseTopCutsTextIsShortenedToStartAboveTheCard() {
+        // 3 px per point: half a line of text (rows 0-8), 20 blank rows, then a card.
+        let rows = Array(repeating: QARenderRow.ink, count: 9)
+            + Array(repeating: .blank, count: 20) + Array(repeating: .card, count: 30)
+        let trim = QARenderSnapshot.alignedTrim(rows: rows, scale: 3)
+        // The card starts at 29 px = 9.67 pt; 4 points of clearance leaves 5.
+        XCTAssertEqual(trim, 5)
+        let top = (trim ?? 0) * 3
+        XCTAssertFalse(rows[top...].prefix(while: { $0 != .card }).contains(.ink),
+                       "after the trim no text lies above the card")
+        XCTAssertGreaterThanOrEqual(29 - top, 1)
+    }
+
+    func testTextJustAboveTheCardWinsOverTheClearance() {
+        // Text ends at row 23; the card starts at row 27: the top goes just past the text.
+        let rows = Array(repeating: QARenderRow.blank, count: 10) + Array(repeating: .ink, count: 14)
+            + Array(repeating: .blank, count: 3) + Array(repeating: .card, count: 10)
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: rows, scale: 3), 8)
+    }
+
+    func testAPageAlreadyOpeningOnBackgroundNeedsNoTrim() {
+        let rows = Array(repeating: QARenderRow.blank, count: 12) + Array(repeating: .card, count: 10)
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: rows, scale: 3), 0)
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: [.card, .card], scale: 3), 0)
+    }
+
+    func testNegativeControlNoCardOrTextRunningIntoTheCardHasNoTrim() {
+        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.ink, .blank, .ink], scale: 3),
+                     "no card in view")
+        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.ink, .ink, .ink, .card], scale: 3),
+                     "no background between the text and the card")
+        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.card], scale: 0))
+    }
+
+    func testOnlyTheLastPetPageIsRefusedNotAnAlignedOverview() {
+        let aligned = QARenderStoreShot(id: "09_x", screen: "x", surface: .demo(.overview),
+                                        page: .lastAligned, companionPanel: false)
+        XCTAssertNil(QARenderSnapshot.storeSurfaceProblem(aligned))
+        let pet = QARenderStoreShot(id: "09_x", screen: "x", surface: .demo(.pet),
+                                    page: .lastAligned, companionPanel: false)
+        XCTAssertNotNil(QARenderSnapshot.storeSurfaceProblem(pet))
     }
 
     func testEveryStoreShotIsFreeOfUIThatDiffersInTheMacAppStoreBuild() {
@@ -356,18 +423,26 @@ final class QARenderSnapshotTests: XCTestCase {
             devidBuild: false, debugBuild: true, sandboxed: false, channel: "qa",
             remoteControlAvailable: false, popoverWidth: 380, popoverHeight: 580,
             panelWidth: 520, panelSettleSeconds: 3, panelSettled: true,
-            localScanDays: 300, localScanProviders: ["Claude", "Codex"], localScanMessages: 9_000
+            localScanDays: 300, localScanProviders: ["Claude", "Codex"], localScanMessages: 9_000,
+            scrollerStyle: "overlay", panelBackdropLuminance: 0.12
         )
+        manifest.displayLocale = "ja_JP"
         manifest.shots = [.init(
             id: "03_usage_history", surface: "demo-overview", page: .first, pageIndex: 1,
             pageCount: 3, file: "03_usage_history.png", md5: "0123",
             panelFile: "03_usage_history.panel.png", panelMD5: "4567"
+        ), .init(
+            id: "04_cost", surface: "demo-overview", page: .lastAligned, pageIndex: 3,
+            pageCount: 3, file: "04_cost.png", md5: "89ab", popoverHeight: 551
         )]
         let data = try manifest.encoded()
         XCTAssertEqual(try JSONDecoder().decode(QARenderManifest.self, from: data), manifest)
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))
         XCTAssertTrue(text.contains("\"set\" : \"store\""), text)
         XCTAssertTrue(text.contains("\"devidBuild\" : false"), text)
+        XCTAssertTrue(text.contains("\"page\" : \"lastAligned\""), text)
+        XCTAssertTrue(text.contains("\"popoverHeight\" : 551"), text)
+        XCTAssertTrue(text.contains("\"scrollerStyle\" : \"overlay\""), text)
     }
 
     // MARK: - What is drawn

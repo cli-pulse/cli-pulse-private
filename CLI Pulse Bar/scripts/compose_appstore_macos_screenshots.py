@@ -15,7 +15,10 @@ Each panel: the dark navy gradient and captions of the iPhone set (the same
 fonts, sizes, line breaking and pinned headline: appstore_compose_common.py),
 the 380x580-point menu-bar popover below them at one fixed scale for the whole
 set, framed as the popover window frames it (rounded corners, hairline, soft
-shadow; no fake menu bar). The usage-history panel shows the dashboard panel
+shadow; no fake menu bar). The cost panel's popover is a little shorter
+(render.json records how much: QARenderSnapshot.alignedTrim), so the Overview
+scrolled to its end opens above a card rather than through a line of text; it
+sits at the same place and scale as the others and simply ends higher. The usage-history panel shows the dashboard panel
 DashboardPanelController slides out to the left of the popover, top-aligned,
 8 points away, at the same scale; it is taller than the canvas and is the only
 thing allowed past an edge, and only past the bottom one.
@@ -101,8 +104,10 @@ SHADOW_OFFSET_PT = 6
 # alertas, 会话/工作階段/セッション/세션/sesiones, "costo", 菜单栏/選單列/
 # メニューバー/메뉴 막대/barra de menús, the dashboard's scope line ("Claude +
 # Codex local history", 本地历史/本機歷史/ローカル履歴/로컬 기록/historial local),
-# the alert buttons (Ack/Snooze/Resolve), the pet's Energy and Hunger, and the
-# pet's name, pet.title. Where the iPhone set says the same thing, its reviewed
+# the alert buttons in the order the cards show them (Ack/Resolve/Snooze), the
+# pet's Energy and Hunger, and the pet's name, pet.title. The alerts subtitle
+# promises no kind of alert: the Demo list, like a paired account's, also holds
+# CPU and long-running-session alerts from a helper on another device. Where the iPhone set says the same thing, its reviewed
 # words are reused as they are.
 COPY: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
@@ -115,9 +120,9 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "04_cost": ("Where the money goes",
                     "Per-provider cost, top projects and risk signals"),
         "05_alerts": ("Never miss a limit",
-                      "Quota warnings you can acknowledge, snooze or resolve"),
+                      "Alerts you can acknowledge, resolve or snooze"),
         "06_pulse_cat": ("Meet Pulse Cat",
-                         "A desktop cat whose energy and appetite follow your AI usage"),
+                         "A desktop cat whose energy and hunger follow your AI usage"),
     },
     "zh-Hans": {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，在菜单栏一点即看"),
@@ -125,39 +130,39 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("用量历史，一点就展开",
                              "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"),
         "04_cost": ("钱都花在了哪里", "按服务商细分的费用、主要项目和风险信号"),
-        "05_alerts": ("配额不再突然见底", "配额告警可以确认、稍后提醒或直接解决"),
+        "05_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
         "06_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
     },
     "zh-Hant": {
-        "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，在選單列點一下就能看到"),
+        "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，在選單列按一下就能看到"),
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_usage_history": ("用量歷史，按一下就展開",
                              "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"),
         "04_cost": ("錢花在哪裡", "各服務商的費用、高用量專案與風險訊號"),
-        "05_alerts": ("配額不再突然見底", "配額警示可以確認、稍後提醒或直接解決"),
+        "05_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
         "06_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で",
-                        "使用量、コスト、セッション、アラートを\u200bメニューバーからワンクリックで確認"),
+                        "使用量、コスト、セッション、アラートを\u200bメニューバーからすぐ確認"),
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
         "03_usage_history": ("使用履歴をワンクリックで",
-                             "ヒートマップ、\u200b連続日数、\u200bよく使うモデルを "
-                             "Claude と Codex のローカル履歴から"),
+                             "Claude と Codex のローカル履歴から、\u200bヒートマップ・連続日数・"
+                             "よく使うモデルを表示"),
         "04_cost": ("コストの内訳がわかる",
                     "プロバイダー別のコスト、\u200b上位プロジェクト、\u200bリスクシグナル"),
         "05_alerts": ("上限の接近を見逃さない",
-                      "クォータのアラートは\u200b確認、スヌーズ、解決がその場でできる"),
+                      "アラートを、\u200bその場で確認・解決・スヌーズ"),
         "06_pulse_cat": ("パルスキャットに会おう",
                          "エネルギーとおなかの具合が AI の使い方で変わる\u200bデスクトップ猫"),
     },
     "ko": {
-        "01_overview": ("모든 것을 한눈에", "사용량, 비용, 세션, 알림을 메뉴 막대에서 클릭 한 번으로 확인"),
+        "01_overview": ("모든 것을 한눈에", "메뉴 막대에서 사용량, 비용, 세션, 알림까지"),
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_usage_history": ("사용 기록을 클릭 한 번으로",
                              "Claude와 Codex 로컬 기록으로 보는 활동 히트맵, 연속 사용일, 자주 쓰는 모델"),
         "04_cost": ("비용, 어디에 쓰이나요?", "공급자별 비용, 상위 프로젝트, 위험 신호"),
-        "05_alerts": ("할당량이 바닥나기 전에", "할당량 알림에서 바로 확인, 다시 알림, 해결까지"),
+        "05_alerts": ("할당량이 바닥나기 전에", "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"),
         "06_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 허기가 달라지는 데스크톱 고양이"),
     },
     "es": {
@@ -166,12 +171,13 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("Cuotas y costos en vivo",
                          "Consulta cuánto te queda antes de llegar al límite"),
         "03_usage_history": ("Tu historial de uso, a un clic",
-                             "Mapa de calor, rachas y modelos más usados de tu historial local de Claude y Codex"),
+                             "Mapa de calor, rachas y modelos más usados, a partir de tu historial local "
+                             "de Claude y Codex"),
         "04_cost": ("En qué se va tu dinero",
                     "Costo por proveedor y proyecto, con señales de riesgo"),
         "05_alerts": ("Sin sorpresas con la cuota",
-                      "Alertas de cuota que puedes confirmar, posponer o resolver"),
-        "06_pulse_cat": ("Conoce a Gato Pulse",
+                      "Alertas que puedes confirmar, resolver o posponer"),
+        "06_pulse_cat": ("Conoce a tu Gato Pulse",
                          "Un gato de escritorio cuya energía y hambre reflejan tu uso de IA"),
     },
 }
@@ -217,11 +223,14 @@ class Placement:
 
 
 def placements(screen_has_panel: bool, shot_top: int, scale: float,
-               panel_height_pt: float | None = None) -> list[Placement]:
+               panel_height_pt: float | None = None,
+               popover_height_pt: float | None = None) -> list[Placement]:
     """Where the popover (and the usage panel beside it) go, in canvas pixels.
     A single popover is centred; with the panel, the group is centred, the
-    panel on the left, top-aligned, PANEL_GAP_PT away, as the app places it."""
-    pw, ph = round(POPOVER_PT[0] * scale), round(POPOVER_PT[1] * scale)
+    panel on the left, top-aligned, PANEL_GAP_PT away, as the app places it.
+    A shortened popover keeps the same top, so the tab bar does not move
+    from one panel of the set to the next."""
+    pw, ph = round(POPOVER_PT[0] * scale), round((popover_height_pt or POPOVER_PT[1]) * scale)
     if not screen_has_panel:
         return [Placement("popover", (CANVAS_W - pw) // 2, shot_top, pw, ph)]
     qw = round(PANEL_WIDTH_PT * scale)
@@ -272,9 +281,11 @@ def drop_shadow(canvas, it: Placement, radius: int, scale: float) -> None:
 
 
 def compose_one(src_dir: Path, stem_: str, dst: Path, lang: str, faces: dict[str, Face],
-                t_size: int, s_size: int, reserved_lines: int) -> tuple[list[str], float]:
+                t_size: int, s_size: int, reserved_lines: int,
+                popover_pt: tuple[int, int] = POPOVER_PT) -> tuple[list[str], float]:
     """Write one panel; return why it is not fit to upload (empty = fine),
-    and the scale it was drawn at."""
+    and the scale it was drawn at. `popover_pt` is the popover's size as
+    render.json records it for this shot (shots.mac_popover_pt)."""
     title, subtitle = COPY[lang][stem_]
     problems = []
 
@@ -299,13 +310,14 @@ def compose_one(src_dir: Path, stem_: str, dst: Path, lang: str, faces: dict[str
     panel_path = src_dir / f"{stem_}.panel.png"
     has_panel = stem_ in [f[:-len(".panel.png")] for f in shots.panel_raw_names(PLATFORM)]
     panel = Image.open(panel_path) if has_panel else None
-    want = (POPOVER_PT[0] * RENDER_SCALE, POPOVER_PT[1] * RENDER_SCALE)
+    want = (popover_pt[0] * RENDER_SCALE, popover_pt[1] * RENDER_SCALE)
     if popover.size != want:
         problems.append(f"{stem_}.png is {popover.size[0]}x{popover.size[1]}, not {want[0]}x{want[1]}")
     if panel is not None and panel.size[0] != PANEL_WIDTH_PT * RENDER_SCALE:
         problems.append(f"{panel_path.name} is {panel.size[0]} px wide, not {PANEL_WIDTH_PT * RENDER_SCALE}")
     items = placements(panel is not None, layout.shot_top, scale,
-                       panel.size[1] / RENDER_SCALE if panel is not None else None)
+                       panel.size[1] / RENDER_SCALE if panel is not None else None,
+                       popover_height_pt=popover_pt[1])
     problems += placement_problems(items, scale)
     for it in items:
         img, corner_pt = (panel, PANEL_CORNER_PT) if it.name == "panel" else (popover, POPOVER_CORNER_PT)
@@ -371,7 +383,8 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
         scales = set()
         for st in stems_:
             probs, scale = compose_one(in_dir, st, staging / shots.composed_name(st, PLATFORM), lang,
-                                       faces, t_size, s_size, reserved_lines)
+                                       faces, t_size, s_size, reserved_lines,
+                                       popover_pt=shots.mac_popover_pt(render, st))
             problems += probs
             scales.add(round(scale, 6))
         if len(scales) != 1:

@@ -301,7 +301,7 @@ public enum QARenderSnapshot {
             ("overview", .demo(.overview), .first, false),
             ("providers", .demo(.providers), .first, false),
             ("usage_history", .demo(.overview), .first, true),
-            ("cost", .demo(.overview), .last, false),
+            ("cost", .demo(.overview), .lastAligned, false),
             ("alerts", .demo(.alerts), .first, false),
             ("pulse_cat", .demo(.pet), .first, false),
         ]
@@ -348,9 +348,21 @@ public enum QARenderSnapshot {
     }
 
     /// The popover's size in points: `MenuBarView` is 380 wide, and 580 high
-    /// unless the user dragged it (400–900). The store set pins the default.
+    /// unless the user dragged it (400–900). The store set pins the default,
+    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`).
     public static let storePopoverWidth = 380.0
     public static let storePopoverHeight = 580.0
+    /// The shortest popover `MenuBarView` lets the user drag it to.
+    public static let storePopoverMinHeight = 400.0
+    /// Points of background a `.lastAligned` page keeps between its top edge
+    /// and the first card below it.
+    public static let storeAlignedClearance = 4.0
+    /// The usage panel's see-through HUD backdrop has nothing behind it
+    /// offscreen; the renderer blends it within the window, over the panel's
+    /// dark fill, as it blends over a desktop. Relative luminance (0...1) of
+    /// the backdrop above which that did not work and it drew as a flat gray
+    /// slab (the #600 and first store renders measured about 0.36).
+    public static let storePanelMaxBackdropLuminance = 0.25
     /// The usage panel's width: `DashboardPanelController` uses
     /// `min(520, max(440, room to the left of the popover))`, which is 520
     /// whenever the popover sits at the right of an ordinary screen.
@@ -483,6 +495,67 @@ public enum QARenderSnapshot {
             return offsets.count > maxPages ? [0] : offsets
         }
         return Array(offsets.prefix(maxPages - 1)) + [offsets[offsets.count - 1]]
+    }
+
+    // MARK: - Framing a page scrolled to the end
+
+    /// Classifies one row of pixels (RGBA, one `UInt32` each, alpha in the
+    /// low byte) against the scroll view's background colour.
+    ///
+    /// * `.card`: at least half the row differs from the background at all,
+    ///   as a card's fill, border or shadow does across its whole width;
+    /// * `.ink`: less than that, but some pixel differs clearly (by 24 or more
+    ///   in a channel), as text and icons do;
+    /// * `.blank`: neither.
+    ///
+    /// A card whose fill is the background colour (the Overview's Yield
+    /// Score card is) reads as its text alone, which is what a top edge must
+    /// not cut through.
+    public static func rowKind(_ pixels: [UInt32], background: UInt32) -> QARenderRow {
+        guard !pixels.isEmpty else { return .blank }
+        func channels(_ value: UInt32) -> (Int, Int, Int) {
+            (Int(value >> 24 & 0xFF), Int(value >> 16 & 0xFF), Int(value >> 8 & 0xFF))
+        }
+        let bg = channels(background)
+        var differing = 0
+        var clear = false
+        for pixel in pixels {
+            let c = channels(pixel)
+            let delta = max(abs(c.0 - bg.0), abs(c.1 - bg.1), abs(c.2 - bg.2))
+            if delta >= 1 { differing += 1 }
+            if delta >= 24 { clear = true }
+        }
+        if differing * 2 >= pixels.count { return .card }
+        return clear ? .ink : .blank
+    }
+
+    /// How many whole points to take off the popover's height so that a page
+    /// scrolled to the end starts in the background above its first card,
+    /// rather than through the text of whatever lies above it (the Overview's
+    /// last page otherwise opens on half a line of the Yield Score card).
+    ///
+    /// `rows` are the page's pixel rows from the top of the scroll view down,
+    /// at `scale` pixels per point. Shortening the popover by `t` points moves
+    /// the top edge `t` points down the content, because the page stays flush
+    /// with the end. The result keeps at least `clearance` points of
+    /// background above the card where the space allows, and always one
+    /// row. 0 when nothing but background lies above the first card; nil when
+    /// no card is in view, or the text above it runs into it.
+    public static func alignedTrim(
+        rows: [QARenderRow],
+        scale: Int,
+        clearance: Double = storeAlignedClearance
+    ) -> Int? {
+        guard scale > 0, let card = rows.firstIndex(of: .card) else { return nil }
+        guard let lastInk = rows[..<card].lastIndex(of: .ink) else { return 0 }
+        let perPoint = Double(scale)
+        // The smallest trim whose top row is below the last line of text…
+        let past = Int((Double(lastInk + 1) / perPoint).rounded(.up))
+        // …and the one that leaves `clearance` points above the card.
+        let clear = Int((Double(card) / perPoint - clearance).rounded(.down))
+        let trim = max(past, clear)
+        guard trim * scale < card else { return nil }
+        return trim
     }
 
     // MARK: - Checking a render
@@ -638,6 +711,13 @@ public enum QARenderSurface: Hashable {
     }
 }
 
+/// What one pixel row of a rendered page shows (`QARenderSnapshot.rowKind`).
+public enum QARenderRow: Equatable, Sendable {
+    case blank
+    case ink
+    case card
+}
+
 /// One Mac App Store screenshot of the store set (`QARenderSnapshot.storeCatalog`).
 public struct QARenderStoreShot: Equatable, Sendable {
     public enum Page: String, Codable, Sendable {
@@ -645,6 +725,12 @@ public struct QARenderStoreShot: Equatable, Sendable {
         case first
         /// Scrolled to the end, flush with the bottom of the content.
         case last
+        /// Scrolled to the end, in a popover shortened just enough that the
+        /// top edge falls in the space above a card instead of through a line
+        /// of text (`QARenderSnapshot.alignedTrim`). Users drag the popover
+        /// anywhere between 400 and 900 points high, so the shorter popover
+        /// is a state the app really has; render.json records its height.
+        case lastAligned
     }
 
     /// `01_overview`: the file stem.
@@ -804,12 +890,22 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         public var localScanDays: Int
         public var localScanProviders: [String]
         public var localScanMessages: Int
+        /// `NSScroller.preferredScrollerStyle`: `overlay`, as on a Mac with a
+        /// trackpad and the default "Show scroll bars" setting, or `legacy`.
+        /// A legacy scroller reserves a gutter the offscreen drawing leaves
+        /// empty, so every scrolling tab's content sat off-centre. Must be
+        /// `overlay`.
+        public var scrollerStyle: String
+        /// Relative luminance (0...1) of the usage panel's backdrop as drawn
+        /// (`QARenderSnapshot.storePanelMaxBackdropLuminance`).
+        public var panelBackdropLuminance: Double
 
         public init(
             devidBuild: Bool, debugBuild: Bool, sandboxed: Bool, channel: String,
             remoteControlAvailable: Bool, popoverWidth: Double, popoverHeight: Double,
             panelWidth: Double, panelSettleSeconds: Double, panelSettled: Bool,
-            localScanDays: Int, localScanProviders: [String], localScanMessages: Int
+            localScanDays: Int, localScanProviders: [String], localScanMessages: Int,
+            scrollerStyle: String, panelBackdropLuminance: Double
         ) {
             self.devidBuild = devidBuild
             self.debugBuild = debugBuild
@@ -824,6 +920,8 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
             self.localScanDays = localScanDays
             self.localScanProviders = localScanProviders
             self.localScanMessages = localScanMessages
+            self.scrollerStyle = scrollerStyle
+            self.panelBackdropLuminance = panelBackdropLuminance
         }
     }
 
@@ -841,11 +939,14 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         public var md5: String
         public var panelFile: String?
         public var panelMD5: String?
+        /// The popover's height in points when it is not the pinned default:
+        /// a `.lastAligned` page's shortened popover.
+        public var popoverHeight: Double?
 
         public init(
             id: String, surface: String, page: QARenderStoreShot.Page,
             pageIndex: Int, pageCount: Int, file: String, md5: String,
-            panelFile: String? = nil, panelMD5: String? = nil
+            panelFile: String? = nil, panelMD5: String? = nil, popoverHeight: Double? = nil
         ) {
             self.id = id
             self.surface = surface
@@ -856,6 +957,7 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
             self.md5 = md5
             self.panelFile = panelFile
             self.panelMD5 = panelMD5
+            self.popoverHeight = popoverHeight
         }
     }
 
@@ -872,6 +974,11 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
     public var resolvedLocalization: String?
     /// The localization AppKit chose for the app bundle.
     public var appKitLocalization: String?
+    /// The locale numbers, money and dates are formatted with
+    /// (`LocaleOverrideStore.displayLocale`): the rendered language on the
+    /// region the run was given (`-AppleLocale`, render_macos_qa_views.sh),
+    /// never the region of the Mac it ran on.
+    public var displayLocale: String?
     public var localizationActive: Bool
     public var localizationProbe: [Probe]
     public var appearance: QARenderSnapshot.Appearance
@@ -901,6 +1008,7 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         localeOverride: String?,
         resolvedLocalization: String?,
         appKitLocalization: String?,
+        displayLocale: String? = nil,
         localizationActive: Bool,
         localizationProbe: [Probe],
         appearance: QARenderSnapshot.Appearance,
@@ -922,6 +1030,7 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         self.localeOverride = localeOverride
         self.resolvedLocalization = resolvedLocalization
         self.appKitLocalization = appKitLocalization
+        self.displayLocale = displayLocale
         self.localizationActive = localizationActive
         self.localizationProbe = localizationProbe
         self.appearance = appearance

@@ -177,6 +177,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             localeOverride: LocaleOverrideStore.shared.override,
             resolvedLocalization: LocaleOverrideStore.resolvedLocalization,
             appKitLocalization: Bundle.main.preferredLocalizations.first,
+            displayLocale: LocaleOverrideStore.shared.displayLocale.identifier,
             localizationActive: QARenderSnapshot.localizationIsActive(
                 language: request.language, probes: probe
             ),
@@ -328,6 +329,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
         var shots: [QARenderManifest.StoreShot] = []
         var panelSettled = false
+        var panelLuminance = 1.0
         for (index, shot) in QARenderSnapshot.storeCatalog.enumerated() {
             if let problem = QARenderSnapshot.storeSurfaceProblem(shot) {
                 Self.log("refused: \(problem)")
@@ -345,6 +347,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 record.panelFile = panel.file
                 record.panelMD5 = panel.md5
                 panelSettled = panel.settled
+                panelLuminance = panel.backdropLuminance
             }
             shots.append(record)
         }
@@ -367,8 +370,23 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             panelSettled: panelSettled,
             localScanDays: archive.days.count,
             localScanProviders: Set(archive.days.values.flatMap { $0.perProvider.keys }).sorted(),
-            localScanMessages: DailyUsageStats.totalMessages(archive)
+            localScanMessages: DailyUsageStats.totalMessages(archive),
+            scrollerStyle: NSScroller.preferredScrollerStyle == .overlay ? "overlay" : "legacy",
+            panelBackdropLuminance: (panelLuminance * 1000).rounded() / 1000
         )
+        if manifest.variant?.scrollerStyle != "overlay" {
+            manifest.warnings.append(
+                "scroll bars are the legacy style (AppleShowScrollBars), so every scrolling "
+                    + "tab reserves a gutter the offscreen drawing leaves empty; render with "
+                    + "-AppleShowScrollBars WhenScrolling (render_macos_qa_views.sh does)"
+            )
+        }
+        if panelLuminance > QARenderSnapshot.storePanelMaxBackdropLuminance {
+            manifest.warnings.append(
+                "the usage panel's backdrop drew at luminance \(panelLuminance), a flat gray "
+                    + "rather than the dark HUD it is over a desktop"
+            )
+        }
         if manifest.variant?.remoteControlAvailable == true {
             manifest.warnings.append("remote control is available in this build; the Mac App Store build has none")
         }
@@ -472,8 +490,79 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// One store shot's popover, the page it names.
+    /// One store shot's popover, the page it names. A `.lastAligned` page is
+    /// drawn once at the pinned height to measure what lies above its first
+    /// card, then again in a popover shortened by `QARenderSnapshot.alignedTrim`,
+    /// and must then open on nothing but background above that card.
     private func captureStoreShot(_ shot: QARenderStoreShot) async -> QARenderManifest.StoreShot? {
+        var height = QARenderSnapshot.storePopoverHeight
+        guard var drawn = await drawStorePopover(shot) else { return nil }
+        if shot.page == .lastAligned {
+            guard let trim = alignedTrim(drawn) else {
+                manifest.warnings.append(
+                    "\(shot.id): no space above a card to start the page in; its top edge "
+                        + "would cut through a line of text"
+                )
+                return nil
+            }
+            if trim > 0 {
+                height -= Double(trim)
+                guard height >= QARenderSnapshot.storePopoverMinHeight else {
+                    manifest.warnings.append(
+                        "\(shot.id): aligning the page needs a \(height)-point popover, "
+                            + "under the \(QARenderSnapshot.storePopoverMinHeight) users can set"
+                    )
+                    return nil
+                }
+                defaults.set(height, forKey: Self.menuBarHeightKey)
+                let again = await drawStorePopover(shot)
+                defaults.set(QARenderSnapshot.storePopoverHeight, forKey: Self.menuBarHeightKey)
+                guard let again else { return nil }
+                drawn = again
+                guard alignedTrim(drawn) == 0 else {
+                    manifest.warnings.append(
+                        "\(shot.id): in a \(height)-point popover the page still does not "
+                            + "open on background above its first card"
+                    )
+                    return nil
+                }
+            }
+        }
+        let pageIndex = shot.page == .first ? 1 : drawn.pages.count
+        let page = drawn.pages[pageIndex - 1]
+        let expected = NSSize(width: QARenderSnapshot.storePopoverWidth, height: height)
+        if page.size != expected {
+            manifest.warnings.append(
+                "\(shot.id): the popover is \(page.size.width)x\(page.size.height) points, "
+                    + "not \(expected.width)x\(expected.height)"
+            )
+        }
+        guard let md5 = writeStoreFile(page, name: shot.fileName, id: shot.id, pageIndex: pageIndex,
+                                       pageCount: drawn.pages.count, kind: .popover) else {
+            return nil
+        }
+        if height != QARenderSnapshot.storePopoverHeight {
+            manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
+                + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
+                + "so the page scrolled to the end opens on the space above a card, not through "
+                + "a line of text. Users can drag the popover between 400 and 900."
+        }
+        return .init(
+            id: shot.id, surface: shot.surface.id, page: shot.page,
+            pageIndex: pageIndex, pageCount: drawn.pages.count,
+            file: shot.fileName, md5: md5,
+            popoverHeight: height == QARenderSnapshot.storePopoverHeight ? nil : height
+        )
+    }
+
+    private struct StorePopover {
+        let pages: [NSBitmapImageRep]
+        /// The main scroll view's visible area, in points from the top of the
+        /// popover: where a page's own content starts and ends.
+        let viewport: (top: Double, height: Double)?
+    }
+
+    private func drawStorePopover(_ shot: QARenderStoreShot) async -> StorePopover? {
         let root = MenuBarView()
             .environmentObject(state)
             .environmentObject(state.subscriptionManager)
@@ -487,36 +576,65 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             manifest.warnings.append("\(shot.id): nothing was drawn")
             return nil
         }
-        let pageIndex = shot.page == .first ? 1 : drawn.pages.count
-        let page = drawn.pages[pageIndex - 1]
-        let expected = NSSize(
-            width: QARenderSnapshot.storePopoverWidth, height: QARenderSnapshot.storePopoverHeight
-        )
-        if page.size != expected {
-            manifest.warnings.append(
-                "\(shot.id): the popover is \(page.size.width)x\(page.size.height) points, "
-                    + "not \(expected.width)x\(expected.height)"
-            )
+        return StorePopover(pages: drawn.pages, viewport: drawn.viewport)
+    }
+
+    /// `QARenderSnapshot.alignedTrim` for the last page, measured on its pixels.
+    private func alignedTrim(_ drawn: StorePopover) -> Int? {
+        guard let viewport = drawn.viewport, let page = drawn.pages.last else { return nil }
+        let rows = pixelRows(page, from: viewport.top, height: viewport.height)
+        return QARenderSnapshot.alignedTrim(rows: rows, scale: request.scale)
+    }
+
+    /// Each pixel row of `rep` between `top` and `top + height` points,
+    /// classified against the colour at its left edge (the scroll view's
+    /// background, inside the content's inset).
+    private func pixelRows(_ rep: NSBitmapImageRep, from top: Double, height: Double) -> [QARenderRow] {
+        let scale = Double(request.scale)
+        let first = max(0, Int((top * scale).rounded()))
+        let end = min(rep.pixelsHigh, Int(((top + height) * scale).rounded()))
+        guard first < end else { return [] }
+        let background = rgba(rep, x: 2, y: first)
+        return (first..<end).map { y in
+            QARenderSnapshot.rowKind((0..<rep.pixelsWide).map { rgba(rep, x: $0, y: y) },
+                                     background: background)
         }
-        guard let md5 = writeStoreFile(page, name: shot.fileName, id: shot.id, pageIndex: pageIndex,
-                                       pageCount: drawn.pages.count, kind: .popover) else {
-            return nil
+    }
+
+    /// One pixel as RGBA, alpha in the low byte; y counts from the top.
+    private func rgba(_ rep: NSBitmapImageRep, x: Int, y: Int) -> UInt32 {
+        var pixel = [Int](repeating: 0, count: max(4, rep.samplesPerPixel))
+        rep.getPixel(&pixel, atX: x, y: y)
+        func byte(_ index: Int) -> UInt32 { UInt32(max(0, min(255, pixel[index]))) }
+        return byte(0) << 24 | byte(1) << 16 | byte(2) << 8 | (rep.samplesPerPixel > 3 ? byte(3) : 255)
+    }
+
+    /// Mean relative luminance (0...1) of the square of `rep` from `x`,`y`
+    /// points, `side` points on each side.
+    private func luminance(_ rep: NSBitmapImageRep, x: Double, y: Double, side: Double) -> Double {
+        let scale = Double(request.scale)
+        var total = 0.0
+        var count = 0.0
+        for py in Int(y * scale)..<min(rep.pixelsHigh, Int((y + side) * scale)) {
+            for px in Int(x * scale)..<min(rep.pixelsWide, Int((x + side) * scale)) {
+                let p = rgba(rep, x: px, y: py)
+                let r = Double(p >> 24 & 0xFF), g = Double(p >> 16 & 0xFF), b = Double(p >> 8 & 0xFF)
+                total += (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+                count += 1
+            }
         }
-        return .init(
-            id: shot.id, surface: shot.surface.id, page: shot.page,
-            pageIndex: pageIndex, pageCount: drawn.pages.count,
-            file: shot.fileName, md5: md5
-        )
+        return count > 0 ? total / count : 1
     }
 
     /// The usage panel as `DashboardPanelController.present` builds it: the
     /// non-scrolling dashboard from the local usage history the app loaded,
     /// 520 points wide, always dark, with its close button. Its see-through
-    /// HUD backdrop is drawn over an opaque dark fill, and it is drawn only
-    /// once two drawings half a second apart agree (the headline counts up).
+    /// HUD backdrop is blended within the window over an opaque dark fill
+    /// (`blendHUDWithinWindow`), and it is drawn only once two drawings half a
+    /// second apart agree (the headline counts up).
     private func captureStorePanel(
         _ shot: QARenderStoreShot
-    ) async -> (file: String, md5: String, settled: Bool)? {
+    ) async -> (file: String, md5: String, settled: Bool, backdropLuminance: Double)? {
         guard let name = shot.panelFileName else { return nil }
         let archive = await DailyUsageArchiveManager.shared.snapshot()
         let panel = UsageDashboardView(archive: archive, scrollable: false)
@@ -530,7 +648,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             .environment(\.colorScheme, .dark)
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         guard let drawn = await drawPages(
-            panel, id: name, settle: QARenderSnapshot.storePanelSettleSeconds, scrolls: false
+            panel, id: name, settle: QARenderSnapshot.storePanelSettleSeconds, scrolls: false,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: name) }
         ), let page = drawn.pages.first else {
             manifest.warnings.append("\(name): nothing was drawn")
             return nil
@@ -546,7 +665,27 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                                        pageCount: 1, kind: .panel) else {
             return nil
         }
-        return (name, md5, settled)
+        // The backdrop between the panel's corner and its title.
+        return (name, md5, settled, luminance(page, x: 4, y: 4, side: 6))
+    }
+
+    /// `HUDWindowBackground` blends behind the window: over a desktop it is
+    /// the dark frosted HUD, but an offscreen window has nothing behind it and
+    /// it draws a flat mid-gray. Blending within the window instead puts the
+    /// same material over the opaque dark fill the renderer gives the panel.
+    private func blendHUDWithinWindow(_ root: NSView, id: String) {
+        var changed = 0
+        func visit(_ view: NSView) {
+            if let effect = view as? NSVisualEffectView {
+                effect.blendingMode = .withinWindow
+                changed += 1
+            }
+            view.subviews.forEach(visit)
+        }
+        visit(root)
+        if changed == 0 {
+            manifest.warnings.append("\(id): the panel's HUD backdrop was not found")
+        }
     }
 
     private static func sameBitmap(_ a: NSBitmapImageRep, _ b: NSBitmapImageRep) -> Bool {
@@ -975,6 +1114,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             .background(Color(red: 0.11, green: 0.11, blue: 0.12))
         await capture(
             panel, surface: surface, index: index,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
             note: "Panel content with the Demo archive (DemoDataProvider.dailyUsage), 480 points wide."
                 + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
                 + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
@@ -986,6 +1126,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         let pages: [NSBitmapImageRep]
         let hosting: NSView
         let window: NSWindow
+        /// The main scroll view's visible area, in points from the top of
+        /// `hosting`; nil when nothing scrolls.
+        let viewport: (top: Double, height: Double)?
     }
 
     /// Lays `content` out in an offscreen window at its fitting size and
@@ -995,7 +1138,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         _ content: Content,
         id: String,
         settle firstSettle: Double,
-        scrolls: Bool = true
+        scrolls: Bool = true,
+        prepare: ((NSView) -> Void)? = nil
     ) async -> DrawnPages? {
         // Every root gets `displayLocaleRoot()`, as every scene root of the
         // app does, and is told it is in the key window.
@@ -1005,6 +1149,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 .environment(\.controlActiveState, .key)
         )
         let window = offscreenWindow(holding: hosting, size: NSSize(width: 420, height: 600))
+        if let prepare {
+            // Early, once the first layout pass has made the AppKit views, so
+            // whatever the change sets off is over by the time it is drawn.
+            await settle(hosting, seconds: 0.3)
+            prepare(hosting)
+        }
         await settle(hosting, seconds: firstSettle)
 
         let fitting = hosting.fittingSize
@@ -1018,8 +1168,14 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         manifest.windowBackingScale = Double(window.backingScaleFactor)
 
         var pages: [NSBitmapImageRep] = []
+        var viewport: (top: Double, height: Double)?
         if let first = snapshot(hosting) { pages.append(first) }
         if scrolls, let scrollView = mainScrollView(in: hosting), let document = scrollView.documentView {
+            let frame = scrollView.convert(scrollView.bounds, to: hosting)
+            viewport = (
+                top: Double(hosting.isFlipped ? frame.minY : hosting.bounds.height - frame.maxY),
+                height: Double(frame.height)
+            )
             var offset = 0.0
             while pages.count < QARenderSnapshot.maxPages,
                   let next = QARenderSnapshot.nextPageOffset(
@@ -1043,16 +1199,19 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 )
             }
         }
-        return DrawnPages(pages: pages, hosting: hosting, window: window)
+        return DrawnPages(pages: pages, hosting: hosting, window: window, viewport: viewport)
     }
 
     private func capture<Content: View>(
         _ content: Content,
         surface: QARenderSurface,
         index: Int,
+        prepare: ((NSView) -> Void)? = nil,
         note: String?
     ) async {
-        guard let drawn = await drawPages(content, id: surface.id, settle: 0.8) else { return }
+        guard let drawn = await drawPages(content, id: surface.id, settle: 0.8, prepare: prepare) else {
+            return
+        }
         drawn.window.contentView = nil
         let pages = drawn.pages
 

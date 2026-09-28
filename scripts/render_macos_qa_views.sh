@@ -36,6 +36,25 @@ QA_BUNDLE_ID="app.clipulse.qa.local"
 QA_ROOT="/private/tmp/clipulse-qa-home"
 ALL_LANGUAGES=(en zh-Hans zh-Hant ja ko es)
 
+# The region each language is drawn on (-AppleLocale): separators, currency
+# placement, clock and the first day of the week come from it, so a render
+# must not inherit the region of the Mac it runs on. The same regions as the
+# iPhone capture (capture_ios_screenshots.sh); Spanish, which serves es-ES and
+# es-MX with one set, is drawn on Mexico's, like the app's own Spanish
+# ("costo"). scripts/appstore_screenshots.py MAC_REGIONS holds the same list,
+# and render.json's displayLocale must name it.
+locale_for() {
+    case "$1" in
+        en) echo en_US ;;
+        zh-Hans) echo zh_CN ;;
+        zh-Hant) echo zh_TW ;;
+        ja) echo ja_JP ;;
+        ko) echo ko_KR ;;
+        es) echo es_MX ;;
+        *) return 1 ;;
+    esac
+}
+
 app=""
 out=""
 languages=()
@@ -158,13 +177,21 @@ for lang in "${languages[@]}"; do
     /bin/mkdir -m 700 "$home"
     log="$work/$lang.log"
 
-    echo "[$lang] rendering into $dest"
+    echo "[$lang] rendering into $dest ($(locale_for "$lang"))"
+    # -AppleShowScrollBars WhenScrolling: overlay scroll bars, as on a Mac with
+    # a trackpad and the default setting. A Mac set to "Always" would otherwise
+    # give every scrolling tab a legacy scroller's gutter, which the offscreen
+    # drawing leaves empty (render.json records the style; the store set
+    # refuses legacy). The argument domain wins over the global setting and
+    # changes nothing outside this process.
     CFFIXED_USER_HOME="$home" CLIPULSE_QA_RESET_ON_LAUNCH=0 \
         "$binary" \
         -CLIPulseRenderSnapshots "$dest" \
         -CLIPulseRenderAppearance "$appearance" \
         -CLIPulseRenderSet "$render_set" \
         -AppleLanguages "($lang)" \
+        -AppleLocale "$(locale_for "$lang")" \
+        -AppleShowScrollBars WhenScrolling \
         -cli_pulse_locale_override "$lang" \
         >"$log" 2>&1 &
     pid=$!

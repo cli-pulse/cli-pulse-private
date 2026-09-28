@@ -31,7 +31,10 @@ and then, before the first write, it:
     without screenshots;
   * for the Mac, refuses unless the panels were composed from renders of this
     very version: each set's compose.json records the app version that drew
-    them, and the popover's footer shows it ("CLI Pulse v1.54.0");
+    them, and the popover's footer shows it ("CLI Pulse v1.54.0"); and unless
+    the committed raws and their render.json are still the ones compose.json
+    records, and render.json still describes a clean store render
+    (appstore_screenshots.capture_problems: no DEVID_BUILD, no remote control);
   * refuses unless that platform's version is editable (PREPARE_FOR_SUBMISSION,
     DEVELOPER_REJECTED, REJECTED, METADATA_REJECTED). WAITING_FOR_REVIEW is not:
     App Store Connect refuses screenshot writes (409) while a version waits for
@@ -136,6 +139,13 @@ class Panel:
 
 def local_panels(lang: str, platform: shots.Platform = shots.IPHONE) -> tuple[list[Panel], list[str]]:
     problems = shots.set_problems(lang, platform=platform)
+    if platform is shots.MAC:
+        # What makes the Mac panels the App Store build's is render.json, beside
+        # the raws they were composed from (DEVID_BUILD, remote control, scroll
+        # bars, region, the raws' md5s): re-rendered raws or an edited
+        # render.json that were never recomposed are refused here too, not only
+        # by --require-shots in CI. No Pillow needed.
+        problems += shots.capture_problems(lang, platform=platform)
     panels = []
     for p in shots.expected_composed(lang, platform=platform):
         if p.is_file():

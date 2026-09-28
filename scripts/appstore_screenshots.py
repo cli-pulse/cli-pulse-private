@@ -37,8 +37,9 @@ LAYOUT
 
     CLI Pulse Bar/screenshots/macos-raw/<lang>/NN_<screen>.png, render.json
         the QA build's offscreen renders of the real Mac views (the store set,
-        docs/qa/macos-offscreen-renders.md): 380x580-point popovers at 3x,
-        03_usage_history.panel.png beside the third, and the renderer's
+        docs/qa/macos-offscreen-renders.md): 380x580-point popovers at 3x
+        (04_cost's shortened so it opens above a card, render.json says how
+        much), 03_usage_history.panel.png beside the third, and the renderer's
         render.json with each file's md5 and the facts of the build that drew
         them (render_problems)
     CLI Pulse Bar/screenshots/macos-composed/<lang>/NN_<screen>_2880x1800.png
@@ -129,8 +130,19 @@ RENDER_MANIFEST = "render.json"
 # a local usage history holding only what the scanner records.
 MAC_RENDER_SCALE = 3
 MAC_POPOVER_PT = (380, 580)
+# A shot on a "lastAligned" page (QARenderSnapshot.alignedTrim) is drawn in a
+# popover shortened so it opens above a card; users drag it from 400 to 900.
+MAC_POPOVER_MIN_HEIGHT_PT = 400
 MAC_PANEL_WIDTH_PT = 520
 LOCAL_SCAN_PROVIDERS = frozenset({"Claude", "Codex"})
+# The region each language is drawn on (render_macos_qa_views.sh locale_for,
+# the same as the iPhone capture's): render.json's displayLocale must be in it.
+MAC_REGIONS: dict[str, str] = {"en": "US", "zh-Hans": "CN", "zh-Hant": "TW", "ja": "JP", "ko": "KR",
+                               "es": "MX"}
+# The usage panel's backdrop, drawn over the panel's dark fill; above this
+# relative luminance it drew as a flat gray slab (QARenderSnapshot
+# storePanelMaxBackdropLuminance).
+MAC_PANEL_MAX_BACKDROP_LUMINANCE = 0.25
 
 
 @dataclass(frozen=True)
@@ -412,6 +424,24 @@ def capture_problems(lang: str, root: Path | None = None, platform: Platform = I
     return out
 
 
+def region_of(locale_id: str | None) -> str | None:
+    """'MX' for 'es_MX' or 'es-MX@calendar=gregorian'; None without a region."""
+    if not isinstance(locale_id, str):
+        return None
+    base = locale_id.split("@", 1)[0].replace("-", "_")
+    last = base.rsplit("_", 1)[-1] if "_" in base else ""
+    return last if len(last) == 2 and last.isalpha() and last.isupper() else None
+
+
+def mac_popover_pt(render: dict, stem_: str) -> tuple[int, int]:
+    """The popover's size in points for one shot, as render.json records it:
+    the pinned 380x580, or a lastAligned shot's shortened height."""
+    for s in render.get("shots") or []:
+        if s.get("id") == stem_ and s.get("popoverHeight") is not None:
+            return (MAC_POPOVER_PT[0], s["popoverHeight"])
+    return MAC_POPOVER_PT
+
+
 def render_problems(lang: str, root: Path | None = None, platform: Platform = MAC,
                     directory: Path | None = None) -> list[str]:
     """Why macos-raw/<lang>/ is not a store set this pipeline may compose from.
@@ -419,10 +449,12 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
     render.json is written by the QA build's store set (QASnapshotRenderer),
     which measures the build it runs in. It must say: the store set, in this
     language, the catalogue in effect; drawn at 3x with the popover at 380x580
-    points and the panel 520 wide and settled; no DEVID_BUILD, no remote
-    control; no warning, refused request or blank-looking render; a local
-    usage history of Claude and Codex only (what the scanner records), with
-    days and messages in it; and exactly these raw files, with these md5s."""
+    points (a lastAligned shot's shorter, down to 400) and the panel 520 wide,
+    settled and dark; overlay scroll bars; the language's own region
+    (MAC_REGIONS); no DEVID_BUILD, no remote control; no warning, refused
+    request or blank-looking render; a local usage history of Claude and
+    Codex only (what the scanner records), with days and messages in it; and
+    exactly these raw files, with these md5s."""
     raw = directory or raw_dir(lang, root, platform)
     path = raw / (platform.render_manifest or RENDER_MANIFEST)
     if not path.is_file():
@@ -464,6 +496,18 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
     want(variant.get("panelWidth") == MAC_PANEL_WIDTH_PT,
          f"panel {variant.get('panelWidth')} points wide, not {MAC_PANEL_WIDTH_PT}")
     want(variant.get("panelSettled") is True, "the usage panel was still changing when drawn")
+    want(variant.get("scrollerStyle") == "overlay",
+         f"scroll bars were {variant.get('scrollerStyle')!r}, not 'overlay': a legacy scroller's "
+         "gutter is left empty offscreen and pushes every scrolling tab off-centre")
+    lum = variant.get("panelBackdropLuminance")
+    want(isinstance(lum, (int, float)) and not isinstance(lum, bool)
+         and 0 <= lum <= MAC_PANEL_MAX_BACKDROP_LUMINANCE,
+         f"the usage panel's backdrop has luminance {lum!r}, over "
+         f"{MAC_PANEL_MAX_BACKDROP_LUMINANCE}: a flat gray slab, not the dark HUD")
+    region = region_of(data.get("displayLocale"))
+    want(region == MAC_REGIONS.get(lang),
+         f"formatted for {data.get('displayLocale')!r}, not on {lang}'s region "
+         f"{MAC_REGIONS.get(lang)} (render_macos_qa_views.sh passes -AppleLocale)")
     days = variant.get("localScanDays")
     want(isinstance(days, int) and days > 0,
          "no local usage history, so the Activity card and the panel say there is none")
@@ -479,6 +523,17 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
     for s in shots_:
         sid = s.get("id")
         files = [(s.get("file"), s.get("md5"), f"{sid}.png")]
+        height = s.get("popoverHeight")
+        if height is not None:
+            want(s.get("page") == "lastAligned"
+                 and isinstance(height, (int, float)) and not isinstance(height, bool)
+                 and float(height).is_integer()
+                 and MAC_POPOVER_MIN_HEIGHT_PT <= height < MAC_POPOVER_PT[1],
+                 f"{sid}: popover {height!r} points high on a {s.get('page')!r} page; only a "
+                 f"lastAligned page may shorten it, to whole points from "
+                 f"{MAC_POPOVER_MIN_HEIGHT_PT} up to {MAC_POPOVER_PT[1]}")
+        popover = (MAC_POPOVER_PT[0], int(height)) if isinstance(height, (int, float)) \
+            and not isinstance(height, bool) else MAC_POPOVER_PT
         is_panel_shot = any(sid == st for st, sc in zip(stems(platform), platform.screens)
                             if sc in platform.panel_screens)
         if is_panel_shot:
@@ -501,9 +556,9 @@ def render_problems(lang: str, root: Path | None = None, platform: Platform = MA
                 size_ok = (r.get("width") == MAC_PANEL_WIDTH_PT
                            and r.get("pixelWidth") == MAC_PANEL_WIDTH_PT * MAC_RENDER_SCALE)
             else:
-                size_ok = ((r.get("width"), r.get("height")) == MAC_POPOVER_PT
+                size_ok = ((r.get("width"), r.get("height")) == popover
                            and (r.get("pixelWidth"), r.get("pixelHeight"))
-                           == (MAC_POPOVER_PT[0] * MAC_RENDER_SCALE, MAC_POPOVER_PT[1] * MAC_RENDER_SCALE))
+                           == (popover[0] * MAC_RENDER_SCALE, popover[1] * MAC_RENDER_SCALE))
             if not size_ok:
                 out.append(f"{name}: drawn {r.get('width')}x{r.get('height')} points / "
                            f"{r.get('pixelWidth')}x{r.get('pixelHeight')} px")

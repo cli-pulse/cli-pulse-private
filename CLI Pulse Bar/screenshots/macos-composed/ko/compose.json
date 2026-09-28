@@ -6,7 +6,7 @@
  "captions": {
   "01_overview": [
    "모든 것을 한눈에",
-   "사용량, 비용, 세션, 알림을 메뉴 막대에서 클릭 한 번으로 확인"
+   "메뉴 막대에서 사용량, 비용, 세션, 알림까지"
   ],
   "02_providers": [
    "실시간 할당량과 비용",
@@ -22,7 +22,7 @@
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
-   "할당량 알림에서 바로 확인, 다시 알림, 해결까지"
+   "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"
   ],
   "06_pulse_cat": [
    "펄스 캣을 만나 보세요",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "e521be381b11303c9c654a9719b63374",
-  "02_providers.png": "5be89575ea8857d4ca792051c58c5120",
-  "03_usage_history.panel.png": "78ed0fd669b23ddc037ae6d094dbc578",
-  "03_usage_history.png": "e521be381b11303c9c654a9719b63374",
-  "04_cost.png": "10d318a167ce544764d2622fca7f5738",
-  "05_alerts.png": "1b865d0c46f8a86d2eb6d6ede0f0fa89",
-  "06_pulse_cat.png": "ec7d63e3107fa4bd9c9810aee699181b"
+  "01_overview.png": "cc88532788e7c401f4588bca5cc0f8da",
+  "02_providers.png": "0f465a3e7f661ea06927b6ac5a692a3b",
+  "03_usage_history.panel.png": "e71926304f2bec5200a280f3f0601348",
+  "03_usage_history.png": "cc88532788e7c401f4588bca5cc0f8da",
+  "04_cost.png": "2d7819127839e72ea48f65b75411d8ba",
+  "05_alerts.png": "acc82f3dcaf423602972494403ede8a4",
+  "06_pulse_cat.png": "4a5daadfdc4cffdb78f4158e22e8e1f7"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -44,16 +44,16 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2880x1800.png": "99093a17527ccb0f55250f7c52094694",
-  "02_providers_2880x1800.png": "4c85f23693053984a2d0560215887600",
-  "03_usage_history_2880x1800.png": "eda5963a07e738c501b86a215479a62b",
-  "04_cost_2880x1800.png": "b5976e3198697cac50fae6da0fd6144c",
-  "05_alerts_2880x1800.png": "4b191f7e5d7fc6c3f17d48c59a059622",
-  "06_pulse_cat_2880x1800.png": "de5dcddb7ecf17ef9ea28805f75a61df"
+  "01_overview_2880x1800.png": "f86d4864a2d39a4e077293163e1322a3",
+  "02_providers_2880x1800.png": "e4147166fd4efa721b2a30b1c0c18649",
+  "03_usage_history_2880x1800.png": "22f263214e42778fa57d908c6773b2ae",
+  "04_cost_2880x1800.png": "1a21b561435b7efb1d0cab90a6e8ea07",
+  "05_alerts_2880x1800.png": "e45ff2d208c4f7940b45211aef32112b",
+  "06_pulse_cat_2880x1800.png": "8dc0fcfd277d4525dc89eba65098e922"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "14d9faacc223754fa9552029fd36b544",
+ "render": "f7a5f73b7a22833726d294e220fe36f2",
  "subtitle_pt": 46,
  "title_pt": 100
 }

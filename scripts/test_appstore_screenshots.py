@@ -538,9 +538,11 @@ MAC_STEMS = shots.stems(MAC)
 
 swift = (HERE.parent / "CLI Pulse Bar" / "CLIPulseCore" / "Sources" / "CLIPulseCore"
          / "QARenderSnapshot.swift").read_text(encoding="utf-8")
-rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(first|last), (true|false)\)', swift)
+rows = re.findall(r'\("(\w+)", \.demo\(\.(\w+)\), \.(first|last|lastAligned), (true|false)\)', swift)
 check("the Mac screens are the Swift store catalog's, in the same order",
       [r[0] for r in rows] == list(shots.MAC_SCREENS), f"{rows} vs {shots.MAC_SCREENS}")
+check("the cost screen is the only one scrolled to its end, and it opens above a card (lastAligned)",
+      [(r[0], r[2]) for r in rows if r[2] != "first"] == [("cost", "lastAligned")], str(rows))
 check("... and the screens drawn with the usage panel are the same",
       [r[0] for r in rows if r[3] == "true"] == list(shots.MAC_PANEL_SCREENS), str(rows))
 check("Mac stems are NN_screen in listing order",
@@ -605,6 +607,9 @@ for label, lang, planted in [
         ("a Developer ID-only feature", "en", "Remote Control from your iPhone"),
         ("Homebrew (the Mac denylist)", "es", "Instálalo con Homebrew"),
         ("the fan (the Mac denylist, Japanese)", "ja", "ファンの回転数も"),
+        # Only MAC_CAPTION_DENYLIST names this one: devid_only_terms_in knows
+        # the fan by "ファンの回転" alone, so a denylist without ファン passed.
+        ("the fan in words only the Mac denylist knows (Japanese)", "ja", "静かなファンで快適に"),
         ("another platform", "ko", "Android에서도"),
         ("a Taiwan-forbidden term", "zh-Hant", "會話與告警"),
         ("English left in a translation", "zh-Hans", "see what is left for your team and the rest of it"),
@@ -627,14 +632,23 @@ shots.write_png(rgba_mac, 2880, 1800, color_type=6)
 check("an RGBA Mac panel is refused", any("RGBA" in x for x in shots.panel_problems(rgba_mac, MAC)))
 
 
+# The cost shot opens above a card in a shortened popover (QARenderSnapshot
+# alignedTrim); the fixtures give it a 551-point one, as the renders measured.
+MAC_ALIGNED = {"04_cost": 551}
+
+
 def mac_render(raw: Path, lang: str, **over) -> dict:
     """A render.json a clean store render of `lang` would write for the files in `raw`."""
     renders, shot_rows = [], []
     for st in MAC_STEMS:
         f = raw / f"{st}.png"
-        renders.append({"file": f.name, "width": 380, "height": 580, "pixelWidth": 1140,
-                        "pixelHeight": 1740, "suspectBlank": False})
-        row = {"id": st, "file": f.name, "md5": shots.md5_of(f)}
+        h = MAC_ALIGNED.get(st, 580)
+        renders.append({"file": f.name, "width": 380, "height": h, "pixelWidth": 1140,
+                        "pixelHeight": h * 3, "suspectBlank": False})
+        row = {"id": st, "file": f.name, "md5": shots.md5_of(f),
+               "page": "lastAligned" if st in MAC_ALIGNED else "first"}
+        if st in MAC_ALIGNED:
+            row["popoverHeight"] = MAC_ALIGNED[st]
         q = raw / f"{st}.panel.png"
         if q.exists():
             renders.append({"file": q.name, "width": 520, "height": 862, "pixelWidth": 1560,
@@ -642,13 +656,15 @@ def mac_render(raw: Path, lang: str, **over) -> dict:
             row.update(panelFile=q.name, panelMD5=shots.md5_of(q))
         shot_rows.append(row)
     data = {"set": "store", "language": lang, "localeOverride": lang, "resolvedLocalization": lang,
+            "displayLocale": f"{lang}_{shots.MAC_REGIONS[lang]}",
             "localizationActive": True, "scale": 3, "windowBackingScale": 3, "warnings": [],
             "blockedRequests": [], "renders": renders, "shots": shot_rows,
             "app": {"version": "1.54.0", "build": "107"},
             "variant": {"devidBuild": False, "debugBuild": True, "sandboxed": False, "channel": "qa",
                         "remoteControlAvailable": False, "popoverWidth": 380, "popoverHeight": 580,
                         "panelWidth": 520, "panelSettled": True, "localScanDays": 250,
-                        "localScanProviders": ["Claude", "Codex"], "localScanMessages": 15659}}
+                        "localScanProviders": ["Claude", "Codex"], "localScanMessages": 15659,
+                        "scrollerStyle": "overlay", "panelBackdropLuminance": 0.12}}
     for key, value in over.items():
         if key.startswith("variant."):
             data["variant"][key.split(".", 1)[1]] = value
@@ -660,7 +676,7 @@ def mac_render(raw: Path, lang: str, **over) -> dict:
 def make_mac_set(root: Path, lang: str, **over) -> None:
     raw = shots.raw_dir(lang, root, MAC)
     for name in shots.raw_names(MAC):
-        w, h = (1560, 2586) if name.endswith(".panel.png") else (1140, 1740)
+        w, h = (1560, 2586) if name.endswith(".panel.png") else (1140, 3 * MAC_ALIGNED.get(name[:-4], 580))
         shots.write_png(raw / name, w, h)
         (raw / name).write_bytes((raw / name).read_bytes() + name.encode())   # distinct md5s
     (raw / shots.RENDER_MANIFEST).write_text(json.dumps(mac_render(raw, lang, **over)))
@@ -707,6 +723,68 @@ mac_breaks("a local usage history with Gemini in it", "the scanner records only"
            **{"variant.localScanProviders": ["Claude", "Codex", "Gemini"]})
 mac_breaks("an unsettled usage panel", "still changing", **{"variant.panelSettled": False})
 mac_breaks("the review set's manifest instead of the store set's", "not the store set", set="review")
+mac_breaks("legacy scroll bars (an empty gutter beside every scrolling tab)", "not 'overlay'",
+           **{"variant.scrollerStyle": "legacy"})
+mac_breaks("a usage panel drawn as a flat gray slab", "flat gray slab",
+           **{"variant.panelBackdropLuminance": 0.36})
+mac_breaks("a usage panel with no backdrop measurement", "flat gray slab",
+           **{"variant.panelBackdropLuminance": None})
+mac_breaks("numbers formatted on the render Mac's region", "not on ko's region", displayLocale="ko_US")
+mac_breaks("no display locale recorded", "not on ko's region", displayLocale=None)
+mac_breaks("a local usage history without messages", "has no messages", **{"variant.localScanMessages": 0})
+
+
+def rewrite_render(root: Path, change, lang: str = "ko", record: bool = True) -> None:
+    """Edit render.json; with `record`, also record the edit in compose.json,
+    so that only render_problems can tell."""
+    raw = shots.raw_dir(lang, root, MAC)
+    f = raw / shots.RENDER_MANIFEST
+    data = json.loads(f.read_text())
+    change(data)
+    f.write_text(json.dumps(data))
+    if record:
+        m_ = shots.composed_dir(lang, root, MAC) / shots.MANIFEST
+        rec = json.loads(m_.read_text())
+        rec["render"] = shots.md5_of(f)
+        shots.write_manifest(shots.composed_dir(lang, root, MAC), lang,
+                             {k: v for k, v in rec.items() if k not in ("lang", "panels")}, platform=MAC)
+
+
+mac_breaks("a render that looks blank", "looks blank",
+           mutate=lambda r: rewrite_render(r, lambda d: d["renders"][4].update(suspectBlank=True)))
+mac_breaks("the shots out of order", "shots [",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"].reverse()))
+mac_breaks("a shot missing from render.json", "shots [",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"].pop(4)))
+mac_breaks("a popover drawn 700 points high", "drawn 380x700 points",
+           mutate=lambda r: rewrite_render(r, lambda d: d["renders"][0].update(height=700, pixelHeight=2100)))
+mac_breaks("a popover drawn at 2x", "760x1160 px",
+           mutate=lambda r: rewrite_render(r, lambda d: d["renders"][0].update(pixelWidth=760, pixelHeight=1160)))
+mac_breaks("a shortened popover on a page that is not lastAligned", "only a lastAligned page may shorten",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][4].update(popoverHeight=551)))
+mac_breaks("a popover shortened under the 400 points users can set", "only a lastAligned page may shorten",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(popoverHeight=380)))
+mac_breaks("a popover shortened by a fraction of a point", "only a lastAligned page may shorten",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].update(popoverHeight=551.5)))
+mac_breaks("the shortened popover's raw at the pinned height", "04_cost.png: drawn",
+           mutate=lambda r: rewrite_render(r, lambda d: d["shots"][3].pop("popoverHeight")))
+mac_breaks("a render.json edited after the panels were composed", "not the one compose.json records",
+           mutate=lambda r: rewrite_render(r, lambda d: d.update(generatedAt="later"), record=False))
+mac_breaks("a stray render.log committed beside the raws", "not part of the store set: render.log",
+           mutate=lambda r: (shots.raw_dir("ko", r, MAC) / "render.log").write_text("build log"))
+check("a lastAligned shot's popover size is the one render.json records, the others the pinned one",
+      shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "04_cost") == (380, 551)
+      and shots.mac_popover_pt(mac_render(shots.raw_dir("ko", mac_root, MAC), "ko"), "01_overview")
+      == shots.MAC_POPOVER_PT)
+check("region_of reads a locale identifier's region, and nothing else",
+      [shots.region_of(x) for x in ("es_MX", "zh-Hant_TW", "ja-JP@calendar=japanese", "en", None, "es_419")]
+      == ["MX", "TW", "JP", None, None, None])
+render_regions = dict(re.findall(r"^\s+([A-Za-z-]+)\) echo ([a-z]{2}_[A-Z]{2}) ;;", render_sh, re.M))
+check("the render script draws each language on the region MAC_REGIONS names, as the iPhone capture does",
+      {k: v.split("_")[1] for k, v in render_regions.items()} == shots.MAC_REGIONS
+      and render_regions == locale_cases, f"{render_regions} vs {locale_cases}")
+check("the render script asks for overlay scroll bars",
+      "-AppleShowScrollBars WhenScrolling" in render_sh and '-AppleLocale "$(locale_for "$lang")"' in render_sh)
 
 
 def swap_raw(root: Path) -> None:
@@ -839,6 +917,24 @@ if fonts_here:
         not_run += 1
         print(f"NOT RUN: the Mac byte-identical recompose (composed with Pillow {mac_pillow}, "
               f"this is {PIL.__version__})")
+
+    # compose_one's own check of the popover's size, which render_problems
+    # cannot stand in for when it is called with raws it never saw.
+    odd_raw = tmp / "mac-odd-raw"
+    shutil.copytree(shots.raw_dir("en", platform=MAC), odd_raw)
+    from PIL import Image as PILImage
+    PILImage.new("RGB", (1140, 2100), (255, 255, 255)).save(odd_raw / "01_overview.png")
+    faces_en, _ = compose_mac.pick_faces("en")
+    with contextlib.redirect_stdout(io.StringIO()):
+        odd, _ = compose_mac.compose_one(odd_raw, "01_overview", tmp / "mac-odd-out" / "p.png", "en",
+                                         faces_en, 100, 46, 1)
+        aligned, _ = compose_mac.compose_one(odd_raw, "04_cost", tmp / "mac-odd-out" / "q.png", "en",
+                                             faces_en, 100, 46, 1)
+    check("negative control: a raw popover of the wrong size is refused by the compositor itself",
+          any("01_overview.png is 1140x2100, not 1140x1740" in p_ for p_ in odd), str(odd))
+    check("negative control: the shortened cost popover composed as if it were the pinned 580 points "
+          "is refused", any("04_cost.png is 1140x" in p_ and "not 1140x1740" in p_ for p_ in aligned),
+          str(aligned))
 
     # A render.json from a Developer ID build: the compositor refuses and
     # withdraws whatever set was there.

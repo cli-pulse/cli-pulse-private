@@ -22,7 +22,7 @@
   ],
   "05_alerts": [
    "配额不再突然见底",
-   "配额告警可以确认、稍后提醒或直接解决"
+   "告警可以确认、解决或稍后提醒"
   ],
   "06_pulse_cat": [
    "认识一下脉冲猫",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "631a609858e5aa9dd6f93329716351ff",
-  "02_providers.png": "4b98b5daaebdf06a2d4bf970f7525fbf",
-  "03_usage_history.panel.png": "0360e87d3c6d04c6164b380870e761cb",
-  "03_usage_history.png": "631a609858e5aa9dd6f93329716351ff",
-  "04_cost.png": "ecb692466d641b5d2b76f4f5d1845486",
-  "05_alerts.png": "c447c2c32992e4675ee00db75a26a396",
-  "06_pulse_cat.png": "2a8d1399822366953c2edb2fa7794bb0"
+  "01_overview.png": "21e13c6b2ab647446f94dd2bbb416337",
+  "02_providers.png": "f5b28ac2c78c325a0418683614560d8c",
+  "03_usage_history.panel.png": "83d8307bff02530393cb616eb6e3d333",
+  "03_usage_history.png": "21e13c6b2ab647446f94dd2bbb416337",
+  "04_cost.png": "0d82e0589c04c1dc3ff57eb92fb5f857",
+  "05_alerts.png": "467e849ddb59da0d3a935e20ed55db06",
+  "06_pulse_cat.png": "ac5a68d03146cdf56a88760f0720dd3f"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_2880x1800.png": "c005881cea29d55c4c9f9f68a511ca62",
-  "02_providers_2880x1800.png": "91016ab45d750440670729ead79b22bc",
-  "03_usage_history_2880x1800.png": "c436e0a471205427fc18051245244e1e",
-  "04_cost_2880x1800.png": "b313eb6fd3bdc2d83dc61c90a99aae75",
-  "05_alerts_2880x1800.png": "5b9eebdce1ed4821f9ace187de2ca746",
-  "06_pulse_cat_2880x1800.png": "692267cbce389944d41e7df3107e0511"
+  "01_overview_2880x1800.png": "dacc730bd43534eb203c1bac16303987",
+  "02_providers_2880x1800.png": "0fd70e1075a0b2317990ce2f46a6833f",
+  "03_usage_history_2880x1800.png": "5d08de1c8acb0dc4372db3f674320548",
+  "04_cost_2880x1800.png": "5f13097cf92f0c7c87e3e5ee0e12676f",
+  "05_alerts_2880x1800.png": "7d3173582739b805f2bbbdea0faa7835",
+  "06_pulse_cat_2880x1800.png": "dc6097173bcc60a28d48a48f380dbfd4"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "1da3d2dfd4d1ac15233ab262d8ad0925",
+ "render": "ae026f99127195eaecf08fdc136e4e3c",
  "subtitle_pt": 46,
  "title_pt": 100
 }
