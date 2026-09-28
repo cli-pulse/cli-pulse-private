@@ -19,7 +19,7 @@ Usage:
 Exit 1 if any caption does not fit or any character would render as tofu.
 The output directory then keeps no set a push would accept (see 5).
 
-Five things this script learned the hard way, each of which silently produces a
+Six things this script learned the hard way, each of which silently produces a
 listing you would not ship:
 
 1. TEXT THAT DOES NOT FIT IS NOT A LAYOUT PROBLEM, IT IS A CROPPED SENTENCE.
@@ -65,6 +65,13 @@ listing you would not ship:
    left there cannot be pushed as if it were this run's: set_problems in
    scripts/appstore_screenshots.py, which the pusher and --require-shots use,
    refuses a set without compose.json or with a panel it does not list.
+
+6. PANELS ARE SEEN SIDE BY SIDE, SO THEIR HEADLINES MUST LINE UP.
+   Every panel of a set reserves room for the set's tallest subtitle, so the
+   phone sits at the same place on each. Centring a shorter caption in that
+   room dropped its headline half a line below its neighbours' in every set
+   mixing one- and two-line subtitles. The headline now sits at the top of
+   the room on every panel (caption_layout).
 """
 
 from __future__ import annotations
@@ -541,6 +548,34 @@ def set_sub_lines(lang: str, faces: dict[str, Face], stems_: list[str], s_size: 
                for st in stems_)
 
 
+@dataclass(frozen=True)
+class CaptionLayout:
+    title_y: int                # top of the title's line box
+    sub_ys: tuple[int, ...]     # top of each subtitle line's box
+    shot_top: int               # where the space for the phone starts
+
+
+def caption_layout(title_box: int, sub_box: int, sub_lines: int,
+                   reserved_lines: int) -> CaptionLayout:
+    """Where one panel's caption and phone go, from its line boxes (pure; tested
+    without Pillow). `reserved_lines` is the set's tallest subtitle
+    (set_sub_lines), and every panel reserves room for that many lines.
+
+    The headline is pinned to the top of that room, the subtitle follows
+    directly under it, and whatever a shorter subtitle leaves over stays empty
+    below it, so the headline sits at the same height on every panel of the
+    set (see 6 in the module docstring: centring the caption in the room
+    dropped the one-line panels' headlines half a line, in zh-Hant 01-04, ja 02
+    and es 01/02/04). The phone's place depends only on the room."""
+    reserved_lines = max(reserved_lines, sub_lines)
+    title_y = TEXT_TOP_MARGIN
+    first_sub = title_y + title_box + TITLE_TO_SUB_GAP
+    sub_ys = tuple(first_sub + i * (sub_box + SUB_LINE_GAP) for i in range(sub_lines))
+    room = (title_box + TITLE_TO_SUB_GAP
+            + reserved_lines * sub_box + (reserved_lines - 1) * SUB_LINE_GAP)
+    return CaptionLayout(title_y, sub_ys, TEXT_TOP_MARGIN + room + TEXT_TO_SHOT_GAP)
+
+
 def set_sizes(lang: str, faces: dict[str, Face], stems_: list[str]) -> tuple[int, int, list[str]]:
     """One title size and one subtitle size for the whole set, the largest at
     which every caption fits: a carousel whose panels change type size from
@@ -597,23 +632,16 @@ def compose_one(src: Path, dst: Path, lang: str, faces: dict[str, Face],
         problems.append(f"subtitle overflows at {s_size}pt: {subtitle!r}")
         sub_lines = [subtitle.replace(ZWSP, "")]
 
-    def block(lines: int) -> int:
-        return (line_height(title_font) + TITLE_TO_SUB_GAP
-                + lines * line_height(sub_font) + (lines - 1) * SUB_LINE_GAP)
-
-    # The text is centred in a block as tall as the set's tallest caption, so
-    # the phone below starts at the same height on every panel of the set.
-    reserved = block(max(reserved_lines, len(sub_lines)))
-    y = TEXT_TOP_MARGIN + (reserved - block(len(sub_lines))) // 2
-    y = draw_centered(draw, y, title, title_font, TITLE_COLOR)
-    y += TITLE_TO_SUB_GAP
-    for i, line in enumerate(sub_lines):
-        y = draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR)
-        if i != len(sub_lines) - 1:
-            y += SUB_LINE_GAP
+    # Headline at the same height on every panel of the set, and the phone
+    # too: see caption_layout.
+    layout = caption_layout(line_height(title_font), line_height(sub_font),
+                            len(sub_lines), reserved_lines)
+    draw_centered(draw, layout.title_y, title, title_font, TITLE_COLOR)
+    for y, line in zip(layout.sub_ys, sub_lines):
+        draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR)
 
     shot = Image.open(src).convert("RGB")
-    top = TEXT_TOP_MARGIN + reserved + TEXT_TO_SHOT_GAP
+    top = layout.shot_top
     avail_h = CANVAS_H - top - 80
     avail_w = CANVAS_W - SIDE_MARGIN * 2
     scale = min(avail_w / shot.width, avail_h / shot.height)

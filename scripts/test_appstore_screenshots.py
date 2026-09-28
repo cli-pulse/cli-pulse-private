@@ -11,13 +11,17 @@
     Traditional Chinese captions use the decided terms (scripts/zh_hant_terms.json);
     lines wrap where each script allows it (kinsoku in Chinese and Japanese,
     spaces in Korean and Spanish, never inside "CLI Pulse" or a Latin word);
+    every headline of a set starts at the same height, whatever its subtitle's
+    line count, and so does every phone;
   * a composed set is uploadable only with the compose.json a clean compose
     run writes, and only with the panels it records;
   * on macOS with Pillow only: every caption's every character has a glyph in
     the chosen face; a Latin-only face, and a face of the other Chinese region,
     is refused (the negative controls); a trailing 、 is centred on its ink; a
-    failing compose run publishes nothing and withdraws the earlier set. On any
-    other machine these are reported as NOT RUN, never as passed.
+    failing compose run publishes nothing and withdraws the earlier set; on a
+    composed set mixing one- and two-line subtitles, every headline is on the
+    same pixel rows. On any other machine these are reported as NOT RUN, never
+    as passed.
 
 Bare python3 for everything else; CI runs it in repo-hygiene.yml.
 """
@@ -272,6 +276,26 @@ check("a U+200B is a preferred break and is never drawn",
       lines == ["すべてを", "ひと目で見る"], str(lines))
 check("nothing fits: None, not a clipped line", wrap("Averyveryverylongword", "en", 5) is None)
 
+# ── caption layout ───────────────────────────────────────────────────────────
+# Every panel of a set reserves room for the set's tallest subtitle. App Store
+# Connect shows the panels side by side, so in a set mixing one- and two-line
+# subtitles a one-line panel's headline must start where a two-line panel's
+# does; centring the caption in the room dropped it half a line.
+t_box, s_box = round(100 * compose.LINE_BOX), round(46 * compose.LINE_BOX)
+one, two = (compose.caption_layout(t_box, s_box, n, 2) for n in (1, 2))
+check("in a set mixing one- and two-line subtitles, every headline and subtitle starts at the same y",
+      one.title_y == two.title_y and one.sub_ys[0] == two.sub_ys[0], f"{one} vs {two}")
+check("... and every phone too",
+      one.shot_top == two.shot_top, f"{one} vs {two}")
+check("the headline is at the top of the room, the subtitle directly under it",
+      one.title_y == compose.TEXT_TOP_MARGIN
+      and one.sub_ys == (one.title_y + t_box + compose.TITLE_TO_SUB_GAP,)
+      and two.sub_ys[1] == two.sub_ys[0] + s_box + compose.SUB_LINE_GAP, f"{one} / {two}")
+alone = compose.caption_layout(t_box, s_box, 1, 1)
+check("a set of one-line subtitles reserves one line, so its phone starts one line higher",
+      alone.title_y == one.title_y
+      and alone.shot_top == one.shot_top - s_box - compose.SUB_LINE_GAP, f"{alone} vs {one}")
+
 # ── fonts (macOS with Pillow only) ───────────────────────────────────────────
 
 fonts_here = compose.ImageFont is not None and Path("/System/Library/Fonts/SFNS.ttf").exists()
@@ -387,6 +411,68 @@ if fonts_here:
           raised is not None and calls["n"] == 3 and not manifest.exists()
           and not any(p.name.startswith(".ko.") for p in out.parent.iterdir()),
           f"raised={raised!r} manifest={manifest.exists()}")
+
+    # The headline rule on the pixels: one headline over all five panels,
+    # subtitles alternating one and two lines (the one-line one is the other's
+    # first line, so it draws the same ink), composed and measured.
+    from PIL import ImageChops as _Chops
+    FIXTURE_RGB = (240, 242, 246)   # the raw captures above
+
+    def ink_rows(img, lo: int, hi: int, floor: int):
+        """(first, last) row in [lo, hi) with a pixel whose every channel is >= floor."""
+        chans = [c.point(lambda v: 255 if v >= floor else 0)
+                 for c in img.crop((0, lo, img.width, hi)).split()]
+        box = _Chops.darker(_Chops.darker(chans[0], chans[1]), chans[2]).getbbox()
+        return None if box is None else (lo + box[1], lo + box[3] - 1)
+
+    def phone_top(img) -> int | None:
+        """The first row whose middle 200 px are all the capture's colour."""
+        mid = img.width // 2
+        for y in range(img.height):
+            if set(img.crop((mid - 100, y, mid + 100, y + 1)).getdata()) == {FIXTURE_RGB}:
+                return y
+        return None
+
+    es_faces = compose.pick_faces("es")[0]
+    long_sub = "Alertas de cuota, picos de CPU y sesiones de larga duración"
+    long_lines = compose.subtitle_lines(long_sub, "es", es_faces["subtitle"], compose.SUB_SIZE_MAX) or []
+    short_sub = long_lines[0] if long_lines else long_sub
+    mixed = {st: ("Todo de un vistazo", long_sub if i % 2 else short_sub)
+             for i, st in enumerate(shots.stems())}
+    saved_es = dict(compose.COPY["es"])
+    out_es = tmp / "compose-out" / "es"
+    try:
+        compose.COPY["es"].update(mixed)
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            es_run = compose.compose_lang("es", raw, out_es)
+        n_lines = [len(compose.subtitle_lines(s, "es", es_faces["subtitle"], compose.SUB_SIZE_MAX) or [])
+                   for _, s in mixed.values()]
+    finally:
+        compose.COPY["es"].clear()
+        compose.COPY["es"].update(saved_es)
+    check("the headline fixture composes, and mixes one- and two-line subtitles",
+          es_run == [] and n_lines == [1, 2, 1, 2, 1], f"{es_run} {n_lines}\n{log.getvalue()}")
+    measured = {}
+    for st in shots.stems():
+        img = _Image.open(out_es / shots.composed_name(st)).convert("RGB")
+        top = phone_top(img)
+        # Only the white title reaches 215 in every channel; the grey subtitle
+        # (175, 182, 200) never does, and anything above 120 is one of the two.
+        title = ink_rows(img, 0, top or 0, 215) if top else None
+        sub = ink_rows(img, title[1] + 1, top, 120) if title else None
+        measured[st] = (title, sub[0] if sub else None, top,
+                        img.crop((0, top, img.width, img.height)).tobytes() if top else None)
+    detail = "\n".join(f"{st}: headline rows {m[0]}, subtitle from row {m[1]}, phone from row {m[2]}"
+                       for st, m in measured.items())
+    check("every panel's headline is on the same rows when subtitles mix one and two lines",
+          None not in {m[0] for m in measured.values()} and len({m[0] for m in measured.values()}) == 1,
+          detail)
+    check("... and so is its subtitle's first line",
+          None not in {m[1] for m in measured.values()} and len({m[1] for m in measured.values()}) == 1,
+          detail)
+    check("... and the phone starts on the same row, drawn the same, on every panel",
+          None not in {m[2] for m in measured.values()}
+          and len({(m[2], m[3]) for m in measured.values()}) == 1, detail)
 else:
     not_run += 1
     print("NOT RUN: glyph coverage (needs macOS system fonts and Pillow); "

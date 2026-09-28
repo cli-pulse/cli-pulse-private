@@ -34,10 +34,10 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_1290x2796.png": "09a701d2d71e0602298d84ad7e8da976",
-  "02_providers_1290x2796.png": "ce5beb055c26a43e9ac4ce32766aa437",
-  "03_cost_1290x2796.png": "5da66b974a2f194b8c07054700e204f9",
-  "04_sessions_1290x2796.png": "889f97d3498e580ef3d2cb88b14e0740",
+  "01_overview_1290x2796.png": "3ec53db0315e0d150141fe1e301423c6",
+  "02_providers_1290x2796.png": "78a34a8f41180c2648483de0ec9b07f2",
+  "03_cost_1290x2796.png": "564173c6496038952bb12f57affd1fbd",
+  "04_sessions_1290x2796.png": "079fbc380248d90f011fd63949a7cc41",
   "05_alerts_1290x2796.png": "0b8130519db8fe60a2b3deab58d336f6"
  },
  "subtitle_pt": 46,
