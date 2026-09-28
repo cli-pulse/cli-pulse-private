@@ -374,8 +374,8 @@ not fit in App Store Connect's 10 it deletes only the overflow first (the rest
 once the new ones are COMPLETE).
 
 **What that costs the repository.** This repository is public and its history
-keeps every committed PNG. One Mac set is about 46 MB (the raws about 27 MB, of
-which the six 3x usage panels are about 15 MB; the composed panels about 20
+keeps every committed PNG. One Mac set is about 46 MB (the raws about 29 MB, of
+which the six 3x usage panels are about 15 MB; the composed panels about 17
 MB), and because the footer carries the version, each release that pushes Mac
 screenshots adds a new one rather than reusing blobs. Push new Mac screenshots
 only in releases whose Mac UI changed; a release that keeps the listing's
