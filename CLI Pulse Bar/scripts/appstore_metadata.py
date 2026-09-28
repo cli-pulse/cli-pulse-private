@@ -419,15 +419,15 @@ def main():
 
     # --- macOS ---
     mac_version_id = get_or_create_version("MAC_OS")
-    mac_loc_id = set_localization(mac_version_id, "MAC_OS")
+    set_localization(mac_version_id, "MAC_OS")
 
-    mac_screenshots = sorted([
-        os.path.join(os.path.expanduser("~/Desktop/CLIPulseBar-Screenshots"), f)
-        for f in os.listdir(os.path.expanduser("~/Desktop/CLIPulseBar-Screenshots"))
-        if f.endswith("_2880x1800.png")
-    ])
-    if mac_screenshots:
-        upload_screenshots(mac_loc_id, mac_screenshots, "APP_DESKTOP")
+    # The Mac screenshots are not uploaded here any more. This used to push
+    # AppKit mockups from ~/Desktop/CLIPulseBar-Screenshots to en-US's
+    # APP_DESKTOP set, so a stray run would have replaced the real six-language
+    # set with them. The Mac panels are pushed per locale, dry run first, by
+    # scripts/asc_push_screenshots.py --platform MAC_OS.
+    print("  macOS screenshots: not uploaded here; use "
+          "scripts/asc_push_screenshots.py --platform MAC_OS --version <X.Y.Z>")
 
     # --- iOS ---
     ios_version_id = get_or_create_version("IOS")

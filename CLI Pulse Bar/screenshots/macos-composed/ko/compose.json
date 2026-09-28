@@ -1,0 +1,59 @@
+{
+ "app": {
+  "build": "107",
+  "version": "1.54.0"
+ },
+ "captions": {
+  "01_overview": [
+   "모든 것을 한눈에",
+   "메뉴 막대에서 사용량, 비용, 세션, 알림까지"
+  ],
+  "02_providers": [
+   "실시간 할당량과 비용",
+   "한도까지 얼마나 남았는지 바로 확인하세요"
+  ],
+  "03_usage_history": [
+   "사용 기록을 클릭 한 번으로",
+   "Claude와 Codex 로컬 기록으로 보는 활동 히트맵, 연속 사용일, 자주 쓰는 모델"
+  ],
+  "04_cost": [
+   "비용, 어디에 쓰이나요?",
+   "공급자별 비용, 상위 프로젝트, 위험 신호"
+  ],
+  "05_alerts": [
+   "할당량이 바닥나기 전에",
+   "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"
+  ],
+  "06_pulse_cat": [
+   "펄스 캣을 만나 보세요",
+   "AI 사용량에 따라 에너지와 허기가 달라지는 데스크톱 고양이"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "cc88532788e7c401f4588bca5cc0f8da",
+  "02_providers.png": "0f465a3e7f661ea06927b6ac5a692a3b",
+  "03_usage_history.panel.png": "e71926304f2bec5200a280f3f0601348",
+  "03_usage_history.png": "cc88532788e7c401f4588bca5cc0f8da",
+  "04_cost.png": "2d7819127839e72ea48f65b75411d8ba",
+  "05_alerts.png": "acc82f3dcaf423602972494403ede8a4",
+  "06_pulse_cat.png": "4a5daadfdc4cffdb78f4158e22e8e1f7"
+ },
+ "faces": {
+  "subtitle": "Apple SD Gothic Neo",
+  "title": "Apple SD Gothic Neo"
+ },
+ "lang": "ko",
+ "panels": {
+  "01_overview_2880x1800.png": "f86d4864a2d39a4e077293163e1322a3",
+  "02_providers_2880x1800.png": "e4147166fd4efa721b2a30b1c0c18649",
+  "03_usage_history_2880x1800.png": "22f263214e42778fa57d908c6773b2ae",
+  "04_cost_2880x1800.png": "1a21b561435b7efb1d0cab90a6e8ea07",
+  "05_alerts_2880x1800.png": "e45ff2d208c4f7940b45211aef32112b",
+  "06_pulse_cat_2880x1800.png": "8dc0fcfd277d4525dc89eba65098e922"
+ },
+ "pillow": "10.4.0",
+ "px_per_pt": 2.2707,
+ "render": "f7a5f73b7a22833726d294e220fe36f2",
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

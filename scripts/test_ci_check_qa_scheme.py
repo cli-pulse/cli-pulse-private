@@ -175,6 +175,58 @@ class QASchemeContractTests(unittest.TestCase):
         )
         self.assert_rejected(project_text=mutated)
 
+    # The QA renders stand for the Mac App Store build (the store set is its
+    # screenshots), so DEVID_BUILD may not reach either Debug QA configuration,
+    # in any spelling.
+    def test_devid_must_not_reach_app_debug_qa_as_a_condition(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10008 /* Debug QA */",
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLIPULSE_QA_RENDER";',
+            'SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) CLIPULSE_QA_RENDER DEVID_BUILD";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_devid_must_not_reach_app_debug_qa_through_other_swift_flags(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10008 /* Debug QA */ = {",
+            "buildSettings = {",
+            'buildSettings = {\n\t\t\t\tOTHER_SWIFT_FLAGS = "$(inherited) -DDEVID_BUILD";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_devid_must_not_reach_project_debug_qa_as_a_condition(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10007 /* Debug QA */ = {",
+            "buildSettings = {",
+            "buildSettings = {\n\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = "
+            '"DEBUG DEVID_BUILD $(inherited)";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_devid_must_not_reach_project_debug_qa_through_other_swift_flags(self) -> None:
+        mutated = replace_after(
+            self.project_text,
+            "G10007 /* Debug QA */ = {",
+            "buildSettings = {",
+            'buildSettings = {\n\t\t\t\tOTHER_SWIFT_FLAGS = "-DDEVID_BUILD";',
+        )
+        self.assert_rejected(project_text=mutated)
+
+    def test_devid_in_release_is_not_this_guards_business(self) -> None:
+        # Control: the rule is about Debug QA. Planting DEVID_BUILD in the
+        # app's Release configuration is left alone here (the Developer ID
+        # archive gets it from build_signed_app.sh, not the project).
+        mutated = replace_after(
+            self.project_text,
+            "G10006 /* Release */ = {",
+            "buildSettings = {",
+            'buildSettings = {\n\t\t\t\tOTHER_SWIFT_FLAGS = "$(inherited) -DDEVID_BUILD";',
+        )
+        validate_contract_texts(mutated, self.scheme_text)
+
 
 class RenderConditionOutsideProjectTests(unittest.TestCase):
     """The render condition could also be switched on without touching the

@@ -24,7 +24,7 @@ trap 'rm -rf "$TMP"' EXIT
 PAYWALL_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionView.swift"
 OFFER_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/SubscriptionManager.swift"
 INLINE_REL="CLI Pulse Bar/CLI Pulse Bar/SubscriptionSection.swift"
-CAPTION_REL="CLI Pulse Bar/scripts/compose_appstore_screenshots.py"
+CAPTION_REL="CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py"
 STRINGS_REL="CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings"
 # The Android catalog. Until v1.52.1 this suite exercised only the Apple side,
 # so the guard's Android coverage was never tested — and it turned out to be
@@ -213,10 +213,12 @@ assert_changed "inline card unregistered bullet" "$TMP/case/$INLINE_REL" "$befor
 # ── 8. a retired claim comes back in a screenshot caption ──────────────────
 # The third purchase surface, and the least forgiving: caption text is baked
 # into an uploaded PNG, so a false claim there survives every app update. The
-# string below is the one that actually shipped.
+# claim planted below is the one that actually shipped (in the v1.28 Mac set's
+# subscription panel); it goes into the Mac compositor's caption table, which
+# replaced that set for 1.54.0.
 build_fixture "$TMP/case"
 before="$(shasum "$TMP/case/$CAPTION_REL" | cut -d' ' -f1)"
-perl -0pi -e 's/"Unlimited providers — track every tool you use"/"Unlimited providers, devices, and priority support"/' \
+perl -0pi -e 's/"Meet Pulse Cat"/"Unlimited providers, devices, and priority support"/' \
     "$TMP/case/$CAPTION_REL"
 assert_changed "screenshot caption claim" "$TMP/case/$CAPTION_REL" "$before" \
     && expect_fail "screenshot caption claim" "screenshot caption claims"
@@ -235,7 +237,7 @@ expect_fail "caption scan matches nothing" "found no App Store screenshot captio
 # POSITIVE case: the guard must still pass.
 build_fixture "$TMP/case"
 before="$(shasum "$TMP/case/$CAPTION_REL" | cut -d' ' -f1)"
-perl -0pi -e 's/^(COPY = \{)/# note: we deliberately no longer promise priority support or unlimited devices\n$1/m' \
+perl -0pi -e 's/^(COPY: dict)/# note: we deliberately no longer promise priority support or unlimited devices\n$1/m' \
     "$TMP/case/$CAPTION_REL"
 if assert_changed "comment mentioning retired claims" "$TMP/case/$CAPTION_REL" "$before"; then
     if out="$(bash "$GUARD" --root "$TMP/case" 2>&1)"; then

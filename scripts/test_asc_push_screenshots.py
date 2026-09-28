@@ -28,7 +28,13 @@ of the endpoints the pusher uses and checks what it WOULD do:
     fails, saying why, if it never comes; a rerun that finds a COMPLETE panel
     with the right name and size but no checksum yet waits for it instead of
     re-uploading and deleting it, and changes nothing if it never comes;
-  * a set that would exceed 10 with both present deletes the old ones first;
+  * a set that would exceed 10 with both present deletes only the overflow
+    first, the rest once the new panels are COMPLETE;
+  * --apply without --platform is refused; --platform MAC_OS touches only the
+    macOS version's APP_DESKTOP sets (creating the missing ones), never iOS;
+    it refuses Mac panels drawn by another version (compose.json), makes room
+    with 4 deletes on 8 live and 5 on 9, and a failure after making room says
+    how many of the live set were already gone;
   * a locale without an iPhone set gets one created;
   * --locale limits the writes;
   * an upload part is sent with the headers App Store Connect named and never
@@ -42,6 +48,7 @@ import contextlib
 import copy
 import hashlib
 import io
+import json
 import sys
 import tempfile
 from pathlib import Path
@@ -111,6 +118,7 @@ class FakeASC:
     # with sourceFileChecksum null, for this many reads of its set.
     checksum_lag = 0
     lag: dict = {}                 # shot id -> set reads left without its checksum
+    wrong_checksum: set = set()    # fileNames a set read reports with another file's checksum
     constructed = 0
     next_id = 0
 
@@ -139,6 +147,8 @@ class FakeASC:
                 if FakeASC.lag.get(r["id"], 0) > 0:
                     FakeASC.lag[r["id"]] -= 1
                     r["attributes"]["sourceFileChecksum"] = None
+                elif r["attributes"]["fileName"] in FakeASC.wrong_checksum:
+                    r["attributes"]["sourceFileChecksum"] = "e" * 32
             return {"data": rows}
         if path.startswith("/appScreenshots/"):
             if path.split("/")[2] in FakeASC.fail_get:
@@ -258,6 +268,7 @@ def fresh(**kw) -> None:
     FakeASC.interrupt_upload_of = None
     FakeASC.checksum_lag = 0
     FakeASC.lag = {}
+    FakeASC.wrong_checksum = set()
     FakeASC.constructed = 0
 
 
@@ -302,39 +313,43 @@ try:
     # 2. an invalid panel stops --apply before the store is contacted
     fresh_repo(bad="alpha")
     fresh()
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("a panel with alpha: refused, store never contacted",
           code == 1 and FakeASC.constructed == 0 and "RGBA" in out
           and "nothing was written or deleted" in out, out)
     fresh_repo(width=1284)
     fresh()
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("a panel of the wrong size: refused, store never contacted",
           code == 1 and FakeASC.constructed == 0 and "1284x2796" in out, out)
     fresh_repo(bad="no-manifest")
     fresh()
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("a set no clean compose run wrote (no compose.json): refused, store never contacted",
           code == 1 and FakeASC.constructed == 0 and "compose.json is missing" in out, out)
     fresh_repo()
 
     # 3. editability
     fresh()
-    code, out = run("--apply", "--version", "1.53.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.53.0")
     check("apply to a READY_FOR_SALE version is refused with zero writes",
           code == 1 and not writes() and "Nothing was written" in out, out)
     fresh(state="WAITING_FOR_REVIEW")
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("apply while WAITING_FOR_REVIEW is refused, with the withdraw hint",
           code == 1 and not writes() and "Withdraw the iOS submission" in out, out)
     fresh()
-    code, out = run("--apply")
+    code, out = run("--apply", "--platform", "IOS")
     check("apply without --version is refused before contacting the store",
           code == 1 and FakeASC.constructed == 0, out)
+    fresh()
+    code, out = run("--apply", "--version", "1.54.0")
+    check("apply without --platform is refused before contacting the store",
+          code == 1 and FakeASC.constructed == 0 and "--platform" in out, out)
 
     # 4. a locale with no localization on the version
     fresh(drop_locale="ko")
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("a locale missing its localization: refused with zero writes",
           code == 1 and not writes() and "no localization for ko" in out, out)
 
@@ -342,7 +357,7 @@ try:
     fresh()
     ipad_before = {k: list(v["shots"]) for k, v in FakeASC.store["sets"].items()
                    if v["type"] != "APP_IPHONE_67"}
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("apply exits 0 and verifies", code == 0 and "APPLY OK" in out, out)
     for loc in ALL:
         lang = shots.SHOT_SOURCES[loc]
@@ -375,14 +390,14 @@ try:
 
     # 6. idempotent
     FakeASC.log = []
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("a second apply writes nothing and exits 0",
           code == 0 and not writes() and out.count("nothing to do") == len(ALL), out)
 
     # 7. App Store Connect fails to process one panel
     fresh()
     FakeASC.fail_processing = {"03_cost_1290x2796.png"}
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a panel the store fails: run fails, the new ones are removed, the old set is intact",
           code == 1 and set_files("ja") == [(f"old_{n}.png", "0" * 32) for n in range(5)]
           and "the live set is untouched" in out and "App Store Connect FAILED it" in out, out)
@@ -391,7 +406,7 @@ try:
     fresh()
     FakeASC.fail_get = {"shot-3"}
     FakeASC.next_id = 0
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a GET that dies mid-run: the new ones are removed first, the old set is intact",
           code == 2 and set_files("ja") == [(f"old_{n}.png", "0" * 32) for n in range(5)]
           and "stopped by SystemExit" in out and "removed the 5 added; the live set is untouched" in out,
@@ -401,7 +416,7 @@ try:
     fresh()
     FakeASC.fail_processing = {"03_cost_1290x2796.png"}
     FakeASC.fail_delete = True
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a refused cleanup is reported with the ids left, never as 'untouched'",
           code == 1 and "could NOT remove 5 of the 5 added" in out
           and "the live set is untouched" not in out and len(set_files("ja")) == 10, out)
@@ -411,7 +426,7 @@ try:
     FakeASC.interrupt_upload_of = "04_sessions_1290x2796.png"
     interrupted = False
     try:
-        run("--apply", "--version", "1.54.0", "--locale", "ja")
+        run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     except KeyboardInterrupt:
         interrupted = True
     check("Ctrl-C mid-upload: the reserved panel and the ones before it are removed, then it stops",
@@ -426,7 +441,7 @@ try:
         FakeASC.store["shots"][i] = {"fileName": p.name, "fileSize": p.stat().st_size,
                                      "state": "COMPLETE", "sourceFileChecksum": m, "set": ja_set}
         FakeASC.store["sets"][ja_set]["shots"].append(i)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a rerun reuses what the stopped run uploaded: no upload, no delete-first, old ones gone",
           code == 0 and "reusing them" in out and "would exceed" not in out
           and not any(m == "POST" for m, _ in FakeASC.log)
@@ -440,7 +455,7 @@ try:
         FakeASC.store["shots"][i] = {"fileName": f"0{n + 1}_x.png", "fileSize": 9,
                                      "state": "AWAITING_UPLOAD", "set": ja_set}
         FakeASC.store["sets"][ja_set]["shots"].append(i)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     first_debris = min((i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE" and "debris" in p),
                        default=10**6)
     first_post = min((i for i, (m, p) in enumerate(FakeASC.log) if m == "POST"), default=-1)
@@ -454,7 +469,7 @@ try:
     # panels yet; it waits for them, and one run does every locale
     fresh()
     FakeASC.checksum_lag = 3
-    code, out = run("--apply", "--version", "1.54.0")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0")
     check("checksums that lag behind COMPLETE: the read-back waits, and one run does every locale",
           code == 0 and "APPLY OK" in out and "MISMATCH" not in out
           and out.count("checksums match") == len(ALL)
@@ -462,7 +477,7 @@ try:
               shots.SHOT_SOURCES[loc], TMP)], md5s(shots.SHOT_SOURCES[loc]))) for loc in ALL), out)
     fresh()
     FakeASC.checksum_lag = 10**9
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a checksum that never comes: the read-back gives up at POLL_TIMEOUT and says why",
           code == 1 and "5 screenshot(s) still without a checksum after" in out
           and "MISMATCH" in out and "no checksum]" in out, out)
@@ -488,13 +503,13 @@ try:
     check("dry run: a COMPLETE panel without a checksum yet is named, and --apply will wait",
           code == 0 and "1 COMPLETE without a checksum yet" in out, out)
     settled_ja(lag=3)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a COMPLETE panel with the right name and size but no checksum yet is waited for, "
           "then kept: no upload, no delete",
           code == 0 and "waiting for App Store Connect" in out and "nothing to do" in out
           and not writes() and "left-4" in FakeASC.store["shots"], out)
     settled_ja(lag=3, md5_of_last="f" * 32)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     posts = [p for m, p in FakeASC.log if m == "POST"]
     check("... and once its checksum shows it is another file, it is replaced like any old one",
           code == 0 and "4 panel(s) already uploaded by an earlier run" in out
@@ -502,30 +517,32 @@ try:
           and set_files("ja") == list(zip([p.name for p in shots.expected_composed("ja", TMP)],
                                           md5s("ja"))), out)
     settled_ja(lag=10**9)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     check("a checksum that never comes: the rerun stops and changes nothing in the set",
           code == 1 and "still no checksum after" in out and "Nothing in this set was changed" in out
           and not writes() and "left-4" in FakeASC.store["shots"], out)
 
-    # 8. 8 old + 5 new > 10: old first
+    # 8. 8 old + 5 new > 10: only the overflow goes first
     fresh(old_per_set=8)
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "en-US")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "en-US")
     first_post = next(i for i, (m, p) in enumerate(FakeASC.log) if m == "POST")
-    first_del = next(i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE")
-    check("a set that would exceed 10 deletes the old panels first, and says so",
-          code == 0 and first_del < first_post and "would exceed 10" in out
+    dels = [i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE"]
+    check("a set that would exceed 10 deletes only as many old panels first as it needs (3), "
+          "the other 5 once the new ones are in, and says so",
+          code == 0 and len([i for i in dels if i < first_post]) == 3
+          and len([i for i in dels if i > first_post]) == 5 and "would exceed 10" in out
           and [n for n, _ in set_files("en-US")] == [p.name for p in shots.expected_composed("en", TMP)],
           out)
 
     # 9. no iPhone set yet
     fresh(no_set_for="ko")
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ko")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ko")
     check("a locale with no iPhone set gets one, then its panels",
           code == 0 and ("POST", "/appScreenshotSets") in FakeASC.log and len(set_files("ko")) == 5, out)
 
     # 10. --locale
     fresh()
-    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    code, out = run("--apply", "--platform", "IOS", "--version", "1.54.0", "--locale", "ja")
     touched = {p.split("-")[1] for m, p in FakeASC.log if m == "DELETE"}
     check("--locale ja writes only ja", code == 0 and touched == {"ja"}, str(FakeASC.log)[:600])
 finally:
@@ -558,6 +575,250 @@ method, url, kw = client._requests.calls[0]
 check("an upload part carries only the headers App Store Connect named",
       ok and kw["headers"] == {"Content-Type": "image/png"} and kw["data"] == b"abc"
       and "secret-token" not in repr(kw), repr(kw))
+
+
+# ── the Mac set: --platform MAC_OS, APP_DESKTOP ──────────────────────────────
+# A store with both platforms' 1.54.0: iOS waiting for review (untouchable),
+# macOS DEVELOPER_REJECTED (editable). Each macOS localization may have an
+# APP_DESKTOP set of old panels; each iOS one has an iPhone set that must stay
+# exactly as it is.
+MAC = shots.MAC
+MAC_W, MAC_H = MAC.canvas
+
+
+def make_mac_panels(lang: str, *, version: str = "1.54.0", width: int = MAC_W) -> None:
+    for i, p in enumerate(shots.expected_composed(lang, TMP, platform=MAC)):
+        shots.write_png(p, width if i == 0 else MAC_W, MAC_H)
+        p.write_bytes(p.read_bytes() + b"mac" + lang.encode() + bytes([i]))
+    shots.write_manifest(shots.composed_dir(lang, TMP, platform=MAC), lang,
+                         {"app": {"version": version, "build": "107"}}, platform=MAC)
+
+
+def fresh_mac_repo(**kw) -> None:
+    for p in [*TMP.rglob("*.png"), *TMP.rglob(shots.MANIFEST)]:
+        p.unlink()
+    for lang in shots.LANGS:
+        make_mac_panels(lang, **(kw if lang == "ja" else {}))
+
+
+def mac_store(mac_state: str = "DEVELOPER_REJECTED", old: dict | None = None) -> dict:
+    """`old`: locale -> number of old APP_DESKTOP panels (absent = no set)."""
+    old = {"en-US": 8, "zh-Hans": 9} if old is None else old
+    ios_vlocs = {f"il-{loc}": {"locale": loc} for loc in ALL}
+    mac_vlocs = {f"ml-{loc}": {"locale": loc} for loc in ALL}
+    sets, tbl = {}, {}
+    for lid, a in ios_vlocs.items():
+        sid = f"iset-{a['locale']}"
+        sets[sid] = {"loc": lid, "type": "APP_IPHONE_67", "shots": [f"{sid}-0"]}
+        tbl[f"{sid}-0"] = {"fileName": "01_overview_1290x2796.png", "fileSize": 9, "state": "COMPLETE",
+                           "sourceFileChecksum": "2" * 32, "set": sid}
+    for lid, a in mac_vlocs.items():
+        loc = a["locale"]
+        if loc not in old:
+            continue
+        sid = f"mset-{loc}"
+        sets[sid] = {"loc": lid, "type": "APP_DESKTOP", "shots": []}
+        for n in range(old[loc]):
+            i = f"mold-{loc}-{n}"
+            tbl[i] = {"fileName": f"MAC_OS_APP_DESKTOP_{n:02d}.png", "fileSize": 100, "state": "COMPLETE",
+                      "sourceFileChecksum": "0" * 32, "set": sid}
+            sets[sid]["shots"].append(i)
+    return {
+        "versions": {
+            "v-ios": {"platform": "IOS", "versionString": "1.54.0", "appStoreState": "WAITING_FOR_REVIEW"},
+            "v-mac": {"platform": "MAC_OS", "versionString": "1.54.0", "appStoreState": mac_state},
+        },
+        "vlocs": {"v-ios": ios_vlocs, "v-mac": mac_vlocs},
+        "sets": sets,
+        "shots": tbl,
+    }
+
+
+def fresh_mac(**kw) -> None:
+    fresh()
+    FakeASC.store = mac_store(**kw)
+
+
+def mac_files(loc: str) -> list[tuple[str, str]]:
+    s = FakeASC.store
+    sid = next((k for k, v in s["sets"].items()
+                if v["type"] == "APP_DESKTOP" and s["vlocs"]["v-mac"][v["loc"]]["locale"] == loc), None)
+    return [] if sid is None else [(s["shots"][i]["fileName"], s["shots"][i].get("sourceFileChecksum"))
+                                   for i in s["sets"][sid]["shots"]]
+
+
+def mac_want(lang: str) -> list[tuple[str, str]]:
+    paths = shots.expected_composed(lang, TMP, platform=MAC)
+    return [(p.name, hashlib.md5(p.read_bytes()).hexdigest()) for p in paths]
+
+
+def ios_snapshot() -> dict:
+    s = FakeASC.store
+    return {k: [(i, dict(s["shots"][i])) for i in v["shots"]] for k, v in s["sets"].items()
+            if v["type"] == "APP_IPHONE_67"}
+
+
+shots.REPO = TMP
+pusher.ShotsASC = FakeASC
+try:
+    # M1. a Mac dry run reads MAC_OS only and writes nothing
+    fresh_mac_repo()
+    fresh_mac()
+    code, out = run("--platform", "MAC_OS", "--version", "1.54.0")
+    check("Mac dry run: exits 0, writes nothing, lists the 2880x1800 panels and every locale",
+          code == 0 and not writes() and "APP_DESKTOP" in out and "=== MAC_OS 1.54.0" in out
+          and "01_overview_2880x1800.png" in out and out.count("(replace)") == len(ALL)
+          and "(drawn by 1.54.0)" in out
+          and out.count("no APP_DESKTOP set yet: --apply creates one") == 5
+          and "8 live + 6 new would exceed 10: --apply deletes 4 of the live ones first" in out
+          and "9 live + 6 new would exceed 10: --apply deletes 5 of the live ones first" in out, out)
+
+    # M2. the real apply
+    fresh_mac_repo()
+    fresh_mac()
+    ios_before = ios_snapshot()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
+    check("Mac apply exits 0 and verifies", code == 0 and "APPLY OK" in out and "APPLY MAC_OS 1.54.0" in out, out)
+    bad = [loc for loc in ALL if mac_files(loc) != mac_want(shots.SHOT_SOURCES[loc])]
+    check("every locale's APP_DESKTOP set holds exactly the six new Mac panels, in order, with their md5",
+          not bad, str({loc: mac_files(loc) for loc in bad})[:1500])
+    check("es-ES and es-MX got the same Spanish Mac files", mac_files("es-ES") == mac_files("es-MX"))
+    created = [p for m, p in FakeASC.log if (m, p) == ("POST", "/appScreenshotSets")]
+    check("an APP_DESKTOP set was created for each of the five locales without one",
+          len(created) == 5 and all(v["type"] in ("APP_DESKTOP", "APP_IPHONE_67")
+                                    for v in FakeASC.store["sets"].values()), str(FakeASC.log)[:800])
+    check("nothing iOS was touched: the iPhone sets of the version in review are exactly as they were",
+          ios_snapshot() == ios_before
+          and not any("iset" in p or "il-" in p for _, p in FakeASC.log), str(FakeASC.log)[:800])
+
+    # M3. make room: 8 live + 6 new deletes exactly 4 first; 9 + 6 deletes 5
+    for loc, n_old, n_first in (("en-US", 8, 4), ("zh-Hans", 9, 5)):
+        fresh_mac(old={loc: n_old})
+        code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", loc)
+        first_post = next((i for i, (m, p) in enumerate(FakeASC.log) if m == "POST" and p == "/appScreenshots"),
+                          10**6)
+        dels = [i for i, (m, p) in enumerate(FakeASC.log) if m == "DELETE"]
+        check(f"{loc}: {n_old} live + 6 new deletes exactly {n_first} first and {n_old - n_first} after",
+              code == 0 and len([i for i in dels if i < first_post]) == n_first
+              and len([i for i in dels if i > first_post]) == n_old - n_first
+              and mac_files(loc) == mac_want(shots.SHOT_SOURCES[loc]), out)
+
+    # M4. a panel the store fails, after making room: only the new ones are removed
+    fresh_mac(old={"en-US": 8})
+    FakeASC.fail_processing = {"05_alerts_2880x1800.png"}
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "en-US")
+    left = mac_files("en-US")
+    check("a failure after making room removes only the new panels, and says 4 of the 8 were already gone",
+          code == 1 and len(left) == 4 and all(n.startswith("MAC_OS_APP_DESKTOP_") for n, _ in left)
+          and "4 of the live set's 8 were already deleted to make room" in out, out)
+    check("... and the room was made from the carousel's end: its first four are the ones left",
+          [n for n, _ in left] == [f"MAC_OS_APP_DESKTOP_{n:02d}.png" for n in range(4)], str(left))
+    fresh_mac(old={"ja": 3})
+    FakeASC.fail_processing = {"05_alerts_2880x1800.png"}
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("a failure with room to spare leaves the old Mac set exactly as it was",
+          code == 1 and mac_files("ja") == [(f"MAC_OS_APP_DESKTOP_{n:02d}.png", "0" * 32) for n in range(3)]
+          and "the live set is untouched" in out, out)
+
+    # M5. panels drawn by another version: refused before the store is contacted
+    fresh_mac_repo(version="1.53.0")
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
+    check("Mac panels drawn by 1.53.0 are refused for 1.54.0, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "drawn by 1.53.0" in out, out)
+    fresh_mac_repo(version="1.53.0")
+    fresh_mac()
+    code, out = run("--platform", "MAC_OS")
+    check("... and a dry run without --version checks them against the version it found",
+          code == 1 and not writes() and "drawn by 1.53.0" in out, out)
+
+    # M6. a Mac panel of the wrong size, or an iPhone-sized one: refused before contact
+    fresh_mac_repo(width=2560)
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
+    check("a Mac panel of the wrong size is refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "2560x1800" in out, out)
+
+    # M7. the macOS version waiting for review: refused, with the macOS hint
+    fresh_mac_repo()
+    fresh_mac(mac_state="WAITING_FOR_REVIEW")
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0")
+    check("Mac apply while macOS waits for review is refused with zero writes and the macOS hint",
+          code == 1 and not writes() and "Withdraw the macOS submission" in out, out)
+
+    # M8. the read-back sees another file's checksum: MISMATCH, exit 1
+    fresh_mac_repo()
+    fresh_mac(old={"ja": 2})
+    FakeASC.wrong_checksum = {"03_usage_history_2880x1800.png"}
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("a Mac read-back that does not match what was sent fails, saying MISMATCH",
+          code == 1 and "MISMATCH after upload" in out and "APPLY OK" not in out, out)
+
+    # M9. what the panels were composed from: render.json beside the raws must
+    # still be the one compose.json records, and a clean store render
+    def with_raws(lang: str, **over) -> None:
+        raw = shots.raw_dir(lang, TMP, platform=MAC)
+        for name in shots.raw_names(MAC):
+            h = 2586 if name.endswith(".panel.png") else 3 * (551 if name == "04_cost.png" else 580)
+            shots.write_png(raw / name, 1560 if name.endswith(".panel.png") else 1140, h)
+            (raw / name).write_bytes((raw / name).read_bytes() + name.encode())
+        renders, rows = [], []
+        for st in shots.stems(MAC):
+            h = 551 if st == "04_cost" else 580
+            renders.append({"file": f"{st}.png", "width": 380, "height": h, "pixelWidth": 1140,
+                            "pixelHeight": 3 * h, "suspectBlank": False})
+            row = {"id": st, "file": f"{st}.png", "md5": shots.md5_of(raw / f"{st}.png"),
+                   "page": "lastAligned" if st == "04_cost" else "first"}
+            if st == "04_cost":
+                row["popoverHeight"] = 551
+            if (raw / f"{st}.panel.png").exists():
+                renders.append({"file": f"{st}.panel.png", "width": 520, "height": 862,
+                                "pixelWidth": 1560, "pixelHeight": 2586, "suspectBlank": False})
+                row.update(panelFile=f"{st}.panel.png", panelMD5=shots.md5_of(raw / f"{st}.panel.png"))
+            rows.append(row)
+        variant = {"devidBuild": False, "debugBuild": True, "sandboxed": False, "channel": "qa",
+                   "remoteControlAvailable": False, "popoverWidth": 380, "popoverHeight": 580,
+                   "panelWidth": 520, "panelSettled": True, "localScanDays": 250,
+                   "localScanProviders": ["Claude", "Codex"], "localScanMessages": 15659,
+                   "scrollerStyle": "overlay", "panelBackdropLuminance": 0.12}
+        variant.update(over)
+        (raw / shots.RENDER_MANIFEST).write_text(json.dumps({
+            "set": "store", "language": lang, "localeOverride": lang, "resolvedLocalization": lang,
+            "displayLocale": f"{lang}_{shots.MAC_REGIONS[lang]}", "localizationActive": True,
+            "scale": 3, "windowBackingScale": 3, "warnings": [], "blockedRequests": [],
+            "renders": renders, "shots": rows, "app": {"version": "1.54.0", "build": "107"},
+            "variant": variant}))
+        d = shots.composed_dir(lang, TMP, platform=MAC)
+        shots.write_manifest(d, lang, {
+            "app": {"version": "1.54.0", "build": "107"},
+            "captures": {n: shots.md5_of(raw / n) for n in shots.raw_names(MAC)},
+            "render": shots.md5_of(raw / shots.RENDER_MANIFEST)}, platform=MAC)
+
+    fresh_mac_repo()
+    with_raws("ja")
+    fresh_mac(old={})
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("Mac panels whose raws and clean render.json are the recorded ones are pushed",
+          code == 0 and "APPLY OK" in out and mac_files("ja") == mac_want("ja"), out)
+    fresh_mac_repo()
+    with_raws("ja", devidBuild=True)
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("negative control: raws drawn by a Developer ID build are refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "DEVID_BUILD" in out, out)
+    fresh_mac_repo()
+    with_raws("ja")
+    f = shots.raw_dir("ja", TMP, platform=MAC) / shots.RENDER_MANIFEST
+    f.write_text(f.read_text().replace('"devidBuild": false', '"devidBuild": true'))
+    fresh_mac()
+    code, out = run("--apply", "--platform", "MAC_OS", "--version", "1.54.0", "--locale", "ja")
+    check("negative control: a render.json edited after the panels were composed is refused",
+          code == 1 and FakeASC.constructed == 0 and "not the one compose.json records" in out, out)
+    for p_ in TMP.rglob(shots.RENDER_MANIFEST):
+        p_.unlink()
+finally:
+    shots.REPO = REAL_REPO
+    pusher.ShotsASC = RealShotsASC
 
 print(f"test_asc_push_screenshots: {passed} passed, {failed} failed.")
 sys.exit(1 if failed else 0)

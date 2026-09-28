@@ -1,0 +1,59 @@
+{
+ "app": {
+  "build": "107",
+  "version": "1.54.0"
+ },
+ "captions": {
+  "01_overview": [
+   "Todo de un vistazo",
+   "Uso, costos, sesiones y alertas en tu barra de menús"
+  ],
+  "02_providers": [
+   "Cuotas y costos en vivo",
+   "Consulta cuánto te queda antes de llegar al límite"
+  ],
+  "03_usage_history": [
+   "Tu historial de uso, a un clic",
+   "Mapa de calor, rachas y modelos más usados, a partir de tu historial local de Claude y Codex"
+  ],
+  "04_cost": [
+   "En qué se va tu dinero",
+   "Costo por proveedor y proyecto, con señales de riesgo"
+  ],
+  "05_alerts": [
+   "Sin sorpresas con la cuota",
+   "Alertas que puedes confirmar, resolver o posponer"
+  ],
+  "06_pulse_cat": [
+   "Conoce a tu Gato Pulse",
+   "Un gato de escritorio cuya energía y hambre reflejan tu uso de IA"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "a4e1155d2c71675b3d7fff9843bca54d",
+  "02_providers.png": "86e5307e50bfd950d576884752fd3abb",
+  "03_usage_history.panel.png": "7e3fb2da5eb6e4e2fa483bb3e86206ce",
+  "03_usage_history.png": "a4e1155d2c71675b3d7fff9843bca54d",
+  "04_cost.png": "321e064682f23259b4cdaa010b686c3c",
+  "05_alerts.png": "73d16f76d70ad507a066669d50c11132",
+  "06_pulse_cat.png": "b1d63a0438445366279078f7b9553313"
+ },
+ "faces": {
+  "subtitle": "SFNS",
+  "title": "SFNS"
+ },
+ "lang": "es",
+ "panels": {
+  "01_overview_2880x1800.png": "5aab6743bece40df12675e7c7576d526",
+  "02_providers_2880x1800.png": "90e8f42f2ca03ce4b84d163c501b94dd",
+  "03_usage_history_2880x1800.png": "127df67c39cf9769a692e250ec931040",
+  "04_cost_2880x1800.png": "5bcee7aaa1947f840de9ffa0a5f543f7",
+  "05_alerts_2880x1800.png": "6b287546069b4ffc888f12d3c2be453f",
+  "06_pulse_cat_2880x1800.png": "5f080eb7ad455a4dfabdd2dba6ff4905"
+ },
+ "pillow": "10.4.0",
+ "px_per_pt": 2.2707,
+ "render": "ec6c4200fa6be28d8ad44798ba03d63f",
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

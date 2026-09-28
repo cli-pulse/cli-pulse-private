@@ -28,18 +28,61 @@ public enum QARenderSnapshot {
     /// What AppKit and Foundation read the process language from.
     public static let appleLanguagesArgument = "-AppleLanguages"
 
-    /// Every render is drawn at this backing scale.
-    public static let scale = 2
+    /// Optional `-CLIPulseRenderSet review|store`; `review` by default.
+    public static let setArgument = "-CLIPulseRenderSet"
 
     public enum Appearance: String, CaseIterable, Codable, Sendable {
         case light
         case dark
     }
 
+    /// Which surfaces a run draws.
+    public enum RenderSet: String, CaseIterable, Codable, Sendable {
+        /// Every surface in `catalog`, for native review of the Mac app.
+        case review
+        /// The Mac App Store screenshots: `storeCatalog` only, surfaces whose
+        /// visible UI is the same in the QA render and in the Mac App Store
+        /// build. See docs/qa/macos-offscreen-renders.md, "The store set".
+        case store
+
+        /// Pixels per point. The store set is drawn at 3x, so the App Store
+        /// panel downscales it rather than blowing up a 2x render.
+        public var scale: Int {
+            switch self {
+            case .review: return 2
+            case .store: return 3
+            }
+        }
+
+        /// The manifest's file name in the output directory.
+        public var manifestFileName: String {
+            switch self {
+            case .review: return "manifest.json"
+            case .store: return "render.json"
+            }
+        }
+    }
+
     public struct Request: Equatable, Sendable {
         public let outputDirectory: URL
         public let language: String
         public let appearance: Appearance
+        public let set: RenderSet
+
+        public init(
+            outputDirectory: URL,
+            language: String,
+            appearance: Appearance,
+            set: RenderSet = .review
+        ) {
+            self.outputDirectory = outputDirectory
+            self.language = language
+            self.appearance = appearance
+            self.set = set
+        }
+
+        /// Every render of this run is drawn at this backing scale.
+        public var scale: Int { self.set.scale }
     }
 
     public enum Resolution: Equatable, Sendable {
@@ -78,7 +121,7 @@ public enum QARenderSnapshot {
         }
         for argument in [
             outputArgument, localeOverrideArgument,
-            appleLanguagesArgument, appearanceArgument,
+            appleLanguagesArgument, appearanceArgument, setArgument,
         ] where parsed.count(of: argument) > 1 {
             return .refused("\(argument) is given more than once")
         }
@@ -128,11 +171,24 @@ public enum QARenderSnapshot {
             }
             appearance = chosen
         }
+        var set = RenderSet.review
+        if parsed.count(of: setArgument) > 0 {
+            guard let raw = parsed.value(of: setArgument),
+                  let chosen = RenderSet(rawValue: raw)
+            else {
+                return .refused(
+                    "\(setArgument) must be one of "
+                        + RenderSet.allCases.map(\.rawValue).joined(separator: ", ")
+                )
+            }
+            set = chosen
+        }
         return .render(Request(
             outputDirectory: URL(fileURLWithPath: output, isDirectory: true)
                 .standardizedFileURL,
             language: language,
-            appearance: appearance
+            appearance: appearance,
+            set: set
         ))
     }
 
@@ -230,6 +286,166 @@ public enum QARenderSnapshot {
         return "\(number)-\(surface.id)\(suffix).png"
     }
 
+    // MARK: - The store set
+
+    /// The Mac App Store screenshots, in listing order. `id` is the file stem
+    /// the App Store pipeline uses (`NN_<screen>`, scripts/appstore_screenshots.py
+    /// MAC SCREENS names the same six in the same order).
+    ///
+    /// Only surfaces whose visible UI does not depend on anything that differs
+    /// between the QA render (Debug, unsandboxed, channel `qa`) and the Mac App
+    /// Store build (Release, sandboxed, production): `storeSurfaceProblem`
+    /// says which, and why the others are left out.
+    public static var storeCatalog: [QARenderStoreShot] {
+        let rows: [(String, QARenderSurface, QARenderStoreShot.Page, Bool)] = [
+            ("overview", .demo(.overview), .first, false),
+            ("providers", .demo(.providers), .first, false),
+            ("usage_history", .demo(.overview), .first, true),
+            ("cost", .demo(.overview), .lastAligned, false),
+            ("alerts", .demo(.alerts), .first, false),
+            ("pulse_cat", .demo(.pet), .first, false),
+        ]
+        return rows.enumerated().map { offset, row in
+            let number = offset + 1
+            return QARenderStoreShot(
+                id: (number < 10 ? "0" : "") + "\(number)_\(row.0)",
+                screen: row.0,
+                surface: row.1,
+                page: row.2,
+                companionPanel: row.3
+            )
+        }
+    }
+
+    /// The tabs a store shot may show. Every other popover surface differs in
+    /// the Mac App Store build, or sells something it does not have:
+    /// * Sessions: offers helper control of Claude sessions and, unsandboxed,
+    ///   the in-app terminal; the Mac App Store build ships neither.
+    /// * Machine: reads a helper the QA build refuses, and shows another
+    ///   affordance under the sandbox.
+    /// * Settings: hides Companion CLI in QA (shown in the Mac App Store build),
+    ///   and its account and helper rows are not the store build's.
+    /// * setup and signed-out pages: the QA build turns setup v2 on.
+    public static let storeTabs: Set<AppState.Tab> = [.overview, .providers, .alerts, .pet]
+
+    /// Why `shot` may not be in the store set, or nil when it may. A
+    /// diagnostic for the QA renderer's log and the tests, never shown in the
+    /// app (hardcoded_ui_strings_baseline.json).
+    public static func storeSurfaceProblem(_ shot: QARenderStoreShot) -> String? {
+        guard case .demo(let tab) = shot.surface else {
+            return "\(shot.id): \(shot.surface.id) is not a Demo-mode popover tab, and setup, signed-out, Settings, window and menu surfaces differ in the Mac App Store build"
+        }
+        guard storeTabs.contains(tab) else {
+            return "\(shot.id): the \(tab.rawValue) tab differs in the Mac App Store build (helper, sandbox or QA-channel UI)"
+        }
+        if tab == .pet, shot.page != .first {
+            return "\(shot.id): only the Pet tab's first page is free of the Debug build's test buttons at the bottom of the tab"
+        }
+        if shot.companionPanel, tab != .overview {
+            return "\(shot.id): the usage panel slides out of the Overview's Activity card"
+        }
+        return nil
+    }
+
+    /// The popover's size in points: `MenuBarView` is 380 wide, and 580 high
+    /// unless the user dragged it (400–900). The store set pins the default,
+    /// except for a `.lastAligned` page, which shortens it (`alignedTrim`).
+    public static let storePopoverWidth = 380.0
+    public static let storePopoverHeight = 580.0
+    /// The shortest popover `MenuBarView` lets the user drag it to.
+    public static let storePopoverMinHeight = 400.0
+    /// Points of background a `.lastAligned` page keeps between its top edge
+    /// and the first card below it.
+    public static let storeAlignedClearance = 4.0
+    /// The usage panel's see-through HUD backdrop has nothing behind it
+    /// offscreen; the renderer blends it within the window, over the panel's
+    /// dark fill, as it blends over a desktop. Relative luminance (0...1) of
+    /// the backdrop above which that did not work and it drew as a flat gray
+    /// slab (the #600 and first store renders measured about 0.36).
+    public static let storePanelMaxBackdropLuminance = 0.25
+    /// The usage panel's width: `DashboardPanelController` uses
+    /// `min(520, max(440, room to the left of the popover))`, which is 520
+    /// whenever the popover sits at the right of an ordinary screen.
+    public static let storePanelWidth = 520.0
+    /// The panel's headline counts up for 2.2 s (`CountUpNumber`); the panel
+    /// is drawn no sooner than this after it appears.
+    public static let storePanelSettleSeconds = 3.0
+
+    // MARK: - The store set's local usage history
+
+    /// What `CostUsageScanner` records, and so all the local-scan archive
+    /// behind the Overview's Activity card and the usage panel can hold.
+    public static let storeLocalScanProviders: Set<String> = ["Claude", "Codex"]
+    public static let storeLocalScanDays = 365
+    /// The home every QA render runs in (`CFFIXED_USER_HOME` below it). The
+    /// store set writes its sample local history only inside it.
+    public static let qaHomeRoot = "/private/tmp/clipulse-qa-home"
+
+    /// A year of local usage history for the store set, in the shape the
+    /// scanner produces: Claude and Codex only, per model, plus Claude's
+    /// message-count bucket (`ScanEntry.messageBucketModel`), which is where
+    /// the dashboard's MESSAGES count comes from. The days and the numbers are
+    /// the Demo archive's (`DemoDataProvider.dailyUsage`) without Gemini, so
+    /// today's Codex and Claude figures are the Demo dashboard's own (85.9K /
+    /// $1.03 and 24.8K / $0.37). Deterministic: the same day renders the same.
+    public static func storeLocalScanSample(
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [ScanEntry] {
+        var entries: [ScanEntry] = []
+        for row in DemoDataProvider.dailyUsage(days: storeLocalScanDays, today: today, calendar: calendar)
+        where storeLocalScanProviders.contains(row.provider) {
+            entries.append(ScanEntry(
+                date: row.date, provider: row.provider, model: row.model,
+                inputTokens: row.inputTokens, cachedTokens: row.cachedTokens,
+                outputTokens: row.outputTokens, cost: row.cost, messages: 0
+            ))
+            if row.provider == "Claude" {
+                let tokens = row.inputTokens + row.cachedTokens + row.outputTokens
+                entries.append(ScanEntry(
+                    date: row.date, provider: "Claude", model: ScanEntry.messageBucketModel,
+                    inputTokens: 0, cachedTokens: 0, outputTokens: 0, cost: 0,
+                    messages: max(1, tokens / 190)
+                ))
+            }
+        }
+        return entries
+    }
+
+    /// The sample as the archive holds it after a scan merge.
+    public static func storeLocalScanArchive(
+        today: Date = Date(),
+        calendar: Calendar = .current
+    ) -> DailyUsageArchive {
+        var archive = DailyUsageArchive()
+        archive.mergeScanEntries(storeLocalScanSample(today: today, calendar: calendar))
+        return archive
+    }
+
+    /// Why `archive` is not a local-scan history the store set may show, or
+    /// empty. The renderer checks the archive the app itself loaded, before
+    /// and after drawing, so a provider the scanner never records (Gemini, in
+    /// the Demo archive) cannot reach a panel captioned "Claude + Codex local
+    /// history".
+    public static func storeLocalScanProblems(_ archive: DailyUsageArchive) -> [String] {
+        var problems: [String] = []
+        if archive.days.isEmpty {
+            problems.append("the local usage history is empty, so the Activity card says so")
+        }
+        let providers = Set(archive.days.values.flatMap { $0.perProvider.keys })
+        let foreign = providers.subtracting(storeLocalScanProviders).sorted()
+        if !foreign.isEmpty {
+            problems.append(
+                "the local usage history holds \(foreign.joined(separator: ", ")), which the "
+                    + "scanner never records (only \(storeLocalScanProviders.sorted().joined(separator: " and ")))"
+            )
+        }
+        if DailyUsageStats.totalMessages(archive) <= 0 {
+            problems.append("the local usage history has no messages, so MESSAGES reads 0")
+        }
+        return problems
+    }
+
     // MARK: - Scrolling
 
     /// A view taller than its window is drawn as at most this many pages.
@@ -279,6 +495,67 @@ public enum QARenderSnapshot {
             return offsets.count > maxPages ? [0] : offsets
         }
         return Array(offsets.prefix(maxPages - 1)) + [offsets[offsets.count - 1]]
+    }
+
+    // MARK: - Framing a page scrolled to the end
+
+    /// Classifies one row of pixels (RGBA, one `UInt32` each, alpha in the
+    /// low byte) against the scroll view's background colour.
+    ///
+    /// * `.card`: at least half the row differs from the background at all,
+    ///   as a card's fill, border or shadow does across its whole width;
+    /// * `.ink`: less than that, but some pixel differs clearly (by 24 or more
+    ///   in a channel), as text and icons do;
+    /// * `.blank`: neither.
+    ///
+    /// A card whose fill is the background colour (the Overview's Yield
+    /// Score card is) reads as its text alone, which is what a top edge must
+    /// not cut through.
+    public static func rowKind(_ pixels: [UInt32], background: UInt32) -> QARenderRow {
+        guard !pixels.isEmpty else { return .blank }
+        func channels(_ value: UInt32) -> (Int, Int, Int) {
+            (Int(value >> 24 & 0xFF), Int(value >> 16 & 0xFF), Int(value >> 8 & 0xFF))
+        }
+        let bg = channels(background)
+        var differing = 0
+        var clear = false
+        for pixel in pixels {
+            let c = channels(pixel)
+            let delta = max(abs(c.0 - bg.0), abs(c.1 - bg.1), abs(c.2 - bg.2))
+            if delta >= 1 { differing += 1 }
+            if delta >= 24 { clear = true }
+        }
+        if differing * 2 >= pixels.count { return .card }
+        return clear ? .ink : .blank
+    }
+
+    /// How many whole points to take off the popover's height so that a page
+    /// scrolled to the end starts in the background above its first card,
+    /// rather than through the text of whatever lies above it (the Overview's
+    /// last page otherwise opens on half a line of the Yield Score card).
+    ///
+    /// `rows` are the page's pixel rows from the top of the scroll view down,
+    /// at `scale` pixels per point. Shortening the popover by `t` points moves
+    /// the top edge `t` points down the content, because the page stays flush
+    /// with the end. The result keeps at least `clearance` points of
+    /// background above the card where the space allows, and always one
+    /// row. 0 when nothing but background lies above the first card; nil when
+    /// no card is in view, or the text above it runs into it.
+    public static func alignedTrim(
+        rows: [QARenderRow],
+        scale: Int,
+        clearance: Double = storeAlignedClearance
+    ) -> Int? {
+        guard scale > 0, let card = rows.firstIndex(of: .card) else { return nil }
+        guard let lastInk = rows[..<card].lastIndex(of: .ink) else { return 0 }
+        let perPoint = Double(scale)
+        // The smallest trim whose top row is below the last line of text…
+        let past = Int((Double(lastInk + 1) / perPoint).rounded(.up))
+        // …and the one that leaves `clearance` points above the card.
+        let clear = Int((Double(card) / perPoint - clearance).rounded(.down))
+        let trim = max(past, clear)
+        guard trim * scale < card else { return nil }
+        return trim
     }
 
     // MARK: - Checking a render
@@ -434,7 +711,55 @@ public enum QARenderSurface: Hashable {
     }
 }
 
-/// What a run writes next to its PNGs, as `manifest.json`.
+/// What one pixel row of a rendered page shows (`QARenderSnapshot.rowKind`).
+public enum QARenderRow: Equatable, Sendable {
+    case blank
+    case ink
+    case card
+}
+
+/// One Mac App Store screenshot of the store set (`QARenderSnapshot.storeCatalog`).
+public struct QARenderStoreShot: Equatable, Sendable {
+    public enum Page: String, Codable, Sendable {
+        /// The view as it opens.
+        case first
+        /// Scrolled to the end, flush with the bottom of the content.
+        case last
+        /// Scrolled to the end, in a popover shortened just enough that the
+        /// top edge falls in the space above a card instead of through a line
+        /// of text (`QARenderSnapshot.alignedTrim`). Users drag the popover
+        /// anywhere between 400 and 900 points high, so the shorter popover
+        /// is a state the app really has; render.json records its height.
+        case lastAligned
+    }
+
+    /// `01_overview`: the file stem.
+    public let id: String
+    /// `overview`: the screen name, as scripts/appstore_screenshots.py lists it.
+    public let screen: String
+    public let surface: QARenderSurface
+    public let page: Page
+    /// Also draw the usage panel `DashboardPanelController` slides out to the
+    /// left of the popover, the one surface only the Mac has.
+    public let companionPanel: Bool
+
+    public init(
+        id: String, screen: String, surface: QARenderSurface,
+        page: Page, companionPanel: Bool
+    ) {
+        self.id = id
+        self.screen = screen
+        self.surface = surface
+        self.page = page
+        self.companionPanel = companionPanel
+    }
+
+    public var fileName: String { id + ".png" }
+    public var panelFileName: String? { companionPanel ? id + ".panel.png" : nil }
+}
+
+/// What a run writes next to its PNGs, as `manifest.json` (the review set)
+/// or `render.json` (the store set).
 public struct QARenderManifest: Codable, Equatable, Sendable {
     public struct App: Codable, Equatable, Sendable {
         public var bundleIdentifier: String
@@ -536,7 +861,112 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         }
     }
 
+    /// What the build that drew a store set is, measured by that build. The
+    /// App Store compositor refuses a set whose facts are not the Mac App
+    /// Store build's where they can change what is drawn.
+    public struct Variant: Codable, Equatable, Sendable {
+        /// Compiled with DEVID_BUILD (the Developer ID build). Must be false:
+        /// the store set refuses to run in such a build at all.
+        public var devidBuild: Bool
+        /// Compiled with DEBUG, as `Debug QA` is. The store catalog holds no
+        /// surface whose visible UI depends on it.
+        public var debugBuild: Bool
+        /// `MASSandboxGate.isSandboxed`. False in the QA build; the store
+        /// catalog holds no surface whose visible UI depends on it.
+        public var sandboxed: Bool
+        public var channel: String
+        /// `RemoteControlFeature.isAvailable()`: false in the Mac App Store
+        /// build, and must be false here too.
+        public var remoteControlAvailable: Bool
+        public var popoverWidth: Double
+        public var popoverHeight: Double
+        public var panelWidth: Double
+        /// Seconds the usage panel was left to settle before it was drawn.
+        public var panelSettleSeconds: Double
+        /// Two drawings of the panel half a second apart were identical.
+        public var panelSettled: Bool
+        /// The local usage history the app loaded (`DailyUsageArchiveManager`),
+        /// read after the last shot was drawn.
+        public var localScanDays: Int
+        public var localScanProviders: [String]
+        public var localScanMessages: Int
+        /// `NSScroller.preferredScrollerStyle`: `overlay`, as on a Mac with a
+        /// trackpad and the default "Show scroll bars" setting, or `legacy`.
+        /// A legacy scroller reserves a gutter the offscreen drawing leaves
+        /// empty, so every scrolling tab's content sat off-centre. Must be
+        /// `overlay`.
+        public var scrollerStyle: String
+        /// Relative luminance (0...1) of the usage panel's backdrop as drawn
+        /// (`QARenderSnapshot.storePanelMaxBackdropLuminance`).
+        public var panelBackdropLuminance: Double
+
+        public init(
+            devidBuild: Bool, debugBuild: Bool, sandboxed: Bool, channel: String,
+            remoteControlAvailable: Bool, popoverWidth: Double, popoverHeight: Double,
+            panelWidth: Double, panelSettleSeconds: Double, panelSettled: Bool,
+            localScanDays: Int, localScanProviders: [String], localScanMessages: Int,
+            scrollerStyle: String, panelBackdropLuminance: Double
+        ) {
+            self.devidBuild = devidBuild
+            self.debugBuild = debugBuild
+            self.sandboxed = sandboxed
+            self.channel = channel
+            self.remoteControlAvailable = remoteControlAvailable
+            self.popoverWidth = popoverWidth
+            self.popoverHeight = popoverHeight
+            self.panelWidth = panelWidth
+            self.panelSettleSeconds = panelSettleSeconds
+            self.panelSettled = panelSettled
+            self.localScanDays = localScanDays
+            self.localScanProviders = localScanProviders
+            self.localScanMessages = localScanMessages
+            self.scrollerStyle = scrollerStyle
+            self.panelBackdropLuminance = panelBackdropLuminance
+        }
+    }
+
+    /// One store-set PNG: the popover, and for the usage-history shot the
+    /// panel beside it, each with its md5 so the compositor can tell that the
+    /// committed file is the one this run wrote.
+    public struct StoreShot: Codable, Equatable, Sendable {
+        public var id: String
+        public var surface: String
+        public var page: QARenderStoreShot.Page
+        /// Which page was drawn (1-based) of how many the view has.
+        public var pageIndex: Int
+        public var pageCount: Int
+        public var file: String
+        public var md5: String
+        public var panelFile: String?
+        public var panelMD5: String?
+        /// The popover's height in points when it is not the pinned default:
+        /// a `.lastAligned` page's shortened popover.
+        public var popoverHeight: Double?
+
+        public init(
+            id: String, surface: String, page: QARenderStoreShot.Page,
+            pageIndex: Int, pageCount: Int, file: String, md5: String,
+            panelFile: String? = nil, panelMD5: String? = nil, popoverHeight: Double? = nil
+        ) {
+            self.id = id
+            self.surface = surface
+            self.page = page
+            self.pageIndex = pageIndex
+            self.pageCount = pageCount
+            self.file = file
+            self.md5 = md5
+            self.panelFile = panelFile
+            self.panelMD5 = panelMD5
+            self.popoverHeight = popoverHeight
+        }
+    }
+
     public var schemaVersion = 1
+    public var set: QARenderSnapshot.RenderSet
+    /// The store set only.
+    public var variant: Variant?
+    /// The store set only, in listing order.
+    public var shots: [StoreShot]?
     public var language: String
     public var appleLanguages: [String]
     public var localeOverride: String?
@@ -544,6 +974,11 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
     public var resolvedLocalization: String?
     /// The localization AppKit chose for the app bundle.
     public var appKitLocalization: String?
+    /// The locale numbers, money and dates are formatted with
+    /// (`LocaleOverrideStore.displayLocale`): the rendered language on the
+    /// region the run was given (`-AppleLocale`, render_macos_qa_views.sh),
+    /// never the region of the Mac it ran on.
+    public var displayLocale: String?
     public var localizationActive: Bool
     public var localizationProbe: [Probe]
     public var appearance: QARenderSnapshot.Appearance
@@ -567,11 +1002,13 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
     public var warnings: [String]
 
     public init(
+        set: QARenderSnapshot.RenderSet = .review,
         language: String,
         appleLanguages: [String],
         localeOverride: String?,
         resolvedLocalization: String?,
         appKitLocalization: String?,
+        displayLocale: String? = nil,
         localizationActive: Bool,
         localizationProbe: [Probe],
         appearance: QARenderSnapshot.Appearance,
@@ -587,11 +1024,13 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         blockedRequests: [String] = [],
         warnings: [String] = []
     ) {
+        self.set = set
         self.language = language
         self.appleLanguages = appleLanguages
         self.localeOverride = localeOverride
         self.resolvedLocalization = resolvedLocalization
         self.appKitLocalization = appKitLocalization
+        self.displayLocale = displayLocale
         self.localizationActive = localizationActive
         self.localizationProbe = localizationProbe
         self.appearance = appearance
