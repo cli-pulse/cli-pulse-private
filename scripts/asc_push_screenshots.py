@@ -33,7 +33,10 @@ Then, one locale at a time:
     names, commit with the file's md5) and waits until every one is COMPLETE;
   * only then deletes the old ones, and sets the carousel order;
   * reads the set back and fails unless it holds exactly the new panels, in
-    order, each COMPLETE with the md5 and size that were sent.
+    order, each COMPLETE with the md5 and size that were sent. App Store
+    Connect reports a panel COMPLETE before it fills in its checksum (seconds
+    to a minute later), so the read-back is repeated, for at most POLL_TIMEOUT,
+    until every screenshot has one.
 If the new ones cannot all be uploaded, it deletes what it added and leaves the
 old set as it was, whatever stopped it: a refused write, a panel the store
 failed to process, or a read that ended the run (a 5xx, a lost connection,
@@ -46,7 +49,10 @@ checks above passed, and the run says so.
 A rerun after a run that stopped halfway starts from what the set holds:
 uploads that never finished are deleted first (the store shows none of them),
 and panels already uploaded with the same name and md5 are reused rather than
-counted against the limit (plan_set).
+counted against the limit (plan_set). A COMPLETE screenshot with a panel's
+name and size whose checksum is not filled in yet is most likely that panel,
+uploaded by the run just before: the rerun waits for its checksum and then
+decides, rather than replacing it.
 
 It touches the APP_IPHONE_67 set only. iPad, Apple Watch and Mac sets are listed
 and left alone, as is every locale not selected or not in the repo.
@@ -136,12 +142,29 @@ def set_rows(asc, set_id: str) -> list[dict]:
                    **{"fields[appScreenshots]": SHOT_FIELDS})["data"]
 
 
+def checksum(row: dict) -> str | None:
+    return (row.get("attributes") or {}).get("sourceFileChecksum")
+
+
+def poll_set(asc, set_id: str, waiting) -> tuple[list[dict], list[dict]]:
+    """Read the set until no row is waiting(row), for at most POLL_TIMEOUT
+    (as wait_complete): (the rows, those still waiting)."""
+    deadline = time.monotonic() + POLL_TIMEOUT
+    while True:
+        rows = set_rows(asc, set_id)
+        late = [r for r in rows if waiting(r)]
+        if not late or time.monotonic() > deadline:
+            return rows, late
+        time.sleep(POLL_SECONDS)
+
+
 def matches(live: list[dict], panels: list[Panel]) -> bool:
     if len(live) != len(panels):
         return False
     for row, panel in zip(live, panels):
         a = row.get("attributes") or {}
-        if (a.get("fileName"), a.get("sourceFileChecksum")) != (panel.name, panel.md5):
+        if ((a.get("fileName"), a.get("fileSize"), a.get("sourceFileChecksum"))
+                != (panel.name, panel.size, panel.md5)):
             return False
         if state_of(row) != "COMPLETE":
             return False
@@ -238,20 +261,33 @@ def wait_complete(asc, ids: list[str]) -> bool:
     return True
 
 
-def plan_set(live: list[dict], panels: list[Panel]) -> tuple[list[str], dict[int, str], list[str]]:
+def plan_set(live: list[dict], panels: list[Panel]
+             ) -> tuple[list[str], dict[int, str], list[str], list[str]]:
     """What to do with the rows a set holds now, before anything is uploaded:
-    (debris, reused, old).
+    (debris, reused, old, unsettled).
 
-    debris  rows that are not COMPLETE: an earlier run's upload that never
-            finished. The store shows none of them, so they go first.
-    reused  panel index -> the id of a COMPLETE row with that panel's file name
-            and md5: an earlier run already uploaded it. Not uploaded again.
-    old     every other COMPLETE row: the set being replaced. Deleted only once
-            the new panels are all COMPLETE (unless the set would overflow).
+    debris     rows that are not COMPLETE: an earlier run's upload that never
+               finished. The store shows none of them, so they go first.
+    reused     panel index -> the id of a COMPLETE row with that panel's file
+               name and md5: an earlier run already uploaded it. Not uploaded again.
+    unsettled  COMPLETE rows with a panel's file name and size but no checksum
+               yet. App Store Connect fills sourceFileChecksum in seconds to a
+               minute after it reports COMPLETE, so this is most likely that
+               panel, uploaded by the run just before. Neither reused nor old:
+               replace_set waits for the checksum and plans again. (Treated as
+               old, it was re-uploaded and deleted by every rerun: the ja
+               05_alerts panel churned four times on 2026-09-28.)
+    old        every other COMPLETE row: the set being replaced. Deleted only once
+               the new panels are all COMPLETE (unless the set would overflow).
     So a run that stopped halfway (a lost connection, an expired token) leaves
     nothing the next run trips over: it neither exceeds the 10-per-set limit
     nor has to delete the live set first because of its own leftovers."""
     debris = [r["id"] for r in live if state_of(r) != "COMPLETE"]
+    sizes = {(p.name, p.size) for p in panels}
+    unsettled = [r["id"] for r in live
+                 if state_of(r) == "COMPLETE" and not checksum(r)
+                 and ((r.get("attributes") or {}).get("fileName"),
+                      (r.get("attributes") or {}).get("fileSize")) in sizes]
     reused: dict[int, str] = {}
     taken: set[str] = set()
     for n, panel in enumerate(panels):
@@ -262,12 +298,32 @@ def plan_set(live: list[dict], panels: list[Panel]) -> tuple[list[str], dict[int
                 reused[n] = r["id"]
                 taken.add(r["id"])
                 break
-    old = [r["id"] for r in live if state_of(r) == "COMPLETE" and r["id"] not in taken]
-    return debris, reused, old
+    old = [r["id"] for r in live
+           if state_of(r) == "COMPLETE" and r["id"] not in taken and r["id"] not in unsettled]
+    return debris, reused, old, unsettled
+
+
+def describe(rows: list[dict]) -> str:
+    return ", ".join(f"{(r.get('attributes') or {}).get('fileName')}[{state_of(r)}"
+                     + ("" if checksum(r) else ", no checksum") + "]" for r in rows)
 
 
 def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel]) -> bool:
-    debris, reused, old_ids = plan_set(live, panels)
+    unsettled = plan_set(live, panels)[3]
+    if unsettled:
+        print(f"  [{loc}] {len(unsettled)} COMPLETE screenshot(s) with a panel's name and size "
+              "but no checksum yet: waiting for App Store Connect to fill it in before "
+              "deciding what to keep")
+        live, late = poll_set(asc, set_id, lambda r: r["id"] in unsettled and not checksum(r))
+        if late:
+            print(f"  [{loc}] still no checksum after {POLL_TIMEOUT}s: {describe(late)}. "
+                  "Nothing in this set was changed; run again later")
+            return False
+        if matches(live, panels):
+            print(f"  [{loc}] OK: the set already holds the {len(panels)} panels, in order; "
+                  "nothing to do")
+            return True
+    debris, reused, old_ids, _ = plan_set(live, panels)
     if debris:
         print(f"  [{loc}] {len(debris)} unfinished upload(s) from an earlier run: deleting them first")
         left = _discard(asc, debris)
@@ -316,11 +372,13 @@ def replace_set(asc, loc: str, set_id: str, live: list[dict], panels: list[Panel
                       {"data": [{"type": "appScreenshots", "id": i} for i in order_ids]})
     if order is None:
         print(f"  [{loc}] setting the order FAILED")
-    after = set_rows(asc, set_id)
+    after, late = poll_set(asc, set_id, lambda r: not checksum(r))
     ok = [r["id"] for r in after] == order_ids and matches(after, panels)
     if not ok:
-        print(f"  [{loc}] MISMATCH after upload: the set holds "
-              + ", ".join(f"{(r.get('attributes') or {}).get('fileName')}[{state_of(r)}]" for r in after))
+        if late:
+            print(f"  [{loc}] {len(late)} screenshot(s) still without a checksum after "
+                  f"{POLL_TIMEOUT}s")
+        print(f"  [{loc}] MISMATCH after upload: the set holds {describe(after)}")
         return False
     print(f"  [{loc}] OK: {len(order_ids)} screenshot(s), in order, COMPLETE, checksums match")
     return True
@@ -387,8 +445,11 @@ def main() -> int:
         others = [s["attributes"].get("screenshotDisplayType") for s in sets if s is not target]
         live = set_rows(asc, target["id"]) if target else []
         same = matches(live, panels)
+        unsettled = plan_set(live, panels)[3]
         print(f"  [{loc}] {DISPLAY_TYPE}: {len(live)} live -> {len(panels)} new"
-              + ("  (same; nothing to do)" if same else "  (replace)"))
+              + ("  (same; nothing to do)" if same else "  (replace)")
+              + (f"; {len(unsettled)} COMPLETE without a checksum yet, which --apply "
+                 "waits for before deciding" if unsettled and not same else ""))
         if not same:
             for r in live:
                 a = r.get("attributes") or {}

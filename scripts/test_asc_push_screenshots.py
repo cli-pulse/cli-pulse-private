@@ -23,6 +23,11 @@ of the endpoints the pusher uses and checks what it WOULD do:
   * a rerun after a run that stopped halfway reuses the panels it already
     uploaded, deletes unfinished uploads first, and never has to delete the
     live set first because of its own leftovers;
+  * App Store Connect fills in a checksum seconds to a minute after it reports
+    COMPLETE: the read-back waits for it (one run does every locale), and
+    fails, saying why, if it never comes; a rerun that finds a COMPLETE panel
+    with the right name and size but no checksum yet waits for it instead of
+    re-uploading and deleting it, and changes nothing if it never comes;
   * a set that would exceed 10 with both present deletes the old ones first;
   * a locale without an iPhone set gets one created;
   * --locale limits the writes;
@@ -102,6 +107,10 @@ class FakeASC:
     fail_get: set = set()          # screenshot ids whose GET ends the run (a 5xx: die)
     fail_delete = False            # every DELETE is refused
     interrupt_upload_of: str | None = None   # a fileName whose part PUT raises Ctrl-C
+    # As on 2026-09-28: a set read shows a just-committed screenshot COMPLETE
+    # with sourceFileChecksum null, for this many reads of its set.
+    checksum_lag = 0
+    lag: dict = {}                 # shot id -> set reads left without its checksum
     constructed = 0
     next_id = 0
 
@@ -125,7 +134,12 @@ class FakeASC:
                              for k, v in s["sets"].items() if v["loc"] == lid]}
         if path.startswith("/appScreenshotSets/") and path.endswith("/appScreenshots"):
             sid = path.split("/")[2]
-            return {"data": [self._shot(i) for i in s["sets"][sid]["shots"]]}
+            rows = [self._shot(i) for i in s["sets"][sid]["shots"]]
+            for r in rows:
+                if FakeASC.lag.get(r["id"], 0) > 0:
+                    FakeASC.lag[r["id"]] -= 1
+                    r["attributes"]["sourceFileChecksum"] = None
+            return {"data": rows}
         if path.startswith("/appScreenshots/"):
             if path.split("/")[2] in FakeASC.fail_get:
                 listing_pusher.die(f"GET {path} -> 503: Service Unavailable")
@@ -170,6 +184,7 @@ class FakeASC:
                   and hashlib.md5(got).hexdigest() == a["sourceFileChecksum"]
                   and a["fileName"] not in FakeASC.fail_processing)
             a["state"] = "COMPLETE" if ok else "FAILED"
+            FakeASC.lag[i] = FakeASC.checksum_lag
             return {"data": {"id": i}}
         if method == "PATCH" and path.endswith("/relationships/appScreenshots"):
             sid = path.split("/")[2]
@@ -241,6 +256,8 @@ def fresh(**kw) -> None:
     FakeASC.fail_get = set()
     FakeASC.fail_delete = False
     FakeASC.interrupt_upload_of = None
+    FakeASC.checksum_lag = 0
+    FakeASC.lag = {}
     FakeASC.constructed = 0
 
 
@@ -432,6 +449,63 @@ try:
     check("unfinished uploads go first; the live set still goes only after the new one is in",
           code == 0 and first_debris < first_post < first_old and "would exceed" not in out
           and [n for n, _ in set_files("ja")] == [p.name for p in shots.expected_composed("ja", TMP)], out)
+
+    # 7g. the read-back right after the commit sees no checksum on the new
+    # panels yet; it waits for them, and one run does every locale
+    fresh()
+    FakeASC.checksum_lag = 3
+    code, out = run("--apply", "--version", "1.54.0")
+    check("checksums that lag behind COMPLETE: the read-back waits, and one run does every locale",
+          code == 0 and "APPLY OK" in out and "MISMATCH" not in out
+          and out.count("checksums match") == len(ALL)
+          and all(set_files(loc) == list(zip([p.name for p in shots.expected_composed(
+              shots.SHOT_SOURCES[loc], TMP)], md5s(shots.SHOT_SOURCES[loc]))) for loc in ALL), out)
+    fresh()
+    FakeASC.checksum_lag = 10**9
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a checksum that never comes: the read-back gives up at POLL_TIMEOUT and says why",
+          code == 1 and "5 screenshot(s) still without a checksum after" in out
+          and "MISMATCH" in out and "no checksum]" in out, out)
+
+    # 7h. a rerun right after a run whose last panel has no checksum yet: the
+    # ja 05_alerts churn of 2026-09-28 (re-uploaded and deleted by four reruns)
+    def settled_ja(lag: int, md5_of_last: str | None = None) -> None:
+        fresh()
+        FakeASC.store["sets"][ja_set]["shots"] = []
+        for n in range(5):
+            FakeASC.store["shots"].pop(f"old-ja-{n}")
+        for n, (p, m) in enumerate(zip(shots.expected_composed("ja", TMP), md5s("ja"))):
+            i = f"left-{n}"
+            FakeASC.store["shots"][i] = {"fileName": p.name, "fileSize": p.stat().st_size,
+                                         "state": "COMPLETE", "sourceFileChecksum": m, "set": ja_set}
+            FakeASC.store["sets"][ja_set]["shots"].append(i)
+        if md5_of_last:
+            FakeASC.store["shots"]["left-4"]["sourceFileChecksum"] = md5_of_last
+        FakeASC.lag = {"left-4": lag}
+
+    settled_ja(lag=3)
+    code, out = run("--version", "1.54.0", "--locale", "ja")
+    check("dry run: a COMPLETE panel without a checksum yet is named, and --apply will wait",
+          code == 0 and "1 COMPLETE without a checksum yet" in out, out)
+    settled_ja(lag=3)
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a COMPLETE panel with the right name and size but no checksum yet is waited for, "
+          "then kept: no upload, no delete",
+          code == 0 and "waiting for App Store Connect" in out and "nothing to do" in out
+          and not writes() and "left-4" in FakeASC.store["shots"], out)
+    settled_ja(lag=3, md5_of_last="f" * 32)
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    posts = [p for m, p in FakeASC.log if m == "POST"]
+    check("... and once its checksum shows it is another file, it is replaced like any old one",
+          code == 0 and "4 panel(s) already uploaded by an earlier run" in out
+          and posts == ["/appScreenshots"] and "left-4" not in FakeASC.store["shots"]
+          and set_files("ja") == list(zip([p.name for p in shots.expected_composed("ja", TMP)],
+                                          md5s("ja"))), out)
+    settled_ja(lag=10**9)
+    code, out = run("--apply", "--version", "1.54.0", "--locale", "ja")
+    check("a checksum that never comes: the rerun stops and changes nothing in the set",
+          code == 1 and "still no checksum after" in out and "Nothing in this set was changed" in out
+          and not writes() and "left-4" in FakeASC.store["shots"], out)
 
     # 8. 8 old + 5 new > 10: old first
     fresh(old_per_set=8)
