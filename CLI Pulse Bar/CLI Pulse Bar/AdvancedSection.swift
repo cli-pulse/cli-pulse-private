@@ -189,61 +189,68 @@ struct AdvancedSection: View {
                 Text(L10n.advanced.gitConsentBody)
             }
 
-            // v0.27 Remote Control opt-in. Default OFF. Server-side gate is
-            // enforced on every remote_helper_* RPC, so toggling off here
-            // actually severs the helper end of the channel.
-            //
-            // iter4: route every flip through `setRemoteControlEnabled(_:)`
-            // so a failed PATCH cleanly reverts the UI instead of leaving it
-            // out of sync with the server-side gate.
-            //
-            // iter6 (post-Codex review on PR #18): the consent confirmation
-            // moved from a system `.alert` to an inline card rendered
-            // beneath the toggle. SwiftUI's `.alert` doesn't capture
-            // clicks reliably inside `MenuBarExtra(.window)` — the same
-            // class of bug that forced the retired remote-approvals view
-            // out of a `.sheet`. Inline buttons in the popover's own tree
-            // get clicks every time and don't dismiss the popover.
-            Toggle(isOn: Binding(
-                get: { state.remoteControlEnabled },
-                set: { newValue in
-                    if newValue && !state.remoteControlEnabled {
-                        // Going ON requires consent — show the inline
-                        // card. We deliberately do NOT mutate state
-                        // here (otherwise the toggle flips visually
-                        // before consent is given).
-                        showRemoteControlConsent = true
-                    } else {
-                        // Going OFF (or repeated set to current value, which
-                        // the entry point no-ops) — flip atomically.
-                        state.setRemoteControlEnabled(newValue)
-                    }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 4) {
-                        Text(L10n.advanced.remoteControl)
-                            .font(.system(size: 11))
-                        if state.remoteControlSaving {
-                            ProgressView()
-                                .controlSize(.mini)
+            // Offered only by a build that acts on these requests. The App Store
+            // build has no `RemoteMachineExecutor`, so there this was a switch the
+            // build ignored. Hiding it writes nothing: the account-wide setting
+            // keeps its value and stays switchable from the iPhone and from any
+            // direct-download Mac. See `MacControlRequests`.
+            if MacControlRequests.areHonoredByThisBuild {
+                // v0.27 Remote Control opt-in. Default OFF. Server-side gate is
+                // enforced on every remote_helper_* RPC, so toggling off here
+                // actually severs the helper end of the channel.
+                //
+                // iter4: route every flip through `setRemoteControlEnabled(_:)`
+                // so a failed PATCH cleanly reverts the UI instead of leaving it
+                // out of sync with the server-side gate.
+                //
+                // iter6 (post-Codex review on PR #18): the consent confirmation
+                // moved from a system `.alert` to an inline card rendered
+                // beneath the toggle. SwiftUI's `.alert` doesn't capture
+                // clicks reliably inside `MenuBarExtra(.window)` — the same
+                // class of bug that forced the retired remote-approvals view
+                // out of a `.sheet`. Inline buttons in the popover's own tree
+                // get clicks every time and don't dismiss the popover.
+                Toggle(isOn: Binding(
+                    get: { state.remoteControlEnabled },
+                    set: { newValue in
+                        if newValue && !state.remoteControlEnabled {
+                            // Going ON requires consent — show the inline
+                            // card. We deliberately do NOT mutate state
+                            // here (otherwise the toggle flips visually
+                            // before consent is given).
+                            showRemoteControlConsent = true
+                        } else {
+                            // Going OFF (or repeated set to current value, which
+                            // the entry point no-ops) — flip atomically.
+                            state.setRemoteControlEnabled(newValue)
                         }
                     }
-                    Text(L10n.advanced.remoteControlHint)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
+                )) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(L10n.advanced.remoteControl)
+                                .font(.system(size: 11))
+                            if state.remoteControlSaving {
+                                ProgressView()
+                                    .controlSize(.mini)
+                            }
+                        }
+                        Text(L10n.advanced.remoteControlHint)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            // iter5 P1: while a PATCH is in flight, lock the toggle so a
-            // double-tap (or any other re-entrant call) can't race a stale
-            // request past the latest intent.
-            .disabled(state.remoteControlSaving)
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                // iter5 P1: while a PATCH is in flight, lock the toggle so a
+                // double-tap (or any other re-entrant call) can't race a stale
+                // request past the latest intent.
+                .disabled(state.remoteControlSaving)
 
-            if showRemoteControlConsent {
-                remoteControlConsentCard
+                if showRemoteControlConsent {
+                    remoteControlConsentCard
+                }
             }
 
             // Hidden with the session plane. Every check it runs — a Mac

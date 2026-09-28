@@ -1181,7 +1181,7 @@
 "remote.connected" = "接続済み";
 "remote.disconnected" = "切断されました";
 "remote.no_sessions" = "セッションがありません。Mac の「セッション」タブから開始してください。";
-"remote.no_macs" = "この Wi‑Fi に Mac が見つかりません。Mac で「設定 › リモート操作」をオンにしてください。";
+"remote.no_macs" = "この Wi‑Fi に Mac が見つかりません。リモート操作には Mac アプリの直接ダウンロード版が必要です（App Store 版にはありません）。その「設定」に「リモート操作」があれば、そこでオンにしてください。ない場合、その Mac ではリモート操作を利用できません。";
 "remote.local_network_denied" = "ローカルネットワークへのアクセスがオフです。Mac を見つけるには「設定」でオンにしてください。";
 "remote.open_settings" = "設定を開く";
 "remote.pairing_succeeded" = "ペアリング完了";

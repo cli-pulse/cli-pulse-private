@@ -1167,7 +1167,7 @@
 "remote.connected" = "已連線";
 "remote.disconnected" = "已中斷";
 "remote.no_sessions" = "沒有工作階段。請在 Mac 的「工作階段」分頁啟動一個。";
-"remote.no_macs" = "此 Wi‑Fi 上找不到 Mac。請在 Mac 上開啟「設定 › 遠端控制」。";
+"remote.no_macs" = "此 Wi‑Fi 上找不到 Mac。遠端控制需要直接下載版的 Mac App，App Store 版本不提供。如果它的「設定」中有「遠端控制」，請在那裡開啟；如果沒有，這台 Mac 就無法使用遠端控制。";
 "remote.local_network_denied" = "區域網路權限已關閉。請在「設定」中開啟以尋找 Mac。";
 "remote.open_settings" = "打開設定";
 "remote.pairing_succeeded" = "配對成功";

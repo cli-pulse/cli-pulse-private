@@ -49,10 +49,16 @@ public enum RemoteControlFeature {
     /// could ever reach, and the §8 latches would stay at zero for a second,
     /// equally meaningless round.
     ///
-    /// The cost is honest and bounded: an iPhone whose Mac is not enabled sees
-    /// the Nearby Macs row and, inside it, `remote.no_macs` — "No Macs found
-    /// on this Wi-Fi. On the Mac, turn on Settings › Remote Control." — in all
-    /// six languages. Browsing starts on that screen's `.onAppear`
+    /// The cost is bounded: an iPhone whose Mac is not enabled sees the Nearby
+    /// Macs row and, inside it, `remote.no_macs` in all six languages. That
+    /// text must stay true for the Macs people actually have. It used to say
+    /// "On the Mac, turn on Settings › Remote Control." — a section the Mac
+    /// draws only when THIS gate is on, which it is not by default, and which
+    /// has no switch at all on the App Store build
+    /// (`LANLinkAgent.unavailabilityReason`). It now names the direct-download
+    /// build, and says that no Remote Control section in its Settings means the
+    /// feature is not available on that Mac (`RemoteControlCopyPerBuildTests`).
+    /// Browsing starts on that screen's `.onAppear`
     /// (LANRemoteScreens.swift:112), so merely shipping this does NOT raise
     /// the local-network permission prompt for anyone who does not go looking.
     ///
