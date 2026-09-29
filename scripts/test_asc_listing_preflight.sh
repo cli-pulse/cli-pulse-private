@@ -319,27 +319,30 @@ case "$coverage" in
         fail=$((fail + 1)) ;;
 esac
 
-# ── --require-shots: every listing locale's iPhone panels ────────────────────
+# ── --require-shots: every listing locale's iPhone and Mac panels ────────────
 # A flag (CI passes it; the fixtures above carry listing texts only), so the
 # run without it must stay green without panels, and the flag must turn a
-# missing, stray or unuploadable panel into a failure.
+# missing, stray or unuploadable panel into a failure, on either platform.
 run_check() {
     python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
 }
-panels() {   # panels <lang...>: the five valid panels of a clean compose run, per language
+panels() {   # panels <lang...>: the valid panels of a clean compose run, per language:
+             # five iPhone ones and six Mac ones
     python3 - "$ROOT" "$CASE" "$@" <<'PY'
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
 import appstore_screenshots as s
+root = pathlib.Path(sys.argv[2])
 for lang in sys.argv[3:]:
-    for p in s.expected_composed(lang, pathlib.Path(sys.argv[2])):
-        s.write_png(p, 1290, 2796)
-    s.write_manifest(s.composed_dir(lang, pathlib.Path(sys.argv[2])), lang)
+    for plat in (s.IPHONE, s.MAC):
+        for p in s.expected_composed(lang, root, plat):
+            s.write_png(p, *plat.canvas)
+        s.write_manifest(s.composed_dir(lang, root, plat), lang, platform=plat)
 PY
 }
 
 EXTRA=""; build_fixture
-expect_pass "no iPhone panels, --require-shots not given"
+expect_pass "no iPhone or Mac panels, --require-shots not given"
 
 EXTRA="--require-shots"; build_fixture
 expect_fail "--require-shots with no panels at all" "[en-US] en: screenshots/ios-composed/en/ does not exist"
@@ -401,6 +404,28 @@ p.write_text(s.replace(old, '"03_cost": ("Where your money goes",'), encoding="u
 PY
 expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 03_cost: the caption drawn is not the compositor's COPY"
 
+# The Mac sets, the same way: every locale needs its six 2880x1800 panels too.
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+rm -r "$CASE/CLI Pulse Bar/screenshots/macos-composed/ja"
+expect_fail "--require-shots without the Japanese Mac set" "[ja] ja: screenshots/macos-composed/ja/ does not exist"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+rm "$CASE/CLI Pulse Bar/screenshots/macos-composed/ko/03_usage_history_2880x1800.png"
+expect_fail "--require-shots with a Mac panel missing" "[ko] ko: 03_usage_history_2880x1800.png: missing"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+s.write_png(s.expected_composed("es", pathlib.Path(sys.argv[2]), s.MAC)[4], 1290, 2796)
+PY
+expect_fail "--require-shots with an iPhone-sized panel in a Mac set" "[es-ES] es: 05_alerts_2880x1800.png: 1290x2796, expected 2880x1800"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+rm "$CASE/CLI Pulse Bar/screenshots/macos-composed/zh-Hant/compose.json"
+expect_fail "--require-shots with a Mac set a clean compose run did not write" "compose run (compose_appstore_macos_screenshots.py writes it"
+
 # The raw captures are committed so that a set can be recomposed without a
 # simulator (compose --all), which holds only while ios-raw/<lang>/ holds the
 # captures compose.json records the panels were drawn from. The fixture is the
@@ -410,10 +435,13 @@ real_shots() {
     build_fixture
     mkdir -p "$CASE/CLI Pulse Bar/screenshots" "$CASE/CLI Pulse Bar/scripts"
     cp -R "$ROOT/CLI Pulse Bar/screenshots/ios-raw" "$ROOT/CLI Pulse Bar/screenshots/ios-composed" \
+        "$ROOT/CLI Pulse Bar/screenshots/macos-raw" "$ROOT/CLI Pulse Bar/screenshots/macos-composed" \
         "$CASE/CLI Pulse Bar/screenshots/"
-    cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" "$CASE/CLI Pulse Bar/scripts/"
+    cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" \
+        "$ROOT/CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py" "$CASE/CLI Pulse Bar/scripts/"
 }
 RAW="$CASE/CLI Pulse Bar/screenshots/ios-raw"
+MRAW="$CASE/CLI Pulse Bar/screenshots/macos-raw"
 
 real_shots
 expect_pass "--require-shots with the committed panels and raw captures"
@@ -433,6 +461,41 @@ expect_fail "--require-shots with a language's raw captures all missing (es-ES a
 
 real_shots; cp "$RAW/en/01_overview.png" "$RAW/en/06_settings.png"
 expect_fail "--require-shots with a stray raw capture the compositor would refuse" "[en-US] en: screenshots/ios-raw/en/06_settings.png: not a capture of the set"
+
+# The Mac raws are the QA build's store renders, and render.json is what makes
+# them the Mac App Store build's: each break must fail, for its own reason.
+real_shots; cp "$MRAW/zh-Hans/02_providers.png" "$MRAW/zh-Hant/02_providers.png"
+expect_fail "--require-shots with another language's Mac render in place of a raw" "[zh-Hant] zh-Hant: screenshots/macos-raw/zh-Hant/02_providers.png: not the capture compose.json records"
+
+real_shots; rm "$MRAW/ko/03_usage_history.panel.png"
+expect_fail "--require-shots with the usage panel's raw missing" "[ko] ko: screenshots/macos-raw/ko/03_usage_history.panel.png: missing"
+
+real_shots; python3 - "$MRAW/ja/render.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p)); d["variant"]["devidBuild"] = True
+json.dump(d, open(p, "w"))
+PY
+expect_fail "--require-shots with a render.json from a Developer ID build" "[ja] ja: screenshots/macos-raw/ja/render.json: drawn by a build with DEVID_BUILD"
+
+real_shots; python3 - "$MRAW/es/render.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p)); d["variant"]["localScanProviders"] = ["Claude", "Codex", "Gemini"]
+json.dump(d, open(p, "w"))
+PY
+expect_fail "--require-shots with Gemini in the local usage history" "[es-MX] es: screenshots/macos-raw/es/render.json: local usage history of ['Claude', 'Codex', 'Gemini']"
+
+real_shots; rm "$MRAW/en/render.json"
+expect_fail "--require-shots with the Mac render.json missing" "[en-US] en: screenshots/macos-raw/en/render.json: missing"
+
+real_shots; python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py" <<'PY'
+import sys, pathlib
+p = pathlib.Path(sys.argv[1])
+s = p.read_text(encoding="utf-8")
+old = '"06_pulse_cat": ("Meet Pulse Cat",'
+assert s.count(old) == 1, "the mutation target moved; update this case"
+p.write_text(s.replace(old, '"06_pulse_cat": ("Say hello to Pulse Cat",'), encoding="utf-8")
+PY
+expect_fail "--require-shots with a Mac caption edited after the compose run" "[en-US] en: 06_pulse_cat: the caption drawn is not the compositor's COPY (edited without recomposing; run compose_appstore_macos_screenshots.py"
 
 # And the tree CI actually checks: this checkout, where a compose.json that
 # records no captures would fail rather than skip (test_appstore_screenshots.py).

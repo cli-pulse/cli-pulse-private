@@ -118,26 +118,31 @@ jobs:
       # was self-hosted.
       #
       # --require-shots: every listing locale also has its five composed iPhone
-      # panels in CLI Pulse Bar/screenshots/ios-composed/<lang>/, each one App
-      # Store Connect would accept and the one a clean compose run recorded in
-      # compose.json. A missing or stray panel, a set a failed compose run
-      # withdrew, or a panel edited after the run fails here instead of at the
-      # release push. So does a raw capture in ios-raw/<lang>/ that is not the
-      # one compose.json records the set was drawn from: they are committed so
-      # a set can be recomposed without a simulator.
+      # panels in CLI Pulse Bar/screenshots/ios-composed/<lang>/ and its six
+      # Mac panels in macos-composed/<lang>/, each one App Store Connect would
+      # accept and the one a clean compose run recorded in compose.json. A
+      # missing or stray panel, a set a failed compose run withdrew, or a panel
+      # edited after the run fails here instead of at the release push. So does
+      # a raw in ios-raw/<lang>/ or macos-raw/<lang>/ that is not the one
+      # compose.json records the set was drawn from (they are committed so a set
+      # can be recomposed without a simulator or a QA build), and a Mac raw set
+      # whose render.json does not say a clean store render drew it (no
+      # DEVID_BUILD, no remote control, Claude and Codex local history only).
       - run: python3 scripts/asc_listing_preflight.py --texts-only --require-shots
       - run: bash scripts/test_asc_listing_preflight.sh
       # The pusher's write path can only run for real during a release, so it
       # is exercised here against a fake App Store Connect: refusal on a live
       # version, create-don't-delete, only changed fields, read-back.
       - run: python3 scripts/test_asc_push_listing.py
-      # The iPhone screenshots, the same way: the pusher against a fake App
-      # Store Connect (new panels uploaded and COMPLETE before an old one is
-      # deleted, only the iPhone set touched, a failed upload leaves the old set
-      # intact), and the pipeline's pure parts (the capture script's screens and
-      # languages, the PNG checks, caption coverage and terms, line breaking).
-      # The glyph-coverage half of the second needs macOS fonts and reports
-      # itself NOT RUN here rather than passing.
+      # The iPhone and Mac screenshots, the same way: the pusher against a fake
+      # App Store Connect (new panels uploaded and COMPLETE before an old one is
+      # deleted, only the platform's own set touched, --platform required to
+      # write, a failed upload leaves the old set intact), and the pipeline's
+      # pure parts (the capture script's and the Swift store catalog's screens
+      # and languages, the PNG checks, caption coverage and terms, render.json,
+      # line breaking, the Mac popover's scale and placement). The halves that
+      # need macOS fonts (glyph coverage, caption fit, byte-identical
+      # recomposes) report themselves NOT RUN here rather than passing.
       - run: python3 scripts/test_asc_push_screenshots.py
       - run: python3 scripts/test_appstore_screenshots.py
       # The review submitter, the same way: What's New per platform from

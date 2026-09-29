@@ -196,3 +196,12 @@ HelperSwift/Package.resolved
 # or commit; the set is <lang>/ with its compose.json.
 /CLI Pulse Bar/screenshots/ios-composed/*.rejected/
 /CLI Pulse Bar/screenshots/ios-composed/.*
+# The Mac set, the same way (compose_appstore_macos_screenshots.py), and its
+# raws: render_macos_qa_views.sh --set store renders into hidden staging
+# directories, keeps each language's log as .<lang>.render.log, and leaves a
+# failed language in <lang>.rejected/.
+/CLI Pulse Bar/screenshots/macos-composed/*.rejected/
+/CLI Pulse Bar/screenshots/macos-composed/.*
+/CLI Pulse Bar/screenshots/macos-raw/*.rejected/
+/CLI Pulse Bar/screenshots/macos-raw/*.previous/
+/CLI Pulse Bar/screenshots/macos-raw/.*

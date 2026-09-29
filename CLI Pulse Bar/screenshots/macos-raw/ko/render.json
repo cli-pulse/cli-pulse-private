@@ -1,0 +1,230 @@
+{
+  "app" : {
+    "build" : "107",
+    "bundleIdentifier" : "app.clipulse.qa.local",
+    "version" : "1.54.0"
+  },
+  "appKitLocalization" : "ko",
+  "appearance" : "light",
+  "appleLanguages" : [
+    "ko"
+  ],
+  "blockedRequests" : [
+
+  ],
+  "dataSource" : "DemoDataProvider, the same demo data as the iPhone app's Try Demo, entered the way the QA build enters local mode, with the five sample accounts switched on. The local usage history behind the Activity card and the usage panel is QARenderSnapshot.storeLocalScanSample (Claude and Codex, what the scanner records), written into the QA home before the app read it.",
+  "displayLocale" : "ko_KR@measure=metric",
+  "forcedSettings" : {
+    "cli_pulse_check_provider_status" : "false: provider status badges would otherwise fetch public status pages. They draw nothing unless a provider has an incident.",
+    "cli_pulse_menubar_height" : "580: the popover's default height, pinned; users can drag it between 400 and 900.",
+    "cli_pulse_menubar_height (04_cost)" : "553: this shot's popover, shortened from 580 so the page scrolled to the end opens on the space above a card, not through a line of text. Users can drag the popover between 400 and 900.",
+    "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
+  },
+  "generatedAt" : "2026-09-28T16:04:45Z",
+  "language" : "ko",
+  "localeOverride" : "ko",
+  "localizationActive" : true,
+  "localizationProbe" : [
+    {
+      "english" : "Overview",
+      "key" : "tab.overview",
+      "value" : "개요"
+    },
+    {
+      "english" : "Settings",
+      "key" : "tab.settings",
+      "value" : "설정"
+    },
+    {
+      "english" : "Language",
+      "key" : "language.title",
+      "value" : "언어"
+    },
+    {
+      "english" : "System Default",
+      "key" : "language.system_default",
+      "value" : "시스템 기본값"
+    },
+    {
+      "english" : "Welcome to CLI Pulse",
+      "key" : "onboarding_wizard.welcome_title",
+      "value" : "CLI Pulse에 오신 것을 환영합니다"
+    }
+  ],
+  "renders" : [
+    {
+      "file" : "01_overview.png",
+      "height" : 580,
+      "id" : "01_overview",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 3,
+      "pixelHeight" : 1740,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "02_providers.png",
+      "height" : 580,
+      "id" : "02_providers",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 2,
+      "pixelHeight" : 1740,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "03_usage_history.png",
+      "height" : 580,
+      "id" : "03_usage_history",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 3,
+      "pixelHeight" : 1740,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "03_usage_history.panel.png",
+      "height" : 862,
+      "id" : "03_usage_history-panel",
+      "kind" : "panel",
+      "page" : 1,
+      "pageCount" : 1,
+      "pixelHeight" : 2586,
+      "pixelWidth" : 1560,
+      "suspectBlank" : false,
+      "width" : 520
+    },
+    {
+      "file" : "04_cost.png",
+      "height" : 553,
+      "id" : "04_cost",
+      "kind" : "popover",
+      "page" : 3,
+      "pageCount" : 3,
+      "pixelHeight" : 1659,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "05_alerts.png",
+      "height" : 580,
+      "id" : "05_alerts",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 1,
+      "pixelHeight" : 1740,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    },
+    {
+      "file" : "06_pulse_cat.png",
+      "height" : 580,
+      "id" : "06_pulse_cat",
+      "kind" : "popover",
+      "page" : 1,
+      "pageCount" : 7,
+      "pixelHeight" : 1740,
+      "pixelWidth" : 1140,
+      "suspectBlank" : false,
+      "width" : 380
+    }
+  ],
+  "resolvedLocalization" : "ko",
+  "scale" : 3,
+  "schemaVersion" : 1,
+  "set" : "store",
+  "shots" : [
+    {
+      "file" : "01_overview.png",
+      "id" : "01_overview",
+      "md5" : "cc88532788e7c401f4588bca5cc0f8da",
+      "page" : "first",
+      "pageCount" : 3,
+      "pageIndex" : 1,
+      "surface" : "demo-overview"
+    },
+    {
+      "file" : "02_providers.png",
+      "id" : "02_providers",
+      "md5" : "0f465a3e7f661ea06927b6ac5a692a3b",
+      "page" : "first",
+      "pageCount" : 2,
+      "pageIndex" : 1,
+      "surface" : "demo-providers"
+    },
+    {
+      "file" : "03_usage_history.png",
+      "id" : "03_usage_history",
+      "md5" : "cc88532788e7c401f4588bca5cc0f8da",
+      "page" : "first",
+      "pageCount" : 3,
+      "pageIndex" : 1,
+      "panelFile" : "03_usage_history.panel.png",
+      "panelMD5" : "e71926304f2bec5200a280f3f0601348",
+      "surface" : "demo-overview"
+    },
+    {
+      "file" : "04_cost.png",
+      "id" : "04_cost",
+      "md5" : "2d7819127839e72ea48f65b75411d8ba",
+      "page" : "lastAligned",
+      "pageCount" : 3,
+      "pageIndex" : 3,
+      "popoverHeight" : 553,
+      "surface" : "demo-overview"
+    },
+    {
+      "file" : "05_alerts.png",
+      "id" : "05_alerts",
+      "md5" : "acc82f3dcaf423602972494403ede8a4",
+      "page" : "first",
+      "pageCount" : 1,
+      "pageIndex" : 1,
+      "surface" : "demo-alerts"
+    },
+    {
+      "file" : "06_pulse_cat.png",
+      "id" : "06_pulse_cat",
+      "md5" : "4a5daadfdc4cffdb78f4158e22e8e1f7",
+      "page" : "first",
+      "pageCount" : 7,
+      "pageIndex" : 1,
+      "surface" : "demo-pet"
+    }
+  ],
+  "skipped" : [
+
+  ],
+  "variant" : {
+    "channel" : "qa",
+    "debugBuild" : true,
+    "devidBuild" : false,
+    "localScanDays" : 250,
+    "localScanMessages" : 15531,
+    "localScanProviders" : [
+      "Claude",
+      "Codex"
+    ],
+    "panelBackdropLuminance" : 0.13,
+    "panelSettleSeconds" : 3,
+    "panelSettled" : true,
+    "panelWidth" : 520,
+    "popoverHeight" : 580,
+    "popoverWidth" : 380,
+    "remoteControlAvailable" : false,
+    "sandboxed" : false,
+    "scrollerStyle" : "overlay"
+  },
+  "warnings" : [
+
+  ],
+  "windowBackingScale" : 3
+}

@@ -1,0 +1,59 @@
+{
+ "app": {
+  "build": "107",
+  "version": "1.54.0"
+ },
+ "captions": {
+  "01_overview": [
+   "一眼掌握全局",
+   "用量、費用、工作階段與警示，在選單列按一下就能看到"
+  ],
+  "02_providers": [
+   "即時查看配額與費用",
+   "用完之前，就知道還剩多少"
+  ],
+  "03_usage_history": [
+   "用量歷史，按一下就展開",
+   "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"
+  ],
+  "04_cost": [
+   "錢花在哪裡",
+   "各服務商的費用、高用量專案與風險訊號"
+  ],
+  "05_alerts": [
+   "配額不再突然見底",
+   "警示可以確認、解決或稍後提醒"
+  ],
+  "06_pulse_cat": [
+   "來認識脈衝貓",
+   "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "e14166380c684844480777135cd21e10",
+  "02_providers.png": "cb848d40072af171aa8a18370b2fb4b0",
+  "03_usage_history.panel.png": "191f238b2d7d91a0e290a8e0dae46009",
+  "03_usage_history.png": "e14166380c684844480777135cd21e10",
+  "04_cost.png": "e736f704d84513180e083c6395758968",
+  "05_alerts.png": "d502de0ee43ff37cff31aa26dfed7929",
+  "06_pulse_cat.png": "16e1ac0c889bc5d835dedd6206862536"
+ },
+ "faces": {
+  "subtitle": "PingFang TC",
+  "title": "PingFang TC"
+ },
+ "lang": "zh-Hant",
+ "panels": {
+  "01_overview_2880x1800.png": "6714aa1259e1d2143a7ef9956fb74c31",
+  "02_providers_2880x1800.png": "f246bb1bfebaaa020b91c5a995ca4fac",
+  "03_usage_history_2880x1800.png": "913ed24b49a01116217dfd344c1556ad",
+  "04_cost_2880x1800.png": "b52bb35b878f932ac66e795dc01244b2",
+  "05_alerts_2880x1800.png": "26b11aa7da5aa410253da5db2e0570e1",
+  "06_pulse_cat_2880x1800.png": "41b0803a7cdab3b5acb17fade153602e"
+ },
+ "pillow": "10.4.0",
+ "px_per_pt": 2.2707,
+ "render": "a57781eb928fa3866ddedb27a435fc53",
+ "subtitle_pt": 46,
+ "title_pt": 100
+}

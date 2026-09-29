@@ -1482,6 +1482,30 @@
    "literal": "\"Window content only; the window's title is \\\"\\(localizedTitle)\\\".\"",
    "count": 1,
    "reason": "KEEP_DEBUG_OR_QA_ONLY: The whole file is inside #if CLIPULSE_QA_RENDER, defined only by the app's Debug QA configuration (scripts/ci_check_qa_scheme.py fails CI if any other configuration defines it). The text goes into the offscreen renderer's manifest.json for reviewers, never onto a screen."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
+   "literal": "\"\\(shot.id): \\(shot.surface.id) is not a Demo-mode popover tab, and setup, signed-out, Settings, window and menu surfaces differ in the Mac App Store build\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
+   "literal": "\"\\(shot.id): the \\(tab.rawValue) tab differs in the Mac App Store build (helper, sandbox or QA-channel UI)\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
+   "literal": "\"\\(shot.id): only the Pet tab's first page is free of the Debug build's test buttons at the bottom of the tab\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
+  },
+  {
+   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/QARenderSnapshot.swift",
+   "literal": "\"\\(shot.id): the usage panel slides out of the Overview's Activity card\"",
+   "count": 1,
+   "reason": "KEEP_NOT_USER_VISIBLE: QARenderSnapshot.storeSurfaceProblem explains why a surface may not be one of the Mac App Store screenshots. Only the QA build's offscreen renderer (#if CLIPULSE_QA_RENDER, Debug QA only) logs it before refusing, and QARenderSnapshotTests assert it; no view of the app ever shows it."
   }
  ]
 }

@@ -10,6 +10,16 @@
 # Usage:
 #   scripts/render_macos_qa_views.sh --app "<path>/CLIPulse QA.app" --out <dir>
 #       [--lang ja]... [--appearance light|dark] [--replace] [--timeout 600]
+#   scripts/render_macos_qa_views.sh --set store --app "<path>/CLIPulse QA.app"
+#       [--out <dir>] [--lang ja]... [--timeout 600]
+#
+# --set store draws the Mac App Store screenshot set instead of every view:
+# six shots and the usage panel at 3x, and render.json (see "The store set"
+# in the doc). Its --out defaults to CLI Pulse Bar/screenshots/macos-raw, where
+# the App Store compositor reads it. Each language renders into a fresh staging
+# directory next to its folder and replaces the folder whole only when the app
+# exited 0; a failed language leaves <lang>.rejected/ (with render.log) and the
+# folder as it was. --replace is implied and --appearance is light.
 #
 # Build the app first (the QA scheme, `Debug QA`):
 #   xcodebuild build -project "CLI Pulse Bar/CLI Pulse Bar.xcodeproj" \
@@ -26,10 +36,30 @@ QA_BUNDLE_ID="app.clipulse.qa.local"
 QA_ROOT="/private/tmp/clipulse-qa-home"
 ALL_LANGUAGES=(en zh-Hans zh-Hant ja ko es)
 
+# The region each language is drawn on (-AppleLocale): separators, currency
+# placement, clock and the first day of the week come from it, so a render
+# must not inherit the region of the Mac it runs on. The same regions as the
+# iPhone capture (capture_ios_screenshots.sh); Spanish, which serves es-ES and
+# es-MX with one set, is drawn on Mexico's, like the app's own Spanish
+# ("costo"). scripts/appstore_screenshots.py MAC_REGIONS holds the same list,
+# and render.json's displayLocale must name it.
+locale_for() {
+    case "$1" in
+        en) echo en_US ;;
+        zh-Hans) echo zh_CN ;;
+        zh-Hant) echo zh_TW ;;
+        ja) echo ja_JP ;;
+        ko) echo ko_KR ;;
+        es) echo es_MX ;;
+        *) return 1 ;;
+    esac
+}
+
 app=""
 out=""
 languages=()
 appearance="light"
+render_set="review"
 replace=0
 timeout_seconds=600
 
@@ -41,13 +71,19 @@ while [[ $# -gt 0 ]]; do
         --out) out="${2:-}"; shift 2 ;;
         --lang) languages+=("${2:-}"); shift 2 ;;
         --appearance) appearance="${2:-}"; shift 2 ;;
+        --set) render_set="${2:-}"; shift 2 ;;
         --replace) replace=1; shift ;;
         --timeout) timeout_seconds="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
         *) die "unknown argument: $1" ;;
     esac
 done
 
+[[ "$render_set" == review || "$render_set" == store ]] || die "--set must be review or store"
+if [[ "$render_set" == store ]]; then
+    [[ "$appearance" == light ]] || die "the store set is drawn in the light appearance"
+    [[ -n "$out" ]] || out="$(cd "$(dirname "$0")/.." && pwd -P)/CLI Pulse Bar/screenshots/macos-raw"
+fi
 [[ -n "$app" && -n "$out" ]] || die "--app and --out are required (see --help)"
 [[ ${#languages[@]} -gt 0 ]] || languages=("${ALL_LANGUAGES[@]}")
 # Checked before anything else happens, because each language names a folder
@@ -123,7 +159,12 @@ trap restore_defaults EXIT
 status=0
 for lang in "${languages[@]}"; do
     dest="$out/$lang"
-    if [[ -e "$dest" ]] && [[ -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
+    final="$dest"
+    if [[ "$render_set" == store ]]; then
+        # Rendered beside its folder and swapped in whole on success, so the
+        # folder never holds a mix of two runs or a failed run's files.
+        dest=$(/usr/bin/mktemp -d "$out/.$lang.staging.XXXXXX")
+    elif [[ -e "$dest" ]] && [[ -n "$(ls -A "$dest" 2>/dev/null)" ]]; then
         if [[ $replace == 1 ]]; then
             rm -rf "$dest"
         else
@@ -136,12 +177,21 @@ for lang in "${languages[@]}"; do
     /bin/mkdir -m 700 "$home"
     log="$work/$lang.log"
 
-    echo "[$lang] rendering into $dest"
+    echo "[$lang] rendering into $dest ($(locale_for "$lang"))"
+    # -AppleShowScrollBars WhenScrolling: overlay scroll bars, as on a Mac with
+    # a trackpad and the default setting. A Mac set to "Always" would otherwise
+    # give every scrolling tab a legacy scroller's gutter, which the offscreen
+    # drawing leaves empty (render.json records the style; the store set
+    # refuses legacy). The argument domain wins over the global setting and
+    # changes nothing outside this process.
     CFFIXED_USER_HOME="$home" CLIPULSE_QA_RESET_ON_LAUNCH=0 \
         "$binary" \
         -CLIPulseRenderSnapshots "$dest" \
         -CLIPulseRenderAppearance "$appearance" \
+        -CLIPulseRenderSet "$render_set" \
         -AppleLanguages "($lang)" \
+        -AppleLocale "$(locale_for "$lang")" \
+        -AppleShowScrollBars WhenScrolling \
         -cli_pulse_locale_override "$lang" \
         >"$log" 2>&1 &
     pid=$!
@@ -163,14 +213,32 @@ for lang in "${languages[@]}"; do
     set -e
     rm -rf "$home"
     mkdir -p "$dest"
-    cp "$log" "$dest/render.log"
+    manifest="manifest.json"
+    [[ "$render_set" == store ]] && manifest="render.json"
 
     pngs=$(/usr/bin/find "$dest" -name '*.png' | wc -l | tr -d ' ')
-    if [[ $code != 0 || ! -f "$dest/manifest.json" ]]; then
+    if [[ $code != 0 || ! -f "$dest/$manifest" ]]; then
+        cp "$log" "$dest/render.log"
+        if [[ "$render_set" == store ]]; then
+            rm -rf "$final.rejected"
+            mv "$dest" "$final.rejected"
+            dest="$final.rejected"
+        fi
         echo "[$lang] FAILED (exit $code, $pngs PNGs); see $dest/render.log" >&2
         status=2
+    elif [[ "$render_set" == store ]]; then
+        # The raw set keeps only what the compositor reads; the log stays out
+        # of the repository.
+        cp "$log" "$out/.$lang.render.log"
+        chmod 755 "$dest"
+        rm -rf "$final.previous" "$final.rejected"
+        [[ -e "$final" ]] && mv "$final" "$final.previous"
+        mv "$dest" "$final"
+        rm -rf "$final.previous"
+        echo "[$lang] ok: $pngs PNGs, $final/$manifest (log: $out/.$lang.render.log)"
     else
-        echo "[$lang] ok: $pngs PNGs, $dest/manifest.json"
+        cp "$log" "$dest/render.log"
+        echo "[$lang] ok: $pngs PNGs, $dest/$manifest"
     fi
 done
 

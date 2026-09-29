@@ -184,6 +184,30 @@ def validate_render_condition(project_text: str) -> None:
     )
 
 
+# The Developer ID build's compilation condition. The QA renders stand for the
+# Mac App Store build (the store set becomes its screenshots; see
+# docs/qa/macos-offscreen-renders.md), so the QA build must not compile the
+# Developer ID-only UI in. build_signed_app.sh passes it on the xcodebuild
+# command line for the Developer ID archive only; the store set also refuses
+# to run in any build that has it.
+DEVID_CONDITION = "DEVID_BUILD"
+
+
+def validate_no_devid_in_qa(project_text: str) -> None:
+    """Neither the project's nor the app's Debug QA configuration may define
+    DEVID_BUILD: not as an active compilation condition, not as `-DDEVID_BUILD`
+    in OTHER_SWIFT_FLAGS, not in any other setting. A substring count, for the
+    same reason as the render condition's (no word boundary after `-D`)."""
+    for config_id, label in ((PROJECT_QA_CONFIG_ID, "project"), (APP_QA_CONFIG_ID, "app")):
+        body = object_body(project_text, config_id)
+        require(
+            DEVID_CONDITION not in body,
+            f"{label} Debug QA configuration ({config_id}) names {DEVID_CONDITION}: the QA "
+            "renders stand for the Mac App Store build, which never compiles the Developer "
+            "ID-only UI in",
+        )
+
+
 # Where a build setting can be given outside project.pbxproj: an xcconfig
 # attached to a configuration, an `xcodebuild ... SWIFT_ACTIVE_COMPILATION_CONDITIONS=`
 # override in a release script, or the same override in a workflow. None of
@@ -297,6 +321,7 @@ def validate_project(project_text: str) -> str:
         "helper Debug QA configuration",
     )
     validate_render_condition(project_text)
+    validate_no_devid_in_qa(project_text)
     return expected_product_name
 
 
