@@ -12,7 +12,7 @@ import XCTest
 /// fallback copy is English.
 final class DemoDataLocalizationTests: XCTestCase {
 
-    /// The override persists to UserDefaults.standard; put back whatever the
+    /// The override lives for the whole test process; put back whatever the
     /// next suite would otherwise inherit from this one.
     private var savedOverride: String?
 

@@ -8,15 +8,24 @@
 import Foundation
 
 public enum DisplayCurrency: String, CaseIterable, Codable, Sendable {
-    /// Where the app keeps the choice: its own standard defaults. The widget
-    /// extension and the Watch run in other processes and cannot read it, so
-    /// the app hands them the choice with its data (`CurrencyConverter.adopt`).
+    /// Where the app keeps the choice: its own standard defaults
+    /// (`DisplayPreferences.defaults`, which is `.standard` outside XCTest). The
+    /// widget extension and the Watch run in other processes and cannot read it,
+    /// so the app hands them the choice with its data (`CurrencyConverter.adopt`).
     public static let defaultsKey = "cli_pulse_display_currency"
+
+    /// The defaults `defaultsKey` lives in. `AppState.displayCurrencyRaw` and
+    /// `stored()` both read it, so a test pins this one value rather than writing
+    /// a choice into a domain that test runs going at the same moment share.
+    /// `@usableFromInline` because `stored(in:)`, which is public, takes it as
+    /// its default argument.
+    @usableFromInline
+    static var store: UserDefaults { DisplayPreferences.defaults }
 
     /// The stored choice, read directly. For code that runs in the app's process
     /// without `AppState` having set up `CurrencyConverter.shared`, such as an
     /// App Intent launched by Siri in the background.
-    public static func stored(in defaults: UserDefaults = .standard) -> DisplayCurrency {
+    public static func stored(in defaults: UserDefaults = DisplayCurrency.store) -> DisplayCurrency {
         defaults.string(forKey: defaultsKey).flatMap(DisplayCurrency.init(rawValue:)) ?? .usd
     }
 
