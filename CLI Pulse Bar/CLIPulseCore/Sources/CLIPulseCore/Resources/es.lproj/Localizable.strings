@@ -1135,7 +1135,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "remote.connected" = "Conectado";
 "remote.disconnected" = "Desconectado";
 "remote.no_sessions" = "No hay sesiones. Inicia una desde la pestaña Sesiones del Mac.";
-"remote.no_macs" = "No se encontró ningún Mac en esta Wi‑Fi. El control remoto requiere la versión de descarga directa de la app de Mac, no la de App Store. Si los Ajustes de esa app muestran Control remoto, actívalo ahí; si no, el control remoto no está disponible en ese Mac.";
+"remote.no_macs" = "No se encontró ningún Mac en esta Wi‑Fi. El control remoto requiere la versión de descarga directa de la app de Mac, no la de App Store. Si los Ajustes de la app de Mac muestran «Control remoto», actívalo ahí; si no, el control remoto no está disponible en ese Mac.";
 "remote.local_network_denied" = "El acceso a la red local está desactivado. Actívalo en Ajustes para encontrar tu Mac.";
 "remote.open_settings" = "Abrir Ajustes";
 "remote.pairing_succeeded" = "Vinculado";

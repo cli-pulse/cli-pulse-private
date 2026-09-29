@@ -1167,7 +1167,7 @@
 "remote.connected" = "已连接";
 "remote.disconnected" = "已断开";
 "remote.no_sessions" = "没有会话。请在 Mac 的「会话」标签页启动一个。";
-"remote.no_macs" = "此 Wi‑Fi 上未找到 Mac。远程控制需要直接下载版的 Mac 应用，App Store 版本不提供。如果它的「设置」中有「远程控制」，请在那里打开；如果没有，这台 Mac 就无法使用远程控制。";
+"remote.no_macs" = "此 Wi‑Fi 上未找到 Mac。远程控制需要直接下载版的 Mac 应用，App Store 版本不支持。如果 Mac 应用的「设置」中有「远程控制」，请在那里打开；如果没有，这台 Mac 就无法使用远程控制。";
 "remote.local_network_denied" = "本地网络权限已关闭。请在「设置」中打开以查找 Mac。";
 "remote.open_settings" = "打开设置";
 "remote.pairing_succeeded" = "配对成功";
