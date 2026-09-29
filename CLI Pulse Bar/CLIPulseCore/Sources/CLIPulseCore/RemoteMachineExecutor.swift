@@ -28,6 +28,35 @@ import Foundation
 /// every platform (watch/iOS/widgets), even though the executor is macOS-only.
 public let kRemoteMachineControlEnabledKey = "cli_pulse_remote_machine_control_enabled"
 
+/// Whether THIS build of the Mac app acts on machine-control requests (fan
+/// boost, Low Power Mode, Keep Awake) sent from the owner's other devices.
+///
+/// True exactly where `AppState.remoteMachineExecutor` exists — the same
+/// `os(macOS) && DEVID_BUILD` condition — because the executor is the only thing
+/// that ever acts on a request, and it is compiled only into the Developer ID
+/// build (so are `FanControlClient` and the root fan daemon it drives). The Mac
+/// App Store build used to show Settings › Advanced › "Mac control requests from
+/// your other devices" anyway: a switch it ignored.
+///
+/// Hiding it there strands nobody who already turned it on. The switch writes
+/// the account-wide `user_settings.remote_control_enabled`, and hiding writes
+/// nothing, so the stored value is unchanged. On an App Store Mac that value does
+/// nothing (no executor, and no capability report, so a phone offers no controls
+/// for that Mac; the session plane that also read it is retired). Where it does
+/// matter, it stays reachable: the server enforces it on the SENDING side, and
+/// the iPhone's "Send control requests to your Macs" switch writes the same
+/// column, as does this switch on any direct-download Mac.
+///
+/// `RemoteControlCopyPerBuildTests` checks this against the executor's actual
+/// presence on `AppState`, in both `swift test` passes.
+public enum MacControlRequests {
+    #if os(macOS) && DEVID_BUILD
+    public static let areHonoredByThisBuild = true
+    #else
+    public static let areHonoredByThisBuild = false
+    #endif
+}
+
 #if os(macOS)
 
 /// One fan/LPM command drained from the helper relay.

@@ -951,6 +951,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             .init(id: "settings-pairing",
                   reason: "Shown to a signed-in account that is not paired, which needs a real sign-in."),
         ]
+        if !MacControlRequests.areHonoredByThisBuild {
+            skipped.append(.init(
+                id: "settings-advanced-mac-control-requests",
+                reason: "Advanced shows the Mac control requests switch only in a build that acts on those requests (Developer ID)."
+            ))
+        }
         if !RemoteControlFeature.isAvailable() {
             skipped.append(.init(
                 id: "settings-remote-control",
