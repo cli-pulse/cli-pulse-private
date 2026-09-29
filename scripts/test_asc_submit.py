@@ -23,7 +23,20 @@ checks what the script WOULD send:
   * What's New is written before the build is attached, only where it differs,
     and read back; a refused or silently dropped write stops the run before the
     build is attached or anything is submitted;
-  * --whatsnew is refused; --create-version creates only when asked to.
+  * --whatsnew is refused; --create-version creates only when asked to, and
+    says which releaseType an existing version has, warning when it is not the
+    one asked for; --submit's dry run says it too;
+  * App Review notes: the dry run prints the notes the version holds (never
+    the contact or demo-account fields); notes App Store Connect copied from
+    an older version are refused before the first write (the 1.54.0 case);
+    --review-notes FILE is checked before the store is contacted, PATCHes
+    `notes` and nothing else, before What's New, and is read back (the notes,
+    and every other field unchanged); a refused, dropped or field-clobbering
+    write stops the run before What's New, the build or the submission;
+    --accept-review-notes lets flagged notes through; and the detector itself
+    is run on sentences shaped like the real 1.53.0 and 1.54.0 notes, and on
+    phrasings it must not refuse: other products that share the major version
+    1 (the helper, Claude Code, Node) and history ("introduced in 1.53.0").
 
 The real whatsnew_154/ is the fixture: its passing is the positive control.
 Runs with a bare python3 (no jwt/requests needed).
@@ -48,6 +61,32 @@ REPO = HERE.parent
 NOTES = REPO / "whatsnew_154"
 APP = sub.APP_ID
 LOCALES = list(listing.LOCALE_SOURCES)
+
+
+# App Review details. The contact and demo-account values are stand-ins; the
+# tests assert none of them is ever printed, and that a notes write leaves
+# them as they were.
+REVIEW_CONTACT = {"contactFirstName": "Test", "contactLastName": "Reviewer-Contact",
+                  "contactPhone": "+00 0000 000 000", "contactEmail": "contact@example.invalid",
+                  "demoAccountName": "demo@example.invalid",
+                  "demoAccountPassword": "not-a-real-password-7f3a", "demoAccountRequired": False}
+# Shaped like the notes 1.54.0 was submitted with: this version named, older
+# ones only as the point of comparison.
+GOOD_NOTES = ("WHAT 1.54.0 IS\n\n"
+              "1.54.0 adds no permission and no entitlement; no Info.plist or entitlements "
+              "file changed since 1.53.0.\n"
+              "Remote Control was added in 1.53.0 and is unchanged in 1.54.0 apart from "
+              "translation.\n"
+              "No account is needed: tap Try Demo on the sign-in screen.")
+# Shaped like the 1.53.0 notes App Store Connect copied onto 1.54.0.
+COPIED_NOTES = ("THE MAIN FEATURE IN 1.53.0 NEEDS A SECOND DEVICE - PLEASE READ\n\n"
+                "1.53.0 adds Remote Control: an iPhone drives a CLI session running on a Mac. "
+                "Every other tab behaves exactly as in 1.52.1.\n"
+                "NEW PERMISSION PROMPTS IN THIS VERSION (both are new since 1.52.1)\n"
+                "The iPhone screenshots have been re-taken from this 1.53.0 build. The previous "
+                "set still showed a tab that was removed in 1.52.1.\n"
+                "ALSO FIXED IN 1.53.0\n"
+                "- the usage chart.")
 
 
 class _Timeout(Exception):
@@ -75,18 +114,27 @@ class FakeASC:
 
     def __init__(self, platform: str = "IOS", state: str = "PREPARE_FOR_SUBMISSION",
                  locales: list[str] | None = None, version: bool = True,
-                 build: dict | None = None) -> None:
+                 build: dict | None = None, notes: str | None = GOOD_NOTES,
+                 release_type: str = "AFTER_APPROVAL") -> None:
         self.calls: list[tuple[str, str]] = []
         self.writes: list[tuple[str, str, dict]] = []
         self.refuse: set[str] = set()   # locales whose whatsNew PATCH gets 409
         self.drop: set[str] = set()     # locales whose whatsNew PATCH is ignored
+        # the review-notes PATCH: "refuse" (409), "drop" (200, ignored) or
+        # "clobber" (200, and the store also blanks the contact phone)
+        self.notes_mode = "ok"
         self.versions: dict[str, dict] = {}
         self.vlocs: dict[str, dict[str, dict]] = {}
+        self.reviews: dict[str, dict] = {}       # review detail id -> attributes
+        self.review_of: dict[str, str] = {}      # version id -> review detail id
         if version:
             self.versions["v1"] = {"platform": platform, "versionString": "1.54.0",
-                                   "appStoreState": state}
+                                   "appStoreState": state, "releaseType": release_type}
             self.vlocs["v1"] = {f"loc-{loc}": {"locale": loc, "whatsNew": None}
                                 for loc in (locales if locales is not None else LOCALES)}
+            if notes is not None:
+                self.reviews["rd1"] = {"notes": notes, **REVIEW_CONTACT}
+                self.review_of["v1"] = "rd1"
         self.builds = {"b1": build if build is not None else
                        {"version": "108", "processingState": "VALID",
                         "pre": {"version": "1.54.0", "platform": platform}}}
@@ -112,6 +160,12 @@ class FakeASC:
             vid = path.split("/")[2]
             return Resp(200, {"data": [{"id": lid, "attributes": dict(a)}
                                        for lid, a in self.vlocs[vid].items()]})
+        if path.startswith("/appStoreVersions/") and path.endswith("/appStoreReviewDetail"):
+            rid = self.review_of.get(path.split("/")[2])
+            if rid is None:
+                return Resp(200, {"data": None})
+            return Resp(200, {"data": {"id": rid, "type": "appStoreReviewDetails",
+                                       "attributes": dict(self.reviews[rid])}})
         if path.startswith("/builds/"):
             bid = path.split("/")[2]
             b = self.builds.get(bid)
@@ -129,7 +183,8 @@ class FakeASC:
         data = json["data"]
         if path == "/appStoreVersions":
             vid = f"v{len(self.versions) + 1}"
-            self.versions[vid] = {k: data["attributes"][k] for k in ("platform", "versionString")}
+            self.versions[vid] = {k: data["attributes"][k]
+                                  for k in ("platform", "versionString", "releaseType")}
             self.versions[vid]["appStoreState"] = "PREPARE_FOR_SUBMISSION"
             self.vlocs[vid] = {}
             return Resp(201, {"data": {"id": vid}})
@@ -158,6 +213,15 @@ class FakeASC:
             if row["locale"] not in self.drop:
                 row["whatsNew"] = data["attributes"]["whatsNew"]
             return Resp(200, {"data": data})
+        if path.startswith("/appStoreReviewDetails/"):
+            rid = path.split("/")[2]
+            if self.notes_mode == "refuse":
+                return Resp(409, text='{"errors":[{"detail":"refused"}]}')
+            if self.notes_mode != "drop":
+                self.reviews[rid].update(data["attributes"])
+            if self.notes_mode == "clobber":
+                self.reviews[rid]["contactPhone"] = None
+            return Resp(200, {"data": data})
         if path.startswith("/appStoreVersions/") and path.endswith("/relationships/build"):
             self.attached[path.split("/")[2]] = data["id"]
             return Resp(204)
@@ -176,6 +240,10 @@ class FakeASC:
 
     def first_index(self, prefix: str) -> int:
         return next((i for i, (m, p, _) in enumerate(self.writes) if p.startswith(prefix)), -1)
+
+    def notes_writes(self) -> list[dict]:
+        return [b["data"]["attributes"] for m, p, b in self.writes
+                if p.startswith("/appStoreReviewDetails/")]
 
 
 FAKE: FakeASC = FakeASC()
@@ -438,6 +506,190 @@ try:
     code, out = run(f, "--create-version", "ios", "--version", "1.54.0", "--apply")
     check("--create-version on an existing version writes nothing",
           code == 0 and len(f.writes) == 1 and "nothing to create" in out, out)
+
+    # 14. releaseType: what the version has is said, never changed
+    f = FakeASC(release_type="AFTER_APPROVAL")
+    code, out = run(f, "--create-version", "ios", "--version", "1.54.0", "--apply")
+    check("--create-version on an AFTER_APPROVAL version, default MANUAL asked: warns, writes "
+          "nothing", code == 0 and not f.writes and "releaseType=AFTER_APPROVAL" in out
+          and "WARN  it is AFTER_APPROVAL, not the MANUAL asked for" in out, out)
+    f = FakeASC(release_type="AFTER_APPROVAL")
+    code, out = run(f, "--create-version", "ios", "--version", "1.54.0",
+                    "--release-type", "AFTER_APPROVAL", "--apply")
+    check("... and says nothing more when it is the one asked for",
+          code == 0 and not f.writes and "WARN" not in out, out)
+    f = FakeASC(release_type="MANUAL")
+    code, out = submit(f, "ios", NOTES)
+    check("--submit's dry run says the version's releaseType and what it means",
+          code == 0 and "releaseType=MANUAL (after approval it waits until the owner releases "
+          "it in App Store Connect)" in out, out)
+    f = FakeASC()
+    code, out = submit(f, "ios", NOTES)
+    check("... AFTER_APPROVAL too", "releaseType=AFTER_APPROVAL (App Store Connect releases it "
+          "as soon as Apple approves it)" in out, out)
+
+    # 15. App Review notes: the detector
+    def flags(notes: str) -> list[str]:
+        return sub.review_notes_problems(notes, "1.54.0")
+
+    for name, notes in [
+        ("the notes 1.54.0 was submitted with", GOOD_NOTES),
+        ("'since 1.53.0' with no mention of 1.54.0 in the sentence",
+         "1.54.0 is a translation release.\nNo entitlement was added or changed since 1.53.0."),
+        ("'unchanged from 1.53.0'", "For 1.54.0: the Mac screenshots are unchanged from 1.53.0."),
+        ("'exactly as in 1.52.1'", "1.54.0: every other tab behaves exactly as in 1.52.1."),
+        ("'was removed in 1.52.1' (history)", "In 1.54.0 the Swarm tab, which was removed in "
+         "1.52.1, no longer appears.\nThe tab was removed in 1.52.1."),
+        ("guideline and OS numbers", "1.54.0 follows Guidelines 2.1, 1.4.1 and 1.2 and needs "
+         "iOS 17.0 or macOS 13.0.\nSee Guideline 1.4.1."),
+        ("a later version", "1.54.0 now; 1.55.0 will add more."),
+        ("another major version", "1.54.0. The helper protocol 0.9.3 is unchanged."),
+        ("no version at all", "No account is needed: tap Try Demo."),
+        ("sizes and prices", "1.54.0 is a 1.5 GB smaller download; Pro is $1.49 or 1.49 EUR."),
+        ("the helper's version", "1.54.0 is a fixes release.\n"
+         "The Mac needs the CLI Pulse helper 1.16.2 or later."),
+        ("the monitored CLI tools' versions", "1.54.0 was tested with Claude Code 1.0.88, "
+         "Codex CLI 1.2.0 and Gemini CLI 1.1.0.\nRequires Python 3.11 or Node 1.2.3."),
+        ("'introduced in 1.53.0'", "1.54.0 is a fixes release.\n"
+         "Remote Control, introduced in 1.53.0, still needs a second device."),
+        ("'(added in 1.53.0)'", "1.54.0 is a fixes release.\n"
+         "Remote Control (added in 1.53.0) needs a second device."),
+        ("'first shipped in 1.53.0'", "1.54.0 is a fixes release.\n"
+         "The Remote Control tab first shipped in 1.53.0."),
+        ("empty notes", ""),
+    ]:
+        got = flags(notes)
+        check(f"review notes not flagged: {name}", got == [], str(got))
+
+    got = flags(COPIED_NOTES)
+    check("the copied 1.53.0 notes are flagged as never naming 1.54.0",
+          any("name 1.53.0, 1.52.1 and never 1.54.0" in p for p in got), str(got))
+    quoted = [p.split(": ", 1)[1] for p in got if p.startswith("presents 1.53.0")]
+    check("... and each claim is quoted: the heading, '1.53.0 adds', 'this 1.53.0 build', "
+          "'FIXED IN 1.53.0'",
+          [q[:22] for q in quoted] == ["'THE MAIN FEATURE IN 1", "'1.53.0 adds Remote Co",
+                                       "'The iPhone screenshot", "'ALSO FIXED IN 1.53.0'"],
+          str(got))
+    check("... while its comparisons ('as in', 'since', 'was removed in') are not",
+          not any("1.52.1 as the version" in p for p in got), str(got))
+    half = GOOD_NOTES + "\n\nTHE MAIN FEATURE IN 1.53.0 NEEDS A SECOND DEVICE"
+    got = flags(half)
+    check("a stale heading left in notes that name 1.54.0 is still flagged",
+          len(got) == 1 and "presents 1.53.0" in got[0] and "never" not in got[0], str(got))
+    got = flags("1.54.0 ships the fixes.\nScreenshots were re-taken from this 1.53.0 build.")
+    check("'this 1.53.0 build' is flagged although 'from' precedes it",
+          len(got) == 1 and "this 1.53.0 build" in got[0], str(got))
+    got = flags("Fixes in v1.53: the chart.")
+    check("v-prefixed and two-part versions count", len(got) == 2, str(got))
+    got = flags("Remote Control, introduced in 1.53.0, still needs a second device.")
+    check("history phrasing does not excuse notes that never name 1.54.0",
+          len(got) == 1 and "never 1.54.0" in got[0], str(got))
+    got = flags("1.54.0 is a fixes release.\nFIXED IN 1.53.0\n- the chart.")
+    check("'FIXED IN 1.53.0' is still a claim, not history",
+          len(got) == 1 and "presents 1.53.0" in got[0], str(got))
+    got = flags("1.54.0 is a fixes release.\nThe CLI Pulse 1.53.0 build adds Remote Control.")
+    check("the app's own name before an older version is not another product",
+          len(got) == 1 and "presents 1.53.0" in got[0], str(got))
+
+    secrets = [v for v in REVIEW_CONTACT.values() if isinstance(v, str)]
+
+    # 16. App Review notes: the 1.54.0 case, notes copied from 1.53.0
+    f = FakeASC(notes=COPIED_NOTES)
+    code, out = submit(f, "ios", NOTES)
+    check("copied 1.53.0 notes: the dry run refuses, writes nothing",
+          code == 1 and not f.writes and "REFUSED" in out and "Nothing was written" in out, out)
+    check("... after printing the notes the version holds, in full",
+          all(f"    | {line}" in out for line in COPIED_NOTES.splitlines() if line), out)
+    check("... says why and how to fix it",
+          "never 1.54.0" in out and "presents 1.53.0 as the version under review" in out
+          and "pass --review-notes <file>" in out, out)
+    check("... and never prints a contact or demo-account value",
+          not any(v in out for v in secrets), out)
+    f = FakeASC(notes=COPIED_NOTES)
+    code, out = submit(f, "ios", NOTES, "--apply")
+    check("... --apply refuses the same way, before the first write",
+          code == 1 and not f.writes and not f.submissions, out)
+
+    f = FakeASC()
+    code, out = submit(f, "ios", NOTES)
+    check("good notes: the dry run prints them and passes, secrets unprinted",
+          code == 0 and all(f"    | {line}" in out for line in GOOD_NOTES.splitlines() if line)
+          and "the notes name no older version" in out and not any(v in out for v in secrets),
+          out)
+
+    # 17. --review-notes FILE
+    good_file = tmp / "notes-1.54.0.txt"
+    good_file.write_text(GOOD_NOTES + "\n", encoding="utf-8")
+    f = FakeASC(notes=COPIED_NOTES)
+    code, out = submit(f, "ios", NOTES, "--review-notes", str(good_file))
+    check("--review-notes over copied notes: the dry run passes, writes nothing, shows the old "
+          "notes and says they will be replaced",
+          code == 0 and not f.writes and "    | THE MAIN FEATURE IN 1.53.0" in out
+          and f"replace the App Review notes with {good_file}" in out, out)
+    f = FakeASC(notes=COPIED_NOTES)
+    code, out = submit(f, "ios", NOTES, "--review-notes", str(good_file), "--apply")
+    check("--review-notes --apply: submits, with the notes PATCHed once",
+          code == 0 and any(s["submitted"] for s in f.submissions.values())
+          and len(f.notes_writes()) == 1, out)
+    check("... sending `notes` and nothing else, without the trailing newline",
+          f.notes_writes() == [{"notes": GOOD_NOTES}], str(f.notes_writes()))
+    check("... before What's New and before the build is attached",
+          -1 < f.first_index("/appStoreReviewDetails/")
+          < f.first_index("/appStoreVersionLocalizations/")
+          < f.first_index("/appStoreVersions/v1/relationships/build"), str(f.writes)[:400])
+    check("... the store now holds the file, every other field as it was",
+          f.reviews["rd1"] == {"notes": GOOD_NOTES, **REVIEW_CONTACT}, str(f.reviews))
+    check("... and the read-back said so", "review notes verified" in out, out)
+
+    f = FakeASC(notes=GOOD_NOTES)
+    code, out = submit(f, "ios", NOTES, "--review-notes", str(good_file), "--apply")
+    check("--review-notes equal to the store's notes: no notes write",
+          code == 0 and not f.notes_writes() and "already holds it" in out, out)
+
+    for name, content, needle in [
+        ("notes that are the copied 1.53.0 set", COPIED_NOTES, "never 1.54.0"),
+        ("an empty file", "\n", "empty"),
+        ("a file over 4000 characters", GOOD_NOTES + "\n" + "x" * 4000, "limit of 4000"),
+    ]:
+        bad = tmp / f"bad-{len(content)}.txt"
+        bad.write_text(content, encoding="utf-8")
+        f = FakeASC()
+        code, out = submit(f, "ios", NOTES, "--review-notes", str(bad), "--apply")
+        check(f"--review-notes with {name}: refused before the store is contacted",
+              code == 1 and not f.calls and needle in out and "Nothing was written" in out, out)
+    f = FakeASC()
+    code, out = submit(f, "ios", NOTES, "--review-notes", str(tmp / "nope.txt"), "--apply")
+    check("--review-notes naming no file: refused before the store is contacted",
+          code == 1 and not f.calls and "no such file" in out, out)
+
+    # 18. a notes write that does not land stops everything after it
+    for mode, needle in [("refuse", "the review notes were refused"),
+                         ("drop", "the notes read back are not the file"),
+                         ("clobber", "these fields changed although only notes was sent: "
+                                     "contactPhone")]:
+        f = FakeASC(notes=COPIED_NOTES)
+        f.notes_mode = mode
+        code, out = submit(f, "ios", NOTES, "--review-notes", str(good_file), "--apply")
+        check(f"a notes write the store {mode}s stops the run: no What's New, no build, "
+              "no submission",
+              code == 1 and not f.whatsnew_writes() and not f.attached and not f.submissions
+              and needle in out, out)
+
+    # 19. --accept-review-notes, and a version with no review details
+    f = FakeASC(notes=COPIED_NOTES)
+    code, out = submit(f, "ios", NOTES, "--accept-review-notes", "--apply")
+    check("--accept-review-notes submits flagged notes as they are, with a warning",
+          code == 0 and not f.notes_writes() and any(s["submitted"] for s in f.submissions.values())
+          and "WARN  the notes on the version:" in out, out)
+    f = FakeASC(notes=None)
+    code, out = submit(f, "ios", NOTES, "--apply")
+    check("a version with no App Review details is refused with zero writes",
+          code == 1 and not f.writes and "no App Review details" in out, out)
+    f = FakeASC()
+    code, out = run(f, "--create-version", "ios", "--version", "1.54.0",
+                    "--review-notes", str(good_file))
+    check("--review-notes without --submit is a usage error",
+          code == 2 and not f.calls and "go with --submit" in out, out)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 

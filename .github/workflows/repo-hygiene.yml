@@ -148,8 +148,24 @@ jobs:
       # The review submitter, the same way: What's New per platform from
       # --whatsnew-dir, every refusal before the first write (texts, version
       # state, store locales, the build's state, platform and version), only
-      # changed locales written, read back before the build is attached.
+      # changed locales written, read back before the build is attached. And
+      # the App Review notes: App Store Connect copies the previous version's
+      # onto a new one (1.54.0 arrived claiming 1.53.0's features), so notes
+      # that read as an older version's are refused before the first write,
+      # and --review-notes writes `notes` alone and reads it back.
       - run: python3 scripts/test_asc_submit.py
+      # The preflight's store half, against a fake App Store Connect: What's
+      # New on every localization compared with --whatsnew-dir. It used to
+      # check only the files, and said PREFLIGHT OK for 1.54.0 while What's
+      # New was empty in all 14 localizations.
+      - run: python3 scripts/test_asc_listing_preflight_store.py
+      # The Developer ID release's other two surfaces. update_cask.sh's
+      # `brew style` did not run on 1.54.0 ("Homebrew requires casks to be in
+      # a tap") and the script exited 0; its stand-in cases run here, the real
+      # brew cases where Homebrew is installed. check_release_surfaces.sh reads
+      # the release, latest.json and the tap back; offline, from fixtures.
+      - run: bash scripts/test_update_cask.sh
+      - run: bash scripts/test_check_release_surfaces.sh
 
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys
