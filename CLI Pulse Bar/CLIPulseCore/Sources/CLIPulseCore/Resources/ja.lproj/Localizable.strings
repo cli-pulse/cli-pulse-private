@@ -614,6 +614,7 @@
 "advanced.background_sync_hint" = "iPhone、Apple Watch、Android 用にクラウドへ使用状況を同期";
 "advanced.full_details" = "詳細:";
 "advanced.hide_emails" = "UI でメールアドレスを非表示";
+/* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Git アクティビティを追跡（Yield Score）";
 "advanced.track_git_hint" = "ハッシュ化したコミットメタデータのみを送信し、メッセージ、差分、パスはアップロードしません";
 "advanced.git_consent_title" = "Git アクティビティ追跡を有効にしますか？";
@@ -634,7 +635,8 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。";
 "yield.empty_body" = "コミットあたりの AI コストを追跡して Yield Score を表示します。";
-"yield.empty_enable_hint" = "「設定 › 詳細」の「Git アクティビティを追跡」で有効にできます。";
+/* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
+"yield.empty_enable_hint" = "「設定 › 詳細」で「Git アクティビティを追跡（Yield Score）」をオンにしてください。";
 "yield.view_detail" = "詳細を表示";
 "yield.detail_title" = "Yield Score 詳細";
 "yield.detail_body" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。マージコミットは集計から除外されます。";

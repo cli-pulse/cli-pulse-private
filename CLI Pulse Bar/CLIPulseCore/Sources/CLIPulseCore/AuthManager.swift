@@ -836,6 +836,12 @@ extension AppState {
         // this list was written, and it was missed): without this, the next
         // account to sign in saw the previous one's heatmap until the cache aged.
         resetUsageArchive()
+        // Yield Score is account data as well: the rows and the account's
+        // `track_git_activity`. Left set, a sign-out into local mode kept the
+        // card up on "No commits attributed yet" until relaunch, because the
+        // settings read that would clear the flag needs an account.
+        gitTrackingEnabled = false
+        yieldScoreDailyRows = []
         // iter16 hotfix (2026-04-29): signed-out + onboarding-completed
         // users used to land on `.overview` after a sign-out / delete-
         // account, which renders an empty "No Data Yet" state — a

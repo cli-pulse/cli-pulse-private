@@ -39,16 +39,25 @@ final class MacSettingsCopyTests: XCTestCase {
     /// The Yield Score card said to turn git tracking on in Settings › Privacy.
     /// The switch is in Settings › Advanced; the Privacy card at the top of
     /// Settings does not have it.
+    ///
+    /// The hint names the switch by its whole label. It used to stop before
+    /// "(Yield Score)", so the one word that ties the switch to the card was
+    /// the part left out, and someone scanning Advanced for "Yield Score" did
+    /// not find the name the hint gave.
     func test_theYieldHint_pointsAtTheTabThatHasTheSwitch() {
         eachLocalization { localization in
             let hint = L10n.yield.emptyEnableHint
+            XCTAssertFalse(hint.hasPrefix("yield."), "\(localization) renders the raw key")
             XCTAssertTrue(hint.contains(L10n.settings.advanced), "\(localization): \(hint)")
             let toggle = L10n.advanced.trackGit
-            let name = toggle[..<(toggle.firstIndex(where: { $0 == "(" || $0 == "（" }) ?? toggle.endIndex)]
-                .trimmingCharacters(in: .whitespaces)
-            XCTAssertFalse(name.isEmpty, localization)
-            XCTAssertTrue(hint.contains(name), "\(localization): \(hint) does not name \(name)")
+            XCTAssertTrue(toggle.contains("Yield Score"), "\(localization): \(toggle)")
+            XCTAssertTrue(hint.contains(toggle), "\(localization): \(hint) does not name \(toggle)")
         }
+        // Control: in Japanese the label and the hint are not the English
+        // ones, so the lookup is what passed above, not the fallback.
+        LocaleOverrideStore.shared.set("ja")
+        XCTAssertEqual(L10n.advanced.trackGit, "Git アクティビティを追跡（Yield Score）")
+        XCTAssertTrue(L10n.yield.emptyEnableHint.contains("「Git アクティビティを追跡（Yield Score）」"))
     }
 
     /// Setup v2's welcome page reused the mode chooser's lead-in, which ends in

@@ -62,23 +62,52 @@ final class HelperInstallerTests: XCTestCase {
 
     private let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
 
-    func test_shouldReprobe_midFlightStatesNeverReprobe() {
-        // The install/refresh flow owns these — a popover re-open must not
-        // race it, regardless of how old lastChecked is.
+    func test_shouldReprobe_installStatesNeverReprobe() {
+        // The install flow owns these — a popover re-open must not race it,
+        // regardless of how old lastChecked is.
         for state in [HelperInstaller.State.downloading(progress: 0.5),
-                      .installing,
-                      .checking] {
+                      .installing] {
             XCTAssertFalse(
                 HelperInstaller.shouldReprobe(
-                    state: state, lastChecked: nil, now: t0, maxAge: 8),
+                    state: state, lastChecked: nil, now: t0, maxAge: 8,
+                    refreshInFlight: false),
                 "\(state) should never re-probe (nil lastChecked)")
             XCTAssertFalse(
                 HelperInstaller.shouldReprobe(
                     state: state,
                     lastChecked: t0.addingTimeInterval(-3600),
-                    now: t0, maxAge: 8),
+                    now: t0, maxAge: 8, refreshInFlight: false),
                 "\(state) should never re-probe (very stale lastChecked)")
         }
+    }
+
+    /// A running `refresh()` owns the state: nothing re-probes on top of it,
+    /// whatever the state and however old the last check.
+    func test_shouldReprobe_neverWhileARefreshRuns() {
+        for state in [HelperInstaller.State.checking, .notInstalled,
+                      .running(version: "1.18.0"), .bundled(version: "1.30.0")] {
+            for lastChecked in [nil, t0.addingTimeInterval(-3600)] {
+                XCTAssertFalse(
+                    HelperInstaller.shouldReprobe(
+                        state: state, lastChecked: lastChecked, now: t0, maxAge: 8,
+                        refreshInFlight: true),
+                    "\(state), lastChecked \(String(describing: lastChecked))")
+            }
+        }
+    }
+
+    /// `.checking` with no refresh running is where `state` starts, before
+    /// anything probed. Read as "mid-flight" it blocked the popover's first
+    /// probe, and `helperPresent` stayed false after every launch until the
+    /// user opened Settings (review of #610).
+    func test_shouldReprobe_checkingBeforeAnyProbeReprobes() {
+        XCTAssertTrue(HelperInstaller.shouldReprobe(
+            state: .checking, lastChecked: nil, now: t0, maxAge: 8,
+            refreshInFlight: false))
+        // Throttled like a settled state once something has checked.
+        XCTAssertFalse(HelperInstaller.shouldReprobe(
+            state: .checking, lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8,
+            refreshInFlight: false))
     }
 
     func test_shouldReprobe_settledStatesReprobeWhenStale() {
@@ -96,12 +125,13 @@ final class HelperInstallerTests: XCTestCase {
                 HelperInstaller.shouldReprobe(
                     state: state,
                     lastChecked: t0.addingTimeInterval(-10),
-                    now: t0, maxAge: 8),
+                    now: t0, maxAge: 8, refreshInFlight: false),
                 "\(state) older than maxAge should re-probe")
             // Never checked → re-probe.
             XCTAssertTrue(
                 HelperInstaller.shouldReprobe(
-                    state: state, lastChecked: nil, now: t0, maxAge: 8),
+                    state: state, lastChecked: nil, now: t0, maxAge: 8,
+                    refreshInFlight: false),
                 "\(state) with nil lastChecked should re-probe")
         }
     }
@@ -115,7 +145,7 @@ final class HelperInstallerTests: XCTestCase {
                 HelperInstaller.shouldReprobe(
                     state: state,
                     lastChecked: t0.addingTimeInterval(-2),
-                    now: t0, maxAge: 8),
+                    now: t0, maxAge: 8, refreshInFlight: false),
                 "\(state) checked 2s ago should NOT re-probe (maxAge 8)")
         }
     }
@@ -248,13 +278,15 @@ final class HelperInstallerTests: XCTestCase {
         // swap changes the reported version) but throttle when fresh.
         XCTAssertTrue(HelperInstaller.shouldReprobe(
             state: .bundled(version: "1.30.0"),
-            lastChecked: t0.addingTimeInterval(-10), now: t0, maxAge: 8))
+            lastChecked: t0.addingTimeInterval(-10), now: t0, maxAge: 8,
+            refreshInFlight: false))
         XCTAssertTrue(HelperInstaller.shouldReprobe(
             state: .bundled(version: "1.30.0"),
-            lastChecked: nil, now: t0, maxAge: 8))
+            lastChecked: nil, now: t0, maxAge: 8, refreshInFlight: false))
         XCTAssertFalse(HelperInstaller.shouldReprobe(
             state: .bundled(version: "1.30.0"),
-            lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8))
+            lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8,
+            refreshInFlight: false))
     }
     // MARK: - helperPresent: the answer that survives a re-probe
 
@@ -314,6 +346,125 @@ final class HelperInstallerTests: XCTestCase {
             message.lowercased().contains("may be restarting"),
             "that was a guess among three causes, and the likeliest was missing"
         )
+    }
+
+    // MARK: - refreshIfStale on a fresh launch (review of #610)
+
+    @MainActor
+    private func makeInstaller(
+        client: @escaping () -> SessionControlClient
+    ) -> HelperInstaller {
+        makeProbeOnlyHelperInstaller(client: client)
+    }
+
+    /// The popover's hook is the only probe most launches get. On a fresh
+    /// installer (`state` still the initial `.checking`, nothing checked) it
+    /// must probe exactly once, and a second call right after must not.
+    @MainActor
+    func test_refreshIfStale_probesOnceOnAFreshInstaller() async {
+        var probes = 0
+        let installer = makeInstaller {
+            probes += 1
+            return ScriptedHelloClient(reply: nil, delayNanoseconds: 0)
+        }
+        XCTAssertEqual(installer.state, .checking)
+        XCTAssertNil(installer.lastChecked)
+
+        await installer.refreshIfStale()
+        XCTAssertEqual(probes, 1, "a fresh launch must probe")
+        XCTAssertNotNil(installer.lastChecked)
+        XCTAssertEqual(installer.state, .notInstalled)
+
+        await installer.refreshIfStale()
+        XCTAssertEqual(probes, 1, "a second call within maxAge must not probe again")
+    }
+
+    /// What the Yield Score card waits for: a helper that answers is present
+    /// after the first popover probe, without a visit to Settings.
+    @MainActor
+    func test_refreshIfStale_findsTheHelperOnAFreshInstaller() async {
+        let hello = makeHello(impl: "swift-bundled")
+        let installer = makeInstaller {
+            ScriptedHelloClient(reply: hello, delayNanoseconds: 0)
+        }
+        XCTAssertFalse(installer.helperPresent)
+
+        await installer.refreshIfStale()
+
+        XCTAssertEqual(installer.state, .bundled(version: "1.30.0"))
+        XCTAssertTrue(installer.helperPresent)
+    }
+
+    /// While a refresh is running (`state` reads `.checking` then too), the
+    /// hook must not start a second one on top of it.
+    @MainActor
+    func test_refreshIfStale_doesNotStackOnARunningRefresh() async {
+        var probes = 0
+        let installer = makeInstaller {
+            probes += 1
+            return ScriptedHelloClient(reply: nil, delayNanoseconds: 300_000_000)
+        }
+        let first = Task { @MainActor in await installer.refresh() }
+        for _ in 0..<1000 where probes == 0 { await Task.yield() }
+        XCTAssertEqual(probes, 1, "the first refresh must have started")
+
+        await installer.refreshIfStale()
+        XCTAssertEqual(probes, 1, "no second probe while the first runs")
+
+        await first.value
+        XCTAssertEqual(installer.state, .notInstalled)
+    }
+}
+
+
+/// A `HelperInstaller` with the production capabilities, so `refresh()` is
+/// allowed to probe, that reaches nothing real: `client` answers the probe, and
+/// the socket path and manifest URL do not exist, so both fail at once.
+@MainActor
+func makeProbeOnlyHelperInstaller(
+    client: @escaping () -> SessionControlClient
+) -> HelperInstaller {
+    let runtime = CLIPulseRuntimeEnvironment.resolveForTesting(
+        infoDictionary: ["CFBundleIdentifier": "yyh.CLI-Pulse"],
+        environment: [:]
+    )
+    XCTAssertTrue(runtime.capabilities.allowsHelperManifestRefresh)
+    XCTAssertTrue(runtime.capabilities.allowsHelperRegistration)
+    return HelperInstaller(
+        runtimeEnvironment: runtime,
+        manifestURL: URL(fileURLWithPath: "/nonexistent-cli-pulse-test/helper-latest.json"),
+        urlSession: .shared,
+        helloClient: client,
+        productionPathResolver: {
+            HelperInstaller.ProductionPaths(
+                udsPath: "/nonexistent-cli-pulse-test/clipulse-helper.sock",
+                helperDir: "/nonexistent-cli-pulse-test/CLI-Pulse-Helper")
+        }
+    )
+}
+
+/// A hello client that answers `reply` (nil: helper not running) after
+/// `delayNanoseconds`. Only `hello()` is used by `HelperInstaller.refresh()`.
+struct ScriptedHelloClient: SessionControlClient {
+    let reply: SessionControlHello?
+    let delayNanoseconds: UInt64
+
+    func hello() async throws -> SessionControlHello {
+        if delayNanoseconds > 0 { try? await Task.sleep(nanoseconds: delayNanoseconds) }
+        guard let reply else { throw SessionControlError.helperNotRunning }
+        return reply
+    }
+
+    func startManagedSession(
+        provider: String, clientLabel: String?, cwdBasename: String?, cwdHmac: String?
+    ) async throws -> SessionControlStartResult {
+        throw SessionControlError.notImplemented
+    }
+
+    func listSessions() async throws -> [SessionControlSummary] { [] }
+
+    func stopSession(sessionId: String) async throws {
+        throw SessionControlError.notImplemented
     }
 }
 #endif

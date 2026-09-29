@@ -136,6 +136,38 @@ final class SignedOutLandingTests: XCTestCase {
                        "sign-out must drop the local-mode flag so MenuBarView routes back to notConnectedView (Sign-In form)")
     }
 
+    /// Yield Score's rows and the account's `track_git_activity` are account
+    /// data. Left set, a sign-out followed by "Continue without account" kept
+    /// the Overview card on "No commits attributed yet" (tracking still read
+    /// as on) until relaunch: in local mode the settings read that would
+    /// correct the flag throws `notAuthenticated`, and nothing else clears it.
+    func testApplySignedOutStateClearsYieldScoreState() {
+        let state = AppState()
+        state.gitTrackingEnabled = true
+        state.yieldScoreDailyRows = [
+            YieldScoreRow(
+                provider: "Claude", day: "2026-09-29",
+                total_cost: 4, weighted_commit_count: 2, raw_commit_count: 2,
+                ambiguous_commit_count: 0
+            ),
+        ]
+
+        state.applySignedOutState()
+
+        XCTAssertFalse(state.gitTrackingEnabled,
+                       "the previous account's tracking opt-in must not outlive sign-out")
+        XCTAssertTrue(state.yieldScoreDailyRows.isEmpty,
+                      "the previous account's yield rows must not outlive sign-out")
+        // What that leaves the local-mode Overview with: no helper, not
+        // paired, tracking off, no rows — no card.
+        XCTAssertEqual(
+            YieldScoreCardContent.resolve(
+                isDemoMode: false, thisMacIsPaired: state.authState.isThisMacSyncing,
+                helperPresent: false, trackingEnabled: state.gitTrackingEnabled,
+                hasSummaries: !state.yieldScoreSummaries.isEmpty),
+            .hidden)
+    }
+
     // MARK: - iter20 Remote Approvals + push-token state cleanup
 
     /// iter20 F1: same-session sign-out → sign-in (account switch with no

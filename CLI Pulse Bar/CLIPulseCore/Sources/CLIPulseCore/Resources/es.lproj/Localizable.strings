@@ -970,6 +970,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para el iPhone, el Apple Watch y Android";
 "advanced.full_details" = "Detalles completos:";
 "advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
+/* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Seguimiento de actividad de git (Yield Score)";
 "advanced.track_git_hint" = "Solo se suben metadatos de commits protegidos con hash: ni mensajes, ni diffs, ni rutas";
 "advanced.git_consent_title" = "¿Activar el seguimiento de actividad de git?";
@@ -986,7 +987,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API.";
 "yield.empty_body" = "Registra el costo de IA por commit para ver tu Yield Score.";
-"yield.empty_enable_hint" = "Actívalo en Ajustes › Avanzado › Seguimiento de actividad de git.";
+/* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
+"yield.empty_enable_hint" = "Activa «Seguimiento de actividad de git (Yield Score)» en Ajustes › Avanzado.";
 "yield.view_detail" = "Ver detalle";
 "yield.detail_title" = "Detalle de Yield Score";
 "yield.detail_body" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API. Los commits de fusión se excluyen de la atribución.";

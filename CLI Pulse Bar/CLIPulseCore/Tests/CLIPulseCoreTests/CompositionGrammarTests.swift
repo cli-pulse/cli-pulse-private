@@ -288,7 +288,8 @@ final class CompositionGrammarTests: XCTestCase {
         let english = try catalogue("en")
         let naming = english.filter { $0.value.localizedCaseInsensitiveContains("yield score") }.map(\.key).sorted()
         XCTAssertEqual(
-            naming, ["advanced.track_git", "yield.detail_title", "yield.empty_body", "yield.title"],
+            naming, ["advanced.track_git", "yield.detail_title", "yield.empty_body",
+                     "yield.empty_enable_hint", "yield.title"],
             "a string that names the score was added or removed: check it keeps the brand term")
         for localization in LocaleOverrideStore.shippedLocalizations {
             let values = try catalogue(localization)

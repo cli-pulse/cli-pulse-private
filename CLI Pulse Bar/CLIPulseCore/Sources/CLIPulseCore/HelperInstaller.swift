@@ -120,6 +120,13 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// commits its state if it's still the latest at completion. `@MainActor`
     /// access only, so plain-Int mutation is race-free. (codex round-2 P2.)
     private var refreshEpoch: Int = 0
+    /// How many `refresh()` calls have not returned yet. `state` alone cannot
+    /// say whether a probe is running: it starts as `.checking` with nothing
+    /// behind it, and a gate that read `.checking` as "a refresh owns this"
+    /// never let the first probe run from the popover, so after every launch
+    /// `helperPresent` stayed false until the user opened Settings. `@MainActor`
+    /// access only, like `refreshEpoch`.
+    private var refreshesInFlight: Int = 0
 
     private let manifestURL: URL
     private let udsPath: String
@@ -208,11 +215,15 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     // MARK: - Public API
 
     /// Refresh the state by probing the local helper + comparing against
-    /// the latest manifest. Called on app launch + once per 24h while
-    /// running + on user-clicked "Check for Updates".
+    /// the latest manifest. Called through `refreshIfStale()` when the popover
+    /// first appears and whenever it regains focus, when Settings' Companion
+    /// CLI section appears, from its Re-check buttons, and after a helper
+    /// respawn. Nothing probes at launch itself: the first popover open does.
     @MainActor
     public func refresh() async {
         guard externalActionsAllowed else { return }
+        refreshesInFlight += 1
+        defer { refreshesInFlight -= 1 }
         refreshEpoch &+= 1
         let epoch = refreshEpoch
         state = .checking
@@ -394,11 +405,16 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
 
     /// Pure decision for the popover-reopen / app-active re-probe hook (RC-2).
     /// Extracted so it's unit-testable with an injected clock.
-    /// - Mid-flight states ({downloading, installing, checking}) never
-    ///   re-probe — the install/refresh flow already owns the state, and a
-    ///   re-probe mid-install would race it.
+    /// - While a `refresh()` is running (`refreshInFlight`), never: it already
+    ///   owns the state, and a second probe would only repeat it.
+    /// - Install states ({downloading, installing}) never re-probe — the
+    ///   install flow owns the state, and a re-probe mid-install would race it.
+    /// - `.checking` with no refresh running is the value `state` starts with,
+    ///   before anything has probed. It re-probes like a settled state (nil
+    ///   `lastChecked` → yes). Treating it as mid-flight meant the first probe
+    ///   after launch never ran from the popover.
     /// - Every settled state ({notInstalled, unreachable, error, running,
-    ///   updateAvailable}) re-probes when the last check is older than
+    ///   updateAvailable, bundled}) re-probes when the last check is older than
     ///   `maxAge` (or never happened). This is what catches a helper that
     ///   bound its socket AFTER the one-shot launch probe — e.g. the user
     ///   finished Installer.app, the state settled `.notInstalled`, and on the
@@ -406,12 +422,14 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     ///   The `maxAge` gate also stops rapid open/close toggling from hammering
     ///   the manifest endpoint with overlapping refreshes.
     public static func shouldReprobe(
-        state: State, lastChecked: Date?, now: Date, maxAge: TimeInterval
+        state: State, lastChecked: Date?, now: Date, maxAge: TimeInterval,
+        refreshInFlight: Bool
     ) -> Bool {
+        if refreshInFlight { return false }
         switch state {
-        case .downloading, .installing, .checking:
+        case .downloading, .installing:
             return false
-        case .notInstalled, .unreachable, .error, .running, .updateAvailable, .bundled:
+        case .checking, .notInstalled, .unreachable, .error, .running, .updateAvailable, .bundled:
             // `.bundled` re-probes when stale too: a helper swap (app update)
             // changes the reported version, and the socket can flap
             // (.unreachable) briefly during a controlled restart.
@@ -429,7 +447,8 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     public func refreshIfStale(now: Date = Date(), maxAge: TimeInterval = 8) async {
         guard externalActionsAllowed else { return }
         guard Self.shouldReprobe(
-            state: state, lastChecked: lastChecked, now: now, maxAge: maxAge
+            state: state, lastChecked: lastChecked, now: now, maxAge: maxAge,
+            refreshInFlight: refreshesInFlight > 0
         ) else { return }
         await refresh()
     }

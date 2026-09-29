@@ -161,6 +161,60 @@ final class YieldScoreTests: XCTestCase {
         XCTAssertEqual(resolve(paired: false, helper: false, rows: true), .summaries)
     }
 
+    #if os(macOS)
+    /// The card's own call. Which flag means "paired" and which means "a
+    /// helper" used to be chosen in `YieldScoreCard`, where no test runs, so
+    /// swapping `isThisMacSyncing` for the account's `isPaired`, or dropping
+    /// the installer, passed everything (review of #610).
+    @MainActor
+    func testCardReadsThisMacsPairingAndTheInstallersHelper() async {
+        let suite = "YieldScoreTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let state = AppState(
+            runtimeEnvironment: .current, defaults: defaults, performLaunchSetup: false)
+        XCTAssertFalse(state.isDemoMode)
+        let auth = AuthState()
+
+        let hello = SessionControlHello(
+            protocolVersion: 1, supportedMethods: ["hello"],
+            capabilities: SessionControlCapabilities(
+                sendInput: true, subscribeEvents: false, approvals: false),
+            helperVersion: "1.30.0", implementation: "swift-bundled")
+        let installer = makeProbeOnlyHelperInstaller {
+            ScriptedHelloClient(reply: hello, delayNanoseconds: 0)
+        }
+        await installer.refreshIfStale()
+        XCTAssertTrue(installer.helperPresent)
+        let noHelper = makeProbeOnlyHelperInstaller {
+            ScriptedHelloClient(reply: nil, delayNanoseconds: 0)
+        }
+        await noHelper.refreshIfStale()
+        XCTAssertFalse(noHelper.helperPresent)
+
+        func card(_ installer: HelperInstaller) -> YieldScoreCardContent {
+            YieldScoreCardContent.resolve(state: state, auth: auth, installer: installer)
+        }
+
+        // The account is paired through another device; this Mac is not.
+        auth.isPaired = true
+        auth.thisMacPairing = .notSetUp
+        XCTAssertEqual(card(installer), .hidden)
+
+        // This Mac is paired: the prompt, but only where a helper answered.
+        auth.thisMacPairing = .notNeeded
+        XCTAssertEqual(card(installer), .turnOnTracking)
+        XCTAssertEqual(card(noHelper), .hidden)
+
+        // The account's opt-in and rows come from the app state.
+        state.gitTrackingEnabled = true
+        XCTAssertEqual(card(noHelper), .noAttribution)
+
+        state.isDemoMode = true
+        XCTAssertEqual(card(installer), .hidden)
+    }
+    #endif
+
     private func resolve(
         demo: Bool = false, paired: Bool, helper: Bool,
         tracking: Bool = false, rows: Bool = false
