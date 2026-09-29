@@ -988,7 +988,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "yield.help_estimated" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API.";
 "yield.empty_body" = "Registra el costo de IA por commit para ver tu Yield Score.";
 /* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
-"yield.empty_enable_hint" = "Actívalo en Ajustes › Avanzado › Seguimiento de actividad de git (Yield Score).";
+"yield.empty_enable_hint" = "Activa «Seguimiento de actividad de git (Yield Score)» en Ajustes › Avanzado.";
 "yield.view_detail" = "Ver detalle";
 "yield.detail_title" = "Detalle de Yield Score";
 "yield.detail_body" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API. Los commits de fusión se excluyen de la atribución.";

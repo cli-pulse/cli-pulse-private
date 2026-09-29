@@ -16,13 +16,7 @@ struct YieldScoreCard: View {
     @ObservedObject var installer: HelperInstaller
 
     private var content: YieldScoreCardContent {
-        YieldScoreCardContent.resolve(
-            isDemoMode: state.isDemoMode,
-            thisMacIsPaired: authState.isThisMacSyncing,
-            helperPresent: installer.helperPresent,
-            trackingEnabled: state.gitTrackingEnabled,
-            hasSummaries: !state.yieldScoreSummaries.isEmpty
-        )
+        YieldScoreCardContent.resolve(state: state, auth: authState, installer: installer)
     }
 
     var body: some View {

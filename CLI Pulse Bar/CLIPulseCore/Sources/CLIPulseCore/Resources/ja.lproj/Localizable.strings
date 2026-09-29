@@ -636,7 +636,7 @@
 "yield.help_estimated" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。";
 "yield.empty_body" = "コミットあたりの AI コストを追跡して Yield Score を表示します。";
 /* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
-"yield.empty_enable_hint" = "「設定 › 詳細」の「Git アクティビティを追跡（Yield Score）」で有効にできます。";
+"yield.empty_enable_hint" = "「設定 › 詳細」で「Git アクティビティを追跡（Yield Score）」をオンにしてください。";
 "yield.view_detail" = "詳細を表示";
 "yield.detail_title" = "Yield Score 詳細";
 "yield.detail_body" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。マージコミットは集計から除外されます。";

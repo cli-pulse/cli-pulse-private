@@ -122,13 +122,23 @@ public enum YieldScoreAggregator {
 
 /// What the Overview's Yield Score card shows, if anything.
 ///
-/// Its rows come from `yield_score_daily`, which only the helper's git
-/// collector feeds, and the prompt it shows with tracking off sends people to
-/// Settings › Advanced, which only a paired account has. So the prompt appears
-/// only on a paired Mac with a helper on it (the owner's call, 2026-09-30).
-/// Anywhere else it pointed at a switch that was not there, for a number that
-/// could not arrive: the Mac App Store build in local mode, and Demo mode,
-/// whose Overview is what the store screenshots draw.
+/// Its rows come from `yield_score_daily`, which only the `.pkg` helper's git
+/// collector feeds (`helper/cli_pulse_helper.py`), and the prompt it shows with
+/// tracking off sends people to Settings › Advanced, which only a paired
+/// account has. So the prompt appears only on a paired Mac with a helper on it
+/// (the owner's call for the Mac App Store build, 2026-09-30). Anywhere else it
+/// pointed at a switch that was not there, for a number that could not arrive:
+/// the Mac App Store build in local mode, and Demo mode, whose Overview is what
+/// the store screenshots draw.
+///
+/// "A helper" is `HelperInstaller.helperPresent`, which also counts the
+/// Developer ID build's built-in Swift helper (`.bundled`). That helper has no
+/// git collector, so on a Developer ID Mac running only the built-in helper the
+/// prompt shows although this Mac cannot supply rows: the switch is the
+/// account's, and rows arrive only if another Mac on the account runs the
+/// `.pkg` helper. The App Store build does not ship the built-in helper, so
+/// there "a helper" is always the `.pkg` one. Before #609 the prompt showed
+/// everywhere, so no Mac shows it where it did not before.
 public enum YieldScoreCardContent: Equatable, Sendable {
     /// No card.
     case hidden
@@ -161,3 +171,25 @@ public enum YieldScoreCardContent: Equatable, Sendable {
         return hasSummaries ? .summaries : .hidden
     }
 }
+
+#if os(macOS)
+extension YieldScoreCardContent {
+    /// What the card shows for the app's live state. `YieldScoreCard` calls
+    /// this, so the choice of flags lives where a test can see it: this Mac's
+    /// pairing (`isThisMacSyncing`), not the account's (`isPaired`, true while
+    /// any of its devices is paired), and the installer's `helperPresent`,
+    /// which holds through the `.checking` of each re-probe.
+    @MainActor
+    public static func resolve(
+        state: AppState, auth: AuthState, installer: HelperInstaller
+    ) -> Self {
+        resolve(
+            isDemoMode: state.isDemoMode,
+            thisMacIsPaired: auth.isThisMacSyncing,
+            helperPresent: installer.helperPresent,
+            trackingEnabled: state.gitTrackingEnabled,
+            hasSummaries: !state.yieldScoreSummaries.isEmpty
+        )
+    }
+}
+#endif

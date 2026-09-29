@@ -155,6 +155,13 @@ struct MenuBarView: View {
         .frame(width: 380, height: effectiveHeight)
         .onAppear {
             reloadAgentSetupState()
+            // The first probe after launch. The focus hook below only runs on a
+            // change, and until something probes, `helperPresent` is false and
+            // the Overview's Yield Score card cannot show its prompt.
+            // `refreshIfStale` skips it when a probe is running or recent.
+            if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
+                Task { await state.helperInstaller.refreshIfStale() }
+            }
         }
         .onChange(of: onboardingCompleted) { _ in
             reloadAgentSetupState()
