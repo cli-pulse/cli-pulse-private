@@ -1575,7 +1575,7 @@
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "alerts.critical_count_badge" = "严重 %d 条";
-"alerts.warning_count_badge" = "警告 %d 条";
+"alerts.warning_count_badge" = "警告级 %d 条";
 "account.deleting" = "正在删除账户…";
 "usage_dashboard.chart_day" = "日期";
 "usage_dashboard.chart_tokens" = "token 数";
@@ -1652,7 +1652,7 @@
 "alert_kind.device_cpu_title" = "设备 CPU 使用率偏高";
 "alert_kind.quota_message" = "配额窗口「%1$@」已使用 %2$@%%（剩余 %3$@%%）。";
 "alert_kind.quota_message_reset" = "配额窗口「%1$@」已使用 %2$@%%（剩余 %3$@%%，%4$@ 重置）。";
-"alert_kind.quota_title" = "%1$@「%2$@」已使用 %3$@%%";
+"alert_kind.quota_title" = "%1$@「%2$@」配额已使用 %3$@%%";
 "alert_kind.session_cpu_message_process" = "%2$@ 进程的 CPU 占用为 %1$@%%。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 进程的 CPU 占用为 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 占用了约 %1$@%% 的系统总 CPU（共 %2$@ 核）。";

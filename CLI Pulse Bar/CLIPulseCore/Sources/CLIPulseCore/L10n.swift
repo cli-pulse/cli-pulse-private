@@ -119,6 +119,17 @@ public enum L10n {
         }
     }
 
+    /// A catalogue phrase standing on its own, where a sentence starts. Some
+    /// keys are lowercase because they are also spliced into the middle of a
+    /// sentence ("updated just now" in the pet's VoiceOver summary); shown
+    /// alone they take a capital, in the reader's language. Scripts without
+    /// case come back unchanged.
+    public static func sentenceStart(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        let locale = LocaleOverrideStore.resolvedLocalization.map { Locale(identifier: $0) }
+        return String(first).uppercased(with: locale) + text.dropFirst()
+    }
+
     // MARK: - Tabs
 
     public enum tab {

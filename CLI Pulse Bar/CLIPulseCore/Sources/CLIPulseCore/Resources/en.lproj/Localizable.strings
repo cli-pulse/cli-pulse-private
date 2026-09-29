@@ -990,7 +990,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "pet.locked" = "Not yet hatched";
 "pet.owned_on" = "Hatched %@";
 "pet.energy" = "Energy";
-"pet.hunger" = "Hunger";
+"pet.hunger" = "Fullness";
 "pet.mood" = "Mood";
 "pet.vital_sleeping" = "Sleeping";
 "pet.vital_idle" = "Idle";

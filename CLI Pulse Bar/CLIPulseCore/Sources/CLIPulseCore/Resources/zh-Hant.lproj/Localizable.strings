@@ -941,7 +941,7 @@
 "usage_dashboard.active_days" = "活躍天數";
 "usage_dashboard.current_streak" = "目前連續天數";
 "usage_dashboard.longest_streak" = "最長連續天數";
-"usage_dashboard.peak_day" = "尖峰單日";
+"usage_dashboard.peak_day" = "單日尖峰";
 "usage_dashboard.favorite_model" = "常用模型";
 "usage_dashboard.messages" = "訊息數";
 "usage_dashboard.by_model" = "依模型";
@@ -974,7 +974,7 @@
 "pet.name_placeholder" = "名字";
 "pet.cattery" = "貓舍";
 "pet.cattery_count" = "%@/%@ 隻";
-"pet.usage_diet" = "用量食譜（7 天）";
+"pet.usage_diet" = "飲食組成（近 7 天）";
 "pet.switch_companion" = "目前陪伴";
 "pet.why_hatched" = "這隻貓為什麼會孵化？";
 "pet.locked" = "尚未孵化";
@@ -1575,7 +1575,7 @@
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "alerts.critical_count_badge" = "嚴重 %d 則";
-"alerts.warning_count_badge" = "警告 %d 則";
+"alerts.warning_count_badge" = "警告級 %d 則";
 "account.deleting" = "正在刪除帳號…";
 "usage_dashboard.chart_day" = "日期";
 "usage_dashboard.chart_tokens" = "token 數";
@@ -1648,16 +1648,16 @@
 "alert_kind.budget_daily_title" = "每日預算已超出 — 已用 $%@";
 "alert_kind.budget_weekly_message" = "最近 7 天支出共計 $%1$@，已超過每週預算 $%2$@。";
 "alert_kind.budget_weekly_title" = "每週預算已超出 — 已用 $%@";
-"alert_kind.device_cpu_message" = "該裝置的 CPU 使用率取樣為 %@%%。";
+"alert_kind.device_cpu_message" = "該裝置取樣到的 CPU 使用率為 %@%%。";
 "alert_kind.device_cpu_title" = "裝置 CPU 使用率偏高";
 "alert_kind.quota_message" = "「%1$@」配額已使用 %2$@%%（剩餘 %3$@%%）。";
 "alert_kind.quota_message_reset" = "「%1$@」配額已使用 %2$@%%（剩餘 %3$@%%，%4$@ 重置）。";
-"alert_kind.quota_title" = "%1$@「%2$@」已使用 %3$@%%";
+"alert_kind.quota_title" = "%1$@「%2$@」配額已使用 %3$@%%";
 "alert_kind.session_cpu_message_process" = "%2$@ 程序的 CPU 使用率為 %1$@%%。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 中 %2$@ 程序的 CPU 使用率為 %1$@%%。";
 "alert_kind.session_cpu_message_system" = "%3$@ 佔用了約 %1$@%% 的系統 CPU 總量（共 %2$@ 核）。";
 "alert_kind.session_cpu_title" = "%@ 正佔用大量 CPU";
-"alert_kind.session_long_message" = "偵測到長時間執行的本機 AI 工具工作階段。";
+"alert_kind.session_long_message" = "偵測到長時間執行的 AI 工具工作階段。";
 "alert_kind.session_long_title" = "%@ 執行時間過長";
 "alert_kind.severity_critical" = "嚴重";
 "alert_kind.severity_info" = "資訊";

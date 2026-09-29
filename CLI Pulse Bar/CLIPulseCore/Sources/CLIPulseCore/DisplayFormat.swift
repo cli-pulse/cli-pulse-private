@@ -27,6 +27,16 @@ public enum DisplayFormat {
         value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
     }
 
+    /// A count as the reader groups it: "15,531", "15.531" in Spain, where a
+    /// four-digit count stays whole ("1531"). Interpolating the Int wrote
+    /// "15531" beside grouped figures on the same panel.
+    public static func count(
+        _ value: Int,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        value.formatted(.number.locale(locale))
+    }
+
     /// `String(format:)` in the display locale, for a literal format of
     /// measurements: "12,5 W" in Spain.
     ///

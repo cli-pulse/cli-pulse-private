@@ -629,7 +629,7 @@
 "usage_dashboard.active_days" = "사용 일수";
 "usage_dashboard.current_streak" = "연속 사용일";
 "usage_dashboard.longest_streak" = "최장 연속 사용일";
-"usage_dashboard.peak_day" = "최대 사용일";
+"usage_dashboard.peak_day" = "일 최대 사용량";
 "usage_dashboard.favorite_model" = "자주 쓰는 모델";
 "usage_dashboard.messages" = "메시지 수";
 "usage_dashboard.by_model" = "모델별";
@@ -668,7 +668,7 @@
 "pet.locked" = "부화 전";
 "pet.owned_on" = "%@ 부화";
 "pet.energy" = "에너지";
-"pet.hunger" = "허기";
+"pet.hunger" = "포만감";
 "pet.mood" = "기분";
 "pet.vital_sleeping" = "자는 중";
 "pet.vital_idle" = "쉬는 중";

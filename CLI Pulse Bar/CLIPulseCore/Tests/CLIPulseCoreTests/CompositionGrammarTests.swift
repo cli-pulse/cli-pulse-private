@@ -237,6 +237,24 @@ final class CompositionGrammarTests: XCTestCase {
         XCTAssertEqual(L10n.captionCase("Costo total"), "COSTO TOTAL")
     }
 
+    /// "updated just now" is lowercase in the catalogue because the pet's
+    /// VoiceOver summary splices it in after a comma. Standing alone under the
+    /// vitals it starts a sentence, in the reader's language.
+    func testSentenceStartCapitalizesOnlyScriptsWithCase() {
+        use("en")
+        XCTAssertEqual(L10n.sentenceStart(L10n.pet.confLive), "Updated just now")
+        XCTAssertEqual(L10n.sentenceStart(L10n.pet.confUnavailable), "Can't see activity — check access")
+        XCTAssertEqual(L10n.pet.confLive, "updated just now", "the key stays lowercase for the splice")
+        use("es")
+        XCTAssertEqual(L10n.sentenceStart(L10n.pet.confLive), "Actualizado ahora")
+        XCTAssertEqual(L10n.sentenceStart("última vez"), "Última vez")
+        for localization in ["zh-Hans", "zh-Hant", "ja", "ko"] {
+            use(localization)
+            XCTAssertEqual(L10n.sentenceStart(L10n.pet.confLive), L10n.pet.confLive, localization)
+        }
+        XCTAssertEqual(L10n.sentenceStart(""), "")
+    }
+
     // MARK: - The brand
 
     /// No catalogue string, in any shipped language, can break a line inside

@@ -42,6 +42,18 @@ final class DisplayFormatTests: XCTestCase {
         XCTAssertEqual(CostFormatter.formatUsage(154_100), "154,1\u{00A0}mil")
     }
 
+    /// The usage panel's MESSAGES tile read "15531" beside "12,521,659" and
+    /// "167.8K": an interpolated Int. Counts group the reader's way, and Spain
+    /// leaves a four-digit count whole.
+    func test_counts_areGroupedTheReadersWay() {
+        readInSpain()
+        XCTAssertEqual(DisplayFormat.count(15_531), "15.531")
+        XCTAssertEqual(DisplayFormat.count(1_531), "1531")
+        XCTAssertEqual(DisplayFormat.count(15_531, locale: Locale(identifier: "en_US")), "15,531")
+        XCTAssertEqual(DisplayFormat.count(15_531, locale: Locale(identifier: "ko_KR")), "15,531")
+        XCTAssertEqual(DisplayFormat.count(250, locale: Locale(identifier: "ja_JP")), "250")
+    }
+
     /// A catalogue `%d` is as often an OSStatus, a byte count or an RPM as a
     /// count, and must read as the number: "estado -25.308" cannot be searched
     /// for. A locale groups `%d` too, so `L10n` formats arguments without one.

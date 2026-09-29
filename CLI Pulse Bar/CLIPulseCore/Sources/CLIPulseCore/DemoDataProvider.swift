@@ -17,11 +17,14 @@ internal enum DemoDataProvider {
             formatter.string(from: now.addingTimeInterval(offset))
         }
 
-        func trend(base: Int) -> [UsagePoint] {
+        // Deterministic, like `dailyUsage`: with `Int.random` the hourly bars
+        // came out different in every language of one screenshot run and in
+        // every run.
+        func trend(base: Int, salt: UInt64) -> [UsagePoint] {
             (0..<12).map { index in
                 UsagePoint(
                     timestamp: timestamp(Double(-11 + index) * 3600),
-                    value: base + Int.random(in: -2000...2000)
+                    value: base - 2000 + Int(unit(index, salt) * 4001)
                 )
             }
         }
@@ -44,19 +47,19 @@ internal enum DemoDataProvider {
                           quota: 500000, remaining: 38000,
                           tiers: [TierDTO(name: "Weekly", quota: 500000, remaining: 38000)],
                           status_text: "92% used",
-                          trend: trend(base: 85000), recent_sessions: ["ios-dashboard"], recent_errors: []),
+                          trend: trend(base: 85000, salt: 201), recent_sessions: ["ios-dashboard"], recent_errors: []),
             ProviderUsage(provider: "Gemini", today_usage: 43400, week_usage: 214000,
                           estimated_cost_today: 0.35, estimated_cost_week: 1.71,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
                           quota: 300000, remaining: 86000,
                           tiers: [TierDTO(name: "Pro", quota: 300000, remaining: 86000)],
                           status_text: "71% used",
-                          trend: trend(base: 43000), recent_sessions: ["helper-heartbeat"], recent_errors: []),
+                          trend: trend(base: 43000, salt: 202), recent_sessions: ["helper-heartbeat"], recent_errors: []),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
                           estimated_cost_today: 0.37, estimated_cost_week: 1.98,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
                           quota: 250000, remaining: 118000, status_text: "53% used",
-                          trend: trend(base: 24000), recent_sessions: ["provider-adapters"], recent_errors: []),
+                          trend: trend(base: 24000, salt: 203), recent_sessions: ["provider-adapters"], recent_errors: []),
         ]
 
         // Session names are identifiers, the way a real one reads (a command or
@@ -221,7 +224,7 @@ internal enum DemoDataProvider {
             trend: (0..<24).map { index in
                 UsagePoint(
                     timestamp: timestamp(Double(-23 + index) * 3600),
-                    value: 4000 + Int.random(in: 0...3000)
+                    value: 4000 + Int(unit(index, 200) * 3001)
                 )
             },
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager).
@@ -245,6 +248,17 @@ internal enum DemoDataProvider {
         )
     }
 
+    /// Stable value in [0, 1) for (offset, salt) — a SplitMix64 step. Demo data
+    /// draws every "random" figure from this, so each screen is the same in
+    /// every language and on every run.
+    static func unit(_ offset: Int, _ salt: UInt64) -> Double {
+        var z = UInt64(truncatingIfNeeded: offset) &* 0x9E37_79B9_7F4A_7C15 &+ salt
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        z ^= z >> 31
+        return Double(z >> 11) / Double(1 << 53)
+    }
+
     /// A year of plausible daily usage for the Demo-mode activity heatmap.
     ///
     /// Deterministic on purpose — no random source — so the same "Try Demo" screen
@@ -263,15 +277,6 @@ internal enum DemoDataProvider {
             Profile(provider: "Gemini", model: "gemini-2.5-pro", todayTokens: 43_400, todayCost: 0.35),
             Profile(provider: "Claude", model: "claude-sonnet-4-5", todayTokens: 24_800, todayCost: 0.37),
         ]
-
-        /// Stable value in [0, 1) for (day offset, salt) — a SplitMix64 step.
-        func unit(_ offset: Int, _ salt: UInt64) -> Double {
-            var z = UInt64(truncatingIfNeeded: offset) &* 0x9E37_79B9_7F4A_7C15 &+ salt
-            z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
-            z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
-            z ^= z >> 31
-            return Double(z >> 11) / Double(1 << 53)
-        }
 
         func entry(_ key: String, _ p: Profile, tokens: Int, cost: Double) -> CloudEntry {
             // mergeCloudDays sums all three buckets; the split only needs to be sane.

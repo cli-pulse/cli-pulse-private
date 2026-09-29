@@ -193,9 +193,9 @@ public struct PetTab: View {
                 vitalChip(L10n.pet.energy, vitalWord(v.energy))
                 vitalChip(L10n.pet.hunger, "\(Int((v.hunger * 100).rounded()))%")
             }
-            Text(confidenceLine(v))
+            Text(L10n.sentenceStart(confidenceLine(v)))
                 .font(.caption2).foregroundStyle(.tertiary)
-                .accessibilityLabel(confidenceLine(v))
+                .accessibilityLabel(L10n.sentenceStart(confidenceLine(v)))
         }
     }
 
@@ -216,7 +216,7 @@ public struct PetTab: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(L10n.pet.usageDiet).font(.subheadline).bold()
             if vm.model.diet.isEmpty {
-                Text(L10n.pet.confUnavailable).font(.caption).foregroundStyle(.secondary)
+                Text(L10n.sentenceStart(L10n.pet.confUnavailable)).font(.caption).foregroundStyle(.secondary)
             } else {
                 GeometryReader { geo in
                     HStack(spacing: 2) {

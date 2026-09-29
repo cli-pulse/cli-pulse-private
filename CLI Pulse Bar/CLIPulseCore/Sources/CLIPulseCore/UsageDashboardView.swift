@@ -56,12 +56,12 @@ struct DashboardStatStrip: View {
         return [
             (L10n.usageDashboard.totalTokens, CostFormatter.formatUsage(DailyUsageStats.totalTokens(archive))),
             (L10n.usageDashboard.totalCost, CostFormatter.format(DailyUsageStats.totalCost(archive))),
-            (L10n.usageDashboard.activeDays, "\(DailyUsageStats.activeDays(archive))"),
-            (L10n.usageDashboard.currentStreak, "\(DailyUsageStats.currentStreak(archive, todayKey: today))"),
-            (L10n.usageDashboard.longestStreak, "\(DailyUsageStats.longestStreak(archive))"),
+            (L10n.usageDashboard.activeDays, DisplayFormat.count(DailyUsageStats.activeDays(archive))),
+            (L10n.usageDashboard.currentStreak, DisplayFormat.count(DailyUsageStats.currentStreak(archive, todayKey: today))),
+            (L10n.usageDashboard.longestStreak, DisplayFormat.count(DailyUsageStats.longestStreak(archive))),
             (L10n.usageDashboard.peakDay, CostFormatter.formatUsage(DailyUsageStats.peakDay(archive)?.tokens ?? 0)),
             (L10n.usageDashboard.favoriteModel, DailyUsageStats.favoriteModel(archive) ?? "—"),
-            (L10n.usageDashboard.messages, "\(DailyUsageStats.totalMessages(archive))"),
+            (L10n.usageDashboard.messages, DisplayFormat.count(DailyUsageStats.totalMessages(archive))),
         ]
     }
 
@@ -69,7 +69,7 @@ struct DashboardStatStrip: View {
 
     var body: some View {
         LazyVGrid(columns: columns, spacing: 0) {
-            ForEach(Array(tiles.enumerated()), id: \.offset) { _, tile in
+            ForEach(Array(tiles.enumerated()), id: \.offset) { index, tile in
                 VStack(spacing: 2) {
                     Text(tile.value)
                         .font(.system(size: 15, weight: .semibold))
@@ -84,7 +84,17 @@ struct DashboardStatStrip: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 9)
-                .overlay(alignment: .leading) { Divider().opacity(0.4) }
+                // A rule between columns. This was a `Divider()`, which is
+                // horizontal outside a stack, so it drew a hairline through the
+                // middle of every tile, between the number and its label.
+                .overlay(alignment: .leading) {
+                    if index % columns.count != 0 {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.10))
+                            .frame(width: 1)
+                            .padding(.vertical, 10)
+                    }
+                }
             }
         }
         .glassCard(cornerRadius: 14, elevated: false)
@@ -418,7 +428,7 @@ public struct UsageDashboardView: View {
             Text(L10n.usageDashboard.less).font(.system(size: 9)).foregroundStyle(.secondary)
             ForEach(0..<5, id: \.self) { level in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(UsageHeatmapPalette.color(level))
+                    .fill(UsageHeatmapPalette.color(level, scheme: colorScheme))
                     .frame(width: 11, height: 11)
             }
             Text(L10n.usageDashboard.more).font(.system(size: 9)).foregroundStyle(.secondary)
@@ -462,9 +472,9 @@ public struct CompactUsageCard: View {
                     HStack(spacing: 14) {
                         miniStat(CostFormatter.formatUsage(DailyUsageStats.totalTokens(a)),
                                  L10n.usageDashboard.totalTokens)
-                        miniStat("\(DailyUsageStats.currentStreak(a, todayKey: DailyUsageStats.localDayKey()))",
+                        miniStat(DisplayFormat.count(DailyUsageStats.currentStreak(a, todayKey: DailyUsageStats.localDayKey())),
                                  L10n.usageDashboard.currentStreak)
-                        miniStat("\(DailyUsageStats.activeDays(a))", L10n.usageDashboard.activeDays)
+                        miniStat(DisplayFormat.count(DailyUsageStats.activeDays(a)), L10n.usageDashboard.activeDays)
                     }
                 } else {
                     // Says there is nothing yet. The scope line alone read as a

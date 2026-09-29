@@ -596,6 +596,10 @@ struct MenuBarView: View {
                         }
                     }
                 }
+                // One height for every icon (the tallest, `gear`, is 16 pt at
+                // this size; `memorychip` and `terminal` are 13), so every
+                // label below sits on the same baseline.
+                .frame(height: 16)
                 Text(tab.label)
                     .font(.system(size: 8))
             }
@@ -623,7 +627,7 @@ struct MenuBarView: View {
 
             Text(L10n.menuBar.appVersion(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"))
                 .font(.system(size: 8))
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.tertiary)
 
             Spacer()
 
@@ -661,7 +665,7 @@ struct MenuBarView: View {
 
             Text(L10n.menuBar.appVersion(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"))
                 .font(.system(size: 8))
-                .foregroundStyle(.quaternary)
+                .foregroundStyle(.tertiary)
 
             Spacer()
 

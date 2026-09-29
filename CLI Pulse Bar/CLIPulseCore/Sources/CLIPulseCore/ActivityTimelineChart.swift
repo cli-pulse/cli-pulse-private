@@ -95,17 +95,17 @@ public struct ActivityTimelineChart: View {
                 HStack {
                     Text(OverviewFormatters.hourLabel(trend.first?.timestamp ?? "", locale: locale))
                         .font(style.labelFont)
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(.tertiary)
                     Spacer()
                     if trend.count > 2 {
                         Text(OverviewFormatters.hourLabel(trend[trend.count / 2].timestamp, locale: locale))
                             .font(style.labelFont)
-                            .foregroundStyle(.quaternary)
+                            .foregroundStyle(.tertiary)
                         Spacer()
                     }
                     Text(OverviewFormatters.hourLabel(trend.last?.timestamp ?? "", locale: locale))
                         .font(style.labelFont)
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(.tertiary)
                 }
             }
         }

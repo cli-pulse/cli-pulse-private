@@ -302,10 +302,12 @@ struct OverviewTab: View {
     }
 
     private func metricsGrid(_ dash: DashboardSummary) -> some View {
+        // Top-aligned: Cost Today carries an extra status line, and a centred
+        // row lifted its title and value 8-12 pt above its neighbours'.
         LazyVGrid(columns: [
-            GridItem(.flexible(), spacing: 6),
-            GridItem(.flexible(), spacing: 6),
-            GridItem(.flexible(), spacing: 6),
+            GridItem(.flexible(), spacing: 6, alignment: .top),
+            GridItem(.flexible(), spacing: 6, alignment: .top),
+            GridItem(.flexible(), spacing: 6, alignment: .top),
         ], spacing: 6) {
             MetricCard(
                 title: L10n.dashboard.usageToday,

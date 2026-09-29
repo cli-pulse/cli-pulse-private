@@ -682,7 +682,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pet.locked" = "Aún no eclosionado";
 "pet.owned_on" = "Eclosionado: %@";
 "pet.energy" = "Energía";
-"pet.hunger" = "Hambre";
+"pet.hunger" = "Saciedad";
 "pet.mood" = "Ánimo";
 "pet.vital_sleeping" = "Durmiendo";
 "pet.vital_idle" = "En reposo";
@@ -699,7 +699,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pet.family_openai" = "OpenAI";
 "pet.family_google" = "Google";
 "pet.family_other" = "Mixto";
-"pet.form_loaf" = "Pan Maratón";
+"pet.form_loaf" = "Pan Maratoniano";
 "pet.form_polite" = "Sonrisa Cortés";
 "pet.form_smash" = "Aporrea-Teclas";
 "pet.form_pop" = "Boca-Pop";

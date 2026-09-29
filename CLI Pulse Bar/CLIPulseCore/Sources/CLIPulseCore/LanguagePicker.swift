@@ -115,11 +115,17 @@ public struct LanguagePickerMenu: View {
             Text(L10n.language.systemTextAfterRestart)
         } label: {
             Image(systemName: "globe")
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
         }
+        // A borderless-button menu is an NSPopUpButton, which draws the label's
+        // image itself and ignores SwiftUI's font and foreground style on it: the
+        // globe came out large and solid black beside the small tertiary refresh
+        // and power icons. Its size follows the control size and its colour the
+        // tint. It stays a popup button because the QA renderer reads the
+        // language menu through one (QASnapshotRenderer.captureLanguageMenu).
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
+        .controlSize(.mini)
+        .tint(Color(nsColor: .tertiaryLabelColor))
         .fixedSize()
         .accessibilityLabel(L10n.language.title)
         .help(L10n.language.title)

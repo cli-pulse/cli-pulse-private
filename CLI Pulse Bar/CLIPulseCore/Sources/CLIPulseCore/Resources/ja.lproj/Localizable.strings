@@ -1666,7 +1666,7 @@
 "alert_kind.device_cpu_title" = "デバイスの CPU 使用率が高くなっています";
 "alert_kind.quota_message" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%）。";
 "alert_kind.quota_message_reset" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%、%4$@ にリセット）。";
-"alert_kind.quota_title" = "%1$@「%2$@」が %3$@%% に到達";
+"alert_kind.quota_title" = "%1$@ の「%2$@」が %3$@%% に到達";
 "alert_kind.session_cpu_message_process" = "%2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 内の %2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_system" = "%3$@ がシステム全体の CPU（%2$@ コア）の約 %1$@%% を使用しています。";
