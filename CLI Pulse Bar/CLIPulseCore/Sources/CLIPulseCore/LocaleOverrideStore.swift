@@ -9,7 +9,8 @@ import SwiftUI
 ///
 /// iter22 (2026-05-01): added the in-app language switcher requested by
 /// manual smoke. Persisted to standard UserDefaults so the choice
-/// survives restarts. Publishes `objectWillChange` on every change so
+/// survives restarts (under XCTest, to a domain of the tests' own: see
+/// `DisplayPreferences`). Publishes `objectWillChange` on every change so
 /// observing views re-render localized strings without a relaunch. Observing
 /// it directly: `MenuBarView`, `SettingsTab`, `OnboardingWizardView` and
 /// `LegacyOnboardingWizardView` in the app target, and `MachineHealthView`,
@@ -25,7 +26,10 @@ import SwiftUI
 ///   per process. The macOS app calls `mirrorToAppleLanguages()` so the choice
 ///   reaches that text from the next launch; nothing can switch it live.
 public final class LocaleOverrideStore: ObservableObject {
-    public static let shared = LocaleOverrideStore()
+    /// `.standard` in the app. Under XCTest the choice is kept away from the
+    /// `xctest` tool's domain, which every test run on the Mac shares, so a run
+    /// starts in System Default whatever an earlier one left behind.
+    public static let shared = LocaleOverrideStore(defaults: DisplayPreferences.defaults)
 
     /// Posted whenever the active override changes, for non-SwiftUI code.
     /// Nothing in the app subscribes today: views observe the store itself.

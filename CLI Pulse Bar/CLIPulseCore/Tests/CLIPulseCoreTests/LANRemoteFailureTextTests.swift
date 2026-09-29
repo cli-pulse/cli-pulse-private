@@ -10,13 +10,15 @@ final class LANRemoteFailureTextTests: XCTestCase {
 
     private var savedOverride: String?
 
-    /// Pin the locale. `LocaleOverrideStore.shared.override` is persisted,
-    /// so a filtered run inherits whatever the last full run left behind —
-    /// which is how the first version of these tests saw EVERY key echo
-    /// back, long-shipped ones included, and looked like a missing-strings
-    /// bug in this change. With no locale pinned the leak assertions below
-    /// would also be near-vacuous: a raw dotted key contains none of the
-    /// markers they look for.
+    /// Pin the locale. `LocaleOverrideStore.shared.override` used to be
+    /// persisted in the xctest tool's domain, so a filtered run inherited
+    /// whatever the last full run left behind — which is how the first version
+    /// of these tests saw EVERY key echo back, long-shipped ones included, and
+    /// looked like a missing-strings bug in this change. Each test process now
+    /// starts in System Default (`DisplayPreferences`), but an earlier suite in
+    /// the same run can still leave a language set. With no locale pinned the
+    /// leak assertions below would also be near-vacuous: a raw dotted key
+    /// contains none of the markers they look for.
     override func setUp() {
         super.setUp()
         savedOverride = LocaleOverrideStore.shared.override
