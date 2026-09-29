@@ -781,9 +781,10 @@ public final class AppState: ObservableObject {
 
     /// v1.40 PR-7: display currency for costs (storage stays USD; conversion at
     /// display time via CurrencyConverter). Use `displayCurrency` / `setDisplayCurrency`.
-    /// Kept in `DisplayPreferences.defaults` (`.standard` in the app) because every
-    /// `AppState` pushes it into the process-wide `CurrencyConverter.shared`.
-    @AppStorage(DisplayCurrency.defaultsKey, store: DisplayPreferences.defaults)
+    /// Kept in `DisplayCurrency.store`, which is `DisplayPreferences.defaults`
+    /// (`.standard` in the app), because every `AppState` pushes it into the
+    /// process-wide `CurrencyConverter.shared`.
+    @AppStorage(DisplayCurrency.defaultsKey, store: DisplayCurrency.store)
     var displayCurrencyRaw = DisplayCurrency.usd.rawValue
     public var displayCurrency: DisplayCurrency {
         DisplayCurrency(rawValue: displayCurrencyRaw) ?? .usd

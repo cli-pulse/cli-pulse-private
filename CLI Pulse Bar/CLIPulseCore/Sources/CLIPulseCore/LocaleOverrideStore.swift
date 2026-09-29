@@ -54,7 +54,9 @@ public final class LocaleOverrideStore: ObservableObject {
     /// `"zh-Hans"`.
     @Published public private(set) var override: String?
 
-    private let defaults: UserDefaults
+    /// Internal, not private, so a test can check that `shared` keeps the choice
+    /// in `DisplayPreferences.defaults` without writing a language there.
+    let defaults: UserDefaults
 
     /// The override in effect when this process started. With mirroring on, it
     /// is also what `AppleLanguages` pinned the resource bundle to at launch —
@@ -70,8 +72,11 @@ public final class LocaleOverrideStore: ObservableObject {
     /// system-wide list.
     private let systemPreferredLanguages: () -> [String]
 
+    /// `defaults` falls back to `DisplayPreferences.defaults`, `.standard` in the
+    /// app, so a store built without one never reads or writes the `xctest`
+    /// tool's domain, which every test run on the Mac shares.
     init(
-        defaults: UserDefaults = .standard,
+        defaults: UserDefaults = DisplayPreferences.defaults,
         systemPreferredLanguages: (() -> [String])? = nil
     ) {
         self.defaults = defaults
