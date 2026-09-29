@@ -614,6 +614,7 @@
 "advanced.background_sync_hint" = "将用量数据同步到云端，供 iPhone、Apple Watch 和 Android 使用";
 "advanced.full_details" = "详细信息：";
 "advanced.hide_emails" = "在界面中隐藏邮箱地址";
+/* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "追踪 git 活动（Yield Score）";
 "advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。";
 "advanced.git_consent_title" = "启用 git 活动追踪？";
@@ -634,7 +635,8 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "当无法获取精确的 API 价格时，成本根据 token 用量估算。";
 "yield.empty_body" = "追踪每次提交的 AI 成本以查看你的 Yield Score。";
-"yield.empty_enable_hint" = "在「设置 › 高级」中打开「追踪 git 活动」。";
+/* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
+"yield.empty_enable_hint" = "在「设置 › 高级」中打开「追踪 git 活动（Yield Score）」。";
 "yield.view_detail" = "查看详情";
 "yield.detail_title" = "Yield Score 详情";
 "yield.detail_body" = "当无法获取精确的 API 价格时，成本根据 token 用量估算。合并提交不计入归因。";

@@ -319,6 +319,29 @@ case "$coverage" in
         fail=$((fail + 1)) ;;
 esac
 
+# ── brand terms are not untranslated English ─────────────────────────────────
+# "Yield Score" stays English in every language (the owner's call, 2026-09-30),
+# so its two words must not count toward the five-word Latin run the
+# English-leftover heuristic looks for in CJK text. The control swaps in a pair
+# that is not a brand, and the same line must then be flagged.
+brand="$(python3 - "$ROOT" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_listing as l
+brand = l.english_lines("新增 Yield Score cost per commit", cjk=True)
+control = l.english_lines("新增 Yield Rate cost per commit", cjk=True)
+print(("BRAND-OK" if not brand else f"BRAND-FLAGGED {brand}") + " " +
+      ("CONTROL:noticed" if control else "CONTROL:BLIND"))
+PY
+)"
+if [ "$brand" = "BRAND-OK CONTROL:noticed" ]; then
+    echo "ok:   [\"Yield Score\" in CJK text is a brand, not English left in]"
+    pass=$((pass + 1))
+else
+    echo "FAIL: [\"Yield Score\" in CJK text is a brand, not English left in] $brand"
+    fail=$((fail + 1))
+fi
+
 # ── --require-shots: every listing locale's iPhone and Mac panels ────────────
 # A flag (CI passes it; the fixtures above carry listing texts only), so the
 # run without it must stay green without panels, and the flag must turn a

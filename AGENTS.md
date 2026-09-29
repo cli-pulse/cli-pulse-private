@@ -389,6 +389,19 @@ account, with the removed Swarm tab) and its generators
 `generate_screenshots.swift`) were retired with the first set in this layout;
 `appstore_metadata.py` and `resubmit.py` no longer upload Mac screenshots.
 
+### Names that stay English in every language
+
+"CLI Pulse", "Companion CLI" and "Yield Score" are names, not words to
+translate: every `.lproj` catalogue, listing text, What's New and caption keeps
+them in English, capitalized as here ("Yield Score" is the owner's call of
+2026-09-30). `CompositionGrammarTests` pins CLI Pulse and Yield Score in every
+catalogue, `MacSettingsCopyTests` pins Companion CLI, and the listing check's
+English-leftover heuristic accepts CLI Pulse and Yield Score inside CJK text
+(`_ALLOWED_LATIN_NAMES` in `scripts/appstore_listing.py`). A string that sends
+people to a switch names it by its whole label: the Yield Score card's hint says
+"Track git activity (Yield Score)", suffix included. Traditional Chinese word
+choices are a different list: `scripts/zh_hant_terms.json`.
+
 ## Active vs Archived
 
 ### Active

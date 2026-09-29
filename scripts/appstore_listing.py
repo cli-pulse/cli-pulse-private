@@ -187,8 +187,11 @@ _EN_FUNCTION_WORDS = frozenset("""
     was were been would should could which while than then there these those
 """.split())
 # Product and platform names that legitimately stay Latin inside CJK text.
+# "Yield Score" is the app's own feature name and a brand term: it stays English
+# in every language, as the app's catalogues have it (the owner's call,
+# 2026-09-30; CompositionGrammarTests pins it there).
 _ALLOWED_LATIN_NAMES = (
-    "CLI Pulse Pro", "CLI Pulse", "Claude Code", "Claude", "Codex", "Gemini",
+    "CLI Pulse Pro", "CLI Pulse", "Yield Score", "Claude Code", "Claude", "Codex", "Gemini",
     "Cursor", "Copilot", "OpenRouter", "Ollama", "Apple Watch", "Apple Account",
     "App Store", "iPhone", "iPad", "Mac", "Siri", "API", "SDK", "CSV", "PDF",
     "LLM", "Token", "AI", "Pro",

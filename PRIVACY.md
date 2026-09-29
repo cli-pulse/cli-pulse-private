@@ -28,7 +28,7 @@ file, **the file wins** — please open an issue.
 | **Apple / Google sign-in tokens** (during sign-in) | Not persisted — exchanged once for a Supabase session | ✅ Yes (during sign-in only) | Identity verification with the original OAuth provider |
 | **Supabase session access / refresh token** | macOS Keychain on this device | ❌ Never re-uploaded (only received) | Keeps you signed in |
 | **Device name, OS version, helper version** | Supabase | ✅ Yes | Shows which Macs/iPhones are reporting |
-| **Git activity metadata** (commit hash, HMAC of project path, commit timestamp, merge flag) | Supabase — only when "Track git activity" toggle is ON | ✅ Yes (opt-in only) | Powers the Yield Score feature |
+| **Git activity metadata** (commit hash, HMAC of project path, commit timestamp, merge flag) | Supabase — only when the "Track git activity (Yield Score)" toggle is ON | ✅ Yes (opt-in only) | Powers the Yield Score feature |
 | **Git commit messages, diffs, file paths, author identity** | — | ❌ Never | Explicitly excluded even when Yield Score is on |
 | **Alerts you resolve locally** (quota depletion alerts) | UserDefaults on this device | ❌ Never | Suppression list to prevent re-firing |
 | **Crash reports** (stack trace, app version, OS version, non-PII device model) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes (when a crash/error happens) | So crashes are visible to us without waiting for an App Store review |
@@ -198,8 +198,9 @@ than scanning locally. Signing out does not revoke it — use the Settings toggl
 
 - **Revoke folder access:** Settings → CLI Tool Access → specific directory
   → remove bookmark.
-- **Disable Yield Score / git tracking:** Settings → Privacy → "Track git
-  activity" toggle. Off by default; the toggle stops uploads immediately.
+- **Disable Yield Score / git tracking:** Settings → Advanced → "Track git
+  activity (Yield Score)" toggle (Mac). Off by default; the toggle stops uploads
+  immediately.
 - **Disable anonymous install statistics:** Settings → Privacy → "Send
   anonymous install statistics". On by default, disclosed on first launch
   before anything is sent. Strict privacy mode disables it too.

@@ -534,6 +534,7 @@
 "advanced.background_sync_hint" = "Syncs usage data to the cloud for iPhone, Apple Watch, and Android";
 "advanced.full_details" = "Full details:";
 "advanced.hide_emails" = "Hide email addresses in the UI";
+/* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "Track git activity (Yield Score)";
 "advanced.track_git_hint" = "Hashed commit metadata only — no message, diff, or path uploaded";
 "advanced.git_consent_title" = "Enable git activity tracking?";
@@ -554,7 +555,8 @@
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "Cost is estimated from token usage when an exact API price isn't available.";
 "yield.empty_body" = "Track AI cost per commit to see your Yield Score.";
-"yield.empty_enable_hint" = "Turn on Track git activity in Settings › Advanced.";
+/* Names the switch by its whole label, advanced.track_git, "(Yield Score)" included. */
+"yield.empty_enable_hint" = "Turn on “Track git activity (Yield Score)” in Settings › Advanced.";
 "yield.view_detail" = "View detail";
 "yield.detail_title" = "Yield Score Detail";
 "yield.detail_body" = "Cost is estimated from token usage when an exact API price isn't available. Merge commits are excluded from attribution.";
