@@ -72,6 +72,21 @@ no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
                     terms, and es-ES equal to es-MX. Repo-only, no key; the
                     same checks asc_submit.py runs before its first write.
 
+5. What's New drift with --whatsnew-dir DIR and the store: every localization
+                    of the checked version, per platform, must hold the text
+                    DIR has for it (the file asc_submit.py would write). An
+                    empty What's New fails like a different one: on 2026-09-28
+                    this script printed PREFLIGHT OK for 1.54.0 while What's
+                    New was empty in all 14 localizations, because it checked
+                    DIR's files and never the store's field. Before
+                    asc_submit.py --submit has run (step 4 of the release
+                    order in AGENTS.md) an empty field is expected: pass
+                    --whatsnew-unwritten-ok and it is reported as NOT WRITTEN
+                    instead, on an editable version only. A text that
+                    differs, or an empty one on a version already submitted,
+                    still fails. Without --whatsnew-dir the run says What's New
+                    was not compared, so its OK is not read as covering it.
+
 READ-ONLY. Every request is a GET. This script never mutates App Store Connect;
 pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
@@ -82,6 +97,10 @@ Usage:
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
     python3 scripts/asc_listing_preflight.py --texts-only --whatsnew-dir whatsnew_154
+    # before asc_submit.py --submit (What's New not written yet):
+    python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154 --whatsnew-unwritten-ok
+    # after it (What's New must be on the store):
+    python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154
 Exit 0 = the store agrees with itself and with the repo. 1 = drift, or invalid
 repo texts. 2 = could not check (missing key/网络), which is NOT a pass.
 """
@@ -97,6 +116,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import appstore_listing as listing  # noqa: E402
 import appstore_screenshots as shots  # noqa: E402
+from asc_push_listing import EDITABLE_STATES, version_state  # noqa: E402
 
 # jwt/requests are imported only when App Store Connect is actually contacted,
 # so `--texts-only` runs on a bare CI runner.
@@ -218,7 +238,8 @@ def live_versions(asc: ASC, platform: str | None, version: str | None = None):
     plats = [platform] if platform else ["MAC_OS", "IOS"]
     for plat in plats:
         params = {"filter[platform]": plat,
-                  "fields[appStoreVersions]": "versionString,appStoreState,platform"}
+                  "fields[appStoreVersions]":
+                      "versionString,appStoreState,appVersionState,platform"}
         if version:
             params["filter[versionString]"] = version
         vers = asc.get(f"/apps/{APP_ID}/appStoreVersions", limit=10, **params)
@@ -271,6 +292,69 @@ def check_whatsnew(d: Path, root: Path | None = None) -> bool:
     if not problems:
         print(f"  ok    {len(listing.LOCALE_SOURCES)} locale(s) x 2 platforms ready")
     return not problems
+
+
+def _first_difference(a: str, b: str) -> tuple[str, str]:
+    """The first line on which two texts differ, from each side."""
+    la, lb = a.splitlines(), b.splitlines()
+    for i in range(max(len(la), len(lb))):
+        x = la[i] if i < len(la) else "<end of text>"
+        y = lb[i] if i < len(lb) else "<end of text>"
+        if x != y:
+            return x, y
+    return a[:150], b[:150]
+
+
+def compare_whatsnew(plat: str, ver_attrs: dict, rows_by_locale: dict[str, dict],
+                     d: Path, unwritten_ok: bool) -> tuple[bool, dict[str, int]]:
+    """Check 5: the store's What's New on every localization of one version
+    against the text DIR has for that locale on this platform — the file
+    asc_submit.py --submit would write. Returns (failed, counts) where counts
+    has "ok", "unwritten" (tolerated by --whatsnew-unwritten-ok) and "failed".
+
+    Compared stripped, as asc_submit.py compares and writes it."""
+    texts, _ = listing.load_whatsnew(d, plat)     # DIR was validated by check_whatsnew
+    other_plat = "IOS" if plat == "MAC_OS" else "MAC_OS"
+    other, _ = listing.load_whatsnew(d, other_plat)
+    state = version_state(ver_attrs)
+    editable = state in EDITABLE_STATES
+    counts = {"ok": 0, "unwritten": 0, "failed": 0}
+    label = listing.PLATFORM_LABEL[plat]
+    for locale in sorted(rows_by_locale):
+        got = (rows_by_locale[locale].get("whatsNew") or "").strip()
+        wn = texts.get(locale)
+        if wn is None:
+            print(f"  FAIL  [{locale}] What's New: {d.name}/ has no {label} text for this "
+                  "store locale; asc_submit.py --submit would refuse the version")
+            counts["failed"] += 1
+            continue
+        where = f"{d.name}/{wn.file}"
+        if got == wn.text:
+            print(f"  ok    [{locale}] What's New matches {where}")
+            counts["ok"] += 1
+        elif not got and unwritten_ok and editable:
+            print(f"  NOT WRITTEN [{locale}] What's New is empty on the store; asc_submit.py "
+                  f"--submit writes {where} ({len(wn.text)} chars) before it submits "
+                  "(--whatsnew-unwritten-ok)")
+            counts["unwritten"] += 1
+        elif not got:
+            why = ("" if not unwritten_ok else
+                   f" — and the version is {state}, no longer editable, so "
+                   "--whatsnew-unwritten-ok does not cover it")
+            print(f"  FAIL  [{locale}] What's New is EMPTY on the store; {where} has "
+                  f"{len(wn.text)} chars{why}")
+            counts["failed"] += 1
+        else:
+            print(f"  FAIL  [{locale}] What's New on the store differs from {where} "
+                  f"(store {len(got)} chars; repo {len(wn.text)})")
+            if locale in other and got == other[locale].text and other[locale].file != wn.file:
+                print(f"          the store holds the {listing.PLATFORM_LABEL[other_plat]} "
+                      f"text, {other[locale].file}")
+            s, r = _first_difference(got, wn.text)
+            print(f"          store: {s[:150]!r}")
+            print(f"          repo:  {r[:150]!r}")
+            counts["failed"] += 1
+    return counts["failed"] > 0, counts
 
 
 def check_repo_texts(root: Path | None = None) -> bool:
@@ -422,7 +506,14 @@ def main() -> int:
     ap.add_argument("--require-shots", action="store_true",
                     help="also require every listing locale's composed iPhone and Mac panels "
                          "(check 4; repo-only, works with --texts-only)")
+    ap.add_argument("--whatsnew-unwritten-ok", action="store_true",
+                    help="with --whatsnew-dir, before asc_submit.py --submit has run: an EMPTY "
+                         "What's New on an editable version is reported as not written yet "
+                         "instead of failing. A What's New that differs, or is empty on a "
+                         "version already submitted, still fails")
     args = ap.parse_args()
+    if args.whatsnew_unwritten_ok and args.whatsnew_dir is None:
+        ap.error("--whatsnew-unwritten-ok only makes sense with --whatsnew-dir")
     if args.whatsnew_dir is not None and not check_whatsnew(args.whatsnew_dir, args.root):
         print("WHAT'S NEW INVALID — fix the files above; asc_submit.py would refuse them too.")
         return 1
@@ -459,16 +550,17 @@ def main() -> int:
     failed = not (texts_ok and shots_ok)
     checked_any = False
     live_subtitles = subtitles(asc, prefer_unreleased=bool(args.version))
+    whatsnew_counts = {"ok": 0, "unwritten": 0, "failed": 0}
 
     for plat, ver in live_versions(asc, args.platform, args.version):
         vs = ver["attributes"]["versionString"]
         print(f"\n=== {'LIVE ' if not args.version else ''}{plat} v{vs} "
-              f"({ver['attributes'].get('appStoreState')}) ===")
+              f"({version_state(ver['attributes'])}) ===")
         locs = asc.get(
             f"/appStoreVersions/{ver['id']}/appStoreVersionLocalizations",
             limit=50,
             **{"fields[appStoreVersionLocalizations]":
-               "locale,description,keywords,promotionalText"},
+               "locale,description,keywords,promotionalText,whatsNew"},
         )
         by_locale = {}
         rows_by_locale = {}
@@ -559,6 +651,18 @@ def main() -> int:
                 print("          do not blind-push either side over the other.")
                 failed = True
 
+        # ── 5. What's New drift, against the release's notes ─────────────
+        # Every localization the store has, including one without a
+        # description: an empty What's New is exactly what went unreported.
+        if args.whatsnew_dir is not None:
+            wn_failed, counts = compare_whatsnew(plat, ver["attributes"], rows_by_locale,
+                                                 args.whatsnew_dir, args.whatsnew_unwritten_ok)
+            failed |= wn_failed
+            for k, v in counts.items():
+                whatsnew_counts[k] += v
+        else:
+            print("  note  What's New not compared: pass --whatsnew-dir <the release's notes>")
+
         # ── 3. screenshot drift ───────────────────────────────────────────
         # The iPhone and Mac sets are per locale (scripts/appstore_screenshots.py
         # maps each locale to its language's panels; a locale with no set of
@@ -591,14 +695,28 @@ def main() -> int:
         die("no live version was checked on any platform.")
 
     print()
+    if args.whatsnew_dir is None:
+        whatsnew_line = "What's New: NOT compared (no --whatsnew-dir)."
+    else:
+        whatsnew_line = (f"What's New: {whatsnew_counts['ok']} localization(s) match "
+                         f"{args.whatsnew_dir.name}/")
+        if whatsnew_counts["unwritten"]:
+            whatsnew_line += (f", {whatsnew_counts['unwritten']} NOT WRITTEN yet "
+                              "(asc_submit.py --submit writes them)")
+        if whatsnew_counts["failed"]:
+            whatsnew_line += f", {whatsnew_counts['failed']} empty or different"
+        whatsnew_line += "."
     if failed:
         print("PREFLIGHT FAILED — the store does not agree with the repo, or with itself.")
+        print(whatsnew_line)
         print("Listing text: scripts/asc_push_listing.py shows the per-field diff (dry run),")
         print("then --apply --version <X.Y.Z> --platform IOS|MAC_OS writes the editable version.")
+        print("What's New: scripts/asc_submit.py --submit <platform> ... --whatsnew-dir <dir>.")
         print("At release time, re-run this with --version <X.Y.Z>: the live version keeps")
         print("the old text until the new one ships.")
         return 1
     print("PREFLIGHT OK — live listing agrees with the repo and sells only purchasable tiers.")
+    print(whatsnew_line)
     return 0
 
 

@@ -30,9 +30,11 @@ Usage:
   python3 scripts/asc_submit.py --create-version ios --version 1.54.0            # dry run
   python3 scripts/asc_submit.py --create-version ios --version 1.54.0 --apply
 
-  # What's New + build + review submission:
-  python3 scripts/asc_submit.py --submit ios   --build <BUILD_ID> --version 1.54.0 --whatsnew-dir whatsnew_154
-  python3 scripts/asc_submit.py --submit macos --build <BUILD_ID> --version 1.54.0 --whatsnew-dir whatsnew_154
+  # What's New + App Review notes + build + review submission:
+  python3 scripts/asc_submit.py --submit ios   --build <BUILD_ID> --version 1.54.0 \
+      --whatsnew-dir whatsnew_154 --review-notes <notes-ios.txt>
+  python3 scripts/asc_submit.py --submit macos --build <BUILD_ID> --version 1.54.0 \
+      --whatsnew-dir whatsnew_154 --review-notes <notes-macos.txt>
   (the same with --apply writes and submits)
 
 The release order around this script is in AGENTS.md ("Releasing a version to
@@ -55,10 +57,43 @@ and reads <locale>.txt only from a directory that has no macOS texts at all.
   * any localization of the version has no text for this platform;
   * a locale the repo has a listing for is not on the version (the listing
     push has not run), unless --allow-missing-locales;
-  * the build is not VALID, or belongs to another platform or version.
-Then, with --apply: What's New is written only where it differs, read back, and
-only if every locale holds its text is the build attached and the version
-submitted.
+  * the build is not VALID, or belongs to another platform or version;
+  * the App Review notes read as an older version's (below), or the version
+    has no App Review details at all.
+Then, with --apply: the review notes are written if --review-notes differs from
+the store and read back, What's New is written only where it differs and read
+back, and only if both hold is the build attached and the version submitted.
+
+APP REVIEW NOTES
+----------------
+App Store Connect gives a new version the previous version's App Review
+details, notes included, word for word. 1.54.0 got 1.53.0's, which told the
+reviewer that "THE MAIN FEATURE IN 1.53.0" needs a second device and listed
+1.53.0's fixes; nothing in the release path looked at them. So --submit prints
+the notes the version holds now (the contact and demo-account fields are never
+printed and never written), and refuses, before any write, notes that name an
+older version of this app as if it were the one under review:
+  * notes that name an older version and never this one (the copied set); or
+  * a mention of an older version that is neither compared with this one
+    ("since 1.53.0", "unchanged from 1.53.0", "added in 1.53.0 and unchanged in
+    1.54.0", "was removed in 1.52.1") nor about another product ("Guideline
+    1.4.1", "iOS 17.0"): "THE MAIN FEATURE IN 1.53.0", "this 1.53.0 build".
+It is a tripwire for the copied-notes case, not a reading of the prose.
+--review-notes FILE replaces the notes with FILE (the same check applies to it;
+at most 4000 characters), and --apply PATCHes only `notes` and reads back that
+the notes equal FILE and every other field is unchanged. --accept-review-notes
+submits notes the check flags, for when the mention is deliberate.
+
+RELEASE TYPE
+------------
+--create-version makes the version MANUAL unless --release-type AFTER_APPROVAL
+is given. MANUAL is the default on purpose: a forgotten flag leaves a version
+waiting for the owner after approval, which one click in App Store Connect
+fixes, while a wrong AFTER_APPROVAL publishes the moment Apple approves. The
+releases themselves pass AFTER_APPROVAL (1.53.0, 1.54.0; AGENTS.md says why).
+Both --create-version and --submit print the releaseType the version actually
+has, and --create-version warns when an existing version's differs from the
+one asked for. This script never changes it.
 
 --whatsnew (one fallback file for any locale the directory did not cover) is
 retired. That fallback is how English notes once landed on every storefront
@@ -72,6 +107,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -92,6 +128,95 @@ BASE = "https://api.appstoreconnect.apple.com/v1"
 
 # Platform tokens the ASC API expects.
 PLATFORMS = {"ios": "IOS", "macos": "MAC_OS"}
+
+RELEASE_TYPE_MEANING = {
+    "MANUAL": "after approval it waits until the owner releases it in App Store Connect",
+    "AFTER_APPROVAL": "App Store Connect releases it as soon as Apple approves it",
+    "SCHEDULED": "App Store Connect releases it on its scheduled date once approved",
+}
+
+# ── App Review notes (APP REVIEW NOTES in the docstring) ─────────────────────
+REVIEW_NOTES_LIMIT = 4000   # App Store Connect's limit for appStoreReviewDetails.notes
+# A version number as written in prose: 1.53.0, or v1.53 / v1.53.0. Not part of
+# a longer dotted number, not glued to a word, not a price. A bare two-part
+# number ("a 1.5 GB download") is not taken for a version: this app's versions
+# are always written with three parts.
+_VERSION_MENTION = re.compile(
+    r"(?<![\w.$€£¥])(?:(v)(\d+)\.(\d+)(?:\.(\d+))?|(\d+)\.(\d+)\.(\d+))(?!\w|\.\d)")
+# ...that belongs to something else when the word before it is one of these.
+_OTHER_PRODUCT = re.compile(
+    r"\b(?:guidelines?|section|rule|ios|ipados|macos|watchos|visionos|tvos|xcode|swift|"
+    r"sdk|python|os)\s+"
+    r"(?:v?[\d.]+\s*(?:,|and|or|&)\s*)*$",      # ...or a later item of its list: "Guidelines 2.1 and 1.4.1"
+    re.IGNORECASE)
+# "this 1.53.0 build" presents the older version as the one under review.
+_PRESENTED_AS_CURRENT = re.compile(r"\b(?:this|the current|current)\s+$", re.IGNORECASE)
+# Words that make a mention a comparison with the past rather than a claim:
+# "since 1.53.0", "unchanged from 1.52.1", "exactly as in 1.52.1".
+_COMPARISON = re.compile(
+    r"\b(?:since|from|than|before|prior to|previous(?:ly)?|earlier|unchanged|until|"
+    r"as in|as of|compared (?:to|with)|vs\.?|versus|over)\s+(?:\S+\s+){0,2}$", re.IGNORECASE)
+# ...and history in the passive: "was removed in 1.52.1", "were added in 1.53.0".
+_HISTORY = re.compile(r"\b(?:was|were|been)\s+(?:\w+\s+){1,3}(?:in|since)\s+$", re.IGNORECASE)
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def _version_tuple(text: str) -> tuple[int, int, int] | None:
+    m = re.fullmatch(r"v?(\d+)\.(\d+)(?:\.(\d+))?", text.strip())
+    return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)) if m else None
+
+
+def review_notes_problems(notes: str, version: str) -> list[str]:
+    """Reasons to believe `notes` were written for an older version of the app
+    than `version` (see APP REVIEW NOTES). Empty = nothing flagged."""
+    target = _version_tuple(version)
+    if target is None or not notes.strip():
+        return []
+    older: list[str] = []           # every older version named, in order
+    claims: list[tuple[str, str]] = []
+    names_target = False
+    for sentence in _SENTENCE_BREAK.split(notes):
+        mentions = []
+        for m in _VERSION_MENTION.finditer(sentence):
+            parts = m.group(2, 3, 4) if m.group(1) else m.group(5, 6, 7)
+            v = (int(parts[0]), int(parts[1]), int(parts[2] or 0))
+            if _OTHER_PRODUCT.search(sentence[:m.start()]) or v[0] != target[0]:
+                continue
+            mentions.append((m, v))
+        sentence_names_target = any(v == target for _, v in mentions)
+        names_target |= sentence_names_target
+        for m, v in mentions:
+            if v >= target:
+                continue
+            shown = m.group(0).lstrip("v")
+            if shown not in older:
+                older.append(shown)
+            before = sentence[:m.start()]
+            if _PRESENTED_AS_CURRENT.search(before):
+                claims.append((shown, sentence))
+            elif sentence_names_target or _COMPARISON.search(before) or _HISTORY.search(before):
+                continue
+            else:
+                claims.append((shown, sentence))
+    problems = []
+    if older and not names_target:
+        problems.append(f"the notes name {', '.join(older)} and never {version}: they read as "
+                        "an earlier version's notes, which App Store Connect copies onto every "
+                        "new version")
+    for shown, sentence in claims:
+        s = " ".join(sentence.split())
+        problems.append(f"presents {shown} as the version under review: "
+                        f"{s[:140] + ('...' if len(s) > 140 else '')!r}")
+    return problems
+
+
+def review_notes_file_problems(text: str, path: Path) -> list[str]:
+    if not text:
+        return [f"{path}: empty"]
+    if len(text) > REVIEW_NOTES_LIMIT:
+        return [f"{path}: {len(text)} characters, over App Store Connect's limit of "
+                f"{REVIEW_NOTES_LIMIT} for App Review notes"]
+    return []
 
 
 def _deps() -> None:
@@ -228,15 +353,20 @@ def create_version(platform_key: str, version: str, apply: bool,
                    release_type: str = "MANUAL") -> bool:
     """Find-or-create the appStoreVersion row, and nothing else.
 
-    releaseType defaults MANUAL (v1.41 review): the owner releases in ASC after
-    approval — AFTER_APPROVAL would auto-publish on approval. App Store Connect
-    gives a new version the localizations of the previous one; the ones the
-    repo adds come from asc_push_listing.py."""
+    releaseType defaults MANUAL, and releases pass AFTER_APPROVAL: RELEASE TYPE
+    in the module docstring. App Store Connect gives a new version the
+    localizations of the previous one; the ones the repo adds come from
+    asc_push_listing.py."""
     plat = PLATFORMS[platform_key]
     ver = find_version(plat, version)
     if ver:
+        has = ver["attributes"].get("releaseType") or "UNKNOWN"
         print(f"[{plat}] version {version} exists: {ver['id']} "
-              f"state={version_state(ver['attributes'])} — nothing to create")
+              f"state={version_state(ver['attributes'])} releaseType={has} — nothing to create")
+        if has != release_type:
+            print(f"  WARN  it is {has}, not the {release_type} asked for: "
+                  f"{RELEASE_TYPE_MEANING.get(has, 'App Store Connect did not say')}. This "
+                  "script does not change it; do that in App Store Connect if it is wrong.")
         return True
     if not apply:
         print(f"[{plat}] DRY RUN — version {version} does not exist; --apply would create it "
@@ -290,8 +420,114 @@ def _check_build(plat: str, build_id: str, version: str) -> tuple[str, list[str]
     return desc, problems
 
 
+def _review_detail(ver_id: str) -> dict | None:
+    """The version's appStoreReviewDetail ({id, attributes}), or None if it has none."""
+    r = _get_response(f"/appStoreVersions/{ver_id}/appStoreReviewDetail")
+    if r.status_code == 404:
+        return None
+    if r.status_code >= 300:
+        sys.exit(f"ASC GET /appStoreVersions/{ver_id}/appStoreReviewDetail failed "
+                 f"{r.status_code}: {r.text[:400]}")
+    return r.json().get("data") or None
+
+
+def _print_notes(notes: str) -> None:
+    if not notes:
+        print("    | (empty)")
+    for line in notes.splitlines():
+        print(f"    | {line}")
+
+
+def notes_file_problems(path: Path, version: str, accept: bool
+                        ) -> tuple[str | None, list[str]]:
+    """(text, problems) for --review-notes FILE, before the store is contacted."""
+    if not path.is_file():
+        return None, [f"--review-notes {path}: no such file"]
+    text = listing.read_text(path)
+    problems = review_notes_file_problems(text, path)
+    flagged = review_notes_problems(text, version)
+    for p in flagged:
+        if accept:
+            print(f"  WARN  {path}: {p} (--accept-review-notes)")
+        else:
+            problems.append(f"{path}: {p}")
+    if flagged and not accept:
+        problems.append(f"fix {path}, or pass --accept-review-notes if the mention is deliberate")
+    return text, problems
+
+
+def plan_review_notes(plat: str, ver_id: str, version: str, new_text: str | None,
+                      source: str | None, accept: bool
+                      ) -> tuple[dict | None, str | None, list[str]]:
+    """(review detail, the notes to write or None, refusals). Prints the notes
+    the version holds now: the dry run is where they get read. `new_text` is
+    --review-notes' text, already checked by notes_file_problems()."""
+    detail = _review_detail(ver_id)
+    if detail is None:
+        return None, None, [f"version {version} has no App Review details (contact, notes). "
+                            "App Store Connect copies them from the previous version, and this "
+                            "one has none: fill them in App Store Connect first"]
+    current = (detail["attributes"].get("notes") or "").strip()
+    print(f"[{plat}] App Review notes on the version now ({len(current)} chars; the contact and "
+          "demo-account fields are not shown and never written):")
+    _print_notes(current)
+    if new_text is not None:
+        if new_text == current:
+            print(f"  ok    --review-notes {source}: the version already holds it, nothing to write")
+            return detail, None, []
+        print(f"  ok    --review-notes {source} ({len(new_text)} chars) replaces them")
+        return detail, new_text, []
+    refusals: list[str] = []
+    flagged = review_notes_problems(current, version)
+    for p in flagged:
+        if accept:
+            print(f"  WARN  the notes on the version: {p} (--accept-review-notes)")
+        else:
+            print(f"  FAIL  the notes on the version: {p}")
+            refusals.append(f"the App Review notes on the version: {p}")
+    if flagged and not accept:
+        refusals.append(f"pass --review-notes <file> with notes written for {version}, or "
+                        "--accept-review-notes if the version's notes are right as they are")
+    elif not flagged:
+        print("  ok    the notes name no older version as the one under review")
+    return detail, None, refusals
+
+
+def write_review_notes(plat: str, ver_id: str, detail: dict, text: str) -> bool:
+    """PATCH `notes` only, then read back: the notes must equal `text` and every
+    other field (contact, demo account) must be what it was."""
+    rid = detail["id"]
+    before = dict(detail["attributes"])
+    pr = _patch(f"/appStoreReviewDetails/{rid}",
+                {"data": {"type": "appStoreReviewDetails", "id": rid,
+                          "attributes": {"notes": text}}})
+    print(f"[{plat}] review notes <- {len(text)} chars: {pr.status_code}")
+    if pr.status_code >= 300:
+        print(f"[{plat}] STOPPED — the review notes were refused: {pr.text[:300]}. The build "
+              "was not attached and nothing was submitted.")
+        return False
+    back = _review_detail(ver_id)
+    after = dict((back or {}).get("attributes") or {})
+    got = (after.get("notes") or "").strip()
+    changed = sorted(k for k in set(before) | set(after)
+                     if k != "notes" and before.get(k) != after.get(k))
+    if got != text or changed or (back or {}).get("id") != rid:
+        why = []
+        if got != text:
+            why.append(f"the notes read back are not the file ({len(got)} vs {len(text)} chars)")
+        if changed:
+            why.append("these fields changed although only notes was sent: " + ", ".join(changed))
+        if (back or {}).get("id") != rid:
+            why.append("the version's review detail is no longer the one written")
+        print(f"[{plat}] STOPPED — " + "; ".join(why) + ". Not attaching, not submitting.")
+        return False
+    print(f"[{plat}] review notes verified; the other review fields are unchanged")
+    return True
+
+
 def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
-           apply: bool = False, allow_missing_locales: bool = False) -> bool:
+           apply: bool = False, allow_missing_locales: bool = False,
+           review_notes: Path | None = None, accept_review_notes: bool = False) -> bool:
     plat = PLATFORMS[platform_key]
     label = listing.PLATFORM_LABEL[plat]
 
@@ -304,6 +540,15 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
         print("Nothing was written. (python3 scripts/asc_listing_preflight.py "
               f"--whatsnew-dir {whatsnew_dir} checks both platforms.)")
         return False
+    notes_text = None
+    if review_notes is not None:
+        notes_text, problems = notes_file_problems(review_notes, version, accept_review_notes)
+        if problems:
+            print(f"[{plat}] REFUSED — the App Review notes in --review-notes are not ready:")
+            for p in problems:
+                print(f"  FAIL  {p}")
+            print("Nothing was written.")
+            return False
 
     # 2. Everything the writes depend on, read before the first write.
     refusals: list[str] = []
@@ -315,7 +560,9 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
         return False
     ver_id = ver["id"]
     state = version_state(ver["attributes"])
-    print(f"[{plat}] version {version}  id={ver_id}  state={state}")
+    release_type = ver["attributes"].get("releaseType") or "UNKNOWN"
+    print(f"[{plat}] version {version}  id={ver_id}  state={state}  releaseType={release_type}"
+          f" ({RELEASE_TYPE_MEANING.get(release_type, 'App Store Connect did not say')})")
     if state not in EDITABLE_STATES:
         refusals.append(f"version {version} is {state}; What's New can only be set while it is "
                         f"one of {', '.join(sorted(EDITABLE_STATES))}")
@@ -347,6 +594,10 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
         else:
             refusals.append(msg + "; push the listing first, or pass --allow-missing-locales")
 
+    detail, notes_plan, notes_refusals = plan_review_notes(
+        plat, ver_id, version, notes_text, review_notes, accept_review_notes)
+    refusals += notes_refusals
+
     desc, build_problems = _check_build(plat, build_id, version)
     if desc:
         print(f"[{plat}] {desc}")
@@ -359,11 +610,17 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
         print("Nothing was written.")
         return False
     if not apply:
-        print(f"[{plat}] DRY RUN OK — nothing was written. --apply would set What's New on "
-              f"{len(plan)} locale(s), attach the build and submit {version} for review.")
+        notes_step = (f"replace the App Review notes with {review_notes}, "
+                      if notes_plan is not None else "")
+        print(f"[{plat}] DRY RUN OK — nothing was written. --apply would {notes_step}set What's "
+              f"New on {len(plan)} locale(s), attach the build and submit {version} for review.")
         return True
 
-    # 3. What's New, only where it differs; then read it all back.
+    # 3. The App Review notes, if --review-notes differs from the store; read back.
+    if notes_plan is not None and not write_review_notes(plat, ver_id, detail, notes_plan):
+        return False
+
+    # 4. What's New, only where it differs; then read it all back.
     for lid, locale, fname, text in plan:
         current = next((x["attributes"].get("whatsNew") or "").strip()
                        for x in locs if x["id"] == lid)
@@ -389,7 +646,7 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
         return False
     print(f"[{plat}] What's New verified on {len(plan)} locale(s)")
 
-    # 4. attach the processed build.
+    # 5. attach the processed build.
     br = _patch(
         f"/appStoreVersions/{ver_id}/relationships/build",
         {"data": {"type": "builds", "id": build_id}},
@@ -398,7 +655,7 @@ def submit(platform_key: str, build_id: str, version: str, whatsnew_dir: Path,
     if br.status_code >= 300:
         return False
 
-    # 5. create a reviewSubmission, add the version as an item, submit.
+    # 6. create a reviewSubmission, add the version as an item, submit.
     sr = _post(
         "/reviewSubmissions",
         {"data": {"type": "reviewSubmissions", "attributes": {"platform": plat},
@@ -454,14 +711,25 @@ def main() -> int:
                     help="submit although the version lacks locales the repo has a listing for")
     ap.add_argument("--apply", action="store_true",
                     help="write (default is a dry run: GETs only, nothing written)")
+    ap.add_argument("--review-notes", type=Path,
+                    help="for --submit: a file with this version's App Review notes; --apply "
+                         "writes it (notes only) and reads it back before submitting")
+    ap.add_argument("--accept-review-notes", action="store_true",
+                    help="for --submit: submit although the review notes name an older version "
+                         "as the one under review (after reading them in the dry run)")
     ap.add_argument("--release-type", choices=["MANUAL", "AFTER_APPROVAL"], default="MANUAL",
-                    help="for --create-version. MANUAL (default): owner releases in ASC after approval")
+                    help="for --create-version. MANUAL (default, so a forgotten flag fails safe): "
+                         "the owner releases it in App Store Connect after approval. "
+                         "AFTER_APPROVAL: released as soon as Apple approves it, which is what "
+                         "releases use (AGENTS.md)")
     args = ap.parse_args()
 
     if args.whatsnew:
         ap.error("--whatsnew is retired: one fallback text for every locale put English notes "
                  "on every storefront. Pass --whatsnew-dir with a <locale>.txt (iOS) and "
                  "macos-<locale>.txt (macOS) per App Store locale.")
+    if (args.review_notes or args.accept_review_notes) and not args.submit:
+        ap.error("--review-notes and --accept-review-notes go with --submit")
     if args.list_builds:
         list_builds(args.list_builds)
         return 0
@@ -479,7 +747,9 @@ def main() -> int:
             ap.error("--submit requires --whatsnew-dir <dir>")
         return 0 if submit(args.submit, args.build, args.version, args.whatsnew_dir,
                            apply=args.apply,
-                           allow_missing_locales=args.allow_missing_locales) else 1
+                           allow_missing_locales=args.allow_missing_locales,
+                           review_notes=args.review_notes,
+                           accept_review_notes=args.accept_review_notes) else 1
     ap.print_help()
     return 0
 

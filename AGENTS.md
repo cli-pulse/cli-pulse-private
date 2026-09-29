@@ -171,20 +171,56 @@ python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
 #    the six-language Mac set on MAC_OS
 python3 scripts/asc_push_screenshots.py --platform IOS --version 1.54.0      # then --apply
 
-# 4. The store against the repo, for the version being prepared
-python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154
+# 4. The store against the repo, for the version being prepared. What's New is
+#    still empty here (step 5 writes it): --whatsnew-unwritten-ok reports that
+#    as NOT WRITTEN instead of failing, on an editable version only.
+python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154 \
+    --whatsnew-unwritten-ok
 
-# 5. What's New, build, submission, once the build is VALID (--list-builds ios)
+# 5. App Review notes, What's New, build, submission, once the build is VALID
+#    (--list-builds ios). The notes file is this version's, written for it.
 python3 scripts/asc_submit.py --submit ios --build <BUILD_ID> --version 1.54.0 \
-    --whatsnew-dir whatsnew_154                                              # then --apply
+    --whatsnew-dir whatsnew_154 --review-notes <notes-ios.txt>               # then --apply
+
+# 6. After submitting: the same preflight WITHOUT --whatsnew-unwritten-ok. What's
+#    New must now be on the store in every localization of both platforms.
+python3 scripts/asc_listing_preflight.py --version 1.54.0 --whatsnew-dir whatsnew_154
 ```
 
 Repeat 1, 2, 3 and 5 with `macos` / `MAC_OS` (step 3 then pushes the Mac
-set: see "Mac screenshots" below). Both versions are created with
-`--release-type AFTER_APPROVAL` (the owner's choice for 1.53.0 and 1.54.0): App
-Store Connect releases each one as soon as it is approved. `asc_submit.py`
-defaults to MANUAL, which waits for the owner to release it in App Store
-Connect, so the flag has to be passed.
+set: see "Mac screenshots" below).
+
+**Release type.** Both versions are created with `--release-type
+AFTER_APPROVAL`: App Store Connect releases each one as soon as Apple approves
+it, with no one clicking Release. That is what 1.53.0 and 1.54.0 did, on the
+owner's instruction: an approved version should reach users without waiting
+for someone to release it by hand (the Developer ID build of the same version
+was already out both times). Some earlier releases were MANUAL — 1.41.0,
+1.49.0, 1.52.0 — so check, do not assume.
+`asc_submit.py --create-version` still defaults to MANUAL, deliberately: a
+forgotten flag then leaves an approved version waiting for one click in App
+Store Connect, while the opposite mistake publishes a version the moment Apple
+approves it, with no chance to hold it. So the flag has to be passed. The
+script never changes a version's releaseType; `--create-version` prints the
+one an existing version has and warns when it is not the one asked for, and
+`--submit`'s dry run prints it with what it means, so it is read before the
+version goes to review.
+
+**App Review notes.** App Store Connect copies the previous version's App
+Review notes onto a new version word for word — 1.54.0 arrived carrying
+1.53.0's, which told the reviewer that "THE MAIN FEATURE IN 1.53.0" needs a
+second device. `asc_submit.py --submit` prints the notes the version holds in
+its dry run (never the contact or demo-account fields) and refuses, before any
+write, notes that name an older version and never this one, or that present an
+older version as the one under review ("this 1.53.0 build"; a comparison such
+as "unchanged since 1.53.0" is fine). `--review-notes FILE` replaces them: the
+file is checked the same way before App Store Connect is contacted, and
+`--apply` PATCHes only `notes`, before What's New, and reads back that the
+notes are the file and the contact and demo-account fields are unchanged.
+`--accept-review-notes` submits flagged notes when the mention is deliberate.
+Write the notes per platform, and check what actually changed in Info.plist
+and the entitlements since the last version before claiming anything about
+permissions.
 
 **What's New** lives in `whatsnew_<version>/`: `<locale>.txt` is the iOS text
 and `macos-<locale>.txt` the macOS text, one file per App Store locale (seven:
@@ -201,14 +237,98 @@ that only the direct-download Mac build has (Remote Control, fan control).
 `asc_submit.py --submit` refuses before its first write when the texts fail
 those checks, the version is missing or not editable, any localization of the
 version has no text for that platform, a repo locale is not on the version yet
-(step 2 has not run; `--allow-missing-locales` overrides), or the build is not
+(step 2 has not run; `--allow-missing-locales` overrides), the build is not
 `VALID`, is for another platform or version, or the store does not say which
-platform and version it belongs to. With `--apply` it writes What's New where it
-differs, reads it back, and only then attaches the build and submits. The old
-`--whatsnew` fallback file is retired: it is how English notes once reached
-every storefront. Tests, both run by `repo-hygiene.yml`:
-`scripts/test_asc_submit.py` (offline, against a fake App Store Connect) and the
-What's New cases in `scripts/test_asc_listing_preflight.sh`.
+platform and version it belongs to, or the App Review notes read as an older
+version's. With `--apply` it writes the review notes (if `--review-notes`
+differs) and What's New where it differs, reads both back, and only then
+attaches the build and submits. The old `--whatsnew` fallback file is retired:
+it is how English notes once reached every storefront.
+
+The preflight's `--whatsnew-dir` checks the files (step 0) and, against the
+store, that every localization of the checked version holds its platform's
+text (steps 4 and 6). It used to check only the files: on 2026-09-28 it
+printed PREFLIGHT OK for 1.54.0 while What's New was empty in all 14
+localizations. Without `--whatsnew-dir` it now says What's New was not
+compared, in its last line.
+
+Tests, all run by `repo-hygiene.yml`: `scripts/test_asc_submit.py` (offline,
+against a fake App Store Connect: What's New, review notes, release type), the
+What's New cases in `scripts/test_asc_listing_preflight.sh`, and
+`scripts/test_asc_listing_preflight_store.py` (the preflight's store half
+against a fake: the What's New comparison).
+
+## Releasing the Developer ID build — three surfaces
+
+The direct-download Mac build (the one with Remote Control and machine
+controls) reaches users through three places, each changed by its own command.
+Publishing one is not publishing the release: 1.45.0 went out with
+`latest.json` and the Homebrew tap still on 1.44.0, so almost no existing user
+was offered it, and 1.53.0 never reached Homebrew at all (the tap went from
+1.52.1 to 1.54.0 on 2026-09-28). A merged cask PR in this repo changes nothing
+for `brew` users.
+
+| surface | where | who reads it |
+|---|---|---|
+| 1. the release | `app-vX.Y.Z` on `cli-pulse/cli-pulse-distrib`, marked Latest: the DMG, its `.sha256`, `manifest-fragment-arm64.json` | people downloading by hand |
+| 2. `latest.json` | the `latest` release of `cli-pulse/cli-pulse-distrib` | the in-app updater, at the `JasonYeYuhe/` URL compiled into `AppUpdater.swift` |
+| 3. the cask | `Casks/cli-pulse.rb` on `cli-pulse/homebrew-tap`, branch **master** | `brew upgrade` |
+
+```bash
+# Build, notarize and staple (needs an unlocked console for the keychain
+# profile; the inline APPLE_NOTARY_* mode does not). Hash only the final,
+# stapled DMG: stapling changes it.
+DEV_ID_APP="Developer ID Application: <Name> (<TEAMID>)" \
+    scripts/build_devid_dmg.sh --arch arm64 --output-dir <dir>
+
+# Before publishing: spctl --assess --type open (context:primary-signature) on
+# the DMG, the app against a requirement pinning bundle id AND team,
+# spctl --assess --type execute on the app, its version/build above the last
+# release's, and a launch smoke test (docs/DEVID_TERMINAL_SMOKE.md).
+
+# 1. the release
+gh release create app-v1.54.0 --repo cli-pulse/cli-pulse-distrib --latest \
+    --title "CLI Pulse Mac 1.54.0 (Developer ID)" --notes-file <release-notes.md> \
+    <dir>/CLI-Pulse-1.54.0-arm64.dmg <dir>/CLI-Pulse-1.54.0-arm64.dmg.sha256 \
+    <dir>/manifest-fragment-arm64.json
+
+# 2. latest.json, only once the DMG downloaded back from the release has the
+#    sha256 you verified: a copy of the manifest fragment, uploaded under that
+#    exact name. Its url keeps the JasonYeYuhe/ owner segment: the updater
+#    refuses any other.
+cp <dir>/manifest-fragment-arm64.json <tmp>/latest.json
+gh release upload latest --repo cli-pulse/cli-pulse-distrib --clobber <tmp>/latest.json
+
+# 3. the cask, generated from the published DMG and style-checked
+#    (brew style on the new file; a failure leaves the cask unchanged)
+scripts/update_cask.sh 1.54.0
+#    ...then a small PR with Casks/cli-pulse.rb here, AND the same file pushed to
+#    the tap, committed with hooks off (a hook in a tap checkout once ran
+#    `brew fetch` for minutes).
+git clone git@github.com:cli-pulse/homebrew-tap.git <tap>
+cp Casks/cli-pulse.rb <tap>/Casks/
+git -C <tap> add Casks/cli-pulse.rb
+git -C <tap> -c core.hooksPath=/dev/null commit --no-verify -m "cask: 1.54.0"
+git -C <tap> push origin master
+
+# Afterwards, read all three back (GET only; exit 0 only if every one serves it)
+scripts/check_release_surfaces.sh 1.54.0 --download
+```
+
+`check_release_surfaces.sh` checks that the release is published, Latest and
+carries the three assets, that the pinned download URL answers, that
+`latest.json` (through the API and at the URL the app fetches) is the
+release's manifest with the DMG's version, URL, sha256 and size, and that the
+tap's cask says the version and sha256, downloads from the pinned URL, and is
+the same file as `Casks/cli-pulse.rb` on `main`. `--download` also fetches the
+DMG `latest.json` points at, hashes it and runs `spctl` on it: the bytes users
+get are the bytes that were verified. Right after the `latest.json` upload,
+GitHub's download CDN can serve the old file for a few minutes; the check says
+so, and a re-run settles it. `update_cask.sh` fails if the style check finds a
+problem or does not run (no Homebrew: `--skip-style`, on purpose only). Tests,
+offline, in `repo-hygiene.yml`: `scripts/test_check_release_surfaces.sh` and
+`scripts/test_update_cask.sh` (which also runs the real `brew style` where
+Homebrew is installed).
 
 ## App Store listing — texts, pusher, preflight
 
@@ -247,7 +367,7 @@ three times:
 | 2026-08-30 | PR #484 re-shot the paywall screenshot | never uploaded |
 | 2026-08-31 | description fixed in v1.52.1 | live macOS copy still sold Team at $9.99/$99.99 |
 
-The preflight reads ASC (read-only, GETs only) and checks three things the repo
+The preflight reads ASC (read-only, GETs only) and checks what the repo
 cannot answer:
 
 1. **SKU-vs-copy** — the description must not name a tier whose SKU is not
@@ -258,6 +378,9 @@ cannot answer:
    locale present on the store.
 3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
    same name, compared on decoded pixels because ASC re-encodes on ingest.
+4. **What's New** (with `--whatsnew-dir`) — every localization of the version,
+   per platform, vs the text `asc_submit.py` would write; empty counts as
+   different (see "Releasing a version to the App Store" above).
 
 ⚠️ **Drift runs in both directions.** On 2026-08-31 the store was stale on the
 subscription paragraph *and* newer than the repo on the privacy section.
