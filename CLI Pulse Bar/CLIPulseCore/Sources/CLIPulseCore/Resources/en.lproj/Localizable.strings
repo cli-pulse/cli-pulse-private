@@ -1177,7 +1177,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "remote.connected" = "Connected";
 "remote.disconnected" = "Disconnected";
 "remote.no_sessions" = "No sessions. Start one from the Mac’s Sessions tab.";
-"remote.no_macs" = "No Macs found on this Wi‑Fi. On the Mac, turn on Settings › Remote Control.";
+"remote.no_macs" = "No Macs found on this Wi‑Fi. Remote Control needs the direct-download version of the Mac app, not the App Store version. If the Mac app's Settings show Remote Control, turn it on there; if they don't, Remote Control isn't available on that Mac.";
 "remote.local_network_denied" = "Local network access is off. Turn it on in Settings to find your Mac.";
 "remote.open_settings" = "Open Settings";
 "remote.pairing_succeeded" = "Paired";
