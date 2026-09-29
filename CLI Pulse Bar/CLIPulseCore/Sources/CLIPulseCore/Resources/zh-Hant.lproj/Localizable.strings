@@ -630,6 +630,7 @@
 /* ── 遠端審批 ── */
 
 /* ── Yield Score ── */
+/* "Yield Score" is a brand term: it stays in English, as here, in every language. */
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "當無法取得精確的 API 價格時，成本會根據 token 使用量估算。";
 "yield.empty_body" = "追蹤每次提交的 AI 成本以檢視你的 Yield Score。";
@@ -1574,7 +1575,7 @@
 "remote.listener_failed" = "遠端控制監聽發生錯誤：%@";
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
-"alerts.critical_count_badge" = "嚴重 %d 則";
+"alerts.critical_count_badge" = "嚴重級 %d 則";
 "alerts.warning_count_badge" = "警告級 %d 則";
 "account.deleting" = "正在刪除帳號…";
 "usage_dashboard.chart_day" = "日期";

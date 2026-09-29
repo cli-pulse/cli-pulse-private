@@ -968,6 +968,7 @@
 "advanced.providers_loaded" = "로드된 공급자";
 "advanced.last_refresh" = "마지막 새로고침";
 "advanced.never" = "없음";
+/* "Yield Score" is a brand term: it stays in English, as here, in every language. */
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "정확한 API 가격을 알 수 없으면 토큰 사용량으로 비용을 추정합니다.";
 "yield.empty_body" = "커밋당 AI 비용을 추적하여 Yield Score를 확인하세요.";

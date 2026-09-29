@@ -124,6 +124,53 @@ final class YieldScoreTests: XCTestCase {
         XCTAssertNil(row.dayDate)
     }
 
+    // MARK: - YieldScoreCardContent.resolve
+
+    /// The Mac App Store build in local mode: not paired, no helper, tracking
+    /// off. The prompt would send people to a Settings › Advanced switch this
+    /// Mac does not show, for data nothing here could collect.
+    func testCardIsHiddenInAppStoreLocalMode() {
+        XCTAssertEqual(resolve(paired: false, helper: false), .hidden)
+        // Paired without a helper, or a helper without pairing: still no prompt.
+        XCTAssertEqual(resolve(paired: true, helper: false), .hidden)
+        XCTAssertEqual(resolve(paired: false, helper: true), .hidden)
+    }
+
+    /// A paired Mac with a helper is where the switch and the collector both
+    /// are, so that is where the prompt appears.
+    func testCardPromptsOnAPairedMacWithTheHelper() {
+        XCTAssertEqual(resolve(paired: true, helper: true), .turnOnTracking)
+        XCTAssertEqual(resolve(paired: true, helper: true, tracking: true), .noAttribution)
+        XCTAssertEqual(resolve(paired: true, helper: true, tracking: true, rows: true), .summaries)
+    }
+
+    /// Demo mode pairs its sample account (`DemoDataProvider` sets `isPaired`)
+    /// and has no yield data: the card is hidden whatever the rest says. Its
+    /// Overview is what the Mac App Store screenshots draw.
+    func testCardIsHiddenInDemoMode() {
+        XCTAssertEqual(resolve(demo: true, paired: true, helper: true), .hidden)
+        XCTAssertEqual(resolve(demo: true, paired: true, helper: true, tracking: true, rows: true), .hidden)
+        XCTAssertEqual(resolve(demo: true, paired: false, helper: false), .hidden)
+    }
+
+    /// Nobody who tracked loses the numbers they have, on a Mac where the
+    /// prompt would not appear.
+    func testCardKeepsExistingDataWhereThePromptWouldNotShow() {
+        XCTAssertEqual(resolve(paired: false, helper: false, tracking: true), .noAttribution)
+        XCTAssertEqual(resolve(paired: false, helper: false, tracking: true, rows: true), .summaries)
+        XCTAssertEqual(resolve(paired: false, helper: false, rows: true), .summaries)
+    }
+
+    private func resolve(
+        demo: Bool = false, paired: Bool, helper: Bool,
+        tracking: Bool = false, rows: Bool = false
+    ) -> YieldScoreCardContent {
+        YieldScoreCardContent.resolve(
+            isDemoMode: demo, thisMacIsPaired: paired, helperPresent: helper,
+            trackingEnabled: tracking, hasSummaries: rows
+        )
+    }
+
     // MARK: - Helpers
 
     private func fixedNow() -> Date {

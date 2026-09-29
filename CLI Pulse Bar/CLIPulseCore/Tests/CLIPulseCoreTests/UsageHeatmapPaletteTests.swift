@@ -44,6 +44,20 @@ final class UsageHeatmapPaletteTests: XCTestCase {
         for level in 0...4 {
             XCTAssertEqual(try luminance(UsageHeatmapPalette.color(level), over: panel), levels[level], accuracy: 1e-9)
         }
+        // And the dark ramp is the token-monitor ramp it was before the light one
+        // was added, value for value: brightening level by level alone would let
+        // a changed ramp through.
+        let tokenMonitor: [(r: Double, g: Double, b: Double, a: Double)] = [
+            (255, 255, 255, 0.05), (90, 170, 255, 0.18), (120, 190, 255, 0.45),
+            (150, 210, 255, 0.8), (180, 230, 255, 1.0),
+        ]
+        for (level, expected) in tokenMonitor.enumerated() {
+            let ns = try XCTUnwrap(NSColor(UsageHeatmapPalette.color(level, scheme: .dark)).usingColorSpace(.sRGB))
+            XCTAssertEqual(Double(ns.redComponent) * 255, expected.r, accuracy: 0.5, "dark level \(level) red")
+            XCTAssertEqual(Double(ns.greenComponent) * 255, expected.g, accuracy: 0.5, "dark level \(level) green")
+            XCTAssertEqual(Double(ns.blueComponent) * 255, expected.b, accuracy: 0.5, "dark level \(level) blue")
+            XCTAssertEqual(Double(ns.alphaComponent), expected.a, accuracy: 0.002, "dark level \(level) alpha")
+        }
     }
 }
 #endif

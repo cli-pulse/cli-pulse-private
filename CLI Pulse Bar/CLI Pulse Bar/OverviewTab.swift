@@ -103,8 +103,9 @@ struct OverviewTab: View {
                             forecastCard(forecast)
                         }
 
-                        // Yield score (cost-to-code)
-                        YieldScoreCard()
+                        // Yield score (cost-to-code); draws nothing where it
+                        // has nothing to show (YieldScoreCardContent).
+                        YieldScoreCard(installer: state.helperInstaller)
                     }
 
                     providerBreakdown(dash)
@@ -327,25 +328,25 @@ struct OverviewTab: View {
             )
             MetricCard(
                 title: L10n.dashboard.requests,
-                value: "\(dash.total_requests_today)",
+                value: DisplayFormat.count(dash.total_requests_today),
                 icon: "arrow.up.arrow.down",
                 color: .purple
             )
             MetricCard(
                 title: L10n.tab.sessions,
-                value: "\(dash.active_sessions)",
+                value: DisplayFormat.count(dash.active_sessions),
                 icon: "terminal",
                 color: .cyan
             )
             MetricCard(
                 title: L10n.dashboard.onlineDevices,
-                value: "\(dash.online_devices)",
+                value: DisplayFormat.count(dash.online_devices),
                 icon: "desktopcomputer",
                 color: .blue
             )
             MetricCard(
                 title: L10n.dashboard.unresolvedAlerts,
-                value: "\(dash.unresolved_alerts)",
+                value: DisplayFormat.count(dash.unresolved_alerts),
                 icon: "bell.badge",
                 color: dash.unresolved_alerts > 0 ? .orange : .gray
             )

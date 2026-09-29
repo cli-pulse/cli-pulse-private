@@ -630,6 +630,7 @@
 /* ── リモート承認 ── */
 
 /* ── Yield Score ── */
+/* "Yield Score" is a brand term: it stays in English, as here, in every language. */
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "正確な API 価格が利用できない場合、コストはトークン使用量から推定されます。";
 "yield.empty_body" = "コミットあたりの AI コストを追跡して Yield Score を表示します。";
@@ -1666,7 +1667,7 @@
 "alert_kind.device_cpu_title" = "デバイスの CPU 使用率が高くなっています";
 "alert_kind.quota_message" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%）。";
 "alert_kind.quota_message_reset" = "クォータ期間「%1$@」は %2$@%% 使用済みです（残り %3$@%%、%4$@ にリセット）。";
-"alert_kind.quota_title" = "%1$@ の「%2$@」が %3$@%% に到達";
+"alert_kind.quota_title" = "%1$@ の「%2$@」クォータが %3$@%% に到達";
 "alert_kind.session_cpu_message_process" = "%2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_process_in_project" = "%3$@ 内の %2$@ のプロセス CPU は %1$@%% です。";
 "alert_kind.session_cpu_message_system" = "%3$@ がシステム全体の CPU（%2$@ コア）の約 %1$@%% を使用しています。";

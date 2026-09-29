@@ -156,7 +156,11 @@ delegate does that in `popUpButtonCell:willShowMenu:`, which the renderer
 calls without opening the menu, then reads the real `NSMenu`: titles in order,
 which is checked, separators. `languageMenu.source` is `nsmenu` in that case,
 and the `language-menu` picture is drawn from those items (a menu cannot be
-drawn without opening it on screen). If a future SwiftUI drops that hook, the
+drawn without opening it on screen). Because the picture is redrawn, it cannot
+show the size the real menu opens in, so `languageMenu.fontPointSize` records
+the real menu's font and a warning fires when it is smaller than the system
+font: `.controlSize(.mini)` on the globe button once shrank the whole menu to
+9 pt while every picture looked right. If a future SwiftUI drops that hook, the
 source becomes `languageOptions-fallback`, the items are rebuilt the way
 `LanguagePickerMenu` builds them, the picture is named
 `language-menu-fallback`, and a warning says so.

@@ -2,6 +2,9 @@
 // every macOS SwiftUI root.
 
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 
 /// Puts `LocaleOverrideStore.displayLocale` into the SwiftUI environment, so
 /// views that format through the environment, such as `Text(date, style:)`,
@@ -114,21 +117,33 @@ public struct LanguagePickerMenu: View {
             // once at launch (see `LocaleOverrideStore.mirrorToAppleLanguages`).
             Text(L10n.language.systemTextAfterRestart)
         } label: {
-            Image(systemName: "globe")
+            Self.globe
         }
         // A borderless-button menu is an NSPopUpButton, which draws the label's
         // image itself and ignores SwiftUI's font and foreground style on it: the
         // globe came out large and solid black beside the small tertiary refresh
-        // and power icons. Its size follows the control size and its colour the
-        // tint. It stays a popup button because the QA renderer reads the
-        // language menu through one (QASnapshotRenderer.captureLanguageMenu).
+        // and power icons. It draws the image at the size the image has, and in
+        // the tint's colour. Not `.controlSize(.mini)`: that also sets the
+        // popup's font, which AppKit uses for the whole menu, so the language
+        // names opened in 9 pt instead of 13. It stays a popup button because
+        // the QA renderer reads the language menu through one
+        // (QASnapshotRenderer.captureLanguageMenu, which also checks that font).
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
-        .controlSize(.mini)
         .tint(Color(nsColor: .tertiaryLabelColor))
         .fixedSize()
         .accessibilityLabel(L10n.language.title)
         .help(L10n.language.title)
+    }
+
+    /// The globe as a 9 pt symbol, the size of the footer's refresh and power
+    /// icons, sized on the image because the popup button ignores `.font`.
+    private static var globe: Image {
+        if let symbol = NSImage(systemSymbolName: "globe", accessibilityDescription: nil),
+           let sized = symbol.withSymbolConfiguration(.init(pointSize: 9, weight: .regular)) {
+            return Image(nsImage: sized)
+        }
+        return Image(systemName: "globe")
     }
 }
 #endif

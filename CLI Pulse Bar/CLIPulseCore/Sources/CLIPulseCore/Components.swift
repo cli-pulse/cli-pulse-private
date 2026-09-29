@@ -232,9 +232,10 @@ public struct CountUpNumber: View, Animatable {
     public static let countUpAnimation: Animation = .timingCurve(0.165, 0.84, 0.44, 1.0, duration: 2.2)
 
     /// Grouped the reader's way: "12,345,678", or "12.345.678" in Spain, where
-    /// an en_US comma reads as a decimal point.
+    /// an en_US comma reads as a decimal point. One rule for every count:
+    /// `DisplayFormat.count`.
     static func grouped(_ n: Int, locale: Locale) -> String {
-        n.formatted(.number.locale(locale))
+        DisplayFormat.count(n, locale: locale)
     }
 }
 

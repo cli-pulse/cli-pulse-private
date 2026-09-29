@@ -982,6 +982,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.providers_loaded" = "Proveedores cargados";
 "advanced.last_refresh" = "Última actualización";
 "advanced.never" = "Nunca";
+/* "Yield Score" is a brand term: it stays in English, as here, in every language. */
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "El costo se estima a partir del uso de tokens cuando no hay un precio exacto de la API.";
 "yield.empty_body" = "Registra el costo de IA por commit para ver tu Yield Score.";

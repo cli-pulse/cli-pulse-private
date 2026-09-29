@@ -119,3 +119,45 @@ public enum YieldScoreAggregator {
         }.sorted { ($0.costPerCommit ?? .infinity) < ($1.costPerCommit ?? .infinity) }
     }
 }
+
+/// What the Overview's Yield Score card shows, if anything.
+///
+/// Its rows come from `yield_score_daily`, which only the helper's git
+/// collector feeds, and the prompt it shows with tracking off sends people to
+/// Settings › Advanced, which only a paired account has. So the prompt appears
+/// only on a paired Mac with a helper on it (the owner's call, 2026-09-30).
+/// Anywhere else it pointed at a switch that was not there, for a number that
+/// could not arrive: the Mac App Store build in local mode, and Demo mode,
+/// whose Overview is what the store screenshots draw.
+public enum YieldScoreCardContent: Equatable, Sendable {
+    /// No card.
+    case hidden
+    /// Tracking is off: say what the score is and where to turn it on.
+    case turnOnTracking
+    /// Tracking is on, and no commit in the window has been attributed yet.
+    case noAttribution
+    /// Per-provider cost per commit.
+    case summaries
+
+    /// - Parameters:
+    ///   - isDemoMode: Demo mode, which has no yield data and no Settings for it.
+    ///   - thisMacIsPaired: `AuthState.isThisMacSyncing`, what the account card
+    ///     calls paired.
+    ///   - helperPresent: `HelperInstaller.helperPresent`.
+    ///   - trackingEnabled: the account's `track_git_activity`.
+    ///   - hasSummaries: whether the selected window has any rows.
+    public static func resolve(
+        isDemoMode: Bool,
+        thisMacIsPaired: Bool,
+        helperPresent: Bool,
+        trackingEnabled: Bool,
+        hasSummaries: Bool
+    ) -> Self {
+        if isDemoMode { return .hidden }
+        if trackingEnabled { return hasSummaries ? .summaries : .noAttribution }
+        if thisMacIsPaired && helperPresent { return .turnOnTracking }
+        // Someone who tracked before keeps the numbers they have, rather than a
+        // prompt for a switch this Mac cannot show them.
+        return hasSummaries ? .summaries : .hidden
+    }
+}

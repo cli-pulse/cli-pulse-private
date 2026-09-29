@@ -550,9 +550,10 @@
 /* ── Remote Approvals (macOS sheet + iOS view) ── */
 
 /* ── Yield Score Card ── */
+/* "Yield Score" is a brand term: it stays in English, as here, in every language. */
 "yield.title" = "Yield Score";
 "yield.help_estimated" = "Cost is estimated from token usage when an exact API price isn't available.";
-"yield.empty_body" = "Track AI cost per commit to see your yield score.";
+"yield.empty_body" = "Track AI cost per commit to see your Yield Score.";
 "yield.empty_enable_hint" = "Turn on Track git activity in Settings › Advanced.";
 "yield.view_detail" = "View detail";
 "yield.detail_title" = "Yield Score Detail";

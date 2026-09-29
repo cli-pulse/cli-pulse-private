@@ -279,6 +279,27 @@ final class CompositionGrammarTests: XCTestCase {
         XCTAssertTrue(L10n.account.linkedAccountsFooter.contains("同一 CLI\u{00A0}Pulse 账户"))
     }
 
+    /// "Yield Score" is a brand term too (the owner's call, 2026-09-30): it stays
+    /// in English, capitalized, in all six languages. The parity gate cannot see
+    /// a string that is the same in every language, so this pins it. Every string
+    /// that names the score in English names it the same way in each language,
+    /// and the card's title is the term and nothing else.
+    func testYieldScoreStaysEnglishInEveryLanguage() throws {
+        let english = try catalogue("en")
+        let naming = english.filter { $0.value.localizedCaseInsensitiveContains("yield score") }.map(\.key).sorted()
+        XCTAssertEqual(
+            naming, ["advanced.track_git", "yield.detail_title", "yield.empty_body", "yield.title"],
+            "a string that names the score was added or removed: check it keeps the brand term")
+        for localization in LocaleOverrideStore.shippedLocalizations {
+            let values = try catalogue(localization)
+            XCTAssertEqual(values["yield.title"], "Yield Score", localization)
+            for key in naming {
+                XCTAssertTrue(values[key]?.contains("Yield Score") == true,
+                              "\(localization) \(key) does not say \"Yield Score\": \(values[key] ?? "missing")")
+            }
+        }
+    }
+
     /// The swap starts where the search found the first brand, so the text before
     /// it survives and every later brand is joined too; text with no brand, most of
     /// every catalogue, comes back as it was.

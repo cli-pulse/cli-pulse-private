@@ -4,29 +4,49 @@ import CLIPulseCore
 /// Compact card shown on the Overview tab. Displays per-provider Cost-to-Code
 /// Yield Score over the user-selected window (7d / 30d / 90d).
 ///
-/// Empty/disabled states:
-/// - Helper not installed → "Install macOS helper to track yield score"
-/// - Tracking opt-in not enabled → "Enable in Settings"
-/// - No commits attributed → "0 commits — try writing some code in a tracked repo"
+/// What it shows is `YieldScoreCardContent.resolve`: nothing in Demo mode; with
+/// tracking off, the prompt to turn it on only on a paired Mac with a helper
+/// (elsewhere that switch is not in Settings), or the numbers someone already
+/// has; with tracking on, the numbers or "no commits attributed yet".
 struct YieldScoreCard: View {
     @EnvironmentObject var state: AppState
+    @EnvironmentObject var authState: AuthState
+    /// `state.helperInstaller`, observed here because its changes do not
+    /// reach views through `AppState`.
+    @ObservedObject var installer: HelperInstaller
+
+    private var content: YieldScoreCardContent {
+        YieldScoreCardContent.resolve(
+            isDemoMode: state.isDemoMode,
+            thisMacIsPaired: authState.isThisMacSyncing,
+            helperPresent: installer.helperPresent,
+            trackingEnabled: state.gitTrackingEnabled,
+            hasSummaries: !state.yieldScoreSummaries.isEmpty
+        )
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            header
+        let content = content
+        if content != .hidden {
+            VStack(alignment: .leading, spacing: 8) {
+                header
 
-            if !trackingEnabled {
-                disabledView
-            } else if state.yieldScoreSummaries.isEmpty {
-                emptyView
-            } else {
-                summaryList
-                detailLink
+                switch content {
+                case .turnOnTracking:
+                    disabledView
+                case .noAttribution:
+                    emptyView
+                case .summaries:
+                    summaryList
+                    detailLink
+                case .hidden:
+                    EmptyView()
+                }
             }
+            .padding(12)
+            .background(Color(NSColor.controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
         }
-        .padding(12)
-        .background(Color(NSColor.controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     // MARK: - Subviews
@@ -51,10 +71,6 @@ struct YieldScoreCard: View {
             .labelsHidden()
             .frame(maxWidth: 140)
         }
-    }
-
-    private var trackingEnabled: Bool {
-        state.gitTrackingEnabled
     }
 
     private var disabledView: some View {
