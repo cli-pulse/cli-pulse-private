@@ -218,6 +218,9 @@ file is checked the same way before App Store Connect is contacted, and
 `--apply` PATCHes only `notes`, before What's New, and reads back that the
 notes are the file and the contact and demo-account fields are unchanged.
 `--accept-review-notes` submits flagged notes when the mention is deliberate.
+A refusal that is really another product's version (the helper, a CLI tool the
+app monitors) is fixed by naming that product in `_OTHER_PRODUCT` in the
+script, not by `--accept-review-notes`, which switches the check off.
 Write the notes per platform, and check what actually changed in Info.plist
 and the entitlements since the last version before claiming anything about
 permissions.
@@ -250,7 +253,7 @@ store, that every localization of the checked version holds its platform's
 text (steps 4 and 6). It used to check only the files: on 2026-09-28 it
 printed PREFLIGHT OK for 1.54.0 while What's New was empty in all 14
 localizations. Without `--whatsnew-dir` it now says What's New was not
-compared, in its last line.
+compared, in its summary.
 
 Tests, all run by `repo-hygiene.yml`: `scripts/test_asc_submit.py` (offline,
 against a fake App Store Connect: What's New, review notes, release type), the
@@ -378,9 +381,11 @@ cannot answer:
    locale present on the store.
 3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
    same name, compared on decoded pixels because ASC re-encodes on ingest.
-4. **What's New** (with `--whatsnew-dir`) — every localization of the version,
-   per platform, vs the text `asc_submit.py` would write; empty counts as
-   different (see "Releasing a version to the App Store" above).
+
+Check 5, **What's New** (with `--whatsnew-dir`), compares every localization of
+the version, per platform, with the text `asc_submit.py` would write; empty
+counts as different (see "Releasing a version to the App Store" above). Check
+4, the panels, is repo-only (`--require-shots`, below).
 
 ⚠️ **Drift runs in both directions.** On 2026-08-31 the store was stale on the
 subscription paragraph *and* newer than the repo on the privacy section.

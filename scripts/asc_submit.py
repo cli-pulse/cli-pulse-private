@@ -76,9 +76,16 @@ older version of this app as if it were the one under review:
   * notes that name an older version and never this one (the copied set); or
   * a mention of an older version that is neither compared with this one
     ("since 1.53.0", "unchanged from 1.53.0", "added in 1.53.0 and unchanged in
-    1.54.0", "was removed in 1.52.1") nor about another product ("Guideline
-    1.4.1", "iOS 17.0"): "THE MAIN FEATURE IN 1.53.0", "this 1.53.0 build".
-It is a tripwire for the copied-notes case, not a reading of the prose.
+    1.54.0"), nor history ("was removed in 1.52.1", "introduced in 1.53.0"),
+    nor about another product ("Guideline 1.4.1", "iOS 17.0", "the helper
+    1.16.2", "Claude Code 1.0.88"): "THE MAIN FEATURE IN 1.53.0", "this 1.53.0
+    build".
+It is a tripwire for the copied-notes case, not a reading of the prose: it
+knows the phrasings above and the products named in _OTHER_PRODUCT, and
+another product's 1.x.y that it does not know is refused (fail safe; name the
+product there rather than reaching for --accept-review-notes). A two-part
+number written without a "v" ("THE MAIN FEATURE IN 1.53") is not taken for a
+version at all, so a heading written that way is not caught.
 --review-notes FILE replaces the notes with FILE (the same check applies to it;
 at most 4000 characters), and --apply PATCHes only `notes` and reads back that
 the notes equal FILE and every other field is unchanged. --accept-review-notes
@@ -144,9 +151,13 @@ REVIEW_NOTES_LIMIT = 4000   # App Store Connect's limit for appStoreReviewDetail
 _VERSION_MENTION = re.compile(
     r"(?<![\w.$€£¥])(?:(v)(\d+)\.(\d+)(?:\.(\d+))?|(\d+)\.(\d+)\.(\d+))(?!\w|\.\d)")
 # ...that belongs to something else when the word before it is one of these.
+# The helper and the CLI tools the app monitors share the app's major version 1
+# ("the helper 1.16.2", "Claude Code 1.0.88"), so they are named here rather
+# than told apart by number.
 _OTHER_PRODUCT = re.compile(
     r"\b(?:guidelines?|section|rule|ios|ipados|macos|watchos|visionos|tvos|xcode|swift|"
-    r"sdk|python|os)\s+"
+    r"sdk|python|os|helper|claude\s+code|claude|codex(?:\s+cli)?|gemini(?:\s+cli)?|"
+    r"node(?:\.js)?|npm|homebrew|brew|cli)\s+"
     r"(?:v?[\d.]+\s*(?:,|and|or|&)\s*)*$",      # ...or a later item of its list: "Guidelines 2.1 and 1.4.1"
     re.IGNORECASE)
 # "this 1.53.0 build" presents the older version as the one under review.
@@ -156,8 +167,14 @@ _PRESENTED_AS_CURRENT = re.compile(r"\b(?:this|the current|current)\s+$", re.IGN
 _COMPARISON = re.compile(
     r"\b(?:since|from|than|before|prior to|previous(?:ly)?|earlier|unchanged|until|"
     r"as in|as of|compared (?:to|with)|vs\.?|versus|over)\s+(?:\S+\s+){0,2}$", re.IGNORECASE)
-# ...and history in the passive: "was removed in 1.52.1", "were added in 1.53.0".
-_HISTORY = re.compile(r"\b(?:was|were|been)\s+(?:\w+\s+){1,3}(?:in|since)\s+$", re.IGNORECASE)
+# ...and history: in the passive, "was removed in 1.52.1", "were added in
+# 1.53.0"; or naming when a feature arrived, "introduced in 1.53.0", "(added in
+# 1.53.0)", "first shipped in 1.53.0". Not "fixed in": "ALSO FIXED IN 1.53.0"
+# is the heading of a copied set, and reads the same as a history of fixes.
+_HISTORY = re.compile(
+    r"\b(?:(?:was|were|been)\s+(?:\w+\s+){1,3}(?:in|since)"
+    r"|(?:first\s+)?(?:introduced|added|shipped|launched|released)\s+in)\s+$",
+    re.IGNORECASE)
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+|\n+")
 
 

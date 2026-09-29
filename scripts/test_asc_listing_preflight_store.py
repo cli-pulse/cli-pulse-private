@@ -26,6 +26,11 @@ the real main():
   * without --whatsnew-dir the run says What's New was NOT compared, on every
     platform and in the OK line, so its OK cannot be read as covering it.
 
+The fake honours `fields[...]` as App Store Connect does, returning only the
+attributes a request names. A fake that returned everything kept every case
+green when `whatsNew` or `appVersionState` was dropped from the preflight's
+request, which on the real store empties every locale's What's New.
+
 Every case runs with --skip-screenshots (check 3 downloads images). The real
 whatsnew_154/ and CLI Pulse Bar/appstore/ are the fixtures. Runs with a bare
 python3 (no jwt/requests needed); CI runs it in repo-hygiene.yml.
@@ -86,8 +91,22 @@ def base_store(state: str = "PREPARE_FOR_SUBMISSION") -> dict:
     }
 
 
+def only_fields(attrs: dict, params: dict, kind: str) -> dict:
+    """What App Store Connect returns for `fields[<kind>]=a,b`: those attributes
+    and no others. Without it the fake would answer a request that stopped
+    asking for `whatsNew` with the stored text anyway, and dropping the field
+    from the preflight's request (which empties every locale on the real store)
+    would leave every case here green."""
+    wanted = params.get(f"fields[{kind}]")
+    if wanted is None:
+        return dict(attrs)
+    keep = set(wanted.split(","))
+    return {k: v for k, v in attrs.items() if k in keep}
+
+
 class FakeRequests:
-    """Stands in for the `requests` module: answers the GETs the preflight makes."""
+    """Stands in for the `requests` module: answers the GETs the preflight makes,
+    honouring `fields[...]` the way App Store Connect does."""
 
     def __init__(self, store: dict) -> None:
         self.store = store
@@ -119,12 +138,15 @@ class FakeRequests:
             v = s["versions"].get(plat)
             rows = []
             if v and params.get("filter[versionString]") in (None, v["versionString"]):
-                rows = [{"id": f"v-{plat}", "attributes": dict(v)}]
+                rows = [{"id": f"v-{plat}",
+                         "attributes": only_fields(v, params, "appStoreVersions")}]
             return Resp(200, {"data": rows})
         if path.startswith("/appStoreVersions/v-") and path.endswith("/appStoreVersionLocalizations"):
             plat = path.split("/")[2][2:]
-            return Resp(200, {"data": [{"id": f"vl-{plat}-{loc}", "attributes": dict(a)}
-                                       for loc, a in s["vlocs"][plat].items()]})
+            return Resp(200, {"data": [
+                {"id": f"vl-{plat}-{loc}",
+                 "attributes": only_fields(a, params, "appStoreVersionLocalizations")}
+                for loc, a in s["vlocs"][plat].items()]})
         raise AssertionError(f"unexpected GET {path}")
 
 
@@ -176,6 +198,11 @@ check("... the Mac is compared with macos-<locale>.txt, the iPhone with <locale>
       "[ja] What's New matches whatsnew_154/macos-ja.txt" in out
       and "[ja] What's New matches whatsnew_154/ja.txt" in out, out)
 check("... read-only: every request is a GET", all(m == "GET" for m, _ in fake.calls))
+row = fake.get(f"{pf.BASE}/appStoreVersions/v-IOS/appStoreVersionLocalizations",
+               params={"fields[appStoreVersionLocalizations]": "locale,description"}).json()
+check("the fake returns only the fields a request asks for, as App Store Connect does "
+      "(so a field dropped from the preflight's request is noticed)",
+      set(row["data"][0]["attributes"]) == {"locale", "description"}, str(row["data"][0]))
 
 # 1. the 1.54.0 state: What's New empty in all 14 localizations
 empty = base_store()

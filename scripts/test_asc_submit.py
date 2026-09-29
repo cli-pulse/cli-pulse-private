@@ -34,7 +34,9 @@ checks what the script WOULD send:
     and every other field unchanged); a refused, dropped or field-clobbering
     write stops the run before What's New, the build or the submission;
     --accept-review-notes lets flagged notes through; and the detector itself
-    is run on sentences shaped like the real 1.53.0 and 1.54.0 notes.
+    is run on sentences shaped like the real 1.53.0 and 1.54.0 notes, and on
+    phrasings it must not refuse: other products that share the major version
+    1 (the helper, Claude Code, Node) and history ("introduced in 1.53.0").
 
 The real whatsnew_154/ is the fixture: its passing is the positive control.
 Runs with a bare python3 (no jwt/requests needed).
@@ -544,6 +546,16 @@ try:
         ("another major version", "1.54.0. The helper protocol 0.9.3 is unchanged."),
         ("no version at all", "No account is needed: tap Try Demo."),
         ("sizes and prices", "1.54.0 is a 1.5 GB smaller download; Pro is $1.49 or 1.49 EUR."),
+        ("the helper's version", "1.54.0 is a fixes release.\n"
+         "The Mac needs the CLI Pulse helper 1.16.2 or later."),
+        ("the monitored CLI tools' versions", "1.54.0 was tested with Claude Code 1.0.88, "
+         "Codex CLI 1.2.0 and Gemini CLI 1.1.0.\nRequires Python 3.11 or Node 1.2.3."),
+        ("'introduced in 1.53.0'", "1.54.0 is a fixes release.\n"
+         "Remote Control, introduced in 1.53.0, still needs a second device."),
+        ("'(added in 1.53.0)'", "1.54.0 is a fixes release.\n"
+         "Remote Control (added in 1.53.0) needs a second device."),
+        ("'first shipped in 1.53.0'", "1.54.0 is a fixes release.\n"
+         "The Remote Control tab first shipped in 1.53.0."),
         ("empty notes", ""),
     ]:
         got = flags(notes)
@@ -569,6 +581,15 @@ try:
           len(got) == 1 and "this 1.53.0 build" in got[0], str(got))
     got = flags("Fixes in v1.53: the chart.")
     check("v-prefixed and two-part versions count", len(got) == 2, str(got))
+    got = flags("Remote Control, introduced in 1.53.0, still needs a second device.")
+    check("history phrasing does not excuse notes that never name 1.54.0",
+          len(got) == 1 and "never 1.54.0" in got[0], str(got))
+    got = flags("1.54.0 is a fixes release.\nFIXED IN 1.53.0\n- the chart.")
+    check("'FIXED IN 1.53.0' is still a claim, not history",
+          len(got) == 1 and "presents 1.53.0" in got[0], str(got))
+    got = flags("1.54.0 is a fixes release.\nThe CLI Pulse 1.53.0 build adds Remote Control.")
+    check("the app's own name before an older version is not another product",
+          len(got) == 1 and "presents 1.53.0" in got[0], str(got))
 
     secrets = [v for v in REVIEW_CONTACT.values() if isinstance(v, str)]
 

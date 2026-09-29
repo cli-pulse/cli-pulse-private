@@ -176,18 +176,27 @@ done
 # ── read-only by construction ────────────────────────────────────────────────
 # No command that writes to GitHub may appear in the script. The pattern is
 # run on a copy with one planted, so a pattern that matches nothing is noticed.
-WRITES='gh release (create|upload|edit|delete)|git push|--clobber|--method|-X *(POST|PATCH|PUT|DELETE)|--field|--raw-field|gh api [^|]* -[fF] '
+WRITES='gh release (create|upload|edit|delete)|git push|--clobber|--method|-X *(POST|PATCH|PUT|DELETE)|--request *(POST|PATCH|PUT|DELETE)|--field|--raw-field|gh api [^|]* -[fF] |gh api [^|]*--input|curl [^|]*( -d | -F | -T |--data|--form|--upload-file|--json )'
 if grep -nE -- "$WRITES" "$CHECK" >"$TMP/out"; then
     echo "FAIL: [the script contains no write command]"; sed 's/^/        /' "$TMP/out"; fail=$((fail + 1))
 else
     echo "ok:   [the script contains no write command]"; pass=$((pass + 1))
 fi
-{ cat "$CHECK"; echo 'gh release upload latest latest.json --repo "$DISTRIB" --clobber'; } > "$TMP/planted.sh"
-if grep -qE -- "$WRITES" "$TMP/planted.sh"; then
-    echo "ok:   [... and the pattern notices a planted upload]"; pass=$((pass + 1))
-else
-    echo "FAIL: [... and the pattern notices a planted upload]"; fail=$((fail + 1))
-fi
+# One planted line per kind of write: a release upload, an API write fed from
+# a file, two curl uploads and a curl PATCH. Each must be noticed on its own.
+for planted in \
+    'gh release upload latest latest.json --repo "$DISTRIB" --clobber' \
+    'gh api "repos/$DISTRIB/releases/1" --input "$TMP/patch.json"' \
+    'curl -fsS -T "$TMP/latest.json" "$UPLOAD_URL"' \
+    'curl -fsS --data-binary @"$TMP/latest.json" "$UPLOAD_URL"' \
+    'curl -fsS --request PATCH "$API_URL"'; do
+    { cat "$CHECK"; echo "$planted"; } > "$TMP/planted.sh"
+    if grep -qE -- "$WRITES" "$TMP/planted.sh"; then
+        echo "ok:   [... and the pattern notices a planted: $planted]"; pass=$((pass + 1))
+    else
+        echo "FAIL: [... and the pattern notices a planted: $planted]"; fail=$((fail + 1))
+    fi
+done
 
 echo "test_check_release_surfaces: $pass passed, $fail failed."
 [ "$fail" -eq 0 ] || exit 1
