@@ -256,6 +256,33 @@ final class HelperInstallerTests: XCTestCase {
             state: .bundled(version: "1.30.0"),
             lastChecked: t0.addingTimeInterval(-2), now: t0, maxAge: 8))
     }
+    // MARK: - helperPresent: the answer that survives a re-probe
+
+    /// Settled states answer; `.unreachable` is present because a sandboxed
+    /// build can be refused the socket of a healthy helper.
+    func test_helperPresent_settledStatesAnswer() {
+        for previously in [false, true] {
+            XCTAssertTrue(HelperInstaller.helperPresent(after: .running(version: "1.0"), previously: previously))
+            XCTAssertTrue(HelperInstaller.helperPresent(
+                after: .updateAvailable(installed: "1.0", latest: "1.1"), previously: previously))
+            XCTAssertTrue(HelperInstaller.helperPresent(after: .bundled(version: "1.0"), previously: previously))
+            XCTAssertTrue(HelperInstaller.helperPresent(after: .unreachable("x"), previously: previously))
+            XCTAssertFalse(HelperInstaller.helperPresent(after: .notInstalled, previously: previously))
+        }
+    }
+
+    /// Every re-probe passes through `.checking`, each time the popover opens:
+    /// the answer holds through it instead of dropping to false and back, which
+    /// would make the Yield Score card blink out of the Overview.
+    func test_helperPresent_holdsThroughTransientStates() {
+        for state: HelperInstaller.State in [
+            .checking, .downloading(progress: 0.5), .installing, .error("x"),
+        ] {
+            XCTAssertTrue(HelperInstaller.helperPresent(after: state, previously: true), "\(state)")
+            XCTAssertFalse(HelperInstaller.helperPresent(after: state, previously: false), "\(state)")
+        }
+    }
+
     // MARK: - v1.44: the unreachable message must not assert a cause
 
     /// The advice must no longer promise the helper is present and fixable by

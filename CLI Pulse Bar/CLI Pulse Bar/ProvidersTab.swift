@@ -46,9 +46,22 @@ struct ProvidersTab: View {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    TextField(L10n.providers.searchPlaceholder, text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
+                    // The prompt carries its own colour. With the default one,
+                    // a plain field on macOS 27 that is not being edited draws
+                    // its placeholder as if twice over (a 50% gray lands at
+                    // 75%, #3C3C3C), so it read as typed text; `prompt:`
+                    // without a colour draws the same. Tertiary comes out gray
+                    // whether or not the field is being edited. An overlay
+                    // Text instead would sit on top of IME marked text.
+                    TextField(
+                        text: $searchText,
+                        prompt: Text(L10n.providers.searchPlaceholder)
+                            .foregroundColor(Color(nsColor: .tertiaryLabelColor))
+                    ) {
+                        Text(L10n.providers.searchPlaceholder)
+                    }
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
                     if !searchText.isEmpty {
                         Button {
                             searchText = ""
@@ -627,7 +640,7 @@ struct EnhancedProviderCard: View {
                         if let src = detail.version {
                             Text("v\(src)")
                                 .font(.system(size: 8))
-                                .foregroundStyle(.quaternary)
+                                .foregroundStyle(.tertiary)
                         }
                         // Provider service-status (incident/maintenance) — renders
                         // nothing unless this provider's status page reports an issue.
@@ -716,7 +729,7 @@ struct EnhancedProviderCard: View {
                     }
                     Text(L10n.providers.sourceLabel(detail.sourceType.localizedName))
                         .font(.system(size: 8))
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(.tertiary)
                     Spacer()
                     quotaBadge
                 }

@@ -1386,6 +1386,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
         let nativeNames = Set(LocaleOverrideStore.languageOptions.map(\.nativeName))
         var menuItems: [QARenderManifest.MenuItem]?
+        var menuFontSize: Double?
         var popups: [NSPopUpButton] = []
         func visit(_ view: NSView) {
             if let popup = view as? NSPopUpButton { popups.append(popup) }
@@ -1400,6 +1401,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             }
             let titles = Set(menu.items.map(\.title))
             guard nativeNames.isSubset(of: titles) else { continue }
+            let font: NSFont? = menu.font
+            menuFontSize = font.map { Double($0.pointSize) }
             menuItems = menu.items.map {
                 QARenderManifest.MenuItem(
                     title: $0.title,
@@ -1419,9 +1422,19 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 note: "Read from the NSMenu the popover footer's globe button builds, filled "
                     + "without opening it. Titles in menu order; checked is the menu's own "
                     + "checkmark. The picture is drawn from these items, not a screenshot "
-                    + "of the open menu.",
-                items: menuItems
+                    + "of the open menu; fontPointSize is the size the real menu draws them in.",
+                items: menuItems,
+                fontPointSize: menuFontSize
             )
+            // The picture cannot show the size the real menu opens in, so check
+            // it here: `.controlSize(.mini)` on the globe once made it 9 pt.
+            if let menuFontSize, menuFontSize < Double(NSFont.systemFontSize) {
+                manifest.warnings.append(
+                    "language menu: its items are drawn at \(menuFontSize) pt, below the "
+                        + "system's \(Double(NSFont.systemFontSize)) pt")
+            } else if menuFontSize == nil {
+                manifest.warnings.append("language menu: the real NSMenu has no font to check")
+            }
         } else {
             let override = LocaleOverrideStore.shared.override
             var items: [QARenderManifest.MenuItem] = [

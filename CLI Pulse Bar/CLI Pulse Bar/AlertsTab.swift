@@ -137,8 +137,12 @@ struct AlertRow: View {
         // is translated. An unrecognized template returns the stored text.
         let shown = AlertPresentation.text(for: alert)
         VStack(alignment: .leading, spacing: 6) {
-            // Header
-            HStack(spacing: 6) {
+            // Header. On the first line's baseline, so a title that wraps
+            // (Spanish, often) keeps the dot and the time beside its first
+            // line instead of centring them between the two. The dot has no
+            // text, so its baseline is its bottom edge, which puts its centre
+            // near the middle of the capitals.
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 SeverityDot(severity: alert.severity)
                 Text(shown.title)
                     .font(.system(size: 11, weight: .semibold))

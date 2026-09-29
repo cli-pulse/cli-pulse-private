@@ -830,12 +830,19 @@ public struct QARenderManifest: Codable, Equatable, Sendable {
         public var items: [MenuItem]
         /// A picture of `items`, when one was drawn.
         public var image: String?
+        /// The point size AppKit draws the real menu's items in (`NSMenu.font`),
+        /// when the menu was read. The picture is drawn from the titles, so it
+        /// cannot show this: a control size on the globe button once shrank the
+        /// whole menu to 9 pt while every picture looked right.
+        public var fontPointSize: Double?
 
-        public init(source: String, note: String, items: [MenuItem], image: String? = nil) {
+        public init(source: String, note: String, items: [MenuItem], image: String? = nil,
+                    fontPointSize: Double? = nil) {
             self.source = source
             self.note = note
             self.items = items
             self.image = image
+            self.fontPointSize = fontPointSize
         }
     }
 

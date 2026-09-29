@@ -94,7 +94,17 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         }
     }
 
-    @Published public private(set) var state: State = .checking
+    @Published public private(set) var state: State = .checking {
+        didSet {
+            let present = Self.helperPresent(after: state, previously: helperPresent)
+            if present != helperPresent { helperPresent = present }
+        }
+    }
+    /// Whether a helper is on this Mac, by the last state that could tell.
+    /// Unlike `state` it holds through the `.checking` every re-probe passes
+    /// through (each time the popover opens), so a view gated on it does not
+    /// blink out and back. False until a probe first settles.
+    @Published public private(set) var helperPresent = false
     @Published public private(set) var lastChecked: Date?
     /// v1.30.2 (RC-1): pairing state from the helper's last `hello` reply.
     /// nil = unknown (older helper or never probed); false = installed +
@@ -364,6 +374,22 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             return .updateAvailable(installed: hello.helperVersion, latest: manifest.version)
         }
         return .running(version: hello.helperVersion)
+    }
+
+    /// `helperPresent` after `state` became `state`: what the state says, or
+    /// the previous answer while a check, download or install is under way,
+    /// and on an `.error`, which install, uninstall and a slow start all end in.
+    /// `.unreachable` counts as present: in a sandboxed build a healthy helper
+    /// can hold the socket while the app is not allowed to connect to it.
+    static func helperPresent(after state: State, previously: Bool) -> Bool {
+        switch state {
+        case .running, .updateAvailable, .bundled, .unreachable:
+            return true
+        case .notInstalled:
+            return false
+        case .checking, .downloading, .installing, .error:
+            return previously
+        }
     }
 
     /// Pure decision for the popover-reopen / app-active re-probe hook (RC-2).

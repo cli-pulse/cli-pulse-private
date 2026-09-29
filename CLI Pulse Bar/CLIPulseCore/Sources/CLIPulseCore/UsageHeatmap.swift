@@ -12,8 +12,24 @@ import SwiftUI
 // MARK: - Heatmap blue ramp (token-monitor palette)
 
 public enum UsageHeatmapPalette {
-    /// 0…4 intensity → the token-monitor blue ramp (lvl0 faint → lvl4 solid).
-    public static func color(_ level: Int) -> Color {
+    /// 0…4 intensity → a blue ramp, each level stronger than the one below.
+    ///
+    /// The token-monitor ramp was written for the dark dashboard panel, where
+    /// it still draws: it lightens towards level 4 and its level 0 is white at
+    /// 5%. On a light card the same values ran backwards (level 4, opaque pale
+    /// cyan, came out lighter than level 3 at 80%) and level 0 vanished into
+    /// the card, so the Overview's Activity card looked moth-eaten. Light mode
+    /// darkens instead: one blue at rising opacity over a faint gray level 0.
+    public static func color(_ level: Int, scheme: ColorScheme = .dark) -> Color {
+        if scheme == .light {
+            switch level {
+            case 4: return lightBlue.opacity(1.0)
+            case 3: return lightBlue.opacity(0.7)
+            case 2: return lightBlue.opacity(0.45)
+            case 1: return lightBlue.opacity(0.25)
+            default: return Color.black.opacity(0.07)
+            }
+        }
         switch level {
         case 4: return Color(.sRGB, red: 180 / 255, green: 230 / 255, blue: 255 / 255, opacity: 1.0)
         case 3: return Color(.sRGB, red: 150 / 255, green: 210 / 255, blue: 255 / 255, opacity: 0.8)
@@ -22,6 +38,8 @@ public enum UsageHeatmapPalette {
         default: return Color.white.opacity(0.05)
         }
     }
+
+    private static let lightBlue = Color(.sRGB, red: 0.20, green: 0.50, blue: 0.95)
 }
 
 // MARK: - Reusable heatmap grid
@@ -35,6 +53,7 @@ public struct UsageHeatmapGrid: View {
     /// The macOS roots set this from `LocaleOverrideStore.displayLocale`; on
     /// iPhone it is the system locale.
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(archive: DailyUsageArchive, weeks: Int, cell: CGFloat = 13, gap: CGFloat = 4,
                 showMonthLabels: Bool = true) {
@@ -68,7 +87,7 @@ public struct UsageHeatmapGrid: View {
         let isFuture = dayKey > today
         let level = isFuture ? 0 : DailyUsageStats.intensity(archive, dayKey: dayKey, peakCost: peak)
         RoundedRectangle(cornerRadius: 2, style: .continuous)
-            .fill(isFuture ? Color.clear : UsageHeatmapPalette.color(level))
+            .fill(isFuture ? Color.clear : UsageHeatmapPalette.color(level, scheme: colorScheme))
             .frame(width: cell, height: cell)
             .help(tooltip(dayKey, isFuture: isFuture))
     }
@@ -174,13 +193,14 @@ public struct UsageHeatmapGrid: View {
 /// The 5-swatch intensity legend, extracted so iOS reuses it verbatim.
 public struct UsageHeatmapLegend: View {
     var swatch: CGFloat = 11
+    @Environment(\.colorScheme) private var colorScheme
     public init(swatch: CGFloat = 11) { self.swatch = swatch }
     public var body: some View {
         HStack(spacing: 4) {
             Text(L10n.usageDashboard.less).font(.system(size: 9)).foregroundStyle(.secondary)
             ForEach(0..<5, id: \.self) { level in
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(UsageHeatmapPalette.color(level))
+                    .fill(UsageHeatmapPalette.color(level, scheme: colorScheme))
                     .frame(width: swatch, height: swatch)
             }
             Text(L10n.usageDashboard.more).font(.system(size: 9)).foregroundStyle(.secondary)
