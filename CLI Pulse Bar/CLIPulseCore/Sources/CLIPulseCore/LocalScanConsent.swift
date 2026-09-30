@@ -487,7 +487,8 @@ public enum LocalCollectionPolicy {
 
     /// What the helper's cycle may do.
     public enum HelperCycle: Equatable, Sendable {
-        /// Scan, run the collectors, and sync if this Mac is paired.
+        /// Scan, run the collectors, and sync if this Mac is paired and the
+        /// app is signed in.
         case collect
         /// The answer does not allow reading this Mac. Nothing is read and
         /// nothing is sent, not even a heartbeat (see `HelperDaemon`).
@@ -503,20 +504,22 @@ public enum LocalCollectionPolicy {
     /// cycle and again before anything it collected is written or uploaded.
     ///
     /// The helper has no sign-in of its own. What stands in for one is a
-    /// pairing (`HelperConfig`): without it the helper only collects for the
-    /// app on this Mac, which is local mode.
+    /// pairing (`HelperConfig`) that the app has not signed out of since
+    /// (`HelperIPC.appSignedOutKey`): the pairing outlives a sign-out. Without
+    /// either, the helper only collects for the app on this Mac, which is
+    /// local mode.
     ///
-    /// `isPaired` is evaluated only for `.undecided`, the one answer the
+    /// `isSignedIn` is evaluated only for `.undecided`, the one answer the
     /// account decides (`allowsCollection`). In the helper it reads the
     /// pairing secret from the Keychain, and a "Not now" should not cost even
     /// that. `LocalScanConsentHelperTests` checks the result against
-    /// `allowsCollection` for every answer, paired and not.
+    /// `allowsCollection` for every answer, signed in and not.
     public static func helperCycle(
         mirroredConsent: LocalScanConsent?,
-        isPaired: @autoclosure () -> Bool
+        isSignedIn: @autoclosure () -> Bool
     ) -> HelperCycle {
         guard let consent = mirroredConsent else { return .awaitingAnswer }
-        let isAuthenticated = consent == .undecided ? isPaired() : false
+        let isAuthenticated = consent == .undecided ? isSignedIn() : false
         return allowsCollection(isAuthenticated: isAuthenticated, consent: consent)
             ? .collect
             : .paused

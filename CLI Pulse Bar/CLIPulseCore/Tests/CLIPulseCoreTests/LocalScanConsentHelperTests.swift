@@ -39,25 +39,25 @@ final class LocalScanConsentHelperTests: XCTestCase {
     /// the helper collected here, and pairing is what turns the helper on.
     func testNotNowPausesAPairedHelper() {
         XCTAssertEqual(
-            LocalCollectionPolicy.helperCycle(mirroredConsent: .declined, isPaired: true),
+            LocalCollectionPolicy.helperCycle(mirroredConsent: .declined, isSignedIn: true),
             .paused
         )
     }
 
     /// The helper asks the app's question, with its pairing standing in for a
-    /// sign-in. Every answer, paired and not, against `allowsCollection`: if
+    /// sign-in. Every answer, signed in and not, against `allowsCollection`: if
     /// the app's rule changes, the helper's changes with it, or this fails.
     func testTheHelperDecidesAsTheAppDoesForEveryAnswer() {
         for consent in LocalScanConsent.allCases {
-            for isPaired in [false, true] {
+            for isSignedIn in [false, true] {
                 let expected: LocalCollectionPolicy.HelperCycle =
-                    LocalCollectionPolicy.allowsCollection(isAuthenticated: isPaired, consent: consent)
+                    LocalCollectionPolicy.allowsCollection(isAuthenticated: isSignedIn, consent: consent)
                         ? .collect
                         : .paused
                 XCTAssertEqual(
-                    LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isPaired: isPaired),
+                    LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isSignedIn: isSignedIn),
                     expected,
-                    "\(consent), paired: \(isPaired)"
+                    "\(consent), signed in: \(isSignedIn)"
                 )
             }
         }
@@ -66,44 +66,44 @@ final class LocalScanConsentHelperTests: XCTestCase {
     /// The same table spelled out, so a change to `allowsCollection` that the
     /// test above would follow still has to be made here on purpose.
     func testWhoTheHelperCollectsFor() {
-        func cycle(_ consent: LocalScanConsent, paired: Bool) -> LocalCollectionPolicy.HelperCycle {
-            LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isPaired: paired)
+        func cycle(_ consent: LocalScanConsent, signedIn: Bool) -> LocalCollectionPolicy.HelperCycle {
+            LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isSignedIn: signedIn)
         }
-        XCTAssertEqual(cycle(.granted, paired: true), .collect)
-        XCTAssertEqual(cycle(.granted, paired: false), .collect, "local mode with a yes: the helper feeds the app")
-        XCTAssertEqual(cycle(.undecided, paired: true), .collect, "signed in with no answer: the account stands in")
-        XCTAssertEqual(cycle(.undecided, paired: false), .paused, "local mode with no answer reads nothing")
-        XCTAssertEqual(cycle(.declined, paired: true), .paused)
-        XCTAssertEqual(cycle(.declined, paired: false), .paused)
+        XCTAssertEqual(cycle(.granted, signedIn: true), .collect)
+        XCTAssertEqual(cycle(.granted, signedIn: false), .collect, "local mode with a yes: the helper feeds the app")
+        XCTAssertEqual(cycle(.undecided, signedIn: true), .collect, "signed in with no answer: the account stands in")
+        XCTAssertEqual(cycle(.undecided, signedIn: false), .paused, "signed out with no answer reads nothing")
+        XCTAssertEqual(cycle(.declined, signedIn: true), .paused)
+        XCTAssertEqual(cycle(.declined, signedIn: false), .paused)
     }
 
     /// No copy yet — a helper that starts before the app has run since the
     /// update — is not taken for "no answer", which on a paired Mac collects.
     func testWithoutTheAppsCopyTheHelperReadsNothing() {
-        for isPaired in [false, true] {
+        for isSignedIn in [false, true] {
             XCTAssertEqual(
-                LocalCollectionPolicy.helperCycle(mirroredConsent: nil, isPaired: isPaired),
+                LocalCollectionPolicy.helperCycle(mirroredConsent: nil, isSignedIn: isSignedIn),
                 .awaitingAnswer
             )
         }
     }
 
-    /// In the helper, "is it paired" reads the pairing secret from the
+    /// In the helper, "is it signed in" reads the pairing secret from the
     /// Keychain. Only `.undecided` depends on it, so only `.undecided` asks.
     func testThePairingIsReadOnlyWhenTheAnswerDependsOnIt() {
         var reads = 0
-        func isPaired() -> Bool {
+        func isSignedIn() -> Bool {
             reads += 1
             return true
         }
         let answersThatDoNotDependOnIt: [LocalScanConsent?] = [.declined, .granted, nil]
         for consent in answersThatDoNotDependOnIt {
             reads = 0
-            _ = LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isPaired: isPaired())
+            _ = LocalCollectionPolicy.helperCycle(mirroredConsent: consent, isSignedIn: isSignedIn())
             XCTAssertEqual(reads, 0, "\(String(describing: consent)) read the pairing")
         }
         reads = 0
-        _ = LocalCollectionPolicy.helperCycle(mirroredConsent: .undecided, isPaired: isPaired())
+        _ = LocalCollectionPolicy.helperCycle(mirroredConsent: .undecided, isSignedIn: isSignedIn())
         XCTAssertEqual(reads, 1)
     }
 
@@ -153,7 +153,7 @@ final class LocalScanConsentHelperTests: XCTestCase {
         XCTAssertEqual(
             LocalCollectionPolicy.helperCycle(
                 mirroredConsent: LocalScanConsentStore.loadMirror(helperDefaults)?.consent,
-                isPaired: true
+                isSignedIn: true
             ),
             .paused,
             "a yes to older logs is not a yes to the scan"
@@ -162,7 +162,7 @@ final class LocalScanConsentHelperTests: XCTestCase {
         XCTAssertEqual(
             LocalCollectionPolicy.helperCycle(
                 mirroredConsent: LocalScanConsentStore.loadMirror(helperDefaults)?.consent,
-                isPaired: true
+                isSignedIn: true
             ),
             .collect
         )
@@ -280,7 +280,7 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
 
         XCTAssertEqual(try XCTUnwrap(mirrored).consent, .declined)
         XCTAssertEqual(
-            LocalCollectionPolicy.helperCycle(mirroredConsent: mirrored?.consent, isPaired: true),
+            LocalCollectionPolicy.helperCycle(mirroredConsent: mirrored?.consent, isSignedIn: true),
             .paused
         )
     }
@@ -297,6 +297,119 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
         )
         state.localScanConsent = .granted
         XCTAssertNil(mirrored)
+    }
+}
+
+/// The helper's pairing (`HelperConfig`) survives a sign-out: nothing removes
+/// it. Taken alone as "signed in", it kept a signed-out Mac with no local-scan
+/// answer scanning, and uploading to the account it had signed out of, while
+/// the consent screen says signing out stops the scan. The app now records its
+/// sign-in state for the helper (`HelperIPC.appSignedOutKey`).
+@MainActor
+final class HelperSignInRecordTests: XCTestCase {
+
+    private var suiteName = ""
+    private var helperSuiteName = ""
+    private var defaults: UserDefaults!
+    private var helperDefaults: UserDefaults!
+    private var savedConsent: [String: Any] = [:]
+    private var savedLocalModeMarker: Any?
+
+    private static let consentKeys = [LocalScanConsentStore.key, LocalScanConsentStore.v2Key]
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "com.clipulse.tests.helper-sign-in.\(UUID().uuidString)"
+        helperSuiteName = "com.clipulse.tests.helper-sign-in.group.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        helperDefaults = UserDefaults(suiteName: helperSuiteName)
+        savedConsent = [:]
+        for key in Self.consentKeys {
+            if let value = UserDefaults.standard.object(forKey: key) { savedConsent[key] = value }
+        }
+        // Signing in and out write the local-mode marker in `.standard` too.
+        savedLocalModeMarker = UserDefaults.standard.object(forKey: AppState.localModeEnabledKey)
+    }
+
+    override func tearDown() {
+        for key in Self.consentKeys {
+            if let value = savedConsent[key] {
+                UserDefaults.standard.set(value, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        if let savedLocalModeMarker {
+            UserDefaults.standard.set(savedLocalModeMarker, forKey: AppState.localModeEnabledKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: AppState.localModeEnabledKey)
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        helperDefaults.removePersistentDomain(forName: helperSuiteName)
+        defaults = nil
+        helperDefaults = nil
+        super.tearDown()
+    }
+
+    private func makeState() -> AppState {
+        AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            helperDefaults: helperDefaults,
+            performLaunchSetup: false
+        )
+    }
+
+    /// Nothing recorded — a helper from before the record, or before the app
+    /// has restored its session — trusts the pairing, as it always did.
+    func testNothingRecordedIsNotSignedOut() {
+        XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults))
+    }
+
+    func testTheRecordRoundTripsAndReportsChanges() {
+        XCTAssertTrue(HelperIPC.recordAppSignedIn(true, to: helperDefaults), "a first record is news")
+        XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults))
+        XCTAssertFalse(HelperIPC.recordAppSignedIn(true, to: helperDefaults))
+        XCTAssertTrue(HelperIPC.recordAppSignedIn(false, to: helperDefaults))
+        XCTAssertTrue(HelperIPC.isAppSignedOut(helperDefaults))
+        XCTAssertFalse(HelperIPC.recordAppSignedIn(false, to: helperDefaults))
+        XCTAssertTrue(HelperIPC.recordAppSignedIn(true, to: helperDefaults))
+        XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults))
+    }
+
+    /// Signing out is recorded, and a signed-out Mac with no answer is one
+    /// the helper does not read, paired or not.
+    func testSigningOutIsRecordedForTheHelper() {
+        LocalScanConsentStore.save(.undecided)
+        let state = makeState()
+        state.applyAuthenticatedState(
+            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: true)
+        )
+        XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults), "signing in must be recorded as signed in")
+
+        state.applySignedOutState()
+
+        XCTAssertTrue(HelperIPC.isAppSignedOut(helperDefaults), "the sign-out never reached the helper")
+        let hasPairing = true
+        XCTAssertEqual(
+            LocalCollectionPolicy.helperCycle(
+                mirroredConsent: LocalScanConsentStore.loadMirror(helperDefaults)?.consent,
+                isSignedIn: !HelperIPC.isAppSignedOut(helperDefaults) && hasPairing
+            ),
+            .paused,
+            "signing out stops the scan for a Mac with no answer, pairing or not"
+        )
+    }
+
+    /// Signing back in lifts it.
+    func testSigningInAgainIsRecordedForTheHelper() {
+        let state = makeState()
+        state.applySignedOutState()
+        XCTAssertTrue(HelperIPC.isAppSignedOut(helperDefaults))
+        state.applyAuthenticatedState(
+            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: true)
+        )
+        XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults))
     }
 }
 

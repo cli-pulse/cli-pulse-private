@@ -154,16 +154,22 @@ final class HelperDaemon {
     /// the app group (`LocalScanConsentStore.mirror`), read afresh each time
     /// because the app changes it while this process runs. See
     /// `LocalCollectionPolicy.helperCycle`: this process has no sign-in, and a
-    /// pairing stands in for one.
+    /// pairing the app has not signed out of stands in for one.
     private func localScanCycle(
-        isPaired: @autoclosure () -> Bool
+        isSignedIn: @autoclosure () -> Bool
     ) -> LocalCollectionPolicy.HelperCycle {
         let mirrored = UserDefaults(suiteName: HelperIPC.suiteName)
             .flatMap(LocalScanConsentStore.loadMirror)
         return LocalCollectionPolicy.helperCycle(
             mirroredConsent: mirrored?.consent,
-            isPaired: isPaired()
+            isSignedIn: isSignedIn()
         )
+    }
+
+    /// Whether the app last said it is signed out (`HelperIPC.appSignedOutKey`).
+    /// The pairing outlives a sign-out, so it cannot say this itself.
+    private var appSignedOut: Bool {
+        UserDefaults(suiteName: HelperIPC.suiteName).map(HelperIPC.isAppSignedOut) ?? false
     }
 
     /// A cycle the answer does not allow. Nothing is read — no scan, no
@@ -215,9 +221,9 @@ final class HelperDaemon {
         logger.info("Starting collection cycle")
 
         // Step 0: the local-scan answer, before anything is read. For
-        // `.undecided` the pairing decides, and reading it touches the
-        // Keychain, so it is read only then.
-        let cycle = localScanCycle(isPaired: HelperConfig.load() != nil)
+        // `.undecided` the account decides; the pairing is read (a Keychain
+        // read) only then, and not once the app has signed out.
+        let cycle = localScanCycle(isSignedIn: !appSignedOut && HelperConfig.load() != nil)
         guard cycle == .collect else {
             skipCycle(cycle)
             return
@@ -251,11 +257,15 @@ final class HelperDaemon {
         let providerCollection = await collectProviderQuotas()
         let collectorStatus = providerCollection.collectorStatus
 
-        // Asked again: the collectors take a while, and a "Not now" given
-        // meanwhile must stop this cycle too. What it read is dropped, not
-        // written for the app or sent.
-        let pairing = HelperConfig.load()
-        let cycleAfterCollecting = localScanCycle(isPaired: pairing != nil)
+        // Asked again: the collectors take a while, and a "Not now" or a
+        // sign-out meanwhile must stop this cycle too. What it read is
+        // dropped, not written for the app or sent.
+        //
+        // A pairing the app has signed out of is not used: nothing is sent to
+        // the account, whatever the answer. A yes still lets the helper collect
+        // for the app on this Mac, as for local mode.
+        let pairing = appSignedOut ? nil : HelperConfig.load()
+        let cycleAfterCollecting = localScanCycle(isSignedIn: pairing != nil)
         guard cycleAfterCollecting == .collect else {
             skipCycle(cycleAfterCollecting)
             return
@@ -266,7 +276,7 @@ final class HelperDaemon {
         HelperIPC.postSyncNotification()
 
         guard let config = pairing else {
-            logger.info("No helper config found — collected local provider data only")
+            logger.info("Not paired, or the app is signed out — collected local provider data only")
             // No `lastSync`: nothing was synced, and Settings › Advanced reads
             // any `lastSync` as "Synced just now". It now says "Running".
             HelperIPC.writeStatus(HelperIPC.Status(

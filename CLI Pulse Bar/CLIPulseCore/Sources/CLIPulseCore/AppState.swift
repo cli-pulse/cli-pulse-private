@@ -173,13 +173,30 @@ public final class AppState: ObservableObject {
             consentV2: localScanConsentV2,
             to: helperDefaults
         )
-        // A test that injects `helperDefaults` must not reach a helper
-        // running on the same Mac: the notification is system-wide.
-        if changed, runtimeEnvironment.capabilities.allowsHelperRegistration {
-            HelperIPC.postHelperInputsDidChange()
+        if changed { tellHelperItsInputsChanged() }
+        #endif
+    }
+
+    /// Tells the helper whether the app is signed in (`HelperIPC.appSignedOutKey`).
+    /// Its pairing survives a sign-out, so without this it went on treating a
+    /// signed-out Mac as signed in. Called where the app applies either state.
+    func recordSignInForHelper(signedIn: Bool) {
+        #if os(macOS)
+        guard let helperDefaults else { return }
+        if HelperIPC.recordAppSignedIn(signedIn, to: helperDefaults) {
+            tellHelperItsInputsChanged()
         }
         #endif
     }
+
+    #if os(macOS)
+    private func tellHelperItsInputsChanged() {
+        // A test that injects `helperDefaults` must not reach a helper
+        // running on the same Mac: the notification is system-wide.
+        guard runtimeEnvironment.capabilities.allowsHelperRegistration else { return }
+        HelperIPC.postHelperInputsDidChange()
+    }
+    #endif
 
     /// v1.55: set by "Choose again…" in Settings › Privacy, for a signed-in Mac
     /// whose answer is "Not now" (`LocalCollectionPolicy.offersChoosingAgain`).

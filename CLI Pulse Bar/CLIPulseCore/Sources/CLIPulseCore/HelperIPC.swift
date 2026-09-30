@@ -14,10 +14,12 @@ public enum HelperIPC {
     /// Posted by the helper when it starts up.
     public static let didStartNotificationName = Notification.Name("CLIPulseHelperDidStart")
 
-    /// Posted by the app when the local-scan answers it copies to the app group
-    /// change (`LocalScanConsentStore.mirror`). The helper runs a cycle on it,
-    /// so a "Not now" pauses it, and a yes resumes it, without waiting for its
-    /// timer. A hint like the others: the helper reads the answer itself.
+    /// Posted by the app when what it tells the helper about collecting
+    /// changes: the local-scan answers (`LocalScanConsentStore.mirror`) or
+    /// whether the app is signed in (`appSignedOutKey`). The helper runs a
+    /// cycle on it, so a "Not now" or a sign-out pauses it, and a yes or a
+    /// sign-in resumes it, without waiting for its timer. A hint like the
+    /// others: the helper reads the values itself.
     public static let helperInputsDidChangeNotificationName =
         Notification.Name("CLIPulseHelperInputsDidChange")
 
@@ -51,6 +53,34 @@ public enum HelperIPC {
     /// v1 was a JSON dictionary keyed by provider name. v2 is a versioned,
     /// account-array envelope with an optional v1 provider projection.
     public static let collectorResultsKey = "helper_collector_results"
+
+    /// `true` from when the app signs out, or starts with no session, until it
+    /// next signs in (Bool, written by the app, read by the helper).
+    ///
+    /// The helper's pairing (`HelperConfig`) outlives a sign-out: nothing
+    /// removes it. Taken alone as "signed in", it kept a signed-out Mac with
+    /// no local-scan answer scanning, and every paired Mac uploading to the
+    /// account it had signed out of, while the consent screen says signing out
+    /// stops the scan and the privacy policy says nothing syncs unless you are
+    /// signed in. Missing means the app has not said since this key existed,
+    /// and the pairing is trusted as before.
+    public static let appSignedOutKey = "cli_pulse_app_signed_out"
+
+    /// Records the app's sign-in state for the helper (`appSignedOutKey`).
+    /// - Returns: whether that changed what the helper would read.
+    @discardableResult
+    public static func recordAppSignedIn(_ signedIn: Bool, to defaults: UserDefaults) -> Bool {
+        let signedOut = !signedIn
+        let changed = defaults.object(forKey: appSignedOutKey) == nil
+            || defaults.bool(forKey: appSignedOutKey) != signedOut
+        defaults.set(signedOut, forKey: appSignedOutKey)
+        return changed
+    }
+
+    /// Whether the app last said it is signed out. False when it has not said.
+    public static func isAppSignedOut(_ defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: appSignedOutKey)
+    }
 
     // MARK: - Collector results wire contract
 

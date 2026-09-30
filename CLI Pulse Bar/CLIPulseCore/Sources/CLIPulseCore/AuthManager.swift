@@ -703,6 +703,10 @@ extension AppState {
             // choice and left the app in a signed-out shell with no data
             // and no running refresh loop. Restore the mode instead.
             #if os(macOS)
+            // No session to restore: signed out, whatever the helper's
+            // pairing says. Also where a Mac signed out before 1.55, when
+            // nothing told the helper, gets this said once.
+            recordSignInForHelper(signedIn: false)
             applyColdLaunchLanding(
                 Self.resolveColdLaunchLanding(
                     localModePreviouslyChosen: UserDefaults.standard.bool(
@@ -749,6 +753,9 @@ extension AppState {
         isPaired = session.isPaired
         isAuthenticated = true
         serverOnline = true
+        // The helper's pairing stands in for a sign-in only while the app is
+        // signed in (`HelperIPC.appSignedOutKey`).
+        recordSignInForHelper(signedIn: true)
         // v1.44 W1: signing in is a later explicit choice that supersedes
         // "continue without an account", so retire the marker. Without this,
         // a signed-in user who later loses the Keychain entry would silently
@@ -813,6 +820,10 @@ extension AppState {
         isAuthenticated = false
         isPaired = false
         isLocalMode = false
+        // The helper keeps its pairing through a sign-out. Told this, it stops
+        // uploading to the account, and stops scanning unless the local-scan
+        // answer is a yes (`LocalCollectionPolicy.helperCycle`).
+        recordSignInForHelper(signedIn: false)
         // v1.44 W1: clear the persisted marker alongside the live flag, or an
         // explicit sign-out would bounce straight back into local mode on the
         // next launch. Signing out is a request for the Sign-In form.
