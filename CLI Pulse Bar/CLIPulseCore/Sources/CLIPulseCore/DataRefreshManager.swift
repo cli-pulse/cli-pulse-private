@@ -1006,14 +1006,18 @@ internal final class DataRefreshManager {
                                   estimated_cost: $0.estimated_cost_today,
                                   cost_status: $0.cost_status_today, remaining: $0.remaining)
             },
+            // No per-project totals are kept, so the Top Projects card hides
+            // (showsTopProjectsCard); Demo leaves it empty to match.
             top_projects: [],
             trend: [],
             recent_activity: [],
             // Suppress the "No AI tools detected" hint when either the live
             // process scanner OR the JSONL synthesis surfaced any sessions,
-            // and when at least one provider collector returned data.
-            risk_signals: synthesizedSessions.isEmpty && collectorResults.isEmpty
-                ? [L10n.dashboard.noAiToolsDetected] : [],
+            // and when at least one provider collector returned data. Demo
+            // takes its signals from the same producer (OverviewOptionalCards).
+            risk_signals: DashboardRiskSignals.local(
+                foundSessions: !synthesizedSessions.isEmpty,
+                foundProviderData: !collectorResults.isEmpty),
             alert_summary: AlertSummaryDTO(critical: 0, warning: 0, info: 0)
         )
 

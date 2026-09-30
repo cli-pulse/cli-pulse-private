@@ -593,7 +593,7 @@ public actor APIClient {
         let email: String?
     }
 
-    private struct DashboardSummaryPayload: Decodable {
+    struct DashboardSummaryPayload: Decodable {
         let today_usage: Int?
         let today_cost: Double?
         let active_sessions: Int?
@@ -1060,7 +1060,13 @@ public actor APIClient {
             "dashboard_summary",
             params: UserTodayParams(p_user_today: Self.localTodayKey())
         )
+        return Self.dashboardSummary(from: summary)
+    }
 
+    /// The cloud dashboard, from `dashboard_summary`'s row. The RPC has no
+    /// project or risk column, so both optional Overview cards stay hidden on
+    /// this path (OverviewOptionalCards).
+    static func dashboardSummary(from summary: DashboardSummaryPayload) -> DashboardSummary {
         let todayUsage = summary.today_usage ?? 0
         let todayCost = summary.today_cost ?? 0
         let activeSessions = summary.active_sessions ?? 0

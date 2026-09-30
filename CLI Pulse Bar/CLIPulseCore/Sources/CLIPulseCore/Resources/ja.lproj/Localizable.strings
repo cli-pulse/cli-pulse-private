@@ -46,7 +46,6 @@
 "dashboard.30day_est" = "30日推定";
 "dashboard.provider_usage" = "プロバイダー使用量";
 "dashboard.top_projects" = "上位プロジェクト";
-"dashboard.no_projects" = "追跡中のプロジェクトはありません";
 "dashboard.risk_signals" = "リスクシグナル";
 "dashboard.activity" = "アクティビティ";
 "dashboard.quick_stats" = "クイック統計";
@@ -1820,8 +1819,6 @@
 "intents.less_than_amount" = "%@ 未満";
 
 /* ── demo-mode ── */
-"dashboard.risk_quota_low" = "%1$@ のクォータ: 残り %2$d%% 未満";
-"dashboard.risk_device_offline" = "%@ がオフライン";
 "auth.demo_user_name" = "デモユーザー";
 
 /* ── composition ── */
