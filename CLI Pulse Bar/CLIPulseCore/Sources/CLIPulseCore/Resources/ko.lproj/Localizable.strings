@@ -820,7 +820,7 @@
 "advanced.privacy_email_title" = "로그인 이메일";
 "advanced.privacy_email_detail" = "로그인할 수 있도록 인증 서버로 전송";
 "onboarding_wizard.privacy_keys_title" = "API 키는 이 Mac에만 저장됩니다";
-"onboarding_wizard.privacy_keys_detail" = "직접 입력한 공급자 API 키와 세션 쿠키(OpenAI, Anthropic, Google 등)는 macOS 키체인에만 저장됩니다. 해당 공급자를 직접 호출하는 데 사용되며, 저희에게 업로드되지 않습니다.";
+"onboarding_wizard.privacy_keys_detail" = "OpenAI, Anthropic, Google 등 공급자의 API 키와 세션 쿠키 가운데 직접 입력한 것은 macOS 키체인에만 저장됩니다. 해당 공급자를 직접 호출하는 데 사용되며, 저희에게 업로드되지 않습니다.";
 "onboarding_wizard.privacy_logs_title" = "세션 로그는 기기 내에서 스캔됩니다";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse는 토큰 수를 계산하기 위해 ~/.codex/sessions/ 및 ~/.claude/projects/ 폴더를 로컬에서 읽습니다. 파일 내용은 기기 밖으로 나가지 않습니다.";
 "onboarding_wizard.privacy_metrics_title" = "사용량 지표는 계정과 동기화됩니다";
@@ -929,7 +929,7 @@
 "onboarding_wizard.mode_title" = "CLI Pulse 동기화 방식 선택";
 "onboarding_wizard.mode_subtitle" = "바뀌는 것은 동기화뿐이며, 공급자 자격 증명의 저장 방식은 그대로입니다.";
 "onboarding_wizard.sync_mode_title" = "기기 간 동기화";
-"onboarding_wizard.sync_mode_body" = "로그인하면 사용량 요약을 iPhone과 Apple Watch에 동기화합니다. 공급자 자격 증명은 저희 서버에 전달되지 않습니다.";
+"onboarding_wizard.sync_mode_body" = "로그인하면 사용량 요약을 iPhone과 Apple Watch에 동기화합니다. 공급자 자격 증명은 저희 서버에 전달되지 않습니다.";
 "onboarding_wizard.local_only_title" = "이 Mac에서만";
 "onboarding_wizard.local_only_body" = "데이터 수집과 대시보드를 로컬에만 유지합니다. 클라우드 동기화는 하지 않으며, 나중에 로그인할 수 있습니다.";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 계정에 로그인되어 있으며 동기화할 준비가 되었습니다.";

@@ -165,9 +165,12 @@ final class LocalSessionHelloAnswerTests: XCTestCase {
                 .appendingPathComponent("Sources/CLIPulseCore/LocalSessionControlState.swift"),
             encoding: .utf8
         )
-        let call = try XCTUnwrap(source.range(of: "let hello = try await client.hello(\n"))
-        let tail = source[call.upperBound...].prefix(400)
-        XCTAssertTrue(tail.contains("localScanAllowed: LocalCollectionPolicy.allowsCollection("), String(tail))
+        // v1.55 (#635): the refresh works the answer out once per tick,
+        // `mayReadThisMac`, and passes it to hello, the approval-hook read and
+        // list_sessions alike.
+        let rule = try XCTUnwrap(source.range(of: "let mayReadThisMac = LocalCollectionPolicy.allowsCollection("))
+        let call = try XCTUnwrap(source.range(of: "let hello = try await client.hello(localScanAllowed: mayReadThisMac)"))
+        XCTAssertTrue(rule.upperBound <= call.lowerBound, "the rule is worked out before hello asks with it")
     }
 }
 

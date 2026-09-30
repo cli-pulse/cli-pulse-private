@@ -579,7 +579,7 @@
 "onboarding_wizard.mode_title" = "CLI Pulse の同期方法を選択";
 "onboarding_wizard.mode_subtitle" = "この選択で変わるのは同期の動作だけで、プロバイダーの認証情報の保存方法は変わりません。";
 "onboarding_wizard.sync_mode_title" = "デバイス間で同期";
-"onboarding_wizard.sync_mode_body" = "サインインすると、使用量の集計を iPhone と Apple Watch に同期します。プロバイダーの認証情報が当社のサーバーに届くことはありません。";
+"onboarding_wizard.sync_mode_body" = "サインインすると、使用量の集計を iPhone と Apple Watch に同期します。プロバイダーの認証情報が当社のサーバーに届くことはありません。";
 "onboarding_wizard.local_only_title" = "この Mac のみ";
 "onboarding_wizard.local_only_body" = "データ収集とダッシュボードはこの Mac 内だけで使います。クラウド同期は行いません。後からサインインできます。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse アカウントにサインイン済みで、同期の準備ができています。";

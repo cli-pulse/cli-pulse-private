@@ -579,7 +579,7 @@
 "onboarding_wizard.mode_title" = "选择 CLI Pulse 的同步方式";
 "onboarding_wizard.mode_subtitle" = "这只影响同步，服务商凭据的存储位置不会改变。";
 "onboarding_wizard.sync_mode_title" = "跨设备同步";
-"onboarding_wizard.sync_mode_body" = "登录后将用量指标同步到 iPhone 和 Apple Watch；服务商凭据绝不会传到我们的服务器。";
+"onboarding_wizard.sync_mode_body" = "登录后将用量指标同步到 iPhone 和 Apple Watch；服务商凭据绝不会传到我们的服务器。";
 "onboarding_wizard.local_only_title" = "仅此 Mac";
 "onboarding_wizard.local_only_body" = "采集与仪表盘都留在本机，不进行云同步；以后仍可登录。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 账户已登录，可以开始同步。";
