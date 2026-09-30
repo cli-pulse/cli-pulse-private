@@ -145,6 +145,32 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
 
     // MARK: - PTY capture
 
+    /// The probe's command line, minus the binary.
+    ///
+    /// `--settings {"remoteControlAtStartup":false}` keeps this probe out of
+    /// Claude Code's own Remote Control (unrelated to CLI Pulse's LAN Remote
+    /// Control). Without it, a user who turned Remote Control on for all
+    /// sessions, or whose account has it on by default, could find an empty
+    /// session in claude.ai and the Claude app for every background refresh.
+    /// CodexBar hit exactly that (steipete/CodexBar#3651) and fixed it with
+    /// the same setting. Passing it as a flag leaves the user's saved
+    /// settings untouched, and flag scope is one of the scopes Claude Code
+    /// lets decide this setting; a folder's own settings can only turn it off.
+    ///
+    /// Measured with Claude Code 2.1.266: `--bare` alone already kept Remote
+    /// Control off, even with `remoteControlAtStartup:true` passed in. That
+    /// is a side effect, not a rule: bare mode never reads the claude.ai
+    /// login, so the bridge has nothing to sign in with. The day this probe
+    /// reads the login, or a Claude Code release changes what bare skips,
+    /// that protection disappears without anything here changing. The setting
+    /// says what we mean regardless.
+    static let probeLaunchArguments: [String] = [
+        "--bare",
+        "--allowed-tools", "",
+        "--strict-mcp-config",
+        "--settings", #"{"remoteControlAtStartup":false}"#,
+    ]
+
     /// Prompts the PTY auto-responds to (matching CodexBar).
     /// Claude v2.x uses selection-style prompts; Enter confirms the default choice.
     private static let promptResponses: [(needle: String, response: String)] = [
@@ -183,7 +209,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
         // Launch process
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: binary)
-        proc.arguments = ["--bare", "--allowed-tools", "", "--strict-mcp-config"]
+        proc.arguments = Self.probeLaunchArguments
         proc.standardInput = secondaryHandle
         proc.standardOutput = secondaryHandle
         proc.standardError = secondaryHandle
