@@ -194,10 +194,20 @@ public enum CollectorError: LocalizedError, Sendable {
     /// sentence as the payload, so Test Connection called a configuration
     /// problem a parse failure, in two languages at once.
     case noData(provider: String, reason: NoDataReason)
+    /// The provider stopped serving this kind of account through the client
+    /// we read it with. Not an authentication failure: signing in again gets
+    /// the same answer, so it must not be reported as one.
+    case retired(RetiredReason)
 
     public enum NoDataReason: Sendable {
         case noProjectsForKey
         case noQuotaForProject
+    }
+
+    public enum RetiredReason: Sendable {
+        /// Google's June 2026 shutdown of Gemini CLI for personal Google
+        /// accounts (`GeminiConsumerTierShutdown`).
+        case geminiCLIPersonalAccounts
     }
 
     public var errorDescription: String? {
@@ -209,6 +219,7 @@ public enum CollectorError: LocalizedError, Sendable {
         case .notSignedIn(let problem): return problem.localizedText
         case .silentBackoff(let problem): return problem.localizedText
         case .noData(let provider, let reason): return Self.noDataText(provider, reason, english: false)
+        case .retired(let reason): return Self.retiredText(reason, english: false)
         }
     }
 
@@ -223,6 +234,7 @@ public enum CollectorError: LocalizedError, Sendable {
         case .httpError(let status, let provider): return L10n.collectorError.httpStatus(provider, status, english: true)
         case .parseFailed(let msg): return L10n.collectorError.parseFailed(msg, english: true)
         case .noData(let provider, let reason): return Self.noDataText(provider, reason, english: true)
+        case .retired(let reason): return Self.retiredText(reason, english: true)
         }
     }
 
@@ -230,6 +242,13 @@ public enum CollectorError: LocalizedError, Sendable {
         switch reason {
         case .noProjectsForKey: return L10n.collectorError.noProjectsForKey(provider, english: english)
         case .noQuotaForProject: return L10n.collectorError.noQuotaForProject(provider, english: english)
+        }
+    }
+
+    private static func retiredText(_ reason: RetiredReason, english: Bool) -> String {
+        switch reason {
+        case .geminiCLIPersonalAccounts:
+            return L10n.collectorError.geminiCLIPersonalAccountsRetired(english: english)
         }
     }
 

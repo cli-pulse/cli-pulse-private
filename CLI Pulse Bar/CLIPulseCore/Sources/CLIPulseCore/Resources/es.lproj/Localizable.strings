@@ -1057,6 +1057,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_status.auth_failed" = "Error de autenticación";
 "collector_status.auth_failed_hint" = "Vuelve a conectar %@: su credencial guardada fue rechazada.";
 "collector_status.failed_other_hint" = "Esto es cosa nuestra: la comprobación no pudo completarse. Una actualización lo arreglará.";
+"collector_status.retired_personal_accounts" = "Sin soporte para cuentas personales";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "Se abrirá al iniciar sesión";
@@ -1773,6 +1774,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.hook_settings_root_not_object" = "%@ no contiene un objeto JSON en el nivel superior";
 "collector_error.no_projects_for_key" = "%@: no hay proyectos para esta clave API";
 "collector_error.no_quota_for_project" = "%@: no hay datos de cuota para este proyecto";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google ya no ofrece Gemini CLI a las cuentas personales, así que volver a iniciar sesión no servirá. Google lo sustituyó por Antigravity.";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "Algunos textos del sistema cambian al reiniciar CLI Pulse.";
 

@@ -1043,6 +1043,7 @@
 "collector_status.auth_failed" = "인증 실패";
 "collector_status.auth_failed_hint" = "%@을(를) 다시 연결하세요. 저장된 자격 증명이 거부되었습니다.";
 "collector_status.failed_other_hint" = "저희 문제입니다. 검사를 완료하지 못했습니다. 업데이트로 해결됩니다.";
+"collector_status.retired_personal_accounts" = "개인 계정 지원 종료";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "로그인 시 시작";
@@ -1759,6 +1760,7 @@
 "sessions.hook_settings_root_not_object" = "%@ 파일의 최상위 값이 JSON 객체가 아닙니다";
 "collector_error.no_projects_for_key" = "%@: 이 API 키에 연결된 프로젝트 없음";
 "collector_error.no_quota_for_project" = "%@: 이 프로젝트의 할당량 데이터 없음";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google이 개인 계정에 Gemini CLI 제공을 중단했으므로 다시 로그인해도 해결되지 않습니다. Google은 이를 Antigravity로 대체했습니다.";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "일부 시스템 텍스트는 CLI Pulse를 다시 시작한 후에 바뀝니다.";
 

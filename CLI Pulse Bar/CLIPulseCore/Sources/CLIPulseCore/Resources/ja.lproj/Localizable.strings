@@ -1123,6 +1123,7 @@
 "collector_status.auth_failed" = "認証に失敗";
 "collector_status.auth_failed_hint" = "%@ を再接続してください。保存された認証情報が拒否されました。";
 "collector_status.failed_other_hint" = "これは私たちの問題です。チェックを完了できませんでした。アップデートで修正します。";
+"collector_status.retired_personal_accounts" = "個人アカウントは提供終了";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "ログイン時に起動します";
@@ -1803,6 +1804,7 @@
 "sessions.hook_settings_root_not_object" = "%@ の最上位が JSON オブジェクトではありません";
 "collector_error.no_projects_for_key" = "%@: この API キーに紐づくプロジェクトがありません";
 "collector_error.no_quota_for_project" = "%@: このプロジェクトのクォータデータがありません";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google は個人アカウント向けの Gemini CLI の提供を終了したため、再度サインインしても解決しません。後継は Antigravity です。";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "一部のシステムの文言は、CLI Pulse の再起動後に切り替わります。";
 

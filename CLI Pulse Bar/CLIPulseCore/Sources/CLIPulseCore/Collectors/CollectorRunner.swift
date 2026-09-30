@@ -139,6 +139,10 @@ public enum CollectorFailureCategory: String, Sendable, Equatable {
     /// security-scoped bookmark; the fix is one tap, so it must not be buried
     /// in `other`.
     case permission
+    /// The provider no longer serves this kind of account through the client
+    /// we use (`CollectorError.retired`). Split from `auth` because the only
+    /// advice `auth` has, reconnect, is exactly what cannot work here.
+    case retired
     case other
 
     /// Map a thrown error to a category.
@@ -170,6 +174,8 @@ public enum CollectorFailureCategory: String, Sendable, Equatable {
             case .silentBackoff:
                 // Repeated OAuth-refresh failure after a token expired.
                 return .auth
+            case .retired:
+                return .retired
             }
         }
         #endif

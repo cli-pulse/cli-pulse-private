@@ -1119,6 +1119,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_status.auth_failed" = "Authentication failed";
 "collector_status.auth_failed_hint" = "Reconnect %@ — its saved credential was rejected.";
 "collector_status.failed_other_hint" = "This one is on us — the check couldn't be completed. An update will fix it.";
+"collector_status.retired_personal_accounts" = "Ended for personal accounts";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "Starting at login";
@@ -1799,6 +1800,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "sessions.hook_settings_root_not_object" = "%@ doesn't contain a JSON object at the top level";
 "collector_error.no_projects_for_key" = "%@: no projects for this API key";
 "collector_error.no_quota_for_project" = "%@: no quota data for this project";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google no longer offers Gemini CLI to personal accounts, so signing in again won't help. Google replaced it with Antigravity.";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "Some system text will change after CLI Pulse restarts.";
 
