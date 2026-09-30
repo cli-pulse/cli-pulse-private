@@ -165,3 +165,66 @@ final class ApproximatePriceCoverageTests: XCTestCase {
         }
     }
 }
+
+/// The wiring: a local scan reaches the cost card's coverage, today's coverage
+/// and the provider card's windows through `AppState`.
+@MainActor
+final class ApproximatePriceWiringTests: XCTestCase {
+
+    private func key(daysAgo: Int) -> String {
+        DayKey.string(from: Date().addingTimeInterval(-Double(daysAgo) * 86_400))
+    }
+
+    private func entry(_ day: String, _ model: String, provider: String = "Codex",
+                       approximate: Bool) -> CostUsageScanResult.DailyEntry {
+        CostUsageScanResult.DailyEntry(
+            date: day, provider: provider, model: model,
+            inputTokens: 1_000, cachedTokens: 0, outputTokens: 0,
+            costUSD: 0.01, priceIsApproximate: approximate
+        )
+    }
+
+    /// Today listed, three days ago borrowed: the 30-day figure is "≈", today's
+    /// is not, and the badge says Approximate.
+    func testTheScanReachesTheCardsCoverage() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 0), "gpt-6-astra", approximate: false),
+            entry(key(daysAgo: 3), "gpt-5.7", approximate: true),
+        ])
+        state.updateCostSummary()
+        XCTAssertTrue(state.costSummary.isPrecise)
+        XCTAssertTrue(state.costSummary.coverage.hasApproximatePrices)
+        XCTAssertEqual(state.costSummary.coverage.approximateModels, ["gpt-5.7"])
+        XCTAssertFalse(state.costSummary.todayCoverage.hasApproximatePrices,
+                       "today's figure has no borrowed rate in it")
+        XCTAssertEqual(state.costSummary.fidelity, .approximate)
+    }
+
+    func testTodaysBorrowedRateMarksToday() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 0), "gpt-5.7", approximate: true),
+        ])
+        state.updateCostSummary()
+        XCTAssertTrue(state.costSummary.todayCoverage.hasApproximatePrices)
+    }
+
+    /// The provider card's Today and This Week columns, per provider.
+    func testTheProviderCardsWindows() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 3), "gpt-5.7", approximate: true),
+            entry(key(daysAgo: 10), "claude-opus-6", provider: "Claude", approximate: true),
+            entry(key(daysAgo: 0), "claude-opus-5", provider: "Claude", approximate: false),
+        ])
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Codex", onDate: Date()))
+        XCTAssertTrue(state.scanPriceIsApproximateThisWeek(for: "Codex"))
+        XCTAssertTrue(state.scanPriceIsApproximate(for: "Codex"))
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Claude", onDate: Date()))
+        XCTAssertFalse(state.scanPriceIsApproximateThisWeek(for: "Claude"),
+                       "ten days ago is outside the rolling week")
+        state.costUsageScanResult = nil
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Codex"))
+    }
+}
