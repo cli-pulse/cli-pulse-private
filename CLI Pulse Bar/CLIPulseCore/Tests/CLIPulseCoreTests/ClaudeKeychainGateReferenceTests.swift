@@ -118,10 +118,17 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
             contentsOf: Self.repoRoot.appendingPathComponent("CLI Pulse Bar/CLI Pulse Bar/CLIPulseBarApp.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(
-            app.contains("PrivacySettings.shared.mirrorForHelpers(in: runtimeEnvironment)"),
+        let mirror = try XCTUnwrap(
+            app.range(of: "PrivacySettings.shared.mirrorForHelpers(in: runtimeEnvironment)"),
             "the app no longer copies the switches for the helpers at launch"
         )
+        // After the Developer ID migration, which carries the `privacy.` keys
+        // over: before it, both switches would be copied as off.
+        let migration = try XCTUnwrap(app.range(of: "UnsandboxedDataMigration.runIfNeeded()"))
+        XCTAssertLessThan(migration.lowerBound, mirror.lowerBound)
+        // Before AppState, whose consent copy wakes the helper.
+        let appState = try XCTUnwrap(app.range(of: "AppState(runtimeEnvironment: runtimeEnvironment)"))
+        XCTAssertLessThan(mirror.lowerBound, appState.lowerBound)
     }
 
     func testTheLoginItemTellsHelloItsCycleMayRead() throws {

@@ -81,13 +81,20 @@ struct CLIPulseBarApp: App {
         // open/save panels and system error text follow it from the next launch.
         LocaleOverrideStore.shared.mirrorToAppleLanguages()
 
-        let state = AppState(runtimeEnvironment: runtimeEnvironment)
-        _appState = StateObject(wrappedValue: state)
         // v1.55: the LoginItem helper and the Companion CLI cannot read
         // Settings › Privacy's Claude keychain switches in this app's own
         // defaults. Copy them to the app group they read (`HelperPrivacyInputs`):
         // now, for switches set before this version, and on every change.
+        // AFTER the migration, which carries the `privacy.` keys over from the
+        // App Store container; read before it, both switches would be copied
+        // as off. BEFORE `AppState`, which copies the local-scan answer and
+        // tells the helper: a helper woken by that finds the switches there
+        // too. It writes only to the app group, not to this app's defaults,
+        // so the first-run check above is unaffected.
         PrivacySettings.shared.mirrorForHelpers(in: runtimeEnvironment)
+
+        let state = AppState(runtimeEnvironment: runtimeEnvironment)
+        _appState = StateObject(wrappedValue: state)
         if runtimeEnvironment.capabilities.allowsTelemetry {
             SentryLogger.start(platform: .macOS)
         }
