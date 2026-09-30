@@ -513,6 +513,8 @@ public final class LocalSessionServer: @unchecked Sendable {
             // Missing counts as no: before 1.55 this read ran on every hello,
             // "Not now" included, and a status probe has no answer to give.
             // A JSON `true` only: `as? Bool` would also take a number 1.
+            // The same answer decides `claude_remote_control` below, which
+            // reads Claude Code's settings files and its credentials file.
             let localScanAllowed: Bool = {
                 guard let flag = request.params[Self.localScanAllowedParam] as? NSNumber,
                       CFGetTypeID(flag) == CFBooleanGetTypeID()
@@ -560,15 +562,25 @@ public final class LocalSessionServer: @unchecked Sendable {
                     "machine_snapshot": true,
                 ],
                 "provider_availability": providerAvailability,
-                // Remote-control M1a (additive): can this helper start a Claude
-                // session with `--remote-control`, and would Claude let it?
-                // `policy` comes from Claude Code's own settings files
-                // (disableRemoteControl); `auth` says whether the
-                // subscription credentials file exists — Remote Control needs
-                // a claude.ai login, not an API key. The Python helper
-                // advertises `{"supported": false}` (lock-step, honest).
-                "claude_remote_control": claudeRemoteControlHello(),
             ]
+            // Remote-control M1a (additive): can this helper start a Claude
+            // session with `--remote-control`, and would Claude let it?
+            // `policy` comes from Claude Code's own settings files
+            // (disableRemoteControl); `auth` says whether the subscription
+            // credentials file (~/.claude/.credentials.json) holds a claude.ai
+            // login — Remote Control needs one, not an API key. The Python
+            // helper advertises `{"supported": false}` (lock-step, honest).
+            //
+            // v1.55: both are reads of this Mac, so they run only when the
+            // caller says the app's local-scan answer allows them, like
+            // `provider_plan_status`. Otherwise the field is left out, which a
+            // phone reads as "not offered". Before 1.55 every hello read them,
+            // "Not now" included: the app's LAN agent says hello for each phone
+            // that connects, and now passes the answer
+            // (`LANLinkAgentSession(localScanAllowed:)`).
+            if localScanAllowed {
+                result["claude_remote_control"] = claudeRemoteControlHello()
+            }
             // Per-provider plan-auth status ("on_plan"/"off_plan") so the picker can
             // warn before silently launching an off-plan (billed) managed session
             // (e.g. Codex with an api-key login). Omits "unknown" providers, and

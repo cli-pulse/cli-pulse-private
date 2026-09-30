@@ -1282,8 +1282,14 @@ internal final class DataRefreshManager {
         now: @escaping @Sendable () -> Date = { Date() }
     ) async -> AccountCollectorRun {
         let collectionStartedAt = now()
+        // What Strict privacy mode stopped this run reading (v1.55), noted by
+        // `CookieResolver` in the log bound to this task; a failure that
+        // follows is reported as that, not as a rejected credential.
+        let strictPrivacySkips = StrictPrivacySkipLog()
         do {
-            let result = try await collector.collect(config: config)
+            let result = try await StrictPrivacySkipLog.$current.withValue(strictPrivacySkips) {
+                try await collector.collect(config: config)
+            }
             let scopedResult = AccountScopedCollectorResult(
                 accountID: config.accountID,
                 config: config,
@@ -1305,8 +1311,9 @@ internal final class DataRefreshManager {
             await CollectorErrorLog.shared.append(message)
             return AccountCollectorRun(
                 config: config,
-                outcome: .failed(
-                    CollectorFailureCategory.categorize(error)
+                outcome: CollectorRunner.failureOutcome(
+                    error,
+                    strictPrivacySkips: strictPrivacySkips.skips
                 ),
                 scopedResult: nil
             )

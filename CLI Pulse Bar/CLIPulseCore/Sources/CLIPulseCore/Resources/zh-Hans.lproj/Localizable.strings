@@ -512,6 +512,7 @@
 "provider_config.manual_cookie_header" = "手动 Cookie 头";
 "provider_config.auto_import_note" = "自动从已登录的浏览器导入会话 Cookie。macOS 可能会请求一次钥匙串访问；若未找到，请在下方手动粘贴。";
 "provider_config.auto_import_failed" = "无法自动导入会话 Cookie，请手动粘贴：";
+"provider_config.auto_import_note_strict" = "严格隐私模式已开启，CLI Pulse 不会从浏览器导入 Cookie。可选择「手动」来粘贴 Cookie，或在「设置 › 隐私」中关闭严格隐私模式。";
 "provider_config.capabilities" = "能力";
 "provider_config.cap_quota" = "配额";
 "provider_config.cap_exact_cost" = "精确费用";
@@ -1093,6 +1094,9 @@
 "collector_status.not_signed_in_hint" = "在 %@ 自己的应用或命令行里登录即可，不需要在这里填密钥。";
 "collector_status.shared_login_taken" = "共享登录已占用";
 "collector_status.shared_login_taken_hint" = "这台 Mac 上的 %@ 登录信息已被另一个账户占用。请给这个账户单独填入 API 密钥，或移除那个账户。";
+"collector_status.strict_privacy_mode" = "严格隐私模式下不读取";
+"collector_status.strict_privacy_mode_cookie_hint" = "严格隐私模式下，CLI Pulse 不会从浏览器导入 %@ 的 Cookie。可将它的「Cookie 来源」设为「手动」并粘贴 Cookie，或在「设置 › 隐私」中关闭严格隐私模式。";
+"collector_status.strict_privacy_mode_keychain_hint" = "严格隐私模式下，CLI Pulse 不会读取 %@ 的钥匙串项目。如需在这里显示，请在「设置 › 隐私」中关闭严格隐私模式。";
 "collector_status.not_set_up" = "未配置";
 "collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
 "collector_status.no_data" = "没有返回数据";
@@ -1155,7 +1159,7 @@
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名安装统计";
 "telemetry.disclosure_body" = "CLI Pulse 只上报它走到了哪一步：是否已安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字，以及当前显示的语言。如果你使用远程控制，还会加上四个是/否：手机是否通过你的 Wi‑Fi 连到这台 Mac、是否通过你自己的私有网络连到这台 Mac、是否有会话交接给了 claude.ai，以及你是否遥控过 Claude 以外的工具。我们靠这些判断应用在哪一步卡住了——由于不涉及账户，没有这些信息我们就无从得知。";
-"telemetry.disclosure_body_local_only" = "严格隐私模式已开启，CLI Pulse 什么都不会发送。如果关闭严格隐私模式，它会上报四个步骤：是否已安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字，以及当前显示的语言。如果你使用远程控制，还会加上四个是/否：手机是否通过你的 Wi‑Fi 连到这台 Mac、是否通过你自己的私有网络连到这台 Mac、是否有会话交接给了 claude.ai，以及你是否遥控过 Claude 以外的工具。";
+"telemetry.disclosure_body_local_only" = "严格隐私模式已开启，CLI Pulse 不会发送任何匿名统计。如果关闭严格隐私模式，它会上报四个步骤：是否已安装、helper 是否连上、是否找到过可追踪的 CLI、是否出现过费用数字，以及当前显示的语言。如果你使用远程控制，还会加上四个是/否：手机是否通过你的 Wi‑Fi 连到这台 Mac、是否通过你自己的私有网络连到这台 Mac、是否有会话交接给了 claude.ai，以及你是否遥控过 Claude 以外的工具。";
 "telemetry.not_collected" = "不含文件路径、项目名、服务商名称、token 数或费用金额，也不含任何能识别你本人或你的设备的信息。该 ID 是随机生成的，卸载即删除。";
 "telemetry.toggle" = "发送匿名安装统计";
 "telemetry.toggle_local_only" = "已关闭——严格隐私模式已经涵盖了这一项。";
@@ -1381,7 +1385,7 @@
 "local_scan_consent.settings_declined_detail" = "你选择了「暂时不要」。即使已登录，这个选择也不会改变。";
 "local_scan_consent.choose_again" = "重新选择…";
 "settings.local_only_mode" = "严格隐私模式";
-"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取 Claude Code 的钥匙串项目，也不发送匿名统计。个人文件夹里日志文件的用量，以及同步到你的账户，都不受影响。";
+"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取其他应用存放在钥匙串或浏览器里的机密信息：不读取 Claude Code 或 Zed 的钥匙串项目，也不读取浏览器或 Claude 桌面应用保存的 Cookie，即使服务商设为自动读取 Cookie 也不例外。它也不发送匿名统计。仍会读取的是 AI CLI 保存在你个人文件夹里的凭据文件（用于配额）和日志文件（用于用量）。崩溃报告照常发送，同步到你的账户也不受影响。";
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";
 "settings.skip_claude_keychain_forced" = "已由严格隐私模式强制开启。";
 "settings.skip_claude_keychain_hint" = "阻止 CLI Pulse 读取其他应用持有的 Claude Code OAuth 凭据。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";

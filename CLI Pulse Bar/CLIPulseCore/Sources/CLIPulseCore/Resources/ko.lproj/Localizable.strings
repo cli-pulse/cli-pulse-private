@@ -862,6 +862,7 @@
 "provider_config.manual_cookie_header" = "수동 쿠키 헤더";
 "provider_config.auto_import_note" = "로그인된 브라우저에서 세션 쿠키를 자동으로 가져옵니다. macOS가 키체인 접근을 한 번 요청할 수 있으며, 쿠키를 찾지 못하면 아래에 수동으로 붙여 넣으세요.";
 "provider_config.auto_import_failed" = "세션 쿠키를 자동으로 가져오지 못했습니다. 수동으로 붙여 넣으세요:";
+"provider_config.auto_import_note_strict" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 브라우저에서 쿠키를 가져오지 않습니다. 직접 붙여 넣으려면 '수동'을 선택하거나, 설정 › 개인정보 보호에서 이 모드를 끄세요.";
 "provider_config.capabilities" = "기능";
 "provider_config.cap_quota" = "할당량";
 "provider_config.cap_exact_cost" = "정확한 비용";
@@ -1027,6 +1028,9 @@
 "collector_status.not_signed_in_hint" = "%@의 앱이나 CLI에서 로그인하세요. 여기에 키를 입력할 필요는 없습니다.";
 "collector_status.shared_login_taken" = "공유 로그인 사용 중";
 "collector_status.shared_login_taken_hint" = "여기에 설정된 다른 계정이 이 Mac의 %@ 로그인을 이미 사용하고 있습니다. 이 계정에는 별도의 API 키를 입력하거나 그 계정을 제거하세요.";
+"collector_status.strict_privacy_mode" = "엄격한 개인정보 보호 모드에서는 읽지 않음";
+"collector_status.strict_privacy_mode_cookie_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 브라우저에서 %@ 쿠키를 가져오지 않습니다. 쿠키 소스를 '수동'으로 바꿔 붙여 넣거나, 설정 › 개인정보 보호에서 이 모드를 끄세요.";
+"collector_status.strict_privacy_mode_keychain_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 %@의 키체인 항목을 읽지 않습니다. 여기에 표시하려면 설정 › 개인정보 보호에서 이 모드를 끄세요.";
 "collector_status.not_set_up" = "설정되지 않음";
 "collector_status.not_set_up_hint" = "설정을 열어 이 공급자를 연결하세요.";
 "collector_status.no_data" = "데이터 없음";
@@ -1109,7 +1113,7 @@
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "익명 설치 통계";
 "telemetry.disclosure_body" = "CLI Pulse는 어디까지 진행됐는지만 보고합니다. 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 계정을 쓰지 않으므로, 이 정보가 없으면 앱이 어디에서 멈추는지 알 수 없습니다.";
-"telemetry.disclosure_body_local_only" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 아무것도 보내지 않습니다. 끄면 네 단계와 현재 표시 언어를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
+"telemetry.disclosure_body_local_only" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 익명 통계를 전혀 보내지 않습니다. 끄면 네 단계와 현재 표시 언어를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
 "telemetry.not_collected" = "파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. 사용자나 기기를 식별할 수 있는 정보도 없습니다. ID는 무작위이며 앱을 삭제하면 함께 삭제됩니다.";
 "telemetry.toggle" = "익명 설치 통계 보내기";
 "telemetry.toggle_local_only" = "꺼짐: 엄격한 개인정보 보호 모드가 이 항목도 끕니다.";
@@ -1335,7 +1339,7 @@
 "local_scan_consent.settings_declined_detail" = "'지금은 안 함'을 골랐습니다. 로그인되어 있어도 이 선택은 바뀌지 않습니다.";
 "local_scan_consent.choose_again" = "다시 선택…";
 "settings.local_only_mode" = "엄격한 개인정보 보호 모드";
-"settings.local_only_mode_hint" = "CLI Pulse가 Claude Code의 키체인 항목을 스스로 읽지 않으며 익명 통계도 보내지 않습니다. 홈 폴더의 로그 파일에서 읽는 사용량과 계정 동기화에는 영향이 없습니다.";
+"settings.local_only_mode_hint" = "CLI Pulse는 다른 앱이 키체인이나 브라우저에 보관한 비밀 정보를 스스로 읽지 않습니다. Claude Code나 Zed의 키체인 항목도, 브라우저나 Claude 데스크톱 앱에 저장된 쿠키도 읽지 않으며, 쿠키를 자동으로 읽도록 설정한 공급자라도 마찬가지입니다. 익명 통계도 보내지 않습니다. AI CLI가 홈 폴더에 보관하는 자격 증명 파일(할당량 확인용)과 로그 파일(사용량 계산용)은 계속 읽습니다. 충돌 리포트는 계속 전송되며, 계정 동기화에도 영향이 없습니다.";
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";

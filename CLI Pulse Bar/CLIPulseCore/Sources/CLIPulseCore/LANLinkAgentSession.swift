@@ -114,6 +114,15 @@ public actor LANLinkAgentSession {
     /// the stored key for `did`. The agent calls this once, in hello.
     private let authenticatePeer: @Sendable (String, Data, Data) async -> LANAgentPeer?
     private let controlPermitted: @Sendable () async -> Bool
+    /// Whether the app's local-scan answer allows reading this Mac
+    /// (`LocalCollectionPolicy.allowsCollection`), asked at every phone
+    /// `hello` and passed to the helper's `hello(localScanAllowed:)`. The
+    /// bundled helper reads Claude Code's settings and credentials files for
+    /// `claude_remote_control` only on a yes; before 1.55 this agent sent no
+    /// answer and the helper read them for every phone, "Not now" included.
+    /// Nil in the initializer means no, so an agent built without it reads
+    /// nothing.
+    private let localScanAllowed: @Sendable () async -> Bool
     private let heartbeatInterval: TimeInterval
     private let silenceTimeout: TimeInterval
     private let redactionIdleFlush: TimeInterval
@@ -158,6 +167,7 @@ public actor LANLinkAgentSession {
         peer: LANAgentPeer? = nil,
         authenticatePeer: (@Sendable (String, Data, Data) async -> LANAgentPeer?)? = nil,
         controlPermitted: (@Sendable () async -> Bool)? = nil,
+        localScanAllowed: (@Sendable () async -> Bool)? = nil,
         heartbeatInterval: TimeInterval = LANLinkProtocol.heartbeatInterval,
         silenceTimeout: TimeInterval = LANLinkProtocol.peerSilenceTimeout,
         redactionIdleFlush: TimeInterval = 0.15,
@@ -173,6 +183,7 @@ public actor LANLinkAgentSession {
         self.authenticatePeer = authenticatePeer ?? { _, _, _ in nil }
         let stored = peer?.controlAllowed ?? false
         self.controlPermitted = controlPermitted ?? { stored }
+        self.localScanAllowed = localScanAllowed ?? { false }
         self.heartbeatInterval = heartbeatInterval
         self.silenceTimeout = silenceTimeout
         self.redactionIdleFlush = redactionIdleFlush
@@ -512,7 +523,10 @@ public actor LANLinkAgentSession {
 
     private func helloResult() async -> [String: AnySendableJSON] {
         var helper: [String: AnySendableJSON] = ["reachable": .bool(false)]
-        if let h = try? await backend.hello() {
+        // The answer as it is now: a phone's hello after "Not now" gets no
+        // `claude_remote_control`, because the helper then reads nothing for it.
+        let mayReadThisMac = await localScanAllowed()
+        if let h = try? await backend.hello(localScanAllowed: mayReadThisMac) {
             helper["reachable"] = .bool(true)
             helper["version"] = .string(h.helperVersion)
             if let impl = h.implementation { helper["implementation"] = .string(impl) }

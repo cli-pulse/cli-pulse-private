@@ -27,12 +27,15 @@ def _app_group_copy_is_read_from_the_file(monkeypatch):
 
     monkeypatch.setattr(app_group_prefs, "ENABLED", False)
     yield
-    # The Claude keychain gates are installed process-wide by the daemon and
-    # the `heartbeat` / `sync` / `run-demo` subcommands
-    # (`cli_pulse_helper._install_claude_keychain_gate`). A test that runs one
-    # must not leave its gate, over a HOME that no longer exists, to the next.
+    # The Privacy switch gates (Claude keychain, browser cookies) are
+    # installed process-wide by the daemon and the `heartbeat` / `sync` /
+    # `run-demo` subcommands (`cli_pulse_helper._install_claude_keychain_gate`).
+    # A test that runs one must not leave its gate, over a HOME that no longer
+    # exists, to the next.
     for module, attribute in (
         ("system_collector", "_claude_keychain_gate"),
+        ("system_collector", "_browser_cookie_gate"),
+        ("system_collector", "_browser_cookie_strict"),
         ("claude_oauth", "_keychain_gate"),
     ):
         loaded = sys.modules.get(module)

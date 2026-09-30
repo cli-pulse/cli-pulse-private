@@ -129,5 +129,100 @@ final class ZedCollectorTests: XCTestCase {
         XCTAssertFalse(collector.isAvailable(config: ProviderConfig(kind: .zed)))
     }
     #endif
+
+    // MARK: - Strict privacy mode (v1.55)
+
+    /// Zed's keychain item is another app's secret; Strict privacy mode means
+    /// CLI Pulse reads none on its own. So the item is not even looked for.
+    func test_strictPrivacyMode_neverLooksForZedsItem() {
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: true, coolingDown: false, credentialsPresent: {
+            XCTFail("looked for Zed's keychain item under Strict privacy mode")
+            return true
+        }))
+        // Negative control: with the switch off, the presence check decides.
+        var looked = 0
+        XCTAssertTrue(ZedCollector.available(strictPrivacyMode: false, coolingDown: false, credentialsPresent: {
+            looked += 1
+            return true
+        }))
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: false, coolingDown: false, credentialsPresent: {
+            looked += 1
+            return false
+        }))
+        XCTAssertEqual(looked, 2)
+        // The cooldown still holds on its own.
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: false, coolingDown: true, credentialsPresent: {
+            XCTFail("looked for Zed's keychain item while cooling down")
+            return true
+        }))
+    }
+
+    func test_isAvailable_isFalseUnderStrictPrivacyMode() {
+        // Through the seam `isAvailable` asks (PrivacySettings in production).
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        XCTAssertTrue(ZedKeychainGate.strictPrivacyModeSkips())
+        XCTAssertFalse(collector.isAvailable(config: ProviderConfig(kind: .zed)))
+    }
+
+    #if DEVID_BUILD
+    func test_collect_refusesUnderStrictPrivacyMode() async {
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        do {
+            _ = try await collector.collect(config: ProviderConfig(kind: .zed))
+            XCTFail("collect ran under Strict privacy mode")
+        } catch {
+            // Refused before any keychain read, saying why: "no credentials
+            // found" would be false, since nothing was looked for.
+            XCTAssertEqual(error as? StrictPrivacyModeSkipped, StrictPrivacyModeSkipped(.keychainItem, provider: "Zed"))
+            XCTAssertEqual(CollectorRunner.failureOutcome(error, strictPrivacySkips: []),
+                           .notReady(.strictPrivacyModeKeychain))
+        }
+    }
+
+    func test_readiness_saysStrictPrivacyModeInTheDeveloperIDBuild() {
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        XCTAssertEqual(collector.readiness(config: ProviderConfig(kind: .zed)), .notReady(.strictPrivacyModeKeychain))
+    }
+    #else
+    func test_readiness_inTheAppStoreBuild_neverMentionsStrictPrivacyMode() {
+        // The App Store build never reads Zed's item, switch or not.
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        XCTAssertEqual(collector.readiness(config: ProviderConfig(kind: .zed)), .notReady(.unknown))
+    }
+    #endif
+
+    /// The row under Strict privacy mode says so, not "Not set up": CLI Pulse
+    /// did not look for Zed's item, so it cannot say Zed is not set up.
+    func test_readinessRule_underStrictPrivacyMode_doesNotLook() {
+        XCTAssertEqual(ZedCollector.readiness(strictPrivacyMode: true, available: {
+            XCTFail("asked whether Zed is available under Strict privacy mode")
+            return true
+        }), .notReady(.strictPrivacyModeKeychain))
+        // Negative controls: with the switch off, availability decides.
+        XCTAssertEqual(ZedCollector.readiness(strictPrivacyMode: false, available: { true }), .ready)
+        XCTAssertEqual(ZedCollector.readiness(strictPrivacyMode: false, available: { false }), .notReady(.unknown))
+    }
+
+    /// The production seam follows the real switch when no test replaces it.
+    func test_theDefaultSeam_followsTheRealSwitch() {
+        let shared = PrivacySettings.shared
+        let (strict, skip) = (shared.localOnlyMode, shared.skipClaudeKeychain)
+        defer {
+            shared.localOnlyMode = strict
+            shared.skipClaudeKeychain = skip
+        }
+        shared.localOnlyMode = false
+        XCTAssertFalse(ZedKeychainGate.strictPrivacyModeSkips())
+        shared.localOnlyMode = true
+        XCTAssertTrue(ZedKeychainGate.strictPrivacyModeSkips())
+    }
 }
 #endif

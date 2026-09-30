@@ -9,6 +9,19 @@ public enum SentryPlatform: String {
 
 /// Thin wrapper around sentry-cocoa that enforces CLI Pulse privacy rules:
 /// DSN read from Info.plist, PII disabled, tokens/paths scrubbed via beforeSend.
+///
+/// v1.55 — network breadcrumbs. sentry-cocoa records every web request the app
+/// makes as an `http` breadcrumb (`enableNetworkBreadcrumbs`, on by default)
+/// and keeps the last 50 with a crash report. It strips the query string from
+/// the breadcrumb's `url`, but puts it back under `http.query` (and the
+/// fragment under `http.fragment`), and a request to our own server's REST
+/// API names the account there (`profiles?id=eq.<user id>`); a claude.ai
+/// request names the Claude organization in its path. Crash reports stay on,
+/// so `beforeBreadcrumb` (and `beforeSend`, again, for breadcrumbs recorded
+/// before this build) now keeps of a request only its method, status, sizes
+/// and timing, and its address without the query, the fragment or any path
+/// part that looks like an identifier (`scrubURL`). UUIDs and email addresses
+/// are replaced everywhere this scrubber looks (`redact`).
 public enum SentryLogger {
     private static let sensitiveKeyFragments: [String] = [
         "password", "secret", "token", "apikey", "api_key",
@@ -142,11 +155,30 @@ public enum SentryLogger {
         SentrySDK.capture(message: "[\(category)] \(message)")
     }
 
-    private static func scrub(event: Event) -> Event? {
+    static func scrub(event: Event) -> Event? {
         if let user = event.user {
             user.email = nil
             user.ipAddress = nil
             user.username = nil
+        }
+
+        // The breadcrumbs went through `beforeBreadcrumb` when they were
+        // recorded, but a crash is sent on the NEXT launch, with breadcrumbs a
+        // build from before this scrubber may have recorded. Scrub them again.
+        if let breadcrumbs = event.breadcrumbs {
+            event.breadcrumbs = breadcrumbs.compactMap { scrub(breadcrumb: $0) }
+        }
+
+        // `enableCaptureFailedRequests` is off, so nothing fills this today;
+        // if it ever is, the same rule holds for the request it describes.
+        if let request = event.request {
+            request.queryString = nil
+            request.fragment = nil
+            request.cookies = nil
+            request.headers = nil
+            if let url = request.url {
+                request.url = scrubURL(url)
+            }
         }
 
         if var extra = event.extra {
@@ -241,18 +273,113 @@ public enum SentryLogger {
         return functions.contains { $0.contains("trackMouse:") || $0.contains("NSControlTrackMouse") }
     }
 
-    private static func scrub(breadcrumb: Breadcrumb) -> Breadcrumb? {
+    /// Breadcrumb data keys that hold part of a request's address beside
+    /// `url`: sentry-cocoa's network tracker files the query string and the
+    /// fragment there. Dropped whole: a query names what it asks for
+    /// (`id=eq.<user id>`), and nothing in a crash report needs it.
+    static let droppedAddressKeys = ["http.query", "http.fragment"]
+
+    static func scrub(breadcrumb: Breadcrumb) -> Breadcrumb? {
         if let message = breadcrumb.message {
             breadcrumb.message = redact(message)
         }
         if var data = breadcrumb.data {
-            for key in data.keys where shouldScrub(key: key) {
-                data[key] = "[scrubbed]"
+            for key in droppedAddressKeys {
+                data.removeValue(forKey: key)
+            }
+            for key in Array(data.keys) {
+                if shouldScrub(key: key) {
+                    data[key] = "[scrubbed]"
+                } else if key == "url", let url = data[key] as? String {
+                    data[key] = scrubURL(url)
+                } else if let text = data[key] as? String {
+                    data[key] = redact(text)
+                }
             }
             breadcrumb.data = data
         }
         return breadcrumb
     }
+
+    /// A request's address as a crash report may carry it: scheme, host and
+    /// path, without the query or the fragment (sentry-cocoa already cuts them
+    /// from an `http` breadcrumb's `url`; an address in any other field has
+    /// not been), and with every path segment that looks like an identifier
+    /// replaced by `[id]` (`isIdentifierSegment`): a claude.ai organization,
+    /// an account's id in a REST path. The segment right after one that names
+    /// a kind of account (`workspace`, `organizations`, `users`, …,
+    /// `idContainerSegments`) is replaced too, whatever it looks like: an id
+    /// made mostly of letters passes the shape rules, and that position is
+    /// where APIs put one.
+    ///
+    /// A heuristic, and PRIVACY.md words it as one: a part that neither looks
+    /// like an identifier nor follows such a name is kept.
+    static func scrubURL(_ raw: String) -> String {
+        var address = raw
+        if let cut = address.firstIndex(where: { $0 == "?" || $0 == "#" }) {
+            address = String(address[..<cut])
+        }
+        let pathStart: String.Index
+        if let scheme = address.range(of: "://") {
+            pathStart = address[scheme.upperBound...].firstIndex(of: "/") ?? address.endIndex
+        } else {
+            pathStart = address.startIndex
+        }
+        let origin = String(address[..<pathStart])
+        let segments = address[pathStart...].split(separator: "/", omittingEmptySubsequences: false)
+        var scrubbed: [String] = []
+        scrubbed.reserveCapacity(segments.count)
+        var previous: Substring = ""
+        for segment in segments {
+            let followsContainer = !segment.isEmpty
+                && idContainerSegments.contains(previous.lowercased())
+            scrubbed.append(followsContainer || isIdentifierSegment(segment) ? "[id]" : String(segment))
+            previous = segment
+        }
+        return redact(origin + scrubbed.joined(separator: "/"))
+    }
+
+    /// Path segments after which an API puts the id of an account, a
+    /// workspace, an organization or a project.
+    static let idContainerSegments: Set<String> = [
+        "workspace", "workspaces", "organization", "organizations", "orgs",
+        "project", "projects", "user", "users", "account", "accounts", "team", "teams",
+    ]
+
+    /// Whether one path segment looks like an identifier rather than a name
+    /// the API defines: a UUID (or a segment holding one, such as
+    /// `eq.<uuid>`), an email address, four or more digits, sixteen or more
+    /// hex digits, sixteen or more characters of which at least a quarter are
+    /// digits, or a prefixed id (`wrk_01HZX…`, `org_…`: a short word, one
+    /// underscore, then ten or more letters and digits with at least one
+    /// digit). `v1`, `rpc`, `app_dashboard_summary_v2`, `helper_heartbeat`
+    /// and `usage` stay.
+    static func isIdentifierSegment(_ segment: Substring) -> Bool {
+        let text = segment.removingPercentEncoding ?? String(segment)
+        guard !text.isEmpty else { return false }
+        if text.contains("@") { return true }
+        if let uuid = uuidRegex,
+           uuid.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+            return true
+        }
+        let digits = text.filter(\.isNumber).count
+        if digits == text.count, digits >= 4 { return true }
+        if text.count >= 16, text.allSatisfy(\.isHexDigit) { return true }
+        if text.count >= 16, digits * 4 >= text.count { return true }
+        if let prefixed = prefixedIDRegex,
+           prefixed.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil,
+           let underscore = text.firstIndex(of: "_"),
+           text[underscore...].contains(where: \.isNumber) {
+            return true
+        }
+        return false
+    }
+
+    /// `wrk_01HZX3K9Q2V7T8M4N6P5R0S1A2`: a Stripe-style prefixed id. The
+    /// digit check beside it keeps `helper_heartbeat` (an RPC name) readable.
+    private static let prefixedIDRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^[A-Za-z]{2,8}_[A-Za-z0-9]{10,}$"#
+    )
 
     private static func shouldScrub(key: String) -> Bool {
         let lower = key.lowercased()
@@ -273,7 +400,17 @@ public enum SentryLogger {
         pattern: #"/Users/[^/\s"']+"#
     )
 
-    private static func redact(_ input: String) -> String {
+    /// Account, device and session ids are UUIDs, in every backend CLI Pulse
+    /// talks to that has them in an address.
+    private static let uuidRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#
+    )
+
+    private static let emailRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#
+    )
+
+    static func redact(_ input: String) -> String {
         var out = input
         for regex in patterns {
             let range = NSRange(out.startIndex..., in: out)
@@ -282,6 +419,14 @@ public enum SentryLogger {
         if let regex = userPathRegex {
             let range = NSRange(out.startIndex..., in: out)
             out = regex.stringByReplacingMatches(in: out, range: range, withTemplate: "/Users/[user]")
+        }
+        if let regex = uuidRegex {
+            let range = NSRange(out.startIndex..., in: out)
+            out = regex.stringByReplacingMatches(in: out, range: range, withTemplate: "[id]")
+        }
+        if let regex = emailRegex {
+            let range = NSRange(out.startIndex..., in: out)
+            out = regex.stringByReplacingMatches(in: out, range: range, withTemplate: "[email]")
         }
         return out
     }

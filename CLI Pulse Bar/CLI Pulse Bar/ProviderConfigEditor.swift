@@ -279,17 +279,22 @@ struct ProviderConfigEditor: View {
                 }
 
                 if cookieSource == .automatic {
+                    // v1.55: Strict privacy mode stops the browser import, so
+                    // the note must not promise one.
+                    let strictPrivacyMode = PrivacySettings.shared.skipsOtherAppsSecretsOnItsOwn
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 3) {
-                            Image(systemName: "sparkles")
+                            Image(systemName: strictPrivacyMode ? "lock.shield" : "sparkles")
                                 .font(.system(size: 8))
-                                .foregroundStyle(PulseTheme.accent)
-                            Text(L10n.providerConfig.autoImportNote)
+                                .foregroundStyle(strictPrivacyMode ? Color.secondary : PulseTheme.accent)
+                            Text(strictPrivacyMode
+                                 ? L10n.providerConfig.autoImportNoteStrict
+                                 : L10n.providerConfig.autoImportNote)
                                 .font(.system(size: 9))
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
-                        if autoImportFailed {
+                        if autoImportFailed, !strictPrivacyMode {
                             manualCookieField(label: L10n.providerConfig.autoImportFailed)
                                 .transition(.opacity.combined(with: .move(edge: .top)))
                         }
@@ -810,12 +815,17 @@ struct ProviderConfigEditor: View {
         }
 
         let start = Date()
+        // What Strict privacy mode stopped this test reading (v1.55), so a
+        // failure it caused says that rather than "couldn't import".
+        let strictPrivacySkips = StrictPrivacySkipLog()
         do {
             let gatedResult =
-                try await RuntimeProtectedProviderAction.perform(
-                    runtimeEnvironment: state.runtimeEnvironment
-                ) {
-                    try await collector.collect(config: probeConfig)
+                try await StrictPrivacySkipLog.$current.withValue(strictPrivacySkips) {
+                    try await RuntimeProtectedProviderAction.perform(
+                        runtimeEnvironment: state.runtimeEnvironment
+                    ) {
+                        try await collector.collect(config: probeConfig)
+                    }
                 }
             guard let result = gatedResult else {
                 testState = .failure(
@@ -837,6 +847,18 @@ struct ProviderConfigEditor: View {
             testState = .success(summary)
             withAnimation { autoImportFailed = false }
         } catch {
+            if let skip = CollectorRunner.strictPrivacySkip(
+                causing: error,
+                strictPrivacySkips: strictPrivacySkips.skips
+            ) {
+                // Nothing was imported because nothing was looked for; the
+                // "couldn't import, paste manually" field would say otherwise.
+                testState = .failure(
+                    StrictPrivacyModeSkipped(skip, provider: descriptor.displayName)
+                        .localizedDescription
+                )
+                return
+            }
             testState = .failure(error.localizedDescription)
             if cookieSource == .automatic {
                 withAnimation { autoImportFailed = true }

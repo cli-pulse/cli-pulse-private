@@ -17,6 +17,9 @@ final class LANSessionControlClientTests: XCTestCase {
             channel: macEnd, backend: backend,
             identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Studio", cloudDeviceID: "cloud-9", home: "/Users/s"),
             peer: peer,
+            // The app's local-scan answer allows reading this Mac, so the
+            // helper reports `claude_remote_control` (v1.55).
+            localScanAllowed: { true },
             heartbeatInterval: heartbeat, silenceTimeout: silence, redactionIdleFlush: 0.05)
         let run = Task { await agent.run() }
         let client = LANSessionControlClient(channel: phoneEnd, heartbeatInterval: heartbeat, silenceTimeout: silence)

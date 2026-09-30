@@ -491,14 +491,21 @@ class LocalScanGate:
         self._pending: tuple[threading.Thread, dict] | None = None
         self._last: tuple[Cycle, str] | None = None
 
-    def check(self, *, wait_s: float | None = None, sending: object = None) -> Decision:
+    def check(
+        self, *, wait_s: float | None = None, sending: object = None, log: bool = True
+    ) -> Decision:
         """The decision for now. `wait_s` bounds how long this check waits for
         the plist read (default `READ_WAIT_S`); a read that is not done by then
         counts as unreadable, so this check pauses.
 
         `sending`, when given, is the pairing the caller loaded and is about to
         upload with: a sign-in then also needs the file to still be paired
-        for that pairing's user (`pairing_sent_with`)."""
+        for that pairing's user (`pairing_sent_with`).
+
+        `log` False leaves the decision out of this gate's once-per-change
+        log line: for a caller that asks about a different pairing than the
+        cycle does (the remote command poll, about once a second) and logs its
+        own, so the two questions do not overwrite each other's last line."""
         paired_user_id = (
             self._paired_user_id if sending is None
             else pairing_sent_with(sending, self._paired_user_id)
@@ -507,7 +514,8 @@ class LocalScanGate:
             self._read(self._read_wait_s if wait_s is None else wait_s),
             paired_user_id,
         )
-        self._log_if_changed(decision)
+        if log:
+            self._log_if_changed(decision)
         return decision
 
     def allows_collection(self, *, wait_s: float | None = None) -> bool:

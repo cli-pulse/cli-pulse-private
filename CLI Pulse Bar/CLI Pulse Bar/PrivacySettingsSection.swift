@@ -178,6 +178,7 @@ struct PrivacySettingsSection: View {
             Text(L10n.settings.localOnlyModeHint)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.leading, 2)
                 .padding(.bottom, 2)
 

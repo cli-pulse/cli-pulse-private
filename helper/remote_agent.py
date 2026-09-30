@@ -1027,19 +1027,31 @@ class RemoteAgentManager:
 
     # ── per-cycle ────────────────────────────────────────────
 
-    def tick(self, max_commands: int = 10) -> dict[str, int]:
-        return self._dispatch(self._tick_impl, max_commands)
+    def tick(self, max_commands: int = 10, *, poll_remote: bool = True) -> dict[str, int]:
+        return self._dispatch(self._tick_impl, max_commands, poll_remote)
 
-    def _tick_impl(self, max_commands: int = 10) -> dict[str, int]:
+    def _tick_impl(self, max_commands: int = 10, poll_remote: bool = True) -> dict[str, int]:
         """One daemon cycle. Pulls commands, dispatches, drains stdout,
         observes child exits.
+
+        `poll_remote` False leaves out the pull from the server
+        (`remote_helper_pull_commands`): the daemon passes it while the app's
+        local-scan answer or account pauses this Mac's uploads
+        (`cli_pulse_helper._full_remote_tick`). Everything else still runs,
+        and that includes posting a running session's redacted output and
+        status to the server (`_post_event`), which accepts them only while
+        Remote Control is on for the pairing's account.
 
         Returns counters for tests / logging:
           * commands_processed
           * sessions_exited
           * bytes_drained
         """
-        processed = self._poll_and_dispatch_commands(max_commands=max_commands)
+        processed = (
+            self._poll_and_dispatch_commands(max_commands=max_commands)
+            if poll_remote
+            else 0
+        )
         local = self._tick_local_impl()
         # v-next review (H1): the reaper terminates LIVE children, and
         # transport.close() can block up to ~4 s (SIGTERM→grace→SIGKILL) on

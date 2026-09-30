@@ -1317,6 +1317,16 @@ public final class AppState: ObservableObject {
         // `start()` self-gates on the App Store build.
         // M3 dark-ship: the user's toggle only matters when the build
         // offers the feature at all.
+        // v1.55: a phone's hello makes the helper read Claude Code's settings
+        // and credentials files (`claude_remote_control`); it may only after
+        // the same answer that lets CLI Pulse read this Mac at all.
+        lanAgent.localScanAllowed = { [weak self] in
+            guard let self else { return false }
+            return LocalCollectionPolicy.allowsCollection(
+                isAuthenticated: self.isAuthenticated,
+                consent: self.localScanConsent
+            )
+        }
         if RemoteControlFeature.isAvailable(), lanAgent.isEnabled { lanAgent.start() }
         #endif
     }

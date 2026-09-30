@@ -65,6 +65,14 @@ enum ZedKeychainGate {
     }
     /// Test seam.
     static func reset() { lock.withLock { deniedUntil = nil } }
+
+    /// v1.55: Strict privacy mode. Zed's item is another app's secret, and
+    /// Strict privacy mode means CLI Pulse reads none on its own, so while it
+    /// is on the item is not read, nor even looked for. A seam so tests do not
+    /// flip the real setting.
+    nonisolated(unsafe) static var strictPrivacyModeSkips: () -> Bool = {
+        PrivacySettings.shared.skipsOtherAppsSecretsOnItsOwn
+    }
 }
 
 public struct ZedCollector: ProviderCollector, Sendable {
@@ -75,19 +83,65 @@ public struct ZedCollector: ProviderCollector, Sendable {
 
     public func isAvailable(config: ProviderConfig) -> Bool {
         #if DEVID_BUILD
-        // Skip entirely while cooling down from an interaction-denied read, so we
-        // don't re-trigger the SecurityAgent ACL dialog every refresh.
-        guard !ZedKeychainGate.isCoolingDown() else { return false }
-        // Available only when Zed's own credential is present in the Keychain.
-        return Self.credentialsPresent()
+        return Self.available(
+            strictPrivacyMode: ZedKeychainGate.strictPrivacyModeSkips(),
+            coolingDown: ZedKeychainGate.isCoolingDown(),
+            credentialsPresent: Self.credentialsPresent
+        )
         #else
         // MAS sandbox cannot read another app's Keychain item.
         return false
         #endif
     }
 
+    /// v1.55: under Strict privacy mode the row says so ("Not read in Strict
+    /// privacy mode"), not "Not set up": CLI Pulse did not look for Zed's
+    /// item, so it cannot say Zed is not set up. Otherwise as `isAvailable`,
+    /// with no reason given (the default).
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        #if DEVID_BUILD
+        return Self.readiness(
+            strictPrivacyMode: ZedKeychainGate.strictPrivacyModeSkips(),
+            available: { isAvailable(config: config) }
+        )
+        #else
+        // The App Store build never reads Zed's item, whatever the switch.
+        return isAvailable(config: config) ? .ready : .notReady(.unknown)
+        #endif
+    }
+
+    /// The Developer ID build's readiness, apart from the keychain it asks.
+    static func readiness(
+        strictPrivacyMode: Bool,
+        available: () -> Bool
+    ) -> CollectorReadiness {
+        if strictPrivacyMode { return .notReady(.strictPrivacyModeKeychain) }
+        return available() ? .ready : .notReady(.unknown)
+    }
+
+    /// The Developer ID build's rule, apart from the keychain it asks.
+    /// - Strict privacy mode on: not available, and Zed's item is not even
+    ///   looked for (v1.55).
+    /// - Cooling down from an interaction-denied read: not available, so we
+    ///   don't re-trigger the SecurityAgent ACL dialog every refresh.
+    /// - Otherwise: available only when Zed's own credential is present.
+    static func available(
+        strictPrivacyMode: Bool,
+        coolingDown: Bool,
+        credentialsPresent: () -> Bool
+    ) -> Bool {
+        guard !strictPrivacyMode, !coolingDown else { return false }
+        return credentialsPresent()
+    }
+
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         #if DEVID_BUILD
+        // Reached only through `isAvailable`, which already says no under
+        // Strict privacy mode; asked again so no other path reads the item.
+        // "No credentials found" would be false: nothing was looked for.
+        guard !ZedKeychainGate.strictPrivacyModeSkips() else {
+            throw StrictPrivacyModeSkipped(.keychainItem, provider: "Zed")
+        }
         guard let creds = try Self.loadCredentials() else {
             throw CollectorError.notSignedIn(CredentialProblem(nil, .zedSignInFromEditor))
         }

@@ -36,6 +36,21 @@ class FakeStreamingBackend: SessionControlling, @unchecked Sendable {
                                    helperVersion: "1.30.0", implementation: "swift-bundled",
                                    claudeRemoteControl: claudeRemoteControl)
     }
+    /// Every `local_scan_allowed` the agent sent with a hello, in order.
+    private var _helloLocalScanAnswers: [Bool?] = []
+    var helloLocalScanAnswers: [Bool?] { lock.lock(); defer { lock.unlock() }; return _helloLocalScanAnswers }
+    /// As the bundled Swift helper answers since 1.55: `claude_remote_control`
+    /// is read, and so in the reply, only when the caller says yes.
+    func hello(localScanAllowed: Bool?) async throws -> SessionControlHello {
+        lock.lock(); _helloLocalScanAnswers.append(localScanAllowed); lock.unlock()
+        let full = try await hello()
+        guard localScanAllowed != true else { return full }
+        return SessionControlHello(protocolVersion: full.protocolVersion, supportedMethods: full.supportedMethods,
+                                   capabilities: full.capabilities, providerAvailability: full.providerAvailability,
+                                   helperVersion: full.helperVersion, paired: full.paired,
+                                   providerPlanStatus: full.providerPlanStatus, implementation: full.implementation,
+                                   claudeRemoteControl: nil)
+    }
     func startManagedSession(provider: String, clientLabel: String?, cwdBasename: String?, cwdHmac: String?) async throws -> SessionControlStartResult {
         try await startManagedSession(provider: provider, clientLabel: clientLabel, cwd: nil, claudeRemoteControl: false)
     }

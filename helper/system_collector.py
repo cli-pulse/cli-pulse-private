@@ -114,6 +114,42 @@ def _claude_keychain_allowed(what: str) -> bool:
         return False
 
 
+# Asked just before this module opens a browser's cookie store and reads its
+# "Safe Storage" keychain item for the claude.ai `sessionKey`
+# (`_resolve_claude_session_key`). The daemon (and the heartbeat/sync
+# subcommands) set it to `privacy_switches`' `BrowserCookieGate.allows`, so
+# Settings › Privacy's "Strict privacy mode" stops it: strict means no reading
+# other apps' secrets. None (tests, direct imports) reads as before. A gate
+# that raises counts as no.
+_browser_cookie_gate: Callable[[str], bool] | None = None
+# Whether the app's copy says Strict privacy mode is on: the switch itself,
+# not merely "do not read" (a copy that cannot be read says that too). Set
+# with the gate (`BrowserCookieGate.strict_privacy_mode`). Asked by
+# `forget_claude_session_key_under_strict_privacy_mode`.
+_browser_cookie_strict: Callable[[], bool] | None = None
+
+
+def set_browser_cookie_gate(
+    gate: Callable[[str], bool] | None,
+    *,
+    strict_privacy_mode: Callable[[], bool] | None = None,
+) -> None:
+    global _browser_cookie_gate, _browser_cookie_strict
+    _browser_cookie_gate = gate
+    _browser_cookie_strict = strict_privacy_mode if gate is not None else None
+
+
+def _browser_cookies_allowed(what: str) -> bool:
+    gate = _browser_cookie_gate
+    if gate is None:
+        return True
+    try:
+        return bool(gate(what))
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not read
+        logger.debug("browser cookie gate failed: %s", exc)
+        return False
+
+
 PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     # (provider_name, regex_pattern, confidence: high|medium|low)
     ("Codex", r"\bcodex\b", "high"),
@@ -625,7 +661,9 @@ def _fetch_claude_usage() -> dict | None:
             _write_claude_snapshot(api_result, tier_raw, "oauth")
             return api_result
 
-    # Step 3: Try real Claude web usage via sessionKey from desktop/browser cookies
+    # Step 3: Try real Claude web usage via sessionKey from desktop/browser
+    # cookies, unless Strict privacy mode says not to (`_browser_cookies_allowed`
+    # in `_resolve_claude_session_key`).
     web_result = _fetch_claude_web_usage(plan_type)
     if web_result:
         _write_claude_snapshot(web_result, tier_raw, "web")
@@ -777,9 +815,63 @@ def _write_claude_snapshot(result: dict, tier_raw: str, source: str) -> None:
         logger.debug(f"Failed to write Claude snapshot: {e}")
 
 
+def _claude_session_key_dirs() -> list[Path]:
+    """Where `_write_claude_session_key` puts the claude.ai cookie for the
+    app's Web strategy (`ClaudeHelperContract.sessionKeyCandidatePaths`)."""
+    return [
+        Path.home() / "Library" / "Group Containers" / "group.yyh.CLI-Pulse",
+        Path.home() / ".clipulse",
+    ]
+
+
+def forget_claude_session_key_under_strict_privacy_mode() -> bool:
+    """Strict privacy mode: remove the claude.ai cookie this helper copied
+    from a browser or the Claude desktop app in an earlier cycle
+    (`claude_session.json`, in both places it writes it).
+
+    That cookie is another app's secret, and Strict privacy mode means CLI
+    Pulse keeps none it took on its own: this helper stops taking new ones
+    (`_resolve_claude_session_key`), and the app, in Strict privacy mode,
+    ignores the file (`ClaudeWebStrategy`). Removing the copy is no read of
+    this Mac, so it does not wait for the local-scan answer. Only the switch
+    itself removes it: a copy of the switches that cannot be read, or none
+    (an app older than 1.55), leaves the file alone.
+
+    Returns whether Strict privacy mode was on."""
+    strict = _browser_cookie_strict
+    if strict is None:
+        return False
+    try:
+        on = bool(strict())
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so leave the file
+        logger.debug("Strict privacy mode check failed: %s", exc)
+        return False
+    if not on:
+        return False
+    for target_dir in _claude_session_key_dirs():
+        session_file = target_dir / "claude_session.json"
+        try:
+            session_file.unlink()
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            logger.warning("Could not remove the claude.ai cookie copied earlier (%s): %s", session_file, exc)
+            continue
+        logger.info(
+            "Removed the claude.ai cookie copied from a browser earlier (%s): "
+            "Strict privacy mode is on in the app",
+            session_file,
+        )
+    return True
+
+
 def _write_claude_session_key(session_key: str, source: str) -> None:
     """Write session key file for the app's Web strategy."""
     if not _cycle_still_allowed("Claude session key write"):
+        return
+    # Asked again: Strict privacy mode turned on since the cookie was read
+    # means no copy of it is kept for the app either.
+    if not _browser_cookies_allowed("claude.ai session cookie copy for the app"):
         return
     try:
         payload = _json.dumps({
@@ -787,11 +879,7 @@ def _write_claude_session_key(session_key: str, source: str) -> None:
             "source": source,
             "fetched_at": datetime.now(timezone.utc).isoformat(),
         }, indent=2)
-        target_dirs = [
-            Path.home() / "Library" / "Group Containers" / "group.yyh.CLI-Pulse",
-            Path.home() / ".clipulse",
-        ]
-        for target_dir in target_dirs:
+        for target_dir in _claude_session_key_dirs():
             try:
                 target_dir.mkdir(parents=True, exist_ok=True)
                 session_file = target_dir / "claude_session.json"
@@ -844,7 +932,16 @@ def _fetch_claude_web_usage(plan_type: str | None) -> dict | None:
 
 
 def _resolve_claude_session_key() -> tuple[str, str] | None:
-    """Return a decrypted claude.ai sessionKey from Claude desktop or Chromium browsers."""
+    """Return a decrypted claude.ai sessionKey from Claude desktop or Chromium browsers.
+
+    That reads other apps' secrets: each browser's cookie store, and its "Safe
+    Storage" keychain item to decrypt the cookie. Strict privacy mode in the
+    app stops it (`_browser_cookies_allowed`), before any store is listed or
+    opened, so nothing below runs, and the cookie it copied for the app in an
+    earlier cycle is removed (`forget_claude_session_key_under_strict_privacy_mode`)."""
+    if not _browser_cookies_allowed("claude.ai session cookie"):
+        forget_claude_session_key_under_strict_privacy_mode()
+        return None
     for source_label, db_path, services in _claude_cookie_candidates():
         try:
             session_key = _extract_session_key_from_cookie_db(db_path, services)

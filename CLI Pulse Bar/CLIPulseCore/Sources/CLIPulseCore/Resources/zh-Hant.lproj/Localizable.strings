@@ -512,6 +512,7 @@
 "provider_config.manual_cookie_header" = "手動 Cookie 標頭";
 "provider_config.auto_import_note" = "自動從已登入的瀏覽器匯入工作階段 Cookie。macOS 可能會要求一次鑰匙圈存取權限；若未找到，請在下方手動貼上。";
 "provider_config.auto_import_failed" = "無法自動匯入工作階段 Cookie，請手動貼上：";
+"provider_config.auto_import_note_strict" = "嚴格隱私模式已開啟，CLI Pulse 不會從瀏覽器匯入 Cookie。可選擇「手動」來貼上 Cookie，或在「設定 › 隱私」中關閉嚴格隱私模式。";
 "provider_config.capabilities" = "支援功能";
 "provider_config.cap_quota" = "配額";
 "provider_config.cap_exact_cost" = "精確成本";
@@ -1093,6 +1094,9 @@
 "collector_status.not_signed_in_hint" = "在 %@ 自己的 App 或命令列登入即可，不需要在這裡填入金鑰。";
 "collector_status.shared_login_taken" = "共用登入被佔用";
 "collector_status.shared_login_taken_hint" = "這台 Mac 上只能有一個 %@ 登入，已被另一個帳號佔用。為這個帳號單獨填入一組 API 金鑰，或移除另一個帳號。";
+"collector_status.strict_privacy_mode" = "嚴格隱私模式下不讀取";
+"collector_status.strict_privacy_mode_cookie_hint" = "嚴格隱私模式下，CLI Pulse 不會從瀏覽器匯入 %@ 的 Cookie。可將它的「Cookie 來源」設為「手動」並貼上 Cookie，或在「設定 › 隱私」中關閉嚴格隱私模式。";
+"collector_status.strict_privacy_mode_keychain_hint" = "嚴格隱私模式下，CLI Pulse 不會讀取 %@ 的鑰匙圈項目。若要在這裡顯示，請在「設定 › 隱私」中關閉嚴格隱私模式。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "開啟設定來連接這個服務商。";
 "collector_status.no_data" = "沒有回傳資料";
@@ -1155,7 +1159,7 @@
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "匿名安裝統計";
 "telemetry.disclosure_body" = "CLI Pulse 只回報它走到了哪一步：是否已安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。如果你使用遠端控制，還會加上四項是非資訊：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的私人網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。我們靠這些資訊找出 App 在哪一步卡住；由於不需要帳號，少了這些資訊我們就無從得知。";
-"telemetry.disclosure_body_local_only" = "嚴格隱私模式已開啟，CLI Pulse 什麼都不會傳送。若關閉嚴格隱私模式，它會回報四個步驟：是否已安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。如果你使用遠端控制，還會加上四項是非資訊：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的私人網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
+"telemetry.disclosure_body_local_only" = "嚴格隱私模式已開啟，CLI Pulse 不會傳送任何匿名統計。若關閉嚴格隱私模式，它會回報四個步驟：是否已安裝、helper 是否連上、是否找到過可追蹤的 CLI、是否出現過費用數字，以及目前顯示的語言。如果你使用遠端控制，還會加上四項是非資訊：手機是否透過你的 Wi‑Fi 連到這台 Mac、是否透過你自己的私人網路連到這台 Mac、是否有工作階段交接給了 claude.ai，以及你是否遙控過 Claude 以外的工具。";
 "telemetry.not_collected" = "不含檔案路徑、專案名稱、服務商名稱、token 數或費用金額，也不含任何能識別你本人或你裝置的資訊。該 ID 是隨機產生的，解除安裝即刪除。";
 "telemetry.toggle" = "傳送匿名安裝統計";
 "telemetry.toggle_local_only" = "已關閉——嚴格隱私模式已經涵蓋了這一項。";
@@ -1381,7 +1385,7 @@
 "local_scan_consent.settings_declined_detail" = "你選擇了「暫時不要」。即使已登入，這個選擇也不會改變。";
 "local_scan_consent.choose_again" = "重新選擇…";
 "settings.local_only_mode" = "嚴格隱私模式";
-"settings.local_only_mode_hint" = "CLI Pulse 不會自行讀取 Claude Code 的鑰匙圈項目，也不傳送匿名統計。個人專屬資料夾中日誌檔的用量，以及同步到你的帳號，都不受影響。";
+"settings.local_only_mode_hint" = "CLI Pulse 不會自行讀取其他 App 存放在鑰匙圈或瀏覽器中的機密資訊：不讀取 Claude Code 或 Zed 的鑰匙圈項目，也不讀取瀏覽器或 Claude 桌面版 App 儲存的 Cookie，即使服務商設為自動讀取 Cookie 也不例外。它也不傳送匿名統計。仍會讀取的是 AI CLI 存放在你個人專屬資料夾中的憑證檔（用於配額）與日誌檔（用於用量）。當機報告照常傳送，同步到你的帳號也不受影響。";
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
 "settings.skip_claude_keychain_forced" = "已由嚴格隱私模式強制開啟。";
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";

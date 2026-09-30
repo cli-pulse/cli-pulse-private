@@ -101,6 +101,25 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .attention
             )
 
+        case .notReady(.strictPrivacyModeCookies):
+            // v1.55. The user turned Strict privacy mode on, so this is their
+            // choice working, not a fault: normal severity. "Authentication
+            // failed" was false (nothing was sent), and so is "reconnect".
+            return .init(
+                label: L10n.collectorStatus.strictPrivacyMode,
+                nextStep: L10n.collectorStatus.strictPrivacyModeCookieHint(providerName),
+                severity: .normal
+            )
+
+        case .notReady(.strictPrivacyModeKeychain):
+            // v1.55. "Not set up" was false for someone who uses Zed, and
+            // nothing in the provider's own settings could change it.
+            return .init(
+                label: L10n.collectorStatus.strictPrivacyMode,
+                nextStep: L10n.collectorStatus.strictPrivacyModeKeychainHint(providerName),
+                severity: .normal
+            )
+
         case .notReady(.unknown):
             // We could not tell why. Do not guess a cause — point at the one
             // screen that can resolve any of them.

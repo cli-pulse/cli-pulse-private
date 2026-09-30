@@ -116,18 +116,23 @@ final class LANLinkAgentSessionTests: XCTestCase {
     /// The default peer is attributed AND permitted — M1's happy path.
     /// Pass `peer: nil` for an unattributed connection (M0 phone, or a
     /// pairing-key connection), or a peer with `controlAllowed: false`.
+    /// `localScanAllowed` is the app's local-scan answer as the agent reads
+    /// it at each hello; yes by default, the answer every test before 1.55
+    /// assumed (the helper read Claude Code's files whatever it was).
     private func makeSession(
         backend: FakeStreamingBackend = FakeStreamingBackend(),
         peer: LANAgentPeer? = LANAgentPeer(id: "phone-1", displayName: "Probe", controlAllowed: true),
         heartbeat: TimeInterval = 0.05,
         silence: TimeInterval = 10,
-        idleFlush: TimeInterval = 0.05
+        idleFlush: TimeInterval = 0.05,
+        localScanAllowed: @escaping @Sendable () async -> Bool = { true }
     ) -> (session: LANLinkAgentSession, phone: Phone, backend: FakeStreamingBackend, run: Task<LANLinkAgentSession.EndReason, Never>) {
         let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
         let session = LANLinkAgentSession(
             channel: macEnd, backend: backend,
             identity: LANAgentIdentity(deviceID: "mac-1", displayName: "Test Mac", cloudDeviceID: "cloud-9", home: "/Users/t"),
             peer: peer,
+            localScanAllowed: localScanAllowed,
             heartbeatInterval: heartbeat, silenceTimeout: silence, redactionIdleFlush: idleFlush)
         let phone = Phone(channel: phoneEnd)
         let run = Task { await session.run() }
@@ -233,6 +238,65 @@ final class LANLinkAgentSessionTests: XCTestCase {
         XCTAssertEqual(r["helper"]?.objectValue?["provider_availability"]?.arrayValue?.compactMap(\.stringValue), ["claude", "gemini"])
         XCTAssertEqual(r["helper"]?.objectValue?["claude_remote_control"]?.objectValue?["policy"]?.stringValue, "allowed")
         await session.close(); _ = await run.value
+    }
+
+    // MARK: - hello and the local-scan answer (v1.55)
+
+    /// The helper reads Claude Code's settings and credentials files for
+    /// `claude_remote_control` only when told the local scan is allowed. The
+    /// agent says hello to it for every phone, so it has to pass the answer:
+    /// before 1.55 it passed nothing and the helper read them after "Not now".
+    func testHelloPassesTheLocalScanAnswerToTheHelper() async throws {
+        let (session, phone, backend, run) = makeSession(localScanAllowed: { false })
+        let r = try unwrapOK(try await phone.request(.hello))
+        XCTAssertEqual(backend.helloLocalScanAnswers, [false])
+        XCTAssertNil(r["helper"]?.objectValue?["claude_remote_control"],
+                     "after \"Not now\" the phone is not offered what the helper did not read")
+        // The rest of the helper's state still reaches the phone.
+        XCTAssertEqual(r["helper"]?.objectValue?["reachable"]?.boolValue, true)
+        XCTAssertEqual(r["helper"]?.objectValue?["provider_availability"]?.arrayValue?.compactMap(\.stringValue), ["claude", "gemini"])
+        await session.close(); _ = await run.value
+    }
+
+    func testTheAnswerIsAskedAgainAtEveryHello() async throws {
+        final class Answer: @unchecked Sendable {
+            let lock = NSLock()
+            var value = false
+            func get() -> Bool { lock.withLock { value } }
+            func set(_ v: Bool) { lock.withLock { value = v } }
+        }
+        let answer = Answer()
+        let (session, phone, backend, run) = makeSession(localScanAllowed: { answer.get() })
+        let before = try unwrapOK(try await phone.request(.hello))
+        XCTAssertNil(before["helper"]?.objectValue?["claude_remote_control"])
+        answer.set(true)  // "Start local scan" in the app, while the phone stays connected
+        let after = try unwrapOK(try await phone.request(.hello))
+        XCTAssertEqual(after["helper"]?.objectValue?["claude_remote_control"]?.objectValue?["policy"]?.stringValue, "allowed")
+        XCTAssertEqual(backend.helloLocalScanAnswers, [false, true])
+        await session.close(); _ = await run.value
+    }
+
+    func testAnAgentBuiltWithoutTheAnswerTellsTheHelperNo() async throws {
+        let (macEnd, phoneEnd) = InMemoryLANLinkChannel.pair()
+        let backend = FakeStreamingBackend()
+        let session = LANLinkAgentSession(
+            channel: macEnd, backend: backend,
+            identity: LANAgentIdentity(deviceID: "mac-1", displayName: "M", cloudDeviceID: nil, home: nil),
+            heartbeatInterval: 0.05, silenceTimeout: 10, redactionIdleFlush: 0.05)
+        let phone = Phone(channel: phoneEnd)
+        let run = Task { await session.run() }
+        let r = try unwrapOK(try await phone.request(.hello))
+        XCTAssertEqual(backend.helloLocalScanAnswers, [false])
+        XCTAssertNil(r["helper"]?.objectValue?["claude_remote_control"])
+        await session.close(); _ = await run.value
+    }
+
+    @MainActor
+    func testTheMacAgentSaysNoUntilTheAppTellsIt() {
+        let agent = LANLinkAgent(backend: FakeStreamingBackend())
+        XCTAssertFalse(agent.localScanAllowed())
+        agent.localScanAllowed = { true }
+        XCTAssertTrue(agent.localScanAllowed())
     }
 
     func testHelloForAnUnpermittedOrUnattributedPeerIsReadOnly() async throws {
