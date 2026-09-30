@@ -23,8 +23,7 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
     private static let helperSources = repoRoot
         .appendingPathComponent("CLI Pulse Bar/CLIPulseHelper")
 
-    /// Every `.swift` file under `dir`, with its lines, `//` comments removed
-    /// so prose can name the calls freely.
+    /// A `.swift` file, read for the checks below.
     private struct SourceFile {
         /// The file's name, e.g. `PrivacySettings.swift`.
         let name: String
@@ -98,7 +97,7 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
                 openers.append((file.name, file.location(index)))
             }
         }
-        XCTAssertEqual(openers.map(\.name), ["ClaudeSourceStrategy.swift"], "\(openers.map(\.location))")
+        XCTAssertEqual(openers.map { $0.name }, ["ClaudeSourceStrategy.swift"], "\(openers.map { $0.location })")
     }
 
     func testTheLoginItemFollowsTheAppsCopyBeforeItsDaemonStarts() throws {
