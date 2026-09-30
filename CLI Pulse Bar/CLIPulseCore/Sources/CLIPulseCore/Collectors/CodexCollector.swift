@@ -375,28 +375,49 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     // MARK: - Result building
 
+    /// The API window as the shared `RateWindow` the normalizer reads. A
+    /// missing or zero `limit_window_seconds` is an unknown length, not a
+    /// zero-minute window.
+    static func laneWindow(_ window: RateWindow) -> CLIPulseCore.RateWindow {
+        let minutes = window.limitWindowSeconds / 60
+        return CLIPulseCore.RateWindow(
+            usedPercent: Double(window.usedPercent),
+            windowMinutes: minutes > 0 ? minutes : nil,
+            resetsAt: window.resetAt,
+            resetDescription: nil
+        )
+    }
+
     func buildResult(usage: UsageResponse) -> CollectorResult {
         var tiers: [TierDTO] = []
         let isoFormatter = sharedISO8601Formatter
 
-        // Rate limit windows use percentage: quota=100, remaining=100-used
-        if let pw = usage.primaryWindow {
-            let name = "5h Window"
+        // Rate limit windows use percentage: quota=100, remaining=100-used.
+        // Each window goes in the lane its LENGTH (`limit_window_seconds`)
+        // says, not the API slot it arrived in — a weekly-only account gets
+        // its weekly window in `primary_window`, which used to be shown as
+        // "5h Window". Each tier carries its length and role, so the pace
+        // marker on a 5-hour bar is placed for 5 hours, and the display can
+        // tell which window binds (`QuotaBindingCap`).
+        let lanes = CodexRateWindowNormalizer.normalize(
+            primary: usage.primaryWindow.map(Self.laneWindow),
+            secondary: usage.secondaryWindow.map(Self.laneWindow)
+        )
+        for (window, lane) in [
+            (lanes.primary, CodexQuotaWindows.Lane.session),
+            (lanes.secondary, CodexQuotaWindows.Lane.weekly),
+        ] {
+            guard let window else { continue }
             tiers.append(TierDTO(
-                name: name,
+                name: CodexQuotaWindows.tierName(
+                    windowMinutes: window.windowMinutes,
+                    lane: lane
+                ),
                 quota: 100,
-                remaining: max(0, 100 - pw.usedPercent),
-                reset_time: pw.resetAt.map { isoFormatter.string(from: $0) }
-            ))
-        }
-
-        if let sw = usage.secondaryWindow {
-            let name = "Weekly"
-            tiers.append(TierDTO(
-                name: name,
-                quota: 100,
-                remaining: max(0, 100 - sw.usedPercent),
-                reset_time: sw.resetAt.map { isoFormatter.string(from: $0) }
+                remaining: max(0, 100 - Int(window.usedPercent)),
+                reset_time: window.resetsAt.map { isoFormatter.string(from: $0) },
+                windowMinutes: window.windowMinutes,
+                role: CodexQuotaWindows.role(for: lane)
             ))
         }
 
@@ -409,23 +430,28 @@ public struct CodexCollector: ProviderCollector, Sendable {
             tiers.append(CodexCreditsBalance.tier(balance: balance))
         }
 
-        // Overall quota from primary window (percentage-based)
+        // Overall quota from the session window (percentage-based); from the
+        // weekly one when the account has no session window. It used to be
+        // the primary SLOT, which for a weekly-only account is the weekly
+        // window under the session's name.
+        let headline = lanes.primary ?? lanes.secondary
+        let headlineUsed = headline.map { Int($0.usedPercent) }
         let overallQuota = 100
-        let overallRemaining = usage.primaryWindow.map { max(0, 100 - $0.usedPercent) } ?? 100
-        let resetTime = usage.primaryWindow?.resetAt.map { isoFormatter.string(from: $0) }
+        let overallRemaining = headlineUsed.map { max(0, 100 - $0) } ?? 100
+        let resetTime = headline?.resetsAt.map { isoFormatter.string(from: $0) }
 
         // Status text
         let statusText: String
-        if let pw = usage.primaryWindow {
-            statusText = "\(pw.usedPercent)% used"
+        if let headlineUsed {
+            statusText = "\(headlineUsed)% used"
         } else {
             statusText = "Operational"
         }
 
         let providerUsage = ProviderUsage(
             provider: ProviderKind.codex.rawValue,
-            today_usage: usage.primaryWindow?.usedPercent ?? 0,
-            week_usage: usage.secondaryWindow?.usedPercent ?? 0,
+            today_usage: headlineUsed ?? 0,
+            week_usage: lanes.secondary.map { Int($0.usedPercent) } ?? 0,
             estimated_cost_today: 0,
             estimated_cost_week: 0,
             cost_status_today: "Unavailable",

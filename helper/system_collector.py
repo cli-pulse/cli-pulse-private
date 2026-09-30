@@ -1240,31 +1240,72 @@ def _fetch_codex_usage() -> dict | None:
         return None
 
 
+_CODEX_WEEKLY_MINUTES = 10080
+
+
+def _codex_window_minutes(window: dict) -> int | None:
+    """Window length from ``limit_window_seconds``; missing or under a minute is unknown."""
+    seconds = window.get("limit_window_seconds")
+    if isinstance(seconds, bool) or not isinstance(seconds, (int, float)):
+        return None
+    minutes = int(seconds) // 60
+    return minutes if minutes > 0 else None
+
+
+def _codex_lanes(primary: dict | None, secondary: dict | None) -> tuple[dict | None, dict | None]:
+    """Put the two API slots in the (session, weekly) lanes their lengths say.
+
+    Line for line the table of the app's ``CodexRateWindowNormalizer`` (ported
+    from CodexBar) and HelperSwift's ``CodexQuotaFetcher.lanes``, so every
+    writer of ``provider_quotas`` files a window under the same lane. A lone
+    window is the weekly lane if it is 10080 minutes long and the session lane
+    otherwise, whichever slot it came in. Of two windows, a weekly one in the
+    primary slot swaps with the other (unless that is weekly too); otherwise
+    each keeps its slot.
+    """
+    def is_weekly(window: dict) -> bool:
+        return _codex_window_minutes(window) == _CODEX_WEEKLY_MINUTES
+
+    if primary and secondary:
+        if is_weekly(primary) and not is_weekly(secondary):
+            return secondary, primary
+        return primary, secondary
+    if primary:
+        return (None, primary) if is_weekly(primary) else (primary, None)
+    if secondary:
+        return (None, secondary) if is_weekly(secondary) else (secondary, None)
+    return None, None
+
+
 def _parse_codex_usage_response(data: dict) -> dict | None:
     """Parse OpenAI/Codex wham/usage API response.
 
     Real format:
-    {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":23,"reset_after_seconds":2391,"reset_at":1775054266},...}}
+    {"plan_type":"plus","rate_limit":{"primary_window":{"used_percent":23,"reset_after_seconds":2391,"reset_at":1775054266,"limit_window_seconds":18000},...}}
+
+    Each window is placed by its length, not its slot (an account with only a
+    weekly limit gets it in ``primary_window``), and carries ``windowMinutes``
+    and ``role`` — the keys the app's ``TierDTO`` reads from
+    ``provider_quotas.tiers``. The names stay this helper's: "Session" and
+    "Weekly".
     """
     tiers = []
     plan_type = (data.get("plan_type") or "Plus").capitalize()
     rl = data.get("rate_limit", {})
 
-    pw = rl.get("primary_window")
-    if pw:
-        pct_used = pw.get("used_percent", 0)
+    session, weekly = _codex_lanes(rl.get("primary_window"), rl.get("secondary_window"))
+    for window, name, role in ((session, "Session", "primary"), (weekly, "Weekly", "secondary")):
+        if not window:
+            continue
+        pct_used = window.get("used_percent", 0)
         remaining_pct = 100 - pct_used
-        reset_ts = pw.get("reset_at")
+        reset_ts = window.get("reset_at")
         reset_iso = datetime.fromtimestamp(reset_ts, tz=timezone.utc).isoformat() if reset_ts else None
-        tiers.append({"name": "Session", "quota": 100, "remaining": remaining_pct, "reset_time": reset_iso})
-
-    sw = rl.get("secondary_window")
-    if sw:
-        pct_used = sw.get("used_percent", 0)
-        remaining_pct = 100 - pct_used
-        reset_ts = sw.get("reset_at")
-        reset_iso = datetime.fromtimestamp(reset_ts, tz=timezone.utc).isoformat() if reset_ts else None
-        tiers.append({"name": "Weekly", "quota": 100, "remaining": remaining_pct, "reset_time": reset_iso})
+        tier = {"name": name, "quota": 100, "remaining": remaining_pct, "reset_time": reset_iso, "role": role}
+        minutes = _codex_window_minutes(window)
+        if minutes is not None:
+            tier["windowMinutes"] = minutes
+        tiers.append(tier)
 
     if not tiers:
         return None

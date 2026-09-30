@@ -96,6 +96,12 @@ public actor CodexQuotaFetcher {
 
     /// Mirrors Python `_parse_codex_usage_response`. Format:
     /// `{"plan_type": "plus", "rate_limit": {"primary_window": {"used_percent": N, ...}}}`.
+    ///
+    /// Each window is placed by its length (`limit_window_seconds`), not by
+    /// the slot it came in — an account with only a weekly limit gets it in
+    /// `primary_window` — and carries `windowMinutes` and `role`, the same
+    /// table as the app's `CodexCollector` (`CodexRateWindowNormalizer`).
+    /// The names stay this helper's own: "Session" and "Weekly".
     static func parseUsageResponse(_ body: Data, fetchedAt: String) -> ProviderQuotaSnapshot {
         guard let dict = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             return ClaudeQuotaFetcher.unavailable(reason: "parse_error", fetchedAt: fetchedAt)
@@ -107,14 +113,20 @@ public actor CodexQuotaFetcher {
         let formatter = SessionDetector.makeISOFormatter()
 
         if let rl = dict["rate_limit"] as? [String: Any] {
-            for (key, label) in [("primary_window", "Session"), ("secondary_window", "Weekly")] {
-                guard let win = rl[key] as? [String: Any] else { continue }
+            var slots: [Window?] = []
+            for key in ["primary_window", "secondary_window"] {
+                guard let win = rl[key] as? [String: Any] else {
+                    slots.append(nil)
+                    continue
+                }
                 let usedAny = win["used_percent"]
                 let used: Double
                 if let d = usedAny as? Double { used = d }
                 else if let i = usedAny as? Int { used = Double(i) }
-                else { continue }
-                let remaining = max(0, 100 - Int(used))
+                else {
+                    slots.append(nil)
+                    continue
+                }
 
                 var resetISO: String? = nil
                 if let resetTs = win["reset_at"] as? Double {
@@ -122,8 +134,22 @@ public actor CodexQuotaFetcher {
                 } else if let resetTs = win["reset_at"] as? Int {
                     resetISO = formatter.string(from: Date(timeIntervalSince1970: TimeInterval(resetTs)))
                 }
+                slots.append(Window(
+                    used: used,
+                    reset: resetISO,
+                    minutes: Self.windowMinutes(win["limit_window_seconds"])
+                ))
+            }
+            let lanes = Self.lanes(primary: slots[0], secondary: slots[1])
+            for (window, isSession) in [(lanes.session, true), (lanes.weekly, false)] {
+                guard let window else { continue }
                 tiers.append(ProviderQuotaTier(
-                    name: label, quota: 100, remaining: remaining, resetTime: resetISO
+                    name: isSession ? "Session" : "Weekly",
+                    quota: 100,
+                    remaining: max(0, 100 - Int(window.used)),
+                    resetTime: window.reset,
+                    windowMinutes: window.minutes,
+                    role: isSession ? "primary" : "secondary"
                 ))
             }
         }
@@ -139,5 +165,62 @@ public actor CodexQuotaFetcher {
             provenance: .openAIWham,
             fetchedAt: fetchedAt
         )
+    }
+
+    // MARK: - Window lanes (same table as the app's CodexRateWindowNormalizer)
+
+    struct Window: Equatable {
+        let used: Double
+        let reset: String?
+        let minutes: Int?
+    }
+
+    /// Minutes from `limit_window_seconds`; missing or under a minute is
+    /// unknown.
+    static func windowMinutes(_ raw: Any?) -> Int? {
+        let seconds: Int?
+        if let i = raw as? Int { seconds = i }
+        else if let d = raw as? Double { seconds = Int(d) }
+        else { seconds = nil }
+        guard let seconds, seconds / 60 > 0 else { return nil }
+        return seconds / 60
+    }
+
+    private enum LaneRole { case session, weekly, unknown }
+
+    private static func laneRole(_ window: Window) -> LaneRole {
+        switch window.minutes {
+        case 300: return .session
+        case 10080: return .weekly
+        default: return .unknown
+        }
+    }
+
+    /// The two API slots put in the lanes their lengths say. Line for line
+    /// the table of the app's `CodexRateWindowNormalizer` (ported from
+    /// CodexBar), so the helper and the app file every window under the same
+    /// lane. A lone window is the weekly lane if it is 10080 minutes long and
+    /// the session lane otherwise, whichever slot it came in. Of two windows,
+    /// a weekly one in the primary slot swaps with the other (unless that is
+    /// weekly too); otherwise each keeps its slot.
+    static func lanes(
+        primary: Window?,
+        secondary: Window?
+    ) -> (session: Window?, weekly: Window?) {
+        switch (primary, secondary) {
+        case let (.some(p), .some(s)):
+            switch (laneRole(p), laneRole(s)) {
+            case (.weekly, .session), (.weekly, .unknown):
+                return (s, p)
+            default:
+                return (p, s)
+            }
+        case let (.some(p), .none):
+            return laneRole(p) == .weekly ? (nil, p) : (p, nil)
+        case let (.none, .some(s)):
+            return laneRole(s) == .weekly ? (nil, s) : (s, nil)
+        case (.none, .none):
+            return (nil, nil)
+        }
     }
 }

@@ -185,7 +185,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.monthly",
    "reason": "Generic time window chosen by six unrelated collectors; no vendor dashboard string is at risk. Translating is a straight win for a non-English reader scanning which pool resets when.",
-   "producers": "Swift AlibabaCollector, ManusCollector, T3ChatCollector, ChutesCollector, OpenCodeGoCollector, CommandCodeCollector; Tauri alibaba.rs/manus.rs/t3chat.rs"
+   "producers": "Swift AlibabaCollector, ManusCollector, T3ChatCollector, ChutesCollector, OpenCodeGoCollector, CommandCodeCollector, CodexCollector (a 43200-minute window, CodexQuotaWindows.tierName); Tauri alibaba.rs/manus.rs/t3chat.rs"
   },
   {
    "name": "On-Demand",
@@ -308,7 +308,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.session",
    "reason": "Generic word for a usage window, invented by the Python/HelperSwift Codex path for exactly the window the in-app Swift collector calls \"5h Window\" — two app-chosen spellings for one concept, so neither is a vendor string. Both are live in production depending on which helper owns the socket, so both need the mapper or the user sees a mixed-language column.",
-   "producers": "Python helper ONLY for Codex primary_window, plus HelperSwift CodexQuotaFetcher (its Python-parity port). NOT emitted by the in-app Swift CodexCollector, which calls the same window \"5h Window\".",
+   "producers": "Python helper ONLY for Codex's session window (the 300-minute one wherever the API puts it; the primary slot when the length is unknown), plus HelperSwift CodexQuotaFetcher (its Python-parity port). NOT emitted by the in-app Swift CodexCollector, which calls the same window \"5h Window\".",
    "scanner_blind_spot": true
   },
   {
@@ -385,7 +385,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.window_fallback",
    "reason": "Synthetic: Android's legacy usage_windows fallback when the payload has no window_name, so it is an app-invented placeholder with essentially no information content — localizing it is at least as useful as the English. It reaches Apple render sites via the shared cloud rows, so the Apple mapper needs it; the non-default case (whatever string the server sent) stays an open set and must pass through.",
-   "producers": "Android ClaudeCollector legacy `usage_windows` fallback - the default when the payload's `window_name` is absent. Otherwise the tier name is whatever string the server sent (open-ended).",
+   "producers": "Android ClaudeCollector legacy `usage_windows` fallback - the default when the payload's `window_name` is absent. Otherwise the tier name is whatever string the server sent (open-ended). Swift CodexCollector for a window whose length it knows but has no name for (CodexQuotaWindows.tierName), rather than call it \"5h Window\".",
    "scanner_blind_spot": true
   }
  ]

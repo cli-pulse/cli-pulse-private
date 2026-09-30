@@ -353,6 +353,74 @@ final class CodexQuotaFetcherTests: XCTestCase {
         XCTAssertEqual(snap.tiers[1].remaining, 40)
     }
 
+    // P0-5: the same fields the app's TierDTO carries, from the same table.
+
+    func testParseUsageResponse_windowsCarryLengthAndRole() {
+        let body = #"""
+        {"rate_limit": {
+          "primary_window": {"used_percent": 40, "reset_at": 1700004800, "limit_window_seconds": 18000},
+          "secondary_window": {"used_percent": 100, "reset_at": 1700604800, "limit_window_seconds": 604800}
+        }}
+        """#
+        let snap = CodexQuotaFetcher.parseUsageResponse(
+            body.data(using: .utf8)!, fetchedAt: makeISO(0)
+        )
+        XCTAssertEqual(snap.tiers.map(\.name), ["Session", "Weekly"])
+        XCTAssertEqual(snap.tiers.map(\.windowMinutes), [300, 10080])
+        XCTAssertEqual(snap.tiers.map(\.role), ["primary", "secondary"])
+    }
+
+    func testParseUsageResponse_loneWeeklyWindowInPrimarySlotIsWeekly() {
+        let body = #"""
+        {"rate_limit": {
+          "primary_window": {"used_percent": 70, "reset_at": 1700604800, "limit_window_seconds": 604800}
+        }}
+        """#
+        let snap = CodexQuotaFetcher.parseUsageResponse(
+            body.data(using: .utf8)!, fetchedAt: makeISO(0)
+        )
+        XCTAssertEqual(snap.tiers.count, 1)
+        XCTAssertEqual(snap.tiers[0].name, "Weekly")
+        XCTAssertEqual(snap.tiers[0].windowMinutes, 10080)
+        XCTAssertEqual(snap.tiers[0].role, "secondary")
+        XCTAssertEqual(snap.remaining, 30)
+    }
+
+    func testParseUsageResponse_reversedSlotsPutBackByLength() {
+        let body = #"""
+        {"rate_limit": {
+          "primary_window": {"used_percent": 43, "limit_window_seconds": 604800},
+          "secondary_window": {"used_percent": 17, "limit_window_seconds": 18000}
+        }}
+        """#
+        let snap = CodexQuotaFetcher.parseUsageResponse(
+            body.data(using: .utf8)!, fetchedAt: makeISO(0)
+        )
+        XCTAssertEqual(snap.tiers.map(\.name), ["Session", "Weekly"])
+        XCTAssertEqual(snap.tiers.map(\.remaining), [83, 57])
+        XCTAssertEqual(snap.remaining, 83, "the headline is the session window")
+    }
+
+    func testTierEncodesWindowKeysLikeTheApp() throws {
+        let tier = ProviderQuotaTier(
+            name: "Session", quota: 100, remaining: 60, resetTime: nil,
+            windowMinutes: 300, role: "primary"
+        )
+        let object = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(tier)
+        ) as? [String: Any]
+        XCTAssertEqual(object?["windowMinutes"] as? Int, 300)
+        XCTAssertEqual(object?["role"] as? String, "primary")
+        // A tier without them encodes as before: no keys, not nulls.
+        let bare = try JSONSerialization.jsonObject(
+            with: JSONEncoder().encode(
+                ProviderQuotaTier(name: "Weekly", quota: 100, remaining: 1, resetTime: nil)
+            )
+        ) as? [String: Any]
+        XCTAssertNil(bare?["windowMinutes"])
+        XCTAssertNil(bare?["role"])
+    }
+
     func testFetch_http500ReturnsUnavailable() async {
         let auth = #"{"tokens": {"access_token": "good-tok"}}"#
         let url = URL(string: "https://chatgpt.com/backend-api/wham/usage")!

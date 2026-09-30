@@ -2925,8 +2925,19 @@ extension AppState {
 
     func applyRefreshPayload(_ payload: DataRefreshManager.RefreshPayload) {
         dashboard = payload.dashboard
-        providers = payload.providers
-        providerAccounts = payload.providerAccounts
+        // The UI's copy: an exhausted weekly Codex window reads through to its
+        // 5-hour window and to the provider's headline (`QuotaBindingCap`).
+        // Everything upstream of here — uploads, quota alerts — used the raw
+        // values, and keeps using them.
+        let displayNow = Date()
+        providers = QuotaBindingCap.projectedForDisplay(
+            payload.providers,
+            now: displayNow
+        )
+        providerAccounts = QuotaBindingCap.projectedForDisplay(
+            payload.providerAccounts,
+            now: displayNow
+        )
         sessions = payload.sessions
         devices = payload.devices
         alerts = payload.alerts

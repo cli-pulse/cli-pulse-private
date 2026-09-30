@@ -329,6 +329,65 @@ class TestParseCodexUsageResponse(unittest.TestCase):
         self.assertEqual(result["remaining"], 50)
         self.assertEqual(len(result["tiers"]), 1)
 
+    def test_windows_carry_length_and_role(self):
+        # The keys the app's TierDTO reads from provider_quotas.tiers. The app
+        # needs both to place the 5-hour pace marker and to know which window
+        # binds; the helper shares the row with the app's own upload, so if
+        # this writer drops them the row loses them whenever it writes last.
+        data = {
+            "rate_limit": {
+                "primary_window": {"used_percent": 40, "reset_at": 1775054266,
+                                   "limit_window_seconds": 18000},
+                "secondary_window": {"used_percent": 100, "reset_at": 1775200000,
+                                     "limit_window_seconds": 604800},
+            },
+        }
+        tiers = _parse_codex_usage_response(data)["tiers"]
+        self.assertEqual(
+            [(t["name"], t["windowMinutes"], t["role"]) for t in tiers],
+            [("Session", 300, "primary"), ("Weekly", 10080, "secondary")],
+        )
+
+    def test_lone_weekly_window_in_primary_slot_is_weekly(self):
+        # A weekly-only account gets its one window in primary_window. It used
+        # to be stored as "Session", and so read as a 5-hour window.
+        data = {
+            "rate_limit": {
+                "primary_window": {"used_percent": 70, "reset_at": 1775200000,
+                                   "limit_window_seconds": 604800},
+            },
+        }
+        result = _parse_codex_usage_response(data)
+        self.assertEqual(len(result["tiers"]), 1)
+        tier = result["tiers"][0]
+        self.assertEqual((tier["name"], tier["windowMinutes"], tier["role"]),
+                         ("Weekly", 10080, "secondary"))
+        self.assertEqual(result["remaining"], 30)
+
+    def test_reversed_slots_are_put_back_by_length(self):
+        data = {
+            "rate_limit": {
+                "primary_window": {"used_percent": 43, "limit_window_seconds": 604800},
+                "secondary_window": {"used_percent": 17, "limit_window_seconds": 18000},
+            },
+        }
+        result = _parse_codex_usage_response(data)
+        self.assertEqual([t["name"] for t in result["tiers"]], ["Session", "Weekly"])
+        self.assertEqual([t["remaining"] for t in result["tiers"]], [83, 57])
+        self.assertEqual(result["remaining"], 83, "headline is the session window")
+
+    def test_unknown_length_keeps_slot_and_omits_minutes(self):
+        data = {
+            "rate_limit": {
+                "primary_window": {"used_percent": 10},
+                "secondary_window": {"used_percent": 20},
+            },
+        }
+        tiers = _parse_codex_usage_response(data)["tiers"]
+        self.assertEqual([(t["name"], t["role"]) for t in tiers],
+                         [("Session", "primary"), ("Weekly", "secondary")])
+        self.assertTrue(all("windowMinutes" not in t for t in tiers))
+
     def test_empty_rate_limit(self):
         self.assertIsNone(_parse_codex_usage_response({"plan_type": "free", "rate_limit": {}}))
 
