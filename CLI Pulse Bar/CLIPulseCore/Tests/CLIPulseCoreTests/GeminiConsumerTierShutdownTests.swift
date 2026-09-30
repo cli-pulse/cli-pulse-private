@@ -231,7 +231,7 @@ final class GeminiConsumerTierShutdownTests: XCTestCase {
         XCTAssertEqual(shown.label, "已停止支持个人账户")
         XCTAssertEqual(
             shown.nextStep,
-            "Google 已不再为个人账户提供 Gemini CLI，重新登录也无济于事。Google 已用 Antigravity 取代它。")
+            "Google 已不再为个人账户提供 Gemini CLI，重新登录也无济于事。取而代之的是 Antigravity。")
         XCTAssertEqual(shown.severity, .attention)
 
         // Not the advice it used to get.

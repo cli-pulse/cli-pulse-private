@@ -1790,7 +1790,7 @@
 "sessions.hook_settings_root_not_object" = "%@ 的顶层不是 JSON 对象";
 "collector_error.no_projects_for_key" = "%@：此 API 密钥下没有项目";
 "collector_error.no_quota_for_project" = "%@：此项目没有配额数据";
-"collector_error.gemini_cli_personal_accounts_retired" = "Google 已不再为个人账户提供 Gemini CLI，重新登录也无济于事。Google 已用 Antigravity 取代它。";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google 已不再为个人账户提供 Gemini CLI，重新登录也无济于事。取而代之的是 Antigravity。";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "部分系统文字在重新打开 CLI Pulse 后才会切换。";
 

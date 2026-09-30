@@ -1123,7 +1123,7 @@
 "collector_status.auth_failed" = "認証に失敗";
 "collector_status.auth_failed_hint" = "%@ を再接続してください。保存された認証情報が拒否されました。";
 "collector_status.failed_other_hint" = "これは私たちの問題です。チェックを完了できませんでした。アップデートで修正します。";
-"collector_status.retired_personal_accounts" = "個人アカウントは提供終了";
+"collector_status.retired_personal_accounts" = "個人アカウント向けの提供は終了";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "ログイン時に起動します";
