@@ -299,14 +299,19 @@ uploaded), and the Settings toggle turns it off.
   list.
 * **The Companion CLI** follows the answer only from the release after 1.30.0.
   See its section.
-* **Three things happen whatever you answered.** In the direct-download build,
-  opening the Sessions tab while the built-in agent or the Companion CLI is
-  running reads Claude Code's settings file, `~/.claude/settings.json`, to check
-  whether CLI Pulse's approval hook is installed. In the same build, starting a
-  Claude session from CLI Pulse, in the Sessions tab or from a paired phone over
-  your network, makes the built-in agent read `~/.claude/.credentials.json` to
-  sign the session in, and, when that token has expired, renew it and rewrite
-  the file. And the app
+* **The Sessions tab** follows it too. While the built-in agent or the
+  Companion CLI is running, the direct-download build reads Claude Code's
+  settings file, `~/.claude/settings.json`, to check whether CLI Pulse's
+  approval hook is installed, and the Companion CLI, asked which sessions to
+  list there, reads the command lines of the running programs to find AI CLI
+  sessions. After "Not now" neither happens, and the tab lists only the
+  sessions CLI Pulse started (Companion CLI 1.30.0 and earlier still read the
+  running programs).
+* **Two things happen whatever you answered.** In the direct-download build,
+  starting a Claude session from CLI Pulse, in the Sessions tab or from a
+  paired phone over your network, makes the built-in agent read
+  `~/.claude/.credentials.json` to sign the session in, and, when that token
+  has expired, renew it and rewrite the file. And the app
   contacts services that are not AI providers: our server (for anonymous
   install statistics, and for your account if you are signed in), Sentry for
   crash reports, GitHub to check for updates, and an exchange-rate service
@@ -397,7 +402,9 @@ they are allowed to upload (see below); 1.30.0 and earlier ask whatever the app
 says. Whatever its state, it answers the CLI Pulse app on this Mac when the app
 asks it something, such as the Machine view's readings; while your answer
 allows the scan, with or without an account, that answer can include whether
-Codex is signed in with a subscription, which it reads from `~/.codex/auth.json`.
+Codex is signed in with a subscription, which it reads from `~/.codex/auth.json`,
+and the AI CLI sessions it finds among the running programs, for the Sessions
+tab. Releases after 1.30.0 read neither while the answer pauses the scan.
 
 **Which versions follow your answer.** Companion CLI 1.30.0 (the latest release
 when this was written) and earlier versions do not read the app's answer, its
