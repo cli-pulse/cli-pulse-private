@@ -2,8 +2,11 @@ import SwiftUI
 import CLIPulseCore
 
 /// v1.16 — UI for the "Companion CLI" install/update/uninstall flow.
-/// Embedded under the PairingSection in Settings; visible only after
-/// the user has paired (managed-CLI is a post-pairing power-user feature).
+/// Embedded under the PairingSection in Settings; visible after the user has
+/// paired (managed-CLI is a post-pairing power-user feature), and since v1.55
+/// in local mode too, where the note under the local-scan answer sends people
+/// here to update or uninstall a Companion that ignores it
+/// (`SettingsTab.localModeSections`).
 ///
 /// Wired to a single `HelperInstaller` instance held by AppState. The
 /// view simply renders state transitions:

@@ -112,6 +112,13 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// `.running` UI add a "pair to activate managed sessions" hint without
     /// regressing to a misleading "not installed".
     @Published public private(set) var helperPaired: Bool?
+    /// v1.55: the version of a paired Companion CLI, answering on this Mac,
+    /// that does not follow the app's local-scan answer, its account or the
+    /// Privacy switches (Companion CLI 1.30.0 and earlier); empty when it
+    /// reported no version, and nil when no such Companion answered the last
+    /// probe (`CompanionAnswerCoverage.ignoringVersion`). The consent screens
+    /// and Settings › Privacy show a note while it is set.
+    @Published public private(set) var companionIgnoringAnswerVersion: String?
 
     /// Monotonic token identifying the newest `refresh()` in flight. A refresh
     /// that awaits network/UDS can finish AFTER a later refresh started (e.g. a
@@ -257,9 +264,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // fetch finishes later. (codex round-2 P2.)
         guard epoch == refreshEpoch else { return }
         lastChecked = Date()
-        // v1.30.2 (RC-1): record pairing state from this probe. nil when
-        // hello failed (unknown) or the helper predates the `paired` field.
-        helperPaired = helperRunning?.paired
+        record(hello: helperRunning)
         // NOTE: deliberately still the CONTAINER path only.
         //
         // A first pass here walked `candidateBasePaths()` so the status would
@@ -282,6 +287,21 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
             socketExists: FileManager.default.fileExists(atPath: udsPath),
             udsPath: udsPath
         )
+    }
+
+    /// What one `hello` says about the helper answering on this Mac, kept for
+    /// the views: whether it is paired, and whether it is a Companion CLI that
+    /// ignores the app's answer (the notes under the answer and the switches).
+    /// Every probe records through here — `refresh()` and both of the install
+    /// flow's liveness checks — so an in-app Update from 1.30.0 clears the note
+    /// at once, and a fresh install of one shows it without waiting for the
+    /// next refresh. `nil`: the probe got no answer.
+    @MainActor
+    func record(hello: SessionControlHello?) {
+        // v1.30.2 (RC-1): nil when hello failed (unknown) or the helper
+        // predates the `paired` field.
+        helperPaired = hello?.paired
+        companionIgnoringAnswerVersion = CompanionAnswerCoverage.ignoringVersion(hello: hello)
     }
 
     /// Reconcile the UI after a controlled helper swap (v1.46: see
@@ -782,7 +802,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
                         await MainActor.run {
                             let v = hello.helperVersion.isEmpty ? expectedVersion : hello.helperVersion
                             self.state = .running(version: v)
-                            self.helperPaired = hello.paired
+                            self.record(hello: hello)
                         }
                         return true
                     }
@@ -808,7 +828,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
                    let hello = try? await helloClient().hello() {
                     let v = hello.helperVersion.isEmpty ? expectedVersion : hello.helperVersion
                     state = .running(version: v)
-                    helperPaired = hello.paired
+                    record(hello: hello)
                     pollTask.cancel()
                     return
                 }

@@ -127,6 +127,13 @@ struct AdvancedSection: View {
                     title: L10n.advanced.privacyMetricsTitle,
                     detail: L10n.advanced.privacyMetricsDetail
                 )
+                // v1.55: what the background helper syncs besides the numbers.
+                privacyRow(
+                    icon: "terminal.fill",
+                    color: .blue,
+                    title: L10n.advanced.privacySessionsTitle,
+                    detail: L10n.advanced.privacySessionsDetail
+                )
                 privacyRow(
                     icon: "person.crop.circle.fill",
                     color: .blue,

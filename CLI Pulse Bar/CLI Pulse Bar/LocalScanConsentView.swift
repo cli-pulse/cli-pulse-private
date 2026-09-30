@@ -95,6 +95,11 @@ struct LocalScanConsentView: View {
                         title: L10n.localScanConsent.telemetryTitle,
                         detail: L10n.localScanConsent.telemetryDetail
                     )
+                    // v1.55: the first ask is the answer the Companion CLI
+                    // 1.30.0 and earlier ignores; say so while one answers here.
+                    if mode == .firstAsk {
+                        CompanionNotCoveredNote(installer: state.helperInstaller, fontSize: 11)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 16)
@@ -240,6 +245,7 @@ struct LocalScanDeclinedCard: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            CompanionNotCoveredNote(installer: state.helperInstaller)
             Button(L10n.localScanConsent.start) {
                 // Turns the 30-day scan back on and leaves the older-logs
                 // answer as it was, instead of a card this small deciding a year
@@ -258,5 +264,47 @@ struct LocalScanDeclinedCard: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(Color.secondary.opacity(0.08))
         )
+    }
+}
+
+/// v1.55 — what CLI Pulse's answers do not reach. Companion CLI 1.30.0 and
+/// earlier read neither the local-scan answer, the account nor the Privacy
+/// switches: while installed and paired, it collects every 2 minutes and
+/// uploads to the account it was paired with. Shown under the answer (the first
+/// ask, Overview's declined card, Settings › Privacy) and under the Claude
+/// keychain switches, only while such a Companion answers on this Mac
+/// (`HelperInstaller.companionIgnoringAnswerVersion`, decided by
+/// `CompanionAnswerCoverage`), so a Mac without one reads nothing extra.
+///
+/// Observes the installer itself: `AppState` does not republish its changes.
+struct CompanionNotCoveredNote: View {
+    enum Subject {
+        /// The local-scan answer and signing out.
+        case answer
+        /// Strict privacy mode and "Skip Claude Code keychain access".
+        case switches
+    }
+
+    @ObservedObject var installer: HelperInstaller
+    var subject: Subject = .answer
+    var fontSize: CGFloat = 10
+
+    var body: some View {
+        if let version = installer.companionIgnoringAnswerVersion {
+            let label = CompanionAnswerCoverage.versionLabel(version)
+            HStack(alignment: .top, spacing: 4) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(subject == .answer
+                     ? L10n.localScanConsent.companionNotCovered(label)
+                     : L10n.settings.companionIgnoresSwitches(label))
+                    .font(.system(size: fontSize))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

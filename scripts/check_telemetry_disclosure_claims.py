@@ -85,9 +85,11 @@ SURFACES = {
 CATALOGUE = Path("CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Resources/en.lproj/Localizable.strings")
 
 
-# Described as "the id is random and is deleted when you uninstall" rather than
-# by name, on every surface. Exempted here so the registry does not need a row
-# whose phrase is really about deletion.
+# Described as "the ID is random", and where it is kept, rather than by name, on
+# every surface. Exempted here so the registry does not need a row whose phrase
+# is really about storage. (Until v1.55 the copy said the id "is deleted when you
+# uninstall"; moving the app to the Trash leaves its preferences, and the id,
+# behind.)
 EXEMPT = {"installID"}
 
 # Tolerant of extra conformances. The first version pinned the exact

@@ -56,6 +56,9 @@ struct SettingsTab: View {
                     authenticatedSection
                 } else {
                     loginSection
+                    if state.isLocalMode {
+                        localModeSections
+                    }
                 }
             }
             .padding(12)
@@ -250,6 +253,33 @@ struct SettingsTab: View {
             Text(L10n.auth.useLocalModeHint)
                 .font(.system(size: 9))
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: - Local mode
+
+    /// v1.55: Settings › Companion CLI and Settings › Privacy for a Mac in
+    /// local mode, which has no account and so never reaches
+    /// `authenticatedSection`. Both are named on screens a local-mode user
+    /// sees: the first ask and `telemetry.change_later` send them to Settings ›
+    /// Privacy ("you can change this any time"), where the scan switch is
+    /// (`PrivacySettingsSection.showsScanSwitch`, local mode only), and the
+    /// note under the answer (`CompanionNotCoveredNote`) sends them to
+    /// Settings › Companion CLI to update or uninstall a Companion that
+    /// ignores it. Before 1.55 neither section rendered here, so both
+    /// directions led nowhere.
+    private var localModeSections: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Same gate as the signed-in section. The note that names this
+            // section needs the same capability to appear at all
+            // (`HelperInstaller.externalActionsAllowed`).
+            if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
+                Divider()
+                CompanionCLISection(installer: state.helperInstaller)
+            }
+
+            Divider()
+            PrivacySettingsSection()
         }
     }
 

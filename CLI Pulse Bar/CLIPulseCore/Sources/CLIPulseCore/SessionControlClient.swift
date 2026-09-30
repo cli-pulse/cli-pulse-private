@@ -255,6 +255,17 @@ public struct SessionControlHello: Sendable, Equatable {
     /// `policy` ("allowed"/"disabled"), `auth` ("oauth"/"none"). nil on a
     /// helper that predates it, which the readers treat as unsupported.
     public let claudeRemoteControl: [String: String]?
+    /// v1.55 (additive): the helper's `follows_app_answer` hello field. True
+    /// from a Companion CLI that reads the app's local-scan answer, its account
+    /// record and the Privacy switches before it collects or uploads (#627,
+    /// #630). False when the field is absent: Companion CLI 1.30.0 and every
+    /// release before it collect and upload whatever the app says.
+    /// `CompanionAnswerCoverage` turns this into the note the consent screens
+    /// show. The built-in agent does not send it; it uploads nothing.
+    public let followsAppAnswer: Bool
+    /// The hello key behind `followsAppAnswer`, spelled as
+    /// `helper/local_session_server.py` sends it.
+    public static let followsAppAnswerKey = "follows_app_answer"
 
     public init(
         protocolVersion: Int,
@@ -265,7 +276,8 @@ public struct SessionControlHello: Sendable, Equatable {
         paired: Bool? = nil,
         providerPlanStatus: [String: String] = [:],
         implementation: String? = nil,
-        claudeRemoteControl: [String: String]? = nil
+        claudeRemoteControl: [String: String]? = nil,
+        followsAppAnswer: Bool = false
     ) {
         self.protocolVersion = protocolVersion
         self.supportedMethods = supportedMethods
@@ -276,6 +288,7 @@ public struct SessionControlHello: Sendable, Equatable {
         self.providerPlanStatus = providerPlanStatus
         self.implementation = implementation
         self.claudeRemoteControl = claudeRemoteControl
+        self.followsAppAnswer = followsAppAnswer
     }
 
     /// The phone may offer "also open in the Claude app" only when the

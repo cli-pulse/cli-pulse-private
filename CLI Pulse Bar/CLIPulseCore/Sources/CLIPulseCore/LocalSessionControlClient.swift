@@ -276,9 +276,10 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
 
     public static let protocolVersion = 1
 
-    /// v1.55 `hello` parameter (Bool): whether the local-scan answer allows
-    /// reading this Mac (`hello(localScanAllowed:)`). Additive: helpers that
-    /// predate it ignore it. HelperKit's `LocalSessionServer` and
+    /// v1.55 `hello` and `list_sessions` parameter (Bool): whether the
+    /// local-scan answer allows reading this Mac (`hello(localScanAllowed:)`,
+    /// `listSessions(localScanAllowed:)`). Additive: helpers that predate it
+    /// ignore it. HelperKit's `LocalSessionServer` and
     /// `helper/local_session_server.py` read the same name.
     public static let localScanAllowedParam = "local_scan_allowed"
 
@@ -498,6 +499,15 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
             }
             claudeRemoteControl = d
         }
+        // v1.55 (additive): whether this helper follows the app's local-scan
+        // answer and account. Only a JSON true counts (not 1, not "true");
+        // older helpers omit it.
+        let followsAppAnswer: Bool = {
+            guard let n = result[SessionControlHello.followsAppAnswerKey] as? NSNumber,
+                  CFGetTypeID(n) == CFBooleanGetTypeID()
+            else { return false }
+            return n.boolValue
+        }()
         return SessionControlHello(
             protocolVersion: version,
             supportedMethods: Set(methods),
@@ -507,7 +517,8 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
             paired: paired,
             providerPlanStatus: providerPlanStatus,
             implementation: implementation,
-            claudeRemoteControl: claudeRemoteControl
+            claudeRemoteControl: claudeRemoteControl,
+            followsAppAnswer: followsAppAnswer
         )
     }
 
@@ -588,6 +599,21 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
     }
 
     public func listSessions() async throws -> [SessionControlSummary] {
+        try await listSessions(localScanAllowed: nil)
+    }
+
+    /// `list_sessions`, telling the helper whether the local-scan answer
+    /// allows reading this Mac (`LocalCollectionPolicy.allowsCollection`).
+    /// The `detected` rows come from a process scan (`ps` and the running
+    /// programs' command lines), which the Companion CLI runs only when this
+    /// is not false and its own copy of the answer allows it. Without the
+    /// parameter it asks that copy alone; the bundled Swift helper detects
+    /// nothing either way.
+    public func listSessions(localScanAllowed: Bool?) async throws -> [SessionControlSummary] {
+        var params: [String: Any] = [:]
+        if let localScanAllowed {
+            params[Self.localScanAllowedParam] = localScanAllowed
+        }
         // v1.16 hotfix: list_sessions on the helper scans running
         // Claude/Codex/Gemini processes for the `detected` rows; on
         // a busy Mac that walk can take 1-3 s. Default 5 s
@@ -597,7 +623,7 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
         // user sees "No output yet…" indefinitely. 15 s override
         // here only; other RPCs keep the tighter default so a real
         // helper hang surfaces quickly.
-        let result = try await send(method: "list_sessions", params: [:], timeoutOverride: 15)
+        let result = try await send(method: "list_sessions", params: params, timeoutOverride: 15)
         // iter 2A reply shape:
         //   { "managed": [...], "detected": [...], "sessions": [...legacy...] }
         // Older helper revisions only return `sessions`. Read both

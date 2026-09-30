@@ -94,6 +94,11 @@ struct PrivacySettingsSection: View {
                     .padding(.leading, 2)
                     .padding(.bottom, 2)
                     .fixedSize(horizontal: false, vertical: true)
+
+                // v1.55: "Off" does not reach a Companion CLI 1.30.0 or earlier.
+                CompanionNotCoveredNote(installer: state.helperInstaller)
+                    .padding(.leading, 2)
+                    .padding(.bottom, 2)
             }
 
             // v1.55: a signed-in Mac whose answer is "Not now". The switch above
@@ -111,6 +116,9 @@ struct PrivacySettingsSection: View {
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
                     .fixedSize(horizontal: false, vertical: true)
+
+                CompanionNotCoveredNote(installer: state.helperInstaller)
+                    .padding(.leading, 2)
 
                 Button(L10n.localScanConsent.chooseAgain) {
                     state.chooseLocalScanAgain()
@@ -212,6 +220,13 @@ struct PrivacySettingsSection: View {
                     .foregroundStyle(.secondary)
                     .padding(.leading, 18)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // v1.55: a Companion CLI 1.30.0 or earlier reads the item whatever
+            // these say. Shown once either is on, when it matters.
+            if settings.skipsClaudeKeychainOnItsOwn {
+                CompanionNotCoveredNote(installer: state.helperInstaller, subject: .switches)
+                    .padding(.leading, 18)
             }
 
             Divider()

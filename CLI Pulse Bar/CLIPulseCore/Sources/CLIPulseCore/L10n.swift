@@ -1108,6 +1108,10 @@ public enum L10n {
         public static var claudeKeychainHelperConfirmed: String { tr("settings.claude_keychain_helper_confirmed") }
         /// A switch is on and the helper runs, but it has not said so yet.
         public static var claudeKeychainHelperUnconfirmed: String { tr("settings.claude_keychain_helper_unconfirmed") }
+        /// Under the Claude keychain switches, while a Companion CLI that does not
+        /// read them answers on this Mac (`CompanionAnswerCoverage`). The argument
+        /// is `CompanionAnswerCoverage.versionLabel`.
+        public static func companionIgnoresSwitches(_ version: String) -> String { tr("settings.companion_ignores_switches", version) }
         public static var blockClaudeOnOutdatedHelper: String { tr("settings.block_claude_on_outdated_helper") }
         public static var blockClaudeOnOutdatedHelperHint: String { tr("settings.block_claude_on_outdated_helper_hint") }
         public static func pushRegistrationFailed(_ a0: String) -> String { tr("settings.push_registration_failed", a0) }
@@ -2075,6 +2079,10 @@ public enum L10n {
         public static var dataTitle: String { tr("advanced.data_title") }
         public static var privacyLogsTitle: String { tr("advanced.privacy_logs_title") }
         public static var privacyLogsDetail: String { tr("advanced.privacy_logs_detail") }
+        /// v1.55: the running AI CLI sessions the background helper syncs, which
+        /// the rows above left out.
+        public static var privacySessionsTitle: String { tr("advanced.privacy_sessions_title") }
+        public static var privacySessionsDetail: String { tr("advanced.privacy_sessions_detail") }
         public static var privacyMetricsTitle: String { tr("advanced.privacy_metrics_title") }
         public static var privacyMetricsDetail: String { tr("advanced.privacy_metrics_detail") }
         public static var privacyEmailTitle: String { tr("advanced.privacy_email_title") }
@@ -2384,6 +2392,11 @@ public enum L10n {
         /// The first ask's caption when "Choose again…" reopens it while signed
         /// in. Picked by `LocalScanQuestion.caption(isAuthenticated:)`.
         public static var firstAskHintSignedIn: String { tr("local_scan_consent.first_ask_hint_signed_in") }
+        /// v1.55: under the answer, wherever it is asked or shown, while a
+        /// Companion CLI that ignores it answers on this Mac
+        /// (`CompanionAnswerCoverage`). The argument is
+        /// `CompanionAnswerCoverage.versionLabel`.
+        public static func companionNotCovered(_ version: String) -> String { tr("local_scan_consent.companion_not_covered", version) }
     }
 
     // MARK: - Previously hardcoded UI copy (2026-09-15 sweep)

@@ -942,6 +942,14 @@ class LocalSessionServer:
         except Exception:  # noqa: BLE001 — cannot tell, so read nothing
             return False
 
+    def _request_permits_reads(self, params: dict) -> bool:
+        """This request may read this Mac: the app did not say
+        `local_scan_allowed: false` in it (an explicit false is obeyed before
+        this helper's own copy of the answer is even read; a missing one, from
+        older apps and status probes, leaves it to that copy), and that copy
+        allows it."""
+        return params.get("local_scan_allowed") is not False and self._local_scan_permits_reads()
+
     def _handle_method(self, method: str, params: dict) -> Any:
         if method == "hello":
             requested = params.get("client_protocol_version")
@@ -983,7 +991,7 @@ class LocalSessionServer:
             # obeyed before this helper's own copy of the answer is even read.
             # Missing (older apps, status probes) leaves it to that copy.
             provider_plan_status: dict | None = None
-            if params.get("local_scan_allowed") is not False and self._local_scan_permits_reads():
+            if self._request_permits_reads(params):
                 try:
                     from provider_spawners import provider_plan_statuses
                     provider_plan_status = provider_plan_statuses()
@@ -1023,6 +1031,14 @@ class LocalSessionServer:
                 # config yet. The macOS app renders "installed — pair to
                 # activate" instead of "not installed".
                 "paired": paired,
+                # v1.55 (additive): this helper reads the app's local-scan
+                # answer, its account record and its Privacy switches before it
+                # collects or uploads (the gate wired in as `local_scan_allowed`).
+                # Companion CLI 1.30.0 and earlier omit the field, and the app
+                # then says, under the answer and under the switches, that the
+                # Companion on this Mac ignores them (`CompanionAnswerCoverage`).
+                # Only a server built without the gate (tests) says false.
+                "follows_app_answer": self._local_scan_allowed is not None,
                 # Capability flags the UI uses to decide what to show.
                 # send_input lights up this iteration — managed Claude
                 # sessions accept stdin via the executor → same code
@@ -1153,7 +1169,12 @@ class LocalSessionServer:
             # taxonomy.
             managed_rows = self._list_sessions() or []
             detected_rows: list[dict] = []
-            if self._list_detected_sessions is not None:
+            # v1.55: finding the detected rows runs `ps` and reads the command
+            # lines of running programs, which is part of the local scan the
+            # app's answer covers. After "Not now" (or signed out, or another
+            # account's pairing) the reply carries the managed rows only: the
+            # sessions this helper started, which it knows without looking.
+            if self._list_detected_sessions is not None and self._request_permits_reads(params):
                 try:
                     detected_rows = list(self._list_detected_sessions() or [])
                 except Exception as exc:  # noqa: BLE001
@@ -1788,6 +1809,11 @@ class LocalSessionServer:
         showing stale ownership during a process restart.
         """
         if self._list_detected_sessions is None:
+            return False
+        # v1.55: the same scan as `list_sessions`' detected rows, so only
+        # while the app's answer allows it. Otherwise the id is simply not a
+        # session this helper knows.
+        if not self._local_scan_permits_reads():
             return False
         try:
             for row in self._list_detected_sessions() or []:

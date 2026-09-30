@@ -333,6 +333,28 @@ offline, in `repo-hygiene.yml`: `scripts/test_check_release_surfaces.sh` and
 `scripts/test_update_cask.sh` (which also runs the real `brew style` where
 Homebrew is installed).
 
+## Releasing the Companion CLI — a 1.55 release gate
+
+The Companion CLI (`helper/`, the `.pkg`) ships on its own line: the release
+`latest` on `cli-pulse-helper-releases` carries `latest.json`, which the app's
+`HelperInstaller` reads (at the `JasonYeYuhe/` URL compiled into it) to offer
+Install and Update. `scripts/build_helper_pkg.sh` takes the version from
+`helper/system_collector.py:HELPER_VERSION`, and
+`scripts/check_helper_version_sync.sh` keeps HelperSwift's `kHelperVersion` on
+the same number.
+
+**Gate for 1.55.** The 1.55 app says, in its Companion CLI install text and in
+the notes under the local-scan answer and the Claude keychain switches, that
+Companion CLI 1.30.0 and earlier do not follow the answer, and tells their
+users to update it in Settings › Companion CLI. That is true only once a
+Companion that does follow it (1.31.0: #626, #627, #630, #634, #636 and #635)
+is published as the `.pkg` and in `latest.json`. Until then Install downloads
+1.30.0, and an installed 1.30.0 is offered no update, because the installer
+compares its version with `latest.json`'s. Publish Companion CLI 1.31.0 before,
+or together with, the 1.55 app, and read `latest.json` back at the app's URL
+before submitting the app. `test_a_companion_that_follows_the_answer_is_newer_than_1_30_0`
+(helper) fails if a Companion that says `follows_app_answer` reports 1.30.0.
+
 ## App Store listing — texts, pusher, preflight
 
 The listing texts (description, keywords, subtitle, promotional text) live in
