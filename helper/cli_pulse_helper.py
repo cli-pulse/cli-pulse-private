@@ -18,7 +18,7 @@ from typing import Any
 from system_collector import CollectedAlert, collect_alerts, collect_device_snapshot, collect_sessions, estimate_provider_quotas
 from git_collector import GitCollector, project_paths_from_sessions
 from local_scan_consent import LocalScanGate
-from privacy_switches import SPAWN_READ_WAIT_S, ClaudeKeychainGate
+from privacy_switches import SPAWN_READ_WAIT_S, BrowserCookieGate, ClaudeKeychainGate
 import system_collector as _system_collector
 import user_secret as _user_secret_module
 from remote_session_plane import should_run_terminal_broadcast
@@ -326,10 +326,12 @@ _MACHINE_RELAY = None
 
 
 def _install_claude_keychain_gate(scan_gate: LocalScanGate) -> ClaudeKeychainGate:
-    """Settings › Privacy's Claude keychain switches (`privacy_switches`): asked
-    before this helper reads Claude Code's keychain item, for Claude's quota
-    and for a managed Claude session's token. Read from the same copy as the
-    local-scan answer, through the same gate."""
+    """Settings › Privacy's switches (`privacy_switches`): asked before this
+    helper reads Claude Code's keychain item, for Claude's quota and for a
+    managed Claude session's token, and (Strict privacy mode) before it opens
+    a browser's cookie store and its "Safe Storage" keychain item for the
+    claude.ai cookie. Read from the same copy as the local-scan answer, through
+    the same gate."""
     import claude_oauth  # stdlib-only; imported here like the daemon's own import
 
     keychain_gate = ClaudeKeychainGate(scan_gate.read)
@@ -339,6 +341,7 @@ def _install_claude_keychain_gate(scan_gate: LocalScanGate) -> ClaudeKeychainGat
     claude_oauth.set_keychain_gate(
         lambda: keychain_gate.allows("managed Claude session token", wait_s=SPAWN_READ_WAIT_S)
     )
+    _system_collector.set_browser_cookie_gate(BrowserCookieGate(scan_gate.read).allows)
     return keychain_gate
 
 
@@ -347,6 +350,47 @@ def _uninstall_claude_keychain_gate() -> None:
 
     _system_collector.set_claude_keychain_gate(None)
     claude_oauth.set_keychain_gate(None)
+    _system_collector.set_browser_cookie_gate(None)
+
+
+# How long the remote command poll waits for the app's copy each second. The
+# poll shares the daemon loop with the managed sessions' local drain, so a slow
+# read must not hold keystrokes for the gate's full `READ_WAIT_S`; a read that
+# is not done by then counts as paused for that second.
+_REMOTE_POLL_LOCAL_SCAN_WAIT_S = 1.0
+# Whether the last full tick polled, for logging a change once.
+_remote_poll_last: bool | None = None
+
+
+def _full_remote_tick(manager, gate: LocalScanGate | None) -> bool:
+    """The ~1 Hz tick of the managed sessions, with the cloud poll.
+
+    The poll (`remote_helper_pull_commands`, and the machine-control relay's
+    `remote_helper_pull_machine_commands`) authenticates as this Mac's
+    pairing, like `helper_heartbeat` and `helper_sync`, so it follows the same
+    rule as they do (`LocalScanGate.allows_upload`): paused while the app is
+    signed out, signed in to another account than the pairing's, used without
+    an account, set to "Not now", or unreadable; as before with an app older
+    than 1.55. Paused, nothing is asked of the server. The local half of the
+    tick (reading the sessions' output, noticing exits, stopping sessions past
+    their limits) still runs: it serves sessions already running on this Mac.
+
+    Returns whether it polled. `gate` None (tests) polls as before."""
+    global _remote_poll_last
+    polls = gate is None or gate.allows_upload(wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S)
+    if polls != _remote_poll_last:
+        _remote_poll_last = polls
+        if polls:
+            logger.info("remote command poll: on (the app's answer and account allow this Mac's uploads)")
+        else:
+            logger.info(
+                "remote command poll: paused with the local scan (signed out, another "
+                "account, no account, \"Not now\", or the app's answer unreadable)"
+            )
+    manager.tick(poll_remote=polls)
+    if polls and _MACHINE_RELAY is not None:
+        _MACHINE_RELAY.pull_from_cloud()
+    return polls
 
 
 def _still_allowed(
@@ -608,11 +652,11 @@ def _rotate_token_best_effort(
             "app-group container access still stalled after %.0fs — starting "
             "WITHOUT the local UDS surface. This is a TCC SystemPolicyAppData "
             "consult under launchd (see the note above %s); it is per-process, "
-            "so respawning cannot help and we deliberately do not. Heartbeat "
-            "and sync are PAUSED until this access completes: the app's "
-            "local-scan answer is read from the same container, and it is not "
-            "sent over without it. Remote Control commands keep running. The "
-            "same-machine fast path returns on the next helper start.",
+            "so respawning cannot help and we deliberately do not. Heartbeat, "
+            "sync and the remote command poll are PAUSED until this access "
+            "completes: the app's local-scan answer is read from the same "
+            "container, and they do not run without it. The same-machine "
+            "fast path returns on the next helper start.",
             timeout, "_CONTAINER_ACCESS_WAIT_S",
         )
         for handler in list(logging.getLogger().handlers):
@@ -745,8 +789,9 @@ def daemon(args: argparse.Namespace) -> None:
     sleep loop. This keeps the Sessions-Input UX snappy (a typed prompt
     reaches the spawned `claude` within ~1s of being enqueued) without
     stretching the slower heartbeat/sync cadence. The server-side
-    `_remote_authenticate_helper_gated` already rejects helper RPCs when
-    Remote Control is off, so calling tick() unconditionally is safe.
+    `_remote_authenticate_helper_gated` rejects helper RPCs when Remote
+    Control is off. The cloud poll in that tick also follows the app's
+    local-scan answer and account, as the sync does (`_full_remote_tick`).
     """
     import signal
 
@@ -1211,21 +1256,22 @@ def daemon(args: argparse.Namespace) -> None:
             # So skip the local surface entirely and keep the daemon loop
             # alive — the behaviour this block's own preamble already
             # prescribes: "the daemon still services Supabase-routed sessions
-            # even if the local socket can't bind". Remote Control commands
-            # (`remote_agent.tick`) keep running. Heartbeat and sync do NOT:
-            # the local-scan gate reads the app's answer from this same
-            # container, and while the rotation is still stuck in it
-            # (`_container_reachable`) the gate answers "unreadable", so every
-            # cycle pauses until that access completes. If it never completes,
-            # they stay paused for the life of this process.
+            # even if the local socket can't bind". Heartbeat, sync and the
+            # remote command poll (`_full_remote_tick`) do NOT run: the
+            # local-scan gate reads the app's answer from this same container,
+            # and while the rotation is still stuck in it
+            # (`_container_reachable`) the gate answers "unreadable", so they
+            # pause until that access completes. If it never completes, they
+            # stay paused for the life of this process. Sessions already
+            # running keep their local tick.
             local_uds_server = None
             logger.error(
                 "NOT starting the local UDS server: the app-group container is "
                 "stalled and the socket lives inside it (%s), so binding would "
                 "hang this daemon on the same access that just timed out. "
-                "Heartbeat and sync are paused until the container answers, "
-                "because the app's local-scan answer is read from it; only "
-                "Remote Control commands keep running. The macOS app will "
+                "Heartbeat, sync and the remote command poll are paused until "
+                "the container answers, because the app's local-scan answer is "
+                "read from it. The macOS app will "
                 "report this helper as not running until the container "
                 "recovers and the helper is restarted.",
                 default_socket_path(),
@@ -1309,12 +1355,11 @@ def daemon(args: argparse.Namespace) -> None:
                     _now_tick = time.monotonic()
                     try:
                         if _now_tick - _last_full_tick >= 1.0:
-                            remote_agent_manager.tick()
-                            # v1.41: pull queued fan/LPM commands into the relay
-                            # for the DEVID app executor (~1 Hz, gated on a fresh
-                            # executor report). pull_from_cloud is fail-soft.
-                            if _MACHINE_RELAY is not None:
-                                _MACHINE_RELAY.pull_from_cloud()
+                            # The cloud command poll, and (v1.41) the fan/LPM
+                            # relay's pull for the DEVID app executor, follow
+                            # the app's answer and account like the sync does
+                            # (`_full_remote_tick`).
+                            _full_remote_tick(remote_agent_manager, local_scan_gate)
                             # review L5: advance only AFTER a successful full
                             # tick, so a raised tick() doesn't suppress the
                             # remote command poll for the rest of the second.

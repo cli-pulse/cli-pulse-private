@@ -114,6 +114,32 @@ def _claude_keychain_allowed(what: str) -> bool:
         return False
 
 
+# Asked just before this module opens a browser's cookie store and reads its
+# "Safe Storage" keychain item for the claude.ai `sessionKey`
+# (`_resolve_claude_session_key`). The daemon (and the heartbeat/sync
+# subcommands) set it to `privacy_switches`' `BrowserCookieGate.allows`, so
+# Settings › Privacy's "Strict privacy mode" stops it: strict means no reading
+# other apps' secrets. None (tests, direct imports) reads as before. A gate
+# that raises counts as no.
+_browser_cookie_gate: Callable[[str], bool] | None = None
+
+
+def set_browser_cookie_gate(gate: Callable[[str], bool] | None) -> None:
+    global _browser_cookie_gate
+    _browser_cookie_gate = gate
+
+
+def _browser_cookies_allowed(what: str) -> bool:
+    gate = _browser_cookie_gate
+    if gate is None:
+        return True
+    try:
+        return bool(gate(what))
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not read
+        logger.debug("browser cookie gate failed: %s", exc)
+        return False
+
+
 PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     # (provider_name, regex_pattern, confidence: high|medium|low)
     ("Codex", r"\bcodex\b", "high"),
@@ -625,7 +651,9 @@ def _fetch_claude_usage() -> dict | None:
             _write_claude_snapshot(api_result, tier_raw, "oauth")
             return api_result
 
-    # Step 3: Try real Claude web usage via sessionKey from desktop/browser cookies
+    # Step 3: Try real Claude web usage via sessionKey from desktop/browser
+    # cookies, unless Strict privacy mode says not to (`_browser_cookies_allowed`
+    # in `_resolve_claude_session_key`).
     web_result = _fetch_claude_web_usage(plan_type)
     if web_result:
         _write_claude_snapshot(web_result, tier_raw, "web")
@@ -844,7 +872,14 @@ def _fetch_claude_web_usage(plan_type: str | None) -> dict | None:
 
 
 def _resolve_claude_session_key() -> tuple[str, str] | None:
-    """Return a decrypted claude.ai sessionKey from Claude desktop or Chromium browsers."""
+    """Return a decrypted claude.ai sessionKey from Claude desktop or Chromium browsers.
+
+    That reads other apps' secrets: each browser's cookie store, and its "Safe
+    Storage" keychain item to decrypt the cookie. Strict privacy mode in the
+    app stops it (`_browser_cookies_allowed`), before any store is listed or
+    opened, so nothing below runs."""
+    if not _browser_cookies_allowed("claude.ai session cookie"):
+        return None
     for source_label, db_path, services in _claude_cookie_candidates():
         try:
             session_key = _extract_session_key_from_cookie_db(db_path, services)

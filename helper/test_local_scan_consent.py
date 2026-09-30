@@ -30,7 +30,13 @@ a throwaway HOME, and check what the helper then reads and sends:
     `provider_plan_status` while the answer pauses the scan;
   * that the daemon and the `heartbeat` / `sync` / `run-demo` subcommands are
     the ones wired to the gate, and that the daemon's gate waits for a startup
-    rotation still stuck in the container.
+    rotation still stuck in the container;
+  * that the remote command poll (`remote_helper_pull_commands`, and the
+    machine-control relay's pull) follows the same rule as the sync: it asks
+    the server nothing while the app is signed out, in another account, in
+    local mode, set to "Not now" or unreadable, and polls as before when the
+    sync would run, while the local half of the tick runs either way; and
+    that the daemon's loop takes its poll through that rule.
 """
 from __future__ import annotations
 
@@ -1217,6 +1223,225 @@ def test_container_is_unreachable_while_the_startup_rotation_is_stuck(monkeypatc
     release.set()
     h._container_rotation_worker.join(2.0)
     assert h._container_reachable()
+
+
+# ── the remote command poll ────────────────────────────────────
+
+
+class _PollingManager:
+    """Stands in for `RemoteAgentManager`: records each full tick and whether
+    it was allowed to ask the server for commands. `helper_config` is the
+    pairing it polls with, loaded when the daemon started."""
+
+    def __init__(self, user_id: str | None = ME) -> None:
+        self.ticks: list[bool] = []
+        self.helper_config = types.SimpleNamespace(device_id="dev-1", helper_secret="s", user_id=user_id)
+
+    def tick(self, max_commands: int = 10, *, poll_remote: bool = True):
+        self.ticks.append(poll_remote)
+        return {}
+
+
+class _PullingRelay:
+    def __init__(self) -> None:
+        self.pulls = 0
+
+    def pull_from_cloud(self) -> None:
+        self.pulls += 1
+
+
+@pytest.fixture
+def relay(monkeypatch):
+    fake = _PullingRelay()
+    monkeypatch.setattr(h, "_MACHINE_RELAY", fake)
+    monkeypatch.setattr(h, "_remote_poll_last", None)
+    return fake
+
+
+@pytest.mark.parametrize(
+    ("values", "polls"),
+    [
+        # As the sync: an app older than 1.55, or signed in as the pairing's
+        # user with a yes or no answer yet.
+        (None, True),
+        (answer("granted"), True),
+        (answer("granted", signed_in(ME)), True),
+        (answer("undecided", signed_in(ME)), True),
+        # Paused with the sync.
+        (answer("declined", signed_in(ME)), False),
+        (answer("granted", "signed_out"), False),
+        (answer("granted", signed_in(OTHER)), False),
+        (answer("granted", "local_mode"), False),
+        (answer("undecided", "local_mode"), False),
+        (answer(account=signed_in(ME)), False),
+        (answer("maybe", signed_in(ME)), False),
+    ],
+)
+def test_the_remote_poll_follows_the_sync_rule(home, app_group_copy, relay, values, polls):
+    write_pairing(home, ME)
+    app_group_copy.write(values)
+    gate = LocalScanGate()
+    manager = _PollingManager()
+    assert h._full_remote_tick(manager, gate) is polls
+    assert gate.allows_upload() is polls  # the sync's own question
+    # The local half of the tick runs either way; only the server is not asked.
+    assert manager.ticks == [polls]
+    assert relay.pulls == (1 if polls else 0)
+
+
+def test_an_unreadable_answer_pauses_the_remote_poll(home, relay):
+    write_pairing(home, ME)
+    write_mirror(home, answer("granted", signed_in(ME)))
+    manager = _PollingManager()
+    assert h._full_remote_tick(manager, LocalScanGate(container_ready=lambda: False)) is False
+    assert manager.ticks == [False] and relay.pulls == 0
+
+
+def test_the_remote_poll_follows_each_change(home, relay):
+    write_pairing(home, ME)
+    gate = LocalScanGate()
+    manager = _PollingManager()
+    for values in (
+        answer("granted", signed_in(ME)),
+        answer("granted", "signed_out"),
+        answer("granted", signed_in(OTHER)),
+        answer("granted", signed_in(ME)),
+        answer("declined", signed_in(ME)),
+    ):
+        write_mirror(home, values)
+        h._full_remote_tick(manager, gate)
+    assert manager.ticks == [True, False, False, True, False]
+    assert relay.pulls == 2
+
+
+def test_the_remote_poll_checks_the_pairing_it_polls_with(home, relay):
+    # The manager keeps the pairing it loaded at start. After a `pair` run for
+    # another user, and the app signed in as that user, the file and the app
+    # agree, but the manager would still poll as the old account: it must not.
+    write_pairing(home, OTHER)
+    write_mirror(home, answer("granted", signed_in(OTHER)))
+    stale = _PollingManager(user_id=ME)
+    assert h._full_remote_tick(stale, LocalScanGate()) is False
+    assert stale.ticks == [False] and relay.pulls == 0
+    # Negative control: a manager holding the pairing the file names polls.
+    fresh = _PollingManager(user_id=OTHER)
+    assert h._full_remote_tick(fresh, LocalScanGate()) is True
+    assert fresh.ticks == [True] and relay.pulls == 1
+    # A pairing that names no user is not polled with either.
+    assert h._full_remote_tick(_PollingManager(user_id=""), LocalScanGate()) is False
+    assert relay.pulls == 1
+
+
+def test_without_a_gate_the_remote_poll_is_unchanged(relay):
+    manager = _PollingManager()
+    assert h._full_remote_tick(manager, None) is True
+    assert manager.ticks == [True] and relay.pulls == 1
+
+
+def test_the_remote_poll_logs_a_change_once(home, relay, caplog):
+    caplog.set_level("INFO", logger=h.logger.name)
+    write_pairing(home, ME)
+    gate = LocalScanGate()
+    manager = _PollingManager()
+    for values in [answer("granted", "signed_out")] * 3 + [answer("granted", signed_in(ME))] * 3:
+        write_mirror(home, values)
+        h._full_remote_tick(manager, gate)
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    assert len(lines) == 2
+    assert lines[0].startswith("remote command poll: paused")
+    assert lines[1].startswith("remote command poll: on")
+
+
+def test_a_paused_tick_asks_the_server_nothing_and_still_serves_local_sessions():
+    # The real manager: the poll is the only thing a paused tick leaves out.
+    import remote_agent
+
+    rpcs: list[str] = []
+
+    def rpc(name, _params):
+        rpcs.append(name)
+        return []
+
+    manager = remote_agent.RemoteAgentManager(
+        helper_config=types.SimpleNamespace(device_id="dev-1", helper_secret="s"),
+        rpc_caller=rpc,
+        transport=types.SimpleNamespace(),
+    )
+    drained: list[int] = []
+    manager._tick_local_impl = lambda: drained.append(1) or {
+        "commands_processed": 0, "sessions_exited": 0, "bytes_drained": 0, "sessions_reaped": 0,
+    }
+    paused = manager.tick(poll_remote=False)
+    assert rpcs == [] and drained == [1]
+    assert paused["commands_processed"] == 0
+    manager.tick()  # negative control: the default polls
+    assert rpcs == ["remote_helper_pull_commands"] and drained == [1, 1]
+
+
+def test_the_daemon_takes_its_remote_poll_through_the_gate(home, monkeypatch):
+    # The daemon's own loop, with a paired config: its ~1 Hz tick goes through
+    # `_full_remote_tick` with the same gate its sync cycles use.
+    import signal
+
+    import machine_command_relay
+    import remote_agent
+
+    write_mirror(home, answer("granted", "signed_out"))
+    monkeypatch.setattr(signal, "signal", lambda *_a, **_k: None)
+    config = types.SimpleNamespace(
+        device_id="dev-1", helper_secret="s", user_id=ME, device_name="Mac",
+        remote_realtime_broadcast_enabled=False,
+    )
+    monkeypatch.setattr(h, "load_config", lambda: config)
+    monkeypatch.setattr(h, "_rotate_token_best_effort", lambda *_a, **_k: None)
+    monkeypatch.setattr(h, "_container_rotation_worker", None)
+    monkeypatch.setattr(h, "_MACHINE_RELAY", None)
+    through_gate = threading.local()
+
+    class OneTickManager(_PollingManager):
+        def tick(self, max_commands: int = 10, *, poll_remote: bool = True):
+            super().tick(max_commands, poll_remote=poll_remote)
+            if not getattr(through_gate, "on", False):
+                # A loop that ticks around `_full_remote_tick` must end the
+                # test (and fail it below), not spin forever.
+                raise KeyboardInterrupt
+            return {}
+
+        def shutdown(self):
+            pass
+
+        def has_active_sessions(self):
+            return False
+
+    manager = OneTickManager()
+    monkeypatch.setattr(remote_agent, "RemoteAgentManager", lambda **_kw: manager)
+    relay = _PullingRelay()
+    monkeypatch.setattr(machine_command_relay, "MachineCommandRelay", lambda **_kw: relay)
+    seen: dict = {}
+
+    def one_cycle(_args, **kwargs):
+        seen["cycle_gate"] = kwargs["gate"]
+        return False
+
+    real_tick = h._full_remote_tick
+
+    def one_tick(mgr, gate):
+        through_gate.on = True
+        try:
+            seen["tick"] = (mgr, gate, real_tick(mgr, gate))
+        finally:
+            through_gate.on = False
+        raise KeyboardInterrupt  # ends the daemon after its first full tick
+
+    monkeypatch.setattr(h, "_collection_cycle", one_cycle)
+    monkeypatch.setattr(h, "_full_remote_tick", one_tick)
+    h.daemon(argparse.Namespace(interval=60))
+
+    assert "tick" in seen, "the daemon ticked without asking the gate"
+    mgr, gate, polled = seen["tick"]
+    assert mgr is manager and gate is seen["cycle_gate"]
+    assert polled is False  # signed out: the server was not asked
+    assert manager.ticks == [False] and relay.pulls == 0
 
 
 # ── every account × every answer ───────────────────────────────
