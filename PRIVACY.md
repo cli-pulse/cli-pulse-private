@@ -7,10 +7,11 @@ CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
 goal is straightforward: **your provider API keys never reach our servers**
 (CLI Pulse sends each one only to the provider it belongs to). Apart from what
-signing in needs, crash reports, and the anonymous install statistics described
-below, everything CLI Pulse uploads is there to show your usage and alerts on
-your other devices, or wherever you asked for alerts to go, and this document
-lists all of it, including the parts that are not numbers.
+signing in needs, crash reports, the anonymous install statistics, and a few
+diagnostic readings about each Mac (all described below), everything CLI Pulse
+uploads is there to show your usage and alerts on your other devices, or
+wherever you asked for alerts to go, and this document lists all of it,
+including the parts that are not numbers.
 
 This document is the single source of truth for what we collect. If you find
 anything in the app, App Store listing, or GitHub README that contradicts this
@@ -46,8 +47,8 @@ It describes CLI Pulse 1.55.
 
 Remote control between an iPhone and a Mac is built into the direct-download
 build but is off in this release: the Mac shows no Remote Control section in
-Settings until we switch the feature on, which we can do later through the
-update information the app downloads. Once it is offered and you turn it on,
+Settings until the feature is switched on, and we can switch it on later through
+the update information the app downloads. Once it is offered and you turn it on,
 the iPhone and the Mac connect to each other directly, over your local network
 or your own private network (such as Tailscale), encrypted with TLS 1.2 using a
 key the two devices agree on when you pair them; what they exchange does not
@@ -70,8 +71,8 @@ pass through our servers.
 | **Alerts**: your Mac or a program using a lot of CPU, or a session running a long time (with that program's name, provider and folder name), budget alerts our server works out from your daily usage, and whether you resolved or snoozed each one | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
 | **Your alert webhook**, if you add one: the address, and which alerts go to it | Supabase, linked to your CLI Pulse account | ✅ Yes | Our server posts each matching alert (its title, message, type, severity and provider) to that address |
 | **Settings kept with your account** (such as alert thresholds and budget, and whether Yield Score and remote control are on) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So every device uses the same settings |
-| **This Mac's helper readings**: CPU and memory load, how many AI CLI sessions are running, whether each installed AI CLI is signed in with a subscription or an API key (where the built-in agent or the Companion CLI can tell), and whether each provider's check worked (ok / no data / error) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | Shows whether each Mac is reporting, and why a provider shows nothing |
-| **Device name** (your Mac's name as set in System Settings, which often contains your own name), **macOS version, app version and helper version** | Supabase, linked to your CLI Pulse account | ✅ Yes, when you pair this Mac, and the app version while it is paired | Shows which of your Macs are reporting |
+| **This Mac's helper readings**: CPU and memory load, how many AI CLI sessions are running, whether each installed AI CLI is signed in with a subscription or an API key (where the built-in agent or the Companion CLI can tell), and whether each provider's check worked (ok / no data / error) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | Load and session count show on your other devices. The rest are diagnostics for us, such as why a provider shows nothing |
+| **Device name** (your Mac's name as set in System Settings, which often contains your own name), **macOS version, app version and helper version** | Supabase, linked to your CLI Pulse account | ✅ Yes, when you pair this Mac, and the app version while it is paired | Shows which of your Macs are reporting. The versions are diagnostics for us |
 | **Machine readings** (Companion CLI only): battery charge, health, cycle count and temperature, thermal state, temperature and fan sensors, load, uptime, memory pressure, swap and disk space, Low Power Mode, and the state of machine controls | Supabase, linked to your CLI Pulse account | ✅ Yes, while the Companion CLI is allowed to upload | The Machine view on iPhone and Apple Watch |
 | **Requests you send from your iPhone to a Mac** (fan boost, fan back to automatic, Low Power Mode, Keep Awake) | Supabase, linked to your CLI Pulse account | ✅ Yes, when you send one | Carried to that Mac, which acts on them only if you allowed it there |
 | **Your iPhone's notification token**, only if you allow notifications while signed in | Supabase, linked to your CLI Pulse account | ✅ Yes | Lets our server ask your iPhone, through Apple, to refresh its widgets or to look at a pending request. These pushes carry none of your data |
