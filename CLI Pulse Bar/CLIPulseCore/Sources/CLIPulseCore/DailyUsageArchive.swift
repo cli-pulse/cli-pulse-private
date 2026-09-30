@@ -111,10 +111,11 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     ///
     /// Not on the window's oldest day, though. The read covers 31 days, from
     /// the day of `now − 30 days` through today, and Claude Code's cleanup
-    /// deletes transcripts last active before `now − 30 days`: a moment inside
-    /// that oldest day. So the read sees only what is left of that day's Claude
-    /// usage, which the archive recorded in full the day before, when it was
-    /// the window's second-oldest day. A day the archive holds on or before
+    /// deletes transcripts last active before `now − 720 hours`: a moment on
+    /// that oldest day (across a daylight-saving change, possibly the day after
+    /// it). So the read sees only what is left of that day's Claude usage,
+    /// which the archive recorded in full the day before, when it was the
+    /// window's second-oldest day. A day the archive holds on or before
     /// `claudeCleanupReach` (`DailyUsageArchive.claudeCleanupReach(now:)`, which
     /// `DailyUsageArchiveManager.record` passes) is merged by `mergedDay`, as
     /// the year-long read merges every day. Later days are replaced whole.
@@ -179,12 +180,21 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// smaller figure is not evidence of less. Codex keeps its logs.
     static let providersThatDeleteOldLogs: Set<String> = ["Claude"]
 
-    /// The newest day Claude Code's default cleanup can have reached by `now`:
-    /// the day of `now − 30 days`. On that day, transcripts last active before
-    /// that moment may be gone. Later days keep every transcript, unless the
-    /// user set a shorter `cleanupPeriodDays`.
+    /// The newest day Claude Code's default cleanup can have reached by `now`,
+    /// in `timeZone`.
+    ///
+    /// Claude Code's cutoff is `now − cleanupPeriodDays × 24 hours`, 720 hours
+    /// for the default 30, not 30 calendar days: across a daylight-saving change
+    /// the two are an hour apart and can fall on different days. On the cutoff's
+    /// day, transcripts last active before it may be gone.
+    ///
+    /// Later days keep every transcript unless `cleanupPeriodDays` is shorter
+    /// than 30, and that is not only the user's choice: Claude Code reads it
+    /// from user, project, local and managed-policy settings, so a project's
+    /// `.claude/settings.json` or an organization's policy can shorten it. This
+    /// does not read any of them.
     public static func claudeCleanupReach(now: Date = Date(), in timeZone: TimeZone = .current) -> String {
-        let cutoff = DayKey.calendar(in: timeZone).date(byAdding: .day, value: -claudeCodeCleanupDays, to: now) ?? now
+        let cutoff = now.addingTimeInterval(-Double(claudeCodeCleanupDays) * 86_400)
         return DayKey.string(from: cutoff, in: timeZone)
     }
 
@@ -204,11 +214,14 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// provider, it is the stored day.
     ///
     /// Models: a stored day does not record which provider a model is from.
-    /// Each stored model is attributed to one of the day's providers
-    /// (`provider(ofStoredModel:on:readModelProviders:)`) and goes with that
-    /// provider's slice, so a model name that changed between versions is not
-    /// counted under both names. A stored name that cannot be attributed is
-    /// kept unless the read reports it.
+    /// Each stored model is attributed to one of the day's providers where
+    /// that can be told (`storedModelOwners(of:readModelProviders:)`) and goes
+    /// with that provider's slice, so a model name that changed between
+    /// versions is not counted under both names. A model that cannot be
+    /// attributed is kept only where every provider it could belong to keeps
+    /// its slice, and the read does not report it: kept beside a provider the
+    /// read replaced, it would be counted twice, and the models would add up
+    /// to more than the day.
     ///
     /// Limits. The archive cannot tell deleted transcripts from usage counted
     /// lower under newer rules, so a lower Claude recount does not reach a day
@@ -246,14 +259,60 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
             if let owner = readModelProviders[model], kept.contains(owner) { continue }
             day.perModel[model] = slice
         }
+        let (owners, unexplained) = Self.storedModelOwners(of: stored, readModelProviders: readModelProviders)
+        // A model left unattributed is some provider's whose tokens the
+        // attributed models do not account for.
+        let keepUnattributed = unexplained.allSatisfy { $0.value <= 0 || kept.contains($0.key) }
         for (model, slice) in stored.perModel {
-            if let owner = Self.provider(ofStoredModel: model, on: stored, readModelProviders: readModelProviders) {
+            if let owner = owners[model] {
                 if kept.contains(owner) { day.perModel[model] = slice }
-            } else if day.perModel[model] == nil {
+            } else if keepUnattributed, day.perModel[model] == nil {
                 day.perModel[model] = slice
             }
         }
         return day
+    }
+
+    /// Which of a stored day's providers each of its models belongs to, where
+    /// that can be told, and each provider's tokens that no attributed model
+    /// accounts for.
+    ///
+    /// A model goes first by `provider(ofStoredModel:on:readModelProviders:)`.
+    /// One that leaves open (a name no rule knows, on a day with both
+    /// providers, that the read does not report) goes to the one provider whose
+    /// leftover tokens (its slice less the models attributed to it so far) can
+    /// hold it, since its tokens are part of its own provider's leftover. That
+    /// repeats while it attributes something, as each model attributed shrinks
+    /// a leftover. A model two providers' leftovers could hold, or none, stays
+    /// out of `owners`.
+    static func storedModelOwners(of stored: DayRollup, readModelProviders: [String: String])
+        -> (owners: [String: String], unexplained: [String: Int])
+    {
+        var owners: [String: String] = [:]
+        var leftover = stored.perProvider.mapValues(\.tokens)
+        var open: [String: Int] = [:]
+        for (model, slice) in stored.perModel {
+            if let owner = provider(ofStoredModel: model, on: stored, readModelProviders: readModelProviders) {
+                owners[model] = owner
+                leftover[owner, default: 0] -= slice.tokens
+            } else {
+                open[model] = slice.tokens
+            }
+        }
+        var attributed = true
+        while attributed {
+            attributed = false
+            for model in open.keys.sorted() {
+                guard let tokens = open[model] else { continue }
+                let holders = leftover.filter { $0.value >= tokens }.keys
+                guard holders.count == 1, let owner = holders.first else { continue }
+                owners[model] = owner
+                leftover[owner, default: 0] -= tokens
+                open[model] = nil
+                attributed = true
+            }
+        }
+        return (owners, leftover)
     }
 
     /// Which of a stored day's providers `model` belongs to: the provider the

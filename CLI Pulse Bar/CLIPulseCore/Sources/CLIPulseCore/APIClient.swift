@@ -2668,12 +2668,13 @@ public actor APIClient {
     /// server-side per-model analytics with a fake model row.
     ///
     /// Also leaves out Claude's rows for the day Claude Code's cleanup is
-    /// working through (`DailyUsageArchive.claudeCleanupReach`), the scan's
-    /// oldest. Transcripts last active before `now − 30 days` may be deleted
-    /// by now, so the scan counts only part of that day, and
-    /// `upsert_daily_usage` overwrites each (device, day, provider, model) row
-    /// with what it is sent: the iPhone's copy of the day would drop. Every
-    /// earlier upload of that day was made before cleanup could reach it.
+    /// working through (`DailyUsageArchive.claudeCleanupReach`) and any earlier
+    /// one: usually the scan's oldest day. Transcripts last active before
+    /// `now − 720 hours` may be deleted by now, so the scan counts only part of
+    /// that day, and `upsert_daily_usage` overwrites each (device, day,
+    /// provider, model) row with what it is sent: the iPhone's copy of the day
+    /// would drop. Every earlier upload of that day was made before cleanup
+    /// could reach it.
     static func dailyUsageRowsToUpload(
         _ entries: [CostUsageScanResult.DailyEntry],
         now: Date
@@ -2697,9 +2698,13 @@ public actor APIClient {
     /// the server-side dashboard_summary read today's real cost from this
     /// table instead. Every refresh overwrites the row with the latest scan,
     /// so partial-day values auto-correct as the day progresses.
+    ///
+    /// `now` places Claude Code's cleanup (`dailyUsageRowsToUpload`); it is a
+    /// seam for tests.
     public func syncDailyUsage(
         _ scanResult: CostUsageScanResult,
-        authorizationLease: APIAuthorizationLease
+        authorizationLease: APIAuthorizationLease,
+        now: Date = Date()
     ) async {
         do {
             try ensureAuthorizationLeaseIsCurrent(authorizationLease)
@@ -2712,7 +2717,7 @@ public actor APIClient {
         guard let userId else { return }
         guard !scanResult.entries.isEmpty else { return }
 
-        let completedEntries = Self.dailyUsageRowsToUpload(scanResult.entries, now: Date())
+        let completedEntries = Self.dailyUsageRowsToUpload(scanResult.entries, now: now)
         guard !completedEntries.isEmpty else { return }
 
         let metrics: [[String: Any]] = completedEntries.map { entry in

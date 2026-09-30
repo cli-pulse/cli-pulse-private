@@ -1352,6 +1352,94 @@ final class ProviderAccountAPITests: XCTestCase {
             ProviderAccountAPIStubProtocol.recordedRequests().isEmpty
         )
     }
+
+    /// `syncDailyUsage` leaves out Claude's rows on the day Claude Code's
+    /// cleanup is working through: `upsert_daily_usage` would overwrite the
+    /// complete figures sent before with what cleanup left. Codex's rows on
+    /// that day, and Claude's on every later day, still go. The filter itself
+    /// is tested in DailyUsageClaudeCleanupEdgeTests; this is the wiring.
+    func testDailyUsageUploadLeavesOutClaudeOnTheDayCleanupIsWorkingThrough()
+        async throws
+    {
+        ProviderAccountAPIStubProtocol.handler = { request in
+            XCTAssertEqual(
+                request.url?.path,
+                "/rest/v1/rpc/upsert_daily_usage"
+            )
+            return .json("{}")
+        }
+        let api = makeAPI(flags: .init(readV2: false, writeV2: false))
+        _ = await api.beginExternalAuthorizationTransition(generation: 1)
+        _ = await api.installExternalAuthenticatedSession(
+            accessToken: "token-a",
+            refreshToken: "refresh-a",
+            userID: "user-a",
+            transitionGeneration: 1
+        )
+        let lease = try await requireAuthorizationLease(for: api)
+
+        // Claude Code's cutoff is now − 720 hours; the oldest day is the one
+        // it falls on.
+        let now = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-10-01T18:00:00Z")
+        )
+        let oldest = DayKey.string(from: now.addingTimeInterval(-720 * 3_600))
+        let noonOfOldest = try XCTUnwrap(DayKey.date(from: oldest, hour: 12))
+        let next = DayKey.string(from: noonOfOldest.addingTimeInterval(86_400))
+        let today = DayKey.string(from: now)
+        func row(
+            _ date: String, _ provider: String, _ model: String, _ input: Int
+        ) -> CostUsageScanResult.DailyEntry {
+            .init(
+                date: date, provider: provider, model: model,
+                inputTokens: input, cachedTokens: 0, outputTokens: 0,
+                costUSD: 0.01
+            )
+        }
+
+        await api.syncDailyUsage(
+            CostUsageScanResult(entries: [
+                row(oldest, "Claude", "claude-sonnet-4-5", 30),
+                row(oldest, "Codex", "gpt-5", 150),
+                row(next, "Claude", "claude-sonnet-4-5", 40),
+                row(today, "Claude", "claude-sonnet-4-5", 50),
+                row(today, "Codex", "gpt-5", 60),
+            ]),
+            authorizationLease: lease,
+            now: now
+        )
+
+        let upserts = ProviderAccountAPIStubProtocol.recordedRequests()
+            .filter { $0.url?.path == "/rest/v1/rpc/upsert_daily_usage" }
+        XCTAssertEqual(upserts.count, 1)
+        let body = try XCTUnwrap(upserts.first?.httpBody)
+        let root = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        let metrics = try XCTUnwrap(root["metrics"] as? [[String: Any]])
+        let sent = metrics.map { metric in
+            [
+                metric["metric_date"] as? String ?? "?",
+                metric["provider"] as? String ?? "?",
+                "\(metric["input_tokens"] as? Int ?? -1)",
+            ].joined(separator: " ")
+        }
+        XCTAssertFalse(
+            sent.contains("\(oldest) Claude 30"),
+            "the day Claude Code's cleanup is working through was uploaded "
+                + "for Claude: upsert_daily_usage overwrites the complete row"
+        )
+        XCTAssertEqual(
+            Set(sent),
+            [
+                "\(oldest) Codex 150",
+                "\(next) Claude 40",
+                "\(today) Claude 50",
+                "\(today) Codex 60",
+            ]
+        )
+        XCTAssertEqual(sent.count, 4)
+    }
     #endif
 
     private func makeAPI(

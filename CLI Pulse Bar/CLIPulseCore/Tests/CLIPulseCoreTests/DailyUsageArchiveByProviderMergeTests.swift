@@ -257,6 +257,116 @@ final class DailyUsageArchiveByProviderMergeTests: XCTestCase {
             "Claude")
     }
 
+    /// A model no rule names, on a day with both providers, that the read does
+    /// not report: here the read counts the day's Claude usage under a new
+    /// name. Kept beside the read's Claude slice it was counted twice, and the
+    /// models came to 1,320 on a day of 820. It is Claude's, the only provider
+    /// whose tokens no attributed model accounts for, so it goes with Claude's
+    /// slice: out when the read replaces that slice, in when the slice stays.
+    func test_an_unnamed_model_goes_with_the_provider_whose_leftover_holds_it() {
+        var replaced = DailyUsageArchive()
+        replaced.mergeScanEntries([se(day, "Claude", "glm-4.6", input: 500)] + codex(day))
+        replaced.mergeScanEntriesByProvider([se(day, "Claude", "z-ai/glm-4.6", input: 600)])
+
+        let d = replaced.days[day]!
+        XCTAssertEqual(d.tokens, 820)
+        XCTAssertNil(d.perModel["glm-4.6"], "the replaced Claude slice's model was counted beside the read's")
+        XCTAssertEqual(d.perModel, ["z-ai/glm-4.6": ModelDaySlice(tokens: 600), "gpt-5": ModelDaySlice(tokens: 220, cost: 0.10)])
+        XCTAssertEqual(d.perModel.values.reduce(0) { $0 + $1.tokens }, d.tokens)
+        XCTAssertEqual(DailyUsageStats.byModel(replaced).reduce(0) { $0 + $1.tokens }, DailyUsageStats.totalTokens(replaced))
+
+        var kept = DailyUsageArchive()
+        kept.mergeScanEntries([se(day, "Claude", "glm-4.6", input: 500)] + codex(day))
+        kept.mergeScanEntriesByProvider([se(day, "Claude", "z-ai/glm-4.6", input: 100)] + codex(day, input: 280))
+
+        let k = kept.days[day]!
+        XCTAssertEqual(k.perModel, ["glm-4.6": ModelDaySlice(tokens: 500), "gpt-5": ModelDaySlice(tokens: 300, cost: 0.10)])
+        XCTAssertEqual(k.perModel.values.reduce(0) { $0 + $1.tokens }, k.tokens)
+    }
+
+    /// Each model attributed shrinks its provider's leftover, which can leave
+    /// a model only one provider could hold. `deepseek-v3` (Codex, through a
+    /// local model) fits either provider's leftover until `glm-4.6` (Claude)
+    /// takes Claude's; it is looked at first, so this takes a second pass.
+    func test_unnamed_models_on_both_sides_are_told_apart_by_what_is_left() {
+        var a = DailyUsageArchive()
+        a.mergeScanEntries(claude(day) + [se(day, "Claude", "glm-4.6", input: 300)]
+                           + codex(day) + [se(day, "Codex", "deepseek-v3", input: 100)])
+        let owners = DailyUsageArchive.storedModelOwners(of: a.days[day]!, readModelProviders: [:]).owners
+        XCTAssertEqual(owners["glm-4.6"], "Claude")
+        XCTAssertEqual(owners["deepseek-v3"], "Codex")
+
+        a.mergeScanEntriesByProvider([se(day, "Claude", "claude-sonnet-4-5", input: 600)])
+        let d = a.days[day]!
+        XCTAssertEqual(d.tokens, 600 + 320)
+        XCTAssertNil(d.perModel["glm-4.6"])
+        XCTAssertEqual(d.perModel["deepseek-v3"], ModelDaySlice(tokens: 100))
+        XCTAssertEqual(d.perModel.values.reduce(0) { $0 + $1.tokens }, d.tokens)
+    }
+
+    /// Where two providers' leftovers could hold a model, it could be either's.
+    /// It stays only while every provider with a leftover keeps its slice;
+    /// otherwise it goes, and the models add up to less than the day, never
+    /// more.
+    func test_a_model_either_provider_could_hold_stays_only_while_both_keep_their_slices() {
+        var a = DailyUsageArchive()
+        a.mergeScanEntries(claude(day) + [se(day, "Claude", "glm-4.6", input: 100)]
+                           + codex(day) + [se(day, "Codex", "deepseek-v3", input: 100)])
+        XCTAssertTrue(DailyUsageArchive.storedModelOwners(of: a.days[day]!, readModelProviders: [:]).owners
+            .keys.allSatisfy { !["glm-4.6", "deepseek-v3"].contains($0) })
+
+        a.mergeScanEntriesByProvider([se(day, "Claude", "claude-sonnet-4-5", input: 600)])
+        let d = a.days[day]!
+        XCTAssertEqual(d.tokens, 600 + 320)
+        XCTAssertNil(d.perModel["glm-4.6"])
+        XCTAssertNil(d.perModel["deepseek-v3"])
+        XCTAssertLessThanOrEqual(d.perModel.values.reduce(0) { $0 + $1.tokens }, d.tokens)
+
+        // A day the cloud filled can hold a third provider. The read replaces
+        // Codex, whose models are all named; the unnamed models could be
+        // Claude's or the third provider's, and both keep their slices.
+        var three = DailyUsageArchive()
+        three.mergeCloudDays([
+            CloudEntry(date: day, provider: "Claude", model: "glm-4.6", inputTokens: 100, cachedTokens: 0, outputTokens: 0, cost: 0),
+            CloudEntry(date: day, provider: "Codex", model: "gpt-5", inputTokens: 220, cachedTokens: 0, outputTokens: 0, cost: 0),
+            CloudEntry(date: day, provider: "Gemini", model: "gemini-2.5-pro", inputTokens: 100, cachedTokens: 0, outputTokens: 0, cost: 0),
+        ])
+        three.mergeScanEntriesByProvider(codex(day, input: 280))
+        let t = three.days[day]!
+        XCTAssertEqual(t.perModel, ["glm-4.6": ModelDaySlice(tokens: 100), "gemini-2.5-pro": ModelDaySlice(tokens: 100),
+                                    "gpt-5": ModelDaySlice(tokens: 300, cost: 0.10)])
+        XCTAssertEqual(t.perModel.values.reduce(0) { $0 + $1.tokens }, t.tokens)
+    }
+
+    /// A `claude-…` model used through Codex, or a `gpt-…` one through Claude
+    /// Code, goes by the provider the read reports it under, not by its name.
+    func test_a_named_model_reported_under_the_other_provider_goes_with_that_provider() {
+        // Codex through a provider that serves Claude; Claude's transcripts partly gone.
+        var a = DailyUsageArchive()
+        a.mergeScanEntries([se(day, "Codex", "claude-sonnet-4-5", input: 300),
+                            se(day, "Claude", "claude-opus-4-1", input: 500, cost: 2.0)])
+        a.mergeScanEntriesByProvider([se(day, "Codex", "claude-sonnet-4-5", input: 350),
+                                      se(day, "Claude", "claude-opus-4-1", input: 100, cost: 0.4)])
+        let d = a.days[day]!
+        XCTAssertEqual(d.perProvider["Claude"]?.tokens, 500)
+        XCTAssertEqual(d.perProvider["Codex"]?.tokens, 350)
+        XCTAssertEqual(d.perModel, ["claude-opus-4-1": ModelDaySlice(tokens: 500, cost: 2.0),
+                                    "claude-sonnet-4-5": ModelDaySlice(tokens: 350)])
+        XCTAssertEqual(d.perModel.values.reduce(0) { $0 + $1.tokens }, d.tokens)
+
+        // Claude Code through a proxy serving gpt-5; the Claude slice stays.
+        var b = DailyUsageArchive()
+        b.mergeScanEntries([se(day, "Claude", "gpt-5", input: 500, cost: 1.0),
+                            se(day, "Codex", "gpt-5-codex", input: 220)])
+        b.mergeScanEntriesByProvider([se(day, "Claude", "gpt-5", input: 50, cost: 0.1),
+                                      se(day, "Codex", "gpt-5-codex", input: 300)])
+        let e = b.days[day]!
+        XCTAssertEqual(e.perProvider["Claude"]?.tokens, 500)
+        XCTAssertEqual(e.perModel, ["gpt-5": ModelDaySlice(tokens: 500, cost: 1.0),
+                                    "gpt-5-codex": ModelDaySlice(tokens: 300)])
+        XCTAssertEqual(e.perModel.values.reduce(0) { $0 + $1.tokens }, e.tokens)
+    }
+
     // MARK: - Lifetime totals
 
     /// Over an archive with a month tier and three kinds of day, the totals
@@ -303,7 +413,7 @@ final class DailyUsageArchiveByProviderMergeTests: XCTestCase {
 
     /// The routine read covers the day of `now − 30 days` through today, and
     /// Claude Code's cleanup deletes transcripts last active before
-    /// `now − 30 days`. On that oldest day the read sees what is left, so the
+    /// `now − 720 hours`. On that oldest day the read sees what is left, so the
     /// day is merged by provider; the day after it is replaced whole.
     func test_the_routine_read_does_not_lower_claude_on_the_day_cleanup_is_working_through() {
         let utc = TimeZone(identifier: "UTC")!
@@ -341,6 +451,21 @@ final class DailyUsageArchiveByProviderMergeTests: XCTestCase {
         XCTAssertEqual(DailyUsageArchive.claudeCleanupReach(now: now, in: TimeZone(identifier: "America/Los_Angeles")!),
                        "2026-08-31")
         XCTAssertEqual(DailyUsageArchive.claudeCodeCleanupDays, 30)
+    }
+
+    /// Claude Code's cutoff is `Date.now − cleanupPeriodDays × 24 hours`, not
+    /// 30 calendar days. Across the end of daylight saving time the two are an
+    /// hour apart: in New York, 30 calendar days before 23:30 on 30 November
+    /// is 23:30 on 31 October, but 720 hours before it is 00:30 on 1 November,
+    /// and transcripts last active in that half hour are gone too. At the
+    /// start of daylight saving time the cutoff is an hour earlier instead.
+    func test_the_cleanup_reach_counts_720_hours_across_a_daylight_saving_change() {
+        let newYork = TimeZone(identifier: "America/New_York")!
+        let iso = ISO8601DateFormatter()
+        XCTAssertEqual(DailyUsageArchive.claudeCleanupReach(now: iso.date(from: "2026-12-01T04:30:00Z")!, in: newYork),
+                       "2026-11-01")
+        XCTAssertEqual(DailyUsageArchive.claudeCleanupReach(now: iso.date(from: "2026-03-31T04:30:00Z")!, in: newYork),
+                       "2026-02-28")
     }
 
     // MARK: - Days the archive does not hold, or has folded
