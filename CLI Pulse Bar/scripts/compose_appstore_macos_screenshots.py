@@ -15,13 +15,15 @@ Each panel: the dark navy gradient and captions of the iPhone set (the same
 fonts, sizes, line breaking and pinned headline: appstore_compose_common.py),
 the 380x580-point menu-bar popover below them at one fixed scale for the whole
 set, framed as the popover window frames it (rounded corners, hairline, soft
-shadow; no fake menu bar). The cost panel's popover is a little shorter
-(render.json records how much: QARenderSnapshot.alignedTrim), so the Overview
-scrolled to its end opens above a card rather than through a line of text; it
-sits at the same place and scale as the others and simply ends higher. The usage-history panel shows the dashboard panel
-DashboardPanelController slides out to the left of the popover, top-aligned,
-8 points away, at the same scale; it is taller than the canvas and is the only
-thing allowed past an edge, and only past the bottom one.
+shadow; no fake menu bar). The cost panel's popover is shorter (render.json
+records how much: QARenderSnapshot.alignedTrim), so the Overview scrolled to
+its end opens just above the first card the Overview panel did not show whole
+(Cost Summary) rather than through a card or a line of text; it sits at the
+same place and scale as the others and simply ends higher. The usage-history
+panel shows the dashboard panel DashboardPanelController slides out to the
+left of the popover, top-aligned, 8 points away, at the same scale; it is
+taller than the canvas and is the only thing allowed past an edge, and only
+past the bottom one.
 
 Usage:
     compose_appstore_macos_screenshots.py --lang ja      # macos-raw/ja -> macos-composed/ja
@@ -105,10 +107,14 @@ SHADOW_OFFSET_PT = 6
 # メニューバー/메뉴 막대/barra de menús, the dashboard's scope line ("Claude +
 # Codex local history", 本地历史/本機歷史/ローカル履歴/로컬 기록/historial local),
 # the alert buttons in the order the cards show them (Ack/Resolve/Snooze), the
-# pet's Energy and Hunger, and the pet's name, pet.title. The alerts subtitle
-# promises no kind of alert: the Demo list, like a paired account's, also holds
-# CPU and long-running-session alerts from a helper on another device. Where the iPhone set says the same thing, its reviewed
-# words are reused as they are.
+# pet's Energy and Fullness (pet.energy, pet.hunger), and the pet's name,
+# pet.title. The cost subtitle names only what its page shows: the Cost
+# Summary's Estimated badge over Today and 30-Day Est., and cost per provider
+# (1.55's Demo has no Top Projects rows and no Risk Signals). The alerts
+# subtitle promises no kind of alert: the Demo list, like a paired account's,
+# also holds CPU and long-running-session alerts from a helper on another
+# device. Where the iPhone set says the same thing, its reviewed words are
+# reused as they are.
 COPY: dict[str, dict[str, tuple[str, str]]] = {
     "en": {
         "01_overview": ("Everything at a glance",
@@ -118,18 +124,18 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("Your usage history, one click away",
                              "Heatmap, streaks and top models from your local Claude and Codex history"),
         "04_cost": ("Where the money goes",
-                    "Per-provider cost, top projects and risk signals"),
+                    "Estimated cost today and for 30 days, provider by provider"),
         "05_alerts": ("Never miss a limit",
                       "Alerts you can acknowledge, resolve or snooze"),
         "06_pulse_cat": ("Meet Pulse Cat",
-                         "A desktop cat whose energy and hunger follow your AI usage"),
+                         "A desktop cat whose energy and fullness follow your AI usage"),
     },
     "zh-Hans": {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，在菜单栏一点即看"),
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_usage_history": ("用量历史，一点就展开",
                              "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"),
-        "04_cost": ("钱都花在了哪里", "按服务商细分的费用、主要项目和风险信号"),
+        "04_cost": ("钱都花在了哪里", "今日和 30 天的估算费用，按服务商细分"),
         "05_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
         "06_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
     },
@@ -138,7 +144,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_usage_history": ("用量歷史，按一下就展開",
                              "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"),
-        "04_cost": ("錢花在哪裡", "各服務商的費用、高用量專案與風險訊號"),
+        "04_cost": ("錢花在哪裡", "今日與 30 天的預估費用，依服務商細分"),
         "05_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
         "06_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
     },
@@ -150,7 +156,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Claude と Codex のローカル履歴から、\u200bヒートマップ・連続日数・"
                              "よく使うモデルを表示"),
         "04_cost": ("コストの内訳がわかる",
-                    "プロバイダー別のコスト、\u200b上位プロジェクト、\u200bリスクシグナル"),
+                    "今日と\u200b30日間の推定コストを、\u200bプロバイダー別に"),
         "05_alerts": ("上限の接近を見逃さない",
                       "アラートを、\u200bその場で確認・解決・スヌーズ"),
         "06_pulse_cat": ("パルスキャットに会おう",
@@ -161,9 +167,9 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_usage_history": ("사용 기록을 클릭 한 번으로",
                              "Claude와 Codex 로컬 기록으로 보는 활동 히트맵, 연속 사용일, 자주 쓰는 모델"),
-        "04_cost": ("비용, 어디에 쓰이나요?", "공급자별 비용, 상위 프로젝트, 위험 신호"),
+        "04_cost": ("비용, 어디에 쓰이나요?", "오늘과 30일간의 추정 비용을 공급자별로 확인하세요"),
         "05_alerts": ("할당량이 바닥나기 전에", "경고는 그 자리에서 확인하고, 해결하거나 다시 알림으로 미루세요"),
-        "06_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 허기가 달라지는 데스크톱 고양이"),
+        "06_pulse_cat": ("펄스 캣을 만나 보세요", "AI 사용량에 따라 에너지와 포만감이 달라지는 데스크톱 고양이"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
@@ -174,11 +180,11 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Mapa de calor, rachas y modelos más usados, a partir de tu historial local "
                              "de Claude y Codex"),
         "04_cost": ("En qué se va tu dinero",
-                    "Costo por proveedor y proyecto, con señales de riesgo"),
+                    "Costo estimado de hoy y a 30 días, por proveedor"),
         "05_alerts": ("Sin sorpresas con la cuota",
                       "Alertas que puedes confirmar, resolver o posponer"),
         "06_pulse_cat": ("Conoce a tu Gato Pulse",
-                         "Un gato de escritorio cuya energía y hambre reflejan tu uso de IA"),
+                         "Un gato de escritorio cuya energía y saciedad reflejan tu uso de IA"),
     },
 }
 
