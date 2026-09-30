@@ -84,6 +84,10 @@ def _now() -> float:
 # Stored as a SINGLE key holding a `(token, expires_at_secs)` tuple so a
 # lock-free reader always sees a consistent pair (a single dict-key read is
 # atomic under the GIL — two separate keys could be read torn).
+#
+# v1.55: the entry also records where the token came from ("file" or
+# "keychain"), so a token read from Claude Code's keychain item stops being
+# reused once Settings › Privacy says not to read that item (`_cache_hit`).
 _cache: dict[str, Any] = {"entry": None}
 # Serializes concurrent helper-thread refreshes. The refresh token is
 # single-use (the endpoint rotates it), so two threads refreshing the
@@ -93,9 +97,37 @@ _cache: dict[str, Any] = {"entry": None}
 _refresh_lock = threading.Lock()
 
 
-def _cache_token(token: str | None, expires_at_secs: float | None) -> None:
+def _cache_token(token: str | None, expires_at_secs: float | None, source: str | None = "file") -> None:
     if token and expires_at_secs:
-        _cache["entry"] = (token, float(expires_at_secs))
+        _cache["entry"] = (token, float(expires_at_secs), source)
+
+
+# ── Settings › Privacy's Claude keychain switches (v1.55) ────────────
+#
+# Asked before the keychain fallback below reads Claude Code's item. The daemon
+# sets it to `privacy_switches`' gate, so "Strict privacy mode" and "Skip Claude
+# Code keychain access" in the app hold for a managed session's token too.
+# Skipped, only the credential file is used, as the bundled Swift helper does
+# (`ClaudeOAuthInjector`, which never reads the item); and nothing read from
+# the item is refreshed or written into the file. None (tests, direct imports)
+# reads as before. A gate that raises counts as no.
+_keychain_gate: Callable[[], bool] | None = None
+
+
+def set_keychain_gate(gate: Callable[[], bool] | None) -> None:
+    global _keychain_gate
+    _keychain_gate = gate
+
+
+def _keychain_allowed() -> bool:
+    gate = _keychain_gate
+    if gate is None:
+        return True
+    try:
+        return bool(gate())
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not read
+        logger.debug("claude keychain gate failed: %s", exc)
+        return False
 
 
 def _reset_cache_for_testing() -> None:
@@ -166,7 +198,7 @@ def read_claude_oauth() -> tuple[dict | None, str | None]:
     file_oauth = _oauth_of(_read_file_doc())
     if file_oauth and _refresh_of(file_oauth):
         return file_oauth, "file"
-    kc_oauth = _read_keychain_oauth()
+    kc_oauth = _read_keychain_oauth() if _keychain_allowed() else None
     if kc_oauth and _refresh_of(kc_oauth):
         return kc_oauth, "keychain"
     if file_oauth:
@@ -294,10 +326,15 @@ def _persist_refreshed_to_file(token_response: dict) -> bool:
 
 
 def _cache_hit() -> str | None:
-    entry = _cache["entry"]  # single atomic read → consistent (token, expiry)
+    entry = _cache["entry"]  # single atomic read → consistent (token, expiry, source)
     if entry is not None:
-        token, expires_at = entry
+        token, expires_at, source = entry
         if token and _now() + _EXPIRY_SKEW_SECS < expires_at:
+            if source == "keychain" and not _keychain_allowed():
+                # Read from the item before a Privacy switch turned on: not
+                # reused, as it would not be read now.
+                _cache["entry"] = None
+                return None
             return token
     return None
 
@@ -321,7 +358,7 @@ def resolve_fresh_claude_access_token(*, urlopen: Callable | None = None) -> str
     hit = _cache_hit()
     if hit:
         return hit
-    oauth, _source = read_claude_oauth()
+    oauth, source = read_claude_oauth()
     if oauth is None:
         logger.debug("no claude credential found for managed-session injection")
         return None
@@ -330,7 +367,7 @@ def resolve_fresh_claude_access_token(*, urlopen: Callable | None = None) -> str
     # Provably valid (with skew)? Use as-is — preserves offline capability
     # and avoids needless token rotation.
     if access and expiry is not None and _now() + _EXPIRY_SKEW_SECS < expiry:
-        _cache_token(access, expiry)
+        _cache_token(access, expiry, source)
         return access
     provably_expired = expiry is not None and _now() >= expiry
     refresh = _refresh_of(oauth)
@@ -375,5 +412,5 @@ def resolve_fresh_claude_access_token(*, urlopen: Callable | None = None) -> str
         # failed or the response lacked expires_in — so the next spawn uses
         # this token instead of re-refreshing and burning the just-rotated
         # single-use refresh token.
-        _cache_token(new_token, expiry)
+        _cache_token(new_token, expiry, source)
         return new_token

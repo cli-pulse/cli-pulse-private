@@ -24,10 +24,13 @@ cfprefsd puts an entitled process's group suite in the group container too.
 `~/Library/Preferences/group.yyh.CLI-Pulse.plist` instead. That file is not the
 app's and is never read here.)
 
-This helper reads the plist file directly with `plistlib`. It already lives in
-that container: its UDS socket and auth token are there, and it writes the
-Claude snapshot there every cycle. So reading one more file costs no new
-access: the TCC `SystemPolicyAppData` consult that a launchd process pays on
+This helper asks cfprefsd for the values first (`app_group_prefs`), because
+the file on disk lags the app's writes by up to ten seconds (measured; see that
+module), and reads the plist file directly with `plistlib` only when cfprefsd
+has no value for any key it asks (an app older than 1.55, or a process macOS
+does not let ask). It already lives in that container: its UDS socket and auth
+token are there, and it writes the Claude snapshot there every cycle. So
+reading one more file costs no new access: the TCC `SystemPolicyAppData` consult that a launchd process pays on
 its first container access (see `_CONTAINER_ACCESS_WAIT_S` in
 `cli_pulse_helper`) has already been paid at startup, and it is per process.
 That stops being true if the socket and token ever leave the container, as the
@@ -45,6 +48,11 @@ The keys are the app's (`LocalScanConsent.swift`, `HelperIPC.swift`):
     sign-out, so a pairing alone does not mean the account is still signed in.
   * `cli_pulse_local_scan_consent_v2` (older history) is not read: this helper
     never reads session logs, so v2 does not change what it may do.
+  * `cli_pulse_privacy_skip_claude_keychain` and
+    `cli_pulse_privacy_local_only_mode`: Settings › Privacy's two Claude
+    keychain switches (`HelperPrivacyInputs.swift`). Read with the rest, and
+    decided on in `privacy_switches`, not here: they change which credential
+    this helper may read, not whether it may collect.
 
 WHAT EACH ANSWER MEANS HERE (`decide`)
 --------------------------------------
@@ -87,12 +95,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+import app_group_prefs
 from local_auth_token import APP_GROUP_ID, container_path
 
 logger = logging.getLogger("cli_pulse.local_scan_consent")
 
 CONSENT_KEY = "cli_pulse_local_scan_consent"
 APP_SIGNED_OUT_KEY = "cli_pulse_app_signed_out"
+# Settings › Privacy's switches (see `privacy_switches`).
+SKIP_CLAUDE_KEYCHAIN_KEY = "cli_pulse_privacy_skip_claude_keychain"
+LOCAL_ONLY_MODE_KEY = "cli_pulse_privacy_local_only_mode"
+
+# Everything this helper reads from the app's copy.
+MIRROR_KEYS = (CONSENT_KEY, APP_SIGNED_OUT_KEY, SKIP_CLAUDE_KEYCHAIN_KEY, LOCAL_ONLY_MODE_KEY)
 
 GRANTED = "granted"
 DECLINED = "declined"
@@ -127,6 +142,11 @@ class MirrorRead:
     consent: object = None
     signed_out: bool = False
     detail: str = ""
+    # Settings › Privacy's switches: None when the key is not there.
+    skip_claude_keychain: bool | None = None
+    local_only_mode: bool | None = None
+    # "cfprefsd" or "file": where an "ok" read came from.
+    source: str = "file"
 
 
 def _as_bool(value: object) -> bool:
@@ -141,10 +161,31 @@ def _as_bool(value: object) -> bool:
     return False
 
 
+def _optional_bool(values: dict, key: str) -> bool | None:
+    return _as_bool(values[key]) if key in values else None
+
+
+def _mirror_from(values: dict, source: str) -> MirrorRead:
+    return MirrorRead(
+        "ok",
+        consent=values.get(CONSENT_KEY),
+        signed_out=_as_bool(values.get(APP_SIGNED_OUT_KEY)),
+        skip_claude_keychain=_optional_bool(values, SKIP_CLAUDE_KEYCHAIN_KEY),
+        local_only_mode=_optional_bool(values, LOCAL_ONLY_MODE_KEY),
+        source=source,
+    )
+
+
 def read_mirror(path: Path | None = None) -> MirrorRead:
-    """Read the app's copy of its answers. Never raises."""
+    """Read the app's copy of its answers. Never raises.
+
+    cfprefsd first, which answers with what the app last wrote; the plist file
+    when cfprefsd has no value for any of `MIRROR_KEYS` (see the module doc)."""
     if path is None:
         path = mirror_plist_path()
+    live = app_group_prefs.copy_values(path, MIRROR_KEYS)
+    if live is not None:
+        return _mirror_from(live, "cfprefsd")
     try:
         with open(path, "rb") as fh:
             data = plistlib.load(fh)
@@ -154,11 +195,7 @@ def read_mirror(path: Path | None = None) -> MirrorRead:
         return MirrorRead("unreadable", detail=f"{type(exc).__name__}: {exc}")
     if not isinstance(data, dict):
         return MirrorRead("unreadable", detail=f"top level is {type(data).__name__}, not a dictionary")
-    return MirrorRead(
-        "ok",
-        consent=data.get(CONSENT_KEY),
-        signed_out=_as_bool(data.get(APP_SIGNED_OUT_KEY)),
-    )
+    return _mirror_from(data, "file")
 
 
 # ── the decision ───────────────────────────────────────────────
@@ -244,6 +281,12 @@ class LocalScanGate:
 
     def allows_collection(self, *, wait_s: float | None = None) -> bool:
         return self.check(wait_s=wait_s).allows_collection
+
+    def read(self, *, wait_s: float | None = None) -> MirrorRead:
+        """The app's copy as it is now, read the way `check` reads it (bounded
+        wait, one pending read at a time, nothing while the container is not
+        reachable). For `privacy_switches`, which decides on other keys."""
+        return self._read(self._read_wait_s if wait_s is None else wait_s)
 
     def _read(self, wait_s: float) -> MirrorRead:
         try:

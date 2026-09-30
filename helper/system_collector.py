@@ -90,6 +90,30 @@ def _cycle_still_allowed(what: str) -> bool:
     return allowed
 
 
+# Asked just before this module reads Claude Code's keychain item. The daemon
+# (and the heartbeat/sync subcommands) set it to `privacy_switches`'
+# `ClaudeKeychainGate.allows`, so Settings › Privacy's "Strict privacy mode" and
+# "Skip Claude Code keychain access" hold here too. None (tests, direct imports)
+# reads as before. A gate that raises counts as no.
+_claude_keychain_gate: Callable[[str], bool] | None = None
+
+
+def set_claude_keychain_gate(gate: Callable[[str], bool] | None) -> None:
+    global _claude_keychain_gate
+    _claude_keychain_gate = gate
+
+
+def _claude_keychain_allowed(what: str) -> bool:
+    gate = _claude_keychain_gate
+    if gate is None:
+        return True
+    try:
+        return bool(gate(what))
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not read
+        logger.debug("Claude keychain gate failed: %s", exc)
+        return False
+
+
 PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     # (provider_name, regex_pattern, confidence: high|medium|low)
     ("Codex", r"\bcodex\b", "high"),
@@ -561,13 +585,19 @@ def _fetch_claude_usage() -> dict | None:
     plan_type = None
     tier_raw = ""
 
-    # Step 1: Read OAuth token + plan from Keychain
+    # Step 1: Read OAuth token + plan from Keychain, unless Settings › Privacy
+    # says not to (`privacy_switches`). Skipped, there is no token and no
+    # refresh; the web and CLI steps below still run, as in the app.
     try:
-        proc = subprocess.run(
-            ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
-            capture_output=True, text=True, timeout=5,
+        proc = (
+            subprocess.run(
+                ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if _claude_keychain_allowed("Claude usage")
+            else None
         )
-        if proc.returncode == 0 and proc.stdout.strip():
+        if proc is not None and proc.returncode == 0 and proc.stdout.strip():
             data = _json.loads(proc.stdout.strip())
             # Support both camelCase and snake_case credential formats
             oauth = data.get("claudeAiOauth", {}) or data.get("claude_ai_oauth", {})

@@ -18,6 +18,7 @@ from typing import Any
 from system_collector import CollectedAlert, collect_alerts, collect_device_snapshot, collect_sessions, estimate_provider_quotas
 from git_collector import GitCollector, project_paths_from_sessions
 from local_scan_consent import LocalScanGate
+from privacy_switches import SPAWN_READ_WAIT_S, ClaudeKeychainGate
 import system_collector as _system_collector
 import user_secret as _user_secret_module
 from remote_session_plane import should_run_terminal_broadcast
@@ -322,6 +323,30 @@ def pair(args: argparse.Namespace) -> None:
 # this module) can reach it. None outside the daemon (e.g. the standalone
 # `heartbeat`/`sync` subcommands) — those simply skip the fan/LPM relay.
 _MACHINE_RELAY = None
+
+
+def _install_claude_keychain_gate(scan_gate: LocalScanGate) -> ClaudeKeychainGate:
+    """Settings › Privacy's Claude keychain switches (`privacy_switches`): asked
+    before this helper reads Claude Code's keychain item, for Claude's quota
+    and for a managed Claude session's token. Read from the same copy as the
+    local-scan answer, through the same gate."""
+    import claude_oauth  # stdlib-only; imported here like the daemon's own import
+
+    keychain_gate = ClaudeKeychainGate(scan_gate.read)
+    _system_collector.set_claude_keychain_gate(keychain_gate.allows)
+    # The spawn path waits less for the copy (`SPAWN_READ_WAIT_S`); a read
+    # that is not done by then skips the item and uses the credential file.
+    claude_oauth.set_keychain_gate(
+        lambda: keychain_gate.allows("managed Claude session token", wait_s=SPAWN_READ_WAIT_S)
+    )
+    return keychain_gate
+
+
+def _uninstall_claude_keychain_gate() -> None:
+    import claude_oauth
+
+    _system_collector.set_claude_keychain_gate(None)
+    claude_oauth.set_keychain_gate(None)
 
 
 def _still_allowed(gate: LocalScanGate | None, what: str) -> bool:
@@ -847,6 +872,7 @@ def daemon(args: argparse.Namespace) -> None:
     # token rotation below is still stuck in that container rather than open a
     # second access there.
     local_scan_gate = LocalScanGate(container_ready=_container_reachable)
+    _install_claude_keychain_gate(local_scan_gate)
 
     # Phase 3 Iter 1 / v1.30.2 RC-1: local UDS control surface. This is now
     # stood up UNCONDITIONALLY — even when `remote_agent_manager` is None
@@ -1298,6 +1324,7 @@ def daemon(args: argparse.Namespace) -> None:
         pass
     finally:
         _system_collector.set_cycle_gate(None)
+        _uninstall_claude_keychain_gate()
         # Phase 3 Iter 1 ordering: stop the UDS server first so no new
         # local jobs land on the executor while we're draining; then
         # let the manager terminate child PTYs (which itself goes
@@ -1329,6 +1356,7 @@ def daemon(args: argparse.Namespace) -> None:
 
 def run_demo(args: argparse.Namespace) -> None:
     gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
     for _ in range(args.cycles):
         heartbeat(args, gate=gate)
         sync(args, gate=gate)
@@ -1336,11 +1364,15 @@ def run_demo(args: argparse.Namespace) -> None:
 
 
 def _heartbeat_cmd(args: argparse.Namespace) -> None:
-    heartbeat(args, gate=LocalScanGate())
+    gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
+    heartbeat(args, gate=gate)
 
 
 def _sync_cmd(args: argparse.Namespace) -> None:
-    sync(args, gate=LocalScanGate())
+    gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
+    sync(args, gate=gate)
 
 
 def inspect(_: argparse.Namespace) -> None:

@@ -978,8 +978,12 @@ class LocalSessionServer:
             # v1.55: computing it opens ~/.codex/auth.json, so it is skipped
             # (and the field left out) while the app's local-scan answer
             # pauses the scan. "Not now" means CLI Pulse reads nothing here.
+            # The app also says it in the request (`local_scan_allowed`,
+            # which the bundled Swift helper relies on): an explicit false is
+            # obeyed before this helper's own copy of the answer is even read.
+            # Missing (older apps, status probes) leaves it to that copy.
             provider_plan_status: dict | None = None
-            if self._local_scan_permits_reads():
+            if params.get("local_scan_allowed") is not False and self._local_scan_permits_reads():
                 try:
                     from provider_spawners import provider_plan_statuses
                     provider_plan_status = provider_plan_statuses()
