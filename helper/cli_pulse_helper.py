@@ -375,9 +375,17 @@ def _full_remote_tick(manager, gate: LocalScanGate | None) -> bool:
     tick (reading the sessions' output, noticing exits, stopping sessions past
     their limits) still runs: it serves sessions already running on this Mac.
 
+    The check verifies the pairing the manager polls with (`sending`, loaded
+    when the daemon started), as heartbeat and sync verify theirs: after a
+    `pair` run for another user the manager still holds the old pairing, and
+    it must not keep asking for that account's commands.
+
     Returns whether it polled. `gate` None (tests) polls as before."""
     global _remote_poll_last
-    polls = gate is None or gate.allows_upload(wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S)
+    polls = gate is None or gate.allows_upload(
+        wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S,
+        sending=getattr(manager, "helper_config", None),
+    )
     if polls != _remote_poll_last:
         _remote_poll_last = polls
         if polls:
