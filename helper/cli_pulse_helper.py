@@ -18,6 +18,7 @@ from typing import Any
 from system_collector import CollectedAlert, collect_alerts, collect_device_snapshot, collect_sessions, estimate_provider_quotas
 from git_collector import GitCollector, project_paths_from_sessions
 from local_scan_consent import LocalScanGate
+from privacy_switches import SPAWN_READ_WAIT_S, ClaudeKeychainGate
 import system_collector as _system_collector
 import user_secret as _user_secret_module
 from remote_session_plane import should_run_terminal_broadcast
@@ -324,11 +325,37 @@ def pair(args: argparse.Namespace) -> None:
 _MACHINE_RELAY = None
 
 
+def _install_claude_keychain_gate(scan_gate: LocalScanGate) -> ClaudeKeychainGate:
+    """Settings › Privacy's Claude keychain switches (`privacy_switches`): asked
+    before this helper reads Claude Code's keychain item, for Claude's quota
+    and for a managed Claude session's token. Read from the same copy as the
+    local-scan answer, through the same gate."""
+    import claude_oauth  # stdlib-only; imported here like the daemon's own import
+
+    keychain_gate = ClaudeKeychainGate(scan_gate.read)
+    _system_collector.set_claude_keychain_gate(keychain_gate.allows)
+    # The spawn path waits less for the copy (`SPAWN_READ_WAIT_S`); a read
+    # that is not done by then skips the item and uses the credential file.
+    claude_oauth.set_keychain_gate(
+        lambda: keychain_gate.allows("managed Claude session token", wait_s=SPAWN_READ_WAIT_S)
+    )
+    return keychain_gate
+
+
+def _uninstall_claude_keychain_gate() -> None:
+    import claude_oauth
+
+    _system_collector.set_claude_keychain_gate(None)
+    claude_oauth.set_keychain_gate(None)
+
+
 def _still_allowed(gate: LocalScanGate | None, what: str) -> bool:
-    """Ask the app's local-scan answer (`local_scan_consent`), if this caller
-    has a gate. Called before a step collects anything and again before it
-    sends what it collected, so an answer given mid-cycle drops the results."""
-    if gate is None or gate.allows_collection():
+    """Ask the app's local-scan answer and account (`local_scan_consent`), if
+    this caller has a gate. Called before a step collects anything and again
+    before it sends what it collected, so an answer, a sign-out or an account
+    switch given mid-cycle drops the results. Every step that asks this
+    uploads, so it asks `allows_upload`: local mode reads nothing for them."""
+    if gate is None or gate.allows_upload():
         return True
     logger.info("local scan paused: %s dropped, nothing sent", what)
     return False
@@ -339,7 +366,7 @@ def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
 
     `gate` is None only for callers that are not the helper's own cycle (tests);
     the daemon and the `heartbeat`/`sync`/`run-demo` subcommands pass one."""
-    if gate is not None and not gate.allows_collection():
+    if gate is not None and not gate.allows_upload():
         return False
     config = load_config()
     snapshot = collect_device_snapshot()
@@ -404,7 +431,7 @@ def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
 def sync(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
     """Sync sessions, alerts and provider quotas. Returns False when `gate`
     paused it (nothing sent). See `heartbeat` for `gate`."""
-    if gate is not None and not gate.allows_collection():
+    if gate is not None and not gate.allows_upload():
         return False
     config = load_config()
     collected_sessions = collect_sessions()
@@ -629,9 +656,10 @@ def _collection_cycle(
     paused it. The answer is asked before anything is read, again inside
     `heartbeat` and `sync` before each upload, before the track_git_activity
     lookup, and before commits are submitted, so a "Not now" given while a
-    cycle runs drops what it had collected instead of sending it.
+    cycle runs drops what it had collected instead of sending it. Every step
+    uploads, so local mode (`Cycle.LOCAL`) runs none of them.
     """
-    if not gate.allows_collection():
+    if not gate.allows_upload():
         return False
     heartbeat(args, gate=gate)
     sync(args, gate=gate)
@@ -847,6 +875,7 @@ def daemon(args: argparse.Namespace) -> None:
     # token rotation below is still stuck in that container rather than open a
     # second access there.
     local_scan_gate = LocalScanGate(container_ready=_container_reachable)
+    _install_claude_keychain_gate(local_scan_gate)
 
     # Phase 3 Iter 1 / v1.30.2 RC-1: local UDS control surface. This is now
     # stood up UNCONDITIONALLY — even when `remote_agent_manager` is None
@@ -1298,6 +1327,7 @@ def daemon(args: argparse.Namespace) -> None:
         pass
     finally:
         _system_collector.set_cycle_gate(None)
+        _uninstall_claude_keychain_gate()
         # Phase 3 Iter 1 ordering: stop the UDS server first so no new
         # local jobs land on the executor while we're draining; then
         # let the manager terminate child PTYs (which itself goes
@@ -1329,6 +1359,7 @@ def daemon(args: argparse.Namespace) -> None:
 
 def run_demo(args: argparse.Namespace) -> None:
     gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
     for _ in range(args.cycles):
         heartbeat(args, gate=gate)
         sync(args, gate=gate)
@@ -1336,11 +1367,15 @@ def run_demo(args: argparse.Namespace) -> None:
 
 
 def _heartbeat_cmd(args: argparse.Namespace) -> None:
-    heartbeat(args, gate=LocalScanGate())
+    gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
+    heartbeat(args, gate=gate)
 
 
 def _sync_cmd(args: argparse.Namespace) -> None:
-    sync(args, gate=LocalScanGate())
+    gate = LocalScanGate()
+    _install_claude_keychain_gate(gate)
+    sync(args, gate=gate)
 
 
 def inspect(_: argparse.Namespace) -> None:

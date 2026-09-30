@@ -115,9 +115,7 @@ public struct ClaudeOAuthStrategy: ClaudeSourceStrategy, Sendable {
             },
             rateLimitTier: tier
                 ?? ClaudeCredentials.readCredentialsFile()?.rateLimitTier
-                ?? (PrivacySettings.shared.skipClaudeKeychain
-                    ? nil
-                    : ClaudeCredentials.readKeychainCredentials()?.rateLimitTier),
+                ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier,
             sourceLabel: sourceLabel
         )
     }

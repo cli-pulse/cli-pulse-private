@@ -1336,6 +1336,8 @@
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
+"settings.claude_keychain_helper_confirmed" = "백그라운드 헬퍼도 이 설정을 따릅니다.";
+"settings.claude_keychain_helper_unconfirmed" = "백그라운드 헬퍼의 확인을 아직 받지 못했습니다.";
 "settings.block_claude_on_outdated_helper" = "헬퍼가 오래된 경우 관리형 Claude 차단";
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI가 너무 오래되어 Max/Pro 플랜으로 Claude를 실행할 수 없을 때 관리형 Claude 세션 시작을 막습니다(그대로 시작하면 알리지 않고 Claude API를 사용합니다). 기본값은 꺼짐 — 경고만 표시됩니다.";
 "cost.io_tokens_help" = "I/O 토큰 = 입력 + 출력. Claude: 캐시 읽기와 캐시 쓰기는 포함하지 않습니다. Codex: 입력에 캐시 입력이 이미 포함됩니다(OpenAI의 집계 방식과 동일). 어느 쪽이든 캐시 토큰은 각각의 단가로 추정 비용에 반영됩니다.";

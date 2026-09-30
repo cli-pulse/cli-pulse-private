@@ -1396,6 +1396,8 @@
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
 "settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "他のアプリが所有する Claude Code の OAuth 認証情報を CLI Pulse が読み取らないようにします。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
+"settings.claude_keychain_helper_confirmed" = "バックグラウンドヘルパーもこの設定に従っています。";
+"settings.claude_keychain_helper_unconfirmed" = "バックグラウンドヘルパーからの確認はまだありません。";
 "settings.block_claude_on_outdated_helper" = "ヘルパーが古い場合は管理対象の Claude をブロック";
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI が古く、Max/Pro プランで Claude を実行できない場合に、管理対象の Claude セッションの開始を止めます（そのまま開始すると、知らないうちに Claude API が使われます）。デフォルトはオフで、警告が表示されるだけです。";
 "cost.io_tokens_help" = "I/O トークン = 入力 + 出力。Claude: キャッシュの読み取りと書き込みは含みません。Codex: 入力にキャッシュ入力が含まれます（OpenAI と同じ数え方）。どちらも、キャッシュのトークンはそれぞれの単価で推定コストに含まれています。";

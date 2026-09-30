@@ -1350,6 +1350,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
 "settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";
+"settings.claude_keychain_helper_confirmed" = "El helper en segundo plano también lo respeta.";
+"settings.claude_keychain_helper_unconfirmed" = "El helper en segundo plano aún no lo ha confirmado.";
 "settings.block_claude_on_outdated_helper" = "Bloquear Claude gestionado si el helper está desactualizado";
 "settings.block_claude_on_outdated_helper_hint" = "Si Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto: solo verás un aviso.";
 "cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Claude: no se incluyen las lecturas ni las escrituras de caché. Codex: la entrada ya incluye la entrada en caché, tal como la contabiliza OpenAI. En ambos casos, los tokens de caché entran en el costo estimado con su propia tarifa.";
