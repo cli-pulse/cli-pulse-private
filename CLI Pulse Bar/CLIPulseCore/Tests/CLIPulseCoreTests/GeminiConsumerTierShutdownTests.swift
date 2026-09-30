@@ -57,6 +57,9 @@ final class GeminiConsumerTierShutdownTests: XCTestCase {
 
     private let workspaceIDToken = GeminiAPITestHelpers.makeIDToken(
         email: "dev@example.com", hostedDomain: "example.com")
+    /// What Gemini CLI's own login (`oauth_creds.json`) carries for a personal
+    /// Google account: an ID token without `hd`.
+    private let personalIDToken = GeminiAPITestHelpers.makeIDToken(email: "someone@gmail.com")
 
     private func fetch(
         _ load: @escaping GeminiCollector.DataLoader,
@@ -104,9 +107,36 @@ final class GeminiConsumerTierShutdownTests: XCTestCase {
         await assertRetired(replay(
             loadCodeAssist: (200, GeminiAPITestHelpers.loadCodeAssistUnsupportedClientResponse()),
             quota: (403, GeminiAPITestHelpers.quotaSubscriptionRequiredResponse()),
-            log: log))
-        // Nothing after that answer can succeed, so the quota call is not made.
+            log: log),
+            idToken: personalIDToken)
+        // For an account the ID token shows is personal, nothing after that
+        // answer can succeed, so the quota call is not made.
         XCTAssertEqual(log.all, ["/v1internal:loadCodeAssist"])
+    }
+
+    /// Antigravity's login and CLI Pulse's own Keychain sign-in carry no ID
+    /// token, so a Workspace account that gets the same answer cannot be told
+    /// apart from a personal one. The quota call decides instead of the
+    /// listing: a 403 is the shutdown, a 200 is quota as before this change.
+    func test_http200WithUnsupportedClientAndNoTier_withoutAnIDToken_letsTheQuotaCallDecide() async throws {
+        for idToken in [nil, "not-a-jwt"] as [String?] {
+            let served = CallLog()
+            let result = try await fetch(replay(
+                loadCodeAssist: (200, GeminiAPITestHelpers.loadCodeAssistUnsupportedClientResponse()),
+                quota: (200, GeminiAPITestHelpers.sampleQuotaResponse()),
+                log: served),
+                idToken: idToken)
+            XCTAssertFalse(result.buckets.isEmpty, "\(idToken ?? "nil")")
+            XCTAssertEqual(served.all, ["/v1internal:loadCodeAssist", "/v1internal:retrieveUserQuota"])
+
+            let refused = CallLog()
+            await assertRetired(replay(
+                loadCodeAssist: (200, GeminiAPITestHelpers.loadCodeAssistUnsupportedClientResponse()),
+                quota: (403, GeminiAPITestHelpers.quotaSubscriptionRequiredResponse()),
+                log: refused),
+                idToken: idToken)
+            XCTAssertEqual(refused.all, ["/v1internal:loadCodeAssist", "/v1internal:retrieveUserQuota"])
+        }
     }
 
     func test_quota403AfterUnsupportedClient_onAFreeTier_isTheShutdown() async {

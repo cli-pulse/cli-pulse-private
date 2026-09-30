@@ -573,8 +573,15 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             hostedDomain: GeminiConsumerTierShutdown.hostedDomain(idToken: idToken)
         )
         // The shutdown answer: HTTP 200, no tier, and the consumer tier listed
-        // as ineligible. Nothing after this can succeed.
-        if info.clientUnsupported, info.tierId == nil {
+        // as ineligible. For an account the ID token shows is personal, nothing
+        // after this can succeed, so the quota call is not made.
+        //
+        // Without a readable ID token (Antigravity's login, CLI Pulse's own
+        // Keychain sign-in) a Workspace or education account can get the same
+        // answer and still be served, so the quota call decides: a 403 after
+        // this listing is the shutdown (`isShutdownQuotaDenial`), a 200 is not.
+        if info.clientUnsupported, info.tierId == nil,
+           GeminiConsumerTierShutdown.isPersonalAccount(idToken: idToken) {
             throw CollectorError.retired(.geminiCLIPersonalAccounts)
         }
         return info

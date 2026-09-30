@@ -10,7 +10,11 @@
 //     `GeminiStatusProbeError` and `GeminiStatusProbe`;
 //   * the tier arrives as Google's raw id string, because `GeminiCollector`
 //     keeps it that way, rather than as CodexBar's `GeminiUserTierId`;
-//   * no logging.
+//   * no logging;
+//   * `isPersonalAccount`: CodexBar reads only `oauth_creds.json`, which
+//     always carries an ID token, so it can always tell a Workspace account
+//     from a personal one. Our Antigravity and Keychain logins carry none, and
+//     for them the collector lets the quota call decide.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -115,6 +119,29 @@ enum GeminiConsumerTierShutdown {
     /// The `hd` (hosted domain) claim of a Google ID token, read without
     /// verifying it: it only decides which message to show, never access.
     static func hostedDomain(idToken: String?) -> String? {
+        guard let claims = claims(idToken: idToken),
+              let hd = claims["hd"] as? String,
+              !hd.isEmpty
+        else { return nil }
+        return hd
+    }
+
+    /// Whether an ID token says this is a personal account: it decodes, and
+    /// it carries no hosted domain.
+    ///
+    /// false when there is no readable ID token. Antigravity's login never
+    /// carries one, and neither does CLI Pulse's own Keychain sign-in; for
+    /// them a Workspace account looks exactly like a personal one, so only
+    /// the quota call can tell (`isShutdownQuotaDenial`).
+    static func isPersonalAccount(idToken: String?) -> Bool {
+        guard let claims = claims(idToken: idToken) else { return false }
+        let hd = (claims["hd"] as? String) ?? ""
+        return hd.isEmpty
+    }
+
+    /// The payload of a Google ID token, unverified. nil when there is no
+    /// token or it does not decode.
+    private static func claims(idToken: String?) -> [String: Any]? {
         guard let token = idToken else { return nil }
         let parts = token.components(separatedBy: ".")
         guard parts.count >= 2 else { return nil }
@@ -123,11 +150,7 @@ enum GeminiConsumerTierShutdown {
             .replacingOccurrences(of: "_", with: "/")
         let remainder = payload.count % 4
         if remainder > 0 { payload += String(repeating: "=", count: 4 - remainder) }
-        guard let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hd = json["hd"] as? String,
-              !hd.isEmpty
-        else { return nil }
-        return hd
+        guard let data = Data(base64Encoded: payload, options: .ignoreUnknownCharacters) else { return nil }
+        return try? JSONSerialization.jsonObject(with: data) as? [String: Any]
     }
 }
