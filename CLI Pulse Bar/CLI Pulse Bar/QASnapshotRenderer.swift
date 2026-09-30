@@ -491,8 +491,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     }
 
     /// One store shot's popover, the page it names. A `.lastAligned` page is
-    /// drawn once at the pinned height to find the first card its first page
-    /// did not show whole, then again in a popover shortened by
+    /// drawn once at the pinned height to find the card to open on
+    /// (`QARenderSnapshot.alignedCard`: the first card its first page did not
+    /// show whole, or the one above it when that needs a popover under 400
+    /// points), then again in a popover shortened by
     /// `QARenderSnapshot.alignedTrim` so the page scrolled to the end opens just
     /// above that card, and must then cut through nothing drawn.
     private func captureStoreShot(_ shot: QARenderStoreShot) async -> QARenderManifest.StoreShot? {
@@ -548,9 +550,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         if height != QARenderSnapshot.storePopoverHeight {
             manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
                 + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
-                + "so the page scrolled to the end opens just above the first card the first "
-                + "page did not show whole, and cuts through nothing. Users can drag the popover "
-                + "between 400 and 900."
+                + "so the page scrolled to the end opens just above a card (the first one the "
+                + "first page did not show whole, or the one above it when that would need a "
+                + "popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. "
+                + "Users can drag the popover between 400 and 900."
         }
         return .init(
             id: shot.id, surface: shot.surface.id, page: shot.page,
@@ -613,7 +616,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         else {
             manifest.warnings.append(
                 "\(prefix) the page opens \(top) points down the content, not just above the "
-                    + "card at \(card.top) the first page did not show whole"
+                    + "card at \(card.top) it was aligned to"
             )
             return false
         }

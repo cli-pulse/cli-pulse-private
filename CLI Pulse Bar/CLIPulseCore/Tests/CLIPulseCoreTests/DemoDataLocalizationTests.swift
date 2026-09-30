@@ -83,11 +83,13 @@ final class DemoDataLocalizationTests: XCTestCase {
         let again = DemoDataProvider.generate()
 
         let perProvider = en.providers.map { $0.trend.map(\.value) }
-        XCTAssertEqual(perProvider.map(\.count), [12, 12, 12])
+        // Codex, Gemini, Claude. Gemini has none, as GeminiCollector reports
+        // none (it is quota-only: DemoMatchesProductionTests).
+        XCTAssertEqual(perProvider.map(\.count), [12, 0, 12])
         XCTAssertEqual(ja.providers.map { $0.trend.map(\.value) }, perProvider)
         XCTAssertEqual(again.providers.map { $0.trend.map(\.value) }, perProvider)
         XCTAssertGreaterThan(Set(perProvider[0]).count, 6, "a flat trend would be deterministic too")
-        for (provider, base) in zip(en.providers, [85000, 43000, 24000]) {
+        for (provider, base) in zip(en.providers.filter { $0.provider != "Gemini" }, [85000, 24000]) {
             XCTAssertTrue(provider.trend.allSatisfy { abs($0.value - base) <= 2000 }, provider.provider)
         }
     }

@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "錢花在哪裡",
-   "今日與 30 天的預估費用，依服務商細分"
+   "今日與近 30 天的預估費用，依服務商細分"
   ],
   "05_alerts": [
    "配額不再突然見底",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "5d6564201b6142bf92649f4559198957",
-  "02_providers.png": "59ccdd7ae63692fed02759609d8e50a3",
-  "03_usage_history.panel.png": "a02e554441c8a03f17fdd7cd779ae715",
-  "03_usage_history.png": "5d6564201b6142bf92649f4559198957",
-  "04_cost.png": "f1c836bc628e375e9e43dc3d8cb6d52e",
-  "05_alerts.png": "6e5bb9d1561053a2e293e933e3a34572",
-  "06_pulse_cat.png": "816cc1087aa3aaeb96b08c3d8bd90282"
+  "01_overview.png": "38e9cfd618d6956a740738e690331ed5",
+  "02_providers.png": "daaeb0e04e092d6d735894e667e04484",
+  "03_usage_history.panel.png": "72dda4aa692918064a22bdcfcfc1f173",
+  "03_usage_history.png": "38e9cfd618d6956a740738e690331ed5",
+  "04_cost.png": "6d6019378a6248006d21b1cd3ebf24d1",
+  "05_alerts.png": "0525fd6ba937e62d1ff4ebe7c52472ea",
+  "06_pulse_cat.png": "3123f50a4aafa651a27465fcc26779f5"
  },
  "faces": {
   "subtitle": "PingFang TC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_2880x1800.png": "c6a1ff08145b170196f73181bfa7110d",
-  "02_providers_2880x1800.png": "86bbecc5b0aa79c5b69e9ae2b68ca283",
-  "03_usage_history_2880x1800.png": "cae2bec754492304fe9fe73c16c5696c",
-  "04_cost_2880x1800.png": "3d8e49b91c229efa15d2f4dd7abf8c45",
-  "05_alerts_2880x1800.png": "4afc9423aa62c1963c1094456d7315ec",
-  "06_pulse_cat_2880x1800.png": "be815770f264b6469bbaf776c6619cf4"
+  "01_overview_2880x1800.png": "dc7e5dc3c8840bc7ce32767175b8e901",
+  "02_providers_2880x1800.png": "70ce09723eb1a5d1f4149a433a10d8a6",
+  "03_usage_history_2880x1800.png": "618a734e511112fe188b8b29fb58f2a7",
+  "04_cost_2880x1800.png": "de1c197078d7fde82173aed8474b9fc3",
+  "05_alerts_2880x1800.png": "c681aa10e76caa3bfb3da3c174280174",
+  "06_pulse_cat_2880x1800.png": "1bf04c9b276829607b92d3e91bb62e82"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "8020a6ec77b0a1e7b78395c480adc989",
+ "render": "010904b55c12b1dbff6def4aa9549ca6",
  "subtitle_pt": 46,
  "title_pt": 100
 }

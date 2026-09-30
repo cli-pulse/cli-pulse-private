@@ -525,28 +525,57 @@ public enum QARenderSnapshot {
         cards: [QARenderSpan],
         contentHeight: Double,
         viewportHeight: Double,
-        clearance: Double = storeAlignedClearance
+        clearance: Double = storeAlignedClearance,
+        maxTrim: Double = storePopoverHeight - storePopoverMinHeight
     ) -> Int? {
-        guard let card = alignedCard(cards, contentHeight: contentHeight, viewportHeight: viewportHeight)
+        guard let card = alignedCard(cards, contentHeight: contentHeight, viewportHeight: viewportHeight,
+                                     clearance: clearance, maxTrim: maxTrim)
         else { return nil }
-        let room = card.top - lastPageTop(contentHeight: contentHeight, viewportHeight: viewportHeight)
-        return max(0, Int((room - clearance).rounded(.down)))
+        return trim(toOpenAbove: card, contentHeight: contentHeight, viewportHeight: viewportHeight,
+                    clearance: clearance)
     }
 
     /// The card a `.lastAligned` page opens on: the highest one that reaches
     /// below the first page (which shows the content from 0 down to
     /// `viewportHeight`) and starts at or below the last page's top edge,
-    /// where a shorter popover can bring that edge. nil when every card fits
-    /// on the first page, or the last page already starts inside the last
-    /// card.
+    /// where a shorter popover can bring that edge.
+    ///
+    /// The popover shortens only as far as users can drag it (`maxTrim`, 180
+    /// points off 580). When opening on that card needs more, the page would
+    /// hold little else, so it opens on the card above it instead: the lowest
+    /// reachable card that fits, which the first page did show whole. 1.55's
+    /// cost shot is that case: once Gemini has no cost row, the first page
+    /// shows the whole Cost Summary, and a page opening on Provider Usage
+    /// would need a 276-point popover.
+    ///
+    /// nil when every card fits on the first page, or the last page already
+    /// starts inside the last card.
     public static func alignedCard(
-        _ cards: [QARenderSpan], contentHeight: Double, viewportHeight: Double
+        _ cards: [QARenderSpan], contentHeight: Double, viewportHeight: Double,
+        clearance: Double = storeAlignedClearance,
+        maxTrim: Double = storePopoverHeight - storePopoverMinHeight
     ) -> QARenderSpan? {
         guard viewportHeight > 0 else { return nil }
         let lastTop = lastPageTop(contentHeight: contentHeight, viewportHeight: viewportHeight)
-        return cards
-            .filter { $0.bottom > viewportHeight + spanTolerance && $0.top >= lastTop - spanTolerance }
-            .min { $0.top < $1.top }
+        let reachable = cards
+            .filter { $0.top >= lastTop - spanTolerance }
+            .sorted { $0.top < $1.top }
+        guard let firstCutOff = reachable.first(where: { $0.bottom > viewportHeight + spanTolerance })
+        else { return nil }
+        let fits = { (card: QARenderSpan) in
+            Double(trim(toOpenAbove: card, contentHeight: contentHeight, viewportHeight: viewportHeight,
+                        clearance: clearance)) <= maxTrim
+        }
+        if fits(firstCutOff) { return firstCutOff }
+        return reachable.last { $0.top < firstCutOff.top && fits($0) }
+    }
+
+    /// Whole points to take off the popover so the page scrolled to the end
+    /// opens `clearance` points above `card`; 0 when it already does.
+    static func trim(toOpenAbove card: QARenderSpan, contentHeight: Double, viewportHeight: Double,
+                     clearance: Double) -> Int {
+        let room = card.top - lastPageTop(contentHeight: contentHeight, viewportHeight: viewportHeight)
+        return max(0, Int((room - clearance).rounded(.down)))
     }
 
     /// Where the page scrolled to the end starts, in points from the top of
@@ -741,9 +770,11 @@ public struct QARenderStoreShot: Equatable, Sendable {
         /// Scrolled to the end, flush with the bottom of the content.
         case last
         /// Scrolled to the end, in a popover shortened so that the top edge
-        /// falls just above the first card the first page did not show whole
-        /// (`QARenderSnapshot.alignedTrim`): the page starts where the first
-        /// one left off, and cuts through nothing. Users drag the popover
+        /// falls just above the first card the first page did not show whole,
+        /// or the card above that one when the popover would otherwise have to
+        /// be shorter than users can drag it (`QARenderSnapshot.alignedCard`):
+        /// the page starts where the first one left off, or one card earlier,
+        /// and cuts through nothing. Users drag the popover
         /// anywhere between 400 and 900 points high, so the shorter popover
         /// is a state the app really has; render.json records its height.
         case lastAligned

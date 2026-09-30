@@ -295,6 +295,30 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertEqual(QARenderSnapshot.cutByTopEdge(592 + 52, spans: cards + [yieldScoreText]), [])
     }
 
+    /// Shaped like 1.55's Overview once Gemini has no cost row: Cost Summary
+    /// is 21 points shorter and ends on the first page (0-501), so the first
+    /// card the first page cut off is Provider Usage. Opening on it needs 272
+    /// points off a 580-point popover (a 308-point one, under the 400 users can
+    /// drag it to), so the page opens on Cost Summary, the card above it.
+    func testWhenTheCardLeftOffNeedsTooShortAPopoverThePageOpensOnTheCardAbove() {
+        let cards = [span(188, 361), span(373, 490), span(502, 715)]
+        let lastTop = QARenderSnapshot.lastPageTop(contentHeight: 727, viewportHeight: 501)
+        XCTAssertEqual(lastTop, 226)
+        XCTAssertEqual(QARenderSnapshot.trim(toOpenAbove: span(502, 715), contentHeight: 727,
+                                             viewportHeight: 501, clearance: 4), 272,
+                       "Provider Usage alone: a 308-point popover")
+        XCTAssertEqual(QARenderSnapshot.alignedCard(cards, contentHeight: 727, viewportHeight: 501),
+                       span(373, 490))
+        let trim = QARenderSnapshot.alignedTrim(cards: cards, contentHeight: 727, viewportHeight: 501)
+        XCTAssertEqual(trim, 143, "373 - 226 = 147 points down, less the 4 of clearance: a 437-point popover")
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(lastTop + 143, spans: cards), [])
+        // With room to shorten further, it opens where the first page left off.
+        XCTAssertEqual(QARenderSnapshot.alignedCard(cards, contentHeight: 727, viewportHeight: 501, maxTrim: 300),
+                       span(502, 715))
+        // Negative control: no card that fits, so nothing to align above.
+        XCTAssertNil(QARenderSnapshot.alignedCard([span(502, 715)], contentHeight: 727, viewportHeight: 501))
+    }
+
     func testACardAlreadyJustBelowTheTopEdgeNeedsNoTrim() {
         // The last page starts at 480, 4 points above Cost Summary.
         let cards = [span(377, 472), span(484, 621), span(633, 818)]

@@ -17,9 +17,9 @@ the 380x580-point menu-bar popover below them at one fixed scale for the whole
 set, framed as the popover window frames it (rounded corners, hairline, soft
 shadow; no fake menu bar). The cost panel's popover is shorter (render.json
 records how much: QARenderSnapshot.alignedTrim), so the Overview scrolled to
-its end opens just above the first card the Overview panel did not show whole
-(Cost Summary) rather than through a card or a line of text; it sits at the
-same place and scale as the others and simply ends higher. The usage-history
+its end opens just above a whole card (Cost Summary; QARenderSnapshot.
+alignedCard) rather than through a card or a line of text; it sits at the
+same scale as the others, centred in the room a full one fills. The usage-history
 panel shows the dashboard panel DashboardPanelController slides out to the
 left of the popover, top-aligned, 8 points away, at the same scale; it is
 taller than the canvas and is the only thing allowed past an edge, and only
@@ -110,7 +110,9 @@ SHADOW_OFFSET_PT = 6
 # pet's Energy and Fullness (pet.energy, pet.hunger), and the pet's name,
 # pet.title. The cost subtitle names only what its page shows: the Cost
 # Summary's Estimated badge over Today and 30-Day Est., and cost per provider
-# (1.55's Demo has no Top Projects rows and no Risk Signals). The alerts
+# (1.55's Demo has no Top Projects rows and no Risk Signals). "The last 30
+# days", not "30 days": the figure is a trailing sum, and a bare "30 days" (a
+# 30 días, 30 天) read as a forecast. The alerts
 # subtitle promises no kind of alert: the Demo list, like a paired account's,
 # also holds CPU and long-running-session alerts from a helper on another
 # device. Where the iPhone set says the same thing, its reviewed words are
@@ -124,7 +126,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "03_usage_history": ("Your usage history, one click away",
                              "Heatmap, streaks and top models from your local Claude and Codex history"),
         "04_cost": ("Where the money goes",
-                    "Estimated cost today and for 30 days, provider by provider"),
+                    "Estimated cost for today and the last 30 days, by provider"),
         "05_alerts": ("Never miss a limit",
                       "Alerts you can acknowledge, resolve or snooze"),
         "06_pulse_cat": ("Meet Pulse Cat",
@@ -135,7 +137,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_usage_history": ("用量历史，一点就展开",
                              "活动热力图、连续天数和最常用模型，来自 Claude 与 Codex 的本地历史"),
-        "04_cost": ("钱都花在了哪里", "今日和 30 天的估算费用，按服务商细分"),
+        "04_cost": ("钱都花在了哪里", "今日与近 30 天的估算费用，按服务商细分"),
         "05_alerts": ("配额不再突然见底", "告警可以确认、解决或稍后提醒"),
         "06_pulse_cat": ("认识一下脉冲猫", "一只桌面猫，活力和饱食度跟着你的 AI 用量变化"),
     },
@@ -144,7 +146,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_usage_history": ("用量歷史，按一下就展開",
                              "活動熱度圖、連續天數與常用模型，來自 Claude 與 Codex 的本機歷史"),
-        "04_cost": ("錢花在哪裡", "今日與 30 天的預估費用，依服務商細分"),
+        "04_cost": ("錢花在哪裡", "今日與近 30 天的預估費用，依服務商細分"),
         "05_alerts": ("配額不再突然見底", "警示可以確認、解決或稍後提醒"),
         "06_pulse_cat": ("來認識脈衝貓", "一隻桌面貓，活力與飽食度會隨你的 AI 用量變化"),
     },
@@ -156,11 +158,11 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Claude と Codex のローカル履歴から、\u200bヒートマップ・連続日数・"
                              "よく使うモデルを表示"),
         "04_cost": ("コストの内訳がわかる",
-                    "今日と\u200b30日間の推定コストを、\u200bプロバイダー別に"),
+                    "今日の推定コストをプロバイダー別に、\u200b30日間の推定額も"),
         "05_alerts": ("上限の接近を見逃さない",
                       "アラートを、\u200bその場で確認・解決・スヌーズ"),
         "06_pulse_cat": ("パルスキャットに会おう",
-                         "エネルギーとおなかの具合が AI の使い方で変わる\u200bデスクトップ猫"),
+                         "エネルギーとおなかの満ち具合が AI の使い方で変わる\u200bデスクトップ猫"),
     },
     "ko": {
         "01_overview": ("모든 것을 한눈에", "메뉴 막대에서 사용량, 비용, 세션, 알림까지"),
@@ -180,7 +182,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
                              "Mapa de calor, rachas y modelos más usados, a partir de tu historial local "
                              "de Claude y Codex"),
         "04_cost": ("En qué se va tu dinero",
-                    "Costo estimado de hoy y a 30 días, por proveedor"),
+                    "Costo estimado de hoy y de los últimos 30 días, por proveedor"),
         "05_alerts": ("Sin sorpresas con la cuota",
                       "Alertas que puedes confirmar, resolver o posponer"),
         "06_pulse_cat": ("Conoce a tu Gato Pulse",
@@ -234,11 +236,14 @@ def placements(screen_has_panel: bool, shot_top: int, scale: float,
     """Where the popover (and the usage panel beside it) go, in canvas pixels.
     A single popover is centred; with the panel, the group is centred, the
     panel on the left, top-aligned, PANEL_GAP_PT away, as the app places it.
-    A shortened popover keeps the same top, so the tab bar does not move
-    from one panel of the set to the next."""
+    A shortened popover (the cost shot's) is also centred vertically in the
+    room a full one fills. Top-aligned, as it was, it left a fifth or more of
+    the canvas empty under it and read as unfinished; the tab bar moving
+    down on that one panel is the smaller cost."""
     pw, ph = round(POPOVER_PT[0] * scale), round((popover_height_pt or POPOVER_PT[1]) * scale)
     if not screen_has_panel:
-        return [Placement("popover", (CANVAS_W - pw) // 2, shot_top, pw, ph)]
+        full = round(POPOVER_PT[1] * scale)
+        return [Placement("popover", (CANVAS_W - pw) // 2, shot_top + max(0, full - ph) // 2, pw, ph)]
     qw = round(PANEL_WIDTH_PT * scale)
     qh = round((panel_height_pt or 0) * scale)
     gap = round(PANEL_GAP_PT * scale)

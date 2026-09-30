@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "钱都花在了哪里",
-   "今日和 30 天的估算费用，按服务商细分"
+   "今日与近 30 天的估算费用，按服务商细分"
   ],
   "05_alerts": [
    "配额不再突然见底",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "cd4404c575e71c863779b1b293ecae0e",
-  "02_providers.png": "d27ad0e09c56f75c3f1814c330e2f728",
+  "01_overview.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
+  "02_providers.png": "a3050c765681ef88127b3417575cae19",
   "03_usage_history.panel.png": "a2399bdb50bfe8b9e0416446415a5925",
-  "03_usage_history.png": "cd4404c575e71c863779b1b293ecae0e",
-  "04_cost.png": "831da47f113b75addc123d1410ffd56b",
-  "05_alerts.png": "1c0575a0237492d36c5405dae0d607e7",
-  "06_pulse_cat.png": "c26d177946670ddf8591bb02b515f1c4"
+  "03_usage_history.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
+  "04_cost.png": "b1461f28a3af5f7b3f8e53cd61193736",
+  "05_alerts.png": "06e73ada410d90cb775a696b26df0e5f",
+  "06_pulse_cat.png": "ac7ad330f1975f9f9f287da0a4ae3490"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_2880x1800.png": "b0d93fd1d8421e54bf3911cd37996c84",
-  "02_providers_2880x1800.png": "e46c63f0a83c342fe4aa0c56c8e00eee",
-  "03_usage_history_2880x1800.png": "4c7ad0adabb357c9fa4f6c9b11ba1c26",
-  "04_cost_2880x1800.png": "93de2035120e9793ead62a3df9f033d4",
-  "05_alerts_2880x1800.png": "4b4a3243302aced7c92f0f60c9f4e8a4",
-  "06_pulse_cat_2880x1800.png": "91477068774dc7ccb910a7dccde170a9"
+  "01_overview_2880x1800.png": "9dda776dcae85b2e0958c40d434008bb",
+  "02_providers_2880x1800.png": "63a2fa96f041d5e123f617cfaeba381d",
+  "03_usage_history_2880x1800.png": "41b18b373a6bf7e3f5943e84b38b7083",
+  "04_cost_2880x1800.png": "4596bb49dbfe147ff04e370532491a00",
+  "05_alerts_2880x1800.png": "34674ee28e17326a745280c1b3228770",
+  "06_pulse_cat_2880x1800.png": "710db517d489750554967a2484ca68ff"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "59e1266ebc4e15c8dcf5e4f4a0e3072f",
+ "render": "e72bec16dc8cb652c4ce558e6948015e",
  "subtitle_pt": 46,
  "title_pt": 100
 }

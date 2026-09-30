@@ -279,7 +279,7 @@
 "detail.usage_today" = "%@ today";
 
 /* ── Quota ── */
-"quota.low" = "LOW";
+"quota.low" = "RUNNING LOW";
 "quota.moderate" = "MODERATE";
 "quota.ok" = "OK";
 
@@ -311,7 +311,7 @@
 "badge.pro" = "PRO";
 "badge.team" = "TEAM";
 "badge.exact" = "EXACT";
-"badge.estimated" = "ESTIMATE";
+"badge.estimated" = "ESTIMATED";
 "badge.unavailable" = "N/A";
 "badge.high" = "High";
 "badge.medium" = "Medium";

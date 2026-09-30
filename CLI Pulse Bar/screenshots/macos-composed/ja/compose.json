@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "コストの内訳がわかる",
-   "今日と​30日間の推定コストを、​プロバイダー別に"
+   "今日の推定コストをプロバイダー別に、​30日間の推定額も"
   ],
   "05_alerts": [
    "上限の接近を見逃さない",
@@ -26,17 +26,17 @@
   ],
   "06_pulse_cat": [
    "パルスキャットに会おう",
-   "エネルギーとおなかの具合が AI の使い方で変わる​デスクトップ猫"
+   "エネルギーとおなかの満ち具合が AI の使い方で変わる​デスクトップ猫"
   ]
  },
  "captures": {
-  "01_overview.png": "20d032805fa8a0a04fdd60a827e7cff9",
-  "02_providers.png": "785d1b0625505c974e5e15bcaedaa4c3",
+  "01_overview.png": "3453d58f975ed75d100a95a5c7f4f544",
+  "02_providers.png": "7f174787c1c9e480ba90a500aa9fc4c3",
   "03_usage_history.panel.png": "310a2555aadd5dd5c7a66bcc2fb27f2c",
-  "03_usage_history.png": "20d032805fa8a0a04fdd60a827e7cff9",
-  "04_cost.png": "fa6e437050cf2ec5a21d7a228f64883e",
-  "05_alerts.png": "42be0f50b47d4276d2ae865600adf0b9",
-  "06_pulse_cat.png": "7e51636e30f57ad9dab99b9363a81458"
+  "03_usage_history.png": "3453d58f975ed75d100a95a5c7f4f544",
+  "04_cost.png": "88103e239e689b4b0c81502b66a5b81e",
+  "05_alerts.png": "9d08c1ccfabfbd157e9f08f33c0d04f3",
+  "06_pulse_cat.png": "e3f0cc6f3c9ae6ce09a538d2f90005c0"
  },
  "faces": {
   "subtitle": "Hiragino Sans",
@@ -44,16 +44,16 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_2880x1800.png": "f5baffbfafd00d16797d85c320529422",
-  "02_providers_2880x1800.png": "abeb03ba7a16f313511884188035d8d5",
-  "03_usage_history_2880x1800.png": "2861d12e4d775f0784a8d503850bea60",
-  "04_cost_2880x1800.png": "08c8aa8ff863880224b14e59aeb8d905",
-  "05_alerts_2880x1800.png": "ee139e226cc7d747d58ef178cdc4d3f2",
-  "06_pulse_cat_2880x1800.png": "f0efb417f2bb99129562aab38e67e30c"
+  "01_overview_2880x1800.png": "7dab2d0182e6d11b7fcbed9db6e00f37",
+  "02_providers_2880x1800.png": "6d1cfd8bb1da1fb72fc311153da17480",
+  "03_usage_history_2880x1800.png": "dd72ddcf84b7084d601a4d7a827316a0",
+  "04_cost_2880x1800.png": "e1d591326be1d35c0fec5447a371fa55",
+  "05_alerts_2880x1800.png": "e5ddd5ccbc505d6c2bbd515e65603f4e",
+  "06_pulse_cat_2880x1800.png": "def5c06e8db7fd5894fdc1e5cfda66e2"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "aa29904f0dcf67eecc34021948d2d347",
+ "render": "243d733d03e17201eda247419dda15ed",
  "subtitle_pt": 46,
  "title_pt": 100
 }

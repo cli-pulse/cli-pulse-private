@@ -1,8 +1,8 @@
 {
   "app" : {
-    "build" : "107",
+    "build" : "108",
     "bundleIdentifier" : "app.clipulse.qa.local",
-    "version" : "1.54.0"
+    "version" : "1.55.0"
   },
   "appKitLocalization" : "es",
   "appearance" : "light",
@@ -17,10 +17,10 @@
   "forcedSettings" : {
     "cli_pulse_check_provider_status" : "false: provider status badges would otherwise fetch public status pages. They draw nothing unless a provider has an incident.",
     "cli_pulse_menubar_height" : "580: the popover's default height, pinned; users can drag it between 400 and 900.",
-    "cli_pulse_menubar_height (04_cost)" : "458: this shot's popover, shortened from 580 so the page scrolled to the end opens just above the first card the first page did not show whole, and cuts through nothing. Users can drag the popover between 400 and 900.",
+    "cli_pulse_menubar_height (04_cost)" : "406: this shot's popover, shortened from 580 so the page scrolled to the end opens just above a card (the first one the first page did not show whole, or the one above it when that would need a popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. Users can drag the popover between 400 and 900.",
     "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
   },
-  "generatedAt" : "2026-09-30T16:12:34Z",
+  "generatedAt" : "2026-09-30T17:09:38Z",
   "language" : "es",
   "localeOverride" : "es",
   "localizationActive" : true,
@@ -102,12 +102,12 @@
     },
     {
       "file" : "04_cost.png",
-      "height" : 458,
+      "height" : 406,
       "id" : "04_cost",
       "kind" : "popover",
       "page" : 3,
       "pageCount" : 3,
-      "pixelHeight" : 1374,
+      "pixelHeight" : 1218,
       "pixelWidth" : 1140,
       "suspectBlank" : false,
       "width" : 380
@@ -145,7 +145,7 @@
     {
       "file" : "01_overview.png",
       "id" : "01_overview",
-      "md5" : "d8214f0b3c1100a9be6fb0482477ea57",
+      "md5" : "27d1fda96aba3f32ed824537558593c9",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -154,7 +154,7 @@
     {
       "file" : "02_providers.png",
       "id" : "02_providers",
-      "md5" : "7c36a39159aec5f3c2da7a341f442e62",
+      "md5" : "c5ca984bf28a6a104bcad72e857f47b1",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -163,7 +163,7 @@
     {
       "file" : "03_usage_history.png",
       "id" : "03_usage_history",
-      "md5" : "d8214f0b3c1100a9be6fb0482477ea57",
+      "md5" : "27d1fda96aba3f32ed824537558593c9",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -174,17 +174,17 @@
     {
       "file" : "04_cost.png",
       "id" : "04_cost",
-      "md5" : "7d776717274903e27f1e889617d80756",
+      "md5" : "62362f397d1afca9a20bfa6d39ef8269",
       "page" : "lastAligned",
       "pageCount" : 3,
       "pageIndex" : 3,
-      "popoverHeight" : 458,
+      "popoverHeight" : 406,
       "surface" : "demo-overview"
     },
     {
       "file" : "05_alerts.png",
       "id" : "05_alerts",
-      "md5" : "77338c5f4dea0b1d62aa6060d3ce4450",
+      "md5" : "13d47f8301539b4c120121dc0aaae9be",
       "page" : "first",
       "pageCount" : 1,
       "pageIndex" : 1,
@@ -193,7 +193,7 @@
     {
       "file" : "06_pulse_cat.png",
       "id" : "06_pulse_cat",
-      "md5" : "52a0b08fd96b052d0141179e42b9579a",
+      "md5" : "66e2a124c56e68a5699effc2bbb8e82d",
       "page" : "first",
       "pageCount" : 7,
       "pageIndex" : 1,

@@ -142,7 +142,8 @@ SUB_ONE_LINE_W = LAYOUT.sub_one_line_w
 
 # ── captions ─────────────────────────────────────────────────────────────────
 # (title, subtitle) per screen. Written against the screen each sits on (the
-# Demo data: Codex/Gemini/Claude, estimated costs, a weekly quota at 92%, CPU
+# Demo data: Codex/Gemini/Claude, estimated costs for Codex and Claude (Gemini
+# is quota-only, as it is in production), a weekly quota at 92%, CPU
 # and long-running-session alerts) and the app's own words for things: the
 # tab names, 配额/配額/クォータ/할당량/cuota, 告警/警示/アラート/알림/alertas,
 # 会话/工作階段/セッション/세션/sesiones, "costo" in Spanish.
@@ -153,7 +154,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("Live quotas and costs",
                          "See what’s left before you hit the wall"),
         "03_cost": ("Where the money goes",
-                    "Estimated cost today and for 30 days, provider by provider"),
+                    "Estimated cost for today and the last 30 days, by provider"),
         "04_sessions": ("Every CLI run tracked",
                         "Active sessions with usage, cost and requests"),
         "05_alerts": ("Never miss a limit",
@@ -162,21 +163,21 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
     "zh-Hans": {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，打开就能看到"),
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
-        "03_cost": ("钱都花在了哪里", "今日和 30 天的估算费用，按服务商细分"),
+        "03_cost": ("钱都花在了哪里", "今日与近 30 天的估算费用，按服务商细分"),
         "04_sessions": ("每个会话都有账可查", "活跃会话的用量、费用和请求数"),
         "05_alerts": ("配额不再突然见底", "配额将尽、CPU 过高、会话过久，都会告警"),
     },
     "zh-Hant": {
         "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，一頁看完"),
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
-        "03_cost": ("錢花在哪裡", "今日與 30 天的預估費用，依服務商細分"),
+        "03_cost": ("錢花在哪裡", "今日與近 30 天的預估費用，依服務商細分"),
         "04_sessions": ("每次 CLI 執行都有紀錄", "活躍工作階段的用量、費用與請求數"),
         "05_alerts": ("配額不再突然見底", "配額將盡、CPU 使用率過高、工作階段執行過久，都會發出警示"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で", "使用量、コスト、セッション、アラートを\u200bひとつの画面に"),
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
-        "03_cost": ("コストの内訳がわかる", "今日と\u200b30日間の推定コストを、\u200bプロバイダー別に"),
+        "03_cost": ("コストの内訳がわかる", "今日の推定コストをプロバイダー別に、\u200b30日間の推定額も"),
         "04_sessions": ("CLI の実行をすべて記録", "アクティブなセッションの\u200b使用量、コスト、リクエスト数"),
         "05_alerts": ("上限の接近を見逃さない", "クォータ残量の低下、CPU の高負荷、\u200b長時間実行中のセッションを通知"),
     },
@@ -193,7 +194,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("Cuotas y costos en vivo",
                          "Consulta cuánto te queda antes de llegar al límite"),
         "03_cost": ("En qué se va tu dinero",
-                    "Costo estimado de hoy y a 30 días, por proveedor"),
+                    "Costo estimado de hoy y de los últimos 30 días, por proveedor"),
         "04_sessions": ("Cada ejecución, registrada",
                         "Sesiones activas con su uso, costo y solicitudes"),
         "05_alerts": ("Sin sorpresas con la cuota",

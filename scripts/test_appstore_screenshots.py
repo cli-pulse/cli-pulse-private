@@ -634,7 +634,7 @@ check("an RGBA Mac panel is refused", any("RGBA" in x for x in shots.panel_probl
 
 # The cost shot opens above a card in a shortened popover (QARenderSnapshot
 # alignedTrim); the fixtures give it a 551-point one, as the 1.54 renders
-# measured (1.55's measure 458).
+# measured (1.55's measure 406).
 MAC_ALIGNED = {"04_cost": 551}
 
 
@@ -838,6 +838,11 @@ check("the usage panel sits left of the popover, top-aligned, 8 points away, and
       compose_mac.placement_problems(group, scale) == [] and group[0].name == "panel"
       and group[0].y == group[1].y and group[1].x - (group[0].x + group[0].w) == round(8 * scale)
       and group[0].y + group[0].h > compose_mac.CANVAS_H, str(group))
+short = compose_mac.placements(False, mac_one.shot_top, scale, popover_height_pt=406)
+check("a shortened popover is centred in the room a full one fills, at the same scale",
+      compose_mac.placement_problems(short, scale) == [] and short[0].w == single[0].w
+      and abs((short[0].y - single[0].y) - (single[0].y + single[0].h - short[0].y - short[0].h)) <= 1
+      and short[0].h == round(406 * scale), f"{short} vs {single}")
 moved = [compose_mac.Placement("popover", -10, single[0].y, single[0].w, single[0].h)]
 check("negative control: a popover leaving the canvas at the side fails",
       compose_mac.placement_problems(moved, scale) != [])

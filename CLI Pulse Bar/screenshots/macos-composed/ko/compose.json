@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "2b2e90a76d830f951f56eaa071630745",
-  "02_providers.png": "f4952c201d8e6af526dafdeab161733c",
+  "01_overview.png": "6bfccdd1b1e245839f1ce0ee7d88c596",
+  "02_providers.png": "5cf7ca3826dce1ca27e50d4482b5127a",
   "03_usage_history.panel.png": "27ebb91f519b44c569bc9d25d9654f81",
-  "03_usage_history.png": "2b2e90a76d830f951f56eaa071630745",
-  "04_cost.png": "13608a7b0a1f6b24c628a5bbf36caf84",
-  "05_alerts.png": "7a2a872ff15fa2129a9713a2d257cbca",
-  "06_pulse_cat.png": "44840d348aecab3e3b0f907ec4e35117"
+  "03_usage_history.png": "6bfccdd1b1e245839f1ce0ee7d88c596",
+  "04_cost.png": "d2151ec89ce61cad31e7f8efcf407e4e",
+  "05_alerts.png": "c131db9ed4e2424588d663dced11da7b",
+  "06_pulse_cat.png": "f9eb2787f035f4bce18d21358c846a21"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -44,16 +44,16 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2880x1800.png": "09e05c87fcaf90d8a9b44b07d1f437fa",
-  "02_providers_2880x1800.png": "5707a87e29b3649c2d6ebed0067b192b",
-  "03_usage_history_2880x1800.png": "189e4be1dd4b3e381e3ce293703a8a3e",
-  "04_cost_2880x1800.png": "e0ae79ba1fbf15b5a20b47fc8e8db468",
-  "05_alerts_2880x1800.png": "117444d347c3f2ac737b23ae00d2d660",
-  "06_pulse_cat_2880x1800.png": "db408ef291f26325d299a8c94754af4b"
+  "01_overview_2880x1800.png": "3fe167407ed579c8ec930b4e752f9a2b",
+  "02_providers_2880x1800.png": "21a8666c7c4b2c25e06823fb8678ba34",
+  "03_usage_history_2880x1800.png": "0b35afff0269608c1a5f310aceef8cad",
+  "04_cost_2880x1800.png": "d1a5bac4dbcc46a8593cc485f7bd815e",
+  "05_alerts_2880x1800.png": "f85c547c3740305a3072c57cd8995dc2",
+  "06_pulse_cat_2880x1800.png": "2ac3c53fe0871d1acdc63205d6c03729"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "65ac424a2fc30a68be3f1a647db100a9",
+ "render": "eb02d475f2f434d36dfddc9f88e64337",
  "subtitle_pt": 46,
  "title_pt": 100
 }

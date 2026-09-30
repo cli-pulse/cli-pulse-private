@@ -940,7 +940,7 @@
 "usage_dashboard.empty_synced" = "尚無已同步的用量歷史";
 "usage_dashboard.total_tokens" = "token 總數";
 "usage_dashboard.total_cost_est" = "預估總費用";
-"usage_dashboard.cost_disclaimer" = "費用是依 API 按用量計費價格算出的預估值，並非實際帳單。";
+"usage_dashboard.cost_disclaimer" = "費用以 API 按用量計費的價格估算，並非實際帳單。";
 "usage_dashboard.active_days" = "活躍天數";
 "usage_dashboard.current_streak" = "目前連續天數";
 "usage_dashboard.longest_streak" = "最長連續天數";
@@ -1588,7 +1588,7 @@
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "alerts.critical_count_badge" = "嚴重級 %d 則";
-"alerts.warning_count_badge" = "警告級 %d 則";
+"alerts.warning_count_badge" = "%d 則警告";
 "account.deleting" = "正在刪除帳號…";
 "usage_dashboard.chart_day" = "日期";
 "usage_dashboard.chart_tokens" = "token 數";
