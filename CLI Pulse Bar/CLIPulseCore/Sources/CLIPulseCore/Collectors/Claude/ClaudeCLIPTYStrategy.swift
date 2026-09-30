@@ -80,9 +80,7 @@ public struct ClaudeCLIPTYStrategy: ClaudeSourceStrategy, Sendable {
 
             // Try to get tier from credentials if available
             let tier = ClaudeCredentials.readCredentialsFile()?.rateLimitTier
-                ?? (PrivacySettings.shared.skipsClaudeKeychainOnItsOwn
-                    ? nil
-                    : ClaudeCredentials.readKeychainCredentials()?.rateLimitTier)
+                ?? ClaudeCredentials.readKeychainCredentialsIfAllowed()?.rateLimitTier
 
             let snapshot = ClaudeSnapshot(
                 sessionUsed: parsed.sessionPercentLeft.map { 100 - $0 },

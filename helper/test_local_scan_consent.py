@@ -4,8 +4,10 @@ The app (1.55+) copies its answer into its app-group defaults, a cfprefsd plist
 in the group container. These tests write that plist where the app does, under
 a throwaway HOME, and check what the helper then reads and sends:
 
-  * the decision for every answer, sign-in record, and the file being absent,
-    from an older app, or unreadable;
+  * the decision for every answer, account record (signed in as the pairing's
+    user or another, local mode, signed out), and the file being absent, from
+    an older app, or unreadable, read from the file and, on a Mac, through
+    cfprefsd as the app writes it;
   * that the gate reads the file on every check, does not stack a second read on
     a stalled one, and does not touch a container the startup rotation is still
     stuck in;
@@ -24,6 +26,7 @@ a throwaway HOME, and check what the helper then reads and sends:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import plistlib
 import sys
@@ -75,14 +78,35 @@ def write_mirror(home: Path, values: dict, fmt=plistlib.FMT_BINARY) -> Path:
     return path
 
 
-def answer(consent=None, signed_out=None, **extra) -> dict:
+# The user this Mac's Companion was paired for, and another one.
+ME = "6f1c1a52-3b0e-4d7a-9c55-0d9e8f7a6b5c"
+OTHER = "0a9b8c7d-6e5f-4a3b-8c2d-1e0f9a8b7c6d"
+
+
+def answer(consent=None, account=None, **extra) -> dict:
     values = dict(PRE_155_KEYS)
     if consent is not None:
         values["cli_pulse_local_scan_consent"] = consent
-    if signed_out is not None:
-        values["cli_pulse_app_signed_out"] = signed_out
+    if account is not None:
+        values["cli_pulse_app_account"] = account
     values.update(extra)
     return values
+
+
+def signed_in(user_id: str = ME) -> str:
+    return f"signed_in:{user_id}"
+
+
+def write_pairing(home: Path, user_id: str | None = ME, raw: bytes | None = None) -> Path:
+    """`~/.cli-pulse-helper.json`, as `save_config` writes it."""
+    path = home / ".cli-pulse-helper.json"
+    if raw is None:
+        body = {"device_id": "dev-1", "device_name": "Mac", "helper_version": "1", "helper_secret": "s"}
+        if user_id is not None:
+            body["user_id"] = user_id
+        raw = json.dumps(body).encode()
+    path.write_bytes(raw)
+    return path
 
 
 def test_the_module_reads_the_path_the_app_writes(home):
@@ -99,20 +123,40 @@ def test_the_module_reads_the_path_the_app_writes(home):
         (None, Cycle.LEGACY, "no_copy"),
         (dict(PRE_155_KEYS), Cycle.LEGACY, "no_copy"),
         ({}, Cycle.LEGACY, "no_copy"),
-        # The answers.
+        # The answers, from an app that has not recorded an account.
         (answer("declined"), Cycle.PAUSED, "declined"),
         (answer("granted"), Cycle.COLLECT, "granted"),
         (answer("undecided"), Cycle.COLLECT, "undecided"),
-        # The sign-in record.
-        (answer("declined", signed_out=False), Cycle.PAUSED, "declined"),
-        (answer("granted", signed_out=False), Cycle.COLLECT, "granted"),
-        (answer("undecided", signed_out=False), Cycle.COLLECT, "undecided"),
-        (answer("granted", signed_out=True), Cycle.PAUSED, "signed_out"),
-        (answer("undecided", signed_out=True), Cycle.PAUSED, "signed_out"),
-        (answer("declined", signed_out=True), Cycle.PAUSED, "signed_out"),
-        # Only a 1.55+ app writes the sign-in record, so it counts on its own.
-        (answer(signed_out=True), Cycle.PAUSED, "signed_out"),
-        (answer(signed_out=False), Cycle.LEGACY, "no_copy"),
+        # Signed in (as the pairing's user: see the pairing tests below).
+        (answer("declined", signed_in()), Cycle.PAUSED, "declined"),
+        (answer("granted", signed_in()), Cycle.COLLECT, "granted"),
+        (answer("undecided", signed_in()), Cycle.COLLECT, "undecided"),
+        (answer("maybe", signed_in()), Cycle.PAUSED, "unrecognised"),
+        # Only a 1.55+ app records an account, so a missing answer beside one
+        # is not an older app speaking.
+        (answer(account=signed_in()), Cycle.PAUSED, "no_answer"),
+        # Signed out: nothing, whatever the answer.
+        (answer("granted", "signed_out"), Cycle.PAUSED, "signed_out"),
+        (answer("undecided", "signed_out"), Cycle.PAUSED, "signed_out"),
+        (answer("declined", "signed_out"), Cycle.PAUSED, "signed_out"),
+        (answer(account="signed_out"), Cycle.PAUSED, "signed_out"),
+        # An account record this helper does not know reads as signed out, as
+        # `HelperAccountRecord(storedValue:)` reads it.
+        (answer("granted", "signed_in:"), Cycle.PAUSED, "signed_out"),
+        (answer("granted", "signed_in:   "), Cycle.PAUSED, "signed_out"),
+        (answer("granted", "guest"), Cycle.PAUSED, "signed_out"),
+        (answer("granted", "Signed_Out"), Cycle.PAUSED, "signed_out"),
+        (answer("granted", "LOCAL_MODE"), Cycle.PAUSED, "signed_out"),
+        (answer("granted", True), Cycle.PAUSED, "signed_out"),
+        (answer("granted", 1), Cycle.PAUSED, "signed_out"),
+        # Local mode: reads for the app after a yes, uploads nothing.
+        (answer("granted", "local_mode"), Cycle.LOCAL, "local_mode"),
+        (answer("undecided", "local_mode"), Cycle.PAUSED, "undecided_local_mode"),
+        (answer("declined", "local_mode"), Cycle.PAUSED, "declined"),
+        (answer("maybe", "local_mode"), Cycle.PAUSED, "unrecognised"),
+        (answer(account="local_mode"), Cycle.PAUSED, "no_answer"),
+        # A development build once wrote a Bool instead; no release did.
+        (answer("granted", cli_pulse_app_signed_out=True), Cycle.COLLECT, "granted"),
         # The older-history answer does not change what this helper may do.
         (answer("granted", cli_pulse_local_scan_consent_v2="declined"), Cycle.COLLECT, "granted"),
         (answer("declined", cli_pulse_local_scan_consent_v2="granted"), Cycle.PAUSED, "declined"),
@@ -123,23 +167,91 @@ def test_the_module_reads_the_path_the_app_writes(home):
         (answer(True), Cycle.PAUSED, "unrecognised"),
     ],
 )
-def test_decision_for_every_answer(home, values, cycle, reason):
-    if values is not None:
-        write_mirror(home, values)
+def test_decision_for_every_answer(home, app_group_copy, values, cycle, reason):
+    app_group_copy.write(values)
     decision = lsc.decide(lsc.read_mirror())
     assert (decision.cycle, decision.reason) == (cycle, reason)
     assert decision.allows_collection is (cycle is not Cycle.PAUSED)
+    assert decision.allows_upload is (cycle in (Cycle.COLLECT, Cycle.LEGACY))
+
+
+# ── the account record against the pairing ────────────────────
 
 
 @pytest.mark.parametrize(
-    ("stored", "signed_out"),
-    [(True, True), (1, True), ("YES", True), ("true", True),
-     (False, False), (0, False), ("NO", False), ("", False)],
+    ("values", "cycle", "reason"),
+    [
+        (answer("granted", signed_in(ME)), Cycle.COLLECT, "granted"),
+        (answer("undecided", signed_in(ME)), Cycle.COLLECT, "undecided"),
+        # Supabase ids are UUIDs, the same id in either case.
+        (answer("granted", signed_in(ME.upper())), Cycle.COLLECT, "granted"),
+        # Signed in to another account: its uploads would go to this one.
+        (answer("granted", signed_in(OTHER)), Cycle.PAUSED, "other_account"),
+        (answer("undecided", signed_in(OTHER)), Cycle.PAUSED, "other_account"),
+        (answer(account=signed_in(OTHER)), Cycle.PAUSED, "other_account"),
+        # Local mode uploads nothing to the pairing either way.
+        (answer("granted", "local_mode"), Cycle.LOCAL, "local_mode"),
+        (answer("granted", "signed_out"), Cycle.PAUSED, "signed_out"),
+        # No record: the pairing is trusted, as before the record existed.
+        (answer("granted"), Cycle.COLLECT, "granted"),
+    ],
 )
-def test_sign_in_record_reads_like_userdefaults_bool(home, stored, signed_out):
-    write_mirror(home, answer("granted", signed_out=stored))
-    assert lsc.read_mirror().signed_out is signed_out
-    assert lsc.decide(lsc.read_mirror()).allows_collection is (not signed_out)
+def test_the_account_is_checked_against_the_pairing(home, app_group_copy, values, cycle, reason):
+    write_pairing(home, ME)
+    app_group_copy.write(values)
+    decision = LocalScanGate().check()
+    assert (decision.cycle, decision.reason) == (cycle, reason)
+
+
+@pytest.mark.parametrize(
+    "pairing",
+    [None, b"{not json", b"[]", json.dumps({"user_id": ""}).encode(), json.dumps({"device_id": "d"}).encode()],
+    ids=["unpaired", "corrupt", "not-a-dict", "empty-user", "no-user"],
+)
+def test_without_a_readable_pairing_the_answer_decides(home, pairing):
+    # Nothing to compare with, and nothing can be uploaded without a pairing
+    # either (`load_config` fails the same way).
+    if pairing is not None:
+        write_pairing(home, raw=pairing)
+    write_mirror(home, answer("granted", signed_in(OTHER)))
+    assert lsc.paired_user_id_from_config() is None
+    assert LocalScanGate().check().cycle is Cycle.COLLECT
+
+
+def test_the_gate_reads_the_pairing_afresh(home):
+    write_mirror(home, answer("granted", signed_in(ME)))
+    gate = LocalScanGate()
+    write_pairing(home, ME)
+    assert gate.check().cycle is Cycle.COLLECT
+    write_pairing(home, OTHER)  # re-paired for another user while it runs
+    assert gate.check().reason == "other_account"
+
+
+@pytest.mark.parametrize(
+    "values",
+    [answer("declined"), answer("granted"), answer("granted", "local_mode"),
+     answer("granted", "signed_out"), None],
+)
+def test_the_pairing_is_read_only_for_a_sign_in(home, values):
+    if values is not None:
+        write_mirror(home, values)
+    asked: list[int] = []
+    LocalScanGate(paired_user_id=lambda: asked.append(1) or ME).check()
+    assert asked == []
+
+
+def test_a_pairing_reader_that_raises_is_no_pairing(home):
+    write_mirror(home, answer("granted", signed_in(OTHER)))
+    decision = lsc.decide(lsc.read_mirror(), lambda: 1 / 0)
+    assert decision.cycle is Cycle.COLLECT
+
+
+def test_the_pairing_is_the_file_the_helper_pairs_into(home):
+    # `cli_pulse_helper.CONFIG_PATH` is fixed at import, under the real HOME;
+    # the name is what must agree.
+    assert h.CONFIG_PATH.name == lsc.PAIRING_FILENAME
+    write_pairing(home, ME)
+    assert lsc.paired_user_id_from_config() == ME
 
 
 def test_an_xml_plist_is_read_too(home):
@@ -195,10 +307,12 @@ def test_gate_reads_the_file_at_every_check(home):
     assert gate.check().cycle is Cycle.COLLECT
     write_mirror(home, answer("declined"))
     assert gate.check().cycle is Cycle.PAUSED
-    write_mirror(home, answer("granted", signed_out=True))
+    write_mirror(home, answer("granted", "signed_out"))
     assert gate.check().reason == "signed_out"
-    write_mirror(home, answer("granted", signed_out=False))
-    assert gate.allows_collection()
+    write_mirror(home, answer("granted", "local_mode"))
+    assert gate.allows_collection() and not gate.allows_upload()
+    write_mirror(home, answer("granted", signed_in()))
+    assert gate.allows_collection() and gate.allows_upload()
 
 
 def test_a_stalled_read_pauses_and_is_not_read_twice():
@@ -371,10 +485,14 @@ class Recorder:
 
 @pytest.mark.parametrize(
     "values",
-    [answer("declined"), answer("granted", signed_out=True), answer("undecided", signed_out=True),
-     answer("maybe")],
+    [answer("declined"), answer("granted", "signed_out"), answer("undecided", "signed_out"),
+     answer("maybe"), answer("granted", signed_in(OTHER)), answer("granted", "local_mode"),
+     answer("undecided", "local_mode")],
+    ids=["not-now", "signed-out", "signed-out-undecided", "unrecognised", "other-account",
+         "local-mode", "local-mode-undecided"],
 )
 def test_paused_heartbeat_and_sync_read_and_send_nothing(home, nothing_may_run, values):
+    write_pairing(home, ME)
     write_mirror(home, values)
     gate = LocalScanGate()
     assert h.heartbeat(argparse.Namespace(), gate=gate) is False
@@ -383,9 +501,11 @@ def test_paused_heartbeat_and_sync_read_and_send_nothing(home, nothing_may_run, 
 
 @pytest.mark.parametrize(
     "values",
-    [None, dict(PRE_155_KEYS), answer("granted"), answer("undecided"), answer("granted", signed_out=False)],
+    [None, dict(PRE_155_KEYS), answer("granted"), answer("undecided"),
+     answer("granted", signed_in(ME)), answer("undecided", signed_in(ME))],
 )
 def test_allowed_heartbeat_and_sync_send_as_before(home, monkeypatch, values):
+    write_pairing(home, ME)
     if values is not None:
         write_mirror(home, values)
     rec = Recorder(monkeypatch)
@@ -395,26 +515,28 @@ def test_allowed_heartbeat_and_sync_send_as_before(home, monkeypatch, values):
     assert rec.sent == ["helper_heartbeat", "helper_sync"]
 
 
-@pytest.mark.parametrize(
+LATE_ANSWERS = pytest.mark.parametrize(
     "late_answer",
-    [answer("declined"), answer("granted", signed_out=True)],
-    ids=["not-now", "sign-out"],
+    [answer("declined", signed_in()), answer("granted", "signed_out"),
+     answer("granted", signed_in(OTHER)), answer("granted", "local_mode")],
+    ids=["not-now", "sign-out", "account-switch", "local-mode"],
 )
+
+
+@LATE_ANSWERS
 def test_an_answer_given_mid_heartbeat_drops_it(home, monkeypatch, late_answer):
-    write_mirror(home, answer("granted"))
+    write_pairing(home, ME)
+    write_mirror(home, answer("granted", signed_in()))
     rec = Recorder(monkeypatch, on_collect=lambda _what: write_mirror(home, late_answer))
     assert h.heartbeat(argparse.Namespace(), gate=LocalScanGate()) is False
     assert rec.collected  # it was already reading
     assert rec.sent == []
 
 
-@pytest.mark.parametrize(
-    "late_answer",
-    [answer("declined"), answer("granted", signed_out=True)],
-    ids=["not-now", "sign-out"],
-)
+@LATE_ANSWERS
 def test_an_answer_given_mid_sync_drops_it(home, monkeypatch, late_answer):
-    write_mirror(home, answer("granted"))
+    write_pairing(home, ME)
+    write_mirror(home, answer("granted", signed_in()))
 
     def on_collect(what):
         if what == "quotas":  # the last read before the upload
@@ -445,8 +567,16 @@ def _cycle(gate, git=None):
     )
 
 
-def test_paused_cycle_reads_and_sends_nothing(home, nothing_may_run):
-    write_mirror(home, answer("declined"))
+@pytest.mark.parametrize(
+    "values",
+    [answer("declined"), answer("granted", "signed_out"), answer("granted", signed_in(OTHER)),
+     answer("granted", "local_mode")],
+    ids=["not-now", "signed-out", "other-account", "local-mode"],
+)
+def test_paused_cycle_reads_and_sends_nothing(home, nothing_may_run, values):
+    # Local mode included: every step of the cycle uploads.
+    write_pairing(home, ME)
+    write_mirror(home, values)
     assert _cycle(LocalScanGate()) is False
 
 
@@ -659,16 +789,30 @@ def test_a_paused_hello_reads_no_credential_file(monkeypatch, allowed):
     assert reply["implementation"] == "python-pkg"  # the rest of hello is unchanged
 
 
-@pytest.mark.parametrize("consent", ["declined", "granted", None])
-def test_hello_follows_the_apps_answer(home, monkeypatch, consent):
+@pytest.mark.parametrize(
+    ("values", "reads"),
+    [
+        (answer("declined"), False),
+        (answer("granted"), True),
+        (None, True),  # no copy from a pre-1.55 app: as before
+        # Local mode after a yes: hello answers only the app on this Mac.
+        (answer("granted", "local_mode"), True),
+        (answer("undecided", "local_mode"), False),
+        (answer("granted", "signed_out"), False),
+        (answer("granted", signed_in(OTHER)), False),
+        (answer("granted", signed_in(ME)), True),
+    ],
+)
+def test_hello_follows_the_apps_answer(home, monkeypatch, values, reads):
     monkeypatch.setattr(provider_spawners, "provider_plan_statuses", lambda: {"codex": "off_plan"})
-    if consent is not None:
-        write_mirror(home, answer(consent))
+    write_pairing(home, ME)
+    if values is not None:
+        write_mirror(home, values)
     reply = _hello(LocalScanGate().allows_collection)
-    if consent == "declined":
-        assert "provider_plan_status" not in reply
-    else:  # granted, or no copy from a pre-1.55 app: as before
+    if reads:
         assert reply["provider_plan_status"] == {"codex": "off_plan"}
+    else:
+        assert "provider_plan_status" not in reply
 
 
 def test_without_a_gate_hello_is_unchanged(monkeypatch):

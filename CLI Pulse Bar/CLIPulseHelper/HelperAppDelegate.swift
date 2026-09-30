@@ -31,6 +31,22 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
         HelperIPC.writeStatus(HelperIPC.Status(state: .running, helperVersion: "1.0.0"))
         HelperIPC.postStartNotification()
         daemon.start()
+
+        // v1.55: say what this helper does with Claude Code's keychain item
+        // now, and again whenever the app changes a switch or asks at its
+        // launch (after removing the last report), so Settings › Privacy does
+        // not wait a whole sync interval for a cycle to say it, and never
+        // takes a report an earlier helper left for this one's.
+        daemon.reportClaudeKeychainAccess(announce: true)
+        for name in [HelperInputs.didChangeNotificationName, HelperPrivacyInputs.reportRequestNotificationName] {
+            DistributedNotificationCenter.default().addObserver(
+                self, selector: #selector(reportClaudeKeychainAccess(_:)), name: name, object: nil
+            )
+        }
+    }
+
+    @objc private func reportClaudeKeychainAccess(_ notification: Notification) {
+        daemon?.reportClaudeKeychainAccess(announce: true)
     }
 
     func applicationWillTerminate(_ notification: Notification) {

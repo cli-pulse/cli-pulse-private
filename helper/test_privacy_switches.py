@@ -23,7 +23,6 @@ copies both into its app group, and these tests check that:
 from __future__ import annotations
 
 import argparse
-import ctypes
 import plistlib
 import subprocess
 import sys
@@ -31,6 +30,7 @@ import types
 from pathlib import Path
 
 import pytest
+from conftest import darwin_only
 
 HELPER_DIR = Path(__file__).resolve().parent
 if str(HELPER_DIR) not in sys.path:
@@ -79,6 +79,44 @@ def test_keys_are_the_ones_the_app_writes():
     assert SKIP in lsc.MIRROR_KEYS and STRICT in lsc.MIRROR_KEYS
 
 
+def test_cfprefsd_is_asked_for_every_key_the_copy_is_read_for():
+    # The cfprefsd reader asks for `MIRROR_KEYS` only, and both readers return
+    # no others, so a key constant missing from it is a key never read.
+    constants = {value for name, value in vars(lsc).items() if name.endswith("_KEY")}
+    assert constants == set(lsc.MIRROR_KEYS)
+
+
+def test_the_file_reader_sees_no_more_than_cfprefsd_is_asked_for(home):
+    # A key outside `MIRROR_KEYS` in the file is not read, as cfprefsd would
+    # not be asked for it: the tests, which mostly read the file, see what
+    # production sees.
+    all_keys = {
+        "cli_pulse_local_scan_consent": "granted",
+        "cli_pulse_app_account": "local_mode",
+        SKIP: True,
+        STRICT: False,
+    }
+    write_mirror(home, all_keys)
+    read = lsc.read_mirror()
+    assert (read.consent, read.account, read.skip_claude_keychain, read.local_only_mode) == (
+        "granted", "local_mode", True, False,
+    )
+    original = lsc.MIRROR_KEYS
+    for dropped in original:
+        lsc.MIRROR_KEYS = tuple(key for key in original if key != dropped)
+        try:
+            read = lsc.read_mirror()
+        finally:
+            lsc.MIRROR_KEYS = original
+        fields = {
+            "cli_pulse_local_scan_consent": read.consent,
+            "cli_pulse_app_account": read.account,
+            SKIP: read.skip_claude_keychain,
+            STRICT: read.local_only_mode,
+        }
+        assert fields[dropped] is None, dropped
+
+
 # ── the decision ───────────────────────────────────────────────
 
 
@@ -123,17 +161,21 @@ def test_the_file_reader_carries_the_switches(home):
 # ── the gate ───────────────────────────────────────────────────
 
 
-def test_the_gate_reads_the_copy_at_every_check(home):
+def test_the_gate_reads_the_copy_at_every_check(home, app_group_copy):
+    # Through the file and, on a Mac, through cfprefsd as the app writes it.
     gate = ClaudeKeychainGate(LocalScanGate().read)
     assert gate.check().reason == "no_copy"
-    write_mirror(home, switches(False, False))
+    app_group_copy.write(switches(False, False))
     assert gate.allows("test") is True
-    write_mirror(home, switches(True, False))
+    app_group_copy.write(switches(True, False))
     assert gate.allows("test") is False
-    write_mirror(home, switches(True, True))
+    app_group_copy.write(switches(True, True))
     assert gate.check().reason == "strict_privacy_mode"
-    write_mirror(home, switches(False, False))
+    app_group_copy.write(switches(False, True))
+    assert gate.check().reason == "strict_privacy_mode"
+    app_group_copy.write(switches(False, False))
     assert gate.allows("test") is True
+    assert lsc.read_mirror().source == app_group_copy.source
 
 
 def test_a_reader_that_fails_skips_the_item():
@@ -394,104 +436,49 @@ def test_hello_without_the_apps_no_follows_its_own_copy(monkeypatch, params):
 
 # ── cfprefsd first (macOS) ─────────────────────────────────────
 
-darwin_only = pytest.mark.skipif(sys.platform != "darwin", reason="CFPreferences is macOS-only")
-
-
 def test_the_reader_is_off_when_disabled(tmp_path):
     # conftest.py turns it off for the suite; the file is then the answer.
     assert app_group_prefs.ENABLED is False
     assert app_group_prefs.copy_values(tmp_path / "x.plist", [SKIP]) is None
 
 
-class _CFWriter:
-    """Writes through CFPreferences the way `UserDefaults.set` does: to
-    cfprefsd, without synchronizing, so the plist file lags behind."""
-
-    def __init__(self, path: Path) -> None:
-        cf = ctypes.CDLL("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")
-        cf.CFStringCreateWithCString.restype = ctypes.c_void_p
-        cf.CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
-        cf.CFPreferencesSetAppValue.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
-        cf.CFPreferencesAppSynchronize.argtypes = [ctypes.c_void_p]
-        cf.CFPreferencesAppSynchronize.restype = ctypes.c_bool
-        cf.CFNumberCreate.restype = ctypes.c_void_p
-        cf.CFNumberCreate.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
-        cf.CFDataCreate.restype = ctypes.c_void_p
-        cf.CFDataCreate.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long]
-        self.cf = cf
-        self.app = self._str(str(path))
-        self.true = ctypes.c_void_p.in_dll(cf, "kCFBooleanTrue")
-        self.false = ctypes.c_void_p.in_dll(cf, "kCFBooleanFalse")
-
-    def _str(self, text: str):
-        return self.cf.CFStringCreateWithCString(None, text.encode(), 0x08000100)
-
-    def set(self, key: str, value) -> None:
-        if isinstance(value, bool):
-            ref = self.true if value else self.false
-        elif isinstance(value, str):
-            ref = self._str(value)
-        elif isinstance(value, int):
-            box = ctypes.c_int64(value)
-            ref = self.cf.CFNumberCreate(None, 4, ctypes.byref(box))
-        elif isinstance(value, bytes):
-            ref = self.cf.CFDataCreate(None, value, len(value))
-        elif value is None:
-            ref = None
-        else:
-            raise TypeError(value)
-        self.cf.CFPreferencesSetAppValue(self._str(key), ref, self.app)
-
-    def flush(self) -> None:
-        self.cf.CFPreferencesAppSynchronize(self.app)
-
-
 @darwin_only
-def test_the_reader_answers_with_what_was_just_written(tmp_path, monkeypatch):
+def test_the_reader_answers_with_what_was_just_written(tmp_path, monkeypatch, cfprefs_writer):
     monkeypatch.setattr(app_group_prefs, "ENABLED", True)
     path = tmp_path / "group.yyh.CLI-Pulse.plist"
-    writer = _CFWriter(path)
-    try:
-        for i in range(10):
-            strict = i % 2 == 0
-            writer.set(STRICT, strict)
-            writer.set(SKIP, not strict)
-            writer.set("cli_pulse_local_scan_consent", "declined" if strict else "granted")
-            read = lsc.read_mirror(path)
-            assert read.source == "cfprefsd"
-            assert (read.local_only_mode, read.skip_claude_keychain) == (strict, not strict), i
-            assert read.consent == ("declined" if strict else "granted"), i
-            assert decide_claude_keychain(read).reason == (
-                "strict_privacy_mode" if strict else "skip_claude_keychain"
-            )
-    finally:
-        for key in (STRICT, SKIP, "cli_pulse_local_scan_consent"):
-            writer.set(key, None)
-        writer.flush()
+    writer = cfprefs_writer(path)
+    # Each write is left unsynchronized, as `UserDefaults.set` leaves it.
+    for i in range(10):
+        strict = i % 2 == 0
+        writer.set(STRICT, strict)
+        writer.set(SKIP, not strict)
+        writer.set("cli_pulse_local_scan_consent", "declined" if strict else "granted")
+        read = lsc.read_mirror(path)
+        assert read.source == "cfprefsd"
+        assert (read.local_only_mode, read.skip_claude_keychain) == (strict, not strict), i
+        assert read.consent == ("declined" if strict else "granted"), i
+        assert decide_claude_keychain(read).reason == (
+            "strict_privacy_mode" if strict else "skip_claude_keychain"
+        )
 
 
 @darwin_only
-def test_the_reader_converts_what_it_reads(tmp_path, monkeypatch):
+def test_the_reader_converts_what_it_reads(tmp_path, monkeypatch, cfprefs_writer):
     monkeypatch.setattr(app_group_prefs, "ENABLED", True)
     path = tmp_path / "types.plist"
-    writer = _CFWriter(path)
-    try:
-        writer.set("b", True)
-        writer.set("s", "undecided ✓")
-        writer.set("n", 7)
-        writer.set("d", b"\x00\x01")
-        values = app_group_prefs.copy_values(path, ["b", "s", "n", "d", "missing"])
-        assert values["b"] is True
-        assert values["s"] == "undecided ✓"
-        assert values["n"] == 7
-        assert isinstance(values["d"], app_group_prefs.Unsupported)
-        assert "missing" not in values
-        # Nothing there at all: None, so the caller reads the file.
-        assert app_group_prefs.copy_values(path, ["missing"]) is None
-    finally:
-        for key in ("b", "s", "n", "d"):
-            writer.set(key, None)
-        writer.flush()
+    writer = cfprefs_writer(path)
+    writer.set("b", True)
+    writer.set("s", "undecided ✓")
+    writer.set("n", 7)
+    writer.set("d", b"\x00\x01")
+    values = app_group_prefs.copy_values(path, ["b", "s", "n", "d", "missing"])
+    assert values["b"] is True
+    assert values["s"] == "undecided ✓"
+    assert values["n"] == 7
+    assert isinstance(values["d"], app_group_prefs.Unsupported)
+    assert "missing" not in values
+    # Nothing there at all: None, so the caller reads the file.
+    assert app_group_prefs.copy_values(path, ["missing"]) is None
 
 
 @darwin_only

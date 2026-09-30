@@ -512,18 +512,33 @@ final class HelperDaemon {
         )
     }
 
-    /// Settings › Privacy's Claude keychain switches, as this cycle's
-    /// collectors will apply them (`PrivacySettings.followAppCopy`, set at
-    /// launch): recorded in the app group so Settings can say whether this
-    /// helper follows them (`HelperClaudeKeychainConfirmation`), and logged
-    /// when it changes. A decision, not a promise about the whole cycle: the
-    /// collectors ask again at each read, so a switch turned on mid-cycle stops
-    /// the next read, and the next cycle records it.
-    private func reportClaudeKeychainAccess() {
+    /// Settings › Privacy's Claude keychain switches, as this helper's
+    /// collectors apply them (`PrivacySettings.followAppCopy`, set at launch):
+    /// recorded in the app group so Settings can say whether this helper
+    /// follows them (`HelperClaudeKeychainConfirmation`), and logged when it
+    /// changes. A decision, not a promise about a whole cycle: the collectors
+    /// ask again at each read, so a switch turned on mid-cycle stops the next
+    /// read.
+    ///
+    /// Called at the start of every collecting cycle, and by
+    /// `HelperAppDelegate` when the helper starts, when the app changes a
+    /// switch (`HelperInputs.didChangeNotificationName`), and when the app asks
+    /// at its launch (`HelperPrivacyInputs.reportRequestNotificationName`).
+    /// Those three pass `announce`, which posts
+    /// `HelperPrivacyInputs.didReportNotificationName` so Settings reads the
+    /// report again at once; a cycle's own `didSync` covers the per-cycle one.
+    func reportClaudeKeychainAccess(announce: Bool = false) {
         let access = PrivacySettings.shared.claudeKeychainAccess
-        guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
-              HelperPrivacyInputs.recordHelperReport(access, to: defaults)
-        else { return }
+        guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName) else { return }
+        if HelperPrivacyInputs.recordHelperReport(access, to: defaults) {
+            logClaudeKeychainAccess(access)
+        }
+        if announce {
+            HelperInputs.postDidReport()
+        }
+    }
+
+    private func logClaudeKeychainAccess(_ access: ClaudeKeychainAccess) {
         switch access {
         case .read:
             logger.info("Claude Code keychain item: read when needed (both Privacy switches off)")

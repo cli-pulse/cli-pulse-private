@@ -93,9 +93,36 @@ public enum ClaudeKeychainAccess: String, Equatable, Sendable, CaseIterable {
 
 extension HelperPrivacyInputs {
     /// Where the LoginItem helper records what it does with Claude Code's
-    /// keychain item (`ClaudeKeychainAccess.rawValue`), every cycle it
-    /// collects. Written by the helper, read by the app for Settings › Privacy.
+    /// keychain item (`ClaudeKeychainAccess.rawValue`): when it starts, every
+    /// cycle it collects, and whenever the app changes a switch or asks
+    /// (`reportRequestNotificationName`). Written by the helper, read by the
+    /// app for Settings › Privacy.
+    ///
+    /// The app removes it at every launch (`clearHelperReport`) and then asks
+    /// the running helper for a new one, so what Settings reads was written by
+    /// a helper running since this launch of the app. Without that, a report
+    /// left by an earlier 1.55 helper (before a downgrade and an in-place
+    /// upgrade, say) would read as a confirmation while the helper actually
+    /// running is one from before 1.55, which never reads the switches and
+    /// never answers.
     public static let reportKey = "cli_pulse_helper_claude_keychain"
+
+    /// Posted by the app at launch, after `clearHelperReport`, asking a running
+    /// helper to report now rather than at its next collecting cycle.
+    public static let reportRequestNotificationName =
+        Notification.Name("CLIPulseHelperClaudeKeychainReportRequested")
+
+    /// Posted by the helper after it reported on request or on a switch change,
+    /// so Settings › Privacy reads the report again at once. Not posted by the
+    /// per-cycle report, which the cycle's `HelperIPC.didSyncNotificationName`
+    /// already covers.
+    public static let didReportNotificationName =
+        Notification.Name("CLIPulseHelperDidReportClaudeKeychain")
+
+    /// Removes the helper's last report (see `reportKey`).
+    public static func clearHelperReport(_ defaults: UserDefaults) {
+        defaults.removeObject(forKey: reportKey)
+    }
 
     /// - Returns: whether it changed, so the helper logs a change once.
     @discardableResult
@@ -117,11 +144,13 @@ extension HelperPrivacyInputs {
 /// keychain switches. The helper is a separate process: until it has said it
 /// skips the item, the app does not say it does.
 public enum HelperClaudeKeychainConfirmation: Equatable, Sendable {
-    /// The helper's last collecting cycle skipped the item for one of the switches.
+    /// The helper has said, since this launch of the app, that it skips the
+    /// item for one of the switches.
     case confirmed
-    /// A switch is on and the helper runs, but it has not said so: it has not
-    /// collected since the switch changed, or it is a helper from before 1.55
-    /// that macOS has not restarted since the app was updated.
+    /// A switch is on and the helper runs, but it has not said so since this
+    /// launch of the app: it has not answered yet, or it is a helper from
+    /// before 1.55 that macOS has not restarted since the app was updated,
+    /// which never answers.
     case notConfirmed
 
     /// Nil when there is nothing to say: both switches off, or no helper running.
@@ -143,19 +172,41 @@ public enum HelperClaudeKeychainConfirmation: Equatable, Sendable {
 /// The notification that tells the helpers something they read in the app
 /// group changed, so they act on it now rather than at their next cycle.
 ///
+/// The app posts it when its copy of the switches changes. The LoginItem helper
+/// answers it by recording what it now does with Claude Code's keychain item
+/// (`HelperPrivacyInputs.reportKey`) and posting
+/// `HelperPrivacyInputs.didReportNotificationName`, so Settings › Privacy says
+/// so at once. It runs no cycle for it: its collectors read the copy at every
+/// decision, so a switch change needs none.
+///
 /// The same name as `HelperIPC.helperInputsDidChangeNotificationName` in PR
-/// #626, which posts it for the local-scan answer and the sign-in state and
-/// makes the LoginItem helper run a cycle on it. Defined here too so this
-/// change does not depend on #626's order of merging; whichever lands second
-/// should keep one constant. `HelperPrivacyInputsTests` pins the string.
+/// #626, which posts it for the local-scan answer and the account, and whose
+/// helper runs a cycle on it only when that changes whether it reads at all.
+/// Defined here too so this change does not depend on #626's order of merging;
+/// whichever lands second should keep one constant. `HelperPrivacyInputsTests`
+/// pins the string.
 public enum HelperInputs {
     public static let didChangeNotificationName =
         Notification.Name("CLIPulseHelperInputsDidChange")
 
     #if os(macOS)
     public static func postDidChange() {
+        post(didChangeNotificationName)
+    }
+
+    /// `HelperPrivacyInputs.reportRequestNotificationName`, from the app.
+    public static func postReportRequest() {
+        post(HelperPrivacyInputs.reportRequestNotificationName)
+    }
+
+    /// `HelperPrivacyInputs.didReportNotificationName`, from the helper.
+    public static func postDidReport() {
+        post(HelperPrivacyInputs.didReportNotificationName)
+    }
+
+    private static func post(_ name: Notification.Name) {
         DistributedNotificationCenter.default().postNotificationName(
-            didChangeNotificationName, object: nil, userInfo: nil,
+            name, object: nil, userInfo: nil,
             deliverImmediately: true
         )
     }

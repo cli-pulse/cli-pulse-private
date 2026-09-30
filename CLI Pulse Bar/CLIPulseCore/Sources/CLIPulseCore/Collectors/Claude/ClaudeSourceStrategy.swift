@@ -325,6 +325,30 @@ public enum ClaudeCredentials {
         return creds
     }
 
+    /// v1.55: the read every background lookup uses. It asks Settings ›
+    /// Privacy's switches, as this process follows them
+    /// (`PrivacySettings.skipsClaudeKeychainOnItsOwn`: the app's own switches
+    /// in the app, the app's copy in the LoginItem helper), and returns nil
+    /// without reading anything while either says skip.
+    ///
+    /// Callers: the OAuth token resolver and the rate-limit tier lookups of the
+    /// OAuth and CLI strategies. The only direct caller of
+    /// `readKeychainCredentials` is the Settings "Connect Claude Code" button,
+    /// because the user just asked for exactly that read.
+    /// `ClaudeKeychainGateReferenceTests` fails on any other direct caller, and
+    /// `HelperPrivacyInputsTests` checks that `reader` is never called under a
+    /// switch.
+    /// - Parameters:
+    ///   - privacy: the switches to ask. Tests pass their own.
+    ///   - reader: the read itself. Tests pass one that counts its calls.
+    public static func readKeychainCredentialsIfAllowed(
+        privacy: PrivacySettings = .shared,
+        reader: () -> Creds? = { ClaudeCredentials.readKeychainCredentials() }
+    ) -> Creds? {
+        guard !privacy.skipsClaudeKeychainOnItsOwn else { return nil }
+        return reader()
+    }
+
     /// Clear the cached Claude Code credentials (cache-only — does NOT arm the
     /// cooldown). Used by both the OAuth-401 path and the Settings "Disconnect"
     /// button; only the 401 path arms the cooldown (it calls
@@ -466,9 +490,7 @@ public enum ClaudeCredentials {
                 source: .sharedCredentialsFile
             )
         }
-        if !PrivacySettings.shared.skipsClaudeKeychainOnItsOwn,
-           let keychainCreds = readKeychainCredentials()
-        {
+        if let keychainCreds = readKeychainCredentialsIfAllowed() {
             return ResolvedToken(
                 token: keychainCreds.accessToken,
                 tier: keychainCreds.rateLimitTier,

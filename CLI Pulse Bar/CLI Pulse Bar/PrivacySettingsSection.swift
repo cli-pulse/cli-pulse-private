@@ -17,8 +17,9 @@ struct PrivacySettingsSection: View {
     @ObservedObject private var settings = PrivacySettings.shared
     @EnvironmentObject var state: AppState
 
-    /// Bumped when the LoginItem helper finishes a cycle, so the line under
-    /// the Claude keychain switches re-reads what it last reported.
+    /// Bumped when the LoginItem helper finishes a cycle or reports on a
+    /// switch change or on this app's request, so the line under the Claude
+    /// keychain switches re-reads what it last reported.
     @State private var helperReportTick = 0
 
     /// v1.55: whether the LoginItem helper, a separate process that reads
@@ -263,6 +264,15 @@ struct PrivacySettingsSection: View {
         .onReceive(
             DistributedNotificationCenter.default()
                 .publisher(for: HelperIPC.didSyncNotificationName)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            helperReportTick &+= 1
+        }
+        // And posts this when it reported on a switch change, or because this
+        // app asked at launch, so the line follows a switch within a moment.
+        .onReceive(
+            DistributedNotificationCenter.default()
+                .publisher(for: HelperPrivacyInputs.didReportNotificationName)
                 .receive(on: RunLoop.main)
         ) { _ in
             helperReportTick &+= 1

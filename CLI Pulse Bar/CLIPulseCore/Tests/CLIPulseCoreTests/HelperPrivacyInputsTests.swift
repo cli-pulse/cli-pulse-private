@@ -131,20 +131,131 @@ final class HelperPrivacyInputsTests: XCTestCase {
         )
         XCTAssertFalse(quarantine.capabilities.allowsHelperRegistration)
         let group = makeDefaults("group")
+        HelperPrivacyInputs.recordHelperReport(.skippedBySetting, to: group)
         var notified = false
+        var requested = 0
         PrivacySettings(defaults: makeDefaults("app"))
-            .mirrorForHelpers(in: quarantine, helperDefaults: group, notify: { notified = true })
+            .mirrorForHelpers(
+                in: quarantine, helperDefaults: group,
+                notify: { notified = true }, requestReport: { requested += 1 }
+            )
         XCTAssertNil(HelperPrivacyInputs.load(group))
         XCTAssertFalse(notified)
+        XCTAssertEqual(requested, 0)
+        XCTAssertEqual(HelperPrivacyInputs.loadHelperReport(group), .skippedBySetting, "nothing written, nothing removed")
 
         let production = TestRuntimeFixtures.productionApp
         XCTAssertTrue(production.capabilities.allowsHelperRegistration)
         PrivacySettings(defaults: makeDefaults("app"))
-            .mirrorForHelpers(in: production, helperDefaults: group, notify: { notified = true })
+            .mirrorForHelpers(
+                in: production, helperDefaults: group,
+                notify: { notified = true }, requestReport: { requested += 1 }
+            )
         XCTAssertNotNil(HelperPrivacyInputs.load(group))
         XCTAssertTrue(notified)
+        XCTAssertEqual(requested, 1)
+    }
+
+    func testALaunchReplacesTheLastReportWithOneFromTheRunningHelper() {
+        // A report an earlier 1.55 helper left (before a downgrade and an
+        // in-place upgrade, say) is not this launch's helper speaking. The
+        // launch removes it and asks; a helper from before 1.55 never answers,
+        // so Settings says it has not confirmed, which is true.
+        let group = makeDefaults("group")
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: false), to: group)
+        HelperPrivacyInputs.recordHelperReport(.skippedBySetting, to: group)
+        let app = PrivacySettings(defaults: makeDefaults("app"))
+        app.skipClaudeKeychain = true
+        var requested = 0
+        app.mirrorForHelpers(
+            in: TestRuntimeFixtures.productionApp, helperDefaults: group,
+            notify: {}, requestReport: {
+                requested += 1
+                // The report is already gone when the helper is asked.
+                XCTAssertNil(HelperPrivacyInputs.loadHelperReport(group))
+            }
+        )
+        XCTAssertEqual(requested, 1)
+        XCTAssertNil(HelperPrivacyInputs.loadHelperReport(group))
+        let running = HelperIPC.Status(state: .running)
+        XCTAssertEqual(
+            HelperClaudeKeychainConfirmation.make(
+                appSkips: app.skipsClaudeKeychainOnItsOwn, helperStatus: running,
+                helperReport: HelperPrivacyInputs.loadHelperReport(group)
+            ),
+            .notConfirmed,
+            "an old helper that never answers is not shown as following the switch"
+        )
+
+        // A 1.55+ helper answers the request from the copy.
+        let helper = PrivacySettings(defaults: makeDefaults("helper"))
+        helper.followAppCopy(in: group)
+        HelperPrivacyInputs.recordHelperReport(helper.claudeKeychainAccess, to: group)
+        XCTAssertEqual(
+            HelperClaudeKeychainConfirmation.make(
+                appSkips: app.skipsClaudeKeychainOnItsOwn, helperStatus: running,
+                helperReport: HelperPrivacyInputs.loadHelperReport(group)
+            ),
+            .confirmed
+        )
     }
     #endif
+
+    // MARK: - The one guarded read of Claude Code's keychain item
+
+    private static let keychainCreds = ClaudeCredentials.Creds(accessToken: "sk-ant-oat01-KC", rateLimitTier: "max")
+
+    func testTheGuardedReadNeverCallsTheReaderWhileTheAppsSwitchesSaySkip() {
+        let app = PrivacySettings(defaults: makeDefaults("app"))
+        var reads = 0
+        let reader: () -> ClaudeCredentials.Creds? = {
+            reads += 1
+            return Self.keychainCreds
+        }
+
+        // Negative control: both off, and the item is read.
+        XCTAssertEqual(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: app, reader: reader)?.accessToken,
+                       "sk-ant-oat01-KC")
+        XCTAssertEqual(reads, 1)
+
+        app.skipClaudeKeychain = true
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: app, reader: reader))
+        app.localOnlyMode = true
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: app, reader: reader))
+        // Strict mode off leaves "Skip" on, as the app does.
+        app.localOnlyMode = false
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: app, reader: reader))
+        XCTAssertEqual(reads, 1, "the reader ran while a switch said skip")
+
+        app.skipClaudeKeychain = false
+        XCTAssertNotNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: app, reader: reader))
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testTheGuardedReadInTheHelperFollowsTheAppsCopy() {
+        let group = makeDefaults("group")
+        // The helper's own defaults say read; only the app's copy counts there.
+        let helper = PrivacySettings(defaults: makeDefaults("helper"))
+        helper.followAppCopy(in: group)
+        var reads = 0
+        let reader: () -> ClaudeCredentials.Creds? = {
+            reads += 1
+            return Self.keychainCreds
+        }
+
+        // No copy yet: skipped until the app writes one.
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: helper, reader: reader))
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: false), to: group)
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: helper, reader: reader))
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: true), to: group)
+        XCTAssertNil(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: helper, reader: reader))
+        XCTAssertEqual(reads, 0, "the reader ran while the app's copy said skip")
+
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: false, localOnlyMode: false), to: group)
+        XCTAssertEqual(ClaudeCredentials.readKeychainCredentialsIfAllowed(privacy: helper, reader: reader)?.rateLimitTier,
+                       "max")
+        XCTAssertEqual(reads, 1)
+    }
 
     // MARK: - The helper reads it
 
@@ -236,9 +347,28 @@ final class HelperPrivacyInputsTests: XCTestCase {
         )
     }
 
-    func testTheNotificationIsTheOneTheHelperObserves() {
+    func testTheNotificationsAreTheOnesTheHelperAndTheAppObserve() {
         // PR #626's `HelperIPC.helperInputsDidChangeNotificationName`, which
-        // the LoginItem helper runs a cycle on.
+        // its LoginItem helper runs a cycle on; this one's reports on it.
         XCTAssertEqual(HelperInputs.didChangeNotificationName.rawValue, "CLIPulseHelperInputsDidChange")
+        // The app asks at launch; the helper says it answered. Two processes,
+        // built from one source, but an old helper keeps running after an
+        // update, so a rename is a protocol change.
+        XCTAssertEqual(HelperPrivacyInputs.reportRequestNotificationName.rawValue,
+                       "CLIPulseHelperClaudeKeychainReportRequested")
+        XCTAssertEqual(HelperPrivacyInputs.didReportNotificationName.rawValue,
+                       "CLIPulseHelperDidReportClaudeKeychain")
+    }
+
+    func testClearingTheReportLeavesTheCopy() {
+        let group = makeDefaults("group")
+        let copy = HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: false)
+        HelperPrivacyInputs.mirror(copy, to: group)
+        HelperPrivacyInputs.recordHelperReport(.skippedBySetting, to: group)
+        HelperPrivacyInputs.clearHelperReport(group)
+        XCTAssertNil(HelperPrivacyInputs.loadHelperReport(group))
+        XCTAssertEqual(HelperPrivacyInputs.load(group), copy)
+        // The next report after a clear counts as a change, so the helper logs it.
+        XCTAssertTrue(HelperPrivacyInputs.recordHelperReport(.skippedBySetting, to: group))
     }
 }

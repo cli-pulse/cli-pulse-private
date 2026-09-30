@@ -93,3 +93,38 @@ jobs:
           name: helper-test-output
           path: helper/.pytest_cache/
           if-no-files-found: ignore
+
+  app-group-copy-macos:
+    name: Companion reads the app's copy through cfprefsd (macOS)
+    # On a Mac the Companion reads what the app tells it (the local-scan answer,
+    # the account, Settings › Privacy's switches) through cfprefsd
+    # (`app_group_prefs`), and the plist file only when cfprefsd has nothing.
+    # The job above runs on Linux, where that reader is off and its tests skip,
+    # so the path every Mac takes ran in no CI at all. This runs the tests of
+    # that copy on macOS, and fails if any of them is skipped here: a skipped
+    # test passes silently, which is how the gap stayed open.
+    runs-on: macos-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: helper
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dev tooling
+        run: python -m pip install --upgrade pip && python -m pip install pytest cryptography
+
+      - name: Pytest (the app's copy, through cfprefsd and the file)
+        run: |
+          set -o pipefail
+          pytest -q -rs test_local_scan_consent.py test_privacy_switches.py | tee pytest.out
+          if grep -q '^SKIPPED' pytest.out; then
+            echo "::error::a test of the app's copy was skipped on macOS, so it did not run"
+            exit 1
+          fi

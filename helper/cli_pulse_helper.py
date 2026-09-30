@@ -350,10 +350,12 @@ def _uninstall_claude_keychain_gate() -> None:
 
 
 def _still_allowed(gate: LocalScanGate | None, what: str) -> bool:
-    """Ask the app's local-scan answer (`local_scan_consent`), if this caller
-    has a gate. Called before a step collects anything and again before it
-    sends what it collected, so an answer given mid-cycle drops the results."""
-    if gate is None or gate.allows_collection():
+    """Ask the app's local-scan answer and account (`local_scan_consent`), if
+    this caller has a gate. Called before a step collects anything and again
+    before it sends what it collected, so an answer, a sign-out or an account
+    switch given mid-cycle drops the results. Every step that asks this
+    uploads, so it asks `allows_upload`: local mode reads nothing for them."""
+    if gate is None or gate.allows_upload():
         return True
     logger.info("local scan paused: %s dropped, nothing sent", what)
     return False
@@ -364,7 +366,7 @@ def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
 
     `gate` is None only for callers that are not the helper's own cycle (tests);
     the daemon and the `heartbeat`/`sync`/`run-demo` subcommands pass one."""
-    if gate is not None and not gate.allows_collection():
+    if gate is not None and not gate.allows_upload():
         return False
     config = load_config()
     snapshot = collect_device_snapshot()
@@ -429,7 +431,7 @@ def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
 def sync(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
     """Sync sessions, alerts and provider quotas. Returns False when `gate`
     paused it (nothing sent). See `heartbeat` for `gate`."""
-    if gate is not None and not gate.allows_collection():
+    if gate is not None and not gate.allows_upload():
         return False
     config = load_config()
     collected_sessions = collect_sessions()
@@ -654,9 +656,10 @@ def _collection_cycle(
     paused it. The answer is asked before anything is read, again inside
     `heartbeat` and `sync` before each upload, before the track_git_activity
     lookup, and before commits are submitted, so a "Not now" given while a
-    cycle runs drops what it had collected instead of sending it.
+    cycle runs drops what it had collected instead of sending it. Every step
+    uploads, so local mode (`Cycle.LOCAL`) runs none of them.
     """
-    if not gate.allows_collection():
+    if not gate.allows_upload():
         return False
     heartbeat(args, gate=gate)
     sync(args, gate=gate)
