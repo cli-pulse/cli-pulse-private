@@ -34,6 +34,9 @@ final class CostWordingCopyTests: XCTestCase {
 
     // MARK: - No comparison with another app
 
+    /// Broader than the rule it guards (UI text must not compare our numbers
+    /// with another product's): it bans the name outright. An in-app credit for
+    /// code ported from that project would be allowed; allowlist its key here.
     func testNoDisplayedStringComparesUsWithCodexBar() throws {
         for localization in LocaleOverrideStore.shippedLocalizations {
             let values = try catalogue(localization)
@@ -70,6 +73,24 @@ final class CostWordingCopyTests: XCTestCase {
         let claudeCard = L10n.providers.claudeMetricHelp
         XCTAssertTrue(claudeCard.contains("不含缓存读取和缓存写入"), claudeCard)
         XCTAssertFalse(claudeCard.contains("10%"), "cache reads are billed at 10% of the rate, not a 10% discount")
+
+        // The estimate goes by the feature's own name, as in onboarding and
+        // Settings, not a second word for the same thing.
+        XCTAssertEqual(L10n.onboardingWizard.featureCostTitle, "费用预估")
+        for help in [overview, codexCard, claudeCard] {
+            XCTAssertTrue(help.contains("费用预估"), help)
+            XCTAssertFalse(help.contains("费用估算"), help)
+        }
+    }
+
+    /// In this catalogue "cuenta" means an account, so "como la cuenta OpenAI"
+    /// read as "like the OpenAI account" rather than "the way OpenAI counts it".
+    func testSpanishCodexHelpDoesNotReadAsAnAccount() {
+        LocaleOverrideStore.shared.set("es")
+        for help in [L10n.cost.ioTokensHelp, L10n.providers.codexIOTokensHelp] {
+            XCTAssertTrue(help.contains("tal como la contabiliza OpenAI"), help)
+            XCTAssertFalse(help.contains("cuenta OpenAI"), help)
+        }
     }
 
     // MARK: - Usage Dashboard cost is an estimate
@@ -98,6 +119,6 @@ final class CostWordingCopyTests: XCTestCase {
     func testUsageDashboardCostLabelInChinese() {
         LocaleOverrideStore.shared.set("zh-Hans")
         XCTAssertEqual(L10n.usageDashboard.totalCostEstimate, "预估总费用")
-        XCTAssertEqual(L10n.usageDashboard.costDisclaimer, "费用是以 API 按量付费价格算出的估算，不是账单。")
+        XCTAssertEqual(L10n.usageDashboard.costDisclaimer, "费用是以 API 按量付费价格算出的预估值，不是真实账单。")
     }
 }

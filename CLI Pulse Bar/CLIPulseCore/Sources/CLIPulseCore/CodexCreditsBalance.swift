@@ -13,10 +13,11 @@ import Foundation
 /// The tier used to be read as a window whose quota was its own remaining value,
 /// which can only ever say "100% left", and a balance of 0 made the row vanish.
 ///
-/// Two producers write this tier, at the same scale of `unitsPerCredit` Int units
-/// per credit: the Mac app's `CodexCollector` (quota 0, the balance in
-/// `remaining`) and the desktop app's Codex collector (`CREDITS_SCALE`, quota =
-/// remaining). Readers take `remaining` and ignore `quota`, so both read the same.
+/// Three producers write this tier, at the same scale of `unitsPerCredit` Int
+/// units per credit: the Mac app's `CodexCollector` (quota 0, the balance in
+/// `remaining`), and the desktop app's (`CREDITS_SCALE`) and the Android app's
+/// Codex collectors (both quota = remaining, no role). Readers take `remaining`
+/// and ignore `quota`, so all three read the same.
 /// The Mac leaves quota at 0 on purpose: every reader that works in percentages
 /// (quota alerts, the Watch rings, the most-constrained account, and app
 /// versions that predate this type) skips a tier whose quota is 0, so none of
@@ -28,7 +29,7 @@ public enum CodexCreditsBalance {
     public static let tierName = "Credits"
 
     /// Int units per credit in the tier's `remaining`. Shared with the desktop
-    /// app's collector; changing it misreads every row that app uploads.
+    /// and Android apps' collectors; changing it misreads every row they upload.
     public static let unitsPerCredit: Double = 100_000
 
     /// Whether a tier is Codex's credits balance rather than a window.
@@ -36,7 +37,7 @@ public enum CodexCreditsBalance {
     /// Keyed on the provider as well as the role: `.credits` is not reserved for
     /// Codex, and another provider's credits may be a real allocation, in its own
     /// unit. The name covers the rows that arrive without a role: the desktop
-    /// app writes none, and the provider-level cloud upload drops it.
+    /// and Android apps write none, and the provider-level cloud upload drops it.
     public static func isBalance(provider: String, name: String, role: TierRole?) -> Bool {
         guard provider == ProviderKind.codex.rawValue else { return false }
         return role == .credits || name == tierName

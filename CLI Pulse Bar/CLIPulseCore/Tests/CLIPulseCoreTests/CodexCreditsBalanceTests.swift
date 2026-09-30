@@ -62,8 +62,8 @@ final class CodexCreditsBalanceTests: XCTestCase {
 
     // MARK: - What counts as the balance
 
-    /// The Mac writes the role; the desktop app writes the name only, and the
-    /// provider-level cloud upload drops the role. All three are the balance.
+    /// The Mac writes the role; the desktop and Android apps write the name only,
+    /// and the provider-level cloud upload drops the role. All are the balance.
     /// Another provider's "Credits" is its own allocation, drawn as a bar.
     func testOnlyCodexCreditsIsTheBalance() {
         let codex = ProviderKind.codex.rawValue
@@ -95,8 +95,9 @@ final class CodexCreditsBalanceTests: XCTestCase {
             ["5h Window"])
     }
 
-    /// The desktop app writes quota = remaining = balance × 100,000; the Mac writes
-    /// quota 0. Both read back as the same balance, from `remaining`.
+    /// The desktop and Android apps write quota = remaining = balance × 100,000;
+    /// the Mac writes quota 0. Both shapes read back as the same balance, from
+    /// `remaining`.
     func testBothProducersReadAsTheSameBalance() {
         use("zh-Hans")
         let codex = ProviderKind.codex.rawValue

@@ -941,7 +941,7 @@
 "usage_dashboard.empty_synced" = "暂无已同步的用量历史";
 "usage_dashboard.total_tokens" = "总用量";
 "usage_dashboard.total_cost_est" = "预估总费用";
-"usage_dashboard.cost_disclaimer" = "费用是以 API 按量付费价格算出的估算，不是账单。";
+"usage_dashboard.cost_disclaimer" = "费用是以 API 按量付费价格算出的预估值，不是真实账单。";
 "usage_dashboard.active_days" = "活跃天数";
 "usage_dashboard.current_streak" = "连续天数";
 "usage_dashboard.longest_streak" = "最长连续天数";
@@ -1375,7 +1375,7 @@
 "settings.skip_claude_keychain_hint" = "阻止 CLI Pulse 读取其他应用持有的 Claude Code OAuth 凭据。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
 "settings.block_claude_on_outdated_helper" = "helper 过旧时阻止托管 Claude";
 "settings.block_claude_on_outdated_helper_hint" = "当 Companion CLI 版本过旧、无法以你的 Max/Pro 方案运行 Claude 时，阻止启动托管 Claude 会话（否则会在不提示的情况下改用 Claude API）。默认关闭；关闭时只会显示一条警告。";
-"cost.io_tokens_help" = "I/O token = 输入 + 输出。Claude：不含缓存读取和缓存写入。Codex：输入已包含缓存输入，与 OpenAI 的计法一致。两者的缓存 token 都按各自的单价计入费用估算。";
+"cost.io_tokens_help" = "I/O token = 输入 + 输出。Claude：不含缓存读取和缓存写入。Codex：输入已包含缓存输入，与 OpenAI 的统计口径一致。两者的缓存 token 都按各自的单价计入费用预估。";
 "dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· 价值 %@";
 "dashboard.api_equivalent_30d" = "API 等价费用（30 天）";
@@ -1485,9 +1485,9 @@
 "pairing.not_connected" = "未连接";
 "providers.tracked_count" = "正在追踪 %d 个";
 "providers.messages_short" = "%@ 条消息";
-"providers.claude_metric_help" = "消息数 = 用户 + 助手日志事件（含流式分块）— 与 Claude Code 界面的统计口径一致。I/O token = 输入 + 输出，不含缓存读取和缓存写入；费用估算按它们各自的单价计入。";
+"providers.claude_metric_help" = "消息数 = 用户 + 助手日志事件（含流式分块）— 与 Claude Code 界面的统计口径一致。I/O token = 输入 + 输出，不含缓存读取和缓存写入；费用预估按它们各自的单价计入。";
 "providers.claude_no_scan_help" = "此时间窗口暂无本地 Claude 扫描数据。请在「设置 › CLI 工具访问」中授权，然后点按「强制重扫」。";
-"providers.codex_io_tokens_help" = "输入 + 输出 token。输入已包含缓存输入，与 OpenAI 的计法一致。费用估算对缓存输入使用缓存输入的单价。";
+"providers.codex_io_tokens_help" = "输入 + 输出 token。输入已包含缓存输入，与 OpenAI 的统计口径一致。费用预估中，缓存输入按缓存输入的单价计算。";
 "providers.no_scan_help" = "此时间窗口暂无本地扫描数据。";
 "providers.api_token_count_help" = "由服务商 API 报告的 token 数。";
 "common.disabled" = "已禁用";

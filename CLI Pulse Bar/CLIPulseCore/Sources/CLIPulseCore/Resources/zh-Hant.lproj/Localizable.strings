@@ -941,7 +941,7 @@
 "usage_dashboard.empty_synced" = "尚無已同步的用量歷史";
 "usage_dashboard.total_tokens" = "token 總數";
 "usage_dashboard.total_cost_est" = "預估總費用";
-"usage_dashboard.cost_disclaimer" = "費用是依 API 以用量計費價格算出的預估，不是帳單。";
+"usage_dashboard.cost_disclaimer" = "費用是依 API 按用量計費價格算出的預估值，並非實際帳單。";
 "usage_dashboard.active_days" = "活躍天數";
 "usage_dashboard.current_streak" = "目前連續天數";
 "usage_dashboard.longest_streak" = "最長連續天數";
