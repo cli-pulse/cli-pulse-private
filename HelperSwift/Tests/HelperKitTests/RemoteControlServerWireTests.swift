@@ -60,7 +60,11 @@ final class RemoteControlServerWireTests: XCTestCase {
     }
 
     private func hello(_ sock: URL) throws -> [String: Any] {
-        let r = try call(sock, ["id": "1", "method": "hello", "auth_token": "T", "params": [:]])
+        // v1.55: `claude_remote_control` reads Claude Code's files, so it is
+        // in the reply only when the caller says the local scan is allowed
+        // (HelloLocalScanAnswerTests covers the other answers).
+        let r = try call(sock, ["id": "1", "method": "hello", "auth_token": "T",
+                                "params": ["local_scan_allowed": true]])
         return (r["result"] as? [String: Any]) ?? [:]
     }
 

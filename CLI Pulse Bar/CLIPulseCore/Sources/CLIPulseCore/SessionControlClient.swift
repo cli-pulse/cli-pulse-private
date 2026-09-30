@@ -40,6 +40,16 @@ public protocol SessionControlClient: Sendable {
     /// error if the socket isn't there.
     func hello() async throws -> SessionControlHello
 
+    /// `hello`, saying whether the app's local-scan answer allows the helper
+    /// to read this Mac for its reply (v1.55). The bundled Swift helper then
+    /// reads a provider's credential file for `provider_plan_status`, and
+    /// Claude Code's settings and credentials files for
+    /// `claude_remote_control`, only on `true`. Declared here, not only in an
+    /// extension, so a conformer's own implementation is the one called
+    /// through the protocol (the LAN agent holds `any SessionControlling`).
+    /// Conformers that cannot pass it on answer as `hello()`.
+    func hello(localScanAllowed: Bool?) async throws -> SessionControlHello
+
     /// Spawn a new managed session for `provider`. Phase 3 was
     /// `claude`-only; v1.15 accepts `claude`, `codex`, `gemini` (with
     /// helper-side spawner availability checked separately via the
@@ -163,6 +173,12 @@ extension SessionEventStreaming {
 extension SessionControlClient {
     public func sendInput(sessionId: String, payload: String) async throws {
         throw SessionControlError.notImplemented
+    }
+
+    /// A transport with nothing to pass the answer to (the phone's LAN
+    /// client, test stubs) answers as `hello()`.
+    public func hello(localScanAllowed: Bool?) async throws -> SessionControlHello {
+        try await hello()
     }
 
     /// Legacy shim — Phase 3 / pre-v1.15 callers used `startClaudeSession`

@@ -271,7 +271,9 @@ final class M1aHelperHardeningTests: XCTestCase {
             let creds = dir.appendingPathComponent("creds-\(UUID().uuidString.prefix(4)).json")
             if let contents { try contents.write(to: creds, atomically: true, encoding: .utf8) }
             let sock = try startServer(manager: nil, credentials: creds)
-            let r = try call(sock, ["id": "1", "method": "hello", "auth_token": "T", "params": [:]])
+            // v1.55: read only when the caller says the local scan is allowed.
+            let r = try call(sock, ["id": "1", "method": "hello", "auth_token": "T",
+                                    "params": ["local_scan_allowed": true]])
             return ((r["result"] as? [String: Any])?["claude_remote_control"] as? [String: Any])?["auth"] as? String
         }
         XCTAssertEqual(try auth(nil), "none")

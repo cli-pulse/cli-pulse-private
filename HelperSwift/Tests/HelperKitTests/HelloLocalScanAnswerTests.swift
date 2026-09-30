@@ -159,4 +159,73 @@ final class HelloLocalScanAnswerTests: XCTestCase {
             [:]
         )
     }
+
+    // MARK: - claude_remote_control
+
+    /// `claude_remote_control` is worked out by reading Claude Code's settings
+    /// files and its credentials file (~/.claude/.credentials.json). Before
+    /// 1.55 every hello read them, "Not now" included; the app's LAN agent
+    /// says hello for every phone that connects. The seams below are where
+    /// `claudeRemoteControlHello` gets each path, so counting their calls
+    /// counts the reads.
+    private func startRemoteControlServer(settings: URL, credentials: URL, lookups: ReadCounter) throws -> URL {
+        let sock = dir.appendingPathComponent("clipulse-helper.sock")
+        let s = LocalSessionServer(
+            config: LocalSessionServer.Configuration(socketPath: sock),
+            hooks: LocalSessionServer.Hooks(
+                getAuthToken: { "T" },
+                claudeSettingsPathOverride: { lookups.hit(); return settings },
+                claudeCredentialsPathOverride: { lookups.hit(); return credentials }
+            )
+        )
+        try s.start()
+        usleep(50_000)
+        server = s
+        return sock
+    }
+
+    private func remoteControlFixtures() throws -> (settings: URL, credentials: URL) {
+        let settings = dir.appendingPathComponent("settings.json")
+        try #"{"disableRemoteControl": true}"#.write(to: settings, atomically: true, encoding: .utf8)
+        let credentials = dir.appendingPathComponent(".credentials.json")
+        try #"{"claudeAiOauth":{"accessToken":"a","refreshToken":"r"}}"#
+            .write(to: credentials, atomically: true, encoding: .utf8)
+        return (settings, credentials)
+    }
+
+    func testClaudeRemoteControlIsReadOnlyWhenTheAnswerAllowsIt() throws {
+        let (settings, credentials) = try remoteControlFixtures()
+        let lookups = ReadCounter()
+        let sock = try startRemoteControlServer(settings: settings, credentials: credentials, lookups: lookups)
+        // The positive control: allowed, both files are read and reported.
+        let allowed = try hello(sock, params: ["local_scan_allowed": true])
+        let rc = try XCTUnwrap(allowed["claude_remote_control"] as? [String: Any])
+        XCTAssertEqual(rc["policy"] as? String, "disabled")
+        XCTAssertEqual(rc["auth"] as? String, "oauth")
+        XCTAssertEqual(lookups.value, 2)
+    }
+
+    func testClaudeRemoteControlReadsNothingWithoutAYes() throws {
+        let (settings, credentials) = try remoteControlFixtures()
+        let lookups = ReadCounter()
+        let sock = try startRemoteControlServer(settings: settings, credentials: credentials, lookups: lookups)
+        let requests: [[String: Any]] = [
+            ["local_scan_allowed": false],
+            ["client_protocol_version": 1],
+            [:],
+            ["local_scan_allowed": "true"],
+            ["local_scan_allowed": 1],
+            ["local_scan_allowed": NSNull()],
+        ]
+        for params in requests {
+            let result = try hello(sock, params: params)
+            XCTAssertNil(result["claude_remote_control"], "params: \(params)")
+            // The rest of the reply is unchanged: the app still sees a running helper.
+            XCTAssertEqual(result["helper_version"] as? String, kHelperVersion, "params: \(params)")
+        }
+        XCTAssertEqual(lookups.value, 0, "\"Not now\" must not open Claude Code's settings or credentials")
+        // And the next yes reads again: nothing is remembered between hellos.
+        XCTAssertNotNil(try hello(sock, params: ["local_scan_allowed": true])["claude_remote_control"])
+        XCTAssertEqual(lookups.value, 2)
+    }
 }

@@ -80,6 +80,11 @@ public final class LANLinkAgent: ObservableObject {
     private let backend: any SessionControlling
     private let displayName: String
     private let cloudDeviceID: @Sendable () -> String?
+    /// Whether the app's local-scan answer allows reading this Mac
+    /// (`LocalCollectionPolicy.allowsCollection`). `AppState` sets it; each
+    /// phone connection asks it at every `hello` and tells the helper
+    /// (`LANLinkAgentSession(localScanAllowed:)`). Until it is set: no.
+    public var localScanAllowed: @MainActor () -> Bool = { false }
     private let queue = DispatchQueue(label: "cli-pulse.lan.agent")
 
     private var steadyListener: NWListener?
@@ -388,6 +393,14 @@ public final class LANLinkAgent: ObservableObject {
                 await MainActor.run {
                     guard let self, let id = box.id else { return false }
                     return self.peers.first(where: { $0.id == id })?.controlAllowed ?? false
+                }
+            },
+            // The local-scan answer as it is at each hello, so the helper
+            // reads Claude Code's files for the phone only after a yes.
+            localScanAllowed: { [weak self] in
+                await MainActor.run {
+                    guard let self else { return false }
+                    return self.localScanAllowed()
                 }
             })
         let key = ObjectIdentifier(session)

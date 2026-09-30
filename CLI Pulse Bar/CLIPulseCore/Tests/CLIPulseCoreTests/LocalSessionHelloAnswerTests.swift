@@ -139,6 +139,23 @@ final class LocalSessionHelloAnswerTests: XCTestCase {
         XCTAssertEqual(params["client_protocol_version"] as? Int, 1)
     }
 
+    func testTheAnswerSurvivesTheProtocolTheLANAgentHolds() async throws {
+        // The LAN agent holds its backend as `any SessionControlling`. If
+        // `hello(localScanAllowed:)` were only an extension method, the call
+        // would dispatch to the extension's default, which sends no answer, and
+        // the helper would read nothing for a phone even after a yes.
+        let allowed = try await helloParams { client in
+            let backend: any SessionControlling = client
+            return try await backend.hello(localScanAllowed: true)
+        }
+        XCTAssertEqual(allowed["local_scan_allowed"] as? Bool, true)
+        let declined = try await helloParams { client in
+            let backend: any SessionControlling = client
+            return try await backend.hello(localScanAllowed: false)
+        }
+        XCTAssertEqual(declined["local_scan_allowed"] as? Bool, false)
+    }
+
     func testTheSessionsTabAsksWithTheConsentRule() throws {
         // The one app call that uses the plan status passes the same rule the
         // refresh uses (`LocalCollectionPolicy.allowsCollection`).
