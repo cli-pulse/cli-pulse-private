@@ -136,19 +136,19 @@ extension CostUsageScanner {
     }
 
     /// The first top-level `cwd` in a transcript, reading at most
-    /// `claudeCwdReadLimit` bytes and only lines that ended inside them. nil
-    /// when the file cannot be read or no such line has one.
+    /// `claudeCwdReadLimit` bytes. nil when the file cannot be read or no line
+    /// in them has one.
     static func readClaudeTranscriptCwd(fileURL: URL) -> String? {
         guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: claudeCwdReadLimit),
               !data.isEmpty else { return nil }
-        var lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
-        // A line cut off by the byte cap is not JSON; drop it rather than
-        // guess at it.
-        if data.count == claudeCwdReadLimit, data.last != 0x0A, !lines.isEmpty {
-            lines.removeLast()
-        }
+        // A line the byte cap cuts off needs no check of its own: a JSON
+        // object only closes at its last byte, so any shorter piece of one
+        // fails to parse below. The only piece that parses is the whole line,
+        // when the cap falls between its closing brace and its newline, and
+        // that line is complete.
+        let lines = data.split(separator: 0x0A, omittingEmptySubsequences: true)
         let key = Data(#""cwd""#.utf8)
         for line in lines.prefix(64) {
             guard line.range(of: key) != nil,

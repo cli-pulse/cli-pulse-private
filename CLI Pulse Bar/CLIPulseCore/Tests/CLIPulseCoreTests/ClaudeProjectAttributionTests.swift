@@ -167,24 +167,50 @@ final class ClaudeProjectAttributionTests: XCTestCase {
         XCTAssertNil(CostUsageScanner.readClaudeTranscriptCwd(fileURL: url))
     }
 
-    func test_cwdPastTheReadLimit_isNotRead() throws {
+    // The two tests below pin the 32 KB read limit from both sides with a
+    // literal size, not with `claudeCwdReadLimit`, so changing the limit
+    // fails one of them.
+
+    func test_cwdPast32KB_isNotRead() throws {
         let url = projects.appendingPathComponent("\(appDir)/\(session).jsonl")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let filler = String(repeating: "x", count: CostUsageScanner.claudeCwdReadLimit)
+        let filler = String(repeating: "x", count: 32 * 1024)
         let body = #"{"type":"summary","summary":"\#(filler)"}"# + "\n"
             + #"{"type":"user","cwd":"\#(appCwd)"}"# + "\n"
         try body.write(to: url, atomically: true, encoding: .utf8)
         XCTAssertNil(CostUsageScanner.readClaudeTranscriptCwd(fileURL: url))
     }
 
+    /// The cwd line's closing brace is byte 32,768, the last one read; its
+    /// newline is the first one not read. The line is complete, so it counts.
+    func test_cwdLineEndingOnTheLastByteOf32KB_isRead() throws {
+        let url = projects.appendingPathComponent("\(appDir)/\(session).jsonl")
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let limit = 32 * 1024
+        let cwdLine = #"{"type":"user","cwd":"\#(appCwd)"}"#
+        let opening = #"{"type":"summary","summary":""#
+        let closing = #""}"#
+        let fill = limit - opening.utf8.count - closing.utf8.count - 1 - cwdLine.utf8.count
+        let body = opening + String(repeating: "x", count: fill) + closing + "\n"
+            + cwdLine + "\n"
+            + #"{"type":"assistant"}"# + "\n"
+        let bytes = Array(body.utf8)
+        XCTAssertEqual(bytes[limit - 1], UInt8(ascii: "}"))
+        XCTAssertEqual(bytes[limit], UInt8(ascii: "\n"))
+        try body.write(to: url, atomically: true, encoding: .utf8)
+        XCTAssertEqual(CostUsageScanner.readClaudeTranscriptCwd(fileURL: url), appCwd)
+    }
+
+    /// Held by JSON parsing itself: a JSON object cut short never parses.
     func test_lineCutByTheReadLimit_isNotParsed() throws {
         let url = projects.appendingPathComponent("\(appDir)/\(session).jsonl")
         try FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         // The cwd line starts inside the limit and ends past it.
         let head = #"{"type":"user","cwd":"\#(appCwd)","pad":""#
-        let pad = String(repeating: "y", count: CostUsageScanner.claudeCwdReadLimit)
+        let pad = String(repeating: "y", count: 32 * 1024)
         try (head + pad + #""}"# + "\n").write(to: url, atomically: true, encoding: .utf8)
         XCTAssertNil(CostUsageScanner.readClaudeTranscriptCwd(fileURL: url))
     }
