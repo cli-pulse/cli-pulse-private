@@ -120,6 +120,10 @@ struct LocalScanConsentView: View {
     /// not fit 380 points in Spanish or Japanese, and a row that wraps would
     /// break the equal weight the two original buttons were given on purpose.
     /// "Not now" stays a full button, the same size as the other two.
+    ///
+    /// 1.50 gave "Start local scan" the Return key. It no longer has it: the
+    /// button now includes the one-time read of up to a year of logs, and
+    /// Return should not be the way someone agrees to that — on either screen.
     private var firstAskButtons: some View {
         VStack(spacing: 6) {
             Button {
@@ -132,7 +136,6 @@ struct LocalScanConsentView: View {
                 Text(L10n.localScanConsent.start).frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            .keyboardShortcut(.defaultAction)
 
             Button {
                 state.answerLocalScanDisclosure(.last30DaysOnly)
@@ -150,8 +153,7 @@ struct LocalScanConsentView: View {
     }
 
     /// Stacked like the first ask, for the same reason: side by side, the two
-    /// labels are cut off in Spanish. No default action here — Return should not
-    /// be the way someone agrees to a year of their logs being read.
+    /// labels are cut off in Spanish. No default action, as on the first ask.
     private var olderLogsButtons: some View {
         VStack(spacing: 6) {
             Button {
