@@ -172,13 +172,12 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             )
         }
 
-        // Fetch tier info for plan detection + cloudaicompanion project discovery.
-        let tierInfo = try? await fetchTierInfo(token: token)
-
-        // Fetch quota buckets (retrieveUserQuota needs the project id).
-        let buckets = try await fetchQuota(token: token, projectId: tierInfo?.projectId)
-
-        return buildResult(buckets: buckets, tierInfo: tierInfo)
+        let fetched = try await Self.fetchQuota(
+            token: token,
+            idToken: creds.idToken,
+            load: Self.liveLoader
+        )
+        return buildResult(buckets: fetched.buckets, tierInfo: fetched.tierInfo)
     }
 
     /// Resolve creds whose access token is valid (refreshing in place if
@@ -499,14 +498,53 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         }.joined(separator: "&")
     }
 
+    // MARK: - Network
+
+    typealias DataLoader = @Sendable (URLRequest) async throws -> (Data, URLResponse)
+
+    static let liveLoader: DataLoader = { request in
+        try await URLSession.shared.data(for: request)
+    }
+
+    /// `loadCodeAssist`, then `retrieveUserQuota`, for one access token.
+    ///
+    /// Static and loader-injected so recorded Google responses can be replayed
+    /// through exactly the code `collect()` runs.
+    ///
+    /// Tier info is best effort, as it always was: it only sets the plan badge
+    /// and finds the project, so any failure fetching it leaves it nil and the
+    /// quota call goes ahead. The one exception is Google saying this account
+    /// is no longer served (`GeminiConsumerTierShutdown`), which is the answer,
+    /// not a detail to work around.
+    static func fetchQuota(
+        token: String,
+        idToken: String?,
+        load: DataLoader
+    ) async throws -> (buckets: [QuotaBucket], tierInfo: TierInfo?) {
+        let tierInfo: TierInfo?
+        do {
+            tierInfo = try await fetchTierInfo(token: token, idToken: idToken, load: load)
+        } catch let error as CollectorError {
+            if case .retired = error { throw error }
+            tierInfo = nil
+        } catch {
+            tierInfo = nil
+        }
+        let buckets = try await fetchQuotaBuckets(token: token, tierInfo: tierInfo, load: load)
+        return (buckets, tierInfo)
+    }
+
     // MARK: - Tier info
 
     struct TierInfo {
         let tierId: String?  // "free-tier", "standard-tier", "legacy-tier"
         let projectId: String?
+        /// `loadCodeAssist` listed this client as unsupported for a personal
+        /// account (`GeminiConsumerTierShutdown.isClientUnsupported`).
+        var clientUnsupported: Bool = false
     }
 
-    private func fetchTierInfo(token: String) async throws -> TierInfo {
+    private static func fetchTierInfo(token: String, idToken: String?, load: DataLoader) async throws -> TierInfo {
         guard let url = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist") else {
             throw CollectorError.invalidURL("loadCodeAssist")
         }
@@ -519,15 +557,37 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             "metadata": ["ideType": "GEMINI_CLI", "pluginType": "GEMINI"]
         ])
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await load(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            if GeminiConsumerTierShutdown.isShutdownResponse(data) {
+                throw CollectorError.retired(.geminiCLIPersonalAccounts)
+            }
             throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Gemini")
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw CollectorError.parseFailed("Gemini loadCodeAssist: invalid JSON")
         }
+        let info = parseTierInfo(
+            json,
+            hostedDomain: GeminiConsumerTierShutdown.hostedDomain(idToken: idToken)
+        )
+        // The shutdown answer: HTTP 200, no tier, and the consumer tier listed
+        // as ineligible. For an account the ID token shows is personal, nothing
+        // after this can succeed, so the quota call is not made.
+        //
+        // Without a readable ID token (Antigravity's login, CLI Pulse's own
+        // Keychain sign-in) a Workspace or education account can get the same
+        // answer and still be served, so the quota call decides: a 403 after
+        // this listing is the shutdown (`isShutdownQuotaDenial`), a 200 is not.
+        if info.clientUnsupported, info.tierId == nil,
+           GeminiConsumerTierShutdown.isPersonalAccount(idToken: idToken) {
+            throw CollectorError.retired(.geminiCLIPersonalAccounts)
+        }
+        return info
+    }
 
+    static func parseTierInfo(_ json: [String: Any], hostedDomain: String?) -> TierInfo {
         let tier = (json["currentTier"] as? [String: Any])?["id"] as? String
         var projectId: String? = nil
         if let proj = json["cloudaicompanionProject"] as? String {
@@ -535,8 +595,14 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         } else if let projObj = json["cloudaicompanionProject"] as? [String: Any] {
             projectId = projObj["projectId"] as? String ?? projObj["id"] as? String
         }
-
-        return TierInfo(tierId: tier, projectId: projectId)
+        return TierInfo(
+            tierId: tier,
+            projectId: projectId,
+            clientUnsupported: GeminiConsumerTierShutdown.isClientUnsupported(
+                loadCodeAssist: json,
+                hostedDomain: hostedDomain
+            )
+        )
     }
 
     // MARK: - Quota API
@@ -547,7 +613,11 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         let resetTime: String?
     }
 
-    private func fetchQuota(token: String, projectId: String?) async throws -> [QuotaBucket] {
+    private static func fetchQuotaBuckets(
+        token: String,
+        tierInfo: TierInfo?,
+        load: DataLoader
+    ) async throws -> [QuotaBucket] {
         guard let url = URL(string: "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota") else {
             throw CollectorError.invalidURL("retrieveUserQuota")
         }
@@ -558,12 +628,21 @@ public struct GeminiCollector: ProviderCollector, Sendable {
         request.timeoutInterval = 10
 
         var body: [String: Any] = [:]
-        if let pid = projectId { body["project"] = pid }
+        if let pid = tierInfo?.projectId { body["project"] = pid }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await load(request)
         guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw CollectorError.httpError(status: (response as? HTTPURLResponse)?.statusCode ?? 0, provider: "Gemini")
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if GeminiConsumerTierShutdown.isShutdownResponse(data)
+                || GeminiConsumerTierShutdown.isShutdownQuotaDenial(
+                    status: status,
+                    clientUnsupported: tierInfo?.clientUnsupported ?? false,
+                    tierId: tierInfo?.tierId
+                ) {
+                throw CollectorError.retired(.geminiCLIPersonalAccounts)
+            }
+            throw CollectorError.httpError(status: status, provider: "Gemini")
         }
 
         return try GeminiCollector.parseQuota(data)

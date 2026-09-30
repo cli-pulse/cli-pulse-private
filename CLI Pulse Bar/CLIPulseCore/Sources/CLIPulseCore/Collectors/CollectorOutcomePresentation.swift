@@ -132,6 +132,21 @@ public struct CollectorOutcomePresentation: Sendable, Equatable {
                 severity: .attention
             )
 
+        case .failed(.retired):
+            // Only the Gemini collector reports this today
+            // (`CollectorError.retired(.geminiCLIPersonalAccounts)`), so the
+            // text names Gemini CLI and its replacement outright. A second
+            // producer needs its own text here, not this one.
+            //
+            // Before this case existed the same response arrived as a 403,
+            // i.e. `.auth`, whose advice is to reconnect: the one thing that
+            // cannot help.
+            return .init(
+                label: L10n.collectorStatus.retiredForPersonalAccounts,
+                nextStep: L10n.collectorStatus.geminiCLIRetiredHint,
+                severity: .attention
+            )
+
         case .failed(.permission):
             // One tap away — the folder-access grant. Must not be buried.
             return .init(

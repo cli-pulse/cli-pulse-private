@@ -1109,6 +1109,7 @@
 "collector_status.auth_failed" = "驗證失敗";
 "collector_status.auth_failed_hint" = "重新連接 %@——已儲存的憑證遭到拒絕。";
 "collector_status.failed_other_hint" = "這是我們的問題——這次檢查沒能完成，後續更新會修正。";
+"collector_status.retired_personal_accounts" = "已停止支援個人帳號";
 
 /* v1.44 W5 — first-value login item notice */
 "launch_at_login_notice.title" = "已設為登入時啟動";
@@ -1789,6 +1790,7 @@
 "sessions.hook_settings_root_not_object" = "%@ 的最上層不是 JSON 物件";
 "collector_error.no_projects_for_key" = "%@：此 API 金鑰下沒有專案";
 "collector_error.no_quota_for_project" = "%@：此專案沒有配額資料";
+"collector_error.gemini_cli_personal_accounts_retired" = "Google 已不再為個人帳號提供 Gemini CLI，重新登入也無濟於事。取而代之的是 Antigravity。";
 /* ── macos-language-choice ── */
 "language.system_text_after_restart" = "部分系統文字在重新開啟 CLI Pulse 後才會切換。";
 

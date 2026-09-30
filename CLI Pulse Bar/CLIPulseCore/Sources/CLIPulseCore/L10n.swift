@@ -499,6 +499,10 @@ public enum L10n {
             tr("collector_status.auth_failed_hint", provider)
         }
         public static var failedOtherHint: String { tr("collector_status.failed_other_hint") }
+        public static var retiredForPersonalAccounts: String { tr("collector_status.retired_personal_accounts") }
+        /// Same sentence as `collectorError.geminiCLIPersonalAccountsRetired`:
+        /// the row and Test Connection must not tell two different stories.
+        public static var geminiCLIRetiredHint: String { tr("collector_error.gemini_cli_personal_accounts_retired") }
         public static var accessBlocked: String { tr("collector_status.access_blocked") }
         public static var accessBlockedHint: String { tr("collector_status.access_blocked_hint") }
         public static var unreachable: String { tr("collector_status.unreachable") }
@@ -2626,6 +2630,10 @@ public enum L10n {
         }
         public static func noQuotaForProject(_ provider: String, english: Bool = false) -> String {
             tr("collector_error.no_quota_for_project", english: english, provider)
+        }
+        /// `CollectorError.retired(.geminiCLIPersonalAccounts)`.
+        public static func geminiCLIPersonalAccountsRetired(english: Bool = false) -> String {
+            tr("collector_error.gemini_cli_personal_accounts_retired", english: english)
         }
     }
 
