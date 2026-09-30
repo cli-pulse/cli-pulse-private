@@ -13,7 +13,10 @@ import Foundation
 ///    collectors ran drops what they read: nothing is written or sent.
 /// 4. Write the results for the app on this Mac.
 /// 5. Only for `.collectAndSync`, each upload step in order, asking again
-///    before every one, with the pairing the cycle was decided with.
+///    before every one, with the pairing the cycle was decided with and the
+///    answer that question gave. A step that tells another process whether
+///    this Mac may be read (the heartbeat's `hello(localScanAllowed:)`) says
+///    what that answer says, never a constant.
 /// 6. Ask once more before reporting a sync.
 ///
 /// The questions read the answer and the account afresh each time (two
@@ -21,7 +24,10 @@ import Foundation
 /// by the questions before and after collecting, and only when the answer
 /// depends on it.
 public struct HelperCycleRunner<Collection> {
-    public typealias UploadStep = (Collection, HelperConfig) async throws -> Void
+    /// One upload, handed what was read, the pairing the cycle was decided
+    /// with, and the question asked just before it (always a
+    /// `.collectAndSync`, since a step runs only then).
+    public typealias UploadStep = (Collection, HelperConfig, LocalCollectionPolicy.HelperCycle) async throws -> Void
 
     public enum Outcome {
         /// Nothing was read.
@@ -86,7 +92,7 @@ public struct HelperCycleRunner<Collection> {
             let now = decide(readPairing: { pairing }).cycle
             guard now == .collectAndSync else { return .stopped(now) }
             do {
-                try await step(collection, pairing)
+                try await step(collection, pairing, now)
             } catch {
                 return .failed(pairing, error)
             }

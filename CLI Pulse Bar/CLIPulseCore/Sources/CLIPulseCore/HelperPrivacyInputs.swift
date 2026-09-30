@@ -170,21 +170,26 @@ public enum HelperClaudeKeychainConfirmation: Equatable, Sendable {
 }
 
 /// The notification that tells the helpers something they read in the app
-/// group changed, so they act on it now rather than at their next cycle.
+/// group changed, so they act on it now rather than at their next cycle. A
+/// hint, like the others: the helpers read the values themselves.
 ///
-/// The app posts it when its copy of the switches changes. The LoginItem helper
-/// answers it by recording what it now does with Claude Code's keychain item
-/// (`HelperPrivacyInputs.reportKey`) and posting
-/// `HelperPrivacyInputs.didReportNotificationName`, so Settings › Privacy says
-/// so at once. It runs no cycle for it: its collectors read the copy at every
-/// decision, so a switch change needs none.
+/// The app posts it when any of its copies for the helpers changes:
+/// - Settings › Privacy's switches (`HelperPrivacyInputs.mirror`). The
+///   LoginItem helper's delegate answers by recording what it now does with
+///   Claude Code's keychain item (`HelperPrivacyInputs.reportKey`) and posting
+///   `HelperPrivacyInputs.didReportNotificationName`, so Settings › Privacy
+///   says so at once. No cycle is needed for that: the collectors read the
+///   copy at every decision.
+/// - the local-scan answers (`LocalScanConsentStore.mirror`) or the account
+///   (`HelperIPC.appAccountKey`). The helper's daemon asks the cycle question
+///   again at once, so a "Not now" or a sign-out pauses it, and a yes or a
+///   sign-in resumes it, without waiting for its timer; it starts a cycle
+///   only when that changes whether it reads at all.
 ///
-/// The same name as `HelperIPC.helperInputsDidChangeNotificationName` in PR
-/// #626, which posts it for the local-scan answer and the account, and whose
-/// helper runs a cycle on it only when that changes whether it reads at all.
-/// Defined here too so this change does not depend on #626's order of merging;
-/// whichever lands second should keep one constant. `HelperPrivacyInputsTests`
-/// pins the string.
+/// One constant for all of them (#626 and #630 each defined one while neither
+/// had merged). A helper keeps running across an app update, so the string is
+/// a protocol: `HelperPrivacyInputsTests` pins it and fails if a second
+/// definition of it appears.
 public enum HelperInputs {
     public static let didChangeNotificationName =
         Notification.Name("CLIPulseHelperInputsDidChange")

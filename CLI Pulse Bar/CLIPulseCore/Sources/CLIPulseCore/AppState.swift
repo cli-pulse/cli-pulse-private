@@ -1045,7 +1045,7 @@ public final class AppState: ObservableObject {
     /// the runtime registers no helper (see `init(runtimeEnvironment:)`).
     private let helperDefaults: UserDefaults?
     /// Tells a running helper that what it reads in `helperDefaults` changed
-    /// (`HelperIPC.postHelperInputsDidChange`). Set only by the production
+    /// (`HelperInputs.postDidChange`). Set only by the production
     /// initializer: the notification is system-wide, and a test that injects
     /// `helperDefaults` must not reach a helper running on the same Mac.
     private let notifyHelper: (() -> Void)?
@@ -1076,7 +1076,7 @@ public final class AppState: ObservableObject {
             runtimeEnvironment.capabilities.allowsHelperRegistration
         #if os(macOS)
         let notifyHelper: (() -> Void)? = registersHelper
-            ? { HelperIPC.postHelperInputsDidChange() }
+            ? { HelperInputs.postDidChange() }
             : nil
         #else
         let notifyHelper: (() -> Void)? = nil

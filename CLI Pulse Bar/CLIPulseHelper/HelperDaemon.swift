@@ -121,11 +121,12 @@ final class HelperDaemon {
         wsnc.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
 
         // The app changed the local-scan answer or the account: act on it
-        // now, not at the next tick up to two minutes later.
+        // now, not at the next tick up to two minutes later. (The delegate
+        // observes the same name for the Privacy switches' report.)
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(helperInputsDidChange),
-            name: HelperIPC.helperInputsDidChangeNotificationName,
+            name: HelperInputs.didChangeNotificationName,
             object: nil
         )
     }
@@ -161,7 +162,9 @@ final class HelperDaemon {
         Task { [weak self] in await self?.collectAndSync() }
     }
 
-    /// The app changed the answer or the account (`HelperIPC.helperInputsDidChangeNotificationName`).
+    /// The app changed the answer or the account (`HelperInputs.didChangeNotificationName`).
+    /// It posts the same hint for a Privacy switch, which leaves the answer as
+    /// it was: a helper already reading starts no cycle for it (`inputsDidChange`).
     @objc private func helperInputsDidChange() {
         Task { [weak self] in await self?.inputsDidChange() }
     }
@@ -177,7 +180,7 @@ final class HelperDaemon {
         let wasReading = lastCycleRead
         lastCycleRead = reads
         if reads, wasReading == true { return }
-        logger.info("Local-scan answer or account changed — asking again now")
+        logger.info("The app changed what this helper reads — asking again now")
         await collectAndSync(rerunIfBusy: true)
     }
 
@@ -329,16 +332,16 @@ final class HelperDaemon {
                 HelperIPC.postSyncNotification()
             },
             uploadSteps: [
-                { [self] collection, config in
-                    try await self.sendHeartbeat(collection, config: config)
+                { [self] collection, config, cycle in
+                    try await self.sendHeartbeat(collection, config: config, cycle: cycle)
                 },
-                { [self] collection, config in
+                { [self] collection, config, _ in
                     await self.reportCollectorStatusIfSettled(collection, config: config)
                 },
-                { [self] collection, config in
+                { [self] collection, config, _ in
                     try await self.sendSync(collection, config: config)
                 },
-                { [self] collection, config in
+                { [self] collection, config, _ in
                     await self.syncProviderAccounts(collection, config: config)
                 },
             ]
@@ -387,7 +390,11 @@ final class HelperDaemon {
         return saved
     }
 
-    private func sendHeartbeat(_ collection: CycleCollection, config: HelperConfig) async throws {
+    private func sendHeartbeat(
+        _ collection: CycleCollection,
+        config: HelperConfig,
+        cycle: LocalCollectionPolicy.HelperCycle
+    ) async throws {
         // v0.60: source the per-provider managed-session plan map from the local
         // spawn helper's UDS `hello` (the single source of truth — reuses the real
         // ProviderSpawner logic instead of a divergent parser) and forward it on the
@@ -397,13 +404,15 @@ final class HelperDaemon {
         //
         // v1.55: `hello` reads ~/.codex/auth.json for this only when the
         // caller says the local-scan answer allows reading this Mac
-        // (`localScanAllowed`). This is a collecting cycle, which is what the
-        // answer gates (the cycle gate added by PR #626 returns before any of
-        // this on a "Not now"), so it says yes.
+        // (`localScanAllowed`). It says what `HelperCycleRunner` asked just
+        // before this step: an upload step runs only after a question that
+        // allowed reading and uploading, so this is true exactly when the
+        // gate allowed it, and a "Not now", a sign-out or another account's
+        // pairing never reaches here at all.
         let providerPlanStatus: [String: String]? = await {
             do {
                 return try await LocalSessionControlClient()
-                    .hello(localScanAllowed: true).providerPlanStatus
+                    .hello(localScanAllowed: cycle.reads).providerPlanStatus
             } catch { return nil }
         }()
 

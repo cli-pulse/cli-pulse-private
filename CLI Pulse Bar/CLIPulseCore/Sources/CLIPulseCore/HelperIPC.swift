@@ -14,14 +14,9 @@ public enum HelperIPC {
     /// Posted by the helper when it starts up.
     public static let didStartNotificationName = Notification.Name("CLIPulseHelperDidStart")
 
-    /// Posted by the app when what it tells the helper about collecting
-    /// changes: the local-scan answers (`LocalScanConsentStore.mirror`) or
-    /// the account (`appAccountKey`). The helper asks again at once, so a
-    /// "Not now" or a sign-out pauses it, and a yes or a sign-in resumes it,
-    /// without waiting for its timer. A hint like the others: the helper
-    /// reads the values itself.
-    public static let helperInputsDidChangeNotificationName =
-        Notification.Name("CLIPulseHelperInputsDidChange")
+    // The app's "what the helper reads changed" hint (the local-scan answers,
+    // the account, Settings › Privacy's switches) is
+    // `HelperInputs.didChangeNotificationName`, one constant for all three.
 
     // MARK: - Shared UserDefaults keys (suite: group.yyh.CLI-Pulse)
 
@@ -465,13 +460,6 @@ public enum HelperIPC {
     public static func postStartNotification() {
         DistributedNotificationCenter.default().postNotificationName(
             didStartNotificationName, object: nil, userInfo: nil,
-            deliverImmediately: true
-        )
-    }
-
-    public static func postHelperInputsDidChange() {
-        DistributedNotificationCenter.default().postNotificationName(
-            helperInputsDidChangeNotificationName, object: nil, userInfo: nil,
             deliverImmediately: true
         )
     }

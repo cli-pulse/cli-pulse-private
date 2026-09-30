@@ -21,6 +21,8 @@ final class HelperCycleRunnerTests: XCTestCase {
         var afterCollect: (() -> Void)?
         var afterStep: [Int: () -> Void] = [:]
         var failingStep: Int?
+        /// The question each upload step was handed, in order.
+        var stepCycles: [LocalCollectionPolicy.HelperCycle] = []
 
         init(consent: LocalScanConsent?, account: HelperAccountRecord?, pairedTo userId: String?) {
             self.consent = consent
@@ -52,7 +54,8 @@ final class HelperCycleRunnerTests: XCTestCase {
                 },
                 writeResults: { _ in self.events.append("write") },
                 uploadSteps: (0..<4).map { index -> HelperCycleRunner<String>.UploadStep in
-                    return { _, config in
+                    return { _, config, cycle in
+                        self.stepCycles.append(cycle)
                         self.events.append("upload\(index):\(config.userId)")
                         self.afterStep[index]?()
                         if self.failingStep == index { throw UploadFailed() }
@@ -187,6 +190,31 @@ final class HelperCycleRunnerTests: XCTestCase {
         // Before and after collecting; the questions before each upload reuse
         // the pairing the cycle was decided with.
         XCTAssertEqual(recorder.pairingReads, 2)
+    }
+
+    /// Each upload step is handed the question asked just before it. The
+    /// heartbeat step passes its `reads` on as `hello(localScanAllowed:)`, so
+    /// the helper tells `hello` it may read this Mac only from a cycle the
+    /// answer and the account allowed.
+    func testEachUploadStepIsHandedTheQuestionThatAllowedIt() async {
+        let recorder = Recorder(consent: .granted, account: .signedIn(userId: "u1"), pairedTo: "u1")
+        _ = await recorder.runner().run()
+        XCTAssertEqual(recorder.stepCycles, Array(repeating: .collectAndSync, count: 4))
+        XCTAssertTrue(recorder.stepCycles.allSatisfy(\.reads))
+
+        // A cycle that may not read, or may read only for the app on this
+        // Mac, never reaches a step.
+        let refused: [(LocalScanConsent, HelperAccountRecord)] = [
+            (.declined, .signedIn(userId: "u1")),
+            (.granted, .signedOut),
+            (.granted, .localMode),
+            (.granted, .signedIn(userId: "u2")),
+        ]
+        for (consent, account) in refused {
+            let other = Recorder(consent: consent, account: account, pairedTo: "u1")
+            _ = await other.runner().run()
+            XCTAssertEqual(other.stepCycles, [], "\(consent), \(account)")
+        }
     }
 
     func testAFailedUploadStopsTheRest() async {

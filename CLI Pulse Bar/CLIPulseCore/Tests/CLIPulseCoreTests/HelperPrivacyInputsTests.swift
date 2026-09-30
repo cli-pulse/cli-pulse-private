@@ -17,6 +17,28 @@ final class HelperPrivacyInputsTests: XCTestCase {
         super.tearDown()
     }
 
+    /// Every `.swift` file the Xcode project builds (the app, the LoginItem
+    /// helper, CLIPulseCore and the other targets), tests left out.
+    private static func productionSwiftFiles() throws -> [URL] {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+            .deletingLastPathComponent()   // CLI Pulse Bar
+        let walker = try XCTUnwrap(FileManager.default.enumerator(at: root, includingPropertiesForKeys: nil))
+        var files: [URL] = []
+        for case let url as URL in walker {
+            let name = url.lastPathComponent
+            if name == ".build" || name == "DerivedData" || name == "Tests" || name.hasSuffix("Tests") {
+                walker.skipDescendants()
+            } else if url.pathExtension == "swift" {
+                files.append(url)
+            }
+        }
+        XCTAssertGreaterThan(files.count, 100, "the scan found too few sources to mean anything")
+        return files
+    }
+
     private func makeDefaults(_ label: String) -> UserDefaults {
         let name = "HelperPrivacyInputsTests-\(label)-\(UUID().uuidString)"
         suites.append(name)
@@ -347,10 +369,21 @@ final class HelperPrivacyInputsTests: XCTestCase {
         )
     }
 
-    func testTheNotificationsAreTheOnesTheHelperAndTheAppObserve() {
-        // PR #626's `HelperIPC.helperInputsDidChangeNotificationName`, which
-        // its LoginItem helper runs a cycle on; this one's reports on it.
+    func testTheNotificationsAreTheOnesTheHelperAndTheAppObserve() throws {
+        // One hint for everything the app copies for the helpers: the Privacy
+        // switches, the local-scan answers and the account. The LoginItem's
+        // daemon asks the cycle question again on it; its delegate reports
+        // what it does with Claude Code's keychain item.
         XCTAssertEqual(HelperInputs.didChangeNotificationName.rawValue, "CLIPulseHelperInputsDidChange")
+        // Defined once. #626 and #630 each defined this string while neither
+        // had merged; two constants for one protocol string can drift apart.
+        XCTAssertEqual(
+            try Self.productionSwiftFiles().filter {
+                try String(contentsOf: $0, encoding: .utf8).contains("\"CLIPulseHelperInputsDidChange\"")
+            }.map(\.lastPathComponent),
+            ["HelperPrivacyInputs.swift"],
+            "spell it once, as HelperInputs.didChangeNotificationName"
+        )
         // The app asks at launch; the helper says it answered. Two processes,
         // built from one source, but an old helper keeps running after an
         // update, so a rename is a protocol change.
