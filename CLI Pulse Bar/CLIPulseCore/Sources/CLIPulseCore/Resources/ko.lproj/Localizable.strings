@@ -625,7 +625,8 @@
 "usage_dashboard.scope_synced" = "CLI Pulse 계정에 동기화됨";
 "usage_dashboard.empty_synced" = "아직 동기화된 사용 기록이 없습니다";
 "usage_dashboard.total_tokens" = "총 토큰";
-"usage_dashboard.total_cost" = "총 비용";
+"usage_dashboard.total_cost_est" = "추정 총 비용";
+"usage_dashboard.cost_disclaimer" = "비용은 API 종량제 요금으로 계산한 추정치이며 청구액이 아닙니다.";
 "usage_dashboard.active_days" = "사용 일수";
 "usage_dashboard.current_streak" = "연속 사용일";
 "usage_dashboard.longest_streak" = "최장 연속 사용일";
@@ -1328,8 +1329,7 @@
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
 "settings.block_claude_on_outdated_helper" = "헬퍼가 오래된 경우 관리형 Claude 차단";
 "settings.block_claude_on_outdated_helper_hint" = "Companion CLI가 너무 오래되어 Max/Pro 플랜으로 Claude를 실행할 수 없을 때 관리형 Claude 세션 시작을 막습니다(그대로 시작하면 알리지 않고 Claude API를 사용합니다). 기본값은 꺼짐 — 경고만 표시됩니다.";
-"cost.io_tokens_codexbar_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨). CodexBar의 'tokens' 수치는 캐시를 포함하고 CLI Pulse는 포함하지 않으므로 숫자가 다릅니다. 비용은 양쪽 모두 구성 요소별 전체 단가로 계산되므로 일치합니다.";
-"cost.io_tokens_help" = "I/O 토큰 = 입력 + 출력. 캐시 읽기는 제외됩니다(Claude 원시 토큰량의 약 98%를 차지하지만 10% 요금으로 과금되며, 비용에는 포함됨).";
+"cost.io_tokens_help" = "I/O 토큰 = 입력 + 출력. Claude: 캐시 읽기와 캐시 쓰기는 포함하지 않습니다. Codex: 입력에 캐시 입력이 이미 포함됩니다(OpenAI의 집계 방식과 동일). 어느 쪽이든 캐시 토큰은 각각의 단가로 추정 비용에 반영됩니다.";
 "dashboard.utilized_percent" = "사용률 %@%%";
 "dashboard.value_multiplier" = "· %@ 가치";
 "dashboard.api_equivalent_30d" = "API 환산 (30일)";
@@ -1439,9 +1439,9 @@
 "pairing.not_connected" = "연결되지 않음";
 "providers.tracked_count" = "%d개 추적 중";
 "providers.messages_short" = "%@ 메시지";
-"providers.claude_metric_help" = "메시지 = 사용자 + 어시스턴트 로그 이벤트(스트리밍 청크 포함) — Claude Code UI의 집계 방식과 같습니다. I/O 토큰 = 입력 + 출력(캐시 읽기 제외. 캐시 읽기는 Claude 원시 토큰량의 약 98%를 차지하며 10% 할인된 요금으로 청구됩니다).";
+"providers.claude_metric_help" = "메시지 = 사용자 + 어시스턴트 로그 이벤트(스트리밍 청크 포함) — Claude Code UI의 집계 방식과 같습니다. I/O 토큰 = 입력 + 출력. 캐시 읽기와 캐시 쓰기는 포함하지 않지만, 추정 비용에는 각각의 단가로 반영됩니다.";
 "providers.claude_no_scan_help" = "이 기간의 로컬 Claude 스캔 데이터가 아직 없습니다. 설정 › CLI 도구 접근에서 권한을 허용한 후 강제 재스캔을 클릭하세요.";
-"providers.io_tokens_help" = "입력 + 출력 토큰만 포함합니다(OpenAI 과금 방식과 동일). 10% 요율로 청구되는 캐시 입력은 제외됩니다.";
+"providers.codex_io_tokens_help" = "입력 + 출력 토큰. 입력에 캐시 입력이 이미 포함됩니다(OpenAI의 집계 방식과 동일). 추정 비용에서 캐시 입력에는 캐시 입력 단가가 적용됩니다.";
 "providers.no_scan_help" = "이 기간의 로컬 스캔 데이터가 아직 없습니다.";
 "providers.api_token_count_help" = "공급자 API가 보고한 토큰 수입니다.";
 "common.disabled" = "비활성";
@@ -1574,6 +1574,8 @@
 "quota_tier.cash_balance" = "현금";
 "quota_tier.characters" = "문자 수";
 "quota_tier.credits" = "크레딧";
+"quota_tier.credits_left" = "%@ 크레딧 남음";
+"quota_tier.credits_left_one" = "%@ 크레딧 남음";
 "quota_tier.daily" = "일간";
 "quota_tier.default" = "기본";
 "quota_tier.extra_usage" = "추가 사용량";

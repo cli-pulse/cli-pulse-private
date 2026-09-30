@@ -950,7 +950,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "usage_dashboard.scope_synced" = "Synced to your CLI Pulse account";
 "usage_dashboard.empty_synced" = "No synced usage history yet";
 "usage_dashboard.total_tokens" = "Total Tokens";
-"usage_dashboard.total_cost" = "Total Cost";
+"usage_dashboard.total_cost_est" = "Est. Total Cost";
+"usage_dashboard.cost_disclaimer" = "Cost is an estimate at API pay-as-you-go prices, not a bill.";
 "usage_dashboard.active_days" = "Active Days";
 "usage_dashboard.current_streak" = "Current Streak";
 "usage_dashboard.longest_streak" = "Longest Streak";
@@ -1384,8 +1385,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "settings.skip_claude_keychain_hint" = "Stops CLI Pulse from reading the Claude Code OAuth credentials owned by other apps. Useful if you've hit a macOS keychain dialog that won't accept your login password.";
 "settings.block_claude_on_outdated_helper" = "Block managed Claude on outdated helper";
 "settings.block_claude_on_outdated_helper_hint" = "When the Companion CLI is too old to run Claude on your Max/Pro plan, prevent starting managed Claude sessions (which would silently use the Claude API). Off by default — you'll only see a warning.";
-"cost.io_tokens_codexbar_help" = "I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost). CodexBar's 'tokens' figure rolls cache in; ours doesn't, so the numbers will differ. Cost is computed with full per-component pricing on both sides and matches.";
-"cost.io_tokens_help" = "I/O tokens = input + output. Excludes cache reads (which are ~98% of Claude's raw token volume but billed at 10% — included in cost).";
+"cost.io_tokens_help" = "I/O tokens = input + output. Claude: cache reads and writes are not included. Codex: input already includes cached input, the way OpenAI counts it. Either way, cache tokens are priced into the cost estimate at their own rates.";
 "dashboard.utilized_percent" = "%@%% utilized";
 "dashboard.value_multiplier" = "· %@ value";
 "dashboard.api_equivalent_30d" = "API equivalent (30d)";
@@ -1495,9 +1495,9 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "pairing.not_connected" = "Not Connected";
 "providers.tracked_count" = "%d tracked";
 "providers.messages_short" = "%@ msgs";
-"providers.claude_metric_help" = "Messages = user + assistant log events (including streaming chunks) — matches Claude Code's UI convention. I/O tokens = input + output (excludes cache reads, which are ~98% of Claude's raw token volume, and are billed at a 10% discount).";
+"providers.claude_metric_help" = "Messages = user + assistant log events (including streaming chunks) — matches Claude Code's UI convention. I/O tokens = input + output; cache reads and writes are not included, but the cost estimate prices them at their own rates.";
 "providers.claude_no_scan_help" = "No local Claude scan data for this window yet. Grant access in Settings › CLI Tool Access, then click Force Rescan.";
-"providers.io_tokens_help" = "Input + output tokens only (matches OpenAI billing convention). Excludes cached input which is billed at 10% rate.";
+"providers.codex_io_tokens_help" = "Input + output tokens. Input already includes cached input, the way OpenAI counts it. The cost estimate prices cached input at the cached-input rate.";
 "providers.no_scan_help" = "No local scan data for this window yet.";
 "providers.api_token_count_help" = "Token count reported by the provider's API.";
 "common.disabled" = "disabled";
@@ -1614,6 +1614,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "quota_tier.cash_balance" = "Cash";
 "quota_tier.characters" = "Characters";
 "quota_tier.credits" = "Credits";
+"quota_tier.credits_left" = "%@ credits left";
+"quota_tier.credits_left_one" = "%@ credit left";
 "quota_tier.daily" = "Daily";
 "quota_tier.default" = "Default";
 "quota_tier.extra_usage" = "Extra Usage";

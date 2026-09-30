@@ -323,6 +323,36 @@ public struct UsageBar: View {
     }
 }
 
+// MARK: - Balance Row
+
+/// A tier row for a balance, which has no allocation to fill a bar against:
+/// `UsageBar`'s label and detail line, with no bar under it. Codex's credits
+/// balance ("0 credits left") is drawn with this instead of a bar that could
+/// only ever read "100% left".
+public struct BalanceRow: View {
+    public let label: String
+    public let detail: String
+
+    public init(label: String, detail: String) {
+        self.label = label
+        self.detail = detail
+    }
+
+    public var body: some View {
+        HStack {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+            Spacer()
+            Text(detail)
+                .font(.system(size: 10, weight: .regular))
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
+        .accessibilityValue(detail)
+    }
+}
+
 // MARK: - Metric Card
 
 public struct MetricCard: View {

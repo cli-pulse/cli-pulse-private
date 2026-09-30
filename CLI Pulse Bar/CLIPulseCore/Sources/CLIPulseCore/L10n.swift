@@ -419,7 +419,8 @@ public enum L10n {
         public static var emptySynced: String { tr("usage_dashboard.empty_synced") }
         // Stat tiles
         public static var totalTokens: String { tr("usage_dashboard.total_tokens") }
-        public static var totalCost: String { tr("usage_dashboard.total_cost") }
+        public static var totalCostEstimate: String { tr("usage_dashboard.total_cost_est") }
+        public static var costDisclaimer: String { tr("usage_dashboard.cost_disclaimer") }
         public static var activeDays: String { tr("usage_dashboard.active_days") }
         public static var currentStreak: String { tr("usage_dashboard.current_streak") }
         public static var longestStreak: String { tr("usage_dashboard.longest_streak") }
@@ -603,7 +604,7 @@ public enum L10n {
         }
         public static var claudeMetricHelp: String { tr("providers.claude_metric_help") }
         public static var claudeNoScanHelp: String { tr("providers.claude_no_scan_help") }
-        public static var ioTokensHelp: String { tr("providers.io_tokens_help") }
+        public static var codexIOTokensHelp: String { tr("providers.codex_io_tokens_help") }
         public static var noScanHelp: String { tr("providers.no_scan_help") }
         public static var apiTokenCountHelp: String { tr("providers.api_token_count_help") }
         public static func percentUsed(_ a0: Int) -> String { tr("providers.percent_used", a0) }
@@ -1750,7 +1751,9 @@ public enum L10n {
             default:            return token
             }
         }
-        public static var ioTokensCodexBarHelp: String { tr("cost.io_tokens_codexbar_help") }
+        /// The Overview's I/O token help: the figure adds providers that count
+        /// input differently (Claude leaves cache out, Codex's input already
+        /// holds cached input), so the text says so per provider.
         public static var ioTokensHelp: String { tr("cost.io_tokens_help") }
     }
 
@@ -2534,6 +2537,17 @@ public enum L10n {
         public static var weekly: String { tr("quota_tier.weekly") }
         public static var window5h: String { tr("quota_tier.window_5h") }
         public static var windowFallback: String { tr("quota_tier.window_fallback") }
+
+        /// "1,250 credits left", "1 credit left", "0 credits left": Codex's credits
+        /// balance (`CodexCreditsBalance`). A count of credits, so no currency sign.
+        /// Takes the number, not the formatted text, so it can pick the singular.
+        public static func creditsLeft(_ credits: Double) -> String {
+            let formatted = DisplayFormat.decimal(credits, upToFractionDigits: 2)
+            let isOne = (credits * 100).rounded() == 100
+            return isOne
+                ? tr("quota_tier.credits_left_one", formatted)
+                : tr("quota_tier.credits_left", formatted)
+        }
 
         /// Display text for a quota tier name.
         ///

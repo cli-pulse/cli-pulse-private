@@ -940,7 +940,8 @@
 "usage_dashboard.scope_synced" = "已同步到你的 CLI Pulse 帳號";
 "usage_dashboard.empty_synced" = "尚無已同步的用量歷史";
 "usage_dashboard.total_tokens" = "token 總數";
-"usage_dashboard.total_cost" = "總費用";
+"usage_dashboard.total_cost_est" = "預估總費用";
+"usage_dashboard.cost_disclaimer" = "費用是依 API 按用量計費價格算出的預估值，並非實際帳單。";
 "usage_dashboard.active_days" = "活躍天數";
 "usage_dashboard.current_streak" = "目前連續天數";
 "usage_dashboard.longest_streak" = "最長連續天數";
@@ -1374,8 +1375,7 @@
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
 "settings.block_claude_on_outdated_helper" = "Helper 過舊時阻擋託管 Claude";
 "settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 工作階段（否則會在不提示的情況下改用 Claude API）。預設關閉——你只會看到一則警告。";
-"cost.io_tokens_codexbar_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。CodexBar 的「tokens」數值包含快取，我們的不包含，所以兩邊數字會不同。兩邊的費用都依各組成部分的完整單價計算，結果一致。";
-"cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。不含快取讀取（快取讀取約占 Claude 原始 token 量的 98%，但以 10% 的價格計費——已計入費用）。";
+"cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。Claude：不含快取讀取與快取寫入。Codex：輸入已包含快取輸入，與 OpenAI 的計算方式一致。兩者的快取 token 都依各自的單價計入費用預估。";
 "dashboard.utilized_percent" = "使用率 %@%%";
 "dashboard.value_multiplier" = "· 價值 %@";
 "dashboard.api_equivalent_30d" = "API 等價費用（30 天）";
@@ -1485,9 +1485,9 @@
 "pairing.not_connected" = "未連線";
 "providers.tracked_count" = "正在追蹤 %d 個";
 "providers.messages_short" = "%@ 則訊息";
-"providers.claude_metric_help" = "訊息數 = 使用者 + 助理日誌事件（含串流分塊）— 與 Claude Code 介面的統計方式一致。I/O token = 輸入 + 輸出（不含快取讀取；快取讀取約占 Claude 原始 token 量的 98%，以 10% 的價格計費）。";
+"providers.claude_metric_help" = "訊息數 = 使用者 + 助理日誌事件（含串流分塊）— 與 Claude Code 介面的統計方式一致。I/O token = 輸入 + 輸出，不含快取讀取與快取寫入；費用預估依它們各自的單價計入。";
 "providers.claude_no_scan_help" = "此時間範圍尚無本機 Claude 掃描資料。請在「設定 › CLI 工具存取權限」中授權，然後點按「強制重新掃描」。";
-"providers.io_tokens_help" = "僅計輸入 + 輸出 token（與 OpenAI 計費方式一致）。不含快取輸入，快取輸入以 10% 費率計費。";
+"providers.codex_io_tokens_help" = "輸入 + 輸出 token。輸入已包含快取輸入，與 OpenAI 的計算方式一致。費用預估對快取輸入採用快取輸入的單價。";
 "providers.no_scan_help" = "此時間範圍尚無本機掃描資料。";
 "providers.api_token_count_help" = "由服務商 API 回報的 token 數。";
 "common.disabled" = "已停用";
@@ -1604,6 +1604,8 @@
 "quota_tier.cash_balance" = "現金";
 "quota_tier.characters" = "字元";
 "quota_tier.credits" = "點數";
+"quota_tier.credits_left" = "剩餘 %@ 點數";
+"quota_tier.credits_left_one" = "剩餘 %@ 點數";
 "quota_tier.daily" = "每日";
 "quota_tier.default" = "預設";
 "quota_tier.extra_usage" = "額外用量";

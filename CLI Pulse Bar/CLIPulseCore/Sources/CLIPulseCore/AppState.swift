@@ -233,15 +233,11 @@ public final class AppState: ObservableObject {
     /// `@Published` — it is scheduling state, not something a view renders.
     var isReportingCollectorStatus = false
 
-    /// v1.9.4: total token count for a provider, sourced from the JSONL scan
-    /// result. Convention matches codexbar for parity:
-    /// - Codex: `input + output` only (cached tokens tracked but not added to
-    ///   "total tokens processed" — matches OpenAI billing semantics)
-    ///   See codexbar `CostUsageScanner.swift:584`.
-    /// - Claude: `input + cacheRead + cacheCreate + output` (Anthropic bills
-    ///   cache reads/creates as distinct line items and codexbar rolls them
-    ///   into the headline number) See codexbar `CostUsageScanner+Claude.swift:507`.
-    /// - Other providers (non-quota): fall back to `input + output + cached`.
+    /// Total I/O tokens for a provider from the JSONL scan: `input + output`
+    /// for every provider (`totalTokens` below). The same formula means
+    /// different things, because the providers' `input` differs: Claude's
+    /// excludes cache reads and writes, Codex's already includes cached input
+    /// (OpenAI's `input_tokens` does). The help texts say so per provider.
     public func scanTokens(for provider: String, onDate: Date? = nil) -> Int? {
         guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
         let filtered: [CostUsageScanResult.DailyEntry] = {
@@ -295,19 +291,15 @@ public final class AppState: ObservableObject {
 
     private static func totalTokens(_ entries: [CostUsageScanResult.DailyEntry], provider: String) -> Int {
         // v1.9.4 (second revision, per Codex + Gemini 3.1 Pro review):
-        // Uniform formula across providers — `input + output` only.
-        // Cache tokens (read + creation) are excluded from the displayed
-        // count because:
-        //   - cache_read dominates the raw total (~98% for Claude) and is
-        //     billed at a 10% discount — including it gives a number that
-        //     doesn't reconcile with the user's actual usage intuition.
-        //   - OpenAI/Codex dashboards don't include cache in headline.
-        //   - Anthropic's Claude Code UI doesn't either (our empirical
-        //     measurement found its displayed 46.8M is nowhere near our
-        //     9.6B raw-total-including-cache).
-        // Cost is computed elsewhere with full per-component pricing, so
-        // excluding cache here does NOT affect cost accuracy.
-        // The UI labels this "I/O tokens" so users know the scope.
+        // Uniform formula across providers — `input + output`. For Claude
+        // that leaves cache out: `cachedTokens` holds cache reads and writes
+        // separately, and cache reads dominate its raw total. For Codex it
+        // does NOT: OpenAI's `input_tokens` already includes cached input
+        // (`cachedTokens` is the cached share of it, never added), which is
+        // how OpenAI itself reports Codex usage. An earlier version of this
+        // comment said the opposite. Cost is computed elsewhere with
+        // per-component pricing either way. The UI labels this "I/O tokens"
+        // and the help text states the per-provider scope.
         return entries.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
     }
 
@@ -2139,6 +2131,19 @@ public final class AppState: ObservableObject {
             let tiers: [UsageTier]
             if !usage.tiers.isEmpty {
                 tiers = usage.tiers.compactMap { tier in
+                    // Codex's credits balance is a count, not a window: kept at
+                    // 0 (the quota guard below would drop it), and carried
+                    // without a quota so nothing can draw it as a percentage.
+                    if CodexCreditsBalance.isBalance(tier, provider: usage.provider) {
+                        return UsageTier(
+                            name: tier.name,
+                            usage: 0,
+                            quota: nil,
+                            remaining: tier.remaining,
+                            resetTime: nil,
+                            role: .credits
+                        )
+                    }
                     guard tier.quota > 0 else { return nil }
                     return UsageTier(
                         name: tier.name,

@@ -27,6 +27,17 @@ public enum DisplayFormat {
         value.formatted(.number.precision(.fractionLength(fractionDigits)).locale(locale))
     }
 
+    /// A decimal with only the fraction digits it needs, up to `upToFractionDigits`:
+    /// "1,250", "12.5", "0.25", "12,5" in Spain. For a balance, where "1,250.00"
+    /// would be noise and "12" would hide the half.
+    public static func decimal(
+        _ value: Double,
+        upToFractionDigits: Int,
+        locale: Locale = LocaleOverrideStore.shared.displayLocale
+    ) -> String {
+        value.formatted(.number.precision(.fractionLength(0...max(0, upToFractionDigits))).locale(locale))
+    }
+
     /// A count as the reader groups it: "15,531", "15.531" in Spain, where a
     /// four-digit count stays whole ("1531"). Interpolating the Int wrote
     /// "15531" beside grouped figures on the same panel.

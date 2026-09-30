@@ -386,17 +386,15 @@ struct OverviewTab: View {
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(.green)
                         if providerState.costSummary.todayTokens > 0 {
-                            // Codex review on PR #17: explicit "I/O
-                            // tokens" label + tooltip avoids the
-                            // CodexBar-vs-CLI Pulse comparison
-                            // confusion. CLI Pulse counts input +
-                            // output only; CodexBar's "tokens"
-                            // includes cache reads. Cost calc on
-                            // both sides includes cache.
+                            // "I/O tokens" is input + output as each provider
+                            // counts it: Claude's input leaves cache out, Codex's
+                            // already holds cached input. The help says which.
+                            // It used to compare this figure with another app's
+                            // and say the costs matched; they did not.
                             Text(L10n.cost.tokensSuffix(TokenFormatter.format(providerState.costSummary.todayTokens)))
                                 .font(.system(size: 9))
                                 .foregroundStyle(.tertiary)
-                                .help(L10n.cost.ioTokensCodexBarHelp)
+                                .help(L10n.cost.ioTokensHelp)
                         }
                     }
                 }

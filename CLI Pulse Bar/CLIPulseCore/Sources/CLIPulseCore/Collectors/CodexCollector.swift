@@ -10,7 +10,7 @@ import Foundation
 /// Returns up to three tiers:
 ///   - "5h Window"  — primary rate limit (used_percent + reset_at)
 ///   - "Weekly"     — secondary rate limit
-///   - "Credits"    — dollar balance (if account has credits)
+///   - "Credits"    — the credits balance, in Codex credits (`CodexCreditsBalance`)
 public struct CodexCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.codex
 
@@ -316,7 +316,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
             credits = Credits(
                 hasCredits: c["has_credits"] as? Bool ?? false,
                 unlimited: c["unlimited"] as? Bool ?? false,
-                balance: (c["balance"] as? NSNumber)?.doubleValue
+                balance: parseBalance(c["balance"])
             )
         }
 
@@ -326,6 +326,22 @@ public struct CodexCollector: ProviderCollector, Sendable {
             secondaryWindow: secondaryWindow,
             credits: credits
         )
+    }
+
+    /// `/wham/usage` sends the balance as a JSON string ("0", "125.5"); a number
+    /// is accepted too. Reading only numbers, as this did, meant the live string
+    /// never parsed and the Credits row was never built at all.
+    static func parseBalance(_ raw: Any?) -> Double? {
+        let value: Double?
+        if let string = raw as? String {
+            value = Double(string.trimmingCharacters(in: .whitespaces))
+        } else if let number = raw as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() {
+            value = number.doubleValue
+        } else {
+            value = nil
+        }
+        guard let value, value.isFinite else { return nil }
+        return value
     }
 
     private static func parseWindow(_ dict: [String: Any]?) -> RateWindow? {
@@ -384,18 +400,13 @@ public struct CodexCollector: ProviderCollector, Sendable {
             ))
         }
 
-        // Credits tier (dollar balance, scaled like OpenRouter for display)
-        if let c = usage.credits, c.hasCredits, !c.unlimited, let balance = c.balance {
-            // Scale: $1 = 100,000 units for UI display consistency
-            let scale = 100_000.0
-            let balanceUnits = Int(balance * scale)
-            // We don't know total credit allocation, use balance as both quota and remaining
-            tiers.append(TierDTO(
-                name: "Credits",
-                quota: balanceUnits,
-                remaining: balanceUnits,
-                reset_time: nil
-            ))
+        // Credits: a balance in Codex credits, not dollars and not a window
+        // (`CodexCreditsBalance` has the unit and the scale). Built whenever a
+        // balance is reported, 0 included, whatever `has_credits` says: a
+        // spent balance reads "0 credits left" instead of the row disappearing.
+        // An unlimited account has no balance to count down.
+        if let c = usage.credits, !c.unlimited, let balance = c.balance {
+            tiers.append(CodexCreditsBalance.tier(balance: balance))
         }
 
         // Overall quota from primary window (percentage-based)

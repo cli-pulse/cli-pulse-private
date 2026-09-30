@@ -112,10 +112,10 @@ public struct CostUsageScanResult: Sendable {
     }
 
     /// v1.9.4 (second revision): `input + output` only, matching the
-    /// "I/O tokens" definition used everywhere in the UI. Excludes cache
-    /// tokens (read + creation). Cost is computed elsewhere with full
-    /// per-component pricing, so excluding cache here does NOT affect
-    /// cost accuracy. See `AppState.totalTokens` for rationale.
+    /// "I/O tokens" definition used everywhere in the UI. For Claude that
+    /// excludes cache reads and writes; for Codex `input` already includes
+    /// cached input. Cost is computed elsewhere with per-component pricing.
+    /// See `AppState.totalTokens` for rationale.
     public func totalTokens(for date: String) -> Int {
         entries.filter { $0.date == date }.reduce(0) { $0 + $1.inputTokens + $1.outputTokens }
     }

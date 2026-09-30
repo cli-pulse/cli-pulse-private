@@ -331,6 +331,11 @@ public struct UsageTier: Codable, Identifiable, Sendable {
     /// the expected-pace bar marker uses the correct per-window duration
     /// instead of the engine's weekly default. Optional + back-compat.
     public let windowMinutes: Int?
+    /// `.credits` marks Codex's credits balance (`CodexCreditsBalance`): drawn
+    /// as "N credits left" with no bar, never as a share of a window. Set only
+    /// by `AppState.computedProviderDetails`, which knows the provider; the
+    /// initializer that takes it is internal, so no view can set it.
+    public let role: TierRole?
 
     public var id: String { name }
 
@@ -340,13 +345,31 @@ public struct UsageTier: Codable, Identifiable, Sendable {
         return min(1.0, Double(used) / Double(quota))
     }
 
-    public init(name: String, usage: Int, quota: Int?, remaining: Int?, resetTime: String?, windowMinutes: Int? = nil) {
+    /// "N credits left" for the credits balance; nil for a window.
+    public var creditsLeftText: String? {
+        guard role == .credits else { return nil }
+        return CodexCreditsBalance.leftText(units: remaining ?? 0)
+    }
+
+    public init(name: String, usage: Int, quota: Int?, remaining: Int?, resetTime: String?,
+                windowMinutes: Int? = nil) {
+        self.init(name: name, usage: usage, quota: quota, remaining: remaining,
+                  resetTime: resetTime, windowMinutes: windowMinutes, role: nil)
+    }
+
+    /// Internal on purpose. `TierRole.credits` is not reserved for Codex (it
+    /// also names other providers' extra usage), and `creditsLeftText` reads
+    /// any `.credits` tier as a Codex balance at Codex's scale, so only code
+    /// that has checked the provider (`CodexCreditsBalance.isBalance`) may set it.
+    init(name: String, usage: Int, quota: Int?, remaining: Int?, resetTime: String?,
+         windowMinutes: Int? = nil, role: TierRole?) {
         self.name = name
         self.usage = usage
         self.quota = quota
         self.remaining = remaining
         self.resetTime = resetTime
         self.windowMinutes = windowMinutes
+        self.role = role
     }
 }
 
