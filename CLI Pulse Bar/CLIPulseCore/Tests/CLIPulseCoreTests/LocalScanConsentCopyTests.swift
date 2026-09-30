@@ -189,8 +189,12 @@ final class LocalScanConsentCopyTests: XCTestCase {
     /// read yet".
     func test_zhHansFirstAskSaysWhatHoldsForEveryoneShownIt() {
         inLocale("zh-Hans") {
-            XCTAssertEqual(L10n.localScanConsent.subtitle, "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。")
-            XCTAssertFalse(L10n.localScanConsent.subtitle.contains("尚未读取"))
+            // The lookup keeps "CLI Pulse" on one line with a no-break space
+            // (`L10n.displayFormat`); compared here as the catalogue spells it.
+            let subtitle = L10n.localScanConsent.subtitle
+                .replacingOccurrences(of: "\u{00A0}", with: " ")
+            XCTAssertEqual(subtitle, "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。")
+            XCTAssertFalse(subtitle.contains("尚未读取"))
             XCTAssertEqual(L10n.localScanConsent.chooseAgain, "重新选择…")
             XCTAssertTrue(L10n.localScanConsent.settingsDeclinedDetail.contains("「暂时不要」"))
         }
