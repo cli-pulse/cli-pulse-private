@@ -406,13 +406,20 @@ struct iOSEnhancedProviderCard: View {
                 if accountUsages.isEmpty && !detail.tiers.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(detail.tiers) { tier in
-                            UsageBar(
-                                label: L10n.quotaTier.localized(tier.name),
-                                value: 1.0 - tier.usagePercent,
-                                color: tierColor(tier),
-                                detail: tierDetail(tier),
-                                markers: paceMarkers(for: tier)
-                            )
+                            if let creditsLeft = tier.creditsLeftText {
+                                BalanceRow(
+                                    label: L10n.quotaTier.localized(tier.name),
+                                    detail: creditsLeft
+                                )
+                            } else {
+                                UsageBar(
+                                    label: L10n.quotaTier.localized(tier.name),
+                                    value: 1.0 - tier.usagePercent,
+                                    color: tierColor(tier),
+                                    detail: tierDetail(tier),
+                                    markers: paceMarkers(for: tier)
+                                )
+                            }
                         }
                     }
                 } else if accountUsages.isEmpty,
@@ -662,7 +669,10 @@ struct iOSProviderAccountRow: View {
     }
 
     private var validTiers: [TierDTO] {
-        account.tiers.filter { $0.quota > 0 }
+        CodexCreditsBalance.displayedTiers(
+            account.tiers,
+            provider: account.provider.rawValue
+        )
     }
 
     var body: some View {
@@ -710,20 +720,30 @@ struct iOSProviderAccountRow: View {
                     Array(validTiers.enumerated()),
                     id: \.offset
                 ) { _, tier in
-                    let fraction = remainingFraction(
-                        remaining: tier.remaining,
-                        quota: tier.quota
-                    )
-                    UsageBar(
-                        label: L10n.quotaTier.localized(tier.name),
-                        value: fraction,
-                        color: quotaColor(fraction),
-                        detail: quotaDetail(
-                            remaining: tier.remaining,
-                            quota: tier.quota,
-                            resetTime: tier.reset_time
+                    if let creditsLeft = CodexCreditsBalance.leftText(
+                        for: tier,
+                        provider: account.provider.rawValue
+                    ) {
+                        BalanceRow(
+                            label: L10n.quotaTier.localized(tier.name),
+                            detail: creditsLeft
                         )
-                    )
+                    } else {
+                        let fraction = remainingFraction(
+                            remaining: tier.remaining,
+                            quota: tier.quota
+                        )
+                        UsageBar(
+                            label: L10n.quotaTier.localized(tier.name),
+                            value: fraction,
+                            color: quotaColor(fraction),
+                            detail: quotaDetail(
+                                remaining: tier.remaining,
+                                quota: tier.quota,
+                                resetTime: tier.reset_time
+                            )
+                        )
+                    }
                 }
             } else if let quota = account.quota,
                       quota > 0,

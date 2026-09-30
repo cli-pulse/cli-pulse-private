@@ -382,8 +382,12 @@ struct ProviderTierCard: View {
         quotaSnapshot?.isStale == true
     }
 
+    /// The card's two bars are windows. Codex's credits balance is a count
+    /// with no bar (`CodexCreditsBalance`); the detail view lists it.
     private var displayedTiers: [TierDTO] {
-        displayedAccount?.tiers ?? provider.tiers
+        (displayedAccount?.tiers ?? provider.tiers).filter {
+            !CodexCreditsBalance.isBalance($0, provider: provider.provider)
+        }
     }
 
     private var overallRemainingFraction: Double? {
@@ -692,7 +696,10 @@ struct WatchAccountQuotaDetail: View {
     }
 
     private var validTiers: [TierDTO] {
-        account.tiers.filter { $0.quota > 0 }
+        CodexCreditsBalance.displayedTiers(
+            account.tiers,
+            provider: account.provider.rawValue
+        )
     }
 
     private var isStale: Bool {
@@ -721,22 +728,32 @@ struct WatchAccountQuotaDetail: View {
                 Array(validTiers.enumerated()),
                 id: \.offset
             ) { _, tier in
-                UsageBar(
-                    label: L10n.quotaTier.localized(tier.name),
-                    value: WatchRingMath.remainingFraction(
-                        quota: tier.quota,
-                        remaining: tier.remaining
-                    ),
-                    color:
-                        isStale
-                            ? .gray
-                            : QuotaTierStyle.color(
-                                quota: tier.quota,
-                                remaining: tier.remaining,
-                                base: providerColor
-                            ),
-                    detail: tierDetail(tier)
-                )
+                if let creditsLeft = CodexCreditsBalance.leftText(
+                    for: tier,
+                    provider: account.provider.rawValue
+                ) {
+                    BalanceRow(
+                        label: L10n.quotaTier.localized(tier.name),
+                        detail: creditsLeft
+                    )
+                } else {
+                    UsageBar(
+                        label: L10n.quotaTier.localized(tier.name),
+                        value: WatchRingMath.remainingFraction(
+                            quota: tier.quota,
+                            remaining: tier.remaining
+                        ),
+                        color:
+                            isStale
+                                ? .gray
+                                : QuotaTierStyle.color(
+                                    quota: tier.quota,
+                                    remaining: tier.remaining,
+                                    base: providerColor
+                                ),
+                        detail: tierDetail(tier)
+                    )
+                }
             }
         } else if let quota = account.quota,
                   quota > 0,
@@ -906,23 +923,33 @@ struct WatchProviderDetailView: View {
                 Section(L10n.providers.quota) {
                     ForEach(displayedTiers.indices, id: \.self) { i in
                         let tier = displayedTiers[i]
-                        UsageBar(
-                            label: L10n.quotaTier.localized(tier.name),
-                            value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
-                            color:
-                                isStale
-                                    ? .gray
-                                    : QuotaTierStyle.color(
-                                        quota: tier.quota,
-                                        remaining: tier.remaining,
-                                        base: providerColor
-                                    ),
-                            detail: tierDetail(tier),
-                            markers:
-                                isStale
-                                    ? []
-                                    : watchPaceMarkers(tier)
-                        )
+                        if let creditsLeft = CodexCreditsBalance.leftText(
+                            for: tier,
+                            provider: provider.provider
+                        ) {
+                            BalanceRow(
+                                label: L10n.quotaTier.localized(tier.name),
+                                detail: creditsLeft
+                            )
+                        } else {
+                            UsageBar(
+                                label: L10n.quotaTier.localized(tier.name),
+                                value: WatchRingMath.remainingFraction(quota: tier.quota, remaining: tier.remaining),
+                                color:
+                                    isStale
+                                        ? .gray
+                                        : QuotaTierStyle.color(
+                                            quota: tier.quota,
+                                            remaining: tier.remaining,
+                                            base: providerColor
+                                        ),
+                                detail: tierDetail(tier),
+                                markers:
+                                    isStale
+                                        ? []
+                                        : watchPaceMarkers(tier)
+                            )
+                        }
                     }
                 }
             } else if let quotaSnapshot {

@@ -22,8 +22,10 @@ public enum ProviderUsageHistory {
         public let cost: Double
 
         public var id: String { dateKey }
-        /// Input + output, excluding cache reads — matches the "I/O" figure the
-        /// provider cards already display.
+        /// Input + output — the "I/O" figure the provider cards display. What
+        /// that includes depends on the provider's own `input`: Claude's leaves
+        /// cache out, Codex's already includes cached input (OpenAI counts it
+        /// that way). So this excludes cache for Claude, and not for Codex.
         public var ioTokens: Int { inputTokens + outputTokens }
         public var totalTokens: Int { inputTokens + outputTokens + cachedTokens }
 

@@ -362,23 +362,36 @@ struct ProviderAccountQuotaSummaryView: View {
         _ usage: ProviderAccountUsage?
     ) -> some View {
         if let usage {
-            let validTiers = usage.tiers.filter { $0.quota > 0 }
+            let validTiers = CodexCreditsBalance.displayedTiers(
+                usage.tiers,
+                provider: usage.provider.rawValue
+            )
             if !validTiers.isEmpty {
                 ForEach(
                     Array(validTiers.enumerated()),
                     id: \.offset
                 ) { _, tier in
-                    let fraction = remainingFraction(
-                        remaining: tier.remaining,
-                        quota: tier.quota
-                    )
-                    UsageBar(
-                        label: L10n.quotaTier.localized(tier.name),
-                        value: fraction,
-                        color: quotaColor(fraction),
-                        detail:
-                            "\(tier.remaining) / \(tier.quota)"
-                    )
+                    if let creditsLeft = CodexCreditsBalance.leftText(
+                        for: tier,
+                        provider: usage.provider.rawValue
+                    ) {
+                        BalanceRow(
+                            label: L10n.quotaTier.localized(tier.name),
+                            detail: creditsLeft
+                        )
+                    } else {
+                        let fraction = remainingFraction(
+                            remaining: tier.remaining,
+                            quota: tier.quota
+                        )
+                        UsageBar(
+                            label: L10n.quotaTier.localized(tier.name),
+                            value: fraction,
+                            color: quotaColor(fraction),
+                            detail:
+                                "\(tier.remaining) / \(tier.quota)"
+                        )
+                    }
                 }
             } else if let quota = usage.quota,
                       quota > 0,
@@ -501,8 +514,10 @@ struct EnhancedProviderCard: View {
     /// - `breakdownTooltip`: long-form hover help text.
     ///
     /// Claude leads with deduped assistant-message count because Claude Code's
-    /// own UI does and raw tokens are drowned in ~98% cache_read noise.
-    /// Codex leads with I/O tokens to match OpenAI's dashboard convention.
+    /// own UI does and raw tokens are drowned in cache_read noise.
+    /// Codex leads with I/O tokens, counted as OpenAI counts them: Codex's
+    /// `input` already includes cached input, so this figure includes cache
+    /// for Codex and not for Claude. Each help text says which.
     private struct CardMetric {
         let primary: String           // e.g. "234 msgs" or "3.1M I/O tokens"
         let secondary: String?        // e.g. "320K I/O tokens"
@@ -535,13 +550,16 @@ struct EnhancedProviderCard: View {
             }
         }
 
-        // Codex and other quota providers: lead with I/O tokens
+        // Codex and other quota providers: lead with I/O tokens. Only Codex
+        // and Claude are scanned today; the general text covers anything else.
         if isQuotaProvider {
             if let tokens {
                 return CardMetric(
                     primary: "\(CostFormatter.formatUsage(tokens)) I/O",
                     secondary: nil,
-                    breakdownTooltip: L10n.providers.ioTokensHelp
+                    breakdownTooltip: provider.provider == ProviderKind.codex.rawValue
+                        ? L10n.providers.codexIOTokensHelp
+                        : L10n.cost.ioTokensHelp
                 )
             }
             return CardMetric(primary: "—", secondary: nil,
@@ -754,13 +772,20 @@ struct EnhancedProviderCard: View {
                 if !detail.tiers.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         ForEach(detail.tiers) { tier in
-                            UsageBar(
-                                label: L10n.quotaTier.localized(tier.name),
-                                value: 1.0 - tier.usagePercent,
-                                color: tierColor(tier),
-                                detail: tierDetail(tier),
-                                markers: paceMarkers(for: tier)
-                            )
+                            if let creditsLeft = tier.creditsLeftText {
+                                BalanceRow(
+                                    label: L10n.quotaTier.localized(tier.name),
+                                    detail: creditsLeft
+                                )
+                            } else {
+                                UsageBar(
+                                    label: L10n.quotaTier.localized(tier.name),
+                                    value: 1.0 - tier.usagePercent,
+                                    color: tierColor(tier),
+                                    detail: tierDetail(tier),
+                                    markers: paceMarkers(for: tier)
+                                )
+                            }
                         }
                     }
                 } else if let quota = provider.quota,

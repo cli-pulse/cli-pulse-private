@@ -639,7 +639,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "usage_dashboard.scope_synced" = "Sincronizado con tu cuenta de CLI Pulse";
 "usage_dashboard.empty_synced" = "Aún no hay historial de uso sincronizado";
 "usage_dashboard.total_tokens" = "Tokens totales";
-"usage_dashboard.total_cost" = "Costo total";
+"usage_dashboard.total_cost_est" = "Costo total est.";
+"usage_dashboard.cost_disclaimer" = "El costo es una estimación con precios de pago por uso de la API, no una factura.";
 "usage_dashboard.active_days" = "Días activos";
 "usage_dashboard.current_streak" = "Racha actual";
 "usage_dashboard.longest_streak" = "Racha más larga";
@@ -1342,8 +1343,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";
 "settings.block_claude_on_outdated_helper" = "Bloquear Claude gestionado si el helper está desactualizado";
 "settings.block_claude_on_outdated_helper_hint" = "Si Companion CLI es demasiado antiguo para ejecutar Claude con tu plan Max/Pro, impide iniciar sesiones gestionadas de Claude (que usarían la API de Claude sin avisar). Desactivado por defecto: solo verás un aviso.";
-"cost.io_tokens_codexbar_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo. La cifra de «tokens» de CodexBar incluye la caché y la nuestra no, así que los números serán distintos. El costo se calcula en ambos con el precio completo de cada componente y coincide.";
-"cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Excluye las lecturas de caché, que son casi todo el volumen bruto de tokens de Claude (~98%) pero se facturan al 10%; sí se incluyen en el costo.";
+"cost.io_tokens_help" = "Tokens de E/S = entrada + salida. Claude: no incluye las lecturas ni las escrituras de caché. Codex: la entrada ya incluye la entrada en caché, como la cuenta OpenAI. En ambos casos, los tokens de caché entran en el costo estimado con su propia tarifa.";
 "dashboard.utilized_percent" = "%@%% utilizado";
 "dashboard.value_multiplier" = "· %@ de valor";
 "dashboard.api_equivalent_30d" = "Equivalente en API (30 d)";
@@ -1453,9 +1453,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pairing.not_connected" = "No conectado";
 "providers.tracked_count" = "%d supervisados";
 "providers.messages_short" = "%@ mensajes";
-"providers.claude_metric_help" = "Mensajes = eventos de registro del usuario + del asistente (incluidos los fragmentos de streaming); coincide con el criterio de la interfaz de Claude Code. Tokens de E/S = entrada + salida (excluye las lecturas de caché, que suponen ~98% del volumen bruto de tokens de Claude y se facturan con un 10% de descuento).";
+"providers.claude_metric_help" = "Mensajes = eventos de registro del usuario + del asistente (incluidos los fragmentos de streaming); coincide con el criterio de la interfaz de Claude Code. Tokens de E/S = entrada + salida; no incluye las lecturas ni las escrituras de caché, pero el costo estimado sí las cuenta con su propia tarifa.";
 "providers.claude_no_scan_help" = "Aún no hay datos de escaneo local de Claude para este periodo. Concede acceso en Ajustes › Acceso a herramientas CLI y haz clic en «Forzar nuevo escaneo».";
-"providers.io_tokens_help" = "Solo tokens de entrada + salida (coincide con la facturación de OpenAI). Excluye la entrada en caché, que se factura al 10% de la tarifa.";
+"providers.codex_io_tokens_help" = "Tokens de entrada + salida. La entrada ya incluye la entrada en caché, como la cuenta OpenAI. El costo estimado aplica a la entrada en caché la tarifa de entrada en caché.";
 "providers.no_scan_help" = "Aún no hay datos de escaneo local para este periodo.";
 "providers.api_token_count_help" = "Recuento de tokens informado por la API del proveedor.";
 "common.disabled" = "desactivado";
@@ -1588,6 +1588,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "quota_tier.cash_balance" = "Efectivo";
 "quota_tier.characters" = "Caracteres";
 "quota_tier.credits" = "Créditos";
+"quota_tier.credits_left" = "%@ créditos restantes";
+"quota_tier.credits_left_one" = "%@ crédito restante";
 "quota_tier.daily" = "Diario";
 "quota_tier.default" = "Predeterminado";
 "quota_tier.extra_usage" = "Uso adicional";

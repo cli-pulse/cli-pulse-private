@@ -151,10 +151,15 @@ struct iOSUsageDashboardView: View {
                     Text(CostFormatter.format(DailyUsageStats.totalCost(archive)))
                         .font(.system(size: 20, weight: .semibold)).monospacedDigit()
                         .foregroundStyle(PulseTheme.accent)
-                    Text(L10n.captionCase(L10n.usageDashboard.totalCost))
+                    Text(L10n.captionCase(L10n.usageDashboard.totalCostEstimate))
                         .font(.system(size: 8, weight: .medium)).foregroundStyle(.secondary)
                 }
             }
+            // An API-price estimate, not a bill: the same disclosure the Mac
+            // dashboard shows under its cost tile.
+            Text(L10n.usageDashboard.costDisclaimer)
+                .font(.caption2).foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

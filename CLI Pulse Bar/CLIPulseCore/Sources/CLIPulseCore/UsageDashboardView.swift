@@ -55,7 +55,7 @@ struct DashboardStatStrip: View {
         let today = DailyUsageStats.localDayKey()
         return [
             (L10n.usageDashboard.totalTokens, CostFormatter.formatUsage(DailyUsageStats.totalTokens(archive))),
-            (L10n.usageDashboard.totalCost, CostFormatter.format(DailyUsageStats.totalCost(archive))),
+            (L10n.usageDashboard.totalCostEstimate, CostFormatter.format(DailyUsageStats.totalCost(archive))),
             (L10n.usageDashboard.activeDays, DisplayFormat.count(DailyUsageStats.activeDays(archive))),
             (L10n.usageDashboard.currentStreak, DisplayFormat.count(DailyUsageStats.currentStreak(archive, todayKey: today))),
             (L10n.usageDashboard.longestStreak, DisplayFormat.count(DailyUsageStats.longestStreak(archive))),
@@ -354,7 +354,16 @@ public struct UsageDashboardView: View {
     private func loaded(_ a: DailyUsageArchive) -> some View {
         VStack(alignment: .leading, spacing: 18) {
             header(a)
-            DashboardStatStrip(archive: a)
+            // The cost tile is an API-price estimate from local logs, like every
+            // other cost in the app, and says so under the tiles.
+            VStack(alignment: .leading, spacing: 6) {
+                DashboardStatStrip(archive: a)
+                Text(L10n.usageDashboard.costDisclaimer)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 4)
+            }
             VStack(alignment: .leading, spacing: 8) {
                 Text(L10n.usageDashboard.activity)
                     .font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary)
