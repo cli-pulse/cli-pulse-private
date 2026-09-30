@@ -67,7 +67,7 @@ pass through our servers.
 | **Daily usage** (per day, provider and model: input, cached and output token counts and a cost estimate; which of your Macs it came from, once that Mac is paired) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So iPhone and Apple Watch show the same history as your Mac |
 | **Provider quota state** (remaining, limit, plan, reset times; the label you gave the account, if any; which Mac reported it) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So mobile clients display current quotas without running the scanner themselves |
 | **AI CLI sessions running on your Mac** (the program's name; the name of its project folder, never the full path; a keyed hash of that folder's path; when it started and was last active; an activity estimate based on how long it has run and its CPU use) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | So iPhone and Apple Watch can show what is running on your Mac. The App Store build's sandbox usually hides other programs from it, and then it has none to send. The Companion CLI sends more; see its section |
-| **Alerts**: a program using a lot of CPU, or a session running a long time (with that program's name, provider and folder name), budget alerts our server works out from your daily usage, and whether you resolved or snoozed each one | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
+| **Alerts**: your Mac or a program using a lot of CPU, or a session running a long time (with that program's name, provider and folder name), budget alerts our server works out from your daily usage, and whether you resolved or snoozed each one | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So your other devices can show them |
 | **Your alert webhook**, if you add one: the address, and which alerts go to it | Supabase, linked to your CLI Pulse account | ✅ Yes | Our server posts each matching alert (its title, message, type, severity and provider) to that address |
 | **Settings kept with your account** (such as alert thresholds and budget, and whether Yield Score and remote control are on) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So every device uses the same settings |
 | **This Mac's helper readings**: CPU and memory load, how many AI CLI sessions are running, whether each installed AI CLI is signed in with a subscription or an API key (where the built-in agent or the Companion CLI can tell), and whether each provider's check worked (ok / no data / error) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in and this Mac is paired | Shows whether each Mac is reporting, and why a provider shows nothing |
@@ -351,12 +351,13 @@ Mac, is not sandboxed, and keeps its own pairing with your account in
 While it is paired and allowed to (see below), every 2 minutes by default it:
 
 * reads the command line of each running program to find AI CLI sessions, and
-  uploads each one's name — the first 48 characters of its command line, which
-  can include folder paths and arguments — with the name of its project folder,
-  a keyed hash of that folder's path, its start and last-active times, and
-  alerts about it;
+  uploads each one's name — up to 48 characters of its command line, which can
+  include folder paths and arguments — with a project name taken from its
+  command line, a keyed hash of its project folder's path, its start and
+  last-active times, and alerts about it;
 * uploads this Mac's CPU and memory load, its session count and the machine
-  readings listed in the table;
+  readings listed in the table, and reads `~/.codex/auth.json` to report whether
+  Codex is signed in with a subscription or an API key;
 * when it finds a Claude, Codex or Gemini session running, reads that
   provider's credentials (Claude Code's Keychain item, `~/.codex/auth.json`,
   `~/.gemini/oauth_creds.json`) to ask it for your quota, uploads the quota
@@ -530,10 +531,10 @@ exchange for anything — the App Store forbids it and so do we.
   support year-over-year cost comparisons with one month of buffer; beyond that
   the historical detail adds no product value and we'd rather delete it.
 - **Ended AI CLI sessions, alerts, and device snapshots** are deleted by a
-  nightly job once they are older than your account's retention setting, which
-  is 7 days; none of the Apple apps offers a way to change it. (Earlier versions
-  of this document pointed to a setting in Settings → Privacy that does not
-  exist.)
+  nightly job once they are older than your account's retention setting: 7
+  days, unless an earlier version of the app changed it. The current apps offer
+  no way to change it. (Earlier versions of this document pointed to a setting
+  in Settings → Privacy that does not exist.)
 - **Account deletion** removes all associated rows within 30 days
   (cascading deletes handled at the database level).
 - **Anonymous install rows** are deleted 400 days after they were last
