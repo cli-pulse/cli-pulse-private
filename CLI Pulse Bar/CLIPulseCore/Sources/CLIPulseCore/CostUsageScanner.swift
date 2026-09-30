@@ -378,6 +378,10 @@ public enum CostUsageScanner {
         let untilKey: String
         let scanSinceKey: String
         let scanUntilKey: String
+        /// v1.55: the first moment of the first day the scan reports. A log
+        /// whose last write is earlier than this cannot hold a line the scan
+        /// would report, so it is not opened at all (`scanClaudeRoot`).
+        let firstReportedInstant: Date
 
         init(since: Date, until: Date) {
             self.sinceKey = Self.dayKey(from: since)
@@ -385,6 +389,7 @@ public enum CostUsageScanner {
             let cal = DayKey.calendar()
             self.scanSinceKey = Self.dayKey(from: cal.date(byAdding: .day, value: -1, to: since) ?? since)
             self.scanUntilKey = Self.dayKey(from: cal.date(byAdding: .day, value: 1, to: until) ?? until)
+            self.firstReportedInstant = cal.startOfDay(for: since)
         }
 
         /// Gregorian whatever the device calendar: these keys are uploaded as
@@ -1339,6 +1344,21 @@ public enum CostUsageScanner {
                   values.isRegularFile == true else { continue }
             let size = Int64(values.fileSize ?? 0)
             if size <= 0 { continue }
+            // v1.55: a log last written before the window cannot hold a line
+            // inside it, so it is not opened. Until 1.55 every Claude log of
+            // any age was parsed on a first scan (and after every cache reset)
+            // and its old lines thrown away — a read the consent screen, which
+            // says "the last 30 days", does not cover. Codex is already bounded
+            // by its date folders (`listCodexSessionFiles`). A log still being
+            // written to is parsed from its start, and its older lines are
+            // dropped by `add` in `parseClaudeFile`, not kept.
+            //
+            // Not touched ⇒ dropped from the cache below, with its days, which
+            // are all older than the window anyway.
+            if let modified = values.contentModificationDate,
+               modified < range.firstReportedInstant {
+                continue
+            }
             let mtime = values.contentModificationDate?.timeIntervalSince1970 ?? 0
             processClaudeFile(url: url, size: size, mtimeMs: Int64(mtime * 1000), cache: &cache, touched: &touched, range: range)
         }

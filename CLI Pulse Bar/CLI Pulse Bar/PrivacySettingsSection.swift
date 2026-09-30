@@ -16,6 +16,16 @@ struct PrivacySettingsSection: View {
     @ObservedObject private var settings = PrivacySettings.shared
     @EnvironmentObject var state: AppState
 
+    /// v1.50 W-C: the scan itself — unauthenticated local mode only (see below).
+    private var showsScanSwitch: Bool {
+        !state.isAuthenticated && state.isLocalMode
+    }
+
+    /// v1.55: older logs — wherever the Mac scans, Demo mode aside.
+    private var showsHistorySwitch: Bool {
+        (state.isAuthenticated || state.isLocalMode) && !state.isDemoMode
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -33,7 +43,7 @@ struct PrivacySettingsSection: View {
             // only: for a signed-in user the answer is implied by the account,
             // and a switch that reads as optional while cloud sync is running
             // would be a lie about which one is in charge.
-            if !state.isAuthenticated && state.isLocalMode {
+            if showsScanSwitch {
                 Toggle(
                     isOn: Binding(
                         get: { state.localScanConsent == .granted },
@@ -53,7 +63,52 @@ struct PrivacySettingsSection: View {
                     .padding(.leading, 2)
                     .padding(.bottom, 2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
 
+            // v1.55: disclosure v2's own answer — up to a year of older logs,
+            // read once. Shown wherever the Mac scans (signed in, or local mode),
+            // because unlike the switch above it is a real choice for a signed-in
+            // user too: signing in implies the 30-day scan, never the year. Not
+            // in Demo mode, which reads nothing and is what screenshots show.
+            //
+            // Disabled, not hidden, while the scan itself is off: the switch
+            // above says "Older logs have a switch of their own", and it should
+            // be there to be seen. Turning this off stops further reads; it does
+            // not delete history already built, and its detail says so.
+            if showsHistorySwitch {
+                let scanning = LocalCollectionPolicy.allowsCollection(
+                    isAuthenticated: state.isAuthenticated,
+                    consent: state.localScanConsent
+                )
+                Toggle(
+                    isOn: Binding(
+                        get: { scanning && state.localScanConsentV2 == .granted },
+                        set: { on in
+                            state.localScanConsentV2 = on ? .granted : .declined
+                            // The backfill runs after a successful scan, so a
+                            // yes shows its history on the next refresh rather
+                            // than whenever the timer next fires.
+                            if on { state.requestRefresh() }
+                        }
+                    )
+                ) {
+                    Text(L10n.localScanConsent.historyToggle)
+                        .font(.system(size: 11))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .toggleStyle(.switch)
+                .controlSize(.small)
+                .disabled(!scanning)
+
+                Text(L10n.localScanConsent.historyToggleDetail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+                    .padding(.bottom, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if showsScanSwitch || showsHistorySwitch {
                 Divider()
                     .padding(.vertical, 2)
             }

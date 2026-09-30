@@ -145,6 +145,16 @@ struct MenuBarView: View {
                         .environmentObject(state)
                         .languageKeyed(localeOverride.override)
                     basicFooter
+                } else if popoverBody == .localScanConsentOlderLogs {
+                    // v1.55: the routine scan is running, but disclosure v2 —
+                    // up to a year of older logs, read once — has no answer.
+                    // Asked once, of v1 "yes" answers and of signed-in users who
+                    // were never shown the disclosure; either answer keeps the
+                    // 30-day scan, so this interrupts nothing that works.
+                    LocalScanConsentView(mode: .olderLogs)
+                        .environmentObject(state)
+                        .languageKeyed(localeOverride.override)
+                    basicFooter
                 } else if popoverBody == .connected {
                     connectedView
                 } else {
@@ -234,7 +244,9 @@ struct MenuBarView: View {
 
     /// What the popover shows under the statistics card, decided in one place
     /// so the card can tell whether a setup wizard is below it.
-    private enum PopoverBody { case agentSetup, localScanConsent, connected, notConnected }
+    private enum PopoverBody {
+        case agentSetup, localScanConsent, localScanConsentOlderLogs, connected, notConnected
+    }
 
     private var popoverBody: PopoverBody {
         if shouldPresentAgentSetup { return .agentSetup }
@@ -244,6 +256,15 @@ struct MenuBarView: View {
             consent: state.localScanConsent
         ) {
             return .localScanConsent
+        }
+        if LocalCollectionPolicy.shouldPresentV2Disclosure(
+            isAuthenticated: authState.isAuthenticated,
+            isLocalMode: state.isLocalMode,
+            isDemoMode: state.isDemoMode,
+            consent: state.localScanConsent,
+            consentV2: state.localScanConsentV2
+        ) {
+            return .localScanConsentOlderLogs
         }
         if state.isLocalMode || authState.isPaired { return .connected }
         return .notConnected
@@ -259,7 +280,7 @@ struct MenuBarView: View {
         switch popoverBody {
         case .agentSetup: return true
         case .notConnected: return showsLegacyOnboarding
-        case .localScanConsent, .connected: return false
+        case .localScanConsent, .localScanConsentOlderLogs, .connected: return false
         }
     }
 

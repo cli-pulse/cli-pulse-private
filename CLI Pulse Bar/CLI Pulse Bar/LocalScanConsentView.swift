@@ -10,7 +10,8 @@ import CLIPulseCore
 /// with a switch and gets out of the way. It can afford that because what it
 /// discloses is two booleans with no file paths in them.
 ///
-/// This is not that. Behind this screen are: 30 days of session logs, the
+/// This is not that. Behind this screen are: 30 days of session logs (and, if
+/// the person allows it, one read of up to a year of older ones), the
 /// absolute paths and project folders derived from them, calls to OpenAI and
 /// Anthropic using credentials another program stored on this Mac, a rewrite of
 /// that program's credential file when a token needs renewing, and a cross-app
@@ -28,8 +29,34 @@ import CLIPulseCore
 /// This screen is the second line, not the first. The gate that actually stops
 /// the reads lives at the top of `refreshLocal`, so a bug that skipped this view
 /// entirely would still collect nothing.
+///
+/// v1.55 — DISCLOSURE v2
+/// ---------------------
+/// v1 said "Session logs, last 30 days" while the one-time usage-history backfill
+/// read up to a year. v2 says both, and makes the part beyond 30 days its own
+/// answer, so the screen has two shapes:
+///
+///   * `.firstAsk` — nothing is on file and nothing is read yet. Three answers:
+///     everything ("Start local scan"), the 30-day scan alone, or nothing.
+///   * `.olderLogs` — the routine scan is already running (a v1 yes, or a
+///     signed-in account) and the older logs have no answer. Two answers, and
+///     both keep the 30-day scan: refusing v2 is not taking back v1. There is
+///     no "Not now" here because it would mean something much bigger than the
+///     question being asked. Switching the scan off stays where it was: the
+///     Settings switch in local mode, and signing out for a signed-in user,
+///     who has no scan switch (1.50: the account implies the scan).
+///
+/// Both shapes carry the whole disclosure, not only the new line: the signed-in
+/// users who see `.olderLogs` were let through on the strength of their account
+/// in 1.50 and have never been shown what the scan reads.
 struct LocalScanConsentView: View {
+    enum Mode {
+        case firstAsk
+        case olderLogs
+    }
+
     @EnvironmentObject var state: AppState
+    var mode: Mode = .firstAsk
 
     var body: some View {
         VStack(spacing: 0) {
@@ -70,26 +97,16 @@ struct LocalScanConsentView: View {
             Divider()
 
             VStack(spacing: 8) {
-                HStack(spacing: 10) {
-                    Button(L10n.localScanConsent.notNow) {
-                        state.localScanConsent = .declined
-                    }
-                    .controlSize(.large)
-
-                    Button(L10n.localScanConsent.start) {
-                        state.localScanConsent = .granted
-                        // The gate is state, not a one-shot: flipping it to
-                        // `.granted` is what lets the next refresh through.
-                        // Kicking one off here is only so the answer produces a
-                        // visible result instead of a wait for the next tick.
-                        state.requestRefresh()
-                    }
-                    .controlSize(.large)
-                    .buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction)
+                switch mode {
+                case .firstAsk:
+                    firstAskButtons
+                case .olderLogs:
+                    olderLogsButtons
                 }
 
-                Text(L10n.localScanConsent.changeLater)
+                Text(mode == .firstAsk
+                     ? L10n.localScanConsent.firstAskHint
+                     : L10n.localScanConsent.changeLater)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -101,11 +118,72 @@ struct LocalScanConsentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The three answers stack instead of sharing a row: three large buttons do
+    /// not fit 380 points in Spanish or Japanese, and a row that wraps would
+    /// break the equal weight the two original buttons were given on purpose.
+    /// "Not now" stays a full button, the same size as the other two.
+    ///
+    /// 1.50 gave "Start local scan" the Return key. It no longer has it: the
+    /// button now includes the one-time read of up to a year of logs, and
+    /// Return should not be the way someone agrees to that — on either screen.
+    private var firstAskButtons: some View {
+        VStack(spacing: 6) {
+            Button {
+                // The answers are state, not a one-shot: flipping them is what
+                // lets the next refresh through. `answerLocalScanDisclosure`
+                // kicks one off only so the answer produces a visible result
+                // instead of a wait for the next tick.
+                state.answerLocalScanDisclosure(.scanWithHistory)
+            } label: {
+                Text(L10n.localScanConsent.start).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                state.answerLocalScanDisclosure(.last30DaysOnly)
+            } label: {
+                Text(L10n.localScanConsent.lastThirtyDaysOnly).frame(maxWidth: .infinity)
+            }
+
+            Button {
+                state.answerLocalScanDisclosure(.notNow)
+            } label: {
+                Text(L10n.localScanConsent.notNow).frame(maxWidth: .infinity)
+            }
+        }
+        .controlSize(.large)
+    }
+
+    /// Stacked like the first ask, for the same reason: side by side, the two
+    /// labels are cut off in Spanish. No default action, as on the first ask.
+    private var olderLogsButtons: some View {
+        VStack(spacing: 6) {
+            Button {
+                state.answerLocalScanDisclosure(.scanWithHistory)
+            } label: {
+                Text(L10n.localScanConsent.includeHistory).frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Button {
+                state.answerLocalScanDisclosure(.last30DaysOnly)
+            } label: {
+                Text(L10n.localScanConsent.lastThirtyDaysOnly).frame(maxWidth: .infinity)
+            }
+        }
+        .controlSize(.large)
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(L10n.localScanConsent.title)
+            Text(mode == .firstAsk
+                 ? L10n.localScanConsent.title
+                 : L10n.localScanConsent.v2Title)
                 .font(.headline)
-            Text(L10n.localScanConsent.subtitle)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(mode == .firstAsk
+                 ? L10n.localScanConsent.subtitle
+                 : L10n.localScanConsent.v2Subtitle)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -156,6 +234,13 @@ struct LocalScanDeclinedCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button(L10n.localScanConsent.start) {
+                // Turns the 30-day scan back on and leaves the older-logs
+                // answer as it was, instead of a card this small deciding a year
+                // of reads. Unanswered, the popover asks about them next with the
+                // whole disclosure in view (`.olderLogs`). An earlier answer
+                // stands: a no keeps it to 30 days, and a yes given before the
+                // scan was turned off lets the one-time read resume — the yes
+                // that "Start local scan" meant on the first ask.
                 state.localScanConsent = .granted
                 state.requestRefresh()
             }

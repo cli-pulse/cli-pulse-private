@@ -269,8 +269,9 @@ final class LocalScanConsentTests: XCTestCase {
         XCTAssertEqual(counts["scanLocal"], 1)
     }
 
-    private static func localModeContext(
-        consent: LocalScanConsent
+    static func localModeContext(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent = .undecided
     ) -> DataRefreshManager.Context {
         DataRefreshManager.Context(
             isAuthenticated: false,
@@ -286,11 +287,12 @@ final class LocalScanConsentTests: XCTestCase {
             currentTierName: "Free",
             tierResolutionState: .resolvedConfirmed,
             isLocalMode: true,
-            localScanConsent: consent
+            localScanConsent: consent,
+            localScanConsentV2: consentV2
         )
     }
 
-    private static func inertCallbacks() -> DataRefreshManager.Callbacks {
+    static func inertCallbacks() -> DataRefreshManager.Callbacks {
         DataRefreshManager.Callbacks(
             isAuthenticated: { false },
             setLoading: { _ in },
@@ -319,15 +321,61 @@ actor LocalRuntimeRecorder {
     }
 }
 
+/// What `recordLocalHistory` was handed, per call: whether the refresh let the
+/// read beyond the routine window through. A lock rather than an actor because
+/// the seam is synchronous — the live one only schedules work.
+final class LocalHistoryCallLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [Bool] = []
+
+    func append(_ historyReadAllowed: Bool) {
+        lock.lock(); defer { lock.unlock() }
+        calls.append(historyReadAllowed)
+    }
+
+    var historyReadAllowed: [Bool] {
+        lock.lock(); defer { lock.unlock() }
+        return calls
+    }
+}
+
+/// The two synchronous reads of this Mac a refresh can make — copying provider
+/// credentials into the app group, and reading the helper's snapshot. A lock
+/// rather than the actor above because both seams are synchronous.
+final class LocalSyncReadLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    func append(_ name: String) {
+        lock.lock(); defer { lock.unlock() }
+        calls.append(name)
+    }
+
+    var names: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return calls
+    }
+}
+
 extension DataRefreshManager.LocalRefreshRuntime {
-    static func recording(_ recorder: LocalRuntimeRecorder) -> Self {
+    /// `costEntries` non-empty makes the scan look successful, which is what
+    /// lets a refresh reach the durable stores and the backfill decision.
+    static func recording(
+        _ recorder: LocalRuntimeRecorder,
+        historyLog: LocalHistoryCallLog = LocalHistoryCallLog(),
+        syncReads: LocalSyncReadLog = LocalSyncReadLog(),
+        costEntries: [CostUsageScanResult.DailyEntry] = []
+    ) -> Self {
         Self(
-            prepareCredentials: {},
+            prepareCredentials: { syncReads.append("prepareCredentials") },
             collectAccountPass: { _ in
                 await recorder.record("collectAccountPass")
                 return .empty
             },
-            readHelperSnapshot: { _ in .empty },
+            readHelperSnapshot: { _ in
+                syncReads.append("readHelperSnapshot")
+                return .empty
+            },
             scanLocal: {
                 await recorder.record("scanLocal")
                 return LocalScanResult(
@@ -340,12 +388,15 @@ extension DataRefreshManager.LocalRefreshRuntime {
             },
             scanCostUsage: {
                 await recorder.record("scanCostUsage")
-                return CostUsageScanResult(entries: [])
+                return CostUsageScanResult(entries: costEntries)
             },
             needsFolderAccessNudge: { _ in false },
             syncLegacyQuotas: { _, _ in await recorder.record("syncLegacyQuotas") },
             syncDailyUsage: { _, _ in await recorder.record("syncDailyUsage") },
-            syncAccountQuotas: { _, _ in await recorder.record("syncAccountQuotas") }
+            syncAccountQuotas: { _, _ in await recorder.record("syncAccountQuotas") },
+            recordLocalHistory: { _, historyReadAllowed in
+                historyLog.append(historyReadAllowed)
+            }
         )
     }
 }

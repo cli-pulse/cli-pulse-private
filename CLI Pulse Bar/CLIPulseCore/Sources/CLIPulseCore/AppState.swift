@@ -146,6 +146,39 @@ public final class AppState: ObservableObject {
             LocalScanConsentStore.save(localScanConsent)
         }
     }
+    /// v1.55: the answer to disclosure v2 — may CLI Pulse read session logs
+    /// older than the routine 30 days, to fill in the usage history. Separate
+    /// from `localScanConsent` so that refusing it leaves a v1 yes intact.
+    /// Written only by the disclosure's buttons and the Settings switch.
+    @Published public var localScanConsentV2: LocalScanConsent =
+        LocalScanConsentStore.loadV2() {
+        didSet {
+            guard localScanConsentV2 != oldValue else { return }
+            LocalScanConsentStore.saveV2(localScanConsentV2)
+        }
+    }
+
+    /// Records an answer from the disclosure (either version) and, when it lets
+    /// collection run, starts a refresh so the answer produces something to look
+    /// at instead of a wait for the next tick. The gate is the stored state, not
+    /// this call: flipping the answers is what lets the next refresh through.
+    public func answerLocalScanDisclosure(_ choice: LocalScanChoice) {
+        let answers = LocalCollectionPolicy.answering(
+            choice,
+            consentV2: localScanConsentV2
+        )
+        // v2 first: `localScanConsent` is what the popover's routing and the
+        // refresh gate read first, so by the time it changes the v2 answer the
+        // next refresh needs is already on file.
+        localScanConsentV2 = answers.consentV2
+        localScanConsent = answers.consent
+        if LocalCollectionPolicy.allowsCollection(
+            isAuthenticated: isAuthenticated,
+            consent: localScanConsent
+        ) {
+            requestRefresh()
+        }
+    }
     /// Stable account targeted by the standalone provider editor.
     public var editingProviderAccountID: UUID? {
         get { providerState.editingProviderAccountID }

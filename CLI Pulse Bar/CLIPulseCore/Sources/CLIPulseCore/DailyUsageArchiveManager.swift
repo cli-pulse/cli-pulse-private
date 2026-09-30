@@ -28,20 +28,39 @@ public actor DailyUsageArchiveManager {
     private let root: URL?                 // nil ⇒ default Application Support
     private let defaults: UserDefaults
     private let backfillKey: String
+    private let backfillScan: @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult
     private var backfillRunning = false
 
     public static let defaultBackfillKey = "cli_pulse_daily_archive_backfilled_v1"
-    static let backfillDays = 365
+    /// The only read in the app that goes further back than the routine 30
+    /// days. v1.55: what the disclosure says it may do, and nothing more.
+    static let backfillDays = LocalScanDisclosure.historyWindowDays
+
+    /// `backfillScan` is a seam for tests, which must never walk the real
+    /// `~/.codex` and `~/.claude` of whoever runs them.
+    init(
+        root: URL? = nil,
+        defaults: UserDefaults = .standard,
+        backfillKey: String = DailyUsageArchiveManager.defaultBackfillKey,
+        backfillScan: @escaping @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult)
+    {
+        self.root = root
+        self.defaults = defaults
+        self.backfillKey = backfillKey
+        self.backfillScan = backfillScan
+        self.archive = nil   // deferred to first actor-isolated access (off-main)
+    }
 
     public init(
         root: URL? = nil,
         defaults: UserDefaults = .standard,
         backfillKey: String = DailyUsageArchiveManager.defaultBackfillKey)
     {
-        self.root = root
-        self.defaults = defaults
-        self.backfillKey = backfillKey
-        self.archive = nil   // deferred to first actor-isolated access (off-main)
+        self.init(
+            root: root,
+            defaults: defaults,
+            backfillKey: backfillKey,
+            backfillScan: { await CostUsageScanner.scanAsync(options: $0) })
     }
 
     /// The archive, loading from disk on first access (on the actor executor).
@@ -86,7 +105,18 @@ public actor DailyUsageArchiveManager {
     /// this only after a normal scan succeeded, so folder access is confirmed —
     /// then a successful backfill (even one that finds little history) marks the
     /// flag done. Uses a throwaway temp cacheRoot; NEVER the production cache.
-    public func runBackfillIfNeeded() async {
+    ///
+    /// v1.55 — `historyReadAllowed` is the user's answer to disclosure v2
+    /// (`LocalCollectionPolicy.allowsReadingBeyondRoutineWindow`). Until 1.55
+    /// this ran for everyone whose scan succeeded, while the consent screen said
+    /// "last 30 days". It is a required argument, not a default, so no caller can
+    /// reach the year-long read without saying which answer it is acting on.
+    ///
+    /// Refusing returns before the done-flag is touched: a "not yet" must not be
+    /// recorded as "already backfilled", or a later yes would find nothing left
+    /// to do.
+    public func runBackfillIfNeeded(historyReadAllowed: Bool) async {
+        guard historyReadAllowed else { return }
         guard !defaults.bool(forKey: backfillKey), !backfillRunning else { return }
         backfillRunning = true
         defer { backfillRunning = false }
@@ -96,7 +126,7 @@ public actor DailyUsageArchiveManager {
         var options = CostUsageScanner.Options(cacheRoot: tmp, daysToScan: Self.backfillDays)
         options.forceRescan = true   // not an init param — set after construction
 
-        let result = await CostUsageScanner.scanAsync(options: options)
+        let result = await backfillScan(options)
         if !result.entries.isEmpty {
             var a = loaded()
             a.mergeScanEntries(result.entries.map(Self.scanEntry))
