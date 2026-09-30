@@ -1133,7 +1133,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 
 /* v1.50 W-C — the choice that precedes any read of this Mac */
 "local_scan_consent.title" = "Before CLI Pulse reads this Mac";
-"local_scan_consent.subtitle" = "Nothing has been read yet. Here is what starting the scan turns on.";
+"local_scan_consent.subtitle" = "CLI Pulse reads nothing until you start the scan. Here is what starting it turns on.";
 "local_scan_consent.files_title" = "Session logs: the last 30 days, and a one-time read of up to a year";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, and ~/.config/claude/projects/. Each refresh reads the last 30 days. Once, and only if you allow it, CLI Pulse also reads up to a year of older logs to fill in your usage history. It parses them for usage records and caches the results on this Mac.";
 "local_scan_consent.derived_title" = "What it works out from them";
@@ -1151,7 +1151,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.declined_body" = "CLI Pulse is not reading anything on this Mac, so there is nothing to show yet.";
 /* v1.55 disclosure v2. first_ask_hint names local_scan_consent.start and local_scan_consent.last_30_days_only by their whole labels; LocalScanConsentCopyTests fails if they drift. */
 "local_scan_consent.last_30_days_only" = "Last 30 days only";
-"local_scan_consent.first_ask_hint" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out. Whichever you choose, you can change it any time in Settings › Privacy.";
+"local_scan_consent.first_ask_hint" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, and usage history already built stays on this Mac. Whichever you choose, you can change it any time in Settings › Privacy.";
 "local_scan_consent.v2_title" = "Before CLI Pulse reads older logs";
 "local_scan_consent.v2_subtitle" = "Each refresh reads the last 30 days. To fill in your usage history, CLI Pulse can also read up to a year of older session logs, once. It now asks first. Either answer keeps the 30-day scan running, and history already built stays on this Mac.";
 "local_scan_consent.include_history" = "Include older history";
@@ -1385,6 +1385,9 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.settings_toggle_detail" = "Each refresh reads the last 30 days of session logs under ~/.codex and ~/.claude, and asks the providers you use for live quota. Older logs have a switch of their own. Off means CLI Pulse reads nothing here.";
 "local_scan_consent.history_toggle" = "Include older usage history";
 "local_scan_consent.history_toggle_detail" = "Reads up to a year of older session logs, once, to fill in your usage history. Off keeps CLI Pulse to the last 30 days; history already built stays on this Mac.";
+/* v1.55: Settings › Privacy, for a signed-in Mac whose answer is "Not now". settings_declined_detail quotes local_scan_consent.not_now by its whole label; LocalScanConsentCopyTests fails if they drift. */
+"local_scan_consent.settings_declined_detail" = "You chose “Not now”, so CLI Pulse reads nothing on this Mac. Signing in does not change that.";
+"local_scan_consent.choose_again" = "Choose again…";
 "settings.local_only_mode" = "Strict privacy mode";
 "settings.local_only_mode_hint" = "CLI Pulse won't read Claude Code's keychain item on its own, and sends no anonymous statistics. Usage from log files in your home folder, and syncing to your account, are not affected.";
 "settings.skip_claude_keychain" = "Skip Claude Code keychain access";

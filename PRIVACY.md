@@ -129,7 +129,9 @@ question before anything is read. Until you answer, CLI Pulse reads no files,
 contacts no provider, and touches no Keychain item. Since v1.55 the question has
 three answers: **"Start local scan"**, **"Last 30 days only"** and **"Not now"**
 (see the next section for why). "Not now" is remembered, is not overridden by
-signing in later, and is reversible from Settings → Privacy at any time.
+signing in later, and is reversible from Settings → Privacy at any time: without
+an account with the scan switch, and while signed in with **"Choose again…"**,
+which shows the same question with its three answers.
 
 The question names all of it:
 
@@ -188,7 +190,14 @@ Since v1.55 that read is its own question:
 * **People who agreed to the 30-day scan before v1.55**, and **signed-in users
   who were never shown the question**, are shown it once, with both answers
   keeping the 30-day scan running: **"Include older history"** or **"Last 30 days
-  only"**. Refusing the older logs does not take back the 30-day scan.
+  only"**. Refusing the older logs does not take back the 30-day scan. This
+  screen records only your answer about older logs. For a signed-in user it is
+  not stored as a yes to the 30-day scan, which the account stands in for, so if
+  you later sign out and use CLI Pulse without an account, you are asked the
+  first question.
+* **"Last 30 days only" deletes nothing.** Usage history already built on your
+  Mac, including by the one-time read in a version before v1.55, stays there;
+  the screens that offer the answer say so.
 * Until you say yes, CLI Pulse uses nothing older than 30 days, in the sense
   given under "Session logs" above. Signing in is not a yes to this.
 * **Settings → Privacy → "Include older usage history"** changes the answer at

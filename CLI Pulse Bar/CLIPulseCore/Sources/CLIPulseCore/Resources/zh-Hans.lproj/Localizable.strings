@@ -1123,7 +1123,7 @@
 
 /* v1.50 W-C — 在读取这台 Mac 之前的选择 */
 "local_scan_consent.title" = "在 CLI Pulse 读取这台 Mac 之前";
-"local_scan_consent.subtitle" = "目前尚未读取任何内容。开始扫描后，将启用以下各项。";
+"local_scan_consent.subtitle" = "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。";
 "local_scan_consent.files_title" = "会话日志：最近 30 天，另可一次性读取最多一年";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新读取最近 30 天。只有在你允许时，CLI Pulse 才会额外读取一次最多一年的旧日志，用来补全用量历史。CLI Pulse 解析其中的用量记录，并把结果缓存在这台 Mac 上。";
 "local_scan_consent.derived_title" = "会提取哪些信息";
@@ -1140,7 +1140,7 @@
 "local_scan_consent.declined_title" = "本地扫描已关闭";
 "local_scan_consent.declined_body" = "CLI Pulse 没有读取这台 Mac 上的任何内容，所以暂时没有可显示的数据。";
 "local_scan_consent.last_30_days_only" = "仅最近 30 天";
-"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会。无论选哪个，「设置 › 隐私」里随时可以改。";
+"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，已生成的用量历史也会保留在这台 Mac 上。无论选哪个，「设置 › 隐私」里随时可以改。";
 "local_scan_consent.v2_title" = "在 CLI Pulse 读取更早的日志之前";
 "local_scan_consent.v2_subtitle" = "每次刷新读取最近 30 天。为了补全用量历史，CLI Pulse 还可以一次性读取最多一年的旧会话日志。现在它会先征求你的同意；无论选哪个，最近 30 天的扫描都会照常进行，已生成的用量历史也会保留在这台 Mac 上。";
 "local_scan_consent.include_history" = "包括更早的历史";
@@ -1374,6 +1374,8 @@
 "local_scan_consent.settings_toggle_detail" = "每次刷新读取 ~/.codex 和 ~/.claude 下最近 30 天的会话日志，并向你使用的服务商查询实时配额。更早的日志由单独的开关控制。关闭后，CLI Pulse 不会读取这台 Mac 上的任何内容。";
 "local_scan_consent.history_toggle" = "包括更早的用量历史";
 "local_scan_consent.history_toggle_detail" = "读取一次最多一年的旧会话日志，用来补全用量历史。关闭后，CLI Pulse 只读取最近 30 天；已生成的用量历史仍保留在这台 Mac 上。";
+"local_scan_consent.settings_declined_detail" = "你选择了「暂时不要」，所以 CLI Pulse 不会读取这台 Mac 上的任何内容。登录不会改变这个选择。";
+"local_scan_consent.choose_again" = "重新选择…";
 "settings.local_only_mode" = "严格隐私模式";
 "settings.local_only_mode_hint" = "CLI Pulse 不会自行读取 Claude Code 的钥匙串项目，也不发送匿名统计。个人文件夹里日志文件的用量，以及同步到你的账户，都不受影响。";
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";

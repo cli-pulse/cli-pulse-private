@@ -105,6 +105,9 @@ final class LocalScanConsentCopyTests: XCTestCase {
                 "include_history": L10n.localScanConsent.includeHistory,
                 "history_toggle": L10n.localScanConsent.historyToggle,
                 "history_toggle_detail": L10n.localScanConsent.historyToggleDetail,
+                "subtitle": L10n.localScanConsent.subtitle,
+                "settings_declined_detail": L10n.localScanConsent.settingsDeclinedDetail,
+                "choose_again": L10n.localScanConsent.chooseAgain,
             ]
         }
         let english = inLocale("en") { texts() }
@@ -135,6 +138,61 @@ final class LocalScanConsentCopyTests: XCTestCase {
             }
             XCTAssertTrue(hint.contains(start), "\(locale): \"\(hint)\" does not name \"\(start)\"")
             XCTAssertTrue(hint.contains(last30), "\(locale): \"\(hint)\" does not name \"\(last30)\"")
+        }
+    }
+
+    /// How each catalogue says "history already built stays on this Mac".
+    private static let builtHistoryStays: [String: String] = [
+        "en": "already built stays on this Mac",
+        "zh-Hans": "保留在这台 Mac 上",
+        "zh-Hant": "留在這台 Mac 上",
+        "ja": "作成済みの履歴はこの Mac に残ります",
+        "ko": "이미 만들어진 기록은 이 Mac에 남습니다",
+        "es": "el historial ya creado se queda en este Mac",
+    ]
+
+    /// "Last 30 days only" deletes nothing: usage history already built stays
+    /// on the Mac. Every screen that offers that answer says so — the first
+    /// ask, the older-logs ask, and the Settings switch — in every language.
+    func test_everyPlaceThatOffersLast30DaysOnlySaysBuiltHistoryStays() {
+        for locale in Self.locales {
+            let texts = inLocale(locale) {
+                [
+                    "first_ask_hint": L10n.localScanConsent.firstAskHint,
+                    "v2_subtitle": L10n.localScanConsent.v2Subtitle,
+                    "history_toggle_detail": L10n.localScanConsent.historyToggleDetail,
+                ]
+            }
+            let phrase = Self.builtHistoryStays[locale]!
+            for (key, text) in texts {
+                XCTAssertTrue(text.contains(phrase),
+                              "\(locale): \(key) does not say built history stays (\"\(phrase)\"): \(text)")
+            }
+        }
+    }
+
+    /// The Settings way back from "Not now" quotes that button by its label, in
+    /// each catalogue, so it cannot point at a button that is not there.
+    func test_theSettingsWayBackQuotesNotNowAsLabelled() {
+        for locale in Self.locales {
+            let (detail, notNow) = inLocale(locale) {
+                (L10n.localScanConsent.settingsDeclinedDetail, L10n.localScanConsent.notNow)
+            }
+            XCTAssertTrue(detail.contains(notNow), "\(locale): \"\(detail)\" does not name \"\(notNow)\"")
+        }
+    }
+
+    /// The first ask is also shown to people whose Mac was read before: a
+    /// signed-in "Not now" choosing again, and a signed-in user who answered
+    /// only the older-logs question and later signed out into local mode. So
+    /// it says nothing is read until the scan starts, not "nothing has been
+    /// read yet".
+    func test_zhHansFirstAskSaysWhatHoldsForEveryoneShownIt() {
+        inLocale("zh-Hans") {
+            XCTAssertEqual(L10n.localScanConsent.subtitle, "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。")
+            XCTAssertFalse(L10n.localScanConsent.subtitle.contains("尚未读取"))
+            XCTAssertEqual(L10n.localScanConsent.chooseAgain, "重新选择…")
+            XCTAssertTrue(L10n.localScanConsent.settingsDeclinedDetail.contains("「暂时不要」"))
         }
     }
 

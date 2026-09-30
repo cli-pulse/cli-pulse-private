@@ -1071,7 +1071,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 
 /* v1.50 W-C — la decisión previa a cualquier lectura de este Mac */
 "local_scan_consent.title" = "Antes de que CLI Pulse lea este Mac";
-"local_scan_consent.subtitle" = "Todavía no se ha leído nada. Esto es lo que se pone en marcha al iniciar el análisis.";
+"local_scan_consent.subtitle" = "CLI Pulse no lee nada hasta que inicies el análisis. Esto es lo que se pone en marcha al iniciarlo.";
 "local_scan_consent.files_title" = "Registros de sesión: los últimos 30 días y, una vez, hasta un año";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/ y ~/.config/claude/projects/. Cada actualización lee los últimos 30 días. Solo si lo permites, CLI Pulse lee además, una sola vez, hasta un año de registros anteriores para completar tu historial de uso. Extrae de ahí los registros de uso y guarda el resultado en caché en este Mac.";
 "local_scan_consent.derived_title" = "Lo que deduce de ellos";
@@ -1088,7 +1088,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.declined_title" = "El análisis local está desactivado";
 "local_scan_consent.declined_body" = "CLI Pulse no está leyendo nada en este Mac, así que todavía no hay nada que mostrar.";
 "local_scan_consent.last_30_days_only" = "Solo los últimos 30 días";
-"local_scan_consent.first_ask_hint" = "«Iniciar análisis local» incluye la lectura única de los registros anteriores; «Solo los últimos 30 días» no. Elijas lo que elijas, puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
+"local_scan_consent.first_ask_hint" = "«Iniciar análisis local» incluye la lectura única de los registros anteriores; «Solo los últimos 30 días» no, y el historial ya creado se queda en este Mac. Elijas lo que elijas, puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
 "local_scan_consent.v2_title" = "Antes de que CLI Pulse lea registros anteriores";
 "local_scan_consent.v2_subtitle" = "Cada actualización lee los últimos 30 días. Para completar tu historial de uso, CLI Pulse también puede leer, una sola vez, hasta un año de registros de sesión anteriores. Ahora pregunta primero. Cualquiera de las dos respuestas mantiene activo el análisis de 30 días, y el historial ya creado se queda en este Mac.";
 "local_scan_consent.include_history" = "Incluir el historial anterior";
@@ -1342,6 +1342,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.settings_toggle_detail" = "Cada actualización lee los registros de sesión de los últimos 30 días en ~/.codex y ~/.claude y consulta la cuota en tiempo real a los proveedores que usas. Los registros anteriores tienen su propio interruptor. Si está desactivado, CLI Pulse no lee nada en este Mac.";
 "local_scan_consent.history_toggle" = "Incluir el historial de uso anterior";
 "local_scan_consent.history_toggle_detail" = "Lee una sola vez hasta un año de registros de sesión anteriores para completar tu historial de uso. Si está desactivado, CLI Pulse se limita a los últimos 30 días; el historial ya creado se queda en este Mac.";
+"local_scan_consent.settings_declined_detail" = "Elegiste «Ahora no», así que CLI Pulse no lee nada en este Mac. Iniciar sesión no cambia esa respuesta.";
+"local_scan_consent.choose_again" = "Elegir de nuevo…";
 "settings.local_only_mode" = "Modo de privacidad estricta";
 "settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta el elemento de Claude Code en el Llavero y no envía estadísticas anónimas. El uso que se lee de los registros de tu carpeta de inicio y la sincronización con tu cuenta siguen igual.";
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
