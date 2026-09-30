@@ -402,8 +402,10 @@ public final class AppState: ObservableObject {
     /// model. The provider card shows that cost as "≈$…".
     ///
     /// The card's figure can be the cloud's rather than this scan's (it shows
-    /// the larger), but the cloud's includes what this Mac uploaded, priced
-    /// the same way, so the mark holds either way.
+    /// the larger). The cloud's includes what this Mac uploaded, priced with
+    /// this table, and can also include other Macs' uploads, priced with
+    /// whatever table their version carries. The mark says this Mac's part
+    /// includes a borrowed rate; it cannot vouch for the other Macs' part.
     public func scanPriceIsApproximate(for provider: String, onDate: Date? = nil) -> Bool {
         guard let scan = costUsageScanResult else { return false }
         let key = onDate.map { DayKey.string(from: $0) }   // the scanner's Gregorian keys

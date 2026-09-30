@@ -698,7 +698,7 @@ public enum CostUsageScanner {
         /// The Claude side has had a family fallback since May 2026. The Codex
         /// side never had one, so an unrecognised OpenAI model read $0 with no
         /// safety net at all — in August 2026 that was `gpt-5.6-sol` and
-        /// `gpt-5.6-terra`, 940M tokens on the machine this was found on.
+        /// `gpt-5.6-terra`.
         ///
         /// The precedent for what to do was a hand-written row: when `gpt-5.5`
         /// appeared with no published billing, it was priced by mirroring
@@ -718,14 +718,15 @@ public enum CostUsageScanner {
             codexPriceResolution(raw)?.key
         }
 
-        /// The row `raw` is charged at: its own, then an alias's, then the
-        /// version fallback above (approximate).
+        /// The row `raw` is charged at: its own, then an alias's (a dated
+        /// spelling of an alias included), then the version fallback above
+        /// (approximate).
         static func codexPriceResolution(_ raw: String) -> PriceResolution? {
             let normalized = normalizeCodexModel(raw)
             if codexModels[normalized] != nil {
                 return PriceResolution(key: normalized, isApproximate: false)
             }
-            if let target = CodexPricingTable.aliases[normalized], codexModels[target] != nil {
+            if let target = CodexPricingTable.aliasTarget(normalized), codexModels[target] != nil {
                 return PriceResolution(key: target, isApproximate: false)
             }
             return codexFallbackKey(normalized).map { PriceResolution(key: $0, isApproximate: true) }

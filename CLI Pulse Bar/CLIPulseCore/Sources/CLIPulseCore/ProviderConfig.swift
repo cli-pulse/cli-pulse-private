@@ -1107,6 +1107,22 @@ public struct CostSummary: Sendable {
         if coverage.shouldDisclose { return .partial }
         return coverage.hasApproximatePrices ? .approximate : .exact
     }
+
+    /// v1.56: whether a figure for `provider` that sums this scan's days (the
+    /// per-provider 30-day rows, and the API-equivalent cost of a
+    /// subscription) carries "≈". Only a local scan can know; a server
+    /// estimate never does.
+    public func providerFigureIsApproximate(_ provider: String) -> Bool {
+        isPrecise && coverage.approximateProviders.contains(provider)
+    }
+
+    /// v1.56: whether a "Cost Today" figure shown outside this card carries
+    /// "≈". The Overview's top card shows the server's today total unless
+    /// `completeRefresh` replaced it with `todayTotal`; only that local
+    /// figure is known to include a borrowed rate, so `figure` must be it.
+    public func todayFigureIsApproximate(_ figure: Double) -> Bool {
+        todayCoverage.hasApproximatePrices && figure == todayTotal
+    }
 }
 
 /// The one compact token count on every surface: "245K", "154.1K", "16.8M",

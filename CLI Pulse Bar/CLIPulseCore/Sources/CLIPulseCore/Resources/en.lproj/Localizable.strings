@@ -698,10 +698,10 @@
 "cost.coverage_summary" = "Priced %1$d%% of tokens · %2$d model(s) had no rate";
 "cost.coverage_help" = "These models had no price entry, so their tokens counted as $0 toward the total above: %@";
 
-/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+/* v1.56 — approximate prices: a model with no price entry is priced at the rate of a related model (same Claude family, or for Codex the same -pro/-mini/-nano tier) of the same or an earlier version. The figures carry "≈" (a symbol, kept as is in every language). Do not reuse the words of the Partial or Estimated badge here. */
 "cost.approximate" = "Approximate";
-"cost.approximate_summary" = "≈ Partly estimated at approximate rates · %d model(s)";
-"cost.approximate_help" = "These models have no price of their own yet, so each is charged at the rate of the closest listed model. Figures marked ≈ include them: %@";
+"cost.approximate_summary" = "≈ %d model(s) priced at a related model's rate";
+"cost.approximate_help" = "These models have no price entry, so each is priced at the rate of a related model of the same or an earlier version. Figures marked ≈ include them: %@";
 "watch.unread_count" = "%d unread";
 "watch.snooze_15" = "15 minutes";
 "watch.snooze_30" = "30 minutes";

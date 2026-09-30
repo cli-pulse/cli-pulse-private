@@ -321,7 +321,13 @@ struct OverviewTab: View {
             // it gets the sentence-case words, not the badge's capsule text.
             MetricCard(
                 title: L10n.dashboard.costToday,
-                value: CostFormatter.format(dash.total_estimated_cost_today),
+                // v1.56: "≈" when this is the local scan's today total (see
+                // `completeRefresh`) and part of it was priced at a borrowed
+                // rate, so it matches the cost card's Today figure below.
+                value: CostFormatter.format(
+                    dash.total_estimated_cost_today,
+                    approximate: providerState.costSummary.todayFigureIsApproximate(dash.total_estimated_cost_today)
+                ),
                 subtitle: L10n.cost.statusLabel(dash.cost_status),
                 icon: "dollarsign.circle",
                 color: .green
@@ -458,8 +464,7 @@ struct OverviewTab: View {
                         // `approximateProviders` is empty for a server figure.
                         Text(CostFormatter.format(
                             item.cost,
-                            approximate: providerState.costSummary.isPrecise
-                                && providerState.costSummary.coverage.approximateProviders.contains(item.provider)
+                            approximate: providerState.costSummary.providerFigureIsApproximate(item.provider)
                         ))
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.green)
@@ -517,7 +522,13 @@ struct OverviewTab: View {
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                Text(CostFormatter.format(item.apiEquivCost) + " / " + CostFormatter.format(item.subscriptionCost))
+                                // v1.56: the API-equivalent half is the same
+                                // 30-day scan sum as the provider's row above,
+                                // so it carries the same "≈".
+                                Text(CostFormatter.format(
+                                    item.apiEquivCost,
+                                    approximate: providerState.costSummary.providerFigureIsApproximate(item.provider)
+                                ) + " / " + CostFormatter.format(item.subscriptionCost))
                                     .font(.system(size: 10, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
@@ -598,15 +609,15 @@ struct OverviewTab: View {
                             Spacer()
                         }
                         .help(L10n.cost.coverageHelp(
-                            coverage.unpricedModels.prefix(6).joined(separator: ", ")
+                            CostCoverage.tooltipList(coverage.unpricedModels)
                         ))
                     }
 
                     // v1.56 — the same honesty for a borrowed rate. A model
-                    // with no price of its own is charged at the closest listed
-                    // model's; that keeps it out of "$0", and until now nothing
-                    // said the rate was not its own. The figures above carry
-                    // "≈"; this line says why, and the help names the models.
+                    // with no price entry is priced at a related model's rate;
+                    // that keeps it out of "$0", and until now nothing said
+                    // the rate was not its own. The figures above carry "≈";
+                    // this line says why, and the help names the models.
                     if providerState.costSummary.coverage.hasApproximatePrices {
                         let coverage = providerState.costSummary.coverage
                         HStack(spacing: 4) {
@@ -616,7 +627,7 @@ struct OverviewTab: View {
                             Spacer()
                         }
                         .help(L10n.cost.approximateHelp(
-                            coverage.approximateModels.prefix(6).joined(separator: ", ")
+                            CostCoverage.tooltipList(coverage.approximateModels)
                         ))
                     }
 
@@ -664,6 +675,11 @@ struct OverviewTab: View {
                                 ))
                                     .font(.system(size: 9, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.green)
+                                    // "≈" makes a 5-digit figure 11 characters,
+                                    // which can be more than 55 pt holds at
+                                    // 9 pt; shrink it rather than wrap or cut it.
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.75)
                                     .frame(width: 55, alignment: .trailing)
                             }
                             GeometryReader { geo in

@@ -131,6 +131,27 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertNil(T.rates(forKey: "gpt-5.6", at: nil), "an alias is not a row")
     }
 
+    /// `rates(forKey:at:)` is only ever asked about a key that has a row
+    /// today, so a model's history is read only if the model has one.
+    func test_everyModelWithEarlierRatesHasARowToday() {
+        XCTAssertFalse(T.superseded.isEmpty)
+        for model in T.superseded.keys {
+            XCTAssertNotNil(T.current[model], "\(model) has earlier rates and no row today")
+        }
+    }
+
+    /// The lookup takes the first entry the moment is before, so a model's
+    /// earlier rates must run oldest first. Out of order, a date before the
+    /// older cut would be charged the newer of the two old rates.
+    func test_eachModelsEarlierRatesRunOldestFirst() {
+        for (model, history) in T.superseded {
+            XCTAssertFalse(history.isEmpty, model)
+            let untils = history.map(\.until)
+            XCTAssertEqual(untils, untils.sorted(), "\(model): earlier rates out of order")
+            XCTAssertEqual(Set(untils).count, untils.count, "\(model): two entries end at the same instant")
+        }
+    }
+
     // MARK: - Long context
 
     /// "Prompts with more than 272K input tokens are priced at 2x input and
@@ -174,6 +195,16 @@ final class CodexPricingTableTests: XCTestCase {
         }
     }
 
+    /// A dated spelling of an alias is the same alias. `normalizeCodexModel`
+    /// only drops a date when the rest names a row, and an alias is not one.
+    func test_aDatedSpellingOfAnAliasIsTheAlias() {
+        XCTAssertEqual(T.aliasTarget("gpt-5.6"), "gpt-5.6-sol")
+        XCTAssertEqual(T.aliasTarget("gpt-5.6-2026-08-01"), "gpt-5.6-sol")
+        XCTAssertEqual(T.aliasTarget("gpt-reserve-2026-09-15"), "gpt-5.6-luna")
+        XCTAssertNil(T.aliasTarget("gpt-5.6-sol"), "a row is not an alias")
+        XCTAssertNil(T.aliasTarget("gpt-5.6-20260801"), "only a -YYYY-MM-DD suffix is a date")
+    }
+
     #if os(macOS)
 
     private typealias P = CostUsageScanner.Pricing
@@ -199,6 +230,18 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertEqual(P.codexPriceResolution("gpt-reserve")?.key, "gpt-5.6-luna")
         XCTAssertEqual(P.normalizeCodexModel("gpt-5.6"), "gpt-5.6")
         XCTAssertEqual(P.normalizeCodexModel("gpt-reserve"), "gpt-reserve")
+    }
+
+    /// A dated alias is the alias's exact price. Without the date dropped,
+    /// `gpt-5.6-2026-08-01` borrowed Sol's rate through the version fallback
+    /// (the right number, marked "≈") and `gpt-reserve-…` had no rate at all.
+    func test_aDatedAliasIsAnExactPriceAndKeepsItsName() {
+        XCTAssertEqual(P.codexPriceResolution("gpt-5.6-2026-08-01"),
+                       P.PriceResolution(key: "gpt-5.6-sol", isApproximate: false))
+        XCTAssertEqual(P.codexPriceResolution("gpt-reserve-2026-09-15"),
+                       P.PriceResolution(key: "gpt-5.6-luna", isApproximate: false))
+        XCTAssertEqual(P.normalizeCodexModel("gpt-5.6-2026-08-01"), "gpt-5.6-2026-08-01",
+                       "the stored name stays the one Codex wrote")
     }
 
     /// A model with no row of its own borrows the closest one and says so.
@@ -247,7 +290,7 @@ final class CodexPricingTableTests: XCTestCase {
 
     // MARK: - Through the scanner
 
-    private var tmpRoot: URL!
+    private var tmpRoot: URL?
 
     override func tearDownWithError() throws {
         if let tmpRoot { try? FileManager.default.removeItem(at: tmpRoot) }
@@ -281,11 +324,12 @@ final class CodexPricingTableTests: XCTestCase {
     }
 
     private func makeRoots() throws -> (sessions: URL, cache: URL) {
-        tmpRoot = FileManager.default.temporaryDirectory
+        let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("codex-pricing-\(UUID().uuidString)", isDirectory: true)
-        let sessions = tmpRoot.appendingPathComponent("sessions", isDirectory: true)
+        tmpRoot = root
+        let sessions = root.appendingPathComponent("sessions", isDirectory: true)
         try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
-        return (sessions, tmpRoot.appendingPathComponent("cache", isDirectory: true))
+        return (sessions, root.appendingPathComponent("cache", isDirectory: true))
     }
 
     /// End to end: the same 1M Sol tokens two days either side of the cut cost
@@ -332,6 +376,41 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertEqual(coverage.approximateModels, ["gpt-5.7"])
         XCTAssertEqual(coverage.approximateProviders, ["Codex"])
         XCTAssertEqual(CostSummary(isPrecise: true, coverage: coverage).fidelity, .approximate)
+    }
+
+    /// The Claude half of the same path: a model with no row borrows the
+    /// newest rate in its family at or below its version, and the entry the
+    /// scanner rebuilds from its cache says so. Without this test,
+    /// `entriesFromClaudeCache` could stop passing the flag and every other
+    /// test would stay green.
+    func test_aScannedClaudeModelWithNoRowIsPricedApproximatelyAndSaysSo() throws {
+        let (sessions, cache) = try makeRoots()
+        let projects = sessions.deletingLastPathComponent().appendingPathComponent("projects", isDirectory: true)
+        let project = projects.appendingPathComponent("-Users-stub-fixture", isDirectory: true)
+        try FileManager.default.createDirectory(at: project, withIntermediateDirectories: true)
+        let ts = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-3 * 86_400))
+        func line(_ id: String, _ model: String) -> String {
+            #"{"type":"assistant","timestamp":"\#(ts)","requestId":"req-\#(id)","message":{"id":"msg-\#(id)","model":"\#(model)","usage":{"input_tokens":1000000,"cache_read_input_tokens":0,"cache_creation_input_tokens":0,"output_tokens":0}}}"#
+        }
+        try ([line("1", "claude-opus-6"), line("2", "claude-opus-5")].joined(separator: "\n") + "\n")
+            .write(to: project.appendingPathComponent("synthetic.jsonl"), atomically: true, encoding: .utf8)
+
+        var options = CostUsageScanner.Options(codexSessionsRoot: sessions, claudeProjectsRoots: [projects],
+                                               cacheRoot: cache, daysToScan: 30)
+        options.forceRescan = true
+        options.refreshMinIntervalSeconds = 0
+        let entries = CostUsageScanner.scan(options: options).entries.filter { $0.provider == "Claude" }
+
+        let unknown = try XCTUnwrap(entries.first { $0.model == "claude-opus-6" }, "keeps the name Claude Code wrote")
+        let known = try XCTUnwrap(entries.first { $0.model == "claude-opus-5" })
+        XCTAssertTrue(unknown.priceIsApproximate)
+        XCTAssertEqual(unknown.costUSD ?? -1, 5, accuracy: 1e-9, "Opus 5's $5 per 1M input")
+        XCTAssertFalse(known.priceIsApproximate)
+        XCTAssertEqual(known.costUSD ?? -1, 5, accuracy: 1e-9)
+
+        let coverage = CostCoverage.from(entries: entries)
+        XCTAssertEqual(coverage.approximateModels, ["claude-opus-6"])
+        XCTAssertEqual(coverage.approximateProviders, ["Claude"])
     }
 
     /// Codex day rows hold tokens only, `[input, cached, output]`, and are

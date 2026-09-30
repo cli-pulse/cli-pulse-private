@@ -25,7 +25,12 @@
 //     and model before pricing it, and a per-request tier cannot be applied to
 //     a sum; see that function.
 //   * Not ported: models.dev lookups, the custom-pricing overlay, API Fast
-//     (priority) multipliers, and the pricing fingerprint.
+//     (priority) multipliers, and the pricing fingerprint. On Fast: the
+//     rollout JSONL this app reads does not carry a request's service tier.
+//     Upstream finds Fast turns in the Codex CLI's trace database (the
+//     `feedback_log_body` column of its `logs` table) and charges them 2x
+//     (2.5x for gpt-5.5), so on a day with Fast turns upstream's cost is
+//     higher than this one.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -198,6 +203,10 @@ public enum CodexPricingTable {
         // GPT-5.6. Sol's rate is the one in force since 2026-08-21 (see
         // `superseded`); OpenAI's page calls it promotional "at least through
         // November 21, 2026". Terra and Luna since 2026-07-30.
+        // TODO(2026-11-21): re-check Sol on OpenAI's pricing page. If the
+        // promotion ends, this row becomes the new rate and today's $4 / $20
+        // moves to `superseded` with that date as `until`. The table cannot
+        // hold a change that has not happened yet.
         "gpt-5.6-sol": tiered(
             standard: (input: 4e-6, cached: 4e-7, write: 5e-6, output: 2e-5),
             longContext: (input: 8e-6, cached: 8e-7, write: 1e-5, output: 3e-5)
@@ -255,6 +264,12 @@ public enum CodexPricingTable {
 
     /// Earlier rates per model, oldest first. A usage moment before `until`
     /// is charged `rates`; from `until` on, the next entry or `current`.
+    ///
+    /// Two rules `rates(forKey:at:)` relies on, both tested: each list is in
+    /// ascending `until` order (the lookup takes the first entry the moment
+    /// is before), and every model here has a `current` row (a model
+    /// without one is never resolved to this key, so its history would
+    /// never be read).
     public static let superseded: [String: [DatedRates]] = [
         "gpt-5.6-sol": [DatedRates(until: solRepricing, rates: tiered(
             standard: (input: 5e-6, cached: 5e-7, write: 6.25e-6, output: 3e-5),
@@ -284,6 +299,20 @@ public enum CodexPricingTable {
         "gpt-daybreak-blue-latest": "gpt-5.6-sol",
         "gpt-daybreak-red-latest": "gpt-5.6-cyber",
     ]
+
+    /// The row an alias is billed as, for the alias itself or a dated
+    /// spelling of it (`gpt-5.6-2026-08-01`). nil when `name` is not an
+    /// alias.
+    ///
+    /// The date suffix is dropped here and not in `normalizeCodexModel`,
+    /// which only drops it when the rest names a row. Dropping it there
+    /// would change the cache key the model's days are stored under.
+    public static func aliasTarget(_ name: String) -> String? {
+        if let target = aliases[name] { return target }
+        guard let dateSuffix = name.range(of: #"-\d{4}-\d{2}-\d{2}$"#, options: .regularExpression)
+        else { return nil }
+        return aliases[String(name[..<dateSuffix.lowerBound])]
+    }
 
     // MARK: - Lookup
 

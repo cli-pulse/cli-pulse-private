@@ -1116,10 +1116,10 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "cost.coverage_summary" = "Se tarificó el %1$d%% de los tokens · %2$d modelo(s) sin tarifa";
 "cost.coverage_help" = "Estos modelos no tienen precio, así que sus tokens contaron como $0 en el total anterior: %@";
 
-/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+/* v1.56 — approximate prices: a model with no price entry is priced at the rate of a related model (same Claude family, or for Codex the same -pro/-mini/-nano tier) of the same or an earlier version. The figures carry "≈" (a symbol, kept as is in every language). Do not reuse the words of the Partial or Estimated badge here. */
 "cost.approximate" = "Aproximado";
-"cost.approximate_summary" = "≈ Estimado en parte con tarifas aproximadas · %d modelo(s)";
-"cost.approximate_help" = "Estos modelos aún no tienen precio propio, así que se tarifican con el del modelo más cercano de la lista. Las cifras marcadas con ≈ los incluyen: %@";
+"cost.approximate_summary" = "≈ %d modelo(s) con la tarifa de un modelo afín";
+"cost.approximate_help" = "Estos modelos no tienen precio registrado, así que su costo se calcula con la tarifa de un modelo afín de la misma versión o de una anterior. Las cifras marcadas con ≈ los incluyen: %@";
 
 /* v1.51 — cost-card badge third state */
 "cost.partial" = "Parcial";

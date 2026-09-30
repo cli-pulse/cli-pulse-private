@@ -125,6 +125,14 @@ public struct CostCoverage: Sendable, Equatable {
         basis == .localScan && approximateTokens > 0
     }
 
+    /// Model names for a tooltip: the first `limit`, then ", …" when some
+    /// were left out, so a cut list does not read as the whole of it. The
+    /// line the tooltip explains counts every model.
+    public static func tooltipList(_ models: [String], limit: Int = 6) -> String {
+        let shown = models.prefix(limit).joined(separator: ", ")
+        return models.count > limit ? shown + ", …" : shown
+    }
+
     // MARK: - Fidelity
 
     /// How much a cost figure deserves to be trusted, combining where it came

@@ -702,10 +702,10 @@
 "cost.coverage_summary" = "已計價 %1$d%% 的 token · %2$d 個模型沒有單價";
 "cost.coverage_help" = "這些模型沒有價格資料，其 token 在上方合計中以 $0 計入：%@";
 
-/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+/* v1.56 — approximate prices: a model with no price entry is priced at the rate of a related model (same Claude family, or for Codex the same -pro/-mini/-nano tier) of the same or an earlier version. The figures carry "≈" (a symbol, kept as is in every language). Do not reuse the words of the Partial or Estimated badge here. */
 "cost.approximate" = "近似";
-"cost.approximate_summary" = "≈ 部分依近似價預估 · %d 個模型";
-"cost.approximate_help" = "這些模型還沒有自己的價格，依最接近的已列出模型的單價計算。標有 ≈ 的金額包含它們：%@";
+"cost.approximate_summary" = "≈ %d 個模型依同系列模型的單價計算";
+"cost.approximate_help" = "這些模型沒有價格資料，因此依同系列中版本相同或較早的模型的單價計算。標有 ≈ 的金額含這些模型的費用：%@";
 "watch.unread_count" = "%d 則未讀";
 "watch.snooze_15" = "15 分鐘";
 "watch.snooze_30" = "30 分鐘";
