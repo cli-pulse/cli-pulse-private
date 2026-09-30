@@ -1,21 +1,21 @@
-Codex credits now read as credits, Hide personal information now covers account labels and Apple Watch, and the Overview shows only cards with something to show.
+Codex credits now show as a balance instead of a percentage, Hide personal information now covers account labels and Apple Watch, and the Overview no longer shows an empty Top Projects card or a Requests count stuck at 0.
 
 • Codex credits show as "N credits left" on the Providers tab and on Apple Watch, instead of a percentage.
 
-• Codex: when the weekly limit is used up, the 5-hour bar and the card read 0% left and show when the weekly limit resets, instead of the room left in the 5-hour window. Widgets and Apple Watch read it the same way. The 5-hour pace marker is now placed for 5 hours, not a week.
+• Codex: when the weekly limit is used up, the 5-hour bar and the card read 0% left and show when the weekly limit resets, instead of the room left in the 5-hour window. Widgets and Apple Watch read it the same way. The 5-hour pace marker is now based on 5 hours, not a week.
 
-• Hide personal information (Settings › Advanced) now also hides account labels that are email addresses, showing "Account 1", "Account 2" and so on, on the Providers tab and in Settings. Apple Watch now follows the iPhone's setting.
+• Hide personal information (Settings › Advanced) now also replaces account labels that are email addresses with "Account 1", "Account 2" and so on, on the Providers tab and in Settings. Apple Watch now follows the iPhone's setting.
 
-• The Overview no longer shows an empty Top Projects card, or a Requests count that always read 0. The remaining figures are laid out in rows of two and three.
+• The Overview no longer shows an empty Top Projects card or a Requests count that always read 0. On iPhone, the remaining figures are laid out in rows of two and three.
 
-• Cost Summary: the per-provider rows are labelled as 30-day amounts, and a provider that reports only quota no longer gets a zero-cost row.
+• Cost Summary: the per-provider rows are labeled as 30-day amounts, and a provider that reports only quota no longer gets a zero-cost row.
 
 • The Usage Dashboard's total is now "Est. Total Cost", with a line saying it is an estimate at API pay-as-you-go prices, not a bill.
 
-• Providers tab: the cards no longer run edge to edge, the cost badge sits next to today's cost instead of after the quota figure, and the tab no longer shows a count badge. A quota that is nearly used up reads "RUNNING LOW" instead of "LOW".
+• Providers tab: the cards no longer run edge to edge, the cost badge sits next to today's cost instead of after the quota figure, and the tab no longer shows a count badge. A nearly used-up quota now reads "RUNNING LOW" instead of "LOW".
 
-• In light mode, the activity heatmap's empty days are visible and its busiest days are the darkest.
+• In light mode, the activity heatmap now shows days with no usage, and its busiest days are the darkest.
 
 • Try Demo shows only the cards and figures a real account can have.
 
-• Remote Control: when no Mac is found, the message now says which Macs offer Remote Control, instead of pointing to a setting most Macs don't have.
+• Remote Control: when no Mac is found, the message now says which Macs support Remote Control, instead of pointing to a setting most Macs don't have.

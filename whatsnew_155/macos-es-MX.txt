@@ -1,29 +1,29 @@
-CLI Pulse ahora pregunta antes de leer registros de sesión de más de 30 días, y muestra los créditos de Codex como créditos.
+CLI Pulse ahora pregunta antes de leer registros de sesión de más de 30 días y muestra el saldo de créditos de Codex.
 
-• Los registros anteriores tienen ahora su propia pregunta. Cada actualización lee los registros de sesión de los últimos 30 días; para completar tu historial de uso, CLI Pulse también puede leer, una sola vez, hasta un año de registros anteriores. Las versiones anteriores lo hacían sin preguntar, y la pregunta de las versiones 1.50 a 1.54 solo mencionaba 30 días. En la primera pantalla, «Iniciar análisis local» incluye ahora esa lectura única y «Solo los últimos 30 días» la deja fuera. Si ya habías aceptado el análisis, o tienes la sesión iniciada y nunca se te preguntó, CLI Pulse te pregunta una vez por los registros anteriores. Cualquiera de las dos respuestas mantiene el análisis de 30 días, «Solo los últimos 30 días» no borra el historial ya creado en tu Mac, y la respuesta se cambia después en Ajustes › Privacidad › «Incluir el historial de uso anterior».
+• Los registros anteriores tienen ahora su propia pregunta. Cada actualización lee los registros de sesión de los últimos 30 días; para completar tu historial de uso, CLI Pulse también puede leer, una sola vez, hasta un año de registros anteriores. Las versiones previas lo hacían sin preguntar, y la pregunta de las versiones 1.50 a 1.54 solo mencionaba 30 días. En la primera pantalla, «Iniciar análisis local» incluye ahora esa lectura única y «Solo los últimos 30 días» la deja fuera. Si ya habías aceptado el análisis, o tienes la sesión iniciada y nunca se te preguntó, CLI Pulse te pregunta una vez por los registros anteriores. Cualquiera de las dos respuestas mantiene el análisis de 30 días, «Solo los últimos 30 días» no borra el historial ya creado en tu Mac, y, con la sesión iniciada, puedes cambiar la respuesta más adelante en Ajustes › Privacidad › «Incluir el historial de uso anterior».
 
-• El análisis habitual ya no abre registros de Claude Code escritos por última vez hace más de 30 días.
+• El análisis habitual ya no abre registros de Claude Code que no se han modificado en los últimos 30 días.
 
-• Si tu respuesta es «Ahora no» y tienes la sesión iniciada, Ajustes › Privacidad ofrece ahora «Volver a elegir…», que vuelve a mostrar la pregunta. Antes, la única forma de cambiarla era cerrar sesión.
+• Si elegiste «Ahora no» y tienes la sesión iniciada, Ajustes › Privacidad ofrece ahora «Volver a elegir…», que vuelve a mostrar la pregunta. Antes, había que cerrar sesión.
 
 • [TODO-155-HELPER: texto provisional, se sustituye al publicar. Qué hace la sincronización en segundo plano tras «Ahora no».]
 
-• Créditos de Codex: una cuenta con créditos muestra su saldo como «N créditos restantes», no «100% restante». Cuando este Mac ya vio créditos en una cuenta, un saldo agotado sigue en pantalla como «0 créditos restantes». Este Mac no añade la fila «Créditos» a las cuentas que nunca tuvieron créditos.
+• Créditos de Codex: una cuenta con créditos muestra ahora su saldo como «N créditos restantes». Si este Mac ya ha visto créditos en una cuenta, el saldo agotado sigue en pantalla como «0 créditos restantes». Este Mac no añade la fila «Créditos» a las cuentas que nunca tuvieron créditos.
 
-• Los periodos de Codex se nombran por su duración, así que un límite solo semanal ya no se llama «Periodo 5h». Cuando se agota el límite semanal, la barra de 5 horas, la tarjeta y la barra de menús muestran 0% restante con la hora del reinicio semanal, y el marcador de ritmo de 5 horas se calcula para 5 horas, no para una semana.
+• Los periodos de Codex se nombran por su duración, así que un límite solo semanal ya no se llama «Periodo 5h». Cuando se agota el límite semanal, la barra de 5 horas, la tarjeta y la barra de menús muestran 0% restante con la hora del reinicio semanal. El marcador de ritmo de 5 horas se calcula ahora para 5 horas, no para una semana.
 
-• «Ocultar información personal» (Ajustes › Avanzado) oculta ahora también las etiquetas de cuenta que son direcciones de correo y muestra «Cuenta 1», «Cuenta 2», etc., en las tarjetas, las filas de cuentas y Ajustes.
+• «Ocultar información personal» (Ajustes › Avanzado) oculta ahora también las etiquetas de cuenta que son direcciones de correo y las sustituye por «Cuenta 1», «Cuenta 2», etc., en las tarjetas, las filas de cuentas y Ajustes.
 
-• Gemini: una cuenta personal de Google, a la que Google retiró Gemini CLI, ahora indica «Ya no disponible para cuentas personales» y el motivo, en lugar de «Error de autenticación» y el consejo de volver a conectarla.
+• Gemini: Google ya no ofrece Gemini CLI para cuentas personales; esas cuentas ahora indican «Ya no disponible para cuentas personales» y el motivo, en lugar de «Error de autenticación» y el consejo de volver a conectarlas.
 
 • Las sesiones de Claude Code de subagentes o flujos de trabajo muestran en Sesiones el nombre de su proyecto, en lugar de «subagents» o un id de ejecución.
 
 • El total del Panel de uso ahora es «Costo total est.», con una línea que aclara que es una estimación a precios de pago por uso de la API, no una factura. Los textos de ayuda de tokens explican qué cuenta cada proveedor, y se quitó una comparación inexacta con otra app.
 
-• El Resumen ya no muestra una tarjeta «Proyectos principales» vacía ni, con la sesión iniciada, un recuento de «Solicitudes» que siempre marcaba 0. El Resumen de costos omite las filas de costo cero de los proveedores que solo informan la cuota, y «Probar demo» muestra solo lo que puede tener una cuenta real.
+• El Resumen ya no muestra una tarjeta «Proyectos principales» vacía ni, con la sesión iniciada, un recuento de «Solicitudes» que siempre marcaba 0. El Resumen de costos omite las filas de costo cero de los proveedores que solo informan de la cuota, y «Probar demo» muestra solo lo que puede tener una cuenta real.
 
 • La tarjeta Yield Score ya no te pide activar un ajuste que este Mac no muestra, se oculta en «Probar demo» y desaparece al cerrar sesión.
 
-• Correcciones: en modo claro, los días vacíos del mapa de calor de actividad se ven y los de más uso son los más oscuros; los recuentos se agrupan (15.531, no 15531); el globo de idioma del pie es pequeño y gris; el texto tenue se lee mejor.
+• Correcciones: en modo claro, los días sin uso del mapa de calor de actividad se ven y los de más uso son los más oscuros; los recuentos se agrupan por miles; el globo de idioma del pie del panel es más pequeño y gris; el texto tenue se lee mejor.
 
 • El indicador «Hambre» del Gato Pulse ahora se llama «Saciedad», porque el 100% significa que está lleno.

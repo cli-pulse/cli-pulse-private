@@ -1,20 +1,20 @@
-CLI Pulse now asks before reading session logs older than 30 days, and shows Codex credits as credits.
+CLI Pulse now asks before reading session logs older than 30 days, and shows your Codex credit balance.
 
-• Older logs are now their own question. Each refresh reads the last 30 days of session logs; to fill in your usage history, CLI Pulse can also read up to a year of older logs, once. Earlier versions did that without asking, and the question in versions 1.50 to 1.54 mentioned only 30 days. On the first screen, "Start local scan" now includes the one-time read and "Last 30 days only" leaves it out. If you had already said yes to the scan, or are signed in and were never asked, CLI Pulse asks once about older logs. Either answer keeps the 30-day scan, "Last 30 days only" deletes no history already built on your Mac, and Settings › Privacy › "Include older usage history" changes the answer later.
+• Older logs are now their own question. Each refresh reads the last 30 days of session logs; to fill in your usage history, CLI Pulse can also read up to a year of older logs, once. Earlier versions did that without asking, and the question in versions 1.50 to 1.54 mentioned only 30 days. On the first screen, "Start local scan" now includes the one-time read and "Last 30 days only" leaves it out. If you already said yes to the scan, or are signed in and were never asked, CLI Pulse asks once about older logs. Either answer keeps the 30-day scan, "Last 30 days only" deletes no history already built on your Mac, and while you are signed in, you can change your answer later in Settings › Privacy › "Include older usage history".
 
 • The regular scan no longer opens Claude Code logs last written more than 30 days ago.
 
-• If your answer is "Not now" and you are signed in, Settings › Privacy now offers "Choose again…", which brings the question back. Before, the only way back was to sign out.
+• If you chose "Not now" and are signed in, Settings › Privacy now offers "Choose again…", which brings the question back. Previously, the only way back was to sign out.
 
 • [TODO-155-HELPER: placeholder, replaced at release. What background sync does after "Not now".]
 
-• Codex credits: an account with credits shows its balance as "N credits left", not "100% left". Once this Mac has seen credits on an account, a spent balance stays on screen as "0 credits left". This Mac adds no Credits row for accounts that never had credits.
+• Codex credits: an account with credits now shows its balance as "N credits left". Once this Mac has seen credits on an account, a spent balance stays on screen as "0 credits left". Accounts that never had credits get no Credits row from this Mac.
 
-• Codex limits are named by their length, so a weekly-only limit is no longer called "5h Window". When the weekly limit is used up, the 5-hour bar, the card and the menu bar read 0% left with the weekly reset time, and the 5-hour pace marker is placed for 5 hours, not a week.
+• Codex limits are named by their length, so a weekly-only limit is no longer called "5h Window". When the weekly limit is used up, the 5-hour bar, the card and the menu bar read 0% left with the weekly reset time. The 5-hour pace marker is now based on 5 hours, not a week.
 
-• Hide personal information (Settings › Advanced) now also hides account labels that are email addresses, showing "Account 1", "Account 2" and so on, on cards, account rows and in Settings.
+• Hide personal information (Settings › Advanced) now also replaces account labels that are email addresses with "Account 1", "Account 2" and so on, on cards, account rows and in Settings.
 
-• Gemini: a personal Google account, whose Gemini CLI access Google has ended, now reads "Ended for personal accounts" with the reason, instead of "Authentication failed" and advice to reconnect.
+• Gemini: Google no longer offers Gemini CLI to personal accounts, and such an account now reads "Ended for personal accounts" with the reason, instead of "Authentication failed" and advice to reconnect.
 
 • Claude Code sessions run by subagents or workflows show their project's name in Sessions, instead of "subagents" or a run ID.
 
@@ -24,6 +24,6 @@ CLI Pulse now asks before reading session logs older than 30 days, and shows Cod
 
 • The Yield Score card no longer asks you to turn on a setting this Mac doesn't show, is hidden in Try Demo, and goes away when you sign out.
 
-• Fixes: in light mode the activity heatmap's empty days show and its busiest days are the darkest; counts are grouped (15,531, not 15531); the footer's language globe is small and gray; faint text is easier to read.
+• Fixes: in light mode the activity heatmap now shows days with no usage, and its busiest days are the darkest; counts are grouped (15,531, not 15531); the language globe in the footer is smaller and gray; faint text is easier to read.
 
 • Pulse Cat's "Hunger" meter is now "Fullness", since 100% means full, and quota badges read "RUNNING LOW" instead of "LOW".
