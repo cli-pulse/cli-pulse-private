@@ -26,11 +26,27 @@ from system_collector import (
 FAKE_BINARY = "/opt/fake/bin/claude"
 
 # The shape `claude /usage` prints in print mode (stdout not a terminal),
-# Claude Code 2.1.266. The numbers and reset times are made up.
+# Claude Code 2.1.266. The numbers, reset times and model name are made up.
+#
+# The lines after the two plan limits are part of the real output too, and
+# they are what makes the parser's "first bar with a name wins" rule load-bearing:
+# the per-model weekly line would otherwise overwrite the weekly bar, and the
+# usage-breakdown lines mention "sessions" next to a percentage, so they would
+# otherwise overwrite the 5-hour bar. Each of their percentages differs from
+# the plan limits so that the assertions below notice either mistake.
 PLAN_LIMITS_OUTPUT = """You are currently using your subscription to power your Claude Code usage
 
 Current session: 12% used · resets Oct 1 at 3am (UTC)
 Current week (all models): 40% used · resets Oct 6 at 9pm (UTC)
+Current week (Example Model): 25% used · resets Oct 6 at 9pm (UTC)
+
+What's contributing to your limits usage?
+Last 24h · 1200 requests · 14 sessions
+63% of your usage came from subagent-heavy sessions
+17% of your usage came from sessions longer than 2 hours
+
+Last 7d · 5400 requests · 71 sessions
+71% of your usage came from subagent-heavy sessions
 """
 
 # What `claude --bare /usage` printed instead, Claude Code 2.1.266. Bare mode
