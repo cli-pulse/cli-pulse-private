@@ -56,6 +56,12 @@ public struct HelperStatusLine: Equatable, Sendable {
                 ? HelperStatusLine(tone: .inactive, text: L10n.advanced.helperNotRunning, isError: false)
                 : HelperStatusLine(tone: .good, text: L10n.advanced.helperRunning, isError: false)
         }
+        if status.pauseCode == HelperIPC.PauseCode.localScanOff {
+            // The helper runs and does nothing, because the local-scan answer
+            // does not allow it. "Running" in green, under a hint that says
+            // it syncs, would read as syncing.
+            return HelperStatusLine(tone: .inactive, text: L10n.advanced.helperPausedLocalScanOff, isError: false)
+        }
         let tone: Tone
         switch status.state {
         case .running: tone = .good

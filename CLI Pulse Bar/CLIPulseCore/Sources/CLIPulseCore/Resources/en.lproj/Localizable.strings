@@ -725,6 +725,7 @@
 "advanced.sync_minutes_ago" = "Synced %dm ago";
 "advanced.helper_running" = "Running";
 "advanced.helper_not_running" = "Not running";
+"advanced.helper_paused_local_scan_off" = "Paused: local scan is off";
 "advanced.privacy_keys_title" = "Provider API keys & cookies";
 "advanced.privacy_keys_detail" = "Stored only in macOS Keychain · never uploaded";
 "advanced.data_title" = "Where Your Data Goes";

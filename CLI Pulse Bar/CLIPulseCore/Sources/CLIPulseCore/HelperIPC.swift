@@ -14,6 +14,13 @@ public enum HelperIPC {
     /// Posted by the helper when it starts up.
     public static let didStartNotificationName = Notification.Name("CLIPulseHelperDidStart")
 
+    /// Posted by the app when the local-scan answers it copies to the app group
+    /// change (`LocalScanConsentStore.mirror`). The helper runs a cycle on it,
+    /// so a "Not now" pauses it, and a yes resumes it, without waiting for its
+    /// timer. A hint like the others: the helper reads the answer itself.
+    public static let helperInputsDidChangeNotificationName =
+        Notification.Name("CLIPulseHelperInputsDidChange")
+
     // MARK: - Shared UserDefaults keys (suite: group.yyh.CLI-Pulse)
 
     public static let suiteName = "group.yyh.CLI-Pulse"
@@ -319,6 +326,14 @@ public enum HelperIPC {
         case error
     }
 
+    /// Why a running helper did nothing this cycle (`Status.pauseCode`). A
+    /// token, like `errorCode`, so the app words it in its own language.
+    public enum PauseCode {
+        /// The local-scan answer does not allow reading this Mac
+        /// (`LocalCollectionPolicy.HelperCycle.paused`).
+        public static let localScanOff = "local_scan_off"
+    }
+
     public struct Status: Codable, Sendable {
         public let state: State
         public let lastSync: Date?
@@ -335,6 +350,10 @@ public enum HelperIPC {
         /// it just replaced (`ThisMacPairing`). Nil when there was no pairing to
         /// sync as, and in a status from a helper that predates the field.
         public let deviceId: String?
+        /// Set while the helper runs but reads and sends nothing
+        /// (`PauseCode`). Optional for the same reason as `errorCode`: a status
+        /// from an older helper lacks it, and older apps ignore it.
+        public let pauseCode: String?
 
         public init(
             state: State,
@@ -342,7 +361,8 @@ public enum HelperIPC {
             error: String? = nil,
             errorCode: String? = nil,
             helperVersion: String? = nil,
-            deviceId: String? = nil
+            deviceId: String? = nil,
+            pauseCode: String? = nil
         ) {
             self.state = state
             self.lastSync = lastSync
@@ -350,6 +370,7 @@ public enum HelperIPC {
             self.errorCode = errorCode
             self.helperVersion = helperVersion
             self.deviceId = deviceId
+            self.pauseCode = pauseCode
         }
     }
 
@@ -388,6 +409,13 @@ public enum HelperIPC {
     public static func postStartNotification() {
         DistributedNotificationCenter.default().postNotificationName(
             didStartNotificationName, object: nil, userInfo: nil,
+            deliverImmediately: true
+        )
+    }
+
+    public static func postHelperInputsDidChange() {
+        DistributedNotificationCenter.default().postNotificationName(
+            helperInputsDidChangeNotificationName, object: nil, userInfo: nil,
             deliverImmediately: true
         )
     }

@@ -76,6 +76,54 @@ public enum LocalScanConsentStore {
         write(value, v2Key, to: defaults)
     }
 
+    // MARK: - The copy the LoginItem helper reads
+
+    /// Copies both answers into the app group (`HelperIPC.suiteName`), the
+    /// only defaults the LoginItem helper can read. The answers themselves
+    /// live in the app's `UserDefaults.standard`; until 1.55 they were saved
+    /// only there, and the helper collected on its timer whatever the user
+    /// had answered. `AppState` calls this whenever it saves an answer and
+    /// once at launch, so answers given before the copy existed reach the
+    /// helper too.
+    ///
+    /// Under the same keys, with one difference: every answer is written,
+    /// `.undecided` included. Here a missing key has to mean "the app has not
+    /// said", which the helper treats as no (`LocalCollectionPolicy.helperCycle`),
+    /// so it cannot also mean "no answer yet", which for a paired Mac is a yes.
+    ///
+    /// v2 first, so a reader that sees the new v1 answer also sees the v2 one
+    /// it was given with. Nothing the helper runs reads beyond the routine
+    /// window today, so it decides on v1 alone; v2 is copied so the app group
+    /// holds the whole answer rather than half of it.
+    ///
+    /// - Returns: whether the copy differed from what was there, so the
+    ///   helper is told only about a change (and not on every launch).
+    @discardableResult
+    public static func mirror(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent,
+        to helperDefaults: UserDefaults
+    ) -> Bool {
+        let changed = helperDefaults.string(forKey: v2Key) != consentV2.rawValue
+            || helperDefaults.string(forKey: key) != consent.rawValue
+        helperDefaults.set(consentV2.rawValue, forKey: v2Key)
+        helperDefaults.set(consent.rawValue, forKey: key)
+        return changed
+    }
+
+    /// The answers as the app last copied them (`mirror`), or nil when it has
+    /// not: a helper that starts before the app has run since the update that
+    /// added the copy. A value this build does not recognise is also nil, not
+    /// `.undecided`, since for a paired Mac `.undecided` would let it collect.
+    public static func loadMirror(
+        _ helperDefaults: UserDefaults
+    ) -> (consent: LocalScanConsent, consentV2: LocalScanConsent)? {
+        guard let raw = helperDefaults.string(forKey: key),
+              let consent = LocalScanConsent(rawValue: raw)
+        else { return nil }
+        return (consent, read(v2Key, from: helperDefaults))
+    }
+
     private static func read(_ key: String, from defaults: UserDefaults) -> LocalScanConsent {
         guard let raw = defaults.string(forKey: key) else { return .undecided }
         return LocalScanConsent(rawValue: raw) ?? .undecided
@@ -433,5 +481,44 @@ public enum LocalCollectionPolicy {
             isDemoMode: isDemoMode,
             consent: consent
         )
+    }
+
+    // MARK: - The LoginItem helper
+
+    /// What the helper's cycle may do.
+    public enum HelperCycle: Equatable, Sendable {
+        /// Scan, run the collectors, and sync if this Mac is paired.
+        case collect
+        /// The answer does not allow reading this Mac. Nothing is read and
+        /// nothing is sent, not even a heartbeat (see `HelperDaemon`).
+        case paused
+        /// The app has not copied the answer to the app group yet
+        /// (`LocalScanConsentStore.loadMirror` is nil). Treated like `.paused`:
+        /// the helper cannot tell a "Not now" from a yes, and the app copies
+        /// the answer as it starts, so the wait ends when the app next runs.
+        case awaitingAnswer
+    }
+
+    /// The helper's version of `allowsCollection`, asked at the start of every
+    /// cycle and again before anything it collected is written or uploaded.
+    ///
+    /// The helper has no sign-in of its own. What stands in for one is a
+    /// pairing (`HelperConfig`): without it the helper only collects for the
+    /// app on this Mac, which is local mode.
+    ///
+    /// `isPaired` is evaluated only for `.undecided`, the one answer the
+    /// account decides (`allowsCollection`). In the helper it reads the
+    /// pairing secret from the Keychain, and a "Not now" should not cost even
+    /// that. `LocalScanConsentHelperTests` checks the result against
+    /// `allowsCollection` for every answer, paired and not.
+    public static func helperCycle(
+        mirroredConsent: LocalScanConsent?,
+        isPaired: @autoclosure () -> Bool
+    ) -> HelperCycle {
+        guard let consent = mirroredConsent else { return .awaitingAnswer }
+        let isAuthenticated = consent == .undecided ? isPaired() : false
+        return allowsCollection(isAuthenticated: isAuthenticated, consent: consent)
+            ? .collect
+            : .paused
     }
 }

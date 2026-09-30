@@ -144,6 +144,7 @@ public final class AppState: ObservableObject {
         didSet {
             guard localScanConsent != oldValue else { return }
             LocalScanConsentStore.save(localScanConsent)
+            mirrorLocalScanConsentForHelper()
         }
     }
     /// v1.55: the answer to disclosure v2 — may CLI Pulse read session logs
@@ -155,7 +156,29 @@ public final class AppState: ObservableObject {
         didSet {
             guard localScanConsentV2 != oldValue else { return }
             LocalScanConsentStore.saveV2(localScanConsentV2)
+            mirrorLocalScanConsentForHelper()
         }
+    }
+
+    /// Copies both answers to the app group for the LoginItem helper, which
+    /// cannot read this app's defaults (`LocalScanConsentStore.mirror`), and
+    /// when that changed what the helper would read, tells it so that it acts
+    /// on the answer now rather than at its next cycle, up to two minutes
+    /// later. macOS only: nothing else has a helper.
+    func mirrorLocalScanConsentForHelper() {
+        #if os(macOS)
+        guard let helperDefaults else { return }
+        let changed = LocalScanConsentStore.mirror(
+            consent: localScanConsent,
+            consentV2: localScanConsentV2,
+            to: helperDefaults
+        )
+        // A test that injects `helperDefaults` must not reach a helper
+        // running on the same Mac: the notification is system-wide.
+        if changed, runtimeEnvironment.capabilities.allowsHelperRegistration {
+            HelperIPC.postHelperInputsDidChange()
+        }
+        #endif
     }
 
     /// v1.55: set by "Choose again…" in Settings › Privacy, for a signed-in Mac
@@ -977,7 +1000,10 @@ public final class AppState: ObservableObject {
     let authManager: AuthManager
     let dataRefreshManager: DataRefreshManager
     private let providerConfigDefaults: UserDefaults
-    private let providerConfigHelperDefaults: UserDefaults?
+    /// The app group the LoginItem helper reads (`HelperIPC.suiteName`): the
+    /// provider configs and the local-scan answers are copied here. Nil where
+    /// the runtime registers no helper (see `init(runtimeEnvironment:)`).
+    private let helperDefaults: UserDefaults?
     private let providerSecretStore: any ProviderSecretStoring
     private let providerAccountDeletionOutbox:
         ProviderAccountDeletionOutbox
@@ -1057,10 +1083,16 @@ public final class AppState: ObservableObject {
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
         self.providerConfigDefaults = defaults
-        self.providerConfigHelperDefaults = helperDefaults
+        self.helperDefaults = helperDefaults
         self.providerSecretStore = providerSecretStore
         self.providerAccountDeletionOutbox =
             injectedOutbox ?? .shared
+        // Answers given before 1.55 were never copied for the helper, and
+        // until one is, the helper collects nothing
+        // (`LocalCollectionPolicy.HelperCycle.awaitingAnswer`). Before the
+        // launch-setup guard: it is one app-group write, and it is the state
+        // the helper reads, not a launch effect.
+        mirrorLocalScanConsentForHelper()
         guard performLaunchSetup else { return }
 
         subscriptionManager.apiClient = api
@@ -1584,7 +1616,7 @@ public final class AppState: ObservableObject {
         let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
-                ? providerConfigHelperDefaults
+                ? helperDefaults
                 : nil
         )
         return resolvedStore.save(providerConfigs)
@@ -2139,7 +2171,7 @@ public final class AppState: ObservableObject {
         return ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
-                ? providerConfigHelperDefaults
+                ? helperDefaults
                 : nil
         ).save(providerConfigs)
     }

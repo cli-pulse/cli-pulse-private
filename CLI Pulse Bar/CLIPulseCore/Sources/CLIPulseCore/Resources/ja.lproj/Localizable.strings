@@ -729,6 +729,7 @@
 "advanced.sync_minutes_ago" = "%d 分前に同期";
 "advanced.helper_running" = "実行中";
 "advanced.helper_not_running" = "停止中";
+"advanced.helper_paused_local_scan_off" = "一時停止中：ローカルスキャンはオフです";
 "advanced.privacy_keys_title" = "プロバイダー API キーと Cookie";
 "advanced.privacy_keys_detail" = "macOS のキーチェーンにのみ保存され、アップロードされません";
 "advanced.data_title" = "データの行き先";

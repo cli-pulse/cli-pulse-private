@@ -101,6 +101,15 @@ final class HelperDaemon {
         let wsnc = NSWorkspace.shared.notificationCenter
         wsnc.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         wsnc.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+
+        // The app changed the local-scan answer: act on it now, not at the
+        // next tick up to two minutes later.
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(helperInputsDidChange),
+            name: HelperIPC.helperInputsDidChangeNotificationName,
+            object: nil
+        )
     }
 
     func stop() {
@@ -113,6 +122,7 @@ final class HelperDaemon {
         timer = nil
         isRunning = false
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        DistributedNotificationCenter.default().removeObserver(self)
         logger.info("Daemon stopped")
     }
 
@@ -133,6 +143,65 @@ final class HelperDaemon {
         Task { [weak self] in await self?.collectAndSync() }
     }
 
+    @objc private func helperInputsDidChange() {
+        logger.info("Local-scan answer changed — running a cycle now")
+        Task { [weak self] in await self?.collectAndSync() }
+    }
+
+    // MARK: - The local-scan answer
+
+    /// May this cycle read the Mac? Asked from the answer the app copies to
+    /// the app group (`LocalScanConsentStore.mirror`), read afresh each time
+    /// because the app changes it while this process runs. See
+    /// `LocalCollectionPolicy.helperCycle`: this process has no sign-in, and a
+    /// pairing stands in for one.
+    private func localScanCycle(
+        isPaired: @autoclosure () -> Bool
+    ) -> LocalCollectionPolicy.HelperCycle {
+        let mirrored = UserDefaults(suiteName: HelperIPC.suiteName)
+            .flatMap(LocalScanConsentStore.loadMirror)
+        return LocalCollectionPolicy.helperCycle(
+            mirroredConsent: mirrored?.consent,
+            isPaired: isPaired()
+        )
+    }
+
+    /// A cycle the answer does not allow. Nothing is read — no scan, no
+    /// collector, no Keychain, no provider — and nothing is sent: not the
+    /// sync and not the heartbeat either.
+    ///
+    /// Why not even a heartbeat: `helper_heartbeat` writes this cycle's
+    /// session count to the device row, and a zero the helper did not look
+    /// for would overwrite the last real one; `helper_sync` with no sessions
+    /// marks this Mac's running sessions Ended. Left alone, the device row
+    /// keeps what it last had and ages, which is how the other devices show
+    /// a Mac that is not reporting, and that is what this Mac is doing.
+    ///
+    /// The status says why, so Settings does not show a helper that does
+    /// nothing as running in green (`HelperStatusLine`).
+    private func skipCycle(_ cycle: LocalCollectionPolicy.HelperCycle) {
+        // An outcome from before the pause is not a second sighting of one
+        // after it (see `pendingCollectorStatus`).
+        pendingCollectorStatus = nil
+        switch cycle {
+        case .collect:
+            return
+        case .paused:
+            logger.info("Local scan not allowed — cycle skipped")
+            HelperIPC.writeStatus(HelperIPC.Status(
+                state: .running, helperVersion: "1.0.0",
+                pauseCode: HelperIPC.PauseCode.localScanOff
+            ))
+        case .awaitingAnswer:
+            // A helper that started before the app has run since this
+            // version was installed: the app copies the answer as it starts.
+            logger.info("No local-scan answer from the app yet — cycle skipped")
+            HelperIPC.writeStatus(HelperIPC.Status(
+                state: .running, helperVersion: "1.0.0"
+            ))
+        }
+    }
+
     // MARK: - Collection + Sync (fully async)
 
     private func collectAndSync() async {
@@ -144,6 +213,15 @@ final class HelperDaemon {
         defer { Task { await syncGuard.finish() } }
 
         logger.info("Starting collection cycle")
+
+        // Step 0: the local-scan answer, before anything is read. For
+        // `.undecided` the pairing decides, and reading it touches the
+        // Keychain, so it is read only then.
+        let cycle = localScanCycle(isPaired: HelperConfig.load() != nil)
+        guard cycle == .collect else {
+            skipCycle(cycle)
+            return
+        }
 
         // Step 1: Device metrics
         let device = DeviceMetrics.collect()
@@ -173,11 +251,21 @@ final class HelperDaemon {
         let providerCollection = await collectProviderQuotas()
         let collectorStatus = providerCollection.collectorStatus
 
+        // Asked again: the collectors take a while, and a "Not now" given
+        // meanwhile must stop this cycle too. What it read is dropped, not
+        // written for the app or sent.
+        let pairing = HelperConfig.load()
+        let cycleAfterCollecting = localScanCycle(isPaired: pairing != nil)
+        guard cycleAfterCollecting == .collect else {
+            skipCycle(cycleAfterCollecting)
+            return
+        }
+
         // Step 4.5: Write collector results to app group for main app
         writeCollectorResultsToAppGroup(providerCollection)
         HelperIPC.postSyncNotification()
 
-        guard let config = HelperConfig.load() else {
+        guard let config = pairing else {
             logger.info("No helper config found — collected local provider data only")
             // No `lastSync`: nothing was synced, and Settings › Advanced reads
             // any `lastSync` as "Synced just now". It now says "Running".

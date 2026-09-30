@@ -2051,6 +2051,7 @@ public enum L10n {
         public static func syncMinutesAgo(_ minutes: Int) -> String { tr("advanced.sync_minutes_ago", minutes) }
         public static var helperRunning: String { tr("advanced.helper_running") }
         public static var helperNotRunning: String { tr("advanced.helper_not_running") }
+        public static var helperPausedLocalScanOff: String { tr("advanced.helper_paused_local_scan_off") }
         /// A helper sync error whose stored code this build does not recognise.
         public static var helperSyncFailed: String { tr("advanced.helper_sync_failed") }
         public static var privacyKeysTitle: String { tr("advanced.privacy_keys_title") }
