@@ -1395,7 +1395,7 @@
 "local_scan_consent.settings_declined_detail" = "「今はしない」を選びました。サインインしていても、この選択は変わりません。";
 "local_scan_consent.choose_again" = "選び直す…";
 "settings.local_only_mode" = "プライバシー強化モード";
-"settings.local_only_mode_hint" = "CLI Pulse が Claude Code のキーチェーン項目を自動で読み取ることはなく、匿名の統計情報も送信しません。ホームフォルダ内のログファイルからの使用量と、アカウントへの同期はそのまま使えます。";
+"settings.local_only_mode_hint" = "CLI Pulse は、他のアプリがキーチェーンやブラウザに保管している秘密情報を自動で読み取りません。Claude Code や Zed のキーチェーン項目も、ブラウザの Cookie も読み取りません（Cookie を自動で読み取るよう設定したプロバイダーでも同じです）。匿名の統計情報も送信しません。ホームフォルダ内で AI CLI が保管しているサインイン用ファイル（残量の取得用）とログファイル（使用量の取得用）は引き続き読み取ります。アカウントへの同期はそのまま使えます。";
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
 "settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
 "settings.skip_claude_keychain_hint" = "他のアプリが所有する Claude Code の OAuth 認証情報を CLI Pulse が読み取らないようにします。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";

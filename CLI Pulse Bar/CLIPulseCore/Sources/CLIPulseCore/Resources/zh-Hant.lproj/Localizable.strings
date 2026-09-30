@@ -1381,7 +1381,7 @@
 "local_scan_consent.settings_declined_detail" = "你選擇了「暫時不要」。即使已登入，這個選擇也不會改變。";
 "local_scan_consent.choose_again" = "重新選擇…";
 "settings.local_only_mode" = "嚴格隱私模式";
-"settings.local_only_mode_hint" = "CLI Pulse 不會自行讀取 Claude Code 的鑰匙圈項目，也不傳送匿名統計。個人專屬資料夾中日誌檔的用量，以及同步到你的帳號，都不受影響。";
+"settings.local_only_mode_hint" = "CLI Pulse 不會自行讀取其他 App 存放在鑰匙圈或瀏覽器中的機密資訊：不讀取 Claude Code 或 Zed 的鑰匙圈項目，也不讀取瀏覽器 Cookie，即使某個服務商設為自動讀取 Cookie 也一樣。它也不傳送匿名統計。AI CLI 存放在你個人專屬資料夾中的登入檔案（用於配額）與日誌檔（用於用量）仍會讀取；同步到你的帳號不受影響。";
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
 "settings.skip_claude_keychain_forced" = "已由嚴格隱私模式強制開啟。";
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";

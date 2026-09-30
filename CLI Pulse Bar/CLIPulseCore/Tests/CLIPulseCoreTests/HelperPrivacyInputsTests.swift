@@ -324,6 +324,29 @@ final class HelperPrivacyInputsTests: XCTestCase {
         XCTAssertEqual(noSuite.claudeKeychainAccess, .skippedAwaitingApp)
     }
 
+    func testStrictPrivacyModeCoversOtherAppsSecretsInTheAppAndTheHelper() {
+        // In the app: Strict privacy mode, and only it.
+        let app = PrivacySettings(defaults: makeDefaults("app"))
+        XCTAssertFalse(app.skipsOtherAppsSecretsOnItsOwn, "negative control: both switches off")
+        app.skipClaudeKeychain = true
+        XCTAssertFalse(app.skipsOtherAppsSecretsOnItsOwn, "the Claude switch names Claude Code's item only")
+        app.localOnlyMode = true
+        XCTAssertTrue(app.skipsOtherAppsSecretsOnItsOwn)
+
+        // In the helper: the app's copy, read afresh; skip until there is one.
+        let group = makeDefaults("group")
+        let helper = PrivacySettings(defaults: makeDefaults("helper"))
+        helper.followAppCopy(in: group)
+        XCTAssertTrue(helper.skipsOtherAppsSecretsOnItsOwn)
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: false), to: group)
+        XCTAssertFalse(helper.skipsOtherAppsSecretsOnItsOwn)
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: true), to: group)
+        XCTAssertTrue(helper.skipsOtherAppsSecretsOnItsOwn)
+        let noSuite = PrivacySettings(defaults: makeDefaults("helper"))
+        noSuite.followAppCopy(in: nil)
+        XCTAssertTrue(noSuite.skipsOtherAppsSecretsOnItsOwn)
+    }
+
     func testTheAppDecidesFromItsOwnSwitches() {
         let settings = PrivacySettings(defaults: makeDefaults("app"))
         XCTAssertEqual(settings.claudeKeychainAccess, .read)

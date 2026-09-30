@@ -1381,7 +1381,7 @@
 "local_scan_consent.settings_declined_detail" = "你选择了「暂时不要」。即使已登录，这个选择也不会改变。";
 "local_scan_consent.choose_again" = "重新选择…";
 "settings.local_only_mode" = "严格隐私模式";
-"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取 Claude Code 的钥匙串项目，也不发送匿名统计。个人文件夹里日志文件的用量，以及同步到你的账户，都不受影响。";
+"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取其他应用保存在钥匙串或浏览器中的机密信息：既不读取 Claude Code 或 Zed 的钥匙串项目，也不读取浏览器 Cookie，即使某个服务商设为自动读取 Cookie 也一样。它也不发送匿名统计。AI CLI 保存在你个人文件夹里的登录文件（用于配额）和日志文件（用于用量）仍会读取；同步到你的账户不受影响。";
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";
 "settings.skip_claude_keychain_forced" = "已由严格隐私模式强制开启。";
 "settings.skip_claude_keychain_hint" = "阻止 CLI Pulse 读取其他应用持有的 Claude Code OAuth 凭据。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";

@@ -1394,7 +1394,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.settings_declined_detail" = "You chose “Not now”. Being signed in does not change that.";
 "local_scan_consent.choose_again" = "Choose again…";
 "settings.local_only_mode" = "Strict privacy mode";
-"settings.local_only_mode_hint" = "CLI Pulse won't read Claude Code's keychain item on its own, and sends no anonymous statistics. Usage from log files in your home folder, and syncing to your account, are not affected.";
+"settings.local_only_mode_hint" = "CLI Pulse won't read secrets other apps keep in your keychain or browsers on its own: not Claude Code's or Zed's keychain items, and not browser cookies, even for a provider set to read them automatically. It also sends no anonymous statistics. Still read: the sign-in files AI CLIs keep in your home folder, for quota, and the log files there, for usage. Syncing to your account is not affected.";
 "settings.skip_claude_keychain" = "Skip Claude Code keychain access";
 "settings.skip_claude_keychain_forced" = "Forced on by Strict privacy mode.";
 "settings.skip_claude_keychain_hint" = "Stops CLI Pulse from reading the Claude Code OAuth credentials owned by other apps. Useful if you've hit a macOS keychain dialog that won't accept your login password.";

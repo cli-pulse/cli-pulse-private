@@ -129,5 +129,55 @@ final class ZedCollectorTests: XCTestCase {
         XCTAssertFalse(collector.isAvailable(config: ProviderConfig(kind: .zed)))
     }
     #endif
+
+    // MARK: - Strict privacy mode (v1.55)
+
+    /// Zed's keychain item is another app's secret; Strict privacy mode means
+    /// CLI Pulse reads none on its own. So the item is not even looked for.
+    func test_strictPrivacyMode_neverLooksForZedsItem() {
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: true, coolingDown: false, credentialsPresent: {
+            XCTFail("looked for Zed's keychain item under Strict privacy mode")
+            return true
+        }))
+        // Negative control: with the switch off, the presence check decides.
+        var looked = 0
+        XCTAssertTrue(ZedCollector.available(strictPrivacyMode: false, coolingDown: false, credentialsPresent: {
+            looked += 1
+            return true
+        }))
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: false, coolingDown: false, credentialsPresent: {
+            looked += 1
+            return false
+        }))
+        XCTAssertEqual(looked, 2)
+        // The cooldown still holds on its own.
+        XCTAssertFalse(ZedCollector.available(strictPrivacyMode: false, coolingDown: true, credentialsPresent: {
+            XCTFail("looked for Zed's keychain item while cooling down")
+            return true
+        }))
+    }
+
+    func test_isAvailable_isFalseUnderStrictPrivacyMode() {
+        // Through the seam `isAvailable` asks (PrivacySettings in production).
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        XCTAssertTrue(ZedKeychainGate.strictPrivacyModeSkips())
+        XCTAssertFalse(collector.isAvailable(config: ProviderConfig(kind: .zed)))
+    }
+
+    #if DEVID_BUILD
+    func test_collect_refusesUnderStrictPrivacyMode() async {
+        let saved = ZedKeychainGate.strictPrivacyModeSkips
+        defer { ZedKeychainGate.strictPrivacyModeSkips = saved }
+        ZedKeychainGate.strictPrivacyModeSkips = { true }
+        do {
+            _ = try await collector.collect(config: ProviderConfig(kind: .zed))
+            XCTFail("collect ran under Strict privacy mode")
+        } catch {
+            // Refused before any keychain read.
+        }
+    }
+    #endif
 }
 #endif

@@ -1335,7 +1335,7 @@
 "local_scan_consent.settings_declined_detail" = "'지금은 안 함'을 골랐습니다. 로그인되어 있어도 이 선택은 바뀌지 않습니다.";
 "local_scan_consent.choose_again" = "다시 선택…";
 "settings.local_only_mode" = "엄격한 개인정보 보호 모드";
-"settings.local_only_mode_hint" = "CLI Pulse가 Claude Code의 키체인 항목을 스스로 읽지 않으며 익명 통계도 보내지 않습니다. 홈 폴더의 로그 파일에서 읽는 사용량과 계정 동기화에는 영향이 없습니다.";
+"settings.local_only_mode_hint" = "CLI Pulse는 다른 앱이 키체인이나 브라우저에 보관한 비밀 정보를 스스로 읽지 않습니다. Claude Code나 Zed의 키체인 항목도, 브라우저 쿠키도 읽지 않으며, 쿠키를 자동으로 읽도록 설정한 공급자도 마찬가지입니다. 익명 통계도 보내지 않습니다. 홈 폴더에 AI CLI가 보관하는 로그인 파일(할당량용)과 로그 파일(사용량용)은 계속 읽으며, 계정 동기화에는 영향이 없습니다.";
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
 "settings.skip_claude_keychain_hint" = "CLI Pulse가 다른 앱이 소유한 Claude Code OAuth 자격 증명을 읽지 않도록 합니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";

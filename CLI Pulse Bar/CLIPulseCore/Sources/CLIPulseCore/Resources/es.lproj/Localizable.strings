@@ -1349,7 +1349,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.settings_declined_detail" = "Elegiste «Ahora no». Tener la sesión iniciada no cambia esa respuesta.";
 "local_scan_consent.choose_again" = "Volver a elegir…";
 "settings.local_only_mode" = "Modo de privacidad estricta";
-"settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta el elemento de Claude Code en el Llavero y no envía estadísticas anónimas. El uso que se lee de los registros de tu carpeta de inicio y la sincronización con tu cuenta siguen igual.";
+"settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta los secretos que otras apps guardan en tu Llavero o en tus navegadores: ni los elementos del Llavero de Claude Code o de Zed, ni las cookies del navegador, aunque un proveedor esté configurado para leerlas automáticamente. Tampoco envía estadísticas anónimas. Sigue leyendo los archivos de inicio de sesión que las CLI de IA guardan en tu carpeta de inicio, para la cuota, y los registros de esa carpeta, para el uso. La sincronización con tu cuenta sigue igual.";
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
 "settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";

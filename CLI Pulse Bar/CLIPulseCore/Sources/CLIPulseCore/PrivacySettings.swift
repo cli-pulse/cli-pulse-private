@@ -12,10 +12,14 @@ import Combine
 ///   Provider Config "Connect Claude Code" button are intentionally
 ///   NOT guarded — explicit user action overrides this preference.
 ///
-/// - `localOnlyMode` — master toggle. When on, forces
-///   `skipClaudeKeychain` to true and reserves room for future
-///   external-API enrichment opt-outs. UI disables the per-toggle
-///   when master is active.
+/// - `localOnlyMode` — master toggle ("Strict privacy mode"). When on,
+///   forces `skipClaudeKeychain` to true, and (v1.55) CLI Pulse reads no
+///   other app's secrets on its own: not Zed's keychain item, and not a
+///   browser's cookies or its "Safe Storage" keychain item, even for a
+///   provider set to read cookies automatically
+///   (`skipsOtherAppsSecretsOnItsOwn`). The Companion CLI follows it for
+///   its claude.ai browser-cookie fallback (`helper/privacy_switches.py`).
+///   UI disables the per-toggle when master is active.
 ///
 /// Defaults: both OFF (preserves pre-1.19.1 behaviour for users who
 /// already accepted the keychain prompt + populated the cache). This
@@ -201,5 +205,29 @@ public final class PrivacySettings: ObservableObject {
     /// the raw read.
     public var skipsClaudeKeychainOnItsOwn: Bool {
         claudeKeychainAccess.skips
+    }
+
+    /// Strict privacy mode for the other apps' secrets that the Claude
+    /// keychain switches do not name (v1.55): Zed's keychain item
+    /// (`ZedCollector`, direct-download build), and the browser-cookie import
+    /// for a provider set to read cookies automatically (`CookieResolver`),
+    /// which opens a browser's cookie store and reads its "Safe Storage"
+    /// keychain item. True means skip them. Strict privacy mode means CLI
+    /// Pulse reads no other app's secrets on its own, and the Settings hint
+    /// says so.
+    ///
+    /// In the app: `localOnlyMode`. In the LoginItem helper (`followAppCopy`):
+    /// the app's copy of it, read afresh, and skip until the app has written
+    /// one, as `claudeKeychainAccess` does.
+    ///
+    /// Not covered, and the hint says so too: the sign-in files AI CLIs keep
+    /// in the home folder (`~/.codex/auth.json`, `~/.claude/.credentials.json`,
+    /// `~/.gemini/oauth_creds.json`), read for their quota.
+    public var skipsOtherAppsSecretsOnItsOwn: Bool {
+        let (follows, source) = appCopyLock.withLock { (followsAppCopy, appCopy) }
+        if follows {
+            return source.flatMap(HelperPrivacyInputs.load)?.localOnlyMode ?? true
+        }
+        return localOnlyMode
     }
 }

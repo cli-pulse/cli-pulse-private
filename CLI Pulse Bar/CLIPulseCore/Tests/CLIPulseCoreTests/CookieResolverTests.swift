@@ -81,6 +81,83 @@ final class CookieResolverTests: XCTestCase {
         if case .unavailable = result {} else { XCTFail("expected .unavailable") }
     }
 
+    // MARK: - Strict privacy mode (v1.55)
+
+    /// A browser's cookies, and the "Safe Storage" keychain item that
+    /// decrypts them, are another app's secrets: under Strict privacy mode the
+    /// importer is not run, even for a provider set to read them automatically.
+    func test_strict_privacy_mode_skips_the_browser_import() async {
+        let importer = StubImporter(header: "WorkosCursorSessionToken=xyz")
+        let result = await CookieResolver.resolve(
+            config: config(cookieSource: .automatic),
+            envVarNames: [],
+            domains: ["cursor.com"],
+            knownSessionCookieNames: [],
+            importer: importer,
+            browserImportAllowed: false)
+        if case .unavailable = result {} else { XCTFail("expected .unavailable under Strict privacy mode") }
+        let calls = await importer.wasCalled()
+        XCTAssertEqual(calls, 0, "Strict privacy mode must not open a browser's cookie store")
+    }
+
+    func test_strict_privacy_mode_keeps_the_cookie_the_user_entered() async {
+        let importer = StubImporter(header: "auto=1")
+        let result = await CookieResolver.resolve(
+            config: config(cookieSource: .automatic, manual: "manual=abc"),
+            envVarNames: [],
+            domains: ["cursor.com"],
+            knownSessionCookieNames: [],
+            importer: importer,
+            browserImportAllowed: false)
+        XCTAssertEqual(result.headerValue, "manual=abc")
+    }
+
+    func test_the_privacy_overload_follows_the_switch_in_the_app_and_the_helper() async {
+        let name = "CookieResolverTests-\(UUID().uuidString)"
+        let groupName = name + "-group"
+        defer {
+            UserDefaults(suiteName: name)?.removePersistentDomain(forName: name)
+            UserDefaults(suiteName: groupName)?.removePersistentDomain(forName: groupName)
+        }
+        let app = PrivacySettings(defaults: UserDefaults(suiteName: name)!)
+
+        func imports(_ privacy: PrivacySettings) async -> Int {
+            let importer = StubImporter(header: "WorkosCursorSessionToken=xyz")
+            _ = await CookieResolver.resolve(
+                config: config(cookieSource: .automatic),
+                envVarNames: [],
+                domains: ["cursor.com"],
+                importer: importer,
+                privacy: privacy)
+            return await importer.wasCalled()
+        }
+
+        // Negative control: Strict privacy mode off, the import runs.
+        let offCalls = await imports(app)
+        XCTAssertEqual(offCalls, 1)
+        app.localOnlyMode = true
+        let onCalls = await imports(app)
+        XCTAssertEqual(onCalls, 0)
+
+        // The LoginItem helper: the app's copy decides, and no copy means skip.
+        let group = UserDefaults(suiteName: groupName)!
+        let helper = PrivacySettings(defaults: UserDefaults(suiteName: name + "-helper")!)
+        defer { UserDefaults(suiteName: name + "-helper")?.removePersistentDomain(forName: name + "-helper") }
+        helper.followAppCopy(in: group)
+        let noCopyCalls = await imports(helper)
+        XCTAssertEqual(noCopyCalls, 0)
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: false, localOnlyMode: false), to: group)
+        let copyOffCalls = await imports(helper)
+        XCTAssertEqual(copyOffCalls, 1)
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: true), to: group)
+        let copyOnCalls = await imports(helper)
+        XCTAssertEqual(copyOnCalls, 0)
+        // "Skip Claude Code keychain access" alone names Claude Code's item only.
+        HelperPrivacyInputs.mirror(HelperPrivacyInputs(skipClaudeKeychain: true, localOnlyMode: false), to: group)
+        let skipOnlyCalls = await imports(helper)
+        XCTAssertEqual(skipOnlyCalls, 1)
+    }
+
     func test_null_importer_is_safe_default_off_macos_path() async {
         let result = await CookieResolver.resolve(
             config: config(cookieSource: .automatic),
