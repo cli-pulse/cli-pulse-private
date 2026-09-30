@@ -12,8 +12,9 @@ a throwaway HOME, and check what the helper then reads and sends:
   * that a paused heartbeat, sync or daemon cycle reads nothing (every collector
     fails the test if called) and sends nothing;
   * that an answer given while a cycle runs drops what the cycle collected,
-    before each upload, the git lookup, the commit submit, and the Claude
-    snapshot write;
+    before each upload, the git lookup, the commit submit, the Claude snapshot
+    write, and any Claude or Gemini token refresh (the Gemini one rewrites its
+    credential file);
   * that the daemon and the `heartbeat` / `sync` / `run-demo` subcommands are
     the ones wired to the gate.
 """
@@ -468,7 +469,7 @@ def test_commits_are_submitted_when_allowed(home, monkeypatch):
     assert git.last_projects == frozenset({"/repo"})
 
 
-# ── the Claude snapshot the collector writes for the app ───────
+# ── what the collector does mid-cycle: token refreshes, result writes ──
 
 
 SNAPSHOT = {"tiers": [{"name": "5h Window", "quota": 100, "remaining": 40, "reset_time": None}]}
@@ -479,31 +480,77 @@ def _written(home: Path) -> list[Path]:
 
 
 @pytest.fixture
-def reset_write_gate():
+def reset_cycle_gate():
     yield
-    sc.set_result_write_gate(None)
+    sc.set_cycle_gate(None)
 
 
 @pytest.mark.parametrize("gate", [lambda: False, lambda: 1 / 0])
-def test_a_paused_cycle_writes_no_claude_snapshot(home, reset_write_gate, gate):
-    sc.set_result_write_gate(gate)
+def test_a_paused_cycle_writes_no_claude_snapshot(home, reset_cycle_gate, gate):
+    sc.set_cycle_gate(gate)
     sc._write_claude_snapshot(SNAPSHOT, "max", "oauth")
     sc._write_claude_session_key("sk-ant-sid-x", "chrome")
     assert _written(home) == []
 
 
-def test_the_daemon_gate_stops_the_snapshot_write(home, reset_write_gate):
+def test_the_daemon_gate_stops_the_snapshot_write(home, reset_cycle_gate):
     write_mirror(home, answer("declined"))
-    sc.set_result_write_gate(LocalScanGate().allows_collection)
+    sc.set_cycle_gate(LocalScanGate().allows_collection)
     sc._write_claude_snapshot(SNAPSHOT, "max", "oauth")
     assert _written(home) == []
 
 
-def test_an_allowed_cycle_writes_the_snapshot_as_before(home, reset_write_gate):
+def test_an_allowed_cycle_writes_the_snapshot_as_before(home, reset_cycle_gate):
     write_mirror(home, answer("granted"))
-    sc.set_result_write_gate(LocalScanGate().allows_collection)
+    sc.set_cycle_gate(LocalScanGate().allows_collection)
     sc._write_claude_snapshot(SNAPSHOT, "max", "oauth")
     assert [p.name for p in _written(home)] == ["claude_snapshot.json", "claude_snapshot.json"]
+
+
+class _TokenResponse:
+    def __init__(self, body: bytes):
+        self._body = body
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+def _gemini_creds(home: Path) -> Path:
+    path = home / ".gemini" / "oauth_creds.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"access_token": "old", "refresh_token": "rt", "client_id": "cid"}')
+    return path
+
+
+@pytest.mark.parametrize("paused", [True, False], ids=["paused", "allowed"])
+def test_a_paused_cycle_refreshes_no_token_and_rewrites_no_credential(home, monkeypatch, reset_cycle_gate, paused):
+    write_mirror(home, answer("declined" if paused else "granted"))
+    sc.set_cycle_gate(LocalScanGate().allows_collection)
+    requests: list[str] = []
+
+    def fake_urlopen(req, timeout=None):
+        requests.append(req.full_url)
+        if "googleapis" in req.full_url:
+            return _TokenResponse(b'{"access_token": "new", "expires_in": 3600}')
+        return _TokenResponse(b'{"access_token": "sk-ant-oat-new"}')
+
+    monkeypatch.setattr(sc.urllib.request, "urlopen", fake_urlopen)
+    creds = _gemini_creds(home)
+    claude = sc._refresh_claude_token("rt")
+    gemini = sc._refresh_gemini_token(creds)
+    if paused:
+        assert (claude, gemini, requests) == (None, None, [])
+        assert '"old"' in creds.read_text()
+    else:
+        assert (claude, gemini) == ("sk-ant-oat-new", "new")
+        assert len(requests) == 2
+        assert '"new"' in creds.read_text()
 
 
 # ── wiring: the entry points that upload are the gated ones ────
@@ -546,7 +593,7 @@ def test_daemon_runs_its_cycles_through_the_gate(home, monkeypatch):
 
     def one_cycle(args, **kwargs):
         seen.update(kwargs)
-        seen["write_gate"] = sc._result_write_gate
+        seen["cycle_gate"] = sc._cycle_gate
         seen["decision"] = kwargs["gate"].check()
         raise KeyboardInterrupt  # ends the daemon after its first cycle
 
@@ -556,8 +603,8 @@ def test_daemon_runs_its_cycles_through_the_gate(home, monkeypatch):
     gate = seen["gate"]
     assert isinstance(gate, LocalScanGate)
     assert seen["decision"].reason == "declined"  # it reads the app's plist
-    assert seen["write_gate"] == gate.allows_collection
-    assert sc._result_write_gate is None  # reset on the way out
+    assert seen["cycle_gate"] == gate.allows_collection
+    assert sc._cycle_gate is None  # reset on the way out
 
 
 def _fail_config():

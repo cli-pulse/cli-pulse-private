@@ -61,28 +61,33 @@ HELPER_VERSION = "1.30.0"
 
 logger = logging.getLogger("cli_pulse.collector")
 
-# Asked before this module writes what a cycle collected to disk (the Claude
-# snapshot and session-key files the app reads). The daemon sets it to its
-# `LocalScanGate`, so a "Not now" that arrives while a cycle is running stops
-# that cycle's results from being written as well as sent. None (the standalone
-# subcommands, tests) writes as before.
-_result_write_gate: Callable[[], bool] | None = None
+# Asked before this module refreshes a provider token or writes what a cycle
+# collected to disk (the Claude snapshot and session-key files the app reads).
+# The daemon sets it to its `LocalScanGate`, so a "Not now" or a sign-out that
+# arrives while a cycle is running stops that cycle from refreshing tokens,
+# rewriting a credential file, or writing its results, as well as from sending
+# them. None (the standalone subcommands, tests) acts as before.
+_cycle_gate: Callable[[], bool] | None = None
 
 
-def set_result_write_gate(gate: Callable[[], bool] | None) -> None:
-    global _result_write_gate
-    _result_write_gate = gate
+def set_cycle_gate(gate: Callable[[], bool] | None) -> None:
+    global _cycle_gate
+    _cycle_gate = gate
 
 
-def _results_may_be_written() -> bool:
-    gate = _result_write_gate
+def _cycle_still_allowed(what: str) -> bool:
+    gate = _cycle_gate
     if gate is None:
         return True
     try:
-        return bool(gate())
-    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not write
-        logger.debug("result write gate failed: %s", exc)
-        return False
+        allowed = bool(gate())
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not act
+        logger.debug("cycle gate failed: %s", exc)
+        allowed = False
+    if not allowed:
+        logger.info("local scan paused during this cycle: %s skipped", what)
+    return allowed
+
 
 PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     # (provider_name, regex_pattern, confidence: high|medium|low)
@@ -619,6 +624,8 @@ def _refresh_claude_token(refresh_token: str | None) -> str | None:
     """
     if not refresh_token:
         return None
+    if not _cycle_still_allowed("Claude token refresh"):
+        return None
     # Try known Anthropic OAuth token endpoints
     endpoints = [
         "https://api.anthropic.com/v1/oauth/token",
@@ -659,8 +666,7 @@ def _write_claude_snapshot(result: dict, tier_raw: str, source: str) -> None:
     compatibility with older builds and command-line diagnostics.
     Schema matches ClaudeHelperContract.swift.
     """
-    if not _results_may_be_written():
-        logger.info("local scan paused during this cycle: Claude snapshot not written")
+    if not _cycle_still_allowed("Claude snapshot write"):
         return
     try:
         # Convert tier-based result back into snapshot format
@@ -742,8 +748,7 @@ def _write_claude_snapshot(result: dict, tier_raw: str, source: str) -> None:
 
 def _write_claude_session_key(session_key: str, source: str) -> None:
     """Write session key file for the app's Web strategy."""
-    if not _results_may_be_written():
-        logger.info("local scan paused during this cycle: Claude session key not written")
+    if not _cycle_still_allowed("Claude session key write"):
         return
     try:
         payload = _json.dumps({
@@ -1746,6 +1751,9 @@ def _refresh_gemini_token(creds_path: Path) -> str | None:
         client_id = creds.get("client_id", "")
         if not client_id:
             logger.debug("Gemini token refresh skipped: no client_id in credential file")
+            return None
+        # Refreshing rewrites this credential file below.
+        if not _cycle_still_allowed("Gemini token refresh"):
             return None
         body = urllib.parse.urlencode({
             "grant_type": "refresh_token",

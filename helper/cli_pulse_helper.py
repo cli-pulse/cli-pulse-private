@@ -1201,7 +1201,7 @@ def daemon(args: argparse.Namespace) -> None:
     # rotation is still stuck in that container rather than open a second
     # access there.
     local_scan_gate = LocalScanGate(container_ready=_container_reachable)
-    _system_collector.set_result_write_gate(local_scan_gate.allows_collection)
+    _system_collector.set_cycle_gate(local_scan_gate.allows_collection)
     try:
         while not stopping:
             try:
@@ -1272,7 +1272,7 @@ def daemon(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        _system_collector.set_result_write_gate(None)
+        _system_collector.set_cycle_gate(None)
         # Phase 3 Iter 1 ordering: stop the UDS server first so no new
         # local jobs land on the executor while we're draining; then
         # let the manager terminate child PTYs (which itself goes
