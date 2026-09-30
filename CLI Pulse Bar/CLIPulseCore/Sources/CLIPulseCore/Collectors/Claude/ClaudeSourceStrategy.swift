@@ -466,7 +466,7 @@ public enum ClaudeCredentials {
                 source: .sharedCredentialsFile
             )
         }
-        if !PrivacySettings.shared.skipClaudeKeychain,
+        if !PrivacySettings.shared.skipsClaudeKeychainOnItsOwn,
            let keychainCreds = readKeychainCredentials()
         {
             return ResolvedToken(

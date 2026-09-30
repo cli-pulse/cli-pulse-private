@@ -235,9 +235,17 @@ final class HelperDaemon {
         // heartbeat so phones can warn before an off-plan managed session. Best-effort:
         // if no local helper is listening, pass nil → the RPC omits the param → the
         // server preserves the last-known value (never clobbers to {}).
+        //
+        // v1.55: `hello` reads ~/.codex/auth.json for this only when the
+        // caller says the local-scan answer allows reading this Mac
+        // (`localScanAllowed`). This is a collecting cycle, which is what the
+        // answer gates (the cycle gate added by PR #626 returns before any of
+        // this on a "Not now"), so it says yes.
         let providerPlanStatus: [String: String]? = await {
-            do { return try await LocalSessionControlClient().hello().providerPlanStatus }
-            catch { return nil }
+            do {
+                return try await LocalSessionControlClient()
+                    .hello(localScanAllowed: true).providerPlanStatus
+            } catch { return nil }
         }()
 
         do {
@@ -376,6 +384,7 @@ final class HelperDaemon {
     /// status remains a provider-level diagnostic, using a deterministic
     /// worst-account projection when two accounts share a provider.
     private func collectProviderQuotas() async -> ProviderQuotaCollection {
+        reportClaudeKeychainAccess()
         var accountResults: [HelperIPC.CollectorAccountPayload] = []
         var providerProjection: [String: HelperIPC.CollectorUsagePayload] = [:]
         var status: [String: String] = [:]
@@ -501,6 +510,30 @@ final class HelperDaemon {
             collectorStatus: status,
             observedAt: Date()
         )
+    }
+
+    /// Settings › Privacy's Claude keychain switches, as this cycle's
+    /// collectors will apply them (`PrivacySettings.followAppCopy`, set at
+    /// launch): recorded in the app group so Settings can say whether this
+    /// helper follows them (`HelperClaudeKeychainConfirmation`), and logged
+    /// when it changes. A decision, not a promise about the whole cycle: the
+    /// collectors ask again at each read, so a switch turned on mid-cycle stops
+    /// the next read, and the next cycle records it.
+    private func reportClaudeKeychainAccess() {
+        let access = PrivacySettings.shared.claudeKeychainAccess
+        guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
+              HelperPrivacyInputs.recordHelperReport(access, to: defaults)
+        else { return }
+        switch access {
+        case .read:
+            logger.info("Claude Code keychain item: read when needed (both Privacy switches off)")
+        case .skippedStrictPrivacyMode:
+            logger.info("Claude Code keychain item: skipped (Strict privacy mode is on)")
+        case .skippedBySetting:
+            logger.info("Claude Code keychain item: skipped (Skip Claude Code keychain access is on)")
+        case .skippedAwaitingApp:
+            logger.info("Claude Code keychain item: skipped until the app copies its Privacy switches")
+        }
     }
 
     // MARK: - App Group Collector Sharing

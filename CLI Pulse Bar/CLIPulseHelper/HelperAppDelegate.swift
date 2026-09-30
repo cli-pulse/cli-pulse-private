@@ -16,6 +16,13 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
             Darwin._exit(78)
         }
 
+        // v1.55: Settings › Privacy's Claude keychain switches live in the
+        // app's defaults, which this process cannot read; `PrivacySettings`
+        // here read this process's own, which nothing writes, so the switches
+        // never reached the collectors this helper runs. Follow the app's copy
+        // in the app group instead, before any collector runs.
+        PrivacySettings.shared.followAppCopy(in: UserDefaults(suiteName: HelperIPC.suiteName))
+
         let daemon = HelperDaemon(
             runtimeEnvironment: runtimeEnvironment
         )

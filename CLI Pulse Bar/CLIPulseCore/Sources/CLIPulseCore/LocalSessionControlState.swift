@@ -90,7 +90,15 @@ extension AppState {
         self.localDiagnostics = diag
 
         do {
-            let hello = try await client.hello()
+            // v1.55: the plan status this reply carries comes from reading
+            // provider credential files; ask for it only when the local-scan
+            // answer allows reading this Mac ("Not now" reads nothing here).
+            let hello = try await client.hello(
+                localScanAllowed: LocalCollectionPolicy.allowsCollection(
+                    isAuthenticated: isAuthenticated,
+                    consent: localScanConsent
+                )
+            )
             self.localHelperReachable = true
             self.localCapabilities = hello.capabilities
             // M4.4c: retain the advertised method set so the UI can gate the

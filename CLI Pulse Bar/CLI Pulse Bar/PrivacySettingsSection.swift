@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import CLIPulseCore
 
 /// v1.19.1 — Privacy preferences section. Two toggles: a specific
@@ -15,6 +16,24 @@ import CLIPulseCore
 struct PrivacySettingsSection: View {
     @ObservedObject private var settings = PrivacySettings.shared
     @EnvironmentObject var state: AppState
+
+    /// Bumped when the LoginItem helper finishes a cycle, so the line under
+    /// the Claude keychain switches re-reads what it last reported.
+    @State private var helperReportTick = 0
+
+    /// v1.55: whether the LoginItem helper, a separate process that reads
+    /// these switches from the app's copy (`HelperPrivacyInputs`), has said it
+    /// skips the item too. Nil where this runtime has no helper.
+    private var helperConfirmation: HelperClaudeKeychainConfirmation? {
+        _ = helperReportTick
+        guard state.runtimeEnvironment.capabilities.allowsHelperRegistration else { return nil }
+        return HelperClaudeKeychainConfirmation.make(
+            appSkips: settings.skipsClaudeKeychainOnItsOwn,
+            helperStatus: HelperIPC.readStatus(),
+            helperReport: UserDefaults(suiteName: HelperIPC.suiteName)
+                .flatMap(HelperPrivacyInputs.loadHelperReport)
+        )
+    }
 
     /// v1.50 W-C: the scan itself — unauthenticated local mode only (see below).
     private var showsScanSwitch: Bool {
@@ -180,6 +199,19 @@ struct PrivacySettingsSection: View {
                 .padding(.leading, 18)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // v1.55: said only once the helper has said it. A helper from
+            // before 1.55 keeps running after an in-place update and never
+            // reads the switches, and that is the case this line exists for.
+            if let helperConfirmation {
+                Text(helperConfirmation == .confirmed
+                     ? L10n.settings.claudeKeychainHelperConfirmed
+                     : L10n.settings.claudeKeychainHelperUnconfirmed)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 18)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Divider()
                 .padding(.vertical, 2)
 
@@ -226,5 +258,14 @@ struct PrivacySettingsSection: View {
         .padding(10)
         .background(Color.gray.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+        // The helper records what it does with the item at the start of each
+        // collecting cycle and posts this when the cycle's results are written.
+        .onReceive(
+            DistributedNotificationCenter.default()
+                .publisher(for: HelperIPC.didSyncNotificationName)
+                .receive(on: RunLoop.main)
+        ) { _ in
+            helperReportTick &+= 1
+        }
     }
 }

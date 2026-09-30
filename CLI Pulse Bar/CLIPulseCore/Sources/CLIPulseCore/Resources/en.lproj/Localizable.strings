@@ -1395,6 +1395,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "settings.skip_claude_keychain" = "Skip Claude Code keychain access";
 "settings.skip_claude_keychain_forced" = "Forced on by Strict privacy mode.";
 "settings.skip_claude_keychain_hint" = "Stops CLI Pulse from reading the Claude Code OAuth credentials owned by other apps. Useful if you've hit a macOS keychain dialog that won't accept your login password.";
+"settings.claude_keychain_helper_confirmed" = "The background helper follows this too.";
+"settings.claude_keychain_helper_unconfirmed" = "The background helper hasn't confirmed this yet.";
 "settings.block_claude_on_outdated_helper" = "Block managed Claude on outdated helper";
 "settings.block_claude_on_outdated_helper_hint" = "When the Companion CLI is too old to run Claude on your Max/Pro plan, prevent starting managed Claude sessions (which would silently use the Claude API). Off by default — you'll only see a warning.";
 "cost.io_tokens_help" = "I/O tokens = input + output. Claude: cache reads and writes are not included. Codex: input already includes cached input, the way OpenAI counts it. Either way, cache tokens are priced into the cost estimate at their own rates.";

@@ -1382,6 +1382,8 @@
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
 "settings.skip_claude_keychain_forced" = "已由嚴格隱私模式強制開啟。";
 "settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取其他 App 擁有的 Claude Code OAuth 憑證。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
+"settings.claude_keychain_helper_confirmed" = "背景 Helper 也遵循這項設定。";
+"settings.claude_keychain_helper_unconfirmed" = "背景 Helper 尚未確認遵循這項設定。";
 "settings.block_claude_on_outdated_helper" = "Helper 過舊時阻擋託管 Claude";
 "settings.block_claude_on_outdated_helper_hint" = "當 Companion CLI 版本過舊、無法以你的 Max/Pro 方案執行 Claude 時，阻止啟動託管 Claude 工作階段（否則會在不提示的情況下改用 Claude API）。預設關閉——你只會看到一則警告。";
 "cost.io_tokens_help" = "I/O tokens = 輸入 + 輸出。Claude：不含快取讀取與快取寫入。Codex：輸入已包含快取輸入，與 OpenAI 的計算方式一致。兩者的快取 token 都依各自的單價計入費用預估。";

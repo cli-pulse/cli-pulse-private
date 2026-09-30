@@ -22,6 +22,12 @@ import Foundation
 /// to BSD sockets via libc here.
 public final class LocalSessionServer: @unchecked Sendable {
 
+    /// v1.55 `hello` parameter (Bool): the app's local-scan answer allows
+    /// reading this Mac. Additive: the app's `LocalSessionControlClient` sends
+    /// it (`localScanAllowedParam`), and `helper/local_session_server.py`
+    /// reads the same name.
+    public static let localScanAllowedParam = "local_scan_allowed"
+
     public struct Configuration: Sendable {
         public var socketPath: URL
         public var subscribeIdleTimeoutSeconds: Double
@@ -495,16 +501,34 @@ public final class LocalSessionServer: @unchecked Sendable {
             // the manager doesn't expose a registry (e.g. tests
             // configuring `LocalSessionServer` without a session
             // manager hook).
+            //
+            // v1.55: `provider_plan_status` is worked out by reading each
+            // provider's credential file (~/.codex/auth.json), so it is read
+            // only when the caller says the app's local-scan answer allows
+            // reading this Mac (`local_scan_allowed: true`), and otherwise left
+            // out, which the app reads as "no warning". Asking the caller,
+            // because this helper must not open the app group where the answer
+            // is kept (scripts/check_helper_no_container_touch.sh), and every
+            // caller is the app it ships inside, or that app's LoginItem.
+            // Missing counts as no: before 1.55 this read ran on every hello,
+            // "Not now" included, and a status probe has no answer to give.
+            // A JSON `true` only: `as? Bool` would also take a number 1.
+            let localScanAllowed: Bool = {
+                guard let flag = request.params[Self.localScanAllowedParam] as? NSNumber,
+                      CFGetTypeID(flag) == CFBooleanGetTypeID()
+                else { return false }
+                return flag.boolValue
+            }()
             let providerAvailability: [String]
-            let providerPlanStatus: [String: String]
+            let providerPlanStatus: [String: String]?
             if let mgr = hooks.sessionManager {
                 providerAvailability = mgr.availableProviders()
-                providerPlanStatus = mgr.providerPlanStatus()
+                providerPlanStatus = localScanAllowed ? mgr.providerPlanStatus() : nil
             } else {
                 providerAvailability = []
-                providerPlanStatus = [:]
+                providerPlanStatus = localScanAllowed ? [:] : nil
             }
-            return .ok(id: request.id, result: [
+            var result: [String: Any] = [
                 "protocol_version": kProtocolVersion,
                 // v1.34 R1d: advertise our semantic version so the app can gate
                 // managed Claude sessions on the SOCKET OWNER being >= the
@@ -536,10 +560,6 @@ public final class LocalSessionServer: @unchecked Sendable {
                     "machine_snapshot": true,
                 ],
                 "provider_availability": providerAvailability,
-                // Per-provider plan-auth status ("on_plan"/"off_plan") so the picker can
-                // warn before silently launching an off-plan (billed) managed session
-                // (e.g. Codex with an api-key login). Omits "unknown" providers.
-                "provider_plan_status": providerPlanStatus,
                 // Remote-control M1a (additive): can this helper start a Claude
                 // session with `--remote-control`, and would Claude let it?
                 // `policy` comes from Claude Code's own settings files
@@ -548,7 +568,15 @@ public final class LocalSessionServer: @unchecked Sendable {
                 // a claude.ai login, not an API key. The Python helper
                 // advertises `{"supported": false}` (lock-step, honest).
                 "claude_remote_control": claudeRemoteControlHello(),
-            ])
+            ]
+            // Per-provider plan-auth status ("on_plan"/"off_plan") so the picker can
+            // warn before silently launching an off-plan (billed) managed session
+            // (e.g. Codex with an api-key login). Omits "unknown" providers, and
+            // is itself omitted unless the caller allowed the read (see above).
+            if let providerPlanStatus {
+                result["provider_plan_status"] = providerPlanStatus
+            }
+            return .ok(id: request.id, result: result)
         case .ping:
             return .ok(id: request.id, result: ["pong": true])
         case .getLocalControlStatus:

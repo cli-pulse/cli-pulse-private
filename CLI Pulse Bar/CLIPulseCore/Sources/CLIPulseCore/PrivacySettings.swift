@@ -45,6 +45,7 @@ public final class PrivacySettings: ObservableObject {
     @Published public var skipClaudeKeychain: Bool {
         didSet {
             defaults.set(skipClaudeKeychain, forKey: Keys.skipClaudeKeychain)
+            writeHelperMirror()
         }
     }
 
@@ -54,6 +55,7 @@ public final class PrivacySettings: ObservableObject {
             if localOnlyMode && !skipClaudeKeychain {
                 skipClaudeKeychain = true
             }
+            writeHelperMirror()
         }
     }
 
@@ -100,5 +102,94 @@ public final class PrivacySettings: ObservableObject {
         // `bool(forKey:)`'s false-for-missing from reading as an opt-out.
         self.anonymousTelemetryEnabled =
             (defaults.object(forKey: Keys.anonymousTelemetryEnabled) as? Bool) ?? true
+    }
+
+    // MARK: - The helpers (v1.55)
+
+    /// The app group the app copies the two Claude keychain switches into for
+    /// the helpers (`HelperPrivacyInputs`), and how it tells them. Nil until
+    /// `mirrorForHelpers` is called, which only the app's launch does.
+    private var helperMirror: (defaults: UserDefaults, notify: (() -> Void)?)?
+
+    /// In the app: copy both switches to `helperDefaults` now, and again
+    /// whenever either changes, calling `notify` when the copy changed.
+    ///
+    /// The helpers cannot read this object's defaults, so without the copy the
+    /// LoginItem helper read Claude Code's keychain item every cycle whatever
+    /// the switches said, and so did the Companion CLI.
+    public func mirrorForHelpers(to helperDefaults: UserDefaults, notify: (() -> Void)? = nil) {
+        helperMirror = (helperDefaults, notify)
+        writeHelperMirror()
+    }
+
+    #if os(macOS)
+    /// `mirrorForHelpers(to:)` for the app's launch, where this runtime
+    /// registers a helper at all: a QA or quarantined runtime writes nothing
+    /// to the helpers' app group (`QARuntimeSideEffectPolicyTests`), the same
+    /// rule as the provider configs' and the local-scan answer's copies.
+    public func mirrorForHelpers(
+        in runtime: CLIPulseRuntimeEnvironment,
+        helperDefaults: @autoclosure () -> UserDefaults? = UserDefaults(suiteName: HelperIPC.suiteName),
+        notify: (() -> Void)? = { HelperInputs.postDidChange() }
+    ) {
+        guard runtime.capabilities.allowsHelperRegistration,
+              let helperDefaults = helperDefaults()
+        else { return }
+        mirrorForHelpers(to: helperDefaults, notify: notify)
+    }
+    #endif
+
+    private func writeHelperMirror() {
+        guard let helperMirror else { return }
+        let inputs = HelperPrivacyInputs(
+            skipClaudeKeychain: skipClaudeKeychain,
+            localOnlyMode: localOnlyMode
+        )
+        if HelperPrivacyInputs.mirror(inputs, to: helperMirror.defaults) {
+            helperMirror.notify?()
+        }
+    }
+
+    /// Set in the LoginItem helper (`followAppCopy`): the app group holding
+    /// the app's copy. Read on collector threads, hence the lock.
+    private var appCopy: UserDefaults?
+    /// Whether `followAppCopy` was called, even with no suite to read.
+    private var followsAppCopy = false
+    private let appCopyLock = NSLock()
+
+    /// In a process that is not the app (the LoginItem helper): take the two
+    /// Claude keychain switches from the app's copy (`HelperPrivacyInputs`),
+    /// read afresh at every decision, instead of from this process's own
+    /// defaults, which the app never writes. With no copy there, or no suite
+    /// to read, the item is skipped until the app says
+    /// (`ClaudeKeychainAccess.skippedAwaitingApp`).
+    public func followAppCopy(in helperDefaults: UserDefaults?) {
+        appCopyLock.withLock {
+            appCopy = helperDefaults
+            followsAppCopy = true
+        }
+    }
+
+    /// What this process does with Claude Code's keychain item when nobody
+    /// has just asked it to read it. In the app: the switches above. In the
+    /// LoginItem helper: the app's copy of them.
+    public var claudeKeychainAccess: ClaudeKeychainAccess {
+        let (follows, source) = appCopyLock.withLock { (followsAppCopy, appCopy) }
+        if follows {
+            return ClaudeKeychainAccess.decide(source.flatMap(HelperPrivacyInputs.load))
+        }
+        return ClaudeKeychainAccess.decide(
+            HelperPrivacyInputs(skipClaudeKeychain: skipClaudeKeychain, localOnlyMode: localOnlyMode)
+        )
+    }
+
+    /// Asked by every background read of Claude Code's keychain item
+    /// (`ClaudeCredentials.readKeychainCredentials`): the OAuth token resolver,
+    /// and the rate-limit tier lookups of the OAuth and CLI strategies. Only the
+    /// Settings "Connect Claude Code" button reads the item without asking,
+    /// because the user just asked for exactly that read.
+    /// `ClaudeKeychainGateReferenceTests` fails when a new read skips this.
+    public var skipsClaudeKeychainOnItsOwn: Bool {
+        claudeKeychainAccess.skips
     }
 }

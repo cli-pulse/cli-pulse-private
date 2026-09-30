@@ -83,6 +83,11 @@ struct CLIPulseBarApp: App {
 
         let state = AppState(runtimeEnvironment: runtimeEnvironment)
         _appState = StateObject(wrappedValue: state)
+        // v1.55: the LoginItem helper and the Companion CLI cannot read
+        // Settings › Privacy's Claude keychain switches in this app's own
+        // defaults. Copy them to the app group they read (`HelperPrivacyInputs`):
+        // now, for switches set before this version, and on every change.
+        PrivacySettings.shared.mirrorForHelpers(in: runtimeEnvironment)
         if runtimeEnvironment.capabilities.allowsTelemetry {
             SentryLogger.start(platform: .macOS)
         }

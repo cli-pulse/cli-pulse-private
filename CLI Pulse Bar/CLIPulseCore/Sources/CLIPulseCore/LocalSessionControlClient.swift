@@ -276,6 +276,12 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
 
     public static let protocolVersion = 1
 
+    /// v1.55 `hello` parameter (Bool): whether the local-scan answer allows
+    /// reading this Mac (`hello(localScanAllowed:)`). Additive: helpers that
+    /// predate it ignore it. HelperKit's `LocalSessionServer` and
+    /// `helper/local_session_server.py` read the same name.
+    public static let localScanAllowedParam = "local_scan_allowed"
+
     /// v1.34 R1d: the minimum helper version that injects the user's Claude
     /// subscription (Max/Pro) OAuth token into managed `claude` sessions. A
     /// socket-owner helper BELOW this floor spawns `claude` on the Claude API
@@ -419,10 +425,31 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
 
     // MARK: - SessionControlClient
 
+    /// The protocol's `hello`: says nothing about the local-scan answer, so
+    /// the helper leaves out `provider_plan_status` and reads no credential
+    /// file for it (the bundled Swift helper; the Companion CLI asks its own
+    /// copy of the answer). For "is it running, which version" checks.
     public func hello() async throws -> SessionControlHello {
+        try await hello(localScanAllowed: nil)
+    }
+
+    /// `hello`, telling the helper whether the local-scan answer allows
+    /// reading this Mac (`LocalCollectionPolicy.allowsCollection`).
+    ///
+    /// `provider_plan_status` comes from reading each provider's credential
+    /// file (`~/.codex/auth.json` today), so a helper sends it only when told
+    /// `true`: the bundled Swift helper reads nothing for it otherwise, and
+    /// the Companion CLI reads nothing when told `false` (and otherwise asks
+    /// its own copy of the answer). Before 1.55 every `hello` read it, "Not
+    /// now" included. Helpers older than the parameter ignore it.
+    public func hello(localScanAllowed: Bool?) async throws -> SessionControlHello {
+        var params: [String: Any] = ["client_protocol_version": Self.protocolVersion]
+        if let localScanAllowed {
+            params[Self.localScanAllowedParam] = localScanAllowed
+        }
         let result = try await send(
             method: "hello",
-            params: ["client_protocol_version": Self.protocolVersion],
+            params: params,
             requireAuth: false
         )
         guard let version = result["protocol_version"] as? Int,

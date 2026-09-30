@@ -1095,6 +1095,11 @@ public enum L10n {
         public static var skipClaudeKeychain: String { tr("settings.skip_claude_keychain") }
         public static var skipClaudeKeychainForced: String { tr("settings.skip_claude_keychain_forced") }
         public static var skipClaudeKeychainHint: String { tr("settings.skip_claude_keychain_hint") }
+        /// Under the Claude keychain switches: the LoginItem helper said it skips
+        /// the item too (`HelperClaudeKeychainConfirmation.confirmed`).
+        public static var claudeKeychainHelperConfirmed: String { tr("settings.claude_keychain_helper_confirmed") }
+        /// A switch is on and the helper runs, but it has not said so yet.
+        public static var claudeKeychainHelperUnconfirmed: String { tr("settings.claude_keychain_helper_unconfirmed") }
         public static var blockClaudeOnOutdatedHelper: String { tr("settings.block_claude_on_outdated_helper") }
         public static var blockClaudeOnOutdatedHelperHint: String { tr("settings.block_claude_on_outdated_helper_hint") }
         public static func pushRegistrationFailed(_ a0: String) -> String { tr("settings.push_registration_failed", a0) }
