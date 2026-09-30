@@ -1103,6 +1103,11 @@
 "cost.coverage_summary" = "토큰의 %1$d%%에 가격 적용 · %2$d개 모델에 단가 없음";
 "cost.coverage_help" = "이 모델들은 단가가 없어 토큰이 위 합계에 $0으로 계산되었습니다: %@";
 
+/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+"cost.approximate" = "근사";
+"cost.approximate_summary" = "≈ 일부 근사 단가로 추정 · %d개 모델";
+"cost.approximate_help" = "이 모델들은 아직 자체 단가가 없어 가장 가까운 등록 모델의 단가로 계산했습니다. ≈ 표시가 있는 금액에 포함됩니다: %@";
+
 /* v1.51 — cost-card badge third state */
 "cost.partial" = "부분";
 "cost.tokens_suffix" = "· %@ I/O 토큰";

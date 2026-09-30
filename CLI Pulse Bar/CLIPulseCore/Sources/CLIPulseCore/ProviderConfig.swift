@@ -1051,6 +1051,10 @@ public struct CostSummary: Sendable {
     /// and the empty state — and for those the UI must say nothing rather than
     /// imply full coverage. See `CostCoverage`.
     public let coverage: CostCoverage
+    /// v1.56: the same, for today's entries alone, so "Today" carries its own
+    /// "≈". A borrowed rate somewhere in the last 30 days says nothing about
+    /// today's figure. `.unknown` wherever `coverage` is.
+    public let todayCoverage: CostCoverage
 
     public init(
         todayTotal: Double = 0,
@@ -1065,7 +1069,8 @@ public struct CostSummary: Sendable {
         thirtyDayTokens: Int = 0,
         utilization: [SubscriptionUtilization] = [],
         costByModel: [ModelCostDetail] = [],
-        coverage: CostCoverage = .unknown
+        coverage: CostCoverage = .unknown,
+        todayCoverage: CostCoverage = .unknown
     ) {
         self.todayTotal = todayTotal
         self.todayByProvider = todayByProvider
@@ -1080,6 +1085,7 @@ public struct CostSummary: Sendable {
         self.utilization = utilization
         self.costByModel = costByModel
         self.coverage = coverage
+        self.todayCoverage = todayCoverage
     }
 
     /// v1.51 — what the badge above the cost card should say.
@@ -1093,9 +1099,13 @@ public struct CostSummary: Sendable {
     /// Lives here rather than in the view so it can be tested. Two views render
     /// this badge (macOS `OverviewTab`, iOS `iOSOverviewTab`) and neither target
     /// has a test bundle.
+    ///
+    /// v1.56: a fourth state. A scan with no unpriced tokens but some priced at
+    /// a borrowed rate said "Exact" above figures now marked "≈".
     public var fidelity: CostCoverage.Fidelity {
         guard isPrecise else { return .estimated }
-        return coverage.shouldDisclose ? .partial : .exact
+        if coverage.shouldDisclose { return .partial }
+        return coverage.hasApproximatePrices ? .approximate : .exact
     }
 }
 

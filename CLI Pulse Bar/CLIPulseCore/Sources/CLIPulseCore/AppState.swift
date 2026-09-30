@@ -397,6 +397,30 @@ public final class AppState: ObservableObject {
         return total > 0 ? total : nil
     }
 
+    /// v1.56: whether any of `provider`'s scanned cost on `onDate` (every
+    /// scanned day when nil) was charged at a rate borrowed from a neighbouring
+    /// model. The provider card shows that cost as "≈$…".
+    ///
+    /// The card's figure can be the cloud's rather than this scan's (it shows
+    /// the larger), but the cloud's includes what this Mac uploaded, priced
+    /// the same way, so the mark holds either way.
+    public func scanPriceIsApproximate(for provider: String, onDate: Date? = nil) -> Bool {
+        guard let scan = costUsageScanResult else { return false }
+        let key = onDate.map { DayKey.string(from: $0) }   // the scanner's Gregorian keys
+        return scan.entries.contains {
+            $0.provider == provider && $0.priceIsApproximate && (key == nil || $0.date == key)
+        }
+    }
+
+    /// `scanPriceIsApproximate` over the rolling 7-day window.
+    public func scanPriceIsApproximateThisWeek(for provider: String) -> Bool {
+        guard let scan = costUsageScanResult else { return false }
+        let cutoffKey = DateRange.rollingWeekStartYMD(from: Date())
+        return scan.entries.contains {
+            $0.provider == provider && $0.priceIsApproximate && $0.date >= cutoffKey
+        }
+    }
+
     public func scanMessagesThisWeek(for provider: String) -> Int? {
         guard let scan = costUsageScanResult, !scan.entries.isEmpty else { return nil }
         let cutoffKey = DateRange.rollingWeekStartYMD(from: Date())

@@ -701,6 +701,11 @@
 "cost.by_model" = "按模型";
 "cost.coverage_summary" = "已计价 %1$d%% 的 token · %2$d 个模型没有单价";
 "cost.coverage_help" = "这些模型没有价格条目，其 token 在上面的合计里按 $0 计入：%@";
+
+/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+"cost.approximate" = "近似";
+"cost.approximate_summary" = "≈ 部分按近似价估算 · %d 个模型";
+"cost.approximate_help" = "这些模型还没有自己的价格，按最接近的已列出模型的单价计算。标有 ≈ 的金额包含它们：%@";
 "watch.unread_count" = "%d 条未读";
 "watch.snooze_15" = "15 分钟";
 "watch.snooze_30" = "30 分钟";

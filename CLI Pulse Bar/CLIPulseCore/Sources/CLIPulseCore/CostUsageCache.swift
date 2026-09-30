@@ -3,12 +3,22 @@ import Foundation
 
 // MARK: - Cache Types
 
-/// Bump this every time `CostUsageScanner.Pricing.claudeModels` or
-/// `codexModels` changes (entries added / removed / repriced).
+/// Bump this every time `CostUsageScanner.Pricing.claudeModels` changes
+/// (entries added / removed / repriced).
 ///
-/// Why: per-event cost is computed inside `parseClaudeFile` /
-/// `parseCodexFile` and stored as `costNanos` in the per-day-model
-/// bucket. The `entriesFromClaudeCache` reconstruction has a
+/// A change to `CodexPricingTable` needs no bump, as of 1.56: Codex day rows
+/// hold tokens only (`[input, cached, output]`), and `entriesFromCodexCache`
+/// prices them on every read, re-resolving the stored model name. A new row
+/// can change what `normalizeCodexModel` returns for a dated spelling
+/// (`gpt-5.6-sol-2026-08-01` → `gpt-5.6-sol`); files parsed before keep the
+/// old key, which splits that model's By-Model row until they are re-read but
+/// prices both halves the same. `CodexPricingTableTests.
+/// test_codexCacheRowsCarryNoCost` fails the day a Codex row starts storing a
+/// cost, which is when a Codex price change starts needing a bump.
+///
+/// Why: per-event Claude cost is computed inside `parseClaudeFile` and
+/// stored as `costNanos` in the per-day-model bucket. The
+/// `entriesFromClaudeCache` reconstruction has a
 /// fallback that re-runs `Pricing.claudeCostUSD` when the bucket's
 /// summed `costNanos` is exactly zero — but that fallback gives the
 /// WRONG answer once even one new event lands in a previously-zero

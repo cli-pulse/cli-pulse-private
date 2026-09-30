@@ -15,6 +15,12 @@ public struct CostUsageScanResult: Sendable {
         public let cachedTokens: Int
         public let outputTokens: Int
         public let costUSD: Double?
+        /// v1.56: `costUSD` was computed at a rate borrowed from a neighbouring
+        /// model, because this model has no price of its own
+        /// (`CostUsageScanner.Pricing.PriceResolution`). Always false when
+        /// `costUSD` is nil. `CostCoverage` counts these tokens as approximate,
+        /// and the cost card marks the figures they reach with "≈".
+        public let priceIsApproximate: Bool
         /// v1.9.4: deduped assistant-message count for this (day, provider, model).
         /// Currently only populated for Claude (via JSONL message.id + requestId
         /// dedup in `parseClaudeFile`). Codex leaves this at 0 — Codex doesn't
@@ -27,7 +33,8 @@ public struct CostUsageScanResult: Sendable {
 
         public init(date: String, provider: String, model: String,
                     inputTokens: Int, cachedTokens: Int, outputTokens: Int,
-                    costUSD: Double?, messageCount: Int = 0) {
+                    costUSD: Double?, priceIsApproximate: Bool = false,
+                    messageCount: Int = 0) {
             self.date = date
             self.provider = provider
             self.model = model
@@ -35,6 +42,7 @@ public struct CostUsageScanResult: Sendable {
             self.cachedTokens = cachedTokens
             self.outputTokens = outputTokens
             self.costUSD = costUSD
+            self.priceIsApproximate = costUSD != nil && priceIsApproximate
             self.messageCount = messageCount
         }
     }
@@ -332,8 +340,16 @@ public enum CostUsageScanner {
                 let cached = packed[safeIdx: 1] ?? 0
                 let output = packed[safeIdx: 2] ?? 0
                 guard input > 0 || cached > 0 || output > 0 else { continue }
-                let cost = Pricing.codexCostUSD(model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output)
-                result.append(.init(date: day, provider: "Codex", model: model, inputTokens: input, cachedTokens: cached, outputTokens: output, costUSD: cost))
+                // Codex rows hold tokens only; the price is chosen here, on
+                // every read, at the rate in force on that day. So a change to
+                // `CodexPricingTable` reaches every cached day without a rescan
+                // (see `costUsageCachePricingVersion`).
+                let cost = Pricing.codexCostUSD(
+                    model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output,
+                    pricingDate: Pricing.codexPricingDate(forDayKey: day)
+                )
+                result.append(.init(date: day, provider: "Codex", model: model, inputTokens: input, cachedTokens: cached, outputTokens: output, costUSD: cost,
+                                    priceIsApproximate: Pricing.codexPriceResolution(model)?.isApproximate ?? false))
             }
         }
         return result
@@ -365,7 +381,9 @@ public enum CostUsageScanner {
                     : Pricing.claudeCostUSD(model: model, inputTokens: input, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreate, outputTokens: output)
                 result.append(.init(date: day, provider: "Claude", model: model,
                                     inputTokens: input, cachedTokens: cacheRead + cacheCreate,
-                                    outputTokens: output, costUSD: cost, messageCount: msgs))
+                                    outputTokens: output, costUSD: cost,
+                                    priceIsApproximate: Pricing.claudePriceResolution(model)?.isApproximate ?? false,
+                                    messageCount: msgs))
             }
         }
         return result
@@ -555,12 +573,6 @@ public enum CostUsageScanner {
     // MARK: - Pricing
 
     enum Pricing {
-        struct CodexModel {
-            let inputCostPerToken: Double
-            let outputCostPerToken: Double
-            let cacheReadCostPerToken: Double?
-        }
-
         struct ClaudeModel {
             let inputCostPerToken: Double
             let outputCostPerToken: Double
@@ -573,37 +585,28 @@ public enum CostUsageScanner {
             let cacheReadAbove: Double?
         }
 
-        private static let codexModels: [String: CodexModel] = [
-            "gpt-5": .init(inputCostPerToken: 1.25e-6, outputCostPerToken: 1e-5, cacheReadCostPerToken: 1.25e-7),
-            "gpt-5-codex": .init(inputCostPerToken: 1.25e-6, outputCostPerToken: 1e-5, cacheReadCostPerToken: 1.25e-7),
-            "gpt-5-mini": .init(inputCostPerToken: 2.5e-7, outputCostPerToken: 2e-6, cacheReadCostPerToken: 2.5e-8),
-            "gpt-5-nano": .init(inputCostPerToken: 5e-8, outputCostPerToken: 4e-7, cacheReadCostPerToken: 5e-9),
-            "gpt-5-pro": .init(inputCostPerToken: 1.5e-5, outputCostPerToken: 1.2e-4, cacheReadCostPerToken: nil),
-            "gpt-5.1": .init(inputCostPerToken: 1.25e-6, outputCostPerToken: 1e-5, cacheReadCostPerToken: 1.25e-7),
-            "gpt-5.1-codex": .init(inputCostPerToken: 1.25e-6, outputCostPerToken: 1e-5, cacheReadCostPerToken: 1.25e-7),
-            "gpt-5.1-codex-max": .init(inputCostPerToken: 1.25e-6, outputCostPerToken: 1e-5, cacheReadCostPerToken: 1.25e-7),
-            "gpt-5.1-codex-mini": .init(inputCostPerToken: 2.5e-7, outputCostPerToken: 2e-6, cacheReadCostPerToken: 2.5e-8),
-            "gpt-5.2": .init(inputCostPerToken: 1.75e-6, outputCostPerToken: 1.4e-5, cacheReadCostPerToken: 1.75e-7),
-            "gpt-5.2-codex": .init(inputCostPerToken: 1.75e-6, outputCostPerToken: 1.4e-5, cacheReadCostPerToken: 1.75e-7),
-            "gpt-5.2-pro": .init(inputCostPerToken: 2.1e-5, outputCostPerToken: 1.68e-4, cacheReadCostPerToken: nil),
-            "gpt-5.3-codex": .init(inputCostPerToken: 1.75e-6, outputCostPerToken: 1.4e-5, cacheReadCostPerToken: 1.75e-7),
-            "gpt-5.3-codex-spark": .init(inputCostPerToken: 0, outputCostPerToken: 0, cacheReadCostPerToken: 0),
-            "gpt-5.4": .init(inputCostPerToken: 2.5e-6, outputCostPerToken: 1.5e-5, cacheReadCostPerToken: 2.5e-7),
-            "gpt-5.4-mini": .init(inputCostPerToken: 7.5e-7, outputCostPerToken: 4.5e-6, cacheReadCostPerToken: 7.5e-8),
-            "gpt-5.4-nano": .init(inputCostPerToken: 2e-7, outputCostPerToken: 1.25e-6, cacheReadCostPerToken: 2e-8),
-            "gpt-5.4-pro": .init(inputCostPerToken: 3e-5, outputCostPerToken: 1.8e-4, cacheReadCostPerToken: nil),
-            // gpt-5.5 family — mirrors the Rust desktop `pricing.rs` table
-            // (H-10 cross-runtime parity). OpenAI hasn't published official
-            // billing yet; rates mirror gpt-5.4 as a best-known approximation
-            // (Codex emitted model="gpt-5.5" in the wild — without an entry
-            // macOS rendered $0 while Windows/Linux priced it). Approximate-
-            // but-non-zero beats zero for cost-aware UX; replace when official.
-            "gpt-5.5": .init(inputCostPerToken: 2.5e-6, outputCostPerToken: 1.5e-5, cacheReadCostPerToken: 2.5e-7),
-            "gpt-5.5-codex": .init(inputCostPerToken: 2.5e-6, outputCostPerToken: 1.5e-5, cacheReadCostPerToken: 2.5e-7),
-            "gpt-5.5-mini": .init(inputCostPerToken: 7.5e-7, outputCostPerToken: 4.5e-6, cacheReadCostPerToken: 7.5e-8),
-            "gpt-5.5-nano": .init(inputCostPerToken: 2e-7, outputCostPerToken: 1.25e-6, cacheReadCostPerToken: 2e-8),
-            "gpt-5.5-pro": .init(inputCostPerToken: 3e-5, outputCostPerToken: 1.8e-4, cacheReadCostPerToken: nil),
-        ]
+        /// Which price row a model is charged at, and whether that row is the
+        /// model's own.
+        ///
+        /// v1.56: `isApproximate` is true when the row was borrowed — the Codex
+        /// version fallback or the Claude family fallback chose a neighbouring
+        /// model's rate because the model has none of its own. The scanner
+        /// used to know this at the moment it priced an entry and drop it, so
+        /// a borrowed rate reached the screen looking exactly like a listed
+        /// one. It now travels on `DailyEntry.priceIsApproximate`, and the cost
+        /// card marks such figures with "≈" (`CostCoverage`).
+        ///
+        /// An alias (`CodexPricingTable.aliases`) is not approximate: OpenAI
+        /// bills that name as the aliased model.
+        struct PriceResolution: Equatable {
+            let key: String
+            let isApproximate: Bool
+        }
+
+        /// Codex rates live in `CodexPricingTable` (ported from CodexBar, with
+        /// its MIT notice), shared with iOS so the table can be read and tested
+        /// on every platform.
+        private static var codexModels: [String: CodexPricingTable.Rates] { CodexPricingTable.current }
 
         private static let claudeModels: [String: ClaudeModel] = [
             "claude-haiku-4-5-20251001": .init(inputCostPerToken: 1e-6, outputCostPerToken: 5e-6, cacheCreationCostPerToken: 1.25e-6, cacheReadCostPerToken: 1e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
@@ -694,16 +697,16 @@ public enum CostUsageScanner {
         ///
         /// The Claude side has had a family fallback since May 2026. The Codex
         /// side never had one, so an unrecognised OpenAI model read $0 with no
-        /// safety net at all — and it is currently reading $0 for
-        /// `gpt-5.6-sol` and `gpt-5.6-terra`, 940M tokens on the machine this
-        /// was found on.
+        /// safety net at all — in August 2026 that was `gpt-5.6-sol` and
+        /// `gpt-5.6-terra`, 940M tokens on the machine this was found on.
         ///
-        /// The precedent for what to do is already in the table above: when
-        /// `gpt-5.5` appeared with no published billing, it was priced by
-        /// mirroring `gpt-5.4`, with the reasoning written down —
-        /// *"Approximate-but-non-zero beats zero for cost-aware UX; replace when
-        /// official."* This generalises that from a hand-written row into a
-        /// rule, so the NEXT unrecognised model is approximate instead of free.
+        /// The precedent for what to do was a hand-written row: when `gpt-5.5`
+        /// appeared with no published billing, it was priced by mirroring
+        /// `gpt-5.4`, with the reasoning written down — *"Approximate-but-non-zero
+        /// beats zero for cost-aware UX; replace when official."* This
+        /// generalises that into a rule, so the NEXT unrecognised model is
+        /// approximate instead of free. Since 1.56 the result says so
+        /// (`codexPriceResolution`), and the screen marks it "≈".
         ///
         /// Tier is matched before version, and that ordering carries the whole
         /// risk: `gpt-5.4-pro` costs 12x `gpt-5.4`. Charging an unknown `-pro`
@@ -712,8 +715,23 @@ public enum CostUsageScanner {
         /// suffix. An unknown suffix (`-sol`, `-terra`, `-codex-max`) is treated
         /// as base tier, which is where every non-suffixed Codex model has sat.
         static func codexPricingKey(_ raw: String) -> String? {
+            codexPriceResolution(raw)?.key
+        }
+
+        /// The row `raw` is charged at: its own, then an alias's, then the
+        /// version fallback above (approximate).
+        static func codexPriceResolution(_ raw: String) -> PriceResolution? {
             let normalized = normalizeCodexModel(raw)
-            if codexModels[normalized] != nil { return normalized }
+            if codexModels[normalized] != nil {
+                return PriceResolution(key: normalized, isApproximate: false)
+            }
+            if let target = CodexPricingTable.aliases[normalized], codexModels[target] != nil {
+                return PriceResolution(key: target, isApproximate: false)
+            }
+            return codexFallbackKey(normalized).map { PriceResolution(key: $0, isApproximate: true) }
+        }
+
+        private static func codexFallbackKey(_ normalized: String) -> String? {
             guard let (version, tier) = codexVersionTier(normalized) else { return nil }
             var best: (key: String, version: (Int, Int))?
             for key in codexModels.keys {
@@ -809,9 +827,17 @@ public enum CostUsageScanner {
         /// the second. A model we have never seen keeps its real name in the UI
         /// *and* gets a defensible non-zero rate.
         static func claudePricingKey(_ raw: String) -> String? {
+            claudePriceResolution(raw)?.key
+        }
+
+        /// The row `raw` is charged at: its own, or the family fallback's
+        /// (approximate).
+        static func claudePriceResolution(_ raw: String) -> PriceResolution? {
             let normalized = normalizeClaudeModel(raw)
-            if claudeModels[normalized] != nil { return normalized }
-            return familyFallback(normalized)
+            if claudeModels[normalized] != nil {
+                return PriceResolution(key: normalized, isApproximate: false)
+            }
+            return familyFallback(normalized).map { PriceResolution(key: $0, isApproximate: true) }
         }
 
         /// The newest priced sibling in the same Claude family, or nil.
@@ -878,13 +904,43 @@ public enum CostUsageScanner {
         }
 
 
-        static func codexCostUSD(model: String, inputTokens: Int, cachedInputTokens: Int, outputTokens: Int) -> Double? {
+        /// Cost of a day's (or a file's) summed Codex usage of `model`.
+        ///
+        /// `pricingDate` chooses between a model's current rate and one it had
+        /// before (`CodexPricingTable.superseded`); nil means today's rate.
+        /// Standard rates only: the input is a sum of requests, so the 272K
+        /// long-context tier cannot be applied here
+        /// (`CodexPricingTable.aggregateCostUSD`).
+        static func codexCostUSD(
+            model: String,
+            inputTokens: Int,
+            cachedInputTokens: Int,
+            outputTokens: Int,
+            pricingDate: Date? = nil
+        ) -> Double? {
             guard let key = codexPricingKey(model),
-                  let p = codexModels[key] else { return nil }
-            let cached = min(max(0, cachedInputTokens), max(0, inputTokens))
-            let nonCached = max(0, inputTokens - cached)
-            let cachedRate = p.cacheReadCostPerToken ?? p.inputCostPerToken
-            return Double(nonCached) * p.inputCostPerToken + Double(cached) * cachedRate + Double(max(0, outputTokens)) * p.outputCostPerToken
+                  let rates = CodexPricingTable.rates(forKey: key, at: pricingDate) else { return nil }
+            return CodexPricingTable.aggregateCostUSD(
+                rates: rates,
+                inputTokens: inputTokens,
+                cachedInputTokens: cachedInputTokens,
+                outputTokens: outputTokens
+            )
+        }
+
+        /// The moment whose rate a whole day of Codex usage is charged at:
+        /// noon of that day in `timeZone`.
+        ///
+        /// Codex usage reaches the price table already summed per local day,
+        /// so a repricing that happens partway through a day cannot be split.
+        /// Noon is the middle of the day, so the rate chosen is the one in
+        /// force for most of it, whatever the time zone. A repricing at 00:00
+        /// UTC falls at 09:00 in Tokyo, and the Tokyo day goes to the new rate;
+        /// in Los Angeles it falls at 17:00 the day before, and that day keeps
+        /// the old one. Pricing each request at its own timestamp removes the
+        /// approximation once usage is priced per request.
+        static func codexPricingDate(forDayKey dayKey: String, in timeZone: TimeZone = .current) -> Date? {
+            DayKey.date(from: dayKey, hour: 12, in: timeZone)
         }
 
         static func claudeCostUSD(model: String, inputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, outputTokens: Int) -> Double? {
@@ -1634,13 +1690,16 @@ public enum CostUsageScanner {
     private static func computeCodexCost(usage: CostUsageFileUsage?) -> Double {
         guard let usage else { return 0 }
         var total = 0.0
-        for (_, models) in usage.days {
+        for (day, models) in usage.days {
             for (model, packed) in models {
                 let input = packed[safeIdx: 0] ?? 0
                 let cached = packed[safeIdx: 1] ?? 0
                 let output = packed[safeIdx: 2] ?? 0
                 if input == 0 && cached == 0 && output == 0 { continue }
-                if let cost = Pricing.codexCostUSD(model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output) {
+                if let cost = Pricing.codexCostUSD(
+                    model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output,
+                    pricingDate: Pricing.codexPricingDate(forDayKey: day)
+                ) {
                     total += cost
                 }
             }

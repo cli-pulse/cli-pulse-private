@@ -43,39 +43,57 @@ public struct CostCoverage: Sendable, Equatable {
     }
 
     public let basis: Basis
-    /// Tokens belonging to entries the app had a rate for.
+    /// Tokens belonging to entries charged at their model's own listed rate.
     public let pricedTokens: Int
+    /// v1.56: tokens belonging to entries charged at a rate borrowed from a
+    /// neighbouring model, because their model has no price of its own
+    /// (`DailyEntry.priceIsApproximate`). They carry a rate, so they count
+    /// toward `pricedFraction`, but not toward `pricedTokens`.
+    public let approximateTokens: Int
     /// Tokens belonging to entries with no rate. These contributed $0.
     public let unpricedTokens: Int
     /// Model identifiers with no rate, most tokens first. Never rendered in a
     /// primary label — it is for the tooltip and the bug report.
     public let unpricedModels: [String]
+    /// Model identifiers charged at a borrowed rate, most tokens first. Listed
+    /// in the "≈" line's tooltip.
+    public let approximateModels: [String]
+    /// Providers with at least one entry charged at a borrowed rate, so a
+    /// per-provider figure can carry its own "≈".
+    public let approximateProviders: Set<String>
 
     public init(
         basis: Basis,
         pricedTokens: Int = 0,
         unpricedTokens: Int = 0,
-        unpricedModels: [String] = []
+        unpricedModels: [String] = [],
+        approximateTokens: Int = 0,
+        approximateModels: [String] = [],
+        approximateProviders: Set<String> = []
     ) {
         self.basis = basis
         self.pricedTokens = pricedTokens
+        self.approximateTokens = approximateTokens
         self.unpricedTokens = unpricedTokens
         self.unpricedModels = unpricedModels
+        self.approximateModels = approximateModels
+        self.approximateProviders = approximateProviders
     }
 
     /// The default for any figure whose composition we cannot see.
     public static let unknown = CostCoverage(basis: .serverEstimate)
 
-    public var totalTokens: Int { pricedTokens + unpricedTokens }
+    public var totalTokens: Int { pricedTokens + approximateTokens + unpricedTokens }
 
-    /// Fraction of counted tokens that carried a rate.
+    /// Fraction of counted tokens that carried a rate, the model's own or a
+    /// borrowed one.
     ///
     /// `nil` when coverage is not knowable (`.serverEstimate`) or when there is
     /// nothing to divide (no tokens at all). Both cases must render as silence,
     /// not as 0% — "0% priced" on an empty account is a false alarm.
     public var pricedFraction: Double? {
         guard basis == .localScan, totalTokens > 0 else { return nil }
-        return Double(pricedTokens) / Double(totalTokens)
+        return Double(pricedTokens + approximateTokens) / Double(totalTokens)
     }
 
     /// True only when we looked AND everything carried a rate. A
@@ -98,6 +116,15 @@ public struct CostCoverage: Sendable, Equatable {
         return Int((fraction * 100).rounded(.down))
     }
 
+    /// v1.56: whether part of the figure was charged at a borrowed rate, so
+    /// the figure is shown as "≈$…" and the card says which models.
+    ///
+    /// Only a local scan can know. A server estimate says nothing, for the
+    /// same reason it never claims full coverage.
+    public var hasApproximatePrices: Bool {
+        basis == .localScan && approximateTokens > 0
+    }
+
     // MARK: - Fidelity
 
     /// How much a cost figure deserves to be trusted, combining where it came
@@ -110,11 +137,17 @@ public struct CostCoverage: Sendable, Equatable {
     /// came apart the moment a model had no rate: a scan that priced 20% of its
     /// tokens is still a local scan, and the card called it Exact.
     ///
-    /// Three states, because there are three situations.
+    /// Four states, because there are four situations. `approximate` came in
+    /// 1.56: a scan whose every token had a rate, some of them borrowed from a
+    /// neighbouring model, said "Exact".
     public enum Fidelity: Sendable, Equatable, Hashable {
-        /// Counted locally, and every token had a rate.
+        /// Counted locally, and every token had its model's own rate.
         case exact
+        /// Counted locally, every token had a rate, and some of those rates
+        /// were borrowed from a neighbouring model.
+        case approximate
         /// Counted locally, but some tokens had no rate and contributed $0.
+        /// Outranks `approximate`: a missing cost is the bigger error.
         case partial
         /// Came pre-summed from the backend; composition unknown.
         case estimated
@@ -132,11 +165,17 @@ public struct CostCoverage: Sendable, Equatable {
     /// Token basis is `input + cached + output`, matching
     /// `CostUsageScanner.reportUnpricedModels` so the log line and the UI can
     /// never disagree about the same scan.
+    ///
+    /// v1.56: an entry priced at a borrowed rate (`priceIsApproximate`) is
+    /// approximate, not priced — the discriminator the scanner set when it
+    /// chose the rate, so this never re-derives it from a model name.
     public static func from(
         entries: [CostUsageScanResult.DailyEntry]
     ) -> CostCoverage {
         var priced = 0
         var unpricedByModel: [String: Int] = [:]
+        var approximateByModel: [String: Int] = [:]
+        var approximateProviders: Set<String> = []
 
         for entry in entries {
             // Skip the synthetic `__claude_msg__` bucket. It carries raw
@@ -158,6 +197,9 @@ public struct CostCoverage: Sendable, Equatable {
             let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
             if entry.costUSD == nil {
                 unpricedByModel[entry.model, default: 0] += tokens
+            } else if entry.priceIsApproximate {
+                approximateByModel[entry.model, default: 0] += tokens
+                approximateProviders.insert(entry.provider)
             } else {
                 priced += tokens
             }
@@ -167,14 +209,21 @@ public struct CostCoverage: Sendable, Equatable {
             basis: .localScan,
             pricedTokens: priced,
             unpricedTokens: unpricedByModel.values.reduce(0, +),
-            unpricedModels: unpricedByModel
-                .sorted { lhs, rhs in
-                    // Token count descending, then name, so the order is stable
-                    // for two models with identical totals (which happens in
-                    // tests and on quiet days).
-                    lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
-                }
-                .map(\.key)
+            unpricedModels: mostTokensFirst(unpricedByModel),
+            approximateTokens: approximateByModel.values.reduce(0, +),
+            approximateModels: mostTokensFirst(approximateByModel),
+            approximateProviders: approximateProviders
         )
+    }
+
+    private static func mostTokensFirst(_ tokensByModel: [String: Int]) -> [String] {
+        tokensByModel
+            .sorted { lhs, rhs in
+                // Token count descending, then name, so the order is stable
+                // for two models with identical totals (which happens in
+                // tests and on quiet days).
+                lhs.value == rhs.value ? lhs.key < rhs.key : lhs.value > rhs.value
+            }
+            .map(\.key)
     }
 }

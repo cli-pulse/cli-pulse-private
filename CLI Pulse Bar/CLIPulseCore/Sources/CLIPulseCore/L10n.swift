@@ -1740,13 +1740,25 @@ public enum L10n {
             tr("cost.coverage_help", models)
         }
         public static var partial: String { tr("cost.partial") }
-        /// The cost-card badge. Three states — see `CostSummary.fidelity` for
+        // v1.56 — approximate prices. Rendered only when a local scan charged
+        // some tokens at a rate borrowed from a neighbouring model; see
+        // `CostCoverage.hasApproximatePrices`. The figures themselves carry
+        // `CostFormatter.approximateMark`.
+        public static var approximate: String { tr("cost.approximate") }
+        public static func approximateSummary(_ modelCount: Int) -> String {
+            tr("cost.approximate_summary", modelCount)
+        }
+        public static func approximateHelp(_ models: String) -> String {
+            tr("cost.approximate_help", models)
+        }
+        /// The cost-card badge. Four states — see `CostSummary.fidelity` for
         /// why "Exact" alone was not honest.
         public static func fidelityLabel(_ fidelity: CostCoverage.Fidelity) -> String {
             switch fidelity {
-            case .exact:     return exact
-            case .partial:   return partial
-            case .estimated: return estimated
+            case .exact:       return exact
+            case .approximate: return approximate
+            case .partial:     return partial
+            case .estimated:   return estimated
             }
         }
         /// `cost_status` ("Exact"/"Estimated"/"Unavailable", a server token) as plain

@@ -109,8 +109,10 @@ final class Claude5PricingTests: XCTestCase {
             P.claudePricingKey("claude-opus-6"), "claude-opus-5",
             "…while still being charged at the newest priced sibling's rate"
         )
-        XCTAssertEqual(P.normalizeCodexModel("gpt-5.6-sol"), "gpt-5.6-sol")
-        XCTAssertEqual(P.codexPricingKey("gpt-5.6-sol"), "gpt-5.5")
+        // `gpt-5.6-sol` has its own row since 1.56; `gpt-5.7` is the unknown
+        // model now.
+        XCTAssertEqual(P.normalizeCodexModel("gpt-5.7"), "gpt-5.7")
+        XCTAssertEqual(P.codexPricingKey("gpt-5.7"), "gpt-5.6-sol")
     }
 
     /// Dated and prefixed spellings still resolve, unchanged by the split.
@@ -161,9 +163,12 @@ final class Claude5PricingTests: XCTestCase {
         XCTAssertGreaterThan(pro, base * 5, "a pro-tier model must not be charged base rates")
     }
 
+    /// 1.56 dropped the `gpt-5.5-mini` / `-nano` rows (OpenAI lists neither;
+    /// they were gpt-5.4's rates copied), so the newest listed mini and nano
+    /// are gpt-5.4's.
     func testMiniAndNanoKeepTheirOwnTier() {
-        XCTAssertEqual(P.codexPricingKey("gpt-5.6-mini"), "gpt-5.5-mini")
-        XCTAssertEqual(P.codexPricingKey("gpt-5.6-nano"), "gpt-5.5-nano")
+        XCTAssertEqual(P.codexPricingKey("gpt-5.6-mini"), "gpt-5.4-mini")
+        XCTAssertEqual(P.codexPricingKey("gpt-5.6-nano"), "gpt-5.4-nano")
     }
 
     /// An unrecognised suffix is base tier — where every non-suffixed Codex
@@ -174,18 +179,21 @@ final class Claude5PricingTests: XCTestCase {
         XCTAssertEqual(P.codexVersionTier("gpt-5.4-pro")?.1, "pro")
     }
 
-    /// `gpt-5.5` and `gpt-5.5-codex` are both (5,5) base tier, and "highest
+    /// `gpt-5.5` and `gpt-5.5-codex` were both (5,5) base tier, and "highest
     /// version wins" alone left the winner to Swift's unspecified dictionary
     /// order — this test failed intermittently against the first draft, picking
-    /// `gpt-5.5-codex` on one run and `gpt-5.5` on the next. Their rates are
-    /// identical, so nothing visible moved and it would have shipped; the next
-    /// pair of same-version rows that disagree on price would have made it a
-    /// real bug that reproduces once in a while.
+    /// `gpt-5.5-codex` on one run and `gpt-5.5` on the next. Their rates were
+    /// identical, so nothing visible moved and it would have shipped.
+    ///
+    /// Since 1.56 that is no longer hypothetical: the four (5,6) base rows,
+    /// Sol, Terra, Luna and Cyber, charge $4, $2, $0.20 and $12.50 per 1M
+    /// input, so an unknown `gpt-5.7` read at hash order would change price
+    /// from run to run by up to 60x.
     ///
     /// Repeated because a flaky assertion that runs once proves nothing.
     func testFallbackTieBreakIsDeterministic() {
         for _ in 0..<50 {
-            XCTAssertEqual(P.codexPricingKey("gpt-5.6-sol"), "gpt-5.5")
+            XCTAssertEqual(P.codexPricingKey("gpt-5.7"), "gpt-5.6-sol")
             XCTAssertEqual(P.claudePricingKey("claude-opus-6"), "claude-opus-5")
         }
     }

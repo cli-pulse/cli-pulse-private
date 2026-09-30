@@ -369,7 +369,8 @@ struct OverviewTab: View {
                 // number came from; the old badge used it to make a claim about
                 // how accurate the number is. A local scan that priced 20% of
                 // its tokens is still a local scan, and this said "Exact"
-                // directly above the line admitting it was 20%.
+                // directly above the line admitting it was 20%. 1.56 adds a
+                // fourth, "Approximate", for a rate borrowed from another model.
                 let fidelity = providerState.costSummary.fidelity
                 let fidelityColor: Color = fidelity == .exact ? .green : .orange
                 Text(L10n.cost.fidelityLabel(fidelity))
@@ -387,7 +388,12 @@ struct OverviewTab: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(CostFormatter.format(providerState.costSummary.todayTotal))
+                        // v1.56: "≈" when part of today's figure was charged at
+                        // a rate borrowed from a neighbouring model.
+                        Text(CostFormatter.format(
+                            providerState.costSummary.todayTotal,
+                            approximate: providerState.costSummary.todayCoverage.hasApproximatePrices
+                        ))
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(.green)
                         if providerState.costSummary.todayTokens > 0 {
@@ -408,7 +414,10 @@ struct OverviewTab: View {
                         .font(.system(size: 9))
                         .foregroundStyle(.tertiary)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(CostFormatter.format(providerState.costSummary.thirtyDayTotal))
+                        Text(CostFormatter.format(
+                            providerState.costSummary.thirtyDayTotal,
+                            approximate: providerState.costSummary.coverage.hasApproximatePrices
+                        ))
                             .font(.system(size: 16, weight: .bold, design: .rounded))
                             .foregroundStyle(.green)
                         if providerState.costSummary.thirtyDayTokens > 0 {
@@ -445,7 +454,13 @@ struct OverviewTab: View {
                                 .clipShape(Capsule())
                         }
                         Spacer()
-                        Text(CostFormatter.format(item.cost))
+                        // Only the 30-day breakdown (a local scan) can know;
+                        // `approximateProviders` is empty for a server figure.
+                        Text(CostFormatter.format(
+                            item.cost,
+                            approximate: providerState.costSummary.isPrecise
+                                && providerState.costSummary.coverage.approximateProviders.contains(item.provider)
+                        ))
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.green)
                     }
@@ -548,7 +563,10 @@ struct OverviewTab: View {
                             .font(.system(size: 9))
                             .foregroundStyle(.secondary)
                         Spacer()
-                        Text(CostFormatter.format(providerState.costSummary.thirtyDayTotal))
+                        Text(CostFormatter.format(
+                            providerState.costSummary.thirtyDayTotal,
+                            approximate: providerState.costSummary.coverage.hasApproximatePrices
+                        ))
                             .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.green)
                     }
@@ -581,6 +599,24 @@ struct OverviewTab: View {
                         }
                         .help(L10n.cost.coverageHelp(
                             coverage.unpricedModels.prefix(6).joined(separator: ", ")
+                        ))
+                    }
+
+                    // v1.56 — the same honesty for a borrowed rate. A model
+                    // with no price of its own is charged at the closest listed
+                    // model's; that keeps it out of "$0", and until now nothing
+                    // said the rate was not its own. The figures above carry
+                    // "≈"; this line says why, and the help names the models.
+                    if providerState.costSummary.coverage.hasApproximatePrices {
+                        let coverage = providerState.costSummary.coverage
+                        HStack(spacing: 4) {
+                            Text(L10n.cost.approximateSummary(coverage.approximateModels.count))
+                                .font(.system(size: 9))
+                                .foregroundStyle(.orange)
+                            Spacer()
+                        }
+                        .help(L10n.cost.approximateHelp(
+                            coverage.approximateModels.prefix(6).joined(separator: ", ")
                         ))
                     }
 
@@ -622,7 +658,10 @@ struct OverviewTab: View {
                                 Text(L10n.cost.tokensValue(TokenFormatter.format(item.totalTokens)))
                                     .font(.system(size: 8))
                                     .foregroundStyle(.tertiary)
-                                Text(CostFormatter.format(item.cost))
+                                Text(CostFormatter.format(
+                                    item.cost,
+                                    approximate: providerState.costSummary.coverage.approximateModels.contains(item.model)
+                                ))
                                     .font(.system(size: 9, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.green)
                                     .frame(width: 55, alignment: .trailing)

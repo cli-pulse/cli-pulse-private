@@ -1116,6 +1116,11 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "cost.coverage_summary" = "Se tarificó el %1$d%% de los tokens · %2$d modelo(s) sin tarifa";
 "cost.coverage_help" = "Estos modelos no tienen precio, así que sus tokens contaron como $0 en el total anterior: %@";
 
+/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+"cost.approximate" = "Aproximado";
+"cost.approximate_summary" = "≈ Estimado en parte con tarifas aproximadas · %d modelo(s)";
+"cost.approximate_help" = "Estos modelos aún no tienen precio propio, así que se tarifican con el del modelo más cercano de la lista. Las cifras marcadas con ≈ los incluyen: %@";
+
 /* v1.51 — cost-card badge third state */
 "cost.partial" = "Parcial";
 "cost.tokens_suffix" = "· %@ tokens de E/S";

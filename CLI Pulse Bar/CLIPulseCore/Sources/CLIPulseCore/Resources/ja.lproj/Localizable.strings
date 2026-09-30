@@ -701,6 +701,11 @@
 "cost.by_model" = "モデル別";
 "cost.coverage_summary" = "トークンの %1$d%% を価格計算 · %2$d 個のモデルに単価がありません";
 "cost.coverage_help" = "これらのモデルには単価が登録されていないため、トークンは上の合計に $0 として計上されています: %@";
+
+/* v1.56 — approximate prices: a model with no price of its own is charged at the closest listed model's rate. The figures carry "≈" (a symbol, kept as is in every language). */
+"cost.approximate" = "近似";
+"cost.approximate_summary" = "≈ 一部を近似単価で推定 · %d 個のモデル";
+"cost.approximate_help" = "これらのモデルにはまだ固有の単価がないため、最も近い掲載モデルの単価で計算しています。≈ の付いた金額にはこれらが含まれます: %@";
 "watch.unread_count" = "%d 件未読";
 "watch.snooze_15" = "15分";
 "watch.snooze_30" = "30分";
