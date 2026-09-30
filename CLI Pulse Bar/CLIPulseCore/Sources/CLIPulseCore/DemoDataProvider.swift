@@ -217,12 +217,13 @@ internal enum DemoDataProvider {
             // App Store screenshot while no customer could see it. Put rows back
             // only in the change that gives a real account some.
             top_projects: [],
-            trend: (0..<24).map { index in
-                UsagePoint(
-                    timestamp: timestamp(Double(-23 + index) * 3600),
-                    value: 4000 + Int(unit(index, 200) * 3001)
-                )
-            },
+            // Empty, as every real producer leaves it (APIClient's
+            // `dashboard_summary` row has no hourly column, and the local
+            // refresh keeps none), so the Overview's Hourly Activity card hides
+            // here too. 24 sample bars put it in every App Store screenshot
+            // while no customer could see it. Put bars back only in the change
+            // that gives a real account some.
+            trend: [],
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager).
             // Its only renderer is the Watch home screen, which never receives
             // the demo dashboard, so sample rows here were English nobody saw.

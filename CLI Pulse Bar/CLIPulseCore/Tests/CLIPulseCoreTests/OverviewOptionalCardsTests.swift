@@ -5,7 +5,8 @@ import XCTest
 /// they draw (Mac, iPhone, Watch), and Demo builds its dashboard from the same
 /// producers a real account does. Every App Store screenshot is drawn from
 /// Demo, and until 1.55 it showed both cards filled in six languages while no
-/// customer could see either.
+/// customer could see either. The Hourly Activity card follows: it draws only
+/// with an hourly trend, which nothing real produces either.
 ///
 /// Runs in Simplified Chinese: risk signals are text resolved when they are
 /// made, and under English a broken lookup still passes, because the fallback
@@ -72,6 +73,7 @@ final class OverviewOptionalCardsTests: XCTestCase {
         XCTAssertEqual(dash.total_usage_today, 120000, "the row did not decode, so this proves nothing")
         XCTAssertFalse(dash.showsTopProjectsCard)
         XCTAssertFalse(dash.showsRiskSignalsCard)
+        XCTAssertTrue(dash.trend.isEmpty, "the row has no hourly column, so Hourly Activity stays hidden")
     }
 
     /// The local refresh raises one signal, only when it found nothing at all,
@@ -101,6 +103,20 @@ final class OverviewOptionalCardsTests: XCTestCase {
         XCTAssertFalse(demo.showsTopProjectsCard, """
             Demo fills Top Projects (\(demo.top_projects.map(\.name))), which no real account can see. \
             Restore the rows only with a real producer.
+            """)
+    }
+
+    /// No real producer fills the dashboard's hourly `trend` (the cloud row has
+    /// no such column, and the local refresh keeps none), and every Overview
+    /// draws Hourly Activity only with one (`!dash.trend.isEmpty`; the Watch,
+    /// with two points). Demo filled 24 bars, so the card was in the Mac and
+    /// iPhone Overview screenshots and on no customer's screen.
+    func testDemoShowsNoHourlyActivityCard() {
+        let demo = DemoDataProvider.generate().dashboard
+        XCTAssertTrue(demo.trend.isEmpty, """
+            Demo fills the hourly trend (\(demo.trend.count) points), which no real account has, so \
+            Hourly Activity is back in Demo and in every screenshot. Restore the bars only with a real \
+            producer.
             """)
     }
 
@@ -181,6 +197,32 @@ final class OverviewOptionalCardsTests: XCTestCase {
                       "Demo's dashboard was not found: \(sitesPerFile["DemoDataProvider.swift"] ?? [])")
         XCTAssertTrue(sitesPerFile["APIClient.swift", default: []].contains("risk_signals: []"),
                       "the cloud mapping was not found: \(sitesPerFile["APIClient.swift"] ?? [])")
+    }
+
+    /// The dashboards the local refresh and the cloud mapping build carry an
+    /// hourly `trend` only as `[]` or passed through from another dashboard or
+    /// provider row: nothing real produces one, which is why Demo has none
+    /// (above). A real producer here needs Demo's bars back in the same change.
+    func testNoRealProducerFillsTheHourlyTrend() throws {
+        let sources = Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore")
+        let argument = try NSRegularExpression(pattern: #"\btrend:\s*([^\n]*)"#)
+        for name in ["DataRefreshManager.swift", "APIClient.swift"] {
+            let code = Self.codeOnly(try String(contentsOf: sources.appendingPathComponent(name), encoding: .utf8))
+            var values: [String] = []
+            for match in argument.matches(in: code, range: NSRange(code.startIndex..., in: code)) {
+                guard let range = Range(match.range(at: 1), in: code) else { continue }
+                var value = code[range].trimmingCharacters(in: .whitespaces)
+                if value.hasSuffix(",") { value.removeLast() }
+                values.append(value)
+                let passthrough = value.range(of: #"^\w+\.trend$"#, options: .regularExpression) != nil
+                XCTAssertTrue(value == "[]" || passthrough, """
+                    \(name) fills a trend with `\(value)`. If the Overview's hourly trend now has a real \
+                    producer, give Demo bars in the same change and update this test.
+                    """)
+            }
+            // Positive control: the dashboards were found at all.
+            XCTAssertTrue(values.contains("[]"), "\(name): no `trend: []` found: \(values)")
+        }
     }
 
     /// The Mac, iPhone and Watch Overviews draw each card only under the rule:
