@@ -876,6 +876,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_config.manual_cookie_header" = "Encabezado de cookies manual";
 "provider_config.auto_import_note" = "Importa automáticamente las cookies de sesión desde un navegador con la sesión iniciada. macOS puede pedir acceso al Llavero una vez; si no se encuentra ninguna, pégalas manualmente abajo.";
 "provider_config.auto_import_failed" = "No se pudieron importar automáticamente las cookies de sesión. Pégalas manualmente:";
+"provider_config.auto_import_note_strict" = "El modo de privacidad estricta está activado, así que CLI Pulse no importa cookies de tus navegadores. Elige «Manual» para pegar una, o desactiva el modo en Ajustes › Privacidad.";
 "provider_config.capabilities" = "Capacidades";
 "provider_config.cap_quota" = "Cuota";
 "provider_config.cap_exact_cost" = "Costo exacto";
@@ -1041,6 +1042,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "collector_status.not_signed_in_hint" = "Inicia sesión en %@ desde su propia app o CLI; aquí no hace falta ninguna clave.";
 "collector_status.shared_login_taken" = "Inicio de sesión en uso";
 "collector_status.shared_login_taken_hint" = "Otra de tus cuentas ya está usando el inicio de sesión de %@ en este Mac. Dale a esta cuenta su propia clave API, o quita la otra.";
+"collector_status.strict_privacy_mode" = "No se lee en modo de privacidad estricta";
+"collector_status.strict_privacy_mode_cookie_hint" = "En el modo de privacidad estricta, CLI Pulse no importa la cookie de %@ de tu navegador. Cambia su Fuente de cookies a «Manual» y pega una, o desactiva el modo en Ajustes › Privacidad.";
+"collector_status.strict_privacy_mode_keychain_hint" = "En el modo de privacidad estricta, CLI Pulse no lee el elemento del Llavero de %@. Para verlo aquí, desactiva el modo en Ajustes › Privacidad.";
 "collector_status.not_set_up" = "Sin configurar";
 "collector_status.not_set_up_hint" = "Abre Ajustes para conectar este proveedor.";
 "collector_status.no_data" = "Sin datos";
@@ -1123,7 +1127,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "Estadísticas de instalación anónimas";
 "telemetry.disclosure_body" = "CLI Pulse informa hasta dónde llegó: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar. También informa en qué idioma se está mostrando. Si usas el control remoto, añade cuatro datos de sí/no: si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude. Así sabemos dónde deja de funcionar la app: no hay ninguna cuenta de por medio, así que de otro modo no podríamos saberlo.";
-"telemetry.disclosure_body_local_only" = "El modo de privacidad estricta está activado, así que CLI Pulse no envía absolutamente nada. Sin él, informaría de cuatro pasos: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar, además del idioma en que se muestra. Si usas el control remoto, también informaría de si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude.";
+"telemetry.disclosure_body_local_only" = "El modo de privacidad estricta está activado, así que CLI Pulse no envía ninguna estadística anónima. Sin él, informaría de cuatro pasos: que se instaló, si el helper se conectó, si alguna vez encontró una CLI que seguir y si alguna vez tuvo un costo que mostrar, además del idioma en que se muestra. Si usas el control remoto, también informaría de si un teléfono se conectó a este Mac a través de tu Wi‑Fi, si se conectó a través de tu propia red privada, si una sesión se transfirió a claude.ai y si alguna vez controlaste a distancia una herramienta distinta de Claude.";
 "telemetry.not_collected" = "Sin rutas de archivos, nombres de proyectos, nombres de proveedores, recuentos de tokens ni importes. Nada que te identifique a ti ni a tu equipo. El id es aleatorio y se elimina al desinstalar.";
 "telemetry.toggle" = "Enviar estadísticas de instalación anónimas";
 "telemetry.toggle_local_only" = "Desactivado: el modo de privacidad estricta ya cubre esto.";
@@ -1349,7 +1353,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.settings_declined_detail" = "Elegiste «Ahora no». Tener la sesión iniciada no cambia esa respuesta.";
 "local_scan_consent.choose_again" = "Volver a elegir…";
 "settings.local_only_mode" = "Modo de privacidad estricta";
-"settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta los secretos que otras apps guardan en tu Llavero o en tus navegadores: ni los elementos del Llavero de Claude Code o de Zed, ni las cookies del navegador, aunque un proveedor esté configurado para leerlas automáticamente. Tampoco envía estadísticas anónimas. Sigue leyendo los archivos de inicio de sesión que las CLI de IA guardan en tu carpeta de inicio, para la cuota, y los registros de esa carpeta, para el uso. La sincronización con tu cuenta sigue igual.";
+"settings.local_only_mode_hint" = "CLI Pulse no lee por su cuenta los secretos que otras apps guardan en tu Llavero o en tus navegadores: ni los elementos del Llavero de Claude Code o de Zed, ni las cookies de tus navegadores o de la app de escritorio de Claude, aunque un proveedor esté configurado para leer las cookies automáticamente. Tampoco envía estadísticas anónimas. Lo que sí sigue leyendo son los archivos de credenciales que las CLI de IA dejan en tu carpeta de inicio (para la cuota) y sus registros (para el uso). Los informes de errores se envían igual, y la sincronización con tu cuenta no cambia.";
 "settings.skip_claude_keychain" = "Omitir el acceso al Llavero para Claude Code";
 "settings.skip_claude_keychain_forced" = "Activado obligatoriamente por el modo de privacidad estricta.";
 "settings.skip_claude_keychain_hint" = "Impide que CLI Pulse lea las credenciales OAuth de Claude Code que pertenecen a otras apps. Útil si te has topado con un diálogo del Llavero de macOS que no acepta tu contraseña de inicio de sesión.";

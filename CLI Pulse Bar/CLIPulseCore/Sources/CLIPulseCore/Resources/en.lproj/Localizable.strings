@@ -432,6 +432,7 @@
 "provider_config.manual_cookie_header" = "Manual cookie header";
 "provider_config.auto_import_note" = "Automatically import session cookies from a signed-in browser. macOS may ask once for Keychain access; if none are found, paste manually below.";
 "provider_config.auto_import_failed" = "Couldn't import session cookies automatically. Paste them manually:";
+"provider_config.auto_import_note_strict" = "Strict privacy mode is on, so CLI Pulse won't import cookies from your browsers. Choose Manual to paste one, or turn the mode off in Settings › Privacy.";
 "provider_config.capabilities" = "Capabilities";
 "provider_config.cap_quota" = "Quota";
 "provider_config.cap_exact_cost" = "Exact cost";
@@ -1103,6 +1104,9 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "collector_status.not_signed_in_hint" = "Sign in to %@ in its own app or CLI — no key needed here.";
 "collector_status.shared_login_taken" = "Shared login in use";
 "collector_status.shared_login_taken_hint" = "Another account here is already using this Mac's %@ login. Give this one its own API key, or remove the other account.";
+"collector_status.strict_privacy_mode" = "Not read in Strict privacy mode";
+"collector_status.strict_privacy_mode_cookie_hint" = "Strict privacy mode stops CLI Pulse importing %@'s cookie from your browser. Set its Cookie source to Manual and paste one, or turn the mode off in Settings › Privacy.";
+"collector_status.strict_privacy_mode_keychain_hint" = "Strict privacy mode stops CLI Pulse reading %@'s keychain item. Turn the mode off in Settings › Privacy to show it here.";
 "collector_status.not_set_up" = "Not set up";
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";
@@ -1167,7 +1171,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 /* ── Telemetry disclosure (v1.52.1: was hardcoded English in two SwiftUI views) ── */
 "telemetry.disclosure_title" = "Anonymous install statistics";
 "telemetry.disclosure_body" = "CLI Pulse reports how far it got: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show. It also reports which language it is displaying in. If you use remote control, it adds four yes/no facts: whether a phone reached this Mac over your Wi‑Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude. That's how we tell where the app stops working for people — there's no account involved, so otherwise we can't.";
-"telemetry.disclosure_body_local_only" = "Strict privacy mode is on, so CLI Pulse is sending nothing at all. Without it, it would report four steps: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in, and, if you use remote control, whether a phone reached this Mac over your Wi‑Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude.";
+"telemetry.disclosure_body_local_only" = "Strict privacy mode is on, so CLI Pulse sends no anonymous statistics. Without it, it would report four steps: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in, and, if you use remote control, whether a phone reached this Mac over your Wi‑Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude.";
 "telemetry.not_collected" = "No file paths, project names, provider names, token counts, or costs. Nothing that identifies you or your machine. The ID is random and is deleted when you uninstall.";
 "telemetry.toggle" = "Send anonymous install statistics";
 "telemetry.toggle_local_only" = "Off — strict privacy mode covers this too.";
@@ -1394,7 +1398,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.settings_declined_detail" = "You chose “Not now”. Being signed in does not change that.";
 "local_scan_consent.choose_again" = "Choose again…";
 "settings.local_only_mode" = "Strict privacy mode";
-"settings.local_only_mode_hint" = "CLI Pulse won't read secrets other apps keep in your keychain or browsers on its own: not Claude Code's or Zed's keychain items, and not browser cookies, even for a provider set to read them automatically. It also sends no anonymous statistics. Still read: the sign-in files AI CLIs keep in your home folder, for quota, and the log files there, for usage. Syncing to your account is not affected.";
+"settings.local_only_mode_hint" = "On its own, CLI Pulse won't read secrets that other apps store in your keychain or browsers: not Claude Code's or Zed's keychain items, and not the cookies saved by your browsers or the Claude desktop app, even for a provider set to read cookies automatically. It also sends no anonymous statistics. It still reads the sign-in files AI CLIs keep in your home folder (for quota) and their logs (for usage). Crash reports are still sent, and syncing to your account is not affected.";
 "settings.skip_claude_keychain" = "Skip Claude Code keychain access";
 "settings.skip_claude_keychain_forced" = "Forced on by Strict privacy mode.";
 "settings.skip_claude_keychain_hint" = "Stops CLI Pulse from reading the Claude Code OAuth credentials owned by other apps. Useful if you've hit a macOS keychain dialog that won't accept your login password.";

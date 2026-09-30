@@ -6,7 +6,11 @@ import Foundation
 /// Session key sources (in order):
 /// 1. Manual cookie header from ProviderConfig (user-provided in Settings)
 /// 2. Helper-written snapshot file (`~/.clipulse/claude_snapshot.json`)
-/// 3. Helper-written session key file (`~/.clipulse/claude_session.json`)
+/// 3. Helper-written session key file (`~/.clipulse/claude_session.json`),
+///    except in Strict privacy mode (v1.55): that key is a claude.ai cookie
+///    the Companion CLI took from a browser or the Claude desktop app, which
+///    is another app's secret. The snapshot (2) is usage figures, not a
+///    secret, and a pasted cookie (1) is the user's own.
 ///
 /// API endpoints (matches CodexBar's documented set):
 /// - `GET https://claude.ai/api/organizations` → org UUID + email
@@ -161,10 +165,34 @@ public struct ClaudeWebStrategy: ClaudeSourceStrategy, Sendable {
         return nil
     }
 
+    /// v1.55: Strict privacy mode, for the helper-written session key. A seam
+    /// so tests do not flip the real setting; in the LoginItem helper,
+    /// `PrivacySettings.shared` follows the app's copy of the switch.
+    nonisolated(unsafe) static var strictPrivacyModeSkipsHelperSessionKey: () -> Bool = {
+        PrivacySettings.shared.skipsOtherAppsSecretsOnItsOwn
+    }
+
     /// Read session key from helper-written file.
     /// Path: ~/.clipulse/claude_session.json
+    ///
+    /// Nil in Strict privacy mode, without opening the file: the key in it is
+    /// a claude.ai cookie the Companion CLI decrypted from a browser's or the
+    /// Claude desktop app's cookie store, and Strict privacy mode means CLI
+    /// Pulse uses no other app's secret it did not get from the user. The
+    /// Companion (after 1.30.0) also stops writing it and removes it; one it
+    /// wrote before, or a 1.30.0 Companion still writing it, is not used.
     static func findSessionKeyFromFile() -> String? {
-        for path in ClaudeHelperContract.sessionKeyCandidatePaths {
+        helperSessionKey(
+            strictPrivacyMode: strictPrivacyModeSkipsHelperSessionKey(),
+            paths: ClaudeHelperContract.sessionKeyCandidatePaths
+        )
+    }
+
+    /// `findSessionKeyFromFile`, apart from the switch it asks and the paths
+    /// it reads.
+    static func helperSessionKey(strictPrivacyMode: Bool, paths: [String]) -> String? {
+        guard !strictPrivacyMode else { return nil }
+        for path in paths {
             guard let data = FileManager.default.contents(atPath: path),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let key = json["sessionKey"] as? String, !key.isEmpty else { continue }

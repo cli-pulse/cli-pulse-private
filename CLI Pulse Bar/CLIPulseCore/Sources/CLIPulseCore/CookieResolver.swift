@@ -47,14 +47,17 @@ public enum CookieResolver {
     }
 
     /// Testable overload — caller injects the importer, and whether Strict
-    /// privacy mode leaves the browser import (step 3) allowed.
+    /// privacy mode leaves the browser import (step 3) allowed. No default:
+    /// a caller that brings its own importer must say, so going back to this
+    /// overload from the production one cannot quietly drop Strict privacy
+    /// mode (`StrictPrivacyModeReferenceTests`).
     public static func resolve(
         config: ProviderConfig,
         envVarNames: [String],
         domains: [String],
         knownSessionCookieNames: Set<String>,
         importer: CookieImporting,
-        browserImportAllowed: Bool = true,
+        browserImportAllowed: Bool,
         logger: (@Sendable (String) -> Void)? = nil
     ) async -> CookieResolutionResult {
         if let c = config.manualCookieHeader, !c.isEmpty {
@@ -67,6 +70,9 @@ public enum CookieResolver {
         }
         if config.cookieSource == .automatic, !browserImportAllowed {
             logger?("[cookie-auto] skipped: Strict privacy mode is on")
+            // So a collector that then has no cookie is shown as "Not read in
+            // Strict privacy mode", not as a rejected credential.
+            StrictPrivacySkipLog.note(.browserCookies)
             return .unavailable
         }
         if config.cookieSource == .automatic {

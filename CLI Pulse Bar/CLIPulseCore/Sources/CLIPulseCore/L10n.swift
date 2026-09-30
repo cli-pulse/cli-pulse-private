@@ -477,6 +477,14 @@ public enum L10n {
         public static func sharedLoginTakenHint(_ provider: String) -> String {
             tr("collector_status.shared_login_taken_hint", provider)
         }
+        /// v1.55: Strict privacy mode stopped the read this provider needs.
+        public static var strictPrivacyMode: String { tr("collector_status.strict_privacy_mode") }
+        public static func strictPrivacyModeCookieHint(_ provider: String) -> String {
+            tr("collector_status.strict_privacy_mode_cookie_hint", provider)
+        }
+        public static func strictPrivacyModeKeychainHint(_ provider: String) -> String {
+            tr("collector_status.strict_privacy_mode_keychain_hint", provider)
+        }
         public static var notSetUp: String { tr("collector_status.not_set_up") }
         public static var notSetUpHint: String { tr("collector_status.not_set_up_hint") }
         public static var noData: String { tr("collector_status.no_data") }
@@ -1833,6 +1841,9 @@ public enum L10n {
         public static var manualCookieHeader: String { tr("provider_config.manual_cookie_header") }
         public static var autoImportNote: String { tr("provider_config.auto_import_note") }
         public static var autoImportFailed: String { tr("provider_config.auto_import_failed") }
+        /// v1.55: shown in place of `autoImportNote` while Strict privacy mode
+        /// stops the browser import.
+        public static var autoImportNoteStrict: String { tr("provider_config.auto_import_note_strict") }
         public static var capabilities: String { tr("provider_config.capabilities") }
         public static var capQuota: String { tr("provider_config.cap_quota") }
         public static var capExactCost: String { tr("provider_config.cap_exact_cost") }

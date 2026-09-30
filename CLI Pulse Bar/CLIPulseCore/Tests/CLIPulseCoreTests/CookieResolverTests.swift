@@ -35,7 +35,8 @@ final class CookieResolverTests: XCTestCase {
             envVarNames: [],
             domains: ["cursor.com"],
             knownSessionCookieNames: [],
-            importer: importer)
+            importer: importer,
+            browserImportAllowed: true)
         XCTAssertEqual(result.headerValue, "manual=abc")
         if case .manual = result {} else { XCTFail("expected .manual") }
         let calls = await importer.wasCalled()
@@ -50,7 +51,8 @@ final class CookieResolverTests: XCTestCase {
                 envVarNames: [],
                 domains: ["cursor.com"],
                 knownSessionCookieNames: [],
-                importer: importer)
+                importer: importer,
+                browserImportAllowed: true)
             XCTAssertEqual(result.headerValue, nil)
             if case .unavailable = result {} else { XCTFail("expected .unavailable for \(String(describing: src))") }
             let calls = await importer.wasCalled()
@@ -65,7 +67,8 @@ final class CookieResolverTests: XCTestCase {
             envVarNames: [],
             domains: ["cursor.com"],
             knownSessionCookieNames: [],
-            importer: importer)
+            importer: importer,
+            browserImportAllowed: true)
         XCTAssertEqual(result.headerValue, "WorkosCursorSessionToken=xyz")
         if case .automatic = result {} else { XCTFail("expected .automatic") }
     }
@@ -77,7 +80,8 @@ final class CookieResolverTests: XCTestCase {
             envVarNames: [],
             domains: ["cursor.com"],
             knownSessionCookieNames: [],
-            importer: importer)
+            importer: importer,
+            browserImportAllowed: true)
         if case .unavailable = result {} else { XCTFail("expected .unavailable") }
     }
 
@@ -164,7 +168,8 @@ final class CookieResolverTests: XCTestCase {
             envVarNames: [],
             domains: ["cursor.com"],
             knownSessionCookieNames: [],
-            importer: NullCookieImporter())
+            importer: NullCookieImporter(),
+            browserImportAllowed: true)
         if case .unavailable = result {} else { XCTFail("NullCookieImporter must yield .unavailable") }
     }
 }

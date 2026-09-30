@@ -402,13 +402,15 @@ final class HelperDaemon {
         // if no local helper is listening, pass nil → the RPC omits the param → the
         // server preserves the last-known value (never clobbers to {}).
         //
-        // v1.55: `hello` reads ~/.codex/auth.json for this only when the
-        // caller says the local-scan answer allows reading this Mac
-        // (`localScanAllowed`). It says what `HelperCycleRunner` asked just
-        // before this step: an upload step runs only after a question that
-        // allowed reading and uploading, so this is true exactly when the
-        // gate allowed it, and a "Not now", a sign-out or another account's
-        // pairing never reaches here at all.
+        // v1.55: `hello` reads this Mac only when the caller says the
+        // local-scan answer allows it (`localScanAllowed`): a provider's
+        // credential file (~/.codex/auth.json) for `provider_plan_status`, and
+        // Claude Code's settings files and ~/.claude/.credentials.json for
+        // `claude_remote_control`, which this heartbeat does not use. It says
+        // what `HelperCycleRunner` asked just before this step: an upload step
+        // runs only after a question that allowed reading and uploading, so
+        // this is true exactly when the gate allowed it, and a "Not now", a
+        // sign-out or another account's pairing never reaches here at all.
         let providerPlanStatus: [String: String]? = await {
             do {
                 return try await LocalSessionControlClient()

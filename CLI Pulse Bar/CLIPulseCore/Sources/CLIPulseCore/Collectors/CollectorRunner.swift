@@ -117,6 +117,16 @@ public enum CollectorNotReadyReason: String, Sendable, Equatable {
     /// two things that do work are an API key of this entry's own, or removing
     /// the entry that holds the shared login.
     case sharedCredentialTaken = "shared_credential_taken"
+    /// v1.55: Strict privacy mode (Settings › Privacy) stopped CLI Pulse
+    /// importing this provider's cookie from a browser, and it had no other
+    /// credential. Not "Authentication failed": nothing was sent, so nothing
+    /// was rejected. The user chose this, so it is not shown as a problem.
+    /// Noted by `CookieResolver` (`StrictPrivacySkipLog`).
+    case strictPrivacyModeCookies = "strict_cookies"
+    /// v1.55: Strict privacy mode stopped CLI Pulse reading another app's
+    /// keychain item that is this provider's only credential (Zed's). Not
+    /// "Not set up": the provider may well be set up; CLI Pulse did not look.
+    case strictPrivacyModeKeychain = "strict_keychain"
     /// `isAvailable` said no and the collector did not say why.
     case unknown
 }
@@ -321,18 +331,60 @@ public enum CollectorRunner {
             maxConcurrent: maxConcurrent
         ) { pair -> CollectorRun? in
             let (config, collector) = pair
-            switch await execute(config, collector) {
+            // What Strict privacy mode stopped this run reading, noted by
+            // `CookieResolver` in the log bound to this task.
+            let strictPrivacySkips = StrictPrivacySkipLog()
+            let outcome = await StrictPrivacySkipLog.$current.withValue(strictPrivacySkips) {
+                await execute(config, collector)
+            }
+            switch outcome {
             case .success(let result):
                 return CollectorRun(kind: config.kind, outcome: Self.classify(result), result: result)
             case .failure(let error):
                 return CollectorRun(
                     kind: config.kind,
-                    outcome: .failed(CollectorFailureCategory.categorize(error))
+                    outcome: Self.failureOutcome(error, strictPrivacySkips: strictPrivacySkips.skips)
                 )
             }
         }
 
         return preflighted + executed
+    }
+
+    /// The outcome of a run that threw.
+    ///
+    /// Strict privacy mode first (v1.55). A collector that throws
+    /// `StrictPrivacyModeSkipped` says so itself. One that threw a credential
+    /// error (`.auth`) after Strict privacy mode stopped a read in the same
+    /// run (`strictPrivacySkips`, from `StrictPrivacySkipLog`) failed for want
+    /// of what it was not allowed to read: "Authentication failed … its saved
+    /// credential was rejected" would be false, because nothing was sent. Any
+    /// other failure keeps its own category, so a network error in a run that
+    /// also skipped a cookie still reads as a network error.
+    public static func failureOutcome(
+        _ error: Error,
+        strictPrivacySkips: [StrictPrivacySkip]
+    ) -> CollectorOutcome {
+        if let skip = strictPrivacySkip(causing: error, strictPrivacySkips: strictPrivacySkips) {
+            return .notReady(skip.notReadyReason)
+        }
+        return .failed(CollectorFailureCategory.categorize(error))
+    }
+
+    /// The read Strict privacy mode stopped that made a run fail, if one did:
+    /// the rule `failureOutcome` applies, for callers that show the error
+    /// itself (the provider editor's Test button).
+    public static func strictPrivacySkip(
+        causing error: Error,
+        strictPrivacySkips: [StrictPrivacySkip]
+    ) -> StrictPrivacySkip? {
+        if let skipped = error as? StrictPrivacyModeSkipped {
+            return skipped.skip
+        }
+        if CollectorFailureCategory.categorize(error) == .auth {
+            return strictPrivacySkips.first
+        }
+        return nil
     }
 
     /// Per-provider telemetry map for `helper_report_app_version`'s

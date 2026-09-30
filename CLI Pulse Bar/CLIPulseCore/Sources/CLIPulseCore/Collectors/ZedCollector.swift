@@ -94,6 +94,31 @@ public struct ZedCollector: ProviderCollector, Sendable {
         #endif
     }
 
+    /// v1.55: under Strict privacy mode the row says so ("Not read in Strict
+    /// privacy mode"), not "Not set up": CLI Pulse did not look for Zed's
+    /// item, so it cannot say Zed is not set up. Otherwise as `isAvailable`,
+    /// with no reason given (the default).
+    public func readiness(config: ProviderConfig) -> CollectorReadiness {
+        #if DEVID_BUILD
+        return Self.readiness(
+            strictPrivacyMode: ZedKeychainGate.strictPrivacyModeSkips(),
+            available: { isAvailable(config: config) }
+        )
+        #else
+        // The App Store build never reads Zed's item, whatever the switch.
+        return isAvailable(config: config) ? .ready : .notReady(.unknown)
+        #endif
+    }
+
+    /// The Developer ID build's readiness, apart from the keychain it asks.
+    static func readiness(
+        strictPrivacyMode: Bool,
+        available: () -> Bool
+    ) -> CollectorReadiness {
+        if strictPrivacyMode { return .notReady(.strictPrivacyModeKeychain) }
+        return available() ? .ready : .notReady(.unknown)
+    }
+
     /// The Developer ID build's rule, apart from the keychain it asks.
     /// - Strict privacy mode on: not available, and Zed's item is not even
     ///   looked for (v1.55).
@@ -113,8 +138,9 @@ public struct ZedCollector: ProviderCollector, Sendable {
         #if DEVID_BUILD
         // Reached only through `isAvailable`, which already says no under
         // Strict privacy mode; asked again so no other path reads the item.
+        // "No credentials found" would be false: nothing was looked for.
         guard !ZedKeychainGate.strictPrivacyModeSkips() else {
-            throw CollectorError.missingCredentials(CredentialProblem("Zed", .noCredentials))
+            throw StrictPrivacyModeSkipped(.keychainItem, provider: "Zed")
         }
         guard let creds = try Self.loadCredentials() else {
             throw CollectorError.notSignedIn(CredentialProblem(nil, .zedSignInFromEditor))
