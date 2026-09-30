@@ -1011,12 +1011,37 @@ def _fetch_claude_oauth_api(token: str, plan_type: str | None) -> dict | None:
         return None
 
 
+# Everything the `claude /usage` fallback passes after the binary.
+#
+# `--settings {"remoteControlAtStartup":false}` keeps this probe out of Claude
+# Code's own Remote Control (unrelated to CLI Pulse's LAN Remote Control). A
+# user who turned Remote Control on for all sessions, or whose account has it
+# on by default, could otherwise find an empty session in claude.ai and the
+# Claude app for every refresh that reaches this fallback. It is the same
+# setting the app's own probe passes (`ClaudeCLIPTYStrategy.probeLaunchArguments`)
+# and the one CodexBar used for the same problem (steipete/CodexBar#3651). A
+# flag-scope setting applies to this one process and leaves the user's saved
+# settings alone.
+#
+# No `--bare`, unlike the app's probe. Measured with Claude Code 2.1.266:
+# `claude --bare /usage` exits 0 and prints a cost summary ("Total cost:
+# $0.0000 …") instead of the plan limits, because bare mode never reads the
+# claude.ai login (`claude --help`: "OAuth and keychain are never read"). The
+# parser finds no percentages in that and returns None, so `--bare` would turn
+# a working fallback into one that never produces a bar.
+_CLAUDE_USAGE_PROBE_ARGS: tuple[str, ...] = (
+    "--settings", '{"remoteControlAtStartup":false}',
+    "/usage",
+)
+
+
 def _fetch_claude_cli(plan_type: str | None) -> dict | None:
     """Run Claude CLI to get usage data.
 
-    Note: Claude Code v2.x removed `/usage` slash command.
-    This function is kept as a fallback for environments where
-    a compatible CLI version is available.
+    With stdout not a terminal, `claude /usage` answers in print mode: it
+    prints the plan limits and exits. Measured working with Claude Code
+    2.1.266, where the parser below reads the session and weekly bars from it
+    (an earlier note here said v2.x had removed `/usage`; it has not).
     """
     import shutil
     # Search common Claude CLI locations beyond PATH
@@ -1032,8 +1057,6 @@ def _fetch_claude_cli(plan_type: str | None) -> dict | None:
                 break
     if not binary:
         return None
-    # Claude Code v2.x: `/usage` is not a valid command.
-    # Keep this path for future compatibility but don't expect it to work.
     # `stdin=DEVNULL` is defensive: if a future `claude` build prompts
     # for confirmation on an unknown subcommand, we'd block on the
     # 15-second `timeout` instead of returning instantly. Other CLIs
@@ -1041,7 +1064,7 @@ def _fetch_claude_cli(plan_type: str | None) -> dict | None:
     # don't need the same guard.
     try:
         proc = subprocess.run(
-            [binary, "/usage"],
+            [binary, *_CLAUDE_USAGE_PROBE_ARGS],
             stdin=subprocess.DEVNULL,
             capture_output=True, text=True, timeout=15,
             env={**os.environ, "NO_COLOR": "1"},

@@ -7,6 +7,9 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
+      # helper/test_claude_usage_probe.py compares the helper's Claude /usage
+      # probe settings against this file; an app-side change must run it.
+      - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
       - '.github/workflows/helper-ci.yml'
   pull_request:
     paths:
@@ -14,6 +17,9 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
+      # helper/test_claude_usage_probe.py compares the helper's Claude /usage
+      # probe settings against this file; an app-side change must run it.
+      - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
       - '.github/workflows/helper-ci.yml'
   # v1.26 C2: manual retrigger trigger so a future Actions outage
   # can be unstuck without an empty-commit push.
