@@ -133,12 +133,13 @@ signing in later, and is reversible from Settings → Privacy at any time.
 
 The question names all of it:
 
-* **Session logs: the last 30 days, and up to a year once** —
+* **Session logs: the last 30 days, and a one-time read of up to a year** —
   `~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.claude/projects/` and
-  `~/.config/claude/projects/`. Every refresh reads the last 30 days. Once, and
-  only if you allow it, CLI Pulse also reads up to a year of older logs to fill
-  in your usage history. Parsed on your Mac for usage records; the results are
-  cached on your Mac.
+  `~/.config/claude/projects/`. Every refresh uses the last 30 days: a log last
+  written before then is not opened, and older lines in a log that is still in
+  use are skipped, not kept. Once, and only if you allow it, CLI Pulse also reads
+  up to a year of older logs to fill in your usage history. Parsed on your Mac
+  for usage records; the results are cached on your Mac.
 * **What is derived from them** — token counts, cost estimates, model names and
   dates, plus each conversation's file path, project folder and session id. Those
   last three are how the Sessions list can name your conversations. They stay on
@@ -161,8 +162,10 @@ The question names all of it:
 Signing in implies consent to the 30-day scan, because the sign-in step comes
 after the wizard's privacy screen and because syncing to an account is a larger
 commitment than scanning locally. It does not imply consent to reading older
-logs: see the next section. Signing out does not revoke it — use the Settings
-toggle.
+logs: see the next section. While you are signed in, the 30-day scan has no
+switch of its own; signing out stops it. Signing out does not revoke the
+consent, though: to turn the scan off when you use CLI Pulse without an account,
+use the Settings toggle.
 
 ## Reading more than 30 days back, and what the question used to leave out
 
@@ -186,11 +189,16 @@ Since v1.55 that read is its own question:
   who were never shown the question**, are shown it once, with both answers
   keeping the 30-day scan running: **"Include older history"** or **"Last 30 days
   only"**. Refusing the older logs does not take back the 30-day scan.
-* Until you say yes, CLI Pulse reads nothing older than 30 days. Signing in is
-  not a yes to this.
+* Until you say yes, CLI Pulse uses nothing older than 30 days, in the sense
+  given under "Session logs" above. Signing in is not a yes to this.
 * **Settings → Privacy → "Include older usage history"** changes the answer at
   any time. Turning it off stops further reads of older logs; it does not
   delete history that was already built, which stays on your Mac.
+
+The routine scan had a smaller gap of the same kind. On its first run, and
+whenever its cache was reset, it opened Claude Code logs of any age and
+discarded their lines older than 30 days without using them. Since v1.55 a log
+last written before the 30-day window is not opened.
 
 ---
 

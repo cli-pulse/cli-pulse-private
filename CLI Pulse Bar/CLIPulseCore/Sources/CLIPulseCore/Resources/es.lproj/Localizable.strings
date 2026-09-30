@@ -1090,7 +1090,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.last_30_days_only" = "Solo los últimos 30 días";
 "local_scan_consent.first_ask_hint" = "«Iniciar análisis local» incluye la lectura única de los registros anteriores; «Solo los últimos 30 días» no. Elijas lo que elijas, puedes cambiarlo cuando quieras en Ajustes › Privacidad.";
 "local_scan_consent.v2_title" = "Antes de que CLI Pulse lea registros anteriores";
-"local_scan_consent.v2_subtitle" = "Cada actualización lee los últimos 30 días. Para completar tu historial de uso, CLI Pulse también puede leer, una sola vez, hasta un año de registros de sesión anteriores. Ahora pregunta primero, y cualquiera de las dos respuestas mantiene el análisis de 30 días.";
+"local_scan_consent.v2_subtitle" = "Cada actualización lee los últimos 30 días. Para completar tu historial de uso, CLI Pulse también puede leer, una sola vez, hasta un año de registros de sesión anteriores. Ahora pregunta primero. Cualquiera de las dos respuestas mantiene activo el análisis de 30 días, y el historial ya creado se queda en este Mac.";
 "local_scan_consent.include_history" = "Incluir el historial anterior";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "Usar en local, sin cuenta";
