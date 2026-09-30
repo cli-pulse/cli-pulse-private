@@ -62,7 +62,7 @@ pass through our servers.
 |---|---|---|---|
 | **Provider API keys you enter** (OpenAI, Anthropic, Google, OpenRouter, etc.) | macOS Keychain on this Mac | ❌ Never | Sent only to that provider, to ask for your usage and quota |
 | **Provider session cookies you paste** (manual cookie headers) | macOS Keychain on this Mac | ❌ Never | Sent only to that provider, as a `Cookie` header |
-| **Provider cookies read from your browsers**, only for a provider whose cookie source you set to "Automatic" | Read from that browser's cookie store (macOS may ask you to let CLI Pulse use the browser's "Safe Storage" Keychain item) | ❌ Never | Sent only to that provider |
+| **Provider cookies read from your browsers**, only for a provider whose cookie source you set to "Automatic", and not while Strict privacy mode is on | Read from that browser's cookie store (macOS may ask you to let CLI Pulse use the browser's "Safe Storage" Keychain item) | ❌ Never | Sent only to that provider |
 | **Tokens that AI CLIs keep on your Mac**: `~/.codex/auth.json`, `~/.claude/.credentials.json`, `~/.gemini/oauth_creds.json`, `~/.local/share/kilo/auth.json`, and Claude Code's Keychain item | Read where each CLI keeps them. The app copies the file-based ones into a Keychain item that only CLI Pulse's own programs can read | ❌ Never | Sent only to that provider, for live quota |
 | **Contents of your session logs** (`~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.claude/projects/`, `~/.config/claude/projects/`) | Read on your Mac: in the App Store build through folder access you grant, in the direct-download build directly | ❌ Never | Token counts and costs are worked out on your Mac |
 | **Daily usage** (per day, provider and model: input, cached and output token counts and a cost estimate; which of your Macs it came from, once that Mac is paired) | Supabase, linked to your CLI Pulse account | ✅ Yes, while signed in | So iPhone and Apple Watch show the same history as your Mac |
@@ -97,9 +97,9 @@ Everything above marked ✅ is attached to your account and is uploaded only
 while you are signed in, with three exceptions:
 
 * **Crash reports** are sent whether or not you are signed in, and whatever you
-  answer to the scan question below. They are not linked to your account,
-  though a report's list of recent web requests can include your account's
-  internal ID (see *Security practices*).
+  answer to the scan question below. They are not linked to your account, and
+  since v1.55 the list of recent web requests a report carries keeps no query
+  strings and no account or user IDs (see *Security practices*).
 * **Anonymous install statistics** carry no account at all. They are spelled out
   in the next section rather than buried in a table cell.
 * **The Companion CLI** uploads with its own pairing. See its section.
@@ -252,7 +252,10 @@ Starting the scan turns on:
   Code's token; in the direct-download build, possibly once for Zed's own
   credential, if you use Zed; and, for a provider whose cookie source you set to
   "Automatic", for your browser's "Safe Storage" item. Declining costs you that
-  provider's quota figures and nothing else.
+  provider's quota figures and nothing else. With Strict privacy mode on
+  (Settings → Privacy), CLI Pulse reads none of these on its own, so macOS has
+  nothing to ask (a Companion CLI 1.30.0 or earlier is the exception: see its
+  section).
 * **Anonymous install statistics are separate** and are not part of this choice.
   See the section above.
 
@@ -286,6 +289,11 @@ uploaded), and the Settings toggle turns it off.
   helper goes by this Mac's pairing, as earlier versions did. If the restart
   fails while your answer or sign-in calls for the helper to pause, Settings ›
   Advanced says "Restart needed: turn background sync off and on again".
+* **The built-in agent** (direct-download build) reads files for the app only
+  when the app tells it your answer allows the scan: a provider's credential
+  file, to say whether that CLI is signed in with a subscription, and Claude
+  Code's settings and credentials files, to say whether Claude's Remote Control
+  can be offered to a phone. After "Not now" it reads neither.
 * **The Companion CLI** follows the answer only from the release after 1.30.0.
   See its section.
 * **Two things happen whatever you answered.** In the direct-download build,
@@ -366,8 +374,8 @@ While it is paired and allowed to (see below), every 2 minutes by default it:
   `~/.gemini/oauth_creds.json`;
 * if Claude's token does not work, reads your claude.ai sign-in cookie from the
   Claude desktop app, Chrome, Edge, Brave, Chromium or Arc, which needs that
-  browser's "Safe Storage" Keychain item (macOS may ask you), and may run
-  `claude /usage`;
+  browser's "Safe Storage" Keychain item (macOS may ask you), unless Strict
+  privacy mode is on (releases after 1.30.0), and may run `claude /usage`;
 * writes that claude.ai cookie, in a plain-text file only your user account can
   read, to `~/.clipulse/claude_session.json` and to CLI Pulse's app-group folder,
   where the app can use it;
@@ -375,11 +383,14 @@ While it is paired and allowed to (see below), every 2 minutes by default it:
   folders of running sessions and uploads the commit metadata listed in the
   table.
 
-Whatever its state, while it is paired it also asks our server about once a
-second whether a remote-control or machine-control request is waiting for this
-Mac (sending only its own device identifier and secret), and it answers the CLI
-Pulse app on this Mac when the app asks it something, such as the Machine
-view's readings.
+While it is paired it also asks our server about once a second whether a
+remote-control or machine-control request is waiting for this Mac (sending only
+its own device identifier and secret). Releases after 1.30.0 ask only while
+they are allowed to upload (see below); 1.30.0 and earlier ask whatever the app
+says. Whatever its state, it answers the CLI Pulse app on this Mac when the app
+asks it something, such as the Machine view's readings; while your answer
+allows the scan, with or without an account, that answer can include whether
+Codex is signed in with a subscription, which it reads from `~/.codex/auth.json`.
 
 **Which versions follow your answer.** Companion CLI 1.30.0 (the latest release
 when this was written) and earlier versions do not read the app's answer, its
@@ -388,7 +399,8 @@ collecting and uploading, to the account they were paired with, whatever you
 choose in the app, including after you sign out. Releases after 1.30.0 follow
 them:
 
-* **Paused** — nothing read or sent in its cycle — when the app is signed out
+* **Paused** — nothing read or sent in its cycle, and our server not asked
+  for remote-control or machine-control requests — when the app is signed out
   (the Sign-In form, or Demo mode), signed in to a different account than the
   one it was paired with, set to "Not now", or used without an account (its
   cycle only uploads, so it runs none of it), and when it cannot read the app's
@@ -397,10 +409,15 @@ them:
   the answer is a yes or none yet, and with an app older than 1.55, which never
   writes an answer for it.
 * **Strict privacy mode** and **"Skip Claude Code keychain access"** stop its
-  reads of Claude Code's Keychain item; they do not stop the browser-cookie
-  fallback or `claude /usage`.
-* It checks before each upload and before each credential write, so a change
-  reaches it within one cycle; it has no way to be told sooner.
+  reads of Claude Code's Keychain item. Strict privacy mode also stops the
+  browser-cookie fallback: no browser's cookie store is opened and no "Safe
+  Storage" item is read, so no new claude.ai cookie is written for the app
+  either (one it wrote earlier stays in its file). Neither switch stops
+  `claude /usage`.
+* It checks before each upload and before each credential write, so its cycle
+  sees a change within one cycle, and before it asks our server for
+  remote-control or machine-control requests, about once a second; it has no
+  way to be told sooner.
 
 **To stop it entirely:** Settings › Companion CLI › Uninstall….
 
@@ -444,9 +461,15 @@ them:
   device; it also clears the report's IP-address field. A report carries the
   stack trace, the app and OS version, the device model and the other device
   details the SDK attaches, and up to 50 recent "breadcrumbs" (steps the app
-  took before the error), which include the addresses of web requests it made,
-  with their query strings: a request to our server can name your account's
-  internal ID there. The SDK also reports, for each app session, that it started
+  took before the error). In the Mac, iPhone and Apple Watch apps a breadcrumb
+  for a web request the app made keeps its method, status, sizes and timing,
+  and its address without the query string or fragment; since v1.55 any part
+  of that address that looks like an identifier (an account, organization or
+  session ID, a long number, an email address) is replaced before the report
+  leaves your device, and so are UUIDs and email addresses anywhere else in
+  the report's breadcrumbs and error messages. (Before v1.55 the query string
+  was sent too, and a request to our server named your account's internal ID
+  in it.) The Android app records no web requests. The SDK also reports, for each app session, that it started
   and whether it ended in a crash, with a random installation identifier the SDK
   generates. Performance tracing is disabled
   (`tracesSampleRate = 0`). There is no switch to turn crash reporting off.
@@ -470,8 +493,13 @@ them:
 - **Stop the Companion CLI:** Settings → Companion CLI → Uninstall….
 - **Keychain switches:** Settings → Privacy → "Strict privacy mode" and "Skip
   Claude Code keychain access" stop CLI Pulse reading Claude Code's Keychain item
-  on its own. Settings says whether the background helper has confirmed it
-  follows them; for the Companion CLI see its section.
+  on its own. Strict privacy mode goes further: CLI Pulse reads no secret that
+  another app keeps in your keychain or your browsers on its own, so not Zed's
+  keychain item, and not browser cookies or their "Safe Storage" items, even for
+  a provider set to read cookies automatically. The sign-in files AI CLIs keep in
+  your home folder are still read, for quota. Settings says whether the
+  background helper has confirmed it follows the Claude switches; for the
+  Companion CLI see its section.
 - **Disable anonymous install statistics:** Settings → Privacy → "Send
   anonymous install statistics". On by default, disclosed on first launch
   before anything is sent. Strict privacy mode disables it too.
