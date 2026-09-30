@@ -388,6 +388,43 @@ class TestParseCodexUsageResponse(unittest.TestCase):
                          [("Session", "primary"), ("Weekly", "secondary")])
         self.assertTrue(all("windowMinutes" not in t for t in tiers))
 
+    @staticmethod
+    def _codex_windows(*lengths_seconds):
+        slots = ("primary_window", "secondary_window")
+        return {
+            "rate_limit": {
+                slot: {"used_percent": 10, "limit_window_seconds": seconds}
+                for slot, seconds in zip(slots, lengths_seconds)
+            },
+        }
+
+    def test_windows_are_named_by_length_like_the_app(self):
+        # The app's collector names a window by its length; this writer shares
+        # the row with it, so a lane name here would flip the bar's label
+        # (Monthly <-> Weekly) with whichever wrote last.
+        cases = [
+            ((18000, 2592000), [("Session", 300), ("Monthly", 43200)]),
+            ((86400,), [("Daily", 1440)]),
+            ((2592000,), [("Monthly", 43200)]),
+            ((32400,), [("Window", 540)]),
+            ((18000, 32400), [("Session", 300), ("Window", 540)]),
+        ]
+        for lengths, expected in cases:
+            tiers = _parse_codex_usage_response(self._codex_windows(*lengths))["tiers"]
+            self.assertEqual([(t["name"], t["windowMinutes"]) for t in tiers], expected, lengths)
+
+    def test_two_windows_never_share_a_name(self):
+        # The app keys a card's bars by name; two bars under one name cannot
+        # be told apart either.
+        cases = [
+            ((604800, 604800), ["Weekly", "Window"]),
+            ((18000, 18000), ["Session", "Window"]),
+            ((32400, 43200), ["Window", "Weekly"]),
+        ]
+        for lengths, expected in cases:
+            tiers = _parse_codex_usage_response(self._codex_windows(*lengths))["tiers"]
+            self.assertEqual([t["name"] for t in tiers], expected, lengths)
+
     def test_empty_rate_limit(self):
         self.assertIsNone(_parse_codex_usage_response({"plan_type": "free", "rate_limit": {}}))
 

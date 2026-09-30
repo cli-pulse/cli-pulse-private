@@ -101,7 +101,9 @@ public actor CodexQuotaFetcher {
     /// the slot it came in — an account with only a weekly limit gets it in
     /// `primary_window` — and carries `windowMinutes` and `role`, the same
     /// table as the app's `CodexCollector` (`CodexRateWindowNormalizer`).
-    /// The names stay this helper's own: "Session" and "Weekly".
+    /// It is named by its length too (`tierName`), so this helper and the app
+    /// store the same name for the same window, apart from this helper's own
+    /// word for the 5-hour one ("Session").
     static func parseUsageResponse(_ body: Data, fetchedAt: String) -> ProviderQuotaSnapshot {
         guard let dict = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
             return ClaudeQuotaFetcher.unavailable(reason: "parse_error", fetchedAt: fetchedAt)
@@ -144,7 +146,11 @@ public actor CodexQuotaFetcher {
             for (window, isSession) in [(lanes.session, true), (lanes.weekly, false)] {
                 guard let window else { continue }
                 tiers.append(ProviderQuotaTier(
-                    name: isSession ? "Session" : "Weekly",
+                    name: Self.tierName(
+                        minutes: window.minutes,
+                        laneName: isSession ? "Session" : "Weekly",
+                        besides: tiers.first?.name
+                    ),
                     quota: 100,
                     remaining: max(0, 100 - Int(window.used)),
                     resetTime: window.reset,
@@ -165,6 +171,29 @@ public actor CodexQuotaFetcher {
             provenance: .openAIWham,
             fetchedAt: fetchedAt
         )
+    }
+
+    // MARK: - Window names (same table as the app's CodexQuotaWindows.tierName)
+
+    /// The stored name of a Codex window: the name of its length, else
+    /// `laneName`. A window of UNKNOWN length keeps the name its lane has
+    /// always had, the only information there is. `besides` is the name the
+    /// other window already got: two bars under one name cannot be told
+    /// apart (and the app keys its bars by name), so the second of two
+    /// same-named windows is the generic "Window" — or, when the first is
+    /// already "Window", its lane's name. Mirrors Python `_codex_tier_name`.
+    static func tierName(minutes: Int?, laneName: String, besides: String? = nil) -> String {
+        let name: String
+        switch minutes {
+        case 300?: name = "Session"
+        case 1440?: name = "Daily"
+        case 10080?: name = "Weekly"
+        case 43200?: name = "Monthly"
+        case .some: name = "Window"
+        case nil: name = laneName
+        }
+        guard name == besides else { return name }
+        return name == "Window" ? laneName : "Window"
     }
 
     // MARK: - Window lanes (same table as the app's CodexRateWindowNormalizer)

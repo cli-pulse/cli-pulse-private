@@ -398,7 +398,8 @@ public struct CodexCollector: ProviderCollector, Sendable {
         // its weekly window in `primary_window`, which used to be shown as
         // "5h Window". Each tier carries its length and role, so the pace
         // marker on a 5-hour bar is placed for 5 hours, and the display can
-        // tell which window binds (`QuotaBindingCap`).
+        // tell which window binds (`QuotaBindingCap`). The two never share a
+        // name (`besides`): the card keys its bars by name.
         let lanes = CodexRateWindowNormalizer.normalize(
             primary: usage.primaryWindow.map(Self.laneWindow),
             secondary: usage.secondaryWindow.map(Self.laneWindow)
@@ -411,7 +412,8 @@ public struct CodexCollector: ProviderCollector, Sendable {
             tiers.append(TierDTO(
                 name: CodexQuotaWindows.tierName(
                     windowMinutes: window.windowMinutes,
-                    lane: lane
+                    lane: lane,
+                    besides: tiers.first?.name
                 ),
                 quota: 100,
                 remaining: max(0, 100 - Int(window.usedPercent)),

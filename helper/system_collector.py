@@ -1242,6 +1242,12 @@ def _fetch_codex_usage() -> dict | None:
 
 _CODEX_WEEKLY_MINUTES = 10080
 
+# A window of known length is named for its length, whichever lane it lands
+# in — the table of the app's ``CodexQuotaWindows.tierName``, with this
+# helper's own word for the 5-hour window ("Session"). A length with no name
+# here is the generic "Window".
+_CODEX_TIER_NAMES = {300: "Session", 1440: "Daily", _CODEX_WEEKLY_MINUTES: "Weekly", 43200: "Monthly"}
+
 
 def _codex_window_minutes(window: dict) -> int | None:
     """Window length from ``limit_window_seconds``; missing or under a minute is unknown."""
@@ -1277,6 +1283,24 @@ def _codex_lanes(primary: dict | None, secondary: dict | None) -> tuple[dict | N
     return None, None
 
 
+def _codex_tier_name(window: dict, lane_name: str, besides: str | None = None) -> str:
+    """The stored name of a Codex window: its length's name, else ``lane_name``.
+
+    A window of UNKNOWN length keeps the name its lane has always had, the only
+    information there is. ``besides`` is the name already given to the other
+    window: two bars under one name cannot be told apart (and the app keys its
+    bars by name), so the second of two same-named windows is the generic
+    "Window" — or, when the first is already "Window", its lane's name.
+    Mirrors ``CodexQuotaWindows.tierName`` and HelperSwift's
+    ``CodexQuotaFetcher.tierName``.
+    """
+    minutes = _codex_window_minutes(window)
+    name = lane_name if minutes is None else _CODEX_TIER_NAMES.get(minutes, "Window")
+    if name != besides:
+        return name
+    return lane_name if name == "Window" else "Window"
+
+
 def _parse_codex_usage_response(data: dict) -> dict | None:
     """Parse OpenAI/Codex wham/usage API response.
 
@@ -1286,17 +1310,20 @@ def _parse_codex_usage_response(data: dict) -> dict | None:
     Each window is placed by its length, not its slot (an account with only a
     weekly limit gets it in ``primary_window``), and carries ``windowMinutes``
     and ``role`` — the keys the app's ``TierDTO`` reads from
-    ``provider_quotas.tiers``. The names stay this helper's: "Session" and
-    "Weekly".
+    ``provider_quotas.tiers``. It is named by its length too
+    (``_codex_tier_name``), so this helper and the app store the same name for
+    the same window, apart from this helper's own word for the 5-hour one
+    ("Session").
     """
     tiers = []
     plan_type = (data.get("plan_type") or "Plus").capitalize()
     rl = data.get("rate_limit", {})
 
     session, weekly = _codex_lanes(rl.get("primary_window"), rl.get("secondary_window"))
-    for window, name, role in ((session, "Session", "primary"), (weekly, "Weekly", "secondary")):
+    for window, lane_name, role in ((session, "Session", "primary"), (weekly, "Weekly", "secondary")):
         if not window:
             continue
+        name = _codex_tier_name(window, lane_name, besides=tiers[0]["name"] if tiers else None)
         pct_used = window.get("used_percent", 0)
         remaining_pct = 100 - pct_used
         reset_ts = window.get("reset_at")

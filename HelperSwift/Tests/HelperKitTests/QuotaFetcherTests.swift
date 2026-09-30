@@ -353,7 +353,8 @@ final class CodexQuotaFetcherTests: XCTestCase {
         XCTAssertEqual(snap.tiers[1].remaining, 40)
     }
 
-    // P0-5: the same fields the app's TierDTO carries, from the same table.
+    // Codex windows placed and named by length: the same fields the app's
+    // TierDTO carries, from the same table.
 
     func testParseUsageResponse_windowsCarryLengthAndRole() {
         let body = #"""
@@ -399,6 +400,36 @@ final class CodexQuotaFetcherTests: XCTestCase {
         XCTAssertEqual(snap.tiers.map(\.name), ["Session", "Weekly"])
         XCTAssertEqual(snap.tiers.map(\.remaining), [83, 57])
         XCTAssertEqual(snap.remaining, 83, "the headline is the session window")
+    }
+
+    private func codexTierNames(_ lengthsSeconds: [Int]) -> [String] {
+        let slots = zip(["primary_window", "secondary_window"], lengthsSeconds).map {
+            #""\#($0.0)": {"used_percent": 10, "limit_window_seconds": \#($0.1)}"#
+        }
+        let body = #"{"rate_limit": {"# + slots.joined(separator: ", ") + "}}"
+        return CodexQuotaFetcher.parseUsageResponse(
+            body.data(using: .utf8)!, fetchedAt: makeISO(0)
+        ).tiers.map(\.name)
+    }
+
+    /// The app's collector names a window by its length; this writer shares
+    /// the row with it, so a lane name here would flip the bar's label
+    /// (Monthly <-> Weekly) with whichever wrote last. Same cases as the
+    /// Python helper's test.
+    func testParseUsageResponse_windowsAreNamedByLengthLikeTheApp() {
+        XCTAssertEqual(codexTierNames([18000, 2_592_000]), ["Session", "Monthly"])
+        XCTAssertEqual(codexTierNames([86400]), ["Daily"])
+        XCTAssertEqual(codexTierNames([2_592_000]), ["Monthly"])
+        XCTAssertEqual(codexTierNames([32400]), ["Window"])
+        XCTAssertEqual(codexTierNames([18000, 32400]), ["Session", "Window"])
+    }
+
+    /// The app keys a card's bars by name; two bars under one name cannot be
+    /// told apart either.
+    func testParseUsageResponse_twoWindowsNeverShareAName() {
+        XCTAssertEqual(codexTierNames([604_800, 604_800]), ["Weekly", "Window"])
+        XCTAssertEqual(codexTierNames([18000, 18000]), ["Session", "Window"])
+        XCTAssertEqual(codexTierNames([32400, 43200]), ["Window", "Weekly"])
     }
 
     func testTierEncodesWindowKeysLikeTheApp() throws {

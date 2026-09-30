@@ -2,7 +2,7 @@ import Foundation
 import XCTest
 @testable import CLIPulseCore
 
-/// P0-5 — Codex windows named by their length, and the binding weekly cap.
+/// Codex windows named by their length, and the binding weekly cap.
 ///
 /// Four groups:
 ///   1. `RateWindow.bindingQuotaProjection` and `CodexRateWindowNormalizer`,
@@ -285,6 +285,37 @@ final class CodexQuotaWindowsTests: XCTestCase {
         }
     }
 
+    /// Before 1.55 every writer gave the primary SLOT's name ("5h Window",
+    /// or the helpers' "Session") to whatever it held, and a weekly-only
+    /// account's one window comes in that slot. A reset days away says it is
+    /// the weekly window: it keeps its weekly-scale pace marker and the
+    /// Watch's weekly ring finds it. Read as 5 hours, the marker vanished.
+    func testALegacyPrimarySlotResettingInDaysIsReadAsWeekly() {
+        for name in ["5h Window", "Session"] {
+            let weeklyOnly = TierDTO(name: name, quota: 100, remaining: 30,
+                                     reset_time: stamp(4 * day), windowMinutes: nil, role: nil)
+            let shown = QuotaBindingCap.projectedForDisplay(
+                codexUsage(tiers: [weeklyOnly], remaining: 30), now: now
+            )
+            let tier = shown.tiers[0]
+            XCTAssertEqual(tier.windowMinutes, 10080, name)
+            XCTAssertEqual(tier.role, .secondary, name)
+            XCTAssertEqual(tier.name, name, "the stored name is not rewritten")
+            XCTAssertEqual(
+                QuotaBarMarkers.expectedPaceFraction(tier: tier, now: now) ?? 0,
+                3.0 / 7.0, accuracy: 0.01, name
+            )
+            XCTAssertEqual(WatchRingMath.weeklyTier(shown), tier, name)
+            XCTAssertEqual(shown.remaining, 30, "one window: nothing to cap")
+        }
+        // Within 5 hours of its reset, or with none, the name is taken at its
+        // word; further out than a week it fits neither window.
+        XCTAssertEqual(CodexQuotaWindows.primarySlot(resetTime: stamp(4 * hour), now: now)?.minutes, 300)
+        XCTAssertEqual(CodexQuotaWindows.primarySlot(resetTime: stamp(-day), now: now)?.minutes, 300)
+        XCTAssertEqual(CodexQuotaWindows.primarySlot(resetTime: nil, now: now)?.role, .primary)
+        XCTAssertNil(CodexQuotaWindows.primarySlot(resetTime: stamp(20 * day), now: now))
+    }
+
     func testOtherProvidersAreNotProjected() {
         let claude = codexUsage(
             tiers: [sessionTier(), weeklyTier(remaining: 0)],
@@ -413,6 +444,7 @@ final class CodexQuotaWindowsTests: XCTestCase {
         // A known length decides even in the other lane.
         XCTAssertEqual(CodexQuotaWindows.tierName(windowMinutes: 10080, lane: .session), "Weekly")
         XCTAssertEqual(CodexQuotaWindows.tierName(windowMinutes: 43200, lane: .weekly), "Monthly")
+        XCTAssertEqual(CodexQuotaWindows.tierName(windowMinutes: 1440, lane: .session), "Daily")
         XCTAssertEqual(CodexQuotaWindows.tierName(windowMinutes: 540, lane: .session), "Window")
         // Unknown length keeps the name the slot always had.
         XCTAssertEqual(CodexQuotaWindows.tierName(windowMinutes: nil, lane: .session), "5h Window")
@@ -421,7 +453,7 @@ final class CodexQuotaWindowsTests: XCTestCase {
         // Every name it can produce is one the display translates, and the
         // weekly-only account's bar now says "weekly" where it said "5h".
         withLocale("zh-Hans") {
-            for name in ["5h Window", "Weekly", "Monthly", "Window"] {
+            for name in ["5h Window", "Daily", "Weekly", "Monthly", "Window"] {
                 XCTAssertNotEqual(L10n.quotaTier.localized(name), name, "\(name) renders in English")
             }
             XCTAssertEqual(L10n.quotaTier.localized(
@@ -429,6 +461,34 @@ final class CodexQuotaWindowsTests: XCTestCase {
             ), L10n.quotaTier.weekly)
             XCTAssertNotEqual(L10n.quotaTier.weekly, L10n.quotaTier.window5h)
         }
+    }
+
+    /// Two bars under one name cannot be told apart, and the card keys its
+    /// bars by name (`UsageTier.id`): the second of two same-named windows
+    /// gets another name.
+    func testTwoCodexWindowsNeverShareAName() {
+        let pairs: [(Int?, Int?)] = [
+            (10080, 10080), (300, 300), (1440, 1440), (43200, 43200),
+            (540, 720), (nil, nil), (300, 10080), (nil, 300),
+        ]
+        for (first, second) in pairs {
+            let a = CodexQuotaWindows.tierName(windowMinutes: first, lane: .session)
+            let b = CodexQuotaWindows.tierName(windowMinutes: second, lane: .weekly, besides: a)
+            XCTAssertNotEqual(a, b, "\(String(describing: first)) + \(String(describing: second))")
+        }
+        XCTAssertEqual(
+            CodexQuotaWindows.tierName(windowMinutes: 10080, lane: .weekly, besides: "Weekly"),
+            "Window"
+        )
+        XCTAssertEqual(
+            CodexQuotaWindows.tierName(windowMinutes: 720, lane: .weekly, besides: "Window"),
+            "Weekly"
+        )
+        // Without a clash the name is the length's.
+        XCTAssertEqual(
+            CodexQuotaWindows.tierName(windowMinutes: 10080, lane: .weekly, besides: "5h Window"),
+            "Weekly"
+        )
     }
 }
 
@@ -533,6 +593,23 @@ final class CodexCollectorWindowTests: XCTestCase {
         XCTAssertEqual(usage.tiers.map(\.name), ["5h Window", "Weekly"])
         XCTAssertEqual(usage.tiers.map(\.remaining), [83, 57])
         XCTAssertEqual(usage.remaining, 83, "the headline is the session window")
+    }
+
+    func testTwoWindowsOfOneLengthGetTwoNames() throws {
+        let usage = try build("""
+        {"primary_window": {"used_percent": 10, "limit_window_seconds": 604800},
+         "secondary_window": {"used_percent": 20, "limit_window_seconds": 604800}}
+        """)
+        XCTAssertEqual(usage.tiers.map(\.name), ["Weekly", "Window"])
+        XCTAssertEqual(usage.tiers.map(\.windowMinutes), [10080, 10080])
+    }
+
+    func testADailyWindowIsNamedDaily() throws {
+        let usage = try build("""
+        {"primary_window": {"used_percent": 10, "limit_window_seconds": 86400}}
+        """)
+        XCTAssertEqual(usage.tiers.map(\.name), ["Daily"])
+        XCTAssertEqual(usage.tiers.map(\.windowMinutes), [1440])
     }
 
     func testUnknownLengthKeepsTheSlotName() throws {

@@ -22,10 +22,12 @@ import Foundation
 ///
 /// **Rows from older writers.** Before 1.55 no writer stored a Codex tier's
 /// `role` or `windowMinutes` (the collector never set them, and the Mac app's
-/// direct upload dropped both anyway), and the Python helper calls the 5-hour
-/// window "Session". Those rows stay in the cloud as they are (the stored
-/// names are not rewritten); the display infers role and length from the name
-/// instead (`CodexQuotaWindows.resolved`).
+/// direct upload dropped both anyway), and every writer named the API's
+/// primary SLOT as the 5-hour window ("5h Window", or "Session" from the
+/// helpers) whatever it held. Those rows stay in the cloud as they are (the
+/// stored names are not rewritten); the display infers role and length from
+/// the name and, for the primary slot's names, from how far away the reset is
+/// (`CodexQuotaWindows.resolved`).
 ///
 /// Codex only. CodexBar applies the same cap to Claude and several others;
 /// widening it is a separate decision, not a side effect of this one.
@@ -137,7 +139,7 @@ public enum QuotaBindingCap {
     }
 
     static func project(tiers: [TierDTO], now: Date) -> TierProjection {
-        let resolved = tiers.map(CodexQuotaWindows.resolved)
+        let resolved = tiers.map { CodexQuotaWindows.resolved($0, now: now) }
         guard
             let sessionIndex = resolved.firstIndex(where: {
                 $0.role == .primary && $0.quota > 0
@@ -237,10 +239,12 @@ public enum QuotaBindingCap {
 
 /// How a Codex window is named and tagged, from its length and lane. One
 /// definition for the in-app collector and for reading rows other writers
-/// uploaded; the Python helper and HelperSwift's fetcher follow the same table
-/// with their own names ("Session" for the 5-hour window).
+/// uploaded; the Python helper (`_codex_tier_name`) and HelperSwift's
+/// fetcher (`CodexQuotaFetcher.tierName`) follow the same table with their
+/// own word for the 5-hour window ("Session").
 public enum CodexQuotaWindows {
     public static let sessionMinutes = 300
+    public static let dailyMinutes = 1440
     public static let weeklyMinutes = 10080
     public static let monthlyMinutes = 43200
 
@@ -253,21 +257,42 @@ public enum CodexQuotaWindows {
     /// A window of known length gets the name of that length, whichever slot
     /// the API used. A window of UNKNOWN length keeps the name its slot has
     /// always had — the only information there is.
-    public static func tierName(windowMinutes: Int?, lane: Lane) -> String {
+    ///
+    /// `other` is the name the other window already got. Two bars under one
+    /// name cannot be told apart, and the card keys its bars by name
+    /// (`UsageTier.id`), so the second of two same-named windows is the
+    /// generic "Window", which is true of any window — or, when the first is
+    /// already "Window" (two lengths with no name), its slot's name.
+    public static func tierName(
+        windowMinutes: Int?,
+        lane: Lane,
+        besides other: String? = nil
+    ) -> String {
+        let name: String
         switch windowMinutes {
         case sessionMinutes?:
-            return "5h Window"
+            name = "5h Window"
+        case dailyMinutes?:
+            name = "Daily"
         case weeklyMinutes?:
-            return "Weekly"
+            name = "Weekly"
         case monthlyMinutes?:
-            return "Monthly"
+            name = "Monthly"
         case .some:
             // A length we have no name for. "5h Window" would be a false
             // claim about it; the generic word is not.
-            return "Window"
+            name = genericName
         case nil:
-            return lane == .session ? "5h Window" : "Weekly"
+            name = slotName(lane)
         }
+        guard name == other else { return name }
+        return name == genericName ? slotName(lane) : genericName
+    }
+
+    private static let genericName = "Window"
+
+    private static func slotName(_ lane: Lane) -> String {
+        lane == .session ? "5h Window" : "Weekly"
     }
 
     public static func role(for lane: Lane) -> TierRole {
@@ -275,16 +300,16 @@ public enum CodexQuotaWindows {
     }
 
     /// The row with `role` and `windowMinutes` filled in where the writer left
-    /// them out, from the name it used. Only names that have only ever meant
-    /// one Codex window are read: "5h Window" and "Session" (the helper's name
-    /// for the same window) are the 5-hour one, "Weekly" the weekly one,
-    /// "Credits" the credit balance. Values the row does carry always win.
-    public static func resolved(_ tier: TierDTO) -> TierDTO {
+    /// them out, from the name it used. "Weekly" is the weekly window and
+    /// "Credits" the credit balance. "5h Window" and "Session" (the helpers'
+    /// word) are read with `primarySlot`, because before 1.55 they named the
+    /// API's primary slot, not a length. Values the row does carry always win.
+    public static func resolved(_ tier: TierDTO, now: Date) -> TierDTO {
         guard tier.role == nil || tier.windowMinutes == nil else { return tier }
         let inferred: (role: TierRole, minutes: Int?)?
         switch tier.name.lowercased() {
         case "5h window", "session":
-            inferred = (.primary, sessionMinutes)
+            inferred = primarySlot(resetTime: tier.reset_time, now: now)
         case "weekly":
             inferred = (.secondary, weeklyMinutes)
         case "credits":
@@ -301,5 +326,33 @@ public enum CodexQuotaWindows {
             windowMinutes: tier.windowMinutes ?? inferred.minutes,
             role: tier.role ?? inferred.role
         )
+    }
+
+    /// Slack for a reading device whose clock runs behind the writer's.
+    static let resetClockSlack: TimeInterval = 15 * 60
+
+    /// What an older writer's "5h Window"/"Session" row holds. Those writers
+    /// gave the name to whatever came in the primary slot, and a weekly-only
+    /// account's one window comes there. A 5-hour window resets within 5
+    /// hours, so a reset further out means the weekly window: reading it as
+    /// 5 hours would take away its pace marker and hide it from the Watch's
+    /// weekly ring. A reset further out than a week fits neither, and nothing
+    /// is inferred. With no reset, or one within 5 hours, the name is taken
+    /// at its word — a weekly window that close to its reset looks the same.
+    static func primarySlot(
+        resetTime: String?,
+        now: Date
+    ) -> (role: TierRole, minutes: Int?)? {
+        guard let reset = resetTime.flatMap(sharedISO8601Parse) else {
+            return (.primary, sessionMinutes)
+        }
+        let untilReset = reset.timeIntervalSince(now)
+        if untilReset <= TimeInterval(sessionMinutes * 60) + resetClockSlack {
+            return (.primary, sessionMinutes)
+        }
+        if untilReset <= TimeInterval(weeklyMinutes * 60) + resetClockSlack {
+            return (.secondary, weeklyMinutes)
+        }
+        return nil
     }
 }
