@@ -37,9 +37,11 @@ final class CostWordingCopyTests: XCTestCase {
     func testNoDisplayedStringComparesUsWithCodexBar() throws {
         for localization in LocaleOverrideStore.shippedLocalizations {
             let values = try catalogue(localization)
-            XCTAssertNil(values["cost.io_tokens_codexbar_help"], "\(localization) still has the comparison tooltip")
-            let naming = values.filter { $0.value.localizedCaseInsensitiveContains("codexbar") }.map(\.key)
-            XCTAssertEqual(naming, [], "\(localization): displayed text names another app")
+            let named = values.filter {
+                $0.key.localizedCaseInsensitiveContains("codexbar")
+                    || $0.value.localizedCaseInsensitiveContains("codexbar")
+            }.map(\.key)
+            XCTAssertEqual(named, [], "\(localization): a displayed string or its key names another app")
         }
     }
 
