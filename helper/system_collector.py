@@ -57,7 +57,12 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 # system block (uptime/load/memory-pressure/swap/disk) + Low Power Mode so the
 # phone/watch Machine view shows live system state. Snapshot-uplink only; the
 # per-process table is still never synced.
-HELPER_VERSION = "1.30.0"
+# 1.30.0 → 1.31.0 (v1.55): the Companion follows the app's local-scan answer,
+# its account record and the Privacy switches (#626, #627, #630, #634, #636),
+# and says so in `hello` (`follows_app_answer`). The app's copy says "1.30.0
+# and earlier do not check", so a Companion that checks must not report 1.30.0
+# (test_local_session_server.test_a_companion_that_follows_the_answer_is_newer_than_1_30_0).
+HELPER_VERSION = "1.31.0"
 
 logger = logging.getLogger("cli_pulse.collector")
 

@@ -446,7 +446,7 @@
 "settings.test_webhook" = "测试 Webhook";
 "settings.remote_control" = "向 Mac 发送控制请求";
 "settings.remote_control_iphone_hint" = "用这台 iPhone 请求 Mac 提升风扇转速、开启低电量模式或保持唤醒";
-"settings.privacy_redacted_hint" = "你的 Mac 只接受四类请求：提升风扇转速、恢复风扇自动控制、开启或关闭低电量模式、开启或关闭保持唤醒。远程控制不会发送对话记录、会话日志或终端输出。";
+"settings.privacy_redacted_hint" = "你的 Mac 只接受四类请求：提升风扇转速、恢复风扇自动控制、开启或关闭低电量模式、开启或关闭保持唤醒。这些请求不含对话记录、会话日志或终端输出。";
 
 /* ── 显示补充 (i18n sweep) ── */
 "display.mode" = "显示模式";
@@ -543,7 +543,7 @@
 "onboarding_wizard.continue" = "继续";
 "onboarding_wizard.back" = "返回";
 "onboarding_wizard.privacy_title" = "数据由你掌控";
-"onboarding_wizard.privacy_body" = "下面清楚说明哪些数据留在 Mac 上，哪些会同步到你的账户。";
+"onboarding_wizard.privacy_body" = "下面说明哪些数据留在 Mac 上，哪些会同步到你的账户；完整清单见隐私政策。";
 "onboarding_wizard.sign_in_title" = "登录";
 "onboarding_wizard.sign_in_subtitle" = "登录以同步数据——首次验证时会创建你的账户。";
 "onboarding_wizard.skip" = "暂时跳过";
@@ -552,7 +552,7 @@
 "onboarding_wizard.back_to_email" = "返回邮箱";
 "onboarding_wizard.all_set_title" = "全部就绪";
 "onboarding_wizard.all_set_body" = "Mac 应用运行期间，数据会自动同步。在其他设备上用同一账户登录，即可看到用量数据，无需配对或额外设置。";
-"onboarding_wizard.helper_hint" = "想在菜单栏中操作 claude、codex 和 gemini 会话？完成设置后，可在「设置 › Companion CLI」中安装可选的 helper。配对后它还会自行收集并同步数据；它读取哪些内容，见隐私政策。";
+"onboarding_wizard.helper_hint" = "想在菜单栏中操作 claude、codex 和 gemini 会话？完成设置后，可在「设置 › Companion CLI」中安装可选的 helper。配对后它还会自行收集并同步数据；具体读取哪些内容，请见隐私政策。";
 "onboarding_wizard.done" = "完成";
 "onboarding_wizard.close" = "关闭引导";
 "onboarding_wizard.step_progress" = "第 %d 步，共 %d 步：%@";
@@ -579,7 +579,7 @@
 "onboarding_wizard.mode_title" = "选择 CLI Pulse 的同步方式";
 "onboarding_wizard.mode_subtitle" = "这只影响同步，服务商凭据的存储位置不会改变。";
 "onboarding_wizard.sync_mode_title" = "跨设备同步";
-"onboarding_wizard.sync_mode_body" = "登录后将用量指标同步到 iPhone 和 Apple Watch；服务商凭据绝不会离开这台 Mac。";
+"onboarding_wizard.sync_mode_body" = "登录后将用量指标同步到 iPhone 和 Apple Watch；服务商凭据绝不会传到我们的服务器。";
 "onboarding_wizard.local_only_title" = "仅此 Mac";
 "onboarding_wizard.local_only_body" = "采集与仪表盘都留在本机，不进行云同步；以后仍可登录。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 账户已登录，可以开始同步。";
@@ -616,7 +616,7 @@
 "advanced.hide_emails" = "在界面中隐藏邮箱地址";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "追踪 git 活动（Yield Score）";
-"advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。由 Companion CLI 收集。";
+"advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。仅由 Companion CLI 收集。";
 "advanced.git_consent_title" = "启用 git 活动追踪？";
 "advanced.enable" = "启用";
 "advanced.git_consent_body" = "CLI Pulse 会扫描有 AI 会话活动的项目的 git 日志。仅会上传提交哈希、项目路径的 HMAC、提交时间戳以及合并提交标记。提交消息、diff、文件路径和作者身份永远不会上传。";
@@ -734,12 +734,12 @@
 "advanced.helper_paused_signed_out" = "已暂停：未登录";
 "advanced.helper_restart_needed" = "需要重启：请关闭后台同步再重新打开";
 "advanced.privacy_keys_title" = "服务商 API 密钥与 Cookie";
-"advanced.privacy_keys_detail" = "你输入的仅保存在 macOS 钥匙串 · 永不上传";
+"advanced.privacy_keys_detail" = "你输入的密钥和 Cookie 仅保存在 macOS 钥匙串 · 永不上传";
 "advanced.data_title" = "数据去向";
 "advanced.privacy_logs_title" = "会话日志（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "在本机扫描，永不上传。App Store 版只读取你授权的文件夹。";
 "advanced.privacy_sessions_title" = "正在运行的 AI CLI 会话";
-"advanced.privacy_sessions_detail" = "程序名和项目文件夹名，登录期间由后台同步上传";
+"advanced.privacy_sessions_detail" = "程序名和项目文件夹名，登录且开启后台同步时上传";
 "advanced.privacy_metrics_title" = "使用指标（token 数、费用、模型名）";
 "advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 账户，供 iPhone 和 Apple Watch 使用";
 "advanced.privacy_email_title" = "登录邮箱";
@@ -810,7 +810,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰窗口指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 提升风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n始终不会离开你设备的内容：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 对话记录、会话日志、终端输出\n• 完整项目路径\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与权限审批，这两项已经下线。";
+"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 提升风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n这些请求绝不包含：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 对话记录、会话日志、终端输出\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与权限审批，这两项已经下线。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "节奏正常";
@@ -1140,7 +1140,7 @@
 "local_scan_consent.network_title" = "用这台 Mac 上已有的凭据访问服务商";
 "local_scan_consent.network_detail" = "为显示实时配额，CLI Pulse 会用各 CLI 存在本机的令牌访问对应服务商；令牌过期时，续期会改写该 CLI 的凭据文件。";
 "local_scan_consent.keychain_title" = "钥匙串里 Claude Code 的令牌等";
-"local_scan_consent.keychain_detail" = "macOS 会先分别询问你一次：Claude Code 的令牌；在直接下载版中，如果你使用 Zed，还有 Zed 的；对于你设为自动读取 Cookie 的服务商，还有浏览器的 Cookie 密钥。如果拒绝，只是看不到该服务商的配额，其他功能不受影响。";
+"local_scan_consent.keychain_detail" = "每一项 macOS 都会先询问你一次：Claude Code 的令牌；Zed 的令牌（仅直接下载版，且你使用 Zed 时）；以及你设为自动读取 Cookie 的服务商所用的浏览器 Cookie 密钥。拒绝其中一项，只是看不到对应服务商的配额，其他功能不受影响。";
 "local_scan_consent.telemetry_title" = "匿名统计是另一回事";
 "local_scan_consent.telemetry_detail" = "它不受这个选择影响，也不含文件路径或服务商名称；可以在「设置 › 隐私」里关掉。";
 "local_scan_consent.start" = "开始本地扫描";
@@ -1340,7 +1340,7 @@
 "helper.built_in_version" = "内置 · v%@";
 "app_updater.update_available_badge" = "可更新：%1$@ → %2$@";
 "app_updater.error_badge" = "错误";
-"helper.install_intro" = "安装可选的 Companion CLI helper，即可在菜单栏中操作 claude、codex 和 gemini 会话。该 helper 已通过 Apple 公证，安装在你的个人文件夹中，无需管理员密码。配对后，只要本应用登录的是它配对的账户，且你对扫描这台 Mac 的选择允许，它还会每 2 分钟自行收集数据并同步到该账户，包括正在运行的 AI CLI 的命令行，以及这台 Mac 的电池和传感器读数；1.30.0 及更早的版本不做这项检查。它读取哪些内容，见隐私政策；卸载即可停止。";
+"helper.install_intro" = "安装可选的 Companion CLI helper，即可在菜单栏中操作 claude、codex 和 gemini 会话。该 helper 已通过 Apple 公证，安装在你的个人文件夹中，无需管理员密码。配对后，它还会每 2 分钟自行收集数据并同步到它配对的账户，包括正在运行的 AI CLI 的命令行，以及这台 Mac 的电池和传感器读数；但仅在本应用登录的是该账户、且你允许扫描这台 Mac 时才会这样做，1.30.0 及更早的版本不做这项检查。具体读取哪些内容，请见隐私政策；卸载即可停止。";
 "helper.waiting_for_installer" = "正在等待 macOS 安装器完成…";
 "helper.running_unpaired_hint" = "已安装并在运行。请先在上方配对这台 Mac，才能操作托管会话。";
 "helper.bundled_hint" = "内置于 CLI Pulse——更新应用时会自动更新，无需单独安装。";
@@ -1391,7 +1391,7 @@
 "settings.local_only_mode_hint" = "CLI Pulse 不会自行读取其他应用存放在钥匙串或浏览器里的机密信息：不读取 Claude Code 或 Zed 的钥匙串项目，也不读取浏览器或 Claude 桌面应用保存的 Cookie，即使服务商设为自动读取 Cookie 也不例外。它也不发送匿名统计。仍会读取的是 AI CLI 保存在你个人文件夹里的凭据文件（用于配额）和日志文件（用于用量）。崩溃报告照常发送，同步到你的账户也不受影响。";
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";
 "settings.skip_claude_keychain_forced" = "已由严格隐私模式强制开启。";
-"settings.skip_claude_keychain_hint" = "阻止 CLI Pulse 读取 Claude Code 保存在 macOS 钥匙串中的登录凭据；如果 Claude Code 有凭据文件，仍会读取该文件。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
+"settings.skip_claude_keychain_hint" = "CLI Pulse 不会自行读取 Claude Code 保存在 macOS 钥匙串中的登录凭据；如果 Claude Code 有凭据文件，仍会读取该文件。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
 "settings.claude_keychain_helper_confirmed" = "后台 Helper 也遵循这项设置。";
 "settings.claude_keychain_helper_unconfirmed" = "后台 Helper 尚未确认遵循这项设置。";
 "settings.companion_ignores_switches" = "这台 Mac 上的 Companion CLI（%@）不遵循这些开关。请在「设置 › Companion CLI」中更新或卸载它。";

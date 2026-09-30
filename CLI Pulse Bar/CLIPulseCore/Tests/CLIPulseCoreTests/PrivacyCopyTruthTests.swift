@@ -49,8 +49,126 @@ final class PrivacyCopyTruthTests: XCTestCase {
             "settings.skip_claude_keychain_hint": L10n.settings.skipClaudeKeychainHint,
             "settings.companion_ignores_switches": L10n.settings.companionIgnoresSwitches("v1.30.0"),
             "helper.install_intro": L10n.helper.installIntro,
+            "onboarding_wizard.sync_mode_body": L10n.onboardingWizard.syncModeBody,
+            "onboarding_wizard.privacy_body": L10n.onboardingWizard.privacyBody,
+            "advanced.remote_consent_body": L10n.advanced.remoteConsentBody,
         ]
     }
+
+    /// Keys this change added: a revert removes them, and the raw-key check
+    /// above catches that.
+    private static let added: Set<String> = [
+        "advanced.privacy_sessions_title", "advanced.privacy_sessions_detail",
+        "local_scan_consent.companion_not_covered", "settings.companion_ignores_switches",
+    ]
+
+    /// For every rewritten key, in every language: the old false phrase
+    /// (`was`, gone) and a phrase the correction added (`now`, present). One
+    /// language per row is not enough: in English a broken lookup still reads
+    /// right, and a translator working from the old copy can put one language
+    /// back on its own. The `was` phrases are the pre-1.55 catalogues'.
+    private static let claims: [(key: String, was: [String: String], now: [String: String])] = [
+        ("onboarding_wizard.privacy_raw_detail",
+         was: ["en": "uploads only", "zh-Hans": "只上传", "zh-Hant": "只上傳",
+               "ja": "集計値だけ", "ko": "요약 필드만", "es": "solo sube"],
+         now: ["en": "project folder", "zh-Hans": "项目文件夹名", "zh-Hant": "專案資料夾名稱",
+               "ja": "プロジェクトフォルダ名", "ko": "프로젝트 폴더 이름", "es": "carpeta de proyecto"]),
+        ("onboarding_wizard.privacy_keys_detail",
+         was: [:],
+         now: ["en": "you enter", "zh-Hans": "你输入的", "zh-Hant": "你輸入的",
+               "ja": "入力した", "ko": "직접 입력한", "es": "que introduces"]),
+        ("advanced.privacy_keys_detail",
+         was: [:],
+         now: ["en": "you enter", "zh-Hans": "你输入的", "zh-Hant": "你輸入的",
+               "ja": "入力した", "ko": "직접 입력한", "es": "introduces"]),
+        ("advanced.privacy_logs_detail",
+         was: ["en": "only in folders you've given CLI Pulse access to",
+               "zh-Hans": "通过你授权的文件夹在本机扫描", "zh-Hant": "透過你授權的資料夾在本機掃描",
+               "ja": "許可したフォルダだけを、この Mac 上でスキャン", "ko": "허용한 폴더만 이 Mac에서 스캔",
+               "es": "solo en las carpetas a las que diste acceso a CLI Pulse"],
+         now: ["en": "App Store", "zh-Hans": "App Store", "zh-Hant": "App Store",
+               "ja": "App Store", "ko": "App Store", "es": "App Store"]),
+        ("onboarding_wizard.helper_hint",
+         was: [:],
+         now: ["en": "Privacy Policy", "zh-Hans": "隐私政策", "zh-Hant": "隱私權政策",
+               "ja": "プライバシーポリシー", "ko": "개인정보 처리방침", "es": "Política de privacidad"]),
+        ("advanced.track_git_hint",
+         was: [:],
+         now: ["en": "Only the Companion CLI", "zh-Hans": "仅由 Companion CLI", "zh-Hant": "僅由 Companion CLI",
+               "ja": "Companion CLI だけ", "ko": "Companion CLI만", "es": "Solo los recopila Companion CLI"]),
+        ("local_scan_consent.derived_title",
+         was: [:],
+         now: ["en": "which programs are running", "zh-Hans": "正在运行的程序", "zh-Hant": "正在執行的程式",
+               "ja": "実行中のプログラム", "ko": "실행 중인 프로그램", "es": "qué programas se están ejecutando"]),
+        ("local_scan_consent.derived_detail",
+         was: [:],
+         now: ["en": "checks which programs are running", "zh-Hans": "正在运行的程序", "zh-Hant": "正在執行的程式",
+               "ja": "実行中のプログラムを確認", "ko": "실행 중인 프로그램을 확인", "es": "qué programas se están ejecutando"]),
+        ("local_scan_consent.keychain_title",
+         was: [:],
+         now: ["en": "and a few others", "zh-Hans": "令牌等", "zh-Hant": "權杖等",
+               "ja": "トークンなど", "ko": "토큰 등", "es": "y algunos más"]),
+        ("local_scan_consent.keychain_detail",
+         was: [:],
+         now: ["en": "Zed", "zh-Hans": "Zed", "zh-Hant": "Zed", "ja": "Zed", "ko": "Zed", "es": "Zed"]),
+        ("local_scan_consent.declined_body",
+         was: ["en": "not reading anything", "zh-Hans": "没有读取这台 Mac 上的任何内容",
+               "zh-Hant": "沒有讀取這台 Mac 上的任何內容", "ja": "何も読み取っていない",
+               "ko": "아무것도 읽지 않고", "es": "no está leyendo nada"],
+         now: ["en": "not scanning", "zh-Hans": "没有扫描", "zh-Hant": "沒有掃描",
+               "ja": "スキャンしていない", "ko": "스캔하지 않고", "es": "no está analizando"]),
+        ("local_scan_consent.settings_toggle_detail",
+         was: ["en": "reads nothing", "zh-Hans": "不会读取这台 Mac 上的任何内容",
+               "zh-Hant": "不會讀取這台 Mac 上的任何內容", "ja": "何も読み取りません",
+               "ko": "아무것도 읽지 않습니다", "es": "no lee nada"],
+         now: ["en": "the app and its background helper", "zh-Hans": "应用及其后台 Helper",
+               "zh-Hant": "App 及其背景 Helper", "ja": "アプリもバックグラウンドヘルパーも",
+               "ko": "앱도 백그라운드 헬퍼도", "es": "ni la app ni su helper"]),
+        ("telemetry.not_collected",
+         was: ["en": "deleted when you uninstall", "zh-Hans": "卸载即删除", "zh-Hant": "解除安裝即刪除",
+               "ja": "アンインストールすると削除", "ko": "앱을 삭제하면 함께 삭제", "es": "se elimina al desinstalar"],
+         now: [:]),
+        ("telemetry.settings_body",
+         was: ["en": "deleted when you uninstall", "zh-Hans": "卸载即删除", "zh-Hant": "解除安裝即刪除",
+               "ja": "アンインストールすると削除", "ko": "앱을 삭제하면 함께 삭제", "es": "se elimina al desinstalar"],
+         now: [:]),
+        ("settings.privacy_redacted_hint",
+         was: ["en": "Nothing else leaves", "zh-Hans": "任何内容都不会离开", "zh-Hant": "任何內容都不會離開",
+               "ja": "一切送信されません", "ko": "아무것도 기기를 벗어나지", "es": "Nada más sale"],
+         now: ["en": "These requests carry no", "zh-Hans": "这些请求不含", "zh-Hant": "這些請求不含",
+               "ja": "これらのリクエストに", "ko": "이 요청에는", "es": "Estas solicitudes no llevan"]),
+        ("settings.skip_claude_keychain_hint",
+         was: ["en": "owned by other apps", "zh-Hans": "其他应用持有", "zh-Hant": "其他 App 擁有",
+               "ja": "他のアプリが所有する", "ko": "다른 앱이 소유한", "es": "pertenecen a otras apps"],
+         now: ["en": "On its own", "zh-Hans": "不会自行读取", "zh-Hant": "不會自行讀取",
+               "ja": "自分から読み取ることはなくなります", "ko": "스스로 읽지 않도록", "es": "por su cuenta"]),
+        ("helper.install_intro",
+         was: [:],
+         now: ["en": "1.30.0", "zh-Hans": "1.30.0", "zh-Hant": "1.30.0", "ja": "1.30.0", "ko": "1.30.0", "es": "1.30.0"]),
+        ("onboarding_wizard.sync_mode_body",
+         was: ["en": "never leave this Mac", "zh-Hans": "绝不会离开这台 Mac", "zh-Hant": "絕不會離開這台 Mac",
+               "ja": "この Mac から出ることはありません", "ko": "이 Mac 밖으로 나가지 않습니다", "es": "nunca salen de este Mac"],
+         now: ["en": "never reach our servers", "zh-Hans": "我们的服务器", "zh-Hant": "我們的伺服器",
+               "ja": "当社のサーバー", "ko": "저희 서버", "es": "nuestros servidores"]),
+        ("onboarding_wizard.privacy_body",
+         was: ["en": "exactly", "zh-Hans": "清楚说明", "zh-Hant": "清楚說明",
+               "ja": "正確に", "ko": "정확히", "es": "exactamente"],
+         now: ["en": "Privacy Policy", "zh-Hans": "隐私政策", "zh-Hant": "隱私權政策",
+               "ja": "プライバシーポリシー", "ko": "개인정보 처리방침", "es": "Política de privacidad"]),
+        ("advanced.remote_consent_body",
+         was: ["en": "What never leaves your device", "zh-Hans": "始终不会离开你设备的内容",
+               "zh-Hant": "永遠不會離開你裝置的內容", "ja": "デバイスから決して送信されないもの",
+               "ko": "기기를 절대 벗어나지 않는 것", "es": "Lo que nunca sale de tu dispositivo"],
+         now: ["en": "What these requests never carry", "zh-Hans": "这些请求绝不包含",
+               "zh-Hant": "這些請求絕不包含", "ja": "これらのリクエストに決して含まれないもの",
+               "ko": "이 요청에 절대 담기지 않는 것", "es": "Lo que estas solicitudes nunca llevan"]),
+        // The same body listed "full project paths": a Companion session's
+        // name is up to 48 characters of its command line, which can hold one.
+        ("advanced.remote_consent_body",
+         was: ["en": "full project paths", "zh-Hans": "完整项目路径", "zh-Hant": "完整專案路徑",
+               "ja": "プロジェクトの完全なパス", "ko": "전체 프로젝트 경로", "es": "rutas completas de proyectos"],
+         now: [:]),
+    ]
 
     func test_everyRewrittenStringIsTranslatedInEveryLanguage() {
         let english = inLocale("en") { changed() }
@@ -61,6 +179,38 @@ final class PrivacyCopyTruthTests: XCTestCase {
                 XCTAssertFalse(text.hasPrefix(key), "\(locale): \(key) renders the raw key")
                 if locale != "en" {
                     XCTAssertNotEqual(text, english[key], "\(locale): \(key) is the English text")
+                }
+            }
+        }
+    }
+
+    func test_everyLanguageDropsTheOldClaimAndSaysTheNewOne() {
+        let covered = Set(Self.claims.map(\.key))
+        let english = inLocale("en") { changed() }
+        for key in english.keys where !Self.added.contains(key) {
+            XCTAssertTrue(covered.contains(key), "\(key) has no row in `claims`")
+        }
+        for locale in Self.locales {
+            let texts = inLocale(locale) { changed() }
+            for claim in Self.claims {
+                guard let text = texts[claim.key] else {
+                    XCTFail("\(claim.key) is not in changed()")
+                    continue
+                }
+                XCTAssertFalse(claim.was.isEmpty && claim.now.isEmpty, claim.key)
+                if !claim.was.isEmpty {
+                    if let was = claim.was[locale] {
+                        XCTAssertFalse(text.contains(was), "\(locale): \(claim.key) still says \"\(was)\": \(text)")
+                    } else {
+                        XCTFail("\(claim.key): no \(locale) phrase in `was`")
+                    }
+                }
+                if !claim.now.isEmpty {
+                    if let now = claim.now[locale] {
+                        XCTAssertTrue(text.contains(now), "\(locale): \(claim.key) lost \"\(now)\": \(text)")
+                    } else {
+                        XCTFail("\(claim.key): no \(locale) phrase in `now`")
+                    }
                 }
             }
         }
@@ -87,11 +237,25 @@ final class PrivacyCopyTruthTests: XCTestCase {
             XCTAssertTrue(L10n.localScanConsent.settingsToggleDetail.contains("the app and its background helper"))
             for text in [L10n.telemetry.notCollected, L10n.telemetry.settingsBody] {
                 XCTAssertFalse(text.contains("uninstall"), text)
-                XCTAssertTrue(text.hasSuffix("moving the app to the Trash leaves behind."), text)
+                XCTAssertTrue(text.hasSuffix("moving the app to the Trash does not delete it."), text)
             }
             XCTAssertFalse(L10n.settings.privacyRedactedHint.contains("Nothing else leaves"))
-            XCTAssertTrue(L10n.settings.privacyRedactedHint.contains("Remote control sends no"))
+            // Scoped to the four requests: the same Settings screen has a
+            // "Remote Control" section, which does show terminal output.
+            XCTAssertTrue(L10n.settings.privacyRedactedHint.contains("These requests carry no"))
+            XCTAssertFalse(L10n.settings.privacyRedactedHint.contains("Remote control sends"))
             XCTAssertFalse(L10n.settings.skipClaudeKeychainHint.contains("owned by other apps"))
+            // Connect Claude Code reads the item anyway: the user asked.
+            XCTAssertTrue(L10n.settings.skipClaudeKeychainHint.hasPrefix("On its own, "))
+            // Provider credentials go to their own provider.
+            XCTAssertFalse(L10n.onboardingWizard.syncModeBody.contains("never leave"))
+            XCTAssertTrue(L10n.onboardingWizard.syncModeBody.contains("never reach our servers"))
+            // The cards leave out alerts, the device name and the readings.
+            XCTAssertFalse(L10n.onboardingWizard.privacyBody.contains("exactly"))
+            let consent = L10n.advanced.remoteConsentBody
+            XCTAssertFalse(consent.contains("What never leaves your device"), consent)
+            XCTAssertFalse(consent.contains("full project paths"), consent)
+            XCTAssertTrue(consent.contains("What these requests never carry:"), consent)
         }
     }
 
@@ -267,11 +431,61 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
         XCTAssertNil(installer.companionIgnoringAnswerVersion, "uninstalled")
     }
 
-    /// Answers one `hello` with `result`.
-    private final class ReplyingServer {
+    /// The install flow's own liveness checks (`pollHelperUntilReady`) set the
+    /// state from a `hello` and return without a `refresh()`, so they record
+    /// through the same place: after an in-app Update from 1.30.0 the note
+    /// goes at once, and a fresh install of 1.30.0 shows it at once.
+    @MainActor
+    func test_everyProbeRecordsTheCompanionThroughOnePlace() throws {
+        let installer = makeProbeOnlyHelperInstaller { ScriptedHelloClient(reply: nil, delayNanoseconds: 0) }
+        installer.record(hello: hello(follows: false))
+        XCTAssertEqual(installer.companionIgnoringAnswerVersion, "1.30.0")
+        XCTAssertEqual(installer.helperPaired, true)
+        installer.record(hello: hello(follows: true))
+        XCTAssertNil(installer.companionIgnoringAnswerVersion, "updated in place to one that follows the answer")
+        installer.record(hello: nil)
+        XCTAssertNil(installer.companionIgnoringAnswerVersion)
+        XCTAssertNil(installer.helperPaired)
+
+        let source = try String(
+            contentsOf: URL(fileURLWithPath: #filePath)
+                .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+                .appending(path: "Sources/CLIPulseCore/HelperInstaller.swift"),
+            encoding: .utf8
+        )
+        func count(_ needle: String) -> Int { source.components(separatedBy: needle).count - 1 }
+        XCTAssertEqual(count("helperPaired = "), 1, "set only inside record(hello:)")
+        XCTAssertEqual(count("companionIgnoringAnswerVersion = "), 1, "set only inside record(hello:)")
+        // Its definition, refresh() and the install flow's two liveness checks.
+        XCTAssertEqual(count("record(hello: "), 4)
+    }
+
+    /// v1.55: the approval-hook status the Sessions tab polls opens
+    /// `~/.claude/settings.json`; after "Not now" it is not opened.
+    func test_theSessionsTabReadsClaudesSettingsOnlyWhileTheAnswerAllowsIt() {
+        var reads = 0
+        let read: () -> ClaudeHookDetector.Status = { reads += 1; return .wired }
+        XCTAssertNil(AppState.approvalHookStatus(mayReadThisMac: false, read: read))
+        XCTAssertEqual(reads, 0)
+        XCTAssertEqual(AppState.approvalHookStatus(mayReadThisMac: true, read: read), .wired)
+        XCTAssertEqual(reads, 1)
+    }
+
+    /// Answers one request with `result`, and keeps the request.
+    private final class ReplyingServer: @unchecked Sendable {
         let socketPath: String
         let tokenPath: String
         private let fd: Int32
+        private let lock = NSLock()
+        private var _request: [String: Any]?
+        private let answered = DispatchSemaphore(value: 0)
+
+        /// The request the server answered, once it has.
+        func request(timeout: TimeInterval = 2) -> [String: Any]? {
+            _ = answered.wait(timeout: .now() + timeout)
+            lock.lock(); defer { lock.unlock() }
+            return _request
+        }
 
         init(result: [String: Any]) throws {
             let unique = UUID().uuidString.prefix(8)
@@ -300,7 +514,7 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
             }
             let serverFD = fd
             let replyData = try JSONSerialization.data(withJSONObject: ["ok": true, "result": result])
-            Thread {
+            Thread { [self] in
                 let client = accept(serverFD, nil, nil)
                 guard client >= 0 else { return }
                 defer { close(client) }
@@ -311,6 +525,8 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
                 var body = [UInt8](repeating: 0, count: length)
                 _ = recv(client, &body, length, MSG_WAITALL)
                 let request = (try? JSONSerialization.jsonObject(with: Data(body))) as? [String: Any]
+                lock.lock(); _request = request; lock.unlock()
+                answered.signal()
                 var reply = (try? JSONSerialization.jsonObject(with: replyData)) as? [String: Any] ?? [:]
                 reply["id"] = request?["id"] ?? "1"
                 guard let data = try? JSONSerialization.data(withJSONObject: reply) else { return }
@@ -364,6 +580,38 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
         XCTAssertFalse(text, "a string is not the answer")
     }
 
+    private func listRequest(_ localScanAllowed: Bool?) async throws -> [String: Any]? {
+        let none: [[String: Any]] = []
+        let server = try ReplyingServer(result: ["managed": none, "detected": none])
+        defer { server.stop() }
+        let client = LocalSessionControlClient(
+            socketPath: server.socketPath,
+            tokenPath: server.tokenPath,
+            connectTimeout: 2,
+            requestTimeout: 2,
+            runtimeEnvironment: TestRuntimeFixtures.productionApp
+        )
+        let rows = try await client.listSessions(localScanAllowed: localScanAllowed)
+        XCTAssertEqual(rows.count, 0)
+        return server.request()
+    }
+
+    /// v1.55: `list_sessions` tells the helper the answer, so the Companion
+    /// runs no process scan for the `detected` rows after "Not now"
+    /// (`helper/local_session_server.py`); without it the helper asks its own
+    /// copy, as older apps' requests leave it to.
+    func test_listSessionsTellsTheHelperTheAnswer() async throws {
+        let no = try await listRequest(false)
+        XCTAssertEqual(no?["method"] as? String, "list_sessions")
+        let noParams = no?["params"] as? [String: Any]
+        XCTAssertEqual(noParams?[LocalSessionControlClient.localScanAllowedParam] as? Bool, false)
+        let yes = try await listRequest(true)
+        XCTAssertEqual((yes?["params"] as? [String: Any])?["local_scan_allowed"] as? Bool, true)
+        let unsaid = try await listRequest(nil)
+        XCTAssertNotNil(unsaid, "the server saw the request")
+        XCTAssertNil((unsaid?["params"] as? [String: Any])?["local_scan_allowed"])
+    }
+
     /// The notes are shown where the answer is: the first ask, Overview's
     /// declined card, both of Settings › Privacy's scan rows and under the
     /// Claude keychain switches; and "Where Your Data Goes" lists the running
@@ -397,6 +645,53 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
         let advanced = try source("AdvancedSection.swift")
         XCTAssertTrue(advanced.contains("title: L10n.advanced.privacySessionsTitle"))
         XCTAssertTrue(advanced.contains("detail: L10n.advanced.privacySessionsDetail"))
+    }
+
+    /// The notes send people to Settings › Companion CLI, and the first ask
+    /// and the telemetry card to Settings › Privacy. The first ask, Overview's
+    /// declined card and the scan switch are local-mode screens, and until 1.55
+    /// a Mac without an account saw only the sign-in form in Settings. Both
+    /// sections now render wherever those screens can: signed in (with the
+    /// account paired, where "Choose again…" is) and in local mode.
+    func test_theSectionsTheNotesNameAreThereWhereverTheNotesAre() throws {
+        let app = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "CLI Pulse Bar")
+        let settings = try String(contentsOf: app.appending(path: "SettingsTab.swift"), encoding: .utf8)
+        func body(of name: String) throws -> String {
+            let start = try XCTUnwrap(settings.range(of: "private var \(name): some View {"), name)
+            let rest = settings[start.upperBound...]
+            let end = try XCTUnwrap(rest.range(of: "\n    }\n"), name)
+            return String(rest[..<end.lowerBound])
+        }
+        let companion = "CompanionCLISection(installer: state.helperInstaller)"
+        let privacy = "PrivacySettingsSection()"
+
+        func squeezed(_ text: String) -> String {
+            text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        }
+        XCTAssertTrue(
+            squeezed(settings).contains("} else { loginSection if state.isLocalMode { localModeSections } }"),
+            "local mode renders its sections under the sign-in form"
+        )
+        let local = try body(of: "localModeSections")
+        XCTAssertTrue(local.contains(companion), local)
+        XCTAssertTrue(local.contains(privacy), local)
+
+        let signedIn = try body(of: "authenticatedSection")
+        let paired = try XCTUnwrap(signedIn.range(of: "if authState.isPaired {"))
+        XCTAssertTrue(signedIn[paired.upperBound...].contains(companion))
+        XCTAssertTrue(signedIn[paired.upperBound...].contains(privacy))
+
+        // And the call that fills the Sessions tab passes the answer on.
+        let core = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Sources/CLIPulseCore/LocalSessionControlState.swift")
+        let state = try String(contentsOf: core, encoding: .utf8)
+        XCTAssertTrue(state.contains("client.listSessions(localScanAllowed: mayReadThisMac)"))
+        XCTAssertTrue(state.contains("client.hello(localScanAllowed: mayReadThisMac)"))
+        XCTAssertTrue(state.contains("Self.approvalHookStatus(mayReadThisMac: mayReadThisMac)"))
     }
 }
 

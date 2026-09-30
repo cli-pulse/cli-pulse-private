@@ -89,16 +89,18 @@ extension AppState {
         )
         self.localDiagnostics = diag
 
+        // v1.55: whether the local-scan answer allows reading this Mac, asked
+        // once per tick and told to each read below that would look at it.
+        let mayReadThisMac = LocalCollectionPolicy.allowsCollection(
+            isAuthenticated: isAuthenticated,
+            consent: localScanConsent
+        )
+
         do {
             // v1.55: the plan status this reply carries comes from reading
             // provider credential files; ask for it only when the local-scan
             // answer allows reading this Mac ("Not now" reads nothing here).
-            let hello = try await client.hello(
-                localScanAllowed: LocalCollectionPolicy.allowsCollection(
-                    isAuthenticated: isAuthenticated,
-                    consent: localScanConsent
-                )
-            )
+            let hello = try await client.hello(localScanAllowed: mayReadThisMac)
             self.localHelperReachable = true
             self.localCapabilities = hello.capabilities
             // M4.4c: retain the advertised method set so the UI can gate the
@@ -185,10 +187,17 @@ extension AppState {
         // gating logic in SessionsTab uses this to decide whether
         // to surface "approval hook not wired" when the helper
         // advertises `capabilities.approvals = true`.
-        self.claudeApprovalHookStatus = ClaudeHookDetector.currentStatus()
+        //
+        // v1.55: it reads ~/.claude/settings.json, so only while the answer
+        // allows reading this Mac; after "Not now" the status is unknown and
+        // no hook banner shows (`approvalHookStatus(mayReadThisMac:)`). The
+        // Install Hook button still re-reads it: the user asked for that.
+        self.claudeApprovalHookStatus = Self.approvalHookStatus(mayReadThisMac: mayReadThisMac)
         if self.localControlEnabled {
             do {
-                let rows = try await client.listSessions()
+                // v1.55: the helper's `detected` rows are a process scan; it
+                // runs one only when told the answer allows it.
+                let rows = try await client.listSessions(localScanAllowed: mayReadThisMac)
                 let serverManaged = rows.filter { $0.source == .managed }
                 let serverIds = Set(serverManaged.map(\.id))
                 let now = Date()
@@ -1041,6 +1050,17 @@ extension AppState {
             self.localHelperError = LocalSessionFailureText.message(for: error)
             return nil
         }
+    }
+
+    /// v1.55: the approval-hook status the Sessions tab polls. Reading it
+    /// opens `~/.claude/settings.json`, which "Not now" rules out, so then it is
+    /// nil (unknown: no hook banner) and the file is not opened. `read` is the
+    /// detector, replaceable in tests.
+    nonisolated static func approvalHookStatus(
+        mayReadThisMac: Bool,
+        read: () -> ClaudeHookDetector.Status = { ClaudeHookDetector.currentStatus() }
+    ) -> ClaudeHookDetector.Status? {
+        mayReadThisMac ? read() : nil
     }
 
     /// Phase 4 helper-bundling: re-read the on-disk

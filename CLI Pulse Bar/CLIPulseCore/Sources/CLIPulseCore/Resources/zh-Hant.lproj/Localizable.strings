@@ -446,7 +446,7 @@
 "settings.test_webhook" = "測試 Webhook";
 "settings.remote_control" = "向 Mac 傳送控制請求";
 "settings.remote_control_iphone_hint" = "用這台 iPhone 請求 Mac 提升風扇轉速、進入低耗電模式或保持喚醒";
-"settings.privacy_redacted_hint" = "你的 Mac 只接受四類請求：提升風扇轉速、恢復風扇自動控制、開啟或關閉低耗電模式、開啟或關閉保持喚醒。遠端控制不會傳送對話記錄、工作階段日誌或終端機輸出。";
+"settings.privacy_redacted_hint" = "你的 Mac 只接受四類請求：提升風扇轉速、恢復風扇自動控制、開啟或關閉低耗電模式、開啟或關閉保持喚醒。這些請求不含對話記錄、工作階段日誌或終端機輸出。";
 
 /* ── 顯示補充 (i18n sweep) ── */
 "display.mode" = "顯示模式";
@@ -543,7 +543,7 @@
 "onboarding_wizard.continue" = "繼續";
 "onboarding_wizard.back" = "返回";
 "onboarding_wizard.privacy_title" = "資料由你掌控";
-"onboarding_wizard.privacy_body" = "下面清楚說明哪些資料留在 Mac 上，哪些會同步到你的帳號。";
+"onboarding_wizard.privacy_body" = "下面說明哪些資料留在 Mac 上，哪些會同步到你的帳號；完整清單請見隱私權政策。";
 "onboarding_wizard.sign_in_title" = "登入";
 "onboarding_wizard.sign_in_subtitle" = "登入以同步資料——首次驗證時會建立你的帳號。";
 "onboarding_wizard.skip" = "暫時跳過";
@@ -579,7 +579,7 @@
 "onboarding_wizard.mode_title" = "選擇 CLI Pulse 的同步方式";
 "onboarding_wizard.mode_subtitle" = "這只影響同步，服務商憑證的儲存方式不會改變。";
 "onboarding_wizard.sync_mode_title" = "跨裝置同步";
-"onboarding_wizard.sync_mode_body" = "登入後即可將用量彙總同步到 iPhone 與 Apple Watch；服務商憑證絕不會離開這台 Mac。";
+"onboarding_wizard.sync_mode_body" = "登入後即可將用量彙總同步到 iPhone 與 Apple Watch；服務商憑證絕不會傳到我們的伺服器。";
 "onboarding_wizard.local_only_title" = "僅限這台 Mac";
 "onboarding_wizard.local_only_body" = "資料收集與儀表板都留在本機，不會同步到雲端；之後仍可登入。";
 "onboarding_wizard.signed_in_ready" = "CLI Pulse 帳號已登入，可以開始同步。";
@@ -616,7 +616,7 @@
 "advanced.hide_emails" = "在介面中隱藏電子郵件地址";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
 "advanced.track_git" = "追蹤 git 活動（Yield Score）";
-"advanced.track_git_hint" = "僅上傳雜湊後的提交後設資料——不上傳訊息、diff 或路徑。由 Companion CLI 收集。";
+"advanced.track_git_hint" = "僅上傳雜湊後的提交後設資料——不上傳訊息、diff 或路徑。僅由 Companion CLI 收集。";
 "advanced.git_consent_title" = "啟用 git 活動追蹤？";
 "advanced.enable" = "啟用";
 "advanced.git_consent_body" = "CLI Pulse 會在有 AI 工作階段運作的專案中掃描 git 日誌。只有提交雜湊、專案路徑的 HMAC、提交時間戳記以及合併提交標記會離開你的裝置。提交訊息、diff、檔案路徑和作者身分永遠不會上傳。";
@@ -734,12 +734,12 @@
 "advanced.helper_paused_signed_out" = "已暫停：已登出";
 "advanced.helper_restart_needed" = "需要重新啟動：請關閉背景同步再重新開啟";
 "advanced.privacy_keys_title" = "服務商 API 金鑰與 Cookie";
-"advanced.privacy_keys_detail" = "你輸入的僅儲存在 macOS 鑰匙圈 · 永不上傳";
+"advanced.privacy_keys_detail" = "你輸入的金鑰和 Cookie 僅儲存在 macOS 鑰匙圈 · 永不上傳";
 "advanced.data_title" = "資料去向";
 "advanced.privacy_logs_title" = "工作階段日誌（~/.codex/sessions、~/.claude/projects）";
 "advanced.privacy_logs_detail" = "在本機掃描，永不上傳。App Store 版只讀取你授權的資料夾。";
 "advanced.privacy_sessions_title" = "正在執行的 AI CLI 工作階段";
-"advanced.privacy_sessions_detail" = "程式名稱與專案資料夾名稱，登入期間由背景同步上傳";
+"advanced.privacy_sessions_detail" = "程式名稱與專案資料夾名稱，登入且開啟背景同步時上傳";
 "advanced.privacy_metrics_title" = "使用指標（token 數、費用、模型名稱）";
 "advanced.privacy_metrics_detail" = "同步到你的 CLI Pulse 帳號，供 iPhone 與 Apple Watch 使用";
 "advanced.privacy_email_title" = "登入用的電子郵件";
@@ -810,7 +810,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰視窗指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 提升風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n永遠不會離開你裝置的內容：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、工作階段日誌、終端機輸出\n• 完整專案路徑\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 工作階段與權限批准，這兩項已經下線。";
+"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 提升風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n這些請求絕不包含：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、工作階段日誌、終端機輸出\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 工作階段與權限批准，這兩項已經下線。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "節奏正常";
@@ -1140,7 +1140,7 @@
 "local_scan_consent.network_title" = "用這台 Mac 上既有的憑證存取服務商網站";
 "local_scan_consent.network_detail" = "為了顯示即時配額，CLI Pulse 會用各家 CLI 自己存在本機的權杖去呼叫它們。更新過期的權杖會重寫那個 CLI 的憑證檔。";
 "local_scan_consent.keychain_title" = "鑰匙圈裡 Claude Code 的權杖等";
-"local_scan_consent.keychain_detail" = "macOS 會先分別問你一次：Claude Code 的權杖；在直接下載版中，如果你使用 Zed，還有 Zed 的；對於你設為自動讀取 Cookie 的服務商，還有瀏覽器的 Cookie 金鑰。拒絕只會少了該服務商的配額數字，其他都不受影響。";
+"local_scan_consent.keychain_detail" = "每一項 macOS 都會先問你一次：Claude Code 的權杖；Zed 的權杖（僅限直接下載版，且你使用 Zed 時）；以及你設為自動讀取 Cookie 的服務商所用的瀏覽器 Cookie 金鑰。拒絕其中一項，只會少了對應服務商的配額數字，其他都不受影響。";
 "local_scan_consent.telemetry_title" = "匿名統計是另一回事";
 "local_scan_consent.telemetry_detail" = "它不屬於這個選擇，不含檔案路徑或服務商名稱，在「設定 › 隱私」裡可以關掉。";
 "local_scan_consent.start" = "開始本機掃描";
@@ -1340,7 +1340,7 @@
 "helper.built_in_version" = "內建 · v%@";
 "app_updater.update_available_badge" = "可更新：%1$@ → %2$@";
 "app_updater.error_badge" = "錯誤";
-"helper.install_intro" = "安裝選用的 Companion CLI helper，即可從選單列操作 claude、codex 和 gemini 工作階段。此 helper 已通過 Apple 公證，會安裝在你的個人專屬資料夾中，不需要管理員密碼。配對後，只要本 App 登入的是它配對的帳號，且你對掃描這台 Mac 的選擇允許，它也會每 2 分鐘自行收集資料並同步到該帳號，包括正在執行的 AI CLI 的命令列，以及這台 Mac 的電池與感測器讀數；1.30.0 及更早的版本不做這項檢查。它讀取哪些內容，請見隱私權政策；解除安裝即可停止。";
+"helper.install_intro" = "安裝選用的 Companion CLI helper，即可從選單列操作 claude、codex 和 gemini 工作階段。此 helper 已通過 Apple 公證，會安裝在你的個人專屬資料夾中，不需要管理員密碼。配對後，它也會每 2 分鐘自行收集資料並同步到它配對的帳號，包括正在執行的 AI CLI 的命令列，以及這台 Mac 的電池與感測器讀數；但僅在本 App 登入的是該帳號、且你允許掃描這台 Mac 時才會這樣做，1.30.0 及更早的版本不做這項檢查。它讀取哪些內容，請見隱私權政策；解除安裝即可停止。";
 "helper.waiting_for_installer" = "正在等待 macOS 安裝程式完成…";
 "helper.running_unpaired_hint" = "已安裝並在執行中。請先在上方配對這台 Mac，才能操作託管工作階段。";
 "helper.bundled_hint" = "內建於 CLI Pulse——更新 App 時會自動更新，不需要另外安裝。";
@@ -1391,7 +1391,7 @@
 "settings.local_only_mode_hint" = "CLI Pulse 不會自行讀取其他 App 存放在鑰匙圈或瀏覽器中的機密資訊：不讀取 Claude Code 或 Zed 的鑰匙圈項目，也不讀取瀏覽器或 Claude 桌面版 App 儲存的 Cookie，即使服務商設為自動讀取 Cookie 也不例外。它也不傳送匿名統計。仍會讀取的是 AI CLI 存放在你個人專屬資料夾中的憑證檔（用於配額）與日誌檔（用於用量）。當機報告照常傳送，同步到你的帳號也不受影響。";
 "settings.skip_claude_keychain" = "略過 Claude Code 鑰匙圈存取";
 "settings.skip_claude_keychain_forced" = "已由嚴格隱私模式強制開啟。";
-"settings.skip_claude_keychain_hint" = "禁止 CLI Pulse 讀取 Claude Code 儲存在 macOS 鑰匙圈中的登入憑證；如果 Claude Code 有憑證檔案，仍會讀取該檔案。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
+"settings.skip_claude_keychain_hint" = "CLI Pulse 不會自行讀取 Claude Code 儲存在 macOS 鑰匙圈中的登入憑證；如果 Claude Code 有憑證檔案，仍會讀取該檔案。如果你遇過 macOS 鑰匙圈對話框不接受登入密碼的情況，可以開啟此選項。";
 "settings.claude_keychain_helper_confirmed" = "背景 Helper 也遵循這項設定。";
 "settings.claude_keychain_helper_unconfirmed" = "背景 Helper 尚未確認遵循這項設定。";
 "settings.companion_ignores_switches" = "這台 Mac 上的 Companion CLI（%@）不遵循這些開關。請在「設定 › Companion CLI」中更新或解除安裝。";

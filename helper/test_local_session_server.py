@@ -389,6 +389,88 @@ def test_hello_without_the_gate_does_not_claim_to_follow_the_answer():
     assert _hello_with_gate(None)["follows_app_answer"] is False
 
 
+def test_a_companion_that_follows_the_answer_is_newer_than_1_30_0():
+    """The app's copy (`helper.install_intro`, and the notes under the answer
+    and the switches) says Companion CLI 1.30.0 and earlier do not check the
+    answer, and tells their users to update. A Companion that does check, and
+    says so in `hello`, therefore has to report a later version: one that still
+    said 1.30.0 would make that copy false, and "Update" would offer nothing
+    (the installer compares versions)."""
+    from system_collector import HELPER_VERSION
+
+    reply = _hello_with_gate(lambda: True)
+    assert reply["follows_app_answer"] is True
+    assert reply["helper_version"] == HELPER_VERSION
+    assert tuple(int(p) for p in HELPER_VERSION.split(".")[:3]) > (1, 30, 0)
+
+
+def _list_with_gate(local_scan_allowed, params: dict, managed: list[dict] | None = None):
+    """`list_sessions` from a server built the way the daemon builds it, whose
+    detected-session getter (the one that runs `ps`) records each call."""
+    calls: list[str] = []
+
+    def _detected() -> list[dict]:
+        calls.append("ps")
+        return [{"session_id": "det-1", "provider": "Claude"}]
+
+    def _unused(*_a, **_k):
+        raise AssertionError("list_sessions must not reach this")
+
+    server = LocalSessionServer(
+        socket_path="/nonexistent/clipulse-helper.sock",
+        get_auth_token=lambda: "T",
+        get_local_control_enabled=lambda: True,
+        set_local_control_enabled=_unused,
+        start_session=_unused,
+        list_sessions=lambda: [dict(r) for r in (managed or [])],
+        stop_session=_unused,
+        send_input=_unused,
+        list_detected_sessions=_detected,
+        local_scan_allowed=local_scan_allowed,
+    )
+    return server, server._handle_method("list_sessions", params), calls
+
+
+@pytest.mark.parametrize(
+    "allowed", [lambda: False, lambda: 1 / 0], ids=["not now", "cannot tell"]
+)
+def test_list_sessions_runs_no_process_scan_while_the_answer_pauses_it(allowed):
+    """v1.55: the detected rows come from `ps` and running programs' command
+    lines, which the app's answer covers (`local_scan_consent.derived_detail`).
+    After "Not now" the Sessions tab still asks every few seconds; the reply
+    then carries the sessions this helper started, and nothing it looked for."""
+    managed = [{"session_id": "m-1", "provider": "claude"}]
+    _server, reply, calls = _list_with_gate(allowed, {}, managed=managed)
+    assert calls == []
+    assert reply["detected"] == []
+    assert [r["session_id"] for r in reply["managed"]] == ["m-1"]
+
+
+def test_list_sessions_obeys_the_apps_false_before_its_own_copy():
+    _server, reply, calls = _list_with_gate(lambda: True, {"local_scan_allowed": False})
+    assert calls == []
+    assert reply["detected"] == []
+
+
+@pytest.mark.parametrize("params", [{}, {"local_scan_allowed": True}])
+def test_list_sessions_scans_while_the_answer_allows_it(params):
+    _server, reply, calls = _list_with_gate(lambda: True, params)
+    assert calls == ["ps"]
+    assert [r["session_id"] for r in reply["detected"]] == ["det-1"]
+
+
+def test_a_stop_for_a_detected_id_runs_no_scan_while_the_answer_pauses_it():
+    """`stop_session` and `send_input` ask whether an unknown id is a detected
+    session, which is the same scan."""
+    server, _reply, calls = _list_with_gate(lambda: False, {})
+    assert server._is_detected_only("det-1") is False
+    assert calls == []
+    allowed, _reply, allowed_calls = _list_with_gate(lambda: True, {"local_scan_allowed": False})
+    allowed_calls.clear()
+    assert allowed._is_detected_only("det-1") is True
+    assert allowed_calls == ["ps"]
+
+
 def test_hello_version_mismatch_returns_typed_error(short_sock_dir):
     server, _mgr, _state = _make_server(short_sock_dir)
     try:
