@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "钱都花在了哪里",
-   "按服务商细分的费用、主要项目和风险信号"
+   "今日和 30 天的估算费用，按服务商细分"
   ],
   "05_alerts": [
    "配额不再突然见底",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "21e13c6b2ab647446f94dd2bbb416337",
-  "02_providers.png": "f5b28ac2c78c325a0418683614560d8c",
-  "03_usage_history.panel.png": "83d8307bff02530393cb616eb6e3d333",
-  "03_usage_history.png": "21e13c6b2ab647446f94dd2bbb416337",
-  "04_cost.png": "0d82e0589c04c1dc3ff57eb92fb5f857",
-  "05_alerts.png": "467e849ddb59da0d3a935e20ed55db06",
-  "06_pulse_cat.png": "ac5a68d03146cdf56a88760f0720dd3f"
+  "01_overview.png": "cd4404c575e71c863779b1b293ecae0e",
+  "02_providers.png": "d27ad0e09c56f75c3f1814c330e2f728",
+  "03_usage_history.panel.png": "a2399bdb50bfe8b9e0416446415a5925",
+  "03_usage_history.png": "cd4404c575e71c863779b1b293ecae0e",
+  "04_cost.png": "831da47f113b75addc123d1410ffd56b",
+  "05_alerts.png": "1c0575a0237492d36c5405dae0d607e7",
+  "06_pulse_cat.png": "c26d177946670ddf8591bb02b515f1c4"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_2880x1800.png": "dacc730bd43534eb203c1bac16303987",
-  "02_providers_2880x1800.png": "0fd70e1075a0b2317990ce2f46a6833f",
-  "03_usage_history_2880x1800.png": "5d08de1c8acb0dc4372db3f674320548",
-  "04_cost_2880x1800.png": "5f13097cf92f0c7c87e3e5ee0e12676f",
-  "05_alerts_2880x1800.png": "7d3173582739b805f2bbbdea0faa7835",
-  "06_pulse_cat_2880x1800.png": "dc6097173bcc60a28d48a48f380dbfd4"
+  "01_overview_2880x1800.png": "b0d93fd1d8421e54bf3911cd37996c84",
+  "02_providers_2880x1800.png": "e46c63f0a83c342fe4aa0c56c8e00eee",
+  "03_usage_history_2880x1800.png": "4c7ad0adabb357c9fa4f6c9b11ba1c26",
+  "04_cost_2880x1800.png": "93de2035120e9793ead62a3df9f033d4",
+  "05_alerts_2880x1800.png": "4b4a3243302aced7c92f0f60c9f4e8a4",
+  "06_pulse_cat_2880x1800.png": "91477068774dc7ccb910a7dccde170a9"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "ae026f99127195eaecf08fdc136e4e3c",
+ "render": "59e1266ebc4e15c8dcf5e4f4a0e3072f",
  "subtitle_pt": 46,
  "title_pt": 100
 }

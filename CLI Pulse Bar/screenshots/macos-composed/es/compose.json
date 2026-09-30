@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "En qué se va tu dinero",
-   "Costo por proveedor y proyecto, con señales de riesgo"
+   "Costo estimado de hoy y a 30 días, por proveedor"
   ],
   "05_alerts": [
    "Sin sorpresas con la cuota",
@@ -26,17 +26,17 @@
   ],
   "06_pulse_cat": [
    "Conoce a tu Gato Pulse",
-   "Un gato de escritorio cuya energía y hambre reflejan tu uso de IA"
+   "Un gato de escritorio cuya energía y saciedad reflejan tu uso de IA"
   ]
  },
  "captures": {
-  "01_overview.png": "a4e1155d2c71675b3d7fff9843bca54d",
-  "02_providers.png": "86e5307e50bfd950d576884752fd3abb",
-  "03_usage_history.panel.png": "7e3fb2da5eb6e4e2fa483bb3e86206ce",
-  "03_usage_history.png": "a4e1155d2c71675b3d7fff9843bca54d",
-  "04_cost.png": "321e064682f23259b4cdaa010b686c3c",
-  "05_alerts.png": "73d16f76d70ad507a066669d50c11132",
-  "06_pulse_cat.png": "b1d63a0438445366279078f7b9553313"
+  "01_overview.png": "d8214f0b3c1100a9be6fb0482477ea57",
+  "02_providers.png": "7c36a39159aec5f3c2da7a341f442e62",
+  "03_usage_history.panel.png": "96e03a0afd9e27c2e832efb92774acb9",
+  "03_usage_history.png": "d8214f0b3c1100a9be6fb0482477ea57",
+  "04_cost.png": "7d776717274903e27f1e889617d80756",
+  "05_alerts.png": "77338c5f4dea0b1d62aa6060d3ce4450",
+  "06_pulse_cat.png": "52a0b08fd96b052d0141179e42b9579a"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -44,16 +44,16 @@
  },
  "lang": "es",
  "panels": {
-  "01_overview_2880x1800.png": "5aab6743bece40df12675e7c7576d526",
-  "02_providers_2880x1800.png": "90e8f42f2ca03ce4b84d163c501b94dd",
-  "03_usage_history_2880x1800.png": "127df67c39cf9769a692e250ec931040",
-  "04_cost_2880x1800.png": "5bcee7aaa1947f840de9ffa0a5f543f7",
-  "05_alerts_2880x1800.png": "6b287546069b4ffc888f12d3c2be453f",
-  "06_pulse_cat_2880x1800.png": "5f080eb7ad455a4dfabdd2dba6ff4905"
+  "01_overview_2880x1800.png": "c32b8ea1692af1c161da1aad3177ea95",
+  "02_providers_2880x1800.png": "e8976f3245f597ae3b1d0c575932dce0",
+  "03_usage_history_2880x1800.png": "6098f6d7bd2506c771cafb432ff2b8f1",
+  "04_cost_2880x1800.png": "b403842670e3e3de020ac6e1f5389669",
+  "05_alerts_2880x1800.png": "5c9d22b31d07edfb918b1a3cacc84ad7",
+  "06_pulse_cat_2880x1800.png": "f16bbaf05394c8d9770c4cffb801c00e"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "ec6c4200fa6be28d8ad44798ba03d63f",
+ "render": "9ba9ee44710f660b133868e09085df37",
  "subtitle_pt": 46,
  "title_pt": 100
 }

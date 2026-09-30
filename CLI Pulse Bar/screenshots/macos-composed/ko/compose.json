@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "비용, 어디에 쓰이나요?",
-   "공급자별 비용, 상위 프로젝트, 위험 신호"
+   "오늘과 30일간의 추정 비용을 공급자별로 확인하세요"
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
@@ -26,17 +26,17 @@
   ],
   "06_pulse_cat": [
    "펄스 캣을 만나 보세요",
-   "AI 사용량에 따라 에너지와 허기가 달라지는 데스크톱 고양이"
+   "AI 사용량에 따라 에너지와 포만감이 달라지는 데스크톱 고양이"
   ]
  },
  "captures": {
-  "01_overview.png": "cc88532788e7c401f4588bca5cc0f8da",
-  "02_providers.png": "0f465a3e7f661ea06927b6ac5a692a3b",
-  "03_usage_history.panel.png": "e71926304f2bec5200a280f3f0601348",
-  "03_usage_history.png": "cc88532788e7c401f4588bca5cc0f8da",
-  "04_cost.png": "2d7819127839e72ea48f65b75411d8ba",
-  "05_alerts.png": "acc82f3dcaf423602972494403ede8a4",
-  "06_pulse_cat.png": "4a5daadfdc4cffdb78f4158e22e8e1f7"
+  "01_overview.png": "2b2e90a76d830f951f56eaa071630745",
+  "02_providers.png": "f4952c201d8e6af526dafdeab161733c",
+  "03_usage_history.panel.png": "27ebb91f519b44c569bc9d25d9654f81",
+  "03_usage_history.png": "2b2e90a76d830f951f56eaa071630745",
+  "04_cost.png": "13608a7b0a1f6b24c628a5bbf36caf84",
+  "05_alerts.png": "7a2a872ff15fa2129a9713a2d257cbca",
+  "06_pulse_cat.png": "44840d348aecab3e3b0f907ec4e35117"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -44,16 +44,16 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2880x1800.png": "f86d4864a2d39a4e077293163e1322a3",
-  "02_providers_2880x1800.png": "e4147166fd4efa721b2a30b1c0c18649",
-  "03_usage_history_2880x1800.png": "22f263214e42778fa57d908c6773b2ae",
-  "04_cost_2880x1800.png": "1a21b561435b7efb1d0cab90a6e8ea07",
-  "05_alerts_2880x1800.png": "e45ff2d208c4f7940b45211aef32112b",
-  "06_pulse_cat_2880x1800.png": "8dc0fcfd277d4525dc89eba65098e922"
+  "01_overview_2880x1800.png": "09e05c87fcaf90d8a9b44b07d1f437fa",
+  "02_providers_2880x1800.png": "5707a87e29b3649c2d6ebed0067b192b",
+  "03_usage_history_2880x1800.png": "189e4be1dd4b3e381e3ce293703a8a3e",
+  "04_cost_2880x1800.png": "e0ae79ba1fbf15b5a20b47fc8e8db468",
+  "05_alerts_2880x1800.png": "117444d347c3f2ac737b23ae00d2d660",
+  "06_pulse_cat_2880x1800.png": "db408ef291f26325d299a8c94754af4b"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "f7a5f73b7a22833726d294e220fe36f2",
+ "render": "65ac424a2fc30a68be3f1a647db100a9",
  "subtitle_pt": 46,
  "title_pt": 100
 }
