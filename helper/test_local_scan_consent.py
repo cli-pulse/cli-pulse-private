@@ -207,7 +207,7 @@ def test_a_stalled_read_pauses_and_is_not_read_twice():
         release.wait(5.0)
         return MirrorRead("ok", consent="granted")
 
-    gate = LocalScanGate(path=lambda: Path("/nowhere"), reader=stalled_reader, read_wait_s=0.1)
+    gate = LocalScanGate(path=lambda: Path("/nowhere"), reader=stalled_reader, read_wait_s=0.3)
     started = time.monotonic()
     first = gate.check()
     second = gate.check()
@@ -217,11 +217,38 @@ def test_a_stalled_read_pauses_and_is_not_read_twice():
     # The second check waited on the same read instead of opening another.
     assert len(calls) == 1
 
-    release.set()
-    assert gate.check().cycle is Cycle.COLLECT  # the stalled read's own answer
-    assert len(calls) == 1
+    # The read finishes while a later check is waiting on it: that check uses it.
+    threading.Timer(0.05, release.set).start()
     assert gate.check().cycle is Cycle.COLLECT
-    assert len(calls) == 2  # and only then a fresh read
+    assert len(calls) == 1
+    # Nothing pending now, so the next check reads afresh.
+    assert gate.check().cycle is Cycle.COLLECT
+    assert len(calls) == 2
+
+
+def test_a_read_that_finished_between_checks_is_not_used():
+    # A stalled read completes after the check that started it gave up, and the
+    # user answers "Not now" before the next check. The next check must not
+    # act on the answer that read found.
+    release = threading.Event()
+    calls: list[Path] = []
+    plist = {"consent": "granted"}
+
+    def reader(path: Path) -> MirrorRead:
+        calls.append(path)
+        consent = plist["consent"]
+        if len(calls) == 1:
+            release.wait(5.0)
+        return MirrorRead("ok", consent=consent)
+
+    gate = LocalScanGate(path=lambda: Path("/nowhere"), reader=reader, read_wait_s=0.1)
+    assert gate.check().reason == "unreadable"
+    release.set()
+    gate._pending[0].join(2.0)  # the stalled read finishes between checks
+    plist["consent"] = "declined"
+    decision = gate.check()
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "declined")
+    assert len(calls) == 2
 
 
 @pytest.mark.parametrize("ready", [lambda: False, lambda: 1 / 0])

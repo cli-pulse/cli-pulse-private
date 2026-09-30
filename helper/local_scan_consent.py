@@ -246,6 +246,12 @@ class LocalScanGate:
             # second consult on a stalled container.
             return MirrorRead("unreadable", detail="app-group container not reachable yet")
         with self._lock:
+            if self._pending is not None and not self._pending[0].is_alive():
+                # A read an earlier check gave up on has finished since. Its
+                # answer is as old as that finish, and the user may have
+                # answered again after it, so it is dropped. The access it was
+                # waiting for is paid now, so the fresh read below is quick.
+                self._pending = None
             if self._pending is None:
                 box: dict = {}
                 path = self._path()
