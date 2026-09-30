@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "錢花在哪裡",
-   "各服務商的費用、高用量專案與風險訊號"
+   "今日與近 30 天的預估費用，依服務商細分"
   ],
   "04_sessions": [
    "每次 CLI 執行都有紀錄",
@@ -22,11 +22,11 @@
   ]
  },
  "captures": {
-  "01_overview.png": "154725251330304278ca702536b74d99",
-  "02_providers.png": "81744b61d38b32360ad7865fd7bd8544",
-  "03_cost.png": "67b1f455fedb8493256a46062fa3d578",
-  "04_sessions.png": "9ed1eae2e60c65e71c4f07a88b4099fc",
-  "05_alerts.png": "5d41f19386dca72344e91a5f56c124c1"
+  "01_overview.png": "fff4cbd8e650f84478c3196fe57d4ae1",
+  "02_providers.png": "52c3cb6519dd3954dc5ca8325b8baf49",
+  "03_cost.png": "6541b3f49583ff7d735ba4693cad3c8e",
+  "04_sessions.png": "86001aa1cef94a4418df521ee7bfd585",
+  "05_alerts.png": "564ff554238b9f50e6cc0937380f054a"
  },
  "faces": {
   "subtitle": "PingFang TC",
@@ -34,11 +34,11 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_1290x2796.png": "3ec53db0315e0d150141fe1e301423c6",
-  "02_providers_1290x2796.png": "78a34a8f41180c2648483de0ec9b07f2",
-  "03_cost_1290x2796.png": "564173c6496038952bb12f57affd1fbd",
-  "04_sessions_1290x2796.png": "079fbc380248d90f011fd63949a7cc41",
-  "05_alerts_1290x2796.png": "0b8130519db8fe60a2b3deab58d336f6"
+  "01_overview_1290x2796.png": "2e8fdde2e64bd8212b6a8a74ccd42f12",
+  "02_providers_1290x2796.png": "a7c4fa4f57383e8ded9a5e99aeda84aa",
+  "03_cost_1290x2796.png": "28a643fd2f3cec1b6146963e9142ae8f",
+  "04_sessions_1290x2796.png": "a7373c9a9c86c750c202d0e4c9db1b27",
+  "05_alerts_1290x2796.png": "8186d431ae781bf0650981af4c3684d8"
  },
  "subtitle_pt": 46,
  "title_pt": 100

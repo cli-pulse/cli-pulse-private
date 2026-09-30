@@ -1221,7 +1221,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "sessions.detected_footer" = "Estas sesiones de Claude se están ejecutando en este Mac, pero no las inició CLI Pulse, así que el helper no puede enviarles entrada ni detenerlas de forma segura. Úsalas desde el terminal donde se abrieron.";
 "sessions.section_active" = "Activas";
 "sessions.section_recent" = "Recientes · últimos 30 min";
-"sessions.freshness_legend" = "En ejecución = proceso confirmado. Activa = registro escrito en los últimos 5 min. Reciente = registro escrito en los últimos 30 min.";
+"sessions.freshness_legend" = "En ejecución = proceso confirmado. Activa = registro escrito en los últimos 5 min. Reciente = registro escrito en los últimos 30 min.";
 "sessions.send" = "Enviar";
 "sessions.approve_help" = "Aprueba la solicitud de permiso pendiente de Claude vinculada a esta sesión local (⌘↩).";
 "sessions.reject_help" = "Rechaza la solicitud de permiso pendiente de Claude. Claude seguirá esperando otra decisión o recurrirá a su propio aviso.";

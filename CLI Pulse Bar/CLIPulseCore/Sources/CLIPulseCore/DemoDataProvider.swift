@@ -40,6 +40,19 @@ internal enum DemoDataProvider {
         // Without a tier the Providers screen made up a bar labelled
         // "Default", which told nobody anything. At 71% used it stays under the
         // 80% warning threshold, so no alert is added.
+        //
+        // Gemini is quota-only, as it is for every real account: GeminiCollector
+        // reports no tokens and no cost ("Unavailable"), CostUsageScanner reads
+        // only Codex and Claude logs, and `daily_usage_metrics` (the cloud's
+        // tokens and cost) is fed by that scanner, so no producer ever gives
+        // Gemini a token count or a dollar figure. Demo used to (43.4K tokens,
+        // $0.35 today), and they reached the totals, the Cost Summary and
+        // Provider Usage of every screenshot. `testDemoGivesGeminiNoTokensOrCost`
+        // holds it to that.
+        //
+        // No provider lists recent sessions: only OllamaCollector fills
+        // `recent_sessions`, so a Codex, Gemini or Claude card never draws that
+        // line for a real account.
         let providers = [
             ProviderUsage(provider: "Codex", today_usage: 85900, week_usage: 462000,
                           estimated_cost_today: 1.03, estimated_cost_week: 5.54,
@@ -47,19 +60,19 @@ internal enum DemoDataProvider {
                           quota: 500000, remaining: 38000,
                           tiers: [TierDTO(name: "Weekly", quota: 500000, remaining: 38000)],
                           status_text: "92% used",
-                          trend: trend(base: 85000, salt: 201), recent_sessions: ["ios-dashboard"], recent_errors: []),
-            ProviderUsage(provider: "Gemini", today_usage: 43400, week_usage: 214000,
-                          estimated_cost_today: 0.35, estimated_cost_week: 1.71,
-                          cost_status_today: "Estimated", cost_status_week: "Estimated",
+                          trend: trend(base: 85000, salt: 201), recent_sessions: [], recent_errors: []),
+            ProviderUsage(provider: "Gemini", today_usage: 0, week_usage: 0,
+                          estimated_cost_today: 0, estimated_cost_week: 0,
+                          cost_status_today: "Unavailable", cost_status_week: "Unavailable",
                           quota: 300000, remaining: 86000,
                           tiers: [TierDTO(name: "Pro", quota: 300000, remaining: 86000)],
                           status_text: "71% used",
-                          trend: trend(base: 43000, salt: 202), recent_sessions: ["helper-heartbeat"], recent_errors: []),
+                          trend: [], recent_sessions: [], recent_errors: []),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
                           estimated_cost_today: 0.37, estimated_cost_week: 1.98,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
                           quota: 250000, remaining: 118000, status_text: "53% used",
-                          trend: trend(base: 24000, salt: 203), recent_sessions: ["provider-adapters"], recent_errors: []),
+                          trend: trend(base: 24000, salt: 203), recent_sessions: [], recent_errors: []),
         ]
 
         // Session names are identifiers, the way a real one reads (a command or
@@ -74,9 +87,14 @@ internal enum DemoDataProvider {
         //
         // Two sessions sit in the Sessions tab's Recent tier (last written 5
         // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
-        // which failed shortly before build-box went offline, and a finished
+        // last written shortly before build-box went offline, and a finished
         // docs-refresh. Without them the Active section was the whole list and
         // the lower half of the screen was empty.
+        //
+        // No session has errors or a "failed" status: every producer (both
+        // helpers, the local scanners, the desktop app) writes error_count 0
+        // and a live status, so a real Sessions tab never draws the red Errors
+        // figure or the red border api-gateway used to have.
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
@@ -93,8 +111,8 @@ internal enum DemoDataProvider {
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
                           started_at: timestamp(-7200), last_active_at: timestamp(-1200),
-                          status: "failed", total_usage: 8400, estimated_cost: 0.10,
-                          cost_status: "Estimated", requests: 56, error_count: 3,
+                          status: "idle", total_usage: 8400, estimated_cost: 0.10,
+                          cost_status: "Estimated", requests: 56, error_count: 0,
                           collection_confidence: "high"),
             SessionRecord(id: "s4", name: "provider-adapters", provider: "Claude",
                           project: "provider-layer", device_name: "MacBook Pro",
@@ -207,7 +225,11 @@ internal enum DemoDataProvider {
             total_usage_today: providers.reduce(0) { $0 + $1.today_usage },
             total_estimated_cost_today: providers.reduce(0) { $0 + $1.estimated_cost_today },
             cost_status: "Estimated",
-            total_requests_today: sessions.reduce(0) { $0 + $1.requests },
+            // 0, as the signed-in dashboard Demo draws always carries it:
+            // `dashboard_summary` has no request column (APIClient.dashboardSummary).
+            // Only local mode counts requests, so the Requests tile shows there
+            // alone (OverviewFormatters.showsRequestsMetric); Demo is signed in.
+            total_requests_today: 0,
             active_sessions: sessions.filter { $0.status == "running" || $0.status == "syncing" }.count,
             online_devices: devices.filter { $0.status == "online" }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
@@ -217,12 +239,13 @@ internal enum DemoDataProvider {
             // App Store screenshot while no customer could see it. Put rows back
             // only in the change that gives a real account some.
             top_projects: [],
-            trend: (0..<24).map { index in
-                UsagePoint(
-                    timestamp: timestamp(Double(-23 + index) * 3600),
-                    value: 4000 + Int(unit(index, 200) * 3001)
-                )
-            },
+            // Empty, as every real producer leaves it (APIClient's
+            // `dashboard_summary` row has no hourly column, and the local
+            // refresh keeps none), so the Overview's Hourly Activity card hides
+            // here too. 24 sample bars put it in every App Store screenshot
+            // while no customer could see it. Put bars back only in the change
+            // that gives a real account some.
+            trend: [],
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager).
             // Its only renderer is the Watch home screen, which never receives
             // the demo dashboard, so sample rows here were English nobody saw.
@@ -260,18 +283,20 @@ internal enum DemoDataProvider {
     /// Deterministic on purpose — no random source — so the same "Try Demo" screen
     /// renders identically every time, which is what App Store screenshots and
     /// tests both need. Today's row reproduces the `generate()` provider figures
-    /// exactly (85.9K / 43.4K / 24.8K tokens), so the heatmap's today cell and the
+    /// exactly (85.9K / 24.8K tokens), so the heatmap's today cell and the
     /// dashboard's Usage Today tile agree instead of telling two different stories.
     ///
     /// Shape: weekdays busier than weekends, usage ramping up over the year the way
     /// a real adopter's does, and a scattering of idle days that thins out as the
     /// habit forms — a flat wall of identical cells reads as fake.
     static func dailyUsage(days: Int, today: Date = Date(), calendar: Calendar = .current) -> [CloudEntry] {
-        struct Profile { let provider: String; let model: String; let todayTokens: Int; let todayCost: Double }
+        // `salt` keeps each provider's day-by-day draws where they were when
+        // Gemini had a row here: nothing records Gemini tokens or cost (see
+        // `generate()`), so it has none, and Codex and Claude keep their history.
+        struct Profile { let provider: String; let model: String; let todayTokens: Int; let todayCost: Double; let salt: UInt64 }
         let profiles = [
-            Profile(provider: "Codex", model: "gpt-5-codex", todayTokens: 85_900, todayCost: 1.03),
-            Profile(provider: "Gemini", model: "gemini-2.5-pro", todayTokens: 43_400, todayCost: 0.35),
-            Profile(provider: "Claude", model: "claude-sonnet-4-5", todayTokens: 24_800, todayCost: 0.37),
+            Profile(provider: "Codex", model: "gpt-5-codex", todayTokens: 85_900, todayCost: 1.03, salt: 0),
+            Profile(provider: "Claude", model: "claude-sonnet-4-5", todayTokens: 24_800, todayCost: 0.37, salt: 2),
         ]
 
         func entry(_ key: String, _ p: Profile, tokens: Int, cost: Double) -> CloudEntry {
@@ -303,10 +328,10 @@ internal enum DemoDataProvider {
             let ramp = 1.0 - 0.7 * age
             let dayScale = ramp * (weekend ? 0.35 : 1.0) * (0.45 + 0.9 * unit(offset, 2))
 
-            for (i, p) in profiles.enumerated() {
+            for p in profiles {
                 // Not every provider is used every day.
-                guard unit(offset, 10 + UInt64(i)) < 0.85 else { continue }
-                let jitter = 0.6 + 0.8 * unit(offset, 20 + UInt64(i))
+                guard unit(offset, 10 + p.salt) < 0.85 else { continue }
+                let jitter = 0.6 + 0.8 * unit(offset, 20 + p.salt)
                 let tokens = Int(Double(p.todayTokens) * dayScale * jitter)
                 guard tokens > 0 else { continue }
                 let cost = p.todayCost * Double(tokens) / Double(p.todayTokens)

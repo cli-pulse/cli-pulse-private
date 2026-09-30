@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "En qué se va tu dinero",
-   "Costo por proveedor y proyecto, con señales de riesgo"
+   "Costo estimado de hoy y de los últimos 30 días, por proveedor"
   ],
   "04_sessions": [
    "Cada ejecución, registrada",
@@ -22,11 +22,11 @@
   ]
  },
  "captures": {
-  "01_overview.png": "6d550a323cc91f7cbb19e4e919c62f62",
-  "02_providers.png": "033dbb05e92700ad41e2eb0688a9d60c",
-  "03_cost.png": "9ca90d8e9a97a6c8304e2c1a98e7c7de",
-  "04_sessions.png": "698093f1b40363514e42ec4850076fdb",
-  "05_alerts.png": "87e99456788aaeb1970181ef1d65ee63"
+  "01_overview.png": "461474bd30ab093123eb856c1b184bb1",
+  "02_providers.png": "e79c246cde13bfd088610c9fc01bf304",
+  "03_cost.png": "86eb1c1097d99dac64ad0c3a413f3a1d",
+  "04_sessions.png": "f44215787d2b70671438f39e4670416e",
+  "05_alerts.png": "cc5f1aceadc737fab32027aac6ebfed3"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -34,11 +34,11 @@
  },
  "lang": "es",
  "panels": {
-  "01_overview_1290x2796.png": "f55b00586c210741b18bb723ec2b3751",
-  "02_providers_1290x2796.png": "7893ea66f01a497c4f3b0f89ad6cad8b",
-  "03_cost_1290x2796.png": "f1dba4051d7653cf8aec141e4d41f379",
-  "04_sessions_1290x2796.png": "4a6c613e90b42d2897b6af9f22c65243",
-  "05_alerts_1290x2796.png": "8be8004963cf9137a9d0050e626167bc"
+  "01_overview_1290x2796.png": "63028cce359c66c0212f5ee3aa6ff596",
+  "02_providers_1290x2796.png": "6dc10e2c57f3eb7f9030598716957d65",
+  "03_cost_1290x2796.png": "2d05f91d59af080f0e658c12bc106c16",
+  "04_sessions_1290x2796.png": "e5f505b74d308e9c4ee559f9e7412e36",
+  "05_alerts_1290x2796.png": "f6e1fc0af9482b0255d93d26e62dd99b"
  },
  "subtitle_pt": 46,
  "title_pt": 96

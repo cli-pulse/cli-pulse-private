@@ -1,0 +1,230 @@
+import XCTest
+@testable import CLIPulseCore
+
+/// Demo draws every App Store screenshot, so each figure in it must be one a
+/// real account can see. These are the figures the 1.55 screenshot review
+/// traced to their producers and found no producer for: Gemini tokens and
+/// cost, a Requests count on the signed-in dashboard, a failed session with
+/// errors, and a provider card's recent-sessions line. Each test pairs Demo
+/// with the production fact it follows, so the two change together.
+final class DemoMatchesProductionTests: XCTestCase {
+
+    // MARK: - Gemini is quota-only
+
+    /// GeminiCollector reports a quota and no cost ("Unavailable"), and
+    /// nothing records Gemini tokens (CostUsageScanner reads Codex and Claude
+    /// logs, and the cloud's tokens and cost come from that scanner). Demo gave
+    /// Gemini 43.4K tokens and $0.35 today, which reached the totals, the Cost
+    /// Summary and Provider Usage of six panels.
+    func testDemoGivesGeminiNoTokensOrCost() throws {
+        let demo = DemoDataProvider.generate()
+        let gemini = try XCTUnwrap(demo.providers.first { $0.provider == "Gemini" },
+                                   "Demo has no Gemini; is this still the Demo the screenshots draw?")
+        XCTAssertEqual(gemini.today_usage, 0)
+        XCTAssertEqual(gemini.week_usage, 0)
+        XCTAssertEqual(gemini.estimated_cost_today, 0)
+        XCTAssertEqual(gemini.estimated_cost_week, 0)
+        XCTAssertEqual(gemini.cost_status_today, "Unavailable")
+        XCTAssertEqual(gemini.cost_status_week, "Unavailable")
+        // Positive control: Gemini still has the quota the collector reports.
+        XCTAssertFalse(gemini.tiers.isEmpty, "Demo's Gemini lost its quota window too")
+
+        XCTAssertFalse(DemoDataProvider.dailyUsage(days: 365).contains { $0.provider == "Gemini" },
+                       "the heatmap and the 30-day figure count Gemini usage nothing records")
+
+        let enabled = Set(demo.providers.map(\.provider))
+        let usageRows = OverviewFormatters.rankedProviderBreakdown(demo.dashboard.provider_breakdown,
+                                                                   enabledNames: enabled)
+        XCTAssertEqual(usageRows.map(\.provider), ["Codex", "Claude"],
+                       "Provider Usage draws a row no real account has")
+
+        let others = demo.providers.filter { $0.provider != "Gemini" }
+        XCTAssertEqual(demo.dashboard.total_usage_today, others.reduce(0) { $0 + $1.today_usage })
+        XCTAssertEqual(demo.dashboard.total_estimated_cost_today,
+                       others.reduce(0) { $0 + $1.estimated_cost_today }, accuracy: 0.0001)
+    }
+
+    /// The production half of the test above, read from the sources: the
+    /// collector reports no Gemini cost, and the scanner has no Gemini at all.
+    /// If either changes, Demo may show Gemini tokens or cost again, in the
+    /// same change.
+    func testNoProducerGivesGeminiTokensOrCost() throws {
+        let sources = Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore")
+        let collector = Self.codeOnly(try String(
+            contentsOf: sources.appendingPathComponent("Collectors/GeminiCollector.swift"), encoding: .utf8))
+        XCTAssertTrue(collector.contains("estimated_cost_today: 0,"), "GeminiCollector now reports a cost")
+        XCTAssertTrue(collector.contains(#"cost_status_today: "Unavailable","#),
+                      "GeminiCollector's cost is no longer Unavailable")
+        XCTAssertFalse(collector.contains("estimated_cost_today: Double"), "GeminiCollector now computes a cost")
+
+        let scanner = Self.codeOnly(try String(
+            contentsOf: sources.appendingPathComponent("CostUsageScanner.swift"), encoding: .utf8))
+        // Positive control: the scanner still records the two it does.
+        XCTAssertTrue(scanner.contains(#""Codex""#) && scanner.contains(#""Claude""#),
+                      "CostUsageScanner no longer names Codex and Claude; is this still the scanner?")
+        XCTAssertNil(scanner.range(of: "gemini", options: .caseInsensitive),
+                     "CostUsageScanner now reads Gemini; give Demo's Gemini tokens and cost in the same change")
+    }
+
+    // MARK: - Requests
+
+    /// The signed-in dashboard has no request count: `dashboard_summary` has no
+    /// such column and `APIClient.dashboardSummary(from:)` carries 0. So the
+    /// tile shows in local mode only, and Demo, which is signed in, holds 0.
+    func testTheRequestsTileShowsOnlyWhereSomethingCountsRequests() throws {
+        XCTAssertFalse(OverviewFormatters.showsRequestsMetric(isAuthenticated: true))
+        XCTAssertTrue(OverviewFormatters.showsRequestsMetric(isAuthenticated: false))
+
+        let row = Data("""
+            {"today_usage": 120000, "today_cost": 3.5, "active_sessions": 4,
+             "online_devices": 2, "unresolved_alerts": 3, "today_sessions": 9}
+            """.utf8)
+        let cloud = APIClient.dashboardSummary(
+            from: try JSONDecoder().decode(APIClient.DashboardSummaryPayload.self, from: row))
+        XCTAssertEqual(cloud.total_usage_today, 120000, "the row did not decode, so this proves nothing")
+        XCTAssertEqual(cloud.total_requests_today, 0, "the cloud dashboard now counts requests; show the tile signed in")
+
+        XCTAssertEqual(DemoDataProvider.generate().dashboard.total_requests_today,
+                       cloud.total_requests_today, "Demo is signed in, so its count is the cloud's")
+    }
+
+    /// The Mac and iPhone Overviews draw the Requests tile only under the rule.
+    func testEveryOverviewDrawsTheRequestsTileOnlyUnderTheRule() throws {
+        for path in ["CLI Pulse Bar/OverviewTab.swift", "CLI Pulse Bar iOS/iOSOverviewTab.swift"] {
+            let text = try String(contentsOf: Self.appSourceRoot.appendingPathComponent(path), encoding: .utf8)
+            let lines = Self.codeOnly(text).components(separatedBy: "\n")
+            let tiles = lines.indices.filter { lines[$0].contains("L10n.dashboard.requests") }
+            // Positive control: the tile is still in this Overview.
+            XCTAssertFalse(tiles.isEmpty, "\(path) no longer draws a Requests tile; is this still the Overview?")
+            for line in tiles {
+                let above = lines[max(0, line - 3)..<line]
+                XCTAssertTrue(above.contains { $0.contains("showsRequestsMetric(") }, """
+                    \(path):\(line + 1) draws Requests without `OverviewFormatters.showsRequestsMetric` just \
+                    above it; signed in, it reads 0 for everyone.
+                    """)
+            }
+        }
+    }
+
+    // MARK: - Sessions and provider cards
+
+    /// Every session producer (both helpers, the local scanners, the desktop
+    /// app) writes error_count 0 and a live status, so no real Sessions tab
+    /// draws the red Errors figure or the red "failed" border.
+    func testDemoSessionsHaveNoErrorsAndNoFailedStatus() {
+        for session in DemoDataProvider.generate().sessions {
+            XCTAssertEqual(session.error_count, 0, "\(session.name) shows Errors, which no producer writes")
+            XCTAssertNotEqual(session.status.lowercased(), "failed",
+                              "\(session.name) is failed, which no producer writes")
+        }
+    }
+
+    /// Only OllamaCollector fills `recent_sessions`, so a Codex, Gemini or
+    /// Claude card never draws the recent-sessions line for a real account.
+    func testDemoProvidersListNoRecentSessions() throws {
+        for provider in DemoDataProvider.generate().providers {
+            XCTAssertTrue(provider.recent_sessions.isEmpty,
+                          "\(provider.provider) lists recent sessions: \(provider.recent_sessions)")
+        }
+        let sources = Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore")
+        let ollama = Self.codeOnly(try String(
+            contentsOf: sources.appendingPathComponent("Collectors/OllamaCollector.swift"), encoding: .utf8))
+        XCTAssertTrue(ollama.contains("recent_sessions: running"),
+                      "OllamaCollector no longer fills recent_sessions; recheck who does")
+        for name in ["CodexCollector.swift", "ClaudeCollector.swift", "GeminiCollector.swift"] {
+            let url = sources.appendingPathComponent("Collectors/\(name)")
+            guard let text = try? String(contentsOf: url, encoding: .utf8) else {
+                XCTFail("\(name) is gone; is this list still the Demo's providers?"); continue
+            }
+            let fills = Self.codeOnly(text).components(separatedBy: "\n")
+                .filter { $0.contains("recent_sessions:") && !$0.contains("recent_sessions: []") }
+            XCTAssertEqual(fills, [], "\(name) now fills recent_sessions; Demo may list some again")
+        }
+    }
+
+    // MARK: - Source helpers
+
+    /// The `CLIPulseCore` package root.
+    private static var coreRoot: URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()   // CLIPulseCoreTests
+            .deletingLastPathComponent()   // Tests
+            .deletingLastPathComponent()   // CLIPulseCore
+    }
+
+    /// `CLI Pulse Bar/`, which holds the app targets and `CLIPulseCore`.
+    private static var appSourceRoot: URL {
+        coreRoot.deletingLastPathComponent()
+    }
+
+    /// Whole-line comments dropped: comments name the very symbols the scans
+    /// look for.
+    private static func codeOnly(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+    }
+}
+
+/// The Cost Summary's per-provider rows, through the real `enterDemoMode`
+/// and the cost summary every client without a local scan builds (the
+/// iPhone, and Demo on both platforms).
+@MainActor
+final class DemoCostSummaryRowsTests: XCTestCase {
+
+    private var suiteName = ""
+    private var defaults: UserDefaults!
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "DemoCostSummaryRowsTests.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    /// A provider with no cost gets no row: Gemini is quota-only, and its
+    /// "$0.00" row read as "Gemini costs nothing". An empty Info.plist
+    /// resolves to the quarantine capabilities, so this publishes no widget
+    /// data to the real app group.
+    func testTheCostSummaryListsOnlyProvidersWithACost() {
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        state.enterDemoMode()
+        let summary = state.providerState.costSummary
+        XCTAssertEqual(Set(summary.todayByProvider.map(\.provider)), ["Codex", "Claude"],
+                       "today's rows: \(summary.todayByProvider)")
+        XCTAssertEqual(Set(summary.thirtyDayByProvider.map(\.provider)), ["Codex", "Claude"],
+                       "30-day rows: \(summary.thirtyDayByProvider)")
+        XCTAssertFalse(summary.todayByProvider.contains { $0.cost <= 0 })
+        XCTAssertFalse(summary.thirtyDayByProvider.contains { $0.cost <= 0 })
+        // Positive control: the totals still add up to the rows.
+        XCTAssertEqual(summary.todayTotal, summary.todayByProvider.reduce(0) { $0 + $1.cost }, accuracy: 0.0001)
+        XCTAssertGreaterThan(summary.todayTotal, 0)
+    }
+}
+
+/// The iPhone Overview's metric tiles lose Requests when signed in, which
+/// leaves five; they are laid out so none sits alone next to an empty slot.
+final class MetricRowsTests: XCTestCase {
+    func testTilesPairUpAndAnOddCountEndsInARowOfThree() {
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 0), [])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 1), [0..<1])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 2), [0..<2])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 3), [0..<3])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 5), [0..<2, 2..<5])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 6), [0..<2, 2..<4, 4..<6])
+        XCTAssertEqual(OverviewFormatters.metricRows(count: 7), [0..<2, 2..<4, 4..<7])
+        for count in 1...9 {
+            let rows = OverviewFormatters.metricRows(count: count)
+            XCTAssertEqual(rows.flatMap { Array($0) }, Array(0..<count), "\(count) tiles, each once, in order")
+            XCTAssertTrue(rows.allSatisfy { $0.count == 2 || $0.count == 3 || count == 1 }, "\(count): \(rows)")
+        }
+    }
+}

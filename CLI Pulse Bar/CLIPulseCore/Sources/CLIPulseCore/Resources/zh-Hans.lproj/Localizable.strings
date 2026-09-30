@@ -1588,7 +1588,7 @@
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
 "alerts.critical_count_badge" = "严重级 %d 条";
-"alerts.warning_count_badge" = "警告级 %d 条";
+"alerts.warning_count_badge" = "%d 条警告";
 "account.deleting" = "正在删除账户…";
 "usage_dashboard.chart_day" = "日期";
 "usage_dashboard.chart_tokens" = "token 数";

@@ -487,8 +487,8 @@ Each language's `render.json` records what the build that drew it measured:
 it was formatted on (`-AppleLocale`, the iPhone capture's regions; Spanish on
 Mexico's for both es-ES and es-MX), the backing scale, overlay scroll bars, the
 local history's providers, the panel's settle and dark backdrop, the cost
-shot's shortened popover (so the Overview scrolled to its end opens above a
-card), every file's md5, warnings and refused requests. The compositor,
+shot's shortened popover (so the Overview scrolled to its end opens just above
+a whole card, `QARenderSnapshot.alignedCard`), every file's md5, warnings and refused requests. The compositor,
 `--require-shots` and the Mac pusher refuse raws whose `render.json` is not a
 clean store render (`render_problems` in `scripts/appstore_screenshots.py`). A Mac `compose.json` also records the app
 version that drew the set; the footer of every popover shows it ("CLI Pulse

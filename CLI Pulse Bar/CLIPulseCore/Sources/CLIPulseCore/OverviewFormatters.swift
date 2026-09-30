@@ -43,6 +43,33 @@ public enum OverviewFormatters {
         return f
     }()
 
+    /// Whether the Overview's Requests tile has a count to show. Only the
+    /// local refresh counts requests (it sums its sessions' `requests`). The
+    /// signed-in dashboard comes from `dashboard_summary`, which has no request
+    /// column, so `APIClient.dashboardSummary(from:)` carries 0 on purpose and
+    /// the tile read "0" on every iPhone, iPad and signed-in Mac. It shows in
+    /// local mode (not signed in) only; Demo is signed in, so it follows.
+    public static func showsRequestsMetric(isAuthenticated: Bool) -> Bool {
+        !isAuthenticated
+    }
+
+    /// The iPhone Overview's rows of metric tiles, as index ranges: two across,
+    /// and with an odd count the last row takes three, so no tile sits alone
+    /// next to an empty slot (five tiles: 2 + 3; six: 2 + 2 + 2).
+    public static func metricRows(count: Int) -> [Range<Int>] {
+        guard count > 0 else { return [] }
+        guard count > 1 else { return [0..<1] }
+        var rows: [Range<Int>] = []
+        var start = 0
+        let pairedEnd = count % 2 == 0 ? count : count - 3
+        while start < pairedEnd {
+            rows.append(start..<(start + 2))
+            start += 2
+        }
+        if start < count { rows.append(start..<count) }
+        return rows
+    }
+
     /// v1.10.7: minimum bar fraction given to providers with nonzero token
     /// usage but zero cost (free tiers, promo periods, or providers whose
     /// `estimated_cost_today` hasn't rolled up server-side yet). Keeps them

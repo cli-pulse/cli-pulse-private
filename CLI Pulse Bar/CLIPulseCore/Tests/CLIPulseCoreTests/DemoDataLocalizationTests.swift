@@ -71,25 +71,25 @@ final class DemoDataLocalizationTests: XCTestCase {
         }
     }
 
-    /// The hourly bars were `Int.random`, so each language of one screenshot run
-    /// drew a different Hourly Activity chart, and every run a new one. Built in
-    /// two languages, the numbers are now the same, and still within the
-    /// ranges the random draw used.
+    /// The trends were `Int.random`, so each language of one screenshot run
+    /// drew different numbers, and every run new ones. Built in two languages,
+    /// the numbers are now the same, and still within the ranges the random
+    /// draw used. (The dashboard's hourly trend is empty, as in production:
+    /// OverviewOptionalCardsTests.)
     func testDemoTrendsAreTheSameInEveryLanguageAndRun() {
         let ja = DemoDataProvider.generate()
         LocaleOverrideStore.shared.set("en")
         let en = DemoDataProvider.generate()
         let again = DemoDataProvider.generate()
 
-        let hourly = en.dashboard.trend.map(\.value)
-        XCTAssertEqual(hourly.count, 24)
-        XCTAssertEqual(ja.dashboard.trend.map(\.value), hourly)
-        XCTAssertEqual(again.dashboard.trend.map(\.value), hourly)
-        XCTAssertGreaterThan(Set(hourly).count, 12, "a flat chart would be deterministic too")
-        XCTAssertTrue(hourly.allSatisfy { (4000...7000).contains($0) }, "\(hourly)")
-
-        XCTAssertEqual(ja.providers.map { $0.trend.map(\.value) }, en.providers.map { $0.trend.map(\.value) })
-        for (provider, base) in zip(en.providers, [85000, 43000, 24000]) {
+        let perProvider = en.providers.map { $0.trend.map(\.value) }
+        // Codex, Gemini, Claude. Gemini has none, as GeminiCollector reports
+        // none (it is quota-only: DemoMatchesProductionTests).
+        XCTAssertEqual(perProvider.map(\.count), [12, 0, 12])
+        XCTAssertEqual(ja.providers.map { $0.trend.map(\.value) }, perProvider)
+        XCTAssertEqual(again.providers.map { $0.trend.map(\.value) }, perProvider)
+        XCTAssertGreaterThan(Set(perProvider[0]).count, 6, "a flat trend would be deterministic too")
+        for (provider, base) in zip(en.providers.filter { $0.provider != "Gemini" }, [85000, 24000]) {
             XCTAssertTrue(provider.trend.allSatisfy { abs($0.value - base) <= 2000 }, provider.provider)
         }
     }
