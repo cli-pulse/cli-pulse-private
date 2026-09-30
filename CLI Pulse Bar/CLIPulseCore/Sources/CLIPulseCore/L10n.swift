@@ -456,6 +456,19 @@ public enum L10n {
         public static var keep: String { tr("launch_at_login_notice.keep") }
     }
 
+    /// The dated card on the Overview that says Codex figures are counted
+    /// differently now, and why. See `CodexEstimateChangeNote` for who sees it
+    /// and which lines are shown.
+    public enum codexEstimateNote {
+        /// %@ is a day, formatted by `DisplayFormat.day`.
+        public static func title(_ day: String) -> String { tr("codex_estimate_note.title", day) }
+        public static var reasonCachedInputOnce: String { tr("codex_estimate_note.reason_cached_input_once") }
+        public static var reasonSubagentSessions: String { tr("codex_estimate_note.reason_subagent_sessions") }
+        public static var reasonPublishedPrices: String { tr("codex_estimate_note.reason_published_prices") }
+        /// %@ is a day, formatted by `DisplayFormat.day`.
+        public static func historyBefore(_ day: String) -> String { tr("codex_estimate_note.history_before", day) }
+    }
+
     /// v1.44 W3: per-provider collector outcome labels + one concrete next
     /// step each. Kept in its own namespace rather than folded into
     /// `providers` because these are status vocabulary, reused by the Overview

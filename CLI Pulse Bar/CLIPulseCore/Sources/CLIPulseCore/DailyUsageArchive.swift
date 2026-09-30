@@ -465,8 +465,62 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
 
 // MARK: - Merge input adapters (decoupled from CostUsageScanResult / DailyUsage)
 
+/// How the archive counts tokens: every token once.
+///
+/// A day's tokens are `input + cached + output`, so `input` here has to be the
+/// input that was not served from cache. Claude reports it that way already:
+/// its `input` leaves cache reads and writes out, and they arrive as `cached`.
+/// Codex does not. OpenAI's `input_tokens` already includes the cached input,
+/// and `cached` is the cached share of that same input (the scanner and the
+/// desktop app both store it so, and clamp `cached` to `input`). Added as they
+/// came, Codex's cached input was counted twice, and cached input is usually
+/// most of what Codex sends, so the history's Codex totals were far too high.
+///
+/// The fix sits in the adapters below, the one place every row enters the
+/// archive: the Mac's scan, the Mac's cloud fill and the iPhone's cloud
+/// rebuild. The archive's own sum stays as it is. So does its stored version:
+/// `DailyUsageArchiveIO.load` returns an empty archive when the version
+/// differs, and a bump would silently drop a year of history.
+///
+/// Days already stored cannot be corrected where they are. The archive keeps
+/// one total per day and provider, without the split, so a Codex day recorded
+/// before this change keeps its count until a scan records that day again.
+/// `CodexEstimateChangeNote` says so where it matters.
+public enum ArchiveTokenBasis {
+
+    /// `input` with the cached share taken out, for a provider whose `input`
+    /// includes it (Codex); unchanged for everyone else. Never negative, and
+    /// never more than `input`.
+    public static func uncachedInput(provider: String, inputTokens: Int, cachedTokens: Int) -> Int {
+        let input = max(0, inputTokens)
+        guard inputIncludesCached(provider) else { return input }
+        return input - cachedShare(inputTokens: input, cachedTokens: cachedTokens)
+    }
+
+    /// `cached` as the archive adds it. For Codex it is part of `input`, so it
+    /// can never be more than `input` (the writers clamp it; a row that did
+    /// not would otherwise add tokens nobody used).
+    public static func cachedTokens(provider: String, inputTokens: Int, cachedTokens: Int) -> Int {
+        guard inputIncludesCached(provider) else { return max(0, cachedTokens) }
+        return cachedShare(inputTokens: max(0, inputTokens), cachedTokens: cachedTokens)
+    }
+
+    /// Providers whose `input` already includes the cached input: OpenAI's
+    /// convention, so Codex. Claude's `input` excludes cache.
+    static func inputIncludesCached(_ provider: String) -> Bool {
+        provider == ProviderKind.codex.rawValue
+    }
+
+    private static func cachedShare(inputTokens: Int, cachedTokens: Int) -> Int {
+        min(max(0, cachedTokens), inputTokens)
+    }
+}
+
 /// A single scan entry, decoupled from `CostUsageScanResult.DailyEntry` so the
 /// archive core stays cross-platform + independently testable.
+///
+/// `inputTokens` is the input NOT served from cache (`ArchiveTokenBasis`):
+/// build one from a scanned row with `init(archiving:)`, never field by field.
 public struct ScanEntry: Sendable, Equatable {
     public let date: String
     public let provider: String
@@ -489,9 +543,24 @@ public struct ScanEntry: Sendable, Equatable {
         self.inputTokens = inputTokens; self.cachedTokens = cachedTokens
         self.outputTokens = outputTokens; self.cost = cost; self.messages = messages
     }
+
+    /// A scanned row in the archive's basis: each token once.
+    public init(archiving e: CostUsageScanResult.DailyEntry) {
+        self.init(
+            date: e.date, provider: e.provider, model: e.model,
+            inputTokens: ArchiveTokenBasis.uncachedInput(
+                provider: e.provider, inputTokens: e.inputTokens, cachedTokens: e.cachedTokens),
+            cachedTokens: ArchiveTokenBasis.cachedTokens(
+                provider: e.provider, inputTokens: e.inputTokens, cachedTokens: e.cachedTokens),
+            outputTokens: e.outputTokens, cost: e.costUSD ?? 0, messages: e.messageCount)
+    }
 }
 
 /// A cloud daily-usage row (get_daily_usage) — tokens + cost, no messages.
+///
+/// `inputTokens` is the input NOT served from cache, as in `ScanEntry`. The
+/// server keeps each row as its writer sent it (Codex input includes cached),
+/// so build one from a fetched row with `init(archiving:)`.
 public struct CloudEntry: Sendable, Equatable {
     public let date: String
     public let provider: String
@@ -507,6 +576,17 @@ public struct CloudEntry: Sendable, Equatable {
         self.date = date; self.provider = provider; self.model = model
         self.inputTokens = inputTokens; self.cachedTokens = cachedTokens
         self.outputTokens = outputTokens; self.cost = cost
+    }
+
+    /// A fetched row in the archive's basis: each token once.
+    public init(archiving u: DailyUsage) {
+        self.init(
+            date: u.date, provider: u.provider, model: u.model,
+            inputTokens: ArchiveTokenBasis.uncachedInput(
+                provider: u.provider, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens),
+            cachedTokens: ArchiveTokenBasis.cachedTokens(
+                provider: u.provider, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens),
+            outputTokens: u.outputTokens, cost: u.cost)
     }
 }
 

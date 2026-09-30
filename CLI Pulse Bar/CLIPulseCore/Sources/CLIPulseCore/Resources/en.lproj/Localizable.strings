@@ -961,6 +961,12 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "usage_dashboard.total_tokens" = "Total Tokens";
 "usage_dashboard.total_cost_est" = "Est. Total Cost";
 "usage_dashboard.cost_disclaimer" = "Cost is an estimate at API pay-as-you-go prices, not a bill.";
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). %@ is a day. */
+"codex_estimate_note.title" = "Codex figures changed on %@";
+"codex_estimate_note.reason_cached_input_once" = "The Usage Dashboard counts Codex's cached input once. Cached input is already part of Codex's input and was added a second time, so Codex token totals there are lower.";
+"codex_estimate_note.reason_subagent_sessions" = "Codex subagent sessions are counted. They were left out, so Codex usage and cost are higher.";
+"codex_estimate_note.reason_published_prices" = "Codex prices were updated to the API prices OpenAI publishes for each model.";
+"codex_estimate_note.history_before" = "Days before %@ in the Usage Dashboard keep the old figures.";
 "usage_dashboard.active_days" = "Active Days";
 "usage_dashboard.current_streak" = "Current Streak";
 "usage_dashboard.longest_streak" = "Longest Streak";

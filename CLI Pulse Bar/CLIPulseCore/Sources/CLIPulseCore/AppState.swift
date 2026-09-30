@@ -512,14 +512,22 @@ public final class AppState: ObservableObject {
         // The account can change while the fetch is suspended. Rows fetched for
         // one owner must never land in another owner's archive.
         guard currentUsageArchiveOwner == owner, !rows.isEmpty else { return }
+        adoptUsageArchive(Self.usageArchive(fromCloudRows: rows), owner: owner)
+    }
+
+    /// The archive the iPhone builds from a year of fetched rows.
+    ///
+    /// `CloudEntry(archiving:)` counts each token once: a Codex row's input
+    /// already includes its cached input, which the archive would otherwise
+    /// add a second time. The rows keep the split, so every day of the year is
+    /// right here, the old ones included; only the Mac's local archive holds
+    /// days it cannot correct.
+    nonisolated static func usageArchive(fromCloudRows rows: [DailyUsage]) -> DailyUsageArchive {
         var a = DailyUsageArchive()
-        let entries = rows
+        a.mergeCloudDays(rows
             .filter { $0.model != ScanEntry.messageBucketModel }
-            .map { CloudEntry(date: $0.date, provider: $0.provider, model: $0.model,
-                              inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
-                              outputTokens: $0.outputTokens, cost: $0.cost) }
-        a.mergeCloudDays(entries)
-        adoptUsageArchive(a, owner: owner)
+            .map(CloudEntry.init(archiving:)))
+        return a
     }
 
     /// Drop the archive and its cache stamp. `owner` records who the (now empty)

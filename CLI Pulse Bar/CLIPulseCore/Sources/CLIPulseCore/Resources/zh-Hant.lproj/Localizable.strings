@@ -952,6 +952,12 @@
 "usage_dashboard.total_tokens" = "token 總數";
 "usage_dashboard.total_cost_est" = "預估總費用";
 "usage_dashboard.cost_disclaimer" = "費用以 API 按用量計費的價格估算，並非實際帳單。";
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). %@ is a day. */
+"codex_estimate_note.title" = "自%@起，Codex 的數字有變化";
+"codex_estimate_note.reason_cached_input_once" = "用量儀表板中，Codex 的快取輸入只計算一次。快取輸入本來就包含在 Codex 的輸入中，先前又被重複計入，所以那裡的 Codex token 總數會變少。";
+"codex_estimate_note.reason_subagent_sessions" = "Codex 的子代理工作階段現在也會計入。先前這些工作階段被遺漏，所以 Codex 的用量與費用會變高。";
+"codex_estimate_note.reason_published_prices" = "Codex 的價格已更新為 OpenAI 公布的各模型 API 價格。";
+"codex_estimate_note.history_before" = "用量儀表板中%@之前的日期保留舊的數字。";
 "usage_dashboard.active_days" = "活躍天數";
 "usage_dashboard.current_streak" = "目前連續天數";
 "usage_dashboard.longest_streak" = "最長連續天數";

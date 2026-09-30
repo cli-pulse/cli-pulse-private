@@ -29,6 +29,7 @@ public actor DailyUsageArchiveManager {
     private let defaults: UserDefaults
     private let backfillKey: String
     private let backfillScan: @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult
+    private let now: @Sendable () -> Date
     private var backfillRunning = false
 
     public static let defaultBackfillKey = "cli_pulse_daily_archive_backfilled_v1"
@@ -42,11 +43,13 @@ public actor DailyUsageArchiveManager {
         root: URL? = nil,
         defaults: UserDefaults = .standard,
         backfillKey: String = DailyUsageArchiveManager.defaultBackfillKey,
+        now: @escaping @Sendable () -> Date = { Date() },
         backfillScan: @escaping @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult)
     {
         self.root = root
         self.defaults = defaults
         self.backfillKey = backfillKey
+        self.now = now
         self.backfillScan = backfillScan
         self.archive = nil   // deferred to first actor-isolated access (off-main)
     }
@@ -86,12 +89,15 @@ public actor DailyUsageArchiveManager {
     public func record(_ scanResult: CostUsageScanResult, now: Date = Date()) {
         guard !scanResult.entries.isEmpty else { return }
         var a = loaded()
+        startCodexEstimateNoteIfNeeded(before: a)
+        let entries = scanResult.entries.map(Self.scanEntry)
         a.mergeScanEntries(
-            scanResult.entries.map(Self.scanEntry),
+            entries,
             claudeCleanupReach: DailyUsageArchive.claudeCleanupReach(now: now))
         a.lastUpdatedUnixMs = Self.nowMs()
         archive = a
         DailyUsageArchiveIO.save(a, root: root)
+        noteRecount(of: entries, in: a)
         NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
     }
 
@@ -101,6 +107,7 @@ public actor DailyUsageArchiveManager {
         let filtered = rows.filter { $0.model != ScanEntry.messageBucketModel }
         guard !filtered.isEmpty else { return }
         var a = loaded()
+        startCodexEstimateNoteIfNeeded(before: a)
         a.mergeCloudDays(filtered.map(Self.cloudEntry))
         a.lastUpdatedUnixMs = Self.nowMs()
         archive = a
@@ -145,30 +152,52 @@ public actor DailyUsageArchiveManager {
         let result = await backfillScan(options)
         if !result.entries.isEmpty {
             var a = loaded()
-            a.mergeScanEntriesByProvider(result.entries.map(Self.scanEntry))
+            startCodexEstimateNoteIfNeeded(before: a)
+            let entries = result.entries.map(Self.scanEntry)
+            a.mergeScanEntriesByProvider(entries)
             a.lastUpdatedUnixMs = Self.nowMs()
             archive = a
             DailyUsageArchiveIO.save(a, root: root)
+            noteRecount(of: entries, in: a)
             NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
         }
         try? FileManager.default.removeItem(at: tmp)   // discard the throwaway cache
         defaults.set(true, forKey: backfillKey)        // access was confirmed by caller — done
     }
 
+    // MARK: - The Codex estimate note's bookkeeping
+
+    /// Once, before this version first changes the archive: remember the day,
+    /// and whether this Mac had Codex figures counted the old way. Every path
+    /// that writes the archive calls this first, so the answer comes from the
+    /// archive as the previous version left it.
+    private func startCodexEstimateNoteIfNeeded(before archive: DailyUsageArchive) {
+        guard CodexEstimateChangeNote.load(from: defaults) == nil else { return }
+        CodexEstimateChangeNote
+            .started(before: archive, on: DayKey.string(from: now()))
+            .save(to: defaults)
+    }
+
+    /// A scan just replaced the days in `entries`: they are counted the new
+    /// way now. Keeps the note's "days before … keep the old figures" true,
+    /// including after the year-long backfill recounts much further back.
+    private func noteRecount(of entries: [ScanEntry], in archive: DailyUsageArchive) {
+        guard var note = CodexEstimateChangeNote.load(from: defaults), note.hadCodexHistory else { return }
+        let before = note
+        note.recordRecount(ofDays: entries.map(\.date), in: archive)
+        if note != before { note.save(to: defaults) }
+    }
+
     // MARK: - Adapters
 
+    /// Each token once (`ArchiveTokenBasis`): Codex's cached input is part of
+    /// its input and is not added a second time.
     static func scanEntry(_ e: CostUsageScanResult.DailyEntry) -> ScanEntry {
-        ScanEntry(
-            date: e.date, provider: e.provider, model: e.model,
-            inputTokens: e.inputTokens, cachedTokens: e.cachedTokens,
-            outputTokens: e.outputTokens, cost: e.costUSD ?? 0, messages: e.messageCount)
+        ScanEntry(archiving: e)
     }
 
     static func cloudEntry(_ u: DailyUsage) -> CloudEntry {
-        CloudEntry(
-            date: u.date, provider: u.provider, model: u.model,
-            inputTokens: u.inputTokens, cachedTokens: u.cachedTokens,
-            outputTokens: u.outputTokens, cost: u.cost)
+        CloudEntry(archiving: u)
     }
 
     static func nowMs() -> Int64 { Int64((Date().timeIntervalSince1970 * 1000).rounded()) }
