@@ -90,9 +90,9 @@ final class DailyUsageArchiveManagerTests: XCTestCase {
             })
     }
 
-    /// The acceptance test for P0-9: without a v2 yes, the backfill does not
-    /// run — no scan, nothing merged — and the refusal is not recorded as
-    /// "done", or a later yes would find nothing left to do.
+    /// The one-year backfill waits for the v2 answer: without a v2 yes, it
+    /// does not run — no scan, nothing merged — and the refusal is not
+    /// recorded as "done", or a later yes would find nothing left to do.
     func test_backfill_does_not_run_without_v2_consent() async {
         let root = tempRoot()
         defer { try? FileManager.default.removeItem(at: root) }

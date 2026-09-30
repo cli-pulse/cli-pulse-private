@@ -2,9 +2,9 @@ import XCTest
 import SwiftUI
 @testable import CLIPulseCore
 
-/// P2-1 slice 3: `TopProjectsList` pins the row-iteration contract that
-/// both Overview tabs depend on. It has no empty state: the card draws only
-/// with rows (OverviewOptionalCardsTests).
+/// `TopProjectsList` pins the row-iteration contract that both Overview tabs
+/// depend on. It has no empty state: the card draws only with rows
+/// (OverviewOptionalCardsTests).
 final class TopProjectsListTests: XCTestCase {
 
     func testMacOSStylePreservesPreExtractionFonts() {
