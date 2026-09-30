@@ -529,9 +529,15 @@ public final class WatchAppState: ObservableObject {
                 return
             }
             dashboard = fetchedDashboard
-            providers = fetchedProviderSummary.providers
-            providerAccounts =
+            // Same display projection the iPhone and Mac apply
+            // (`QuotaBindingCap`): an exhausted weekly Codex window reads
+            // through to the 5-hour bar and the ring.
+            providers = QuotaBindingCap.projectedForDisplay(
+                fetchedProviderSummary.providers
+            )
+            providerAccounts = QuotaBindingCap.projectedForDisplay(
                 fetchedProviderSummary.providerAccounts
+            )
             usesLegacyProviderSummary =
                 fetchedProviderSummary.usedLegacyFallback
             providerDataLoaded = true
@@ -664,8 +670,11 @@ public final class WatchAppState: ObservableObject {
         if overwrite {
             dashboard =
                 sessionManager.lastReceivedDashboard
-            providers =
+            // Already projected on the iPhone (an older iPhone build sends
+            // raw values); projecting a projected value changes nothing.
+            providers = QuotaBindingCap.projectedForDisplay(
                 sessionManager.lastReceivedProviders
+            )
             providerAccounts = []
             usesLegacyProviderSummary = true
             providerDataLoaded = true
@@ -689,7 +698,9 @@ public final class WatchAppState: ObservableObject {
             dashboard = dash
         }
         if !sessionManager.lastReceivedProviders.isEmpty, overwrite || providers.isEmpty {
-            providers = sessionManager.lastReceivedProviders
+            providers = QuotaBindingCap.projectedForDisplay(
+                sessionManager.lastReceivedProviders
+            )
             providerAccounts = []
             usesLegacyProviderSummary = true
             providerDataLoaded = true

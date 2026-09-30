@@ -2586,12 +2586,21 @@ public actor APIClient {
                 // Tier entries also need uniform keys across rows
                 // (the column is `jsonb` so inner shape mismatches
                 // don't trigger 102, but consistency is still
-                // hygienic). reset_time is the only optional here.
+                // hygienic), so every optional is sent, as null when unset.
+                //
+                // `windowMinutes` and `role` are the keys the helper path
+                // already writes (`HelperAPIClient.tierDictionary`). This
+                // upload used to drop them. Without a helper they never
+                // reached the cloud at all; with one, both write the same row
+                // and the last writer wins, so they came and went with each
+                // upload. iPhone and Watch read their windows from this row.
                 [
                     "name": t.name,
                     "quota": t.quota,
                     "remaining": t.remaining,
                     "reset_time": t.reset_time as Any? ?? NSNull(),
+                    "windowMinutes": t.windowMinutes as Any? ?? NSNull(),
+                    "role": t.role?.rawValue as Any? ?? NSNull(),
                 ]
             }
             let row: [String: Any] = [

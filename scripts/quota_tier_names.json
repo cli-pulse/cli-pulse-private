@@ -114,7 +114,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.daily",
    "reason": "Generic time window; leaving it English while the \"Weekly\" bar beside it is localized would be visibly inconsistent on the same Windsurf card.",
-   "producers": "Swift WindsurfCollector; HelperSwift GeminiQuotaFetcher"
+   "producers": "Swift WindsurfCollector; HelperSwift GeminiQuotaFetcher; Swift CodexCollector, Python helper and HelperSwift CodexQuotaFetcher for a 1440-minute Codex window (named by length)"
   },
   {
    "name": "Daily Routines",
@@ -185,7 +185,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.monthly",
    "reason": "Generic time window chosen by six unrelated collectors; no vendor dashboard string is at risk. Translating is a straight win for a non-English reader scanning which pool resets when.",
-   "producers": "Swift AlibabaCollector, ManusCollector, T3ChatCollector, ChutesCollector, OpenCodeGoCollector, CommandCodeCollector; Tauri alibaba.rs/manus.rs/t3chat.rs"
+   "producers": "Swift AlibabaCollector, ManusCollector, T3ChatCollector, ChutesCollector, OpenCodeGoCollector, CommandCodeCollector, CodexCollector (a 43200-minute window, CodexQuotaWindows.tierName); Python helper + HelperSwift CodexQuotaFetcher (Codex, by length, same table); Tauri alibaba.rs/manus.rs/t3chat.rs"
   },
   {
    "name": "On-Demand",
@@ -308,7 +308,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.session",
    "reason": "Generic word for a usage window, invented by the Python/HelperSwift Codex path for exactly the window the in-app Swift collector calls \"5h Window\" — two app-chosen spellings for one concept, so neither is a vendor string. Both are live in production depending on which helper owns the socket, so both need the mapper or the user sees a mixed-language column.",
-   "producers": "Python helper ONLY for Codex primary_window, plus HelperSwift CodexQuotaFetcher (its Python-parity port). NOT emitted by the in-app Swift CodexCollector, which calls the same window \"5h Window\".",
+   "producers": "Python helper ONLY for Codex: the 300-minute window wherever the API puts it, and the session lane when the length is unknown (the primary slot, or a lone window); plus HelperSwift CodexQuotaFetcher (its Python-parity port). Both name every other Codex window by its length, like the app. NOT emitted by the in-app Swift CodexCollector, which calls the same window \"5h Window\".",
    "scanner_blind_spot": true
   },
   {
@@ -377,7 +377,7 @@
    "name": "Weekly",
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.weekly",
-   "reason": "Pure generic time window, emitted by nine unrelated collectors, which is itself evidence it is our描述 and not any vendor's label. Safe ONLY because the mapping is display-only: WatchRingMath.swift:285's localizedCaseInsensitiveContains(\"week\") is the sole working weekly detector (role is never populated), so it must keep seeing the stored English.",
+   "reason": "Pure generic time window, emitted by nine unrelated collectors, which is itself evidence it is our description and not any vendor's label. Safe ONLY because the mapping is display-only: WatchRingMath.weeklyTier takes the tier whose role is secondary and otherwise falls back to localizedCaseInsensitiveContains(\"week\"). Only Codex tiers carry a role (written by 1.55+ writers, or inferred at display by CodexQuotaWindows.resolved, from this very name for older rows), so every other provider's weekly window is found by the stored English, which must stay English.",
    "producers": "Swift ClaudeResultBuilder, CodexCollector, AlibabaCollector, CodebuffCollector, KimiCollector, StepFunCollector, WindsurfCollector, OpenCodeGoCollector, SakanaCollector; Python helper (Claude + Codex); HelperSwift Claude+Codex fetchers; Android ClaudeCollector + CodexCollector + KimiCollector + DemoDataProvider; Tauri claude/codex/alibaba/kimi/stepfun/codebuff"
   },
   {
@@ -385,7 +385,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.window_fallback",
    "reason": "Synthetic: Android's legacy usage_windows fallback when the payload has no window_name, so it is an app-invented placeholder with essentially no information content — localizing it is at least as useful as the English. It reaches Apple render sites via the shared cloud rows, so the Apple mapper needs it; the non-default case (whatever string the server sent) stays an open set and must pass through.",
-   "producers": "Android ClaudeCollector legacy `usage_windows` fallback - the default when the payload's `window_name` is absent. Otherwise the tier name is whatever string the server sent (open-ended).",
+   "producers": "Android ClaudeCollector legacy `usage_windows` fallback - the default when the payload's `window_name` is absent. Otherwise the tier name is whatever string the server sent (open-ended). Swift CodexCollector, the Python helper and HelperSwift CodexQuotaFetcher for a Codex window whose length they know but have no name for (CodexQuotaWindows.tierName), rather than call it \"5h Window\", and for the second of two Codex windows that would otherwise share a name.",
    "scanner_blind_spot": true
   }
  ]

@@ -65,19 +65,38 @@ public struct ProviderQuotaTier: Codable, Sendable, Equatable {
     public let quota: Int             // Always 100 (percentage-based).
     public let remaining: Int         // 0…100 (percentage-based).
     public let resetTime: String?     // ISO-8601 next reset.
+    /// Window length in minutes (300 = 5 hours, 10080 = a week), when the
+    /// provider says. Same key and meaning as the app's `TierDTO`.
+    public let windowMinutes: Int?
+    /// `TierRole` raw value — "primary" for the session window, "secondary"
+    /// for the weekly one. Same key and values as the app's `TierDTO`.
+    public let role: String?
 
     private enum CodingKeys: String, CodingKey {
         case name
         case quota
         case remaining
         case resetTime = "reset_time"
+        // camelCase on purpose: the key `provider_quotas.tiers` rows and the
+        // app's `TierDTO` already use (unlike `reset_time`).
+        case windowMinutes
+        case role
     }
 
-    public init(name: String, quota: Int, remaining: Int, resetTime: String?) {
+    public init(
+        name: String,
+        quota: Int,
+        remaining: Int,
+        resetTime: String?,
+        windowMinutes: Int? = nil,
+        role: String? = nil
+    ) {
         self.name = name
         self.quota = quota
         self.remaining = remaining
         self.resetTime = resetTime
+        self.windowMinutes = windowMinutes
+        self.role = role
     }
 }
 
