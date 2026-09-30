@@ -2661,6 +2661,32 @@ public actor APIClient {
 
     // MARK: - Daily Usage Sync
 
+    /// The rows of a routine scan that `syncDailyUsage` sends.
+    ///
+    /// Leaves out the synthetic `__claude_msg__` model bucket — it carries raw
+    /// message-event counts, not real model usage, and would pollute the
+    /// server-side per-model analytics with a fake model row.
+    ///
+    /// Also leaves out Claude's rows for the day Claude Code's cleanup is
+    /// working through (`DailyUsageArchive.claudeCleanupReach`), the scan's
+    /// oldest. Transcripts last active before `now − 30 days` may be deleted
+    /// by now, so the scan counts only part of that day, and
+    /// `upsert_daily_usage` overwrites each (device, day, provider, model) row
+    /// with what it is sent: the iPhone's copy of the day would drop. Every
+    /// earlier upload of that day was made before cleanup could reach it.
+    static func dailyUsageRowsToUpload(
+        _ entries: [CostUsageScanResult.DailyEntry],
+        now: Date
+    ) -> [CostUsageScanResult.DailyEntry] {
+        let cleanupReach = DailyUsageArchive.claudeCleanupReach(now: now)
+        return entries.filter { entry in
+            guard entry.model != ScanEntry.messageBucketModel else { return false }
+            let partlyDeleted = DailyUsageArchive.providersThatDeleteOldLogs.contains(entry.provider)
+                && entry.date <= cleanupReach
+            return !partlyDeleted
+        }
+    }
+
     /// Push precise daily usage data from CostUsageScanner to Supabase.
     ///
     /// v1.10.5: previously excluded today's date to avoid "incomplete" data,
@@ -2686,10 +2712,7 @@ public actor APIClient {
         guard let userId else { return }
         guard !scanResult.entries.isEmpty else { return }
 
-        // Skip the synthetic `__claude_msg__` model bucket — it carries raw
-        // message-event counts, not real model usage, and would pollute the
-        // server-side per-model analytics with a fake model row.
-        let completedEntries = scanResult.entries.filter { $0.model != "__claude_msg__" }
+        let completedEntries = Self.dailyUsageRowsToUpload(scanResult.entries, now: Date())
         guard !completedEntries.isEmpty else { return }
 
         let metrics: [[String: Any]] = completedEntries.map { entry in

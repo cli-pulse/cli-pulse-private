@@ -170,5 +170,65 @@ final class DailyUsageArchiveManagerTests: XCTestCase {
         let windows = await spy.windows
         XCTAssertEqual(windows, [LocalScanDisclosure.historyWindowDays], "read again after the refusal")
     }
+
+    // MARK: - v1.55: a yes that comes after months of "Last 30 days only"
+
+    private static func claudeRows(_ date: String) -> [CostUsageScanResult.DailyEntry] {
+        [.init(date: date, provider: "Claude", model: "claude-sonnet-4-5",
+               inputTokens: 100, cachedTokens: 0, outputTokens: 50, costUSD: 0.30, messageCount: 0),
+         .init(date: date, provider: "Claude", model: "__claude_msg__",
+               inputTokens: 0, cachedTokens: 0, outputTokens: 0, costUSD: 0, messageCount: 7)]
+    }
+
+    private static func codexRows(_ date: String, input: Int) -> [CostUsageScanResult.DailyEntry] {
+        [.init(date: date, provider: "Codex", model: "gpt-5",
+               inputTokens: input, cachedTokens: 0, outputTokens: 20, costUSD: 0.10, messageCount: 0)]
+    }
+
+    /// The routine reads stored a day with both providers while only the last
+    /// 30 days were allowed. Months later the user allows older history, and
+    /// the year-long read finds only what is left of that day's logs.
+    private func historyReadAfterThirtyDaysOnly(
+        finds found: @escaping @Sendable (String) -> [CostUsageScanResult.DailyEntry]
+    ) async -> (archive: DailyUsageArchive, onDisk: DailyUsageArchive, day: String) {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = UserDefaults(suiteName: "dua-\(UUID().uuidString)")!
+        let day = DayKey.string(from: Date().addingTimeInterval(-200 * 86_400))
+        let mgr = DailyUsageArchiveManager(
+            root: root, defaults: defaults, backfillKey: "backfilled",
+            backfillScan: { _ in CostUsageScanResult(entries: found(day)) })
+
+        await mgr.record(CostUsageScanResult(entries: Self.claudeRows(day) + Self.codexRows(day, input: 200)))
+        await mgr.runBackfillIfNeeded(historyReadAllowed: false)   // "Last 30 days only"
+        await mgr.runBackfillIfNeeded(historyReadAllowed: true)    // "Choose again…" → older history
+
+        return (await mgr.snapshot(), DailyUsageArchiveIO.load(root: root), day)
+    }
+
+    /// Claude Code has deleted the day's transcripts; Codex's log is still
+    /// there and is counted anew.
+    func test_the_history_read_keeps_the_claude_share_of_a_day_whose_transcripts_are_gone() async {
+        let (a, onDisk, day) = await historyReadAfterThirtyDaysOnly { Self.codexRows($0, input: 300) }
+
+        let claude = ProviderDaySlice(tokens: 150, cost: 0.30, messages: 7)
+        XCTAssertEqual(a.days[day]?.perProvider["Claude"], claude, "Claude's share of the day was dropped")
+        XCTAssertEqual(a.days[day]?.perProvider["Codex"]?.tokens, 320, "the Codex log it read was not counted")
+        XCTAssertEqual(a.days[day]?.tokens, 470)
+        XCTAssertEqual(DailyUsageStats.totalMessages(a), 7)
+        XCTAssertEqual(onDisk.days[day]?.perProvider["Claude"], claude, "Claude's share is gone from disk")
+    }
+
+    /// The reverse: the Codex logs were deleted and the Claude transcripts
+    /// are read again.
+    func test_the_history_read_keeps_the_codex_share_of_a_day_whose_logs_are_gone() async {
+        let (a, onDisk, day) = await historyReadAfterThirtyDaysOnly { Self.claudeRows($0) }
+
+        let codex = ProviderDaySlice(tokens: 220, cost: 0.10, messages: 0)
+        XCTAssertEqual(a.days[day]?.perProvider["Codex"], codex, "Codex's share of the day was dropped")
+        XCTAssertEqual(a.days[day]?.perProvider["Claude"]?.tokens, 150)
+        XCTAssertEqual(a.days[day]?.tokens, 370)
+        XCTAssertEqual(onDisk.days[day]?.perProvider["Codex"], codex, "Codex's share is gone from disk")
+    }
 }
 #endif

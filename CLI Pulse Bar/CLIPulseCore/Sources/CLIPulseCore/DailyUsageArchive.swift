@@ -104,8 +104,193 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// authoritative cumulative totals for every day it covers, so days are
     /// REPLACED (not added) — re-merging the same 30-day window is idempotent.
     /// Days already evicted into `months` are skipped (never reintroduced).
-    public mutating func mergeScanEntries(_ entries: [ScanEntry], retainDays: Int = DailyUsageArchive.retainDays) {
-        // Rebuild each covered day from its entries.
+    ///
+    /// The routine 30-day read uses this. Rewriting whole days is how a recount
+    /// under newer rules reaches the window, and how usage that now falls on
+    /// another day (after a time-zone change) leaves the day it used to be on.
+    ///
+    /// Not on the window's oldest day, though. The read covers 31 days, from
+    /// the day of `now − 30 days` through today, and Claude Code's cleanup
+    /// deletes transcripts last active before `now − 30 days`: a moment inside
+    /// that oldest day. So the read sees only what is left of that day's Claude
+    /// usage, which the archive recorded in full the day before, when it was
+    /// the window's second-oldest day. A day the archive holds on or before
+    /// `claudeCleanupReach` (`DailyUsageArchive.claudeCleanupReach(now:)`, which
+    /// `DailyUsageArchiveManager.record` passes) is merged by `mergedDay`, as
+    /// the year-long read merges every day. Later days are replaced whole.
+    public mutating func mergeScanEntries(
+        _ entries: [ScanEntry],
+        claudeCleanupReach: String? = nil,
+        retainDays: Int = DailyUsageArchive.retainDays)
+    {
+        merge(entries, byProvider: { day in claudeCleanupReach.map { day <= $0 } ?? false }, retainDays: retainDays)
+    }
+
+    // MARK: Merge — the year-long read (provider by provider)
+
+    /// Folds the year-long read into an archive that may already hold months
+    /// of days.
+    ///
+    /// Since v1.55 the read can run long after the archive filled up: "Last 30
+    /// days only" on the consent screen, then older history allowed later from
+    /// "Choose again…" or Settings. By then Claude Code has deleted many of the
+    /// older transcripts. Its cleanup (default `cleanupPeriodDays` 30) goes
+    /// file by file, by each session's last activity, so an older day comes
+    /// back with no Claude usage, or with only the share of a session that was
+    /// resumed later. Replacing the day lowered or removed Claude's share in
+    /// the heatmap and the lifetime totals. Codex keeps its logs, but a day
+    /// whose Codex logs were deleted by hand lost Codex's share the same way.
+    ///
+    /// So each day the archive already holds is merged by `mergedDay`, which
+    /// never lowers a Claude slice. A day it lacks is written as read, and a
+    /// day already folded into `months` is skipped.
+    ///
+    /// Keys: the read and the archive are matched by day key, so both must be
+    /// Gregorian. The scanner writes `DayKey` keys, and `DailyUsageArchiveIO.load`
+    /// converts keys an older version wrote in another calendar first.
+    public mutating func mergeScanEntriesByProvider(_ entries: [ScanEntry], retainDays: Int = DailyUsageArchive.retainDays) {
+        merge(entries, byProvider: { _ in true }, retainDays: retainDays)
+    }
+
+    /// Writes each day of a read: through `mergedDay` where `byProvider` says
+    /// so and the archive holds the day, replaced whole otherwise.
+    private mutating func merge(_ entries: [ScanEntry], byProvider: (String) -> Bool, retainDays: Int) {
+        let modelProviders = Self.modelProviders(of: entries)
+        for (dayKey, read) in Self.dayRollups(of: entries) {
+            if let folded = foldedThroughDay, dayKey <= folded { continue }  // already in months
+            if byProvider(dayKey), let stored = days[dayKey] {
+                days[dayKey] = Self.mergedDay(read, over: stored, readModelProviders: modelProviders[dayKey] ?? [:])
+            } else {
+                days[dayKey] = read
+            }
+        }
+        pruneAndFold(retainDays: retainDays)
+    }
+
+    // MARK: Merging one day provider by provider
+
+    /// Claude Code's default `cleanupPeriodDays`: when a session starts, it
+    /// deletes every transcript not written to for this many days.
+    public static let claudeCodeCleanupDays = 30
+
+    /// Providers whose tool deletes its own old logs, one file at a time.
+    /// A read of such a provider's older day sees only the files that are
+    /// left, so it can show more usage than the archive recorded, but a
+    /// smaller figure is not evidence of less. Codex keeps its logs.
+    static let providersThatDeleteOldLogs: Set<String> = ["Claude"]
+
+    /// The newest day Claude Code's default cleanup can have reached by `now`:
+    /// the day of `now − 30 days`. On that day, transcripts last active before
+    /// that moment may be gone. Later days keep every transcript, unless the
+    /// user set a shorter `cleanupPeriodDays`.
+    public static func claudeCleanupReach(now: Date = Date(), in timeZone: TimeZone = .current) -> String {
+        let cutoff = DayKey.calendar(in: timeZone).date(byAdding: .day, value: -claudeCodeCleanupDays, to: now) ?? now
+        return DayKey.string(from: cutoff, in: timeZone)
+    }
+
+    /// One day of a read merged over the day the archive holds, provider by
+    /// provider. Each provider's slice comes whole from one side:
+    ///
+    /// - a provider the read did not find keeps its stored slice;
+    /// - Claude keeps its stored slice where that has more tokens than the
+    ///   read's (or as many tokens and more messages): the transcripts the read
+    ///   did not see may have been deleted;
+    /// - otherwise the provider takes the read's slice. For Codex that is how
+    ///   a recount under newer rules reaches an older day, lower or higher.
+    ///
+    /// The day's totals are the sum of the chosen slices. Where the read's
+    /// slice is chosen for every provider, the result is the read itself, as
+    /// the whole-day rule gives; where the stored slice is chosen for every
+    /// provider, it is the stored day.
+    ///
+    /// Models: a stored day does not record which provider a model is from.
+    /// Each stored model is attributed to one of the day's providers
+    /// (`provider(ofStoredModel:on:readModelProviders:)`) and goes with that
+    /// provider's slice, so a model name that changed between versions is not
+    /// counted under both names. A stored name that cannot be attributed is
+    /// kept unless the read reports it.
+    ///
+    /// Limits. The archive cannot tell deleted transcripts from usage counted
+    /// lower under newer rules, so a lower Claude recount does not reach a day
+    /// this merges (the routine read's newer 30 days still take it). Codex logs
+    /// deleted by hand in part are found, and take the smaller figure. And
+    /// after a time-zone change, usage now counted on a neighbouring day is
+    /// counted there, while its old day keeps a provider the read no longer
+    /// finds on it, or the larger Claude slice.
+    static func mergedDay(_ read: DayRollup, over stored: DayRollup, readModelProviders: [String: String]) -> DayRollup {
+        var kept: Set<String> = []   // providers whose stored slice stays
+        for (provider, storedSlice) in stored.perProvider {
+            guard let readSlice = read.perProvider[provider] else {
+                kept.insert(provider)
+                continue
+            }
+            if providersThatDeleteOldLogs.contains(provider),
+               (storedSlice.tokens, storedSlice.messages) > (readSlice.tokens, readSlice.messages) {
+                kept.insert(provider)
+            }
+        }
+        guard !kept.isEmpty else { return read }
+        if read.perProvider.keys.allSatisfy(kept.contains) { return stored }
+
+        var day = DayRollup()
+        func add(_ provider: String, _ slice: ProviderDaySlice) {
+            day.perProvider[provider] = slice
+            day.tokens += slice.tokens
+            day.cost += slice.cost
+            day.messages += slice.messages
+        }
+        for (provider, slice) in read.perProvider where !kept.contains(provider) { add(provider, slice) }
+        for provider in kept.sorted() { if let slice = stored.perProvider[provider] { add(provider, slice) } }
+
+        for (model, slice) in read.perModel {
+            if let owner = readModelProviders[model], kept.contains(owner) { continue }
+            day.perModel[model] = slice
+        }
+        for (model, slice) in stored.perModel {
+            if let owner = Self.provider(ofStoredModel: model, on: stored, readModelProviders: readModelProviders) {
+                if kept.contains(owner) { day.perModel[model] = slice }
+            } else if day.perModel[model] == nil {
+                day.perModel[model] = slice
+            }
+        }
+        return day
+    }
+
+    /// Which of a stored day's providers `model` belongs to: the provider the
+    /// read reports it under that day, else the provider its name belongs to,
+    /// else the day's only provider. nil when none of these applies.
+    static func provider(ofStoredModel model: String, on stored: DayRollup, readModelProviders: [String: String]) -> String? {
+        let providers = stored.perProvider
+        if let owner = readModelProviders[model], providers[owner] != nil { return owner }
+        if let owner = Self.provider(ofModelNamed: model), providers[owner] != nil { return owner }
+        return providers.count == 1 ? providers.keys.first : nil
+    }
+
+    /// The provider a model name belongs to: `claude-…` names are Claude's;
+    /// `gpt-…`, `o3`-style and `…codex…` names are Codex's. nil for any other
+    /// name, such as a third-party model behind Claude Code.
+    static func provider(ofModelNamed model: String) -> String? {
+        let name = model.lowercased()
+        if name.contains("claude") { return "Claude" }
+        if name.hasPrefix("gpt-") || name.contains("codex")
+            || name.range(of: #"^o\d"#, options: .regularExpression) != nil {
+            return "Codex"
+        }
+        return nil
+    }
+
+    /// For each day of a read, the provider each model was reported under.
+    /// A model reported under more than one provider that day is left out.
+    static func modelProviders(of entries: [ScanEntry]) -> [String: [String: String]] {
+        var seen: [String: [String: Set<String>]] = [:]
+        for e in entries where !e.isMessageBucket {
+            seen[e.date, default: [:]][e.model, default: []].insert(e.provider)
+        }
+        return seen.mapValues { models in models.compactMapValues { $0.count == 1 ? $0.first : nil } }
+    }
+
+    /// Each day's rollup, built from that day's scan entries alone.
+    static func dayRollups(of entries: [ScanEntry]) -> [String: DayRollup] {
         var rebuilt: [String: DayRollup] = [:]
         for e in entries {
             let tokens = max(0, e.inputTokens) + max(0, e.cachedTokens) + max(0, e.outputTokens)
@@ -127,11 +312,7 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
             }
             rebuilt[e.date] = day
         }
-        for (dayKey, rollup) in rebuilt {
-            if let folded = foldedThroughDay, dayKey <= folded { continue }  // already in months
-            days[dayKey] = rollup
-        }
-        pruneAndFold(retainDays: retainDays)
+        return rebuilt
     }
 
     // MARK: Merge — cloud (fill-only, non-destructive)
