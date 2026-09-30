@@ -1,4 +1,5 @@
 #if os(macOS)
+import CryptoKit
 import Foundation
 
 /// Fetches real quota/rate-limit data from Codex (OpenAI) via the local OAuth
@@ -10,7 +11,8 @@ import Foundation
 /// Returns up to three tiers:
 ///   - "5h Window"  — primary rate limit (used_percent + reset_at)
 ///   - "Weekly"     — secondary rate limit
-///   - "Credits"    — the credits balance, in Codex credits (`CodexCreditsBalance`)
+///   - "Credits"    — the credits balance, in Codex credits (`CodexCreditsBalance`),
+///                    for an account that has or has had credits
 public struct CodexCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.codex
 
@@ -47,7 +49,11 @@ public struct CodexCollector: ProviderCollector, Sendable {
             throw CollectorError.missingCredentials(CredentialProblem(nil, .accessTokenNilAfterRefresh("Codex")))
         }
         let usageData = try await fetchUsage(accessToken: currentToken, accountId: auth.accountId)
-        return buildResult(usage: usageData)
+        return buildResult(
+            usage: usageData,
+            accountId: auth.accountId,
+            memory: .production
+        )
     }
 
     // MARK: - Auth file
@@ -388,7 +394,49 @@ public struct CodexCollector: ProviderCollector, Sendable {
         )
     }
 
-    func buildResult(usage: UsageResponse) -> CollectorResult {
+    /// Whether this response says the account has credits: `has_credits`, or a
+    /// balance above 0.
+    static func hasCreditsNow(_ credits: Credits) -> Bool {
+        credits.hasCredits || (credits.balance ?? 0) > 0
+    }
+
+    /// Whether the Credits row is built for this response.
+    ///
+    /// `/wham/usage` reports a balance for every account, "0" for one that
+    /// never bought credits, so building the row whenever a balance arrived
+    /// put "0 credits left" on every Codex card. The row is for accounts that
+    /// have credits now (`hasCreditsNow`) or had them on an earlier pass
+    /// (`accountHadCredits`, from `CodexCreditsMemory`). For those, a balance
+    /// of 0 stays: it is spent, which is when it matters most. `has_credits`
+    /// goes false once nothing is left, so it alone cannot keep that 0 up.
+    ///
+    /// No row for an unlimited account, which has no balance to count down, or
+    /// for a response without a balance.
+    static func showsCreditsBalance(_ credits: Credits, accountHadCredits: Bool) -> Bool {
+        guard !credits.unlimited, credits.balance != nil else { return false }
+        return hasCreditsNow(credits) || accountHadCredits
+    }
+
+    /// A pass as `collect` runs it: asks `memory` whether this account had
+    /// credits before, builds the result, then remembers the account if this
+    /// response says it has credits. In that order, so the answer comes from
+    /// earlier passes; this one decides the row through `hasCreditsNow`.
+    func buildResult(
+        usage: UsageResponse,
+        accountId: String?,
+        memory: CodexCreditsMemory
+    ) -> CollectorResult {
+        let hadCredits = memory.hasHadCredits(account: accountId)
+        if let credits = usage.credits, Self.hasCreditsNow(credits) {
+            memory.remember(account: accountId)
+        }
+        return buildResult(usage: usage, accountHadCredits: hadCredits)
+    }
+
+    /// `accountHadCredits`: this account had credits on an earlier pass
+    /// (`CodexCreditsMemory`). A parameter, not a read, so tests and fixtures
+    /// never touch the app group's defaults.
+    func buildResult(usage: UsageResponse, accountHadCredits: Bool = false) -> CollectorResult {
         var tiers: [TierDTO] = []
         let isoFormatter = sharedISO8601Formatter
 
@@ -424,11 +472,11 @@ public struct CodexCollector: ProviderCollector, Sendable {
         }
 
         // Credits: a balance in Codex credits, not dollars and not a window
-        // (`CodexCreditsBalance` has the unit and the scale). Built whenever a
-        // balance is reported, 0 included, whatever `has_credits` says: a
+        // (`CodexCreditsBalance` has the unit and the scale). Only for an
+        // account that has or had credits (`showsCreditsBalance`); for those a
         // spent balance reads "0 credits left" instead of the row disappearing.
-        // An unlimited account has no balance to count down.
-        if let c = usage.credits, !c.unlimited, let balance = c.balance {
+        if let c = usage.credits, let balance = c.balance,
+           Self.showsCreditsBalance(c, accountHadCredits: accountHadCredits) {
             tiers.append(CodexCreditsBalance.tier(balance: balance))
         }
 
@@ -476,6 +524,56 @@ public struct CodexCollector: ProviderCollector, Sendable {
         )
 
         return CollectorResult(usage: providerUsage, dataKind: .quota)
+    }
+}
+
+/// Which Codex accounts have had credits, so a balance spent to 0 keeps its
+/// row after `has_credits` turns false (`CodexCollector.showsCreditsBalance`).
+///
+/// Keyed by a digest of the ChatGPT account ID from `auth.json`, not the ID
+/// itself: the question is only "seen this account with credits before", and
+/// a digest answers it. Kept in the app group, like the Claude Keychain
+/// cooldown, because the main app and the helper login item both run the
+/// collector. The `cli_pulse_` prefix keeps the `.standard` fallback inside
+/// `UnsandboxedDataMigration.appOwnedKeyPrefixes`.
+///
+/// Remembered, never forgotten: an account that bought credits once and has
+/// none left still reads "0 credits left", which is the point. The list is
+/// capped so a Mac cycling through many accounts cannot grow it without end.
+struct CodexCreditsMemory {
+    static let key = "cli_pulse_codex_accounts_with_credits"
+    static let maxAccounts = 32
+
+    let defaults: UserDefaults
+
+    static var production: CodexCreditsMemory {
+        CodexCreditsMemory(defaults: UserDefaults(suiteName: HelperIPC.suiteName) ?? .standard)
+    }
+
+    /// A signed-in Codex CLI always writes an account ID; an API-key login has
+    /// none and shares one entry, which is all such a Mac can have.
+    static func accountDigest(_ accountId: String?) -> String {
+        let id = (accountId ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return SHA256.hash(data: Data(id.utf8))
+            .prefix(16)
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private var remembered: [String] {
+        defaults.stringArray(forKey: Self.key) ?? []
+    }
+
+    func hasHadCredits(account accountId: String?) -> Bool {
+        remembered.contains(Self.accountDigest(accountId))
+    }
+
+    func remember(account accountId: String?) {
+        let digest = Self.accountDigest(accountId)
+        var list = remembered
+        guard !list.contains(digest) else { return }
+        list.append(digest)
+        defaults.set(Array(list.suffix(Self.maxAccounts)), forKey: Self.key)
     }
 }
 #endif
