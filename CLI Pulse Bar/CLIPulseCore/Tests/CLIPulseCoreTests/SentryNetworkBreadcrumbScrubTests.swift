@@ -69,6 +69,17 @@ final class SentryNetworkBreadcrumbScrubTests: XCTestCase {
         XCTAssertEqual(data["url"] as? String, "https://claude.ai/api/organizations/[id]/usage")
     }
 
+    func testIdentifiersThatAreNotUUIDsAreReplacedInThePathToo() {
+        // `redact` catches UUIDs anywhere; a numeric, hex or percent-encoded
+        // email identifier is caught only by the per-segment rule.
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/v1/users/1234567/usage"),
+                       "https://api.example.test/v1/users/[id]/usage")
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/groups/0123456789abcdef0123/x"),
+                       "https://api.example.test/groups/[id]/x")
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/u/someone%40example.com"),
+                       "https://api.example.test/u/[id]")
+    }
+
     func testAnAddressThatStillHasItsQueryLosesIt() {
         // Not every address comes through sentry-cocoa's sanitizer.
         XCTAssertEqual(
