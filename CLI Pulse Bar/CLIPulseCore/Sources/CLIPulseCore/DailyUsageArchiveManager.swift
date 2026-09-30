@@ -78,7 +78,8 @@ public actor DailyUsageArchiveManager {
 
     /// Replaces each day of the routine 30-day read, except the day Claude
     /// Code's cleanup is working through (`DailyUsageArchive.claudeCleanupReach`),
-    /// the read's oldest. Its Claude share was recorded in full the day before;
+    /// usually the read's oldest (across a daylight-saving change, possibly the
+    /// day after it). Its Claude share was recorded in full the day before;
     /// the read now sees only the transcripts cleanup has not deleted yet, so
     /// that day is merged provider by provider and its Claude slice is not
     /// lowered. `now` is a seam for tests.

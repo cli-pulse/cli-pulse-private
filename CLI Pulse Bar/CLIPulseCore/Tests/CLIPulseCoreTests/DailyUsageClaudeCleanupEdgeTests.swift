@@ -2,8 +2,9 @@
 //
 // The routine read covers 31 days, from the day of `now − 30 days` through
 // today. Claude Code's cleanup (default `cleanupPeriodDays` 30, run when a
-// session starts) deletes transcripts last active before `now − 30 days`, a
-// moment inside that oldest day. The scanner's cache then drops the deleted
+// session starts) deletes transcripts last active before `now − 720 hours`, a
+// moment on that oldest day (across a daylight-saving change, possibly the day
+// after it). The scanner's cache then drops the deleted
 // files' share, and the read reports what is left of the day. Rewriting the
 // day from that lowered it in the archive (`record`) and, through
 // `upsert_daily_usage`, in the cloud copy the iPhone reads.
@@ -71,7 +72,8 @@ final class DailyUsageClaudeCleanupEdgeTests: XCTestCase {
 
     func test_the_routine_read_does_not_shrink_the_day_claude_code_is_cleaning_up() async throws {
         let now = Date()
-        let cutoff = DayKey.calendar().date(byAdding: .day, value: -30, to: now)!
+        // Claude Code's own arithmetic: Date.now − cleanupPeriodDays × 24 × 60 × 60 × 1000 ms.
+        let cutoff = now.addingTimeInterval(-720 * 3_600)
         let edgeDay = DayKey.string(from: cutoff)
         XCTAssertEqual(edgeDay, DailyUsageArchive.claudeCleanupReach(now: now))
         let startOfEdgeDay = DayKey.calendar().startOfDay(for: cutoff)
@@ -79,6 +81,11 @@ final class DailyUsageClaudeCleanupEdgeTests: XCTestCase {
         let after = cutoff.addingTimeInterval(60)
         try XCTSkipIf(cutoff.timeIntervalSince(startOfEdgeDay) < 120 || DayKey.string(from: after) != edgeDay,
                       "too close to midnight for this fixture")
+        // The scanner's window does count calendar days (`CostUsageScanner.scan`).
+        // Just after the start of daylight saving time the cutoff can fall on
+        // the day before it, and the window then holds no day cleanup has reached.
+        let windowStart = DayKey.string(from: DayKey.calendar().date(byAdding: .day, value: -30, to: now)!)
+        try XCTSkipIf(edgeDay < windowStart, "Claude Code's cutoff is before the routine window today")
 
         let deleted = try writeSession("morning", at: before, input: 200, output: 100)  // last active before the cutoff
         _ = try writeSession("evening", at: after, input: 20, output: 10)               // last active after it
@@ -108,27 +115,34 @@ final class DailyUsageClaudeCleanupEdgeTests: XCTestCase {
 
     // MARK: - The archive, with a fixed clock
 
-    func test_record_merges_by_provider_only_up_to_the_cleanup_reach() async {
+    /// The reach is the last day merged by provider; the day right after it
+    /// is the first replaced whole. A reach one day too late, or too early,
+    /// fails one of the two.
+    func test_record_merges_by_provider_only_up_to_the_cleanup_reach() async throws {
         let now = ISO8601DateFormatter().date(from: "2026-10-01T18:00:00Z")!
         let reach = DailyUsageArchive.claudeCleanupReach(now: now)
-        let inside = DayKey.string(from: now.addingTimeInterval(-10 * 86_400))
+        XCTAssertEqual(reach, DayKey.string(from: now.addingTimeInterval(-720 * 3_600)))
+        let noonOfReach = try XCTUnwrap(DayKey.date(from: reach, hour: 12))
+        let dayAfter = DayKey.string(from: noonOfReach.addingTimeInterval(86_400))
+        XCTAssertGreaterThan(dayAfter, reach)
         let mgr = manager()
 
         await mgr.record(CostUsageScanResult(entries: [
             Self.row(reach, "Claude", "claude-sonnet-4-5", input: 300, cost: 0.9, messages: 12),
             Self.row(reach, "Codex", "gpt-5", input: 200),
-            Self.row(inside, "Claude", "claude-sonnet-4-5", input: 300, cost: 0.9, messages: 12),
+            Self.row(dayAfter, "Claude", "claude-sonnet-4-5", input: 300, cost: 0.9, messages: 12),
         ]), now: now)
         await mgr.record(CostUsageScanResult(entries: [
             Self.row(reach, "Claude", "claude-sonnet-4-5", input: 30, cost: 0.09, messages: 2),
             Self.row(reach, "Codex", "gpt-5", input: 150),
-            Self.row(inside, "Claude", "claude-sonnet-4-5", input: 30, cost: 0.09, messages: 2),
+            Self.row(dayAfter, "Claude", "claude-sonnet-4-5", input: 30, cost: 0.09, messages: 2),
         ]), now: now)
 
         let a = await mgr.snapshot()
         XCTAssertEqual(a.days[reach]?.perProvider["Claude"], ProviderDaySlice(tokens: 300, cost: 0.9, messages: 12))
         XCTAssertEqual(a.days[reach]?.perProvider["Codex"]?.tokens, 150, "Codex on the oldest day is still counted anew")
-        XCTAssertEqual(a.days[inside]?.perProvider["Claude"]?.tokens, 30, "a day inside the window is replaced whole")
+        XCTAssertEqual(a.days[dayAfter]?.perProvider["Claude"], ProviderDaySlice(tokens: 30, cost: 0.09, messages: 2),
+                       "the day after the cleanup reach was not replaced whole")
     }
 
     // MARK: - The history read, over a day only partly cleaned up
@@ -168,20 +182,20 @@ final class DailyUsageClaudeCleanupEdgeTests: XCTestCase {
 
     // MARK: - The daily-usage upload
 
-    func test_the_upload_leaves_out_claude_on_the_day_cleanup_is_working_through() {
+    func test_the_upload_leaves_out_claude_on_the_day_cleanup_is_working_through() throws {
         let now = ISO8601DateFormatter().date(from: "2026-10-01T18:00:00Z")!
         let reach = DailyUsageArchive.claudeCleanupReach(now: now)
-        let inside = DayKey.string(from: now.addingTimeInterval(-10 * 86_400))
+        let dayAfter = DayKey.string(from: try XCTUnwrap(DayKey.date(from: reach, hour: 12)).addingTimeInterval(86_400))
         let rows = APIClient.dailyUsageRowsToUpload([
             Self.row(reach, "Claude", "claude-sonnet-4-5", input: 30),
             Self.row(reach, "Codex", "gpt-5", input: 150),
-            Self.row(inside, "Claude", "claude-sonnet-4-5", input: 30),
-            Self.row(inside, "Claude", ScanEntry.messageBucketModel, input: 0, messages: 3),
+            Self.row(dayAfter, "Claude", "claude-sonnet-4-5", input: 30),
+            Self.row(dayAfter, "Claude", ScanEntry.messageBucketModel, input: 0, messages: 3),
         ], now: now)
 
         XCTAssertEqual(rows.map { "\($0.date) \($0.provider) \($0.model)" }, [
             "\(reach) Codex gpt-5",
-            "\(inside) Claude claude-sonnet-4-5",
+            "\(dayAfter) Claude claude-sonnet-4-5",
         ])
     }
 }
