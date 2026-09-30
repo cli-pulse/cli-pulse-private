@@ -726,6 +726,8 @@
 "advanced.helper_running" = "Running";
 "advanced.helper_not_running" = "Not running";
 "advanced.helper_paused_local_scan_off" = "Paused: local scan is off";
+"advanced.helper_paused_signed_out" = "Paused: signed out";
+"advanced.helper_restart_needed" = "Restart needed: turn background sync off and on again";
 "advanced.privacy_keys_title" = "Provider API keys & cookies";
 "advanced.privacy_keys_detail" = "Stored only in macOS Keychain · never uploaded";
 "advanced.data_title" = "Where Your Data Goes";

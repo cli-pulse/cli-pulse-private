@@ -42,19 +42,37 @@ final class HelperDaemon {
     /// Accessed only from `queue` or `syncActor` to prevent concurrent sync cycles.
     private let syncGuard = SyncGuard()
     private var suspendCount = 0
+    /// Whether the last question read the Mac (`HelperCycle.reads`). The app's
+    /// "inputs changed" hint starts a reading cycle only when this was not
+    /// already so (`inputsDidChange`).
+    private var lastCycleRead: Bool?
 
     /// Actor that replaces NSLock for async-safe mutual exclusion.
     private actor SyncGuard {
         private var isSyncing = false
+        private var rerunRequested = false
 
-        /// Returns `true` if this call acquired the lock (was not already syncing).
-        func tryStart() -> Bool {
-            guard !isSyncing else { return false }
+        /// Returns `true` if this call acquired the lock (was not already
+        /// syncing). A caller turned away with `rerunIfBusy` gets one more
+        /// cycle when the current one finishes.
+        func tryStart(rerunIfBusy: Bool) -> Bool {
+            guard !isSyncing else {
+                if rerunIfBusy { rerunRequested = true }
+                return false
+            }
             isSyncing = true
             return true
         }
 
-        func finish() { isSyncing = false }
+        /// Ends the cycle, or keeps the lock for the one more that was asked for.
+        func finishOrRerun() -> Bool {
+            if rerunRequested {
+                rerunRequested = false
+                return true
+            }
+            isSyncing = false
+            return false
+        }
     }
 
     init(runtimeEnvironment: CLIPulseRuntimeEnvironment = .current) {
@@ -102,8 +120,8 @@ final class HelperDaemon {
         wsnc.addObserver(self, selector: #selector(willSleep), name: NSWorkspace.willSleepNotification, object: nil)
         wsnc.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
 
-        // The app changed the local-scan answer: act on it now, not at the
-        // next tick up to two minutes later.
+        // The app changed the local-scan answer or the account: act on it
+        // now, not at the next tick up to two minutes later.
         DistributedNotificationCenter.default().addObserver(
             self,
             selector: #selector(helperInputsDidChange),
@@ -143,101 +161,200 @@ final class HelperDaemon {
         Task { [weak self] in await self?.collectAndSync() }
     }
 
+    /// The app changed the answer or the account (`HelperIPC.helperInputsDidChangeNotificationName`).
     @objc private func helperInputsDidChange() {
-        logger.info("Local-scan answer changed — running a cycle now")
-        Task { [weak self] in await self?.collectAndSync() }
+        Task { [weak self] in await self?.inputsDidChange() }
     }
 
-    // MARK: - The local-scan answer
-
-    /// May this cycle read the Mac? Asked from the answer the app copies to
-    /// the app group (`LocalScanConsentStore.mirror`), read afresh each time
-    /// because the app changes it while this process runs. See
-    /// `LocalCollectionPolicy.helperCycle`: this process has no sign-in, and a
-    /// pairing the app has not signed out of stands in for one.
-    private func localScanCycle(
-        isSignedIn: @autoclosure () -> Bool
-    ) -> LocalCollectionPolicy.HelperCycle {
-        let mirrored = UserDefaults(suiteName: HelperIPC.suiteName)
-            .flatMap(LocalScanConsentStore.loadMirror)
-        return LocalCollectionPolicy.helperCycle(
-            mirroredConsent: mirrored?.consent,
-            isSignedIn: isSignedIn()
-        )
-    }
-
-    /// Whether the app last said it is signed out (`HelperIPC.appSignedOutKey`).
-    /// The pairing outlives a sign-out, so it cannot say this itself.
-    private var appSignedOut: Bool {
-        UserDefaults(suiteName: HelperIPC.suiteName).map(HelperIPC.isAppSignedOut) ?? false
-    }
-
-    /// A cycle the answer does not allow. Nothing is read — no scan, no
-    /// collector, no Keychain, no provider — and nothing is sent: not the
-    /// sync and not the heartbeat either.
-    ///
-    /// Why not even a heartbeat: `helper_heartbeat` writes this cycle's
-    /// session count to the device row, and a zero the helper did not look
-    /// for would overwrite the last real one; `helper_sync` with no sessions
-    /// marks this Mac's running sessions Ended. Left alone, the device row
-    /// keeps what it last had and ages, which is how the other devices show
-    /// a Mac that is not reporting, and that is what this Mac is doing.
-    ///
-    /// The status says why, so Settings does not show a helper that does
-    /// nothing as running in green (`HelperStatusLine`).
-    private func skipCycle(_ cycle: LocalCollectionPolicy.HelperCycle) {
-        // An outcome from before the pause is not a second sighting of one
-        // after it (see `pendingCollectorStatus`).
-        pendingCollectorStatus = nil
-        switch cycle {
-        case .collect:
-            return
-        case .paused:
-            logger.info("Local scan not allowed — cycle skipped")
-            HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, helperVersion: "1.0.0",
-                pauseCode: HelperIPC.PauseCode.localScanOff
-            ))
-        case .awaitingAnswer:
-            // A helper that started before the app has run since this
-            // version was installed: the app copies the answer as it starts.
-            logger.info("No local-scan answer from the app yet — cycle skipped")
-            HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, helperVersion: "1.0.0"
-            ))
-        }
+    /// Asks at once rather than at the next tick. A cycle that would read
+    /// starts only when the last question did not read: the hint can arrive
+    /// before the new answer is readable here, and starting a full cycle on
+    /// every hint would then read the Mac right after a "Not now". A cycle
+    /// already running asks again before each upload (`HelperCycleRunner`);
+    /// the one more asked for here writes the status the answer calls for.
+    private func inputsDidChange() async {
+        let reads = makeRunner().ask().reads
+        let wasReading = lastCycleRead
+        lastCycleRead = reads
+        if reads, wasReading == true { return }
+        logger.info("Local-scan answer or account changed — asking again now")
+        await collectAndSync(rerunIfBusy: true)
     }
 
     // MARK: - Collection + Sync (fully async)
 
-    private func collectAndSync() async {
+    private func collectAndSync(rerunIfBusy: Bool = false) async {
         // Async-safe check-and-set to prevent concurrent sync cycles
-        guard await syncGuard.tryStart() else {
+        guard await syncGuard.tryStart(rerunIfBusy: rerunIfBusy) else {
             logger.debug("Sync already in progress — skipping")
             return
         }
-        defer { Task { await syncGuard.finish() } }
+        repeat {
+            await runCycle()
+        } while await syncGuard.finishOrRerun()
+    }
 
+    /// One cycle: `HelperCycleRunner` decides the order and asks the
+    /// local-scan question before anything is read, before anything read is
+    /// written, and before every upload; this supplies the steps.
+    ///
+    /// A cycle the answer does not allow reads nothing (no scan, no
+    /// collector, no Keychain, no provider) and sends nothing, the heartbeat
+    /// included: `helper_heartbeat` writes this cycle's session count to the
+    /// device row, and a zero the helper did not look for would overwrite the
+    /// last real one; `helper_sync` with no sessions marks this Mac's running
+    /// sessions Ended. So the device row keeps what it last had: its
+    /// `last_seen_at` stops moving, while its status and running sessions
+    /// stay as they were, as for a Mac that is switched off.
+    private func runCycle() async {
         logger.info("Starting collection cycle")
-
-        // Step 0: the local-scan answer, before anything is read. For
-        // `.undecided` the account decides; the pairing is read (a Keychain
-        // read) only then, and not once the app has signed out.
-        let cycle = localScanCycle(isSignedIn: !appSignedOut && HelperConfig.load() != nil)
-        guard cycle == .collect else {
-            skipCycle(cycle)
-            return
+        let outcome = await makeRunner().run()
+        switch outcome {
+        case .skipped(let cycle), .dropped(let cycle), .stopped(let cycle):
+            lastCycleRead = cycle.reads
+            writeStatus(for: cycle)
+        case .collectedLocally:
+            lastCycleRead = true
+            logger.info("Collected for the app on this Mac only — nothing uploaded")
+            // No `lastSync`: nothing was synced, and Settings › Advanced reads
+            // any `lastSync` as "Synced just now". It says "Running".
+            HelperIPC.writeStatus(status(state: .running))
+        case .synced(let config):
+            lastCycleRead = true
+            // `deviceId` says which pairing this was: the app must not read a
+            // failure of a device it has since replaced as a failure of the
+            // current one (`ThisMacPairing`).
+            HelperIPC.writeStatus(status(
+                state: .running, lastSync: Date(), deviceId: config.deviceId
+            ))
+        case .failed(let config, let error):
+            lastCycleRead = true
+            // Store a token, not text: this process never sees the in-app
+            // language, so the app renders the token in its own. The English
+            // detail is for the log (the HTTP body was already logged where it
+            // was thrown, which is why it is left out here).
+            let code = HelperSyncFailure.code(for: error)
+            let detail = Self.englishDetail(for: error)
+            logger.error("Sync failed [\(code, privacy: .public)]: \(detail, privacy: .public)")
+            HelperIPC.writeStatus(status(
+                state: .error, error: detail, errorCode: code,
+                deviceId: config.deviceId
+            ))
         }
+    }
 
-        // Step 1: Device metrics
+    /// Every status this helper writes carries its build, so the app can tell
+    /// it from one left running from before an update (`HelperIPC.Status.helperBuild`).
+    static func status(
+        state: HelperIPC.State,
+        lastSync: Date? = nil,
+        error: String? = nil,
+        errorCode: String? = nil,
+        deviceId: String? = nil,
+        pauseCode: String? = nil
+    ) -> HelperIPC.Status {
+        HelperIPC.Status(
+            state: state, lastSync: lastSync, error: error, errorCode: errorCode,
+            helperVersion: "1.0.0", deviceId: deviceId, pauseCode: pauseCode,
+            helperBuild: HelperIPC.runningBuild
+        )
+    }
+
+    private func status(
+        state: HelperIPC.State,
+        lastSync: Date? = nil,
+        error: String? = nil,
+        errorCode: String? = nil,
+        deviceId: String? = nil,
+        pauseCode: String? = nil
+    ) -> HelperIPC.Status {
+        Self.status(
+            state: state, lastSync: lastSync, error: error, errorCode: errorCode,
+            deviceId: deviceId, pauseCode: pauseCode
+        )
+    }
+
+    /// The status for a cycle that read nothing, or stopped short of a sync.
+    private func writeStatus(for cycle: LocalCollectionPolicy.HelperCycle) {
+        switch cycle {
+        case .paused(let reason):
+            // An outcome from before the pause is not a second sighting of
+            // one after it (see `pendingCollectorStatus`).
+            pendingCollectorStatus = nil
+            logger.info("Not allowed to read this Mac — cycle skipped")
+            // The status says why, so Settings does not show a helper that
+            // does nothing as running in green (`HelperStatusLine`).
+            HelperIPC.writeStatus(status(
+                state: .running, pauseCode: HelperIPC.PauseCode.code(for: reason)
+            ))
+        case .awaitingAnswer:
+            pendingCollectorStatus = nil
+            // A helper that started before the app has run since this version
+            // was installed: the app copies the answer as it starts.
+            logger.info("No local-scan answer from the app yet — cycle skipped")
+            HelperIPC.writeStatus(status(state: .running))
+        case .collectLocally, .collectAndSync:
+            // Stopped before an upload because the account changed: this Mac
+            // is not paired for the account the app is now signed in to.
+            HelperIPC.writeStatus(status(state: .running))
+        }
+    }
+
+    // MARK: - The steps
+
+    /// What one cycle read.
+    private struct CycleCollection {
+        let device: DeviceMetrics.Snapshot
+        let scanResult: LocalScanResult
+        let alerts: [[String: Any]]
+        let providers: ProviderQuotaCollection
+    }
+
+    private func makeRunner() -> HelperCycleRunner<CycleCollection> {
+        HelperCycleRunner(
+            // Read afresh at every question: the app changes them while this
+            // process runs.
+            readConsent: {
+                UserDefaults(suiteName: HelperIPC.suiteName)
+                    .flatMap(LocalScanConsentStore.loadMirror)?.consent
+            },
+            readAccount: {
+                UserDefaults(suiteName: HelperIPC.suiteName)
+                    .flatMap(HelperIPC.loadAppAccount)
+            },
+            readPairing: { HelperConfig.load() },
+            collect: { [self] in await self.collect() },
+            writeResults: { [self] collection in
+                self.writeCollectorResultsToAppGroup(collection.providers)
+                HelperIPC.postSyncNotification()
+            },
+            uploadSteps: [
+                { [self] collection, config in
+                    try await self.sendHeartbeat(collection, config: config)
+                },
+                { [self] collection, config in
+                    await self.reportCollectorStatusIfSettled(collection, config: config)
+                },
+                { [self] collection, config in
+                    try await self.sendSync(collection, config: config)
+                },
+                { [self] collection, config in
+                    await self.syncProviderAccounts(collection, config: config)
+                },
+            ]
+        )
+    }
+
+    private func collect() async -> CycleCollection {
+        // Device metrics
         let device = DeviceMetrics.collect()
         logger.debug("Device: cpu=\(device.cpuUsage)%, mem=\(device.memoryUsage)%")
 
-        // Step 2: Sessions via LocalScanner
+        // Sessions via LocalScanner
         let scanResult = LocalScanner.shared.scan()
         logger.debug("Scanned \(scanResult.sessions.count) sessions")
 
-        // Step 3: Alerts.
+        // Alerts.
         // Iter2 fix: pass the helper's stable device_id so the device-CPU
         // alert id is `cpu-spike-<deviceID>-<hour>` instead of the global
         // `cpu-spike-global` static id (which never re-fired after first
@@ -253,80 +370,24 @@ final class HelperDaemon {
             deviceID: alertDeviceID
         )
 
-        // Step 4: Provider quotas via collectors
-        let providerCollection = await collectProviderQuotas()
-        let collectorStatus = providerCollection.collectorStatus
-
-        // Asked again: the collectors take a while, and a "Not now" or a
-        // sign-out meanwhile must stop this cycle too. What it read is
-        // dropped, not written for the app or sent.
-        //
-        // A pairing the app has signed out of is not used: nothing is sent to
-        // the account, whatever the answer. A yes still lets the helper collect
-        // for the app on this Mac, as for local mode.
-        let pairing = appSignedOut ? nil : HelperConfig.load()
-        let cycleAfterCollecting = localScanCycle(isSignedIn: pairing != nil)
-        guard cycleAfterCollecting == .collect else {
-            skipCycle(cycleAfterCollecting)
-            return
-        }
-
-        // Step 4.5: Write collector results to app group for main app
-        writeCollectorResultsToAppGroup(providerCollection)
-        HelperIPC.postSyncNotification()
-
-        guard let config = pairing else {
-            logger.info("Not paired, or the app is signed out — collected local provider data only")
-            // No `lastSync`: nothing was synced, and Settings › Advanced reads
-            // any `lastSync` as "Synced just now". It now says "Running".
-            HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, lastSync: nil, helperVersion: "1.0.0"
-            ))
-            return
-        }
-
-        // Step 5-6: Sync to Supabase
-        // Respect the user's enabled-set here too: sessions for providers the
-        // user (or the tier-migration) disabled are local observations only,
-        // not shipped to Supabase. When no config suite is readable (very
-        // first launch before main app has written), pass sessions through
-        // unfiltered rather than losing data silently.
-        let savedProviderConfigs: [ProviderConfig]? = {
-            guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
-                  let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
-                  let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
-            else { return nil }
-            return saved
-        }()
-        let enabledProviderNames = savedProviderConfigs.map {
-            Set($0.filter(\.isEnabled).map(\.kind.rawValue))
-        }
-        let filteredSessions: [SessionRecord] = {
-            guard let enabled = enabledProviderNames else { return scanResult.sessions }
-            return scanResult.sessions.filter { enabled.contains($0.provider) }
-        }()
-        if filteredSessions.count != scanResult.sessions.count {
-            logger.info("Filtered \(scanResult.sessions.count - filteredSessions.count) sessions from disabled providers")
-        }
-        let sessionDicts = filteredSessions.map { sessionToDict($0) }
-        let syncableAccountIDs =
-            ProviderAccountSyncOwnership.accountIDs(
-                in: savedProviderConfigs ?? [],
-                ownedBy: config.userId
-            )
-        let syncableAccounts =
-            providerCollection.accounts.filter {
-                syncableAccountIDs.contains($0.accountID)
-            }
-        let providerTiers = HelperAPIClient.legacyProviderTiers(
-            from: providerCollection.accounts,
-            configs: savedProviderConfigs ?? [],
-            ownedBy: config.userId
+        // Provider quotas via collectors
+        let providers = await collectProviderQuotas()
+        return CycleCollection(
+            device: device, scanResult: scanResult, alerts: alerts, providers: providers
         )
-        let providerRemaining: [String: Int] = providerTiers.compactMapValues { dict in
-            (dict as? [String: Any])?["remaining"] as? Int
-        }
+    }
 
+    /// Provider configs as the app last wrote them to the app group, or nil
+    /// when none is readable (very first launch before the app has written).
+    private func savedProviderConfigs() -> [ProviderConfig]? {
+        guard let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
+              let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
+              let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
+        else { return nil }
+        return saved
+    }
+
+    private func sendHeartbeat(_ collection: CycleCollection, config: HelperConfig) async throws {
         // v0.60: source the per-provider managed-session plan map from the local
         // spawn helper's UDS `hello` (the single source of truth — reuses the real
         // ProviderSpawner logic instead of a divergent parser) and forward it on the
@@ -346,110 +407,129 @@ final class HelperDaemon {
             } catch { return nil }
         }()
 
-        do {
-            // Heartbeat
-            try await apiClient.heartbeat(
-                config: config,
-                cpuUsage: device.cpuUsage,
-                memoryUsage: device.memoryUsage,
-                activeSessionCount: scanResult.activeSessionCount,
-                providerPlanStatus: providerPlanStatus
-            )
+        try await apiClient.heartbeat(
+            config: config,
+            cpuUsage: collection.device.cpuUsage,
+            memoryUsage: collection.device.memoryUsage,
+            activeSessionCount: collection.scanResult.activeSessionCount,
+            providerPlanStatus: providerPlanStatus
+        )
+    }
 
-            // NOTE: the app-version report (migrate_v0.70) deliberately does
-            // NOT happen here. macOS does not restart this LoginItem after an
-            // in-place app update, so this process can still be the OLD binary
-            // — it would report a stale version, or (for any build predating
-            // the feature) never report at all. `AppState` reports it from the
-            // main app instead, which is guaranteed to be the new version.
-            //
-            // Collector status (migrate_v0.71) DOES belong here: this daemon is
-            // the process that actually runs the collectors, so it is the only
-            // thing that knows why a provider produced nothing. Re-reported only
-            // when the outcome map CHANGES, so a steady state costs no RPCs.
-            // Best-effort — never break the sync that follows.
-            // Confirm-twice (see `pendingCollectorStatus`): only an outcome that
-            // held across two consecutive cycles is worth writing as this
-            // device's diagnostic.
-            let heldTwice = (pendingCollectorStatus == collectorStatus)
-            pendingCollectorStatus = collectorStatus
-            if heldTwice,
-               lastReportedCollectorStatus?.deviceId != config.deviceId
-                || lastReportedCollectorStatus?.status != collectorStatus {
-                do {
-                    try await apiClient.reportCollectorStatus(config: config, status: collectorStatus)
-                    lastReportedCollectorStatus = (deviceId: config.deviceId, status: collectorStatus)
-                } catch {
-                    logger.debug("collector-status report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
-                }
+    private func reportCollectorStatusIfSettled(_ collection: CycleCollection, config: HelperConfig) async {
+        // NOTE: the app-version report (migrate_v0.70) deliberately does
+        // NOT happen here. macOS does not restart this LoginItem after an
+        // in-place app update, so this process can still be the OLD binary
+        // — it would report a stale version, or (for any build predating
+        // the feature) never report at all. `AppState` reports it from the
+        // main app instead, which is guaranteed to be the new version.
+        //
+        // Collector status (migrate_v0.71) DOES belong here: this daemon is
+        // the process that actually runs the collectors, so it is the only
+        // thing that knows why a provider produced nothing. Re-reported only
+        // when the outcome map CHANGES, so a steady state costs no RPCs.
+        // Best-effort — never break the sync that follows.
+        // Confirm-twice (see `pendingCollectorStatus`): only an outcome that
+        // held across two consecutive cycles is worth writing as this
+        // device's diagnostic.
+        let collectorStatus = collection.providers.collectorStatus
+        let heldTwice = (pendingCollectorStatus == collectorStatus)
+        pendingCollectorStatus = collectorStatus
+        if heldTwice,
+           lastReportedCollectorStatus?.deviceId != config.deviceId
+            || lastReportedCollectorStatus?.status != collectorStatus {
+            do {
+                try await apiClient.reportCollectorStatus(config: config, status: collectorStatus)
+                lastReportedCollectorStatus = (deviceId: config.deviceId, status: collectorStatus)
+            } catch {
+                logger.debug("collector-status report failed (retrying next cycle): \(error.localizedDescription, privacy: .public)")
             }
+        }
+    }
 
-            // Sync
-            let legacyProviderRemaining =
-                providerAccountsWriteV2Enabled
-                ? [String: Int]()
-                : providerRemaining
-            let legacyProviderTiers =
-                providerAccountsWriteV2Enabled
-                ? [String: Any]()
-                : providerTiers
-            let result = try await apiClient.sync(
-                config: config,
-                sessions: sessionDicts,
-                alerts: alerts,
-                providerRemaining: legacyProviderRemaining,
-                providerTiers: legacyProviderTiers
+    private func sendSync(_ collection: CycleCollection, config: HelperConfig) async throws {
+        // Respect the user's enabled-set here too: sessions for providers the
+        // user (or the tier-migration) disabled are local observations only,
+        // not shipped to Supabase. When no config suite is readable (very
+        // first launch before main app has written), pass sessions through
+        // unfiltered rather than losing data silently.
+        let scanResult = collection.scanResult
+        let providerCollection = collection.providers
+        let savedProviderConfigs = savedProviderConfigs()
+        let enabledProviderNames = savedProviderConfigs.map {
+            Set($0.filter(\.isEnabled).map(\.kind.rawValue))
+        }
+        let filteredSessions: [SessionRecord] = {
+            guard let enabled = enabledProviderNames else { return scanResult.sessions }
+            return scanResult.sessions.filter { enabled.contains($0.provider) }
+        }()
+        if filteredSessions.count != scanResult.sessions.count {
+            logger.info("Filtered \(scanResult.sessions.count - filteredSessions.count) sessions from disabled providers")
+        }
+        let sessionDicts = filteredSessions.map { sessionToDict($0) }
+        let providerTiers = HelperAPIClient.legacyProviderTiers(
+            from: providerCollection.accounts,
+            configs: savedProviderConfigs ?? [],
+            ownedBy: config.userId
+        )
+        let providerRemaining: [String: Int] = providerTiers.compactMapValues { dict in
+            (dict as? [String: Any])?["remaining"] as? Int
+        }
+
+        let legacyProviderRemaining =
+            providerAccountsWriteV2Enabled
+            ? [String: Int]()
+            : providerRemaining
+        let legacyProviderTiers =
+            providerAccountsWriteV2Enabled
+            ? [String: Any]()
+            : providerTiers
+        let result = try await apiClient.sync(
+            config: config,
+            sessions: sessionDicts,
+            alerts: collection.alerts,
+            providerRemaining: legacyProviderRemaining,
+            providerTiers: legacyProviderTiers
+        )
+        logger.info("Synced \(result.sessionsSynced) sessions, \(result.alertsSynced) alerts")
+    }
+
+    private func syncProviderAccounts(_ collection: CycleCollection, config: HelperConfig) async {
+        // In v2 mode helper_sync carries sessions/alerts only; provider
+        // quotas have exactly one writer below. Failure-soft: an older
+        // backend missing the staged RPC must not break session, alert, or
+        // heartbeat sync, but it must not regain projection ownership.
+        guard providerAccountsWriteV2Enabled else { return }
+        let providerCollection = collection.providers
+        let syncableAccountIDs =
+            ProviderAccountSyncOwnership.accountIDs(
+                in: savedProviderConfigs() ?? [],
+                ownedBy: config.userId
             )
-            logger.info("Synced \(result.sessionsSynced) sessions, \(result.alertsSynced) alerts")
-
-            // In v2 mode helper_sync carries sessions/alerts only; provider
-            // quotas have exactly one writer below. Failure-soft: an older
-            // backend missing the staged RPC must not break session, alert, or
-            // heartbeat sync, but it must not regain projection ownership.
-            if providerAccountsWriteV2Enabled,
-               !syncableAccounts.isEmpty {
-                do {
-                    let synced = try await apiClient
-                        .syncProviderAccountQuotas(
-                            config: config,
-                            accounts: syncableAccounts,
-                            observedAt: providerCollection.observedAt
-                        )
-                    logger.info(
-                        "Synced \(synced) provider account quotas"
+        let syncableAccounts =
+            providerCollection.accounts.filter {
+                syncableAccountIDs.contains($0.accountID)
+            }
+        if !syncableAccounts.isEmpty {
+            do {
+                let synced = try await apiClient
+                    .syncProviderAccountQuotas(
+                        config: config,
+                        accounts: syncableAccounts,
+                        observedAt: providerCollection.observedAt
                     )
-                } catch {
-                    logger.warning(
-                        "Provider account v2 sync failed; response details omitted"
-                    )
-                }
-            } else if providerAccountsWriteV2Enabled,
-                      !providerCollection.accounts.isEmpty {
+                logger.info(
+                    "Synced \(synced) provider account quotas"
+                )
+            } catch {
                 logger.warning(
-                    "Provider account v2 sync paused: no local accounts are owned by the paired CLIPulse user"
+                    "Provider account v2 sync failed; response details omitted"
                 )
             }
-
-            // Update status. `deviceId` says which pairing this was: the app
-            // must not read a failure of a device it has since replaced as a
-            // failure of the current one (`ThisMacPairing`).
-            HelperIPC.writeStatus(HelperIPC.Status(
-                state: .running, lastSync: Date(), helperVersion: "1.0.0",
-                deviceId: config.deviceId
-            ))
-
-        } catch {
-            // Store a token, not text: this process never sees the in-app
-            // language, so the app renders the token in its own. The English
-            // detail is for the log (the HTTP body was already logged where it
-            // was thrown, which is why it is left out here).
-            let code = HelperSyncFailure.code(for: error)
-            let detail = Self.englishDetail(for: error)
-            logger.error("Sync failed [\(code, privacy: .public)]: \(detail, privacy: .public)")
-            HelperIPC.writeStatus(HelperIPC.Status(
-                state: .error, lastSync: nil, error: detail, errorCode: code, helperVersion: "1.0.0",
-                deviceId: config.deviceId
-            ))
+        } else if !providerCollection.accounts.isEmpty {
+            logger.warning(
+                "Provider account v2 sync paused: no local accounts are owned by the paired CLIPulse user"
+            )
         }
     }
 

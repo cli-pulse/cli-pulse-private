@@ -77,7 +77,9 @@ struct AdvancedSection: View {
                         pairedDeviceId: HelperConfig.pairedDeviceId(
                             authenticatedUserId: authState.userId,
                             runtimeEnvironment: state.runtimeEnvironment
-                        )
+                        ),
+                        helperShouldBePaused: state.helperShouldBePaused,
+                        appBuild: HelperIPC.runningBuild
                     )
                     HStack(spacing: 4) {
                         Circle()

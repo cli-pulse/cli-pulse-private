@@ -16,10 +16,10 @@ public enum HelperIPC {
 
     /// Posted by the app when what it tells the helper about collecting
     /// changes: the local-scan answers (`LocalScanConsentStore.mirror`) or
-    /// whether the app is signed in (`appSignedOutKey`). The helper runs a
-    /// cycle on it, so a "Not now" or a sign-out pauses it, and a yes or a
-    /// sign-in resumes it, without waiting for its timer. A hint like the
-    /// others: the helper reads the values itself.
+    /// the account (`appAccountKey`). The helper asks again at once, so a
+    /// "Not now" or a sign-out pauses it, and a yes or a sign-in resumes it,
+    /// without waiting for its timer. A hint like the others: the helper
+    /// reads the values itself.
     public static let helperInputsDidChangeNotificationName =
         Notification.Name("CLIPulseHelperInputsDidChange")
 
@@ -54,32 +54,33 @@ public enum HelperIPC {
     /// account-array envelope with an optional v1 provider projection.
     public static let collectorResultsKey = "helper_collector_results"
 
-    /// `true` from when the app signs out, or starts with no session, until it
-    /// next signs in (Bool, written by the app, read by the helper).
+    /// Which account the app is in, for the helper (`HelperAccountRecord`,
+    /// written by the app where it applies each state, read by the helper).
     ///
-    /// The helper's pairing (`HelperConfig`) outlives a sign-out: nothing
-    /// removes it. Taken alone as "signed in", it kept a signed-out Mac with
-    /// no local-scan answer scanning, and every paired Mac uploading to the
-    /// account it had signed out of, while the consent screen says signing out
-    /// stops the scan and the privacy policy says nothing syncs unless you are
-    /// signed in. Missing means the app has not said since this key existed,
-    /// and the pairing is trusted as before.
-    public static let appSignedOutKey = "cli_pulse_app_signed_out"
+    /// The helper's pairing (`HelperConfig`) outlives a sign-out and an
+    /// account switch: nothing removes it. Taken alone as "signed in", it kept
+    /// a signed-out Mac scanning and uploading to the account it had left, and
+    /// after a switch to another account it uploaded to the first one.
+    public static let appAccountKey = "cli_pulse_app_account"
 
-    /// Records the app's sign-in state for the helper (`appSignedOutKey`).
+    /// Records the app's account for the helper (`appAccountKey`).
     /// - Returns: whether that changed what the helper would read.
     @discardableResult
-    public static func recordAppSignedIn(_ signedIn: Bool, to defaults: UserDefaults) -> Bool {
-        let signedOut = !signedIn
-        let changed = defaults.object(forKey: appSignedOutKey) == nil
-            || defaults.bool(forKey: appSignedOutKey) != signedOut
-        defaults.set(signedOut, forKey: appSignedOutKey)
+    public static func recordAppAccount(
+        _ account: HelperAccountRecord,
+        to defaults: UserDefaults
+    ) -> Bool {
+        let value = account.storedValue
+        let changed = defaults.string(forKey: appAccountKey) != value
+        defaults.set(value, forKey: appAccountKey)
         return changed
     }
 
-    /// Whether the app last said it is signed out. False when it has not said.
-    public static func isAppSignedOut(_ defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: appSignedOutKey)
+    /// The account the app last recorded, or nil when it has not recorded one
+    /// (a helper that started before the app has run on this version): the
+    /// helper then trusts its pairing, as before the record existed.
+    public static func loadAppAccount(_ defaults: UserDefaults) -> HelperAccountRecord? {
+        defaults.string(forKey: appAccountKey).map(HelperAccountRecord.init(storedValue:))
     }
 
     // MARK: - Collector results wire contract
@@ -350,6 +351,13 @@ public enum HelperIPC {
 
     // MARK: - Status
 
+    /// This process's `CFBundleVersion`. The app and the helper it bundles
+    /// share one build number, so a helper whose status carries another one
+    /// (or none) is not the helper this app shipped with.
+    public static var runningBuild: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+    }
+
     public enum State: String, Codable, Sendable {
         case running
         case idle
@@ -360,8 +368,19 @@ public enum HelperIPC {
     /// token, like `errorCode`, so the app words it in its own language.
     public enum PauseCode {
         /// The local-scan answer does not allow reading this Mac
-        /// (`LocalCollectionPolicy.HelperCycle.paused`).
+        /// (`LocalCollectionPolicy.HelperCycle.PauseReason.answer`).
         public static let localScanOff = "local_scan_off"
+        /// The app is signed out and not in local mode, so it reads nothing
+        /// and neither does the helper, whatever the answer
+        /// (`LocalCollectionPolicy.HelperCycle.PauseReason.signedOut`).
+        public static let signedOut = "signed_out"
+
+        public static func code(for reason: LocalCollectionPolicy.HelperCycle.PauseReason) -> String {
+            switch reason {
+            case .answer: return localScanOff
+            case .signedOut: return signedOut
+            }
+        }
     }
 
     public struct Status: Codable, Sendable {
@@ -384,6 +403,11 @@ public enum HelperIPC {
         /// (`PauseCode`). Optional for the same reason as `errorCode`: a status
         /// from an older helper lacks it, and older apps ignore it.
         public let pauseCode: String?
+        /// The `CFBundleVersion` of the helper that wrote this. Every helper
+        /// wrote `helperVersion` "1.0.0", so the app could not tell a helper
+        /// left running from before an update, which honours no local-scan
+        /// answer at all, from the current one. Nil from such a helper.
+        public let helperBuild: String?
 
         public init(
             state: State,
@@ -392,7 +416,8 @@ public enum HelperIPC {
             errorCode: String? = nil,
             helperVersion: String? = nil,
             deviceId: String? = nil,
-            pauseCode: String? = nil
+            pauseCode: String? = nil,
+            helperBuild: String? = nil
         ) {
             self.state = state
             self.lastSync = lastSync
@@ -401,6 +426,7 @@ public enum HelperIPC {
             self.helperVersion = helperVersion
             self.deviceId = deviceId
             self.pauseCode = pauseCode
+            self.helperBuild = helperBuild
         }
     }
 
@@ -450,4 +476,41 @@ public enum HelperIPC {
         )
     }
     #endif
+}
+
+/// Which account the app is in, as the helper needs to know it
+/// (`HelperIPC.appAccountKey`).
+public enum HelperAccountRecord: Equatable, Sendable {
+    /// Signed in as this user. The helper uploads only with a pairing made
+    /// for the same user (`HelperConfig.userId`).
+    case signedIn(userId: String)
+    /// Using CLI Pulse without an account. The helper collects for the app
+    /// on this Mac after a yes, and uploads nothing.
+    case localMode
+    /// Neither: the Sign-In form, or Demo mode. The app reads nothing, so
+    /// the helper reads nothing, whatever the answer.
+    case signedOut
+
+    private static let signedInPrefix = "signed_in:"
+
+    var storedValue: String {
+        switch self {
+        case .signedIn(let userId): return Self.signedInPrefix + userId
+        case .localMode: return "local_mode"
+        case .signedOut: return "signed_out"
+        }
+    }
+
+    /// A value this build does not recognise, or a sign-in without a user,
+    /// reads as `.signedOut`: it reads nothing and uploads nothing.
+    init(storedValue: String) {
+        if storedValue.hasPrefix(Self.signedInPrefix) {
+            let userId = String(storedValue.dropFirst(Self.signedInPrefix.count))
+            self = userId.isEmpty ? .signedOut : .signedIn(userId: userId)
+        } else if storedValue == "local_mode" {
+            self = .localMode
+        } else {
+            self = .signedOut
+        }
+    }
 }

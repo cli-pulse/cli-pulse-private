@@ -487,41 +487,83 @@ public enum LocalCollectionPolicy {
 
     /// What the helper's cycle may do.
     public enum HelperCycle: Equatable, Sendable {
-        /// Scan, run the collectors, and sync if this Mac is paired and the
-        /// app is signed in.
-        case collect
-        /// The answer does not allow reading this Mac. Nothing is read and
-        /// nothing is sent, not even a heartbeat (see `HelperDaemon`).
-        case paused
+        /// Read this Mac, and upload with the pairing: the app is signed in
+        /// as the user this Mac was paired for.
+        case collectAndSync
+        /// Read this Mac for the app on it, and upload nothing: local mode
+        /// after a yes, or signed in as a user this Mac was not paired for.
+        case collectLocally
+        /// Read nothing and send nothing, not even a heartbeat
+        /// (`HelperCycleRunner`).
+        case paused(PauseReason)
         /// The app has not copied the answer to the app group yet
-        /// (`LocalScanConsentStore.loadMirror` is nil). Treated like `.paused`:
-        /// the helper cannot tell a "Not now" from a yes, and the app copies
-        /// the answer as it starts, so the wait ends when the app next runs.
+        /// (`LocalScanConsentStore.loadMirror` is nil). Treated like
+        /// `.paused`: the helper cannot tell a "Not now" from a yes, and the
+        /// app copies the answer as it starts, so the wait ends when the app
+        /// next runs.
         case awaitingAnswer
+
+        public enum PauseReason: Equatable, Sendable {
+            /// The local-scan answer does not allow it.
+            case answer
+            /// The app is signed out and not in local mode: it reads nothing,
+            /// whatever the answer, and neither does the helper.
+            case signedOut
+        }
+
+        /// Whether this cycle reads the Mac at all.
+        public var reads: Bool {
+            switch self {
+            case .collectAndSync, .collectLocally: return true
+            case .paused, .awaitingAnswer: return false
+            }
+        }
     }
 
-    /// The helper's version of `allowsCollection`, asked at the start of every
-    /// cycle and again before anything it collected is written or uploaded.
+    /// The helper's version of `allowsCollection`, asked before anything is
+    /// read, again before anything read is written, and before every upload
+    /// (`HelperCycleRunner`).
     ///
-    /// The helper has no sign-in of its own. What stands in for one is a
-    /// pairing (`HelperConfig`) that the app has not signed out of since
-    /// (`HelperIPC.appSignedOutKey`): the pairing outlives a sign-out. Without
-    /// either, the helper only collects for the app on this Mac, which is
-    /// local mode.
+    /// The helper has no sign-in of its own, and its pairing (`HelperConfig`)
+    /// outlives a sign-out and an account switch, so the app records which
+    /// account it is in (`HelperAccountRecord`):
+    ///   * signed in: the account stands in for a yes, as in the app, and the
+    ///     helper uploads only with a pairing made for that user;
+    ///   * local mode: a yes lets it read for the app; it uploads nothing;
+    ///   * signed out (the Sign-In form, Demo): nothing, whatever the answer,
+    ///     since the app reads nothing either.
+    /// With no record yet (a helper started before the app ran on this
+    /// version) the pairing is trusted as before the record existed: paired
+    /// counts as signed in as the pairing's user, unpaired as local mode.
     ///
-    /// `isSignedIn` is evaluated only for `.undecided`, the one answer the
-    /// account decides (`allowsCollection`). In the helper it reads the
+    /// `pairedUserId` (the pairing's `userId`, nil when unpaired) is read only
+    /// when the answer could lead to an upload: in the helper it reads the
     /// pairing secret from the Keychain, and a "Not now" should not cost even
-    /// that. `LocalScanConsentHelperTests` checks the result against
-    /// `allowsCollection` for every answer, signed in and not.
+    /// that. `LocalScanConsentHelperTests` checks every combination.
     public static func helperCycle(
         mirroredConsent: LocalScanConsent?,
-        isSignedIn: @autoclosure () -> Bool
+        account: HelperAccountRecord?,
+        pairedUserId: () -> String?
     ) -> HelperCycle {
         guard let consent = mirroredConsent else { return .awaitingAnswer }
-        let isAuthenticated = consent == .undecided ? isSignedIn() : false
-        return allowsCollection(isAuthenticated: isAuthenticated, consent: consent)
-            ? .collect
-            : .paused
+        switch account {
+        case .signedOut:
+            return .paused(.signedOut)
+        case .localMode:
+            return allowsCollection(isAuthenticated: false, consent: consent)
+                ? .collectLocally
+                : .paused(.answer)
+        case .signedIn(let userId):
+            guard allowsCollection(isAuthenticated: true, consent: consent) else {
+                return .paused(.answer)
+            }
+            return pairedUserId() == userId ? .collectAndSync : .collectLocally
+        case nil:
+            guard consent != .declined else { return .paused(.answer) }
+            if pairedUserId() != nil { return .collectAndSync }
+            return allowsCollection(isAuthenticated: false, consent: consent)
+                ? .collectLocally
+                : .paused(.answer)
+        }
     }
 }

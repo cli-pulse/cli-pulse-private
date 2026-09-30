@@ -730,6 +730,8 @@
 "advanced.helper_running" = "執行中";
 "advanced.helper_not_running" = "未執行";
 "advanced.helper_paused_local_scan_off" = "已暫停：本機掃描已關閉";
+"advanced.helper_paused_signed_out" = "已暫停：已登出";
+"advanced.helper_restart_needed" = "需要重新啟動：請關閉背景同步再重新開啟";
 "advanced.privacy_keys_title" = "服務商 API 金鑰與 Cookie";
 "advanced.privacy_keys_detail" = "僅儲存在 macOS 鑰匙圈 · 永不上傳";
 "advanced.data_title" = "資料去向";

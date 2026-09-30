@@ -806,6 +806,8 @@
 "advanced.helper_running" = "실행 중";
 "advanced.helper_not_running" = "실행 중이 아님";
 "advanced.helper_paused_local_scan_off" = "일시정지됨: 로컬 스캔이 꺼져 있습니다";
+"advanced.helper_paused_signed_out" = "일시정지됨: 로그아웃됨";
+"advanced.helper_restart_needed" = "다시 시작 필요: 백그라운드 동기화를 껐다가 다시 켜세요";
 "advanced.privacy_keys_title" = "공급자 API 키 및 쿠키";
 "advanced.privacy_keys_detail" = "macOS 키체인에만 저장 · 업로드되지 않음";
 "advanced.data_title" = "데이터가 가는 곳";

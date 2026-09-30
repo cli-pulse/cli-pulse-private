@@ -177,16 +177,38 @@ public final class AppState: ObservableObject {
         #endif
     }
 
-    /// Tells the helper whether the app is signed in (`HelperIPC.appSignedOutKey`).
-    /// Its pairing survives a sign-out, so without this it went on treating a
-    /// signed-out Mac as signed in. Called where the app applies either state.
-    func recordSignInForHelper(signedIn: Bool) {
+    /// The account as the helper needs it (`HelperAccountRecord`): signed in
+    /// as whom, local mode, or neither. Demo mode reads nothing, so it counts
+    /// as neither even though it shows an account.
+    var accountRecordForHelper: HelperAccountRecord {
+        if isDemoMode { return .signedOut }
+        if isAuthenticated, !userId.isEmpty { return .signedIn(userId: userId) }
+        return isLocalMode ? .localMode : .signedOut
+    }
+
+    /// Tells the helper which account the app is in (`HelperIPC.appAccountKey`).
+    /// Its pairing survives a sign-out and an account switch, so without this
+    /// it went on uploading to the account the pairing was made for. Called
+    /// where the app applies each state.
+    func recordAccountForHelper() {
         #if os(macOS)
         guard let helperDefaults = helperDefaultsForThisRuntime else { return }
-        if HelperIPC.recordAppSignedIn(signedIn, to: helperDefaults) {
+        if HelperIPC.recordAppAccount(accountRecordForHelper, to: helperDefaults) {
             notifyHelper?()
         }
         #endif
+    }
+
+    /// Whether the helper, given this app's answer and account, should be
+    /// reading nothing. Settings compares it with what the helper reports: a
+    /// helper that should be paused and does not say so is one left running
+    /// from before an update (`HelperStatusLine`).
+    public var helperShouldBePaused: Bool {
+        !LocalCollectionPolicy.helperCycle(
+            mirroredConsent: localScanConsent,
+            account: accountRecordForHelper,
+            pairedUserId: { nil }
+        ).reads
     }
 
     /// `helperDefaults`, where this runtime may write to a helper's app group
@@ -1201,6 +1223,17 @@ public final class AppState: ObservableObject {
         // Widgets have no helper to register; this whole block
         // compiles out on those platforms.
         if runtime.capabilities.allowsHelperRegistration {
+            // After an update the background-sync LoginItem still runs the old
+            // binary until it is restarted, and one from before 1.55 honours
+            // no local-scan answer. The answers were copied above, so the
+            // restarted helper finds them.
+            Task {
+                await HelperLoginItemRestart.runIfNeeded(
+                    service: .live,
+                    defaults: defaults,
+                    currentBuild: HelperIPC.runningBuild
+                )
+            }
             Task { [weak self] in
                 guard let self else { return }
                 let status = await self.helperLifecycle.ensureRegistered()

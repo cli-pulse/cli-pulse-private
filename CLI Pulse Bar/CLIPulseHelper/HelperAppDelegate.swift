@@ -28,7 +28,7 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
         )
         self.daemon = daemon
         logger.info("CLIPulseHelper launched")
-        HelperIPC.writeStatus(HelperIPC.Status(state: .running, helperVersion: "1.0.0"))
+        HelperIPC.writeStatus(HelperDaemon.status(state: .running))
         HelperIPC.postStartNotification()
         daemon.start()
 
@@ -53,6 +53,6 @@ final class HelperAppDelegate: NSObject, NSApplicationDelegate {
         guard let daemon else { return }
         logger.info("CLIPulseHelper terminating")
         daemon.stop()
-        HelperIPC.writeStatus(HelperIPC.Status(state: .idle, helperVersion: "1.0.0"))
+        HelperIPC.writeStatus(HelperDaemon.status(state: .idle))
     }
 }
