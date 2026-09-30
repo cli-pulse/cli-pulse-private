@@ -350,6 +350,7 @@ final class WatchSessionManager: NSObject, ObservableObject {
         // Read out here: the context dictionary is not Sendable.
         let currencyCode = context[CurrencyConverter.contextCurrencyKey] as? String
         let fxRate = context[CurrencyConverter.contextRateKey] as? Double
+        let hidePersonalInfo = PersonalInfoMask.phoneChoice(inWatchContext: context)
 
         DispatchQueue.main.async {
             guard self.accept(identity) else { return }
@@ -359,6 +360,9 @@ final class WatchSessionManager: NSObject, ObservableObject {
             // back only once the session activates, after the persisted costs
             // have already been shown.
             CurrencyConverter.shared.adoptAndRemember(currencyCode: currencyCode, rate: fxRate)
+            // The iPhone's "Hide personal information", kept in this Watch's
+            // defaults, where the views that name accounts read it.
+            PersonalInfoMask.adoptPhoneChoice(hidePersonalInfo)
             if self.lastReceivedIdentity != identity {
                 self.clearCachedData()
             }

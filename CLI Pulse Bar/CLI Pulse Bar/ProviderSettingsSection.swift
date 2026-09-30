@@ -11,6 +11,7 @@ struct ProviderSettingsSection: View {
     @Environment(\.openWindow) private var openWindow
     @State private var expandedKinds: Set<ProviderKind> = []
     @State private var accountPendingRemoval: ProviderConfig?
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     /// Providers that the tier-migration auto-disabled. Read once per render
     /// from UserDefaults so the lock badge stays in sync even when the UI
@@ -307,22 +308,18 @@ struct ProviderSettingsSection: View {
         return false
     }
 
+    /// Masked by "Hide personal information" (Settings › Advanced), like
+    /// every other place that names an account. The editor window still
+    /// shows the label as written: it is where the label is typed.
     private func accountDisplayLabel(
         _ config: ProviderConfig
     ) -> String {
-        if let label = config.accountLabel?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !label.isEmpty {
-            return label
-        }
         let configs = providerState.configs(for: config.kind)
-        guard configs.count > 1,
-              let index = configs.firstIndex(where: {
-                  $0.accountID == config.accountID
-              })
-        else {
-            return L10n.providers.defaultAccount
-        }
-        return L10n.providers.accountNumber(index + 1)
+        return PersonalInfoMask.accountName(
+            label: config.accountLabel,
+            index: configs.firstIndex { $0.accountID == config.accountID },
+            accountCount: configs.count,
+            hidePersonalInfo: hidePersonalInfo
+        )
     }
 }

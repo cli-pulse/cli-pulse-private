@@ -7,6 +7,7 @@ import CLIPulseCore
 struct DisplaySection: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var providerState: ProviderState
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -106,19 +107,12 @@ struct DisplaySection: View {
         guard accounts.count > 1 else {
             return config.kind.rawValue
         }
-        let label =
-            config.accountLabel?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-        let accountName: String
-        if let label, !label.isEmpty {
-            accountName = label
-        } else if let index = accounts.firstIndex(where: {
-            $0.accountID == config.accountID
-        }) {
-            accountName = L10n.providers.accountNumber(index + 1)
-        } else {
-            accountName = L10n.providers.defaultAccount
-        }
+        let accountName = PersonalInfoMask.accountName(
+            label: config.accountLabel,
+            index: accounts.firstIndex { $0.accountID == config.accountID },
+            accountCount: accounts.count,
+            hidePersonalInfo: hidePersonalInfo
+        )
         return "\(config.kind.rawValue) · \(accountName)"
     }
 }

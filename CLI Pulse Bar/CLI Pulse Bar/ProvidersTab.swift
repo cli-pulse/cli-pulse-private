@@ -204,6 +204,9 @@ struct ProviderAccountQuotaSummaryView: View {
     let onToggle: (UUID, Bool) -> Void
 
     @State private var isExpanded = false
+    /// Read here rather than through `AppState`, so the rows redraw the
+    /// moment the switch changes (see `PersonalInfoMask`).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var scopedUsages: [ProviderAccountUsage] {
         let accountIDs = Set(configs.map(\.accountID))
@@ -421,27 +424,18 @@ struct ProviderAccountQuotaSummaryView: View {
     private func accountDisplayLabel(
         for accountID: UUID
     ) -> String {
-        let usage = scopedUsages.first { $0.id == accountID }
-        if let label = usage?.accountLabel?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !label.isEmpty {
-            return label
-        }
-        if let label = configs.first(where: {
-            $0.accountID == accountID
-        })?.accountLabel?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-           !label.isEmpty {
-            return label
-        }
-        guard configs.count > 1,
-              let index = configs.firstIndex(where: {
-                  $0.accountID == accountID
-              })
-        else {
-            return L10n.providers.defaultAccount
-        }
-        return L10n.providers.accountNumber(index + 1)
+        let usageLabel = scopedUsages.first { $0.id == accountID }?
+            .accountLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = usageLabel?.isEmpty == false
+            ? usageLabel
+            : configs.first { $0.accountID == accountID }?.accountLabel
+        return PersonalInfoMask.accountName(
+            label: label,
+            index: configs.firstIndex { $0.accountID == accountID },
+            accountCount: configs.count,
+            hidePersonalInfo: hidePersonalInfo
+        )
     }
 
     private func remainingFraction(
@@ -474,9 +468,23 @@ struct EnhancedProviderCard: View {
     let onAccountToggle: (UUID, Bool) -> Void
 
     @EnvironmentObject var state: AppState
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var provider: ProviderUsage { detail.provider }
     private var config: ProviderConfig { detail.config }
+
+    /// The label under a single-account provider's name, masked by "Hide
+    /// personal information". A provider with several accounts has none here
+    /// (`computedProviderDetails` clears it); its rows below name them.
+    private var accountLabel: String? {
+        PersonalInfoMask.accountLabel(
+            detail.accountEmail,
+            index: accountConfigs.firstIndex {
+                $0.accountID == config.accountID
+            },
+            hidePersonalInfo: hidePersonalInfo
+        )
+    }
 
     /// v1.9.4: for quota providers (Claude / Codex / Cursor / ...), the raw
     /// `today_usage` / `week_usage` int fields on `ProviderUsage` carry the
@@ -692,8 +700,11 @@ struct EnhancedProviderCard: View {
                     )
                     .accessibilityLabel(
                         L10n.providers.monitorAccount(
-                            accountConfigs.first?
-                                .accountLabel
+                            PersonalInfoMask.accountLabel(
+                                accountConfigs.first?.accountLabel,
+                                index: 0,
+                                hidePersonalInfo: hidePersonalInfo
+                            )
                                 ?? config.kind.rawValue
                         )
                     )
@@ -736,8 +747,8 @@ struct EnhancedProviderCard: View {
             if config.isEnabled {
                 // Source + Plan row
                 HStack(spacing: 8) {
-                    if let email = detail.accountEmail {
-                        Label(email, systemImage: "envelope")
+                    if let accountLabel {
+                        Label(accountLabel, systemImage: "envelope")
                             .font(.system(size: 8))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
