@@ -91,6 +91,16 @@ The account comes first, as in the built-in helper
         does nothing until it is paired. Were the cycle to run, a pairing
         removed between its `load_config` and its last check would upload
         with a pairing that check never saw.
+      - just before an upload: a step sends with the pairing it loaded before
+        it started reading, so that check is given the pairing too
+        (`LocalScanGate.check(sending=...)`, `pairing_sent_with`). The file
+        must still be paired for the user the loaded pairing names (paused,
+        "pairing_changed", otherwise), and that user is the one compared with
+        the record. Checking the file alone, a `pair` for another user run
+        while the step reads, together with a switch to that account, would
+        pass, and the step would upload with the old pairing to the old
+        account. The built-in helper binds the pairing it verified to its
+        upload steps (`HelperCycleRunner`) for the same reason.
   * "local_mode": reads for the app on this Mac only after "granted"
     (`Cycle.LOCAL`: the UDS `hello` may read, the cycle uploads nothing and so
     reads nothing either); anything else, paused. Without an account an
@@ -282,7 +292,8 @@ class Decision:
     cycle: Cycle
     # "granted" | "undecided" | "no_copy" | "local_mode" | "not_paired" |
     # "declined" | "signed_out" | "other_account" | "unverified_pairing" |
-    # "no_answer" | "undecided_local_mode" | "unrecognised" | "unreadable"
+    # "pairing_changed" | "no_answer" | "undecided_local_mode" |
+    # "unrecognised" | "unreadable"
     reason: str
     detail: str = ""
 
@@ -331,9 +342,47 @@ def paired_user_id_from_config() -> str | None:
     return user_id
 
 
+class PairingChanged(UnusablePairing):
+    """The pairing file no longer names the user of the pairing a step loaded
+    and is about to upload with: `pair` ran while the step was reading."""
+
+
 def _same_user(a: str, b: str) -> bool:
     # Supabase user ids are UUIDs; a UUID is the same id in either case.
     return a.strip().lower() == b.strip().lower()
+
+
+def pairing_sent_with(
+    sending: object,
+    on_disk: Callable[[], str | None] = paired_user_id_from_config,
+) -> Callable[[], str | None]:
+    """The pairing reader for the check just before a step uploads.
+
+    `sending` is the pairing (a `cli_pulse_helper.HelperConfig`) the step
+    loaded before it started reading, and the one its upload is sent with.
+    The file (`on_disk`) may have been rewritten since, so both are asked:
+
+      * the file not paired any more (None): returned as is, so a sign-in
+        uploads nothing (`not_paired`), as for a check of the file alone;
+      * the file naming no usable user: returned as is (`decide` pauses);
+      * `sending` naming no usable user: `UnusablePairing`;
+      * the two naming different users: `PairingChanged`;
+      * otherwise the user they both name, which `decide` compares with the
+        app's record.
+    """
+
+    def read() -> str | None:
+        current = on_disk()
+        if current is None or not isinstance(current, str) or not current.strip():
+            return current
+        sent = getattr(sending, "user_id", None)
+        if not isinstance(sent, str) or not sent.strip():
+            raise UnusablePairing(f"the pairing this step sends with names no user id ({sent!r:.40})")
+        if not _same_user(current, sent):
+            raise PairingChanged("this Mac was paired again after this step loaded its pairing")
+        return sent
+
+    return read
 
 
 def _decide_answer(consent: object) -> Decision:
@@ -386,6 +435,8 @@ def decide(
     # `pairedUserId() == userId`).
     try:
         paired = paired_user_id()
+    except PairingChanged as exc:
+        return Decision(Cycle.PAUSED, "pairing_changed", str(exc)[:160])
     except Exception as exc:  # noqa: BLE001 — a pairing that cannot be checked
         return Decision(Cycle.PAUSED, "unverified_pairing", str(exc)[:160])
     if paired is not None:
@@ -416,9 +467,10 @@ class LocalScanGate:
     pairing's user id is read again too, and only for a "signed_in:" record
     (`paired_user_id`, `paired_user_id_from_config` unless a test says).
 
-    The cycle's steps ask `allows_upload`; the UDS `hello`, which answers the
-    app on this Mac, and the reads and writes inside a cycle ask
-    `allows_collection`.
+    The cycle's steps ask `allows_upload`, and just before an upload pass the
+    pairing they will send with (`sending`, see `pairing_sent_with`); the UDS
+    `hello`, which answers the app on this Mac, and the reads and writes
+    inside a cycle ask `allows_collection`.
     """
 
     def __init__(
@@ -439,13 +491,21 @@ class LocalScanGate:
         self._pending: tuple[threading.Thread, dict] | None = None
         self._last: tuple[Cycle, str] | None = None
 
-    def check(self, *, wait_s: float | None = None) -> Decision:
+    def check(self, *, wait_s: float | None = None, sending: object = None) -> Decision:
         """The decision for now. `wait_s` bounds how long this check waits for
         the plist read (default `READ_WAIT_S`); a read that is not done by then
-        counts as unreadable, so this check pauses."""
+        counts as unreadable, so this check pauses.
+
+        `sending`, when given, is the pairing the caller loaded and is about to
+        upload with: a sign-in then also needs the file to still be paired
+        for that pairing's user (`pairing_sent_with`)."""
+        paired_user_id = (
+            self._paired_user_id if sending is None
+            else pairing_sent_with(sending, self._paired_user_id)
+        )
         decision = decide(
             self._read(self._read_wait_s if wait_s is None else wait_s),
-            self._paired_user_id,
+            paired_user_id,
         )
         self._log_if_changed(decision)
         return decision
@@ -453,8 +513,8 @@ class LocalScanGate:
     def allows_collection(self, *, wait_s: float | None = None) -> bool:
         return self.check(wait_s=wait_s).allows_collection
 
-    def allows_upload(self, *, wait_s: float | None = None) -> bool:
-        return self.check(wait_s=wait_s).allows_upload
+    def allows_upload(self, *, wait_s: float | None = None, sending: object = None) -> bool:
+        return self.check(wait_s=wait_s, sending=sending).allows_upload
 
     def read(self, *, wait_s: float | None = None) -> MirrorRead:
         """The app's copy as it is now, read the way `check` reads it (bounded
@@ -549,6 +609,8 @@ _PAUSE_TEXT = {
     "signed_out": "signed out",
     "other_account": "signed in to an account this Mac was not paired for",
     "unverified_pairing": "signed in, and this Mac's pairing does not say which account it is for",
+    "pairing_changed": "this Mac was paired again while a step was reading; "
+                       "what it read with the old pairing is dropped",
     "no_answer": "no answer written yet",
     "undecided_local_mode": "local mode, not answered yet",
 }

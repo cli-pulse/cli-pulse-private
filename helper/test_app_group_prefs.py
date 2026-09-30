@@ -36,6 +36,7 @@ import pwd
 import shutil
 import subprocess
 import sys
+import threading
 import uuid
 from pathlib import Path
 
@@ -87,6 +88,11 @@ def writer_binary(tmp_path_factory) -> Path:
     return binary
 
 
+# How long the writer may take to answer one line. It answers in milliseconds;
+# this only turns a writer that hangs into a failure instead of a stuck job.
+WRITER_REPLY_S = 30.0
+
+
 class UserDefaultsWriter:
     """Another process writing a throwaway suite with `UserDefaults`."""
 
@@ -98,12 +104,23 @@ class UserDefaultsWriter:
         self.path = home / "Library" / "Preferences" / f"{self.suite}.plist"
         self._proc = subprocess.Popen([str(binary), self.suite], stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE, text=True, bufsize=1)
-        assert self._proc.stdout.readline().strip() == "ready"
+        assert self._reply("start") == "ready"
+
+    def _reply(self, what: str) -> str:
+        box: list[str] = []
+        reader = threading.Thread(target=lambda: box.append(self._proc.stdout.readline()),
+                                  daemon=True)
+        reader.start()
+        reader.join(WRITER_REPLY_S)
+        if reader.is_alive():
+            self._proc.kill()  # ends the readline with EOF
+            pytest.fail(f"the UserDefaults writer did not answer {what!r} within {WRITER_REPLY_S:g}s")
+        return box[0].strip() if box else ""
 
     def _send(self, line: str) -> None:
         self._proc.stdin.write(line + "\n")
         self._proc.stdin.flush()
-        assert self._proc.stdout.readline().strip() == "ok", line
+        assert self._reply(line) == "ok", line
 
     def set(self, key: str, value: str) -> None:
         self._send(f"SET {key} {value}")

@@ -349,13 +349,20 @@ def _uninstall_claude_keychain_gate() -> None:
     claude_oauth.set_keychain_gate(None)
 
 
-def _still_allowed(gate: LocalScanGate | None, what: str) -> bool:
+def _still_allowed(
+    gate: LocalScanGate | None, what: str, sending: HelperConfig | None = None,
+) -> bool:
     """Ask the app's local-scan answer and account (`local_scan_consent`), if
     this caller has a gate. Called before a step collects anything and again
     before it sends what it collected, so an answer, a sign-out or an account
     switch given mid-cycle drops the results. Every step that asks this
-    uploads, so it asks `allows_upload`: local mode reads nothing for them."""
-    if gate is None or gate.allows_upload():
+    uploads, so it asks `allows_upload`: local mode reads nothing for them.
+
+    `sending` is the pairing the step loaded and sends with. Pass it just
+    before the upload: the check then verifies that pairing, not only the file,
+    which a `pair` run while the step was reading may have rewritten for
+    another user (`local_scan_consent.pairing_sent_with`)."""
+    if gate is None or gate.allows_upload(sending=sending):
         return True
     logger.info("local scan paused: %s dropped, nothing sent", what)
     return False
@@ -421,7 +428,7 @@ def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
             params["p_metrics"] = metrics
     except Exception as exc:  # noqa: BLE001 — machine metrics must never break the heartbeat
         logger.debug("heartbeat_metrics() failed; omitting from heartbeat: %s", exc)
-    if not _still_allowed(gate, "heartbeat"):
+    if not _still_allowed(gate, "heartbeat", config):
         return False
     supabase_rpc("helper_heartbeat", params)
     logger.debug("heartbeat sent")
@@ -478,7 +485,7 @@ def sync(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
     ]
 
     provider_quotas = estimate_provider_quotas(collected_sessions)
-    if not _still_allowed(gate, "helper_sync"):
+    if not _still_allowed(gate, "helper_sync", config):
         return False
     response = supabase_rpc("helper_sync", {
         "p_device_id": config.device_id,
@@ -695,7 +702,7 @@ def _collection_cycle(
             commits = git.scanner.collect(paths)
             ingest_ok = True
             if commits:
-                if not _still_allowed(gate, "commit submit"):
+                if not _still_allowed(gate, "commit submit", config):
                     # Not submitted, and the cursor stays where it was, so an
                     # allowed cycle later picks these commits up again.
                     return False

@@ -11,9 +11,12 @@ a throwaway HOME, and check what the helper then reads and sends:
   * that a sign-in uploads only with a pairing made for that user: not paired,
     it answers the app and uploads nothing; a pairing that names no usable
     user pauses, since `load_config` would upload with it;
-  * every account record x every answer against what the #626 contract says,
-    at the gate, in a daemon cycle that loads the pairing from disk, and at
-    `hello` (the section at the end);
+  * that the check just before each upload verifies the pairing the step
+    loaded and sends with, not only the file, which a `pair` run mid-step may
+    have rewritten for another user;
+  * every account record x every answer against the #626 contract (with this
+    helper's stricter choices), at the gate, in a daemon cycle that loads the
+    pairing from disk, and at `hello` (the section at the end);
   * that the gate reads the file on every check, does not stack a second read on
     a stalled one, and does not touch a container the startup rotation is still
     stuck in;
@@ -558,9 +561,13 @@ class Recorder:
     def __init__(self, monkeypatch, on_collect=None, on_rpc=None):
         self.collected: list[str] = []
         self.sent: list[str] = []
+        # (rpc name, the device id it was sent with)
+        self.sent_as: list[tuple[str, object]] = []
         self._on_collect = on_collect or (lambda _what: None)
         self._on_rpc = on_rpc or (lambda _name: None)
-        config = types.SimpleNamespace(device_id="dev-1", helper_secret="sec", device_name="Mac")
+        # The pairing `write_pairing(home, ME)` writes, as `load_config` loads it.
+        config = types.SimpleNamespace(device_id="dev-1", helper_secret="sec", device_name="Mac",
+                                       user_id=ME)
         monkeypatch.setattr(h, "load_config", lambda: config)
         monkeypatch.setattr(h, "collect_device_snapshot", self._collect("snapshot", types.SimpleNamespace(cpu_usage=1, memory_usage=2)))
         monkeypatch.setattr(h, "collect_sessions", self._collect("sessions", []))
@@ -578,8 +585,9 @@ class Recorder:
             return result
         return _run
 
-    def _rpc(self, name, _params):
+    def _rpc(self, name, params):
         self.sent.append(name)
+        self.sent_as.append((name, params.get("p_device_id")))
         self._on_rpc(name)
         if name == "get_track_git_activity":
             return False
@@ -747,6 +755,118 @@ def test_commits_are_submitted_when_allowed(home, monkeypatch):
     assert result is True
     assert ingested == [[{"sha": "abc"}]]
     assert git.last_projects == frozenset({"/repo"})
+
+
+# ── the pairing a step sends with ──────────────────────────────
+#
+# Each step loads its pairing (`load_config`) before it reads, and sends with
+# that one. The check before the upload must therefore verify the pairing the
+# step holds, not only the file, which a `pair` run while the step was reading
+# may have rewritten for another user.
+
+
+def _pair(config_path: Path, user_id: str, device_id: str) -> None:
+    config_path.write_bytes(_loadable_config(user_id=user_id, device_id=device_id))
+
+
+# What happens to the pairing file (and the app's account) while a step reads.
+MID_STEP_CHANGES = {
+    # `pair` for another user, and the app signed in to that user: the file
+    # and the record agree, but the step still holds the old pairing.
+    "re-paired-and-switched": lambda home, cfg: (
+        _pair(cfg, OTHER, "dev-OTHER"), write_mirror(home, answer("granted", signed_in(OTHER)))),
+    "re-paired": lambda home, cfg: _pair(cfg, OTHER, "dev-OTHER"),
+    "unpaired": lambda home, cfg: cfg.unlink(),
+}
+MID_STEP = pytest.mark.parametrize("change", list(MID_STEP_CHANGES), ids=list(MID_STEP_CHANGES))
+
+
+def _paired_for_me(home, monkeypatch) -> Path:
+    config_path = home / lsc.PAIRING_FILENAME
+    monkeypatch.setattr(h, "CONFIG_PATH", config_path)
+    _pair(config_path, ME, "dev-ME")
+    write_mirror(home, answer("granted", signed_in(ME)))
+    return config_path
+
+
+@MID_STEP
+@pytest.mark.parametrize(("step", "last_read"), [("heartbeat", "sessions"), ("sync", "quotas")])
+def test_a_pairing_changed_mid_step_is_not_sent_with(home, monkeypatch, change, step, last_read):
+    config_path = _paired_for_me(home, monkeypatch)
+
+    def on_collect(what):
+        if what == last_read:  # the step's last read before its upload
+            MID_STEP_CHANGES[change](home, config_path)
+
+    rec = Recorder(monkeypatch, on_collect=on_collect)
+    monkeypatch.setattr(h, "load_config", _REAL_LOAD_CONFIG)
+    run = getattr(h, step)
+    assert run(argparse.Namespace(), gate=LocalScanGate()) is False
+    assert last_read in rec.collected  # it had loaded dev-ME and was reading
+    assert rec.sent_as == []
+    if change == "re-paired-and-switched":
+        # Control: the next step loads the new pairing and sends with it.
+        assert run(argparse.Namespace(), gate=LocalScanGate()) is True
+        assert [device for _name, device in rec.sent_as] == ["dev-OTHER"]
+
+
+@MID_STEP
+def test_commits_are_not_submitted_with_a_pairing_changed_mid_scan(home, monkeypatch, change):
+    config_path = _paired_for_me(home, monkeypatch)
+    Recorder(monkeypatch)
+    monkeypatch.setattr(h, "load_config", _REAL_LOAD_CONFIG)
+    monkeypatch.setattr(h, "project_paths_from_sessions", lambda _s: [Path("/repo")])
+
+    class Scanner:
+        def collect(self, _paths):
+            MID_STEP_CHANGES[change](home, config_path)
+            return [_Commit()]
+
+    ingested: list[object] = []
+    monkeypatch.setattr(h, "_ingest_commits_with_retry",
+                        lambda config, _payloads, batch_size: ingested.append(config.device_id))
+    git = h._GitScanState(scanner=Scanner())
+    assert h._collection_cycle(argparse.Namespace(), gate=LocalScanGate(), git=git,
+                               env_force_git=True) is False
+    assert ingested == []
+    assert git.last_projects == frozenset()  # picked up again by a later cycle
+
+
+@pytest.mark.parametrize(
+    ("sent_user", "on_disk", "record", "expected"),
+    [
+        (ME, ME, signed_in(ME), (Cycle.COLLECT, "granted")),
+        (ME.upper(), ME, signed_in(ME), (Cycle.COLLECT, "granted")),
+        (ME, OTHER, signed_in(OTHER), (Cycle.PAUSED, "pairing_changed")),
+        (OTHER, ME, signed_in(ME), (Cycle.PAUSED, "pairing_changed")),
+        (ME, OTHER, signed_in(ME), (Cycle.PAUSED, "pairing_changed")),
+        (ME, None, signed_in(ME), (Cycle.LOCAL, "not_paired")),
+        ("", ME, signed_in(ME), (Cycle.PAUSED, "unverified_pairing")),
+        ("  ", ME, signed_in(ME), (Cycle.PAUSED, "unverified_pairing")),
+        (None, ME, signed_in(ME), (Cycle.PAUSED, "unverified_pairing")),
+        (42, ME, signed_in(ME), (Cycle.PAUSED, "unverified_pairing")),
+        (ME, ME, signed_in(OTHER), (Cycle.PAUSED, "other_account")),
+        # No sign-in: the pairing is not what decides (as without `sending`).
+        (OTHER, ME, None, (Cycle.COLLECT, "granted")),
+        (OTHER, ME, "local_mode", (Cycle.LOCAL, "local_mode")),
+        (ME, ME, "signed_out", (Cycle.PAUSED, "signed_out")),
+    ],
+)
+def test_the_check_before_an_upload_verifies_the_pairing_sent_with(home, sent_user, on_disk, record, expected):
+    if on_disk is not None:
+        write_pairing(home, on_disk)
+    write_mirror(home, answer("granted", record))
+    sending = types.SimpleNamespace(user_id=sent_user, device_id="dev-1")
+    decision = LocalScanGate().check(sending=sending)
+    assert (decision.cycle, decision.reason) == expected, decision
+    assert LocalScanGate().allows_upload(sending=sending) is (expected[0] is Cycle.COLLECT)
+
+
+def test_a_config_with_no_user_id_attribute_cannot_be_verified(home):
+    write_pairing(home, ME)
+    write_mirror(home, answer("granted", signed_in(ME)))
+    decision = LocalScanGate().check(sending=types.SimpleNamespace(device_id="dev-1"))
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unverified_pairing")
 
 
 # ── what the collector does mid-cycle: token refreshes, result writes ──
@@ -1101,8 +1221,11 @@ def test_container_is_unreachable_while_the_startup_rotation_is_stuck(monkeypatc
 
 # ── every account × every answer ───────────────────────────────
 #
-# What the #626 contract says each combination does, written out here from the
-# contract rather than taken from `decide`:
+# What each combination does: the #626 contract, with this helper's documented
+# stricter choices (another account's pairing, or a pairing that names no
+# usable user, pauses instead of reading for the app; the pairing's user id is
+# compared case-insensitively). Written out here rather than taken from
+# `decide`:
 #   "upload"  - read this Mac and send heartbeat and sync;
 #   "local"   - answer the app on this Mac (`hello`), send nothing;
 #   "nothing" - read nothing, send nothing.
