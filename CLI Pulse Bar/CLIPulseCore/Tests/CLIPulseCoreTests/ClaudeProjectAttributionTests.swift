@@ -146,7 +146,7 @@ final class ClaudeProjectAttributionTests: XCTestCase {
     }
 
     func test_topLevelTranscript_withoutCwd_keepsItsPreviousLabel() throws {
-        let url = try writeTranscript("-Users-jason-cli-pulse/\(session).jsonl", cwd: nil)
+        let url = try writeTranscript("-Users-alice-cli-pulse/\(session).jsonl", cwd: nil)
         XCTAssertEqual(try attribution(url).label, "cli-pulse")
     }
 
@@ -228,8 +228,8 @@ final class ClaudeProjectAttributionTests: XCTestCase {
 
     func test_directoryName_replacesEverythingButAsciiLettersAndDigits() {
         XCTAssertEqual(
-            CostUsageScanner.claudeProjectDirectoryName(forPath: "/Users/jason/Documents/cli pulse"),
-            "-Users-jason-Documents-cli-pulse")
+            CostUsageScanner.claudeProjectDirectoryName(forPath: "/Users/alice/Documents/cli pulse"),
+            "-Users-alice-Documents-cli-pulse")
         XCTAssertEqual(
             CostUsageScanner.claudeProjectDirectoryName(forPath: "/Users/alice/.config"),
             "-Users-alice--config")

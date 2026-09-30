@@ -45,8 +45,8 @@ final class CodexQuotaWindowsTests: XCTestCase {
         XCTAssertEqual(projection?.resetsAt, now.addingTimeInterval(3 * day + 5 * hour))
     }
 
-    /// The negative control the plan asks for: a weekly window with room left
-    /// does not touch the session reading.
+    /// Negative control: a weekly window with room left does not touch the
+    /// session reading.
     func testWeeklyWithRoomDoesNotCap() {
         XCTAssertNil(RateWindow.bindingQuotaProjection(
             primary: window(used: 40, minutes: 300, resetIn: 2 * hour),
@@ -228,8 +228,8 @@ final class CodexQuotaWindowsTests: XCTestCase {
                 windowMinutes: minutes, role: role)
     }
 
-    /// The plan's case: weekly 0% left + 5h 60% left ⇒ the 5h window, and the
-    /// provider's headline, read 0% with the weekly reset.
+    /// The case this exists for: weekly 0% left + 5h 60% left ⇒ the 5h
+    /// window, and the provider's headline, read 0% with the weekly reset.
     func testExhaustedWeeklyCapsTheSessionTierAndTheHeadline() {
         let shown = QuotaBindingCap.projectedForDisplay(
             codexUsage(tiers: [sessionTier(), weeklyTier(remaining: 0)]),

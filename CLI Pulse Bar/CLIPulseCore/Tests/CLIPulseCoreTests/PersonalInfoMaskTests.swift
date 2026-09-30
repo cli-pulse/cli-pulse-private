@@ -26,7 +26,7 @@ final class PersonalInfoMaskTests: XCTestCase {
 
     func testAnAddressIsShownAsItsPositionWithTheSwitchOn() {
         let name = PersonalInfoMask.accountName(
-            label: "jason@example.com",
+            label: "alice@example.com",
             index: 1,
             accountCount: 2,
             hidePersonalInfo: true
@@ -39,20 +39,20 @@ final class PersonalInfoMaskTests: XCTestCase {
     func testTheSwitchOffShowsTheAddress() {
         XCTAssertEqual(
             PersonalInfoMask.accountName(
-                label: "jason@example.com",
+                label: "alice@example.com",
                 index: 1,
                 accountCount: 2,
                 hidePersonalInfo: false
             ),
-            "jason@example.com"
+            "alice@example.com"
         )
         XCTAssertEqual(
             PersonalInfoMask.accountLabel(
-                "jason@example.com",
+                "alice@example.com",
                 index: 0,
                 hidePersonalInfo: false
             ),
-            "jason@example.com"
+            "alice@example.com"
         )
     }
 
@@ -77,10 +77,10 @@ final class PersonalInfoMaskTests: XCTestCase {
     func testNoAtSignIsLeftOnScreen() {
         let labels = [
             "name@company",
-            "  jason@example.com  ",
-            "jason\u{FF20}example.com",
-            "jason\u{FE6B}example.com",
-            "Work (jason@example.com)",
+            "  alice@example.com  ",
+            "alice\u{FF20}example.com",
+            "alice\u{FE6B}example.com",
+            "Work (alice@example.com)",
         ]
         for (index, label) in labels.enumerated() {
             let name = PersonalInfoMask.accountName(
@@ -159,7 +159,7 @@ final class PersonalInfoMaskTests: XCTestCase {
         for locale in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
             LocaleOverrideStore.shared.set(locale)
             let name = PersonalInfoMask.accountName(
-                label: "jason@example.com",
+                label: "alice@example.com",
                 index: 1,
                 accountCount: 2,
                 hidePersonalInfo: true
@@ -183,7 +183,7 @@ final class PersonalInfoMaskTests: XCTestCase {
             L10n.providers.removeAccountTitle(
                 "Claude",
                 PersonalInfoMask.accountName(
-                    label: "jason@example.com",
+                    label: "alice@example.com",
                     index: 1,
                     accountCount: 2,
                     hidePersonalInfo: true
@@ -215,7 +215,7 @@ final class PersonalInfoMaskTests: XCTestCase {
             phone.removePersistentDomain(forName: phoneSuite)
             watch.removePersistentDomain(forName: watchSuite)
         }
-        let label = "jason@example.com"
+        let label = "alice@example.com"
 
         func sendAndShow(_ phoneChoice: Bool) -> String {
             var context: [String: Any] = ["cli_pulse_context": true]
