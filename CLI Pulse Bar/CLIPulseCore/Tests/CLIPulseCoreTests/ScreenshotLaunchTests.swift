@@ -92,6 +92,30 @@ final class ScreenshotLaunchTests: XCTestCase {
         }
     }
 
+    /// On iPad the Sessions tab is a list and a detail pane, and its rows show
+    /// no usage, cost or requests, which the set's caption promises. A capture
+    /// opens the first Active session beside the list; that session has all
+    /// three, and nothing red.
+    func test_theIPadSessionsScreenOpensTheFirstActiveSession() throws {
+        XCTAssertEqual(Launch.Screen.allCases.filter(\.opensSessionDetail), [.sessions])
+
+        let demo = DemoDataProvider.generate()
+        let now = Date()
+        let opened = try XCTUnwrap(Launch.sessionToOpen(in: demo.sessions, now: now), "no session to open")
+        let active = SessionFreshnessTierClassifier.partition(demo.sessions, now: now).active
+        XCTAssertTrue(active.contains { $0.id == opened.id }, "one of the Active section")
+        XCTAssertEqual(opened.last_active_at, active.map(\.last_active_at).max(), "the most recently active")
+        XCTAssertEqual(opened.name, "ios-dashboard", "of Demo's three newest, the first listed, in every run")
+        XCTAssertEqual(Launch.sessionToOpen(in: Array(demo.sessions.reversed()), now: now)?.name, "provider-adapters",
+                       "the tie is broken by list order, not by whatever order a sort leaves equals in")
+        XCTAssertGreaterThan(opened.total_usage, 0, "usage")
+        XCTAssertGreaterThan(opened.estimated_cost, 0, "cost")
+        XCTAssertGreaterThan(opened.requests, 0, "requests")
+        XCTAssertEqual(opened.error_count, 0, "no production session writes errors")
+
+        XCTAssertNil(Launch.sessionToOpen(in: [], now: now), "nothing to open: the pane stays as it is")
+    }
+
     /// The capture script names the screens (and so the file names 01…05) on
     /// its own. If the two lists drift, a screen is captured under another's
     /// name or not at all.
@@ -185,22 +209,138 @@ final class ScreenshotLaunchTests: XCTestCase {
         }
 
         for screen in Launch.Screen.allCases {
-            XCTAssertEqual(Launch.readinessLine(for: Launch.Request(screen: screen), state: applied(screen)),
+            XCTAssertEqual(Launch.readinessLine(for: Launch.Request(screen: screen), state: applied(screen),
+                                                shown: [screen.tab]),
                            "\(Launch.readyMarker) \(screen.rawValue)")
         }
 
         let movedAway = applied(.alerts)
         movedAway.selectedTab = .overview
-        let line = Launch.readinessLine(for: Launch.Request(screen: .alerts), state: movedAway)
+        let line = Launch.readinessLine(for: Launch.Request(screen: .alerts), state: movedAway, shown: [.overview])
         XCTAssertTrue(line.hasPrefix("\(Launch.errorMarker) alerts:"), line)
         XCTAssertTrue(line.contains("on the Overview tab, not Alerts"), line)
 
         let leftDemo = applied(.providers)
         leftDemo.isDemoMode = false
         leftDemo.isAuthenticated = false
-        let left = Launch.readinessLine(for: Launch.Request(screen: .providers), state: leftDemo)
+        let left = Launch.readinessLine(for: Launch.Request(screen: .providers), state: leftDemo,
+                                        shown: [.providers])
         XCTAssertTrue(left.hasPrefix(Launch.errorMarker), left)
         XCTAssertTrue(left.contains("not in Demo mode") && left.contains("not signed in"), left)
+    }
+
+    /// The iPad split view before 1.55: `selectedTab` said Alerts, the screen
+    /// showed the Overview, and READY checked only `selectedTab`. READY now
+    /// also needs the requested tab's screen to be the one showing, and
+    /// nothing else.
+    @MainActor
+    func test_readyNeedsTheRequestedScreenShowing_notOnlySelected() throws {
+        let suite = "ScreenshotLaunchTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        for screen in Launch.Screen.allCases where screen.tab != .overview {
+            let state = AppState(
+                runtimeEnvironment: productionRuntime.restrictedForScreenshotCapture(),
+                defaults: defaults,
+                performLaunchSetup: false)
+            Launch.apply(Launch.Request(screen: screen), to: state)
+            XCTAssertEqual(state.selectedTab, screen.tab, "positive control: the selection is right")
+
+            let line = Launch.readinessLine(for: Launch.Request(screen: screen), state: state, shown: [.overview])
+            XCTAssertTrue(line.hasPrefix("\(Launch.errorMarker) \(screen.rawValue):"), line)
+            XCTAssertTrue(line.contains("showing the Overview screen, not \(screen.tab.rawValue)"), line)
+            XCTAssertFalse(line.contains("on the Overview tab"), "the selection is not what is wrong: \(line)")
+        }
+
+        let state = AppState(
+            runtimeEnvironment: productionRuntime.restrictedForScreenshotCapture(),
+            defaults: defaults,
+            performLaunchSetup: false)
+        Launch.apply(Launch.Request(screen: .sessions), to: state)
+        let request = Launch.Request(screen: .sessions)
+        let none = Launch.readinessLine(for: request, state: state, shown: [])
+        XCTAssertTrue(none.hasPrefix(Launch.errorMarker) && none.contains("showing no tab's screen"), none)
+        let two = Launch.readinessLine(for: request, state: state, shown: [.sessions, .overview])
+        XCTAssertTrue(two.hasPrefix(Launch.errorMarker)
+                      && two.contains("showing the Overview and Sessions screens, not Sessions"), two)
+    }
+
+    @MainActor
+    func test_shownTabsCountsEachScreenInAndOut() {
+        let shown = Launch.ShownTabs()
+        XCTAssertEqual(shown.tabs, [])
+        shown.appeared(.overview)
+        shown.appeared(.alerts)
+        XCTAssertEqual(shown.tabs, [.overview, .alerts])
+        shown.disappeared(.overview)
+        XCTAssertEqual(shown.tabs, [.alerts])
+
+        // Two copies of one screen: the first to go leaves the other counted.
+        shown.appeared(.alerts)
+        shown.disappeared(.alerts)
+        XCTAssertEqual(shown.tabs, [.alerts])
+        shown.disappeared(.alerts)
+        XCTAssertEqual(shown.tabs, [])
+
+        // A disappearance with nothing showing does not go below zero, so the
+        // next appearance still counts.
+        shown.disappeared(.providers)
+        shown.appeared(.providers)
+        XCTAssertEqual(shown.tabs, [.providers])
+    }
+
+    /// The iPad fix, held in the source: neither layout decides on its own
+    /// which screen a tab shows, and the iPad keeps no selection of its own.
+    ///
+    /// iOSMainView.swift is in the iOS app target, which has no test bundle, so
+    /// this reads it (like `test_everyUseIsInsideIfDebug`). What it checks at
+    /// run time is the READY line above: every capture asserts the screen that
+    /// reported itself showing.
+    func test_bothIOSLayoutsShowEveryTabThroughTheOneScreenThatReportsIt() throws {
+        let source = try String(contentsOf: Self.appSourceRoot
+            .appendingPathComponent("CLI Pulse Bar iOS/iOSMainView.swift"), encoding: .utf8)
+        func section(from start: String, to end: String?) throws -> String {
+            let lower = try XCTUnwrap(source.range(of: start), "no \(start) in iOSMainView.swift").lowerBound
+            let rest = source[lower...]
+            if let end, let upper = rest.range(of: end)?.lowerBound { return String(rest[..<upper]) }
+            return String(rest)
+        }
+        func matches(_ pattern: String, in text: String) throws -> [[String]] {
+            let regex = try NSRegularExpression(pattern: pattern)
+            return regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).map { m in
+                (1..<m.numberOfRanges).map { String(text[Range(m.range(at: $0), in: text)!]) }
+            }
+        }
+        let iOSTabs = ["overview", "providers", "sessions", "alerts", "settings"]
+
+        // The iPhone: every tab of the tab bar is built by iOSTabScreen, for its own tag.
+        let iPhone = try section(from: "private var iPhoneTabView", to: "struct iOSTabScreen")
+        let built = try matches(#"iOSTabScreen\(tab: \.(\w+)\)"#, in: iPhone).map { $0[0] }
+        let tagged = try matches(#"\.tag\(AppState\.Tab\.(\w+)\)"#, in: iPhone).map { $0[0] }
+        XCTAssertEqual(built, iOSTabs, "the iPhone's tabs, each through iOSTabScreen")
+        XCTAssertEqual(tagged, built, "each built for its own tag")
+
+        // iOSTabScreen: each screen reports the tab it is. Machine and Pet are
+        // macOS-only and fall back to the Overview's screen, which says Overview.
+        let screen = try section(from: "struct iOSTabScreen", to: "struct iPadSplitView")
+        let reported = try matches(
+            #"iOS(\w+)Tab\(\)\s*#if DEBUG\s*\.modifier\(ScreenshotLaunch\.ShowsTab\(\.(\w+)\)\)\s*#endif"#,
+            in: screen)
+        XCTAssertEqual(reported.map { $0[0].lowercased() }, iOSTabs, "every tab's screen, once")
+        for pair in reported {
+            XCTAssertEqual(pair[1], pair[0].lowercased(), "iOS\(pair[0])Tab reports itself as .\(pair[1])")
+        }
+        XCTAssertTrue(screen.contains("case .overview, .machine, .pet:"), "the macOS-only tabs fall back to the Overview")
+
+        // The iPad: the sidebar offers the iPhone's tabs, writes the one
+        // selection, and the detail is that selection's screen.
+        let iPad = try section(from: "struct iPadSplitView", to: nil)
+        XCTAssertEqual(try matches(#"sidebarButton\(\s*\.(\w+)"#, in: iPad).map { $0[0] }, iOSTabs)
+        XCTAssertTrue(iPad.contains("iOSTabScreen(tab: state.selectedTab)"), "the detail shows the selection's screen")
+        XCTAssertTrue(iPad.contains("state.selectedTab = tab"), "the sidebar writes the one selection")
+        XCTAssertFalse(iPad.contains("@State"), "a selection of its own is what started every iPad capture on the Overview")
+        XCTAssertFalse(iPad.contains("switch "), "a switch here would decide the screen apart from iOSTabScreen")
     }
 
     /// The Recent tier on the Sessions screen and a named Gemini window on

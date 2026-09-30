@@ -39,19 +39,21 @@ CHECKS
                     every locale the repo carries must exist on the store.
 3. Screenshot drift  every live screenshot must match the local composed PNG
                     of the same name (decoded pixels; ASC re-encodes). The
-                    iPhone set (APP_IPHONE_67) and the Mac set (APP_DESKTOP)
-                    per locale, each against that locale's language
-                    (scripts/appstore_screenshots.py); iPad on en-US.
+                    iPhone set (APP_IPHONE_67), the 13" iPad set
+                    (APP_IPAD_PRO_3GEN_129) and the Mac set (APP_DESKTOP) per
+                    locale, each against that locale's language
+                    (scripts/appstore_screenshots.py SETS). A set of another
+                    display type is noted on en-US and not compared.
                     Catches "regenerated but never uploaded", which is the
                     case that keeps recurring.
 
 4. Panels           with --require-shots only: every locale with listing texts
-                    has its five composed iPhone screenshots and its six Mac
-                    ones, each one App Store Connect would accept, drawn from
-                    the committed raws (and, for the Mac, from a clean store
-                    render: scripts/appstore_screenshots.py render_problems),
-                    or deliberately falls back to en-US's. Repo-only; CI runs
-                    it together with --texts-only.
+                    has its five composed iPhone screenshots, its five iPad
+                    ones and its six Mac ones, each one App Store Connect
+                    would accept, drawn from the committed raws (and, for the
+                    Mac, from a clean store render: scripts/appstore_screenshots.py
+                    render_problems), or deliberately falls back to en-US's.
+                    Repo-only; CI runs it together with --texts-only.
 
 Before any of that it validates the repo texts themselves — the part that needs
 no key, and so also runs in CI (repo-hygiene.yml) as `--texts-only`:
@@ -92,7 +94,7 @@ pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
     python3 scripts/asc_listing_preflight.py --texts-only    # repo texts only, no key
-    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone and Mac panels (CI)
+    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone, iPad and Mac panels (CI)
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
@@ -154,15 +156,6 @@ KEY_CANDIDATES = [
 TIER_CLAIMS = {
     "Team": "team",
     "Lifetime": "lifetime",
-}
-
-# Where the composed marketing PNGs live, by ASC display type, for the sets
-# that exist on en-US only. APP_IPHONE_67 and APP_DESKTOP are per locale:
-# shots.composed_dir(<language>, platform=...), the six-language panels
-# (scripts/appstore_screenshots.py).
-LOCAL_SHOTS = {
-    "APP_IPAD_PRO_3GEN_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
-    "APP_IPAD_PRO_129": REPO / "CLI Pulse Bar/screenshots/ipad/composed",
 }
 
 LIVE_STATES = {"READY_FOR_SALE", "PENDING_DEVELOPER_RELEASE"}
@@ -381,8 +374,9 @@ def check_repo_texts(root: Path | None = None) -> bool:
 
 def check_repo_shots(root: Path | None = None) -> bool:
     """Check 4 (--require-shots): every locale with listing texts has its
-    composed iPhone panels (five, 1290x2796) and Mac panels (six, 2880x1800),
-    each uploadable (RGB, no alpha, <=10 MB), or is mapped to FALLBACK and
+    composed iPhone panels (five, 1290x2796), iPad panels (five, 2064x2752) and
+    Mac panels (six, 2880x1800), each uploadable (RGB, no alpha, <=10 MB), or is
+    mapped to FALLBACK and
     shows en-US's; and the committed raws are the ones each set's compose.json
     records it was drawn from (md5), so it can be recomposed without a
     simulator or a QA build. The Mac raws must also still be a clean store
@@ -393,7 +387,7 @@ def check_repo_shots(root: Path | None = None) -> bool:
     (test_asc_listing_preflight.sh builds text-only fixtures), not because the
     panels may be missing."""
     ok = True
-    for plat in shots.PLATFORMS.values():
+    for plat in shots.SETS.values():
         problems = shots.require_shots_problems(listing.LOCALE_SOURCES, root, platform=plat)
         print(f"repo {plat.name} screenshots, {plat.display_type} (--require-shots):")
         for loc in listing.LOCALE_SOURCES:
@@ -411,9 +405,18 @@ def check_repo_shots(root: Path | None = None) -> bool:
 
 
 def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
-                local_dir: Path | None) -> bool:
+                local_dir: Path | None, managed: bool = False) -> bool:
     """Compare one live screenshot set with the local composed PNGs of the same
-    names. True if anything failed."""
+    names. True if anything failed.
+
+    `managed`: the set is one this repo composes whole for the locale (the
+    iPhone, iPad and Mac sets, scripts/appstore_screenshots.py SETS), which the
+    pusher replaces whole. There a live screenshot with no local panel of its
+    name is a set nobody replaced, and fails: App Store Connect copies the
+    previous version's screenshots onto a new version, so the April 2026 iPad
+    set (01_overview_2752x2064.png ... 05_settings_2752x2064.png, the owner's
+    real account) sat on 1.55.0 under names no local panel has, and the old
+    note-only rule would have printed PREFLIGHT OK over it."""
     failed = False
     live_shots = asc.get(
         f"/appScreenshotSets/{screenshot_set['id']}/appScreenshots",
@@ -446,7 +449,13 @@ def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
         tmpl = asset.get("templateUrl")
         local = local_dir / name
         if not local.exists():
-            print(f"  note  {tag} {name}: live, but no local file at {local.relative_to(REPO)}")
+            if managed:
+                print(f"  FAIL  {tag} {name}: live, but not one of the panels in {_shown(local_dir)}; "
+                      "the store still holds a set this repo no longer makes. Push the set "
+                      "(scripts/asc_push_screenshots.py), which replaces it whole")
+                failed = True
+            else:
+                print(f"  note  {tag} {name}: live, but no local file at {_shown(local)}")
             continue
         if not tmpl:
             print(f"  FAIL  {tag} {name}: live shot has no downloadable asset URL")
@@ -490,6 +499,14 @@ def sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _shown(path: Path) -> str:
+    """`path` relative to the checkout, for a message (as is, if it is elsewhere)."""
+    try:
+        return str(path.relative_to(REPO))
+    except ValueError:
+        return str(path)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--whatsnew-dir", type=Path,
@@ -504,7 +521,7 @@ def main() -> int:
     ap.add_argument("--root", type=Path,
                     help="repo root to validate (with --texts-only; for the self-test)")
     ap.add_argument("--require-shots", action="store_true",
-                    help="also require every listing locale's composed iPhone and Mac panels "
+                    help="also require every listing locale's composed iPhone, iPad and Mac panels "
                          "(check 4; repo-only, works with --texts-only)")
     ap.add_argument("--whatsnew-unwritten-ok", action="store_true",
                     help="with --whatsnew-dir, before asc_submit.py --submit has run: an EMPTY "
@@ -525,17 +542,18 @@ def main() -> int:
     if args.require_shots:
         shots_ok = check_repo_shots(args.root)
     else:
-        print("repo iPhone and Mac screenshots: not checked (--require-shots)")
+        print("repo iPhone, iPad and Mac screenshots: not checked (--require-shots)")
     if args.texts_only:
         print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
         if args.require_shots:
             print("SHOTS OK" if shots_ok else "SHOTS INCOMPLETE — see each FAIL line above. "
                   "Missing iPhone panels or captures: CLI Pulse Bar/scripts/capture_ios_screenshots.sh, "
-                  "then compose_appstore_ios_screenshots.py --all. Missing Mac panels or renders: "
+                  "then compose_appstore_ios_screenshots.py --all (iPad: both with --set ipad). "
+                  "Missing Mac panels or renders: "
                   "scripts/render_macos_qa_views.sh --set store, then "
                   "compose_appstore_macos_screenshots.py --all. Stale captions, or captures "
-                  "that are not the recorded ones: recompose from ios-raw / macos-raw (--all), "
-                  "no simulator or QA build needed.")
+                  "that are not the recorded ones: recompose from ios-raw / ipad-raw / macos-raw "
+                  "(--all), no simulator or QA build needed.")
         return 0 if texts_ok and shots_ok else 1
 
     _load_http_deps()
@@ -664,13 +682,15 @@ def main() -> int:
             print("  note  What's New not compared: pass --whatsnew-dir <the release's notes>")
 
         # ── 3. screenshot drift ───────────────────────────────────────────
-        # The iPhone and Mac sets are per locale (scripts/appstore_screenshots.py
+        # The iPhone, iPad and Mac sets are per locale (scripts/appstore_screenshots.py
         # maps each locale to its language's panels; a locale with no set of
-        # its own is shown en-US's). The iPad set exists on en-US only, which
-        # every other locale inherits, so it is compared there alone.
+        # its own is shown en-US's). Until 1.55 the iPad set existed on en-US
+        # only (and zh-Hans held the same English images) and was compared
+        # against the retired screenshots/ipad/; any other display type is
+        # still noted on en-US and not compared.
         if args.skip_screenshots:
             continue
-        per_locale = {p.display_type: p for p in shots.PLATFORMS.values()}
+        per_locale = shots.SETS
         for loc_row in locs["data"]:
             locale = loc_row["attributes"].get("locale")
             is_en = locale == "en-US"
@@ -686,10 +706,10 @@ def main() -> int:
                         continue
                     local_dir = shots.composed_dir(shot_lang or "en", platform=per_locale[dtype])
                 elif is_en:
-                    local_dir = LOCAL_SHOTS.get(dtype)
+                    local_dir = None   # compare_set notes it: no local panels of this type
                 else:
                     continue
-                failed |= compare_set(asc, locale, st, dtype, local_dir)
+                failed |= compare_set(asc, locale, st, dtype, local_dir, managed=dtype in per_locale)
 
     if not checked_any:
         die("no live version was checked on any platform.")

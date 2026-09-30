@@ -167,9 +167,13 @@ python3 scripts/asc_submit.py --create-version ios --version 1.54.0 \
 python3 scripts/asc_push_listing.py --version 1.54.0 --platform IOS
 python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
 
-# 3. Screenshots, per locale (scripts/asc_push_screenshots.py): iPhone on IOS,
-#    the six-language Mac set on MAC_OS
+# 3. Screenshots, per locale (scripts/asc_push_screenshots.py): iPhone and the
+#    13" iPad on IOS, the six-language Mac set on MAC_OS. App Store Connect
+#    copies the previous version's screenshots onto a new version, so a set
+#    not pushed is the old one, not none (step 4 fails on it)
 python3 scripts/asc_push_screenshots.py --platform IOS --version 1.54.0      # then --apply
+python3 scripts/asc_push_screenshots.py --platform IOS --display-type APP_IPAD_PRO_3GEN_129 \
+    --version 1.54.0                                                         # then --apply
 
 # 4. The store against the repo, for the version being prepared. What's New is
 #    still empty here (step 5 writes it): --whatsnew-unwritten-ok reports that
@@ -402,7 +406,10 @@ cannot answer:
    text and subtitle vs `CLI Pulse Bar/appstore/<locale>/`, and every repo
    locale present on the store.
 3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
-   same name, compared on decoded pixels because ASC re-encodes on ingest.
+   same name, compared on decoded pixels because ASC re-encodes on ingest. In
+   the iPhone, iPad and Mac sets, which this repo composes whole per locale, a
+   live screenshot with no local panel of its name fails: that is a set nobody
+   replaced (the April 2026 iPad set would have reached 1.55.0 that way).
 
 Check 5, **What's New** (with `--whatsnew-dir`), compares every localization of
 the version, per platform, with the text `asc_submit.py` would write; empty
@@ -419,9 +426,9 @@ release-time step on the owner's machine. Exit 2 means it could not check, which
 is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
 copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
-listing locale's five composed iPhone panels and six composed Mac panels, their
-`compose.json`, the committed raws they were drawn from, and for the Mac a
-`render.json` that says a clean store render drew them).
+listing locale's five composed iPhone panels, five composed iPad panels and six
+composed Mac panels, their `compose.json`, the committed raws they were drawn
+from, and for the Mac a `render.json` that says a clean store render drew them).
 
 ### iPhone screenshots (six languages)
 
@@ -453,6 +460,9 @@ submission only). App Store Connect reports a panel COMPLETE before it fills
 in its checksum, so the read-back, and a rerun that finds such a panel, wait
 for the checksum rather than calling it a mismatch or replacing it.
 
+The same launch, capture script and compositor make the iPad set (below): a
+caption change recomposes both.
+
 The raw captures and the composed sets are committed (`ios-raw/<lang>/`,
 `ios-composed/<lang>/` with `compose.json`), and CI fails if a listing locale's
 set is missing or not what a clean compose run wrote, including a set whose
@@ -465,6 +475,47 @@ so a recapture needs its recompose committed with it too, and the committed
 captures are always the ones behind the committed panels. The hand-shot 1.53.0
 set (`screenshots/ios/`, `screenshots/ios-zh/`) was retired with the first
 capture in this layout.
+
+### iPad screenshots (six languages)
+
+The iOS app runs on iPad (`TARGETED_DEVICE_FAMILY = 1,2`), so App Store Connect
+requires a 13" iPad set (`APP_IPAD_PRO_3GEN_129`) to submit it. It is the
+iPhone set's five screens and captions, captured by the same DEBUG launch on
+the existing `iPad Pro 13-inch (M5)` simulator, where the app shows its own
+iPad layout (the sidebar beside the screen), in portrait, 2064x2752, the size
+of the panel. Never put iPhone captures on an iPad canvas: App Review rejects
+iPhone screenshots dressed as iPad ones (guideline 2.3.3), and every step here
+refuses them (the capture script checks the simulator's family and each
+capture's size, the compositor each raw's size, the pusher and
+`--require-shots` each panel's).
+
+```bash
+"CLI Pulse Bar/scripts/capture_ios_screenshots.sh" --set ipad --app <Debug iphonesimulator .app>
+                                                   # -> screenshots/ipad-raw/<lang>/
+python3 "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" --set ipad --all   # -> ipad-composed/<lang>/
+python3 scripts/asc_push_screenshots.py --display-type APP_IPAD_PRO_3GEN_129 --version 1.55.0   # dry run
+python3 scripts/asc_push_screenshots.py --apply --platform IOS --display-type APP_IPAD_PRO_3GEN_129 \
+    --version 1.55.0
+python3 scripts/asc_listing_preflight.py --texts-only --require-shots
+```
+
+The capture's READY line is printed only when the requested tab's screen
+reports itself showing (`ScreenshotLaunch.ShowsTab`), not only when
+`state.selectedTab` names it: until 1.55 the iPad split view kept a selection
+of its own that started on the Overview, so an iPad capture of any screen
+would have been the Overview under that screen's name, READY and all. The
+pusher treats the iPad set as it does the iPhone's (compose.json, upload
+before delete, rollback, read-back) and touches only the `APP_IPAD_PRO_3GEN_129`
+sets of the IOS version, creating the ones a locale lacks (1.54.0 had an iPad
+set on en-US and zh-Hans only, both English). Its `compose.json` records the
+Pillow it was composed with, and the committed sets recompose byte for byte
+with that version (`scripts/test_appstore_screenshots.py`).
+
+The April 2026 set (`screenshots/ipad/`: English only, captured on a real iPad
+signed in to the owner's account, with real project names, paths, alerts and
+subscriptions, and cards and settings the app no longer has), its compositor
+`compose_appstore_ipad_screenshots.py` and `generate_ipad_screenshots.swift`
+were retired for 1.55.0. Git history keeps them; nothing reads them.
 
 ### Mac screenshots (six languages)
 

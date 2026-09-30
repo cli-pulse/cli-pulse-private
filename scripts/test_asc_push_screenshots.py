@@ -36,6 +36,12 @@ of the endpoints the pusher uses and checks what it WOULD do:
     with 4 deletes on 8 live and 5 on 9, and a failure after making room says
     how many of the live set were already gone;
   * a locale without an iPhone set gets one created;
+  * --display-type APP_IPAD_PRO_3GEN_129 pushes the iPad panels to the IOS
+    version's 13" iPad sets only (creating the missing ones, as the live store
+    has them on two locales), never the iPhone sets beside them; refuses
+    iPhone-sized panels, a set without compose.json, the MAC_OS platform, a
+    version in review, and a write without --platform; and a second run
+    writes nothing;
   * --locale limits the writes;
   * an upload part is sent with the headers App Store Connect named and never
     the API's bearer token.
@@ -229,16 +235,23 @@ class FakeASC:
 
 
 def base_store(state: str = "PREPARE_FOR_SUBMISSION", old_per_set: int = 5,
-               drop_locale: str | None = None, no_set_for: str | None = None) -> dict:
+               drop_locale: str | None = None, no_set_for: str | None = None,
+               ipad_locales=None, ipad_old: int = 1) -> dict:
+    """`ipad_locales`: the locales with an iPad set (default every one), each of
+    `ipad_old` old panels."""
     vlocs = {f"vl-{loc}": {"locale": loc} for loc in ALL if loc != drop_locale}
     sets, shots_tbl = {}, {}
     for lid, attrs in vlocs.items():
         # The iPad set comes first, so a pusher that took the first set it saw
         # would write to it.
         ipad = f"ipad-{attrs['locale']}"
-        sets[ipad] = {"loc": lid, "type": "APP_IPAD_PRO_3GEN_129", "shots": [f"{ipad}-0"]}
-        shots_tbl[f"{ipad}-0"] = {"fileName": "ipad.png", "fileSize": 7, "state": "COMPLETE",
-                                  "sourceFileChecksum": "1" * 32, "set": ipad}
+        if ipad_locales is None or attrs["locale"] in ipad_locales:
+            sets[ipad] = {"loc": lid, "type": "APP_IPAD_PRO_3GEN_129", "shots": []}
+            for n in range(ipad_old):
+                shots_tbl[f"{ipad}-{n}"] = {"fileName": "ipad.png" if n == 0 else f"ipad_{n}.png",
+                                            "fileSize": 7, "state": "COMPLETE",
+                                            "sourceFileChecksum": "1" * 32, "set": ipad}
+                sets[ipad]["shots"].append(f"{ipad}-{n}")
         if attrs["locale"] != no_set_for:
             sid = f"set-{attrs['locale']}"
             sets[sid] = {"loc": lid, "type": "APP_IPHONE_67", "shots": []}
@@ -816,6 +829,155 @@ try:
           code == 1 and FakeASC.constructed == 0 and "not the one compose.json records" in out, out)
     for p_ in TMP.rglob(shots.RENDER_MANIFEST):
         p_.unlink()
+finally:
+    shots.REPO = REAL_REPO
+    pusher.ShotsASC = RealShotsASC
+
+# ── the iPad set: --platform IOS --display-type APP_IPAD_PRO_3GEN_129 ────────
+# The live store as the 1.55 prep found it: a 13" iPad set of five panels on
+# en-US and zh-Hans only, beside every locale's iPhone set on the same IOS
+# version. The iPad panels must go to the iPad sets alone.
+IPAD = shots.IPAD
+IPAD_W, IPAD_H = IPAD.canvas
+IPAD_TYPE = "APP_IPAD_PRO_3GEN_129"
+IPAD_ARGS = ("--platform", "IOS", "--display-type", IPAD_TYPE)
+
+
+def make_ipad_panels(lang: str, *, width: int = IPAD_W, height: int = IPAD_H,
+                     manifest: bool = True) -> None:
+    for i, p in enumerate(shots.expected_composed(lang, TMP, platform=IPAD)):
+        shots.write_png(p, width, height)
+        p.write_bytes(p.read_bytes() + b"ipad" + lang.encode() + bytes([i]))
+    if manifest:
+        shots.write_manifest(shots.composed_dir(lang, TMP, platform=IPAD), lang, platform=IPAD)
+
+
+def fresh_ipad_repo(**kw) -> None:
+    fresh_repo()
+    for lang in shots.LANGS:
+        make_ipad_panels(lang, **(kw if lang == "ja" else {}))
+
+
+def fresh_ipad(**kw) -> None:
+    fresh(**kw)
+    FakeASC.store = base_store(ipad_locales={"en-US", "zh-Hans"}, ipad_old=5,
+                               **{k: v for k, v in kw.items() if k == "state"})
+
+
+def ipad_files(loc: str) -> list[tuple[str, str]]:
+    s = FakeASC.store
+    sid = next((k for k, v in s["sets"].items()
+                if v["type"] == IPAD_TYPE and s["vlocs"]["v-new"][v["loc"]]["locale"] == loc), None)
+    return [] if sid is None else [(s["shots"][i]["fileName"], s["shots"][i].get("sourceFileChecksum"))
+                                   for i in s["sets"][sid]["shots"]]
+
+
+def ipad_want(lang: str) -> list[tuple[str, str]]:
+    return [(p.name, hashlib.md5(p.read_bytes()).hexdigest())
+            for p in shots.expected_composed(lang, TMP, platform=IPAD)]
+
+
+def iphone_sets() -> dict:
+    s = FakeASC.store
+    return {k: [(i, dict(s["shots"][i])) for i in v["shots"]] for k, v in s["sets"].items()
+            if v["type"] == "APP_IPHONE_67"}
+
+
+shots.REPO = TMP
+pusher.ShotsASC = FakeASC
+try:
+    # I1. a dry run names the iPad set, writes nothing
+    fresh_ipad_repo()
+    fresh_ipad()
+    code, out = run("--display-type", IPAD_TYPE, "--version", "1.54.0")
+    check("iPad dry run: exits 0, writes nothing, lists the 2064x2752 panels, and would create five sets",
+          code == 0 and not writes() and "=== IOS 1.54.0" in out
+          and "local panels (iPad, APP_IPAD_PRO_3GEN_129, 2064x2752)" in out
+          and "01_overview_2064x2752.png" in out and out.count("(replace)") == len(ALL)
+          and out.count(f"no {IPAD_TYPE} set yet: --apply creates one") == 5
+          and "untouched: APP_IPHONE_67" in out, out)
+
+    # I2. the real apply: only the iPad sets change
+    fresh_ipad_repo()
+    fresh_ipad()
+    before = iphone_sets()
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("iPad apply exits 0 and verifies", code == 0 and "APPLY OK" in out, out)
+    bad = [loc for loc in ALL if ipad_files(loc) != ipad_want(shots.SHOT_SOURCES[loc])]
+    check("every locale's iPad set holds exactly the five new iPad panels, in order, with their md5",
+          not bad, str({loc: ipad_files(loc) for loc in bad})[:1500])
+    check("es-ES and es-MX got the same Spanish iPad files", ipad_files("es-ES") == ipad_files("es-MX"))
+    created = [p for m, p in FakeASC.log if (m, p) == ("POST", "/appScreenshotSets")]
+    check("an iPad set was created for each of the five locales without one",
+          len(created) == 5 and sum(1 for v in FakeASC.store["sets"].values() if v["type"] == IPAD_TYPE)
+          == len(ALL), str(FakeASC.log)[:800])
+    check("the iPhone sets beside them are exactly as they were, and no write named one",
+          iphone_sets() == before
+          and not any(any(f"/appScreenshotSets/set-{loc}/" in p for loc in ALL) or "old-" in p
+                      for _, p in FakeASC.log),
+          str(FakeASC.log)[:800])
+
+    # I3. idempotent
+    FakeASC.log = []
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("a second iPad apply writes nothing", code == 0 and not writes()
+          and out.count("nothing to do") == len(ALL), out)
+
+    # I4. iPhone captures dressed as iPad panels, or no compose.json: refused before contact
+    fresh_ipad_repo(width=1290, height=2796)
+    fresh_ipad()
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("iPhone-sized panels in the iPad set are refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "1290x2796, expected 2064x2752" in out, out)
+    fresh_ipad_repo(manifest=False)
+    fresh_ipad()
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("an iPad set no clean compose run wrote is refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "compose.json is missing" in out, out)
+    fresh_ipad_repo()
+    ko_ipad = shots.composed_dir("ko", TMP, platform=IPAD)
+    for p_ in ko_ipad.glob("*.png"):
+        p_.unlink()
+    (ko_ipad / shots.MANIFEST).unlink()
+    ko_ipad.rmdir()
+    fresh_ipad()
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("a language without its iPad set is refused, store never contacted (the iPhone set is not a stand-in)",
+          code == 1 and FakeASC.constructed == 0 and "ipad-composed/ko/ does not exist" in out, out)
+
+    # I5. the wrong platform, no platform, a version in review
+    fresh_ipad_repo()
+    fresh_ipad()
+    code, out = run("--apply", "--platform", "MAC_OS", "--display-type", IPAD_TYPE, "--version", "1.54.0")
+    check("the iPad set with --platform MAC_OS is refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "belongs to the IOS version" in out, out)
+    code, out = run("--apply", "--platform", "IOS", "--display-type", "APP_DESKTOP", "--version", "1.54.0")
+    check("... and the Mac set with --platform IOS", code == 1 and FakeASC.constructed == 0
+          and "belongs to the MAC_OS version" in out, out)
+    code, out = run("--apply", "--display-type", IPAD_TYPE, "--version", "1.54.0")
+    check("an iPad write without --platform is refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "--platform" in out, out)
+    fresh_ipad(state="WAITING_FOR_REVIEW")
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
+    check("an iPad write while iOS waits for review is refused with zero writes and the iOS hint",
+          code == 1 and not writes() and "Withdraw the iOS submission" in out, out)
+
+    # I6. a panel the store fails: the old iPad set is left as it was
+    fresh_ipad()
+    FakeASC.fail_processing = {"04_sessions_2064x2752.png"}
+    old_en = ipad_files("en-US")
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "en-US")
+    check("an iPad panel the store fails: the new ones are removed, the five old ones intact",
+          code == 1 and ipad_files("en-US") == old_en and len(old_en) == 5
+          and "the live set is untouched" in out, out)
+
+    # I7. --locale
+    fresh_ipad()
+    code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0", "--locale", "zh-Hans")
+    touched = {p for m, p in FakeASC.log if m == "DELETE"}
+    check("--locale zh-Hans replaces only zh-Hans's iPad set",
+          code == 0 and ipad_files("zh-Hans") == ipad_want("zh-Hans")
+          and touched == {f"/appScreenshots/ipad-zh-Hans-{n}" for n in range(5)}, str(FakeASC.log)[:600])
 finally:
     shots.REPO = REAL_REPO
     pusher.ShotsASC = RealShotsASC

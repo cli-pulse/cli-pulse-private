@@ -74,7 +74,7 @@ struct iOSMainView: View {
 
     private var iPhoneTabView: some View {
         TabView(selection: $state.selectedTab) {
-            iOSOverviewTab()
+            iOSTabScreen(tab: .overview)
                 .environmentObject(state)
                 .environmentObject(authState)
                 .environmentObject(alertState)
@@ -84,7 +84,7 @@ struct iOSMainView: View {
                 }
                 .tag(AppState.Tab.overview)
 
-            iOSProvidersTab()
+            iOSTabScreen(tab: .providers)
                 .environmentObject(state)
                 .environmentObject(alertState)
                 .environmentObject(providerState)
@@ -95,7 +95,7 @@ struct iOSMainView: View {
                 // number of providers asks for none (the Alerts tab's does).
                 .tag(AppState.Tab.providers)
 
-            iOSSessionsTab()
+            iOSTabScreen(tab: .sessions)
                 .environmentObject(state)
                 .environmentObject(authState)
                 .environmentObject(alertState)
@@ -105,7 +105,7 @@ struct iOSMainView: View {
                 }
                 .tag(AppState.Tab.sessions)
 
-            iOSAlertsTab()
+            iOSTabScreen(tab: .alerts)
                 .environmentObject(state)
                 .environmentObject(authState)
                 .environmentObject(alertState)
@@ -116,7 +116,7 @@ struct iOSMainView: View {
                 .badge(alertState.alerts.filter { !$0.is_resolved }.count)
                 .tag(AppState.Tab.alerts)
 
-            iOSSettingsTab()
+            iOSTabScreen(tab: .settings)
                 .environmentObject(state)
                 .environmentObject(authState)
                 .environmentObject(alertState)
@@ -130,21 +130,81 @@ struct iOSMainView: View {
     }
 }
 
+// MARK: - One tab's screen
+
+/// The screen for one tab, the same in both layouts: the iPhone's tab bar and
+/// the iPad's split view build every tab through this.
+///
+/// In a DEBUG build each screen also reports itself as showing
+/// (`ScreenshotLaunch.ShowsTab`), so the screenshot capture's READY line checks
+/// what the layout shows, not only what `state.selectedTab` says. On iPad the
+/// two used to differ: the split view kept a selection of its own that started
+/// on the Overview and followed `selectedTab` only when it changed, so a
+/// capture launch, which sets the tab before the view exists, showed the
+/// Overview under every screen's name.
+struct iOSTabScreen: View {
+    let tab: AppState.Tab
+
+    var body: some View {
+        switch tab {
+        case .overview, .machine, .pet:
+            // Machine (reads the local Mac's helper) and Pet are macOS-only
+            // tabs: iOS offers neither in its tab bar or sidebar, so those two
+            // arms are unreachable and fall back to the Overview to satisfy the
+            // exhaustive switch.
+            iOSOverviewTab()
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ShowsTab(.overview))
+                #endif
+        case .providers:
+            iOSProvidersTab()
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ShowsTab(.providers))
+                #endif
+        case .sessions:
+            iOSSessionsTab()
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ShowsTab(.sessions))
+                #endif
+        case .alerts:
+            iOSAlertsTab()
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ShowsTab(.alerts))
+                #endif
+        case .settings:
+            iOSSettingsTab()
+                #if DEBUG
+                .modifier(ScreenshotLaunch.ShowsTab(.settings))
+                #endif
+        }
+    }
+}
+
 // MARK: - iPad Split View
 
+/// The regular-width layout: a sidebar of the tabs, the selected tab's screen
+/// beside it.
+///
+/// The selection is `state.selectedTab`, the one the iPhone's tab bar,
+/// notification taps (iOSAppDelegate), the keyboard shortcuts and the
+/// screenshot capture set. Until 1.55 this view kept a copy of its own that
+/// started on the Overview and followed `selectedTab` only through
+/// `.onChange` (v1.21 D1, for notification taps), which does not fire for the
+/// value a view starts with: a launch that set the tab before this view
+/// existed, as the screenshot capture does, showed the Overview anyway.
+/// ScreenshotLaunchTests holds this view to having no selection of its own.
 struct iPadSplitView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
     @EnvironmentObject var alertState: AlertState
     @EnvironmentObject var providerState: ProviderState
-    @State private var selectedSection: AppState.Tab = .overview
 
     var body: some View {
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280, max: 340)
         } detail: {
-            detailView
+            iOSTabScreen(tab: state.selectedTab)
                 .environmentObject(state)
                 .environmentObject(authState)
                 .environmentObject(alertState)
@@ -153,13 +213,6 @@ struct iPadSplitView: View {
         .navigationSplitViewStyle(.balanced)
         .tint(PulseTheme.accent)
         .keyboardShortcut(.init("1"), modifiers: .command)
-        // v1.21 D1: iPad notification-tap routing. iOSAppDelegate writes the
-        // destination tab to `state.selectedTab` on push tap, but iPadSplitView
-        // owns a private `selectedSection` that previously never read from it,
-        // so taps on iPad silently went nowhere.
-        .onChange(of: state.selectedTab) { _, newTab in
-            selectedSection = newTab
-        }
     }
 
     private var sidebar: some View {
@@ -227,11 +280,11 @@ struct iPadSplitView: View {
 
     private func sidebarButton(_ tab: AppState.Tab, badge: Int = 0) -> some View {
         Button {
-            selectedSection = tab
+            state.selectedTab = tab
         } label: {
             HStack {
                 Label(tab.label, systemImage: tab.icon)
-                    .foregroundStyle(selectedSection == tab ? PulseTheme.accent : .primary)
+                    .foregroundStyle(state.selectedTab == tab ? PulseTheme.accent : .primary)
                 Spacer()
                 if badge > 0 {
                     Text("\(badge)")
@@ -242,32 +295,6 @@ struct iPadSplitView: View {
                         .background(Capsule().fill(.red))
                 }
             }
-        }
-    }
-
-    @ViewBuilder
-    private var detailView: some View {
-        switch selectedSection {
-        case .overview:
-            iOSOverviewTab()
-        case .machine:
-            // The Machine tab is macOS-only (reads the local Mac's helper over
-            // UDS). iOS has no machine tab/sidebar button, so this is unreachable
-            // — fall back to the dashboard to satisfy the exhaustive switch.
-            iOSOverviewTab()
-        case .providers:
-            iOSProvidersTab()
-        case .sessions:
-            iOSSessionsTab()
-        case .alerts:
-            iOSAlertsTab()
-        case .pet:
-            // The Pet tab (floating companion + local ledger) is macOS-only in
-            // v1; iOS has no Pet sidebar button, so this arm is unreachable —
-            // fall back to the dashboard to satisfy the exhaustive switch.
-            iOSOverviewTab()
-        case .settings:
-            iOSSettingsTab()
         }
     }
 }

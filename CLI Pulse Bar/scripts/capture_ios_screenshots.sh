@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Capture the iPhone App Store screenshots in every language, without a tap.
+# Capture the iPhone (or, with --set ipad, the iPad) App Store screenshots in
+# every language, without a tap.
 #
 # Each screen is one launch of a DEBUG build with
 #     -CLIPulseScreenshotDemo YES -CLIPulseScreenshotScreen <screen>
@@ -9,16 +10,33 @@
 # simulator's own settings changes per language.
 #
 # Output: <out>/<lang>/NN_<screen>.png, raw simulator captures. The App Store
-# panels are composed from them by compose_appstore_ios_screenshots.py.
+# panels are composed from them by compose_appstore_ios_screenshots.py (with
+# --set ipad for the iPad set).
 #
 # Usage:
-#   capture_ios_screenshots.sh [--device NAME | --udid UDID] [--app PATH.app] [--out DIR]
+#   capture_ios_screenshots.sh [--set iphone|ipad] [--device NAME | --udid UDID]
+#                              [--app PATH.app] [--out DIR]
 #                              [--langs en,ja] [--screens overview,cost]
 #                              [--derived-data DIR] [--log-dir DIR]
 #                              [--settle SECONDS] [--keep-data] [--force]
 #
-#   --device     simulator to use, by name (default "iPhone 17 Pro Max", the 6.9"
-#                size App Store Connect's APP_IPHONE_67 set takes)
+#   --set        the App Store set (default iphone). It picks the simulator, the
+#                output directory, the size every capture must be, and whether
+#                the display mask is drawn (set_for, below):
+#                  iphone  "iPhone 17 Pro Max" -> screenshots/ios-raw, 1320x2868,
+#                          mask black (so the Dynamic Island is in every capture)
+#                  ipad    "iPad Pro 13-inch (M5)" -> screenshots/ipad-raw,
+#                          2064x2752 portrait, no mask (square corners, as an
+#                          iPad's own screenshot has them)
+#                The simulator must be of the set's family, and a capture of
+#                any other size stops the run: an iPhone capture must never
+#                become an iPad panel (App Review guideline 2.3.3), nor a
+#                rotated one a portrait panel. Portrait, because the 13" iPad's
+#                split view shows its sidebar beside a full-width screen that
+#                way, and because a headless simulator has no way to rotate.
+#   --device     simulator to use, by name (default: the set's; the iPhone's is
+#                the 6.9" size App Store Connect's APP_IPHONE_67 set takes, the
+#                iPad's the 13" one APP_IPAD_PRO_3GEN_129 takes)
 #   --udid       simulator to use, by UDID (overrides --device)
 #   --app        a DEBUG simulator build to install; without it the script
 #                builds the "CLI Pulse iOS" scheme (Debug) into --derived-data,
@@ -61,10 +79,22 @@ locale_for() {
   esac
 }
 
-DEVICE="iPhone 17 Pro Max"
+# The App Store sets this captures, one line each (device|raw dir|capture
+# size|display mask). scripts/test_appstore_screenshots.py holds the raw dirs
+# and the iPad's size to scripts/appstore_screenshots.py; keep the one-line form.
+set_for() {
+  case "$1" in
+    iphone) echo "iPhone 17 Pro Max|ios-raw|1320x2868|black" ;;
+    ipad) echo "iPad Pro 13-inch (M5)|ipad-raw|2064x2752|ignored" ;;
+    *) return 1 ;;
+  esac
+}
+
+SET=iphone
+DEVICE=""
 UDID=""
 APP=""
-OUT="$APP_ROOT/screenshots/ios-raw"
+OUT=""
 DERIVED=""
 LOG_DIR=""
 SETTLE=1.5
@@ -100,6 +130,7 @@ with_timeout() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
+    --set) SET="$2"; shift 2 ;;
     --udid) UDID="$2"; shift 2 ;;
     --device) DEVICE="$2"; shift 2 ;;
     --app) APP="$2"; shift 2 ;;
@@ -111,10 +142,16 @@ while [ $# -gt 0 ]; do
     --settle) SETTLE="$2"; shift 2 ;;
     --keep-data) KEEP_DATA=1; shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,35p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,52p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
+
+# ── the set ─────────────────────────────────────────────────────────────────
+set_line="$(set_for "$SET")" || die "unknown --set '$SET' (iphone or ipad)"
+IFS='|' read -r SET_DEVICE SET_RAW CAPTURE_SIZE MASK <<< "$set_line"
+[ -n "$DEVICE" ] || DEVICE="$SET_DEVICE"
+[ -n "$OUT" ] || OUT="$APP_ROOT/screenshots/$SET_RAW"
 
 # ── what to capture ─────────────────────────────────────────────────────────
 index_of_screen() {
@@ -162,6 +199,24 @@ if [ -z "$UDID" ]; then
           if (RSTART) { print substr(line, RSTART + 1, 36); exit } } }')"
   [ -n "$UDID" ] || die "no available simulator named '$DEVICE' (xcrun simctl list devices available)"
 fi
+
+# The set's family, from the device type rather than the name a device was
+# given, checked before anything is built or booted.
+device_type="$(xcrun simctl list devices -j | /usr/bin/python3 -c '
+import json, sys
+udid = sys.argv[1]
+for rows in json.load(sys.stdin)["devices"].values():
+    for d in rows:
+        if d["udid"] == udid:
+            print(d.get("deviceTypeIdentifier", ""))
+' "$UDID")"
+case "$device_type" in
+  *SimDeviceType.iPad*) family=ipad ;;
+  *SimDeviceType.iPhone*) family=iphone ;;
+  *) family="unknown ($device_type)" ;;
+esac
+[ "$family" = "$SET" ] || die "$UDID is an $family simulator, not an $SET one; --set $SET captures on an $SET"
+echo "set: $SET -> $OUT ($CAPTURE_SIZE, display mask $MASK)"
 
 # ── the app (checked before anything boots) ─────────────────────────────────────────────────────────────────
 built_here=""
@@ -296,11 +351,12 @@ capture_one() {
   done
   sleep "$SETTLE"
   rm -f "$dest"
-  # --mask=black: the Dynamic Island is part of the display mask, so it is in
-  # every capture. With the default (ignored) mask it appears only when
-  # SpringBoard happens to be drawing it: 1 of 30 captures in the first trial.
-  # The compositor rounds the phone's corners enough to clip the black ones.
-  if ! with_timeout "$STEP_TIMEOUT" xcrun simctl io "$UDID" screenshot --type=png --mask=black "$dest" \
+  # iPhone, --mask=black: the Dynamic Island is part of the display mask, so
+  # it is in every capture. With the default (ignored) mask it appears only
+  # when SpringBoard happens to be drawing it: 1 of 30 captures in the first
+  # trial. The compositor rounds the phone's corners enough to clip the black
+  # ones. iPad, --mask=ignored: it has no island, and the whole screen is kept.
+  if ! with_timeout "$STEP_TIMEOUT" xcrun simctl io "$UDID" screenshot --type=png --mask="$MASK" "$dest" \
       >>"$log" 2>&1; then
     die "$lang/$screen: simctl io screenshot failed: $(tail -1 "$log")"
   fi
@@ -308,6 +364,10 @@ capture_one() {
   [ -s "$dest" ] || die "$lang/$screen: no screenshot written"
   local size
   size="$(sips -g pixelWidth -g pixelHeight "$dest" | awk '/pixel/{printf "%s%s", sep, $2; sep="x"}')"
+  if [ "$size" != "$CAPTURE_SIZE" ]; then
+    rm -f "$dest"
+    die "$lang/$screen: the capture is $size, not the $CAPTURE_SIZE of the $SET set; removed"
+  fi
   echo "  $lang/${nn}_${screen}.png  $size"
 }
 

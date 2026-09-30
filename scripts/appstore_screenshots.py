@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""The App Store screenshots, iPhone and Mac: which exist, where they live, what makes one uploadable.
+"""The App Store screenshots, iPhone, iPad and Mac: which exist, where they live, what makes one uploadable.
 
 One module, imported by everything that makes, checks or pushes them, so the
 layout is written down exactly once:
 
-  - CLI Pulse Bar/scripts/capture_ios_screenshots.sh     captures the raw iPhone PNGs
+  - CLI Pulse Bar/scripts/capture_ios_screenshots.sh     captures the raw iPhone PNGs,
+    and with --set ipad the raw iPad ones
     (bash; scripts/test_appstore_screenshots.py holds its lists to this one)
   - scripts/render_macos_qa_views.sh --set store         renders the raw Mac PNGs
-  - CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py     composes the iPhone panels
+  - CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py     composes the iPhone panels,
+    and with --set ipad the iPad ones, from the same captions (COPY)
   - CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py   composes the Mac panels
   - scripts/asc_push_screenshots.py --platform IOS|MAC_OS   uploads the panels
+    (--platform IOS --display-type APP_IPAD_PRO_3GEN_129 the iPad ones)
   - scripts/asc_listing_preflight.py --require-shots     checks every locale has them
 
-Two platforms (Platform): IPHONE, the default of every function below, and MAC.
-The module-level names SCREENS, CANVAS, DISPLAY_TYPE, SUFFIX and COMPOSITOR_REL
-are the iPhone's, as they were before the Mac set existed.
+Three sets (Platform), one per App Store Connect display type (SETS): IPHONE,
+the default of every function below, IPAD and MAC. The iPhone and iPad sets
+both belong to the IOS platform's version; PLATFORMS names the set an ASC
+platform means when no display type is given (IOS: the iPhone's). The
+module-level names SCREENS, CANVAS, DISPLAY_TYPE, SUFFIX and COMPOSITOR_REL are
+the iPhone's, as they were before the Mac set existed.
 
 LAYOUT
 ------
@@ -34,6 +40,16 @@ LAYOUT
         from, and --require-shots fails when ios-raw/<lang>/ no longer holds
         exactly those (capture_problems): they are committed so that a set
         can be recomposed without a simulator.
+
+    CLI Pulse Bar/screenshots/ipad-raw/<lang>/NN_<screen>.png
+        simulator captures of the same five screens, 2064x2752 portrait on the
+        13" iPad Pro (M5): the iPad's own layout (a sidebar beside the screen),
+        captured by the same DEBUG launch on an iPad simulator. Never iPhone
+        captures on an iPad canvas, which App Review rejects (guideline 2.3.3)
+    CLI Pulse Bar/screenshots/ipad-composed/<lang>/NN_<screen>_2064x2752.png
+        the iPad panels, in the APP_IPAD_PRO_3GEN_129 set (the 13" display,
+        which App Store Connect requires for an app that runs on iPad), with
+        compose.json as above; the captions are the iPhone set's
 
     CLI Pulse Bar/screenshots/macos-raw/<lang>/NN_<screen>.png, render.json
         the QA build's offscreen renders of the real Mac views (the store set,
@@ -59,9 +75,14 @@ screenshots/ios-zh/, shot by hand) was retired when the first six-language
 capture in this layout landed for 1.54.0. Nothing reads those paths any more;
 the release preflight compares the live store with ios-composed/<lang>/ only.
 
+The April 2026 iPad set (screenshots/ipad/, English only, from a real iPad
+signed in to the owner's own account, composed by a script of its own) was
+retired for 1.55.0, when ipad-raw/ and ipad-composed/ replaced it. Git
+history keeps it; nothing reads that path any more.
+
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
-Exactly its platform's canvas (1290x2796 iPhone, 2880x1800 Mac) in pixels, 8-bit RGB with no alpha channel and no transparency
+Exactly its set's canvas (1290x2796 iPhone, 2064x2752 iPad, 2880x1800 Mac) in pixels, 8-bit RGB with no alpha channel and no transparency
 chunk, a real PNG, at most 10 MB, and the file compose.json says the last clean
 compose run wrote. App Store Connect refuses an image with an
 alpha channel for screenshots, and it refuses it after the old set may already
@@ -158,6 +179,7 @@ class Platform:
     composed_subdir: str
     panel_screens: tuple[str, ...] = ()
     render_manifest: str | None = None
+    compose_args: str = ""     # what selects this set in its compositor, if it shares one
 
     @property
     def screens(self) -> tuple[str, ...]:
@@ -175,12 +197,25 @@ class Platform:
     def compositor_name(self) -> str:
         return Path(self.compositor_rel).name
 
+    @property
+    def compose_cmd(self) -> str:
+        """The compositor's command line for this set, without a language."""
+        return f"{self.compositor_name} {self.compose_args}".strip()
+
 
 IPHONE = Platform("iPhone", "IOS", DISPLAY_TYPE, CANVAS, "SCREENS", "COMPOSITOR_REL",
                   "ios-raw", "ios-composed")
+# The iPad set: the iPhone's five screens and captions (the same compositor,
+# --set ipad), captured on the 13" iPad Pro simulator in portrait. It goes to
+# the IOS version like the iPhone's, in its own display type.
+IPAD = Platform("iPad", "IOS", "APP_IPAD_PRO_3GEN_129", (2064, 2752), "SCREENS", "COMPOSITOR_REL",
+                "ipad-raw", "ipad-composed", compose_args="--set ipad")
 MAC = Platform("Mac", "MAC_OS", "APP_DESKTOP", (2880, 1800), "MAC_SCREENS", "MAC_COMPOSITOR_REL",
                "macos-raw", "macos-composed", panel_screens=MAC_PANEL_SCREENS,
                render_manifest=RENDER_MANIFEST)
+# Every set, by the App Store Connect display type it is uploaded to.
+SETS: dict[str, Platform] = {p.display_type: p for p in (IPHONE, IPAD, MAC)}
+# The set an App Store Connect platform means when no display type is named.
 PLATFORMS: dict[str, Platform] = {p.asc_platform: p for p in (IPHONE, MAC)}
 
 
@@ -358,7 +393,7 @@ def manifest_problems(lang: str, root: Path | None = None, platform: Platform = 
         stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])
         if stale:
             out.append(f"{', '.join(stale)}: the caption drawn is not the compositor's COPY "
-                       f"(edited without recomposing; run {platform.compositor_name} "
+                       f"(edited without recomposing; run {platform.compose_cmd} "
                        f"--lang {canonical_lang(lang)})")
     for p in expected_composed(lang, root, platform):
         if p.is_file() and recorded.get(p.name) != md5_of(p):
@@ -368,7 +403,7 @@ def manifest_problems(lang: str, root: Path | None = None, platform: Platform = 
 
 
 def capture_problems(lang: str, root: Path | None = None, platform: Platform = IPHONE) -> list[str]:
-    """Whether ios-raw/<lang>/ (macos-raw/<lang>/) holds the captures the set was composed from:
+    """Whether ios-raw/<lang>/ (ipad-raw/, macos-raw/) holds the captures the set was composed from:
     every capture compose.json records under "captures", with that md5, and no
     other the compositor would read. The raw captures are committed so that a
     caption fix is a recompose (`--all`), not a recapture; that holds only
@@ -393,7 +428,7 @@ def capture_problems(lang: str, root: Path | None = None, platform: Platform = I
     if not isinstance(recorded, dict):
         if (root or REPO) == CHECKOUT:
             return [f"{MANIFEST} records no captures, so {where}/ cannot be checked against "
-                    f"it; recompose: {platform.compositor_name} --lang {canonical_lang(lang)}"]
+                    f"it; recompose: {platform.compose_cmd} --lang {canonical_lang(lang)}"]
         return []
     out = []
     for name in raw_names(platform):
@@ -641,7 +676,7 @@ if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import appstore_listing as listing  # noqa: E402
     failed = False
-    for plat in PLATFORMS.values():
+    for plat in SETS.values():
         problems = require_shots_problems(listing.LOCALE_SOURCES, platform=plat)
         print(f"{plat.name} ({plat.display_type}):")
         for loc, lang in SHOT_SOURCES.items():

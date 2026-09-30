@@ -34,6 +34,15 @@ struct iOSSessionsTab: View {
         .refreshable {
             await state.refreshAll()
         }
+        #if DEBUG
+        .task {
+            // App Store capture: a session open beside the list, as after a
+            // tap (ScreenshotLaunch.Screen.opensSessionDetail).
+            if selectedSession == nil, ScreenshotLaunch.activeRequest?.screen.opensSessionDetail == true {
+                selectedSession = ScreenshotLaunch.sessionToOpen(in: state.sessions, now: Date())
+            }
+        }
+        #endif
     }
 
     // MARK: - iPhone
