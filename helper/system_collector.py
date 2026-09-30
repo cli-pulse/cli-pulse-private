@@ -61,8 +61,9 @@ HELPER_VERSION = "1.30.0"
 
 logger = logging.getLogger("cli_pulse.collector")
 
-# Asked before this module refreshes a provider token or writes what a cycle
-# collected to disk (the Claude snapshot and session-key files the app reads).
+# Asked before this module refreshes a provider token, runs `claude /usage`
+# (which can refresh Claude's token itself), or writes what a cycle collected to
+# disk (the Claude snapshot and session-key files the app reads).
 # The daemon sets it to its `LocalScanGate`, so a "Not now" or a sign-out that
 # arrives while a cycle is running stops that cycle from refreshing tokens,
 # rewriting a credential file, or writing its results, as well as from sending
@@ -1076,7 +1077,14 @@ def _fetch_claude_cli(plan_type: str | None) -> dict | None:
     prints the plan limits and exits. Measured working with Claude Code
     2.1.266, where the parser below reads the session and weekly bars from it
     (an earlier note here said v2.x had removed `/usage`; it has not).
+
+    Asks the cycle gate first: the Claude CLI can refresh its own OAuth token
+    while it runs, which rewrites its Keychain item or
+    ~/.claude/.credentials.json, so a "Not now" given mid-cycle must stop it
+    like the token refreshes above.
     """
+    if not _cycle_still_allowed("claude /usage probe"):
+        return None
     import shutil
     # Search common Claude CLI locations beyond PATH
     binary = shutil.which("claude")

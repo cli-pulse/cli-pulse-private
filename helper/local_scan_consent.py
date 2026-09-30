@@ -60,12 +60,18 @@ WHAT EACH ANSWER MEANS HERE (`decide`)
     signed-in account through; a helper that is not paired sends nothing
     anyway).
   * A plist that is there but cannot be read (permission denied, a stalled
-    container, corrupt data): paused for this cycle. The answer might be
-    "Not now", and a pre-1.55 app's plist looks the same from outside.
+    container, corrupt data): paused, and it stays paused for as long as the
+    file cannot be read. Every check tries again, so a container that was only
+    slow resumes once its access completes; one that macOS denies (TCC answered
+    no) stays paused for the life of the helper process. The answer might be
+    "Not now", and a pre-1.55 app's plist looks the same from outside, so
+    neither case is read as "no copy".
 
 Paused means the cycle does nothing at all: no process list, no Keychain, no
-provider call, no token refresh, no credential file rewritten, no Claude
-snapshot written, and nothing sent, not even the heartbeat. A heartbeat would
+provider call, no token refresh, no credential file rewritten, no `claude
+/usage` run, no Claude snapshot written, and nothing sent, not even the
+heartbeat. The UDS `hello` reply asks the same gate and leaves out
+`provider_plan_status`, which would read `~/.codex/auth.json`. A heartbeat would
 report this cycle's session count and device metrics, which a paused helper did
 not measure, and `helper_sync` with no sessions is not a no-op on the server
 (it ends this device's running sessions). Leaving the device row alone lets it
@@ -205,7 +211,8 @@ def decide(read: MirrorRead) -> Decision:
 class LocalScanGate:
     """Asked at the start of every cycle and again before anything the cycle
     collected is written or sent, so an answer given mid-cycle drops what that
-    cycle read instead of uploading it.
+    cycle read instead of uploading it. The UDS `hello` handler asks it too,
+    on its own thread and with a shorter wait.
 
     Every check reads the plist again: the helper holds no copy of the answer,
     so a change reaches it at the next check with nothing to invalidate.
@@ -227,15 +234,18 @@ class LocalScanGate:
         self._pending: tuple[threading.Thread, dict] | None = None
         self._last: tuple[Cycle, str] | None = None
 
-    def check(self) -> Decision:
-        decision = decide(self._read())
+    def check(self, *, wait_s: float | None = None) -> Decision:
+        """The decision for now. `wait_s` bounds how long this check waits for
+        the plist read (default `READ_WAIT_S`); a read that is not done by then
+        counts as unreadable, so this check pauses."""
+        decision = decide(self._read(self._read_wait_s if wait_s is None else wait_s))
         self._log_if_changed(decision)
         return decision
 
-    def allows_collection(self) -> bool:
-        return self.check().allows_collection
+    def allows_collection(self, *, wait_s: float | None = None) -> bool:
+        return self.check(wait_s=wait_s).allows_collection
 
-    def _read(self) -> MirrorRead:
+    def _read(self, wait_s: float) -> MirrorRead:
         try:
             ready = self._container_ready()
         except Exception:  # noqa: BLE001 — cannot tell, so do not touch it
@@ -266,11 +276,11 @@ class LocalScanGate:
                 self._pending = (worker, box)
                 worker.start()
             worker, box = self._pending
-        worker.join(self._read_wait_s)
+        worker.join(wait_s)
         if worker.is_alive():
             return MirrorRead(
                 "unreadable",
-                detail=f"reading the app's answer did not finish within {self._read_wait_s:.0f}s",
+                detail=f"reading the app's answer did not finish within {wait_s:g}s",
             )
         with self._lock:
             if self._pending is not None and self._pending[0] is worker:
@@ -278,10 +288,13 @@ class LocalScanGate:
         return box.get("read") or MirrorRead("unreadable", detail="no result")
 
     def _log_if_changed(self, decision: Decision) -> None:
+        # The daemon's cycle and the UDS `hello` handler both ask this gate, on
+        # different threads.
         key = (decision.cycle, decision.reason)
-        if key == self._last:
-            return
-        self._last = key
+        with self._lock:
+            if key == self._last:
+                return
+            self._last = key
         if decision.cycle is Cycle.COLLECT:
             logger.info("local scan allowed by the app (answer: %s)", decision.reason)
         elif decision.cycle is Cycle.LEGACY:

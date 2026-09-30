@@ -440,8 +440,15 @@ class LocalSessionServer:
         max_payload: int = MAX_PAYLOAD,
         get_helper_argv0: Callable[[], str | None] | None = None,
         get_paired: Callable[[], bool] | None = None,
+        local_scan_allowed: Callable[[], bool] | None = None,
     ) -> None:
         self._socket_path = Path(socket_path)
+        # v1.55: the app's local-scan answer (the daemon's `LocalScanGate`).
+        # While it pauses the scan, `hello` reads no provider credential file
+        # and leaves out `provider_plan_status`; the app reads an absent field
+        # as "no warning". None (older wiring, unit tests) reads as before; a
+        # getter that raises counts as paused.
+        self._local_scan_allowed = local_scan_allowed
         self._get_auth_token = get_auth_token
         # v1.30.2 (RC-1): whether this helper has a usable pairing config.
         # Surfaced in the unauthenticated `hello` reply so the macOS app can
@@ -927,6 +934,14 @@ class LocalSessionServer:
             )
         return _ok(req_id, result)
 
+    def _local_scan_permits_reads(self) -> bool:
+        if self._local_scan_allowed is None:
+            return True
+        try:
+            return bool(self._local_scan_allowed())
+        except Exception:  # noqa: BLE001 — cannot tell, so read nothing
+            return False
+
     def _handle_method(self, method: str, params: dict) -> Any:
         if method == "hello":
             requested = params.get("client_protocol_version")
@@ -959,11 +974,17 @@ class LocalSessionServer:
             # not the ChatGPT plan). Omits "unknown" providers. Mirrors
             # the Swift helper's `provider_plan_status`. Fail-soft — a
             # stale import must never break the hello handshake.
-            try:
-                from provider_spawners import provider_plan_statuses
-                provider_plan_status = provider_plan_statuses()
-            except Exception:  # noqa: BLE001
-                provider_plan_status = {}
+            #
+            # v1.55: computing it opens ~/.codex/auth.json, so it is skipped
+            # (and the field left out) while the app's local-scan answer
+            # pauses the scan. "Not now" means CLI Pulse reads nothing here.
+            provider_plan_status: dict | None = None
+            if self._local_scan_permits_reads():
+                try:
+                    from provider_spawners import provider_plan_statuses
+                    provider_plan_status = provider_plan_statuses()
+                except Exception:  # noqa: BLE001
+                    provider_plan_status = {}
             # v1.16: expose helper_version in the hello reply so the MAS
             # app's HelperInstaller state machine can distinguish
             # "v1.15 nohup helper" from "v1.16 pkg-installed helper" and
@@ -980,7 +1001,7 @@ class LocalSessionServer:
                 paired = bool(self._get_paired())
             except Exception:  # noqa: BLE001
                 paired = True
-            return {
+            reply = {
                 "protocol_version": PROTOCOL_VERSION,
                 "supported_methods": list(SUPPORTED_METHODS),
                 "helper_pid": os.getpid(),
@@ -1029,12 +1050,14 @@ class LocalSessionServer:
                 # helper's hello): this helper cannot start a Claude session
                 # with `--remote-control`, so the phone never offers it here.
                 "claude_remote_control": {"supported": False},
+            }
+            if provider_plan_status is not None:
                 # v1.35: per-provider plan-auth status ("on_plan"/
                 # "off_plan"); omits "unknown". The picker warns before
                 # launching an off-plan (billed) managed session. Mirrors
                 # the Swift helper (LocalSessionServer hello).
-                "provider_plan_status": provider_plan_status,
-            }
+                reply["provider_plan_status"] = provider_plan_status
+            return reply
 
         if method == "ping":
             return {"pong": True}

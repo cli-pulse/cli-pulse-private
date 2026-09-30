@@ -13,10 +13,13 @@ a throwaway HOME, and check what the helper then reads and sends:
     fails the test if called) and sends nothing;
   * that an answer given while a cycle runs drops what the cycle collected,
     before each upload, the git lookup, the commit submit, the Claude snapshot
-    write, and any Claude or Gemini token refresh (the Gemini one rewrites its
-    credential file);
+    write, any Claude or Gemini token refresh (the Gemini one rewrites its
+    credential file), and the `claude /usage` fallback;
+  * that the UDS `hello` reply reads no credential file for
+    `provider_plan_status` while the answer pauses the scan;
   * that the daemon and the `heartbeat` / `sync` / `run-demo` subcommands are
-    the ones wired to the gate.
+    the ones wired to the gate, and that the daemon's gate waits for a startup
+    rotation still stuck in the container.
 """
 from __future__ import annotations
 
@@ -224,6 +227,23 @@ def test_a_stalled_read_pauses_and_is_not_read_twice():
     # Nothing pending now, so the next check reads afresh.
     assert gate.check().cycle is Cycle.COLLECT
     assert len(calls) == 2
+
+
+def test_a_check_can_wait_less_than_the_gate_default():
+    release = threading.Event()
+
+    def stalled_reader(_path: Path) -> MirrorRead:
+        release.wait(5.0)
+        return MirrorRead("ok", consent="granted")
+
+    gate = LocalScanGate(path=lambda: Path("/nowhere"), reader=stalled_reader, read_wait_s=5.0)
+    started = time.monotonic()
+    decision = gate.check(wait_s=0.1)
+    assert time.monotonic() - started < 1.0
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unreadable")
+    assert "0.1s" in decision.detail
+    assert not gate.allows_collection(wait_s=0.05)
+    release.set()
 
 
 def test_a_read_that_finished_between_checks_is_not_used():
@@ -580,6 +600,82 @@ def test_a_paused_cycle_refreshes_no_token_and_rewrites_no_credential(home, monk
         assert '"new"' in creds.read_text()
 
 
+class _Ran:
+    returncode = 1
+    stdout = ""
+
+
+@pytest.mark.parametrize("paused", [True, False], ids=["paused", "allowed"])
+def test_a_paused_cycle_runs_no_claude_cli(home, monkeypatch, reset_cycle_gate, paused):
+    # `claude /usage` can refresh Claude's OAuth token while it runs, which
+    # rewrites its Keychain item or ~/.claude/.credentials.json.
+    write_mirror(home, answer("declined" if paused else "granted"))
+    sc.set_cycle_gate(LocalScanGate().allows_collection)
+    monkeypatch.setattr("shutil.which", lambda name: f"/opt/fake/{name}")
+    runs: list[list[str]] = []
+
+    def fake_run(cmd, **_kwargs):
+        runs.append(cmd)
+        return _Ran()
+
+    monkeypatch.setattr(sc.subprocess, "run", fake_run)
+    assert sc._fetch_claude_cli("max") is None
+    if paused:
+        assert runs == []
+    else:
+        assert [cmd[0] for cmd in runs] == ["/opt/fake/claude"]
+
+
+# ── hello: the credential file behind provider_plan_status ─────
+
+
+def _hello(local_scan_allowed) -> dict:
+    from local_session_server import LocalSessionServer
+
+    def _unused(*_a, **_k):
+        raise AssertionError("hello must not reach the session manager")
+
+    server = LocalSessionServer(
+        socket_path="/nonexistent/clipulse-helper.sock",
+        get_auth_token=lambda: "T",
+        get_local_control_enabled=lambda: True,
+        set_local_control_enabled=_unused,
+        start_session=_unused,
+        list_sessions=_unused,
+        stop_session=_unused,
+        send_input=_unused,
+        local_scan_allowed=local_scan_allowed,
+    )
+    return server._handle_method("hello", {})
+
+
+@pytest.mark.parametrize("allowed", [lambda: False, lambda: 1 / 0])
+def test_a_paused_hello_reads_no_credential_file(monkeypatch, allowed):
+    # provider_plan_statuses() opens ~/.codex/auth.json.
+    monkeypatch.setattr(provider_spawners, "provider_plan_statuses", _fail("provider_plan_statuses"))
+    reply = _hello(allowed)
+    # Absent reads as "no warning" in the app (LocalSessionControlClient).
+    assert "provider_plan_status" not in reply
+    assert reply["implementation"] == "python-pkg"  # the rest of hello is unchanged
+
+
+@pytest.mark.parametrize("consent", ["declined", "granted", None])
+def test_hello_follows_the_apps_answer(home, monkeypatch, consent):
+    monkeypatch.setattr(provider_spawners, "provider_plan_statuses", lambda: {"codex": "off_plan"})
+    if consent is not None:
+        write_mirror(home, answer(consent))
+    reply = _hello(LocalScanGate().allows_collection)
+    if consent == "declined":
+        assert "provider_plan_status" not in reply
+    else:  # granted, or no copy from a pre-1.55 app: as before
+        assert reply["provider_plan_status"] == {"codex": "off_plan"}
+
+
+def test_without_a_gate_hello_is_unchanged(monkeypatch):
+    monkeypatch.setattr(provider_spawners, "provider_plan_statuses", lambda: {"codex": "on_plan"})
+    assert _hello(None)["provider_plan_status"] == {"codex": "on_plan"}
+
+
 # ── wiring: the entry points that upload are the gated ones ────
 
 
@@ -607,6 +703,26 @@ def test_subcommands_that_upload_pass_a_gate(monkeypatch, argv, names):
     assert all(isinstance(g, LocalScanGate) for g in seen.values())
 
 
+def _run_one_daemon_cycle(monkeypatch, body) -> None:
+    """Run `daemon()` for exactly one cycle, with `body(kwargs)` in place of the
+    cycle. Whatever `body` raises is raised here: the daemon itself would log
+    it and sleep until the next cycle, so a failing check would hang the test
+    instead of failing it."""
+    box: dict = {}
+
+    def one_cycle(_args, **kwargs):
+        try:
+            body(kwargs)
+        except BaseException as exc:  # noqa: BLE001 — re-raised below
+            box["exc"] = exc
+        raise KeyboardInterrupt  # ends the daemon after its first cycle
+
+    monkeypatch.setattr(h, "_collection_cycle", one_cycle)
+    h.daemon(argparse.Namespace(interval=60))
+    if "exc" in box:
+        raise box["exc"]
+
+
 def test_daemon_runs_its_cycles_through_the_gate(home, monkeypatch):
     import signal
 
@@ -618,20 +734,107 @@ def test_daemon_runs_its_cycles_through_the_gate(home, monkeypatch):
     monkeypatch.setattr(h, "_container_rotation_worker", None)
     seen: dict = {}
 
-    def one_cycle(args, **kwargs):
+    def one_cycle(kwargs):
         seen.update(kwargs)
         seen["cycle_gate"] = sc._cycle_gate
         seen["decision"] = kwargs["gate"].check()
-        raise KeyboardInterrupt  # ends the daemon after its first cycle
 
-    monkeypatch.setattr(h, "_collection_cycle", one_cycle)
-    h.daemon(argparse.Namespace(interval=60))
+    _run_one_daemon_cycle(monkeypatch, one_cycle)
 
     gate = seen["gate"]
     assert isinstance(gate, LocalScanGate)
     assert seen["decision"].reason == "declined"  # it reads the app's plist
     assert seen["cycle_gate"] == gate.allows_collection
     assert sc._cycle_gate is None  # reset on the way out
+
+
+def test_the_daemon_gate_waits_for_a_stuck_startup_rotation(home, monkeypatch):
+    # The startup token rotation is still inside its container access (a TCC
+    # consult under launchd). The daemon's gate must not open a second access
+    # to that container: it answers "unreadable" without reading the plist,
+    # which says "granted", so a gate that read it would collect.
+    import signal
+
+    mirror = write_mirror(home, answer("granted"))
+    monkeypatch.setattr(signal, "signal", lambda *_a, **_k: None)
+    monkeypatch.setattr(h, "load_config", _fail_config)
+    monkeypatch.setattr(h, "_rotate_token_best_effort", lambda *_a, **_k: None)
+    release = threading.Event()
+    stuck = threading.Thread(target=release.wait, args=(5.0,), name="rotate-token", daemon=True)
+    stuck.start()
+    monkeypatch.setattr(h, "_container_rotation_worker", stuck)
+    opened: list[str] = []
+    real_load = lsc.plistlib.load
+
+    def spy_load(fh, *a, **k):
+        if Path(getattr(fh, "name", "")) == mirror:
+            opened.append(fh.name)
+        return real_load(fh, *a, **k)
+
+    monkeypatch.setattr(lsc.plistlib, "load", spy_load)
+    seen: dict = {}
+
+    def one_cycle(kwargs):
+        seen["decision"] = kwargs["gate"].check()
+
+    try:
+        _run_one_daemon_cycle(monkeypatch, one_cycle)
+    finally:
+        release.set()
+        stuck.join(2.0)
+
+    decision = seen["decision"]
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unreadable")
+    assert "not reachable" in decision.detail
+    assert opened == []
+
+
+def test_the_daemon_wires_its_gate_into_hello(home, monkeypatch):
+    import signal
+
+    import local_session_server
+
+    write_mirror(home, answer("declined"))
+    monkeypatch.setattr(signal, "signal", lambda *_a, **_k: None)
+    monkeypatch.setattr(h, "load_config", _fail_config)
+    # The rotation completes, so the daemon builds and starts its UDS server.
+    monkeypatch.setattr(h, "_rotate_token_best_effort", lambda *_a, **_k: "T")
+    monkeypatch.setattr(h, "_container_rotation_worker", None)
+    built: dict = {}
+
+    class FakeServer:
+        def __init__(self, **kwargs):
+            built.update(kwargs)
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(local_session_server, "LocalSessionServer", FakeServer)
+    waits: list = []
+
+    class RecordingGate(LocalScanGate):
+        def allows_collection(self, *, wait_s=None):
+            waits.append(wait_s)
+            return super().allows_collection(wait_s=wait_s)
+
+    monkeypatch.setattr(h, "LocalScanGate", RecordingGate)
+    seen: dict = {}
+
+    def one_cycle(kwargs):
+        allowed = built["local_scan_allowed"]
+        seen["declined"] = allowed()
+        write_mirror(home, answer("granted"))
+        seen["granted"] = allowed()
+        seen["same_gate"] = isinstance(kwargs["gate"], RecordingGate)
+
+    _run_one_daemon_cycle(monkeypatch, one_cycle)
+    assert seen == {"declined": False, "granted": True, "same_gate": True}
+    # hello waits well inside the app's 5 s request timeout, not READ_WAIT_S.
+    assert waits == [h._HELLO_LOCAL_SCAN_WAIT_S] * 2
+    assert 0 < h._HELLO_LOCAL_SCAN_WAIT_S < 5
 
 
 def _fail_config():

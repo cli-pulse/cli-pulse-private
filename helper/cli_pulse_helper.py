@@ -574,9 +574,11 @@ def _rotate_token_best_effort(
             "app-group container access still stalled after %.0fs — starting "
             "WITHOUT the local UDS surface. This is a TCC SystemPolicyAppData "
             "consult under launchd (see the note above %s); it is per-process, "
-            "so respawning cannot help and we deliberately do not. Cloud sync "
-            "keeps running; the same-machine fast path returns on the next "
-            "helper start.",
+            "so respawning cannot help and we deliberately do not. Heartbeat "
+            "and sync are PAUSED until this access completes: the app's "
+            "local-scan answer is read from the same container, and it is not "
+            "sent over without it. Remote Control commands keep running. The "
+            "same-machine fast path returns on the next helper start.",
             timeout, "_CONTAINER_ACCESS_WAIT_S",
         )
         for handler in list(logging.getLogger().handlers):
@@ -596,6 +598,11 @@ def _rotate_token_best_effort(
         logger.info("app-group container access took %.1fs (TCC consult)", waited)
     return box.get("token")  # type: ignore[return-value]
 
+
+# How long the UDS `hello` reply waits for the app's local-scan answer before
+# it treats the answer as paused and leaves out `provider_plan_status`. The
+# app's local requests time out at 5 s (`LocalSessionControlClient`).
+_HELLO_LOCAL_SCAN_WAIT_S = 1.0
 
 GIT_SCAN_BACKSTOP_SECONDS = 600  # 10 minutes
 
@@ -832,6 +839,14 @@ def daemon(args: argparse.Namespace) -> None:
         logger.warning("remote agent manager unavailable on this platform: %s", exc)
     except Exception as exc:
         logger.warning("remote agent manager init failed: %s", exc)
+
+    # The app's local-scan answer (`local_scan_consent`): asked before every
+    # cycle reads anything and again before anything it read is written or
+    # sent, and by the UDS `hello` reply before it reads provider credential
+    # files. It reads the app-group container, and waits while the startup
+    # token rotation below is still stuck in that container rather than open a
+    # second access there.
+    local_scan_gate = LocalScanGate(container_ready=_container_reachable)
 
     # Phase 3 Iter 1 / v1.30.2 RC-1: local UDS control surface. This is now
     # stood up UNCONDITIONALLY — even when `remote_agent_manager` is None
@@ -1132,6 +1147,13 @@ def daemon(args: argparse.Namespace) -> None:
             # still binds + answers hello, so the app shows "installed —
             # pair to activate" rather than the misleading "not installed".
             get_paired=lambda: remote_agent_manager is not None,
+            # `hello` leaves out `provider_plan_status` (it reads
+            # ~/.codex/auth.json) while the app's answer pauses the local
+            # scan. The wait is short because the app's request times out at
+            # 5 s; a read that is not done by then counts as paused.
+            local_scan_allowed=lambda: local_scan_gate.allows_collection(
+                wait_s=_HELLO_LOCAL_SCAN_WAIT_S,
+            ),
         )
         if container_stalled:
             # CRITICAL (review: agy): do NOT bind. The socket lives INSIDE the
@@ -1150,19 +1172,26 @@ def daemon(args: argparse.Namespace) -> None:
             # SUCCEEDS. It simply does not extend to the path where the canary
             # FAILED, which is exactly this one.)
             #
-            # So skip the local surface entirely and keep the cloud loop alive —
-            # the behaviour this block's own preamble already prescribes: "the
-            # daemon still services Supabase-routed sessions even if the local
-            # socket can't bind". Heartbeat, sync and remote sessions keep
-            # working; only the same-machine fast path is out.
+            # So skip the local surface entirely and keep the daemon loop
+            # alive — the behaviour this block's own preamble already
+            # prescribes: "the daemon still services Supabase-routed sessions
+            # even if the local socket can't bind". Remote Control commands
+            # (`remote_agent.tick`) keep running. Heartbeat and sync do NOT:
+            # the local-scan gate reads the app's answer from this same
+            # container, and while the rotation is still stuck in it
+            # (`_container_reachable`) the gate answers "unreadable", so every
+            # cycle pauses until that access completes. If it never completes,
+            # they stay paused for the life of this process.
             local_uds_server = None
             logger.error(
                 "NOT starting the local UDS server: the app-group container is "
                 "stalled and the socket lives inside it (%s), so binding would "
-                "hang this daemon on the same access that just timed out. Cloud "
-                "sync continues — heartbeat, sync and remote sessions still "
-                "work. The macOS app will report this helper as not running "
-                "until the container recovers and the helper is restarted.",
+                "hang this daemon on the same access that just timed out. "
+                "Heartbeat and sync are paused until the container answers, "
+                "because the app's local-scan answer is read from it; only "
+                "Remote Control commands keep running. The macOS app will "
+                "report this helper as not running until the container "
+                "recovers and the helper is restarted.",
                 default_socket_path(),
             )
         else:
@@ -1195,12 +1224,8 @@ def daemon(args: argparse.Namespace) -> None:
     # Track whether we've already logged the unpaired state to avoid
     # per-cycle spam.
     _unpaired_logged = False
-    # The app's local-scan answer (`local_scan_consent`): asked before every
-    # cycle reads anything and again before anything it read is written or
-    # sent. It reads the app-group container, and waits while the startup token
-    # rotation is still stuck in that container rather than open a second
-    # access there.
-    local_scan_gate = LocalScanGate(container_ready=_container_reachable)
+    # Token refreshes, credential rewrites and the Claude snapshot write inside
+    # a cycle ask the same gate (see `local_scan_gate` above).
     _system_collector.set_cycle_gate(local_scan_gate.allows_collection)
     try:
         while not stopping:
