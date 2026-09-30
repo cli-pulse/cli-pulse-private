@@ -76,6 +76,54 @@ public enum LocalScanConsentStore {
         write(value, v2Key, to: defaults)
     }
 
+    // MARK: - The copy the LoginItem helper reads
+
+    /// Copies both answers into the app group (`HelperIPC.suiteName`), the
+    /// only defaults the LoginItem helper can read. The answers themselves
+    /// live in the app's `UserDefaults.standard`; until 1.55 they were saved
+    /// only there, and the helper collected on its timer whatever the user
+    /// had answered. `AppState` calls this whenever it saves an answer and
+    /// once at launch, so answers given before the copy existed reach the
+    /// helper too.
+    ///
+    /// Under the same keys, with one difference: every answer is written,
+    /// `.undecided` included. Here a missing key has to mean "the app has not
+    /// said", which the helper treats as no (`LocalCollectionPolicy.helperCycle`),
+    /// so it cannot also mean "no answer yet", which for a paired Mac is a yes.
+    ///
+    /// v2 first, so a reader that sees the new v1 answer also sees the v2 one
+    /// it was given with. Nothing the helper runs reads beyond the routine
+    /// window today, so it decides on v1 alone; v2 is copied so the app group
+    /// holds the whole answer rather than half of it.
+    ///
+    /// - Returns: whether the copy differed from what was there, so the
+    ///   helper is told only about a change (and not on every launch).
+    @discardableResult
+    public static func mirror(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent,
+        to helperDefaults: UserDefaults
+    ) -> Bool {
+        let changed = helperDefaults.string(forKey: v2Key) != consentV2.rawValue
+            || helperDefaults.string(forKey: key) != consent.rawValue
+        helperDefaults.set(consentV2.rawValue, forKey: v2Key)
+        helperDefaults.set(consent.rawValue, forKey: key)
+        return changed
+    }
+
+    /// The answers as the app last copied them (`mirror`), or nil when it has
+    /// not: a helper that starts before the app has run since the update that
+    /// added the copy. A value this build does not recognise is also nil, not
+    /// `.undecided`, since for a paired Mac `.undecided` would let it collect.
+    public static func loadMirror(
+        _ helperDefaults: UserDefaults
+    ) -> (consent: LocalScanConsent, consentV2: LocalScanConsent)? {
+        guard let raw = helperDefaults.string(forKey: key),
+              let consent = LocalScanConsent(rawValue: raw)
+        else { return nil }
+        return (consent, read(v2Key, from: helperDefaults))
+    }
+
     private static func read(_ key: String, from defaults: UserDefaults) -> LocalScanConsent {
         guard let raw = defaults.string(forKey: key) else { return .undecided }
         return LocalScanConsent(rawValue: raw) ?? .undecided
@@ -433,5 +481,89 @@ public enum LocalCollectionPolicy {
             isDemoMode: isDemoMode,
             consent: consent
         )
+    }
+
+    // MARK: - The LoginItem helper
+
+    /// What the helper's cycle may do.
+    public enum HelperCycle: Equatable, Sendable {
+        /// Read this Mac, and upload with the pairing: the app is signed in
+        /// as the user this Mac was paired for.
+        case collectAndSync
+        /// Read this Mac for the app on it, and upload nothing: local mode
+        /// after a yes, or signed in as a user this Mac was not paired for.
+        case collectLocally
+        /// Read nothing and send nothing, not even a heartbeat
+        /// (`HelperCycleRunner`).
+        case paused(PauseReason)
+        /// The app has not copied the answer to the app group yet
+        /// (`LocalScanConsentStore.loadMirror` is nil). Treated like
+        /// `.paused`: the helper cannot tell a "Not now" from a yes, and the
+        /// app copies the answer as it starts, so the wait ends when the app
+        /// next runs.
+        case awaitingAnswer
+
+        public enum PauseReason: Equatable, Sendable {
+            /// The local-scan answer does not allow it.
+            case answer
+            /// The app is signed out and not in local mode: it reads nothing,
+            /// whatever the answer, and neither does the helper.
+            case signedOut
+        }
+
+        /// Whether this cycle reads the Mac at all.
+        public var reads: Bool {
+            switch self {
+            case .collectAndSync, .collectLocally: return true
+            case .paused, .awaitingAnswer: return false
+            }
+        }
+    }
+
+    /// The helper's version of `allowsCollection`, asked before anything is
+    /// read, again before anything read is written, and before every upload
+    /// (`HelperCycleRunner`).
+    ///
+    /// The helper has no sign-in of its own, and its pairing (`HelperConfig`)
+    /// outlives a sign-out and an account switch, so the app records which
+    /// account it is in (`HelperAccountRecord`):
+    ///   * signed in: the account stands in for a yes, as in the app, and the
+    ///     helper uploads only with a pairing made for that user;
+    ///   * local mode: a yes lets it read for the app; it uploads nothing;
+    ///   * signed out (the Sign-In form, Demo): nothing, whatever the answer,
+    ///     since the app reads nothing either.
+    /// With no record yet (a helper started before the app ran on this
+    /// version) the pairing is trusted as before the record existed: paired
+    /// counts as signed in as the pairing's user, unpaired as local mode.
+    ///
+    /// `pairedUserId` (the pairing's `userId`, nil when unpaired) is read only
+    /// when the answer could lead to an upload: in the helper it reads the
+    /// pairing secret from the Keychain, and a "Not now" should not cost even
+    /// that. `LocalScanConsentHelperTests` checks every combination.
+    public static func helperCycle(
+        mirroredConsent: LocalScanConsent?,
+        account: HelperAccountRecord?,
+        pairedUserId: () -> String?
+    ) -> HelperCycle {
+        guard let consent = mirroredConsent else { return .awaitingAnswer }
+        switch account {
+        case .signedOut:
+            return .paused(.signedOut)
+        case .localMode:
+            return allowsCollection(isAuthenticated: false, consent: consent)
+                ? .collectLocally
+                : .paused(.answer)
+        case .signedIn(let userId):
+            guard allowsCollection(isAuthenticated: true, consent: consent) else {
+                return .paused(.answer)
+            }
+            return pairedUserId() == userId ? .collectAndSync : .collectLocally
+        case nil:
+            guard consent != .declined else { return .paused(.answer) }
+            if pairedUserId() != nil { return .collectAndSync }
+            return allowsCollection(isAuthenticated: false, consent: consent)
+                ? .collectLocally
+                : .paused(.answer)
+        }
     }
 }

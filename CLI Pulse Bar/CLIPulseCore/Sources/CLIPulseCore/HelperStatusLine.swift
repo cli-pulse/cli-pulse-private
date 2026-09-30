@@ -35,12 +35,18 @@ public struct HelperStatusLine: Equatable, Sendable {
         self.isError = isError
     }
 
-    /// - Parameter pairedDeviceId: the device this Mac is paired as for the
-    ///   signed-in account (`HelperConfig.pairedDeviceId`), or nil.
+    /// - Parameters:
+    ///   - pairedDeviceId: the device this Mac is paired as for the signed-in
+    ///     account (`HelperConfig.pairedDeviceId`), or nil.
+    ///   - helperShouldBePaused: whether, given the app's answer and account,
+    ///     the helper should be reading nothing (`AppState.helperShouldBePaused`).
+    ///   - appBuild: this app's `CFBundleVersion` (`HelperIPC.runningBuild`).
     public static func make(
         status: HelperIPC.Status,
         thisMacPairing: ThisMacPairing.State,
         pairedDeviceId: String?,
+        helperShouldBePaused: Bool = false,
+        appBuild: String? = nil,
         now: Date = Date()
     ) -> HelperStatusLine {
         if thisMacPairing == .notSetUp {
@@ -55,6 +61,24 @@ public struct HelperStatusLine: Equatable, Sendable {
             return status.state == .idle
                 ? HelperStatusLine(tone: .inactive, text: L10n.advanced.helperNotRunning, isError: false)
                 : HelperStatusLine(tone: .good, text: L10n.advanced.helperRunning, isError: false)
+        }
+        if helperShouldBePaused, status.state != .idle,
+           let appBuild, status.helperBuild != appBuild {
+            // The helper should be reading nothing, and the one running was
+            // built before this app: macOS does not restart a LoginItem when
+            // its app updates in place, and a helper from before 1.55 honours
+            // no answer at all. The app restarts it once per update
+            // (`HelperLoginItemRestart`); this is what is left if that failed.
+            return HelperStatusLine(tone: .attention, text: L10n.advanced.helperRestartNeeded, isError: false)
+        }
+        // A helper that runs and does nothing, because the answer or a
+        // sign-out does not allow it. "Running" in green, under a hint that
+        // says it syncs, would read as syncing.
+        if status.pauseCode == HelperIPC.PauseCode.localScanOff {
+            return HelperStatusLine(tone: .inactive, text: L10n.advanced.helperPausedLocalScanOff, isError: false)
+        }
+        if status.pauseCode == HelperIPC.PauseCode.signedOut {
+            return HelperStatusLine(tone: .inactive, text: L10n.advanced.helperPausedSignedOut, isError: false)
         }
         let tone: Tone
         switch status.state {

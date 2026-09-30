@@ -729,6 +729,9 @@
 "advanced.sync_minutes_ago" = "%d 分钟前同步";
 "advanced.helper_running" = "运行中";
 "advanced.helper_not_running" = "未运行";
+"advanced.helper_paused_local_scan_off" = "已暂停：本地扫描已关闭";
+"advanced.helper_paused_signed_out" = "已暂停：未登录";
+"advanced.helper_restart_needed" = "需要重启：请关闭后台同步再重新打开";
 "advanced.privacy_keys_title" = "服务商 API 密钥与 Cookie";
 "advanced.privacy_keys_detail" = "仅保存在 macOS 钥匙串 · 永不上传";
 "advanced.data_title" = "数据去向";

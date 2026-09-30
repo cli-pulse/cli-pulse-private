@@ -14,6 +14,10 @@ public enum HelperIPC {
     /// Posted by the helper when it starts up.
     public static let didStartNotificationName = Notification.Name("CLIPulseHelperDidStart")
 
+    // The app's "what the helper reads changed" hint (the local-scan answers,
+    // the account, Settings › Privacy's switches) is
+    // `HelperInputs.didChangeNotificationName`, one constant for all three.
+
     // MARK: - Shared UserDefaults keys (suite: group.yyh.CLI-Pulse)
 
     public static let suiteName = "group.yyh.CLI-Pulse"
@@ -44,6 +48,35 @@ public enum HelperIPC {
     /// v1 was a JSON dictionary keyed by provider name. v2 is a versioned,
     /// account-array envelope with an optional v1 provider projection.
     public static let collectorResultsKey = "helper_collector_results"
+
+    /// Which account the app is in, for the helper (`HelperAccountRecord`,
+    /// written by the app where it applies each state, read by the helper).
+    ///
+    /// The helper's pairing (`HelperConfig`) outlives a sign-out and an
+    /// account switch: nothing removes it. Taken alone as "signed in", it kept
+    /// a signed-out Mac scanning and uploading to the account it had left, and
+    /// after a switch to another account it uploaded to the first one.
+    public static let appAccountKey = "cli_pulse_app_account"
+
+    /// Records the app's account for the helper (`appAccountKey`).
+    /// - Returns: whether that changed what the helper would read.
+    @discardableResult
+    public static func recordAppAccount(
+        _ account: HelperAccountRecord,
+        to defaults: UserDefaults
+    ) -> Bool {
+        let value = account.storedValue
+        let changed = defaults.string(forKey: appAccountKey) != value
+        defaults.set(value, forKey: appAccountKey)
+        return changed
+    }
+
+    /// The account the app last recorded, or nil when it has not recorded one
+    /// (a helper that started before the app has run on this version): the
+    /// helper then trusts its pairing, as before the record existed.
+    public static func loadAppAccount(_ defaults: UserDefaults) -> HelperAccountRecord? {
+        defaults.string(forKey: appAccountKey).map(HelperAccountRecord.init(storedValue:))
+    }
 
     // MARK: - Collector results wire contract
 
@@ -313,10 +346,36 @@ public enum HelperIPC {
 
     // MARK: - Status
 
+    /// This process's `CFBundleVersion`. The app and the helper it bundles
+    /// share one build number, so a helper whose status carries another one
+    /// (or none) is not the helper this app shipped with.
+    public static var runningBuild: String? {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+    }
+
     public enum State: String, Codable, Sendable {
         case running
         case idle
         case error
+    }
+
+    /// Why a running helper did nothing this cycle (`Status.pauseCode`). A
+    /// token, like `errorCode`, so the app words it in its own language.
+    public enum PauseCode {
+        /// The local-scan answer does not allow reading this Mac
+        /// (`LocalCollectionPolicy.HelperCycle.PauseReason.answer`).
+        public static let localScanOff = "local_scan_off"
+        /// The app is signed out and not in local mode, so it reads nothing
+        /// and neither does the helper, whatever the answer
+        /// (`LocalCollectionPolicy.HelperCycle.PauseReason.signedOut`).
+        public static let signedOut = "signed_out"
+
+        public static func code(for reason: LocalCollectionPolicy.HelperCycle.PauseReason) -> String {
+            switch reason {
+            case .answer: return localScanOff
+            case .signedOut: return signedOut
+            }
+        }
     }
 
     public struct Status: Codable, Sendable {
@@ -335,6 +394,15 @@ public enum HelperIPC {
         /// it just replaced (`ThisMacPairing`). Nil when there was no pairing to
         /// sync as, and in a status from a helper that predates the field.
         public let deviceId: String?
+        /// Set while the helper runs but reads and sends nothing
+        /// (`PauseCode`). Optional for the same reason as `errorCode`: a status
+        /// from an older helper lacks it, and older apps ignore it.
+        public let pauseCode: String?
+        /// The `CFBundleVersion` of the helper that wrote this. Every helper
+        /// wrote `helperVersion` "1.0.0", so the app could not tell a helper
+        /// left running from before an update, which honours no local-scan
+        /// answer at all, from the current one. Nil from such a helper.
+        public let helperBuild: String?
 
         public init(
             state: State,
@@ -342,7 +410,9 @@ public enum HelperIPC {
             error: String? = nil,
             errorCode: String? = nil,
             helperVersion: String? = nil,
-            deviceId: String? = nil
+            deviceId: String? = nil,
+            pauseCode: String? = nil,
+            helperBuild: String? = nil
         ) {
             self.state = state
             self.lastSync = lastSync
@@ -350,6 +420,8 @@ public enum HelperIPC {
             self.errorCode = errorCode
             self.helperVersion = helperVersion
             self.deviceId = deviceId
+            self.pauseCode = pauseCode
+            self.helperBuild = helperBuild
         }
     }
 
@@ -392,4 +464,41 @@ public enum HelperIPC {
         )
     }
     #endif
+}
+
+/// Which account the app is in, as the helper needs to know it
+/// (`HelperIPC.appAccountKey`).
+public enum HelperAccountRecord: Equatable, Sendable {
+    /// Signed in as this user. The helper uploads only with a pairing made
+    /// for the same user (`HelperConfig.userId`).
+    case signedIn(userId: String)
+    /// Using CLI Pulse without an account. The helper collects for the app
+    /// on this Mac after a yes, and uploads nothing.
+    case localMode
+    /// Neither: the Sign-In form, or Demo mode. The app reads nothing, so
+    /// the helper reads nothing, whatever the answer.
+    case signedOut
+
+    private static let signedInPrefix = "signed_in:"
+
+    var storedValue: String {
+        switch self {
+        case .signedIn(let userId): return Self.signedInPrefix + userId
+        case .localMode: return "local_mode"
+        case .signedOut: return "signed_out"
+        }
+    }
+
+    /// A value this build does not recognise, or a sign-in without a user,
+    /// reads as `.signedOut`: it reads nothing and uploads nothing.
+    init(storedValue: String) {
+        if storedValue.hasPrefix(Self.signedInPrefix) {
+            let userId = String(storedValue.dropFirst(Self.signedInPrefix.count))
+            self = userId.isEmpty ? .signedOut : .signedIn(userId: userId)
+        } else if storedValue == "local_mode" {
+            self = .localMode
+        } else {
+            self = .signedOut
+        }
+    }
 }

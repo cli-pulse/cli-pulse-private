@@ -347,6 +347,8 @@ extension AppState {
         isDemoMode = true
         isAuthenticated = true
         isPaired = true
+        // Demo reads nothing on this Mac, so the helper reads nothing either.
+        recordAccountForHelper()
         // Shown as the Settings account title, the heading of every localized
         // screenshot of that screen. Nothing stores or syncs it: a relaunch in
         // Demo comes back through here and resolves it again.

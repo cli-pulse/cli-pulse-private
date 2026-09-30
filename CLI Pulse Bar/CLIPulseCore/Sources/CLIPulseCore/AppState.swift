@@ -144,6 +144,7 @@ public final class AppState: ObservableObject {
         didSet {
             guard localScanConsent != oldValue else { return }
             LocalScanConsentStore.save(localScanConsent)
+            mirrorLocalScanConsentForHelper()
         }
     }
     /// v1.55: the answer to disclosure v2 — may CLI Pulse read session logs
@@ -155,7 +156,69 @@ public final class AppState: ObservableObject {
         didSet {
             guard localScanConsentV2 != oldValue else { return }
             LocalScanConsentStore.saveV2(localScanConsentV2)
+            mirrorLocalScanConsentForHelper()
         }
+    }
+
+    /// Copies both answers to the app group for the LoginItem helper, which
+    /// cannot read this app's defaults (`LocalScanConsentStore.mirror`), and
+    /// when that changed what the helper would read, tells it so that it acts
+    /// on the answer now rather than at its next cycle, up to two minutes
+    /// later. macOS only: nothing else has a helper.
+    func mirrorLocalScanConsentForHelper() {
+        #if os(macOS)
+        guard let helperDefaults = helperDefaultsForThisRuntime else { return }
+        let changed = LocalScanConsentStore.mirror(
+            consent: localScanConsent,
+            consentV2: localScanConsentV2,
+            to: helperDefaults
+        )
+        if changed { notifyHelper?() }
+        #endif
+    }
+
+    /// The account as the helper needs it (`HelperAccountRecord`): signed in
+    /// as whom, local mode, or neither. Demo mode reads nothing, so it counts
+    /// as neither even though it shows an account.
+    var accountRecordForHelper: HelperAccountRecord {
+        if isDemoMode { return .signedOut }
+        if isAuthenticated, !userId.isEmpty { return .signedIn(userId: userId) }
+        return isLocalMode ? .localMode : .signedOut
+    }
+
+    /// Tells the helper which account the app is in (`HelperIPC.appAccountKey`).
+    /// Its pairing survives a sign-out and an account switch, so without this
+    /// it went on uploading to the account the pairing was made for. Called
+    /// where the app applies each state.
+    func recordAccountForHelper() {
+        #if os(macOS)
+        guard let helperDefaults = helperDefaultsForThisRuntime else { return }
+        if HelperIPC.recordAppAccount(accountRecordForHelper, to: helperDefaults) {
+            notifyHelper?()
+        }
+        #endif
+    }
+
+    /// Whether the helper, given this app's answer and account, should be
+    /// reading nothing. Settings compares it with what the helper reports: a
+    /// helper that should be paused and does not say so is one left running
+    /// from before an update (`HelperStatusLine`).
+    public var helperShouldBePaused: Bool {
+        !LocalCollectionPolicy.helperCycle(
+            mirroredConsent: localScanConsent,
+            account: accountRecordForHelper,
+            pairedUserId: { nil }
+        ).reads
+    }
+
+    /// `helperDefaults`, where this runtime may write to a helper's app group
+    /// at all. The same double check as the provider-config copy: a QA or
+    /// quarantined runtime writes nothing there even when handed the suite
+    /// (`QARuntimeSideEffectPolicyTests`).
+    private var helperDefaultsForThisRuntime: UserDefaults? {
+        runtimeEnvironment.capabilities.allowsHelperRegistration
+            ? helperDefaults
+            : nil
     }
 
     /// v1.55: set by "Choose again…" in Settings › Privacy, for a signed-in Mac
@@ -977,7 +1040,15 @@ public final class AppState: ObservableObject {
     let authManager: AuthManager
     let dataRefreshManager: DataRefreshManager
     private let providerConfigDefaults: UserDefaults
-    private let providerConfigHelperDefaults: UserDefaults?
+    /// The app group the LoginItem helper reads (`HelperIPC.suiteName`): the
+    /// provider configs and the local-scan answers are copied here. Nil where
+    /// the runtime registers no helper (see `init(runtimeEnvironment:)`).
+    private let helperDefaults: UserDefaults?
+    /// Tells a running helper that what it reads in `helperDefaults` changed
+    /// (`HelperInputs.postDidChange`). Set only by the production
+    /// initializer: the notification is system-wide, and a test that injects
+    /// `helperDefaults` must not reach a helper running on the same Mac.
+    private let notifyHelper: (() -> Void)?
     private let providerSecretStore: any ProviderSecretStoring
     private let providerAccountDeletionOutbox:
         ProviderAccountDeletionOutbox
@@ -1001,13 +1072,22 @@ public final class AppState: ObservableObject {
     public convenience init(
         runtimeEnvironment: CLIPulseRuntimeEnvironment
     ) {
+        let registersHelper =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        #if os(macOS)
+        let notifyHelper: (() -> Void)? = registersHelper
+            ? { HelperInputs.postDidChange() }
+            : nil
+        #else
+        let notifyHelper: (() -> Void)? = nil
+        #endif
         self.init(
             runtimeEnvironment: runtimeEnvironment,
             defaults: .standard,
-            helperDefaults:
-                runtimeEnvironment.capabilities.allowsHelperRegistration
-                    ? UserDefaults(suiteName: HelperIPC.suiteName)
-                    : nil
+            helperDefaults: registersHelper
+                ? UserDefaults(suiteName: HelperIPC.suiteName)
+                : nil,
+            notifyHelper: notifyHelper
         )
     }
 
@@ -1015,6 +1095,7 @@ public final class AppState: ObservableObject {
         runtimeEnvironment runtime: CLIPulseRuntimeEnvironment,
         defaults: UserDefaults,
         helperDefaults: UserDefaults? = nil,
+        notifyHelper: (() -> Void)? = nil,
         providerSecretStore: any ProviderSecretStoring =
             KeychainProviderSecretStore(),
         api injectedAPI: APIClient? = nil,
@@ -1057,10 +1138,17 @@ public final class AppState: ObservableObject {
         self.authManager = AuthManager(api: api, persistTokens: Self.persistAuthTokens)
         self.dataRefreshManager = DataRefreshManager(api: api)
         self.providerConfigDefaults = defaults
-        self.providerConfigHelperDefaults = helperDefaults
+        self.helperDefaults = helperDefaults
+        self.notifyHelper = notifyHelper
         self.providerSecretStore = providerSecretStore
         self.providerAccountDeletionOutbox =
             injectedOutbox ?? .shared
+        // Answers given before 1.55 were never copied for the helper, and
+        // until one is, the helper collects nothing
+        // (`LocalCollectionPolicy.HelperCycle.awaitingAnswer`). Before the
+        // launch-setup guard: it is one app-group write, and it is the state
+        // the helper reads, not a launch effect.
+        mirrorLocalScanConsentForHelper()
         guard performLaunchSetup else { return }
 
         subscriptionManager.apiClient = api
@@ -1135,6 +1223,17 @@ public final class AppState: ObservableObject {
         // Widgets have no helper to register; this whole block
         // compiles out on those platforms.
         if runtime.capabilities.allowsHelperRegistration {
+            // After an update the background-sync LoginItem still runs the old
+            // binary until it is restarted, and one from before 1.55 honours
+            // no local-scan answer. The answers were copied above, so the
+            // restarted helper finds them.
+            Task {
+                await HelperLoginItemRestart.runIfNeeded(
+                    service: .live,
+                    defaults: defaults,
+                    currentBuild: HelperIPC.runningBuild
+                )
+            }
             Task { [weak self] in
                 guard let self else { return }
                 let status = await self.helperLifecycle.ensureRegistered()
@@ -1584,7 +1683,7 @@ public final class AppState: ObservableObject {
         let resolvedStore = metadataStore ?? ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
-                ? providerConfigHelperDefaults
+                ? helperDefaults
                 : nil
         )
         return resolvedStore.save(providerConfigs)
@@ -2139,7 +2238,7 @@ public final class AppState: ObservableObject {
         return ProviderConfigMetadataStore(
             defaults: providerConfigDefaults,
             helperDefaults: allowsHelperMirror
-                ? providerConfigHelperDefaults
+                ? helperDefaults
                 : nil
         ).save(providerConfigs)
     }

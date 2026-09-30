@@ -819,6 +819,9 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.sync_minutes_ago" = "Sincronizado hace %d min";
 "advanced.helper_running" = "En ejecución";
 "advanced.helper_not_running" = "No está en ejecución";
+"advanced.helper_paused_local_scan_off" = "En pausa: el análisis local está desactivado";
+"advanced.helper_paused_signed_out" = "En pausa: sesión cerrada";
+"advanced.helper_restart_needed" = "Hay que reiniciarlo: desactiva la sincronización en segundo plano y vuelve a activarla";
 "advanced.privacy_keys_title" = "Claves API y cookies de proveedores";
 "advanced.privacy_keys_detail" = "Solo se guardan en el Llavero de macOS · nunca se suben";
 "advanced.data_title" = "Adónde van tus datos";

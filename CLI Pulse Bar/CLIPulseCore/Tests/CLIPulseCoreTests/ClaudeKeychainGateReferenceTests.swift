@@ -239,12 +239,20 @@ final class ClaudeKeychainGateReferenceTests: XCTestCase {
 
     func testTheLoginItemTellsHelloItsCycleMayRead() throws {
         // `hello` reads ~/.codex/auth.json only when told the answer allows it
-        // (`LocalSessionControlClient.hello(localScanAllowed:)`).
+        // (`LocalSessionControlClient.hello(localScanAllowed:)`). The helper
+        // says what `HelperCycleRunner` asked just before the heartbeat step
+        // (`HelperCycleRunnerTests.testEachUploadStepIsHandedTheQuestionThatAllowedIt`),
+        // not a constant, and calls `hello` nowhere else.
         let daemon = try String(
             contentsOf: Self.helperSources.appendingPathComponent("HelperDaemon.swift"),
             encoding: .utf8
         )
-        XCTAssertTrue(daemon.contains(".hello(localScanAllowed: true)"))
+        XCTAssertTrue(daemon.contains(".hello(localScanAllowed: cycle.reads)"))
+        XCTAssertFalse(daemon.contains("localScanAllowed: true"), "a literal yes that no question gave")
         XCTAssertFalse(daemon.contains("LocalSessionControlClient().hello()"))
+        XCTAssertEqual(daemon.components(separatedBy: ".hello(").count - 1, 1, "hello is called outside the heartbeat step")
+        // The heartbeat is reached only as an upload step, with its question.
+        XCTAssertEqual(daemon.components(separatedBy: "self.sendHeartbeat(").count - 1, 1)
+        XCTAssertTrue(daemon.contains("try await self.sendHeartbeat(collection, config: config, cycle: cycle)"))
     }
 }
