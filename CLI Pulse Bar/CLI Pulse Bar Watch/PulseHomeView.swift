@@ -340,7 +340,7 @@ struct PulseHomeView: View {
             }
         }
 
-        if !dash.top_projects.isEmpty {
+        if dash.showsTopProjectsCard {
             WatchCard {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionHeader(title: L10n.dashboard.topProjects, icon: "folder")
@@ -358,7 +358,7 @@ struct PulseHomeView: View {
             }
         }
 
-        if !dash.risk_signals.isEmpty {
+        if dash.showsRiskSignalsCard {
             WatchCard {
                 VStack(alignment: .leading, spacing: 6) {
                     SectionHeader(title: L10n.dashboard.riskSignals, icon: "exclamationmark.triangle.fill")

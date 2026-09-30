@@ -46,7 +46,6 @@
 "dashboard.30day_est" = "30-Day Est.";
 "dashboard.provider_usage" = "Provider Usage";
 "dashboard.top_projects" = "Top Projects";
-"dashboard.no_projects" = "No projects tracked yet";
 "dashboard.risk_signals" = "Risk Signals";
 "dashboard.activity" = "Activity";
 "dashboard.quick_stats" = "Quick Stats";
@@ -1816,8 +1815,6 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "intents.less_than_amount" = "less than %@";
 
 /* ── demo-mode ── */
-"dashboard.risk_quota_low" = "%1$@ quota: less than %2$d%% left";
-"dashboard.risk_device_offline" = "%@ is offline";
 "auth.demo_user_name" = "Demo User";
 
 /* ── composition ── */

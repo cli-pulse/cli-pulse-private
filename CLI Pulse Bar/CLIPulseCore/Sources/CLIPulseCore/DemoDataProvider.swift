@@ -188,18 +188,14 @@ internal enum DemoDataProvider {
                         suppression_key: "Session Too Long:\(longRunning.id)"),
         ]
 
-        // Risk signals are display text that RiskSignalsList renders verbatim,
-        // held in memory and never stored or synced, so they are localized here,
-        // as the only real producer (DataRefreshManager's noAiToolsDetected)
-        // does. enterDemoMode runs this in the active language.
-        let lowQuotaPercent = 10
-        let riskSignals =
-            providers.compactMap { p -> String? in
-                guard let quota = p.quota, quota > 0, let remaining = p.remaining,
-                      remaining * 100 < quota * lowQuotaPercent else { return nil }
-                return L10n.dashboard.riskQuotaLow(p.provider, lowQuotaPercent)
-            }
-            + devices.filter { $0.status == "offline" }.map { L10n.dashboard.riskDeviceOffline($0.name) }
+        // From the local refresh's own producer, with Demo's facts: it has
+        // sessions and provider data, so it raises nothing and the Risk Signals
+        // card hides, as it would for a real account in this state. It used to
+        // hold a low-quota and a device-offline signal, kinds only the retired
+        // backend wrote. enterDemoMode runs this in the active language.
+        let riskSignals = DashboardRiskSignals.local(
+            foundSessions: !sessions.isEmpty,
+            foundProviderData: !providers.isEmpty)
 
         let breakdowns = providers.map { provider in
             ProviderBreakdown(provider: provider.provider, usage: provider.today_usage,
@@ -216,11 +212,11 @@ internal enum DemoDataProvider {
             online_devices: devices.filter { $0.status == "online" }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
-            top_projects: [
-                TopProject(id: "p1", name: "cli-pulse-ios", usage: 24500, estimated_cost: 0.29, cost_status: "Estimated"),
-                TopProject(id: "p2", name: "cli-pulse-helper", usage: 12800, estimated_cost: 0.10, cost_status: "Estimated"),
-                TopProject(id: "p3", name: "backend-api", usage: 8400, estimated_cost: 0.10, cost_status: "Estimated"),
-            ],
+            // Empty, as every real producer leaves it (APIClient, DataRefreshManager),
+            // so the Top Projects card hides here too. Sample rows put it in every
+            // App Store screenshot while no customer could see it. Put rows back
+            // only in the change that gives a real account some.
+            top_projects: [],
             trend: (0..<24).map { index in
                 UsagePoint(
                     timestamp: timestamp(Double(-23 + index) * 3600),

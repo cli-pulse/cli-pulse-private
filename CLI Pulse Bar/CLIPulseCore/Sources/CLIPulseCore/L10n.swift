@@ -359,16 +359,7 @@ public enum L10n {
         public static var thirtyDayEst: String { tr("dashboard.30day_est") }
         public static var providerUsage: String { tr("dashboard.provider_usage") }
         public static var topProjects: String { tr("dashboard.top_projects") }
-        public static var noProjects: String { tr("dashboard.no_projects") }
         public static var riskSignals: String { tr("dashboard.risk_signals") }
-        /// Risk-signal rows. `risk_signals` is display text shown verbatim, so
-        /// whoever writes a signal resolves it through one of these.
-        public static func riskQuotaLow(_ provider: String, _ percent: Int) -> String {
-            tr("dashboard.risk_quota_low", provider, percent)
-        }
-        public static func riskDeviceOffline(_ device: String) -> String {
-            tr("dashboard.risk_device_offline", device)
-        }
         public static var activity: String { tr("dashboard.activity") }
         /// The iPhone Overview's hourly bar chart. Not `activity`: the heatmap
         /// card right above it is titled that, and macOS and the Watch keep
@@ -401,6 +392,9 @@ public enum L10n {
         public static var apiEquivalent30d: String { tr("dashboard.api_equivalent_30d") }
         public static var allInMonthlyEst: String { tr("dashboard.all_in_monthly_est") }
         public static var allInMonthlyHelp: String { tr("dashboard.all_in_monthly_help") }
+        /// The only risk-signal row anything raises (`DashboardRiskSignals`).
+        /// `risk_signals` is display text shown verbatim, so it is resolved
+        /// when the signal is made.
         public static var noAiToolsDetected: String { tr("dashboard.no_ai_tools_detected") }
     }
 

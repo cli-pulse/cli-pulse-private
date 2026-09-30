@@ -2,8 +2,9 @@ import XCTest
 import SwiftUI
 @testable import CLIPulseCore
 
-/// P2-1 slice 3: `TopProjectsList` pins the empty-state + row-iteration
-/// contract that both Overview tabs depend on.
+/// P2-1 slice 3: `TopProjectsList` pins the row-iteration contract that
+/// both Overview tabs depend on. It has no empty state: the card draws only
+/// with rows (OverviewOptionalCardsTests).
 final class TopProjectsListTests: XCTestCase {
 
     func testMacOSStylePreservesPreExtractionFonts() {
@@ -36,12 +37,5 @@ final class TopProjectsListTests: XCTestCase {
         let items = [TopProject(id: "solo", name: "x", usage: 0, estimated_cost: 0, cost_status: "")]
         XCTAssertEqual(items.last?.id, "solo")
         XCTAssertEqual(items.map { $0.id != items.last?.id }, [false])
-    }
-
-    func testEmptyProjectsListContract() {
-        // Empty projects must drive the empty-text branch; the row branch is
-        // skipped entirely. Represented here by a length check.
-        let items: [TopProject] = []
-        XCTAssertTrue(items.isEmpty)
     }
 }

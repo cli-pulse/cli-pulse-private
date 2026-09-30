@@ -653,33 +653,35 @@ struct iOSOverviewTab: View {
 
     // MARK: - Top Projects
 
+    /// Only with projects to list, like the Mac and Watch
+    /// (`showsTopProjectsCard`): nothing fills them yet, and the empty card
+    /// told everyone "No projects tracked yet".
+    @ViewBuilder
     private func topProjects(_ dash: DashboardSummary) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 5) {
-                Image(systemName: "folder")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(PulseTheme.accent)
-                Text(L10n.dashboard.topProjects)
-                    .font(.subheadline.weight(.semibold))
+        if dash.showsTopProjectsCard {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 5) {
+                    Image(systemName: "folder")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PulseTheme.accent)
+                    Text(L10n.dashboard.topProjects)
+                        .font(.subheadline.weight(.semibold))
+                }
+                TopProjectsList(projects: dash.top_projects, style: .iOS)
             }
-            TopProjectsList(
-                projects: dash.top_projects,
-                emptyText: L10n.dashboard.noProjects,
-                style: .iOS
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(PulseTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(PulseTheme.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.horizontal)
     }
 
     // MARK: - Risk Signals
 
     @ViewBuilder
     private func riskSignals(_ dash: DashboardSummary) -> some View {
-        if !dash.risk_signals.isEmpty {
+        if dash.showsRiskSignalsCard {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 5) {
                     Image(systemName: "exclamationmark.shield")

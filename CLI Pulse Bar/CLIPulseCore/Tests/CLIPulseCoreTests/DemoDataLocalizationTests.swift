@@ -94,30 +94,8 @@ final class DemoDataLocalizationTests: XCTestCase {
         }
     }
 
-    /// Risk signals are rendered verbatim, so they must already be Japanese
-    /// when the demo is built in Japanese.
-    func testEveryDemoRiskSignalIsLocalized() {
-        let ja = DemoDataProvider.generate()
-        LocaleOverrideStore.shared.set("en")
-        let en = DemoDataProvider.generate()
-        LocaleOverrideStore.shared.set("ja")
-
-        let jaSignals = ja.dashboard.risk_signals
-        XCTAssertFalse(jaSignals.isEmpty, "no demo risk signals, so this proves nothing")
-        XCTAssertEqual(jaSignals.count, en.dashboard.risk_signals.count)
-
-        var data = Set<String>()
-        for name in ja.providers.map(\.provider) + ja.devices.map(\.name) {
-            data.formUnion(latinWords(name))
-        }
-        for (jaSignal, enSignal) in zip(jaSignals, en.dashboard.risk_signals) {
-            XCTAssertNotEqual(jaSignal, enSignal, "risk signal not localized: \(jaSignal)")
-            XCTAssertNil(jaSignal.range(of: #"%(\d\$)?[@d]"#, options: .regularExpression),
-                         "unfilled specifier: \(jaSignal)")
-            let leaked = latinWords(jaSignal).intersection(latinWords(enSignal)).subtracting(data)
-            XCTAssertTrue(leaked.isEmpty, "English words \(leaked.sorted()) in: \(jaSignal)")
-        }
-    }
+    // Demo's risk signals: OverviewOptionalCardsTests. It raises only what
+    // the local refresh would for its state, which is none.
 
     /// Session names are data, shown as-is in every language, so they read as
     /// identifiers rather than English sentences — and every name an alert or a

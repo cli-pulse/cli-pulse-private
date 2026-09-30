@@ -771,17 +771,19 @@ struct OverviewTab: View {
 
     // MARK: - Top Projects
 
+    /// Only with projects to list, like the iPhone and Watch
+    /// (`showsTopProjectsCard`): nothing fills them yet, and the empty card
+    /// told everyone "No projects tracked yet".
+    @ViewBuilder
     private func topProjects(_ dash: DashboardSummary) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            SectionHeader(title: L10n.dashboard.topProjects, icon: "folder")
-            TopProjectsList(
-                projects: dash.top_projects,
-                emptyText: L10n.dashboard.noProjects,
-                style: .macOS
-            )
+        if dash.showsTopProjectsCard {
+            VStack(alignment: .leading, spacing: 6) {
+                SectionHeader(title: L10n.dashboard.topProjects, icon: "folder")
+                TopProjectsList(projects: dash.top_projects, style: .macOS)
+            }
+            .padding(10)
+            .glassCard(cornerRadius: 8, elevated: false)
         }
-        .padding(10)
-        .glassCard(cornerRadius: 8, elevated: false)
     }
 
     // MARK: - Activity Timeline
@@ -801,7 +803,7 @@ struct OverviewTab: View {
 
     @ViewBuilder
     private func riskSignals(_ dash: DashboardSummary) -> some View {
-        if !dash.risk_signals.isEmpty {
+        if dash.showsRiskSignalsCard {
             VStack(alignment: .leading, spacing: 6) {
                 SectionHeader(title: L10n.dashboard.riskSignals, icon: "exclamationmark.shield")
                 RiskSignalsList(signals: dash.risk_signals, style: .macOS)

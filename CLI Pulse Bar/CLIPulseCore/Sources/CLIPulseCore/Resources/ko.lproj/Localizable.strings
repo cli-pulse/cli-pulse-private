@@ -46,7 +46,6 @@
 "dashboard.30day_est" = "30일 추정";
 "dashboard.provider_usage" = "공급자 사용량";
 "dashboard.top_projects" = "상위 프로젝트";
-"dashboard.no_projects" = "추적 중인 프로젝트 없음";
 "dashboard.risk_signals" = "위험 신호";
 "dashboard.activity" = "활동";
 "dashboard.quick_stats" = "빠른 통계";
@@ -1776,8 +1775,6 @@
 "intents.less_than_amount" = "%@ 미만";
 
 /* ── demo-mode ── */
-"dashboard.risk_quota_low" = "%1$@ 할당량: %2$d%% 미만 남음";
-"dashboard.risk_device_offline" = "%@ 오프라인";
 "auth.demo_user_name" = "데모 사용자";
 
 /* ── composition ── */
