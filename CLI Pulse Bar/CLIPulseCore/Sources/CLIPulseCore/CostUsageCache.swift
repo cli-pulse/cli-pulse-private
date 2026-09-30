@@ -49,7 +49,18 @@ import Foundation
 ///       generation bump dropped the fourth component. Without this
 ///       bump the fix would only apply to logs written from here on,
 ///       and every historical day would keep reading $0.
-let costUsageCachePricingVersion: Int = 4
+///   5 — not used for Claude. It is the Codex cache's first version of its
+///       own (`costUsageCodexCacheRulesVersion`); skipping it keeps every
+///       number naming one set of rules.
+///   6 — 1.56: Claude responses are counted once, from their last line (it
+///       was the first line, which undercounts output: a response's output
+///       count grows line by line), including lines read by a later scan and
+///       lines a log repeats further down; a response without a `requestId`
+///       is identified by its session and message id; a proxy's preliminary
+///       estimate is not billed. See `CostUsageAccountingRules` and
+///       `CostUsageClaudeLogState`. A cache written under 4 holds responses
+///       counted from their first line, some of them more than once.
+let costUsageCachePricingVersion: Int = 6
 
 /// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
 /// `CodexPricingTable` changes (a row added, removed or repriced, a dated rate,
@@ -125,6 +136,91 @@ struct CostUsageFileUsage: Codable {
     /// the 1.56 rules, and for Claude; a Codex entry without it is re-parsed
     /// from the start.
     var codex: CostUsageCodexFileState? = nil
+    /// Claude only: what an incremental read of this log needs to count each
+    /// response once. Kept while the log is being written to; nil otherwise,
+    /// and a Claude log without it is read again from the start when it grows.
+    var claude: CostUsageClaudeLogState? = nil
+}
+
+/// What one Claude response adds to a log's totals, keyed by
+/// `CostUsageAccountingRules.claudeResponseKey`.
+struct CostUsageClaudeOpenRow: Codable, Equatable {
+    var key: String
+    var day: String
+    /// The model as the log names it; `parseClaudeFile` normalizes it.
+    var model: String
+    /// [input, cacheRead, cacheCreate, output, costNanos]. All zero for a
+    /// preliminary estimate, which is not billed.
+    var packed: [Int]
+    var incomplete: Bool
+
+    /// A stable 64-bit hash of what the row adds, cost aside: the cost follows
+    /// from the model and the tokens under the cache's rules version.
+    var fingerprint: UInt64 {
+        let p = packed
+        let text = "\(day)\u{1F}\(model)\u{1F}\(p[safeIdx: 0] ?? 0),\(p[safeIdx: 1] ?? 0),\(p[safeIdx: 2] ?? 0),\(p[safeIdx: 3] ?? 0)\u{1F}\(incomplete ? 1 : 0)"
+        return CostUsageClaudeLogState.stableHash(text)
+    }
+}
+
+/// Per-log state of the Claude counting rules for a log still being written
+/// to, so that an incremental read counts each response once, as a read of
+/// the whole log would.
+///
+/// Two things can reach an incremental read for a response an earlier read
+/// already counted: the rest of a response that was still streaming, and a
+/// copy of an earlier line that Claude Code writes again further down the
+/// same log (same message, request and usage, with its original timestamp).
+struct CostUsageClaudeLogState: Codable, Equatable {
+    /// The newest responses, latest first, with what each one added. A line of
+    /// one of them read later replaces its contribution.
+    var openRows: [CostUsageClaudeOpenRow] = []
+    /// Every response counted in the log: 16 bytes each, a stable hash of its
+    /// key followed by the `fingerprint` of the line that counts, both
+    /// little-endian. A response found here that is no longer open is either
+    /// the same line again, which adds nothing, or a different one, and then
+    /// the log is read again from the start.
+    var counted: Data = Data()
+
+    /// FNV-1a, 64-bit, over UTF-8. Stable across launches, unlike `Hasher`.
+    static func stableHash(_ text: String) -> UInt64 {
+        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
+        for byte in text.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x0000_0100_0000_01B3
+        }
+        return hash
+    }
+
+    /// `counted` as key hash → fingerprint.
+    func countedFingerprints() -> [UInt64: UInt64] {
+        var map: [UInt64: UInt64] = [:]
+        let bytes = [UInt8](counted)
+        guard bytes.count % 16 == 0 else { return map }
+        map.reserveCapacity(bytes.count / 16)
+        func word(_ at: Int) -> UInt64 {
+            var value: UInt64 = 0
+            for i in 0..<8 { value |= UInt64(bytes[at + i]) << (8 * UInt64(i)) }
+            return value
+        }
+        var offset = 0
+        while offset < bytes.count {
+            map[word(offset)] = word(offset + 8)
+            offset += 16
+        }
+        return map
+    }
+
+    static func packCounted(_ map: [UInt64: UInt64]) -> Data {
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(map.count * 16)
+        for key in map.keys.sorted() {
+            for word in [key, map[key] ?? 0] {
+                for i in 0..<8 { bytes.append(UInt8(truncatingIfNeeded: word >> (8 * UInt64(i)))) }
+            }
+        }
+        return Data(bytes)
+    }
 }
 
 struct CostUsageCodexTotals: Codable, Equatable {

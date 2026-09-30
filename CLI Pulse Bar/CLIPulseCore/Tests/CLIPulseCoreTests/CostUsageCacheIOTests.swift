@@ -195,7 +195,7 @@ final class CostUsageCacheIOTests: XCTestCase {
         XCTAssertEqual(loaded.lastScanUnixMs, 42, "save→load roundtrip should not be invalidated by the stamping policy")
     }
 
-    func testCurrentPricingVersionIsFour() {
+    func testCurrentPricingVersionIsSix() {
         // Pin the constant so future bumps land in this test as a
         // grep-able diff. When you change pricing, bump the constant
         // AND this expectation in the same commit so the diff makes
@@ -206,7 +206,10 @@ final class CostUsageCacheIOTests: XCTestCase {
         // claude-sonnet-5 / gpt-5.6-*, so without the bump the fix would apply
         // only to logs written from here on and every historical day would keep
         // reading $0. This pairing is exactly what the pin is for.
-        XCTAssertEqual(costUsageCachePricingVersion, 4)
+        // 6 — 1.56, Claude responses counted once from their last line (5 is
+        // the Codex cache's own). A Claude cache written under 4 counted each
+        // response from its first line, some of them twice.
+        XCTAssertEqual(costUsageCachePricingVersion, 6)
     }
 
     // MARK: - rules version per provider (1.56)
@@ -237,10 +240,11 @@ final class CostUsageCacheIOTests: XCTestCase {
     }
 
     func testCodexCacheFromTheOldRulesIsReadAgainButClaudesIsKept() {
-        // The whole point of splitting the version: the Codex rules change
-        // re-reads the Codex logs (a hundred-odd files) and leaves the Claude
-        // cache (thousands of files) alone.
-        writeRawCache(provider: "codex", version: costUsageCachePricingVersion)
+        // The whole point of splitting the version: a Codex rules change
+        // re-reads the Codex logs (a hundred-odd files) and leaves a current
+        // Claude cache (thousands of files) alone. 4 is the last version the
+        // two caches shared.
+        writeRawCache(provider: "codex", version: 4)
         writeRawCache(provider: "claude", version: costUsageCachePricingVersion)
         XCTAssertTrue(CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir).days.isEmpty)
         XCTAssertFalse(CostUsageCacheIO.load(provider: "claude", cacheRoot: tempDir).days.isEmpty)
