@@ -1520,9 +1520,10 @@ public enum CostUsageScanner {
 
     /// Walk Claude JSONL files under each `~/.claude/projects/...` (or
     /// `~/.config/claude/projects/...`) root and emit a candidate per file
-    /// whose mtime is within `activeSessionFreshnessWindow`. Project label
-    /// comes from the parent directory name with the leading `-` stripped
-    /// (Claude Code encodes project paths as `-Users-jason-myproject`).
+    /// whose mtime is within `activeSessionFreshnessWindow`. The project is
+    /// the first directory under the root, never the file's own parent —
+    /// subagent transcripts live two and four levels deeper — and its label
+    /// comes from the transcript's `cwd` (`claudeProjectAttribution`).
     /// Session id comes from the JSONL filename stem.
     private static func buildClaudeCandidates(
         options: Options,
@@ -1535,6 +1536,10 @@ public enum CostUsageScanner {
         var candidates: [CostUsageScanResult.ActiveSessionCandidate] = []
         for root in defaultClaudeProjectsRoots(options: options) {
             guard FileManager.default.fileExists(atPath: root.path) else { continue }
+            // A busy session has many fresh subagent transcripts in one
+            // project; once one of them has named the project, the rest
+            // need not be opened.
+            var named: [String: ClaudeProjectAttribution] = [:]
             guard let enumerator = FileManager.default.enumerator(
                 at: root,
                 includingPropertiesForKeys: keys,
@@ -1551,14 +1556,26 @@ public enum CostUsageScanner {
                       mtime >= cutoff else { continue }
                 let usage = cache.files[path]
                 let totals = sumClaudeTotals(usage: usage)
-                let parentDir = url.deletingLastPathComponent().lastPathComponent
-                let projectName = humanReadableClaudeProject(encodedDir: parentDir)
+                let attribution: ClaudeProjectAttribution?
+                if let directory = claudeTranscriptPath(url, under: root)?.first,
+                   let known = named[directory] {
+                    attribution = known
+                } else {
+                    attribution = claudeProjectAttribution(transcript: url, projectsRoot: root)
+                    if let found = attribution, found.root != nil {
+                        named[found.directory] = found
+                    }
+                }
+                // nil only for a transcript sitting directly in the projects
+                // root, which Claude Code does not write; keep the old label.
+                let projectName = attribution?.label
+                    ?? humanReadableClaudeProject(encodedDir: url.deletingLastPathComponent().lastPathComponent)
                 let sessionId = url.deletingPathExtension().lastPathComponent
                 candidates.append(.init(
                     provider: "Claude",
                     filePath: path,
                     projectName: projectName,
-                    projectRoot: nil,
+                    projectRoot: attribution?.root,
                     sessionId: sessionId,
                     lastModified: mtime,
                     totalTokens: totals.input + totals.output,
