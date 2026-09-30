@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "钱都花在了哪里",
-   "按服务商细分的费用、主要项目和风险信号"
+   "今日与近 30 天的估算费用，按服务商细分"
   ],
   "05_alerts": [
    "配额不再突然见底",
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "21e13c6b2ab647446f94dd2bbb416337",
-  "02_providers.png": "f5b28ac2c78c325a0418683614560d8c",
-  "03_usage_history.panel.png": "83d8307bff02530393cb616eb6e3d333",
-  "03_usage_history.png": "21e13c6b2ab647446f94dd2bbb416337",
-  "04_cost.png": "0d82e0589c04c1dc3ff57eb92fb5f857",
-  "05_alerts.png": "467e849ddb59da0d3a935e20ed55db06",
-  "06_pulse_cat.png": "ac5a68d03146cdf56a88760f0720dd3f"
+  "01_overview.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
+  "02_providers.png": "a3050c765681ef88127b3417575cae19",
+  "03_usage_history.panel.png": "a2399bdb50bfe8b9e0416446415a5925",
+  "03_usage_history.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
+  "04_cost.png": "b1461f28a3af5f7b3f8e53cd61193736",
+  "05_alerts.png": "06e73ada410d90cb775a696b26df0e5f",
+  "06_pulse_cat.png": "ac7ad330f1975f9f9f287da0a4ae3490"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_2880x1800.png": "dacc730bd43534eb203c1bac16303987",
-  "02_providers_2880x1800.png": "0fd70e1075a0b2317990ce2f46a6833f",
-  "03_usage_history_2880x1800.png": "5d08de1c8acb0dc4372db3f674320548",
-  "04_cost_2880x1800.png": "5f13097cf92f0c7c87e3e5ee0e12676f",
-  "05_alerts_2880x1800.png": "7d3173582739b805f2bbbdea0faa7835",
-  "06_pulse_cat_2880x1800.png": "dc6097173bcc60a28d48a48f380dbfd4"
+  "01_overview_2880x1800.png": "9dda776dcae85b2e0958c40d434008bb",
+  "02_providers_2880x1800.png": "63a2fa96f041d5e123f617cfaeba381d",
+  "03_usage_history_2880x1800.png": "41b18b373a6bf7e3f5943e84b38b7083",
+  "04_cost_2880x1800.png": "4596bb49dbfe147ff04e370532491a00",
+  "05_alerts_2880x1800.png": "34674ee28e17326a745280c1b3228770",
+  "06_pulse_cat_2880x1800.png": "710db517d489750554967a2484ca68ff"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "ae026f99127195eaecf08fdc136e4e3c",
+ "render": "e72bec16dc8cb652c4ce558e6948015e",
  "subtitle_pt": 46,
  "title_pt": 100
 }

@@ -82,13 +82,13 @@ final class ScreenshotLaunchTests: XCTestCase {
 
     func test_eachScreenOpensItsTab_andOnlyCostScrolls() {
         XCTAssertEqual(Launch.Screen.overview.tab, .overview)
-        XCTAssertEqual(Launch.Screen.cost.tab, .overview, "cost is the Overview scrolled to Cost Summary")
+        XCTAssertEqual(Launch.Screen.cost.tab, .overview, "cost is the Overview scrolled to its Activity card, Cost Summary below")
         XCTAssertEqual(Launch.Screen.providers.tab, .providers)
         XCTAssertEqual(Launch.Screen.sessions.tab, .sessions)
         XCTAssertEqual(Launch.Screen.alerts.tab, .alerts)
         for screen in Launch.Screen.allCases {
             XCTAssertTrue(screen.tab.isVisible, "\(screen) opens a tab the iPhone does not offer")
-            XCTAssertEqual(screen.scrollTarget, screen == .cost ? .costSummary : nil, screen.rawValue)
+            XCTAssertEqual(screen.scrollTarget, screen == .cost ? .activity : nil, screen.rawValue)
         }
     }
 

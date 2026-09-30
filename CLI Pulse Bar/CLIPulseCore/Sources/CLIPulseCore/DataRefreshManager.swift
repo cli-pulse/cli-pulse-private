@@ -2754,14 +2754,19 @@ extension AppState {
         // Fallback: use API-provided estimates.
         // v1.10.6: use the server's real 30-day cost from daily_usage_metrics
         // when available; fall back to `week * 4.3` for older servers.
-        let todayByProvider = providers.map { ($0.provider, $0.estimated_cost_today) }
+        // Rows only for providers with a cost, as the scan branch above keeps
+        // them: a quota-only provider (Gemini, whose cost is "Unavailable")
+        // drew a "$0.00" row, which read as "costs nothing".
+        let todayByProvider = providers
+            .map { ($0.provider, $0.estimated_cost_today) }
+            .filter { $0.1 > 0 }
         let todayTotal = todayByProvider.reduce(0) { $0 + $1.1 }
         let thirtyDayByProvider = providers.map { provider -> (String, Double) in
             if provider.estimated_cost_30_day > 0 {
                 return (provider.provider, provider.estimated_cost_30_day)
             }
             return (provider.provider, provider.estimated_cost_week * 4.3)
-        }
+        }.filter { $0.1 > 0 }
         let thirtyDayTotal = thirtyDayByProvider.reduce(0) { $0 + $1.1 }
 
         // v1.10.7: derive Subscription Utilization from the 30-day fallback

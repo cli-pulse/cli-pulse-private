@@ -205,7 +205,7 @@ none of the three differences (`QARenderSnapshot.storeCatalog`, checked by
 | `01_overview.png` | Overview, first page |
 | `02_providers.png` | Providers, first page |
 | `03_usage_history.png` + `03_usage_history.panel.png` | Overview, first page, and the usage panel that slides out to its left |
-| `04_cost.png` | Overview, scrolled to its end, in a slightly shorter popover so it opens above a card (`lastAligned`, below) |
+| `04_cost.png` | Overview, scrolled to its end, in a shorter popover so it opens just above a card: the first one `01_overview` did not show whole, or the one above it when that would need a popover under 400 points (`lastAligned`, below) |
 | `05_alerts.png` | Alerts |
 | `06_pulse_cat.png` | Pet, first page |
 
@@ -228,16 +228,28 @@ language menu (drawn from menu items, not a screenshot).
   pipeline refuses anything but 3.
 - The popover height is pinned to its default, 580 points
   (`cli_pulse_menubar_height`), except for `04_cost`. The Overview scrolled
-  flush to its end opened on half a line of the Yield Score card (its fill is
-  the background colour, so only its text shows), cut through by the tab bar.
-  A `lastAligned` page is drawn once at 580, its rows under the tab bar are
-  classified (`QARenderSnapshot.rowKind`: background, text, card), and it is
-  drawn again in a popover shortened by `alignedTrim`, so its top edge falls in
-  the background just above the first card (Provider Usage). It must then open
-  on nothing but background above that card, or the run fails. Users drag the
-  popover anywhere from 400 to 900 points, so the shorter one is a real state;
-  `render.json` records its height (`shots[].popoverHeight`, about 552), and
-  the compositor draws it at the set's scale, top-aligned with the others.
+  flush to its end opens wherever its length puts it: in 1.54 on half a line
+  of the Yield Score card's text, in 1.55 (no Top Projects or Risk Signals in
+  Demo) on the bottom edge of the Activity card, followed by the Hourly
+  Activity card `01_overview` already shows. A `lastAligned` page is drawn
+  once at 580 and its scroll content measured from its layer tree
+  (`ScrollLayout`: each card is `glassCard`'s frosted-glass backdrop layer,
+  each run of text or shape a layer of its own). `QARenderSnapshot.alignedCard`
+  picks the first card that reaches below the first page and starts at or
+  below the last page's top edge (Provider Usage in 1.54), and the page is
+  drawn again in a popover shortened by `alignedTrim`, so its top edge falls
+  4 points above that card, where the first page left off. When that would
+  take the popover under the 400 points users can drag it to, it picks the
+  card above instead (1.55: Demo's Gemini has no cost row, so the first page
+  shows the whole Cost Summary, and a page opening on Provider Usage alone
+  would need 276 points; it opens on Cost Summary). It must then cut through
+  no layer and open on that card, or the run
+  fails. Pixels could not do this: the cards' shadows fill the 12 points
+  between them, so no row there is plain background, and 1.55's page read as
+  one card from the top edge down. Users drag the popover anywhere from 400
+  to 900 points, so the shorter one is a real state; `render.json` records its
+  height (`shots[].popoverHeight`: 406 in 1.55, 552 in 1.54), and the
+  compositor draws it at the set's scale, centred in the room a full popover fills.
 - Overlay scroll bars: the script passes `-AppleShowScrollBars WhenScrolling`.
   A Mac set to show scroll bars "Always" (the render Mac of 2026-09-28 was)
   gives every scrolling tab a legacy scroller's gutter, which the offscreen

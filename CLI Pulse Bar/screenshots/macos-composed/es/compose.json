@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "107",
-  "version": "1.54.0"
+  "build": "108",
+  "version": "1.55.0"
  },
  "captions": {
   "01_overview": [
@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "En qué se va tu dinero",
-   "Costo por proveedor y proyecto, con señales de riesgo"
+   "Costo estimado de hoy y de los últimos 30 días, por proveedor"
   ],
   "05_alerts": [
    "Sin sorpresas con la cuota",
@@ -26,17 +26,17 @@
   ],
   "06_pulse_cat": [
    "Conoce a tu Gato Pulse",
-   "Un gato de escritorio cuya energía y hambre reflejan tu uso de IA"
+   "Un gato de escritorio cuya energía y saciedad reflejan tu uso de IA"
   ]
  },
  "captures": {
-  "01_overview.png": "a4e1155d2c71675b3d7fff9843bca54d",
-  "02_providers.png": "86e5307e50bfd950d576884752fd3abb",
-  "03_usage_history.panel.png": "7e3fb2da5eb6e4e2fa483bb3e86206ce",
-  "03_usage_history.png": "a4e1155d2c71675b3d7fff9843bca54d",
-  "04_cost.png": "321e064682f23259b4cdaa010b686c3c",
-  "05_alerts.png": "73d16f76d70ad507a066669d50c11132",
-  "06_pulse_cat.png": "b1d63a0438445366279078f7b9553313"
+  "01_overview.png": "27d1fda96aba3f32ed824537558593c9",
+  "02_providers.png": "c5ca984bf28a6a104bcad72e857f47b1",
+  "03_usage_history.panel.png": "96e03a0afd9e27c2e832efb92774acb9",
+  "03_usage_history.png": "27d1fda96aba3f32ed824537558593c9",
+  "04_cost.png": "62362f397d1afca9a20bfa6d39ef8269",
+  "05_alerts.png": "13d47f8301539b4c120121dc0aaae9be",
+  "06_pulse_cat.png": "66e2a124c56e68a5699effc2bbb8e82d"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -44,16 +44,16 @@
  },
  "lang": "es",
  "panels": {
-  "01_overview_2880x1800.png": "5aab6743bece40df12675e7c7576d526",
-  "02_providers_2880x1800.png": "90e8f42f2ca03ce4b84d163c501b94dd",
-  "03_usage_history_2880x1800.png": "127df67c39cf9769a692e250ec931040",
-  "04_cost_2880x1800.png": "5bcee7aaa1947f840de9ffa0a5f543f7",
-  "05_alerts_2880x1800.png": "6b287546069b4ffc888f12d3c2be453f",
-  "06_pulse_cat_2880x1800.png": "5f080eb7ad455a4dfabdd2dba6ff4905"
+  "01_overview_2880x1800.png": "b38bb2b622acdcdfc8cc5739a0741e76",
+  "02_providers_2880x1800.png": "e4c002c5c886d7dd7ddefe07319209b6",
+  "03_usage_history_2880x1800.png": "2ce56e0c33a34452bbaa9506a455c219",
+  "04_cost_2880x1800.png": "d2bea6737e39374bcf93339a7e0ffd32",
+  "05_alerts_2880x1800.png": "fe007a71b137b63223547a511721d656",
+  "06_pulse_cat_2880x1800.png": "0ad989504fc92015b52f8d2a69cb496e"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "ec6c4200fa6be28d8ad44798ba03d63f",
+ "render": "24430c3c62d0e465009c33ceb7316dbb",
  "subtitle_pt": 46,
  "title_pt": 100
 }

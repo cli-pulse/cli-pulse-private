@@ -139,21 +139,25 @@ struct iOSProvidersTab: View {
                         }
                         .padding(.horizontal)
                     } else {
-                        // iPhone: single column
-                        ForEach(filteredDetails) { detail in
-                            iOSEnhancedProviderCard(
-                                detail: detail,
-                                showCost: state.showCost,
-                                accountUsages: accounts(
-                                    for: detail.config.kind
-                                ),
-                                dailyUsage: state.dailyUsage
-                            ) { newValue in
-                                handleToggle(detail.config.kind, newValue: newValue)
+                        // iPhone: single column. Both kinds of card get the
+                        // screen margin, as the iPad grid and the cost card
+                        // above do; the provider cards used to run edge to edge.
+                        Group {
+                            ForEach(filteredDetails) { detail in
+                                iOSEnhancedProviderCard(
+                                    detail: detail,
+                                    showCost: state.showCost,
+                                    accountUsages: accounts(
+                                        for: detail.config.kind
+                                    ),
+                                    dailyUsage: state.dailyUsage
+                                ) { newValue in
+                                    handleToggle(detail.config.kind, newValue: newValue)
+                                }
                             }
-                        }
-                        ForEach(filteredAccountOnlyGroups) { group in
-                            iOSAccountOnlyProviderCard(group: group)
+                            ForEach(filteredAccountOnlyGroups) { group in
+                                iOSAccountOnlyProviderCard(group: group)
+                            }
                         }
                         .padding(.horizontal)
                     }
@@ -326,9 +330,6 @@ struct iOSEnhancedProviderCard: View {
                         Text(L10n.providers.localizedStatusText(provider.status_text))
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        if showCost {
-                            CostStatusBadge(status: provider.cost_status_today)
-                        }
                         // Provider service-status (incident/maintenance) — renders
                         // nothing unless this provider's status page reports an issue.
                         if let kind = ProviderKind(rawValue: provider.provider) {
@@ -374,9 +375,14 @@ struct iOSEnhancedProviderCard: View {
                         Text(CostFormatter.formatUsage(provider.today_usage))
                             .font(.title3.weight(.bold).monospacedDigit())
                         if showCost {
-                            Text(CostFormatter.format(provider.estimated_cost_today))
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.green)
+                            // The cost's status sits with the cost. Next to the
+                            // quota line it read as if "92% used" were the estimate.
+                            HStack(spacing: 4) {
+                                Text(CostFormatter.format(provider.estimated_cost_today))
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.green)
+                                CostStatusBadge(status: provider.cost_status_today)
+                            }
                         }
                     }
                     VStack(alignment: .leading, spacing: 2) {

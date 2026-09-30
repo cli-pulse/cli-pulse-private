@@ -82,9 +82,11 @@ final class UsageArchiveOwnershipTests: XCTestCase {
 
         let fixture = DemoDataProvider.generate().providers
         for p in fixture {
-            XCTAssertEqual(byProvider[p.provider], p.today_usage,
+            // Gemini records no tokens (DemoMatchesProductionTests), so it has no row: 0.
+            XCTAssertEqual(byProvider[p.provider, default: 0], p.today_usage,
                            "heatmap today cell must agree with the Usage Today tile for \(p.provider)")
         }
+        XCTAssertEqual(Set(byProvider.keys), ["Codex", "Claude"], "the heatmap counts a provider the tiles do not")
     }
 
     func testDemoSeriesLooksLikeAYearOfUseNotAWall() {

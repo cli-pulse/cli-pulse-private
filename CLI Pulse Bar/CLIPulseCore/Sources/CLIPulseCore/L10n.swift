@@ -1739,7 +1739,7 @@ public enum L10n {
         }
         /// `cost_status` ("Exact"/"Estimated"/"Unavailable", a server token) as plain
         /// text, such as the macOS cost tile's subtitle. Not `CostStatusBadge`'s
-        /// words: those are all-caps capsule labels ("ESTIMATE", "ESTIMADO") that
+        /// words: those are all-caps capsule labels ("ESTIMATED", "ESTIMADO") that
         /// shout outside the capsule. An unknown token is shown as it arrived,
         /// which is what the subtitle did before.
         public static func statusLabel(_ token: String) -> String {

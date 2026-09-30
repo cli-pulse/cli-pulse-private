@@ -326,12 +326,16 @@ struct OverviewTab: View {
                 icon: "dollarsign.circle",
                 color: .green
             )
-            MetricCard(
-                title: L10n.dashboard.requests,
-                value: DisplayFormat.count(dash.total_requests_today),
-                icon: "arrow.up.arrow.down",
-                color: .purple
-            )
+            // Local mode only: signed in, the dashboard comes from the cloud,
+            // which counts no requests and always said 0 here.
+            if OverviewFormatters.showsRequestsMetric(isAuthenticated: state.isAuthenticated) {
+                MetricCard(
+                    title: L10n.dashboard.requests,
+                    value: DisplayFormat.count(dash.total_requests_today),
+                    icon: "arrow.up.arrow.down",
+                    color: .purple
+                )
+            }
             MetricCard(
                 title: L10n.tab.sessions,
                 value: DisplayFormat.count(dash.active_sessions),
@@ -441,7 +445,7 @@ struct OverviewTab: View {
                         }
                         Spacer()
                         Text(CostFormatter.format(item.cost))
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.green)
                     }
                 }
@@ -471,7 +475,7 @@ struct OverviewTab: View {
                             .foregroundStyle(.tertiary)
                         Spacer()
                         Text(CostFormatter.format(item.monthlyCost))
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.orange)
                     }
                 }
@@ -498,7 +502,7 @@ struct OverviewTab: View {
                                     .foregroundStyle(.secondary)
                                 Spacer()
                                 Text(CostFormatter.format(item.apiEquivCost) + " / " + CostFormatter.format(item.subscriptionCost))
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                    .font(.system(size: 10, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
                             GeometryReader { geo in
@@ -544,7 +548,7 @@ struct OverviewTab: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(CostFormatter.format(providerState.costSummary.thirtyDayTotal))
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.green)
                     }
 
@@ -585,7 +589,7 @@ struct OverviewTab: View {
                             .foregroundStyle(.secondary)
                         Spacer()
                         Text(CostFormatter.format(providerState.costSummary.subscriptionTotal) + L10n.subscription.perMonth)
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .font(.system(size: 10, weight: .medium).monospacedDigit())
                             .foregroundStyle(.orange)
                     }
                     HStack {
@@ -618,7 +622,7 @@ struct OverviewTab: View {
                                     .font(.system(size: 8))
                                     .foregroundStyle(.tertiary)
                                 Text(CostFormatter.format(item.cost))
-                                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                    .font(.system(size: 9, weight: .medium).monospacedDigit())
                                     .foregroundStyle(.green)
                                     .frame(width: 55, alignment: .trailing)
                             }

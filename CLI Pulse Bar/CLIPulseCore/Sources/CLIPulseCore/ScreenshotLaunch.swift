@@ -23,8 +23,13 @@ import SwiftUI
 /// - **Demo mode through `enterDemoMode()`**, the call Try Demo makes, so every
 ///   number on screen comes from `DemoDataProvider` like it does for any
 ///   reviewer who taps Try Demo. Nothing here fabricates data of its own.
-/// - **Opens the requested screen.** `cost` is the Overview tab scrolled to its
-///   Cost Summary, which is what the 1.53.0 `03_cost` shot showed.
+/// - **Opens the requested screen.** `cost` is the Overview tab scrolled so it
+///   opens on the Activity card, with the Cost Summary and Provider Usage below
+///   it. Through 1.55's first reshoot it scrolled the Cost Summary to the top,
+///   as the 1.53.0 `03_cost` shot did; once Top Projects and Risk Signals
+///   stopped drawing for accounts with no rows (#614), and Gemini had no cost
+///   rows, that left more than half of the screen blank. Scrolled to the very
+///   end instead, it repeated nearly all of the `overview` shot.
 /// - **No network, structurally.** The app runs under
 ///   `CLIPulseRuntimeEnvironment.restrictedForScreenshotCapture()`: every
 ///   capability off, no session restore, and an API client pointed at
@@ -65,13 +70,16 @@ public enum ScreenshotLaunch {
 
         /// Where the tab is scrolled to, if anywhere.
         public var scrollTarget: ScrollTarget? {
-            self == .cost ? .costSummary : nil
+            self == .cost ? .activity : nil
         }
     }
 
     /// A view a capture scrolls to. Tagged in the view with `.id(target)`.
     public enum ScrollTarget: String, Hashable, Sendable {
-        case costSummary
+        /// The Overview's Activity card. At the top of the screen it leaves
+        /// room for the Cost Summary and Provider Usage below it and repeats
+        /// none of the metric tiles the `overview` shot opens with.
+        case activity
     }
 
     public struct Request: Equatable, Sendable {
@@ -215,7 +223,7 @@ public enum ScreenshotLaunch {
     }
 
     /// How long after the first frame the screen is declared ready. Covers the
-    /// Overview's scroll to the Cost Summary and SwiftUI's first layout passes;
+    /// Overview's scroll to the Activity card and SwiftUI's first layout passes;
     /// the capture script waits a further settle interval of its own.
     static let readyDelay: TimeInterval = 1.5
 }
@@ -246,8 +254,8 @@ extension ScreenshotLaunch {
     /// the target is in this content. Attach inside the `ScrollView`.
     public struct ScrollToTarget: ViewModifier {
         /// Blank space added below the content during a capture that scrolls.
-        /// The Cost Summary is near the end of the Overview, so the scroll
-        /// stopped at the bottom with the card above it cut in half under the
+        /// The target is near the end of the Overview, so the scroll stopped
+        /// at the bottom with the card above it cut in half under the
         /// navigation bar. With this room the target reaches the top.
         static let tailRoom: CGFloat = 800
 

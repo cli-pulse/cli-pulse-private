@@ -8,13 +8,6 @@ struct iOSMainView: View {
     @EnvironmentObject var providerState: ProviderState
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-    private var providerAccountBadgeCount: Int {
-        if !providerState.providerAccounts.isEmpty {
-            return providerState.providerAccounts.count
-        }
-        return providerState.providers.count
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if !SupabaseConstants.isConfigured {
@@ -98,7 +91,8 @@ struct iOSMainView: View {
                 .tabItem {
                     Label(L10n.tab.providers, systemImage: "cpu")
                 }
-                .badge(providerAccountBadgeCount)
+                // No count badge: a red badge asks for attention, and the
+                // number of providers asks for none (the Alerts tab's does).
                 .tag(AppState.Tab.providers)
 
             iOSSessionsTab()

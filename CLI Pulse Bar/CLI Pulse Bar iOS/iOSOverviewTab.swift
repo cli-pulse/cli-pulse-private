@@ -52,6 +52,9 @@ struct iOSOverviewTab: View {
                         // the macOS Overview's CompactUsageCard; taps drill into
                         // the full iOSUsageDashboardView.
                         iOSUsageHeatmapCard()
+                            #if DEBUG
+                            .id(ScreenshotLaunch.ScrollTarget.activity)
+                            #endif
 
                         // Activity timeline sparkline
                         if !dash.trend.isEmpty {
@@ -60,9 +63,6 @@ struct iOSOverviewTab: View {
 
                         if state.showCost {
                             costSection
-                                #if DEBUG
-                                .id(ScreenshotLaunch.ScrollTarget.costSummary)
-                                #endif
 
                             // v1.14 (2026-05-08): cross-platform parity with macOS
                             // Overview. The forecast is computed from cloud
@@ -230,23 +230,57 @@ struct iOSOverviewTab: View {
 
     // MARK: - Metrics Grid
 
-    private func metricsGrid(_ dash: DashboardSummary) -> some View {
-        let columns = isIPad ? [
-            GridItem(.adaptive(minimum: 180), spacing: 10),
-        ] : [
-            GridItem(.flexible(), spacing: 10),
-            GridItem(.flexible(), spacing: 10),
-        ]
+    private struct MetricTile: Identifiable {
+        let id: String
+        let title: String
+        let value: String
+        let icon: String
+        let color: Color
+        var badge: String? = nil
+    }
 
-        return LazyVGrid(columns: columns, spacing: 10) {
-            iOSMetricCard(title: L10n.dashboard.usageToday, value: CostFormatter.formatUsage(dash.total_usage_today), icon: "chart.bar.fill", color: PulseTheme.accent)
+    private func metricTiles(_ dash: DashboardSummary) -> [MetricTile] {
+        var tiles = [
+            MetricTile(id: "usage", title: L10n.dashboard.usageToday, value: CostFormatter.formatUsage(dash.total_usage_today), icon: "chart.bar.fill", color: PulseTheme.accent),
             // "Cost Today", not "Est. Cost": the badge already says Estimated (or Exact,
             // which the old title contradicted), so the title does not repeat it.
-            iOSMetricCard(title: L10n.dashboard.costToday, value: CostFormatter.format(dash.total_estimated_cost_today), icon: "dollarsign.circle", color: .green, badge: dash.cost_status)
-            iOSMetricCard(title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple)
-            iOSMetricCard(title: L10n.tab.sessions, value: "\(dash.active_sessions)", icon: "terminal", color: .cyan)
-            iOSMetricCard(title: L10n.dashboard.onlineDevices, value: "\(dash.online_devices)", icon: "desktopcomputer", color: .blue)
-            iOSMetricCard(title: L10n.tab.alerts, value: "\(dash.unresolved_alerts)", icon: "bell.badge", color: dash.unresolved_alerts > 0 ? .orange : .gray)
+            MetricTile(id: "cost", title: L10n.dashboard.costToday, value: CostFormatter.format(dash.total_estimated_cost_today), icon: "dollarsign.circle", color: .green, badge: dash.cost_status),
+        ]
+        // Requests only where something counts them (local mode, which the
+        // iPhone and iPad never are): the cloud dashboard always says 0.
+        if OverviewFormatters.showsRequestsMetric(isAuthenticated: state.isAuthenticated) {
+            tiles.append(MetricTile(id: "requests", title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple))
+        }
+        tiles += [
+            MetricTile(id: "sessions", title: L10n.tab.sessions, value: "\(dash.active_sessions)", icon: "terminal", color: .cyan),
+            MetricTile(id: "devices", title: L10n.dashboard.onlineDevices, value: "\(dash.online_devices)", icon: "desktopcomputer", color: .blue),
+            MetricTile(id: "alerts", title: L10n.tab.alerts, value: "\(dash.unresolved_alerts)", icon: "bell.badge", color: dash.unresolved_alerts > 0 ? .orange : .gray),
+        ]
+        return tiles
+    }
+
+    private func metricCard(_ tile: MetricTile) -> some View {
+        iOSMetricCard(title: tile.title, value: tile.value, icon: tile.icon, color: tile.color, badge: tile.badge)
+    }
+
+    private func metricsGrid(_ dash: DashboardSummary) -> some View {
+        let tiles = metricTiles(dash)
+        return Group {
+            if isIPad {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 180), spacing: 10)], spacing: 10) {
+                    ForEach(tiles) { metricCard($0) }
+                }
+            } else {
+                // Two across; with an odd count the last row takes three, so
+                // no tile sits alone next to an empty slot.
+                VStack(spacing: 10) {
+                    ForEach(OverviewFormatters.metricRows(count: tiles.count), id: \.self) { row in
+                        HStack(alignment: .top, spacing: 10) {
+                            ForEach(tiles[row]) { metricCard($0) }
+                        }
+                    }
+                }
+            }
         }
         .padding(.horizontal)
     }
@@ -371,6 +405,13 @@ struct iOSOverviewTab: View {
             // `provider_summary` RPC returns a real 30-day sum, so clients
             // without a local scan can show consistent numbers here.
             let breakdownData = providerState.costSummary.thirtyDayByProvider
+            // Say which figure the rows split: right under Today's total, a
+            // provider's 30-day cost read as more than the whole day's.
+            if !breakdownData.isEmpty {
+                Text(providerState.costSummary.isPrecise ? L10n.cost.thirtyDayPrecise : L10n.dashboard.thirtyDayEst)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
             ForEach(Array(breakdownData.sorted(by: { $0.cost > $1.cost }).prefix(5)), id: \.provider) { item in
                 HStack {
                     Circle()
