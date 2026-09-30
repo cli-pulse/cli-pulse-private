@@ -333,28 +333,27 @@ private func watchPaceMarkers(_ tier: TierDTO) -> [BarMarker] {
     return [BarMarker(position: QuotaBarMarkers.place(used, onRemainingBar: true), kind: .pace)]
 }
 
+/// `hidePersonalInfo` is the paired iPhone's switch, which this Watch keeps
+/// under `PersonalInfoMask.defaultsKey`; each view reads it with `@AppStorage`
+/// so it redraws when a new choice arrives.
 func watchAccountLabel(
     _ account: ProviderAccountUsage,
-    in accounts: [ProviderAccountUsage]
+    in accounts: [ProviderAccountUsage],
+    hidePersonalInfo: Bool
 ) -> String {
-    let trimmed = account.accountLabel?
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    if let trimmed, !trimmed.isEmpty {
-        return trimmed
-    }
-    guard accounts.count > 1 else {
-        return L10n.providers.defaultAccount
-    }
-    let index = accounts.firstIndex {
-        $0.id == account.id
-    } ?? 0
-    return L10n.providers.accountNumber(index + 1)
+    PersonalInfoMask.accountName(
+        label: account.accountLabel,
+        index: accounts.firstIndex { $0.id == account.id } ?? 0,
+        accountCount: accounts.count,
+        hidePersonalInfo: hidePersonalInfo
+    )
 }
 
 struct ProviderTierCard: View {
     let provider: ProviderUsage
     let accounts: [ProviderAccountUsage]
     let showCost: Bool
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var providerColor: Color { PulseTheme.providerColor(provider.provider) }
 
@@ -441,7 +440,8 @@ struct ProviderTierCard: View {
                     L10n.watch.tightestAccount(
                         watchAccountLabel(
                             constrainedAccount,
-                            in: accounts
+                            in: accounts,
+                            hidePersonalInfo: hidePersonalInfo
                         )
                     )
                 )
@@ -580,6 +580,7 @@ struct WatchProviderAccountsDetailView: View {
     let provider: ProviderUsage
     let accounts: [ProviderAccountUsage]
     let showCost: Bool
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var providerColor: Color {
         PulseTheme.providerColor(provider.provider)
@@ -629,7 +630,8 @@ struct WatchProviderAccountsDetailView: View {
                         L10n.watch.tightestAccount(
                             watchAccountLabel(
                                 constrainedAccount,
-                                in: sortedAccounts
+                                in: sortedAccounts,
+                                hidePersonalInfo: hidePersonalInfo
                             )
                         )
                     )
@@ -675,7 +677,8 @@ struct WatchProviderAccountsDetailView: View {
                     Text(
                         watchAccountLabel(
                             account,
-                            in: sortedAccounts
+                            in: sortedAccounts,
+                            hidePersonalInfo: hidePersonalInfo
                         )
                     )
                     .lineLimit(1)
@@ -818,6 +821,7 @@ struct WatchProviderDetailView: View {
     let provider: ProviderUsage
     let account: ProviderAccountUsage?
     let showCost: Bool
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var providerColor: Color {
         PulseTheme.providerColor(provider.provider)
@@ -877,7 +881,8 @@ struct WatchProviderDetailView: View {
                             Text(
                                 watchAccountLabel(
                                     account,
-                                    in: [account]
+                                    in: [account],
+                                    hidePersonalInfo: hidePersonalInfo
                                 )
                             )
                             .font(.caption2)

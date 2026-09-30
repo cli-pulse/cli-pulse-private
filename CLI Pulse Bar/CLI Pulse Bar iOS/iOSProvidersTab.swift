@@ -617,12 +617,8 @@ struct iOSProviderAccountSection: View {
             ) { index, account in
                 iOSProviderAccountRow(
                     account: account,
-                    fallbackLabel:
-                        sortedAccounts.count == 1
-                            ? L10n.providers.defaultAccount
-                            : L10n.providers.accountNumber(
-                                index + 1
-                            )
+                    index: index,
+                    accountCount: sortedAccounts.count
                 )
             }
 
@@ -644,17 +640,23 @@ struct iOSProviderAccountSection: View {
 
 struct iOSProviderAccountRow: View {
     let account: ProviderAccountUsage
-    let fallbackLabel: String
+    /// Its position among the provider's accounts, and how many there are:
+    /// the name of an account without a label, or with one that "Hide
+    /// personal information" masks.
+    let index: Int
+    let accountCount: Int
+
+    /// Read here rather than through `AppState`, so the row redraws the
+    /// moment the switch changes (see `PersonalInfoMask`).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
 
     private var accountLabel: String {
-        let trimmed = account.accountLabel?
-            .trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-        if let trimmed, !trimmed.isEmpty {
-            return trimmed
-        }
-        return fallbackLabel
+        PersonalInfoMask.accountName(
+            label: account.accountLabel,
+            index: index,
+            accountCount: accountCount,
+            hidePersonalInfo: hidePersonalInfo
+        )
     }
 
     private var planLabel: String {

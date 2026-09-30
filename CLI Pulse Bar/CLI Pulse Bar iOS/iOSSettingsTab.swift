@@ -596,14 +596,8 @@ struct ProviderManagementView: View {
                         ) { index, account in
                             iOSProviderAccountRow(
                                 account: account,
-                                fallbackLabel:
-                                    group.accounts.count == 1
-                                        ? L10n.providers
-                                            .defaultAccount
-                                        : L10n.providers
-                                            .accountNumber(
-                                                index + 1
-                                            )
+                                index: index,
+                                accountCount: group.accounts.count
                             )
                             .listRowInsets(
                                 EdgeInsets(

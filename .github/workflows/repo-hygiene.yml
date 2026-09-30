@@ -301,3 +301,19 @@ jobs:
       # field touches no disclosure file at all.
       - run: python3 scripts/check_telemetry_disclosure_claims.py
       - run: bash scripts/test_check_telemetry_disclosure_claims.sh
+
+      # "Hide personal information" masks account labels that are email
+      # addresses, through PersonalInfoMask in CLIPulseCore, and its tests pin
+      # what the mask does. They cannot pin that anything CALLS it: the labels
+      # are shown by the Mac, iPhone and Watch apps, and no test target builds
+      # those. A view back on `Label(detail.accountEmail, …)`, a literal
+      # `hidePersonalInfo: false`, or a lost line in the WatchConnectivity
+      # hand-off would show addresses again with every suite green.
+      #
+      # This fails a label read outside the mask (unless recorded, with its
+      # reason, in scripts/personal_info_mask_allowlist.json), a switch that is
+      # not the one Settings writes, and an iPhone or Watch that stops passing
+      # the choice along. Path-blind: the PR that brings a label back is a Swift
+      # PR in an app target, and this is the only thing that reads those.
+      - run: python3 scripts/check_personal_info_mask.py
+      - run: bash scripts/test_check_personal_info_mask.sh

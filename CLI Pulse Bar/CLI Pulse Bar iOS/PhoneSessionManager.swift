@@ -42,6 +42,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
                                                 name: .cliPulseDidRefresh, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleDisplayCurrencyDidChange(_:)),
                                                 name: .displayCurrencyDidChange, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleHidePersonalInfoDidChange(_:)),
+                                                name: .hidePersonalInfoDidChange, object: nil)
     }
 
     /// Activate the WCSession if supported (iPhone only).
@@ -100,6 +102,16 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         }
     }
 
+    /// The Watch has no "Hide personal information" switch; it follows this
+    /// one, so a change reaches it now rather than at the next refresh. The
+    /// same wait for a first refresh as the currency above.
+    @objc private func handleHidePersonalInfoDidChange(_ notification: Notification) {
+        Task { @MainActor in
+            guard let state = self.appState, state.lastRefresh != nil else { return }
+            self.forwardSnapshot(of: state)
+        }
+    }
+
     @MainActor
     private func forwardSnapshot(of state: AppState) {
         sendDashboardToWatch(
@@ -108,7 +120,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
             providers: state.providers,
             sessions: state.sessions,
             alerts: state.alerts,
-            devices: state.devices
+            devices: state.devices,
+            hidePersonalInfo: state.hidePersonalInfo
         )
     }
 
@@ -229,7 +242,8 @@ final class PhoneSessionManager: NSObject, ObservableObject {
     func sendDashboardToWatch(userID: String,
                                dashboard: DashboardSummary?, providers: [ProviderUsage],
                                sessions: [SessionRecord], alerts: [AlertRecord],
-                               devices: [DeviceRecord] = []) {
+                               devices: [DeviceRecord] = [],
+                               hidePersonalInfo: Bool) {
         pendingLock.lock()
         guard
             let identity = activeIdentity,
@@ -274,6 +288,9 @@ final class PhoneSessionManager: NSObject, ObservableObject {
         let currency = CurrencyConverter.shared.handoff()
         context[CurrencyConverter.contextCurrencyKey] = currency.currencyCode
         context[CurrencyConverter.contextRateKey] = currency.rate
+        // The Watch masks account labels the way this iPhone does; it has no
+        // switch of its own.
+        PersonalInfoMask.addPhoneChoice(hidePersonalInfo, to: &context)
 
         guard WCSession.isSupported() else { return }
         pendingLock.lock()

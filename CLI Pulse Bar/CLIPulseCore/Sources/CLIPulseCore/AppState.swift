@@ -808,7 +808,15 @@ public final class AppState: ObservableObject {
     @AppStorage("cli_pulse_notifications") public var notificationsEnabled = true
     @AppStorage("cli_pulse_check_provider_status") public var checkProviderStatus = true
     @AppStorage("cli_pulse_session_quota_notifications") public var sessionQuotaNotifications = true
-    @AppStorage("cli_pulse_hide_personal_info") public var hidePersonalInfo = false
+    /// "Hide personal information". Views that mask account labels read the
+    /// same key directly (`PersonalInfoMask`), so they redraw when it changes;
+    /// the notification lets the iPhone send the Watch the new choice.
+    @AppStorage(PersonalInfoMask.defaultsKey) public var hidePersonalInfo = false {
+        didSet {
+            guard hidePersonalInfo != oldValue else { return }
+            NotificationCenter.default.post(name: .hidePersonalInfoDidChange, object: self)
+        }
+    }
     @AppStorage("cli_pulse_appearance") public var appearanceModeRaw = 0
 
     // MARK: - Machine controls (M1)

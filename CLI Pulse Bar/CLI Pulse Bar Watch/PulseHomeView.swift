@@ -12,6 +12,8 @@ import CLIPulseCore
 /// only paginates at the scroll edge (review R1).
 struct PulseHomeView: View {
     @EnvironmentObject var state: WatchAppState
+    /// The paired iPhone's "Hide personal information" (`PersonalInfoMask`).
+    @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
     @Binding var selectedTab: WatchTab
 
     private var activity: Double {
@@ -236,7 +238,8 @@ struct PulseHomeView: View {
                             L10n.watch.tightestAccount(
                                 watchAccountLabel(
                                     constrainedAccount,
-                                    in: accounts
+                                    in: accounts,
+                                    hidePersonalInfo: hidePersonalInfo
                                 )
                             )
                         )
