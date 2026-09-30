@@ -151,6 +151,61 @@ final class PersonalInfoMaskTests: XCTestCase {
         )
     }
 
+    /// Settings › Providers asks before removing an account, and names it
+    /// with the masked name. The Korean title added its own 계정 ("account")
+    /// after the name, so a masked account read "Claude · 계정 2 계정을
+    /// 제거할까요?". In every language the title names the account once.
+    func testTheRemoveConfirmationNamesAMaskedAccountOnce() {
+        for locale in ["en", "zh-Hans", "zh-Hant", "ja", "ko", "es"] {
+            LocaleOverrideStore.shared.set(locale)
+            let name = PersonalInfoMask.accountName(
+                label: "jason@example.com",
+                index: 1,
+                accountCount: 2,
+                hidePersonalInfo: true
+            )
+            let accountWord = name
+                .replacingOccurrences(of: "2", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            let title = L10n.providers.removeAccountTitle("Claude", name)
+            XCTAssertFalse(accountWord.isEmpty, locale)
+            XCTAssertTrue(title.contains(name), "\(locale): \(title)")
+            XCTAssertFalse(title.contains("@"), "\(locale): \(title)")
+            XCTAssertEqual(
+                title.components(separatedBy: accountWord).count - 1,
+                1,
+                "\(locale) names the account more than once: \(title)"
+            )
+        }
+
+        LocaleOverrideStore.shared.set("ko")
+        XCTAssertEqual(
+            L10n.providers.removeAccountTitle(
+                "Claude",
+                PersonalInfoMask.accountName(
+                    label: "jason@example.com",
+                    index: 1,
+                    accountCount: 2,
+                    hidePersonalInfo: true
+                )
+            ),
+            "Claude · 계정 2을(를) 제거할까요?"
+        )
+        // An account without a label ("기본 계정") had the same doubled word.
+        XCTAssertEqual(
+            L10n.providers.removeAccountTitle(
+                "Claude",
+                PersonalInfoMask.accountName(
+                    label: nil,
+                    index: 0,
+                    accountCount: 1,
+                    hidePersonalInfo: true
+                )
+            ),
+            "Claude · 기본 계정을(를) 제거할까요?"
+        )
+    }
+
     // MARK: - The Watch follows the iPhone
 
     func testTheWatchMasksWhatTheIPhoneMasks() throws {

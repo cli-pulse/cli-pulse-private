@@ -157,7 +157,7 @@
 "settings.reorder_hint" = "ドラッグで並べ替え、タップで有効/無効";
 "settings.manage_providers" = "プロバイダー管理";
 "settings.advanced" = "詳細";
-"settings.hide_personal_info" = "個人情報を隠す";
+"settings.hide_personal_info" = "個人情報を非表示";
 "settings.force_refresh" = "すべてのデータを強制更新";
 "settings.about" = "情報";
 "settings.version" = "バージョン";

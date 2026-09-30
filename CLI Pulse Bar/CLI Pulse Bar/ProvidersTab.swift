@@ -421,17 +421,19 @@ struct ProviderAccountQuotaSummaryView: View {
         }
     }
 
+    /// The labels are read inside the mask's call on purpose:
+    /// `scripts/check_personal_info_mask.py` fails a label read anywhere else.
     private func accountDisplayLabel(
         for accountID: UUID
     ) -> String {
-        let usageLabel = scopedUsages.first { $0.id == accountID }?
-            .accountLabel?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = usageLabel?.isEmpty == false
-            ? usageLabel
-            : configs.first { $0.accountID == accountID }?.accountLabel
-        return PersonalInfoMask.accountName(
-            label: label,
+        PersonalInfoMask.accountName(
+            // The usage's label when it has one, else the one in Settings.
+            label: [
+                scopedUsages.first { $0.id == accountID }?.accountLabel,
+                configs.first { $0.accountID == accountID }?.accountLabel,
+            ]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty },
             index: configs.firstIndex { $0.accountID == accountID },
             accountCount: configs.count,
             hidePersonalInfo: hidePersonalInfo

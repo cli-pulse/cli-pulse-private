@@ -782,7 +782,7 @@
 "providers.edit_account" = "%@ 편집";
 "providers.remove_account" = "계정 제거";
 "providers.remove_named_account" = "%@ 제거";
-"providers.remove_account_title" = "%@ · %@ 계정을 제거할까요?";
+"providers.remove_account_title" = "%@ · %@을(를) 제거할까요?";
 "providers.remove_account_message" = "CLI Pulse 설정과 이 계정에 연결된 로컬 비밀 정보만 제거합니다. 공급자 구독은 취소되거나 변경되지 않습니다.";
 "providers.provider_level_cost" = "토큰 및 비용 합계는 공급자 단위이며 한 번만 표시됩니다.";
 "providers.most_constrained" = "잔여량이 가장 적음";

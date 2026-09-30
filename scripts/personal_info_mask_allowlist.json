@@ -1,0 +1,40 @@
+{
+ "_about": "Account-label reads in the Mac, iPhone and Watch apps that deliberately do not go through PersonalInfoMask, each with why. Read by scripts/check_personal_info_mask.py; `line` is the source line holding the read, trimmed. An entry whose line no longer reads a label unmasked fails, so this list can only shrink.",
+ "entries": [
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderConfigEditor.swift",
+   "line": "accountLabel = config.accountLabel ?? \"\"",
+   "reason": "Loads the label into the provider editor's text field. The editor is where the owner types the label, so it shows it as written; masking it would make it uneditable."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderSettingsSection.swift",
+   "line": "!(config.accountLabel?",
+   "reason": "Only asks whether the account has a label, to decide which provider groups in Settings start expanded. The label itself is not shown here; the rows name accounts through accountDisplayLabel, which masks."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/QASnapshotRenderer.swift",
+   "line": "+ \" Account: \\(config.accountLabel ?? kind.rawValue).\"",
+   "reason": "The QA render's manifest note saying which account the provider editor window was captured for. It is written to the render's manifest, not drawn in the app, and the editor it describes shows the label as written."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/OnboardingWizardView.swift",
+   "line": "usage?.accountLabel",
+   "reason": "Setup v2's account cards (the agent-setup wizard), which production does not show yet. When Setup v2 is turned on, these labels must go through PersonalInfoMask like every other place that names an account, and these four entries go away."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/OnboardingWizardView.swift",
+   "line": "?? config?.accountLabel",
+   "reason": "Setup v2's account cards (the agent-setup wizard), which production does not show yet. When Setup v2 is turned on, these labels must go through PersonalInfoMask like every other place that names an account, and these four entries go away."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "line": "Text(option.accountLabel)",
+   "reason": "Setup v2's account cards (the agent-setup wizard), which production does not show yet. When Setup v2 is turned on, these labels must go through PersonalInfoMask like every other place that names an account, and these four entries go away."
+  },
+  {
+   "path": "CLI Pulse Bar/CLI Pulse Bar/ProviderAccountSetupCard.swift",
+   "line": "\"\\(option.provider.rawValue), \\(option.accountLabel)\"",
+   "reason": "Setup v2's account cards (the agent-setup wizard), which production does not show yet. When Setup v2 is turned on, these labels must go through PersonalInfoMask like every other place that names an account, and these four entries go away."
+  }
+ ]
+}
