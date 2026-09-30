@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: August 24, 2026**
+**Last Updated: September 30, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -125,17 +125,20 @@ first screen of the setup wizard — two screens before the one explaining what
 gets read. We found this by testing a fresh install and watching what it did.
 
 Since v1.50, choosing to use CLI Pulse without an account asks a separate
-question before anything is read: **"Start local scan"** or **"Not now"**.
-Until you answer, CLI Pulse reads no files, contacts no provider, and touches no
-Keychain item. "Not now" is remembered, is not overridden by signing in later,
-and is reversible from Settings → Privacy at any time.
+question before anything is read. Until you answer, CLI Pulse reads no files,
+contacts no provider, and touches no Keychain item. Since v1.55 the question has
+three answers: **"Start local scan"**, **"Last 30 days only"** and **"Not now"**
+(see the next section for why). "Not now" is remembered, is not overridden by
+signing in later, and is reversible from Settings → Privacy at any time.
 
 The question names all of it:
 
-* **Session logs, last 30 days** — `~/.codex/sessions/`,
-  `~/.codex/archived_sessions/`, `~/.claude/projects/` and
-  `~/.config/claude/projects/`. Parsed on your Mac for usage records; the results
-  are cached on your Mac.
+* **Session logs: the last 30 days, and up to a year once** —
+  `~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.claude/projects/` and
+  `~/.config/claude/projects/`. Every refresh reads the last 30 days. Once, and
+  only if you allow it, CLI Pulse also reads up to a year of older logs to fill
+  in your usage history. Parsed on your Mac for usage records; the results are
+  cached on your Mac.
 * **What is derived from them** — token counts, cost estimates, model names and
   dates, plus each conversation's file path, project folder and session id. Those
   last three are how the Sessions list can name your conversations. They stay on
@@ -155,9 +158,39 @@ The question names all of it:
 * **Anonymous install statistics are separate** and are not part of this choice.
   See the section above.
 
-Signing in implies this consent, because the sign-in step comes after the
-wizard's privacy screen and because syncing to an account is a larger commitment
-than scanning locally. Signing out does not revoke it — use the Settings toggle.
+Signing in implies consent to the 30-day scan, because the sign-in step comes
+after the wizard's privacy screen and because syncing to an account is a larger
+commitment than scanning locally. It does not imply consent to reading older
+logs: see the next section. Signing out does not revoke it — use the Settings
+toggle.
+
+## Reading more than 30 days back, and what the question used to leave out
+
+*(Added in v1.55. Like the section above, it corrects this document, and the
+correction is a change to the app.)*
+
+The question above said **"Session logs, last 30 days"** from v1.50 to v1.54,
+and this document said the same. That was incomplete. Ever since CLI Pulse has
+kept a usage history (the year-long heatmap and the Usage Dashboard), the first
+successful scan on a Mac has also read **up to a year** of older session logs,
+once, to fill that history in. It did this for everyone whose scan was running,
+including people who had just agreed to "30 days". The history it built stayed
+on the Mac: the one-time read was not uploaded.
+
+Since v1.55 that read is its own question:
+
+* **New users** choose on the same screen. "Start local scan" includes the
+  one-time read of older logs; "Last 30 days only" leaves it out; "Not now" reads
+  nothing.
+* **People who agreed to the 30-day scan before v1.55**, and **signed-in users
+  who were never shown the question**, are shown it once, with both answers
+  keeping the 30-day scan running: **"Include older history"** or **"Last 30 days
+  only"**. Refusing the older logs does not take back the 30-day scan.
+* Until you say yes, CLI Pulse reads nothing older than 30 days. Signing in is
+  not a yes to this.
+* **Settings → Privacy → "Include older usage history"** changes the answer at
+  any time. Turning it off stops further reads of older logs; it does not
+  delete history that was already built, which stays on your Mac.
 
 ---
 

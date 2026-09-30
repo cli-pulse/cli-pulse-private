@@ -784,6 +784,21 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await capturePopover(surface, index: index)
             state.isLocalMode = false
 
+        case .localScanConsentOlderLogs:
+            // Someone who said yes to disclosure v1 and has not answered v2.
+            // Both answers are put back afterwards: the signed-out surfaces
+            // that follow must not inherit a scan somebody agreed to here.
+            shapeExistingUser(onboardingV2: false)
+            let savedConsent = state.localScanConsent
+            let savedConsentV2 = state.localScanConsentV2
+            state.localScanConsent = .granted
+            state.localScanConsentV2 = .undecided
+            state.isLocalMode = true
+            await capturePopover(surface, index: index)
+            state.isLocalMode = false
+            state.localScanConsent = savedConsent
+            state.localScanConsentV2 = savedConsentV2
+
         case .signedOut(let tab):
             shapeExistingUser(onboardingV2: false)
             state.selectedTab = tab
@@ -998,6 +1013,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         defaults.removeObject(forKey: AgentSetupStateStore.legacyCompletedKey)
         defaults.removeObject(forKey: AppState.localModeEnabledKey)
         defaults.removeObject(forKey: LocalScanConsentStore.key)
+        defaults.removeObject(forKey: LocalScanConsentStore.v2Key)
         defaults.set(true, forKey: Self.wizardSeededConfigsKey)
         saveSetup(progress: progress, legacyCompleted: false,
                   upgradePromptDismissed: false, onboardingV2: onboardingV2)

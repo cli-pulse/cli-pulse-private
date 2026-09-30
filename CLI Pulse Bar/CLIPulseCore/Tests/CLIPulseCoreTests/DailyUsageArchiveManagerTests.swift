@@ -64,5 +64,70 @@ final class DailyUsageArchiveManagerTests: XCTestCase {
         XCTAssertNil(a.days["2026-06-01"]?.perModel["__claude_msg__"])
         XCTAssertEqual(a.days["2026-06-01"]?.perModel["gpt-5"]?.tokens, 50)
     }
+
+    // MARK: - v1.55: the one-year backfill waits for disclosure v2
+
+    /// Counts the backfill's scans and the window each asked for. It stands in
+    /// for `CostUsageScanner`, so these tests never walk the real `~/.codex`
+    /// and `~/.claude` of whoever runs them.
+    private actor BackfillScanSpy {
+        private(set) var windows: [Int] = []
+        func scanned(_ days: Int) { windows.append(days) }
+    }
+
+    private func backfillManager(
+        root: URL, defaults: UserDefaults, spy: BackfillScanSpy
+    ) -> DailyUsageArchiveManager {
+        DailyUsageArchiveManager(
+            root: root, defaults: defaults, backfillKey: "backfilled",
+            backfillScan: { options in
+                await spy.scanned(options.daysToScan)
+                return CostUsageScanResult(entries: [
+                    .init(date: "2025-11-02", provider: "Codex", model: "gpt-5",
+                          inputTokens: 40, cachedTokens: 0, outputTokens: 2,
+                          costUSD: 0.02, messageCount: 0),
+                ])
+            })
+    }
+
+    /// The acceptance test for P0-9: without a v2 yes, the backfill does not
+    /// run — no scan, nothing merged — and the refusal is not recorded as
+    /// "done", or a later yes would find nothing left to do.
+    func test_backfill_does_not_run_without_v2_consent() async {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = UserDefaults(suiteName: "dua-\(UUID().uuidString)")!
+        let spy = BackfillScanSpy()
+        let mgr = backfillManager(root: root, defaults: defaults, spy: spy)
+
+        await mgr.runBackfillIfNeeded(historyReadAllowed: false)
+
+        let windows = await spy.windows
+        XCTAssertEqual(windows, [], "the one-year read ran without an answer to v2")
+        XCTAssertFalse(defaults.bool(forKey: "backfilled"),
+                       "a refusal was recorded as a finished backfill")
+        let a = await mgr.snapshot()
+        XCTAssertTrue(a.days.isEmpty)
+    }
+
+    /// The other half, so the test above cannot pass on a backfill that never
+    /// runs: after a yes it runs, over the window the disclosure names, once.
+    func test_backfill_runs_once_after_v2_consent_even_after_a_refusal() async {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = UserDefaults(suiteName: "dua-\(UUID().uuidString)")!
+        let spy = BackfillScanSpy()
+        let mgr = backfillManager(root: root, defaults: defaults, spy: spy)
+
+        await mgr.runBackfillIfNeeded(historyReadAllowed: false)
+        await mgr.runBackfillIfNeeded(historyReadAllowed: true)
+        await mgr.runBackfillIfNeeded(historyReadAllowed: true)
+
+        let windows = await spy.windows
+        XCTAssertEqual(windows, [LocalScanDisclosure.historyWindowDays])
+        XCTAssertTrue(defaults.bool(forKey: "backfilled"))
+        let a = await mgr.snapshot()
+        XCTAssertEqual(a.days["2025-11-02"]?.tokens, 42)
+    }
 }
 #endif

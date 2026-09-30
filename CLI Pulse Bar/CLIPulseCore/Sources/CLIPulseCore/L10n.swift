@@ -2351,6 +2351,14 @@ public enum L10n {
         public static var declinedBody: String { tr("local_scan_consent.declined_body") }
         public static var settingsToggle: String { tr("local_scan_consent.settings_toggle") }
         public static var settingsToggleDetail: String { tr("local_scan_consent.settings_toggle_detail") }
+        // v1.55 — disclosure v2: the read beyond the routine 30 days is its own answer.
+        public static var lastThirtyDaysOnly: String { tr("local_scan_consent.last_30_days_only") }
+        public static var firstAskHint: String { tr("local_scan_consent.first_ask_hint") }
+        public static var v2Title: String { tr("local_scan_consent.v2_title") }
+        public static var v2Subtitle: String { tr("local_scan_consent.v2_subtitle") }
+        public static var includeHistory: String { tr("local_scan_consent.include_history") }
+        public static var historyToggle: String { tr("local_scan_consent.history_toggle") }
+        public static var historyToggleDetail: String { tr("local_scan_consent.history_toggle_detail") }
     }
 
     // MARK: - Previously hardcoded UI copy (2026-09-15 sweep)

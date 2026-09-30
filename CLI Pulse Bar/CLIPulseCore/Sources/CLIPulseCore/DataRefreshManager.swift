@@ -63,6 +63,10 @@ internal final class DataRefreshManager {
         /// Read by the gate at the top of `refreshLocal`, which runs before
         /// collectors, before the JSONL scan, and before any durable write.
         let localScanConsent: LocalScanConsent
+        /// v1.55: the answer to disclosure v2 — may anything older than the
+        /// routine 30 days be read. Decides whether the one-time usage-history
+        /// backfill may run (`LocalCollectionPolicy.allowsReadingBeyondRoutineWindow`).
+        let localScanConsentV2: LocalScanConsent
     }
 
     struct RefreshPayload {
@@ -132,6 +136,21 @@ internal final class DataRefreshManager {
                 _ accounts: [ProviderAccountUsage],
                 _ authorizationLease: APIAuthorizationLease
             ) async -> Void
+        /// Folds a successful scan into the two durable local stores — the
+        /// usage archive and the Pulse Cat ledger — and, when
+        /// `historyReadAllowed`, kicks the one-time backfill over up to a year
+        /// of older logs. Fire-and-forget: the live one hands the work to tasks
+        /// so a refresh never waits on a year-long read.
+        ///
+        /// A seam (v1.55) because the flag it carries is the consent decision,
+        /// and a test has to be able to see which answer the refresh acted on
+        /// without the refresh writing into the real Application Support of
+        /// whoever runs the tests.
+        let recordLocalHistory:
+            @Sendable (
+                _ scanResult: CostUsageScanResult,
+                _ historyReadAllowed: Bool
+            ) -> Void
 
         static func live(api: APIClient) -> LocalRefreshRuntime {
             LocalRefreshRuntime(
@@ -183,6 +202,24 @@ internal final class DataRefreshManager {
                         accounts,
                         authorizationLease: lease
                     )
+                },
+                recordLocalHistory: { scanResult, historyReadAllowed in
+                    Task {
+                        await DailyUsageArchiveManager.shared.record(scanResult)
+                        await DailyUsageArchiveManager.shared.runBackfillIfNeeded(
+                            historyReadAllowed: historyReadAllowed
+                        )
+                    }
+                    // v1.42 Pulse Cat M0: the same scan feeds the pet ledger.
+                    // Stamped here, at scan completion, so a stale overlapping
+                    // refresh can't overwrite a fresher slice (Codex F3).
+                    let scanAt = PetLedgerManager.nowMs()
+                    Task {
+                        await PetLedgerManager.shared.record(
+                            scanResult,
+                            observedAtUnixMs: scanAt
+                        )
+                    }
                 }
             )
         }
@@ -432,19 +469,20 @@ internal final class DataRefreshManager {
 
             // v1.40 PR-4: fold the scan into the durable ≥1-year usage archive
             // (Application Support), and kick the one-time 365-day backfill —
-            // access is confirmed here since the scan returned data.
+            // access is confirmed here since the scan returned data. v1.55: the
+            // backfill only with an explicit yes to disclosure v2.
+            // v1.42 Pulse Cat M0: the same scan also feeds the pet ledger
+            // (high-confidence token history for the hatch engine).
             #if os(macOS)
             if let scanResult {
-                Task {
-                    await DailyUsageArchiveManager.shared.record(scanResult)
-                    await DailyUsageArchiveManager.shared.runBackfillIfNeeded()
-                }
-                // v1.42 Pulse Cat M0: fold the same local scan into the pet
-                // ledger (high-confidence token history for the hatch engine).
-                // Stamp at scan-completion time so a stale overlapping refresh
-                // can't overwrite a fresher slice (Codex F3).
-                let scanAt = PetLedgerManager.nowMs()
-                Task { await PetLedgerManager.shared.record(scanResult, observedAtUnixMs: scanAt) }
+                localRuntime.recordLocalHistory(
+                    scanResult,
+                    LocalCollectionPolicy.allowsReadingBeyondRoutineWindow(
+                        isAuthenticated: context.isAuthenticated,
+                        consent: context.localScanConsent,
+                        consentV2: context.localScanConsentV2
+                    )
+                )
             }
             #endif
 
@@ -908,15 +946,21 @@ internal final class DataRefreshManager {
 
         // v1.40 PR-4: populate the durable usage archive for local-mode users
         // too (no cloud dependency) + one-time backfill once access is confirmed.
+        //
+        // v1.55: the gate at the top of this function covers the last 30 days
+        // and nothing more. The backfill reads up to a year, which disclosure v1
+        // never mentioned, so it waits for its own explicit yes.
+        // v1.42 Pulse Cat M0: local-mode users feed the pet ledger too.
         #if os(macOS)
         if let costScanResult {
-            Task {
-                await DailyUsageArchiveManager.shared.record(costScanResult)
-                await DailyUsageArchiveManager.shared.runBackfillIfNeeded()
-            }
-            // v1.42 Pulse Cat M0: local-mode users feed the pet ledger too.
-            let scanAt = PetLedgerManager.nowMs()
-            Task { await PetLedgerManager.shared.record(costScanResult, observedAtUnixMs: scanAt) }
+            localRuntime.recordLocalHistory(
+                costScanResult,
+                LocalCollectionPolicy.allowsReadingBeyondRoutineWindow(
+                    isAuthenticated: context.isAuthenticated,
+                    consent: context.localScanConsent,
+                    consentV2: context.localScanConsentV2
+                )
+            )
         }
         #endif
 
@@ -3245,7 +3289,8 @@ extension AppState {
             ),
             tierResolutionState: subscriptionManager.tierResolutionState,
             isLocalMode: isLocalMode,
-            localScanConsent: localScanConsent
+            localScanConsent: localScanConsent,
+            localScanConsentV2: localScanConsentV2
         )
     }
 

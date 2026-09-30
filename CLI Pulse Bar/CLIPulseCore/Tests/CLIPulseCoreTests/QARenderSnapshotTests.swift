@@ -515,7 +515,7 @@ final class QARenderSnapshotTests: XCTestCase {
         for (index, surface) in catalog.enumerated() {
             switch surface {
             case .firstLaunch, .legacyOnboarding, .onboarding, .onboardingFinished,
-                 .localScanConsent, .signedOut, .signedOutPasswordSignIn:
+                 .localScanConsent, .localScanConsentOlderLogs, .signedOut, .signedOutPasswordSignIn:
                 XCTAssertLessThan(index, firstDemo, "\(surface.id) is drawn after Demo mode began")
             default:
                 XCTAssertGreaterThanOrEqual(index, firstDemo, "\(surface.id) is drawn before Demo mode")

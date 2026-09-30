@@ -1058,8 +1058,8 @@
 /* v1.50 W-C — 이 Mac을 읽기 전의 선택 */
 "local_scan_consent.title" = "CLI Pulse가 이 Mac을 읽기 전에";
 "local_scan_consent.subtitle" = "아직 아무것도 읽지 않았습니다. 스캔을 시작하면 아래 항목이 켜집니다.";
-"local_scan_consent.files_title" = "최근 30일간의 세션 로그";
-"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
+"local_scan_consent.files_title" = "세션 로그: 최근 30일, 그리고 한 번만 최대 1년";
+"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. 새로고침할 때마다 최근 30일을 읽습니다. 허용한 경우에만, 사용 기록을 채우기 위해 최대 1년치의 이전 로그도 한 번 읽습니다. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
 "local_scan_consent.derived_title" = "여기서 알아내는 것";
 "local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID — 세션 목록에 이름이 붙는 건 이것 덕분입니다.";
 "local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 공급자에 연결";
@@ -1073,6 +1073,11 @@
 "local_scan_consent.change_later" = "어느 쪽을 고르든 설정 › 개인정보 보호에서 언제든 바꿀 수 있습니다.";
 "local_scan_consent.declined_title" = "로컬 스캔이 꺼져 있습니다";
 "local_scan_consent.declined_body" = "CLI Pulse가 이 Mac에서 아무것도 읽지 않고 있어 아직 보여줄 것이 없습니다.";
+"local_scan_consent.last_30_days_only" = "최근 30일만";
+"local_scan_consent.first_ask_hint" = "'로컬 스캔 시작'에는 이전 로그를 한 번 읽는 작업이 포함되고, '최근 30일만'에는 포함되지 않습니다. 어느 쪽을 고르든 설정 › 개인정보 보호에서 언제든 바꿀 수 있습니다.";
+"local_scan_consent.v2_title" = "CLI Pulse가 이전 로그를 읽기 전에";
+"local_scan_consent.v2_subtitle" = "새로고침할 때마다 최근 30일을 읽습니다. 사용 기록을 채우기 위해 CLI Pulse는 최대 1년치의 이전 세션 로그를 한 번 읽을 수도 있습니다. 이제는 먼저 묻습니다. 어느 쪽을 고르든 최근 30일 스캔은 계속됩니다.";
+"local_scan_consent.include_history" = "이전 기록 포함";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "계정 없이 사용하기";
 "onboarding_wizard.use_locally_hint" = "나중에 설정에서 로그인할 수 있습니다.";
@@ -1320,7 +1325,9 @@
 "app_updater.download_update" = "업데이트 다운로드";
 "app_updater.install_update_quits" = "업데이트 설치(CLI Pulse 종료)";
 "local_scan_consent.settings_toggle" = "이 Mac의 CLI 사용량 스캔";
-"local_scan_consent.settings_toggle_detail" = "~/.codex와 ~/.claude 아래의 최근 30일간 세션 로그를 읽고, 사용 중인 공급자에게 실시간 할당량을 조회합니다. 끄면 CLI Pulse는 이 Mac에서 아무것도 읽지 않습니다.";
+"local_scan_consent.settings_toggle_detail" = "새로고침할 때마다 ~/.codex와 ~/.claude 아래의 최근 30일간 세션 로그를 읽고, 사용 중인 공급자에게 실시간 할당량을 조회합니다. 이전 로그는 별도의 스위치로 정합니다. 끄면 CLI Pulse는 이 Mac에서 아무것도 읽지 않습니다.";
+"local_scan_consent.history_toggle" = "이전 사용 기록 포함";
+"local_scan_consent.history_toggle_detail" = "사용 기록을 채우기 위해 최대 1년치의 이전 세션 로그를 한 번 읽습니다. 끄면 CLI Pulse는 최근 30일만 읽습니다. 이미 만든 기록은 이 Mac에 남습니다.";
 "settings.local_only_mode" = "엄격한 개인정보 보호 모드";
 "settings.local_only_mode_hint" = "CLI Pulse가 Claude Code의 키체인 항목을 스스로 읽지 않으며 익명 통계도 보내지 않습니다. 홈 폴더의 로그 파일에서 읽는 사용량과 계정 동기화에는 영향이 없습니다.";
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";

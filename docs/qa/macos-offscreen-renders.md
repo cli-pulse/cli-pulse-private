@@ -129,6 +129,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `setup-v2-welcome` … `setup-v2-sync-mode` | Setup v2, off in production and on in QA; discovery onwards as the existing-user flow with three of the five accounts chosen |
 | `setup-v2-finished-local`, `-sync` | Setup v2's finish page, local-only and cloud-sync |
 | `local-scan-consent` | Local mode asking before it reads the Mac |
+| `local-scan-consent-older-logs` | A 30-day "yes" on file, asked once about reading up to a year of older logs (disclosure v2) |
 | `signed-out-overview` … `signed-out-settings` | Signed out: Overview, Providers, Sessions, Alerts, Settings (email code) |
 | `signed-out-settings-password` | Signed out, Settings with password sign-in |
 | `demo-overview` … `demo-pet` | Demo data: Overview, Machine, Providers, Sessions, Alerts, Pet |

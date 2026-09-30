@@ -265,6 +265,7 @@ public enum QARenderSnapshot {
             .map { .onboarding($0) }
         surfaces += QARenderFinishMode.allCases.map { .onboardingFinished($0) }
         surfaces.append(.localScanConsent)
+        surfaces.append(.localScanConsentOlderLogs)
         surfaces += signedOutTabs.map { .signedOut($0) }
         surfaces.append(.signedOutPasswordSignIn)
         surfaces += AppState.Tab.visibleCases
@@ -629,6 +630,9 @@ public enum QARenderSurface: Hashable {
     case onboardingFinished(QARenderFinishMode)
     /// Local mode before the user has said whether the Mac may be scanned.
     case localScanConsent
+    /// v1.55: a v1 "yes" on file and no answer to disclosure v2 — the
+    /// question about reading up to a year of older logs.
+    case localScanConsentOlderLogs
     case signedOut(AppState.Tab)
     case signedOutPasswordSignIn
     case demo(AppState.Tab)
@@ -674,6 +678,7 @@ public enum QARenderSurface: Hashable {
         case .onboarding(let step): return "setup-v2-\(Self.slug(step.rawValue))"
         case .onboardingFinished(let mode): return "setup-v2-finished-\(mode.rawValue)"
         case .localScanConsent: return "local-scan-consent"
+        case .localScanConsentOlderLogs: return "local-scan-consent-older-logs"
         case .signedOut(let tab): return "signed-out-\(Self.slug(tab.rawValue))"
         case .signedOutPasswordSignIn: return "signed-out-settings-password"
         case .demo(let tab): return "demo-\(Self.slug(tab.rawValue))"
