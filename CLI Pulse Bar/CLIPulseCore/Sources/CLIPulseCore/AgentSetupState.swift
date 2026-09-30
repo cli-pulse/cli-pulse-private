@@ -490,9 +490,10 @@ public final class AgentSetupStateStore {
         // `string(forKey:)` because "declined" is as much of an answer as
         // "granted", and a `.bool` read would call one of them absence.
         if defaults.object(forKey: LocalScanConsentStore.key) != nil { return true }
-        // v1.55: the v2 answer is prior use for the same reason. It is normally
-        // written alongside a v1 answer, but the Settings switch for older
-        // history can record it on its own for a signed-in user.
+        // v1.55: the v2 answer is prior use for the same reason. For a signed-in
+        // user with no v1 answer it is often the only one on file: the
+        // older-logs screen and the Settings switch for older history both
+        // record it on its own (`LocalCollectionPolicy.answering`).
         if defaults.object(forKey: LocalScanConsentStore.v2Key) != nil { return true }
         // Provider configs count as prior use ONLY if the v2 wizard did not
         // write them itself. Selecting an account mid-wizard persists a seeded

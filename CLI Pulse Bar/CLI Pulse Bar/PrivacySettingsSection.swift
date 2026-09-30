@@ -26,6 +26,16 @@ struct PrivacySettingsSection: View {
         (state.isAuthenticated || state.isLocalMode) && !state.isDemoMode
     }
 
+    /// v1.55: the way back from "Not now" for a signed-in Mac, which has no
+    /// scan switch (see below) and no declined card on Overview.
+    private var offersChoosingAgain: Bool {
+        LocalCollectionPolicy.offersChoosingAgain(
+            isAuthenticated: state.isAuthenticated,
+            isDemoMode: state.isDemoMode,
+            consent: state.localScanConsent
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -38,11 +48,12 @@ struct PrivacySettingsSection: View {
             }
 
             // v1.50 W-C. The promise the disclosure makes — "Settings › Privacy
-            // changes it at any time" — is kept here, and it is the only way
-            // back from "Not now". Shown to unauthenticated local-mode users
-            // only: for a signed-in user the answer is implied by the account,
-            // and a switch that reads as optional while cloud sync is running
-            // would be a lie about which one is in charge.
+            // changes it at any time" — is kept here, and in local mode it is
+            // the way back from "Not now". Shown to unauthenticated local-mode
+            // users only: for a signed-in user the answer is implied by the
+            // account, and a switch that reads as optional while cloud sync is
+            // running would be a lie about which one is in charge. A signed-in
+            // "Not now" gets "Choose again…" below instead (v1.55).
             if showsScanSwitch {
                 Toggle(
                     isOn: Binding(
@@ -63,6 +74,29 @@ struct PrivacySettingsSection: View {
                     .padding(.leading, 2)
                     .padding(.bottom, 2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // v1.55: a signed-in Mac whose answer is "Not now". The switch above
+            // is not shown to it, and signing in does not overturn the answer
+            // (`LocalCollectionPolicy.allowsCollection`), so until 1.55 the only
+            // way back was signing out. "Choose again…" reopens the first ask,
+            // the whole disclosure with its three answers, in the popover.
+            if offersChoosingAgain {
+                Text(L10n.localScanConsent.declinedTitle)
+                    .font(.system(size: 11))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(L10n.localScanConsent.settingsDeclinedDetail)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(L10n.localScanConsent.chooseAgain) {
+                    state.chooseLocalScanAgain()
+                }
+                .controlSize(.small)
+                .padding(.bottom, 2)
             }
 
             // v1.55: disclosure v2's own answer — up to a year of older logs,
@@ -108,7 +142,7 @@ struct PrivacySettingsSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            if showsScanSwitch || showsHistorySwitch {
+            if showsScanSwitch || showsHistorySwitch || offersChoosingAgain {
                 Divider()
                     .padding(.vertical, 2)
             }

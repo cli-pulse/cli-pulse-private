@@ -158,15 +158,44 @@ public final class AppState: ObservableObject {
         }
     }
 
-    /// Records an answer from the disclosure (either version) and, when it lets
-    /// collection run, starts a refresh so the answer produces something to look
-    /// at instead of a wait for the next tick. The gate is the stored state, not
-    /// this call: flipping the answers is what lets the next refresh through.
-    public func answerLocalScanDisclosure(_ choice: LocalScanChoice) {
-        let answers = LocalCollectionPolicy.answering(
-            choice,
-            consentV2: localScanConsentV2
+    /// v1.55: set by "Choose again…" in Settings › Privacy, for a signed-in Mac
+    /// whose answer is "Not now" (`LocalCollectionPolicy.offersChoosingAgain`).
+    /// While it is set the popover shows the first ask again; any answer on it
+    /// clears it. Not persisted: it is a request to see a screen, not an answer,
+    /// and on its own it lets nothing be read.
+    @Published public var isChoosingLocalScanAgain = false
+
+    /// The three values above as one, for `LocalScanConsentState`'s transitions.
+    private var localScanConsentState: LocalScanConsentState {
+        LocalScanConsentState(
+            consent: localScanConsent,
+            consentV2: localScanConsentV2,
+            isChoosingAgain: isChoosingLocalScanAgain
         )
+    }
+
+    /// "Choose again…": reopens the first ask. Does nothing where Settings would
+    /// not offer it (`LocalScanConsentState.requestChoosingAgain`).
+    public func chooseLocalScanAgain() {
+        var next = localScanConsentState
+        next.requestChoosingAgain(isAuthenticated: isAuthenticated, isDemoMode: isDemoMode)
+        isChoosingLocalScanAgain = next.isChoosingAgain
+    }
+
+    /// Records an answer from the disclosure and, when it lets collection run,
+    /// starts a refresh so the answer produces something to look at instead of
+    /// a wait for the next tick. The gate is the stored state, not this call:
+    /// flipping the answers is what lets the next refresh through.
+    ///
+    /// `question` is the screen the answer came from; each answer is stored for
+    /// the question that screen asked (`LocalCollectionPolicy.answering`).
+    public func answerLocalScanDisclosure(
+        _ choice: LocalScanChoice,
+        to question: LocalScanQuestion
+    ) {
+        var answers = localScanConsentState
+        answers.answer(choice, to: question)
+        isChoosingLocalScanAgain = answers.isChoosingAgain
         // v2 first: `localScanConsent` is what the popover's routing and the
         // refresh gate read first, so by the time it changes the v2 answer the
         // next refresh needs is already on file.

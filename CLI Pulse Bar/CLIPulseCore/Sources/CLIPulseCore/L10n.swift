@@ -2359,6 +2359,12 @@ public enum L10n {
         public static var includeHistory: String { tr("local_scan_consent.include_history") }
         public static var historyToggle: String { tr("local_scan_consent.history_toggle") }
         public static var historyToggleDetail: String { tr("local_scan_consent.history_toggle_detail") }
+        // v1.55 — the way back from "Not now" for a signed-in Mac (Settings › Privacy).
+        public static var settingsDeclinedDetail: String { tr("local_scan_consent.settings_declined_detail") }
+        public static var chooseAgain: String { tr("local_scan_consent.choose_again") }
+        /// The first ask's caption when "Choose again…" reopens it while signed
+        /// in. Picked by `LocalScanQuestion.caption(isAuthenticated:)`.
+        public static var firstAskHintSignedIn: String { tr("local_scan_consent.first_ask_hint_signed_in") }
     }
 
     // MARK: - Previously hardcoded UI copy (2026-09-15 sweep)

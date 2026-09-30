@@ -36,24 +36,31 @@ import CLIPulseCore
 /// read up to a year. v2 says both, and makes the part beyond 30 days its own
 /// answer, so the screen has two shapes:
 ///
-///   * `.firstAsk` — nothing is on file and nothing is read yet. Three answers:
-///     everything ("Start local scan"), the 30-day scan alone, or nothing.
+///   * `.firstAsk` — no answer about the scan itself is on file, or a
+///     signed-in "Not now" asked to choose again. Three answers: everything
+///     ("Start local scan"), the 30-day scan alone, or nothing. Shown to a
+///     local-mode Mac with nothing on file, including one that was read before
+///     (a signed-in user who answered only the older-logs question and then
+///     signed out), and to a signed-in Mac through "Choose again…", which gets
+///     its own caption (`LocalScanQuestion.caption(isAuthenticated:)`).
 ///   * `.olderLogs` — the routine scan is already running (a v1 yes, or a
 ///     signed-in account) and the older logs have no answer. Two answers, and
 ///     both keep the 30-day scan: refusing v2 is not taking back v1. There is
 ///     no "Not now" here because it would mean something much bigger than the
 ///     question being asked. Switching the scan off stays where it was: the
 ///     Settings switch in local mode, and signing out for a signed-in user,
-///     who has no scan switch (1.50: the account implies the scan).
+///     who has no scan switch (1.50: the account implies the scan). Only the
+///     older-logs answer is stored from this screen; see
+///     `LocalCollectionPolicy.answering(_:to:consent:consentV2:)`.
+///
+/// `.firstAsk` is also what "Choose again…" in Settings › Privacy reopens for a
+/// signed-in Mac whose answer is "Not now" (`AppState.chooseLocalScanAgain`).
 ///
 /// Both shapes carry the whole disclosure, not only the new line: the signed-in
 /// users who see `.olderLogs` were let through on the strength of their account
 /// in 1.50 and have never been shown what the scan reads.
 struct LocalScanConsentView: View {
-    enum Mode {
-        case firstAsk
-        case olderLogs
-    }
+    typealias Mode = LocalScanQuestion
 
     @EnvironmentObject var state: AppState
     var mode: Mode = .firstAsk
@@ -104,9 +111,9 @@ struct LocalScanConsentView: View {
                     olderLogsButtons
                 }
 
-                Text(mode == .firstAsk
-                     ? L10n.localScanConsent.firstAskHint
-                     : L10n.localScanConsent.changeLater)
+                // Signed in, the first ask is the one "Choose again…" reopened,
+                // and its caption says what Settings can and cannot change then.
+                Text(mode.caption(isAuthenticated: state.isAuthenticated))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -133,20 +140,20 @@ struct LocalScanConsentView: View {
                 // lets the next refresh through. `answerLocalScanDisclosure`
                 // kicks one off only so the answer produces a visible result
                 // instead of a wait for the next tick.
-                state.answerLocalScanDisclosure(.scanWithHistory)
+                state.answerLocalScanDisclosure(.scanWithHistory, to: .firstAsk)
             } label: {
                 Text(L10n.localScanConsent.start).frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
             Button {
-                state.answerLocalScanDisclosure(.last30DaysOnly)
+                state.answerLocalScanDisclosure(.last30DaysOnly, to: .firstAsk)
             } label: {
                 Text(L10n.localScanConsent.lastThirtyDaysOnly).frame(maxWidth: .infinity)
             }
 
             Button {
-                state.answerLocalScanDisclosure(.notNow)
+                state.answerLocalScanDisclosure(.notNow, to: .firstAsk)
             } label: {
                 Text(L10n.localScanConsent.notNow).frame(maxWidth: .infinity)
             }
@@ -159,14 +166,14 @@ struct LocalScanConsentView: View {
     private var olderLogsButtons: some View {
         VStack(spacing: 6) {
             Button {
-                state.answerLocalScanDisclosure(.scanWithHistory)
+                state.answerLocalScanDisclosure(.scanWithHistory, to: .olderLogs)
             } label: {
                 Text(L10n.localScanConsent.includeHistory).frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
 
             Button {
-                state.answerLocalScanDisclosure(.last30DaysOnly)
+                state.answerLocalScanDisclosure(.last30DaysOnly, to: .olderLogs)
             } label: {
                 Text(L10n.localScanConsent.lastThirtyDaysOnly).frame(maxWidth: .infinity)
             }

@@ -31,6 +31,7 @@ file, **the file wins** — please open an issue.
 | **Git activity metadata** (commit hash, HMAC of project path, commit timestamp, merge flag) | Supabase — only when the "Track git activity (Yield Score)" toggle is ON | ✅ Yes (opt-in only) | Powers the Yield Score feature |
 | **Git commit messages, diffs, file paths, author identity** | — | ❌ Never | Explicitly excluded even when Yield Score is on |
 | **Alerts you resolve locally** (quota depletion alerts) | UserDefaults on this device | ❌ Never | Suppression list to prevent re-firing |
+| **Codex accounts seen with credits** (a digest of the ChatGPT account ID, never the ID itself) | UserDefaults (app group) on this device | ❌ Never | Keeps a spent Codex credits balance visible as "0 credits left" |
 | **Crash reports** (stack trace, app version, OS version, non-PII device model) | Sentry (sentry.io), scrubbed before leaving the device | ✅ Yes (when a crash/error happens) | So crashes are visible to us without waiting for an App Store review |
 | **Anonymous install statistics** (random install id, install channel, app version, OS major.minor, and whether a CLI was ever found) | Supabase, **not linked to any account** | ✅ Yes, unless you turn it off | Tells us whether the app actually works for people who never sign in |
 
@@ -129,7 +130,9 @@ question before anything is read. Until you answer, CLI Pulse reads no files,
 contacts no provider, and touches no Keychain item. Since v1.55 the question has
 three answers: **"Start local scan"**, **"Last 30 days only"** and **"Not now"**
 (see the next section for why). "Not now" is remembered, is not overridden by
-signing in later, and is reversible from Settings → Privacy at any time.
+signing in later, and is reversible from Settings → Privacy at any time: without
+an account, with the scan switch; while signed in, with **"Choose again…"**,
+which shows the same question with its three answers.
 
 The question names all of it:
 
@@ -188,7 +191,14 @@ Since v1.55 that read is its own question:
 * **People who agreed to the 30-day scan before v1.55**, and **signed-in users
   who were never shown the question**, are shown it once, with both answers
   keeping the 30-day scan running: **"Include older history"** or **"Last 30 days
-  only"**. Refusing the older logs does not take back the 30-day scan.
+  only"**. Refusing the older logs does not take back the 30-day scan. This
+  screen records only your answer about older logs. For a signed-in user the
+  account stands in for a yes to the 30-day scan, so none is stored; if you
+  later sign out and use CLI Pulse without an account, you are asked the first
+  question.
+* **"Last 30 days only" deletes nothing.** Usage history already built on your
+  Mac stays there, including what the one-time read built in versions before
+  v1.55; the screens that offer this answer say so.
 * Until you say yes, CLI Pulse uses nothing older than 30 days, in the sense
   given under "Session logs" above. Signing in is not a yes to this.
 * **Settings → Privacy → "Include older usage history"** changes the answer at

@@ -129,5 +129,46 @@ final class DailyUsageArchiveManagerTests: XCTestCase {
         let a = await mgr.snapshot()
         XCTAssertEqual(a.days["2025-11-02"]?.tokens, 42)
     }
+
+    /// "Last 30 days only" deletes nothing. History an earlier yes (or a
+    /// version before 1.55) already built stays, through a refused history read
+    /// and through the routine 30-day scans that follow it; the consent screen
+    /// and the Settings switch both say so.
+    func test_refusing_the_history_read_keeps_history_already_built() async {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let defaults = UserDefaults(suiteName: "dua-\(UUID().uuidString)")!
+        let old = DayKey.string(from: Date().addingTimeInterval(-200 * 86_400))
+        let recent = DayKey.string(from: Date().addingTimeInterval(-2 * 86_400))
+        let spy = BackfillScanSpy()
+        let mgr = DailyUsageArchiveManager(
+            root: root, defaults: defaults, backfillKey: "backfilled",
+            backfillScan: { options in
+                await spy.scanned(options.daysToScan)
+                return CostUsageScanResult(entries: [
+                    .init(date: old, provider: "Codex", model: "gpt-5",
+                          inputTokens: 40, cachedTokens: 0, outputTokens: 2,
+                          costUSD: 0.02, messageCount: 0),
+                ])
+            })
+
+        // Built while the history read was allowed.
+        await mgr.runBackfillIfNeeded(historyReadAllowed: true)
+        // Then "Last 30 days only": refused from here on, and routine scans.
+        await mgr.runBackfillIfNeeded(historyReadAllowed: false)
+        await mgr.record(CostUsageScanResult(entries: [
+            .init(date: recent, provider: "Claude", model: "claude-sonnet-4-5",
+                  inputTokens: 10, cachedTokens: 0, outputTokens: 5,
+                  costUSD: 0.01, messageCount: 0),
+        ]))
+
+        let a = await mgr.snapshot()
+        XCTAssertEqual(a.days[old]?.tokens, 42, "history already built was dropped")
+        XCTAssertEqual(a.days[recent]?.tokens, 15)
+        XCTAssertEqual(DailyUsageArchiveIO.load(root: root).days[old]?.tokens, 42,
+                       "history already built is gone from disk")
+        let windows = await spy.windows
+        XCTAssertEqual(windows, [LocalScanDisclosure.historyWindowDays], "read again after the refusal")
+    }
 }
 #endif

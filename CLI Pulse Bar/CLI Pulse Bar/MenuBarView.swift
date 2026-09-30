@@ -141,6 +141,9 @@ struct MenuBarView: View {
                     // the top of `refreshLocal` refuses to collect in this
                     // state. This view is what turns that emptiness from a
                     // broken-looking app into a question.
+                    //
+                    // v1.55: also a signed-in Mac that said "Not now" and
+                    // pressed "Choose again…" in Settings › Privacy.
                     LocalScanConsentView()
                         .environmentObject(state)
                         .languageKeyed(localeOverride.override)
@@ -253,6 +256,16 @@ struct MenuBarView: View {
         if LocalCollectionPolicy.shouldPresentDisclosure(
             isAuthenticated: authState.isAuthenticated,
             isLocalMode: state.isLocalMode,
+            consent: state.localScanConsent
+        ) {
+            return .localScanConsent
+        }
+        // v1.55: "Choose again…" in Settings › Privacy, for a signed-in Mac
+        // whose answer is "Not now". The same first ask, answered the same way.
+        if LocalCollectionPolicy.shouldPresentDisclosureAgain(
+            requested: state.isChoosingLocalScanAgain,
+            isAuthenticated: authState.isAuthenticated,
+            isDemoMode: state.isDemoMode,
             consent: state.localScanConsent
         ) {
             return .localScanConsent

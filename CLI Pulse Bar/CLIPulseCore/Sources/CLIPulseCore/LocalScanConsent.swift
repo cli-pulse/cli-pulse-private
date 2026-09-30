@@ -126,6 +126,42 @@ public enum LocalScanDisclosure {
     public static let historyWindowDays = 365
 }
 
+/// Which question the disclosure is asking, i.e. which screen the answer came
+/// from. The same button leaves different answers on file depending on it: see
+/// `LocalCollectionPolicy.answering(_:to:consent:consentV2:)`.
+public enum LocalScanQuestion: Equatable, Sendable {
+    /// Nothing on file for the scan itself: may CLI Pulse read this Mac at all,
+    /// and how far back. Three answers. Also what "Choose again…" in Settings
+    /// reopens for a signed-in Mac whose answer is "Not now".
+    case firstAsk
+    /// The routine scan is already running (a v1 yes, or a signed-in account)
+    /// and only the older logs are asked about. Two answers, both keeping the
+    /// 30-day scan.
+    case olderLogs
+}
+
+extension LocalScanQuestion {
+    /// The caption under the screen's answers.
+    ///
+    /// The first ask's usual caption ends "Whichever you choose, you can change
+    /// it any time in Settings › Privacy". Without an account that holds: the
+    /// scan switch is there. A signed-in Mac sees the first ask only through
+    /// "Choose again…", and while signed in there is no scan switch (the account
+    /// stands in for a yes), so after a yes Settings changes only the older-logs
+    /// answer and signing out is what stops the scan. It gets a caption that
+    /// says so.
+    public func caption(isAuthenticated: Bool) -> String {
+        switch self {
+        case .firstAsk:
+            return isAuthenticated
+                ? L10n.localScanConsent.firstAskHintSignedIn
+                : L10n.localScanConsent.firstAskHint
+        case .olderLogs:
+            return L10n.localScanConsent.changeLater
+        }
+    }
+}
+
 /// The buttons on the disclosure, as answers. Kept apart from the view so the
 /// state each one leaves behind can be tested without a window.
 public enum LocalScanChoice: Equatable, Sendable {
@@ -138,6 +174,57 @@ public enum LocalScanChoice: Equatable, Sendable {
     /// "Not now": nothing at all. Offered only where there is no v1 "yes" to
     /// keep — the first ask.
     case notNow
+}
+
+/// What the disclosure's buttons and "Choose again…" act on, as one value:
+/// both answers and the open request from Settings. `AppState` keeps each part
+/// as its own published property and applies a change through this, so what an
+/// answer leaves behind — including that it ends a "Choose again…" — can be
+/// tested without an `AppState`.
+public struct LocalScanConsentState: Equatable, Sendable {
+    public var consent: LocalScanConsent
+    public var consentV2: LocalScanConsent
+    /// "Choose again…" was pressed and the reopened first ask has not been
+    /// answered yet. Not persisted.
+    public var isChoosingAgain: Bool
+
+    public init(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent,
+        isChoosingAgain: Bool = false
+    ) {
+        self.consent = consent
+        self.consentV2 = consentV2
+        self.isChoosingAgain = isChoosingAgain
+    }
+
+    /// Records `choice`, given on the screen that asked `question`. Any answer
+    /// ends a "Choose again…": "Not now" leaves the scan off as it was, and
+    /// without this the reopened screen would stay up, since nothing else
+    /// about the state changes.
+    public mutating func answer(_ choice: LocalScanChoice, to question: LocalScanQuestion) {
+        let answers = LocalCollectionPolicy.answering(
+            choice,
+            to: question,
+            consent: consent,
+            consentV2: consentV2
+        )
+        consent = answers.consent
+        consentV2 = answers.consentV2
+        isChoosingAgain = false
+    }
+
+    /// "Choose again…". Ignored where Settings does not offer it
+    /// (`LocalCollectionPolicy.offersChoosingAgain`), so a stray call cannot
+    /// put the question to anyone else.
+    public mutating func requestChoosingAgain(isAuthenticated: Bool, isDemoMode: Bool) {
+        guard LocalCollectionPolicy.offersChoosingAgain(
+            isAuthenticated: isAuthenticated,
+            isDemoMode: isDemoMode,
+            consent: consent
+        ) else { return }
+        isChoosingAgain = true
+    }
 }
 
 /// The single question `refreshLocal` asks before it reads anything.
@@ -260,32 +347,91 @@ public enum LocalCollectionPolicy {
 
     /// The two answers a choice leaves on file.
     ///
-    /// Both scanning choices record a v1 `.granted`. On the first ask that is
-    /// the plain meaning of the button. On the v2 ask it matters for the signed-in
-    /// user with nothing on file: they have now read the whole disclosure and
-    /// chosen to keep scanning, and recording it means a later sign-out into
-    /// local mode does not put the same questions to them a second time.
+    /// Each answer is stored only for the question the screen asked:
     ///
-    /// Which also means that screen offers a signed-in user no way to refuse
-    /// the 30-day scan itself. That is the 1.50 rule — signing in implies the
-    /// scan, and the scan switch is shown only in local mode — not a new one:
-    /// while signed in, signing out is what stops it, and the policy says so.
+    ///   * The first ask asks both, so its scanning choices record a v1
+    ///     `.granted` and the v2 answer that goes with the button. That is the
+    ///     plain meaning of the buttons, including when a signed-in Mac reopens
+    ///     this screen from Settings after "Not now" — they answered it again.
+    ///   * The older-logs ask asks only about the older logs, so only v2 is
+    ///     written and the v1 answer stays as it was. For a v1 yes that changes
+    ///     nothing. For a signed-in user with nothing on file it means no v1 yes
+    ///     is recorded on their behalf: signing in stands in for it while they
+    ///     are signed in (`allowsCollection`), and if they later sign out into
+    ///     local mode they are asked the first question, as a local-mode user
+    ///     with nothing on file always is. (As first written for 1.55, this
+    ///     screen recorded a v1 yes too, so that a sign-out did not ask again.)
+    ///     The Settings switch for older history already left exactly this
+    ///     state, a v2 answer without a v1 one, and every reader handles it:
+    ///     the gates go through `allowsCollection`, and a v2 answer alone
+    ///     counts as prior use (`AgentSetupStateStore.hasUsedThisAppBefore`).
     ///
-    /// "Not now" leaves v2 as it was. Its meaning is "read nothing", and while
-    /// v1 is `.declined` the v2 answer is not consulted; if they turn the scan
-    /// back on later, the v2 question is asked then, with the disclosure in
-    /// front of them.
+    /// Which also means the older-logs screen offers a signed-in user no way to
+    /// refuse the 30-day scan itself. That is the 1.50 rule — signing in implies
+    /// the scan, and the scan switch is shown only in local mode — not a new
+    /// one: while signed in, signing out is what stops it, and the policy says
+    /// so.
+    ///
+    /// "Not now" (first ask only) leaves v2 as it was. Its meaning is "read
+    /// nothing", and while v1 is `.declined` the v2 answer is not consulted; if
+    /// they turn the scan back on later, the v2 question is asked then, with
+    /// the disclosure in front of them.
     public static func answering(
         _ choice: LocalScanChoice,
+        to question: LocalScanQuestion,
+        consent: LocalScanConsent,
         consentV2: LocalScanConsent
     ) -> (consent: LocalScanConsent, consentV2: LocalScanConsent) {
-        switch choice {
-        case .scanWithHistory:
+        switch (question, choice) {
+        case (.firstAsk, .scanWithHistory):
             return (.granted, .granted)
-        case .last30DaysOnly:
+        case (.firstAsk, .last30DaysOnly):
             return (.granted, .declined)
-        case .notNow:
+        case (.olderLogs, .scanWithHistory):
+            return (consent, .granted)
+        case (.olderLogs, .last30DaysOnly):
+            return (consent, .declined)
+        case (_, .notNow):
+            // The older-logs screen has no "Not now"; were one ever wired to
+            // it, it would mean what it means everywhere: read nothing.
             return (.declined, consentV2)
         }
+    }
+
+    // MARK: - v1.55: choosing again after "Not now", while signed in
+
+    /// Does Settings › Privacy offer "Choose again…"?
+    ///
+    /// For a signed-in Mac whose answer is "Not now". In local mode the scan
+    /// switch and the Overview's declined card are the way back; a signed-in
+    /// user has neither — the switch is local-mode only, because the account
+    /// implies the scan — so until 1.55 their only way back was signing out.
+    /// Not in Demo mode, which reads nothing.
+    public static func offersChoosingAgain(
+        isAuthenticated: Bool,
+        isDemoMode: Bool,
+        consent: LocalScanConsent
+    ) -> Bool {
+        isAuthenticated && !isDemoMode && consent == .declined
+    }
+
+    /// Should the popover show the first ask again, because the user asked for
+    /// it from Settings?
+    ///
+    /// Only while the request is still the right one to honour: once the
+    /// answer is no longer "Not now", or the Mac is signed out (where the
+    /// first ask has its own rule, `shouldPresentDisclosure`), a stale request
+    /// shows nothing.
+    public static func shouldPresentDisclosureAgain(
+        requested: Bool,
+        isAuthenticated: Bool,
+        isDemoMode: Bool,
+        consent: LocalScanConsent
+    ) -> Bool {
+        requested && offersChoosingAgain(
+            isAuthenticated: isAuthenticated,
+            isDemoMode: isDemoMode,
+            consent: consent
+        )
     }
 }

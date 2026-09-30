@@ -817,6 +817,9 @@ extension AppState {
         // explicit sign-out would bounce straight back into local mode on the
         // next launch. Signing out is a request for the Sign-In form.
         UserDefaults.standard.removeObject(forKey: Self.localModeEnabledKey)
+        // v1.55: "Choose again…" is a signed-in request. Left set, the next
+        // sign-in would open on the question instead of the dashboard.
+        isChoosingLocalScanAgain = false
         serverOnline = false
         userId = ""
         userName = ""

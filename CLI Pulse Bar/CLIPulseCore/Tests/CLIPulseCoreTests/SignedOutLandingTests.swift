@@ -126,6 +126,18 @@ final class SignedOutLandingTests: XCTestCase {
     /// user would land on the Overview empty card with stale provider
     /// data — exactly the "what's going on" symptom this iter aims
     /// to fix.
+    /// "Choose again…" is a signed-in request. Left set, the next sign-in
+    /// would open on the first ask instead of the dashboard.
+    func testApplySignedOutStateEndsAChooseAgainRequest() {
+        let state = AppState()
+        state.isChoosingLocalScanAgain = true
+
+        state.applySignedOutState()
+
+        XCTAssertFalse(state.isChoosingLocalScanAgain,
+                       "sign-out left the reopened first ask waiting for the next sign-in")
+    }
+
     func testApplySignedOutStateClearsLocalMode() {
         let state = AppState()
         state.isLocalMode = true
