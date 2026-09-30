@@ -167,13 +167,13 @@ public final class AppState: ObservableObject {
     /// later. macOS only: nothing else has a helper.
     func mirrorLocalScanConsentForHelper() {
         #if os(macOS)
-        guard let helperDefaults else { return }
+        guard let helperDefaults = helperDefaultsForThisRuntime else { return }
         let changed = LocalScanConsentStore.mirror(
             consent: localScanConsent,
             consentV2: localScanConsentV2,
             to: helperDefaults
         )
-        if changed { tellHelperItsInputsChanged() }
+        if changed { notifyHelper?() }
         #endif
     }
 
@@ -182,21 +182,22 @@ public final class AppState: ObservableObject {
     /// signed-out Mac as signed in. Called where the app applies either state.
     func recordSignInForHelper(signedIn: Bool) {
         #if os(macOS)
-        guard let helperDefaults else { return }
+        guard let helperDefaults = helperDefaultsForThisRuntime else { return }
         if HelperIPC.recordAppSignedIn(signedIn, to: helperDefaults) {
-            tellHelperItsInputsChanged()
+            notifyHelper?()
         }
         #endif
     }
 
-    #if os(macOS)
-    private func tellHelperItsInputsChanged() {
-        // A test that injects `helperDefaults` must not reach a helper
-        // running on the same Mac: the notification is system-wide.
-        guard runtimeEnvironment.capabilities.allowsHelperRegistration else { return }
-        HelperIPC.postHelperInputsDidChange()
+    /// `helperDefaults`, where this runtime may write to a helper's app group
+    /// at all. The same double check as the provider-config copy: a QA or
+    /// quarantined runtime writes nothing there even when handed the suite
+    /// (`QARuntimeSideEffectPolicyTests`).
+    private var helperDefaultsForThisRuntime: UserDefaults? {
+        runtimeEnvironment.capabilities.allowsHelperRegistration
+            ? helperDefaults
+            : nil
     }
-    #endif
 
     /// v1.55: set by "Choose again…" in Settings › Privacy, for a signed-in Mac
     /// whose answer is "Not now" (`LocalCollectionPolicy.offersChoosingAgain`).
@@ -1021,6 +1022,11 @@ public final class AppState: ObservableObject {
     /// provider configs and the local-scan answers are copied here. Nil where
     /// the runtime registers no helper (see `init(runtimeEnvironment:)`).
     private let helperDefaults: UserDefaults?
+    /// Tells a running helper that what it reads in `helperDefaults` changed
+    /// (`HelperIPC.postHelperInputsDidChange`). Set only by the production
+    /// initializer: the notification is system-wide, and a test that injects
+    /// `helperDefaults` must not reach a helper running on the same Mac.
+    private let notifyHelper: (() -> Void)?
     private let providerSecretStore: any ProviderSecretStoring
     private let providerAccountDeletionOutbox:
         ProviderAccountDeletionOutbox
@@ -1044,13 +1050,22 @@ public final class AppState: ObservableObject {
     public convenience init(
         runtimeEnvironment: CLIPulseRuntimeEnvironment
     ) {
+        let registersHelper =
+            runtimeEnvironment.capabilities.allowsHelperRegistration
+        #if os(macOS)
+        let notifyHelper: (() -> Void)? = registersHelper
+            ? { HelperIPC.postHelperInputsDidChange() }
+            : nil
+        #else
+        let notifyHelper: (() -> Void)? = nil
+        #endif
         self.init(
             runtimeEnvironment: runtimeEnvironment,
             defaults: .standard,
-            helperDefaults:
-                runtimeEnvironment.capabilities.allowsHelperRegistration
-                    ? UserDefaults(suiteName: HelperIPC.suiteName)
-                    : nil
+            helperDefaults: registersHelper
+                ? UserDefaults(suiteName: HelperIPC.suiteName)
+                : nil,
+            notifyHelper: notifyHelper
         )
     }
 
@@ -1058,6 +1073,7 @@ public final class AppState: ObservableObject {
         runtimeEnvironment runtime: CLIPulseRuntimeEnvironment,
         defaults: UserDefaults,
         helperDefaults: UserDefaults? = nil,
+        notifyHelper: (() -> Void)? = nil,
         providerSecretStore: any ProviderSecretStoring =
             KeychainProviderSecretStore(),
         api injectedAPI: APIClient? = nil,
@@ -1101,6 +1117,7 @@ public final class AppState: ObservableObject {
         self.dataRefreshManager = DataRefreshManager(api: api)
         self.providerConfigDefaults = defaults
         self.helperDefaults = helperDefaults
+        self.notifyHelper = notifyHelper
         self.providerSecretStore = providerSecretStore
         self.providerAccountDeletionOutbox =
             injectedOutbox ?? .shared

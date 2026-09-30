@@ -169,6 +169,42 @@ final class LocalScanConsentHelperTests: XCTestCase {
     }
 }
 
+/// A runtime that may register a helper, and nothing else: no StoreKit, no
+/// cloud, no Keychain namespace of the real app. Only such a runtime writes to
+/// the helper's app group (`AppState.helperDefaultsForThisRuntime`), and the
+/// production one would also sign the shared `SubscriptionManager` out.
+enum HelperRegisteringTestRuntime {
+    static var runtime: CLIPulseRuntimeEnvironment {
+        CLIPulseRuntimeEnvironment(
+            channel: .production,
+            bundleIdentifier: "com.clipulse.tests.helper-registering",
+            fixedUserHome: nil,
+            resolvedFixedUserHome: nil,
+            capabilities: CLIPulseRuntimeEnvironment.Capabilities(
+                allowsTelemetry: false,
+                allowsUnsandboxedMigration: false,
+                allowsHelperRegistration: true,
+                allowsPermissionSnapshot: false,
+                allowsStoreKitBootstrap: false,
+                allowsLiveCollection: false,
+                allowsWidgetPublishing: false,
+                allowsProductionCloudEndpoints: false,
+                allowsPassiveDiscovery: false,
+                allowsInMemoryDemoRendering: false,
+                allowsBookmarkRestoration: false,
+                allowsPetRestoration: false,
+                allowsHelperManifestRefresh: false,
+                allowsAppUpdateRefresh: false,
+                allowsCurrencyNetworkRefresh: false,
+                allowsCloudSessionRestore: false,
+                allowsBackgroundActivityAssertion: false
+            ),
+            allowsProductionCloudEndpoints: false,
+            shouldResetQAExperience: false
+        )
+    }
+}
+
 /// The `AppState` half: the copy is written where the answers are saved, and
 /// at launch, so an answer given before 1.55 reaches the helper without being
 /// given again.
@@ -184,11 +220,13 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
     private var defaults: UserDefaults!
     private var helperDefaults: UserDefaults!
     private var savedConsent: [String: Any] = [:]
+    private var notifications = 0
 
     private static let consentKeys = [LocalScanConsentStore.key, LocalScanConsentStore.v2Key]
 
     override func setUp() {
         super.setUp()
+        notifications = 0
         suiteName = "com.clipulse.tests.consent-mirror.\(UUID().uuidString)"
         helperSuiteName = "com.clipulse.tests.consent-mirror.group.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)
@@ -216,9 +254,10 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
 
     private func makeState() -> AppState {
         AppState(
-            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            runtimeEnvironment: HelperRegisteringTestRuntime.runtime,
             defaults: defaults,
             helperDefaults: helperDefaults,
+            notifyHelper: { [weak self] in self?.notifications += 1 },
             performLaunchSetup: false
         )
     }
@@ -268,6 +307,22 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(mirrored).consent, .granted)
     }
 
+    /// The helper is told when the copy changes, so it acts on a "Not now"
+    /// at once, and not when it does not, so a launch does not wake it.
+    func testTheHelperIsToldOnlyWhenTheCopyChanges() {
+        LocalScanConsentStore.save(.undecided)
+        LocalScanConsentStore.saveV2(.undecided)
+        let state = makeState()
+        XCTAssertEqual(notifications, 1, "a first copy is news to a helper waiting for one")
+        _ = makeState()
+        XCTAssertEqual(notifications, 1, "a relaunch with the same answers is not")
+
+        state.localScanConsent = .declined
+        XCTAssertEqual(notifications, 2)
+        state.localScanConsentV2 = .granted
+        XCTAssertEqual(notifications, 3)
+    }
+
     /// "Not now" from the disclosure, the button the defect was about, goes
     /// through the same save.
     func testNotNowFromTheDisclosureReachesTheHelper() throws {
@@ -285,18 +340,38 @@ final class LocalScanConsentMirrorAppStateTests: XCTestCase {
         )
     }
 
-    /// Where no helper runs (the QA runtime, iOS), there is no app group to
-    /// copy to, and nothing is written anywhere.
+    /// Where no helper runs (iOS), there is no app group to copy to.
     func testWithoutAnAppGroupNothingIsCopied() {
         LocalScanConsentStore.save(.declined)
         let state = AppState(
-            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            runtimeEnvironment: HelperRegisteringTestRuntime.runtime,
             defaults: defaults,
             helperDefaults: nil,
+            notifyHelper: { [weak self] in self?.notifications += 1 },
             performLaunchSetup: false
         )
         state.localScanConsent = .granted
         XCTAssertNil(mirrored)
+        XCTAssertEqual(notifications, 0)
+    }
+
+    /// A runtime that registers no helper (QA, a quarantined launch) writes
+    /// nothing to the app group even when handed one, like the provider
+    /// configs (`QARuntimeSideEffectPolicyTests`).
+    func testARuntimeWithoutAHelperWritesNothingToItsAppGroup() {
+        LocalScanConsentStore.save(.declined)
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            helperDefaults: helperDefaults,
+            notifyHelper: { [weak self] in self?.notifications += 1 },
+            performLaunchSetup: false
+        )
+        XCTAssertFalse(state.runtimeEnvironment.capabilities.allowsHelperRegistration)
+        state.localScanConsent = .granted
+        state.applySignedOutState()
+        XCTAssertEqual(helperDefaults.dictionaryRepresentation().keys.filter { $0.hasPrefix("cli_pulse_") }, [])
+        XCTAssertEqual(notifications, 0)
     }
 }
 
@@ -351,13 +426,18 @@ final class HelperSignInRecordTests: XCTestCase {
         super.tearDown()
     }
 
+    /// No provider configs: signing in binds unowned ones to the account and
+    /// saves them, which in a helper-registering runtime also writes the real
+    /// app group's shared-credential owners.
     private func makeState() -> AppState {
-        AppState(
-            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+        let state = AppState(
+            runtimeEnvironment: HelperRegisteringTestRuntime.runtime,
             defaults: defaults,
             helperDefaults: helperDefaults,
             performLaunchSetup: false
         )
+        state.providerConfigs = []
+        return state
     }
 
     /// Nothing recorded — a helper from before the record, or before the app
@@ -383,7 +463,7 @@ final class HelperSignInRecordTests: XCTestCase {
         LocalScanConsentStore.save(.undecided)
         let state = makeState()
         state.applyAuthenticatedState(
-            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: true)
+            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: false)
         )
         XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults), "signing in must be recorded as signed in")
 
@@ -407,7 +487,7 @@ final class HelperSignInRecordTests: XCTestCase {
         state.applySignedOutState()
         XCTAssertTrue(HelperIPC.isAppSignedOut(helperDefaults))
         state.applyAuthenticatedState(
-            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: true)
+            AuthSessionState(userId: "u1", userName: "n", userEmail: "e@x.test", isPaired: false)
         )
         XCTAssertFalse(HelperIPC.isAppSignedOut(helperDefaults))
     }
