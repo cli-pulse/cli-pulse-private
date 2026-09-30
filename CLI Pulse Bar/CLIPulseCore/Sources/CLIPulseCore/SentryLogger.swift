@@ -306,7 +306,14 @@ public enum SentryLogger {
     /// from an `http` breadcrumb's `url`; an address in any other field has
     /// not been), and with every path segment that looks like an identifier
     /// replaced by `[id]` (`isIdentifierSegment`): a claude.ai organization,
-    /// an account's id in a REST path.
+    /// an account's id in a REST path. The segment right after one that names
+    /// a kind of account (`workspace`, `organizations`, `users`, …,
+    /// `idContainerSegments`) is replaced too, whatever it looks like: an id
+    /// made mostly of letters passes the shape rules, and that position is
+    /// where APIs put one.
+    ///
+    /// A heuristic, and PRIVACY.md words it as one: a part that neither looks
+    /// like an identifier nor follows such a name is kept.
     static func scrubURL(_ raw: String) -> String {
         var address = raw
         if let cut = address.firstIndex(where: { $0 == "?" || $0 == "#" }) {
@@ -319,18 +326,34 @@ public enum SentryLogger {
             pathStart = address.startIndex
         }
         let origin = String(address[..<pathStart])
-        let path = address[pathStart...]
-            .split(separator: "/", omittingEmptySubsequences: false)
-            .map { isIdentifierSegment($0) ? "[id]" : String($0) }
-            .joined(separator: "/")
-        return redact(origin + path)
+        let segments = address[pathStart...].split(separator: "/", omittingEmptySubsequences: false)
+        var scrubbed: [String] = []
+        scrubbed.reserveCapacity(segments.count)
+        var previous: Substring = ""
+        for segment in segments {
+            let followsContainer = !segment.isEmpty
+                && idContainerSegments.contains(previous.lowercased())
+            scrubbed.append(followsContainer || isIdentifierSegment(segment) ? "[id]" : String(segment))
+            previous = segment
+        }
+        return redact(origin + scrubbed.joined(separator: "/"))
     }
+
+    /// Path segments after which an API puts the id of an account, a
+    /// workspace, an organization or a project.
+    static let idContainerSegments: Set<String> = [
+        "workspace", "workspaces", "organization", "organizations", "orgs",
+        "project", "projects", "user", "users", "account", "accounts", "team", "teams",
+    ]
 
     /// Whether one path segment looks like an identifier rather than a name
     /// the API defines: a UUID (or a segment holding one, such as
     /// `eq.<uuid>`), an email address, four or more digits, sixteen or more
-    /// hex digits, or sixteen or more characters of which at least a quarter
-    /// are digits. `v1`, `rpc`, `app_dashboard_summary_v2` and `usage` stay.
+    /// hex digits, sixteen or more characters of which at least a quarter are
+    /// digits, or a prefixed id (`wrk_01HZX…`, `org_…`: a short word, one
+    /// underscore, then ten or more letters and digits with at least one
+    /// digit). `v1`, `rpc`, `app_dashboard_summary_v2`, `helper_heartbeat`
+    /// and `usage` stay.
     static func isIdentifierSegment(_ segment: Substring) -> Bool {
         let text = segment.removingPercentEncoding ?? String(segment)
         guard !text.isEmpty else { return false }
@@ -343,8 +366,20 @@ public enum SentryLogger {
         if digits == text.count, digits >= 4 { return true }
         if text.count >= 16, text.allSatisfy(\.isHexDigit) { return true }
         if text.count >= 16, digits * 4 >= text.count { return true }
+        if let prefixed = prefixedIDRegex,
+           prefixed.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil,
+           let underscore = text.firstIndex(of: "_"),
+           text[underscore...].contains(where: \.isNumber) {
+            return true
+        }
         return false
     }
+
+    /// `wrk_01HZX3K9Q2V7T8M4N6P5R0S1A2`: a Stripe-style prefixed id. The
+    /// digit check beside it keeps `helper_heartbeat` (an RPC name) readable.
+    private static let prefixedIDRegex: NSRegularExpression? = try? NSRegularExpression(
+        pattern: #"^[A-Za-z]{2,8}_[A-Za-z0-9]{10,}$"#
+    )
 
     private static func shouldScrub(key: String) -> Bool {
         let lower = key.lowercased()

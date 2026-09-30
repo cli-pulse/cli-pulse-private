@@ -102,6 +102,37 @@ final class SentryNetworkBreadcrumbScrubTests: XCTestCase {
         }
     }
 
+    func testTheSegmentAfterAnAccountKindIsReplacedWhateverItLooksLike() {
+        // An id made mostly of letters passes the shape rules; the position
+        // after `workspace`, `users` and the like is where APIs put one.
+        XCTAssertEqual(SentryLogger.scrubURL("https://opencode.ai/workspace/wrkABCDEFGHIJKLMNOPQRSTUVWXYZ/go"),
+                       "https://opencode.ai/workspace/[id]/go")
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/v1/users/someone/usage"),
+                       "https://api.example.test/v1/users/[id]/usage")
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/v1/Teams/acme/members"),
+                       "https://api.example.test/v1/Teams/[id]/members")
+        // Negative control: the same segment anywhere else stays readable.
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/v1/docs/someone/usage"),
+                       "https://api.example.test/v1/docs/someone/usage")
+        // A trailing slash after the kind is not an id.
+        XCTAssertEqual(SentryLogger.scrubURL("https://api.example.test/v1/users/"),
+                       "https://api.example.test/v1/users/")
+    }
+
+    func testPrefixedIDsAreIdentifiers() {
+        // OpenCode's workspace ids (`wrk_` + a ULID), and the Stripe-style
+        // shape generally, even where no account kind precedes them.
+        for segment in ["wrk_01HZX3K9Q2V7T8M4N6P5R0S1A2", "org_2aBcDeFgHiJk", "acct_1NfQ8x2eZvKYlo2C"] {
+            XCTAssertTrue(SentryLogger.isIdentifierSegment(Substring(segment)), segment)
+        }
+        XCTAssertEqual(SentryLogger.scrubURL("https://x.example.test/go/wrk_01HZX3K9Q2V7T8M4N6P5R0S1A2/usage"),
+                       "https://x.example.test/go/[id]/usage")
+        // Names an API defines, with an underscore, stay.
+        for segment in ["helper_heartbeat", "app_dashboard_summary_v2", "get_usage_summary", "oauth_token"] {
+            XCTAssertFalse(SentryLogger.isIdentifierSegment(Substring(segment)), segment)
+        }
+    }
+
     func testAnAddressWithNoPathIsKept() {
         XCTAssertEqual(SentryLogger.scrubURL("https://claude.ai"), "https://claude.ai")
         XCTAssertEqual(SentryLogger.scrubURL("https://claude.ai/"), "https://claude.ai/")
