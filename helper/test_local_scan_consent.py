@@ -1352,6 +1352,63 @@ def test_the_remote_poll_logs_a_change_once(home, relay, caplog):
     assert lines[1].startswith("remote command poll: on")
 
 
+def test_the_remote_poll_says_why_it_is_paused(home, relay, caplog):
+    caplog.set_level("INFO", logger=h.logger.name)
+    write_pairing(home, ME)
+    gate = LocalScanGate()
+    manager = _PollingManager()
+    for values in (
+        answer("granted", "signed_out"),
+        answer("granted", signed_in(OTHER)),
+        answer("granted", "local_mode"),
+        answer("declined", signed_in(ME)),
+    ):
+        write_mirror(home, values)
+        h._full_remote_tick(manager, gate)
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    assert lines == [
+        "remote command poll: paused, like this Mac's uploads (the app is signed out)",
+        "remote command poll: paused, like this Mac's uploads "
+        "(the app is signed in to another account than this Mac's pairing)",
+        "remote command poll: paused, like this Mac's uploads (the app is used without an account)",
+        "remote command poll: paused, like this Mac's uploads (the app is set to \"Not now\")",
+    ]
+
+
+def test_every_reason_that_pauses_uploads_has_words_in_the_poll_log():
+    # The reasons `decide` can give, from its source: a new one without words
+    # would be logged as its bare token.
+    import inspect
+    import re as _re
+
+    source = inspect.getsource(lsc.decide) + inspect.getsource(lsc._decide_answer)
+    reasons = set(_re.findall(r'Decision\(Cycle\.(?:PAUSED|LOCAL), "([a-z_]+)"', source))
+    assert "signed_out" in reasons and "local_mode" in reasons  # the scan sees them
+    assert reasons <= set(h._REMOTE_POLL_PAUSE_TEXT), reasons - set(h._REMOTE_POLL_PAUSE_TEXT)
+
+
+def test_the_remote_poll_does_not_rewrite_the_cycles_log_line(home, relay, caplog):
+    # After `pair` for another user while the daemon runs, the poll (with the
+    # pairing it loaded at start) is paused and the cycle (with the file's
+    # pairing) is allowed. Sharing one "last decision" made the gate's log
+    # flip between the two every second.
+    caplog.set_level("INFO")
+    write_pairing(home, OTHER)
+    write_mirror(home, answer("granted", signed_in(OTHER)))
+    gate = LocalScanGate()
+    stale = _PollingManager(user_id=ME)
+    for _ in range(3):
+        assert gate.allows_upload() is True  # the cycle's question
+        assert h._full_remote_tick(stale, gate) is False
+    gate_lines = [r.getMessage() for r in caplog.records if r.name == "cli_pulse.local_scan_consent"]
+    assert gate_lines == ["local scan allowed by the app (answer: granted)"]
+    poll_lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    assert poll_lines == [
+        "remote command poll: paused, like this Mac's uploads "
+        "(this Mac was paired again after this helper loaded the pairing it polls with)",
+    ]
+
+
 def test_a_paused_tick_asks_the_server_nothing_and_still_serves_local_sessions():
     # The real manager: the poll is the only thing a paused tick leaves out.
     import remote_agent

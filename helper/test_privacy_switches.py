@@ -702,3 +702,114 @@ def test_strict_privacy_mode_reads_no_other_apps_secret_for_claudes_quota(home, 
     h._install_claude_keychain_gate(LocalScanGate())
     assert sc._fetch_claude_usage() is None
     assert browser_store == {"keychain": [], "opened": [], "listed": []}
+
+
+# ── Strict privacy mode and the claude.ai cookie copied earlier ─
+
+
+def _copied_cookie_files(home: Path) -> list[Path]:
+    """`claude_session.json` where `_write_claude_session_key` puts it, each
+    holding a cookie an earlier cycle took from a browser."""
+    files = [
+        home / "Library" / "Group Containers" / "group.yyh.CLI-Pulse" / "claude_session.json",
+        home / ".clipulse" / "claude_session.json",
+    ]
+    for path in files:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('{"sessionKey": "%s", "source": "chrome:Default"}' % SESSION_KEY)
+    return files
+
+
+def test_the_cookie_files_are_where_the_writer_puts_them(home, monkeypatch):
+    # The test above writes the files by hand; the writer must agree on where.
+    monkeypatch.setattr(sc, "_cycle_still_allowed", lambda _what: True)
+    sc._write_claude_session_key(SESSION_KEY, "chrome:Default")
+    written = sorted(str(p) for p in home.rglob("claude_session.json"))
+    assert written == sorted(str(p) for p in _copied_cookie_files(home))
+
+
+def test_strict_privacy_mode_removes_the_cookie_copied_earlier(home):
+    files = _copied_cookie_files(home)
+    write_mirror(home, switches(True, True))
+    h._install_claude_keychain_gate(LocalScanGate())
+    assert sc.forget_claude_session_key_under_strict_privacy_mode() is True
+    assert [p.exists() for p in files] == [False, False]
+    # Nothing left to remove is no error.
+    assert sc.forget_claude_session_key_under_strict_privacy_mode() is True
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        switches(False, False),
+        # "Skip Claude Code keychain access" names Claude Code's item only.
+        switches(True, False),
+        # No copy: an app older than 1.55.
+        None,
+    ],
+)
+def test_without_strict_privacy_mode_the_cookie_copied_earlier_stays(home, values):
+    # Negative control for the test above.
+    files = _copied_cookie_files(home)
+    if values is not None:
+        write_mirror(home, values)
+    h._install_claude_keychain_gate(LocalScanGate())
+    assert sc.forget_claude_session_key_under_strict_privacy_mode() is False
+    assert [p.exists() for p in files] == [True, True]
+
+
+def test_an_unreadable_copy_leaves_the_cookie_copied_earlier(home):
+    # "Do not read" is not "Strict privacy mode": a copy that cannot be read
+    # stops the browser reads, but only the switch removes the file.
+    files = _copied_cookie_files(home)
+    write_mirror(home, switches(True, True))
+    h._install_claude_keychain_gate(LocalScanGate(container_ready=lambda: False))
+    assert sc._browser_cookies_allowed("test") is False
+    assert sc.forget_claude_session_key_under_strict_privacy_mode() is False
+    assert [p.exists() for p in files] == [True, True]
+
+
+def test_without_a_gate_nothing_is_removed(home):
+    files = _copied_cookie_files(home)
+    assert sc.forget_claude_session_key_under_strict_privacy_mode() is False
+    assert [p.exists() for p in files] == [True, True]
+
+
+def test_the_claude_fallback_under_strict_privacy_mode_also_removes_the_old_cookie(home, browser_store):
+    files = _copied_cookie_files(home)
+    write_mirror(home, switches(False, True))
+    h._install_claude_keychain_gate(LocalScanGate())
+    assert sc._resolve_claude_session_key() is None
+    assert [p.exists() for p in files] == [False, False]
+    assert browser_store == {"keychain": [], "opened": [], "listed": []}
+
+
+def test_no_cookie_is_copied_for_the_app_once_strict_privacy_mode_is_on(home, monkeypatch):
+    # The switch turned on between reading the cookie and writing the copy.
+    monkeypatch.setattr(sc, "_cycle_still_allowed", lambda _what: True)
+    write_mirror(home, switches(False, True))
+    h._install_claude_keychain_gate(LocalScanGate())
+    sc._write_claude_session_key(SESSION_KEY, "chrome:Default")
+    assert list(home.rglob("claude_session.json")) == []
+    # Negative control: with the switch off the copy is written.
+    write_mirror(home, switches(False, False))
+    sc._write_claude_session_key(SESSION_KEY, "chrome:Default")
+    assert len(list(home.rglob("claude_session.json"))) == 2
+
+
+@pytest.mark.parametrize("consent", ["granted", "declined"])
+def test_every_cycle_removes_the_old_cookie_under_strict_privacy_mode(home, monkeypatch, consent):
+    # At the start of each cycle, whatever the answer: a paused cycle
+    # ("Not now") reads nothing on this Mac and sends nothing, and removing
+    # the copy is neither.
+    files = _copied_cookie_files(home)
+    write_mirror(home, switches(True, True, cli_pulse_local_scan_consent=consent))
+    gate = LocalScanGate()
+    h._install_claude_keychain_gate(gate)
+    ran: list[str] = []
+    monkeypatch.setattr(h, "heartbeat", lambda *_a, **_k: ran.append("heartbeat"))
+    monkeypatch.setattr(h, "sync", lambda *_a, **_k: ran.append("sync"))
+    monkeypatch.setattr(h, "_still_allowed", lambda *_a, **_k: False)
+    h._collection_cycle(argparse.Namespace(), gate=gate, git=h._GitScanState(), env_force_git=False)
+    assert [p.exists() for p in files] == [False, False]
+    assert ran == (["heartbeat", "sync"] if consent == "granted" else [])

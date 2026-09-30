@@ -35,6 +35,7 @@ def _app_group_copy_is_read_from_the_file(monkeypatch):
     for module, attribute in (
         ("system_collector", "_claude_keychain_gate"),
         ("system_collector", "_browser_cookie_gate"),
+        ("system_collector", "_browser_cookie_strict"),
         ("claude_oauth", "_keychain_gate"),
     ):
         loaded = sys.modules.get(module)

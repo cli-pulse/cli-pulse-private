@@ -48,7 +48,11 @@ and reading each one's "Safe Storage" keychain item to decrypt the claude.ai
 
   * No copy (neither key): an app older than 1.55. Read as before.
   * Strict privacy mode on: skipped: no cookie store opened, no keychain item
-    read, and so no claude.ai cookie written for the app either.
+    read, and so no claude.ai cookie written for the app either. The one this
+    helper copied for the app in an earlier cycle (`claude_session.json`) is
+    removed at the start of each cycle
+    (`system_collector.forget_claude_session_key_under_strict_privacy_mode`),
+    and the app ignores that file in Strict privacy mode.
   * Strict privacy mode off: read, whatever "Skip Claude Code keychain access"
     says, which names Claude Code's item only.
   * A copy that cannot be read: skipped.
@@ -191,3 +195,10 @@ class BrowserCookieGate(_SwitchGate):
 
     def _decide(self, read: MirrorRead) -> KeychainDecision:
         return decide_browser_cookies(read)
+
+    def strict_privacy_mode(self, *, wait_s: float | None = None) -> bool:
+        """Whether the app's copy says Strict privacy mode is on: the switch
+        itself, where `allows` is also no for a copy that cannot be read.
+        `system_collector` removes the claude.ai cookie it copied earlier only
+        on this."""
+        return self.check(wait_s=wait_s).reason == "strict_privacy_mode"

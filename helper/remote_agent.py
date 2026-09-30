@@ -1037,7 +1037,10 @@ class RemoteAgentManager:
         `poll_remote` False leaves out the pull from the server
         (`remote_helper_pull_commands`): the daemon passes it while the app's
         local-scan answer or account pauses this Mac's uploads
-        (`cli_pulse_helper._full_remote_tick`). Everything local still runs.
+        (`cli_pulse_helper._full_remote_tick`). Everything else still runs,
+        and that includes posting a running session's redacted output and
+        status to the server (`_post_event`), which accepts them only while
+        Remote Control is on for the pairing's account.
 
         Returns counters for tests / logging:
           * commands_processed

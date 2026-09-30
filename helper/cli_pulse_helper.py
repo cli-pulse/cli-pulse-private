@@ -341,7 +341,10 @@ def _install_claude_keychain_gate(scan_gate: LocalScanGate) -> ClaudeKeychainGat
     claude_oauth.set_keychain_gate(
         lambda: keychain_gate.allows("managed Claude session token", wait_s=SPAWN_READ_WAIT_S)
     )
-    _system_collector.set_browser_cookie_gate(BrowserCookieGate(scan_gate.read).allows)
+    browser_gate = BrowserCookieGate(scan_gate.read)
+    _system_collector.set_browser_cookie_gate(
+        browser_gate.allows, strict_privacy_mode=browser_gate.strict_privacy_mode
+    )
     return keychain_gate
 
 
@@ -358,8 +361,24 @@ def _uninstall_claude_keychain_gate() -> None:
 # read must not hold keystrokes for the gate's full `READ_WAIT_S`; a read that
 # is not done by then counts as paused for that second.
 _REMOTE_POLL_LOCAL_SCAN_WAIT_S = 1.0
-# Whether the last full tick polled, for logging a change once.
-_remote_poll_last: bool | None = None
+# The last full tick's decision, (polled, reason), for logging a change once.
+_remote_poll_last: tuple[bool, str] | None = None
+
+# Why the remote command poll is paused, for its own log line. Every reason
+# `local_scan_consent.decide` can give that pauses uploads.
+_REMOTE_POLL_PAUSE_TEXT = {
+    "signed_out": "the app is signed out",
+    "other_account": "the app is signed in to another account than this Mac's pairing",
+    "local_mode": "the app is used without an account",
+    "not_paired": "this Mac is not paired",
+    "declined": "the app is set to \"Not now\"",
+    "unreadable": "the app's answer cannot be read",
+    "unverified_pairing": "this Mac's pairing does not say which account it is for",
+    "pairing_changed": "this Mac was paired again after this helper loaded the pairing it polls with",
+    "no_answer": "the app has not written an answer yet",
+    "undecided_local_mode": "the app is used without an account and has no answer yet",
+    "unrecognised": "the app's answer is not one this helper knows",
+}
 
 
 def _full_remote_tick(manager, gate: LocalScanGate | None) -> bool:
@@ -371,29 +390,43 @@ def _full_remote_tick(manager, gate: LocalScanGate | None) -> bool:
     rule as they do (`LocalScanGate.allows_upload`): paused while the app is
     signed out, signed in to another account than the pairing's, used without
     an account, set to "Not now", or unreadable; as before with an app older
-    than 1.55. Paused, nothing is asked of the server. The local half of the
-    tick (reading the sessions' output, noticing exits, stopping sessions past
-    their limits) still runs: it serves sessions already running on this Mac.
+    than 1.55. Paused, nothing is asked of the server.
+
+    The local half of the tick (reading the sessions' output, noticing exits,
+    stopping sessions past their limits) still runs, for sessions already
+    running on this Mac, and it is not only local: a running managed session's
+    redacted output, its status and its lifecycle notes are still posted to
+    the server with this pairing (`remote_helper_post_event`), which accepts
+    them only while Remote Control is on for the pairing's account. A session
+    the app starts through this helper is registered the same way
+    (`remote_helper_register_session`).
 
     The check verifies the pairing the manager polls with (`sending`, loaded
     when the daemon started), as heartbeat and sync verify theirs: after a
     `pair` run for another user the manager still holds the old pairing, and
-    it must not keep asking for that account's commands.
+    it must not keep asking for that account's commands. That makes it a
+    different question from the cycle's, so it is logged on its own line
+    (`log=False` at the gate), once per change.
 
     Returns whether it polled. `gate` None (tests) polls as before."""
     global _remote_poll_last
-    polls = gate is None or gate.allows_upload(
-        wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S,
-        sending=getattr(manager, "helper_config", None),
-    )
-    if polls != _remote_poll_last:
-        _remote_poll_last = polls
+    if gate is None:
+        polls, reason = True, "no_gate"
+    else:
+        decision = gate.check(
+            wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S,
+            sending=getattr(manager, "helper_config", None),
+            log=False,
+        )
+        polls, reason = decision.allows_upload, decision.reason
+    if (polls, reason) != _remote_poll_last:
+        _remote_poll_last = (polls, reason)
         if polls:
             logger.info("remote command poll: on (the app's answer and account allow this Mac's uploads)")
         else:
             logger.info(
-                "remote command poll: paused with the local scan (signed out, another "
-                "account, no account, \"Not now\", or the app's answer unreadable)"
+                "remote command poll: paused, like this Mac's uploads (%s)",
+                _REMOTE_POLL_PAUSE_TEXT.get(reason, reason),
             )
     manager.tick(poll_remote=polls)
     if polls and _MACHINE_RELAY is not None:
@@ -717,7 +750,13 @@ def _collection_cycle(
     lookup, and before commits are submitted, so a "Not now" given while a
     cycle runs drops what it had collected instead of sending it. Every step
     uploads, so local mode (`Cycle.LOCAL`) runs none of them.
+
+    First, whatever the answer: with Strict privacy mode on in the app, the
+    claude.ai cookie an earlier cycle copied from a browser for the app is
+    removed (`forget_claude_session_key_under_strict_privacy_mode`). That reads
+    nothing on this Mac and sends nothing.
     """
+    _system_collector.forget_claude_session_key_under_strict_privacy_mode()
     if not gate.allows_upload():
         return False
     heartbeat(args, gate=gate)
