@@ -969,7 +969,7 @@
 "codex_estimate_note.title" = "Codex の数値は%@から変わりました";
 "codex_estimate_note.reason_cached_input_once" = "使用状況ダッシュボードでは、Codex のキャッシュ入力を 1 回だけ数えます。キャッシュ入力はもともと Codex の入力に含まれていて、二重に加算されていたため、そこでの Codex のトークン合計は少なくなります。";
 "codex_estimate_note.reason_subagent_sessions" = "Codex のサブエージェントのセッションも数えるようになりました。これまで含まれていなかったため、Codex の使用量とコストは多くなります。";
-"codex_estimate_note.reason_published_prices" = "Codex の料金を、OpenAI が公開しているモデルごとの API 料金に更新しました。";
+"codex_estimate_note.reason_published_prices" = "Codex の料金を、OpenAI が公開している API 料金に更新しました。";
 "codex_estimate_note.history_before" = "使用状況ダッシュボードの%@より前の日は、以前の数値のままです。";
 "usage_dashboard.active_days" = "アクティブ日数";
 "usage_dashboard.current_streak" = "現在の連続日数";

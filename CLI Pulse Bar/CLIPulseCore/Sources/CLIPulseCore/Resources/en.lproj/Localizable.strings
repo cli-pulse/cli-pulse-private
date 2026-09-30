@@ -965,7 +965,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "codex_estimate_note.title" = "Codex figures changed on %@";
 "codex_estimate_note.reason_cached_input_once" = "The Usage Dashboard counts Codex's cached input once. Cached input is already part of Codex's input and was added a second time, so Codex token totals there are lower.";
 "codex_estimate_note.reason_subagent_sessions" = "Codex subagent sessions are counted. They were left out, so Codex usage and cost are higher.";
-"codex_estimate_note.reason_published_prices" = "Codex prices were updated to the API prices OpenAI publishes for each model.";
+"codex_estimate_note.reason_published_prices" = "Codex prices were updated to the API prices OpenAI publishes.";
 "codex_estimate_note.history_before" = "Days before %@ in the Usage Dashboard keep the old figures.";
 "usage_dashboard.active_days" = "Active Days";
 "usage_dashboard.current_streak" = "Current Streak";

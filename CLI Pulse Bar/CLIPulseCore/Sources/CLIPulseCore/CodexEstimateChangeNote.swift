@@ -55,8 +55,10 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         /// rollout whose session id it had already seen, and a subagent's
         /// rollout carries its parent's.
         case subagentSessionsCounted
-        /// Codex cost uses OpenAI's published price for each model, where some
-        /// models were priced from an older model's rates.
+        /// Codex prices follow the API prices OpenAI publishes. Until then,
+        /// `gpt-5.5` carried `gpt-5.4`'s rates and newer models fell back to
+        /// that row. A model with no published price can still borrow one, so
+        /// the line does not say every model has its own.
         case publishedPrices
 
         /// The reasons this build makes true, in the order they are shown.
@@ -111,8 +113,9 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
     /// A scan reads every log in its window, so everything this Mac has logs
     /// for from `recountedFrom` on is recounted, and nothing before it is:
     /// "days before `recountedFrom` keep the old figures" is true by
-    /// definition. What it leaves out is a Codex day after it that came only
-    /// from another device through the cloud fill, which no scan here rewrites.
+    /// definition. What it would leave out is a Codex day after it that came
+    /// only from another device through `DailyUsageArchiveManager.mergeCloud`,
+    /// which no scan here rewrites; the app does not call that fill today.
     public mutating func recordRecount(ofDays dayKeys: [String], in archive: DailyUsageArchive) {
         guard let earliest = dayKeys.min() else { return }
         let from = min(recountedFrom ?? earliest, earliest)

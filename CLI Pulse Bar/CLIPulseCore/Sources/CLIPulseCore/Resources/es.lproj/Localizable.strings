@@ -643,7 +643,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "codex_estimate_note.title" = "Cambio en las cifras de Codex: %@";
 "codex_estimate_note.reason_cached_input_once" = "El Panel de uso cuenta una sola vez la entrada en caché de Codex. Esa entrada ya forma parte de la entrada de Codex y se sumaba otra vez, así que ahí los totales de tokens de Codex son menores.";
 "codex_estimate_note.reason_subagent_sessions" = "Ahora se cuentan las sesiones de subagentes de Codex. Antes quedaban fuera, así que el uso y el costo de Codex son mayores.";
-"codex_estimate_note.reason_published_prices" = "Los precios de Codex se actualizaron a los precios de la API que OpenAI publica para cada modelo.";
+"codex_estimate_note.reason_published_prices" = "Los precios de Codex se actualizaron a los precios de la API que publica OpenAI.";
 "codex_estimate_note.history_before" = "Los días del Panel de uso previos a esta fecha conservan las cifras anteriores: %@";
 "usage_dashboard.active_days" = "Días activos";
 "usage_dashboard.current_streak" = "Racha actual";
