@@ -218,10 +218,10 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// that can be told (`storedModelOwners(of:readModelProviders:)`) and goes
     /// with that provider's slice, so a model name that changed between
     /// versions is not counted under both names. A model that cannot be
-    /// attributed is kept only where every provider it could belong to keeps
-    /// its slice, and the read does not report it: kept beside a provider the
-    /// read replaced, it would be counted twice, and the models would add up
-    /// to more than the day.
+    /// attributed is kept only where every provider with tokens no attributed
+    /// model accounts for keeps its slice, and the read does not report it:
+    /// kept beside a provider the read replaced, it could be counted twice,
+    /// and the models would add up to more than the day.
     ///
     /// Limits. The archive cannot tell deleted transcripts from usage counted
     /// lower under newer rules, so a lower Claude recount does not reach a day
