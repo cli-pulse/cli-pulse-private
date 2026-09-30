@@ -76,10 +76,18 @@ public actor DailyUsageArchiveManager {
 
     // MARK: - Record a refresh scan (authoritative local, replace-by-day)
 
-    public func record(_ scanResult: CostUsageScanResult) {
+    /// Replaces each day of the routine 30-day read, except the day Claude
+    /// Code's cleanup is working through (`DailyUsageArchive.claudeCleanupReach`),
+    /// the read's oldest. Its Claude share was recorded in full the day before;
+    /// the read now sees only the transcripts cleanup has not deleted yet, so
+    /// that day is merged provider by provider and its Claude slice is not
+    /// lowered. `now` is a seam for tests.
+    public func record(_ scanResult: CostUsageScanResult, now: Date = Date()) {
         guard !scanResult.entries.isEmpty else { return }
         var a = loaded()
-        a.mergeScanEntries(scanResult.entries.map(Self.scanEntry))
+        a.mergeScanEntries(
+            scanResult.entries.map(Self.scanEntry),
+            claudeCleanupReach: DailyUsageArchive.claudeCleanupReach(now: now))
         a.lastUpdatedUnixMs = Self.nowMs()
         archive = a
         DailyUsageArchiveIO.save(a, root: root)
@@ -118,9 +126,10 @@ public actor DailyUsageArchiveManager {
     ///
     /// Because a yes can come months after "Last 30 days only", the read can
     /// meet an archive that already holds those months, on days whose Claude
-    /// transcripts Claude Code has since deleted. It is merged provider by
-    /// provider (`mergeScanEntriesByProvider`), so a day keeps the share of a
-    /// provider the read did not find instead of losing it.
+    /// transcripts Claude Code has since deleted, all of them or some. It is
+    /// merged provider by provider (`mergeScanEntriesByProvider`): a day keeps
+    /// the slice of a provider the read did not find, and its Claude slice is
+    /// never lowered.
     public func runBackfillIfNeeded(historyReadAllowed: Bool) async {
         guard historyReadAllowed else { return }
         guard !defaults.bool(forKey: backfillKey), !backfillRunning else { return }
