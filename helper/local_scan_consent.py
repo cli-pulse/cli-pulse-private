@@ -70,13 +70,27 @@ The account comes first, as in the built-in helper
 
   * "signed_out", or a value this helper does not know (a sign-in with no user
     id included): paused, whatever the answer. The app reads nothing then.
-  * "signed_in:<user id>" for a user this Mac's pairing was not made for:
-    paused. Its uploads would go to the account the pairing belongs to, which
-    the app is no longer signed in to. (The built-in helper still reads for
-    the app in this case; this helper's only read for the app is `hello`, and
-    it gives that up rather than read on another account's pairing.) With no
-    readable pairing there is nothing to compare, and nothing can be uploaded
-    either, so the answer decides.
+  * "signed_in:<user id>": this helper uploads only with a pairing made for
+    that user, as the built-in helper does (`pairedUserId() == userId`). The
+    pairing's `user_id` (`paired_user_id_from_config`) is compared with the id
+    in the record:
+      - the same user: the answer decides, as below.
+      - another user: paused. Its uploads would go to the account the pairing
+        belongs to, which the app is no longer signed in to. (The built-in
+        helper still reads for the app in this case; this helper's only read
+        for the app is `hello`, and it gives that up rather than read on
+        another account's pairing.)
+      - a pairing file that names no user this helper can compare (no
+        `user_id`, an empty or non-string one, a file that cannot be read or is
+        not JSON): paused, as for another user. `load_config` accepts a config
+        whose `user_id` is empty or null, so reading such a pairing as "not
+        paired" would upload with a pairing nobody checked.
+      - not paired (no pairing file): nothing can be uploaded, so once the
+        answer allows it the helper answers the app on this Mac
+        (`Cycle.LOCAL`, the built-in helper's `collectLocally`) and its cycle
+        does nothing until it is paired. Were the cycle to run, a pairing
+        removed between its `load_config` and its last check would upload
+        with a pairing that check never saw.
   * "local_mode": reads for the app on this Mac only after "granted"
     (`Cycle.LOCAL`: the UDS `hello` may read, the cycle uploads nothing and so
     reads nothing either); anything else, paused. Without an account an
@@ -94,7 +108,8 @@ Then the answer:
     app always writes one; this one may be paired with an app that never will.
   * "declined", or a value this helper does not know: paused.
   * "granted", or "undecided" while signed in as the pairing's user (or with no
-    account record): collect and upload, as before
+    account record, where the pairing is trusted as before the record
+    existed): collect and upload, as before
     (`LocalCollectionPolicy.allowsCollection`: no answer lets a signed-in
     account through; a helper that is not paired sends nothing anyway).
   * A plist that is there but cannot be read (permission denied, a stalled
@@ -115,8 +130,9 @@ not measure, and `helper_sync` with no sessions is not a no-op on the server
 (it ends this device's running sessions). Leaving the device row alone lets it
 age, which is how the other devices show a Mac that is not reporting.
 
-Local (`Cycle.LOCAL`) is paused for the cycle, whose every step uploads, and
-open for the UDS `hello`, which answers only the app on this Mac.
+Local (`Cycle.LOCAL`: local mode after a yes, or signed in with no pairing)
+is paused for the cycle, whose every step uploads, and open for the UDS
+`hello`, which answers only the app on this Mac.
 """
 from __future__ import annotations
 
@@ -254,8 +270,9 @@ def read_mirror(path: Path | None = None) -> MirrorRead:
 class Cycle(enum.Enum):
     COLLECT = "collect"  # the answer allows it: collect and sync as before
     LEGACY = "legacy"  # no copy (an app older than 1.55): as before
-    # Local mode after a yes: the UDS `hello` may read for the app on this Mac;
-    # the cycle, which uploads, does nothing.
+    # Local mode after a yes, or signed in with no pairing to upload with: the
+    # UDS `hello` may read for the app on this Mac; the cycle, which uploads,
+    # does nothing.
     LOCAL = "local"
     PAUSED = "paused"  # read nothing, write nothing, send nothing
 
@@ -263,9 +280,9 @@ class Cycle(enum.Enum):
 @dataclass(frozen=True)
 class Decision:
     cycle: Cycle
-    # "granted" | "undecided" | "no_copy" | "local_mode" | "declined" |
-    # "signed_out" | "other_account" | "no_answer" | "undecided_local_mode" |
-    # "unrecognised" | "unreadable"
+    # "granted" | "undecided" | "no_copy" | "local_mode" | "not_paired" |
+    # "declined" | "signed_out" | "other_account" | "unverified_pairing" |
+    # "no_answer" | "undecided_local_mode" | "unrecognised" | "unreadable"
     reason: str
     detail: str = ""
 
@@ -280,18 +297,38 @@ class Decision:
         return self.cycle in (Cycle.COLLECT, Cycle.LEGACY)
 
 
+class UnusablePairing(Exception):
+    """There is a pairing file, but it names no user this helper can compare
+    with the app's account: it cannot be read, is not JSON, or its `user_id`
+    is missing, empty or not a string."""
+
+
 def paired_user_id_from_config() -> str | None:
     """The user this Mac's Companion was paired for: `user_id` in
     `~/.cli-pulse-helper.json` (`cli_pulse_helper.HelperConfig`), read afresh.
-    None when it is not paired, or the file cannot be read or has no user id:
-    then nothing can be uploaded either (`load_config` fails the same way)."""
+
+    None only when there is no pairing file: not paired, so nothing can be
+    uploaded (`load_config` raises). A file that is there but names no usable
+    user raises `UnusablePairing` rather than reading as "not paired":
+    `load_config` loads a config whose `user_id` is "" or null, and uploads
+    with it, so such a pairing is one the helper cannot check, not one it
+    lacks."""
+    path = Path.home() / PAIRING_FILENAME
     try:
-        with open(Path.home() / PAIRING_FILENAME, "rb") as fh:
-            data = json.load(fh)
-    except Exception:  # noqa: BLE001 — no pairing to compare with
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except FileNotFoundError:
         return None
+    except Exception as exc:  # noqa: BLE001 — there, but cannot be checked
+        raise UnusablePairing(f"{path} cannot be read ({type(exc).__name__}: {exc})") from exc
+    try:
+        data = json.loads(raw)
+    except ValueError as exc:
+        raise UnusablePairing(f"{path} is not JSON ({exc})") from exc
     user_id = data.get("user_id") if isinstance(data, dict) else None
-    return user_id if isinstance(user_id, str) and user_id.strip() else None
+    if not isinstance(user_id, str) or not user_id.strip():
+        raise UnusablePairing(f"{path} names no user id ({user_id!r:.40})")
+    return user_id
 
 
 def _same_user(a: str, b: str) -> bool:
@@ -313,10 +350,11 @@ def _decide_answer(consent: object) -> Decision:
 
 def decide(
     read: MirrorRead,
-    paired_user_id: Callable[[], str | None] = lambda: None,
+    paired_user_id: Callable[[], str | None] = paired_user_id_from_config,
 ) -> Decision:
     """What one cycle may do, given what the app's copy held. See the module
-    doc. `paired_user_id` is asked only for a "signed_in:" record."""
+    doc. `paired_user_id` (the pairing's user id; None when not paired; raises
+    for a pairing it cannot check) is asked only for a "signed_in:" record."""
     if read.status == "unreadable":
         return Decision(Cycle.PAUSED, "unreadable", read.detail)
     account = read.account
@@ -344,15 +382,24 @@ def decide(
         # know (`HelperAccountRecord(storedValue:)` reads those as signed out).
         detail = "" if account == SIGNED_OUT else repr(account)[:80]
         return Decision(Cycle.PAUSED, "signed_out", detail)
+    # Upload only with a pairing made for this user (the built-in helper's
+    # `pairedUserId() == userId`).
     try:
         paired = paired_user_id()
-    except Exception:  # noqa: BLE001 — no pairing to compare with
-        paired = None
-    if paired is not None and not _same_user(paired, user_id):
-        return Decision(Cycle.PAUSED, "other_account")
+    except Exception as exc:  # noqa: BLE001 — a pairing that cannot be checked
+        return Decision(Cycle.PAUSED, "unverified_pairing", str(exc)[:160])
+    if paired is not None:
+        if not isinstance(paired, str) or not paired.strip():
+            return Decision(Cycle.PAUSED, "unverified_pairing", repr(paired)[:80])
+        if not _same_user(paired, user_id):
+            return Decision(Cycle.PAUSED, "other_account")
     if read.consent is None:
         return Decision(Cycle.PAUSED, "no_answer")
-    return _decide_answer(read.consent)
+    decision = _decide_answer(read.consent)
+    if paired is None and decision.cycle is Cycle.COLLECT:
+        # Not paired: answer the app on this Mac, upload nothing.
+        return Decision(Cycle.LOCAL, "not_paired")
+    return decision
 
 
 # ── the gate the daemon asks ───────────────────────────────────
@@ -473,6 +520,12 @@ class LocalScanGate:
                 "not write one): collecting as before",
                 self._path(),
             )
+        elif decision.reason == "not_paired":
+            logger.info(
+                "the app is signed in and allows the local scan, but this helper is "
+                "not paired: answering the app on this Mac, uploading nothing until "
+                "it is paired"
+            )
         elif decision.cycle is Cycle.LOCAL:
             logger.info(
                 "the app is in local mode (no account) and allows the local scan: "
@@ -495,6 +548,7 @@ class LocalScanGate:
 _PAUSE_TEXT = {
     "signed_out": "signed out",
     "other_account": "signed in to an account this Mac was not paired for",
+    "unverified_pairing": "signed in, and this Mac's pairing does not say which account it is for",
     "no_answer": "no answer written yet",
     "undecided_local_mode": "local mode, not answered yet",
 }

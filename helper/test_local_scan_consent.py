@@ -8,6 +8,12 @@ a throwaway HOME, and check what the helper then reads and sends:
     user or another, local mode, signed out), and the file being absent, from
     an older app, or unreadable, read from the file and, on a Mac, through
     cfprefsd as the app writes it;
+  * that a sign-in uploads only with a pairing made for that user: not paired,
+    it answers the app and uploads nothing; a pairing that names no usable
+    user pauses, since `load_config` would upload with it;
+  * every account record x every answer against what the #626 contract says,
+    at the gate, in a daemon cycle that loads the pairing from disk, and at
+    `hello` (the section at the end);
   * that the gate reads the file on every check, does not stack a second read on
     a stalled one, and does not touch a container the startup rotation is still
     stuck in;
@@ -48,6 +54,8 @@ import provider_spawners  # noqa: E402
 import sensor_bridge  # noqa: E402
 import system_collector as sc  # noqa: E402
 from local_scan_consent import Cycle, LocalScanGate, MirrorRead  # noqa: E402
+
+_REAL_LOAD_CONFIG = h.load_config
 
 # Where the app's `UserDefaults(suiteName: "group.yyh.CLI-Pulse")` lives on
 # disk, spelled out rather than taken from `mirror_plist_path()`, so that moving
@@ -168,6 +176,7 @@ def test_the_module_reads_the_path_the_app_writes(home):
     ],
 )
 def test_decision_for_every_answer(home, app_group_copy, values, cycle, reason):
+    write_pairing(home, ME)  # a sign-in record below is for the pairing's user
     app_group_copy.write(values)
     decision = lsc.decide(lsc.read_mirror())
     assert (decision.cycle, decision.reason) == (cycle, reason)
@@ -204,27 +213,117 @@ def test_the_account_is_checked_against_the_pairing(home, app_group_copy, values
 
 
 @pytest.mark.parametrize(
-    "pairing",
-    [None, b"{not json", b"[]", json.dumps({"user_id": ""}).encode(), json.dumps({"device_id": "d"}).encode()],
-    ids=["unpaired", "corrupt", "not-a-dict", "empty-user", "no-user"],
+    ("values", "cycle", "reason"),
+    [
+        (answer("granted", signed_in(OTHER)), Cycle.LOCAL, "not_paired"),
+        (answer("undecided", signed_in(OTHER)), Cycle.LOCAL, "not_paired"),
+        (answer("declined", signed_in(OTHER)), Cycle.PAUSED, "declined"),
+        (answer("maybe", signed_in(OTHER)), Cycle.PAUSED, "unrecognised"),
+        (answer(account=signed_in(OTHER)), Cycle.PAUSED, "no_answer"),
+    ],
 )
-def test_without_a_readable_pairing_the_answer_decides(home, pairing):
-    # Nothing to compare with, and nothing can be uploaded without a pairing
-    # either (`load_config` fails the same way).
-    if pairing is not None:
-        write_pairing(home, raw=pairing)
-    write_mirror(home, answer("granted", signed_in(OTHER)))
+def test_signed_in_and_not_paired_answers_the_app_and_uploads_nothing(home, values, cycle, reason):
+    # No pairing file: nothing to upload with. After a yes (or no answer from
+    # a signed-in app) it answers the app on this Mac, as the built-in helper
+    # does (`collectLocally`), and the cycle stays out of `load_config`.
+    write_mirror(home, values)
     assert lsc.paired_user_id_from_config() is None
-    assert LocalScanGate().check().cycle is Cycle.COLLECT
+    decision = LocalScanGate().check()
+    assert (decision.cycle, decision.reason) == (cycle, reason)
+    assert decision.allows_upload is False
+
+
+_DROP = object()  # `_loadable_config(key=_DROP)` leaves the key out
+
+
+def _loadable_config(**fields) -> bytes:
+    """A pairing `cli_pulse_helper.load_config` accepts, with `fields` over it."""
+    body = {"device_id": "dev-1", "user_id": ME, "device_name": "Mac", "helper_version": "1",
+            "helper_secret": "s", "r0_flip_migrated": True}
+    body.update(fields)
+    return json.dumps({k: v for k, v in body.items() if v is not _DROP}).encode()
+
+
+@pytest.mark.parametrize(
+    "pairing",
+    [
+        b"{not json",
+        b"",
+        b"[]",
+        b'"u"',
+        _loadable_config(user_id=""),
+        _loadable_config(user_id="   "),
+        _loadable_config(user_id=None),
+        _loadable_config(user_id=42),
+        _loadable_config(user_id=[ME]),
+        _loadable_config(user_id=_DROP),
+    ],
+    ids=["corrupt", "empty-file", "not-a-dict", "a-string", "empty-user", "blank-user",
+         "null-user", "numeric-user", "list-user", "no-user"],
+)
+@pytest.mark.parametrize("consent", ["granted", "undecided"])
+def test_a_pairing_that_names_no_user_pauses_a_sign_in(home, pairing, consent):
+    # There is a pairing, but not one this helper can check against the
+    # account the app is in. Reading it as "not paired" would let the answer
+    # decide, and `load_config` uploads with some of these (see below).
+    write_pairing(home, raw=pairing)
+    write_mirror(home, answer(consent, signed_in(ME)))
+    with pytest.raises(lsc.UnusablePairing):
+        lsc.paired_user_id_from_config()
+    decision = LocalScanGate().check()
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unverified_pairing")
+    assert decision.detail
+
+
+@pytest.mark.parametrize("make", ["directory", "unreadable"])
+def test_a_pairing_that_cannot_be_read_pauses_a_sign_in(home, make):
+    path = home / lsc.PAIRING_FILENAME
+    if make == "directory":
+        path.mkdir()
+    else:
+        write_pairing(home, ME).chmod(0)
+        if os.access(path, os.R_OK):  # root reads it anyway
+            pytest.skip("running as a user that can read a mode-000 file")
+    write_mirror(home, answer("granted", signed_in(ME)))
+    try:
+        decision = LocalScanGate().check()
+    finally:
+        if make == "unreadable":
+            path.chmod(0o600)
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unverified_pairing")
+
+
+@pytest.mark.parametrize("user_id", ["", None, 42])
+def test_load_config_uploads_with_a_pairing_that_names_no_user(home, monkeypatch, user_id):
+    # Why such a pairing pauses rather than reading as "not paired": the
+    # config loads, so a cycle the gate let through would upload with it.
+    config_path = home / lsc.PAIRING_FILENAME
+    monkeypatch.setattr(h, "CONFIG_PATH", config_path)
+    config_path.write_bytes(_loadable_config(user_id=user_id))
+    assert h.load_config().user_id == user_id
+    write_mirror(home, answer("granted", signed_in(ME)))
+    rec = Recorder(monkeypatch)
+    monkeypatch.setattr(h, "load_config", _REAL_LOAD_CONFIG)
+    assert _cycle(LocalScanGate()) is False
+    assert (rec.collected, rec.sent) == ([], [])
+    # Control: with no account record the same pairing is trusted, as before
+    # the record existed, and the cycle uploads with it.
+    write_mirror(home, answer("granted"))
+    assert _cycle(LocalScanGate()) is True
+    assert rec.sent[:2] == ["helper_heartbeat", "helper_sync"]
 
 
 def test_the_gate_reads_the_pairing_afresh(home):
     write_mirror(home, answer("granted", signed_in(ME)))
     gate = LocalScanGate()
-    write_pairing(home, ME)
+    assert gate.check().reason == "not_paired"
+    pairing = write_pairing(home, ME)  # paired while it runs
     assert gate.check().cycle is Cycle.COLLECT
     write_pairing(home, OTHER)  # re-paired for another user while it runs
     assert gate.check().reason == "other_account"
+    pairing.unlink()  # unpaired while it runs: nothing is uploaded with the old one
+    assert gate.check().reason == "not_paired"
+    assert not gate.allows_upload()
 
 
 @pytest.mark.parametrize(
@@ -240,10 +339,13 @@ def test_the_pairing_is_read_only_for_a_sign_in(home, values):
     assert asked == []
 
 
-def test_a_pairing_reader_that_raises_is_no_pairing(home):
-    write_mirror(home, answer("granted", signed_in(OTHER)))
-    decision = lsc.decide(lsc.read_mirror(), lambda: 1 / 0)
-    assert decision.cycle is Cycle.COLLECT
+@pytest.mark.parametrize("reader", [lambda: 1 / 0, lambda: "", lambda: "  ", lambda: 42],
+                         ids=["raises", "empty", "blank", "not-a-string"])
+def test_a_pairing_reader_that_cannot_say_pauses(home, reader):
+    # Not "not paired": only a missing pairing file is that.
+    write_mirror(home, answer("granted", signed_in(ME)))
+    decision = lsc.decide(lsc.read_mirror(), reader)
+    assert (decision.cycle, decision.reason) == (Cycle.PAUSED, "unverified_pairing")
 
 
 def test_the_pairing_is_the_file_the_helper_pairs_into(home):
@@ -301,6 +403,7 @@ def test_permission_denied_pauses(home):
 
 
 def test_gate_reads_the_file_at_every_check(home):
+    write_pairing(home, ME)
     gate = LocalScanGate()
     assert gate.check().cycle is Cycle.LEGACY
     write_mirror(home, answer("granted"))
@@ -994,3 +1097,125 @@ def test_container_is_unreachable_while_the_startup_rotation_is_stuck(monkeypatc
     release.set()
     h._container_rotation_worker.join(2.0)
     assert h._container_reachable()
+
+
+# ── every account × every answer ───────────────────────────────
+#
+# What the #626 contract says each combination does, written out here from the
+# contract rather than taken from `decide`:
+#   "upload"  - read this Mac and send heartbeat and sync;
+#   "local"   - answer the app on this Mac (`hello`), send nothing;
+#   "nothing" - read nothing, send nothing.
+# Each combination is checked at the gate (through the file and, on a Mac,
+# through cfprefsd), in a daemon cycle that loads the pairing from disk the way
+# the helper does, and at `hello`.
+
+# id: (the value under `cli_pulse_app_account`, None for no record;
+#      the pairing on disk: "me" (paired for ME), "no-user" (a config
+#      `load_config` accepts, with an empty user id) or None (not paired))
+ACCOUNT_STATES = {
+    "no-record": (None, "me"),
+    "signed-in-as-the-pairing": (signed_in(ME), "me"),
+    "signed-in-as-the-pairing-upper-case": (signed_in(ME.upper()), "me"),
+    "signed-in-as-another-account": (signed_in(OTHER), "me"),
+    "signed-in-not-paired": (signed_in(ME), None),
+    "signed-in-pairing-names-no-user": (signed_in(ME), "no-user"),
+    "local-mode": ("local_mode", "me"),
+    "local-mode-not-paired": ("local_mode", None),
+    "signed-out": ("signed_out", "me"),
+    "signed-out-not-paired": ("signed_out", None),
+    "signed-in-with-no-user-id": ("signed_in:", "me"),
+    "unknown-record": ("guest", "me"),
+    "record-not-a-string": (True, "me"),
+}
+ANSWERS = {
+    "no-answer": None,
+    "undecided": "undecided",
+    "granted": "granted",
+    "declined": "declined",
+    "unrecognised": "maybe",
+}
+MATRIX = pytest.mark.parametrize(
+    ("state", "consent"),
+    [
+        pytest.param(state, consent, id=f"{state_id}-{consent_id}")
+        for state_id, state in ACCOUNT_STATES.items()
+        for consent_id, consent in ANSWERS.items()
+    ],
+)
+
+
+def contract(account, pairing, consent) -> str:
+    if account is None:
+        # No record: the pairing is trusted, as before the record existed.
+        if consent is None:
+            return "upload"  # no copy at all: an app older than 1.55
+        return "upload" if consent in ("granted", "undecided") else "nothing"
+    if account == "local_mode":
+        return "local" if consent == "granted" else "nothing"
+    prefix = "signed_in:"
+    user = account[len(prefix):] if isinstance(account, str) and account.startswith(prefix) else ""
+    if not user:
+        return "nothing"  # signed out, or a record this helper does not know
+    if consent not in ("granted", "undecided"):
+        return "nothing"
+    if pairing is None:
+        return "local"
+    return "upload" if pairing == "me" and user.lower() == ME else "nothing"
+
+
+def _set_up(home, monkeypatch, state, consent, write=None) -> str:
+    account, pairing = state
+    config_path = home / lsc.PAIRING_FILENAME
+    monkeypatch.setattr(h, "CONFIG_PATH", config_path)
+    if pairing == "me":
+        config_path.write_bytes(_loadable_config())
+    elif pairing == "no-user":
+        config_path.write_bytes(_loadable_config(user_id=""))
+    values = answer(consent, account)
+    if write is None:
+        write_mirror(home, values)
+    else:
+        write(values)
+    return contract(account, pairing, consent)
+
+
+def test_the_matrix_covers_every_outcome():
+    outcomes = {contract(*ACCOUNT_STATES[s][:2], c) for s in ACCOUNT_STATES for c in ANSWERS.values()}
+    assert outcomes == {"upload", "local", "nothing"}
+
+
+@MATRIX
+def test_every_account_and_answer_at_the_gate(home, monkeypatch, app_group_copy, state, consent):
+    expected = _set_up(home, monkeypatch, state, consent, app_group_copy.write)
+    decision = LocalScanGate().check()
+    assert decision.allows_upload is (expected == "upload"), decision
+    assert decision.allows_collection is (expected != "nothing"), decision
+
+
+@MATRIX
+def test_every_account_and_answer_in_the_daemon_cycle(home, monkeypatch, state, consent):
+    expected = _set_up(home, monkeypatch, state, consent)
+    rec = Recorder(monkeypatch)
+    # The pairing as the helper loads it: a pairing with no usable user id
+    # loads, and a missing one raises, so only the gate stands between them
+    # and an upload.
+    monkeypatch.setattr(h, "load_config", _REAL_LOAD_CONFIG)
+    ran = _cycle(LocalScanGate())
+    if expected == "upload":
+        assert ran is True
+        assert rec.sent == ["helper_heartbeat", "helper_sync", "get_track_git_activity"]
+    else:
+        assert ran is False
+        assert (rec.collected, rec.sent) == ([], [])
+
+
+@MATRIX
+def test_every_account_and_answer_at_hello(home, monkeypatch, state, consent):
+    expected = _set_up(home, monkeypatch, state, consent)
+    monkeypatch.setattr(provider_spawners, "provider_plan_statuses", lambda: {"codex": "off_plan"})
+    reply = _hello(LocalScanGate().allows_collection)
+    if expected == "nothing":
+        assert "provider_plan_status" not in reply
+    else:
+        assert reply["provider_plan_status"] == {"codex": "off_plan"}

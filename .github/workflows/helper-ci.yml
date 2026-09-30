@@ -103,6 +103,8 @@ jobs:
     # so the path every Mac takes ran in no CI at all. This runs the tests of
     # that copy on macOS, and fails if any of them is skipped here: a skipped
     # test passes silently, which is how the gap stayed open.
+    # `test_app_group_prefs.py` compiles a few lines of Swift that write the
+    # way the app does, from another process, with the runner's swiftc.
     runs-on: macos-latest
     timeout-minutes: 10
     defaults:
@@ -123,7 +125,7 @@ jobs:
       - name: Pytest (the app's copy, through cfprefsd and the file)
         run: |
           set -o pipefail
-          pytest -q -rs test_local_scan_consent.py test_privacy_switches.py | tee pytest.out
+          pytest -q -rs test_local_scan_consent.py test_privacy_switches.py test_app_group_prefs.py | tee pytest.out
           if grep -q '^SKIPPED' pytest.out; then
             echo "::error::a test of the app's copy was skipped on macOS, so it did not run"
             exit 1
