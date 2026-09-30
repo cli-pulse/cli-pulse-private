@@ -498,6 +498,15 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
             }
             claudeRemoteControl = d
         }
+        // v1.55 (additive): whether this helper follows the app's local-scan
+        // answer and account. Only a JSON true counts (not 1, not "true");
+        // older helpers omit it.
+        let followsAppAnswer: Bool = {
+            guard let n = result[SessionControlHello.followsAppAnswerKey] as? NSNumber,
+                  CFGetTypeID(n) == CFBooleanGetTypeID()
+            else { return false }
+            return n.boolValue
+        }()
         return SessionControlHello(
             protocolVersion: version,
             supportedMethods: Set(methods),
@@ -507,7 +516,8 @@ public final class LocalSessionControlClient: SessionEventStreaming, MachineCont
             paired: paired,
             providerPlanStatus: providerPlanStatus,
             implementation: implementation,
-            claudeRemoteControl: claudeRemoteControl
+            claudeRemoteControl: claudeRemoteControl,
+            followsAppAnswer: followsAppAnswer
         )
     }
 

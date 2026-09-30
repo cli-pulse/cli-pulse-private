@@ -1023,6 +1023,14 @@ class LocalSessionServer:
                 # config yet. The macOS app renders "installed — pair to
                 # activate" instead of "not installed".
                 "paired": paired,
+                # v1.55 (additive): this helper reads the app's local-scan
+                # answer, its account record and its Privacy switches before it
+                # collects or uploads (the gate wired in as `local_scan_allowed`).
+                # Companion CLI 1.30.0 and earlier omit the field, and the app
+                # then says, under the answer and under the switches, that the
+                # Companion on this Mac ignores them (`CompanionAnswerCoverage`).
+                # Only a server built without the gate (tests) says false.
+                "follows_app_answer": self._local_scan_allowed is not None,
                 # Capability flags the UI uses to decide what to show.
                 # send_input lights up this iteration — managed Claude
                 # sessions accept stdin via the executor → same code

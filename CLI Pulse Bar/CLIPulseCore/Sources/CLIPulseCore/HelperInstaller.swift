@@ -112,6 +112,13 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
     /// `.running` UI add a "pair to activate managed sessions" hint without
     /// regressing to a misleading "not installed".
     @Published public private(set) var helperPaired: Bool?
+    /// v1.55: the version of a paired Companion CLI, answering on this Mac,
+    /// that does not follow the app's local-scan answer, its account or the
+    /// Privacy switches (Companion CLI 1.30.0 and earlier); empty when it
+    /// reported no version, and nil when no such Companion answered the last
+    /// probe (`CompanionAnswerCoverage.ignoringVersion`). The consent screens
+    /// and Settings › Privacy show a note while it is set.
+    @Published public private(set) var companionIgnoringAnswerVersion: String?
 
     /// Monotonic token identifying the newest `refresh()` in flight. A refresh
     /// that awaits network/UDS can finish AFTER a later refresh started (e.g. a
@@ -260,6 +267,7 @@ public final class HelperInstaller: ObservableObject, @unchecked Sendable {
         // v1.30.2 (RC-1): record pairing state from this probe. nil when
         // hello failed (unknown) or the helper predates the `paired` field.
         helperPaired = helperRunning?.paired
+        companionIgnoringAnswerVersion = CompanionAnswerCoverage.ignoringVersion(hello: helperRunning)
         // NOTE: deliberately still the CONTAINER path only.
         //
         // A first pass here walked `candidateBasePaths()` so the status would

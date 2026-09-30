@@ -352,6 +352,43 @@ def test_hello_reports_paired_false_for_unpaired_helper(short_sock_dir):
         server.stop()
 
 
+def _hello_with_gate(local_scan_allowed) -> dict:
+    """`hello` from a server built the way the daemon builds it, with or without
+    the local-scan gate. The request says `local_scan_allowed: false`, so the
+    reply reads no credential file on the machine running the tests."""
+    def _unused(*_a, **_k):
+        raise AssertionError("hello must not reach the session manager")
+
+    server = LocalSessionServer(
+        socket_path="/nonexistent/clipulse-helper.sock",
+        get_auth_token=lambda: "T",
+        get_local_control_enabled=lambda: True,
+        set_local_control_enabled=_unused,
+        start_session=_unused,
+        list_sessions=_unused,
+        stop_session=_unused,
+        send_input=_unused,
+        local_scan_allowed=local_scan_allowed,
+    )
+    return server._handle_method("hello", {"local_scan_allowed": False})
+
+
+@pytest.mark.parametrize("allowed", [lambda: True, lambda: False, lambda: 1 / 0])
+def test_hello_tells_the_app_it_follows_the_answer(allowed):
+    """v1.55: the macOS app says "the Companion CLI on this Mac does not follow
+    this answer" (CompanionAnswerCoverage) for a Companion that does not send
+    `follows_app_answer` as a JSON true; 1.30.0 and earlier omit it. The daemon
+    always wires the gate (test_local_scan_consent), and a paused hello still
+    follows the answer: pausing is following it."""
+    reply = _hello_with_gate(allowed)
+    assert reply["follows_app_answer"] is True
+    assert '"follows_app_answer": true' in json.dumps(reply)
+
+
+def test_hello_without_the_gate_does_not_claim_to_follow_the_answer():
+    assert _hello_with_gate(None)["follows_app_answer"] is False
+
+
 def test_hello_version_mismatch_returns_typed_error(short_sock_dir):
     server, _mgr, _state = _make_server(short_sock_dir)
     try:
