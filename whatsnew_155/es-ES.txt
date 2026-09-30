@@ -1,0 +1,21 @@
+Los créditos de Codex ahora se muestran como créditos, Ocultar información personal cubre también las etiquetas de cuenta y el Apple Watch, y el Resumen muestra solo las tarjetas que tienen algo que mostrar.
+
+• Los créditos de Codex aparecen como «N créditos restantes» en la pestaña Proveedores y en el Apple Watch, en lugar de un porcentaje.
+
+• Codex: cuando se agota el límite semanal, la barra de 5 horas y la tarjeta muestran 0% restante y cuándo se reinicia el límite semanal, en lugar del margen que queda en el periodo de 5 horas. Los widgets y el Apple Watch lo muestran igual. El marcador de ritmo de 5 horas se calcula ahora para 5 horas, no para una semana.
+
+• «Ocultar información personal» (Ajustes › Avanzado) oculta ahora también las etiquetas de cuenta que son direcciones de correo y muestra «Cuenta 1», «Cuenta 2», etc., en la pestaña Proveedores y en Ajustes. El Apple Watch sigue ahora el ajuste del iPhone.
+
+• El Resumen ya no muestra una tarjeta «Proyectos principales» vacía ni un recuento de «Solicitudes» que siempre marcaba 0. Las cifras restantes se ordenan en filas de dos y tres.
+
+• Resumen de costos: las filas por proveedor indican que son importes de 30 días, y un proveedor que solo informa la cuota ya no recibe una fila de costo cero.
+
+• El total del Panel de uso ahora es «Costo total est.», con una línea que aclara que es una estimación a precios de pago por uso de la API, no una factura.
+
+• Pestaña Proveedores: las tarjetas ya no van de borde a borde, la insignia de costo está junto al costo de hoy y la pestaña ya no muestra una insignia con un número.
+
+• En modo claro, los días vacíos del mapa de calor de actividad se ven y los de más uso son los más oscuros.
+
+• «Probar demo» muestra solo las tarjetas y cifras que puede tener una cuenta real.
+
+• Control remoto: si no se encuentra ningún Mac, el mensaje indica ahora qué Mac ofrecen el control remoto, en lugar de remitir a un ajuste que la mayoría de los Mac no tiene.
