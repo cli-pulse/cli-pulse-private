@@ -17,6 +17,8 @@ from typing import Any
 
 from system_collector import CollectedAlert, collect_alerts, collect_device_snapshot, collect_sessions, estimate_provider_quotas
 from git_collector import GitCollector, project_paths_from_sessions
+from local_scan_consent import LocalScanGate
+import system_collector as _system_collector
 import user_secret as _user_secret_module
 from remote_session_plane import should_run_terminal_broadcast
 
@@ -322,7 +324,23 @@ def pair(args: argparse.Namespace) -> None:
 _MACHINE_RELAY = None
 
 
-def heartbeat(_: argparse.Namespace) -> None:
+def _still_allowed(gate: LocalScanGate | None, what: str) -> bool:
+    """Ask the app's local-scan answer (`local_scan_consent`), if this caller
+    has a gate. Called before a step collects anything and again before it
+    sends what it collected, so an answer given mid-cycle drops the results."""
+    if gate is None or gate.allows_collection():
+        return True
+    logger.info("local scan paused: %s dropped, nothing sent", what)
+    return False
+
+
+def heartbeat(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
+    """Send one heartbeat. Returns False when `gate` paused it (nothing sent).
+
+    `gate` is None only for callers that are not the helper's own cycle (tests);
+    the daemon and the `heartbeat`/`sync`/`run-demo` subcommands pass one."""
+    if gate is not None and not gate.allows_collection():
+        return False
     config = load_config()
     snapshot = collect_device_snapshot()
     sessions = collect_sessions()
@@ -376,11 +394,18 @@ def heartbeat(_: argparse.Namespace) -> None:
             params["p_metrics"] = metrics
     except Exception as exc:  # noqa: BLE001 — machine metrics must never break the heartbeat
         logger.debug("heartbeat_metrics() failed; omitting from heartbeat: %s", exc)
+    if not _still_allowed(gate, "heartbeat"):
+        return False
     supabase_rpc("helper_heartbeat", params)
     logger.debug("heartbeat sent")
+    return True
 
 
-def sync(_: argparse.Namespace) -> None:
+def sync(_: argparse.Namespace, gate: LocalScanGate | None = None) -> bool:
+    """Sync sessions, alerts and provider quotas. Returns False when `gate`
+    paused it (nothing sent). See `heartbeat` for `gate`."""
+    if gate is not None and not gate.allows_collection():
+        return False
     config = load_config()
     collected_sessions = collect_sessions()
     sessions = [
@@ -426,6 +451,8 @@ def sync(_: argparse.Namespace) -> None:
     ]
 
     provider_quotas = estimate_provider_quotas(collected_sessions)
+    if not _still_allowed(gate, "helper_sync"):
+        return False
     response = supabase_rpc("helper_sync", {
         "p_device_id": config.device_id,
         "p_helper_secret": config.helper_secret,
@@ -435,6 +462,7 @@ def sync(_: argparse.Namespace) -> None:
         "p_provider_tiers": provider_quotas,
     })
     logger.info("synced %s sessions", response.get("sessions_synced", 0))
+    return True
 
 
 def _fetch_track_git_activity(config: HelperConfig) -> bool:
@@ -491,6 +519,19 @@ def _fetch_track_git_activity(config: HelperConfig) -> bool:
 # would have tripped on the tail.
 _CONTAINER_ACCESS_WAIT_S = 25.0
 
+# The startup rotation's worker, kept so the rest of the daemon can tell whether
+# it is still stuck in its container access (`_container_reachable`).
+_container_rotation_worker: threading.Thread | None = None
+
+
+def _container_reachable() -> bool:
+    """False while the startup token rotation is still stuck in its app-group
+    container access. The local-scan gate reads the app's answer from that
+    container, and waits for this rather than open a second access on a stalled
+    container: each one is another TCC consult (see the note above)."""
+    worker = _container_rotation_worker
+    return worker is None or not worker.is_alive()
+
 
 def _rotate_token_best_effort(
     rotate_token,
@@ -521,7 +562,9 @@ def _rotate_token_best_effort(
         except BaseException as exc:  # noqa: BLE001 — re-raised on the main thread
             box["exc"] = exc
 
+    global _container_rotation_worker
     worker = threading.Thread(target=_run, name="rotate-token", daemon=True)
+    _container_rotation_worker = worker
     started = time.monotonic()
     worker.start()
     worker.join(timeout)
@@ -554,6 +597,99 @@ def _rotate_token_best_effort(
     return box.get("token")  # type: ignore[return-value]
 
 
+GIT_SCAN_BACKSTOP_SECONDS = 600  # 10 minutes
+
+
+@dataclass
+class _GitScanState:
+    """What the daemon's git-activity scan carries from one cycle to the next."""
+
+    scanner: GitCollector | None = None
+    last_projects: frozenset[str] = frozenset()
+    last_scan_at: float = 0.0
+
+
+def _collection_cycle(
+    args: argparse.Namespace,
+    *,
+    gate: LocalScanGate,
+    git: _GitScanState,
+    env_force_git: bool,
+) -> bool:
+    """One daemon cycle: heartbeat, sync, then the git-activity scan.
+
+    Returns False when the app's local-scan answer (`local_scan_consent`)
+    paused it. The answer is asked before anything is read, again inside
+    `heartbeat` and `sync` before each upload, before the track_git_activity
+    lookup, and before commits are submitted, so a "Not now" given while a
+    cycle runs drops what it had collected instead of sending it.
+    """
+    if not gate.allows_collection():
+        return False
+    heartbeat(args, gate=gate)
+    sync(args, gate=gate)
+    if not _still_allowed(gate, "git activity scan"):
+        return False
+
+    # Re-evaluate the user's track_git_activity opt-in each cycle so
+    # toggling it in the macOS UI takes effect within one heartbeat.
+    config = load_config()
+    track_git = env_force_git or _fetch_track_git_activity(config)
+    if track_git and git.scanner is None:
+        try:
+            git.scanner = GitCollector(secret=_user_secret_module.load_or_create_secret())
+            logger.info("git activity tracking enabled")
+        except Exception as exc:
+            logger.warning("failed to initialize git tracking: %s", exc)
+    elif not track_git and git.scanner is not None:
+        logger.info("git activity tracking disabled by user")
+        git.scanner = None
+        git.last_projects = frozenset()
+        git.last_scan_at = 0.0
+
+    if git.scanner is not None:
+        # Re-collect just for the project set; the sync above already
+        # handled the session payload, this is purely for git scanning.
+        sessions = collect_sessions()
+        paths = project_paths_from_sessions(sessions)
+        current_projects = frozenset(str(p) for p in paths)
+        now_ts = time.time()
+        set_changed = current_projects != git.last_projects
+        backstop_due = (now_ts - git.last_scan_at) >= GIT_SCAN_BACKSTOP_SECONDS
+        if paths and (set_changed or backstop_due):
+            commits = git.scanner.collect(paths)
+            ingest_ok = True
+            if commits:
+                if not _still_allowed(gate, "commit submit"):
+                    # Not submitted, and the cursor stays where it was, so an
+                    # allowed cycle later picks these commits up again.
+                    return False
+                # Server caps at 500/batch (see migrate_v0.14 P0-2).
+                # Shard at 200 to leave headroom for client/server skew.
+                payloads = [c.to_dict() for c in commits]
+                try:
+                    _ingest_commits_with_retry(config, payloads, batch_size=200)
+                    logger.info(
+                        "submitted %d commits across %d project(s)",
+                        len(commits), len(paths),
+                    )
+                except SyncError as exc:
+                    ingest_ok = False
+                    logger.error(
+                        "commit submit failed after retries: %s "
+                        "(keeping project set unscanned so next cycle retries)",
+                        exc,
+                    )
+            # Only advance the cursor when the submit succeeded.
+            # Otherwise the current project set stays "unscanned" so
+            # the commits get picked up again next cycle instead of
+            # being silently dropped.
+            if ingest_ok:
+                git.last_projects = current_projects
+                git.last_scan_at = now_ts
+    return True
+
+
 def daemon(args: argparse.Namespace) -> None:
     """Run continuously: heartbeat + sync every interval seconds.
 
@@ -579,10 +715,7 @@ def daemon(args: argparse.Namespace) -> None:
     # Re-checked every cycle so toggling the setting in the macOS app takes effect
     # within one heartbeat cycle. Env override CLI_PULSE_TRACK_GIT=1 forces on for
     # CI / dev / users who don't want to use the macOS UI.
-    git_scanner: GitCollector | None = None
-    last_scanned_projects: frozenset[str] = frozenset()
-    last_scan_at: float = 0.0
-    GIT_SCAN_BACKSTOP_SECONDS = 600  # 10 minutes
+    git_state = _GitScanState()
     env_force_git = os.environ.get("CLI_PULSE_TRACK_GIT") == "1"
     if env_force_git:
         logger.info("git activity tracking forced on via CLI_PULSE_TRACK_GIT=1")
@@ -1058,70 +1191,26 @@ def daemon(args: argparse.Namespace) -> None:
     # the Supabase command poll) still runs only ~1×/s via `_last_full_tick`.
     _ACTIVE_TICK_INTERVAL_S = 0.2
     _last_full_tick = 0.0
-    # v1.30.2 RC-1: `config` may never be assigned on an unpaired cycle (the
-    # heartbeat below raises ConfigError before `config = load_config()`).
-    # Initialise it so the guards below are safe, and track
-    # whether we've already logged the unpaired state to avoid per-cycle spam.
-    config = None
+    # v1.30.2 RC-1: an unpaired cycle raises ConfigError from the heartbeat.
+    # Track whether we've already logged the unpaired state to avoid
+    # per-cycle spam.
     _unpaired_logged = False
+    # The app's local-scan answer (`local_scan_consent`): asked before every
+    # cycle reads anything and again before anything it read is written or
+    # sent. It reads the app-group container, and waits while the startup token
+    # rotation is still stuck in that container rather than open a second
+    # access there.
+    local_scan_gate = LocalScanGate(container_ready=_container_reachable)
+    _system_collector.set_result_write_gate(local_scan_gate.allows_collection)
     try:
         while not stopping:
             try:
-                heartbeat(args)
-                sync(args)
-
-                # Re-evaluate the user's track_git_activity opt-in each cycle so
-                # toggling it in the macOS UI takes effect within one heartbeat.
-                config = load_config()
-                track_git = env_force_git or _fetch_track_git_activity(config)
-                if track_git and git_scanner is None:
-                    try:
-                        git_scanner = GitCollector(secret=_user_secret_module.load_or_create_secret())
-                        logger.info("git activity tracking enabled")
-                    except Exception as exc:
-                        logger.warning("failed to initialize git tracking: %s", exc)
-                elif not track_git and git_scanner is not None:
-                    logger.info("git activity tracking disabled by user")
-                    git_scanner = None
-                    last_scanned_projects = frozenset()
-                    last_scan_at = 0.0
-
-                if git_scanner is not None:
-                    # Re-collect just for the project set; the sync above already
-                    # handled the session payload, this is purely for git scanning.
-                    sessions = collect_sessions()
-                    paths = project_paths_from_sessions(sessions)
-                    current_projects = frozenset(str(p) for p in paths)
-                    now_ts = time.time()
-                    set_changed = current_projects != last_scanned_projects
-                    backstop_due = (now_ts - last_scan_at) >= GIT_SCAN_BACKSTOP_SECONDS
-                    if paths and (set_changed or backstop_due):
-                        commits = git_scanner.collect(paths)
-                        ingest_ok = True
-                        if commits:
-                            # Server caps at 500/batch (see migrate_v0.14 P0-2).
-                            # Shard at 200 to leave headroom for client/server skew.
-                            payloads = [c.to_dict() for c in commits]
-                            try:
-                                _ingest_commits_with_retry(config, payloads, batch_size=200)
-                                logger.info(
-                                    "submitted %d commits across %d project(s)",
-                                    len(commits), len(paths),
-                                )
-                            except SyncError as exc:
-                                ingest_ok = False
-                                logger.error(
-                                    "commit submit failed after retries: %s "
-                                    "(keeping project set unscanned so next cycle retries)",
-                                    exc,
-                                )
-                        # Only advance the cursor when the submit succeeded.
-                        # Otherwise the current project set stays "unscanned" so
-                        # the commits get picked up again next cycle instead of
-                        # being silently dropped.
-                        if ingest_ok:
-                            last_scanned_projects = current_projects
-                            last_scan_at = now_ts
+                _collection_cycle(
+                    args,
+                    gate=local_scan_gate,
+                    git=git_state,
+                    env_force_git=env_force_git,
+                )
             except ConfigError as exc:
                 # v1.30.2 RC-1: NOT fatal. This used to `raise`, which — with
                 # the installed LaunchAgent's KeepAlive=true — crash-looped an
@@ -1140,7 +1229,6 @@ def daemon(args: argparse.Namespace) -> None:
                         "control surface stays up, retrying each cycle", exc,
                     )
                     _unpaired_logged = True
-                config = None
             except (Exception, SyncError) as exc:
                 # Transient network/API errors — log and retry next cycle
                 logger.error("daemon cycle failed: %s", exc)
@@ -1184,6 +1272,7 @@ def daemon(args: argparse.Namespace) -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        _system_collector.set_result_write_gate(None)
         # Phase 3 Iter 1 ordering: stop the UDS server first so no new
         # local jobs land on the executor while we're draining; then
         # let the manager terminate child PTYs (which itself goes
@@ -1214,10 +1303,19 @@ def daemon(args: argparse.Namespace) -> None:
 
 
 def run_demo(args: argparse.Namespace) -> None:
+    gate = LocalScanGate()
     for _ in range(args.cycles):
-        heartbeat(args)
-        sync(args)
+        heartbeat(args, gate=gate)
+        sync(args, gate=gate)
         time.sleep(args.interval)
+
+
+def _heartbeat_cmd(args: argparse.Namespace) -> None:
+    heartbeat(args, gate=LocalScanGate())
+
+
+def _sync_cmd(args: argparse.Namespace) -> None:
+    sync(args, gate=LocalScanGate())
 
 
 def inspect(_: argparse.Namespace) -> None:
@@ -1268,10 +1366,12 @@ def main() -> None:
     pair_parser.set_defaults(func=pair)
 
     heartbeat_parser = subparsers.add_parser("heartbeat", help="send one heartbeat")
-    heartbeat_parser.set_defaults(func=heartbeat)
+    # Both upload what they collect, like the daemon, so they ask the app's
+    # local-scan answer first (`local_scan_consent`).
+    heartbeat_parser.set_defaults(func=_heartbeat_cmd)
 
     sync_parser = subparsers.add_parser("sync", help="sync sessions and alerts")
-    sync_parser.set_defaults(func=sync)
+    sync_parser.set_defaults(func=_sync_cmd)
 
     daemon_parser = subparsers.add_parser("daemon", help="run continuously syncing in the foreground")
     daemon_parser.add_argument("--interval", type=int, default=120, help="sync interval in seconds (default: 120)")

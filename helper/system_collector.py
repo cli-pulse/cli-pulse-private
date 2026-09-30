@@ -21,7 +21,7 @@ from contextlib import closing, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import user_secret as _user_secret_module
 
@@ -60,6 +60,29 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 HELPER_VERSION = "1.30.0"
 
 logger = logging.getLogger("cli_pulse.collector")
+
+# Asked before this module writes what a cycle collected to disk (the Claude
+# snapshot and session-key files the app reads). The daemon sets it to its
+# `LocalScanGate`, so a "Not now" that arrives while a cycle is running stops
+# that cycle's results from being written as well as sent. None (the standalone
+# subcommands, tests) writes as before.
+_result_write_gate: Callable[[], bool] | None = None
+
+
+def set_result_write_gate(gate: Callable[[], bool] | None) -> None:
+    global _result_write_gate
+    _result_write_gate = gate
+
+
+def _results_may_be_written() -> bool:
+    gate = _result_write_gate
+    if gate is None:
+        return True
+    try:
+        return bool(gate())
+    except Exception as exc:  # noqa: BLE001 — cannot tell, so do not write
+        logger.debug("result write gate failed: %s", exc)
+        return False
 
 PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     # (provider_name, regex_pattern, confidence: high|medium|low)
@@ -636,6 +659,9 @@ def _write_claude_snapshot(result: dict, tier_raw: str, source: str) -> None:
     compatibility with older builds and command-line diagnostics.
     Schema matches ClaudeHelperContract.swift.
     """
+    if not _results_may_be_written():
+        logger.info("local scan paused during this cycle: Claude snapshot not written")
+        return
     try:
         # Convert tier-based result back into snapshot format
         tiers = result.get("tiers", [])
@@ -716,6 +742,9 @@ def _write_claude_snapshot(result: dict, tier_raw: str, source: str) -> None:
 
 def _write_claude_session_key(session_key: str, source: str) -> None:
     """Write session key file for the app's Web strategy."""
+    if not _results_may_be_written():
+        logger.info("local scan paused during this cycle: Claude session key not written")
+        return
     try:
         payload = _json.dumps({
             "sessionKey": session_key,
