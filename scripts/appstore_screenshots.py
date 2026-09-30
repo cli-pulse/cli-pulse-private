@@ -131,7 +131,8 @@ RENDER_MANIFEST = "render.json"
 MAC_RENDER_SCALE = 3
 MAC_POPOVER_PT = (380, 580)
 # A shot on a "lastAligned" page (QARenderSnapshot.alignedTrim) is drawn in a
-# popover shortened so it opens above a card; users drag it from 400 to 900.
+# popover shortened so it opens just above the first card the first page did
+# not show whole (458 points for 1.55's cost shot); users drag it from 400 to 900.
 MAC_POPOVER_MIN_HEIGHT_PT = 400
 MAC_PANEL_WIDTH_PT = 520
 LOCAL_SCAN_PROVIDERS = frozenset({"Claude", "Codex"})

@@ -491,17 +491,27 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     }
 
     /// One store shot's popover, the page it names. A `.lastAligned` page is
-    /// drawn once at the pinned height to measure what lies above its first
-    /// card, then again in a popover shortened by `QARenderSnapshot.alignedTrim`,
-    /// and must then open on nothing but background above that card.
+    /// drawn once at the pinned height to find the first card its first page
+    /// did not show whole, then again in a popover shortened by
+    /// `QARenderSnapshot.alignedTrim` so the page scrolled to the end opens just
+    /// above that card, and must then cut through nothing drawn.
     private func captureStoreShot(_ shot: QARenderStoreShot) async -> QARenderManifest.StoreShot? {
         var height = QARenderSnapshot.storePopoverHeight
         guard var drawn = await drawStorePopover(shot) else { return nil }
         if shot.page == .lastAligned {
-            guard let trim = alignedTrim(drawn) else {
+            guard let layout = drawn.layout,
+                  let trim = QARenderSnapshot.alignedTrim(
+                      cards: layout.cards, contentHeight: layout.contentHeight,
+                      viewportHeight: layout.viewportHeight
+                  ),
+                  let card = QARenderSnapshot.alignedCard(
+                      layout.cards, contentHeight: layout.contentHeight,
+                      viewportHeight: layout.viewportHeight
+                  )
+            else {
                 manifest.warnings.append(
-                    "\(shot.id): no space above a card to start the page in; its top edge "
-                        + "would cut through a line of text"
+                    "\(shot.id): no card reaching below the first page that the last page can "
+                        + "open above (\(drawn.layout?.cards.count ?? 0) cards measured)"
                 )
                 return nil
             }
@@ -519,14 +529,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 defaults.set(QARenderSnapshot.storePopoverHeight, forKey: Self.menuBarHeightKey)
                 guard let again else { return nil }
                 drawn = again
-                guard alignedTrim(drawn) == 0 else {
-                    manifest.warnings.append(
-                        "\(shot.id): in a \(height)-point popover the page still does not "
-                            + "open on background above its first card"
-                    )
-                    return nil
-                }
             }
+            guard alignedPageIsClean(drawn, card: card, id: shot.id, height: height) else { return nil }
         }
         let pageIndex = shot.page == .first ? 1 : drawn.pages.count
         let page = drawn.pages[pageIndex - 1]
@@ -544,8 +548,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         if height != QARenderSnapshot.storePopoverHeight {
             manifest.forcedSettings[Self.menuBarHeightKey + " (" + shot.id + ")"] = "\(Int(height)): "
                 + "this shot's popover, shortened from \(Int(QARenderSnapshot.storePopoverHeight)) "
-                + "so the page scrolled to the end opens on the space above a card, not through "
-                + "a line of text. Users can drag the popover between 400 and 900."
+                + "so the page scrolled to the end opens just above the first card the first "
+                + "page did not show whole, and cuts through nothing. Users can drag the popover "
+                + "between 400 and 900."
         }
         return .init(
             id: shot.id, surface: shot.surface.id, page: shot.page,
@@ -557,9 +562,8 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
 
     private struct StorePopover {
         let pages: [NSBitmapImageRep]
-        /// The main scroll view's visible area, in points from the top of the
-        /// popover: where a page's own content starts and ends.
-        let viewport: (top: Double, height: Double)?
+        /// The main scroll view's content, measured once every page was drawn.
+        let layout: ScrollLayout?
     }
 
     private func drawStorePopover(_ shot: QARenderStoreShot) async -> StorePopover? {
@@ -576,29 +580,44 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             manifest.warnings.append("\(shot.id): nothing was drawn")
             return nil
         }
-        return StorePopover(pages: drawn.pages, viewport: drawn.viewport)
+        return StorePopover(pages: drawn.pages, layout: drawn.layout)
     }
 
-    /// `QARenderSnapshot.alignedTrim` for the last page, measured on its pixels.
-    private func alignedTrim(_ drawn: StorePopover) -> Int? {
-        guard let viewport = drawn.viewport, let page = drawn.pages.last else { return nil }
-        let rows = pixelRows(page, from: viewport.top, height: viewport.height)
-        return QARenderSnapshot.alignedTrim(rows: rows, scale: request.scale)
-    }
-
-    /// Each pixel row of `rep` between `top` and `top + height` points,
-    /// classified against the colour at its left edge (the scroll view's
-    /// background, inside the content's inset).
-    private func pixelRows(_ rep: NSBitmapImageRep, from top: Double, height: Double) -> [QARenderRow] {
-        let scale = Double(request.scale)
-        let first = max(0, Int((top * scale).rounded()))
-        let end = min(rep.pixelsHigh, Int(((top + height) * scale).rounded()))
-        guard first < end else { return [] }
-        let background = rgba(rep, x: 2, y: first)
-        return (first..<end).map { y in
-            QARenderSnapshot.rowKind((0..<rep.pixelsWide).map { rgba(rep, x: $0, y: y) },
-                                     background: background)
+    /// Whether the last page of `drawn` opens aligned above `card`: its top
+    /// edge cuts through nothing drawn, and the first card at or below the
+    /// edge is `card`, at most the clearance (and a point of rounding) below
+    /// it. Says why not in the manifest's warnings.
+    private func alignedPageIsClean(
+        _ drawn: StorePopover, card: QARenderSpan, id: String, height: Double
+    ) -> Bool {
+        let prefix = "\(id): in a \(height)-point popover"
+        guard let layout = drawn.layout else {
+            manifest.warnings.append("\(prefix) the page's content could not be measured")
+            return false
         }
+        let top = QARenderSnapshot.lastPageTop(
+            contentHeight: layout.contentHeight, viewportHeight: layout.viewportHeight
+        )
+        let cut = QARenderSnapshot.cutByTopEdge(top, spans: layout.drawn)
+        if !cut.isEmpty {
+            let spans = cut.prefix(3).map { "\($0.top)-\($0.bottom)" }.joined(separator: ", ")
+            manifest.warnings.append(
+                "\(prefix) the page's top edge, \(top) points down the content, cuts through "
+                    + "\(cut.count) drawn layer(s) (\(spans))"
+            )
+            return false
+        }
+        let opening = layout.cards.filter { $0.top >= top - 0.5 }.min(by: { $0.top < $1.top })
+        guard let opening, abs(opening.top - card.top) < 0.5,
+              opening.top - top <= QARenderSnapshot.storeAlignedClearance + 1
+        else {
+            manifest.warnings.append(
+                "\(prefix) the page opens \(top) points down the content, not just above the "
+                    + "card at \(card.top) the first page did not show whole"
+            )
+            return false
+        }
+        return true
     }
 
     /// One pixel as RGBA, alpha in the low byte; y counts from the top.
@@ -1148,9 +1167,51 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         let pages: [NSBitmapImageRep]
         let hosting: NSView
         let window: NSWindow
-        /// The main scroll view's visible area, in points from the top of
-        /// `hosting`; nil when nothing scrolls.
-        let viewport: (top: Double, height: Double)?
+        /// The main scroll view's content, measured once every page was
+        /// drawn; nil when nothing scrolls.
+        let layout: ScrollLayout?
+    }
+
+    /// A scroll view's content, in points from its top: how tall it is, how
+    /// much of it one page shows, where its cards are and where every layer
+    /// that draws something is. `QARenderSnapshot.alignedTrim` frames a page
+    /// scrolled to the end with it.
+    private struct ScrollLayout {
+        let contentHeight: Double
+        let viewportHeight: Double
+        /// `glassCard`'s frosted glass: one backdrop layer per card, the
+        /// card's own frame (its shadow is drawn outside it).
+        let cards: [QARenderSpan]
+        /// Every layer without sublayers: a line of text, an image, a
+        /// backdrop, a shape.
+        let drawn: [QARenderSpan]
+    }
+
+    /// Measures `scrollView`'s content from its layer tree. SwiftUI draws each
+    /// run of text or shape into a layer of its own, and a material into a
+    /// backdrop layer the size of what it fills.
+    private func scrollLayout(_ scrollView: NSScrollView) -> ScrollLayout? {
+        guard let document = scrollView.documentView, let root = document.layer else { return nil }
+        let contentHeight = Double(document.frame.height)
+        var cards: [QARenderSpan] = []
+        var drawn: [QARenderSpan] = []
+        func visit(_ layer: CALayer) {
+            guard !layer.isHidden, layer.opacity > 0 else { return }
+            let frame = layer.convert(layer.bounds, to: root)
+            let top = document.isFlipped ? Double(frame.minY) : contentHeight - Double(frame.maxY)
+            let span = QARenderSpan(top: top, bottom: top + Double(frame.height))
+            let sublayers = layer.sublayers ?? []
+            if NSStringFromClass(type(of: layer)).contains("Backdrop") { cards.append(span) }
+            if sublayers.isEmpty, frame.width > 0, frame.height > 0 { drawn.append(span) }
+            sublayers.forEach(visit)
+        }
+        (root.sublayers ?? []).forEach(visit)
+        return ScrollLayout(
+            contentHeight: contentHeight,
+            viewportHeight: Double(scrollView.contentView.bounds.height),
+            cards: cards,
+            drawn: drawn
+        )
     }
 
     /// Lays `content` out in an offscreen window at its fitting size and
@@ -1190,14 +1251,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         manifest.windowBackingScale = Double(window.backingScaleFactor)
 
         var pages: [NSBitmapImageRep] = []
-        var viewport: (top: Double, height: Double)?
+        var layout: ScrollLayout?
         if let first = snapshot(hosting) { pages.append(first) }
         if scrolls, let scrollView = mainScrollView(in: hosting), let document = scrollView.documentView {
-            let frame = scrollView.convert(scrollView.bounds, to: hosting)
-            viewport = (
-                top: Double(hosting.isFlipped ? frame.minY : hosting.bounds.height - frame.maxY),
-                height: Double(frame.height)
-            )
             var offset = 0.0
             while pages.count < QARenderSnapshot.maxPages,
                   let next = QARenderSnapshot.nextPageOffset(
@@ -1220,8 +1276,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                     "\(id): stopped after \(QARenderSnapshot.maxPages) pages; the rest is not drawn"
                 )
             }
+            layout = scrollLayout(scrollView)
         }
-        return DrawnPages(pages: pages, hosting: hosting, window: window, viewport: viewport)
+        return DrawnPages(pages: pages, hosting: hosting, window: window, layout: layout)
     }
 
     private func capture<Content: View>(

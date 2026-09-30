@@ -244,58 +244,75 @@ final class QARenderSnapshotTests: XCTestCase {
 
     // MARK: - Framing the page scrolled to the end
 
-    private static let white: UInt32 = 0xFFFF_FFFF
-
-    private func row(_ width: Int, ink: Int = 0, card: Int = 0) -> [UInt32] {
-        // `card` pixels a faint shade off white, `ink` pixels dark grey.
-        (0..<width).map { x in
-            x < ink ? 0x5050_50FF : (x < ink + card ? 0xFEFE_FEFF : Self.white)
-        }
+    private func span(_ top: Double, _ bottom: Double) -> QARenderSpan {
+        QARenderSpan(top: top, bottom: bottom)
     }
 
-    func testRowsAreBlankInkOrCard() {
-        XCTAssertEqual(QARenderSnapshot.rowKind(row(100), background: Self.white), .blank)
-        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, ink: 3), background: Self.white), .ink,
-                       "a few dark pixels are a line of text")
-        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, card: 60), background: Self.white), .card,
-                       "a faint shade across most of the row is a card's shadow or fill")
-        XCTAssertEqual(QARenderSnapshot.rowKind(row(100, card: 20), background: Self.white), .blank,
-                       "a faint shade across part of it is neither")
-        XCTAssertEqual(QARenderSnapshot.rowKind([], background: Self.white), .blank)
+    /// The 1.55 Demo Overview in the store render, in points down its content:
+    /// Activity, Cost Summary, Provider Usage, 12 points apart, in a 748-point
+    /// content whose 580-point popover shows 501 of it. No Hourly Activity,
+    /// Top Projects or Risk Signals card any more. The renderer measured the
+    /// Activity card's span, the last page's top at 247 and the trim of 122;
+    /// the other spans are read off the raws, to the point.
+    private var overview155: [QARenderSpan] {
+        [span(188, 361), span(373, 511), span(523, 736)]
     }
 
-    func testAPageWhoseTopCutsTextIsShortenedToStartAboveTheCard() {
-        // 3 px per point: half a line of text (rows 0-8), 20 blank rows, then a card.
-        let rows = Array(repeating: QARenderRow.ink, count: 9)
-            + Array(repeating: .blank, count: 20) + Array(repeating: .card, count: 30)
-        let trim = QARenderSnapshot.alignedTrim(rows: rows, scale: 3)
-        // The card starts at 29 px = 9.67 pt; 4 points of clearance leaves 5.
-        XCTAssertEqual(trim, 5)
-        let top = (trim ?? 0) * 3
-        XCTAssertFalse(rows[top...].prefix(while: { $0 != .card }).contains(.ink),
-                       "after the trim no text lies above the card")
-        XCTAssertGreaterThanOrEqual(29 - top, 1)
+    func testTheCostPageOpensWhereTheFirstPageLeftOff() {
+        let cards = overview155
+        // Scrolled flush to the end (748 - 501 = 247), the page opens through
+        // the Activity card, which the first page (0-501) showed whole.
+        XCTAssertEqual(QARenderSnapshot.lastPageTop(contentHeight: 748, viewportHeight: 501), 247)
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(247, spans: cards), [span(188, 361)])
+        // Cost Summary is the first card the first page cut off.
+        XCTAssertEqual(QARenderSnapshot.alignedCard(cards, contentHeight: 748, viewportHeight: 501),
+                       span(373, 511))
+        // 373 - 247 = 126 points down, less the 4 of clearance: a 458-point popover.
+        let trim = QARenderSnapshot.alignedTrim(cards: cards, contentHeight: 748, viewportHeight: 501)
+        XCTAssertEqual(trim, 122)
+        // In the popover shortened by that, the page opens at 369: in the gap
+        // above Cost Summary, cutting through nothing.
+        let top = QARenderSnapshot.lastPageTop(contentHeight: 748, viewportHeight: 501 - 122)
+        XCTAssertEqual(top, 369)
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(top, spans: cards), [])
     }
 
-    func testTextJustAboveTheCardWinsOverTheClearance() {
-        // Text ends at row 23; the card starts at row 27: the top goes just past the text.
-        let rows = Array(repeating: QARenderRow.blank, count: 10) + Array(repeating: .ink, count: 14)
-            + Array(repeating: .blank, count: 3) + Array(repeating: .card, count: 10)
-        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: rows, scale: 3), 8)
+    func testALongerOverviewAlignsAboveTheFirstCardTheLastPageCanReach() {
+        // Shaped like 1.54's Overview: Top Projects and Risk Signals below
+        // Provider Usage, and the Yield Score's text (not a card) above it. The last page
+        // (1098 - 506 = 592) starts below Cost Summary's top, so it opens
+        // above Provider Usage: 648 - 592 = 56 points down, less the clearance.
+        let cards = [span(190, 365), span(377, 472), span(484, 621), span(648, 833),
+                     span(845, 968), span(980, 1086)]
+        XCTAssertEqual(QARenderSnapshot.alignedCard(cards, contentHeight: 1098, viewportHeight: 506),
+                       span(648, 833))
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(cards: cards, contentHeight: 1098, viewportHeight: 506), 52)
+        let yieldScoreText = span(626, 636)
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(600, spans: [yieldScoreText]), [],
+                       "above the text")
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(630, spans: [yieldScoreText]), [yieldScoreText],
+                       "through the text, as the unshortened 1.54 page did")
+        XCTAssertEqual(QARenderSnapshot.cutByTopEdge(592 + 52, spans: cards + [yieldScoreText]), [])
     }
 
-    func testAPageAlreadyOpeningOnBackgroundNeedsNoTrim() {
-        let rows = Array(repeating: QARenderRow.blank, count: 12) + Array(repeating: .card, count: 10)
-        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: rows, scale: 3), 0)
-        XCTAssertEqual(QARenderSnapshot.alignedTrim(rows: [.card, .card], scale: 3), 0)
+    func testACardAlreadyJustBelowTheTopEdgeNeedsNoTrim() {
+        // The last page starts at 480, 4 points above Cost Summary.
+        let cards = [span(377, 472), span(484, 621), span(633, 818)]
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(cards: cards, contentHeight: 830, viewportHeight: 350), 0)
+        // 2 points above: less than the clearance, still nothing to take off.
+        XCTAssertEqual(QARenderSnapshot.alignedTrim(cards: cards, contentHeight: 832, viewportHeight: 350), 0)
     }
 
-    func testNegativeControlNoCardOrTextRunningIntoTheCardHasNoTrim() {
-        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.ink, .blank, .ink], scale: 3),
-                     "no card in view")
-        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.ink, .ink, .ink, .card], scale: 3),
-                     "no background between the text and the card")
-        XCTAssertNil(QARenderSnapshot.alignedTrim(rows: [.card], scale: 0))
+    func testNegativeControlNoCardToAlignAboveHasNoTrim() {
+        XCTAssertNil(QARenderSnapshot.alignedTrim(cards: [], contentHeight: 830, viewportHeight: 506),
+                     "no card measured")
+        XCTAssertNil(QARenderSnapshot.alignedTrim(cards: [span(12, 200), span(212, 500)],
+                                                  contentHeight: 512, viewportHeight: 506),
+                     "the first page showed every card whole")
+        XCTAssertNil(QARenderSnapshot.alignedTrim(cards: [span(12, 200), span(212, 900)],
+                                                  contentHeight: 912, viewportHeight: 506),
+                     "the last page (406) starts inside the only card the first page cut off")
+        XCTAssertNil(QARenderSnapshot.alignedTrim(cards: overview155, contentHeight: 748, viewportHeight: 0))
     }
 
     func testOnlyTheLastPetPageIsRefusedNotAnAlignedOverview() {

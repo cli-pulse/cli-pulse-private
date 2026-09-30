@@ -633,7 +633,8 @@ check("an RGBA Mac panel is refused", any("RGBA" in x for x in shots.panel_probl
 
 
 # The cost shot opens above a card in a shortened popover (QARenderSnapshot
-# alignedTrim); the fixtures give it a 551-point one, as the renders measured.
+# alignedTrim); the fixtures give it a 551-point one, as the 1.54 renders
+# measured (1.55's measure 458).
 MAC_ALIGNED = {"04_cost": 551}
 
 

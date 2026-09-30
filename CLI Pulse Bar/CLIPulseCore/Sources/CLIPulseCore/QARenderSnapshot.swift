@@ -355,8 +355,9 @@ public enum QARenderSnapshot {
     public static let storePopoverHeight = 580.0
     /// The shortest popover `MenuBarView` lets the user drag it to.
     public static let storePopoverMinHeight = 400.0
-    /// Points of background a `.lastAligned` page keeps between its top edge
-    /// and the first card below it.
+    /// Points a `.lastAligned` page keeps between its top edge and the card
+    /// it opens on: inside the 12 points the Overview's stack leaves between
+    /// cards, so the edge cuts through neither.
     public static let storeAlignedClearance = 4.0
     /// The usage panel's see-through HUD backdrop has nothing behind it
     /// offscreen; the renderer blends it within the window, over the panel's
@@ -500,64 +501,68 @@ public enum QARenderSnapshot {
 
     // MARK: - Framing a page scrolled to the end
 
-    /// Classifies one row of pixels (RGBA, one `UInt32` each, alpha in the
-    /// low byte) against the scroll view's background colour.
+    /// How many whole points to take off the popover's height so that the
+    /// page scrolled to the end opens `clearance` points above `alignedCard`:
+    /// where the first page left off, so it neither repeats a card the first
+    /// page already showed whole nor opens through the card, or the line of
+    /// text, above that one.
     ///
-    /// * `.card`: at least half the row differs from the background at all,
-    ///   as a card's fill, border or shadow does across its whole width;
-    /// * `.ink`: less than that, but some pixel differs clearly (by 24 or more
-    ///   in a channel), as text and icons do;
-    /// * `.blank`: neither.
+    /// `cards` are the view's cards and `contentHeight` its scrolling
+    /// content's height, all in points from the top of the content;
+    /// `viewportHeight` is how much of it one page shows at the pinned
+    /// popover height. The first page shows the content from 0 down to
+    /// `viewportHeight`, and the last page ends flush with the content, so
+    /// shortening the popover by `t` points moves its top edge `t` points down
+    /// the content. 0 when the card already starts within `clearance` below
+    /// the edge; nil when there is no such card.
     ///
-    /// A card whose fill is the background colour (the Overview's Yield
-    /// Score card is) reads as its text alone, which is what a top edge must
-    /// not cut through.
-    public static func rowKind(_ pixels: [UInt32], background: UInt32) -> QARenderRow {
-        guard !pixels.isEmpty else { return .blank }
-        func channels(_ value: UInt32) -> (Int, Int, Int) {
-            (Int(value >> 24 & 0xFF), Int(value >> 16 & 0xFF), Int(value >> 8 & 0xFF))
-        }
-        let bg = channels(background)
-        var differing = 0
-        var clear = false
-        for pixel in pixels {
-            let c = channels(pixel)
-            let delta = max(abs(c.0 - bg.0), abs(c.1 - bg.1), abs(c.2 - bg.2))
-            if delta >= 1 { differing += 1 }
-            if delta >= 24 { clear = true }
-        }
-        if differing * 2 >= pixels.count { return .card }
-        return clear ? .ink : .blank
-    }
-
-    /// How many whole points to take off the popover's height so that a page
-    /// scrolled to the end starts in the background above its first card,
-    /// rather than through the text of whatever lies above it (the Overview's
-    /// last page otherwise opens on half a line of the Yield Score card).
-    ///
-    /// `rows` are the page's pixel rows from the top of the scroll view down,
-    /// at `scale` pixels per point. Shortening the popover by `t` points moves
-    /// the top edge `t` points down the content, because the page stays flush
-    /// with the end. The result keeps at least `clearance` points of
-    /// background above the card where the space allows, and always one
-    /// row. 0 when nothing but background lies above the first card; nil when
-    /// no card is in view, or the text above it runs into it.
+    /// Cards, not pixels: the Overview's cards cast shadows that fill the
+    /// 12 points between them, so no row of pixels there is plain background
+    /// and a page cannot be split into cards and gaps by colour (1.55's
+    /// Overview, whose last page opened on the bottom edge of the Activity
+    /// card, read as a single card from the top edge down).
     public static func alignedTrim(
-        rows: [QARenderRow],
-        scale: Int,
+        cards: [QARenderSpan],
+        contentHeight: Double,
+        viewportHeight: Double,
         clearance: Double = storeAlignedClearance
     ) -> Int? {
-        guard scale > 0, let card = rows.firstIndex(of: .card) else { return nil }
-        guard let lastInk = rows[..<card].lastIndex(of: .ink) else { return 0 }
-        let perPoint = Double(scale)
-        // The smallest trim whose top row is below the last line of text…
-        let past = Int((Double(lastInk + 1) / perPoint).rounded(.up))
-        // …and the one that leaves `clearance` points above the card.
-        let clear = Int((Double(card) / perPoint - clearance).rounded(.down))
-        let trim = max(past, clear)
-        guard trim * scale < card else { return nil }
-        return trim
+        guard let card = alignedCard(cards, contentHeight: contentHeight, viewportHeight: viewportHeight)
+        else { return nil }
+        let room = card.top - lastPageTop(contentHeight: contentHeight, viewportHeight: viewportHeight)
+        return max(0, Int((room - clearance).rounded(.down)))
     }
+
+    /// The card a `.lastAligned` page opens on: the highest one that reaches
+    /// below the first page (which shows the content from 0 down to
+    /// `viewportHeight`) and starts at or below the last page's top edge,
+    /// where a shorter popover can bring that edge. nil when every card fits
+    /// on the first page, or the last page already starts inside the last
+    /// card.
+    public static func alignedCard(
+        _ cards: [QARenderSpan], contentHeight: Double, viewportHeight: Double
+    ) -> QARenderSpan? {
+        guard viewportHeight > 0 else { return nil }
+        let lastTop = lastPageTop(contentHeight: contentHeight, viewportHeight: viewportHeight)
+        return cards
+            .filter { $0.bottom > viewportHeight + spanTolerance && $0.top >= lastTop - spanTolerance }
+            .min { $0.top < $1.top }
+    }
+
+    /// Where the page scrolled to the end starts, in points from the top of
+    /// the content: it ends flush with the content.
+    public static func lastPageTop(contentHeight: Double, viewportHeight: Double) -> Double {
+        max(0, contentHeight - viewportHeight)
+    }
+
+    /// The drawn things a page's top edge, `top` points down the content,
+    /// cuts through: each starts above it and ends below it.
+    public static func cutByTopEdge(_ top: Double, spans: [QARenderSpan]) -> [QARenderSpan] {
+        spans.filter { $0.top < top - spanTolerance && $0.bottom > top + spanTolerance }
+    }
+
+    /// Half a pixel at the store set's scale: layout rounds frames to pixels.
+    static let spanTolerance = 0.5 / 3
 
     // MARK: - Checking a render
 
@@ -716,11 +721,16 @@ public enum QARenderSurface: Hashable {
     }
 }
 
-/// What one pixel row of a rendered page shows (`QARenderSnapshot.rowKind`).
-public enum QARenderRow: Equatable, Sendable {
-    case blank
-    case ink
-    case card
+/// Where something drawn in a scrolling view lies, in points from the top of
+/// the view's content (`QARenderSnapshot.alignedTrim`).
+public struct QARenderSpan: Equatable, Sendable {
+    public let top: Double
+    public let bottom: Double
+
+    public init(top: Double, bottom: Double) {
+        self.top = top
+        self.bottom = bottom
+    }
 }
 
 /// One Mac App Store screenshot of the store set (`QARenderSnapshot.storeCatalog`).
@@ -730,9 +740,10 @@ public struct QARenderStoreShot: Equatable, Sendable {
         case first
         /// Scrolled to the end, flush with the bottom of the content.
         case last
-        /// Scrolled to the end, in a popover shortened just enough that the
-        /// top edge falls in the space above a card instead of through a line
-        /// of text (`QARenderSnapshot.alignedTrim`). Users drag the popover
+        /// Scrolled to the end, in a popover shortened so that the top edge
+        /// falls just above the first card the first page did not show whole
+        /// (`QARenderSnapshot.alignedTrim`): the page starts where the first
+        /// one left off, and cuts through nothing. Users drag the popover
         /// anywhere between 400 and 900 points high, so the shorter popover
         /// is a state the app really has; render.json records its height.
         case lastAligned
