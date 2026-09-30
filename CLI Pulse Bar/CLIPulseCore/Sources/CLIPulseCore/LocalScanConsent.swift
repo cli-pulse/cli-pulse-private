@@ -113,7 +113,13 @@ public enum LocalScanConsentStore {
 public enum LocalScanDisclosure {
     /// The version the app currently shows.
     public static let currentVersion = 2
-    /// How far back an ordinary refresh reads (`CostUsageScanner.Options`).
+    /// How far back an ordinary refresh uses (`CostUsageScanner.Options`).
+    ///
+    /// "Uses", precisely: Codex logs are listed only from the date folders
+    /// inside the window, and a Claude log last written before it is not
+    /// opened. A Claude log still being written to is parsed from its start,
+    /// and its lines older than the window are dropped, not kept. The policy
+    /// words it the same way.
     public static let routineWindowDays = 30
     /// How far back the one-time history read goes
     /// (`DailyUsageArchiveManager.backfillDays`).
@@ -259,6 +265,11 @@ public enum LocalCollectionPolicy {
     /// user with nothing on file: they have now read the whole disclosure and
     /// chosen to keep scanning, and recording it means a later sign-out into
     /// local mode does not put the same questions to them a second time.
+    ///
+    /// Which also means that screen offers a signed-in user no way to refuse
+    /// the 30-day scan itself. That is the 1.50 rule — signing in implies the
+    /// scan, and the scan switch is shown only in local mode — not a new one:
+    /// while signed in, signing out is what stops it, and the policy says so.
     ///
     /// "Not now" leaves v2 as it was. Its meaning is "read nothing", and while
     /// v1 is `.declined` the v2 answer is not consulted; if they turn the scan

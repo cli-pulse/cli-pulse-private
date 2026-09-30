@@ -302,7 +302,9 @@ final class LocalScanConsentV2Tests: XCTestCase {
 
     /// The placement test. A real `refreshAll` down the `.localOnly` route, a
     /// successful scan, and a runtime that records which answer the refresh
-    /// handed to the durable stores and the backfill.
+    /// handed to the durable stores and the backfill. The same decisions on the
+    /// paired cloud route are pinned in `DataRefreshManagerProviderAccountBoundaryTests`,
+    /// which has the stubbed Supabase that route needs.
     @MainActor
     private func historyReadDecisions(
         consent: LocalScanConsent,

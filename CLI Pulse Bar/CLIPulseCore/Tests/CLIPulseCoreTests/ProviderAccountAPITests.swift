@@ -2026,6 +2026,155 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         )
     }
 
+    // MARK: - v1.55: consent on the cloud route
+
+    // A signed-in Mac takes this route whenever its account is paired, and
+    // `paired` is per account: pairing a helper sets it, and so does signing in
+    // to the desktop app with a one-time code. So these are not edge cases.
+    // `LocalScanConsentV2Tests` pins the same decisions on the local route.
+
+    private static let oneScannedDay = CostUsageScanResult.DailyEntry(
+        date: "2026-09-01", provider: "Codex", model: "gpt-5",
+        inputTokens: 100, cachedTokens: 0, outputTokens: 10,
+        costUSD: 0.01, messageCount: 0
+    )
+
+    /// Runs one cloud refresh with a successful scan and returns what the
+    /// refresh handed the history stores: whether the read beyond 30 days
+    /// was allowed, once per call.
+    private func cloudHistoryReadDecisions(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent
+    ) async -> [Bool] {
+        ProviderAccountAPIStubProtocol.reset()
+        installCloudRefreshHandler(includeAlert: false)
+        let api = await makeAPI()
+        let log = LocalHistoryCallLog()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .recording(
+                LocalRuntimeRecorder(),
+                historyLog: log,
+                costEntries: [Self.oneScannedDay]
+            )
+        )
+        await manager.refreshAll(
+            context: makeContext(
+                notificationsEnabled: false,
+                localScanConsent: consent,
+                localScanConsentV2: consentV2
+            ),
+            callbacks: makeCallbacks(applyPayload: { _ in }, afterRefresh: {})
+        )
+        return log.historyReadAllowed
+    }
+
+    func testCloudRouteKeepsTheYearClosedWithoutAV2Yes() async {
+        let undecided = await cloudHistoryReadDecisions(
+            consent: .granted, consentV2: .undecided
+        )
+        XCTAssertEqual(undecided, [false], "a v1 yes alone opened the one-year read")
+        let refused = await cloudHistoryReadDecisions(
+            consent: .granted, consentV2: .declined
+        )
+        XCTAssertEqual(refused, [false], "a v2 no opened the one-year read")
+        // Signed in with nothing on file: the account stands in for v1, never
+        // for v2.
+        let signedInOnly = await cloudHistoryReadDecisions(
+            consent: .undecided, consentV2: .undecided
+        )
+        XCTAssertEqual(signedInOnly, [false], "signing in opened the one-year read")
+    }
+
+    /// The other half: without it, the test above would pass on a cloud route
+    /// that never lets the backfill run at all.
+    func testCloudRouteOpensTheYearAfterAV2Yes() async {
+        let granted = await cloudHistoryReadDecisions(
+            consent: .granted, consentV2: .granted
+        )
+        XCTAssertEqual(granted, [true])
+    }
+
+    /// "Not now" is not overridden by signing in later — on this route too.
+    /// Nothing on this Mac is read or uploaded; the account's cloud data is
+    /// still shown.
+    func testCloudRouteReadsNothingOnThisMacAfterNotNow() async {
+        for consentV2 in LocalScanConsent.allCases {
+            ProviderAccountAPIStubProtocol.reset()
+            installCloudRefreshHandler(includeAlert: false)
+            let api = await makeAPI()
+            let recorder = LocalRuntimeRecorder()
+            let history = LocalHistoryCallLog()
+            let syncReads = LocalSyncReadLog()
+            let manager = DataRefreshManager(
+                api: api,
+                localRuntime: .recording(
+                    recorder,
+                    historyLog: history,
+                    syncReads: syncReads,
+                    costEntries: [Self.oneScannedDay]
+                )
+            )
+            var payloads: [DataRefreshManager.RefreshPayload] = []
+            var outcomePublications = 0
+            await manager.refreshAll(
+                context: makeContext(
+                    notificationsEnabled: false,
+                    localScanConsent: .declined,
+                    localScanConsentV2: consentV2
+                ),
+                callbacks: makeCallbacks(
+                    applyPayload: { payloads.append($0) },
+                    afterRefresh: {},
+                    setCollectorOutcomes: { _ in outcomePublications += 1 }
+                )
+            )
+            let counts = await recorder.counts
+            XCTAssertEqual(counts, [:], "declined + v2 \(consentV2): the cloud route read or uploaded this Mac")
+            XCTAssertEqual(syncReads.names, [], "declined + v2 \(consentV2)")
+            XCTAssertEqual(history.historyReadAllowed, [], "declined + v2 \(consentV2) reached the stores")
+            XCTAssertEqual(outcomePublications, 0, "declined + v2 \(consentV2) published collector outcomes")
+            XCTAssertEqual(payloads.count, 1, "the account's cloud data must still be shown")
+            XCTAssertNil(payloads.first?.costUsageScanResult)
+        }
+    }
+
+    /// The positive control for the test above: with a yes on file the same
+    /// route does read this Mac, so an empty recorder there means the gate,
+    /// not a broken harness.
+    func testCloudRouteReadsThisMacWithAYes() async {
+        installCloudRefreshHandler(includeAlert: false)
+        let api = await makeAPI()
+        let recorder = LocalRuntimeRecorder()
+        let syncReads = LocalSyncReadLog()
+        let manager = DataRefreshManager(
+            api: api,
+            localRuntime: .recording(
+                recorder,
+                syncReads: syncReads,
+                costEntries: [Self.oneScannedDay]
+            )
+        )
+        var outcomePublications = 0
+        await manager.refreshAll(
+            context: makeContext(
+                notificationsEnabled: false,
+                localScanConsent: .granted,
+                localScanConsentV2: .undecided
+            ),
+            callbacks: makeCallbacks(
+                applyPayload: { _ in },
+                afterRefresh: {},
+                setCollectorOutcomes: { _ in outcomePublications += 1 }
+            )
+        )
+        let counts = await recorder.counts
+        XCTAssertEqual(counts["collectAccountPass"], 1)
+        XCTAssertEqual(counts["scanCostUsage"], 1)
+        XCTAssertEqual(syncReads.names, ["prepareCredentials", "readHelperSnapshot"])
+        XCTAssertEqual(outcomePublications, 1)
+    }
+
     private func makeAPI() async -> APIClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ProviderAccountAPIStubProtocol.self]
@@ -2051,7 +2200,9 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
 
     private func makeContext(
         notificationsEnabled: Bool,
-        isPaired: Bool = true
+        isPaired: Bool = true,
+        localScanConsent: LocalScanConsent = .granted,
+        localScanConsentV2: LocalScanConsent = .granted
     ) -> DataRefreshManager.Context {
         DataRefreshManager.Context(
             isAuthenticated: true,
@@ -2067,11 +2218,12 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             currentTierName: "Pro",
             tierResolutionState: .resolvedConfirmed,
             isLocalMode: false,
-            // These cases are about provider-account sync, not about consent.
-            // Stated explicitly rather than defaulted so the refresh gate can
-            // never be the silent reason one of them goes green.
-            localScanConsent: .granted,
-            localScanConsentV2: .granted
+            // The provider-account cases are about sync, not about consent, and
+            // pass nothing here: both answers are a yes, spelled out in the
+            // signature, so the refresh gate can never be the silent reason one
+            // of them goes green. Only the consent cases below change them.
+            localScanConsent: localScanConsent,
+            localScanConsentV2: localScanConsentV2
         )
     }
 

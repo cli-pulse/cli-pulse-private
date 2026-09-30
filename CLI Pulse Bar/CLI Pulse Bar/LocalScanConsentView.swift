@@ -42,7 +42,9 @@ import CLIPulseCore
 ///     signed-in account) and the older logs have no answer. Two answers, and
 ///     both keep the 30-day scan: refusing v2 is not taking back v1. There is
 ///     no "Not now" here because it would mean something much bigger than the
-///     question being asked; switching the scan off stays in Settings.
+///     question being asked. Switching the scan off stays where it was: the
+///     Settings switch in local mode, and signing out for a signed-in user,
+///     who has no scan switch (1.50: the account implies the scan).
 ///
 /// Both shapes carry the whole disclosure, not only the new line: the signed-in
 /// users who see `.olderLogs` were let through on the strength of their account
@@ -232,10 +234,13 @@ struct LocalScanDeclinedCard: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button(L10n.localScanConsent.start) {
-                // Turns the 30-day scan back on and nothing more. The older
-                // logs are left unanswered on purpose, so the popover asks about
-                // them next with the whole disclosure in view (`.olderLogs`),
-                // instead of a card this small deciding a year of reads.
+                // Turns the 30-day scan back on and leaves the older-logs
+                // answer as it was, instead of a card this small deciding a year
+                // of reads. Unanswered, the popover asks about them next with the
+                // whole disclosure in view (`.olderLogs`). An earlier answer
+                // stands: a no keeps it to 30 days, and a yes given before the
+                // scan was turned off lets the one-time read resume — the yes
+                // that "Start local scan" meant on the first ask.
                 state.localScanConsent = .granted
                 state.requestRefresh()
             }

@@ -61,7 +61,8 @@ internal final class DataRefreshManager {
         let isLocalMode: Bool
         /// v1.50 W-C: the user's answer to "may CLI Pulse read this Mac".
         /// Read by the gate at the top of `refreshLocal`, which runs before
-        /// collectors, before the JSONL scan, and before any durable write.
+        /// collectors, before the JSONL scan, and before any durable write —
+        /// and, since v1.55, by the cloud route before its own local pass.
         let localScanConsent: LocalScanConsent
         /// v1.55: the answer to disclosure v2 — may anything older than the
         /// routine 30 days be read. Decides whether the one-time usage-history
@@ -390,22 +391,46 @@ internal final class DataRefreshManager {
                 providerSummaryData.providerAccounts
 
             #if os(macOS)
+            // v1.55: the v1.50 consent gate, on this route too.
+            //
+            // `refreshLocal` has checked it since 1.50; this route never did.
+            // It is not a rare route: `isPaired` comes from `profiles.paired`,
+            // which is per account, and pairing a helper or signing in to the
+            // desktop app with a one-time code sets it. So any signed-in Mac on
+            // such an account came here, and a "Not now" on file still ran the
+            // collectors, the credential sync and the 30-day scan — while the
+            // policy says "Not now" is not overridden by signing in later.
+            //
+            // Declined skips everything that reads this Mac, and what would
+            // upload its results; the account's cloud data is still shown.
+            // The route is only taken when signed in, so this is "not declined".
+            let mayReadThisMac = LocalCollectionPolicy.allowsCollection(
+                isAuthenticated: context.isAuthenticated,
+                consent: context.localScanConsent
+            )
+
             // Sync credentials from bookmarked directories to app group
             // so both main app collectors and helper can use them
-            localRuntime.prepareCredentials()
+            if mayReadThisMac {
+                localRuntime.prepareCredentials()
+            }
 
-            let mainPass = await localRuntime.collectAccountPass(
-                context.providerConfigs
-            )
+            let mainPass = mayReadThisMac
+                ? await localRuntime.collectAccountPass(
+                    context.providerConfigs
+                )
+                : .empty
             // A cancelled pass can contain cancellation-shaped network
             // failures. Never publish those outcomes or any stale payload.
             guard !Task.isCancelled else {
                 callbacks.setLoading(false)
                 return
             }
-            let helperSnapshot = localRuntime.readHelperSnapshot(
-                context.providerConfigs
-            )
+            let helperSnapshot = mayReadThisMac
+                ? localRuntime.readHelperSnapshot(
+                    context.providerConfigs
+                )
+                : .empty
             let collectorSources = Self.combineCollectorSources(
                 mainAccountResults: mainPass.accountResults,
                 helperSnapshot: helperSnapshot
@@ -458,13 +483,17 @@ internal final class DataRefreshManager {
             // Scan local JSONL logs for precise token counts and costs.
             // v1.9.4: uses the sandbox-aware entry point so bookmarks are
             // resolved on the main actor before the enumerator runs.
-            let costScanData = await localRuntime.scanCostUsage()
+            let costScanData = mayReadThisMac
+                ? await localRuntime.scanCostUsage()
+                : CostUsageScanResult(entries: [])
             let scanResult: CostUsageScanResult? = costScanData.entries.isEmpty ? nil : costScanData
             // Surface the "grant folder access" banner when a scan came back
             // empty AND at least one core scan root still lacks a bookmark.
-            let needsAccess = localRuntime.needsFolderAccessNudge(
-                scanResult == nil
-            )
+            // Not after "Not now": asking for folder access to logs the user
+            // said not to read would be the nag that answer rules out.
+            let needsAccess = mayReadThisMac
+                ? localRuntime.needsFolderAccessNudge(scanResult == nil)
+                : false
             await callbacks.setNeedsFolderAccess(needsAccess)
 
             // v1.40 PR-4: fold the scan into the durable ≥1-year usage archive
@@ -646,9 +675,14 @@ internal final class DataRefreshManager {
             }
 
             #if os(macOS)
-            callbacks.setCollectorOutcomes(
-                mainPass.providerOutcomes
-            )
+            // After "Not now" no collector ran, so there is no outcome to
+            // publish — and an empty one would be reported upstream as this
+            // Mac's collector status. `refreshLocal` publishes none either.
+            if mayReadThisMac {
+                callbacks.setCollectorOutcomes(
+                    mainPass.providerOutcomes
+                )
+            }
             #endif
             if context.notificationsEnabled {
                 for alert in newAlerts where AlertNotificationPolicy.shouldNotify(
@@ -687,6 +721,8 @@ internal final class DataRefreshManager {
             // from every active account; a later legacy write would overwrite
             // that deterministic projection.
             async let providerQuotaSync: Void = {
+                // Nothing was collected after "Not now", so nothing is sent.
+                guard mayReadThisMac else { return }
                 await localRuntime.syncLegacyQuotas(
                     cloudOwnedLocalResults,
                     authorizationLease

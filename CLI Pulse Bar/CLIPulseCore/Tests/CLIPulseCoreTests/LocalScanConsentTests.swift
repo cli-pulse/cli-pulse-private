@@ -339,21 +339,43 @@ final class LocalHistoryCallLog: @unchecked Sendable {
     }
 }
 
+/// The two synchronous reads of this Mac a refresh can make — copying provider
+/// credentials into the app group, and reading the helper's snapshot. A lock
+/// rather than the actor above because both seams are synchronous.
+final class LocalSyncReadLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls: [String] = []
+
+    func append(_ name: String) {
+        lock.lock(); defer { lock.unlock() }
+        calls.append(name)
+    }
+
+    var names: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return calls
+    }
+}
+
 extension DataRefreshManager.LocalRefreshRuntime {
     /// `costEntries` non-empty makes the scan look successful, which is what
     /// lets a refresh reach the durable stores and the backfill decision.
     static func recording(
         _ recorder: LocalRuntimeRecorder,
         historyLog: LocalHistoryCallLog = LocalHistoryCallLog(),
+        syncReads: LocalSyncReadLog = LocalSyncReadLog(),
         costEntries: [CostUsageScanResult.DailyEntry] = []
     ) -> Self {
         Self(
-            prepareCredentials: {},
+            prepareCredentials: { syncReads.append("prepareCredentials") },
             collectAccountPass: { _ in
                 await recorder.record("collectAccountPass")
                 return .empty
             },
-            readHelperSnapshot: { _ in .empty },
+            readHelperSnapshot: { _ in
+                syncReads.append("readHelperSnapshot")
+                return .empty
+            },
             scanLocal: {
                 await recorder.record("scanLocal")
                 return LocalScanResult(
