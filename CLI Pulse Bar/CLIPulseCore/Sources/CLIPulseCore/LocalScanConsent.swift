@@ -140,6 +140,28 @@ public enum LocalScanQuestion: Equatable, Sendable {
     case olderLogs
 }
 
+extension LocalScanQuestion {
+    /// The caption under the screen's answers.
+    ///
+    /// The first ask's usual caption ends "Whichever you choose, you can change
+    /// it any time in Settings › Privacy". Without an account that holds: the
+    /// scan switch is there. A signed-in Mac sees the first ask only through
+    /// "Choose again…", and while signed in there is no scan switch (the account
+    /// stands in for a yes), so after a yes Settings changes only the older-logs
+    /// answer and signing out is what stops the scan. It gets a caption that
+    /// says so.
+    public func caption(isAuthenticated: Bool) -> String {
+        switch self {
+        case .firstAsk:
+            return isAuthenticated
+                ? L10n.localScanConsent.firstAskHintSignedIn
+                : L10n.localScanConsent.firstAskHint
+        case .olderLogs:
+            return L10n.localScanConsent.changeLater
+        }
+    }
+}
+
 /// The buttons on the disclosure, as answers. Kept apart from the view so the
 /// state each one leaves behind can be tested without a window.
 public enum LocalScanChoice: Equatable, Sendable {

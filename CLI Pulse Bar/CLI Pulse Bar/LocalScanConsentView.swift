@@ -36,8 +36,13 @@ import CLIPulseCore
 /// read up to a year. v2 says both, and makes the part beyond 30 days its own
 /// answer, so the screen has two shapes:
 ///
-///   * `.firstAsk` — nothing is on file and nothing is read yet. Three answers:
-///     everything ("Start local scan"), the 30-day scan alone, or nothing.
+///   * `.firstAsk` — no answer about the scan itself is on file, or a
+///     signed-in "Not now" asked to choose again. Three answers: everything
+///     ("Start local scan"), the 30-day scan alone, or nothing. Shown to a
+///     local-mode Mac with nothing on file, including one that was read before
+///     (a signed-in user who answered only the older-logs question and then
+///     signed out), and to a signed-in Mac through "Choose again…", which gets
+///     its own caption (`LocalScanQuestion.caption(isAuthenticated:)`).
 ///   * `.olderLogs` — the routine scan is already running (a v1 yes, or a
 ///     signed-in account) and the older logs have no answer. Two answers, and
 ///     both keep the 30-day scan: refusing v2 is not taking back v1. There is
@@ -106,9 +111,9 @@ struct LocalScanConsentView: View {
                     olderLogsButtons
                 }
 
-                Text(mode == .firstAsk
-                     ? L10n.localScanConsent.firstAskHint
-                     : L10n.localScanConsent.changeLater)
+                // Signed in, the first ask is the one "Choose again…" reopened,
+                // and its caption says what Settings can and cannot change then.
+                Text(mode.caption(isAuthenticated: state.isAuthenticated))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

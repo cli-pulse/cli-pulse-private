@@ -49,6 +49,10 @@ public struct CodexCollector: ProviderCollector, Sendable {
             throw CollectorError.missingCredentials(CredentialProblem(nil, .accessTokenNilAfterRefresh("Codex")))
         }
         let usageData = try await fetchUsage(accessToken: currentToken, accountId: auth.accountId)
+        // The pass goes through the memory, or a spent balance loses its row.
+        // Nothing calls `collect()` in a test (it needs the network); the
+        // overload below is covered by CodexCreditsBalanceTests'
+        // `testTheRowOutlivesTheLastCreditAcrossPasses`.
         return buildResult(
             usage: usageData,
             accountId: auth.accountId,
@@ -435,8 +439,9 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     /// `accountHadCredits`: this account had credits on an earlier pass
     /// (`CodexCreditsMemory`). A parameter, not a read, so tests and fixtures
-    /// never touch the app group's defaults.
-    func buildResult(usage: UsageResponse, accountHadCredits: Bool = false) -> CollectorResult {
+    /// never touch the app group's defaults. No default value: a caller that
+    /// forgot the memory would silently drop every spent balance's row.
+    func buildResult(usage: UsageResponse, accountHadCredits: Bool) -> CollectorResult {
         var tiers: [TierDTO] = []
         let isoFormatter = sharedISO8601Formatter
 

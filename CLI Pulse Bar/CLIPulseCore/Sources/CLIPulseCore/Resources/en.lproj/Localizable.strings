@@ -1151,7 +1151,9 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.declined_body" = "CLI Pulse is not reading anything on this Mac, so there is nothing to show yet.";
 /* v1.55 disclosure v2. first_ask_hint names local_scan_consent.start and local_scan_consent.last_30_days_only by their whole labels; LocalScanConsentCopyTests fails if they drift. */
 "local_scan_consent.last_30_days_only" = "Last 30 days only";
-"local_scan_consent.first_ask_hint" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, and usage history already built stays on this Mac. Whichever you choose, you can change it any time in Settings › Privacy.";
+"local_scan_consent.first_ask_hint" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, but usage history already built stays on this Mac. Whichever you choose, you can change it any time in Settings › Privacy.";
+/* v1.55: the first ask's caption when "Choose again…" reopens it for a signed-in Mac. The local-mode caption promises the scan can be changed in Settings › Privacy, which holds only without an account. Quotes local_scan_consent.start, .last_30_days_only and .not_now by their whole labels; LocalScanConsentCopyTests fails if they drift. */
+"local_scan_consent.first_ask_hint_signed_in" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, but usage history already built stays on this Mac. While you are signed in, Settings › Privacy can later change the answer about older logs, or bring this question back after “Not now”; signing out stops the scan.";
 "local_scan_consent.v2_title" = "Before CLI Pulse reads older logs";
 "local_scan_consent.v2_subtitle" = "Each refresh reads the last 30 days. To fill in your usage history, CLI Pulse can also read up to a year of older session logs, once. It now asks first. Either answer keeps the 30-day scan running, and history already built stays on this Mac.";
 "local_scan_consent.include_history" = "Include older history";
@@ -1386,7 +1388,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.history_toggle" = "Include older usage history";
 "local_scan_consent.history_toggle_detail" = "Reads up to a year of older session logs, once, to fill in your usage history. Off keeps CLI Pulse to the last 30 days; history already built stays on this Mac.";
 /* v1.55: Settings › Privacy, for a signed-in Mac whose answer is "Not now". settings_declined_detail quotes local_scan_consent.not_now by its whole label; LocalScanConsentCopyTests fails if they drift. */
-"local_scan_consent.settings_declined_detail" = "You chose “Not now”, so CLI Pulse reads nothing on this Mac. Signing in does not change that.";
+"local_scan_consent.settings_declined_detail" = "You chose “Not now”. Being signed in does not change that.";
 "local_scan_consent.choose_again" = "Choose again…";
 "settings.local_only_mode" = "Strict privacy mode";
 "settings.local_only_mode_hint" = "CLI Pulse won't read Claude Code's keychain item on its own, and sends no anonymous statistics. Usage from log files in your home folder, and syncing to your account, are not affected.";

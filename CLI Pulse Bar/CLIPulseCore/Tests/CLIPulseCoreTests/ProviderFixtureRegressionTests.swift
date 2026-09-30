@@ -29,7 +29,7 @@ final class ProviderFixtureRegressionTests: XCTestCase {
         """.data(using: .utf8)!
 
         let parsed = try CodexCollector.parseUsage(json)
-        let result = CodexCollector().buildResult(usage: parsed)
+        let result = CodexCollector().buildResult(usage: parsed, accountHadCredits: false)
 
         assertDataKind(result, .quota)
         XCTAssertEqual(result.usage.plan_type, "Plus")

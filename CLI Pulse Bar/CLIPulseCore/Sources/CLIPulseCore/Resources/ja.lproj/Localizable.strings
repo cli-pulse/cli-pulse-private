@@ -1137,7 +1137,7 @@
 
 /* v1.50 W-C — この Mac を読み取る前の選択 */
 "local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";
-"local_scan_consent.subtitle" = "スキャンを始めるまで、CLI Pulse は何も読み取りません。スキャンを始めると有効になるのは以下です。";
+"local_scan_consent.subtitle" = "スキャンを始めるまで、CLI Pulse は何も読み取りません。始めると、以下が有効になります。";
 "local_scan_consent.files_title" = "セッションログ：直近 30 日と、一度だけ最大 1 年分";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。更新のたびに直近 30 日分を読み取ります。許可した場合に限り、使用履歴を補完するため、最大 1 年分の古いログも一度だけ読み取ります。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "そこから割り出すもの";
@@ -1155,6 +1155,7 @@
 "local_scan_consent.declined_body" = "CLI Pulse はこの Mac の何も読み取っていないため、表示できるものはまだありません。";
 "local_scan_consent.last_30_days_only" = "直近 30 日のみ";
 "local_scan_consent.first_ask_hint" = "「ローカルスキャンを開始」には古いログの一度きりの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。どれを選んでも、「設定 › プライバシー」でいつでも変更できます。";
+"local_scan_consent.first_ask_hint_signed_in" = "「ローカルスキャンを開始」には古いログの一度きりの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。サインイン中は、あとから「設定 › プライバシー」で古いログの設定を変えたり、「今はしない」を選んだ後にこの質問をもう一度表示したりできます。サインアウトするとスキャンは止まります。";
 "local_scan_consent.v2_title" = "CLI Pulse が古いログを読み取る前に";
 "local_scan_consent.v2_subtitle" = "更新のたびに直近 30 日分を読み取ります。使用履歴を補完するため、CLI Pulse は最大 1 年分の古いセッションログを一度だけ読み取ることもできます。読み取る前に確認するようになりました。どちらを選んでも直近 30 日のスキャンは続き、作成済みの履歴はこの Mac に残ります。";
 "local_scan_consent.include_history" = "古い履歴も含める";
@@ -1388,7 +1389,7 @@
 "local_scan_consent.settings_toggle_detail" = "更新のたびに ~/.codex と ~/.claude にある直近 30 日のセッションログを読み取り、利用中のプロバイダーにリアルタイムの残量を問い合わせます。古いログは別のスイッチで設定します。オフにすると、CLI Pulse はこの Mac の何も読み取りません。";
 "local_scan_consent.history_toggle" = "古い使用履歴も含める";
 "local_scan_consent.history_toggle_detail" = "使用履歴を補完するため、最大 1 年分の古いセッションログを一度だけ読み取ります。オフにすると、CLI Pulse は直近 30 日分だけを読み取ります。作成済みの履歴はこの Mac に残ります。";
-"local_scan_consent.settings_declined_detail" = "「今はしない」を選んだため、CLI Pulse はこの Mac の何も読み取りません。サインインしても、この選択は変わりません。";
+"local_scan_consent.settings_declined_detail" = "「今はしない」を選びました。サインインしていても、この選択は変わりません。";
 "local_scan_consent.choose_again" = "選び直す…";
 "settings.local_only_mode" = "プライバシー強化モード";
 "settings.local_only_mode_hint" = "CLI Pulse が Claude Code のキーチェーン項目を自動で読み取ることはなく、匿名の統計情報も送信しません。ホームフォルダ内のログファイルからの使用量と、アカウントへの同期はそのまま使えます。";

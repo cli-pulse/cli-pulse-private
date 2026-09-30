@@ -108,6 +108,7 @@ final class LocalScanConsentCopyTests: XCTestCase {
                 "subtitle": L10n.localScanConsent.subtitle,
                 "settings_declined_detail": L10n.localScanConsent.settingsDeclinedDetail,
                 "choose_again": L10n.localScanConsent.chooseAgain,
+                "first_ask_hint_signed_in": L10n.localScanConsent.firstAskHintSignedIn,
             ]
         }
         let english = inLocale("en") { texts() }
@@ -131,13 +132,47 @@ final class LocalScanConsentCopyTests: XCTestCase {
     /// caption pointing at a button that is not there.
     func test_theFirstAskHintQuotesTheButtonsAsTheyAreLabelled() {
         for locale in Self.locales {
-            let (hint, start, last30) = inLocale(locale) {
+            let (hint, signedIn, start, last30, notNow) = inLocale(locale) {
                 (L10n.localScanConsent.firstAskHint,
+                 L10n.localScanConsent.firstAskHintSignedIn,
                  L10n.localScanConsent.start,
-                 L10n.localScanConsent.lastThirtyDaysOnly)
+                 L10n.localScanConsent.lastThirtyDaysOnly,
+                 L10n.localScanConsent.notNow)
             }
-            XCTAssertTrue(hint.contains(start), "\(locale): \"\(hint)\" does not name \"\(start)\"")
-            XCTAssertTrue(hint.contains(last30), "\(locale): \"\(hint)\" does not name \"\(last30)\"")
+            for caption in [hint, signedIn] {
+                XCTAssertTrue(caption.contains(start), "\(locale): \"\(caption)\" does not name \"\(start)\"")
+                XCTAssertTrue(caption.contains(last30), "\(locale): \"\(caption)\" does not name \"\(last30)\"")
+            }
+            XCTAssertTrue(signedIn.contains(notNow), "\(locale): \"\(signedIn)\" does not name \"\(notNow)\"")
+        }
+    }
+
+    /// The first ask's usual caption ends "you can change it any time in
+    /// Settings › Privacy", which holds without an account. A signed-in Mac
+    /// reaches the first ask only through "Choose again…", has no scan switch
+    /// while signed in, and gets a caption of its own. The older-logs ask keeps
+    /// its caption either way.
+    func test_aSignedInFirstAskHasItsOwnCaption() {
+        for locale in Self.locales {
+            let captions = inLocale(locale) {
+                (local: LocalScanQuestion.firstAsk.caption(isAuthenticated: false),
+                 signedIn: LocalScanQuestion.firstAsk.caption(isAuthenticated: true),
+                 olderLocal: LocalScanQuestion.olderLogs.caption(isAuthenticated: false),
+                 olderSignedIn: LocalScanQuestion.olderLogs.caption(isAuthenticated: true),
+                 expected: (L10n.localScanConsent.firstAskHint,
+                            L10n.localScanConsent.firstAskHintSignedIn,
+                            L10n.localScanConsent.changeLater))
+            }
+            XCTAssertEqual(captions.local, captions.expected.0, locale)
+            XCTAssertEqual(captions.signedIn, captions.expected.1, locale)
+            XCTAssertNotEqual(captions.signedIn, captions.local, "\(locale): one caption for both")
+            XCTAssertEqual(captions.olderLocal, captions.expected.2, locale)
+            XCTAssertEqual(captions.olderSignedIn, captions.expected.2, locale)
+        }
+        inLocale("zh-Hans") {
+            let signedIn = LocalScanQuestion.firstAsk.caption(isAuthenticated: true)
+            XCTAssertFalse(signedIn.contains("随时可以改"), "the signed-in caption promises the scan switch")
+            XCTAssertTrue(signedIn.contains("退出登录"), "the signed-in caption does not say signing out stops the scan")
         }
     }
 
@@ -159,6 +194,7 @@ final class LocalScanConsentCopyTests: XCTestCase {
             let texts = inLocale(locale) {
                 [
                     "first_ask_hint": L10n.localScanConsent.firstAskHint,
+                    "first_ask_hint_signed_in": L10n.localScanConsent.firstAskHintSignedIn,
                     "v2_subtitle": L10n.localScanConsent.v2Subtitle,
                     "history_toggle_detail": L10n.localScanConsent.historyToggleDetail,
                 ]

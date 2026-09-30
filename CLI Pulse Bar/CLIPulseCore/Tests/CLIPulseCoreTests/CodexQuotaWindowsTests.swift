@@ -556,7 +556,7 @@ final class CodexCollectorWindowTests: XCTestCase {
     private func build(_ rateLimit: String) throws -> ProviderUsage {
         let json = #"{"plan_type": "plus", "rate_limit": "# + rateLimit + "}"
         let usage = try CodexCollector.parseUsage(Data(json.utf8))
-        return CodexCollector().buildResult(usage: usage).usage
+        return CodexCollector().buildResult(usage: usage, accountHadCredits: false).usage
     }
 
     func testWindowsCarryTheirLengthAndRole() throws {

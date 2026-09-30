@@ -546,4 +546,96 @@ final class LocalScanConsentV2Tests: XCTestCase {
     )
 }
 
+/// The `AppState` half of "Choose again…". `LocalScanConsentState` decides what
+/// each step leaves behind (tested above without an `AppState`); these check
+/// that `AppState` copies all of it back. The struct tests alone would pass if
+/// `answerLocalScanDisclosure` stopped copying the request back, and the
+/// reopened ask would then stay up after "Not now", since no answer changes.
+///
+/// A real `AppState` writes the two consent keys to `UserDefaults.standard`
+/// (`LocalScanConsentStore`'s default), so each test puts back what was there.
+/// Everything else it stores goes to a throwaway suite.
+@MainActor
+final class LocalScanChooseAgainAppStateTests: XCTestCase {
+
+    private var suiteName = ""
+    private var defaults: UserDefaults!
+    private var savedConsent: [String: Any] = [:]
+
+    private static let consentKeys = [LocalScanConsentStore.key, LocalScanConsentStore.v2Key]
+
+    override func setUp() {
+        super.setUp()
+        suiteName = "com.clipulse.tests.choose-again.\(UUID().uuidString)"
+        defaults = UserDefaults(suiteName: suiteName)
+        savedConsent = [:]
+        for key in Self.consentKeys {
+            if let value = UserDefaults.standard.object(forKey: key) { savedConsent[key] = value }
+        }
+    }
+
+    override func tearDown() {
+        for key in Self.consentKeys {
+            if let value = savedConsent[key] {
+                UserDefaults.standard.set(value, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        defaults.removePersistentDomain(forName: suiteName)
+        defaults = nil
+        super.tearDown()
+    }
+
+    /// Signed in, not Demo, answer "Not now": the one Mac Settings offers
+    /// "Choose again…" to.
+    private func makeSignedInNotNow() -> AppState {
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false
+        )
+        state.isAuthenticated = true
+        state.localScanConsent = .declined
+        state.localScanConsentV2 = .undecided
+        return state
+    }
+
+    private func presentsAgain(_ state: AppState) -> Bool {
+        LocalCollectionPolicy.shouldPresentDisclosureAgain(
+            requested: state.isChoosingLocalScanAgain,
+            isAuthenticated: state.isAuthenticated,
+            isDemoMode: state.isDemoMode,
+            consent: state.localScanConsent
+        )
+    }
+
+    func testNotNowOnTheReopenedAskTakesItDown() {
+        let state = makeSignedInNotNow()
+        state.chooseLocalScanAgain()
+        XCTAssertTrue(state.isChoosingLocalScanAgain, "Choose again… did not reopen the first ask")
+        XCTAssertTrue(presentsAgain(state))
+
+        state.answerLocalScanDisclosure(.notNow, to: .firstAsk)
+
+        XCTAssertFalse(state.isChoosingLocalScanAgain, "the reopened ask stayed up after Not now")
+        XCTAssertFalse(presentsAgain(state))
+        XCTAssertEqual(state.localScanConsent, .declined)
+        XCTAssertEqual(LocalScanConsentStore.load(), .declined)
+        XCTAssertEqual(state.localScanConsentV2, .undecided)
+    }
+
+    func testChooseAgainDoesNothingWhereSettingsDoesNotOfferIt() {
+        let signedOut = makeSignedInNotNow()
+        signedOut.isAuthenticated = false
+        signedOut.chooseLocalScanAgain()
+        XCTAssertFalse(signedOut.isChoosingLocalScanAgain, "signed out was put the question")
+
+        let scanning = makeSignedInNotNow()
+        scanning.localScanConsent = .granted
+        scanning.chooseLocalScanAgain()
+        XCTAssertFalse(scanning.isChoosingLocalScanAgain, "a yes was put the question")
+    }
+}
+
 #endif

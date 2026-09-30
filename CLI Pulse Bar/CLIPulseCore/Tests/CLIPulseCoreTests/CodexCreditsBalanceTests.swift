@@ -258,7 +258,7 @@ final class CodexCreditsBalanceTests: XCTestCase {
                        "a balance above 0 lost its row because has_credits said false")
     }
 
-    /// The owner's rule end to end, across passes: credits bought, then spent.
+    /// The rule end to end, across passes: credits bought, then spent.
     /// The last pass is the same response as the never-had-credits account's,
     /// and only the memory of the earlier passes tells them apart.
     func testTheRowOutlivesTheLastCreditAcrossPasses() throws {
