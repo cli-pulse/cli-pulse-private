@@ -432,7 +432,7 @@
 "provider_config.manual_cookie_header" = "Manual cookie header";
 "provider_config.auto_import_note" = "Automatically import session cookies from a signed-in browser. macOS may ask once for Keychain access; if none are found, paste manually below.";
 "provider_config.auto_import_failed" = "Couldn't import session cookies automatically. Paste them manually:";
-"provider_config.auto_import_note_strict" = "Strict privacy mode is on, so CLI Pulse won't import cookies from your browsers. Choose Manual to paste one, or turn the mode off in Settings › Privacy.";
+"provider_config.auto_import_note_strict" = "Strict privacy mode is on, so CLI Pulse won't import cookies from your browsers. Choose Manual to paste a cookie header, or turn off Strict privacy mode in Settings › Privacy.";
 "provider_config.capabilities" = "Capabilities";
 "provider_config.cap_quota" = "Quota";
 "provider_config.cap_exact_cost" = "Exact cost";
@@ -539,7 +539,7 @@
 "advanced.track_git_hint" = "Hashed commit metadata only — no message, diff, or path uploaded. Only the Companion CLI collects it.";
 "advanced.git_consent_title" = "Enable git activity tracking?";
 "advanced.enable" = "Enable";
-"advanced.git_consent_body" = "CLI Pulse will scan git logs in projects where AI sessions are active. Only the commit hash, an HMAC of the project path, the commit timestamp, and a merge-commit flag leave your device. Commit messages, diffs, file paths, and author identity are never uploaded.";
+"advanced.git_consent_body" = "The Companion CLI will scan git logs in projects where AI sessions are active. Only the commit hash, an HMAC of the project path, the commit timestamp, and a merge-commit flag leave your device. Commit messages, diffs, file paths, and author identity are never uploaded.";
 "advanced.remote_control" = "Mac control requests from your other devices";
 "advanced.remote_control_hint" = "Let your signed-in devices ask a Mac for fan boost, Low Power Mode, or Keep Awake. Off by default.";
 "advanced.remote_consent_title" = "Allow Mac control requests?";
@@ -730,7 +730,7 @@
 "advanced.helper_paused_signed_out" = "Paused: signed out";
 "advanced.helper_restart_needed" = "Restart needed: turn background sync off and on again";
 "advanced.privacy_keys_title" = "Provider API keys & cookies";
-"advanced.privacy_keys_detail" = "The ones you enter are stored only in macOS Keychain · never uploaded";
+"advanced.privacy_keys_detail" = "Those you enter are stored only in your macOS keychain · never uploaded";
 "advanced.data_title" = "Where Your Data Goes";
 "advanced.privacy_logs_title" = "Session logs (~/.codex/sessions, ~/.claude/projects)";
 "advanced.privacy_logs_detail" = "Scanned on this Mac and never uploaded. The App Store version reads only folders you've given it access to.";
@@ -741,7 +741,7 @@
 "advanced.privacy_email_title" = "Your login email";
 "advanced.privacy_email_detail" = "Sent to our sign-in service";
 "onboarding_wizard.privacy_keys_title" = "API keys stay on this Mac";
-"onboarding_wizard.privacy_keys_detail" = "Provider API keys and session cookies you enter (OpenAI, Anthropic, Google, etc.) live only in your macOS Keychain. They're used to call those providers directly — never uploaded to us.";
+"onboarding_wizard.privacy_keys_detail" = "Provider API keys and session cookies (OpenAI, Anthropic, Google, etc.) that you enter live only in your macOS keychain. They're used to call those providers directly — never uploaded to us.";
 "onboarding_wizard.privacy_logs_title" = "Session logs scanned on-device";
 "onboarding_wizard.privacy_logs_detail" = "CLI Pulse reads ~/.codex/sessions/ and ~/.claude/projects/ locally to compute token counts. File contents never leave your device.";
 "onboarding_wizard.privacy_metrics_title" = "Usage metrics sync with your account";
@@ -824,15 +824,15 @@
 • turn Low Power Mode on or off
 • turn Keep Awake on or off
 
-The server rejects any other kind, allows at most 6 requests a minute, and only for devices on your own account.
+Our server rejects any other kind, allows at most 6 requests a minute, and only for devices on your own account.
 
 What these requests never carry:
 • provider API keys, cookies, OAuth tokens
 • transcripts, session logs, terminal output
 
-A request is only a request. The receiving Mac honours it only if \"Remote machine control\" is also on there, every fan hold reverts on its own, and nothing here can run a command or control a process.
+A request is only a request. The receiving Mac honors it only if “Remote machine control” is also on there, every fan hold reverts on its own, and nothing here can run a command or control a process.
 
-This switch used to also enable remote CLI sessions and remote permission approvals. Neither is offered any more, but one part remains: a Companion CLI paired with this account can send our server the output of the sessions it runs, with secrets redacted, along with their status and each one's program, project folder name and label. Our server accepts these only while this is on.";
+This switch used to also enable remote CLI sessions and remote permission approvals. Neither is offered anymore, but one part remains: a Companion CLI paired with this account can send our server the output of the sessions it runs, with secrets redacted, along with their status and each one's program name, project folder name, and label. Our server accepts these only while this is on.";
 
 /* System Monitor — Machine tab */
 "machine.subtitle" = "Local machine health";
@@ -1106,8 +1106,8 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "collector_status.shared_login_taken" = "Shared login in use";
 "collector_status.shared_login_taken_hint" = "Another account here is already using this Mac's %@ login. Give this one its own API key, or remove the other account.";
 "collector_status.strict_privacy_mode" = "Not read in Strict privacy mode";
-"collector_status.strict_privacy_mode_cookie_hint" = "Strict privacy mode stops CLI Pulse importing %@'s cookie from your browser. Set its Cookie source to Manual and paste one, or turn the mode off in Settings › Privacy.";
-"collector_status.strict_privacy_mode_keychain_hint" = "Strict privacy mode stops CLI Pulse reading %@'s keychain item. Turn the mode off in Settings › Privacy to show it here.";
+"collector_status.strict_privacy_mode_cookie_hint" = "Strict privacy mode stops CLI Pulse from importing %@'s cookie from your browser. Set its Cookie source to Manual and paste the cookie yourself, or turn off Strict privacy mode in Settings › Privacy.";
+"collector_status.strict_privacy_mode_keychain_hint" = "Strict privacy mode stops CLI Pulse from reading %@'s keychain item. Turn off Strict privacy mode in Settings › Privacy to let CLI Pulse read it.";
 "collector_status.not_set_up" = "Not set up";
 "collector_status.not_set_up_hint" = "Open Settings to connect this provider.";
 "collector_status.no_data" = "No data returned";
@@ -1141,15 +1141,15 @@ This switch used to also enable remote CLI sessions and remote permission approv
 
 /* v1.50 W-C — the choice that precedes any read of this Mac */
 "local_scan_consent.title" = "Before CLI Pulse reads this Mac";
-"local_scan_consent.subtitle" = "CLI Pulse reads nothing until you start the scan. Here is what starting it turns on.";
+"local_scan_consent.subtitle" = "CLI Pulse doesn't scan this Mac until you say so. Here is what starting the scan turns on.";
 "local_scan_consent.files_title" = "Session logs: the last 30 days, and a one-time read of up to a year";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, and ~/.config/claude/projects/. Each refresh reads the last 30 days. Once, and only if you allow it, CLI Pulse also reads up to a year of older logs to fill in your usage history. It parses them for usage records and caches the results on this Mac.";
-"local_scan_consent.derived_title" = "What it works out, and which programs are running";
+"local_scan_consent.derived_title" = "What it calculates, and which programs are running";
 "local_scan_consent.derived_detail" = "Token counts, cost estimates, model names, and dates — plus each conversation's file path, project folder, and session ID, which is how the Sessions list can name them. It also checks which programs are running, to spot AI CLI sessions; while you are signed in and background sync is on, each one's program name and project folder name sync to your account.";
 "local_scan_consent.network_title" = "Provider websites, using credentials already on this Mac";
 "local_scan_consent.network_detail" = "For live quota, CLI Pulse calls the providers you use with the tokens their own CLIs stored here. Renewing an expired token rewrites that CLI's credential file.";
-"local_scan_consent.keychain_title" = "Your Keychain, for Claude Code's token and a few others";
-"local_scan_consent.keychain_detail" = "macOS asks you first, once for each item: Claude Code's token; Zed's token, if you use Zed (direct-download version only); and your browser's cookie key, for Cursor, whose cookie source is “Automatic” until you change it, and for any other provider you set to “Automatic”. Declining one costs you that provider's quota numbers and nothing else.";
+"local_scan_consent.keychain_title" = "Your keychain, for Claude Code's token and a few others";
+"local_scan_consent.keychain_detail" = "macOS asks you first, once for each item: Claude Code's token; Zed's token, if you use Zed (direct-download version of CLI Pulse only); and your browser's cookie key — for Cursor, whose cookie source is “Automatic” until you change it, and for any other provider you set to “Automatic”. Declining one costs you the quota numbers that depend on it, and nothing else.";
 "local_scan_consent.telemetry_title" = "Anonymous statistics are separate";
 "local_scan_consent.telemetry_detail" = "This choice doesn't affect them. They include no file paths or provider names, and you can turn them off in Settings › Privacy.";
 "local_scan_consent.start" = "Start local scan";
@@ -1161,7 +1161,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "local_scan_consent.last_30_days_only" = "Last 30 days only";
 "local_scan_consent.first_ask_hint" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, but usage history already built stays on this Mac. Whichever you choose, you can change it any time in Settings › Privacy.";
 /* v1.55: the first ask's caption when "Choose again…" reopens it for a signed-in Mac. The local-mode caption promises the scan can be changed in Settings › Privacy, which holds only without an account. Quotes local_scan_consent.start, .last_30_days_only and .not_now by their whole labels; LocalScanConsentCopyTests fails if they drift. */
-"local_scan_consent.first_ask_hint_signed_in" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, but usage history already built stays on this Mac. While you are signed in, Settings › Privacy can later change the answer about older logs, or bring this question back after “Not now”; signing out stops the scan.";
+"local_scan_consent.first_ask_hint_signed_in" = "“Start local scan” includes the one-time read of older logs; “Last 30 days only” leaves it out, but usage history already built stays on this Mac. While you're signed in, you can later use Settings › Privacy to change your answer about older logs or, after “Not now”, to see this question again; signing out stops the scan.";
 "local_scan_consent.v2_title" = "Before CLI Pulse reads older logs";
 "local_scan_consent.v2_subtitle" = "Each refresh reads the last 30 days. To fill in your usage history, CLI Pulse can also read up to a year of older session logs, once. It now asks first. Either answer keeps the 30-day scan running, and history already built stays on this Mac.";
 "local_scan_consent.include_history" = "Include older history";
@@ -1175,7 +1175,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "telemetry.disclosure_body_local_only" = "Strict privacy mode is on, so CLI Pulse sends no anonymous statistics. Without it, it would report four steps: that it was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in, and, if you use remote control, whether a phone reached this Mac over your Wi‑Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude.";
 "telemetry.not_collected" = "No file paths, project names, provider names, token counts, or costs. Nothing that identifies you or your machine. The ID is random and is kept in the app's preferences; moving the app to the Trash does not delete it.";
 "telemetry.toggle" = "Send anonymous install statistics";
-"telemetry.toggle_local_only" = "Off — strict privacy mode covers this too.";
+"telemetry.toggle_local_only" = "Off — Strict privacy mode covers this too.";
 "telemetry.got_it" = "Got it";
 "telemetry.change_later" = "You can change this any time in Settings › Privacy.";
 "telemetry.settings_body" = "How far the app got, with no account and nothing that identifies you or your machine: that CLI Pulse was installed, whether the helper connected, whether it ever found a CLI to track, and whether it ever had a cost to show — plus which language it is displaying in. If you use remote control: whether a phone reached this Mac over your Wi‑Fi, whether it reached this Mac over your own private network, whether a session was handed off to claude.ai, and whether you ever drove a tool other than Claude. No file paths, project names, provider names, token counts, or cost amounts. The ID is random and is kept in the app's preferences; moving the app to the Trash does not delete it.";
@@ -1351,9 +1351,9 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "helper.built_in_version" = "Built-in · v%@";
 "app_updater.update_available_badge" = "Update: %1$@ → %2$@";
 "app_updater.error_badge" = "Error";
-"helper.install_intro" = "Install the optional Companion CLI helper to drive claude, codex, and gemini sessions from the menu bar. The helper is signed by Apple's notary service and installs to your home folder with no admin password. Once paired, it also collects data on its own every 2 minutes, including the command lines of running AI CLIs and this Mac's battery and sensor readings, and syncs it to the account it was paired with. It does this only while this app is signed in to that account and you allow scanning this Mac; versions 1.30.0 and earlier do it regardless. The Privacy Policy lists what it reads; Uninstall stops it.";
+"helper.install_intro" = "Install the optional Companion CLI helper to drive claude, codex, and gemini sessions from the menu bar. The helper is notarized by Apple and installs to your home folder with no admin password. Once paired, it also collects data on its own every 2 minutes, including the command lines of running AI CLIs and this Mac's battery and sensor readings, and syncs it to the account it was paired with. It does this only while this app is signed in to that account and you allow scanning this Mac; versions 1.30.0 and earlier do it regardless. The Privacy Policy lists what it reads; Uninstall stops it.";
 "helper.waiting_for_installer" = "Waiting for the macOS Installer to finish…";
-"helper.running_unpaired_hint" = "Installed and running, but not paired with an account, so it can't run managed sessions. Setting up cloud sync for this Mac doesn't pair it: it has a pairing of its own.";
+"helper.running_unpaired_hint" = "Installed and running, but not paired with an account, so it can't run managed sessions. Setting up cloud sync for this Mac doesn't pair it; the Companion CLI is paired separately.";
 "helper.running_unpaired_hint_no_account" = "Installed and running, but not paired with an account, so it can't run managed sessions. Pairing it needs a CLI Pulse account, and this app isn't signed in to one.";
 "helper.bundled_hint" = "Built into CLI Pulse — updates automatically when you update the app. No separate install needed.";
 "helper.update_available_body" = "A new helper version (%@) is available. The update flow is identical to the install flow.";
@@ -1401,7 +1401,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "local_scan_consent.companion_not_covered" = "The Companion CLI on this Mac (%@) does not follow this choice, and signing out does not stop it: while it is installed and paired, it reads this Mac every 2 minutes and syncs what it finds to the account it was paired with. Update or uninstall it in Settings › Companion CLI.";
 "local_scan_consent.choose_again" = "Choose again…";
 "settings.local_only_mode" = "Strict privacy mode";
-"settings.local_only_mode_hint" = "On its own, CLI Pulse won't read secrets that other apps store in your keychain or browsers: not Claude Code's or Zed's keychain items, and not the cookies saved by your browsers or the Claude desktop app, even for a provider set to read cookies automatically. It also sends no anonymous statistics. It still reads the sign-in files AI CLIs keep in your home folder (for quota) and their logs (for usage). Crash reports are still sent, and syncing to your account is not affected.";
+"settings.local_only_mode_hint" = "On its own, CLI Pulse won't read other apps' secrets from your keychain or browsers: not Claude Code's or Zed's keychain items, and not the cookies saved by your browsers or the Claude desktop app, even for a provider whose cookie source is “Automatic”. It also sends no anonymous statistics. It still reads the sign-in files AI CLIs keep in your home folder (for quota) and their logs (for usage). Crash reports are still sent, and syncing to your account is not affected.";
 "settings.skip_claude_keychain" = "Skip Claude Code keychain access";
 "settings.skip_claude_keychain_forced" = "Forced on by Strict privacy mode.";
 "settings.skip_claude_keychain_hint" = "On its own, CLI Pulse won't read the sign-in token Claude Code keeps in your macOS keychain; Claude Code's credentials file, if it has one, is still read. Useful if you've hit a macOS keychain dialog that won't accept your login password.";

@@ -101,7 +101,7 @@ final class PrivacyCopyTruthTests: XCTestCase {
                "ja": "Companion CLI だけ", "ko": "Companion CLI만", "es": "Solo los recopila Companion CLI"]),
         ("local_scan_consent.derived_title",
          was: [:],
-         now: ["en": "which programs are running", "zh-Hans": "正在运行的程序", "zh-Hant": "正在執行的程式",
+         now: ["en": "which programs are running", "zh-Hans": "哪些程序正在运行", "zh-Hant": "正在執行的程式",
                "ja": "実行中のプログラム", "ko": "실행 중인 프로그램", "es": "qué programas se están ejecutando"]),
         ("local_scan_consent.derived_detail",
          was: [:],
@@ -134,8 +134,8 @@ final class PrivacyCopyTruthTests: XCTestCase {
          was: ["en": "reads nothing", "zh-Hans": "不会读取这台 Mac 上的任何内容",
                "zh-Hant": "不會讀取這台 Mac 上的任何內容", "ja": "何も読み取りません",
                "ko": "아무것도 읽지 않습니다", "es": "no lee nada"],
-         now: ["en": "the app and its background helper", "zh-Hans": "应用及其后台 Helper",
-               "zh-Hant": "App 及其背景 Helper", "ja": "アプリもバックグラウンドヘルパーも",
+         now: ["en": "the app and its background helper", "zh-Hans": "应用及其后台 helper",
+               "zh-Hant": "App 及其背景 helper", "ja": "アプリもバックグラウンドヘルパーも",
                "ko": "앱도 백그라운드 헬퍼도", "es": "ni la app ni su helper"]),
         ("telemetry.not_collected",
          was: ["en": "deleted when you uninstall", "zh-Hans": "卸载即删除", "zh-Hant": "解除安裝即刪除",
@@ -195,7 +195,7 @@ final class PrivacyCopyTruthTests: XCTestCase {
         // local mode the section above is the sign-in form.
         ("helper.running_unpaired_hint",
          was: PrivacyCopyTruthTests.pairAbove,
-         now: ["en": "doesn't pair it", "zh-Hans": "并不会配对它", "zh-Hant": "並不會配對它",
+         now: ["en": "doesn't pair it", "zh-Hans": "并不会配对 helper", "zh-Hant": "並不會配對 helper",
                "ja": "ペアリングはされません", "ko": "페어링되지 않습니다", "es": "no lo vincula"]),
         ("helper.running_unpaired_hint_no_account",
          was: PrivacyCopyTruthTests.pairAbove,
@@ -346,7 +346,7 @@ final class PrivacyCopyTruthTests: XCTestCase {
             XCTAssertTrue(L10n.localScanConsent.keychainDetail.contains("Cookie 密钥"))
             let declined = L10n.localScanConsent.declinedBody.replacingOccurrences(of: "\u{00A0}", with: " ")
             XCTAssertEqual(declined, "CLI Pulse 没有扫描这台 Mac，所以暂时没有可显示的数据。")
-            XCTAssertTrue(L10n.localScanConsent.settingsToggleDetail.hasSuffix("关闭后，应用及其后台 Helper 都不会扫描这台 Mac。"))
+            XCTAssertTrue(L10n.localScanConsent.settingsToggleDetail.hasSuffix("关闭后，应用及其后台 helper 都不会扫描这台 Mac。"))
             for text in [L10n.telemetry.notCollected, L10n.telemetry.settingsBody] {
                 XCTAssertFalse(text.contains("卸载即删除"), text)
                 XCTAssertTrue(text.hasSuffix("把应用移到废纸篓不会删除它。"), text)
@@ -356,7 +356,7 @@ final class PrivacyCopyTruthTests: XCTestCase {
             XCTAssertTrue(L10n.advanced.trackGitHint.hasSuffix("由 Companion CLI 收集。"))
             let intro = L10n.helper.installIntro
             XCTAssertTrue(intro.contains("每 2 分钟"), intro)
-            XCTAssertTrue(intro.contains("1.30.0 及更早的版本不做这项检查"), intro)
+            XCTAssertTrue(intro.contains("1.30.0 及更早的版本则无论如何都会这样做"), intro)
             XCTAssertTrue(intro.contains("隐私政策"), intro)
             XCTAssertTrue(L10n.onboardingWizard.helperHint.contains("隐私政策"))
         }
@@ -387,6 +387,26 @@ final class PrivacyCopyTruthTests: XCTestCase {
             // bracket, where a line could start with it.
             let note = L10n.localScanConsent.companionNotCovered("v1.30.0")
             XCTAssertTrue(note.contains("(설치된 버전: v1.30.0)."), note)
+        }
+    }
+
+    /// The git consent dialog, where the user decides, names the scanner the
+    /// hint beside the switch names: only the Companion CLI runs the git scan
+    /// (`helper/git_collector.py`; the built-in helper's `GitCollector` is
+    /// never started). It said "CLI Pulse will scan git logs".
+    func test_theGitConsentNamesTheCompanionAsTheScannerInEveryLanguage() {
+        for locale in Self.locales {
+            inLocale(locale) {
+                let consent = L10n.advanced.gitConsentBody
+                    .replacingOccurrences(of: "\u{00A0}", with: " ")
+                XCTAssertFalse(consent.hasPrefix("advanced."), "\(locale) renders the raw key")
+                XCTAssertFalse(consent.hasPrefix("CLI Pulse"), "\(locale): \(consent)")
+                XCTAssertTrue(consent.contains("Companion CLI"), "\(locale): \(consent)")
+                XCTAssertTrue(L10n.advanced.trackGitHint.contains("Companion CLI"), locale)
+            }
+        }
+        inLocale("en") {
+            XCTAssertTrue(L10n.advanced.gitConsentBody.hasPrefix("The Companion CLI will scan git logs"))
         }
     }
 

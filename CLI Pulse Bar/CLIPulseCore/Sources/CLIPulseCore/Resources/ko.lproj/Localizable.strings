@@ -433,7 +433,7 @@
 /* ── v1.18.2 D-2: Claude 카드의 Anthropic 피크 시간 표시기 ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 부스트(목표 회전수 설정) 또는 팬 자동 모드 복귀\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n이 요청에 절대 담기지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 원격 권한 승인도 활성화했습니다. 두 기능 모두 더 이상 제공되지 않지만 한 가지가 남아 있습니다. 이 계정과 페어링된 Companion CLI는 자신이 실행하는 세션의 출력을 비밀 정보는 가린 채로, 세션 상태와 각 세션의 프로그램 이름, 프로젝트 폴더 이름, 레이블과 함께 저희 서버로 보낼 수 있습니다. 서버는 이 스위치가 켜져 있는 동안에만 이를 받습니다.";
+"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 부스트(목표 회전수 설정) 또는 팬 자동 모드 복귀\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n이 요청에 절대 담기지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 원격 권한 승인도 활성화했습니다. 두 기능 모두 더 이상 제공되지 않지만 한 가지가 남아 있습니다. 이 계정과 페어링된 Companion CLI는 자신이 실행하는 세션의 출력(비밀 정보는 가림)을 세션 상태, 각 세션의 프로그램 이름·프로젝트 폴더 이름·라벨과 함께 저희 서버로 보낼 수 있습니다. 서버는 이 스위치가 켜져 있는 동안에만 이를 받습니다.";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "정상 페이스";
@@ -805,7 +805,7 @@
 "advanced.sync_minutes_ago" = "%d분 전 동기화됨";
 "advanced.helper_running" = "실행 중";
 "advanced.helper_not_running" = "실행 중이 아님";
-"advanced.helper_paused_local_scan_off" = "일시정지됨: 로컬 스캔이 꺼져 있습니다";
+"advanced.helper_paused_local_scan_off" = "일시정지됨: 로컬 스캔 꺼짐";
 "advanced.helper_paused_signed_out" = "일시정지됨: 로그아웃됨";
 "advanced.helper_restart_needed" = "다시 시작 필요: 백그라운드 동기화를 껐다가 다시 켜세요";
 "advanced.privacy_keys_title" = "공급자 API 키 및 쿠키";
@@ -902,7 +902,7 @@
 "onboarding_wizard.back_to_email" = "이메일 입력으로 돌아가기";
 "onboarding_wizard.all_set_title" = "모든 준비 완료";
 "onboarding_wizard.all_set_body" = "Mac 앱이 실행 중일 때 동기화가 자동으로 진행됩니다. 다른 기기에서 같은 계정으로 로그인하면 사용 데이터가 그곳에도 표시됩니다 — 페어링이나 설정이 필요 없습니다.";
-"onboarding_wizard.helper_hint" = "메뉴 막대에서 claude, codex, gemini 세션을 제어하고 싶으신가요? 초기 설정을 마친 후 설정 › Companion CLI에서 선택 사항인 헬퍼를 설치하세요. 페어링하면 헬퍼가 자체적으로 데이터를 수집해 동기화합니다. 읽는 항목은 개인정보 처리방침에 나와 있습니다.";
+"onboarding_wizard.helper_hint" = "메뉴 막대에서 claude, codex, gemini 세션을 제어하고 싶으신가요? 초기 설정을 마친 후 설정 › Companion CLI에서 선택 사항인 헬퍼를 설치하세요. 페어링하면 헬퍼는 자체적으로도 데이터를 수집해 동기화합니다. 헬퍼가 읽는 항목은 개인정보 처리방침에 나와 있습니다.";
 "onboarding_wizard.done" = "완료";
 "onboarding_wizard.close" = "온보딩 닫기";
 "onboarding_wizard.step_progress" = "%d/%d단계: %@";
@@ -967,7 +967,7 @@
 "advanced.track_git_hint" = "해시된 커밋 메타데이터만 업로드 — 메시지, diff, 경로는 업로드되지 않음. Companion CLI만 수집함.";
 "advanced.git_consent_title" = "Git 활동 추적을 켤까요?";
 "advanced.enable" = "켜기";
-"advanced.git_consent_body" = "CLI Pulse가 AI 세션이 활성 상태인 프로젝트의 Git 로그를 스캔합니다. 기기 밖으로 전송되는 것은 커밋 해시, 프로젝트 경로의 HMAC, 커밋 타임스탬프, 병합 커밋 플래그뿐입니다. 커밋 메시지, diff, 파일 경로, 작성자 정보는 절대 업로드되지 않습니다.";
+"advanced.git_consent_body" = "Companion CLI가 AI 세션이 활성 상태인 프로젝트의 Git 로그를 스캔합니다. 기기 밖으로 전송되는 것은 커밋 해시, 프로젝트 경로의 HMAC, 커밋 타임스탬프, 병합 커밋 플래그뿐입니다. 커밋 메시지, diff, 파일 경로, 작성자 정보는 절대 업로드되지 않습니다.";
 "advanced.remote_control" = "다른 기기에서 보내는 Mac 제어 요청";
 "advanced.remote_control_hint" = "로그인된 기기에서 Mac에 팬 부스트, 저전력 모드 또는 잠자기 방지를 요청할 수 있게 합니다. 기본값은 꺼짐입니다.";
 "advanced.remote_consent_title" = "Mac 제어 요청을 허용할까요?";
@@ -1032,7 +1032,7 @@
 "collector_status.shared_login_taken_hint" = "여기에 설정된 다른 계정이 이 Mac의 %@ 로그인을 이미 사용하고 있습니다. 이 계정에는 별도의 API 키를 입력하거나 그 계정을 제거하세요.";
 "collector_status.strict_privacy_mode" = "엄격한 개인정보 보호 모드에서는 읽지 않음";
 "collector_status.strict_privacy_mode_cookie_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 브라우저에서 %@ 쿠키를 가져오지 않습니다. 쿠키 소스를 '수동'으로 바꿔 붙여 넣거나, 설정 › 개인정보 보호에서 이 모드를 끄세요.";
-"collector_status.strict_privacy_mode_keychain_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 %@의 키체인 항목을 읽지 않습니다. 여기에 표시하려면 설정 › 개인정보 보호에서 이 모드를 끄세요.";
+"collector_status.strict_privacy_mode_keychain_hint" = "엄격한 개인정보 보호 모드에서는 CLI Pulse가 %@의 키체인 항목을 읽지 않습니다. CLI Pulse가 읽을 수 있게 하려면 설정 › 개인정보 보호에서 이 모드를 끄세요.";
 "collector_status.not_set_up" = "설정되지 않음";
 "collector_status.not_set_up_hint" = "설정을 열어 이 공급자를 연결하세요.";
 "collector_status.no_data" = "데이터 없음";
@@ -1066,15 +1066,15 @@
 
 /* v1.50 W-C — 이 Mac을 읽기 전의 선택 */
 "local_scan_consent.title" = "CLI Pulse가 이 Mac을 읽기 전에";
-"local_scan_consent.subtitle" = "스캔을 시작하기 전까지 CLI Pulse는 아무것도 읽지 않습니다. 스캔을 시작하면 아래 항목이 켜집니다.";
-"local_scan_consent.files_title" = "세션 로그: 최근 30일, 그리고 한 번만 최대 1년";
+"local_scan_consent.subtitle" = "허용하기 전까지 CLI Pulse는 이 Mac을 스캔하지 않습니다. 스캔을 시작하면 아래 항목이 켜집니다.";
+"local_scan_consent.files_title" = "세션 로그: 최근 30일, 그리고 최대 1년 치는 한 번만";
 "local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. 새로고침할 때마다 최근 30일 치를 읽습니다. 허용한 경우에만, 사용 기록을 채우기 위해 최대 1년 치의 이전 로그도 한 번만 읽습니다. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
-"local_scan_consent.derived_title" = "알아내는 것과 실행 중인 프로그램";
+"local_scan_consent.derived_title" = "알아내는 정보와 실행 중인 프로그램";
 "local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID — 세션 목록에 이름이 붙는 건 이것 덕분입니다. 또한 AI CLI 세션을 찾기 위해 실행 중인 프로그램을 확인하며, 로그인되어 있고 백그라운드 동기화가 켜져 있으면 각 세션의 프로그램 이름과 프로젝트 폴더 이름이 계정에 동기화됩니다.";
 "local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 공급자에 연결";
 "local_scan_consent.network_detail" = "실시간 할당량을 보여주기 위해 각 CLI가 이 Mac에 저장해 둔 토큰으로 해당 공급자를 호출합니다. 만료된 토큰을 갱신하면 그 CLI의 자격 증명 파일이 다시 쓰입니다.";
 "local_scan_consent.keychain_title" = "키체인에 있는 Claude Code 토큰 등";
-"local_scan_consent.keychain_detail" = "macOS가 항목마다 먼저 한 번씩 물어봅니다. 대상은 Claude Code 토큰, Zed 토큰(직접 다운로드 버전에서 Zed를 쓰는 경우), 그리고 브라우저의 쿠키 키입니다. 쿠키 키를 읽는 대상은 Cursor, 그리고 쿠키 소스를 자동으로 설정한 다른 공급자뿐이며, Cursor는 설정을 바꾸기 전까지 쿠키 소스가 자동입니다. 하나를 거부해도 잃는 것은 해당 공급자의 할당량 수치뿐입니다.";
+"local_scan_consent.keychain_detail" = "macOS가 항목마다 먼저 한 번씩 물어봅니다. 대상은 Claude Code 토큰, Zed 토큰(CLI Pulse 직접 다운로드 버전에서 Zed를 쓰는 경우), 그리고 브라우저의 쿠키 키입니다. 쿠키 키를 읽는 대상은 Cursor, 그리고 쿠키 소스를 '자동'으로 설정한 다른 공급자뿐이며, Cursor는 설정을 바꾸기 전까지 쿠키 소스가 '자동'입니다. 하나를 거부해도 잃는 것은 해당 공급자의 할당량 수치뿐입니다.";
 "local_scan_consent.telemetry_title" = "익명 통계는 별개입니다";
 "local_scan_consent.telemetry_detail" = "이 선택에 포함되지 않으며, 파일 경로나 공급자 이름을 담지 않고, 설정 › 개인정보 보호에서 끌 수 있습니다.";
 "local_scan_consent.start" = "로컬 스캔 시작";
@@ -1084,7 +1084,7 @@
 "local_scan_consent.declined_body" = "CLI Pulse가 이 Mac을 스캔하지 않고 있어 아직 보여줄 것이 없습니다.";
 "local_scan_consent.last_30_days_only" = "최근 30일만";
 "local_scan_consent.first_ask_hint" = "'로컬 스캔 시작'에는 이전 로그를 한 번 읽는 작업이 포함되고, '최근 30일만'에는 포함되지 않지만 이미 만들어진 기록은 이 Mac에 남습니다. 무엇을 고르든 설정 › 개인정보 보호에서 언제든 바꿀 수 있습니다.";
-"local_scan_consent.first_ask_hint_signed_in" = "'로컬 스캔 시작'에는 이전 로그를 한 번 읽는 작업이 포함되고, '최근 30일만'에는 포함되지 않지만 이미 만들어진 기록은 이 Mac에 남습니다. 로그인되어 있는 동안에는 나중에 설정 › 개인정보 보호에서 이전 로그 설정을 바꾸거나, '지금은 안 함'을 고른 뒤 이 질문을 다시 볼 수 있습니다. 로그아웃하면 스캔이 멈춥니다.";
+"local_scan_consent.first_ask_hint_signed_in" = "'로컬 스캔 시작'에는 이전 로그를 한 번 읽는 작업이 포함되고, '최근 30일만'에는 포함되지 않지만 이미 만들어진 기록은 이 Mac에 남습니다. 로그인되어 있는 동안에는 나중에 설정 › 개인정보 보호에서 이전 로그에 대한 선택을 바꾸거나, '지금은 안 함'을 골랐다면 이 질문을 다시 불러올 수 있습니다. 로그아웃하면 스캔이 멈춥니다.";
 "local_scan_consent.v2_title" = "CLI Pulse가 이전 로그를 읽기 전에";
 "local_scan_consent.v2_subtitle" = "새로고침할 때마다 최근 30일 치를 읽습니다. 사용 기록을 채우기 위해 CLI Pulse는 최대 1년 치의 이전 세션 로그를 한 번만 읽을 수도 있습니다. 이제는 읽기 전에 먼저 묻습니다. 어느 쪽을 고르든 최근 30일 스캔은 계속되며, 이미 만들어진 기록은 이 Mac에 남습니다.";
 "local_scan_consent.include_history" = "이전 기록 포함";
@@ -1116,12 +1116,12 @@
 "telemetry.disclosure_title" = "익명 설치 통계";
 "telemetry.disclosure_body" = "CLI Pulse는 어디까지 진행됐는지만 보고합니다. 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 계정을 쓰지 않으므로, 이 정보가 없으면 앱이 어디에서 멈추는지 알 수 없습니다.";
 "telemetry.disclosure_body_local_only" = "엄격한 개인정보 보호 모드가 켜져 있어 CLI Pulse는 익명 통계를 전혀 보내지 않습니다. 끄면 네 단계와 현재 표시 언어를 보고합니다: 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지.";
-"telemetry.not_collected" = "파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. 사용자나 기기를 식별할 수 있는 정보도 없습니다. ID는 무작위입니다. 앱의 환경설정에 저장되며, 앱을 휴지통으로 옮겨도 환경설정은 남습니다.";
+"telemetry.not_collected" = "파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. 사용자나 기기를 식별할 수 있는 정보도 없습니다. ID는 무작위로 생성되어 앱의 환경설정에 저장되며, 앱을 휴지통으로 옮겨도 삭제되지 않습니다.";
 "telemetry.toggle" = "익명 설치 통계 보내기";
 "telemetry.toggle_local_only" = "꺼짐: 엄격한 개인정보 보호 모드가 이 항목도 끕니다.";
 "telemetry.got_it" = "확인";
 "telemetry.change_later" = "설정 › 개인정보 보호에서 언제든지 변경할 수 있습니다.";
-"telemetry.settings_body" = "앱이 어디까지 진행됐는지만 보고하며, 계정이나 사용자·기기를 식별할 수 있는 정보는 쓰지 않습니다. 보고 항목은 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. ID는 무작위입니다. 앱의 환경설정에 저장되며, 앱을 휴지통으로 옮겨도 환경설정은 남습니다.";
+"telemetry.settings_body" = "앱이 어디까지 진행됐는지만 보고하며, 계정이나 사용자·기기를 식별할 수 있는 정보는 쓰지 않습니다. 보고 항목은 설치됐다는 사실, 헬퍼가 연결됐는지, 추적할 CLI를 찾은 적이 있는지, 비용 숫자를 보여준 적이 있는지, 그리고 현재 어떤 언어로 표시되고 있는지입니다. 원격 제어를 사용하면 예/아니오 항목 네 가지가 추가됩니다: 휴대폰이 이 Mac에 Wi‑Fi로 연결했는지, 사용자의 개인 네트워크로 연결했는지, 세션이 claude.ai로 넘겨졌는지, Claude 이외의 도구를 조작했는지. 파일 경로, 프로젝트 이름, 공급자 이름, 토큰 수, 금액은 포함하지 않습니다. ID는 무작위로 생성되어 앱의 환경설정에 저장되며, 앱을 휴지통으로 옮겨도 삭제되지 않습니다.";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "원격 제어";
@@ -1294,7 +1294,7 @@
 "helper.built_in_version" = "내장 · v%@";
 "app_updater.update_available_badge" = "업데이트: %1$@ → %2$@";
 "app_updater.error_badge" = "오류";
-"helper.install_intro" = "선택 사항인 Companion CLI 헬퍼를 설치하면 메뉴 막대에서 claude, codex, gemini 세션을 제어할 수 있습니다. 헬퍼는 Apple의 공증을 받았으며 홈 폴더에 설치되므로 관리자 암호가 필요하지 않습니다. 페어링하면 헬퍼가 2분마다 자체적으로 데이터를 수집해 페어링한 계정에 동기화하며, 여기에는 실행 중인 AI CLI의 명령줄과 이 Mac의 배터리·센서 값도 포함됩니다. 단, 이 앱이 그 계정으로 로그인되어 있고 이 Mac의 스캔을 허용한 동안에만 그렇게 합니다. 1.30.0 이하 버전은 이를 확인하지 않습니다. 읽는 항목은 개인정보 처리방침에 나와 있으며, 제거하면 멈춥니다.";
+"helper.install_intro" = "선택 사항인 Companion CLI 헬퍼를 설치하면 메뉴 막대에서 claude, codex, gemini 세션을 제어할 수 있습니다. 헬퍼는 Apple의 공증을 받았으며 홈 폴더에 설치되므로 관리자 암호가 필요하지 않습니다. 페어링하면 헬퍼가 2분마다 자체적으로 데이터를 수집해 페어링한 계정에 동기화하며, 여기에는 실행 중인 AI CLI의 명령줄과 이 Mac의 배터리·센서 값도 포함됩니다. 단, 이 앱이 그 계정으로 로그인되어 있고 이 Mac의 스캔이 허용되어 있는 동안에만 그렇게 합니다. 1.30.0 이하 버전은 이를 확인하지 않습니다. 읽는 항목은 개인정보 처리방침에 나와 있으며, 제거하면 멈춥니다.";
 "helper.waiting_for_installer" = "macOS 설치 프로그램이 완료되기를 기다리는 중…";
 "helper.running_unpaired_hint" = "설치되어 실행 중이지만 계정과 페어링되지 않아 관리형 세션을 실행할 수 없습니다. 이 Mac의 클라우드 동기화를 설정해도 페어링되지 않습니다. Companion CLI는 자체 페어링을 사용합니다.";
 "helper.running_unpaired_hint_no_account" = "설치되어 실행 중이지만 계정과 페어링되지 않아 관리형 세션을 실행할 수 없습니다. 페어링하려면 CLI Pulse 계정이 필요한데, 이 앱은 어떤 계정에도 로그인되어 있지 않습니다.";
@@ -1340,13 +1340,13 @@
 "local_scan_consent.history_toggle" = "이전 사용 기록 포함";
 "local_scan_consent.history_toggle_detail" = "사용 기록을 채우기 위해 최대 1년 치의 이전 세션 로그를 한 번만 읽습니다. 끄면 CLI Pulse는 최근 30일 치만 읽습니다. 이미 만들어진 기록은 이 Mac에 남습니다.";
 "local_scan_consent.settings_declined_detail" = "'지금은 안 함'을 골랐습니다. 로그인되어 있어도 이 선택은 바뀌지 않습니다.";
-"local_scan_consent.companion_not_covered" = "이 Mac에 설치된 Companion CLI는 이 선택을 따르지 않으며, 로그아웃해도 멈추지 않습니다(설치된 버전: %@). 설치되어 페어링된 동안에는 2분마다 이 Mac을 읽고, 페어링한 계정에 동기화합니다. 설정 › Companion CLI에서 업데이트하거나 제거하세요.";
+"local_scan_consent.companion_not_covered" = "이 Mac에 설치된 Companion CLI는 이 선택을 따르지 않으며, 로그아웃해도 멈추지 않습니다(설치된 버전: %@). 설치되어 페어링되어 있는 동안에는 2분마다 이 Mac을 읽고, 읽은 내용을 페어링한 계정에 동기화합니다. 설정 › Companion CLI에서 업데이트하거나 제거하세요.";
 "local_scan_consent.choose_again" = "다시 선택…";
 "settings.local_only_mode" = "엄격한 개인정보 보호 모드";
-"settings.local_only_mode_hint" = "CLI Pulse는 다른 앱이 키체인이나 브라우저에 보관한 비밀 정보를 스스로 읽지 않습니다. Claude Code나 Zed의 키체인 항목도, 브라우저나 Claude 데스크톱 앱에 저장된 쿠키도 읽지 않으며, 쿠키를 자동으로 읽도록 설정한 공급자라도 마찬가지입니다. 익명 통계도 보내지 않습니다. AI CLI가 홈 폴더에 보관하는 자격 증명 파일(할당량 확인용)과 로그 파일(사용량 계산용)은 계속 읽습니다. 충돌 리포트는 계속 전송되며, 계정 동기화에도 영향이 없습니다.";
+"settings.local_only_mode_hint" = "CLI Pulse는 다른 앱이 키체인이나 브라우저에 보관한 비밀 정보를 스스로 읽지 않습니다. Claude Code나 Zed의 키체인 항목도, 브라우저나 Claude 데스크톱 앱에 저장된 쿠키도 읽지 않으며, 쿠키 소스가 '자동'인 공급자라도 마찬가지입니다. 익명 통계도 보내지 않습니다. AI CLI가 홈 폴더에 보관하는 자격 증명 파일(할당량 확인용)과 로그 파일(사용량 계산용)은 계속 읽습니다. 충돌 리포트는 계속 전송되며, 계정 동기화에도 영향이 없습니다.";
 "settings.skip_claude_keychain" = "Claude Code 키체인 접근 건너뛰기";
 "settings.skip_claude_keychain_forced" = "엄격한 개인정보 보호 모드에 의해 강제로 켜져 있습니다.";
-"settings.skip_claude_keychain_hint" = "Claude Code가 macOS 키체인에 보관하는 로그인 정보를 CLI Pulse가 스스로 읽지 않도록 합니다. Claude Code의 자격 증명 파일이 있으면 그 파일은 계속 읽습니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
+"settings.skip_claude_keychain_hint" = "Claude Code가 macOS 키체인에 보관하는 로그인 토큰을 CLI Pulse가 스스로 읽지 않도록 합니다. Claude Code의 자격 증명 파일이 있으면 그 파일은 계속 읽습니다. macOS 키체인 대화상자가 로그인 암호를 받아들이지 않는 경우에 유용합니다.";
 "settings.claude_keychain_helper_confirmed" = "백그라운드 헬퍼도 이 설정을 따릅니다.";
 "settings.claude_keychain_helper_unconfirmed" = "백그라운드 헬퍼의 확인을 아직 받지 못했습니다.";
 "settings.companion_ignores_switches" = "이 Mac에 설치된 Companion CLI는 이 스위치들을 따르지 않습니다(설치된 버전: %@). 설정 › Companion CLI에서 업데이트하거나 제거하세요.";

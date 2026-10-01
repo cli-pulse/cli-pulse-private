@@ -619,7 +619,7 @@
 "advanced.track_git_hint" = "只记录经哈希处理的提交元数据，不上传提交说明、diff 或路径。仅由 Companion CLI 收集。";
 "advanced.git_consent_title" = "启用 git 活动追踪？";
 "advanced.enable" = "启用";
-"advanced.git_consent_body" = "CLI Pulse 会扫描有 AI 会话活动的项目的 git 日志。仅会上传提交哈希、项目路径的 HMAC、提交时间戳以及合并提交标记。提交消息、diff、文件路径和作者身份永远不会上传。";
+"advanced.git_consent_body" = "Companion CLI 会扫描有 AI 会话活动的项目的 git 日志。仅会上传提交哈希、项目路径的 HMAC、提交时间戳以及合并提交标记。提交消息、diff、文件路径和作者身份永远不会上传。";
 "advanced.remote_control" = "来自其他设备的 Mac 控制请求";
 "advanced.remote_control_hint" = "允许已登录的设备请求 Mac 提升风扇转速、开启低电量模式或保持唤醒。默认关闭。";
 "advanced.remote_consent_title" = "允许向 Mac 发送控制请求？";
@@ -810,7 +810,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰窗口指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 提升风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n这些请求绝不包含：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 对话记录、会话日志、终端输出\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与远程权限审批。这两项都已不再提供，但仍保留了一部分：与本账户配对的 Companion CLI 可能会把它运行的会话的输出（已隐去密钥）发送到我们的服务器，连同会话状态以及每个会话的程序名、项目文件夹名和标签。只有在此开关打开时，服务器才会接收。";
+"advanced.remote_consent_body" = "打开后，你其他已登录的设备可以向本账户的 Mac 发送四类请求，仅此四类：\n• 提升风扇转速，或恢复风扇自动控制\n• 开启或关闭低电量模式\n• 开启或关闭保持唤醒\n\n服务器会拒绝其他任何类型的请求，每分钟最多 6 次，且只允许操作你自己账户下的设备。\n\n这些请求绝不包含：\n• 服务商 API 密钥、Cookie、OAuth 令牌\n• 对话记录、会话日志、终端输出\n\n请求只是请求。只有目标 Mac 上也打开了「远程机器控制」才会被执行；每次风扇加速都会自动恢复；这里无法执行命令，也无法控制进程。\n\n此开关过去还会启用远程 CLI 会话与远程权限审批。这两项都已不再提供，但仍保留了一部分：与本账户配对的 Companion CLI 可以把它运行的会话的输出（已隐去密钥）、会话状态，以及每个会话的程序名、项目文件夹名和标签发送到我们的服务器。只有在此开关打开时，服务器才会接收这些内容。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "节奏正常";
@@ -1098,7 +1098,7 @@
 "collector_status.shared_login_taken_hint" = "这台 Mac 上的 %@ 登录信息已被另一个账户占用。请给这个账户单独填入 API 密钥，或移除那个账户。";
 "collector_status.strict_privacy_mode" = "严格隐私模式下不读取";
 "collector_status.strict_privacy_mode_cookie_hint" = "严格隐私模式下，CLI Pulse 不会从浏览器导入 %@ 的 Cookie。可将它的「Cookie 来源」设为「手动」并粘贴 Cookie，或在「设置 › 隐私」中关闭严格隐私模式。";
-"collector_status.strict_privacy_mode_keychain_hint" = "严格隐私模式下，CLI Pulse 不会读取 %@ 的钥匙串项目。如需在这里显示，请在「设置 › 隐私」中关闭严格隐私模式。";
+"collector_status.strict_privacy_mode_keychain_hint" = "严格隐私模式下，CLI Pulse 不会读取 %@ 的钥匙串项目。如需让 CLI Pulse 读取，请在「设置 › 隐私」中关闭严格隐私模式。";
 "collector_status.not_set_up" = "未配置";
 "collector_status.not_set_up_hint" = "打开设置来连接这个服务商。";
 "collector_status.no_data" = "没有返回数据";
@@ -1132,15 +1132,15 @@
 
 /* v1.50 W-C — 在读取这台 Mac 之前的选择 */
 "local_scan_consent.title" = "在 CLI Pulse 读取这台 Mac 之前";
-"local_scan_consent.subtitle" = "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。";
+"local_scan_consent.subtitle" = "在你同意之前，CLI Pulse 不会扫描这台 Mac。开始扫描后，将启用以下各项。";
 "local_scan_consent.files_title" = "会话日志：最近 30 天，另可一次性读取最多一年";
-"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新读取最近 30 天。只有在你允许时，CLI Pulse 才会额外读取一次最多一年的旧日志，用来补全用量历史。CLI Pulse 解析其中的用量记录，并把结果缓存在这台 Mac 上。";
-"local_scan_consent.derived_title" = "会提取哪些信息，以及正在运行的程序";
-"local_scan_consent.derived_detail" = "token 数、费用估算、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID——会话列表就是靠这些来命名的。它还会查看正在运行的程序，以发现 AI CLI 会话；登录且开启后台同步时，每个会话的程序名和项目文件夹名会同步到你的账户。";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新都会读取最近 30 天的日志。只有在你允许时，CLI Pulse 才会额外读取一次最多一年的旧日志，用来补全用量历史。它会解析其中的用量记录，并把结果缓存在这台 Mac 上。";
+"local_scan_consent.derived_title" = "会提取哪些信息，以及哪些程序正在运行";
+"local_scan_consent.derived_detail" = "token 数、费用预估、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID——「会话」列表就是靠这些来命名的。它还会查看正在运行的程序，以发现 AI CLI 会话；登录且开启后台同步时，每个会话的程序名和项目文件夹名会同步到你的账户。";
 "local_scan_consent.network_title" = "用这台 Mac 上已有的凭据访问服务商";
 "local_scan_consent.network_detail" = "为显示实时配额，CLI Pulse 会用各 CLI 存在本机的令牌访问对应服务商；令牌过期时，续期会改写该 CLI 的凭据文件。";
 "local_scan_consent.keychain_title" = "钥匙串里 Claude Code 的令牌等";
-"local_scan_consent.keychain_detail" = "每一项 macOS 都会先询问你一次：Claude Code 的令牌；Zed 的令牌（仅直接下载版，且你使用 Zed 时）；以及浏览器的 Cookie 密钥，用于 Cursor（在你更改之前，它的 Cookie 来源就是「自动」）和你设为「自动」的其他服务商。拒绝其中一项，只是看不到对应服务商的配额，其他功能不受影响。";
+"local_scan_consent.keychain_detail" = "macOS 会就以下每一项先询问你一次：Claude Code 的令牌；Zed 的令牌（仅限直接下载版，且你使用 Zed 时）；以及浏览器的 Cookie 密钥——用于 Cursor（它的 Cookie 来源默认为「自动」，除非你更改）和你设为「自动」的其他服务商。拒绝其中一项，只是看不到对应服务商的配额，其他功能不受影响。";
 "local_scan_consent.telemetry_title" = "匿名统计是另一回事";
 "local_scan_consent.telemetry_detail" = "它不受这个选择影响，也不含文件路径或服务商名称；可以在「设置 › 隐私」里关掉。";
 "local_scan_consent.start" = "开始本地扫描";
@@ -1149,9 +1149,9 @@
 "local_scan_consent.declined_title" = "本地扫描已关闭";
 "local_scan_consent.declined_body" = "CLI Pulse 没有扫描这台 Mac，所以暂时没有可显示的数据。";
 "local_scan_consent.last_30_days_only" = "仅最近 30 天";
-"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。无论选哪个，「设置 › 隐私」里随时可以改。";
-"local_scan_consent.first_ask_hint_signed_in" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。登录期间，之后可以在「设置 › 隐私」里更改旧日志的选择，或在选了「暂时不要」后再次显示这个问题；退出登录会停止扫描。";
-"local_scan_consent.v2_title" = "在 CLI Pulse 读取更早的日志之前";
+"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。无论选哪个，之后都可以随时在「设置 › 隐私」中更改。";
+"local_scan_consent.first_ask_hint_signed_in" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。登录期间，之后可以在「设置 › 隐私」中更改是否读取旧日志；如果选了「暂时不要」，也可以在那里重新回答这个问题。退出登录会停止扫描。";
+"local_scan_consent.v2_title" = "在 CLI Pulse 读取旧日志之前";
 "local_scan_consent.v2_subtitle" = "每次刷新读取最近 30 天。为了补全用量历史，CLI Pulse 还可以一次性读取最多一年的旧会话日志。现在它会先征求你的同意；无论选哪个，最近 30 天的扫描都会照常进行，已生成的用量历史也会保留在这台 Mac 上。";
 "local_scan_consent.include_history" = "包括更早的历史";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
@@ -1186,7 +1186,7 @@
 "remote.connected" = "已连接";
 "remote.disconnected" = "已断开";
 "remote.no_sessions" = "没有会话。请在 Mac 的「会话」标签页启动一个。";
-"remote.no_macs" = "此 Wi‑Fi 上未找到 Mac。远程控制需要直接下载版的 Mac 应用，App Store 版本不支持。如果 Mac 应用的「设置」中有「远程控制」，请在那里打开；如果没有，这台 Mac 就无法使用远程控制。";
+"remote.no_macs" = "此 Wi‑Fi 上未找到 Mac。远程控制需要直接下载版的 Mac 应用，App Store 版不支持。如果 Mac 应用的「设置」中有「远程控制」，请在那里打开；如果没有，那台 Mac 就无法使用远程控制。";
 "remote.local_network_denied" = "本地网络权限已关闭。请在「设置」中打开以查找 Mac。";
 "remote.open_settings" = "打开设置";
 "remote.pairing_succeeded" = "配对成功";
@@ -1340,9 +1340,9 @@
 "helper.built_in_version" = "内置 · v%@";
 "app_updater.update_available_badge" = "可更新：%1$@ → %2$@";
 "app_updater.error_badge" = "错误";
-"helper.install_intro" = "安装可选的 Companion CLI helper，即可在菜单栏中操作 claude、codex 和 gemini 会话。该 helper 已通过 Apple 公证，安装在你的个人文件夹中，无需管理员密码。配对后，它还会每 2 分钟自行收集数据并同步到它配对的账户，包括正在运行的 AI CLI 的命令行，以及这台 Mac 的电池和传感器读数；但仅在本应用登录的是该账户、且你允许扫描这台 Mac 时才会这样做，1.30.0 及更早的版本不做这项检查。具体读取哪些内容，请见隐私政策；卸载即可停止。";
+"helper.install_intro" = "安装可选的 Companion CLI helper，即可在菜单栏中操作 claude、codex 和 gemini 会话。该 helper 已通过 Apple 公证，安装在你的个人文件夹中，无需管理员密码。配对后，它还会每 2 分钟自行收集数据（包括正在运行的 AI CLI 的命令行，以及这台 Mac 的电池和传感器读数），并同步到与它配对的账户。仅当本应用登录的是该账户、且你允许扫描这台 Mac 时，它才会这样做；1.30.0 及更早的版本则无论如何都会这样做。具体读取哪些内容，请见隐私政策；卸载即可停止。";
 "helper.waiting_for_installer" = "正在等待 macOS 安装器完成…";
-"helper.running_unpaired_hint" = "已安装并在运行，但尚未与任何账户配对，因此无法运行托管会话。为这台 Mac 设置云同步并不会配对它：它有自己独立的配对。";
+"helper.running_unpaired_hint" = "已安装并在运行，但尚未与任何账户配对，因此无法运行托管会话。为这台 Mac 设置云同步并不会配对 helper：helper 需要单独配对。";
 "helper.running_unpaired_hint_no_account" = "已安装并在运行，但尚未与任何账户配对，因此无法运行托管会话。配对它需要 CLI Pulse 账户，而本应用当前没有登录任何账户。";
 "helper.bundled_hint" = "内置于 CLI Pulse——更新应用时会自动更新，无需单独安装。";
 "helper.update_available_body" = "helper 有新版本（%@）可用。更新流程与安装流程完全相同。";
@@ -1382,19 +1382,19 @@
 "app_updater.download_update" = "下载更新";
 "app_updater.install_update_quits" = "安装更新（将退出 CLI Pulse）";
 "local_scan_consent.settings_toggle" = "扫描这台 Mac 上的 CLI 使用情况";
-"local_scan_consent.settings_toggle_detail" = "每次刷新读取 ~/.codex 和 ~/.claude 下最近 30 天的会话日志，并向你使用的服务商查询实时配额。更早的日志由单独的开关控制。关闭后，应用及其后台 Helper 都不会扫描这台 Mac。";
+"local_scan_consent.settings_toggle_detail" = "每次刷新读取 ~/.codex 和 ~/.claude 下最近 30 天的会话日志，并向你使用的服务商查询实时配额。旧日志由单独的开关控制。关闭后，应用及其后台 helper 都不会扫描这台 Mac。";
 "local_scan_consent.history_toggle" = "包括更早的用量历史";
 "local_scan_consent.history_toggle_detail" = "读取一次最多一年的旧会话日志，用来补全用量历史。关闭后，CLI Pulse 只读取最近 30 天；已生成的用量历史仍保留在这台 Mac 上。";
 "local_scan_consent.settings_declined_detail" = "你选择了「暂时不要」。即使已登录，这个选择也不会改变。";
-"local_scan_consent.companion_not_covered" = "这台 Mac 上的 Companion CLI（%@）不遵循此选择，也不因退出登录而停止：只要它已安装并配对，就会每 2 分钟读取这台 Mac，并同步到它配对的账户。请在「设置 › Companion CLI」中更新或卸载它。";
+"local_scan_consent.companion_not_covered" = "这台 Mac 上的 Companion CLI（%@）不遵循此选择，也不会因退出登录而停止：只要它已安装并配对，就会每 2 分钟读取这台 Mac，并把读到的内容同步到与它配对的账户。请在「设置 › Companion CLI」中更新或卸载它。";
 "local_scan_consent.choose_again" = "重新选择…";
 "settings.local_only_mode" = "严格隐私模式";
-"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取其他应用存放在钥匙串或浏览器里的机密信息：不读取 Claude Code 或 Zed 的钥匙串项目，也不读取浏览器或 Claude 桌面应用保存的 Cookie，即使服务商设为自动读取 Cookie 也不例外。它也不发送匿名统计。仍会读取的是 AI CLI 保存在你个人文件夹里的凭据文件（用于配额）和日志文件（用于用量）。崩溃报告照常发送，同步到你的账户也不受影响。";
+"settings.local_only_mode_hint" = "CLI Pulse 不会自行读取其他应用存放在钥匙串或浏览器里的机密信息：不读取 Claude Code 或 Zed 的钥匙串项目，也不读取浏览器或 Claude 桌面应用保存的 Cookie，即使服务商的「Cookie 来源」设为「自动」也不例外。它也不发送匿名统计。仍会读取的是 AI CLI 保存在你个人文件夹里的凭据文件（用于配额）和日志文件（用于用量）。崩溃报告照常发送，同步到你的账户也不受影响。";
 "settings.skip_claude_keychain" = "跳过 Claude Code 钥匙串访问";
 "settings.skip_claude_keychain_forced" = "已由严格隐私模式强制开启。";
-"settings.skip_claude_keychain_hint" = "CLI Pulse 不会自行读取 Claude Code 保存在 macOS 钥匙串中的登录凭据；如果 Claude Code 有凭据文件，仍会读取该文件。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
-"settings.claude_keychain_helper_confirmed" = "后台 Helper 也遵循这项设置。";
-"settings.claude_keychain_helper_unconfirmed" = "后台 Helper 尚未确认遵循这项设置。";
+"settings.skip_claude_keychain_hint" = "CLI Pulse 不会自行读取 Claude Code 保存在 macOS 钥匙串中的登录令牌；如果 Claude Code 有凭据文件，仍会读取该文件。如果你遇到过 macOS 钥匙串对话框不接受登录密码的情况，可以开启此项。";
+"settings.claude_keychain_helper_confirmed" = "后台 helper 也会遵循这项设置。";
+"settings.claude_keychain_helper_unconfirmed" = "后台 helper 尚未确认会遵循这项设置。";
 "settings.companion_ignores_switches" = "这台 Mac 上的 Companion CLI（%@）不遵循这些开关。请在「设置 › Companion CLI」中更新或卸载它。";
 "settings.block_claude_on_outdated_helper" = "helper 过旧时阻止托管 Claude";
 "settings.block_claude_on_outdated_helper_hint" = "当 Companion CLI 版本过旧、无法以你的 Max/Pro 方案运行 Claude 时，阻止启动托管 Claude 会话（否则会在不提示的情况下改用 Claude API）。默认关闭；关闭时只会显示一条警告。";
@@ -1601,7 +1601,7 @@
 "remote.listener_failed" = "远程控制监听出错：%@";
 
 /* Previously hardcoded UI copy — routed through L10n by the 2026-09-15 sweep */
-"alerts.critical_count_badge" = "严重级 %d 条";
+"alerts.critical_count_badge" = "%d 条严重告警";
 "alerts.warning_count_badge" = "%d 条警告";
 "account.deleting" = "正在删除账户…";
 "usage_dashboard.chart_day" = "日期";
