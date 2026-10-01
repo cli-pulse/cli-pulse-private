@@ -221,18 +221,42 @@ final class LocalScanConsentCopyTests: XCTestCase {
     /// The first ask is also shown to people whose Mac was read before: a
     /// signed-in "Not now" choosing again, and a signed-in user who answered
     /// only the older-logs question and later signed out into local mode. So
-    /// it says nothing is read until the scan starts, not "nothing has been
-    /// read yet".
+    /// it says CLI Pulse does not scan this Mac until you say so, not "nothing
+    /// has been read yet".
     func test_zhHansFirstAskSaysWhatHoldsForEveryoneShownIt() {
         inLocale("zh-Hans") {
             // The lookup keeps "CLI Pulse" on one line with a no-break space
             // (`L10n.displayFormat`); compared here as the catalogue spells it.
             let subtitle = L10n.localScanConsent.subtitle
                 .replacingOccurrences(of: "\u{00A0}", with: " ")
-            XCTAssertEqual(subtitle, "开始扫描之前，CLI Pulse 不会读取任何内容。开始扫描后，将启用以下各项。")
+            XCTAssertEqual(subtitle, "在你同意之前，CLI Pulse 不会扫描这台 Mac。开始扫描后，将启用以下各项。")
             XCTAssertFalse(subtitle.contains("尚未读取"))
             XCTAssertEqual(L10n.localScanConsent.chooseAgain, "重新选择…")
             XCTAssertTrue(L10n.localScanConsent.settingsDeclinedDetail.contains("「暂时不要」"))
+        }
+    }
+
+    /// "Reads nothing until you start the scan" was the last absolute "reads
+    /// nothing" on the first ask, which 1.55 replaced with "not scanning"
+    /// everywhere else: the same sheet can show the note that an old
+    /// Companion CLI reads this Mac every 2 minutes. The subtitle says the
+    /// scan does not run until you say so, in every language.
+    func test_theFirstAskSubtitleNoLongerSaysNothingIsRead() {
+        let readsNothing = [
+            "en": "reads nothing", "zh-Hans": "不会读取任何内容", "zh-Hant": "不會讀取任何內容",
+            "ja": "何も読み取りません", "ko": "아무것도 읽지 않습니다", "es": "no lee nada",
+        ]
+        let english = inLocale("en") { L10n.localScanConsent.subtitle }
+        for locale in Self.locales {
+            let subtitle = inLocale(locale) { L10n.localScanConsent.subtitle }
+            XCTAssertFalse(subtitle.hasPrefix("local_scan_consent."), "\(locale) renders the raw key")
+            XCTAssertFalse(subtitle.contains(readsNothing[locale]!), "\(locale): \(subtitle)")
+            if locale != "en" {
+                XCTAssertNotEqual(subtitle, english, "\(locale): the subtitle is the English text")
+            }
+        }
+        inLocale("en") {
+            XCTAssertTrue(L10n.localScanConsent.subtitle.contains("doesn't scan this Mac until you say so"))
         }
     }
 

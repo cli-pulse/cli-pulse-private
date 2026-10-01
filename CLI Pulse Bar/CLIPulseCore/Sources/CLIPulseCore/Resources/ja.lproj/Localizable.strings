@@ -619,7 +619,7 @@
 "advanced.track_git_hint" = "ハッシュ化したコミットメタデータのみを送信し、メッセージ、差分、パスはアップロードしません。収集するのは Companion CLI だけです。";
 "advanced.git_consent_title" = "Git アクティビティ追跡を有効にしますか？";
 "advanced.enable" = "有効化";
-"advanced.git_consent_body" = "CLI Pulse は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
+"advanced.git_consent_body" = "Companion CLI は AI セッションが活動中のプロジェクトの git ログをスキャンします。デバイスから送信されるのはコミットハッシュ、プロジェクトパスの HMAC、コミットのタイムスタンプ、マージコミットフラグのみです。コミットメッセージ、差分、ファイルパス、作成者情報はアップロードされません。";
 "advanced.remote_control" = "他のデバイスからの Mac 操作リクエスト";
 "advanced.remote_control_hint" = "サインイン済みのデバイスから Mac にファン増速・低電力モード・スリープ防止を要求できます。デフォルトはオフです。";
 "advanced.remote_consent_title" = "Mac 操作リクエストを許可しますか？";
@@ -730,7 +730,7 @@
 "advanced.sync_minutes_ago" = "%d 分前に同期";
 "advanced.helper_running" = "実行中";
 "advanced.helper_not_running" = "停止中";
-"advanced.helper_paused_local_scan_off" = "一時停止中：ローカルスキャンはオフです";
+"advanced.helper_paused_local_scan_off" = "一時停止中：ローカルスキャンがオフ";
 "advanced.helper_paused_signed_out" = "一時停止中：サインアウト中";
 "advanced.helper_restart_needed" = "再起動が必要：バックグラウンド同期をオフにしてから、もう一度オンにしてください";
 "advanced.privacy_keys_title" = "プロバイダー API キーと Cookie";
@@ -823,7 +823,7 @@
 
 リクエストはあくまでリクエストです。受け取る Mac 側でも「リモートマシン制御」がオンの場合のみ実行され、ファンの保持は必ず自動で解除されます。ここからコマンドを実行したりプロセスを操作したりすることはできません。
 
-このスイッチは以前、リモート CLI セッションとリモートでの権限承認も有効にしていました。どちらも提供を終了しましたが、一部が残っています。このアカウントとペアリングされた Companion CLI は、自分が実行するセッションの出力（秘密情報は伏せ字）を、その状態や、各セッションのプログラム名、プロジェクトフォルダ名、ラベルとともに当社のサーバーへ送ることがあります。サーバーがこれを受け付けるのは、このスイッチがオンの間だけです。";
+このスイッチは以前、リモート CLI セッションとリモートでの権限承認も有効にしていました。どちらも提供を終了しましたが、一部の機能は残っています。このアカウントとペアリングされた Companion CLI は、Companion CLI 自身が実行するセッションについて、その出力（秘密情報は伏せ字）、状態、各セッションのプログラム名、プロジェクトフォルダ名、ラベルを当社のサーバーへ送ることがあります。当社のサーバーがこれを受け付けるのは、このスイッチがオンの間だけです。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "ペース通り";
@@ -1111,7 +1111,7 @@
 "collector_status.shared_login_taken_hint" = "この Mac の %@ ログインは、すでに別のアカウントが使用しています。このアカウントには専用の API キーを設定するか、そのアカウントを削除してください。";
 "collector_status.strict_privacy_mode" = "プライバシー強化モード中は読み取りません";
 "collector_status.strict_privacy_mode_cookie_hint" = "プライバシー強化モード中は、CLI Pulse はブラウザから %@ の Cookie を取得しません。「Cookie ソース」を「手動」にして貼り付けるか、「設定 › プライバシー」でこのモードをオフにしてください。";
-"collector_status.strict_privacy_mode_keychain_hint" = "プライバシー強化モード中は、CLI Pulse は %@ のキーチェーン項目を読み取りません。ここに表示するには、「設定 › プライバシー」でこのモードをオフにしてください。";
+"collector_status.strict_privacy_mode_keychain_hint" = "プライバシー強化モード中は、CLI Pulse は %@ のキーチェーン項目を読み取りません。CLI Pulse が読み取れるようにするには、「設定 › プライバシー」でこのモードをオフにしてください。";
 "collector_status.not_set_up" = "未設定";
 "collector_status.not_set_up_hint" = "設定を開いてこのプロバイダーを接続してください。";
 "collector_status.no_data" = "データが空でした";
@@ -1145,15 +1145,15 @@
 
 /* v1.50 W-C — この Mac を読み取る前の選択 */
 "local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";
-"local_scan_consent.subtitle" = "スキャンを始めるまで、CLI Pulse は何も読み取りません。始めると、以下が有効になります。";
-"local_scan_consent.files_title" = "セッションログ：直近 30 日と、一度だけ最大 1 年分";
+"local_scan_consent.subtitle" = "許可するまで、CLI Pulse はこの Mac をスキャンしません。スキャンを始めると、以下が有効になります。";
+"local_scan_consent.files_title" = "セッションログ：直近 30 日分と、最大 1 年分（一度だけ）";
 "local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。更新のたびに直近 30 日分を読み取ります。許可した場合に限り、使用履歴を補完するため、最大 1 年分の古いログも一度だけ読み取ります。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "割り出すものと、実行中のプログラム";
 "local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。さらに、セッション一覧に名前を表示するため、各会話のファイルパス、プロジェクトフォルダ、セッション ID も使います。また、AI CLI セッションを見つけるために実行中のプログラムを確認します。サインイン中でバックグラウンド同期がオンのときは、各セッションのプログラム名とプロジェクトフォルダ名がアカウントに同期されます。";
 "local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
 "local_scan_consent.network_detail" = "リアルタイムの残量を表示するため、各 CLI がこの Mac に保存したトークンを使ってプロバイダーに問い合わせます。期限が切れたトークンを CLI Pulse が更新すると、その CLI の認証ファイルが書き換わります。";
 "local_scan_consent.keychain_title" = "キーチェーン内の Claude Code のトークンなど";
-"local_scan_consent.keychain_detail" = "macOS が項目ごとに、最初に一度だけ確認します。対象は、Claude Code のトークン、Zed のトークン（直接ダウンロード版で Zed を使っている場合）、そしてブラウザの Cookie 暗号化キーです。このキーを読み取るのは、Cursor（変更しない限り Cookie ソースは「自動」です）と、Cookie ソースを「自動」にしたほかのプロバイダーのためだけです。拒否しても、失われるのはそのプロバイダーの残量表示だけです。";
+"local_scan_consent.keychain_detail" = "macOS が項目ごとに、最初に一度だけ確認します。対象は、Claude Code のトークン、Zed のトークン（CLI Pulse の直接ダウンロード版で、Zed を使っている場合のみ）、そしてブラウザの Cookie 暗号化キーです。このキーを読み取るのは、Cursor（変更しない限り Cookie ソースは「自動」です）と、Cookie ソースを「自動」にしたほかのプロバイダーのためだけです。拒否しても、失われるのはそのプロバイダーの残量表示だけです。";
 "local_scan_consent.telemetry_title" = "匿名の統計情報は別扱いです";
 "local_scan_consent.telemetry_detail" = "この選択には含まれません。ファイルパスやプロバイダー名は含まず、「設定 › プライバシー」でオフにできます。";
 "local_scan_consent.start" = "ローカルスキャンを開始";
@@ -1175,12 +1175,12 @@
 "telemetry.disclosure_title" = "匿名インストール統計";
 "telemetry.disclosure_body" = "CLI Pulse が報告するのは「どこまで進んだか」だけです。インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。アカウントを使わない以上、これがなければアプリがどこで止まっているのか分かりません。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
 "telemetry.disclosure_body_local_only" = "プライバシー強化モードがオンなので、CLI Pulse は匿名の統計情報を一切送信しません。オフにした場合は、次の4段階と現在表示している言語を報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
-"telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。ID はランダムです。アプリの設定ファイルに保存され、アプリをゴミ箱に入れても設定ファイルは残ります。";
+"telemetry.not_collected" = "ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。あなたやマシンを特定できる情報も含みません。ID はランダムに生成され、アプリの設定ファイルに保存されます。アプリをゴミ箱に入れても、この ID は削除されません。";
 "telemetry.toggle" = "匿名インストール統計を送信";
 "telemetry.toggle_local_only" = "オフ（プライバシー強化モードでこれもオフになります）";
 "telemetry.got_it" = "OK";
 "telemetry.change_later" = "「設定 › プライバシー」でいつでも変更できます。";
-"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムです。アプリの設定ファイルに保存され、アプリをゴミ箱に入れても設定ファイルは残ります。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
+"telemetry.settings_body" = "アプリがどこまで進んだかだけを、アカウントなし・あなたやマシンを特定できる情報なしで報告します：インストールされたこと、ヘルパーが接続できたか、追跡できる CLI を見つけたことがあるか、コストの数値を表示できたことがあるか、そして現在表示している言語です。ファイルパス、プロジェクト名、プロバイダー名、トークン数、金額は含みません。ID はランダムに生成され、アプリの設定ファイルに保存されます。アプリをゴミ箱に入れても、この ID は削除されません。リモート操作を使う場合は、次の4項目（はい／いいえ）も送信します：スマートフォンが Wi‑Fi 経由でこの Mac に接続したか、自分専用のネットワーク経由で接続したか、セッションが claude.ai に引き継がれたか、Claude 以外のツールを操作したことがあるか。";
 
 /* Remote control (LAN, M0) */
 "remote.title" = "リモート操作";
@@ -1398,14 +1398,14 @@
 "local_scan_consent.settings_toggle_detail" = "更新のたびに ~/.codex と ~/.claude にある直近 30 日のセッションログを読み取り、利用中のプロバイダーにリアルタイムの残量を問い合わせます。古いログは別のスイッチで設定します。オフにすると、アプリもバックグラウンドヘルパーもこの Mac をスキャンしません。";
 "local_scan_consent.history_toggle" = "古い使用履歴も含める";
 "local_scan_consent.history_toggle_detail" = "使用履歴を補完するため、最大 1 年分の古いセッションログを一度だけ読み取ります。オフにすると、CLI Pulse は直近 30 日分だけを読み取ります。作成済みの履歴はこの Mac に残ります。";
-"local_scan_consent.settings_declined_detail" = "「今はしない」を選びました。サインインしていても、この選択は変わりません。";
-"local_scan_consent.companion_not_covered" = "この Mac の Companion CLI（%@）は、この選択に従わず、サインアウトしても停止しません。インストールされていてペアリング済みの間は、2 分ごとにこの Mac を読み取り、ペアリングしたアカウントに同期します。「設定 › Companion CLI」でアップデートするか、アンインストールしてください。";
+"local_scan_consent.settings_declined_detail" = "「今はしない」が選択されています。サインインしていても、この選択は変わりません。";
+"local_scan_consent.companion_not_covered" = "この Mac の Companion CLI（%@）は、この選択に従わず、サインアウトしても停止しません。インストールされていてペアリング済みの間は、2 分ごとにこの Mac を読み取り、読み取った内容をペアリングしたアカウントに同期します。「設定 › Companion CLI」でアップデートするか、アンインストールしてください。";
 "local_scan_consent.choose_again" = "選び直す…";
 "settings.local_only_mode" = "プライバシー強化モード";
-"settings.local_only_mode_hint" = "CLI Pulse は、他のアプリがキーチェーンやブラウザに保管している秘密情報を、自分から読み取ることはありません。Claude Code や Zed のキーチェーン項目も、ブラウザや Claude デスクトップアプリに保存された Cookie も読み取りません（Cookie を自動で読み取るよう設定したプロバイダーでも同じです）。匿名の統計情報も送信しません。引き続き読み取るのは、AI CLI がホームフォルダに保存している認証ファイル（残量の取得用）とログファイル（使用量の集計用）です。クラッシュレポートは引き続き送信され、アカウントへの同期もそのまま使えます。";
+"settings.local_only_mode_hint" = "CLI Pulse は、他のアプリがキーチェーンやブラウザに保管している秘密情報を、自分から読み取ることはありません。Claude Code や Zed のキーチェーン項目も、ブラウザや Claude デスクトップアプリに保存された Cookie も読み取りません（Cookie ソースを「自動」にしたプロバイダーでも同じです）。匿名の統計情報も送信しません。引き続き読み取るのは、AI CLI がホームフォルダに保存している認証ファイル（残量の取得用）とログファイル（使用量の集計用）です。クラッシュレポートは引き続き送信され、アカウントへの同期もそのまま使えます。";
 "settings.skip_claude_keychain" = "Claude Code のキーチェーンにアクセスしない";
 "settings.skip_claude_keychain_forced" = "プライバシー強化モードにより強制的にオンになっています。";
-"settings.skip_claude_keychain_hint" = "Claude Code が macOS のキーチェーンに保存しているサインイン情報を、CLI Pulse が自分から読み取ることはなくなります。Claude Code の認証情報ファイルがある場合は、引き続き読み取ります。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
+"settings.skip_claude_keychain_hint" = "Claude Code が macOS のキーチェーンに保存しているトークンを、CLI Pulse が自分から読み取ることはなくなります。Claude Code の認証ファイルがある場合は、引き続き読み取ります。macOS のキーチェーンダイアログがログインパスワードを受け付けない場合に役立ちます。";
 "settings.claude_keychain_helper_confirmed" = "バックグラウンドヘルパーもこの設定に従っています。";
 "settings.claude_keychain_helper_unconfirmed" = "バックグラウンドヘルパーからの確認はまだありません。";
 "settings.companion_ignores_switches" = "この Mac の Companion CLI（%@）は、これらのスイッチに従いません。「設定 › Companion CLI」でアップデートするか、アンインストールしてください。";
