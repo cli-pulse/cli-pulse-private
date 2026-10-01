@@ -859,7 +859,10 @@ class RemoteAgentManager:
         # the coalescing window on teardown. No-op when the producer is absent.
         if self._broadcast_publisher is not None:
             try:
-                self._broadcast_publisher.flush(session_id)
+                # v1.55: the final flush sends, so it asks too; paused, the
+                # queued chunks are dropped with the session's state.
+                if self._server_allowed(f"terminal broadcast flush({session_id})"):
+                    self._broadcast_publisher.flush(session_id)
                 # Purge per-session token/denial/retry state AFTER the final
                 # flush so the long-lived daemon's dicts stay bounded.
                 forget = getattr(self._broadcast_publisher, "forget", None)
@@ -1043,6 +1046,7 @@ class RemoteAgentManager:
         if (
             self._broadcast_publisher is None
             or sess.params.realtime_private is not True
+            or not self._server_allowed(f"tail_snapshot broadcast({session_id})")
         ):
             return True, ""   # nothing to broadcast — not an error
         try:
@@ -1520,7 +1524,8 @@ class RemoteAgentManager:
             # long-lived daemon.
             if self._broadcast_publisher is not None:
                 try:
-                    self._broadcast_publisher.flush(session_id)
+                    if self._server_allowed(f"terminal broadcast flush({session_id})"):
+                        self._broadcast_publisher.flush(session_id)
                     forget = getattr(self._broadcast_publisher, "forget", None)
                     if callable(forget):
                         forget(session_id)

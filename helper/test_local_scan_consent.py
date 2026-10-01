@@ -1594,8 +1594,12 @@ def _drive_every_server_call(gate_for, monkeypatch) -> tuple[list[str], dict]:
     local["raw_ring"] = len(manager._sessions[sid].raw_ring)
     # 3. The full tick: the command poll, and the result of what it pulled.
     manager.tick()
-    # 4. A result for a command pulled before the answer changed.
+    # 4. A result for a command pulled before the answer changed, and a
+    #    pulled request for the session's recent output (the retired
+    #    broadcast's warm resume).
     manager._dispatch_one({"id": cmd_id, "session_id": "not-here", "kind": "stop", "payload": ""})
+    manager._dispatch_one({"id": cmd_id, "session_id": sid, "kind": "tail_snapshot", "payload": "100"})
+    local["tail_snapshot"] = [e for (_s, e, _d) in publisher.submitted].count("tail_snapshot_result")
     # 5. Its exit: status and a note.
     transport.alive[sid] = False
     transport.exit_code[sid] = 3
@@ -1622,6 +1626,8 @@ def _drive_every_server_call(gate_for, monkeypatch) -> tuple[list[str], dict]:
     manager.spawn_session(remote_agent.SessionStartParams(session_id=sid3, provider="claude"))
     manager.shutdown()
     local["broadcast"] = len(publisher.submitted)
+    local["broadcast_flushed"] = len(publisher.flushed)
+    local["broadcast_forgotten"] = len(publisher.forgotten)
 
     # The machine-control relay, with a fresh executor report so it would pull.
     relay = machine_command_relay.MachineCommandRelay(
@@ -1645,7 +1651,10 @@ def test_a_paused_companion_sends_nothing_about_its_sessions(home, app_group_cop
     assert local["raw_ring"] >= 3600
     # Sharing with the phone is refused, not queued.
     assert local["shared"] == "refused"
-    assert local["broadcast"] == 0
+    assert local["broadcast"] == 0 and local["broadcast_flushed"] == 0
+    assert local["tail_snapshot"] == 0
+    # The retired broadcast's per-session state is still purged.
+    assert local["broadcast_forgotten"] >= 3
     assert local["relay_complete"] == {"status": "paused"}
 
 
@@ -1669,7 +1678,8 @@ def test_an_allowed_companion_still_sends_them(home, app_group_copy, monkeypatch
     assert sent.count("remote_helper_register_session") == 4
     assert sent.count("remote_helper_post_event") >= 5
     assert local["shared"] is True
-    assert local["broadcast"] >= 1
+    assert local["broadcast"] >= 1 and local["broadcast_flushed"] >= 3
+    assert local["tail_snapshot"] == 1
     assert local["relay_complete"] == {"status": "ok"}
 
 

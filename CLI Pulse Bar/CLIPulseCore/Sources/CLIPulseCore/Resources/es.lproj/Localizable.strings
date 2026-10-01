@@ -446,7 +446,7 @@ Lo que estas solicitudes nunca llevan:
 
 Una solicitud es solo una solicitud. El Mac que la recibe la atiende únicamente si allí también está activado «Control remoto de la máquina»; cada retención del ventilador se revierte sola, y desde aquí no se puede ejecutar ningún comando ni controlar ningún proceso.
 
-Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos. La app ya no ofrece ninguna de las dos, pero queda una parte: un Companion CLI vinculado a esta cuenta puede enviar a nuestros servidores la salida de las sesiones que ejecuta, con los secretos ocultos, junto con su estado y el programa, el nombre de la carpeta de proyecto y la etiqueta de cada una. Nuestros servidores solo aceptan estos datos mientras esto está activado.";
+Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos remotas. Ninguna de las dos se ofrece ya, pero queda una parte: un Companion CLI vinculado a esta cuenta puede enviar a nuestros servidores la salida de las sesiones que ejecuta, con los secretos ocultos, junto con su estado y el programa, el nombre de la carpeta de proyecto y la etiqueta de cada una. Nuestros servidores solo aceptan estos datos mientras esto está activado.";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "Al ritmo previsto";

@@ -199,8 +199,10 @@ final class PrivacyCopyTruthTests: XCTestCase {
                "ja": "ペアリングはされません", "ko": "페어링되지 않습니다", "es": "no lo vincula"]),
         ("helper.running_unpaired_hint_no_account",
          was: PrivacyCopyTruthTests.pairAbove,
-         now: ["en": "needs a CLI Pulse account", "zh-Hans": "需要 CLI Pulse 账户", "zh-Hant": "需要 CLI Pulse 帳號",
-               "ja": "CLI Pulse アカウントが必要", "ko": "CLI Pulse 계정이 필요", "es": "hace falta una cuenta de CLI Pulse"]),
+         // (No "CLI Pulse" here: the name is shown with a no-break space.)
+         now: ["en": "isn't signed in to one", "zh-Hans": "没有登录任何账户", "zh-Hant": "沒有登入任何帳號",
+               "ja": "どのアカウントにもサインインしていません", "ko": "어떤 계정에도 로그인되어 있지 않습니다",
+               "es": "no tiene la sesión iniciada en ninguna"]),
     ]
 
     /// The not-paired hint's old instruction, in each language.

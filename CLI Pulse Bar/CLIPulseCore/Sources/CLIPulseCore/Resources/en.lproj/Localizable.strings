@@ -832,7 +832,7 @@ What these requests never carry:
 
 A request is only a request. The receiving Mac honours it only if \"Remote machine control\" is also on there, every fan hold reverts on its own, and nothing here can run a command or control a process.
 
-This switch used to also enable remote CLI sessions and permission approvals. The app no longer offers either, but one part remains: a Companion CLI paired with this account can send our server the output of the sessions it runs, with secrets redacted, along with their status and each one's program, project folder name and label. Our server accepts these only while this is on.";
+This switch used to also enable remote CLI sessions and remote permission approvals. Neither is offered any more, but one part remains: a Companion CLI paired with this account can send our server the output of the sessions it runs, with secrets redacted, along with their status and each one's program, project folder name and label. Our server accepts these only while this is on.";
 
 /* System Monitor — Machine tab */
 "machine.subtitle" = "Local machine health";
