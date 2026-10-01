@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "コストの内訳がわかる",
-   "今日の推定コストをプロバイダー別に、​30日間の推定額も"
+   "今日の推定コストをプロバイダー別に、​直近30日間の推定額も"
   ],
   "05_alerts": [
    "上限の接近を見逃さない",
@@ -47,7 +47,7 @@
   "01_overview_2880x1800.png": "7dab2d0182e6d11b7fcbed9db6e00f37",
   "02_providers_2880x1800.png": "6d1cfd8bb1da1fb72fc311153da17480",
   "03_usage_history_2880x1800.png": "dd72ddcf84b7084d601a4d7a827316a0",
-  "04_cost_2880x1800.png": "e1d591326be1d35c0fec5447a371fa55",
+  "04_cost_2880x1800.png": "fefb63a693f33aa4f2ddb5e4ff6fc27d",
   "05_alerts_2880x1800.png": "e5ddd5ccbc505d6c2bbd515e65603f4e",
   "06_pulse_cat_2880x1800.png": "def5c06e8db7fd5894fdc1e5cfda66e2"
  },

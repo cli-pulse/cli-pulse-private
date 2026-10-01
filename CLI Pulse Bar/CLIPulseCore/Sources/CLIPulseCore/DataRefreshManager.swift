@@ -3326,6 +3326,25 @@ extension AppState {
 
 
 
+    /// The route `DataRefreshManager.refreshAll` takes for this state: the
+    /// same four flags `refreshContext()` hands it, through the same
+    /// `RefreshRouter.decide`. Views read it to know where the dashboard
+    /// they draw came from (`OverviewFormatters.showsRequestsMetric`).
+    public var refreshRoute: RefreshRoute {
+        #if os(macOS)
+        let onMacOS = true
+        #else
+        let onMacOS = false
+        #endif
+        return RefreshRouter.decide(
+            isAuthenticated: isAuthenticated,
+            isDemoMode: isDemoMode,
+            isPaired: isPaired,
+            isLocalMode: isLocalMode,
+            isMacOS: onMacOS
+        )
+    }
+
     func refreshContext() -> DataRefreshManager.Context {
         DataRefreshManager.Context(
             isAuthenticated: isAuthenticated,

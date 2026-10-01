@@ -326,9 +326,10 @@ struct OverviewTab: View {
                 icon: "dollarsign.circle",
                 color: .green
             )
-            // Local mode only: signed in, the dashboard comes from the cloud,
-            // which counts no requests and always said 0 here.
-            if OverviewFormatters.showsRequestsMetric(isAuthenticated: state.isAuthenticated) {
+            // Only on the local refresh route (local mode, or signed in with no
+            // paired helper yet), which counts requests. The cloud route's
+            // dashboard has no request count and always said 0 here.
+            if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
                 MetricCard(
                     title: L10n.dashboard.requests,
                     value: DisplayFormat.count(dash.total_requests_today),

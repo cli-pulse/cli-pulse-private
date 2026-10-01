@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "Where the money goes",
-   "Estimated cost for today and the last 30 days, by provider"
+   "Today’s estimated cost by provider, plus the total for the last 30 days"
   ],
   "04_sessions": [
    "Every CLI run tracked",
@@ -36,7 +36,7 @@
  "panels": {
   "01_overview_1290x2796.png": "7d328afe0c709ef0121e8ef44d58540b",
   "02_providers_1290x2796.png": "d29d1a49382b5a6b8ae61d975b4e3be8",
-  "03_cost_1290x2796.png": "e7ed8fc48be7b91c6e817b6614fc9662",
+  "03_cost_1290x2796.png": "fb49b1d3bfc2094964007d9db45bb127",
   "04_sessions_1290x2796.png": "15a28e5b289c367627be34c859aaf78c",
   "05_alerts_1290x2796.png": "95f6ed8ed84ca43ea1957b597abe6442"
  },

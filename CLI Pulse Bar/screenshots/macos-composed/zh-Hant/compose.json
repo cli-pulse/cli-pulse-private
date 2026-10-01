@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "錢花在哪裡",
-   "今日與近 30 天的預估費用，依服務商細分"
+   "今日預估費用依服務商細分，另有近 30 天總額"
   ],
   "05_alerts": [
    "配額不再突然見底",
@@ -47,7 +47,7 @@
   "01_overview_2880x1800.png": "dc7e5dc3c8840bc7ce32767175b8e901",
   "02_providers_2880x1800.png": "70ce09723eb1a5d1f4149a433a10d8a6",
   "03_usage_history_2880x1800.png": "618a734e511112fe188b8b29fb58f2a7",
-  "04_cost_2880x1800.png": "de1c197078d7fde82173aed8474b9fc3",
+  "04_cost_2880x1800.png": "34a38eac728116df2a89368a57af27cb",
   "05_alerts_2880x1800.png": "c681aa10e76caa3bfb3da3c174280174",
   "06_pulse_cat_2880x1800.png": "1bf04c9b276829607b92d3e91bb62e82"
  },

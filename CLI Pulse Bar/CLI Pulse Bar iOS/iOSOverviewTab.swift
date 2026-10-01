@@ -246,9 +246,10 @@ struct iOSOverviewTab: View {
             // which the old title contradicted), so the title does not repeat it.
             MetricTile(id: "cost", title: L10n.dashboard.costToday, value: CostFormatter.format(dash.total_estimated_cost_today), icon: "dollarsign.circle", color: .green, badge: dash.cost_status),
         ]
-        // Requests only where something counts them (local mode, which the
-        // iPhone and iPad never are): the cloud dashboard always says 0.
-        if OverviewFormatters.showsRequestsMetric(isAuthenticated: state.isAuthenticated) {
+        // Requests only where something counts them (the Mac's local refresh
+        // route, which the iPhone and iPad never take): the cloud dashboard
+        // always says 0.
+        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
             tiles.append(MetricTile(id: "requests", title: L10n.dashboard.requests, value: "\(dash.total_requests_today)", icon: "arrow.up.arrow.down", color: .purple))
         }
         tiles += [

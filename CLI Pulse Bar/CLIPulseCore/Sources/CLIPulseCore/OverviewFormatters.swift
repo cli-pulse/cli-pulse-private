@@ -43,14 +43,18 @@ public enum OverviewFormatters {
         return f
     }()
 
-    /// Whether the Overview's Requests tile has a count to show. Only the
-    /// local refresh counts requests (it sums its sessions' `requests`). The
-    /// signed-in dashboard comes from `dashboard_summary`, which has no request
+    /// Whether the Overview's Requests figure has a count to show. Only the
+    /// local refresh fills one (it sums its sessions' `requests`). The cloud
+    /// route's dashboard comes from `dashboard_summary`, which has no request
     /// column, so `APIClient.dashboardSummary(from:)` carries 0 on purpose and
-    /// the tile read "0" on every iPhone, iPad and signed-in Mac. It shows in
-    /// local mode (not signed in) only; Demo is signed in, so it follows.
-    public static func showsRequestsMetric(isAuthenticated: Bool) -> Bool {
-        !isAuthenticated
+    /// the tile read "0" on every iPhone, iPad, Watch and paired Mac.
+    ///
+    /// Keyed on the route, not on being signed in: `.localOnly` is a signed-out
+    /// Mac in local mode AND a signed-in Mac whose account has no paired helper
+    /// yet, and both fill the count. Demo is `.noOp`; the iPhone, iPad and
+    /// Watch are never `.localOnly`.
+    public static func showsRequestsMetric(route: RefreshRoute) -> Bool {
+        route == .localOnly
     }
 
     /// The iPhone Overview's rows of metric tiles, as index ranges: two across,

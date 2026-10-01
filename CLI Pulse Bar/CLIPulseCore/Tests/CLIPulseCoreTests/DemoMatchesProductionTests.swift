@@ -68,12 +68,30 @@ final class DemoMatchesProductionTests: XCTestCase {
 
     // MARK: - Requests
 
-    /// The signed-in dashboard has no request count: `dashboard_summary` has no
-    /// such column and `APIClient.dashboardSummary(from:)` carries 0. So the
-    /// tile shows in local mode only, and Demo, which is signed in, holds 0.
+    /// The cloud dashboard has no request count: `dashboard_summary` has no
+    /// such column and `APIClient.dashboardSummary(from:)` carries 0. Only the
+    /// local refresh fills one, so the figure shows on that route alone. The
+    /// cases pin the premise through the real router, not the predicate's
+    /// body: a signed-in Mac with no paired helper takes the local refresh
+    /// (and has a count) just as local mode does; signed in and paired, Demo,
+    /// and the iPhone (whose route the Watch also decides) do not.
     func testTheRequestsTileShowsOnlyWhereSomethingCountsRequests() throws {
-        XCTAssertFalse(OverviewFormatters.showsRequestsMetric(isAuthenticated: true))
-        XCTAssertTrue(OverviewFormatters.showsRequestsMetric(isAuthenticated: false))
+        func shows(signedIn: Bool, demo: Bool = false, paired: Bool,
+                   localMode: Bool = false, mac: Bool) -> Bool {
+            OverviewFormatters.showsRequestsMetric(route: RefreshRouter.decide(
+                isAuthenticated: signedIn, isDemoMode: demo, isPaired: paired,
+                isLocalMode: localMode, isMacOS: mac))
+        }
+        XCTAssertTrue(shows(signedIn: false, paired: false, localMode: true, mac: true),
+                      "local mode counts requests and lost its tile")
+        XCTAssertTrue(shows(signedIn: true, paired: false, mac: true),
+                      "a signed-in Mac with no paired helper refreshes locally and counts requests")
+        XCTAssertFalse(shows(signedIn: true, paired: true, mac: true),
+                       "a paired Mac draws the cloud dashboard, whose count is 0")
+        XCTAssertFalse(shows(signedIn: true, demo: true, paired: true, mac: true),
+                       "Demo draws the Requests tile")
+        XCTAssertFalse(shows(signedIn: true, paired: false, mac: false),
+                       "the iPhone (and the Watch) draw the cloud dashboard, whose count is 0")
 
         let row = Data("""
             {"today_usage": 120000, "today_cost": 3.5, "active_sessions": 4,
@@ -82,28 +100,50 @@ final class DemoMatchesProductionTests: XCTestCase {
         let cloud = APIClient.dashboardSummary(
             from: try JSONDecoder().decode(APIClient.DashboardSummaryPayload.self, from: row))
         XCTAssertEqual(cloud.total_usage_today, 120000, "the row did not decode, so this proves nothing")
-        XCTAssertEqual(cloud.total_requests_today, 0, "the cloud dashboard now counts requests; show the tile signed in")
+        XCTAssertEqual(cloud.total_requests_today, 0,
+                       "the cloud dashboard now counts requests; show the tile on the cloud route")
 
         XCTAssertEqual(DemoDataProvider.generate().dashboard.total_requests_today,
-                       cloud.total_requests_today, "Demo is signed in, so its count is the cloud's")
+                       cloud.total_requests_today, "Demo draws the signed-in dashboard, so its count is the cloud's")
     }
 
-    /// The Mac and iPhone Overviews draw the Requests tile only under the rule.
-    func testEveryOverviewDrawsTheRequestsTileOnlyUnderTheRule() throws {
-        for path in ["CLI Pulse Bar/OverviewTab.swift", "CLI Pulse Bar iOS/iOSOverviewTab.swift"] {
-            let text = try String(contentsOf: Self.appSourceRoot.appendingPathComponent(path), encoding: .utf8)
-            let lines = Self.codeOnly(text).components(separatedBy: "\n")
-            let tiles = lines.indices.filter { lines[$0].contains("L10n.dashboard.requests") }
-            // Positive control: the tile is still in this Overview.
-            XCTAssertFalse(tiles.isEmpty, "\(path) no longer draws a Requests tile; is this still the Overview?")
-            for line in tiles {
-                let above = lines[max(0, line - 3)..<line]
-                XCTAssertTrue(above.contains { $0.contains("showsRequestsMetric(") }, """
-                    \(path):\(line + 1) draws Requests without `OverviewFormatters.showsRequestsMetric` just \
-                    above it; signed in, it reads 0 for everyone.
-                    """)
+    /// Every read of the dashboard's request count in an app target sits under
+    /// the rule: the Mac, iPhone and Watch Overviews, and anything added later
+    /// to any of the four targets. Keyed on the field, not the label: session
+    /// details use the same label for `session.requests`, which is not this.
+    func testEveryReadOfTheRequestCountIsUnderTheRule() throws {
+        let fileManager = FileManager.default
+        var reads: [String] = []
+        for target in ["CLI Pulse Bar", "CLI Pulse Bar iOS", "CLI Pulse Bar Watch", "CLI Pulse Widgets"] {
+            let root = Self.appSourceRoot.appendingPathComponent(target)
+            guard let walker = fileManager.enumerator(at: root, includingPropertiesForKeys: nil) else {
+                XCTFail("\(target) is gone; is this still the list of app targets?"); continue
             }
+            var swiftFiles = 0
+            for case let url as URL in walker where url.pathExtension == "swift" {
+                swiftFiles += 1
+                let lines = try String(contentsOf: url, encoding: .utf8).components(separatedBy: "\n")
+                // Code lines only, numbered as in the file: comments name the
+                // very symbols this scan looks for.
+                let code = lines.indices.filter {
+                    !lines[$0].trimmingCharacters(in: .whitespaces).hasPrefix("//")
+                }
+                for (position, index) in code.enumerated() where lines[index].contains("total_requests_today") {
+                    let place = "\(target)/\(url.lastPathComponent):\(index + 1)"
+                    reads.append(place)
+                    let above = code[max(0, position - 3)..<position].map { lines[$0] }
+                    XCTAssertTrue(above.contains { $0.contains("showsRequestsMetric(") }, """
+                        \(place) reads the dashboard's request count without \
+                        `OverviewFormatters.showsRequestsMetric` in the three lines above it; \
+                        on the cloud route it reads 0 for everyone.
+                        """)
+                }
+            }
+            XCTAssertGreaterThan(swiftFiles, 0, "\(target) has no Swift files; is this still an app target?")
         }
+        // Positive control: the scan still finds the Mac Overview's tile.
+        XCTAssertTrue(reads.contains { $0.hasPrefix("CLI Pulse Bar/OverviewTab.swift:") },
+                      "the scan no longer finds the Mac Overview's Requests tile: \(reads)")
     }
 
     // MARK: - Sessions and provider cards
@@ -210,8 +250,52 @@ final class DemoCostSummaryRowsTests: XCTestCase {
     }
 }
 
-/// The iPhone Overview's metric tiles lose Requests when signed in, which
-/// leaves five; they are laid out so none sits alone next to an empty slot.
+/// `AppState.refreshRoute`, which the Overviews key the Requests tile on, is
+/// the route `refreshAll` takes: the same four flags `refreshContext()` hands
+/// it, through the same router. Demo mode is left as the defaults have it
+/// (`@AppStorage` on the standard store); both sides read the same value.
+@MainActor
+final class AppStateRefreshRouteTests: XCTestCase {
+    func testTheOverviewsRouteIsTheRefreshRoute() {
+        let suiteName = "AppStateRefreshRouteTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        #if os(macOS)
+        let onMacOS = true
+        #else
+        let onMacOS = false
+        #endif
+        var routes: Set<String> = []
+        for signedIn in [false, true] {
+            for paired in [false, true] {
+                for localMode in [false, true] {
+                    state.isAuthenticated = signedIn
+                    state.isPaired = paired
+                    state.isLocalMode = localMode
+                    let context = state.refreshContext()
+                    let refreshed = RefreshRouter.decide(
+                        isAuthenticated: context.isAuthenticated, isDemoMode: context.isDemoMode,
+                        isPaired: context.isPaired, isLocalMode: context.isLocalMode,
+                        isMacOS: onMacOS)
+                    XCTAssertEqual(state.refreshRoute, refreshed,
+                                   "signed in \(signedIn), paired \(paired), local mode \(localMode)")
+                    routes.insert("\(state.refreshRoute)")
+                }
+            }
+        }
+        // Positive control (outside Demo): the flags reached the route.
+        if !state.isDemoMode && onMacOS {
+            XCTAssertEqual(routes, ["noOp", "localOnly", "cloud"], "the flags did not reach the route")
+        }
+    }
+}
+
+/// The iPhone Overview's metric tiles never include Requests (the iPhone is
+/// never on the local refresh route), which leaves five; they are laid out so none sits alone next to an empty slot.
 final class MetricRowsTests: XCTestCase {
     func testTilesPairUpAndAnOddCountEndsInARowOfThree() {
         XCTAssertEqual(OverviewFormatters.metricRows(count: 0), [])

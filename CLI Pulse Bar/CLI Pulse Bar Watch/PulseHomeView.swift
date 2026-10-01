@@ -324,21 +324,29 @@ struct PulseHomeView: View {
 
     @ViewBuilder
     private func folded(_ dash: DashboardSummary) -> some View {
-        // Requests + this-week cost.
-        WatchCard {
-            VStack(spacing: 6) {
-                WatchMetricRow(
-                    label: L10n.dashboard.requests,
-                    value: "\(dash.total_requests_today)",
-                    icon: "arrow.up.arrow.down"
-                )
-                if state.showCost {
-                    WatchMetricRow(
-                        label: L10n.providers.thisWeek,
-                        value: CostFormatter.format(weekCost),
-                        icon: "calendar",
-                        valueColor: .green
-                    )
+        // Requests + this-week cost. Requests only under the Overview rule:
+        // the Watch only ever holds the cloud dashboard (its own
+        // dashboard_summary fetch or the iPhone's relay), whose request count
+        // is always 0 (APIClient.dashboardSummary(from:)), so on the Watch the
+        // card holds the week cost alone, and nothing when costs are hidden.
+        if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) || state.showCost {
+            WatchCard {
+                VStack(spacing: 6) {
+                    if OverviewFormatters.showsRequestsMetric(route: state.refreshRoute) {
+                        WatchMetricRow(
+                            label: L10n.dashboard.requests,
+                            value: "\(dash.total_requests_today)",
+                            icon: "arrow.up.arrow.down"
+                        )
+                    }
+                    if state.showCost {
+                        WatchMetricRow(
+                            label: L10n.providers.thisWeek,
+                            value: CostFormatter.format(weekCost),
+                            icon: "calendar",
+                            valueColor: .green
+                        )
+                    }
                 }
             }
         }

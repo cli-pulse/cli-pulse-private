@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "비용, 어디에 쓰이나요?",
-   "오늘과 30일간의 추정 비용을 공급자별로 확인하세요"
+   "공급자별 오늘 추정 비용과 최근 30일 합계"
   ],
   "04_sessions": [
    "모든 CLI 실행을 기록",
@@ -36,7 +36,7 @@
  "panels": {
   "01_overview_1290x2796.png": "1d1cb85831d49469d41ea33cbedbedbc",
   "02_providers_1290x2796.png": "dae7a5f678ff585a83288ddac70fe4c4",
-  "03_cost_1290x2796.png": "9bd4ac6991f603a8a69063c4f7d92400",
+  "03_cost_1290x2796.png": "35628f963523bdc073e83fd778007510",
   "04_sessions_1290x2796.png": "41253553b19caac0eced7f151538713c",
   "05_alerts_1290x2796.png": "db534c080a1d1bc76adc22a7349048cd"
  },

@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "En qué se va tu dinero",
-   "Costo estimado de hoy y de los últimos 30 días, por proveedor"
+   "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"
   ],
   "04_sessions": [
    "Cada ejecución, registrada",
@@ -36,7 +36,7 @@
  "panels": {
   "01_overview_1290x2796.png": "63028cce359c66c0212f5ee3aa6ff596",
   "02_providers_1290x2796.png": "6dc10e2c57f3eb7f9030598716957d65",
-  "03_cost_1290x2796.png": "2d05f91d59af080f0e658c12bc106c16",
+  "03_cost_1290x2796.png": "925e5722c4367b208cdfd73486d963f6",
   "04_sessions_1290x2796.png": "e5f505b74d308e9c4ee559f9e7412e36",
   "05_alerts_1290x2796.png": "f6e1fc0af9482b0255d93d26e62dd99b"
  },

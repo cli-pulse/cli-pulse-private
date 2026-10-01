@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "En qué se va tu dinero",
-   "Costo estimado de hoy y de los últimos 30 días, por proveedor"
+   "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"
   ],
   "05_alerts": [
    "Sin sorpresas con la cuota",
@@ -47,7 +47,7 @@
   "01_overview_2880x1800.png": "b38bb2b622acdcdfc8cc5739a0741e76",
   "02_providers_2880x1800.png": "e4c002c5c886d7dd7ddefe07319209b6",
   "03_usage_history_2880x1800.png": "2ce56e0c33a34452bbaa9506a455c219",
-  "04_cost_2880x1800.png": "d2bea6737e39374bcf93339a7e0ffd32",
+  "04_cost_2880x1800.png": "83e46d7bd469c3acd8ae41766fee9c7d",
   "05_alerts_2880x1800.png": "fe007a71b137b63223547a511721d656",
   "06_pulse_cat_2880x1800.png": "0ad989504fc92015b52f8d2a69cb496e"
  },

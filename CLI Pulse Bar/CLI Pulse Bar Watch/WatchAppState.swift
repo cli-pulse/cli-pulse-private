@@ -42,6 +42,21 @@ public final class WatchAppState: ObservableObject {
     @AppStorage("cli_pulse_demo_mode") var isDemoMode = false
     @AppStorage("cli_pulse_show_cost") var showCost = true
 
+    /// Where the dashboard this Watch draws comes from, in the router's terms
+    /// (`OverviewFormatters.showsRequestsMetric`). The Watch has no local
+    /// refresh: its dashboard is its own `dashboard_summary` fetch
+    /// (`refreshAll`) or the iPhone's relay of the same cloud figures, so it
+    /// decides as the iPhone does and is never `.localOnly`.
+    var refreshRoute: RefreshRoute {
+        RefreshRouter.decide(
+            isAuthenticated: isAuthenticated,
+            isDemoMode: isDemoMode,
+            isPaired: isPaired,
+            isLocalMode: false,
+            isMacOS: false
+        )
+    }
+
     // MARK: - Internal
     private let api: APIClient
     private let authManager: AuthManager

@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "Where the money goes",
-   "Estimated cost for today and the last 30 days, by provider"
+   "Today’s estimated cost by provider, plus the total for the last 30 days"
   ],
   "05_alerts": [
    "Never miss a limit",
@@ -47,7 +47,7 @@
   "01_overview_2880x1800.png": "53cb2766a94e39dc9a016a6957f87f72",
   "02_providers_2880x1800.png": "afd7bb5e8380953f94caf70e1fbe67de",
   "03_usage_history_2880x1800.png": "fdbb983f0eda87ea9883a299bf9eed31",
-  "04_cost_2880x1800.png": "333e5d9a2b51bda2da7c52364c0820c6",
+  "04_cost_2880x1800.png": "08c18b9d25ae7c97da9a9487d9d6016d",
   "05_alerts_2880x1800.png": "79426e018dce7c94a649d55004d29ff9",
   "06_pulse_cat_2880x1800.png": "49343f5b12a7615c86070a06e6c03697"
  },
