@@ -13,6 +13,11 @@ commands itself — it only RELAYS:
         executor's live {remote_fan, remote_lpm, boost_active, boost_target_rpm}.
       - `complete_machine_command`      → `complete()` writes the typed result
         back to Supabase (`remote_helper_complete_machine_command`).
+  * v1.55 (Companion CLI 1.31.0): both calls to our server, the pull and the
+    completion, ask `uploads_allowed` first, the rule the helper's heartbeat
+    and sync follow (`cli_pulse_helper._remote_server_calls_allowed`). While
+    the Mac app is signed out, in another account, used without an account,
+    set to "Not now", or unreadable, neither is sent.
   * the heartbeat folds `heartbeat_metrics_fragment()` into `p_metrics` so the
     phone renders ONLY the controls the Mac will honor (honest capability map)
     and sees honest fan-boost state.
@@ -80,8 +85,12 @@ class MachineCommandRelay:
         clock: Callable[[], float] = time.monotonic,
         control_fresh_s: float = _CONTROL_FRESH_S,
         queue_max_age_s: float = _QUEUE_MAX_AGE_S,
+        uploads_allowed: Optional[Callable[[], bool]] = None,
     ) -> None:
         self._rpc_caller = rpc_caller
+        # v1.55: asked before each call to our server (see the module doc).
+        # None (tests, ad-hoc callers): sent as before.
+        self._uploads_allowed = uploads_allowed
         self._device_id = device_id
         self._helper_secret = helper_secret
         self._clock = clock
@@ -110,12 +119,28 @@ class MachineCommandRelay:
             st = self._control_state or {}
             return bool(st.get("remote_fan")) or bool(st.get("remote_lpm"))
 
+    def _server_allowed(self, what: str) -> bool:
+        """Whether this relay may call our server now. A check that raises
+        counts as paused."""
+        if self._uploads_allowed is None:
+            return True
+        try:
+            allowed = self._uploads_allowed() is True
+        except Exception as exc:  # noqa: BLE001 — cannot tell, so send nothing
+            logger.debug("%s not sent: the upload check failed (%s)", what, exc)
+            return False
+        if not allowed:
+            logger.debug("%s not sent: this Mac's uploads are paused", what)
+        return allowed
+
     # ── cloud → local (daemon loop, ~1 Hz) ───────────────────────────
 
     def pull_from_cloud(self, max_commands: int = 10) -> int:
         """Pull pending machine commands into the local queue. Returns the count
         pulled (0 on gate-closed / error / empty). Never raises."""
         if not self.should_pull():
+            return 0
+        if not self._server_allowed("remote_helper_pull_machine_commands"):
             return 0
         try:
             result = self._rpc_caller(
@@ -164,9 +189,15 @@ class MachineCommandRelay:
         self, command_id: str, status: str, result: Optional[dict] = None
     ) -> dict:
         """Forward the executor's typed completion to the cloud. Raises
-        ValueError on a bad status (the UDS layer maps it to bad_request)."""
+        ValueError on a bad status (the UDS layer maps it to bad_request).
+
+        While this Mac's uploads are paused nothing is sent and the reply is
+        `{"status": "paused"}`; the command stays as the pull marked it, like
+        one the app never drained. (The app ignores this reply's content.)"""
         if status not in _COMPLETION_STATUSES:
             raise ValueError(f"invalid completion status: {status!r}")
+        if not self._server_allowed(f"complete_machine_command({command_id})"):
+            return {"status": "paused"}
         payload: dict = {
             "p_device_id": self._device_id,
             "p_helper_secret": self._helper_secret,

@@ -52,6 +52,8 @@ final class PrivacyCopyTruthTests: XCTestCase {
             "onboarding_wizard.sync_mode_body": L10n.onboardingWizard.syncModeBody,
             "onboarding_wizard.privacy_body": L10n.onboardingWizard.privacyBody,
             "advanced.remote_consent_body": L10n.advanced.remoteConsentBody,
+            "helper.running_unpaired_hint": L10n.helper.runningUnpairedHint(.signedIn(userId: "u")),
+            "helper.running_unpaired_hint_no_account": L10n.helper.runningUnpairedHint(.localMode),
         ]
     }
 
@@ -60,6 +62,7 @@ final class PrivacyCopyTruthTests: XCTestCase {
     private static let added: Set<String> = [
         "advanced.privacy_sessions_title", "advanced.privacy_sessions_detail",
         "local_scan_consent.companion_not_covered", "settings.companion_ignores_switches",
+        "helper.running_unpaired_hint_no_account",
     ]
 
     /// For every rewritten key, in every language: the old false phrase
@@ -111,6 +114,16 @@ final class PrivacyCopyTruthTests: XCTestCase {
         ("local_scan_consent.keychain_detail",
          was: [:],
          now: ["en": "Zed", "zh-Hans": "Zed", "zh-Hant": "Zed", "ja": "Zed", "ko": "Zed", "es": "Zed"]),
+        // The browser's cookie key is read for Cursor without anyone setting
+        // anything: its cookie source is Automatic until changed
+        // (`CursorCollector.autoImportEligible`), so "a provider you set to
+        // read cookies automatically" left out the one read by default.
+        ("local_scan_consent.keychain_detail",
+         was: ["en": "for a provider you set to read cookies automatically",
+               "zh-Hans": "你设为自动读取 Cookie 的服务商所用的", "zh-Hant": "你設為自動讀取 Cookie 的服務商所用的",
+               "ja": "Cookie を自動で読み取るよう設定したプロバイダー用の", "ko": "쿠키를 자동으로 읽도록 설정한 공급자를 위한",
+               "es": "para los proveedores cuyas cookies se leen automáticamente"],
+         now: ["en": "Cursor", "zh-Hans": "Cursor", "zh-Hant": "Cursor", "ja": "Cursor", "ko": "Cursor", "es": "Cursor"]),
         ("local_scan_consent.declined_body",
          was: ["en": "not reading anything", "zh-Hans": "没有读取这台 Mac 上的任何内容",
                "zh-Hant": "沒有讀取這台 Mac 上的任何內容", "ja": "何も読み取っていない",
@@ -168,6 +181,32 @@ final class PrivacyCopyTruthTests: XCTestCase {
          was: ["en": "full project paths", "zh-Hans": "完整项目路径", "zh-Hant": "完整專案路徑",
                "ja": "プロジェクトの完全なパス", "ko": "전체 프로젝트 경로", "es": "rutas completas de proyectos"],
          now: [:]),
+        // "Withdrawn" missed what is left: a paired Companion CLI's own
+        // sessions post their redacted output and status, which the server
+        // takes only while this switch is on (`_remote_authenticate_helper_gated`).
+        ("advanced.remote_consent_body",
+         was: ["en": "Those have been withdrawn", "zh-Hans": "这两项已经下线", "zh-Hant": "這兩項已經下線",
+               "ja": "どちらも提供を終了しました。", "ko": "두 기능 모두 종료되었습니다", "es": "Ambas se han retirado"],
+         now: ["en": "Our server accepts these only while this is on",
+               "zh-Hans": "只有在此开关打开时，服务器才会接收", "zh-Hant": "只有在此開關開啟時，伺服器才會接收",
+               "ja": "このスイッチがオンの間だけ", "ko": "켜져 있는 동안에만",
+               "es": "solo aceptan estos datos mientras esto está activado"]),
+        // "Pair this Mac (above)": this app cannot pair the Companion, and in
+        // local mode the section above is the sign-in form.
+        ("helper.running_unpaired_hint",
+         was: PrivacyCopyTruthTests.pairAbove,
+         now: ["en": "doesn't pair it", "zh-Hans": "并不会配对它", "zh-Hant": "並不會配對它",
+               "ja": "ペアリングはされません", "ko": "페어링되지 않습니다", "es": "no lo vincula"]),
+        ("helper.running_unpaired_hint_no_account",
+         was: PrivacyCopyTruthTests.pairAbove,
+         now: ["en": "needs a CLI Pulse account", "zh-Hans": "需要 CLI Pulse 账户", "zh-Hant": "需要 CLI Pulse 帳號",
+               "ja": "CLI Pulse アカウントが必要", "ko": "CLI Pulse 계정이 필요", "es": "hace falta una cuenta de CLI Pulse"]),
+    ]
+
+    /// The not-paired hint's old instruction, in each language.
+    private static let pairAbove: [String: String] = [
+        "en": "(above)", "zh-Hans": "在上方配对", "zh-Hant": "在上方配對",
+        "ja": "上でこの Mac をペアリング", "ko": "위에서 이 Mac을 페어링", "es": "(arriba)",
     ]
 
     func test_everyRewrittenStringIsTranslatedInEveryLanguage() {
@@ -256,6 +295,35 @@ final class PrivacyCopyTruthTests: XCTestCase {
             XCTAssertFalse(consent.contains("What never leaves your device"), consent)
             XCTAssertFalse(consent.contains("full project paths"), consent)
             XCTAssertTrue(consent.contains("What these requests never carry:"), consent)
+            XCTAssertFalse(consent.contains("withdrawn"), consent)
+            XCTAssertTrue(consent.contains("a Companion CLI paired with this account can send our server"), consent)
+            let keychain = L10n.localScanConsent.keychainDetail
+            XCTAssertFalse(keychain.contains("for a provider you set to read cookies automatically"), keychain)
+            XCTAssertTrue(keychain.contains("for Cursor, whose cookie source is “Automatic” until you change it"), keychain)
+            for account in [HelperAccountRecord.signedIn(userId: "u"), .localMode, .signedOut] {
+                let hint = L10n.helper.runningUnpairedHint(account)
+                XCTAssertFalse(hint.contains("above"), hint)
+                XCTAssertTrue(hint.hasPrefix("Installed and running, but not paired with an account"), hint)
+            }
+        }
+    }
+
+    /// The not-paired hint depends on the account, in every language: signed
+    /// in, it says this Mac's sync setup does not pair the Companion; without
+    /// an account (local mode, Demo mode), that there is none to pair it with.
+    func test_theUnpairedHintFollowsTheAccount() {
+        for locale in Self.locales {
+            inLocale(locale) {
+                let signedIn = L10n.helper.runningUnpairedHint(.signedIn(userId: "u"))
+                let local = L10n.helper.runningUnpairedHint(.localMode)
+                let signedOut = L10n.helper.runningUnpairedHint(.signedOut)
+                XCTAssertNotEqual(signedIn, local, locale)
+                XCTAssertEqual(local, signedOut, "\(locale): no account either way")
+                for hint in [signedIn, local] {
+                    XCTAssertFalse(hint.hasPrefix("helper."), "\(locale): raw key \(hint)")
+                    XCTAssertFalse(hint.contains(Self.pairAbove[locale]!), "\(locale): \(hint)")
+                }
+            }
         }
     }
 
@@ -610,6 +678,45 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
         let unsaid = try await listRequest(nil)
         XCTAssertNotNil(unsaid, "the server saw the request")
         XCTAssertNil((unsaid?["params"] as? [String: Any])?["local_scan_allowed"])
+    }
+
+    /// The keychain line names Cursor because Cursor is the one provider
+    /// whose browser cookies are read without anyone choosing it: a config
+    /// that never set a cookie source imports them. Any other provider reads
+    /// them only once set to Automatic. If another provider gains Cursor's
+    /// default, or Cursor loses it, the line is wrong and this fails.
+    func test_theKeychainLineNamesEveryProviderThatReadsCookiesByDefault() throws {
+        XCTAssertTrue(CursorCollector.autoImportEligible(nil), "Cursor imports by default")
+        XCTAssertTrue(CursorCollector.autoImportEligible(.automatic))
+        XCTAssertFalse(CursorCollector.autoImportEligible(.manual), "the user turned it off")
+        XCTAssertTrue(ProviderConfig.defaults().allSatisfy { $0.cookieSource == nil },
+                      "a default config that set a cookie source would read cookies by default")
+        let sources = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "Sources/CLIPulseCore")
+        let files = try XCTUnwrap(FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil))
+        var turnsImportOn: [String] = []
+        for case let url as URL in files where url.pathExtension == "swift" {
+            let text = try String(contentsOf: url, encoding: .utf8)
+            if text.contains("cookieSource = .automatic") || text.contains("autoImportEligible(") {
+                turnsImportOn.append(url.lastPathComponent)
+            }
+        }
+        XCTAssertEqual(turnsImportOn, ["CursorCollector.swift"])
+        // Control: the reader finds the Cursor file at all.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: sources.appending(path: "Collectors/CursorCollector.swift").path))
+    }
+
+    /// Settings › Companion CLI picks the not-paired hint by the account the
+    /// app is in; the one string it used before sent everyone "above".
+    func test_theCompanionSectionPicksTheUnpairedHintByAccount() throws {
+        let app = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .appending(path: "CLI Pulse Bar")
+        let section = try String(contentsOf: app.appending(path: "CompanionCLISection.swift"), encoding: .utf8)
+        XCTAssertTrue(section.contains("L10n.helper.runningUnpairedHint(state.accountRecordForHelper)"))
+        XCTAssertTrue(section.contains("@EnvironmentObject private var state: AppState"))
     }
 
     /// The notes are shown where the answer is: the first ask, Overview's

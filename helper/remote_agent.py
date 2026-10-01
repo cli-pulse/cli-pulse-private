@@ -32,6 +32,13 @@ Privacy / security posture (unchanged from Phase 1):
     Control off mid-session, `remote_helper_pull_commands` raises and
     the manager catches → no further dispatch happens until the user
     re-enables.
+  * v1.55 (Companion CLI 1.31.0): every call this manager makes to our
+    server asks `uploads_allowed` first, the same rule as the helper's
+    heartbeat and sync (`cli_pulse_helper._remote_server_calls_allowed`).
+    While the Mac app is signed out, in another account, used without an
+    account, set to "Not now", or unreadable, nothing is sent: no session is
+    registered, and a running session's output, status and notes are not
+    posted. The sessions themselves keep running on this Mac.
   * Free-text prompt payload is whatever the user typed; we do NOT
     filter or transform it before write_stdin. If the user typed a
     high-risk shell command, Claude Code's own permission prompt fires
@@ -76,6 +83,11 @@ _STDOUT_BUFFER_CAP_BYTES = 64 * 1024
 # enough for a full screenful of TUI chrome + scrollback the renderer
 # replays into xterm.js.
 _RAW_RING_CAP_BYTES = 64 * 1024
+
+
+class UploadsPaused(RuntimeError):
+    """Raised by a call that exists only to send something to our server
+    (sharing an attached session) while this Mac's uploads are paused."""
 
 
 def _env_float(name: str, default: float) -> float:
@@ -286,9 +298,15 @@ class RemoteAgentManager:
         local_helper_socket_path: str | None = None,
         claude_token_resolver: Callable[[], str | None] | None = None,
         broadcast_publisher: Any = None,
+        uploads_allowed: Callable[[], bool] | None = None,
     ) -> None:
         self.helper_config = helper_config
         self.rpc_caller = rpc_caller
+        # v1.55: asked before every call to our server (`_server_allowed`).
+        # The daemon passes the rule its heartbeat and sync follow, for the
+        # pairing this manager sends with; None (tests, ad-hoc callers) sends
+        # as before.
+        self._uploads_allowed = uploads_allowed
         # R0 (B2): optional terminal-broadcast producer
         # (realtime_broadcast.TerminalBroadcastPublisher). When None (the
         # default, and the shipped state — the
@@ -327,6 +345,25 @@ class RemoteAgentManager:
         # imported) so tests stay hermetic — a test never touches real creds
         # or the network unless it opts in with its own resolver.
         self._claude_token_resolver = claude_token_resolver
+
+    def _server_allowed(self, what: str) -> bool:
+        """Whether this manager may call our server now. Asked before every
+        such call: the command poll, its completions, a session's
+        registration, and every output, status and note posted for it, so a
+        paused Companion sends nothing (see the module doc). A check that
+        raises counts as paused. Only the server call is skipped; the local
+        work around it (the session, the app's own event stream) goes on."""
+        gate = self._uploads_allowed
+        if gate is None:
+            return True
+        try:
+            allowed = gate() is True
+        except Exception as exc:  # noqa: BLE001 — cannot tell, so send nothing
+            logger.debug("%s not sent: the upload check failed (%s)", what, exc)
+            return False
+        if not allowed:
+            logger.debug("%s not sent: this Mac's uploads are paused", what)
+        return allowed
 
     @staticmethod
     def _default_transport() -> SessionTransport:
@@ -539,6 +576,10 @@ class RemoteAgentManager:
         # immediately. The row was created with status='pending' by the
         # `remote_app_request_session_start` RPC; this UPSERT bumps it to
         # running. v0.30 ownership check: same (user, device) → safe.
+        # v1.55: not while this Mac's uploads are paused. The session runs
+        # anyway; the app drives it over the local socket.
+        if not self._server_allowed(f"register_session({params.session_id})"):
+            return True
         try:
             self.rpc_caller(
                 "remote_helper_register_session",
@@ -711,6 +752,15 @@ class RemoteAgentManager:
         if shared:
             if sess.cloud_shared:
                 return True
+            # v1.55: sharing sends this session to our server, so it follows
+            # the same rule as every other call here. Refused, not deferred:
+            # the flag stays off, and the user's toggle shows why.
+            if not self._server_allowed(f"share({session_id})"):
+                raise UploadsPaused(
+                    "this Mac's uploads are paused (the CLI Pulse app is signed "
+                    "out, in another account, used without an account, set to "
+                    "\"Not now\", or its answer cannot be read)"
+                )
             self.rpc_caller(
                 "remote_helper_register_session",
                 {
@@ -1037,10 +1087,11 @@ class RemoteAgentManager:
         `poll_remote` False leaves out the pull from the server
         (`remote_helper_pull_commands`): the daemon passes it while the app's
         local-scan answer or account pauses this Mac's uploads
-        (`cli_pulse_helper._full_remote_tick`). Everything else still runs,
-        and that includes posting a running session's redacted output and
-        status to the server (`_post_event`), which accepts them only while
-        Remote Control is on for the pairing's account.
+        (`cli_pulse_helper._full_remote_tick`). The local half still runs:
+        reading the sessions' output for the app, noticing exits, stopping
+        sessions past their limits. Posting that output and status to the
+        server (`_post_event`) asks the same rule on its own
+        (`_server_allowed`), so a paused tick sends nothing.
 
         Returns counters for tests / logging:
           * commands_processed
@@ -1161,6 +1212,11 @@ class RemoteAgentManager:
         return len(reap)
 
     def _poll_and_dispatch_commands(self, max_commands: int = 10) -> int:
+        # The daemon already leaves the poll out of a paused tick
+        # (`poll_remote`); asked again here so no caller of `tick()` can poll
+        # past the rule.
+        if not self._server_allowed("remote_helper_pull_commands"):
+            return 0
         try:
             result = self.rpc_caller(
                 "remote_helper_pull_commands",
@@ -1260,6 +1316,11 @@ class RemoteAgentManager:
             logger.warning("dispatch %s/%s crashed: %s", kind, session_id, exc)
             ok, err = False, str(exc)[:200]
 
+        # The command was pulled while uploads were allowed; the answer may
+        # have changed while it ran. Not reported, the row stays as the pull
+        # left it ('delivered').
+        if not self._server_allowed(f"complete_command({cmd_id})"):
+            return
         try:
             self.rpc_caller(
                 "remote_helper_complete_command",
@@ -1506,7 +1567,9 @@ class RemoteAgentManager:
         viewers see the session row appear via existing remote_app
         list paths within the next sync cycle. If the helper is
         offline, the session still works locally; the row simply
-        doesn't propagate.
+        doesn't propagate. The same holds, by design, while this Mac's
+        uploads are paused (v1.55, `_server_allowed`): the session starts
+        and the app drives it, and nothing about it is sent.
         """
         # v-next P0-A: warm the claude OAuth token cache HERE, on the UDS
         # connection thread, BEFORE dispatching onto the single-writer
@@ -1835,7 +1898,14 @@ class RemoteAgentManager:
         the most common reason and we don't want to spam WARN every
         cycle a user has Remote Control disabled) and return False so
         the caller can decide whether to retain the data for retry.
+
+        v1.55: every output, status and note goes through here, so this is
+        where a paused Companion stops posting them (`_server_allowed`).
+        Skipped, it returns False like a failed post, and nothing is kept
+        to send later.
         """
+        if not self._server_allowed(f"post_event({session_id}, {kind})"):
+            return False
         try:
             self.rpc_caller(
                 "remote_helper_post_event",
@@ -2011,6 +2081,7 @@ class RemoteAgentManager:
                 if (
                     self._broadcast_publisher is not None
                     and sess.params.realtime_private is True
+                    and self._server_allowed(f"terminal broadcast({session_id})")
                 ):
                     # Guard like the sibling broker publishes: a producer fault
                     # must never break the redacted DB-event path below.

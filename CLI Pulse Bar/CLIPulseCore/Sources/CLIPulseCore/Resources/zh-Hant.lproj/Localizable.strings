@@ -810,7 +810,7 @@
 /* ── v1.18.2 D-2: Anthropic 高峰視窗指示器(Claude 卡片) ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 提升風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n這些請求絕不包含：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、工作階段日誌、終端機輸出\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 工作階段與權限批准，這兩項已經下線。";
+"advanced.remote_consent_body" = "開啟後，你其他已登入的裝置可以向本帳號的 Mac 傳送四類請求，僅此四類：\n• 提升風扇轉速，或恢復風扇自動控制\n• 開啟或關閉低耗電模式\n• 開啟或關閉保持喚醒\n\n伺服器會拒絕其他任何類型，每分鐘最多 6 次，且只允許你自己帳號下的裝置。\n\n這些請求絕不包含：\n• 服務商 API 金鑰、Cookie、OAuth 權杖\n• 對話記錄、工作階段日誌、終端機輸出\n\n請求只是請求。只有目標 Mac 上也開啟了「遠端機器控制」才會被執行；每次風扇保持都會自動恢復；這裡無法執行指令，也無法控制程序。\n\n此開關過去還會啟用遠端 CLI 工作階段與權限批准。App 已不再提供這兩項，但仍保留了一部分：與本帳號配對的 Companion CLI 可能會把它執行的工作階段的輸出（已遮蔽機密資訊）傳送到我們的伺服器，連同工作階段狀態以及每個工作階段的程式名稱、專案資料夾名稱與標籤。只有在此開關開啟時，伺服器才會接收。";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "節奏正常";
@@ -1140,7 +1140,7 @@
 "local_scan_consent.network_title" = "用這台 Mac 上既有的憑證存取服務商網站";
 "local_scan_consent.network_detail" = "為了顯示即時配額，CLI Pulse 會用各家 CLI 自己存在本機的權杖去呼叫它們。更新過期的權杖會重寫那個 CLI 的憑證檔。";
 "local_scan_consent.keychain_title" = "鑰匙圈裡 Claude Code 的權杖等";
-"local_scan_consent.keychain_detail" = "每一項 macOS 都會先問你一次：Claude Code 的權杖；Zed 的權杖（僅限直接下載版，且你使用 Zed 時）；以及你設為自動讀取 Cookie 的服務商所用的瀏覽器 Cookie 金鑰。拒絕其中一項，只會少了對應服務商的配額數字，其他都不受影響。";
+"local_scan_consent.keychain_detail" = "每一項 macOS 都會先問你一次：Claude Code 的權杖；Zed 的權杖（僅限直接下載版，且你使用 Zed 時）；以及瀏覽器的 Cookie 金鑰，用於 Cursor（在你更改之前，它的 Cookie 來源就是「自動」）和你設為「自動」的其他服務商。拒絕其中一項，只會少了對應服務商的配額數字，其他都不受影響。";
 "local_scan_consent.telemetry_title" = "匿名統計是另一回事";
 "local_scan_consent.telemetry_detail" = "它不屬於這個選擇，不含檔案路徑或服務商名稱，在「設定 › 隱私」裡可以關掉。";
 "local_scan_consent.start" = "開始本機掃描";
@@ -1342,7 +1342,8 @@
 "app_updater.error_badge" = "錯誤";
 "helper.install_intro" = "安裝選用的 Companion CLI helper，即可從選單列操作 claude、codex 和 gemini 工作階段。此 helper 已通過 Apple 公證，會安裝在你的個人專屬資料夾中，不需要管理員密碼。配對後，它也會每 2 分鐘自行收集資料並同步到它配對的帳號，包括正在執行的 AI CLI 的命令列，以及這台 Mac 的電池與感測器讀數；但僅在本 App 登入的是該帳號、且你允許掃描這台 Mac 時才會這樣做，1.30.0 及更早的版本不做這項檢查。它讀取哪些內容，請見隱私權政策；解除安裝即可停止。";
 "helper.waiting_for_installer" = "正在等待 macOS 安裝程式完成…";
-"helper.running_unpaired_hint" = "已安裝並在執行中。請先在上方配對這台 Mac，才能操作託管工作階段。";
+"helper.running_unpaired_hint" = "已安裝並在執行中，但尚未與任何帳號配對，因此無法執行託管工作階段。為這台 Mac 設定雲端同步並不會配對它：它有自己獨立的配對。";
+"helper.running_unpaired_hint_no_account" = "已安裝並在執行中，但尚未與任何帳號配對，因此無法執行託管工作階段。配對它需要 CLI Pulse 帳號，而本 App 目前沒有登入任何帳號。";
 "helper.bundled_hint" = "內建於 CLI Pulse——更新 App 時會自動更新，不需要另外安裝。";
 "helper.update_available_body" = "helper 有新版本（%@）可用。更新流程與安裝流程完全相同。";
 "helper.install_button" = "安裝 Companion CLI";

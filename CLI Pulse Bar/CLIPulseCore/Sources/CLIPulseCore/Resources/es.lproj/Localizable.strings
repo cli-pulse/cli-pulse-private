@@ -446,7 +446,7 @@ Lo que estas solicitudes nunca llevan:
 
 Una solicitud es solo una solicitud. El Mac que la recibe la atiende únicamente si allí también está activado «Control remoto de la máquina»; cada retención del ventilador se revierte sola, y desde aquí no se puede ejecutar ningún comando ni controlar ningún proceso.
 
-Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos. Ambas se han retirado.";
+Este ajuste también activaba antes las sesiones de CLI remotas y las aprobaciones de permisos. La app ya no ofrece ninguna de las dos, pero queda una parte: un Companion CLI vinculado a esta cuenta puede enviar a nuestros servidores la salida de las sesiones que ejecuta, con los secretos ocultos, junto con su estado y el programa, el nombre de la carpeta de proyecto y la etiqueta de cada una. Nuestros servidores solo aceptan estos datos mientras esto está activado.";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "Al ritmo previsto";
@@ -1087,7 +1087,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "local_scan_consent.network_title" = "Los proveedores, con credenciales que ya están en este Mac";
 "local_scan_consent.network_detail" = "Para mostrar la cuota en tiempo real, CLI Pulse llama a tus proveedores con los tokens que sus propias CLI guardaron aquí. Renovar un token caducado reescribe el archivo de credenciales de esa CLI.";
 "local_scan_consent.keychain_title" = "Tu Llavero, para el token de Claude Code y algunos más";
-"local_scan_consent.keychain_detail" = "macOS te pregunta primero, una vez por cada uno: el token de Claude Code; el de Zed, si usas Zed (solo en la versión de descarga directa); y la clave de cookies de tu navegador, para los proveedores cuyas cookies se leen automáticamente. Rechazar uno solo te cuesta las cifras de cuota de ese proveedor.";
+"local_scan_consent.keychain_detail" = "macOS te pregunta primero, una vez por cada uno: el token de Claude Code; el de Zed, si usas Zed (solo en la versión de descarga directa); y la clave de cookies de tu navegador, para Cursor, cuya fuente de cookies es «Automático» hasta que la cambies, y para cualquier otro proveedor que pongas en «Automático». Rechazar uno solo te cuesta las cifras de cuota de ese proveedor.";
 "local_scan_consent.telemetry_title" = "Las estadísticas anónimas son otra cosa";
 "local_scan_consent.telemetry_detail" = "No forman parte de esta decisión, no llevan rutas de archivo ni nombres de proveedor, y se desactivan en Ajustes › Privacidad.";
 "local_scan_consent.start" = "Iniciar análisis local";
@@ -1309,7 +1309,8 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "app_updater.error_badge" = "Error";
 "helper.install_intro" = "Instala el helper opcional Companion CLI para controlar sesiones de claude, codex y gemini desde la barra de menús. El helper está notarizado por Apple y se instala en tu carpeta de inicio sin contraseña de administrador. Una vez vinculado, también recopila datos por su cuenta cada 2 minutos y los sincroniza con la cuenta con la que se vinculó, incluidas las líneas de comandos de las CLI de IA en ejecución y las lecturas de batería y sensores de este Mac. Solo lo hace mientras esta app tenga la sesión iniciada en esa cuenta y hayas permitido analizar este Mac; las versiones 1.30.0 y anteriores no lo comprueban. La Política de privacidad detalla lo que lee; Desinstalar lo detiene.";
 "helper.waiting_for_installer" = "Esperando a que termine el instalador de macOS…";
-"helper.running_unpaired_hint" = "Instalado y en ejecución. Vincula este Mac (arriba) para controlar sesiones gestionadas.";
+"helper.running_unpaired_hint" = "Instalado y en ejecución, pero no está vinculado a ninguna cuenta, así que no puede ejecutar sesiones gestionadas. Configurar la sincronización en la nube de este Mac no lo vincula: tiene su propia vinculación.";
+"helper.running_unpaired_hint_no_account" = "Instalado y en ejecución, pero no está vinculado a ninguna cuenta, así que no puede ejecutar sesiones gestionadas. Para vincularlo hace falta una cuenta de CLI Pulse, y esta app no tiene la sesión iniciada en ninguna.";
 "helper.bundled_hint" = "Integrado en CLI Pulse: se actualiza automáticamente al actualizar la app. No hace falta instalarlo por separado.";
 "helper.update_available_body" = "Hay una nueva versión del helper (%@) disponible. El proceso de actualización es idéntico al de instalación.";
 "helper.install_button" = "Instalar Companion CLI";

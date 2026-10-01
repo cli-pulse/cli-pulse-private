@@ -36,7 +36,14 @@ a throwaway HOME, and check what the helper then reads and sends:
     the server nothing while the app is signed out, in another account, in
     local mode, set to "Not now" or unreadable, and polls as before when the
     sync would run, while the local half of the tick runs either way; and
-    that the daemon's loop takes its poll through that rule.
+    that the daemon's loop takes its poll through that rule;
+  * that every other call the managed sessions and the machine-control relay
+    make to our server follows it too (v1.55): in each of those states a
+    session is not registered, its output, status and notes are not posted,
+    a command's result is not reported, sharing with the phone is refused,
+    and nothing printed during a pause is sent after it, while the sessions
+    keep running on this Mac; that the same run sends all of it in a state
+    that allows uploads; and that the daemon wires the rule into both.
 """
 from __future__ import annotations
 
@@ -1227,6 +1234,9 @@ def test_container_is_unreachable_while_the_startup_rotation_is_stuck(monkeypatc
 
 # ── the remote command poll ────────────────────────────────────
 
+# The managed sessions' server calls log a change on a line of their own.
+SERVER_CALLS_LOG = "server calls for managed sessions"
+
 
 class _PollingManager:
     """Stands in for `RemoteAgentManager`: records each full tick and whether
@@ -1346,10 +1356,10 @@ def test_the_remote_poll_logs_a_change_once(home, relay, caplog):
     for values in [answer("granted", "signed_out")] * 3 + [answer("granted", signed_in(ME))] * 3:
         write_mirror(home, values)
         h._full_remote_tick(manager, gate)
-    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith(SERVER_CALLS_LOG)]
     assert len(lines) == 2
-    assert lines[0].startswith("remote command poll: paused")
-    assert lines[1].startswith("remote command poll: on")
+    assert lines[0].startswith(SERVER_CALLS_LOG + ": paused")
+    assert lines[1].startswith(SERVER_CALLS_LOG + ": on")
 
 
 def test_the_remote_poll_says_why_it_is_paused(home, relay, caplog):
@@ -1365,13 +1375,13 @@ def test_the_remote_poll_says_why_it_is_paused(home, relay, caplog):
     ):
         write_mirror(home, values)
         h._full_remote_tick(manager, gate)
-    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith(SERVER_CALLS_LOG)]
     assert lines == [
-        "remote command poll: paused, like this Mac's uploads (the app is signed out)",
-        "remote command poll: paused, like this Mac's uploads "
+        SERVER_CALLS_LOG + ": paused, like this Mac's uploads (the app is signed out)",
+        SERVER_CALLS_LOG + ": paused, like this Mac's uploads "
         "(the app is signed in to another account than this Mac's pairing)",
-        "remote command poll: paused, like this Mac's uploads (the app is used without an account)",
-        "remote command poll: paused, like this Mac's uploads (the app is set to \"Not now\")",
+        SERVER_CALLS_LOG + ": paused, like this Mac's uploads (the app is used without an account)",
+        SERVER_CALLS_LOG + ": paused, like this Mac's uploads (the app is set to \"Not now\")",
     ]
 
 
@@ -1402,10 +1412,10 @@ def test_the_remote_poll_does_not_rewrite_the_cycles_log_line(home, relay, caplo
         assert h._full_remote_tick(stale, gate) is False
     gate_lines = [r.getMessage() for r in caplog.records if r.name == "cli_pulse.local_scan_consent"]
     assert gate_lines == ["local scan allowed by the app (answer: granted)"]
-    poll_lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith("remote command poll")]
+    poll_lines = [r.getMessage() for r in caplog.records if r.getMessage().startswith(SERVER_CALLS_LOG)]
     assert poll_lines == [
-        "remote command poll: paused, like this Mac's uploads "
-        "(this Mac was paired again after this helper loaded the pairing it polls with)",
+        SERVER_CALLS_LOG + ": paused, like this Mac's uploads "
+        "(this Mac was paired again after this helper loaded the pairing it sends with)",
     ]
 
 
@@ -1499,6 +1509,292 @@ def test_the_daemon_takes_its_remote_poll_through_the_gate(home, monkeypatch):
     assert mgr is manager and gate is seen["cycle_gate"]
     assert polled is False  # signed out: the server was not asked
     assert manager.ticks == [False] and relay.pulls == 0
+
+
+# ── a paused Companion sends nothing about its sessions ──────────
+#
+# v1.55 (Companion CLI 1.31.0): the poll was not the only call the managed
+# sessions make to our server. A running session's output, status and notes
+# were posted (`remote_helper_post_event`), a session the app started through
+# the helper was registered (`remote_helper_register_session`), a command's
+# result was reported, and the machine-control relay reported its results,
+# whatever the app's answer. Every one of them now asks the rule heartbeat and
+# sync follow, for the pairing the manager and relay send with. The sessions
+# themselves keep running on this Mac.
+
+# The app states that pause uploads, written as the app writes them. An
+# unreadable answer is the gate's `container_ready=False` (see `_upload_gate`).
+PAUSED = {
+    "signed-out": answer("granted", "signed_out"),
+    "another-account": answer("granted", signed_in(OTHER)),
+    "local-mode": answer("granted", "local_mode"),
+    "not-now": answer("declined", signed_in(ME)),
+    "unreadable": answer("granted", signed_in(ME)),
+}
+# The negative controls: states in which the same calls are sent, as before.
+ALLOWED = {
+    "signed-in-yes": answer("granted", signed_in(ME)),
+    "signed-in-no-answer-yet": answer("undecided", signed_in(ME)),
+    "app-older-than-1.55": None,
+}
+
+
+def _upload_gate(state_id: str, sending):
+    """`uploads_allowed` as the daemon wires it: the real gate, asked for the
+    pairing the manager or relay sends with."""
+    gate = LocalScanGate(container_ready=(lambda: state_id != "unreadable"))
+    return lambda: h._remote_server_calls_allowed(gate, sending)
+
+
+def _drive_every_server_call(gate_for, monkeypatch) -> tuple[list[str], dict]:
+    """Run a manager and a relay through every path that calls our server,
+    with `uploads_allowed=gate_for`. Returns the RPC names sent, in order, and
+    what the local side saw (so a paused run can be shown to still work on
+    this Mac)."""
+    import machine_command_relay
+    import remote_agent
+    import test_remote_agent as tra
+
+    sent: list[str] = []
+    cmd_id = "c0ffee00-0000-4000-8000-000000000001"
+
+    def rpc(name, _params):
+        sent.append(name)
+        if name == "remote_helper_pull_commands":
+            # A command for a session this helper does not run: dispatched,
+            # then its result is reported.
+            return [{"id": cmd_id, "session_id": "not-here", "kind": "stop", "payload": ""}]
+        if name == "remote_helper_pull_machine_commands":
+            return []
+        return {}
+
+    publisher = tra._RecordingPublisher()
+    transport = tra.FakeTransport()
+    config = types.SimpleNamespace(device_id="dev-1", helper_secret="s", user_id=ME)
+    manager = remote_agent.RemoteAgentManager(
+        helper_config=config,
+        rpc_caller=rpc,
+        transport=transport,
+        broadcast_publisher=publisher,
+        uploads_allowed=gate_for(config),
+    )
+    local: dict = {}
+
+    # 1. A session the app starts (registration), private so the retired
+    #    terminal broadcast would see it too.
+    sid = "5e551011-0000-4000-8000-000000000001"
+    manager.spawn_session(remote_agent.SessionStartParams(
+        session_id=sid, provider="claude", cwd="/Users/me/projects/secret-project",
+        client_label="label", realtime_private=True,
+    ))
+    local["started"] = sid in manager._sessions
+    # 2. Its output, past the batcher's flush size, read by the fast tick.
+    transport.canned_stdout[sid] = ("x" * 3600).encode()
+    manager.tick_local()
+    local["raw_ring"] = len(manager._sessions[sid].raw_ring)
+    # 3. The full tick: the command poll, and the result of what it pulled.
+    manager.tick()
+    # 4. A result for a command pulled before the answer changed.
+    manager._dispatch_one({"id": cmd_id, "session_id": "not-here", "kind": "stop", "payload": ""})
+    # 5. Its exit: status and a note.
+    transport.alive[sid] = False
+    transport.exit_code[sid] = 3
+    manager.tick_local()
+    local["exited"] = sid not in manager._sessions
+    # 6. Stopping everything (Local Control off): a note per session.
+    sid2 = "5e551011-0000-4000-8000-000000000002"
+    manager.spawn_session(remote_agent.SessionStartParams(session_id=sid2, provider="claude"))
+    manager.stop_all_sessions("local_control_disabled")
+    # 7. Sharing an attached session with the phone.
+    def _tmux(socket_path, tmux_bin=None, **_kw):
+        return tra._FakeTmuxTransport(socket_path, tmux_bin)
+
+    import transports.tmux as tmux_mod
+    monkeypatch.setattr(tmux_mod, "TmuxTransport", _tmux)
+    assert manager.attach_wrapped_session("ext-1", "clipulse-claude-1", provider="claude",
+                                          socket_path="/tmp/x.sock") is True
+    try:
+        local["shared"] = manager.set_wrapped_session_cloud_shared("ext-1", True)
+    except remote_agent.UploadsPaused:
+        local["shared"] = "refused"
+    # 8. Shutdown: a status for every session still running.
+    sid3 = "5e551011-0000-4000-8000-000000000003"
+    manager.spawn_session(remote_agent.SessionStartParams(session_id=sid3, provider="claude"))
+    manager.shutdown()
+    local["broadcast"] = len(publisher.submitted)
+
+    # The machine-control relay, with a fresh executor report so it would pull.
+    relay = machine_command_relay.MachineCommandRelay(
+        rpc_caller=rpc, device_id="dev-1", helper_secret="s",
+        uploads_allowed=gate_for(config),
+    )
+    relay.report_control_state({"remote_fan": True})
+    relay.pull_from_cloud()
+    local["relay_complete"] = relay.complete("mc-1", "done", {"ok": True})
+    return sent, local
+
+
+@pytest.mark.parametrize("state_id", list(PAUSED))
+def test_a_paused_companion_sends_nothing_about_its_sessions(home, app_group_copy, monkeypatch, state_id):
+    write_pairing(home, ME)
+    app_group_copy.write(PAUSED[state_id])
+    sent, local = _drive_every_server_call(lambda cfg: _upload_gate(state_id, cfg), monkeypatch)
+    assert sent == [], f"{state_id}: a paused Companion sent {sent}"
+    # The sessions still run on this Mac, and the app still sees their output.
+    assert local["started"] and local["exited"]
+    assert local["raw_ring"] >= 3600
+    # Sharing with the phone is refused, not queued.
+    assert local["shared"] == "refused"
+    assert local["broadcast"] == 0
+    assert local["relay_complete"] == {"status": "paused"}
+
+
+@pytest.mark.parametrize("state_id", list(ALLOWED))
+def test_an_allowed_companion_still_sends_them(home, app_group_copy, monkeypatch, state_id):
+    # Negative control for the test above: the same run, in a state that
+    # allows uploads, sends every call it did before 1.55.
+    write_pairing(home, ME)
+    app_group_copy.write(ALLOWED[state_id])
+    sent, local = _drive_every_server_call(lambda cfg: _upload_gate(state_id, cfg), monkeypatch)
+    for name in (
+        "remote_helper_register_session",
+        "remote_helper_post_event",
+        "remote_helper_pull_commands",
+        "remote_helper_complete_command",
+        "remote_helper_pull_machine_commands",
+        "remote_helper_complete_machine_command",
+    ):
+        assert name in sent, f"{state_id}: {name} not sent ({sent})"
+    # Spawn x3 + the share; output, exit status and note, stop notes, shutdown.
+    assert sent.count("remote_helper_register_session") == 4
+    assert sent.count("remote_helper_post_event") >= 5
+    assert local["shared"] is True
+    assert local["broadcast"] >= 1
+    assert local["relay_complete"] == {"status": "ok"}
+
+
+def test_without_a_gate_the_manager_sends_as_before(monkeypatch):
+    # Tests and ad-hoc callers that pass no `uploads_allowed` are unchanged.
+    sent, local = _drive_every_server_call(lambda _cfg: None, monkeypatch)
+    assert "remote_helper_post_event" in sent and "remote_helper_register_session" in sent
+    assert local["shared"] is True
+
+
+def test_the_manager_checks_the_pairing_it_sends_with(home, monkeypatch):
+    # After `pair` for another user, with the app signed in as that user, the
+    # file and the app agree, but the manager still holds the old pairing: it
+    # must not post as the old account.
+    write_pairing(home, OTHER)
+    write_mirror(home, answer("granted", signed_in(OTHER)))
+    stale = types.SimpleNamespace(device_id="dev-1", helper_secret="s", user_id=ME)
+    sent, _ = _drive_every_server_call(
+        lambda _cfg: (lambda: h._remote_server_calls_allowed(LocalScanGate(), stale)), monkeypatch,
+    )
+    assert sent == []
+    fresh = types.SimpleNamespace(device_id="dev-1", helper_secret="s", user_id=OTHER)
+    sent, _ = _drive_every_server_call(
+        lambda _cfg: (lambda: h._remote_server_calls_allowed(LocalScanGate(), fresh)), monkeypatch,
+    )
+    assert "remote_helper_post_event" in sent  # negative control
+
+
+def test_a_failing_check_sends_nothing(monkeypatch):
+    def boom():
+        raise RuntimeError("cannot tell")
+
+    sent, local = _drive_every_server_call(lambda _cfg: boom, monkeypatch)
+    assert sent == []
+    assert local["started"] and local["exited"]
+
+
+def test_output_from_a_pause_is_not_sent_once_uploads_resume(home, monkeypatch):
+    # Nothing is kept to send later: what a session printed while paused is
+    # dropped, and only output printed after the resume is posted.
+    import remote_agent
+    import test_remote_agent as tra
+
+    write_pairing(home, ME)
+    write_mirror(home, answer("declined", signed_in(ME)))
+    posted: list[str] = []
+
+    def rpc(name, params):
+        if name == "remote_helper_post_event" and params.get("p_kind") == "stdout":
+            posted.append(params["p_payload"])
+        return [] if name == "remote_helper_pull_commands" else {}
+
+    transport = tra.FakeTransport()
+    config = types.SimpleNamespace(device_id="dev-1", helper_secret="s", user_id=ME)
+    gate = LocalScanGate()
+    manager = remote_agent.RemoteAgentManager(
+        helper_config=config, rpc_caller=rpc, transport=transport,
+        uploads_allowed=lambda: h._remote_server_calls_allowed(gate, config),
+    )
+    sid = "5e551011-0000-4000-8000-0000000000aa"
+    manager.spawn_session(remote_agent.SessionStartParams(session_id=sid, provider="claude"))
+    transport.canned_stdout[sid] = ("PAUSED-" * 600).encode()
+    manager.tick_local()
+    assert posted == []
+    write_mirror(home, answer("granted", signed_in(ME)))
+    transport.canned_stdout[sid] = ("RESUMED" * 600).encode()
+    manager.tick_local()
+    assert posted, "negative control: output after the resume is posted"
+    assert not any("PAUSED-" in p for p in posted)
+
+
+def test_the_daemon_gives_the_manager_and_the_relay_the_upload_rule(home, monkeypatch):
+    # The daemon's own wiring: the manager and the relay it builds get an
+    # `uploads_allowed` that asks the same gate as its cycle, for the pairing
+    # they send with. Without it they would post whatever the answer.
+    import signal
+
+    import machine_command_relay
+    import remote_agent
+
+    write_pairing(home, ME)
+    write_mirror(home, answer("granted", "signed_out"))
+    monkeypatch.setattr(signal, "signal", lambda *_a, **_k: None)
+    config = types.SimpleNamespace(
+        device_id="dev-1", helper_secret="s", user_id=ME, device_name="Mac",
+        remote_realtime_broadcast_enabled=False,
+    )
+    monkeypatch.setattr(h, "load_config", lambda: config)
+    monkeypatch.setattr(h, "_rotate_token_best_effort", lambda *_a, **_k: None)
+    monkeypatch.setattr(h, "_container_rotation_worker", None)
+    monkeypatch.setattr(h, "_MACHINE_RELAY", None)
+    built: dict = {}
+
+    class StopAtFirstTick(_PollingManager):
+        def tick(self, max_commands: int = 10, *, poll_remote: bool = True):
+            raise KeyboardInterrupt
+
+        def shutdown(self):
+            pass
+
+        def has_active_sessions(self):
+            return False
+
+    def make_manager(**kwargs):
+        built["manager"] = kwargs
+        return StopAtFirstTick()
+
+    def make_relay(**kwargs):
+        built["relay"] = kwargs
+        return _PullingRelay()
+
+    monkeypatch.setattr(remote_agent, "RemoteAgentManager", make_manager)
+    monkeypatch.setattr(machine_command_relay, "MachineCommandRelay", make_relay)
+    monkeypatch.setattr(h, "_collection_cycle", lambda *_a, **_k: False)
+    h.daemon(argparse.Namespace(interval=60))
+
+    for who in ("manager", "relay"):
+        allowed = built[who].get("uploads_allowed")
+        assert callable(allowed), f"the daemon built the {who} without the upload rule"
+        write_mirror(home, answer("granted", "signed_out"))
+        assert allowed() is False, who
+        write_mirror(home, answer("granted", signed_in(ME)))
+        assert allowed() is True, who  # negative control: the same call allows
+        write_mirror(home, answer("declined", signed_in(ME)))
+        assert allowed() is False, who
 
 
 # ── every account × every answer ───────────────────────────────
