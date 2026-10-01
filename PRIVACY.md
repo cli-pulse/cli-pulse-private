@@ -406,6 +406,14 @@ Codex is signed in with a subscription, which it reads from `~/.codex/auth.json`
 and the AI CLI sessions it finds among the running programs, for the Sessions
 tab. Releases after 1.30.0 read neither while the answer pauses the scan.
 
+It also runs the AI CLI sessions you start through it from the app's Sessions
+tab. While it is allowed to upload (see below), it registers each one with our
+server, with its program, the name of its project folder and its label, and
+posts what the session prints, with secrets redacted, its status and short
+notes about it, such as an exit code. Our server accepts these only while
+"Mac control requests from your other devices" is on for the paired account,
+and no CLI Pulse app shows them any more.
+
 **Which versions follow your answer.** Companion CLI 1.30.0 (the latest release
 when this was written) and earlier versions do not read the app's answer, its
 sign-in or its Privacy switches at all: while installed and paired they keep
@@ -413,16 +421,17 @@ collecting and uploading, to the account they were paired with, whatever you
 choose in the app, including after you sign out. Releases after 1.30.0 follow
 them:
 
-* **Paused** — nothing read or sent in its cycle, and our server not asked
-  for remote-control or machine-control requests — when the app is signed out
+* **Paused** — nothing read or sent in its cycle, nothing sent about the
+  sessions it runs, and our server not asked for remote-control or
+  machine-control requests — when the app is signed out
   (the Sign-In form, or Demo mode), signed in to a different account than the
   one it was paired with, set to "Not now", or used without an account (its
   cycle reads in order to upload, so in local mode it runs none of it; the app
   does its own collection), and when it cannot read the app's answer. Sessions
-  it is already running are not stopped: their redacted output and status are
-  still posted to our server with its pairing, and a session the app starts
-  through it is registered there with its program, folder name and label. Our
-  server accepts these only while remote control is on for the paired account.
+  it is already running are not stopped, and you can go on using them in the
+  app, but nothing about them is sent: no output, status or note is posted, a
+  session the app starts through it is not registered with our server, and
+  what a session prints during the pause is not sent afterwards.
 * **As before** when the app is signed in to the account it was paired with and
   the answer is a yes or none yet, and with an app older than 1.55, which never
   writes an answer for it.
@@ -434,9 +443,9 @@ them:
   in Strict privacy mode, does not use such a cookie, including one written by
   Companion CLI 1.30.0 or earlier. Neither switch stops `claude /usage`.
 * It checks before each upload and before each credential write, so its cycle
-  sees a change within one cycle, and before it asks our server for
-  remote-control or machine-control requests, about once a second; it has no
-  way to be told sooner.
+  sees a change within one cycle; before it asks our server for
+  remote-control or machine-control requests, about once a second; and before
+  each thing it sends about a session. It has no way to be told sooner.
 
 **To stop it entirely:** Settings › Companion CLI › Uninstall….
 
