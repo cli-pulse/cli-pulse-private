@@ -18,7 +18,7 @@
   ],
   "04_cost": [
    "비용, 어디에 쓰이나요?",
-   "오늘과 30일간의 추정 비용을 공급자별로 확인하세요"
+   "공급자별 오늘 추정 비용과 최근 30일 합계"
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
@@ -47,7 +47,7 @@
   "01_overview_2880x1800.png": "3fe167407ed579c8ec930b4e752f9a2b",
   "02_providers_2880x1800.png": "21a8666c7c4b2c25e06823fb8678ba34",
   "03_usage_history_2880x1800.png": "0b35afff0269608c1a5f310aceef8cad",
-  "04_cost_2880x1800.png": "d1a5bac4dbcc46a8593cc485f7bd815e",
+  "04_cost_2880x1800.png": "5d8f6cb4e2ac023f03f39cf82c17abe1",
   "05_alerts_2880x1800.png": "f85c547c3740305a3072c57cd8995dc2",
   "06_pulse_cat_2880x1800.png": "2ac3c53fe0871d1acdc63205d6c03729"
  },

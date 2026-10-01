@@ -227,8 +227,9 @@ internal enum DemoDataProvider {
             cost_status: "Estimated",
             // 0, as the signed-in dashboard Demo draws always carries it:
             // `dashboard_summary` has no request column (APIClient.dashboardSummary).
-            // Only local mode counts requests, so the Requests tile shows there
-            // alone (OverviewFormatters.showsRequestsMetric); Demo is signed in.
+            // Only the local refresh route counts requests, so the Requests tile
+            // shows there alone (OverviewFormatters.showsRequestsMetric); Demo
+            // takes the `.noOp` route.
             total_requests_today: 0,
             active_sessions: sessions.filter { $0.status == "running" || $0.status == "syncing" }.count,
             online_devices: devices.filter { $0.status == "online" }.count,

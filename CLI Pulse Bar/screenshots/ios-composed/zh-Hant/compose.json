@@ -10,7 +10,7 @@
   ],
   "03_cost": [
    "錢花在哪裡",
-   "今日與近 30 天的預估費用，依服務商細分"
+   "今日預估費用依服務商細分，另有近 30 天總額"
   ],
   "04_sessions": [
    "每次 CLI 執行都有紀錄",
@@ -36,7 +36,7 @@
  "panels": {
   "01_overview_1290x2796.png": "2e8fdde2e64bd8212b6a8a74ccd42f12",
   "02_providers_1290x2796.png": "a7c4fa4f57383e8ded9a5e99aeda84aa",
-  "03_cost_1290x2796.png": "28a643fd2f3cec1b6146963e9142ae8f",
+  "03_cost_1290x2796.png": "ca5dedbb2fc020b2b5bc5f03ed650e8b",
   "04_sessions_1290x2796.png": "a7373c9a9c86c750c202d0e4c9db1b27",
   "05_alerts_1290x2796.png": "8186d431ae781bf0650981af4c3684d8"
  },
