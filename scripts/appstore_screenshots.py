@@ -43,7 +43,7 @@ LAYOUT
 
     CLI Pulse Bar/screenshots/ipad-raw/<lang>/NN_<screen>.png
         simulator captures of the same five screens, 2064x2752 portrait on the
-        13" iPad Pro (M5): the iPad's own layout (a sidebar beside the screen),
+        13" iPad Pro (M5): the iPad's own regular-width layout (iPadSplitView),
         captured by the same DEBUG launch on an iPad simulator. Never iPhone
         captures on an iPad canvas, which App Review rejects (guideline 2.3.3)
     CLI Pulse Bar/screenshots/ipad-composed/<lang>/NN_<screen>_2064x2752.png

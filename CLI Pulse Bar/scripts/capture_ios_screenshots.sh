@@ -31,9 +31,11 @@
 #                The simulator must be of the set's family, and a capture of
 #                any other size stops the run: an iPhone capture must never
 #                become an iPad panel (App Review guideline 2.3.3), nor a
-#                rotated one a portrait panel. Portrait, because the 13" iPad's
-#                split view shows its sidebar beside a full-width screen that
-#                way, and because a headless simulator has no way to rotate.
+#                rotated one a portrait panel. Portrait, because App Store
+#                Connect takes 2064x2752 for the 13" display and a simulator
+#                booted headless has no command to rotate it (simctl has none).
+#                Whether the split view's sidebar shows in portrait is for the
+#                first capture to show; landscape would need a rotation step.
 #   --device     simulator to use, by name (default: the set's; the iPhone's is
 #                the 6.9" size App Store Connect's APP_IPHONE_67 set takes, the
 #                iPad's the 13" one APP_IPAD_PRO_3GEN_129 takes)
@@ -142,7 +144,7 @@ while [ $# -gt 0 ]; do
     --settle) SETTLE="$2"; shift 2 ;;
     --keep-data) KEEP_DATA=1; shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,52p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done

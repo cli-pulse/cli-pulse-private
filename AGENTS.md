@@ -482,8 +482,9 @@ The iOS app runs on iPad (`TARGETED_DEVICE_FAMILY = 1,2`), so App Store Connect
 requires a 13" iPad set (`APP_IPAD_PRO_3GEN_129`) to submit it. It is the
 iPhone set's five screens and captions, captured by the same DEBUG launch on
 the existing `iPad Pro 13-inch (M5)` simulator, where the app shows its own
-iPad layout (the sidebar beside the screen), in portrait, 2064x2752, the size
-of the panel. Never put iPhone captures on an iPad canvas: App Review rejects
+regular-width layout (`iPadSplitView`), in portrait, 2064x2752, the size of the
+panel (App Store Connect takes it for the 13" display, and a headless
+simulator cannot be rotated). Never put iPhone captures on an iPad canvas: App Review rejects
 iPhone screenshots dressed as iPad ones (guideline 2.3.3), and every step here
 refuses them (the capture script checks the simulator's family and each
 capture's size, the compositor each raw's size, the pusher and
@@ -502,8 +503,10 @@ python3 scripts/asc_listing_preflight.py --texts-only --require-shots
 The capture's READY line is printed only when the requested tab's screen
 reports itself showing (`ScreenshotLaunch.ShowsTab`), not only when
 `state.selectedTab` names it: until 1.55 the iPad split view kept a selection
-of its own that started on the Overview, so an iPad capture of any screen
-would have been the Overview under that screen's name, READY and all. The
+of its own that started on the Overview and followed `selectedTab` only
+through `.onChange`, which does not fire for the value a view starts with. By
+that code, an iPad capture of any screen would have been the Overview under
+that screen's name, READY and all (found by reading it, not by a capture). The
 pusher treats the iPad set as it does the iPhone's (compose.json, upload
 before delete, rollback, read-back) and touches only the `APP_IPAD_PRO_3GEN_129`
 sets of the IOS version, creating the ones a locale lacks (1.54.0 had an iPad

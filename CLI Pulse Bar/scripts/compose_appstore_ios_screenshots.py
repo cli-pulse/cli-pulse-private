@@ -170,9 +170,8 @@ IPHONE = SetFrame("iphone", shots.IPHONE, LAYOUT, (1320, 2868), "iPhone 17 Pro M
 
 # The iPad panel: the iPhone's caption block scaled to a canvas 1.6 times as
 # wide (type about 1.5 times the size, so a caption breaks where it does on
-# the iPhone), over a portrait capture of the 13" iPad Pro. Portrait, because
-# that is how the split view shows its sidebar AND a full-width screen beside
-# it on the 13" iPad; see capture_ios_screenshots.sh --set ipad.
+# the iPhone), over a portrait capture of the 13" iPad Pro (why portrait:
+# capture_ios_screenshots.sh --set ipad).
 IPAD_LAYOUT = common.Layout(
     canvas_w=shots.IPAD.canvas[0], canvas_h=shots.IPAD.canvas[1],
     title_size_max=150, title_size_min=88, sub_size_max=70, sub_size_min=46, sub_max_lines=2,
