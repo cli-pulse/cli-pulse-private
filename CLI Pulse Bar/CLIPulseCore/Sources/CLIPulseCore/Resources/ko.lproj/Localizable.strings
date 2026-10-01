@@ -433,7 +433,7 @@
 /* ── v1.18.2 D-2: Claude 카드의 Anthropic 피크 시간 표시기 ── */
 
 /* ── v1.21 D7: Remote Control privacy-critical consent body ── */
-"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 부스트(목표 회전수 설정) 또는 팬 자동 모드 복귀\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n이 요청에 절대 담기지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 권한 승인도 활성화했습니다. 두 기능 모두 종료되었습니다.";
+"advanced.remote_consent_body" = "켜면 로그인된 다른 기기에서 이 계정의 Mac으로 다음 네 가지 요청만 보낼 수 있습니다:\n• 팬 부스트(목표 회전수 설정) 또는 팬 자동 모드 복귀\n• 저전력 모드 켜기 / 끄기\n• 잠자기 방지 켜기 / 끄기\n\n서버는 그 외의 종류를 모두 거부하며, 분당 최대 6건까지, 본인 계정의 기기에만 허용합니다.\n\n이 요청에 절대 담기지 않는 것:\n• 공급자 API 키, 쿠키, OAuth 토큰\n• 대화 기록, 세션 로그, 터미널 출력\n\n요청은 요청일 뿐입니다. 받는 Mac에서도 '원격 머신 제어'가 켜져 있어야 실행되고, 팬 유지는 언제나 스스로 해제되며, 여기서 명령을 실행하거나 프로세스를 제어할 수는 없습니다.\n\n이 스위치는 예전에 원격 CLI 세션과 원격 권한 승인도 활성화했습니다. 두 기능 모두 더 이상 제공되지 않지만 한 가지가 남아 있습니다. 이 계정과 페어링된 Companion CLI는 자신이 실행하는 세션의 출력을 비밀 정보는 가린 채로, 세션 상태와 각 세션의 프로그램 이름, 프로젝트 폴더 이름, 레이블과 함께 저희 서버로 보낼 수 있습니다. 서버는 이 스위치가 켜져 있는 동안에만 이를 받습니다.";
 
 /* CodexBar-parity v1.23.0 G4 — pace/forecast text (UI-consumer follow-on i18n) */
 "usage_pace.on_track" = "정상 페이스";
@@ -1074,7 +1074,7 @@
 "local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 공급자에 연결";
 "local_scan_consent.network_detail" = "실시간 할당량을 보여주기 위해 각 CLI가 이 Mac에 저장해 둔 토큰으로 해당 공급자를 호출합니다. 만료된 토큰을 갱신하면 그 CLI의 자격 증명 파일이 다시 쓰입니다.";
 "local_scan_consent.keychain_title" = "키체인에 있는 Claude Code 토큰 등";
-"local_scan_consent.keychain_detail" = "macOS가 항목마다 먼저 한 번씩 물어봅니다. 대상은 Claude Code 토큰, Zed 토큰(직접 다운로드 버전에서 Zed를 쓰는 경우), 쿠키를 자동으로 읽도록 설정한 공급자를 위한 브라우저의 쿠키 키입니다. 하나를 거부해도 잃는 것은 해당 공급자의 할당량 수치뿐입니다.";
+"local_scan_consent.keychain_detail" = "macOS가 항목마다 먼저 한 번씩 물어봅니다. 대상은 Claude Code 토큰, Zed 토큰(직접 다운로드 버전에서 Zed를 쓰는 경우), 그리고 브라우저의 쿠키 키입니다. 쿠키 키를 읽는 대상은 Cursor, 그리고 쿠키 소스를 자동으로 설정한 다른 공급자뿐이며, Cursor는 설정을 바꾸기 전까지 쿠키 소스가 자동입니다. 하나를 거부해도 잃는 것은 해당 공급자의 할당량 수치뿐입니다.";
 "local_scan_consent.telemetry_title" = "익명 통계는 별개입니다";
 "local_scan_consent.telemetry_detail" = "이 선택에 포함되지 않으며, 파일 경로나 공급자 이름을 담지 않고, 설정 › 개인정보 보호에서 끌 수 있습니다.";
 "local_scan_consent.start" = "로컬 스캔 시작";
@@ -1296,7 +1296,8 @@
 "app_updater.error_badge" = "오류";
 "helper.install_intro" = "선택 사항인 Companion CLI 헬퍼를 설치하면 메뉴 막대에서 claude, codex, gemini 세션을 제어할 수 있습니다. 헬퍼는 Apple의 공증을 받았으며 홈 폴더에 설치되므로 관리자 암호가 필요하지 않습니다. 페어링하면 헬퍼가 2분마다 자체적으로 데이터를 수집해 페어링한 계정에 동기화하며, 여기에는 실행 중인 AI CLI의 명령줄과 이 Mac의 배터리·센서 값도 포함됩니다. 단, 이 앱이 그 계정으로 로그인되어 있고 이 Mac의 스캔을 허용한 동안에만 그렇게 합니다. 1.30.0 이하 버전은 이를 확인하지 않습니다. 읽는 항목은 개인정보 처리방침에 나와 있으며, 제거하면 멈춥니다.";
 "helper.waiting_for_installer" = "macOS 설치 프로그램이 완료되기를 기다리는 중…";
-"helper.running_unpaired_hint" = "설치되어 실행 중입니다. 관리형 세션을 제어하려면 위에서 이 Mac을 페어링하세요.";
+"helper.running_unpaired_hint" = "설치되어 실행 중이지만 계정과 페어링되지 않아 관리형 세션을 실행할 수 없습니다. 이 Mac의 클라우드 동기화를 설정해도 페어링되지 않습니다. Companion CLI는 자체 페어링을 사용합니다.";
+"helper.running_unpaired_hint_no_account" = "설치되어 실행 중이지만 계정과 페어링되지 않아 관리형 세션을 실행할 수 없습니다. 페어링하려면 CLI Pulse 계정이 필요한데, 이 앱은 어떤 계정에도 로그인되어 있지 않습니다.";
 "helper.bundled_hint" = "CLI Pulse에 내장됨 — 앱을 업데이트하면 자동으로 업데이트됩니다. 따로 설치할 필요가 없습니다.";
 "helper.update_available_body" = "새 헬퍼 버전(%@)을 사용할 수 있습니다. 업데이트 과정은 설치 과정과 동일합니다.";
 "helper.install_button" = "Companion CLI 설치";

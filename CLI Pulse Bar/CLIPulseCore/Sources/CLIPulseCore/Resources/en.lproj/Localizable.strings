@@ -832,7 +832,7 @@ What these requests never carry:
 
 A request is only a request. The receiving Mac honours it only if \"Remote machine control\" is also on there, every fan hold reverts on its own, and nothing here can run a command or control a process.
 
-This switch used to also enable remote CLI sessions and permission approvals. Those have been withdrawn.";
+This switch used to also enable remote CLI sessions and remote permission approvals. Neither is offered any more, but one part remains: a Companion CLI paired with this account can send our server the output of the sessions it runs, with secrets redacted, along with their status and each one's program, project folder name and label. Our server accepts these only while this is on.";
 
 /* System Monitor — Machine tab */
 "machine.subtitle" = "Local machine health";
@@ -1149,7 +1149,7 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "local_scan_consent.network_title" = "Provider websites, using credentials already on this Mac";
 "local_scan_consent.network_detail" = "For live quota, CLI Pulse calls the providers you use with the tokens their own CLIs stored here. Renewing an expired token rewrites that CLI's credential file.";
 "local_scan_consent.keychain_title" = "Your Keychain, for Claude Code's token and a few others";
-"local_scan_consent.keychain_detail" = "macOS asks you first, once for each item: Claude Code's token; Zed's token, if you use Zed (direct-download version only); and your browser's cookie key, for a provider you set to read cookies automatically. Declining one costs you that provider's quota numbers and nothing else.";
+"local_scan_consent.keychain_detail" = "macOS asks you first, once for each item: Claude Code's token; Zed's token, if you use Zed (direct-download version only); and your browser's cookie key, for Cursor, whose cookie source is “Automatic” until you change it, and for any other provider you set to “Automatic”. Declining one costs you that provider's quota numbers and nothing else.";
 "local_scan_consent.telemetry_title" = "Anonymous statistics are separate";
 "local_scan_consent.telemetry_detail" = "This choice doesn't affect them. They include no file paths or provider names, and you can turn them off in Settings › Privacy.";
 "local_scan_consent.start" = "Start local scan";
@@ -1353,7 +1353,8 @@ This switch used to also enable remote CLI sessions and permission approvals. Th
 "app_updater.error_badge" = "Error";
 "helper.install_intro" = "Install the optional Companion CLI helper to drive claude, codex, and gemini sessions from the menu bar. The helper is signed by Apple's notary service and installs to your home folder with no admin password. Once paired, it also collects data on its own every 2 minutes, including the command lines of running AI CLIs and this Mac's battery and sensor readings, and syncs it to the account it was paired with. It does this only while this app is signed in to that account and you allow scanning this Mac; versions 1.30.0 and earlier do it regardless. The Privacy Policy lists what it reads; Uninstall stops it.";
 "helper.waiting_for_installer" = "Waiting for the macOS Installer to finish…";
-"helper.running_unpaired_hint" = "Installed and running. Pair this Mac (above) to drive managed sessions.";
+"helper.running_unpaired_hint" = "Installed and running, but not paired with an account, so it can't run managed sessions. Setting up cloud sync for this Mac doesn't pair it: it has a pairing of its own.";
+"helper.running_unpaired_hint_no_account" = "Installed and running, but not paired with an account, so it can't run managed sessions. Pairing it needs a CLI Pulse account, and this app isn't signed in to one.";
 "helper.bundled_hint" = "Built into CLI Pulse — updates automatically when you update the app. No separate install needed.";
 "helper.update_available_body" = "A new helper version (%@) is available. The update flow is identical to the install flow.";
 "helper.install_button" = "Install Companion CLI";

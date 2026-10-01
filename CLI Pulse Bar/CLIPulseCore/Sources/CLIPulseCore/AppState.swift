@@ -179,8 +179,9 @@ public final class AppState: ObservableObject {
 
     /// The account as the helper needs it (`HelperAccountRecord`): signed in
     /// as whom, local mode, or neither. Demo mode reads nothing, so it counts
-    /// as neither even though it shows an account.
-    var accountRecordForHelper: HelperAccountRecord {
+    /// as neither even though it shows an account. Public for Settings ›
+    /// Companion CLI, whose not-paired hint depends on it.
+    public var accountRecordForHelper: HelperAccountRecord {
         if isDemoMode { return .signedOut }
         if isAuthenticated, !userId.isEmpty { return .signedIn(userId: userId) }
         return isLocalMode ? .localMode : .signedOut

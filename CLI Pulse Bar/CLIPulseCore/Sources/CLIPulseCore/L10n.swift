@@ -2410,7 +2410,18 @@ public enum L10n {
         public static func builtInVersion(_ a0: String) -> String { tr("helper.built_in_version", a0) }
         public static var installIntro: String { tr("helper.install_intro") }
         public static var waitingForInstaller: String { tr("helper.waiting_for_installer") }
-        public static var runningUnpairedHint: String { tr("helper.running_unpaired_hint") }
+        /// v1.55: a Companion CLI that says it is not paired. It is paired
+        /// only by its own `pair` command, never by this app, so the hint
+        /// sends nobody to a section that cannot pair it. Signed in, the
+        /// section above sets up this Mac's sync, which does not pair it;
+        /// without an account (local mode, where the sign-in form is above,
+        /// or Demo mode) there is none to pair it with.
+        public static func runningUnpairedHint(_ account: HelperAccountRecord) -> String {
+            switch account {
+            case .signedIn: return tr("helper.running_unpaired_hint")
+            case .localMode, .signedOut: return tr("helper.running_unpaired_hint_no_account")
+            }
+        }
         public static var bundledHint: String { tr("helper.bundled_hint") }
         public static func updateAvailableBody(_ a0: String) -> String { tr("helper.update_available_body", a0) }
         public static var installButton: String { tr("helper.install_button") }

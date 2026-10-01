@@ -356,16 +356,20 @@ def _uninstall_claude_keychain_gate() -> None:
     _system_collector.set_browser_cookie_gate(None)
 
 
-# How long the remote command poll waits for the app's copy each second. The
-# poll shares the daemon loop with the managed sessions' local drain, so a slow
-# read must not hold keystrokes for the gate's full `READ_WAIT_S`; a read that
-# is not done by then counts as paused for that second.
+# How long a server call of the managed sessions waits for the app's copy. The
+# poll and the posts share the daemon loop (and its single writer thread) with
+# the sessions' local drain, so a slow read must not hold keystrokes for the
+# gate's full `READ_WAIT_S`; a read that is not done by then counts as paused
+# for that call.
 _REMOTE_POLL_LOCAL_SCAN_WAIT_S = 1.0
-# The last full tick's decision, (polled, reason), for logging a change once.
+# The last decision for the managed sessions' server calls, (allowed, reason),
+# for logging a change once. Asked from the daemon loop, the writer thread and
+# the UDS threads, hence the lock.
 _remote_poll_last: tuple[bool, str] | None = None
+_remote_poll_last_lock = threading.Lock()
 
-# Why the remote command poll is paused, for its own log line. Every reason
-# `local_scan_consent.decide` can give that pauses uploads.
+# Why the managed sessions' server calls are paused, for their own log line.
+# Every reason `local_scan_consent.decide` can give that pauses uploads.
 _REMOTE_POLL_PAUSE_TEXT = {
     "signed_out": "the app is signed out",
     "other_account": "the app is signed in to another account than this Mac's pairing",
@@ -374,60 +378,78 @@ _REMOTE_POLL_PAUSE_TEXT = {
     "declined": "the app is set to \"Not now\"",
     "unreadable": "the app's answer cannot be read",
     "unverified_pairing": "this Mac's pairing does not say which account it is for",
-    "pairing_changed": "this Mac was paired again after this helper loaded the pairing it polls with",
+    "pairing_changed": "this Mac was paired again after this helper loaded the pairing it sends with",
     "no_answer": "the app has not written an answer yet",
     "undecided_local_mode": "the app is used without an account and has no answer yet",
     "unrecognised": "the app's answer is not one this helper knows",
 }
 
 
+def _remote_server_calls_allowed(gate: LocalScanGate | None, sending) -> bool:
+    """Whether the managed sessions and the machine-control relay may call our
+    server now, with the pairing `sending`.
+
+    Every such call asks this: the command poll (`remote_helper_pull_commands`)
+    and its completions, the relay's pull and completions, a session's
+    registration (`remote_helper_register_session`), and each output, status
+    and lifecycle note posted for it (`remote_helper_post_event`). They
+    authenticate as this Mac's pairing, like `helper_heartbeat` and
+    `helper_sync`, so they follow the same rule as those do
+    (`LocalScanGate.allows_upload`): paused while the app is signed out,
+    signed in to another account than the pairing's, used without an account,
+    set to "Not now", or unreadable; as before with an app older than 1.55.
+    Paused, nothing is sent. Sessions already running keep running on this
+    Mac, and the app still drives them over the local socket.
+
+    The check verifies the pairing the manager and the relay send with
+    (`sending`, loaded when the daemon started), as heartbeat and sync verify
+    theirs: after a `pair` run for another user they still hold the old
+    pairing, and must not keep sending as that account. That makes it a
+    different question from the cycle's, so it is logged on its own line
+    (`log=False` at the gate), once per change.
+
+    `gate` None (tests) allows, as before."""
+    global _remote_poll_last
+    if gate is None:
+        allowed, reason = True, "no_gate"
+    else:
+        decision = gate.check(
+            wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S,
+            sending=sending,
+            log=False,
+        )
+        allowed, reason = decision.allows_upload, decision.reason
+    with _remote_poll_last_lock:
+        changed = (allowed, reason) != _remote_poll_last
+        _remote_poll_last = (allowed, reason)
+    if changed:
+        if allowed:
+            logger.info(
+                "server calls for managed sessions: on (the app's answer and account "
+                "allow this Mac's uploads)"
+            )
+        else:
+            logger.info(
+                "server calls for managed sessions: paused, like this Mac's uploads (%s)",
+                _REMOTE_POLL_PAUSE_TEXT.get(reason, reason),
+            )
+    return allowed
+
+
 def _full_remote_tick(manager, gate: LocalScanGate | None) -> bool:
     """The ~1 Hz tick of the managed sessions, with the cloud poll.
 
     The poll (`remote_helper_pull_commands`, and the machine-control relay's
-    `remote_helper_pull_machine_commands`) authenticates as this Mac's
-    pairing, like `helper_heartbeat` and `helper_sync`, so it follows the same
-    rule as they do (`LocalScanGate.allows_upload`): paused while the app is
-    signed out, signed in to another account than the pairing's, used without
-    an account, set to "Not now", or unreadable; as before with an app older
-    than 1.55. Paused, nothing is asked of the server.
+    `remote_helper_pull_machine_commands`) asks `_remote_server_calls_allowed`
+    with the pairing the manager sends with; paused, it is left out and
+    nothing is asked of the server. The local half of the tick (reading the
+    sessions' output for the app, noticing exits, stopping sessions past their
+    limits) still runs, for sessions already running on this Mac. What it
+    would post to the server asks the same rule on its own (the manager's
+    `uploads_allowed`, wired in `daemon`), so a paused tick sends nothing.
 
-    The local half of the tick (reading the sessions' output, noticing exits,
-    stopping sessions past their limits) still runs, for sessions already
-    running on this Mac, and it is not only local: a running managed session's
-    redacted output, its status and its lifecycle notes are still posted to
-    the server with this pairing (`remote_helper_post_event`), which accepts
-    them only while Remote Control is on for the pairing's account. A session
-    the app starts through this helper is registered the same way
-    (`remote_helper_register_session`).
-
-    The check verifies the pairing the manager polls with (`sending`, loaded
-    when the daemon started), as heartbeat and sync verify theirs: after a
-    `pair` run for another user the manager still holds the old pairing, and
-    it must not keep asking for that account's commands. That makes it a
-    different question from the cycle's, so it is logged on its own line
-    (`log=False` at the gate), once per change.
-
-    Returns whether it polled. `gate` None (tests) polls as before."""
-    global _remote_poll_last
-    if gate is None:
-        polls, reason = True, "no_gate"
-    else:
-        decision = gate.check(
-            wait_s=_REMOTE_POLL_LOCAL_SCAN_WAIT_S,
-            sending=getattr(manager, "helper_config", None),
-            log=False,
-        )
-        polls, reason = decision.allows_upload, decision.reason
-    if (polls, reason) != _remote_poll_last:
-        _remote_poll_last = (polls, reason)
-        if polls:
-            logger.info("remote command poll: on (the app's answer and account allow this Mac's uploads)")
-        else:
-            logger.info(
-                "remote command poll: paused, like this Mac's uploads (%s)",
-                _REMOTE_POLL_PAUSE_TEXT.get(reason, reason),
-            )
+    Returns whether it polled."""
+    polls = _remote_server_calls_allowed(gate, getattr(manager, "helper_config", None))
     manager.tick(poll_remote=polls)
     if polls and _MACHINE_RELAY is not None:
         _MACHINE_RELAY.pull_from_cloud()
@@ -837,8 +859,11 @@ def daemon(args: argparse.Namespace) -> None:
     reaches the spawned `claude` within ~1s of being enqueued) without
     stretching the slower heartbeat/sync cadence. The server-side
     `_remote_authenticate_helper_gated` rejects helper RPCs when Remote
-    Control is off. The cloud poll in that tick also follows the app's
-    local-scan answer and account, as the sync does (`_full_remote_tick`).
+    Control is off. Every call the managed sessions make to our server (the
+    poll in that tick, a session's registration, its output and status)
+    also follows the app's local-scan answer and account, as the sync does
+    (`_remote_server_calls_allowed`); paused, they send nothing, and the
+    sessions keep running on this Mac.
     """
     import signal
 
@@ -853,6 +878,17 @@ def daemon(args: argparse.Namespace) -> None:
     env_force_git = os.environ.get("CLI_PULSE_TRACK_GIT") == "1"
     if env_force_git:
         logger.info("git activity tracking forced on via CLI_PULSE_TRACK_GIT=1")
+
+    # The app's local-scan answer (`local_scan_consent`): asked before every
+    # cycle reads anything and again before anything it read is written or
+    # sent, by the UDS `hello` reply before it reads provider credential
+    # files, and (v1.55) before every call the managed sessions and the
+    # machine-control relay make to our server (`_remote_server_calls_allowed`),
+    # which is why it is built before them. It reads the app-group container,
+    # and waits while the startup token rotation below is still stuck in that
+    # container rather than open a second access there.
+    local_scan_gate = LocalScanGate(container_ready=_container_reachable)
+    _install_claude_keychain_gate(local_scan_gate)
 
     # Remote Agent Sessions manager. Lazily import so a Windows host (the
     # Tauri desktop track will eventually call this same module) doesn't
@@ -936,6 +972,12 @@ def daemon(args: argparse.Namespace) -> None:
             # (it can't self-refresh in the non-GUI security context).
             claude_token_resolver=claude_oauth.resolve_fresh_claude_access_token,
             broadcast_publisher=broadcast_publisher,
+            # v1.55: a paused Companion sends nothing, including what its
+            # running sessions would post. Same rule as heartbeat and sync,
+            # for the pairing this manager sends with.
+            uploads_allowed=lambda: _remote_server_calls_allowed(
+                local_scan_gate, config_for_manager,
+            ),
         )
         logger.info(
             "remote agent manager initialised (executor=on, broker=on, approvals=on)",
@@ -949,6 +991,9 @@ def daemon(args: argparse.Namespace) -> None:
                 rpc_caller=supabase_rpc,
                 device_id=config_for_manager.device_id,
                 helper_secret=config_for_manager.helper_secret,
+                uploads_allowed=lambda: _remote_server_calls_allowed(
+                    local_scan_gate, config_for_manager,
+                ),
             )
             logger.info("machine command relay initialised")
         except Exception as exc:  # noqa: BLE001 — relay is optional
@@ -966,15 +1011,6 @@ def daemon(args: argparse.Namespace) -> None:
         logger.warning("remote agent manager unavailable on this platform: %s", exc)
     except Exception as exc:
         logger.warning("remote agent manager init failed: %s", exc)
-
-    # The app's local-scan answer (`local_scan_consent`): asked before every
-    # cycle reads anything and again before anything it read is written or
-    # sent, and by the UDS `hello` reply before it reads provider credential
-    # files. It reads the app-group container, and waits while the startup
-    # token rotation below is still stuck in that container rather than open a
-    # second access there.
-    local_scan_gate = LocalScanGate(container_ready=_container_reachable)
-    _install_claude_keychain_gate(local_scan_gate)
 
     # Phase 3 Iter 1 / v1.30.2 RC-1: local UDS control surface. This is now
     # stood up UNCONDITIONALLY — even when `remote_agent_manager` is None
@@ -1310,7 +1346,8 @@ def daemon(args: argparse.Namespace) -> None:
             # (`_container_reachable`) the gate answers "unreadable", so they
             # pause until that access completes. If it never completes, they
             # stay paused for the life of this process. Sessions already
-            # running keep their local tick.
+            # running keep their local tick, and post nothing to the server
+            # for the same reason (`_remote_server_calls_allowed`).
             local_uds_server = None
             logger.error(
                 "NOT starting the local UDS server: the app-group container is "

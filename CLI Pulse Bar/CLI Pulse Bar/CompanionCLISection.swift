@@ -19,6 +19,8 @@ import CLIPulseCore
 ///   .error            → red text + Retry
 struct CompanionCLISection: View {
     @ObservedObject var installer: HelperInstaller
+    /// For the not-paired hint, which depends on the account the app is in.
+    @EnvironmentObject private var state: AppState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -130,8 +132,13 @@ struct CompanionCLISection: View {
             // running. Surface a hint so the user knows managed sessions need
             // pairing. `helperPaired == nil` (older helper that predates the
             // flag) shows nothing — same as before.
+            // v1.55: the hint used to say "Pair this Mac (above)". This app
+            // cannot pair the Companion (only its own `pair` command can),
+            // and in local mode the section above is the sign-in form, so
+            // the text now depends on the account and points nowhere it
+            // cannot keep (`L10n.helper.runningUnpairedHint(_:)`).
             if installer.helperPaired == false {
-                Text(L10n.helper.runningUnpairedHint)
+                Text(L10n.helper.runningUnpairedHint(state.accountRecordForHelper))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
