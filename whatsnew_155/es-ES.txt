@@ -4,9 +4,9 @@ Los créditos de Codex ahora se muestran como saldo en lugar de porcentaje, los 
 
 • El total del Panel de uso ahora es «Costo total est.», con una línea que aclara que es una estimación a precios de pago por uso de la API, no una factura.
 
-• «Ocultar información personal» (Ajustes › Avanzado) oculta ahora también las etiquetas de cuenta que son direcciones de correo y las sustituye por «Cuenta 1», «Cuenta 2», etc., en la pestaña Proveedores y en Ajustes. El Apple Watch sigue ahora el ajuste del iPhone.
+• «Ocultar información personal» (Ajustes › Avanzado) sustituye ahora también las etiquetas de cuenta que son direcciones de correo por «Cuenta 1», «Cuenta 2», etc., en la pestaña Proveedores y en Ajustes. El Apple Watch sigue ahora el ajuste del iPhone.
 
-• Codex: cuando se agota el límite semanal, la barra de 5 horas y la tarjeta muestran 0% restante y cuándo se reinicia el límite semanal, en lugar del margen que queda en el periodo de 5 horas. Los widgets y el Apple Watch lo muestran igual. El marcador de ritmo de 5 horas se calcula ahora para 5 horas, no para una semana.
+• Codex: cuando se agota el límite semanal, la barra de 5 horas y la tarjeta muestran 0% restante y cuándo se reinicia el límite semanal, en lugar del margen que queda en el periodo de 5 horas. Los widgets y el Apple Watch lo muestran igual. El marcador de ritmo de 5 horas se basa ahora en 5 horas, no en una semana.
 
 • El Resumen ya no muestra una tarjeta «Proyectos principales» vacía ni un recuento de «Solicitudes» que siempre marcaba 0. En el iPhone, las cifras restantes se ordenan en filas de dos y tres.
 
@@ -20,4 +20,4 @@ Los créditos de Codex ahora se muestran como saldo en lugar de porcentaje, los 
 
 • Control remoto: si no se encuentra ningún Mac, el mensaje indica ahora qué Mac admiten el control remoto, en lugar de remitir a un ajuste que la mayoría de los Mac no tiene.
 
-• Los informes de fallos omiten ahora la cadena de consulta de las direcciones web.
+• Los informes de errores omiten ahora la cadena de consulta de las direcciones web.
