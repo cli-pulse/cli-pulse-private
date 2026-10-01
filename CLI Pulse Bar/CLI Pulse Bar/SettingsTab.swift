@@ -256,6 +256,21 @@ struct SettingsTab: View {
         }
     }
 
+    // MARK: - Sections that depend on the account
+
+    /// Which of the sections below are shown, decided in one place for the
+    /// signed-in and the local-mode branch (`SettingsAccountSections`).
+    private var accountSections: SettingsAccountSections {
+        SettingsAccountSections(
+            isAuthenticated: authState.isAuthenticated,
+            isPaired: authState.isPaired,
+            isLocalMode: state.isLocalMode,
+            // The note that names Settings › Companion CLI needs the same
+            // capability to appear at all (`HelperInstaller.externalActionsAllowed`).
+            runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh
+        )
+    }
+
     // MARK: - Local mode
 
     /// v1.55: Settings › Companion CLI and Settings › Privacy for a Mac in
@@ -270,16 +285,15 @@ struct SettingsTab: View {
     /// directions led nowhere.
     private var localModeSections: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Same gate as the signed-in section. The note that names this
-            // section needs the same capability to appear at all
-            // (`HelperInstaller.externalActionsAllowed`).
-            if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
+            if accountSections.companionCLI {
                 Divider()
                 CompanionCLISection(installer: state.helperInstaller)
             }
 
-            Divider()
-            PrivacySettingsSection()
+            if accountSections.privacy {
+                Divider()
+                PrivacySettingsSection()
+            }
         }
     }
 
@@ -298,40 +312,53 @@ struct SettingsTab: View {
                 PairingSection(helperEnabled: $helperEnabled)
             }
 
-            if authState.isPaired {
+            // v1.55: each section below is shown by `accountSections`. Companion
+            // CLI and Privacy are shown whether or not the account is paired: a
+            // signed-in Mac that has not set up cloud sync still scans, and is
+            // asked about older logs, and "Choose again…" and the older-logs
+            // switch are in Privacy. Before 1.55 both were inside the paired
+            // block. The paired account's own sections keep their order around
+            // them.
+            if accountSections.pairedAccountSettings {
                 Divider()
 
                 SubscriptionSection()
+            }
 
-                if state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh {
-                    // v1.16: Companion CLI Helper installer surface. Visible
-                    // to every authenticated user (post-pairing) right above
-                    // the section picker so it's discoverable without
-                    // digging into Advanced. Renders nothing on iOS / Watch
-                    // builds — HelperInstaller is macOS-only.
-                    Divider()
-                    CompanionCLISection(installer: state.helperInstaller)
-                }
+            if accountSections.companionCLI {
+                // v1.16: Companion CLI Helper installer surface, right above
+                // the section picker so it's discoverable without digging into
+                // Advanced. Renders nothing on iOS / Watch builds —
+                // HelperInstaller is macOS-only.
+                Divider()
+                CompanionCLISection(installer: state.helperInstaller)
+            }
 
-                // v1.19: Developer ID DMG channel updater. Only present
-                // in DEVID builds — MAS users get updates via the App
-                // Store. The section also surfaces a G5 banner reminding
-                // beta users to disable MAS automatic updates so the
-                // App Store version doesn't silently overwrite the beta.
-                #if DEVID_BUILD
+            // v1.19: Developer ID DMG channel updater. Only present
+            // in DEVID builds — MAS users get updates via the App
+            // Store. The section also surfaces a G5 banner reminding
+            // beta users to disable MAS automatic updates so the
+            // App Store version doesn't silently overwrite the beta.
+            #if DEVID_BUILD
+            if accountSections.pairedAccountSettings {
                 Divider()
                 AppUpdaterSection(
                     updater: state.appUpdater,
                     permMigration: state.permissionMigrationChecker
                 )
-                #endif
+            }
+            #endif
 
+            if accountSections.privacy {
                 // v1.19.1: in-app privacy toggles (skip Claude Code
                 // cross-app keychain read + master local-only mode).
                 // Cross-channel — visible to MAS and DEVID builds alike
                 // since the underlying keychain bug affects both.
                 Divider()
                 PrivacySettingsSection()
+            }
+
+            if accountSections.pairedAccountSettings {
                 // Remote control: view lives in CLIPulseCore (no pbxproj entry).
                 // M3 dark-ship — the card is not rendered at all when the
                 // build does not offer the feature.

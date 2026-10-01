@@ -4,9 +4,10 @@ import CLIPulseCore
 /// v1.16 — UI for the "Companion CLI" install/update/uninstall flow.
 /// Embedded under the PairingSection in Settings; visible after the user has
 /// paired (managed-CLI is a post-pairing power-user feature), and since v1.55
-/// in local mode too, where the note under the local-scan answer sends people
-/// here to update or uninstall a Companion that ignores it
-/// (`SettingsTab.localModeSections`).
+/// wherever Settings › Privacy is: in local mode, and on a signed-in Mac whose
+/// account is not paired. The note under the local-scan answer and under the
+/// Claude keychain switches sends people here to update or uninstall a
+/// Companion that ignores them (`SettingsAccountSections`).
 ///
 /// Wired to a single `HelperInstaller` instance held by AppState. The
 /// view simply renders state transitions:

@@ -760,8 +760,11 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
     /// and the telemetry card to Settings › Privacy. The first ask, Overview's
     /// declined card and the scan switch are local-mode screens, and until 1.55
     /// a Mac without an account saw only the sign-in form in Settings. Both
-    /// sections now render wherever those screens can: signed in (with the
-    /// account paired, where "Choose again…" is) and in local mode.
+    /// sections now render wherever those screens can: in local mode, and
+    /// signed in whether or not the account is paired, since an unpaired
+    /// signed-in Mac is asked about older logs and offered "Choose again…" too.
+    /// Which sections show is `SettingsAccountSections` (its own tests); this
+    /// checks that both branches of Settings go through it.
     func test_theSectionsTheNotesNameAreThereWhereverTheNotesAre() throws {
         let app = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
@@ -769,10 +772,27 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
             .appending(path: "CLI Pulse Bar")
         let settings = try String(contentsOf: app.appending(path: "SettingsTab.swift"), encoding: .utf8)
         func body(of name: String) throws -> String {
-            let start = try XCTUnwrap(settings.range(of: "private var \(name): some View {"), name)
+            let start = try XCTUnwrap(settings.range(of: "private var \(name): "), name)
             let rest = settings[start.upperBound...]
             let end = try XCTUnwrap(rest.range(of: "\n    }\n"), name)
             return String(rest[..<end.lowerBound])
+        }
+        /// The braces of every `header { … }` block in `text`, inner ones included.
+        func blocks(_ header: String, in text: String) -> [String] {
+            var found: [String] = []
+            var searchFrom = text.startIndex
+            while let open = text.range(of: header, range: searchFrom..<text.endIndex) {
+                var depth = 1
+                var index = open.upperBound
+                while index < text.endIndex, depth > 0 {
+                    if text[index] == "{" { depth += 1 }
+                    if text[index] == "}" { depth -= 1 }
+                    index = text.index(after: index)
+                }
+                found.append(String(text[open.upperBound..<index]))
+                searchFrom = open.upperBound
+            }
+            return found
         }
         let companion = "CompanionCLISection(installer: state.helperInstaller)"
         let privacy = "PrivacySettingsSection()"
@@ -784,14 +804,37 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
             squeezed(settings).contains("} else { loginSection if state.isLocalMode { localModeSections } }"),
             "local mode renders its sections under the sign-in form"
         )
-        let local = try body(of: "localModeSections")
-        XCTAssertTrue(local.contains(companion), local)
-        XCTAssertTrue(local.contains(privacy), local)
+        // One decision for both branches, from the account's own flags.
+        let decision = try squeezed(body(of: "accountSections"))
+        XCTAssertTrue(decision.contains("SettingsAccountSections( isAuthenticated: authState.isAuthenticated, isPaired: authState.isPaired, isLocalMode: state.isLocalMode,"), decision)
+        XCTAssertTrue(decision.contains("runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh )"), decision)
 
+        for name in ["localModeSections", "authenticatedSection"] {
+            let section = try body(of: name)
+            XCTAssertEqual(section.components(separatedBy: companion).count - 1, 1, name)
+            XCTAssertEqual(section.components(separatedBy: privacy).count - 1, 1, name)
+            XCTAssertTrue(
+                blocks("if accountSections.companionCLI {", in: section).contains { $0.contains(companion) },
+                name
+            )
+            XCTAssertTrue(
+                blocks("if accountSections.privacy {", in: section).contains { $0.contains(privacy) },
+                name
+            )
+            // Neither waits for a paired account, the gate they sat behind
+            // until the fix.
+            for paired in blocks("if accountSections.pairedAccountSettings {", in: section) {
+                XCTAssertFalse(paired.contains(companion), name)
+                XCTAssertFalse(paired.contains(privacy), name)
+            }
+        }
+        XCTAssertFalse(settings.contains("if authState.isPaired {"))
+        // Control: the block reader finds the paired account's own sections.
         let signedIn = try body(of: "authenticatedSection")
-        let paired = try XCTUnwrap(signedIn.range(of: "if authState.isPaired {"))
-        XCTAssertTrue(signedIn[paired.upperBound...].contains(companion))
-        XCTAssertTrue(signedIn[paired.upperBound...].contains(privacy))
+        XCTAssertTrue(
+            blocks("if accountSections.pairedAccountSettings {", in: signedIn)
+                .contains { $0.contains("SubscriptionSection()") }
+        )
 
         // And the call that fills the Sessions tab passes the answer on.
         let core = URL(fileURLWithPath: #filePath)
