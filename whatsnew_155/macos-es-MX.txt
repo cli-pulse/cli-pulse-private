@@ -1,0 +1,29 @@
+CLI Pulse muestra ahora los créditos de Codex como saldo y pregunta antes de leer registros de más de 30 días. Elegir «Ahora no» o cerrar sesión detiene la sincronización en segundo plano y un Companion CLI actualizado.
+
+• Créditos de Codex: una cuenta con créditos muestra ahora «N créditos restantes». Si este Mac ya vio créditos en una cuenta, un saldo agotado sigue mostrando «0 créditos restantes». Este Mac no añade la fila «Créditos» a cuentas que nunca los tuvieron.
+
+• El total del Panel de uso es ahora «Costo total est.»: una estimación a precios de pago por uso de la API, no una factura.
+
+• Ahora hay una pregunta aparte para los registros anteriores. Además de los 30 días que lee cada actualización, CLI Pulse puede leer una vez hasta un año de registros anteriores para completar tu historial. Antes se hacía sin preguntar, y la pregunta de las versiones 1.50 a 1.54 solo mencionaba 30 días. Si ya aceptaste el análisis, o tienes la sesión iniciada y nunca se te preguntó, CLI Pulse te pregunta una vez. Cualquier respuesta mantiene el análisis de 30 días, «Solo los últimos 30 días» no borra el historial, y en modo local o en un Mac sincronizado con tu cuenta puedes cambiarla en Ajustes › Privacidad › «Incluir el historial de uso anterior».
+
+• Un Mac sincronizado respeta ahora también «Ahora no»; las versiones 1.50 a 1.54 lo leían y sincronizaban aun así. En él, Ajustes › Privacidad ofrece ahora «Volver a elegir…»; antes había que cerrar sesión. En modo local, Ajustes muestra ahora también Privacidad y Companion CLI.
+
+• La sincronización en segundo plano sigue ahora tu respuesta y tu cuenta: tras «Ahora no» o al cerrar sesión no lee ni envía nada, y solo sincroniza con la cuenta conectada a la app. Ajustes › Avanzado indica cuándo está en pausa; si dice «Hay que reiniciarlo», desactívala y vuelve a activarla. Un Companion CLI actualizado hace lo mismo; si una versión anterior no, la app lo indica.
+
+• El modo de privacidad estricta impide ahora también importar cookies de los navegadores para los proveedores en «Automático», que muestran «No se lee en modo de privacidad estricta» y no un error. Este modo y «Omitir el acceso al Llavero para Claude Code» se aplican ahora también a la sincronización en segundo plano y a un Companion CLI actualizado.
+
+• Los informes de errores omiten ahora la cadena de consulta de las direcciones web.
+
+• «Ocultar información personal» sustituye ahora también las etiquetas de cuenta que son direcciones de correo por «Cuenta 1», «Cuenta 2», etc.
+
+• Gemini: Google ya no ofrece Gemini CLI a cuentas personales, que ahora muestran «Ya no disponible para cuentas personales» y el motivo, en lugar de «Error de autenticación».
+
+• Los límites de Codex se nombran por su duración, así que un límite solo semanal ya no se llama «Periodo 5h». Con el límite semanal agotado, la barra de 5 horas y la tarjeta muestran 0% restante y la hora del reinicio semanal, y la barra de menús, 0% restante. El marcador de ritmo de 5 horas cuenta ahora 5 horas, no una semana.
+
+• El historial conserva el uso cuyos registros ya no existen. Claude Code borra por defecto sus registros a los 30 días; al releer días anteriores, un día conserva el uso de un proveedor que la lectura no encuentra, y el de Claude si halla menos.
+
+• Las sesiones de Claude Code de subagentes o flujos de trabajo muestran en Sesiones el nombre de su proyecto.
+
+• El Resumen ya no muestra una tarjeta «Proyectos principales» vacía ni, en un Mac sincronizado, un recuento de «Solicitudes» que siempre marcaba 0. El Resumen de costos omite las filas de costo cero de proveedores que solo informan de la cuota, y «Probar demo» muestra solo lo que puede tener una cuenta real.
+
+• Correcciones: la tarjeta Yield Score ya no pide un ajuste que este Mac no muestra y desaparece al cerrar sesión; el mapa de calor en modo claro muestra los días sin uso; las cifras usan separador de miles; el texto tenue se lee mejor; el «Hambre» del Gato Pulse es ahora «Saciedad».

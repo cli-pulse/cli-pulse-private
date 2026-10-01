@@ -1,0 +1,23 @@
+Codex credits now show as a balance instead of a percentage, costs are labeled as estimates, Hide personal information now covers account labels and Apple Watch, and the Overview no longer shows an empty Top Projects card or a Requests count stuck at 0.
+
+• Codex credits show as "N credits left" on the Providers tab and on Apple Watch, instead of a percentage.
+
+• The Usage Dashboard's total is now "Est. Total Cost", with a line saying it is an estimate at API pay-as-you-go prices, not a bill.
+
+• Hide personal information (Settings › Advanced) now also replaces account labels that are email addresses on the Providers tab and in Settings with "Account 1", "Account 2", and so on. Apple Watch now follows the iPhone's setting.
+
+• Codex: when the weekly limit is used up, the 5-hour bar and the card read 0% left and show when the weekly limit resets, instead of the room left in the 5-hour window. Widgets and Apple Watch show the same. The 5-hour pace marker is now based on 5 hours, not a week.
+
+• The Overview no longer shows an empty Top Projects card or a Requests count that always read 0. On iPhone, the remaining figures are laid out in rows of two and three.
+
+• Cost Summary: the per-provider rows are labeled as 30-day amounts, and a provider that reports only quota no longer gets a zero-cost row.
+
+• Providers tab: the cards no longer run edge to edge, the cost badge sits next to today's cost instead of after the quota figure, and the tab no longer shows a count badge. A nearly used-up quota now reads "RUNNING LOW" instead of "LOW".
+
+• In light mode, the activity heatmap now shows days with no usage, and its busiest days are the darkest.
+
+• Try Demo shows only the cards and figures a real account can have.
+
+• Remote Control: when no Mac is found, the message now says which Macs support Remote Control, instead of pointing to a setting most Macs don't have.
+
+• Crash reports now leave out the query part of web addresses.

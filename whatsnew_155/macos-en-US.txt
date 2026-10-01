@@ -1,0 +1,29 @@
+CLI Pulse now shows Codex credits as a balance and asks before reading logs older than 30 days. Choosing "Not now" or signing out stops background sync and an up-to-date Companion CLI.
+
+• Codex credits: an account with credits now shows "N credits left". Once this Mac has seen credits on an account, a spent balance keeps showing "0 credits left". Accounts that never had credits get no Credits row from this Mac.
+
+• The Usage Dashboard's total is now "Est. Total Cost": an estimate at API pay-as-you-go prices, not a bill.
+
+• CLI Pulse now asks separately about older logs. Each refresh reads the last 30 days of session logs; CLI Pulse can also read up to a year of older logs once, to fill in your history. Earlier versions did that without asking, and the question in versions 1.50 through 1.54 mentioned only 30 days. If you said yes to the scan, or are signed in and were never asked, CLI Pulse asks you about older logs once. Either answer keeps the 30-day scan, "Last 30 days only" deletes no history, and in local mode or on a Mac synced to your account, you can change your answer later in Settings › Privacy › "Include older usage history".
+
+• "Not now" is now also honored on a Mac synced to your account, which versions 1.50 through 1.54 kept reading and syncing anyway. On such a Mac, Settings › Privacy now offers "Choose again…"; before, you had to sign out. In local mode, Settings now shows Privacy and Companion CLI too.
+
+• Background sync now follows your answer and your account: after "Not now" or a sign-out, it reads and sends nothing, and it syncs only to the account the app is signed in to. Settings › Advanced shows when it is paused; if it says "Restart needed", turn background sync off and on again. An up-to-date Companion CLI does the same; if an older version doesn't, the app tells you.
+
+• Strict privacy mode now also stops CLI Pulse from importing browser cookies for providers whose cookie source is "Automatic", which then show "Not read in Strict privacy mode" instead of an error. Strict privacy mode and "Skip Claude Code keychain access" now also apply to background sync and an up-to-date Companion CLI.
+
+• Crash reports now leave out the query part of web addresses.
+
+• Hide personal information now also replaces account labels that are email addresses with "Account 1", "Account 2", and so on.
+
+• Gemini: Google no longer offers Gemini CLI to personal Google accounts, so those accounts now show "Ended for personal accounts" with the reason, instead of "Authentication failed".
+
+• Codex limits are named by their length, so a weekly-only limit is no longer labeled "5h Window". With the weekly limit used up, the 5-hour bar and the card show 0% left and when the weekly limit resets, and the menu bar shows 0% left. The 5-hour pace marker is now based on 5 hours, not a week.
+
+• Usage history now keeps usage whose logs have been deleted. Claude Code deletes its logs after 30 days by default; when older days are read again, a day keeps any provider's usage that the new read finds none of, and keeps its Claude usage if the new read finds less.
+
+• Claude Code sessions run by subagents or workflows now show their project's name in Sessions.
+
+• The Overview no longer shows an empty Top Projects card or, on a Mac synced to your account, a Requests count that always read 0. Cost Summary drops zero-cost rows for quota-only providers, and Try Demo shows only what a real account can have.
+
+• Fixes: the Yield Score card no longer asks for a setting this Mac doesn't show and goes away when you sign out; the light-mode heatmap shows days with no usage; large numbers use thousands separators (15,531); faint text is easier to read; Pulse Cat's "Hunger" is now "Fullness"; quota badges read "RUNNING LOW".
