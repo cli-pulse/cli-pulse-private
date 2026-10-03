@@ -818,9 +818,11 @@ struct EnhancedProviderCard: View {
                           // tier list signals "data unavailable", not "use the
                           // overall quota" (matches AppState.buildProviderDetails).
                           provider.provider != "Claude" {
+                    // Filled to the share left, like the tier bars above and
+                    // the "remaining" figure beside it.
                     UsageBar(
                         label: L10n.providers.quota,
-                        value: provider.usagePercent,
+                        value: 1.0 - provider.usagePercent,
                         color: usageColor,
                         detail: remainingText
                     )
