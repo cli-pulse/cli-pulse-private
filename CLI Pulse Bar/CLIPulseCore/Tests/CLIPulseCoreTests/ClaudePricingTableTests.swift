@@ -327,6 +327,29 @@ final class ClaudePricingTableTests: XCTestCase {
         }
     }
 
+    /// A cached day row without a stored cost is priced from its sum, and a
+    /// sum never takes the long-context tier: 300K Sonnet 4.5 input tokens in
+    /// one day's row cost $0.90 (standard rate), not the $1.80 one 300K
+    /// request would.
+    func test_aCachedDayRowWithoutAStoredCostIsPricedAsASum() throws {
+        let (projects, _, cache) = try makeProjects()
+        let today = CostUsageScanner.DayRange.dayKey(from: Date())
+        var saved = CostUsageCache()
+        saved.lastScanUnixMs = Int64(Date().timeIntervalSince1970 * 1000)
+        saved.days = [today: ["claude-sonnet-4-5": [300_000, 0, 0, 0, 0, 0]]]
+        CostUsageCacheIO.save(provider: "claude", cache: saved, cacheRoot: cache)
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: cache.deletingLastPathComponent().appendingPathComponent("sessions", isDirectory: true),
+            claudeProjectsRoots: [projects], cacheRoot: cache, daysToScan: 30
+        )
+        options.refreshMinIntervalSeconds = 3_600   // read the saved cache as it is
+        let row = try XCTUnwrap(CostUsageScanner.scan(options: options).entries.first {
+            $0.provider == "Claude" && $0.model == "claude-sonnet-4-5"
+        }, "the saved row must come back, or this checks nothing")
+        XCTAssertEqual(row.costUSD ?? -1, 0.9, accuracy: 1e-9)
+    }
+
     // MARK: - Rate changes reach stored costs only through a rules bump
 
     /// Each response's cost is stored when it is read, so a change to
