@@ -18,7 +18,7 @@ import XCTest
 /// pricing", and "the 200K threshold is based solely on input tokens
 /// (including cache reads/writes)". Until 1.56 these tests pinned a different
 /// rule, each token kind split at 200K on its own, which was written for
-/// pricing a day's sum; the scanner has priced each response since then
+/// pricing a day's sum. The scanner prices each response as it reads it
 /// (`parseClaudeFile`), and a sum is now priced without the tier
 /// (`ClaudePricingTable.aggregateCostUSD`).
 final class ClaudeTieredAndCodexEdgeCostTests: XCTestCase {
