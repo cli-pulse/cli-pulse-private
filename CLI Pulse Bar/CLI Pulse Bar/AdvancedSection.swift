@@ -9,12 +9,18 @@ import CLIPulseCore
 /// `launchAtLogin` and `helperEnabled` remain parent-owned (SettingsTab)
 /// via `@Binding` because they pair with `LaunchAtLogin.setEnabled()` /
 /// `HelperLogin.toggle()` services that also fire from PairingSection.
+///
+/// v1.56: `content` says which parts are drawn (`SettingsAccountSections.Advanced`).
+/// A paired account gets all of it under the section picker, as before; a Mac
+/// without one gets what acts on this Mac alone, and the controls that act
+/// through the account stay behind `content.showsAccountControls`.
 struct AdvancedSection: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var authState: AuthState
     @EnvironmentObject var providerState: ProviderState
     @Binding var launchAtLogin: Bool
     @Binding var helperEnabled: Bool
+    let content: SettingsAccountSections.Advanced
 
     @State private var showGitTrackingConsent = false
     @State private var showRemoteControlConsent = false
@@ -22,7 +28,8 @@ struct AdvancedSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if state.runtimeEnvironment.capabilities.allowsHelperRegistration {
+            if content.showsBackgroundSync,
+               state.runtimeEnvironment.capabilities.allowsHelperRegistration {
                 SectionHeader(title: L10n.advanced.startup, icon: "power")
 
                 Toggle(isOn: $launchAtLogin) {
@@ -65,22 +72,26 @@ struct AdvancedSection: View {
                     )
                 }
 
-                if let status = HelperIPC.readStatus() {
-                    // `HelperStatusLine`: on a Mac that is not paired for this
-                    // account, the helper's "synced" is not this account's, and
-                    // a status written for a device this Mac has since replaced
-                    // is not about its pairing. The device id is an app-group
-                    // read, never the Keychain.
-                    let line = HelperStatusLine.make(
-                        status: status,
-                        thisMacPairing: authState.thisMacPairing,
-                        pairedDeviceId: HelperConfig.pairedDeviceId(
-                            authenticatedUserId: authState.userId,
-                            runtimeEnvironment: state.runtimeEnvironment
-                        ),
-                        helperShouldBePaused: state.helperShouldBePaused,
-                        appBuild: HelperIPC.runningBuild
-                    )
+                // `HelperStatusLine.forSettings`: nothing while the switch is
+                // off, whatever the helper last wrote; on a Mac that is not
+                // paired for this account, the helper's "synced" is not this
+                // account's; a status written for a device this Mac has since
+                // replaced is not about its pairing; and "Paused: signed out"
+                // only while the app is. The device id is an app-group read,
+                // never the Keychain.
+                if let line = HelperStatusLine.forSettings(
+                    status: HelperIPC.readStatus(),
+                    backgroundSyncOn: helperEnabled,
+                    isPaired: authState.isPaired,
+                    thisMacPairing: authState.thisMacPairing,
+                    pairedDeviceId: HelperConfig.pairedDeviceId(
+                        authenticatedUserId: authState.userId,
+                        runtimeEnvironment: state.runtimeEnvironment
+                    ),
+                    appAccount: state.accountRecordForHelper,
+                    helperShouldBePaused: state.helperShouldBePaused,
+                    appBuild: HelperIPC.runningBuild
+                ) {
                     HStack(spacing: 4) {
                         Circle()
                             .fill(dotColor(line.tone))
@@ -97,15 +108,45 @@ struct AdvancedSection: View {
                     }
                 }
 
-                Divider()
+                if content.showsCLIToolAccess || content.showsThisMacSettings {
+                    Divider()
+                }
             }
 
-            if state.runtimeEnvironment.capabilities.allowsLiveCollection {
+            if content.showsCLIToolAccess,
+               state.runtimeEnvironment.capabilities.allowsLiveCollection {
                 FolderAccessView()
 
                 Divider()
             }
 
+            if content.showsThisMacSettings {
+                thisMacSettings
+            }
+        }
+        .onAppear {
+            guard state.runtimeEnvironment.capabilities
+                .allowsHelperRegistration
+            else {
+                launchAtLogin = false
+                helperEnabled = false
+                return
+            }
+            launchAtLogin = LaunchAtLogin.isEnabled(
+                in: state.runtimeEnvironment
+            )
+            helperEnabled = HelperLogin.isEnabled(
+                in: state.runtimeEnvironment
+            )
+        }
+    }
+
+    /// Where Your Data Goes, the switches, and Debug. The ones that act
+    /// through the account (git tracking, Mac control requests, Remote Control
+    /// diagnostics, remote machine control) are drawn only with
+    /// `content.showsAccountControls`.
+    private var thisMacSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
             SectionHeader(title: L10n.advanced.dataTitle, icon: "lock.shield")
 
             VStack(alignment: .leading, spacing: 6) {
@@ -166,85 +207,28 @@ struct AdvancedSection: View {
             .toggleStyle(.switch)
             .controlSize(.small)
 
-            Toggle(isOn: Binding(
-                get: { state.gitTrackingEnabled },
-                set: { newValue in
-                    if newValue && !state.gitTrackingEnabled {
-                        showGitTrackingConsent = true
-                    } else {
-                        state.gitTrackingEnabled = newValue
-                        state.pushGitTrackingSettingToServer()
-                    }
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(L10n.advanced.trackGit)
-                        .font(.system(size: 11))
-                    Text(L10n.advanced.trackGitHint)
-                        .font(.system(size: 9))
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .toggleStyle(.switch)
-            .controlSize(.small)
-            .alert(L10n.advanced.gitConsentTitle, isPresented: $showGitTrackingConsent) {
-                Button(L10n.common.cancel, role: .cancel) {}
-                Button(L10n.advanced.enable) {
-                    state.gitTrackingEnabled = true
-                    state.pushGitTrackingSettingToServer()
-                }
-            } message: {
-                Text(L10n.advanced.gitConsentBody)
-            }
-
-            // Offered only by a build that acts on these requests. The App Store
-            // build has no `RemoteMachineExecutor`, so there this was a switch the
-            // build ignored. Hiding it writes nothing: the account-wide setting
-            // keeps its value and stays switchable from the iPhone and from any
-            // direct-download Mac. See `MacControlRequests`.
-            if MacControlRequests.areHonoredByThisBuild {
-                // v0.27 Remote Control opt-in. Default OFF. Server-side gate is
-                // enforced on every remote_helper_* RPC, so toggling off here
-                // actually severs the helper end of the channel.
-                //
-                // iter4: route every flip through `setRemoteControlEnabled(_:)`
-                // so a failed PATCH cleanly reverts the UI instead of leaving it
-                // out of sync with the server-side gate.
-                //
-                // iter6 (post-Codex review on PR #18): the consent confirmation
-                // moved from a system `.alert` to an inline card rendered
-                // beneath the toggle. SwiftUI's `.alert` doesn't capture
-                // clicks reliably inside `MenuBarExtra(.window)` — the same
-                // class of bug that forced the retired remote-approvals view
-                // out of a `.sheet`. Inline buttons in the popover's own tree
-                // get clicks every time and don't dismiss the popover.
+            // v1.56: these act through the account, so a Mac without a paired
+            // one does not get them. Git tracking is the account's switch and
+            // only a Companion paired to it collects; the Yield Score card
+            // that names the switch is shown only where it is
+            // (`YieldScoreCardContent`). Mac control requests come from the
+            // account's other devices.
+            if content.showsAccountControls {
                 Toggle(isOn: Binding(
-                    get: { state.remoteControlEnabled },
+                    get: { state.gitTrackingEnabled },
                     set: { newValue in
-                        if newValue && !state.remoteControlEnabled {
-                            // Going ON requires consent — show the inline
-                            // card. We deliberately do NOT mutate state
-                            // here (otherwise the toggle flips visually
-                            // before consent is given).
-                            showRemoteControlConsent = true
+                        if newValue && !state.gitTrackingEnabled {
+                            showGitTrackingConsent = true
                         } else {
-                            // Going OFF (or repeated set to current value, which
-                            // the entry point no-ops) — flip atomically.
-                            state.setRemoteControlEnabled(newValue)
+                            state.gitTrackingEnabled = newValue
+                            state.pushGitTrackingSettingToServer()
                         }
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 1) {
-                        HStack(spacing: 4) {
-                            Text(L10n.advanced.remoteControl)
-                                .font(.system(size: 11))
-                            if state.remoteControlSaving {
-                                ProgressView()
-                                    .controlSize(.mini)
-                            }
-                        }
-                        Text(L10n.advanced.remoteControlHint)
+                        Text(L10n.advanced.trackGit)
+                            .font(.system(size: 11))
+                        Text(L10n.advanced.trackGitHint)
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
@@ -252,24 +236,89 @@ struct AdvancedSection: View {
                 }
                 .toggleStyle(.switch)
                 .controlSize(.small)
-                // iter5 P1: while a PATCH is in flight, lock the toggle so a
-                // double-tap (or any other re-entrant call) can't race a stale
-                // request past the latest intent.
-                .disabled(state.remoteControlSaving)
-
-                if showRemoteControlConsent {
-                    remoteControlConsentCard
+                .alert(L10n.advanced.gitConsentTitle, isPresented: $showGitTrackingConsent) {
+                    Button(L10n.common.cancel, role: .cancel) {}
+                    Button(L10n.advanced.enable) {
+                        state.gitTrackingEnabled = true
+                        state.pushGitTrackingSettingToServer()
+                    }
+                } message: {
+                    Text(L10n.advanced.gitConsentBody)
                 }
-            }
 
-            // Hidden with the session plane. Every check it runs — a Mac
-            // matching the target filter, a helper version, notification
-            // authorization for approval pushes — describes the retired
-            // plane, so with that gone the panel would be diagnosing nothing
-            // that exists. Machine controls surface their own reachability in
-            // the Machine tab.
-            if RemoteSessionPlane.isEnabled {
-                remoteControlDiagnostics
+                // Offered only by a build that acts on these requests. The App Store
+                // build has no `RemoteMachineExecutor`, so there this was a switch the
+                // build ignored. Hiding it writes nothing: the account-wide setting
+                // keeps its value and stays switchable from the iPhone and from any
+                // direct-download Mac. See `MacControlRequests`.
+                if MacControlRequests.areHonoredByThisBuild {
+                    // v0.27 Remote Control opt-in. Default OFF. Server-side gate is
+                    // enforced on every remote_helper_* RPC, so toggling off here
+                    // actually severs the helper end of the channel.
+                    //
+                    // iter4: route every flip through `setRemoteControlEnabled(_:)`
+                    // so a failed PATCH cleanly reverts the UI instead of leaving it
+                    // out of sync with the server-side gate.
+                    //
+                    // iter6 (post-Codex review on PR #18): the consent confirmation
+                    // moved from a system `.alert` to an inline card rendered
+                    // beneath the toggle. SwiftUI's `.alert` doesn't capture
+                    // clicks reliably inside `MenuBarExtra(.window)` — the same
+                    // class of bug that forced the retired remote-approvals view
+                    // out of a `.sheet`. Inline buttons in the popover's own tree
+                    // get clicks every time and don't dismiss the popover.
+                    Toggle(isOn: Binding(
+                        get: { state.remoteControlEnabled },
+                        set: { newValue in
+                            if newValue && !state.remoteControlEnabled {
+                                // Going ON requires consent — show the inline
+                                // card. We deliberately do NOT mutate state
+                                // here (otherwise the toggle flips visually
+                                // before consent is given).
+                                showRemoteControlConsent = true
+                            } else {
+                                // Going OFF (or repeated set to current value, which
+                                // the entry point no-ops) — flip atomically.
+                                state.setRemoteControlEnabled(newValue)
+                            }
+                        }
+                    )) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            HStack(spacing: 4) {
+                                Text(L10n.advanced.remoteControl)
+                                    .font(.system(size: 11))
+                                if state.remoteControlSaving {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                }
+                            }
+                            Text(L10n.advanced.remoteControlHint)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+                    // iter5 P1: while a PATCH is in flight, lock the toggle so a
+                    // double-tap (or any other re-entrant call) can't race a stale
+                    // request past the latest intent.
+                    .disabled(state.remoteControlSaving)
+
+                    if showRemoteControlConsent {
+                        remoteControlConsentCard
+                    }
+                }
+
+                // Hidden with the session plane. Every check it runs — a Mac
+                // matching the target filter, a helper version, notification
+                // authorization for approval pushes — describes the retired
+                // plane, so with that gone the panel would be diagnosing nothing
+                // that exists. Machine controls surface their own reachability in
+                // the Machine tab.
+                if RemoteSessionPlane.isEnabled {
+                    remoteControlDiagnostics
+                }
             }
 
             // Machine controls M1 (DEVID-only). Off by default. Purely local:
@@ -299,8 +348,9 @@ struct AdvancedSection: View {
             // fan-boost / Low Power Mode REQUESTS from the owner's other signed-in
             // devices. A cloud command is only a request — the fan hold heartbeat +
             // TTL revert stay local, and it's bounded to fan RPM + LPM (never process
-            // control). Shown only when the local Machine controls opt-in is also on.
-            if state.machineControlsEnabled {
+            // control). Shown only when the local Machine controls opt-in is also on,
+            // and with a paired account, whose devices send the requests.
+            if content.showsAccountControls, state.machineControlsEnabled {
                 Toggle(isOn: Binding(
                     get: { state.remoteMachineControlEnabled },
                     set: { state.remoteMachineControlEnabled = $0 }
@@ -358,21 +408,6 @@ struct AdvancedSection: View {
                         .foregroundStyle(.tertiary)
                 }
             }
-        }
-        .onAppear {
-            guard state.runtimeEnvironment.capabilities
-                .allowsHelperRegistration
-            else {
-                launchAtLogin = false
-                helperEnabled = false
-                return
-            }
-            launchAtLogin = LaunchAtLogin.isEnabled(
-                in: state.runtimeEnvironment
-            )
-            helperEnabled = HelperLogin.isEnabled(
-                in: state.runtimeEnvironment
-            )
         }
     }
 

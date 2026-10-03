@@ -23,7 +23,8 @@ final class SettingsAccountSectionsTests: XCTestCase {
             isAuthenticated: signedIn,
             isPaired: paired,
             isLocalMode: localMode,
-            runtimeOffersCompanionCLI: companionOffered
+            runtimeOffersCompanionCLI: companionOffered,
+            runtimeOffersBackgroundSync: true
         )
     }
 
@@ -35,7 +36,7 @@ final class SettingsAccountSectionsTests: XCTestCase {
             XCTAssertTrue(s.companionCLI, "the note in Privacy sends people there")
             XCTAssertFalse(
                 s.pairedAccountSettings,
-                "subscription, updater, Remote Control and the picker still need a paired account"
+                "subscription, Remote Control and the picker still need a paired account"
             )
         }
     }
@@ -54,14 +55,17 @@ final class SettingsAccountSectionsTests: XCTestCase {
         XCTAssertFalse(s.pairedAccountSettings)
     }
 
-    /// The sign-in form alone. A stale pairing flag does not bring back the
-    /// account's sections once signed out.
+    /// The sign-in form, without Privacy or Companion CLI. A stale pairing
+    /// flag does not bring back the account's sections once signed out. (From
+    /// 1.56 the Developer ID updater and background sync's part of Advanced
+    /// are there too: `SettingsWithoutPairedAccountTests`.)
     func testASignedOutMacOutsideLocalModeShowsNone() {
         for paired in [false, true] {
             let s = sections(signedIn: false, paired: paired, localMode: false)
             XCTAssertFalse(s.privacy)
             XCTAssertFalse(s.companionCLI)
             XCTAssertFalse(s.pairedAccountSettings, "paired: \(paired)")
+            XCTAssertEqual(s.advanced, .backgroundSync, "paired: \(paired)")
         }
     }
 
