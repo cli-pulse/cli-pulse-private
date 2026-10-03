@@ -146,6 +146,10 @@ public actor APIClient {
     /// authorization session supersedes it.
     private var pendingExpiredAuthorizationLease:
         APIAuthorizationLease?
+    /// Until when `syncDailyUsage` skips `replace_daily_usage`, which last
+    /// answered 404 (migrate_v0.84 not on the server), and sends to
+    /// `upsert_daily_usage` instead. Nil: ask the new RPC.
+    private var replaceDailyUsageUnavailableUntil: Date?
 
     /// Called after a successful token refresh with (newAccessToken, newRefreshToken).
     /// Set by AppState to persist rotated tokens to Keychain.
@@ -2671,10 +2675,15 @@ public actor APIClient {
     /// working through (`DailyUsageArchive.claudeCleanupReach`) and any earlier
     /// one: usually the scan's oldest day. Transcripts last active before
     /// `now − 720 hours` may be deleted by now, so the scan counts only part of
-    /// that day, and `upsert_daily_usage` overwrites each (device, day,
-    /// provider, model) row with what it is sent: the iPhone's copy of the day
-    /// would drop. Every earlier upload of that day was made before cleanup
-    /// could reach it.
+    /// that day, and the upload overwrites each (device, day, provider, model)
+    /// row with what it is sent: the iPhone's copy of the day would drop.
+    /// Every earlier upload of that day was made before cleanup could reach it.
+    ///
+    /// v1.56: whatever this leaves out, it leaves out a whole (day, provider),
+    /// apart from the message bucket, which is not a model.
+    /// `replace_daily_usage` relies on that: it makes this device's rows for
+    /// each (day, provider) sent exactly the set sent, so a group sent in part
+    /// would lose the models left out. A group left out whole is not touched.
     static func dailyUsageRowsToUpload(
         _ entries: [CostUsageScanResult.DailyEntry],
         now: Date
@@ -2699,8 +2708,18 @@ public actor APIClient {
     /// table instead. Every refresh overwrites the row with the latest scan,
     /// so partial-day values auto-correct as the day progresses.
     ///
-    /// `now` places Claude Code's cleanup (`dailyUsageRowsToUpload`); it is a
-    /// seam for tests.
+    /// v1.56: the rows go to `replace_daily_usage` (migrate_v0.84), which also
+    /// deletes this device's rows of each (day, provider) sent whose model is
+    /// not in the upload. A model renamed between versions of the app
+    /// (`normalizeClaudeModel` drops a date suffix once the model has a price
+    /// row) otherwise kept its old row next to the new one, and the iPhone
+    /// counted the day's usage of it twice. While the server answers 404 for
+    /// it (migration not applied yet, or rolled back), the same body goes to
+    /// `upsert_daily_usage`, the RPC apps up to 1.55 call, and the new one is
+    /// asked again after `replaceDailyUsageRetryInterval`.
+    ///
+    /// `now` places Claude Code's cleanup (`dailyUsageRowsToUpload`) and that
+    /// retry; it is a seam for tests.
     public func syncDailyUsage(
         _ scanResult: CostUsageScanResult,
         authorizationLease: APIAuthorizationLease,
@@ -2732,16 +2751,6 @@ public actor APIClient {
             ]
         }
 
-        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage") else { return }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-
         // v0.3.1: send our paired device_id so the row lands under
         // (user_id, device_id, ...) and doesn't race-clobber rows from
         // a Win/Linux Tauri client running on the same account.
@@ -2765,19 +2774,70 @@ public actor APIClient {
         )?.deviceId, !deviceId.isEmpty {
             body["p_device_id"] = deviceId
         }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        // Both RPCs take the same two arguments.
+        let httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+        if replaceDailyUsageUnavailableUntil.map({ now >= $0 }) ?? true {
+            let status = await postDailyUsage(
+                rpc: "\(supabaseURL)/rest/v1/rpc/replace_daily_usage",
+                body: httpBody,
+                authorizationLease: authorizationLease
+            )
+            guard status == 404 else {
+                if let status, (200...299).contains(status) {
+                    replaceDailyUsageUnavailableUntil = nil
+                } else if let status {
+                    apiLogger.warning("[syncDailyUsage] failed: HTTP \(status) from replace_daily_usage")
+                }
+                return
+            }
+            replaceDailyUsageUnavailableUntil = now.addingTimeInterval(
+                Self.replaceDailyUsageRetryInterval
+            )
+            apiLogger.info(
+                "[syncDailyUsage] replace_daily_usage unavailable (HTTP 404); sending to upsert_daily_usage"
+            )
+        }
+        if let status = await postDailyUsage(
+            rpc: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage",
+            body: httpBody,
+            authorizationLease: authorizationLease
+        ), !(200...299).contains(status) {
+            apiLogger.warning("[syncDailyUsage] failed: HTTP \(status) from upsert_daily_usage")
+        }
+    }
+
+    /// How long `syncDailyUsage` sends to `upsert_daily_usage` after
+    /// `replace_daily_usage` answered 404, before it asks again.
+    static let replaceDailyUsageRetryInterval: TimeInterval = 60 * 60
+
+    /// One daily-usage POST. Returns the HTTP status (the caller logs a
+    /// failure), or nil when no response came back: a network failure, or the
+    /// authorization changed first.
+    private func postDailyUsage(
+        rpc: String,
+        body: Data?,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Int? {
+        guard let url = URL(string: rpc) else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = body
 
         do {
             let (_, response) = try await dataWithRetry(
                 for: request,
                 authorizationLease: authorizationLease
             )
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if !(200...299).contains(status) {
-                apiLogger.warning("[syncDailyUsage] failed: HTTP \(status)")
-            }
+            return (response as? HTTPURLResponse)?.statusCode ?? 0
         } catch {
             apiLogger.warning("[syncDailyUsage] error: \(error.localizedDescription)")
+            return nil
         }
     }
     #endif

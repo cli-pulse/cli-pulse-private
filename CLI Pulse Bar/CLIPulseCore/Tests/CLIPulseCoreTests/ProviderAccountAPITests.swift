@@ -1354,8 +1354,8 @@ final class ProviderAccountAPITests: XCTestCase {
     }
 
     /// `syncDailyUsage` leaves out Claude's rows on the day Claude Code's
-    /// cleanup is working through: `upsert_daily_usage` would overwrite the
-    /// complete figures sent before with what cleanup left. Codex's rows on
+    /// cleanup is working through: the upload would overwrite the complete
+    /// figures sent before with what cleanup left. Codex's rows on
     /// that day, and Claude's on every later day, still go. The filter itself
     /// is tested in DailyUsageClaudeCleanupEdgeTests; this is the wiring.
     func testDailyUsageUploadLeavesOutClaudeOnTheDayCleanupIsWorkingThrough()
@@ -1364,7 +1364,7 @@ final class ProviderAccountAPITests: XCTestCase {
         ProviderAccountAPIStubProtocol.handler = { request in
             XCTAssertEqual(
                 request.url?.path,
-                "/rest/v1/rpc/upsert_daily_usage"
+                "/rest/v1/rpc/replace_daily_usage"
             )
             return .json("{}")
         }
@@ -1410,7 +1410,7 @@ final class ProviderAccountAPITests: XCTestCase {
         )
 
         let upserts = ProviderAccountAPIStubProtocol.recordedRequests()
-            .filter { $0.url?.path == "/rest/v1/rpc/upsert_daily_usage" }
+            .filter { $0.url?.path == "/rest/v1/rpc/replace_daily_usage" }
         XCTAssertEqual(upserts.count, 1)
         let body = try XCTUnwrap(upserts.first?.httpBody)
         let root = try XCTUnwrap(
@@ -1427,7 +1427,7 @@ final class ProviderAccountAPITests: XCTestCase {
         XCTAssertFalse(
             sent.contains("\(oldest) Claude 30"),
             "the day Claude Code's cleanup is working through was uploaded "
-                + "for Claude: upsert_daily_usage overwrites the complete row"
+                + "for Claude: the upload overwrites the complete row"
         )
         XCTAssertEqual(
             Set(sent),
