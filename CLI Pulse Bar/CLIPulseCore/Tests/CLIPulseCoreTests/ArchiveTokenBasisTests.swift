@@ -17,7 +17,7 @@ final class ArchiveTokenBasisTests: XCTestCase {
     private let day = "2026-09-20"
 
     private func scanned(_ provider: String, _ model: String,
-                         input: Int, cached: Int, output: Int, cost: Double = 1.25) -> CostUsageScanResult.DailyEntry {
+                         input: Int, cached: Int, output: Int, cost: Double? = 1.25) -> CostUsageScanResult.DailyEntry {
         .init(date: day, provider: provider, model: model,
               inputTokens: input, cachedTokens: cached, outputTokens: output,
               costUSD: cost, messageCount: 0)
@@ -137,6 +137,46 @@ final class ArchiveTokenBasisTests: XCTestCase {
         XCTAssertEqual(DailyUsageArchiveIO.load(root: root).days[day]?.tokens, 1_850,
                        "a day recorded before the change is kept as it was, not dropped")
     }
+
+    // MARK: - The cost-coverage share
+
+    /// "Priced N% of tokens" weighs each token once too. A priced Codex row of
+    /// 1,000 input (800 of it cached) and 50 output is 1,050 tokens; beside an
+    /// unpriced 1,050-token row that is half. Adding the cached 800 again made
+    /// it 63%.
+    func testCoverageCountsCodexCachedInputOnce() {
+        let codex = scanned("Codex", "gpt-5.5", input: 1_000, cached: 800, output: 50)
+        let unpriced = CostUsageScanResult.DailyEntry(
+            date: day, provider: "Claude", model: "claude-next",
+            inputTokens: 1_050, cachedTokens: 0, outputTokens: 0, costUSD: nil)
+        let oldPriced = codex.inputTokens + codex.cachedTokens + codex.outputTokens
+        XCTAssertEqual(Int((Double(oldPriced) / Double(oldPriced + 1_050) * 100).rounded(.down)), 63,
+                       "control: the old sum gives a different share")
+
+        let coverage = CostCoverage.from(entries: [codex, unpriced])
+        XCTAssertEqual(coverage.pricedTokens, 1_050)
+        XCTAssertEqual(coverage.unpricedTokens, 1_050)
+        XCTAssertEqual(coverage.pricedPercent, 50)
+    }
+
+    func testClaudeCoverageIsUnchanged() {
+        let claude = scanned("Claude", "claude-sonnet-5", input: 100, cached: 900, output: 50)
+        XCTAssertEqual(CostCoverage.from(entries: [claude]).pricedTokens, 1_050,
+                       "Claude's input leaves cache out, so all three add up")
+    }
+
+    #if os(macOS)
+    /// The scanner's log line and the coverage share must agree about a scan.
+    func testTheUnpricedLogLineCountsCodexCachedInputOnce() throws {
+        var lines: [String] = []
+        CostUsageScanner.reportUnpricedModels(
+            [scanned("Codex", "gpt-next", input: 1_000, cached: 800, output: 50, cost: nil)],
+            log: { lines.append($0) })
+        let line = try XCTUnwrap(lines.first)
+        XCTAssertTrue(line.contains("gpt-next=1050"), line)
+        XCTAssertFalse(line.contains("1850"), line)
+    }
+    #endif
 
     // MARK: - The Mac's archive manager
 

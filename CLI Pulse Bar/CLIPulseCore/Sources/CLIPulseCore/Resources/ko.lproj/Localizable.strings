@@ -626,12 +626,15 @@
 "usage_dashboard.total_tokens" = "총 토큰";
 "usage_dashboard.total_cost_est" = "추정 총 비용";
 "usage_dashboard.cost_disclaimer" = "비용은 API 종량제 요금으로 계산한 추정치이며 청구액이 아닙니다.";
-/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). %@ is a day. */
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). history_* close the card; dashboard_* sit under the Usage Dashboard heatmap while Codex days counted the old way remain. *_some_* when days counted the new way lie among them. Every %@ is a day. */
 "codex_estimate_note.title" = "%@부터 Codex 수치가 달라졌습니다";
-"codex_estimate_note.reason_cached_input_once" = "사용량 대시보드는 Codex의 캐시 입력을 한 번만 셉니다. 캐시 입력은 이미 Codex 입력에 포함되어 있는데 한 번 더 더해졌기 때문에, 그곳의 Codex 토큰 합계는 줄어듭니다.";
+"codex_estimate_note.reason_cached_input_once" = "사용량 대시보드는 이제 Codex의 캐시 입력을 한 번만 집계합니다. 캐시 입력은 원래 Codex 입력에 포함되는데 그동안 한 번 더 더해졌습니다. 그래서 대시보드의 Codex 토큰 합계가 이전보다 줄어듭니다.";
 "codex_estimate_note.reason_subagent_sessions" = "이제 Codex 하위 에이전트 세션도 집계합니다. 이전에는 빠져 있었기 때문에 Codex 사용량과 비용이 늘어납니다.";
-"codex_estimate_note.reason_published_prices" = "Codex 요금을 OpenAI가 공개한 API 요금으로 업데이트했습니다.";
-"codex_estimate_note.history_before" = "사용량 대시보드에서 %@ 이전 날짜는 예전 수치를 유지합니다.";
+"codex_estimate_note.reason_published_prices" = "이제 Codex 추정 비용을 OpenAI가 공개한 API 요금으로 계산합니다.";
+"codex_estimate_note.history_through" = "사용량 대시보드에서 %@까지의 Codex 수치는 아직 이전 방식으로 집계되어 있습니다.";
+"codex_estimate_note.history_some_through" = "사용량 대시보드에서 %@까지의 Codex 수치 중 일부는 아직 이전 방식으로 집계되어 있습니다.";
+"codex_estimate_note.dashboard_through" = "%@까지의 Codex 수치는 이전 버전에서 집계한 것이라 이후 날짜와 비교할 수 없습니다.";
+"codex_estimate_note.dashboard_some_through" = "%@까지의 Codex 수치 중 일부는 이전 버전에서 집계한 것이라 이후 날짜와 비교할 수 없습니다.";
 "usage_dashboard.active_days" = "사용 일수";
 "usage_dashboard.current_streak" = "연속 사용일";
 "usage_dashboard.longest_streak" = "최장 연속 사용일";

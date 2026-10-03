@@ -275,12 +275,22 @@ public struct UsageDashboardView: View {
     /// everything fits on one page (no vertical scrollbar). The resizable
     /// standalone Window keeps `scrollable: true`.
     private let scrollable: Bool
+    /// Written by `DailyUsageArchiveManager`: which Codex days of this Mac's
+    /// archive still hold figures counted the old way.
+    @AppStorage(CodexEstimateChangeNote.defaultsKey) private var codexNoteData: Data?
+    /// Whether the archive shown is this Mac's own, the one the note tracks.
+    /// A sample archive (QA renders, previews) is not.
+    private let showsCodexHistoryLine: Bool
 
     /// Live window (loads the archive snapshot on appear).
-    public init(scrollable: Bool = true) { self.providedArchive = nil; self.scrollable = scrollable }
-    /// Preview/testing with an explicit archive.
-    public init(archive: DailyUsageArchive, scrollable: Bool = true) {
+    public init(scrollable: Bool = true) {
+        self.providedArchive = nil; self.scrollable = scrollable; self.showsCodexHistoryLine = true
+    }
+    /// An explicit archive: the slide-out panel's snapshot of this Mac's own
+    /// (`showsCodexHistoryLine: true`), or a sample for previews and QA.
+    public init(archive: DailyUsageArchive, scrollable: Bool = true, showsCodexHistoryLine: Bool = false) {
         self.providedArchive = archive; self.scrollable = scrollable
+        self.showsCodexHistoryLine = showsCodexHistoryLine
     }
 
     public var body: some View {
@@ -380,6 +390,7 @@ public struct UsageDashboardView: View {
                 }
                 .frame(height: cell * 7 + gap * 6 + 18)   // 7 day-rows + month labels
                 heatmapLegend
+                codexHistoryLine
             }
             .padding(14)
             .glassCard(elevated: false)
@@ -430,6 +441,22 @@ public struct UsageDashboardView: View {
                 .font(.system(size: 10)).foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Under the heatmap, for as long as any Codex day in this Mac's history
+    /// is still counted the old way, card or no card. The tooltip says what
+    /// changed.
+    @ViewBuilder
+    private var codexHistoryLine: some View {
+        if showsCodexHistoryLine,
+           let note = CodexEstimateChangeNote.decode(codexNoteData),
+           let line = note.dashboardLine() {
+            Text(line)
+                .font(.system(size: 9.5))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .help(note.shownReasons().map(\.text).joined(separator: "\n"))
+        }
     }
 
     private var heatmapLegend: some View {

@@ -961,12 +961,15 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "usage_dashboard.total_tokens" = "Total Tokens";
 "usage_dashboard.total_cost_est" = "Est. Total Cost";
 "usage_dashboard.cost_disclaimer" = "Cost is an estimate at API pay-as-you-go prices, not a bill.";
-/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). %@ is a day. */
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). history_* close the card; dashboard_* sit under the Usage Dashboard heatmap while Codex days counted the old way remain. *_some_* when days counted the new way lie among them. Every %@ is a day. */
 "codex_estimate_note.title" = "Codex figures changed on %@";
-"codex_estimate_note.reason_cached_input_once" = "The Usage Dashboard counts Codex's cached input once. Cached input is already part of Codex's input and was added a second time, so Codex token totals there are lower.";
-"codex_estimate_note.reason_subagent_sessions" = "Codex subagent sessions are counted. They were left out, so Codex usage and cost are higher.";
-"codex_estimate_note.reason_published_prices" = "Codex prices were updated to the API prices OpenAI publishes.";
-"codex_estimate_note.history_before" = "Days before %@ in the Usage Dashboard keep the old figures.";
+"codex_estimate_note.reason_cached_input_once" = "The Usage Dashboard now counts Codex's cached input only once. Cached input is already part of Codex's input but was added a second time, so the dashboard's Codex token totals are lower.";
+"codex_estimate_note.reason_subagent_sessions" = "Codex subagent sessions are now counted. They used to be left out, so Codex usage and cost are higher.";
+"codex_estimate_note.reason_published_prices" = "Codex cost estimates now use the API prices OpenAI publishes.";
+"codex_estimate_note.history_through" = "In the Usage Dashboard, Codex figures up to and including %@ are still counted the old way.";
+"codex_estimate_note.history_some_through" = "In the Usage Dashboard, some Codex figures up to and including %@ are still counted the old way.";
+"codex_estimate_note.dashboard_through" = "Codex figures up to and including %@ were counted by an earlier version and are not comparable with later days.";
+"codex_estimate_note.dashboard_some_through" = "Some Codex figures up to and including %@ were counted by an earlier version and are not comparable with later days.";
 "usage_dashboard.active_days" = "Active Days";
 "usage_dashboard.current_streak" = "Current Streak";
 "usage_dashboard.longest_streak" = "Longest Streak";

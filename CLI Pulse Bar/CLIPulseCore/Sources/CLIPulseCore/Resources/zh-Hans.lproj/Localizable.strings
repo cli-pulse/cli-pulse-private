@@ -952,12 +952,15 @@
 "usage_dashboard.total_tokens" = "总用量";
 "usage_dashboard.total_cost_est" = "预估总费用";
 "usage_dashboard.cost_disclaimer" = "费用是以 API 按量付费价格算出的预估值，不是真实账单。";
-/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). %@ is a day. */
-"codex_estimate_note.title" = "自%@起，Codex 的数字有变化";
-"codex_estimate_note.reason_cached_input_once" = "用量仪表盘中，Codex 的缓存输入只计一次。缓存输入本就包含在 Codex 的输入里，之前又被重复计入，所以那里的 Codex token 总数会变少。";
-"codex_estimate_note.reason_subagent_sessions" = "Codex 的子代理会话现在也会计入。之前它们被漏掉了，所以 Codex 的用量和费用会变高。";
-"codex_estimate_note.reason_published_prices" = "Codex 的价格已更新为 OpenAI 公布的 API 价格。";
-"codex_estimate_note.history_before" = "用量仪表盘中%@之前的日期保留旧的数字。";
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). history_* close the card; dashboard_* sit under the Usage Dashboard heatmap while Codex days counted the old way remain. *_some_* when days counted the new way lie among them. Every %@ is a day. */
+"codex_estimate_note.title" = "自%@起，Codex 的数字有所变化";
+"codex_estimate_note.reason_cached_input_once" = "用量仪表盘现在只计一次 Codex 的缓存输入。缓存输入本就包含在 Codex 的输入里，之前却被重复计入，所以仪表盘中 Codex 的 token 总数会变少。";
+"codex_estimate_note.reason_subagent_sessions" = "Codex 的子 Agent 会话现在也会计入。之前它们被漏掉了，所以 Codex 的用量和费用会变高。";
+"codex_estimate_note.reason_published_prices" = "Codex 的费用预估现在按 OpenAI 公布的 API 价格计算。";
+"codex_estimate_note.history_through" = "用量仪表盘中，%@及之前各天的 Codex 数字仍按旧方式计算。";
+"codex_estimate_note.history_some_through" = "用量仪表盘中，%@及之前部分日子的 Codex 数字仍按旧方式计算。";
+"codex_estimate_note.dashboard_through" = "%@及之前各天的 Codex 数字由旧版本计算，无法与之后各天直接比较。";
+"codex_estimate_note.dashboard_some_through" = "%@及之前部分日子的 Codex 数字由旧版本计算，无法与之后各天直接比较。";
 "usage_dashboard.active_days" = "活跃天数";
 "usage_dashboard.current_streak" = "连续天数";
 "usage_dashboard.longest_streak" = "最长连续天数";

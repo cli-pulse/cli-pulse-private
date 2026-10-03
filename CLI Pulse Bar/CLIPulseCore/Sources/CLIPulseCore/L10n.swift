@@ -457,16 +457,23 @@ public enum L10n {
     }
 
     /// The dated card on the Overview that says Codex figures are counted
-    /// differently now, and why. See `CodexEstimateChangeNote` for who sees it
-    /// and which lines are shown.
+    /// differently now, and why, and the Usage Dashboard's line about the days
+    /// still counted the old way. See `CodexEstimateChangeNote` for who sees
+    /// them and which lines are shown. Every %@ is a day, formatted by
+    /// `DisplayFormat.day`.
     public enum codexEstimateNote {
-        /// %@ is a day, formatted by `DisplayFormat.day`.
         public static func title(_ day: String) -> String { tr("codex_estimate_note.title", day) }
         public static var reasonCachedInputOnce: String { tr("codex_estimate_note.reason_cached_input_once") }
         public static var reasonSubagentSessions: String { tr("codex_estimate_note.reason_subagent_sessions") }
         public static var reasonPublishedPrices: String { tr("codex_estimate_note.reason_published_prices") }
-        /// %@ is a day, formatted by `DisplayFormat.day`.
-        public static func historyBefore(_ day: String) -> String { tr("codex_estimate_note.history_before", day) }
+        /// The card, when every Codex day up to `day` is still counted the old way.
+        public static func historyThrough(_ day: String) -> String { tr("codex_estimate_note.history_through", day) }
+        /// The card, when some Codex days up to `day` are counted the new way.
+        public static func historySomeThrough(_ day: String) -> String { tr("codex_estimate_note.history_some_through", day) }
+        /// The Usage Dashboard, under the heatmap: every Codex day up to `day`.
+        public static func dashboardThrough(_ day: String) -> String { tr("codex_estimate_note.dashboard_through", day) }
+        /// The Usage Dashboard, under the heatmap: some Codex days up to `day`.
+        public static func dashboardSomeThrough(_ day: String) -> String { tr("codex_estimate_note.dashboard_some_through", day) }
     }
 
     /// v1.44 W3: per-provider collector outcome labels + one concrete next

@@ -76,7 +76,7 @@ public final class DashboardPanelController {
         // taller than the screen (small displays).
         let maxHeight = visible.height - 24
         let probe = NSHostingView(rootView:
-            UsageDashboardView(archive: snapshot, scrollable: false)
+            UsageDashboardView(archive: snapshot, scrollable: false, showsCodexHistoryLine: true)
                 .frame(width: width)
                 .environment(\.colorScheme, .dark)
                 .displayLocaleRoot())
@@ -86,7 +86,7 @@ public final class DashboardPanelController {
         let height = fits ? naturalHeight : maxHeight
 
         let hosting = NSHostingView(rootView:
-            UsageDashboardView(archive: snapshot, scrollable: !fits)
+            UsageDashboardView(archive: snapshot, scrollable: !fits, showsCodexHistoryLine: true)
                 .frame(width: width, height: height)
                 .overlay(alignment: .topTrailing) {
                     Button { DashboardPanelController.shared.hide() } label: {

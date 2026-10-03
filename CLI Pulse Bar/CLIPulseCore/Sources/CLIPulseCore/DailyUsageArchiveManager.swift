@@ -30,8 +30,17 @@ public actor DailyUsageArchiveManager {
     private let backfillKey: String
     private let backfillScan: @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult
     private let now: @Sendable () -> Date
+    /// The reasons the Codex note tells about: `Reason.shipped`, or a test's.
+    private let codexNoteReasons: [CodexEstimateChangeNote.Reason]
     private var backfillRunning = false
 
+    /// Not reset when Codex starts being counted differently, so the older
+    /// Codex days the year-long read counted the old way stay as they are;
+    /// `CodexEstimateChangeNote` tracks them and the Usage Dashboard says so.
+    /// A second run would no longer harm the Claude share (it merges provider
+    /// by provider, `mergeScanEntriesByProvider`, keeping every stored Claude
+    /// slice and every provider it does not find), but recounting older Codex
+    /// days is a change of its own, not a side effect of this flag.
     public static let defaultBackfillKey = "cli_pulse_daily_archive_backfilled_v1"
     /// The only read in the app that goes further back than the routine 30
     /// days. v1.55: what the disclosure says it may do, and nothing more.
@@ -44,12 +53,14 @@ public actor DailyUsageArchiveManager {
         defaults: UserDefaults = .standard,
         backfillKey: String = DailyUsageArchiveManager.defaultBackfillKey,
         now: @escaping @Sendable () -> Date = { Date() },
+        codexNoteReasons: [CodexEstimateChangeNote.Reason] = CodexEstimateChangeNote.Reason.shipped,
         backfillScan: @escaping @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult)
     {
         self.root = root
         self.defaults = defaults
         self.backfillKey = backfillKey
         self.now = now
+        self.codexNoteReasons = codexNoteReasons
         self.backfillScan = backfillScan
         self.archive = nil   // deferred to first actor-isolated access (off-main)
     }
@@ -85,19 +96,19 @@ public actor DailyUsageArchiveManager {
     /// day after it). Its Claude share was recorded in full the day before;
     /// the read now sees only the transcripts cleanup has not deleted yet, so
     /// that day is merged provider by provider and its Claude slice is not
-    /// lowered. `now` is a seam for tests.
-    public func record(_ scanResult: CostUsageScanResult, now: Date = Date()) {
+    /// lowered. `now` is a seam for tests; nil reads the manager's clock, the
+    /// one the Codex note is dated by.
+    public func record(_ scanResult: CostUsageScanResult, now: Date? = nil) {
         guard !scanResult.entries.isEmpty else { return }
         var a = loaded()
-        startCodexEstimateNoteIfNeeded(before: a)
-        let entries = scanResult.entries.map(Self.scanEntry)
-        a.mergeScanEntries(
-            entries,
-            claudeCleanupReach: DailyUsageArchive.claudeCleanupReach(now: now))
+        codexNoteWillWrite(a)
+        let codexFromRead = a.mergeScanEntries(
+            scanResult.entries.map(Self.scanEntry),
+            claudeCleanupReach: DailyUsageArchive.claudeCleanupReach(now: now ?? self.now()))
         a.lastUpdatedUnixMs = Self.nowMs()
         archive = a
         DailyUsageArchiveIO.save(a, root: root)
-        noteRecount(of: entries, in: a)
+        codexNoteDidWrite(codexFromRead, in: a)
         NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
     }
 
@@ -107,11 +118,12 @@ public actor DailyUsageArchiveManager {
         let filtered = rows.filter { $0.model != ScanEntry.messageBucketModel }
         guard !filtered.isEmpty else { return }
         var a = loaded()
-        startCodexEstimateNoteIfNeeded(before: a)
-        a.mergeCloudDays(filtered.map(Self.cloudEntry))
+        codexNoteWillWrite(a)
+        let filled = a.mergeCloudDays(filtered.map(Self.cloudEntry))
         a.lastUpdatedUnixMs = Self.nowMs()
         archive = a
         DailyUsageArchiveIO.save(a, root: root)
+        codexNoteDidWrite(filled, in: a)
         NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
     }
 
@@ -152,13 +164,12 @@ public actor DailyUsageArchiveManager {
         let result = await backfillScan(options)
         if !result.entries.isEmpty {
             var a = loaded()
-            startCodexEstimateNoteIfNeeded(before: a)
-            let entries = result.entries.map(Self.scanEntry)
-            a.mergeScanEntriesByProvider(entries)
+            codexNoteWillWrite(a)
+            let codexFromRead = a.mergeScanEntriesByProvider(result.entries.map(Self.scanEntry))
             a.lastUpdatedUnixMs = Self.nowMs()
             archive = a
             DailyUsageArchiveIO.save(a, root: root)
-            noteRecount(of: entries, in: a)
+            codexNoteDidWrite(codexFromRead, in: a)
             NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
         }
         try? FileManager.default.removeItem(at: tmp)   // discard the throwaway cache
@@ -167,24 +178,30 @@ public actor DailyUsageArchiveManager {
 
     // MARK: - The Codex estimate note's bookkeeping
 
-    /// Once, before this version first changes the archive: remember the day,
-    /// and whether this Mac had Codex figures counted the old way. Every path
-    /// that writes the archive calls this first, so the answer comes from the
-    /// archive as the previous version left it.
-    private func startCodexEstimateNoteIfNeeded(before archive: DailyUsageArchive) {
-        guard CodexEstimateChangeNote.load(from: defaults) == nil else { return }
+    /// Before a write: on this version's first write, and on the first write of
+    /// a later version that ships a new reason, start a note from the archive as
+    /// the previous version left it (the day, whether this Mac had Codex
+    /// figures, and which Codex days they are). Every path that writes the
+    /// archive calls this first.
+    private func codexNoteWillWrite(_ archive: DailyUsageArchive) {
         CodexEstimateChangeNote
-            .started(before: archive, on: DayKey.string(from: now()))
+            .next(after: CodexEstimateChangeNote.load(from: defaults), before: archive,
+                  on: DayKey.string(from: now()), shipped: codexNoteReasons)?
             .save(to: defaults)
     }
 
-    /// A scan just replaced the days in `entries`: they are counted the new
-    /// way now. Keeps the note's "days before … keep the old figures" true,
-    /// including after the year-long backfill recounts much further back.
-    private func noteRecount(of entries: [ScanEntry], in archive: DailyUsageArchive) {
-        guard var note = CodexEstimateChangeNote.load(from: defaults), note.hadCodexHistory else { return }
+    /// After a write: `codexFromRead` are the days whose Codex share the write
+    /// took from the read or the cloud (what `mergeScanEntries`,
+    /// `mergeScanEntriesByProvider` and `mergeCloudDays` return), so they no
+    /// longer hold old figures. Only these days: a read writes only the days
+    /// it has entries for, a day merged provider by provider keeps its stored
+    /// Codex slice where the read has no Codex entries for it, and a Codex day
+    /// the read has nothing for keeps its old figure however far back the read
+    /// reached.
+    private func codexNoteDidWrite(_ codexFromRead: Set<String>, in archive: DailyUsageArchive) {
+        guard var note = CodexEstimateChangeNote.load(from: defaults), !note.oldCodexDays.isEmpty else { return }
         let before = note
-        note.recordRecount(ofDays: entries.map(\.date), in: archive)
+        note.recordWrite(of: codexFromRead, in: archive)
         if note != before { note.save(to: defaults) }
     }
 
