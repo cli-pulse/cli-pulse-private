@@ -160,6 +160,35 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
     }
 
+    /// A session's status is "Running" as every process scan writes it, or
+    /// "Ended", which helper_sync sets ten minutes after the process is gone,
+    /// when the app's five-minute freshness filter no longer lists the row.
+    /// So a listed session reads Running. Demo had "syncing" and "idle", which
+    /// the iPad's session list drew as badges.
+    func testDemoSessionsReadRunningAsProducersWriteIt() throws {
+        for session in DemoDataProvider.generate().sessions {
+            XCTAssertEqual(session.status, "Running", "\(session.name) has a status no producer writes")
+        }
+        let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(scanner.contains(#"status: "Running","#), "LocalScanner writes another status")
+        let python = try String(
+            contentsOf: repoRoot.appendingPathComponent("helper/system_collector.py"), encoding: .utf8)
+        let statuses = python.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("status=") }
+        XCTAssertFalse(statuses.isEmpty, "the Python helper builds no session with a status; is this still its scan?")
+        XCTAssertEqual(Set(statuses), [#"status="Running","#], "the Python helper writes another session status")
+        let sync = try String(
+            contentsOf: repoRoot.appendingPathComponent("backend/supabase/helper_rpc.sql"), encoding: .utf8)
+        XCTAssertTrue(sync.contains("and last_active_at < now() - interval '10 minutes'"),
+                      "helper_sync ends sessions on another schedule")
+        XCTAssertEqual(SessionFreshnessFilter.freshnessWindow, 300,
+                       "the freshness filter's window changed; can a listed row now read Ended?")
+    }
+
     /// The iPhone and the iPad draw sessions from the cloud, and every
     /// session there comes from a process scan: the Mac helper's LocalScanner,
     /// the desktop app's, or the Python helper's both were ported from. All of

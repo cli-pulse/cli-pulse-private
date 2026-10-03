@@ -106,35 +106,41 @@ internal enum DemoDataProvider {
         // helpers, the local scanners, the desktop app) writes error_count 0
         // and a live status, so a real Sessions tab never draws the red Errors
         // figure or the red border api-gateway used to have.
+        //
+        // Every status is "Running", the only one a producer writes; helper_sync
+        // turns a row "Ended" ten minutes after its process is gone, by which
+        // time the app's freshness filter (five minutes) no longer lists it.
+        // Demo had "running", "syncing" and "idle", and the iPad's session list
+        // drew Syncing and Idle badges no account can get.
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
                           started_at: timestamp(-7200), last_active_at: timestamp(),
-                          status: "running", total_usage: 24500, estimated_cost: 0.29,
+                          status: "Running", total_usage: 24500, estimated_cost: 0.29,
                           cost_status: "Estimated", requests: 142, error_count: 0,
                           collection_confidence: "high"),
             SessionRecord(id: "s2", name: "helper-heartbeat", provider: "Gemini",
                           project: "cli-pulse-helper", device_name: "lab-server-01",
                           started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
-                          status: "syncing", total_usage: 37800, estimated_cost: 0,
+                          status: "Running", total_usage: 37800, estimated_cost: 0,
                           cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
                           started_at: timestamp(-7200), last_active_at: timestamp(-1200),
-                          status: "idle", total_usage: 8400, estimated_cost: 0.10,
+                          status: "Running", total_usage: 8400, estimated_cost: 0.10,
                           cost_status: "Estimated", requests: 56, error_count: 0,
                           collection_confidence: "high"),
             SessionRecord(id: "s4", name: "provider-adapters", provider: "Claude",
                           project: "provider-layer", device_name: "MacBook Pro",
                           started_at: timestamp(-3600), last_active_at: timestamp(),
-                          status: "running", total_usage: 6200, estimated_cost: 0.09,
+                          status: "Running", total_usage: 6200, estimated_cost: 0.09,
                           cost_status: "Estimated", requests: 38, error_count: 0,
                           collection_confidence: "low"),
             SessionRecord(id: "s5", name: "docs-refresh", provider: "Claude",
                           project: "cli-pulse-docs", device_name: "MacBook Pro",
                           started_at: timestamp(-2700), last_active_at: timestamp(-720),
-                          status: "idle", total_usage: 4100, estimated_cost: 0.06,
+                          status: "Running", total_usage: 4100, estimated_cost: 0.06,
                           cost_status: "Estimated", requests: 21, error_count: 0,
                           collection_confidence: "high"),
         ]
@@ -242,7 +248,9 @@ internal enum DemoDataProvider {
             // shows there alone (OverviewFormatters.showsRequestsMetric); Demo
             // takes the `.noOp` route.
             total_requests_today: 0,
-            active_sessions: sessions.filter { $0.status == "running" || $0.status == "syncing" }.count,
+            // The Sessions tab's Active section, by freshness (every status is
+            // Running); ScreenshotLaunchTests holds the two equal.
+            active_sessions: SessionFreshnessTierClassifier.partition(sessions, now: now).active.count,
             online_devices: devices.filter { $0.status == "online" }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
