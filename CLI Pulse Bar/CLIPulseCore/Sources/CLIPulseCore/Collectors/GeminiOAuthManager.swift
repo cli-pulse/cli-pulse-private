@@ -1152,6 +1152,39 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     // See docs/GEMINI_OAUTH_SETUP.md for instructions.
     public static let clientID = "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
 
+    /// The value `clientID` holds until a real Google OAuth client is
+    /// created. Every build through 1.55 shipped it.
+    static let placeholderClientID =
+        "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
+
+    /// Whether `clientID` names a real Google OAuth client.
+    ///
+    /// While it does not, Google rejects the sign-in before it starts and
+    /// `authorizeForEditing` throws `.clientNotConfigured`. The Gemini editor
+    /// used to offer "Connect Gemini" regardless: a button whose only result
+    /// was an error pointing at a developer document.
+    static func isConfiguredClientID(_ clientID: String) -> Bool {
+        !clientID.isEmpty && clientID != placeholderClientID
+    }
+
+    public static var isClientConfigured: Bool {
+        isConfiguredClientID(clientID)
+    }
+
+    /// Whether the Gemini editor shows CLI Pulse's own Google sign-in at all.
+    ///
+    /// Shown when the client is configured (so "Connect Gemini" can work), or
+    /// when this account already holds CLI Pulse's own tokens (so they can be
+    /// disconnected). Neither holds in a build that ships the placeholder, and
+    /// then the editor says nothing about a sign-in it cannot offer. Gemini is
+    /// still read from the Gemini CLI's and Antigravity's own logins.
+    public static func offersOwnSignIn(
+        isConnected: Bool,
+        clientID: String = GeminiOAuthManager.clientID
+    ) -> Bool {
+        isConnected || isConfiguredClientID(clientID)
+    }
+
     public static var callbackScheme: String {
         clientID.split(separator: ".").reversed().joined(separator: ".")
     }
@@ -1365,7 +1398,7 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     public func authorizeForEditing(
         accountID: UUID? = nil
     ) async throws -> GeminiAuthorizationTokens {
-        guard Self.clientID != "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com" else {
+        guard Self.isClientConfigured else {
             throw GeminiOAuthError.clientNotConfigured
         }
         // Prevent concurrent auth sessions

@@ -7,6 +7,8 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
+      # The version-sync job also pins the embedded Uninstaller's version.
+      - 'helper-uninstaller/**'
       # helper/test_claude_usage_probe.py compares the helper's Claude /usage
       # probe settings against this file; an app-side change must run it.
       - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
@@ -17,6 +19,8 @@ on:
       - 'scripts/check_helper_version_sync.sh'
       - 'scripts/check_helper_method_parity.sh'
       - 'HelperSwift/Sources/HelperKit/Protocol.swift'
+      # The version-sync job also pins the embedded Uninstaller's version.
+      - 'helper-uninstaller/**'
       # helper/test_claude_usage_probe.py compares the helper's Claude /usage
       # probe settings against this file; an app-side change must run it.
       - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
