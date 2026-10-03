@@ -1164,7 +1164,7 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
     /// used to offer "Connect Gemini" regardless: a button whose only result
     /// was an error pointing at a developer document.
     static func isConfiguredClientID(_ clientID: String) -> Bool {
-        !clientID.isEmpty && clientID != placeholderClientID
+        !clientID.isEmpty
     }
 
     public static var isClientConfigured: Bool {

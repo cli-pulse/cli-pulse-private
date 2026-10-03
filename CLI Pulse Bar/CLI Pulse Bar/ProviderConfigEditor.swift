@@ -456,9 +456,7 @@ struct ProviderConfigEditor: View {
     @ViewBuilder
     private var geminiOAuthSection: some View {
         VStack(alignment: .leading, spacing: 3) {
-            if showsGeminiOwnSignIn {
-                geminiOwnSignInRows
-            }
+            geminiOwnSignInRows
 
             // v1.23.0 G3 follow-on: surface the CLI-probe fallback
             // opt-in (shipped dark in PR #45). Hidden on sandboxed/MAS
