@@ -189,7 +189,7 @@ final class CostUsageCacheIOTests: XCTestCase {
 
         let url = CostUsageCacheIO.cacheFileURL(provider: "codex", cacheRoot: tempDir)
         let raw = try! JSONSerialization.jsonObject(with: try! Data(contentsOf: url)) as! [String: Any]
-        XCTAssertEqual(raw["pricingVersion"] as? Int, costUsageCachePricingVersion)
+        XCTAssertEqual(raw["pricingVersion"] as? Int, costUsageCodexCacheRulesVersion)
 
         let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir)
         XCTAssertEqual(loaded.lastScanUnixMs, 42, "save→load roundtrip should not be invalidated by the stamping policy")
@@ -207,6 +207,88 @@ final class CostUsageCacheIOTests: XCTestCase {
         // only to logs written from here on and every historical day would keep
         // reading $0. This pairing is exactly what the pin is for.
         XCTAssertEqual(costUsageCachePricingVersion, 4)
+    }
+
+    // MARK: - rules version per provider (1.56)
+
+    /// Writes a cache file for `provider` stamped with `version`, bypassing
+    /// `save()` (which always stamps the current one).
+    private func writeRawCache(provider: String, version: Int) {
+        let url = CostUsageCacheIO.cacheFileURL(provider: provider, cacheRoot: tempDir)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let payload: [String: Any] = [
+            "version": 1, "pricingVersion": version, "lastScanUnixMs": 1_700_000_000,
+            "files": [:], "days": ["2026-09-20": ["m": [1, 0, 0, 0] as [Int]]],
+        ]
+        try! JSONSerialization.data(withJSONObject: payload).write(to: url)
+    }
+
+    func testCurrentCodexRulesVersionIsFive() {
+        // 5 — 1.56: Codex files count on their own (subagents included), a file
+        // of one thread is a copy when its events lie within another's (nested
+        // spans), the cumulative baseline only rises, a child's copied history
+        // is not counted, and each request is priced as it is read. A Codex
+        // cache written under 4 holds none of that. Pinned for the same reason
+        // as the Claude version: a bump should be a visible diff.
+        XCTAssertEqual(costUsageCodexCacheRulesVersion, 5)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 5)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 5)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "claude"), costUsageCachePricingVersion)
+    }
+
+    func testCodexCacheFromTheOldRulesIsReadAgainButClaudesIsKept() {
+        // The whole point of splitting the version: the Codex rules change
+        // re-reads the Codex logs (a hundred-odd files) and leaves the Claude
+        // cache (thousands of files) alone.
+        writeRawCache(provider: "codex", version: costUsageCachePricingVersion)
+        writeRawCache(provider: "claude", version: costUsageCachePricingVersion)
+        XCTAssertTrue(CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir).days.isEmpty)
+        XCTAssertFalse(CostUsageCacheIO.load(provider: "claude", cacheRoot: tempDir).days.isEmpty)
+    }
+
+    func testClaudeCacheStampedWithTheCodexVersionIsRejected() {
+        writeRawCache(provider: "claude", version: costUsageCodexCacheRulesVersion)
+        XCTAssertTrue(CostUsageCacheIO.load(provider: "claude", cacheRoot: tempDir).days.isEmpty)
+    }
+
+    func testCodexFileStateRoundTripsAndIsNilInOlderEntries() throws {
+        var cache = CostUsageCache()
+        var state = CostUsageCodexFileState()
+        state.rolloutId = "r"
+        state.isChild = true
+        state.metaUnixMs = 5
+        state.historyStartOrdinal = 12
+        state.copiedPrefix = .interAgentMessage
+        state.sawMeta = true
+        state.baselineChecked = true
+        state.eventCount = 3
+        state.firstEventUnixMs = 6
+        state.lastEventUnixMs = 9
+        cache.files["/a"] = CostUsageFileUsage(
+            mtimeUnixMs: 1, size: 1, days: [:], parsedBytes: 1, lastModel: nil,
+            lastTotals: nil, sessionId: "s", codex: state
+        )
+        cache.files["/b"] = CostUsageFileUsage(
+            mtimeUnixMs: 1, size: 1, days: [:], parsedBytes: 1, lastModel: nil, lastTotals: nil, sessionId: nil
+        )
+        CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: tempDir)
+        let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir)
+        XCTAssertEqual(loaded.files["/a"]?.codex, state)
+        XCTAssertNil(loaded.files["/b"]?.codex)
+
+        // An entry written before the field existed decodes with nil.
+        let old = #"{"mtimeUnixMs":1,"size":1,"days":{},"sessionId":"s"}"#
+        let decoded = try JSONDecoder().decode(CostUsageFileUsage.self, from: Data(old.utf8))
+        XCTAssertNil(decoded.codex)
+
+        // Every marker round-trips, and a state without one decodes as undecided.
+        for marker in [CodexCopiedPrefix.ancestorMetadata, .interAgentMessage, .noMarker] {
+            var s = CostUsageCodexFileState()
+            s.copiedPrefix = marker
+            XCTAssertEqual(try JSONDecoder().decode(CostUsageCodexFileState.self, from: JSONEncoder().encode(s)), s)
+        }
+        let undecided = try JSONDecoder().decode(CostUsageCodexFileState.self, from: Data(#"{"isChild":true,"historyStartOrdinal":3,"sawMeta":true,"baselineChecked":false,"eventCount":0}"#.utf8))
+        XCTAssertNil(undecided.copiedPrefix)
     }
 
     // MARK: - wipeAll

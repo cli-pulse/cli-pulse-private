@@ -167,6 +167,16 @@ jobs:
       - run: bash scripts/test_update_cask.sh
       - run: bash scripts/test_check_release_surfaces.sh
 
+      # The Python replica of the app's Codex accounting, on the fixtures the
+      # Swift scanner is held to (CodexAccountingFixtureTests). The replica is
+      # what checks the app against real logs on a real machine, so it has to
+      # agree with the app on every case; the negative controls check that the
+      # fixtures tell the old rules (subagents dropped for sharing a
+      # session_id, the first file per thread kept) from the new ones.
+      # Path-blind: a PR that edits only the fixture or the replica touches
+      # nothing swift-ci watches.
+      - run: python3 scripts/test_codex_accounting_replica.py
+
       # Apple `.lproj` parity. Android has had this guard since v1.21; the
       # Apple catalogues never got one and drifted to 670 untranslated keys
       # across four shipped locales — es and ko carried 3 of the 80 first-run

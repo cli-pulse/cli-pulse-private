@@ -10,8 +10,9 @@ import XCTest
 /// against https://developers.openai.com/api/docs/pricing on 2026-09-30.
 ///
 /// Dated rates: GPT-5.6 Sol went from $5 / $30 to $4 / $20 on 2026-08-21, and
-/// Terra and Luna were cut 20% and 80% on 2026-07-30 (OpenAI changelog). A day
-/// before a cut is charged the old rate. One boundary test per date.
+/// Terra and Luna were cut 20% and 80% on 2026-07-30 (OpenAI changelog). A
+/// request made before a cut is charged the old rate. One boundary test per
+/// date.
 final class CodexPricingTableTests: XCTestCase {
 
     private typealias T = CodexPricingTable
@@ -165,6 +166,17 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertEqual(long, 272_001 * 8e-6 + 1_000 * 3e-5, accuracy: 1e-12)
     }
 
+    /// Part of a request takes the tier of the whole request: 10K tokens
+    /// counted from a 300K request are long-context, and 300K tokens counted
+    /// from an event that reports a 100K request are not.
+    func test_partOfARequestTakesTheWholeRequestsTier() {
+        let sol = T.current["gpt-5.6-sol"]!
+        XCTAssertEqual(T.requestCostUSD(rates: sol, inputTokens: 10_000, cachedInputTokens: 0, outputTokens: 0,
+                                        tierInputTokens: 300_000), 10_000 * 8e-6, accuracy: 1e-12)
+        XCTAssertEqual(T.requestCostUSD(rates: sol, inputTokens: 300_000, cachedInputTokens: 0, outputTokens: 0,
+                                        tierInputTokens: 100_000), 300_000 * 4e-6, accuracy: 1e-12)
+    }
+
     /// A day's total is many requests. Taking the tier on a sum would put every
     /// busy day on long-context rates.
     func test_aSumNeverTakesTheLongContextTier() {
@@ -256,36 +268,22 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertNil(P.codexPriceResolution("o3"), "no neighbour, no rate")
     }
 
-    // MARK: - Which day a day's usage is priced as
+    // MARK: - Which rate a request is charged
 
-    /// A repricing at 00:00 UTC falls partway through a local day; the whole
-    /// day takes the rate in force for most of it. 00:00 UTC on 08-21 is 09:00
-    /// in Tokyo (15 of Tokyo's 24 hours on 08-21 are after it) and 17:00 on
-    /// 08-20 in Los Angeles (17 of LA's hours on 08-20 are before it).
-    func test_aDayIsChargedTheRateInForceForMostOfIt() throws {
-        let tokyo = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
-        let la = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
-        func day(_ key: String, _ zone: TimeZone) throws -> Date {
-            try XCTUnwrap(P.codexPricingDate(forDayKey: key, in: zone))
-        }
-        XCTAssertLessThan(try day("2026-08-20", tokyo), T.solRepricing)
-        XCTAssertGreaterThanOrEqual(try day("2026-08-21", tokyo), T.solRepricing)
-        XCTAssertLessThan(try day("2026-08-20", la), T.solRepricing)
-        XCTAssertGreaterThanOrEqual(try day("2026-08-21", la), T.solRepricing)
-        XCTAssertNil(P.codexPricingDate(forDayKey: "2026-02-30"))
-    }
-
-    func test_codexCostUsesTheRateOfTheDateItIsGiven() {
-        let before = P.codexCostUSD(model: "gpt-5.6-sol", inputTokens: million, cachedInputTokens: 0,
-                                    outputTokens: 0, pricingDate: iso("2026-08-20T12:00:00Z"))
-        let after = P.codexCostUSD(model: "gpt-5.6-sol", inputTokens: million, cachedInputTokens: 0,
-                                   outputTokens: 0, pricingDate: iso("2026-08-21T12:00:00Z"))
-        XCTAssertEqual(before ?? -1, 5, accuracy: 1e-9)
-        XCTAssertEqual(after ?? -1, 4, accuracy: 1e-9)
+    /// One request is charged the rate in force at its own time, to the
+    /// second. 100K tokens, under the 272K long-context line.
+    func test_codexCostUsesTheRateOfTheMomentItIsGiven() {
+        let request = 100_000
+        let before = P.codexCostUSD(model: "gpt-5.6-sol", inputTokens: request, cachedInputTokens: 0,
+                                    outputTokens: 0, at: T.solRepricing.addingTimeInterval(-1))
+        let after = P.codexCostUSD(model: "gpt-5.6-sol", inputTokens: request, cachedInputTokens: 0,
+                                   outputTokens: 0, at: T.solRepricing)
+        XCTAssertEqual(before ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(after ?? -1, 0.4, accuracy: 1e-9)
         // The alias follows its target's history.
-        let aliasBefore = P.codexCostUSD(model: "gpt-5.6", inputTokens: million, cachedInputTokens: 0,
-                                         outputTokens: 0, pricingDate: iso("2026-08-20T12:00:00Z"))
-        XCTAssertEqual(aliasBefore ?? -1, 5, accuracy: 1e-9)
+        let aliasBefore = P.codexCostUSD(model: "gpt-5.6", inputTokens: request, cachedInputTokens: 0,
+                                         outputTokens: 0, at: T.solRepricing.addingTimeInterval(-1))
+        XCTAssertEqual(aliasBefore ?? -1, 0.5, accuracy: 1e-9)
     }
 
     // MARK: - Through the scanner
@@ -298,17 +296,38 @@ final class CodexPricingTableTests: XCTestCase {
     }
 
     /// One Codex session in the flat sessions root (no date in the name, so
-    /// the walk picks it up whatever the window), one request at `at`.
-    private func writeSession(_ id: String, model: String, at: Date, input: Int,
+    /// the walk picks it up whatever the window): one `token_count` event per
+    /// request, carrying the running total and the request itself.
+    private func writeRollout(_ id: String, model: String, requests: [(at: Date, input: Int)],
                               in root: URL) throws {
-        let ts = ISO8601DateFormatter().string(from: at)
-        let lines = [
-            #"{"type":"session_meta","timestamp":"\#(ts)","payload":{"session_id":"\#(id)"}}"#,
-            #"{"type":"turn_context","timestamp":"\#(ts)","payload":{"model":"\#(model)"}}"#,
-            #"{"type":"event_msg","timestamp":"\#(ts)","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(input),"cached_input_tokens":0,"output_tokens":0}}}}"#,
+        let iso = ISO8601DateFormatter()
+        let start = iso.string(from: requests.first?.at ?? Date())
+        var lines = [
+            #"{"type":"session_meta","timestamp":"\#(start)","payload":{"session_id":"\#(id)"}}"#,
+            #"{"type":"turn_context","timestamp":"\#(start)","payload":{"model":"\#(model)"}}"#,
         ]
+        var total = 0
+        for request in requests {
+            total += request.input
+            let ts = iso.string(from: request.at)
+            lines.append(#"{"type":"event_msg","timestamp":"\#(ts)","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":\#(total),"cached_input_tokens":0,"output_tokens":0},"last_token_usage":{"input_tokens":\#(request.input),"cached_input_tokens":0,"output_tokens":0}}}}"#)
+        }
         try (lines.joined(separator: "\n") + "\n")
             .write(to: root.appendingPathComponent("rollout-\(id).jsonl"), atomically: true, encoding: .utf8)
+    }
+
+    /// `input` tokens at `at`, as requests of at most 250K each. Each request
+    /// is priced on its own, and these stay under the 272K long-context line,
+    /// so the tests that use this are about the standard rates.
+    private func writeSession(_ id: String, model: String, at: Date, input: Int,
+                              in root: URL) throws {
+        var requests: [(at: Date, input: Int)] = []
+        var left = input
+        while left > 0 {
+            requests.append((at, min(250_000, left)))
+            left -= 250_000
+        }
+        try writeRollout(id, model: model, requests: requests, in: root)
     }
 
     /// Scans `sessions` with a window reaching back past July 2026.
@@ -333,8 +352,8 @@ final class CodexPricingTableTests: XCTestCase {
     }
 
     /// End to end: the same 1M Sol tokens two days either side of the cut cost
-    /// $5 and $4, and Luna either side of July 30 costs $1 and $0.20. Two days
-    /// is past any time zone's noon, so this holds wherever it runs.
+    /// $5 and $4, and Luna either side of July 30 costs $1 and $0.20. Each
+    /// request is priced at its own time as the scanner reads it.
     func test_aScannedDayIsChargedTheRateInForceThatDay() throws {
         let (sessions, cache) = try makeRoots()
         let twoDays: TimeInterval = 2 * 86_400
@@ -413,12 +432,47 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertEqual(coverage.approximateProviders, ["Claude"])
     }
 
-    /// Codex day rows hold tokens only, `[input, cached, output]`, and are
-    /// priced on every read. That is why a change to this table needs no
-    /// `costUsageCachePricingVersion` bump. The day a Codex row starts storing
-    /// a cost (per-request pricing), this fails: from then on a Codex price
-    /// change must bump the version, or cached days keep the old price.
-    func test_codexCacheRowsCarryNoCost() throws {
+    /// End to end: a day that a repricing falls inside is not charged one rate
+    /// for all of it. Two 100K Sol requests a minute either side of 00:00 UTC
+    /// on 08-21 cost $0.50 and $0.40. Outside UTC both land on one local day,
+    /// which a price chosen per day would have charged at one rate ($1.00 or
+    /// $0.80).
+    func test_aDayARepricingFallsInsideChargesEachRequestItsOwnRate() throws {
+        let (sessions, cache) = try makeRoots()
+        try writeRollout("straddle", model: "gpt-5.6-sol", requests: [
+            (T.solRepricing.addingTimeInterval(-60), 100_000),
+            (T.solRepricing.addingTimeInterval(60), 100_000),
+        ], in: sessions)
+
+        let sol = scan(sessions, cache: cache).filter { $0.model == "gpt-5.6-sol" }
+        XCTAssertEqual(sol.map(\.inputTokens).reduce(0, +), 200_000)
+        XCTAssertEqual(sol.map { $0.costUSD ?? -1 }.reduce(0, +), 0.9, accuracy: 1e-9)
+    }
+
+    /// End to end: a request over 272K input pays the long-context rates on
+    /// every token, and the request itself decides. 300K Sol tokens in one
+    /// request cost $2.40 ($8 per 1M); 300K Terra tokens in three requests of
+    /// 100K cost $0.60 ($2 per 1M), not the $1.20 a 300K request would.
+    func test_aScannedRequestOverTheThresholdPaysLongContextRates() throws {
+        let (sessions, cache) = try makeRoots()
+        let now = Date()
+        try writeRollout("long", model: "gpt-5.6-sol", requests: [(now, 300_000)], in: sessions)
+        try writeRollout("short", model: "gpt-5.6-terra",
+                         requests: [(now, 100_000), (now, 100_000), (now, 100_000)], in: sessions)
+
+        let entries = scan(sessions, cache: cache)
+        let long = try XCTUnwrap(entries.first { $0.model == "gpt-5.6-sol" })
+        let short = try XCTUnwrap(entries.first { $0.model == "gpt-5.6-terra" })
+        XCTAssertEqual(long.costUSD ?? -1, 2.4, accuracy: 1e-9)
+        XCTAssertEqual(short.costUSD ?? -1, 0.6, accuracy: 1e-9)
+    }
+
+    /// Codex day rows carry each request's cost, priced when it was read
+    /// (slot 3, in nanodollars). So a change to this table reaches days
+    /// already cached only through a bump of `costUsageCodexCacheRulesVersion`;
+    /// the next test and the pin in `CodexTokenAccountingTests` are what
+    /// force that bump.
+    func test_codexCacheRowsCarryTheirRequestsCost() throws {
         let (sessions, cache) = try makeRoots()
         try writeSession("row", model: "gpt-5.6-sol", at: Date(), input: 1_000, in: sessions)
         _ = scan(sessions, cache: cache)
@@ -426,8 +480,50 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertFalse(saved.days.isEmpty, "the fixture must reach the cache, or this checks nothing")
         for (day, models) in saved.days {
             for (model, packed) in models {
-                XCTAssertEqual(packed.count, 3, "\(day) \(model): a Codex row now stores more than tokens")
+                XCTAssertEqual(packed.count, 4, "\(day) \(model): a Codex row stores tokens and their cost")
+                let costNanos = packed.count > 3 ? packed[3] : -1
+                XCTAssertEqual(Double(costNanos) / 1e9, 1_000 * 4e-6, accuracy: 1e-12, "\(day) \(model)")
             }
+        }
+    }
+
+    /// The inverse of the rule this table shipped with, when Codex rows held
+    /// tokens only and were priced on every read: a row now stores its cost,
+    /// so every change to this table has to move the Codex fingerprint that
+    /// is pinned next to `costUsageCodexCacheRulesVersion`. A repriced row, a
+    /// long-context rate, a new row, a dated rate's end and an alias each move
+    /// it, so none of them can ship without the bump that makes every Mac read
+    /// its Codex logs again.
+    func test_aTableChangeChangesTheCodexFingerprint() throws {
+        let real = P.codexRatesFingerprint()
+        XCTAssertEqual(real, P.codexRatesFingerprint(current: T.current, superseded: T.superseded, aliases: T.aliases))
+
+        let row = try XCTUnwrap(T.current["gpt-5.5"])
+        func copy(_ r: T.Rates, input: Double? = nil, cachedAbove: Double? = nil) -> T.Rates {
+            T.Rates(
+                input: input ?? r.input, output: r.output, cachedInput: r.cachedInput, cacheWrite: r.cacheWrite,
+                longContextThreshold: r.longContextThreshold, inputAboveThreshold: r.inputAboveThreshold,
+                outputAboveThreshold: r.outputAboveThreshold,
+                cachedInputAboveThreshold: cachedAbove ?? r.cachedInputAboveThreshold,
+                cacheWriteAboveThreshold: r.cacheWriteAboveThreshold
+            )
+        }
+        XCTAssertEqual(P.codexRatesFingerprint(current: T.current.merging(["gpt-5.5": copy(row)]) { $1 }), real,
+                       "an unchanged copy is the same table")
+
+        var changes: [(String, String)] = []
+        changes.append(("a repriced row",
+                        P.codexRatesFingerprint(current: T.current.merging(["gpt-5.5": copy(row, input: 4e-6)]) { $1 })))
+        changes.append(("a long-context rate",
+                        P.codexRatesFingerprint(current: T.current.merging(["gpt-5.5": copy(row, cachedAbove: 2e-6)]) { $1 })))
+        changes.append(("a new row", P.codexRatesFingerprint(current: T.current.merging(["gpt-7": row]) { $1 })))
+        let solBefore = try XCTUnwrap(T.superseded["gpt-5.6-sol"]?.first)
+        changes.append(("a dated rate's end", P.codexRatesFingerprint(superseded: T.superseded.merging([
+            "gpt-5.6-sol": [T.DatedRates(until: solBefore.until.addingTimeInterval(86_400), rates: solBefore.rates)],
+        ]) { $1 })))
+        changes.append(("an alias", P.codexRatesFingerprint(aliases: T.aliases.merging(["gpt-5.6": "gpt-5.6-terra"]) { $1 })))
+        for (what, fingerprint) in changes {
+            XCTAssertNotEqual(fingerprint, real, what)
         }
     }
 
