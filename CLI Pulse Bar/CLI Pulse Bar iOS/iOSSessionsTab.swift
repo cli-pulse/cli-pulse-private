@@ -174,9 +174,13 @@ struct iOSSessionsTab: View {
                             Text(session.name)
                                 .font(.subheadline.weight(.medium))
                                 .lineLimit(1)
+                            // One line: beside a long status badge ("En ejecución")
+                            // the project used to break into three hyphenated lines.
                             HStack(spacing: 6) {
                                 Text(session.provider).font(.caption2)
+                                    .fixedSize()
                                 Text(session.project).font(.caption2)
+                                    .lineLimit(1)
                             }
                             .foregroundStyle(.secondary)
                         }
