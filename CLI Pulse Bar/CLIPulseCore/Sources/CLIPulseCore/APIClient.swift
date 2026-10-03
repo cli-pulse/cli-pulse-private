@@ -2775,7 +2775,9 @@ public actor APIClient {
         _ entries: [CostUsageScanResult.DailyEntry],
         deviceId: String?
     ) -> URLRequest? {
-        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage") else { return nil }
+        // The rows first, then the URL: `ci_check_rpc_contract.py` reads the
+        // quoted keys in the lines after an RPC's URL as that RPC's
+        // parameters, and these are fields of each row, not parameters.
         let metrics: [[String: Any]] = entries.map { entry in
             [
                 "metric_date": entry.date,
@@ -2787,6 +2789,7 @@ public actor APIClient {
                 "cost": entry.costUSD ?? 0.0,
             ]
         }
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage") else { return nil }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyHeaders(&request)
