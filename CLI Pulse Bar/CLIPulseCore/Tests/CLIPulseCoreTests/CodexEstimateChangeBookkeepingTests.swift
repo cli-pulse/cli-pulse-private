@@ -212,6 +212,22 @@ final class CodexEstimateChangeBookkeepingTests: XCTestCase {
         XCTAssertEqual(note?.newDaysAmongOld, false, "no Codex day up to Sep 25 is counted the new way")
     }
 
+    /// `record` without a `now` takes Claude Code's cleanup reach from the
+    /// manager's clock, the one the note is dated by. On that day a read with
+    /// Claude rows only (the App Store build with the Codex folder unreadable)
+    /// merges provider by provider, so the stored Codex slice, and its old
+    /// figure, stay.
+    func testRecordTakesTheCleanupReachFromTheManagersClock() async throws {
+        XCTAssertEqual(DailyUsageArchive.claudeCleanupReach(now: noon("2026-10-20")), "2026-09-20", "control")
+        previousVersionLeft([("2026-09-20", "Codex"), ("2026-09-20", "Claude")])
+        let m = manager(today: "2026-10-20")
+        await m.record(scan(["2026-09-20"], provider: "Claude"))
+
+        let day = await m.snapshot().days["2026-09-20"]
+        XCTAssertEqual(day?.perProvider["Codex"]?.tokens, 1_850, "merged provider by provider on the reach")
+        XCTAssertEqual(note?.oldCodexDays, ["2026-09-20"])
+    }
+
     // MARK: - A reason that ships in a later version
 
     func testAReasonThatShipsLaterStartsANoteEvenAfterGotIt() async throws {

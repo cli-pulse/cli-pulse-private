@@ -90,7 +90,7 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         /// The reasons this build makes true, in the order they are shown.
         /// `CodexEstimateChangeTripwireTests` fails when this disagrees with
         /// what the scanner and the price table actually do.
-        public static let shipped: [Reason] = [.cachedInputCountedOnce]
+        public static let shipped: [Reason] = [.cachedInputCountedOnce, .subagentSessionsCounted, .publishedPrices]
 
         public var text: String {
             switch self {
