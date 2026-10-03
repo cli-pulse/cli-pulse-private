@@ -26,6 +26,14 @@ the real main():
   * without --whatsnew-dir the run says What's New was NOT compared, on every
     platform and in the OK line, so its OK cannot be read as covering it.
 
+And one part of check 3 (screenshot drift), called directly: in a set this
+repo composes whole (iPhone, iPad, Mac), a live screenshot that is none of the
+local panels fails. App Store Connect copies the previous version's
+screenshots onto a new one, which is how the April 2026 iPad set would have
+reached 1.55.0 under a PREFLIGHT OK: its file names are no local panel's, and
+such a screenshot used to be a note. The pixel comparison needs Pillow and a
+download, and is not covered here.
+
 The fake honours `fields[...]` as App Store Connect does, returning only the
 attributes a request names. A fake that returned everything kept every case
 green when `whatsNew` or `appVersionState` was dropped from the preflight's
@@ -41,6 +49,7 @@ import contextlib
 import copy
 import io
 import sys
+import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -285,6 +294,68 @@ check("... and so does the OK line", "What's New: NOT compared (no --whatsnew-di
 code, out, _ = with_notes(swapped, "--platform", "IOS")
 check("--platform IOS does not compare the Mac's texts",
       code == 0 and out.count("What's New matches") == 7, out)
+
+# 8. check 3: a live screenshot that is none of the local panels
+import appstore_screenshots as shots  # noqa: E402
+
+
+class SetReader:
+    """The one read compare_set makes before it downloads anything."""
+
+    def __init__(self, names: list[str]) -> None:
+        self.names = names
+
+    def get(self, path: str, **params) -> dict:
+        assert path.endswith("/appScreenshots"), path
+        return {"data": [{"id": f"s{i}", "attributes": {"fileName": n, "imageAsset": {}}}
+                         for i, n in enumerate(self.names)]}
+
+
+def compare(names: list[str], local: Path, dtype: str, managed: bool) -> tuple[bool, str]:
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        failed_ = pf.compare_set(SetReader(names), "en-US", {"id": "set-1"}, dtype, local, managed=managed)
+    return failed_, out.getvalue()
+
+
+april = [f"{n}_2752x2064.png" for n in ("01_overview", "02_providers", "03_sessions", "04_alerts",
+                                       "05_settings")]
+ipad_dir = Path(tempfile.mkdtemp(prefix="preflight-ipad-")) / "en"
+ipad_dir.mkdir(parents=True, exist_ok=True)
+for st in shots.stems(shots.IPAD):
+    shots.write_png(ipad_dir / shots.composed_name(st, shots.IPAD), *shots.IPAD.canvas)
+failed_, out = compare(april, ipad_dir, "APP_IPAD_PRO_3GEN_129", managed=True)
+check("the April iPad set left on a version whose iPad panels are the 1.55 ones fails, once per panel",
+      failed_ and out.count("FAIL  [en-US] APP_IPAD_PRO_3GEN_129") == 5
+      and "a set this repo no longer makes" in out and "05_settings_2752x2064.png" in out, out)
+check("... and the local panels it never received are named too",
+      out.count("in the repo, not on the store") == 5, out)
+failed_, out = compare(april, ipad_dir, "APP_IPAD_PRO_129", managed=False)
+check("negative control: the same names in a set this repo does not make are a note, not a failure",
+      not failed_ and "FAIL" not in out and out.count("note  [en-US] APP_IPAD_PRO_129") >= 5, out)
+check("the preflight treats exactly the iPhone, iPad and Mac display types as sets it makes whole",
+      set(shots.SETS) == {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_DESKTOP"}
+      and "managed=dtype in per_locale" in (HERE / "asc_listing_preflight.py").read_text(), str(set(shots.SETS)))
+
+# 9. check 3: a locale with no set of a type this repo makes for it
+both_ios = {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"}
+check("positive control: a locale with its iPhone and iPad sets is missing none",
+      pf.missing_sets("IOS", "ja", both_ios) == [] and pf.missing_sets("MAC_OS", "ja", {"APP_DESKTOP"}) == [])
+check("an iOS locale with no iPad set (ja, ko, es and zh-Hant on 1.54.0) is missing it",
+      all(pf.missing_sets("IOS", loc, {"APP_IPHONE_67"}) == ["APP_IPAD_PRO_3GEN_129"]
+          for loc in ("ja", "ko", "es-ES", "es-MX", "zh-Hant")))
+check("... and with no set at all, both; the Mac needs its own",
+      pf.missing_sets("IOS", "en-US", set()) == sorted(both_ios)
+      and pf.missing_sets("MAC_OS", "ko", both_ios) == ["APP_DESKTOP"])
+check("a set of another type does not stand in for a missing one",
+      pf.missing_sets("IOS", "zh-Hans", {"APP_IPHONE_67", "APP_IPAD_PRO_129"}) == ["APP_IPAD_PRO_3GEN_129"])
+check("a locale SHOT_SOURCES maps to FALLBACK needs no set of its own",
+      pf.missing_sets("IOS", "fr-FR", set()) == [] and shots.SHOT_SOURCES.get("fr-FR", shots.FALLBACK) is None)
+src = (HERE / "asc_listing_preflight.py").read_text()
+check("the drift loop fails on every missing set of the version it checks",
+      "for dtype in missing_sets(plat, locale, present):" in src
+      and src.index("for dtype in missing_sets(plat, locale, present):")
+      < src.index("failed |= compare_set(asc, locale, st, dtype, local_dir"), "")
 
 print(f"test_asc_listing_preflight_store: {passed} passed, {failed} failed.")
 sys.exit(1 if failed else 0)

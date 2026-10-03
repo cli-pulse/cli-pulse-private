@@ -85,6 +85,27 @@ internal enum DemoDataProvider {
         // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
         // which is when the alert says it was raised.
         //
+        // It runs on lab-server-01, a Linux server. Off a Mac a session comes
+        // from the desktop app's process scan (ported verbatim from the Python
+        // helper's, helper/system_collector.py): usage is runtime times
+        // max(1.5, CPU% + 1), and the cost is left out (`exact_cost` null,
+        // which helper_sync stores as 0). Seven hours of a quiet process is
+        // therefore 37.8K and $0.00. Demo showed 12.8K and $0.10, a Gemini
+        // dollar figure no producer writes: even the Mac helper's flat Gemini
+        // rate ($0.001 per 1K, LocalScanner) would have made 12.8K one cent.
+        // `testDemoSessionsKeepTheProcessScanFloors` and
+        // `testASessionOffAMacCarriesNoCost` hold it to that.
+        //
+        // Every session's figures are ones a process scan writes for its
+        // runtime (last_active_at - started_at): a request per 45 s and at
+        // least 1.5 usage per second. On a Mac the cost is the LoginItem
+        // helper's flat rate (usage/1000 x ProviderKind.defaultCostRate;
+        // HelperDaemon scans with no rate lookup), or none from the Companion
+        // CLI. Demo had about six times that rate (ios-dashboard: $0.29 for
+        // 24.5K Codex, where the helper writes $0.05) and fewer requests than
+        // the runtime gives (142 over two hours, where a scan counts 160).
+        // `testASessionOnAMacCostsTheHelpersFlatRateOrNothing` holds the cost.
+        //
         // Two sessions sit in the Sessions tab's Recent tier (last written 5
         // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
         // last written shortly before build-box went offline, and a finished
@@ -95,36 +116,42 @@ internal enum DemoDataProvider {
         // helpers, the local scanners, the desktop app) writes error_count 0
         // and a live status, so a real Sessions tab never draws the red Errors
         // figure or the red border api-gateway used to have.
+        //
+        // Every status is "Running", the only one a producer writes; helper_sync
+        // turns a row "Ended" ten minutes after its process is gone, by which
+        // time the app's freshness filter (five minutes) no longer lists it.
+        // Demo had "running", "syncing" and "idle", and the iPad's session list
+        // drew Syncing and Idle badges no account can get.
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
                           started_at: timestamp(-7200), last_active_at: timestamp(),
-                          status: "running", total_usage: 24500, estimated_cost: 0.29,
-                          cost_status: "Estimated", requests: 142, error_count: 0,
+                          status: "Running", total_usage: 24500, estimated_cost: 0.049,
+                          cost_status: "Estimated", requests: 160, error_count: 0,
                           collection_confidence: "high"),
             SessionRecord(id: "s2", name: "helper-heartbeat", provider: "Gemini",
                           project: "cli-pulse-helper", device_name: "lab-server-01",
                           started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
-                          status: "syncing", total_usage: 12800, estimated_cost: 0.10,
+                          status: "Running", total_usage: 37800, estimated_cost: 0,
                           cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
                           started_at: timestamp(-7200), last_active_at: timestamp(-1200),
-                          status: "idle", total_usage: 8400, estimated_cost: 0.10,
-                          cost_status: "Estimated", requests: 56, error_count: 0,
+                          status: "Running", total_usage: 9600, estimated_cost: 0.0192,
+                          cost_status: "Estimated", requests: 133, error_count: 0,
                           collection_confidence: "high"),
             SessionRecord(id: "s4", name: "provider-adapters", provider: "Claude",
                           project: "provider-layer", device_name: "MacBook Pro",
                           started_at: timestamp(-3600), last_active_at: timestamp(),
-                          status: "running", total_usage: 6200, estimated_cost: 0.09,
-                          cost_status: "Estimated", requests: 38, error_count: 0,
+                          status: "Running", total_usage: 6200, estimated_cost: 0.0186,
+                          cost_status: "Estimated", requests: 80, error_count: 0,
                           collection_confidence: "low"),
             SessionRecord(id: "s5", name: "docs-refresh", provider: "Claude",
                           project: "cli-pulse-docs", device_name: "MacBook Pro",
                           started_at: timestamp(-2700), last_active_at: timestamp(-720),
-                          status: "idle", total_usage: 4100, estimated_cost: 0.06,
-                          cost_status: "Estimated", requests: 21, error_count: 0,
+                          status: "Running", total_usage: 4100, estimated_cost: 0.0123,
+                          cost_status: "Estimated", requests: 44, error_count: 0,
                           collection_confidence: "high"),
         ]
 
@@ -231,7 +258,9 @@ internal enum DemoDataProvider {
             // shows there alone (OverviewFormatters.showsRequestsMetric); Demo
             // takes the `.noOp` route.
             total_requests_today: 0,
-            active_sessions: sessions.filter { $0.status == "running" || $0.status == "syncing" }.count,
+            // The Sessions tab's Active section, by freshness (every status is
+            // Running); ScreenshotLaunchTests holds the two equal.
+            active_sessions: SessionFreshnessTierClassifier.partition(sessions, now: now).active.count,
             online_devices: devices.filter { $0.status == "online" }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,

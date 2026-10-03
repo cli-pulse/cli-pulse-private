@@ -44,6 +44,23 @@ The Mac set (scripts/appstore_screenshots.py MAC, compose_appstore_macos_screens
     compose code both compositors now share), and a render.json from a
     Developer ID build makes the compositor refuse and withdraw the set.
 
+The iPad set (scripts/appstore_screenshots.py IPAD; the iPhone compositor with
+--set ipad; the capture script with --set ipad):
+
+  * the same five screens and the same captions as the iPhone set (one COPY),
+    a 2064x2752 panel in APP_IPAD_PRO_3GEN_129 on the IOS version, and the
+    capture script, the module and the compositor agree on where its raws
+    live, what size a capture is (2064x2752 portrait), and which simulator
+    takes it; an iPhone-sized or landscape panel is refused;
+  * --require-shots holds every language to its iPad set, apart from the
+    iPhone's; the committed iPad sets are uploadable, recorded and drawn from
+    the committed raws;
+  * on macOS with Pillow only: every caption fits the iPad layout in all six
+    languages; the headline rule holds on iPad panels too; the compositor
+    itself refuses an iPhone capture in the iPad set (and withdraws the set);
+    the committed iPad sets recompose byte-identically with the Pillow they
+    record.
+
 Bare python3 for everything else; CI runs it in repo-hygiene.yml.
 """
 from __future__ import annotations
@@ -960,6 +977,176 @@ else:
     not_run += 1
     print("NOT RUN: Mac caption fit and the byte-identical iPhone and Mac recomposes (need macOS "
           "system fonts and Pillow); run this file on a Mac")
+
+# ══ the iPad set ═════════════════════════════════════════════════════════════
+IPAD = shots.IPAD
+IPAD_STEMS = shots.stems(IPAD)
+
+check("the iPad set is the iPhone's five screens, 2064x2752, in APP_IPAD_PRO_3GEN_129 on the IOS version",
+      IPAD_STEMS == shots.stems() and IPAD.canvas == (2064, 2752)
+      and IPAD.display_type == "APP_IPAD_PRO_3GEN_129" and IPAD.asc_platform == "IOS"
+      and shots.composed_name("01_overview", IPAD) == "01_overview_2064x2752.png"
+      and IPAD.compositor_rel == shots.COMPOSITOR_REL, str(IPAD))
+check("every set by its display type, and IOS alone still means the iPhone set",
+      shots.SETS == {"APP_IPHONE_67": shots.IPHONE, "APP_IPAD_PRO_3GEN_129": IPAD, "APP_DESKTOP": MAC}
+      and shots.PLATFORMS == {"IOS": shots.IPHONE, "MAC_OS": MAC}, str(shots.SETS))
+check("the iPad set recomposes with the iPhone compositor's --set ipad, and says so",
+      IPAD.compose_cmd == "compose_appstore_ios_screenshots.py --set ipad"
+      and shots.IPHONE.compose_cmd == "compose_appstore_ios_screenshots.py", IPAD.compose_cmd)
+check("the iPad captions are the iPhone's: one COPY, read for either set",
+      shots.caption_copy(platform=IPAD) == shots.caption_copy() == compose.COPY)
+
+sets_in_script = {m.group(1): m.groups()[1:] for m in re.finditer(
+    r'^\s+(iphone|ipad)\) echo "([^|"]+)\|([^|"]+)\|(\d+)x(\d+)\|(\w+)" ;;', script, re.M)}
+check("the capture script, the module and the compositor agree on each set's raws, capture size and device",
+      set(sets_in_script) == {"iphone", "ipad"}
+      and all(sets_in_script[k][1] == plat.raw_subdir
+              and (int(sets_in_script[k][2]), int(sets_in_script[k][3])) == compose.FRAMES[k].capture_size
+              and sets_in_script[k][0] == compose.FRAMES[k].device and compose.FRAMES[k].platform is plat
+              for k, plat in (("iphone", shots.IPHONE), ("ipad", IPAD))),
+      str(sets_in_script))
+check("the iPad capture is the iPad panel's size, portrait, and keeps the whole screen (no display mask)",
+      sets_in_script.get("ipad", ("", "", "0", "0", ""))[2:4] == ("2064", "2752")
+      and sets_in_script["ipad"][4] == "ignored" and sets_in_script["iphone"][4] == "black",
+      str(sets_in_script))
+check("the capture script refuses a simulator of the other family, and a capture of another size",
+      'SimDeviceType.iPad*) family=ipad' in script and '[ "$family" = "$SET" ] || die' in script
+      and '[ "$size" != "$CAPTURE_SIZE" ]' in script)
+check("the iPad capture gives the simulator each capture language (its status bar shows the date) "
+      "and puts the language it had back",
+      'follow_language "$lang"' in script and 'prev_languages="$(sim_default AppleLanguages)"' in script
+      and 'prev_locale="$(sim_default AppleLocale)"' in script and "restore_language ||" in script
+      and script.index('if [ "$SET" = ipad ]; then\n    follow_language') > script.index('for lang in "${langs[@]}"'))
+
+good_ipad = tmp / "ipad-good.png"
+shots.write_png(good_ipad, 2064, 2752)
+check("a 2064x2752 RGB PNG is an uploadable iPad panel", shots.panel_problems(good_ipad, IPAD) == [],
+      str(shots.panel_problems(good_ipad, IPAD)))
+landscape = tmp / "ipad-landscape.png"
+shots.write_png(landscape, 2752, 2064)
+check("an iPhone panel, and a landscape iPad one, are refused as iPad panels",
+      any("1290x2796, expected 2064x2752" in x for x in shots.panel_problems(good, IPAD))
+      and any("2752x2064, expected 2064x2752" in x for x in shots.panel_problems(landscape, IPAD)))
+
+ipad_root = tmp / "ipad-repo"
+for lang in shots.LANGS:
+    for p_ in shots.expected_composed(lang, ipad_root, IPAD):
+        shots.write_png(p_, 2064, 2752)
+    shots.write_manifest(shots.composed_dir(lang, ipad_root, IPAD), lang, platform=IPAD)
+check("a complete iPad tree satisfies --require-shots for every listing locale",
+      shots.require_shots_problems(listing.LOCALE_SOURCES, ipad_root, platform=IPAD) == [],
+      str(shots.require_shots_problems(listing.LOCALE_SOURCES, ipad_root, platform=IPAD)))
+check("... and the iPhone check of the same tree does not count the iPad sets",
+      any("ios-composed/en/ does not exist" in why
+          for _, why in shots.require_shots_problems(["en-US"], ipad_root)))
+shutil.rmtree(shots.composed_dir("ko", ipad_root, IPAD))
+check("a language without its iPad set fails, whatever its iPhone set",
+      [why for loc, why in shots.require_shots_problems(["ko"], ipad_root, platform=IPAD)]
+      == ["ko: screenshots/ipad-composed/ko/ does not exist"])
+
+check("on the real repo every iPad set is uploadable, recorded and drawn from the committed raws",
+      all(shots.set_problems(lang, platform=IPAD) == [] and shots.capture_problems(lang, platform=IPAD) == []
+          for lang in shots.LANGS),
+      str({lang: shots.set_problems(lang, platform=IPAD) + shots.capture_problems(lang, platform=IPAD)
+           for lang in shots.LANGS}))
+check("the April 2026 iPad set, from the owner's real account, is gone from the tree",
+      not (shots.screenshots_dir() / "ipad").exists()
+      and not (HERE.parent / "CLI Pulse Bar" / "scripts" / "compose_appstore_ipad_screenshots.py").exists())
+
+if fonts_here:
+    import contextlib
+    import hashlib
+    import io
+    from PIL import Image as _Image
+    ipad_frame = compose.IPAD
+    for lang in shots.LANGS:
+        faces, probs = compose.pick_faces(lang)
+        t_size, s_size, size_probs = compose.set_sizes(lang, faces, IPAD_STEMS, ipad_frame.layout)
+        check(f"{lang}: every caption fits the iPad layout ({t_size}pt title, {s_size}pt subtitle)",
+              not probs and not size_probs, f"{probs} {size_probs}")
+
+    # A clean iPad run publishes; an iPhone capture in the iPad set fails it,
+    # in the compositor itself, and withdraws the set.
+    ipad_raw = tmp / "ipad-compose-raw"
+    ipad_raw.mkdir(parents=True, exist_ok=True)
+    for st in IPAD_STEMS:
+        _Image.new("RGB", ipad_frame.capture_size, (240, 242, 246)).save(ipad_raw / f"{st}.png")
+    ipad_out = tmp / "ipad-compose-out" / "ja"
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        ok_run = compose.compose_lang("ja", ipad_raw, ipad_out, ipad_frame)
+    check("a clean iPad compose run publishes five 2064x2752 panels with compose.json",
+          ok_run == [] and sorted(p_.name for p_ in ipad_out.glob("*.png"))
+          == [shots.composed_name(st_, IPAD) for st_ in IPAD_STEMS]
+          and all(shots.panel_problems(p_, IPAD) == [] for p_ in ipad_out.glob("*.png"))
+          and (ipad_out / shots.MANIFEST).is_file(), log.getvalue())
+    mixed_raw = tmp / "ipad-compose-iphone-raw"
+    shutil.copytree(ipad_raw, mixed_raw)
+    _Image.new("RGB", compose.IPHONE.capture_size, (240, 242, 246)).save(mixed_raw / "03_cost.png")
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        refused = compose.compose_lang("ja", mixed_raw, ipad_out, ipad_frame)
+    check("negative control: an iPhone capture in the iPad set is refused by the compositor, and the set withdrawn",
+          any("03_cost.png is 1320x2868, not the 2064x2752 of a iPad Pro 13-inch (M5) capture" in p_
+              for p_ in refused) and not (ipad_out / shots.MANIFEST).exists(), log.getvalue())
+
+    # The headline rule on iPad panels: subtitles alternating one and two lines.
+    es_faces = compose.pick_faces("es")[0]
+    long_sub = "Alertas de cuota, picos de CPU y sesiones de larga duración"
+    lay = ipad_frame.layout
+    long_lines = compose.subtitle_lines(long_sub, "es", es_faces["subtitle"], lay.sub_size_max, lay) or []
+    short_sub = long_lines[0] if long_lines else long_sub
+    mixed = {st_: ("Todo de un vistazo", long_sub if i % 2 else short_sub) for i, st_ in enumerate(IPAD_STEMS)}
+    saved_es = dict(compose.COPY["es"])
+    out_es = tmp / "ipad-compose-out" / "es"
+    try:
+        compose.COPY["es"].update(mixed)
+        with contextlib.redirect_stdout(io.StringIO()) as log:
+            es_run = compose.compose_lang("es", ipad_raw, out_es, ipad_frame)
+        n_lines = [len(compose.subtitle_lines(s_, "es", es_faces["subtitle"], lay.sub_size_max, lay) or [])
+                   for _, s_ in mixed.values()]
+    finally:
+        compose.COPY["es"].clear()
+        compose.COPY["es"].update(saved_es)
+    measured = {}
+    for st_ in IPAD_STEMS:
+        img = _Image.open(out_es / shots.composed_name(st_, IPAD)).convert("RGB")
+        top = phone_top(img)
+        title = ink_rows(img, 0, top or 0, 215) if top else None
+        sub = ink_rows(img, title[1] + 1, top, 120) if title else None
+        measured[st_] = (title, sub[0] if sub else None, top)
+    check("iPad: with subtitles mixing one and two lines, every headline, subtitle and screenshot starts on "
+          "the same row",
+          es_run == [] and n_lines == [1, 2, 1, 2, 1]
+          and None not in {v for m_ in measured.values() for v in m_}
+          and len(set(measured.values())) == 1, f"{n_lines} {measured}\n{log.getvalue()}")
+
+    # The committed iPad sets, recomposed from the committed raws, byte for byte.
+    def _recorded_pillow(lang: str) -> str | None:
+        f = shots.composed_dir(lang, platform=IPAD) / shots.MANIFEST
+        return json.loads(f.read_text()).get("pillow") if f.is_file() else None
+    ipad_pillow = {_recorded_pillow(lang) for lang in shots.LANGS}
+    check("every iPad set records the Pillow it was composed with, the same for all six",
+          len(ipad_pillow) == 1 and None not in ipad_pillow, str(ipad_pillow))
+    import PIL
+    if ipad_pillow == {PIL.__version__}:
+        def recompose_ipad(lang: str, out: Path) -> list[str]:
+            committed = shots.composed_dir(lang, platform=IPAD) / shots.MANIFEST
+            with contextlib.redirect_stdout(io.StringIO()):
+                problems = compose.compose_lang(lang, None, out, ipad_frame)
+            want = json.loads(committed.read_text())
+            got = json.loads((out / shots.MANIFEST).read_text()) if (out / shots.MANIFEST).exists() else {}
+            diff = [n for n, m_ in want.get("panels", {}).items()
+                    if not (out / n).exists() or hashlib.md5((out / n).read_bytes()).hexdigest() != m_]
+            return problems + diff + ([] if got == want else ["compose.json differs"])
+        ipad_diff = {lang: recompose_ipad(lang, tmp / "re-ipad" / lang) for lang in shots.LANGS}
+        check("the committed iPad sets recompose byte-identically from the committed raws",
+              not any(ipad_diff.values()), str(ipad_diff))
+    else:
+        not_run += 1
+        print(f"NOT RUN: the iPad byte-identical recompose (composed with Pillow {ipad_pillow}, "
+              f"this is {PIL.__version__})")
+else:
+    not_run += 1
+    print("NOT RUN: iPad caption fit, headline rows and recompose (need macOS system fonts and Pillow)")
 
 print(f"test_appstore_screenshots: {passed} passed, {failed} failed"
       + (f", {not_run} group(s) NOT RUN" if not_run else "") + ".")

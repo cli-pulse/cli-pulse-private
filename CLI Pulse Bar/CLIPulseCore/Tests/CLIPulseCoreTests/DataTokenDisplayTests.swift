@@ -254,10 +254,12 @@ final class DataTokenDisplayTests: XCTestCase {
         let wirings: [Wiring] = [
             Wiring(file: "CLI Pulse Bar/DisplaySection.swift",
                    mapped: "Text(mode.localizedName)", raw: ["Text(mode.rawValue)"]),
-            // The list rows already mapped the status; the detail badge is the fourth.
+            // 1.55: one badge view maps the status for the iPhone rows, the iPad
+            // rows and the detail (it was four separate mapped badges).
             Wiring(file: "CLI Pulse Bar iOS/iOSSessionsTab.swift",
-                   mapped: "text: L10n.status.localized(session.status),", count: 4,
+                   mapped: "text: L10n.status.localized(session.status),", count: 1,
                    raw: ["text: session.status,"]),
+            Wiring(file: "CLI Pulse Bar iOS/iOSSessionsTab.swift", mapped: "SessionStatusBadge(", count: 3),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/ServiceStatusBadge.swift",
                    mapped: "Text(snapshot.indicator.localizedLabel)", raw: ["Text(snapshot.description)"]),
             Wiring(file: "CLIPulseCore/Sources/CLIPulseCore/ServiceStatusBadge.swift",

@@ -24,6 +24,12 @@ import XCTest
 ///   3. Manual real-device verification (open menu bar after fresh
 ///      install / Keychain wipe → land on Settings, not Overview).
 ///
+/// 1.55: all of the above is the Mac's, where the Sign-In form is in
+/// Settings. iOS shows its own sign-in screen over every tab, so there the
+/// landing is the Overview, the tab met after signing in or Try Demo
+/// (`AppState.signedOutLandingTab`, `testIOSLandsOnTheOverview`). These
+/// tests run on macOS, where it is `.settings`.
+///
 /// `applySignedOutState` is `internal`, accessed via `@testable`. The
 /// public `signOut()` wrapper would also exercise this, but it spawns
 /// a Task to unregister the push token, so calling the inner reset
@@ -61,6 +67,45 @@ final class SignedOutLandingTests: XCTestCase {
                 "starting from \(startTab) must converge to .settings after sign-out"
             )
         }
+    }
+
+    /// iOS draws `iOSLoginView` until signed in, whatever `selectedTab` says,
+    /// so a signed-out tab there is only what the user meets after signing in
+    /// or tapping Try Demo; neither sets it again. With `.settings` every
+    /// iPhone, and since 1.55 every iPad (its split view now follows
+    /// `selectedTab`), opened on Settings after signing in. Both signed-out
+    /// writes go through the one rule; the only `.settings` left is the Mac's
+    /// cold-launch landing.
+    func testIOSLandsOnTheOverview() throws {
+        XCTAssertEqual(AppState.signedOutLandingTab(onMacOS: false), .overview)
+        XCTAssertEqual(AppState.signedOutLandingTab(onMacOS: true), .settings,
+                       "the Mac's Sign-In form is in Settings")
+        #if os(macOS)
+        XCTAssertEqual(AppState.signedOutLandingTab, .settings)
+        #endif
+
+        let core = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let code = try String(contentsOf: core.appendingPathComponent("Sources/CLIPulseCore/AuthManager.swift"),
+                              encoding: .utf8)
+            .components(separatedBy: "\n")
+            .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+            .joined(separator: "\n")
+        XCTAssertEqual(code.components(separatedBy: "selectedTab = Self.signedOutLandingTab").count - 1, 2,
+                       "applySignedOutState and restoreSession's iOS branch both use the rule")
+        let settingsWrites = code.components(separatedBy: "selectedTab = .settings").count - 1
+        XCTAssertEqual(settingsWrites, 1, "a signed-out write to .settings outside the rule")
+        let macOnly = try XCTUnwrap(code.range(of: "func applyColdLaunchLanding"))
+        let landing = code[macOnly.lowerBound...]
+        XCTAssertTrue(landing.prefix(600).contains("selectedTab = .settings"),
+                      "the one .settings write left is the Mac's cold-launch landing")
+
+        // The premise: iOS shows its sign-in screen whatever the tab.
+        let main = try String(contentsOf: core.deletingLastPathComponent()
+            .appendingPathComponent("CLI Pulse Bar iOS/iOSMainView.swift"), encoding: .utf8)
+        XCTAssertNotNil(main.range(of: #"if !authState\.isAuthenticated \{\s*iOSLoginView\(\)"#,
+                                   options: .regularExpression),
+                        "iOS no longer shows its sign-in screen over every tab; recheck the landing")
     }
 
     /// Pin that the other state cleared by `applySignedOutState`

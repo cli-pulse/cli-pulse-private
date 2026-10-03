@@ -5,7 +5,8 @@ import XCTest
 /// real account can see. These are the figures the 1.55 screenshot review
 /// traced to their producers and found no producer for: Gemini tokens and
 /// cost, a Requests count on the signed-in dashboard, a failed session with
-/// errors, and a provider card's recent-sessions line. Each test pairs Demo
+/// errors, a provider card's recent-sessions line, and a session's cost and
+/// usage that no process scan writes. Each test pairs Demo
 /// with the production fact it follows, so the two change together.
 final class DemoMatchesProductionTests: XCTestCase {
 
@@ -157,6 +158,169 @@ final class DemoMatchesProductionTests: XCTestCase {
             XCTAssertNotEqual(session.status.lowercased(), "failed",
                               "\(session.name) is failed, which no producer writes")
         }
+    }
+
+    /// A session's status is "Running" as every process scan writes it, or
+    /// "Ended", which helper_sync sets ten minutes after the process is gone,
+    /// when the app's five-minute freshness filter no longer lists the row.
+    /// So a listed session reads Running. Demo had "syncing" and "idle", which
+    /// the iPad's session list drew as badges.
+    func testDemoSessionsReadRunningAsProducersWriteIt() throws {
+        for session in DemoDataProvider.generate().sessions {
+            XCTAssertEqual(session.status, "Running", "\(session.name) has a status no producer writes")
+        }
+        let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(scanner.contains(#"status: "Running","#), "LocalScanner writes another status")
+        let python = try String(
+            contentsOf: repoRoot.appendingPathComponent("helper/system_collector.py"), encoding: .utf8)
+        let statuses = python.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("status=") }
+        XCTAssertFalse(statuses.isEmpty, "the Python helper builds no session with a status; is this still its scan?")
+        XCTAssertEqual(Set(statuses), [#"status="Running","#], "the Python helper writes another session status")
+        let sync = try String(
+            contentsOf: repoRoot.appendingPathComponent("backend/supabase/helper_rpc.sql"), encoding: .utf8)
+        XCTAssertTrue(sync.contains("and last_active_at < now() - interval '10 minutes'"),
+                      "helper_sync ends sessions on another schedule")
+        XCTAssertEqual(SessionFreshnessFilter.freshnessWindow, 300,
+                       "the freshness filter's window changed; can a listed row now read Ended?")
+    }
+
+    /// The iPhone and the iPad draw sessions from the cloud, and every
+    /// session there comes from a process scan: the Mac helper's LocalScanner,
+    /// the Companion CLI's SessionDetector, the desktop app's, or the Python
+    /// helper's they were ported from. Each writes, for a process alive
+    /// `runtime` seconds, started_at = scan time - runtime and last_active_at
+    /// = scan time, a request per 45 s of it, and usage of runtime times
+    /// max(1.5, CPU% + 1), at least 500. So a row's own timestamps bound its
+    /// figures from below: requests >= runtime / 45, usage >= runtime x 1.5.
+    ///
+    /// Until 1.55 this compared usage with requests x 67.5, which takes the
+    /// request count as a stand-in for runtime: four of Demo's five sessions
+    /// had fewer requests than their runtime gives (ios-dashboard 142 over two
+    /// hours, where a scan counts 160), and api-gateway 8.4K usage over 100
+    /// minutes, under the 9K floor; all of them passed. Before that, Demo's
+    /// helper-heartbeat had 12.8K over seven hours.
+    func testDemoSessionsKeepTheProcessScanFloors() throws {
+        let sessions = DemoDataProvider.generate().sessions
+        XCTAssertFalse(sessions.isEmpty, "Demo has no sessions; this test checks nothing")
+        for session in sessions {
+            let started = try XCTUnwrap(sharedISO8601Parse(session.started_at), "\(session.name) started_at")
+            let lastActive = try XCTUnwrap(sharedISO8601Parse(session.last_active_at), "\(session.name) last_active_at")
+            let runtime = lastActive.timeIntervalSince(started).rounded()
+            XCTAssertGreaterThan(runtime, 0, "\(session.name) was last active before it started")
+            XCTAssertGreaterThanOrEqual(
+                session.requests, Int(runtime) / 45,
+                "\(session.name): \(session.requests) requests over \(Int(runtime)) s; a process scan counts \(Int(runtime) / 45)")
+            XCTAssertGreaterThanOrEqual(
+                Double(session.total_usage), max(500, runtime * 1.5),
+                "\(session.name): \(session.total_usage) usage over \(Int(runtime)) s is under what a process scan writes")
+        }
+    }
+
+    /// On a Mac a session's cost comes from the LoginItem helper, whose
+    /// LocalScanner charges usage / 1000 x the provider's default rate
+    /// (`ProviderKind.defaultCostRate`: HelperDaemon scans with no rate
+    /// lookup), or from the Companion CLI, which sends none (stored as 0).
+    /// Production's helper rows match the flat rates. Demo's Mac sessions cost
+    /// about six times that: ios-dashboard showed $0.29 for 24.5K Codex usage,
+    /// where the helper writes $0.05.
+    func testASessionOnAMacCostsTheHelpersFlatRateOrNothing() throws {
+        let demo = DemoDataProvider.generate()
+        let systems = Dictionary(uniqueKeysWithValues: demo.devices.map { ($0.name, $0.system) })
+        var onMac: [String] = []
+        for session in demo.sessions {
+            let system = try XCTUnwrap(systems[session.device_name],
+                                       "\(session.name) is on \(session.device_name), which is no Demo device")
+            guard system.hasPrefix("macOS") else { continue }
+            onMac.append(session.name)
+            let kind = try XCTUnwrap(ProviderKind(rawValue: session.provider), "\(session.provider) is no provider")
+            let flat = Double(session.total_usage) / 1000 * kind.defaultCostRate
+            XCTAssertTrue(session.estimated_cost == 0 || abs(session.estimated_cost - flat) < 0.0005, """
+                \(session.name): $\(session.estimated_cost) for \(session.total_usage) \(session.provider) usage; \
+                the helper writes $\(flat), the Companion CLI nothing
+                """)
+        }
+        // Positive control: the rule still covers sessions.
+        XCTAssertGreaterThanOrEqual(onMac.count, 3, "Demo's Mac sessions: \(onMac)")
+
+        let daemon = Self.codeOnly(try String(
+            contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
+        XCTAssertTrue(daemon.contains("LocalScanner.shared.scan()"),
+                      "the helper now scans with a rate lookup (or not at all); recheck Demo's Mac session costs")
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(scanner.contains("?? ProviderKind(rawValue: provider)?.defaultCostRate"),
+                      "LocalScanner prices a session another way")
+        XCTAssertTrue(scanner.contains("return Double(usage) / 1000.0 * rate"),
+                      "LocalScanner prices a session another way")
+    }
+
+    /// Off a Mac, sessions come from the desktop app's process scan, which
+    /// sends `exact_cost` null (as the Python helper does), and helper_sync
+    /// stores a missing cost as 0: such a session shows $0.00. Demo's Gemini
+    /// session, on a Linux server, showed $0.10.
+    func testASessionOffAMacCarriesNoCost() throws {
+        let demo = DemoDataProvider.generate()
+        let systems = Dictionary(uniqueKeysWithValues: demo.devices.map { ($0.name, $0.system) })
+        var offMac: [String] = []
+        for session in demo.sessions {
+            let system = try XCTUnwrap(systems[session.device_name],
+                                       "\(session.name) is on \(session.device_name), which is no Demo device")
+            guard !system.hasPrefix("macOS") else { continue }
+            offMac.append(session.name)
+            XCTAssertEqual(session.estimated_cost, 0,
+                           "\(session.name) on \(system) has a cost no producer there writes")
+        }
+        // Positive control: the rule still covers a session (the Gemini one).
+        XCTAssertFalse(offMac.isEmpty, "no Demo session is off a Mac any more; this test checks nothing")
+    }
+
+    /// The production half of the tests above, read from the sources:
+    /// LocalScanner, the Companion CLI and the Python helper count usage and
+    /// requests the same way and stamp a session's runtime into its
+    /// timestamps, the Companion CLI and the Python helper send no cost, and
+    /// helper_sync turns a missing cost into 0. (The desktop app, in its own
+    /// repository, ports the Python helper's scan and sends
+    /// `exact_cost: None` too.)
+    func testTheProcessScansCountAndCostSessionsAsDemoAssumes() throws {
+        let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(scanner.contains("max(1.5, cpu + 1.0)"), "LocalScanner counts usage another way")
+        XCTAssertTrue(scanner.contains("max(1, elapsed / 45)"), "LocalScanner counts requests another way")
+        XCTAssertTrue(scanner.contains("started_at: sharedISO8601Formatter.string(from: Date().addingTimeInterval(-Double(elapsed)))"),
+                      "LocalScanner dates a session's start another way")
+        XCTAssertTrue(scanner.contains("last_active_at: now,"), "LocalScanner dates a session's last activity another way")
+
+        let companion = Self.codeOnly(try String(
+            contentsOf: repoRoot.appendingPathComponent("HelperSwift/Sources/HelperKit/SystemCollection/SessionDetector.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(companion.contains("max(1.5, cpu + 1.0)"), "the Companion CLI counts usage another way")
+        XCTAssertTrue(companion.contains("max(1, elapsedSeconds / 45)"), "the Companion CLI counts requests another way")
+        XCTAssertTrue(companion.contains("nowDate.addingTimeInterval(-Double(elapsedSeconds))"),
+                      "the Companion CLI dates a session's start another way")
+        XCTAssertTrue(companion.contains("exactCost: nil,"), "the Companion CLI now sends a session cost")
+
+        let python = try String(
+            contentsOf: repoRoot.appendingPathComponent("helper/system_collector.py"), encoding: .utf8)
+        XCTAssertTrue(python.contains("max(1.5, cpu + 1.0)"), "the Python helper counts usage another way")
+        XCTAssertTrue(python.contains("max(1, elapsed_seconds // 45)"), "the Python helper counts requests another way")
+        let costs = python.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { $0.hasPrefix("exact_cost=") }
+        XCTAssertFalse(costs.isEmpty, "the Python helper builds no session with exact_cost; is this still its scan?")
+        XCTAssertEqual(Set(costs), ["exact_cost=None,"], "the Python helper now sends a session cost")
+
+        let sync = try String(
+            contentsOf: repoRoot.appendingPathComponent("backend/supabase/helper_rpc.sql"), encoding: .utf8)
+        XCTAssertTrue(sync.contains("coalesce((v_session->>'exact_cost')::numeric, 0)"),
+                      "helper_sync no longer stores a missing session cost as 0")
     }
 
     /// Only OllamaCollector fills `recent_sessions`, so a Codex, Gemini or

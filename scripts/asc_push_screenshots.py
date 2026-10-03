@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
-"""Push the composed iPhone or Mac screenshots to App Store Connect, per locale.
+"""Push the composed iPhone, iPad or Mac screenshots to App Store Connect, per locale.
 
 The sibling of scripts/asc_push_listing.py, which pushes the listing text: same
 key, same client, same editability rule. Which files go to which locale is
 scripts/appstore_screenshots.py (en-US <- en, es-ES and es-MX <- es, ...).
 
-Two platforms, one per run: --platform IOS (the default of a dry run) pushes
-the iPhone panels to the iOS version's APP_IPHONE_67 sets; --platform MAC_OS
-pushes the Mac panels (screenshots/macos-composed/) to the macOS version's
-APP_DESKTOP sets. A write must name its platform.
+One set per run. --platform IOS (the default of a dry run) pushes the iPhone
+panels to the iOS version's APP_IPHONE_67 sets; --platform IOS --display-type
+APP_IPAD_PRO_3GEN_129 pushes the iPad panels (screenshots/ipad-composed/) to
+the same version's 13" iPad sets; --platform MAC_OS pushes the Mac panels
+(screenshots/macos-composed/) to the macOS version's APP_DESKTOP sets. A write
+must name its platform; without --display-type it means that platform's first
+set (the iPhone's for IOS), as it did before the iPad set existed.
 
 DEFAULT IS A DRY RUN. It validates every local panel, GETs what each locale's
 set holds now, and prints per locale what would be replaced, with the size and
@@ -16,16 +19,19 @@ md5 of every file on both sides. Nothing is written.
 
     python3 scripts/asc_push_screenshots.py                     # iPhone, the version being prepared
     python3 scripts/asc_push_screenshots.py --version 1.54.0 --locale ja,ko
+    python3 scripts/asc_push_screenshots.py --display-type APP_IPAD_PRO_3GEN_129 --version 1.55.0
     python3 scripts/asc_push_screenshots.py --platform MAC_OS --version 1.54.0
 
 WRITING needs --apply, --platform and --version:
 
     python3 scripts/asc_push_screenshots.py --apply --platform IOS --version 1.54.0
+    python3 scripts/asc_push_screenshots.py --apply --platform IOS \\
+        --display-type APP_IPAD_PRO_3GEN_129 --version 1.55.0
     python3 scripts/asc_push_screenshots.py --apply --platform MAC_OS --version 1.54.0
 
 and then, before the first write, it:
   * refuses unless every selected locale's panels are all there and uploadable:
-    the platform's canvas (1290x2796 iPhone, 2880x1800 Mac), 8-bit RGB, no
+    the set's canvas (1290x2796 iPhone, 2064x2752 iPad, 2880x1800 Mac), 8-bit RGB, no
     alpha, at most 10 MB. App Store Connect rejects an alpha channel only after
     the upload, by which time a script that deleted first has left the listing
     without screenshots;
@@ -70,10 +76,10 @@ name and size whose checksum is not filled in yet is most likely that panel,
 uploaded by the run just before: the rerun waits for its checksum and then
 decides, rather than replacing it.
 
-It touches the platform's one display type (APP_IPHONE_67 or APP_DESKTOP) on
-that platform's version only. Every other set (iPad, Apple Watch, the other
-platform) is listed and left alone, as is every locale not selected or not in
-the repo.
+It touches one display type (APP_IPHONE_67, APP_IPAD_PRO_3GEN_129 or
+APP_DESKTOP) on that platform's version only. Every other set (the iPhone's
+when pushing the iPad's and the reverse, Apple Watch, the other platform) is
+listed and left alone, as is every locale not selected or not in the repo.
 
 Exit: 0 = dry run clean / apply verified. 1 = invalid panels, refused, or a
 write that failed or did not stick. 2 = could not reach App Store Connect.
@@ -450,8 +456,13 @@ def version_problems(plan_langs: dict[str, str], version: str | None,
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--platform", choices=sorted(shots.PLATFORMS),
-                    help="IOS (iPhone panels, APP_IPHONE_67) or MAC_OS (Mac panels, APP_DESKTOP); "
-                         "required with --apply, IOS for a dry run without it")
+                    help="IOS (iPhone panels, APP_IPHONE_67, or the iPad's with --display-type) or "
+                         "MAC_OS (Mac panels, APP_DESKTOP); required with --apply, IOS for a dry "
+                         "run without it")
+    ap.add_argument("--display-type", choices=sorted(shots.SETS),
+                    help="the set to push, where the platform has more than one: "
+                         "APP_IPAD_PRO_3GEN_129 for the iPad panels on the IOS version "
+                         "(default: APP_IPHONE_67 for IOS, APP_DESKTOP for MAC_OS)")
     ap.add_argument("--version", help="versionString, e.g. 1.54.0 (required with --apply)")
     ap.add_argument("--locale", action="append",
                     help="limit to these ASC locales (comma-separated or repeated)")
@@ -462,7 +473,10 @@ def main() -> int:
         die("--apply needs --platform IOS|MAC_OS. A write names exactly one platform.", 1)
     if args.apply and not args.version:
         die("--apply needs --version <X.Y.Z>. A write names exactly one version.", 1)
-    plat = shots.PLATFORMS[args.platform or "IOS"]
+    plat = shots.SETS[args.display_type] if args.display_type else shots.PLATFORMS[args.platform or "IOS"]
+    if args.platform and plat.asc_platform != args.platform:
+        die(f"{plat.display_type} belongs to the {plat.asc_platform} version; --platform "
+            f"{args.platform} cannot push it. Nothing was written.", 1)
     display_type = plat.display_type
     locales = parse_locales(args.locale)
 
@@ -556,8 +570,8 @@ def main() -> int:
 
     # 3. Apply: every precondition before the first write.
     if not editable:
-        other = "Mac" if plat is shots.IPHONE else "iOS"
-        mine = "iOS" if plat is shots.IPHONE else "macOS"
+        other = "Mac" if plat.asc_platform == "IOS" else "iOS"
+        mine = "iOS" if plat.asc_platform == "IOS" else "macOS"
         hint = (f" Withdraw the {mine} submission first (the {other} one can stay in review)."
                 if st == "WAITING_FOR_REVIEW" else "")
         die(f"{plat.asc_platform} {vs} is {st}; screenshots can only be written to "

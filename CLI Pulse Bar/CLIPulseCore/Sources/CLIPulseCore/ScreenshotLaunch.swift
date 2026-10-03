@@ -36,6 +36,16 @@ import SwiftUI
 ///   `127.0.0.1:0`. A signed-in account on the same simulator is never read.
 /// - **No permission prompt.** The Alerts tab normally asks for notification
 ///   permission when it appears; a capture never does (see `iOSAlertsTab`).
+/// - **READY means the screen is showing.** The line the script waits for is
+///   printed only if `state.selectedTab` is the requested tab AND that tab's
+///   screen reports itself on screen (`ShowsTab`, `ShownTabs`). The second
+///   half is what makes it true on iPad: its split view once kept a selection
+///   of its own that started on the Overview, so every iPad capture showed the
+///   Overview while `selectedTab`, the only thing READY then checked, named
+///   the requested tab.
+///
+/// The same launch captures the iPhone set and the iPad set; which one depends
+/// only on the simulator it runs on.
 public enum ScreenshotLaunch {
     public static let demoArgument = "-CLIPulseScreenshotDemo"
     public static let screenArgument = "-CLIPulseScreenshotScreen"
@@ -72,6 +82,29 @@ public enum ScreenshotLaunch {
         public var scrollTarget: ScrollTarget? {
             self == .cost ? .activity : nil
         }
+
+        /// Whether the screen opens a session beside the list, where the layout
+        /// has room for one: the iPad's Sessions tab is a list and a detail
+        /// pane, and until a session is picked the pane says "Select a
+        /// session". Its rows carry name, provider, project and status; the
+        /// usage, cost and requests the set's caption names are in the
+        /// detail, one tap away for anyone. The iPhone's rows show them, and
+        /// its Sessions tab has no pane, so this changes nothing there.
+        public var opensSessionDetail: Bool {
+            self == .sessions
+        }
+    }
+
+    /// The session a capture opens beside the list (`opensSessionDetail`):
+    /// the most recently active one of the Active section. Demo's newest three
+    /// share one timestamp, and a sort promises no order among equals, so of
+    /// those the first in the list is taken: the same session in every
+    /// language and every run.
+    public static func sessionToOpen(in sessions: [SessionRecord], now: Date) -> SessionRecord? {
+        let active = SessionFreshnessTierClassifier.partition(sessions, now: now).active
+        let ids = Set(active.map(\.id))
+        let newest = active.compactMap { sharedISO8601Parse($0.last_active_at) }.max()
+        return sessions.first { ids.contains($0.id) && sharedISO8601Parse($0.last_active_at) == newest }
     }
 
     /// A view a capture scrolls to. Tagged in the view with `.id(target)`.
@@ -199,16 +232,27 @@ public enum ScreenshotLaunch {
 
     /// The line the capture script waits for: READY only if `state` is still
     /// what `apply` made it (Demo mode, signed in to it, on the requested
-    /// tab). Otherwise an ERROR naming what is on screen instead, so a later
-    /// change that resets the tab or leaves Demo after launch stops the
-    /// capture rather than filing the wrong screen under this one's name.
+    /// tab) and `shown`, the tabs whose screens report themselves on screen
+    /// (`ShownTabs`), is exactly the requested tab. Otherwise an ERROR naming
+    /// what is on screen instead, so a later change that resets the tab, leaves
+    /// Demo after launch, or shows another screen than `selectedTab` names
+    /// stops the capture rather than filing the wrong screen under this one's
+    /// name.
     @MainActor
-    public static func readinessLine(for request: Request, state: AppState) -> String {
+    public static func readinessLine(for request: Request, state: AppState,
+                                     shown: Set<AppState.Tab>) -> String {
         var wrong: [String] = []
+        let tab = request.screen.tab
         if !state.isDemoMode { wrong.append("not in Demo mode") }
         if !state.isAuthenticated { wrong.append("not signed in") }
-        if state.selectedTab != request.screen.tab {
-            wrong.append("on the \(state.selectedTab.rawValue) tab, not \(request.screen.tab.rawValue)")
+        if state.selectedTab != tab {
+            wrong.append("on the \(state.selectedTab.rawValue) tab, not \(tab.rawValue)")
+        }
+        if shown != [tab] {
+            let names = shown.map(\.rawValue).sorted().joined(separator: " and ")
+            let showing = shown.isEmpty ? "no tab's screen"
+                : "the \(names) screen" + (shown.count == 1 ? "" : "s")
+            wrong.append("showing \(showing), not \(tab.rawValue)")
         }
         guard wrong.isEmpty else {
             return "\(errorMarker) \(request.screen.rawValue): \(wrong.joined(separator: "; "))"
@@ -245,8 +289,54 @@ extension ScreenshotLaunch {
             content.task {
                 guard let request = ScreenshotLaunch.activeRequest else { return }
                 try? await Task.sleep(nanoseconds: UInt64(ScreenshotLaunch.readyDelay * 1_000_000_000))
-                ScreenshotLaunch.emit(ScreenshotLaunch.readinessLine(for: request, state: state))
+                ScreenshotLaunch.emit(ScreenshotLaunch.readinessLine(
+                    for: request, state: state, shown: ShownTabs.shared.tabs))
             }
+        }
+    }
+
+    /// Which tabs' screens are showing, as the screens report it themselves
+    /// (`ShowsTab`). Counted, not a flag per tab: a layout may briefly hold
+    /// two copies of one screen, and the first to go must not take the other
+    /// with it.
+    @MainActor
+    public final class ShownTabs {
+        /// The app's, which `ShowsTab` writes and `ReadySignal` reads.
+        public static let shared = ShownTabs()
+
+        private var counts: [AppState.Tab: Int] = [:]
+
+        public init() {}
+
+        public func appeared(_ tab: AppState.Tab) {
+            counts[tab, default: 0] += 1
+        }
+
+        public func disappeared(_ tab: AppState.Tab) {
+            counts[tab] = max(0, counts[tab, default: 0] - 1)
+        }
+
+        /// The tabs with a screen showing now.
+        public var tabs: Set<AppState.Tab> {
+            Set(counts.filter { $0.value > 0 }.map(\.key))
+        }
+    }
+
+    /// Reports the screen it is attached to as `tab`'s while it is on screen
+    /// (`ShownTabs.shared`). Attach it to each tab's screen, inside whatever
+    /// decides which screen shows, never outside it: a marker on the container
+    /// would report the selection, which is the very thing it checks.
+    public struct ShowsTab: ViewModifier {
+        private let tab: AppState.Tab
+
+        public init(_ tab: AppState.Tab) {
+            self.tab = tab
+        }
+
+        public func body(content: Content) -> some View {
+            content
+                .onAppear { ShownTabs.shared.appeared(tab) }
+                .onDisappear { ShownTabs.shared.disappeared(tab) }
         }
     }
 

@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
-"""Composite iPhone screenshots onto ASC-compliant 1290x2796 marketing panels.
+"""Composite iPhone and iPad screenshots onto ASC-compliant marketing panels.
 
 Dark navy gradient background, white title + grey subtitle at the top, the
 device screenshot centred below with rounded corners (the capture has no device
 chrome, so it gets a corner radius instead of looking like a bare bitmap).
+
+Two sets, the same five screens and the same captions (COPY):
+  iphone (default)  ios-raw/<lang>, 1320x2868 captures  -> ios-composed/<lang>,
+                    1290x2796 panels (APP_IPHONE_67)
+  ipad (--set ipad) ipad-raw/<lang>, 2064x2752 captures -> ipad-composed/<lang>,
+                    2064x2752 panels (APP_IPAD_PRO_3GEN_129)
+Each capture must be its set's device's size, so an iPhone capture can never
+be drawn on an iPad panel: App Review rejects iPhone screenshots dressed up as
+iPad ones (guideline 2.3.3), and the iPad set exists to show the iPad layout.
 
 Six languages: en, zh-Hans, zh-Hant, ja, ko, es. Where their files live and
 which App Store locale shows which set is scripts/appstore_screenshots.py.
@@ -14,6 +23,7 @@ this file keeps the iPhone's captions, canvas and phone framing.
 Usage:
     compose_appstore_ios_screenshots.py --lang ja        # ios-raw/ja -> ios-composed/ja
     compose_appstore_ios_screenshots.py --all            # every language
+    compose_appstore_ios_screenshots.py --set ipad --all # ipad-raw -> ipad-composed
     compose_appstore_ios_screenshots.py --lang en --in DIR --out DIR
     compose_appstore_ios_screenshots.py --check-fonts    # glyph coverage only
 
@@ -83,6 +93,7 @@ import argparse
 import shutil
 import sys
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -139,6 +150,40 @@ LAYOUT = common.Layout(
 TEXT_W = LAYOUT.text_w
 # Wider than this, a one-line subtitle reads as a strip across the panel.
 SUB_ONE_LINE_W = LAYOUT.sub_one_line_w
+
+
+@dataclass(frozen=True)
+class SetFrame:
+    """One set's canvas, caption metrics and screenshot framing."""
+    key: str                          # --set
+    platform: object                  # shots.Platform
+    layout: common.Layout
+    capture_size: tuple[int, int]     # what every raw capture of the set measures
+    device: str                       # the simulator that captures it, for messages
+    side_margin: int
+    bottom_margin: int
+    corner_ratio: float               # the screenshot's corner radius, a share of its width
+
+
+IPHONE = SetFrame("iphone", shots.IPHONE, LAYOUT, (1320, 2868), "iPhone 17 Pro Max",
+                  SIDE_MARGIN, 80, SHOT_CORNER_RATIO)
+
+# The iPad panel: the iPhone's caption block scaled to a canvas 1.6 times as
+# wide (type about 1.5 times the size, so a caption breaks where it does on
+# the iPhone), over a portrait capture of the 13" iPad Pro (why portrait:
+# capture_ios_screenshots.sh --set ipad).
+IPAD_LAYOUT = common.Layout(
+    canvas_w=shots.IPAD.canvas[0], canvas_h=shots.IPAD.canvas[1],
+    title_size_max=150, title_size_min=88, sub_size_max=70, sub_size_min=46, sub_max_lines=2,
+    line_box=LINE_BOX, text_top_margin=180, title_to_sub_gap=14, sub_line_gap=0,
+    text_to_shot_gap=90, text_side_margin=110,
+)
+# The capture is taken without the display mask (the iPad has no Dynamic
+# Island to keep), so its corners are square screen content; this rounds them
+# about as much as the iPad's own display corners are.
+IPAD = SetFrame("ipad", shots.IPAD, IPAD_LAYOUT, (2064, 2752), "iPad Pro 13-inch (M5)",
+                140, 120, 0.035)
+FRAMES: dict[str, SetFrame] = {f.key: f for f in (IPHONE, IPAD)}
 
 # ── captions ─────────────────────────────────────────────────────────────────
 # (title, subtitle) per screen. Written against the screen each sits on (the
@@ -218,43 +263,46 @@ def pick_faces(lang: str) -> tuple[dict[str, Face], list[str]]:
     return common.pick_faces(COPY, lang)
 
 
-def line_height(font) -> int:
-    return common.line_height(LAYOUT, font)
+def line_height(font, layout: common.Layout = LAYOUT) -> int:
+    return common.line_height(layout, font)
 
 
-def draw_centered(draw, y, text, font, color) -> int:
+def draw_centered(draw, y, text, font, color, layout: common.Layout = LAYOUT) -> int:
     """Draw one centred line whose box starts at `y`; return where it ends."""
-    return common.draw_centered(LAYOUT, draw, y, text, font, color)
+    return common.draw_centered(layout, draw, y, text, font, color)
 
 
-def title_size(title: str, face: Face) -> int | None:
-    return common.title_size(LAYOUT, title, face)
+def title_size(title: str, face: Face, layout: common.Layout = LAYOUT) -> int | None:
+    return common.title_size(layout, title, face)
 
 
-def subtitle_lines(subtitle: str, lang: str, face: Face, size: int) -> list[str] | None:
-    return common.subtitle_lines(LAYOUT, subtitle, lang, face, size)
+def subtitle_lines(subtitle: str, lang: str, face: Face, size: int,
+                   layout: common.Layout = LAYOUT) -> list[str] | None:
+    return common.subtitle_lines(layout, subtitle, lang, face, size)
 
 
-def subtitle_size(subtitle: str, lang: str, face: Face) -> int | None:
-    return common.subtitle_size(LAYOUT, subtitle, lang, face)
+def subtitle_size(subtitle: str, lang: str, face: Face, layout: common.Layout = LAYOUT) -> int | None:
+    return common.subtitle_size(layout, subtitle, lang, face)
 
 
-def set_sub_lines(lang: str, faces: dict[str, Face], stems_: list[str], s_size: int) -> int:
+def set_sub_lines(lang: str, faces: dict[str, Face], stems_: list[str], s_size: int,
+                  layout: common.Layout = LAYOUT) -> int:
     """How many subtitle lines the set's tallest caption takes. Every panel
     reserves that much, so the phone sits at the same place and size on each."""
-    return common.set_sub_lines(LAYOUT, COPY, lang, faces, stems_, s_size)
+    return common.set_sub_lines(layout, COPY, lang, faces, stems_, s_size)
 
 
 def caption_layout(title_box: int, sub_box: int, sub_lines: int,
-                   reserved_lines: int) -> CaptionLayout:
+                   reserved_lines: int, layout: common.Layout = LAYOUT) -> CaptionLayout:
     """Where one panel's caption and phone go (see 6 in the module docstring
     and common.caption_layout)."""
-    return common.caption_layout(LAYOUT, title_box, sub_box, sub_lines, reserved_lines)
+    return common.caption_layout(layout, title_box, sub_box, sub_lines, reserved_lines)
 
 
-def set_sizes(lang: str, faces: dict[str, Face], stems_: list[str]) -> tuple[int, int, list[str]]:
+def set_sizes(lang: str, faces: dict[str, Face], stems_: list[str],
+              layout: common.Layout = LAYOUT) -> tuple[int, int, list[str]]:
     """One title size and one subtitle size for the whole set (common.set_sizes)."""
-    return common.set_sizes(LAYOUT, COPY, lang, faces, stems_)
+    return common.set_sizes(layout, COPY, lang, faces, stems_)
 
 
 # ── composing ────────────────────────────────────────────────────────────────
@@ -278,46 +326,55 @@ def check_corners(canvas, origin, size, radius) -> list[str]:
 
 
 def compose_one(src: Path, dst: Path, lang: str, faces: dict[str, Face],
-                t_size: int, s_size: int, reserved_lines: int) -> list[str]:
+                t_size: int, s_size: int, reserved_lines: int,
+                frame: SetFrame = IPHONE) -> list[str]:
     """Write one panel; return why it is not fit to upload (empty = fine)."""
     title, subtitle = COPY[lang][src.stem]
     problems = []
+    lay = frame.layout
+    canvas_w, canvas_h = lay.canvas_w, lay.canvas_h
 
-    canvas = make_vertical_gradient(CANVAS_W, CANVAS_H, BG_TOP, BG_BOTTOM).convert("RGBA")
+    canvas = make_vertical_gradient(canvas_w, canvas_h, BG_TOP, BG_BOTTOM).convert("RGBA")
     draw = ImageDraw.Draw(canvas)
 
     title_font = load_face(faces["title"], t_size)
     sub_font = load_face(faces["subtitle"], s_size)
-    if title_font.getlength(title) > TEXT_W:
+    if title_font.getlength(title) > lay.text_w:
         problems.append(f"title overflows at {t_size}pt: {title!r}")
-    sub_lines = subtitle_lines(subtitle, lang, faces["subtitle"], s_size)
+    sub_lines = subtitle_lines(subtitle, lang, faces["subtitle"], s_size, lay)
     if sub_lines is None:
         problems.append(f"subtitle overflows at {s_size}pt: {subtitle!r}")
         sub_lines = [subtitle.replace(ZWSP, "")]
 
     # Headline at the same height on every panel of the set, and the phone
     # too: see caption_layout.
-    layout = caption_layout(line_height(title_font), line_height(sub_font),
-                            len(sub_lines), reserved_lines)
-    draw_centered(draw, layout.title_y, title, title_font, TITLE_COLOR)
-    for y, line in zip(layout.sub_ys, sub_lines):
-        draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR)
+    placed = caption_layout(line_height(title_font, lay), line_height(sub_font, lay),
+                            len(sub_lines), reserved_lines, lay)
+    draw_centered(draw, placed.title_y, title, title_font, TITLE_COLOR, lay)
+    for y, line in zip(placed.sub_ys, sub_lines):
+        draw_centered(draw, y, line, sub_font, SUBTITLE_COLOR, lay)
 
     shot = Image.open(src).convert("RGB")
-    top = layout.shot_top
-    avail_h = CANVAS_H - top - 80
-    avail_w = CANVAS_W - SIDE_MARGIN * 2
+    if shot.size != frame.capture_size:
+        # An iPhone capture on an iPad panel (or the reverse, or a landscape
+        # one) would be scaled to fit and look plausible; it is not the set.
+        problems.append(f"{src.name} is {shot.width}x{shot.height}, not the "
+                        f"{frame.capture_size[0]}x{frame.capture_size[1]} of a {frame.device} "
+                        f"capture, which the {frame.platform.name} set is made of")
+    top = placed.shot_top
+    avail_h = canvas_h - top - frame.bottom_margin
+    avail_w = canvas_w - frame.side_margin * 2
     scale = min(avail_w / shot.width, avail_h / shot.height)
     shot = shot.resize((int(shot.width * scale), int(shot.height * scale)), Image.LANCZOS)
-    radius = round(shot.width * SHOT_CORNER_RATIO)
+    radius = round(shot.width * frame.corner_ratio)
     shot = rounded_corners(shot, radius)
-    origin = ((CANVAS_W - shot.size[0]) // 2, top + (avail_h - shot.size[1]) // 2)
+    origin = ((canvas_w - shot.size[0]) // 2, top + (avail_h - shot.size[1]) // 2)
     canvas.alpha_composite(shot, origin)
     problems += check_corners(canvas, origin, shot.size, radius)
     dst.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(dst, "PNG", optimize=True)
 
-    problems += shots.panel_problems(dst)
+    problems += shots.panel_problems(dst, frame.platform)
     print(f"  {src.name} -> {dst.name}: {title} | {' / '.join(sub_lines)}")
     for p in problems:
         print(f"    FAIL {p}")
@@ -329,15 +386,19 @@ def withdraw_set(out_dir: Path) -> None:
     common.withdraw_set(out_dir, shots.MANIFEST)
 
 
-def publish_set(staging: Path, out_dir: Path, lang: str, record: dict) -> None:
+def publish_set(staging: Path, out_dir: Path, lang: str, record: dict,
+                frame: SetFrame = IPHONE) -> None:
     """Swap a set that passed every check into `out_dir`, whole (common.publish_set)."""
-    common.publish_set(staging, out_dir, lambda d: shots.write_manifest(d, lang, record))
+    common.publish_set(staging, out_dir,
+                       lambda d: shots.write_manifest(d, lang, record, platform=frame.platform))
 
 
-def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[str]:
+def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None,
+                 frame: SetFrame = IPHONE) -> list[str]:
     lang = shots.canonical_lang(lang)
-    in_dir = in_dir or shots.raw_dir(lang)
-    out_dir = out_dir or shots.composed_dir(lang)
+    plat = frame.platform
+    in_dir = in_dir or shots.raw_dir(lang, platform=plat)
+    out_dir = out_dir or shots.composed_dir(lang, platform=plat)
     faces, problems = pick_faces(lang)
     for p in problems:
         print(f"FAIL {p}")
@@ -347,7 +408,7 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
 
     srcs = sorted(p for p in in_dir.glob("[0-9][0-9]_*.png"))
     names = {p.stem for p in srcs}
-    expected = shots.stems()
+    expected = shots.stems(plat)
     missing = [s for s in expected if s not in names]
     unknown = sorted(names - set(expected))
     if missing:
@@ -360,21 +421,21 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
         withdraw_set(out_dir)
         return problems
 
-    t_size, s_size, size_problems = set_sizes(lang, faces, [p.stem for p in srcs])
+    t_size, s_size, size_problems = set_sizes(lang, faces, [p.stem for p in srcs], frame.layout)
     for p in size_problems:
         print(f"FAIL {lang} {p}")
     problems += size_problems
-    reserved_lines = set_sub_lines(lang, faces, [p.stem for p in srcs], s_size)
+    reserved_lines = set_sub_lines(lang, faces, [p.stem for p in srcs], s_size, frame.layout)
     face_names = ", ".join(f"{r}={f.family or Path(f.path).stem}" for r, f in faces.items())
-    print(f"[{lang}] {len(srcs)} capture(s) from {in_dir} [{face_names}; "
+    print(f"[{plat.name} {lang}] {len(srcs)} capture(s) from {in_dir} [{face_names}; "
           f"title {t_size}pt, subtitle {s_size}pt]")
 
     out_dir.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.staging-", dir=out_dir.parent))
     try:
         for src in srcs:
-            problems += compose_one(src, staging / shots.composed_name(src.stem), lang, faces,
-                                    t_size, s_size, reserved_lines)
+            problems += compose_one(src, staging / shots.composed_name(src.stem, plat), lang, faces,
+                                    t_size, s_size, reserved_lines, frame)
         if problems:
             rejected = rejected_dir(out_dir)
             shutil.rmtree(rejected, ignore_errors=True)
@@ -383,12 +444,18 @@ def compose_lang(lang: str, in_dir: Path | None, out_dir: Path | None) -> list[s
                   f"{out_dir} was not updated")
             withdraw_set(out_dir)
             return problems
-        publish_set(staging, out_dir, lang, {
+        record = {
             "faces": {r: f.family or Path(f.path).stem for r, f in faces.items()},
             "title_pt": t_size, "subtitle_pt": s_size,
             "captions": {st: list(COPY[lang][st]) for st in expected},
             "captures": {p.name: shots.md5_of(p) for p in srcs},
-        })
+        }
+        if frame is not IPHONE:
+            # The iPhone sets predate this record; they recompose byte for
+            # byte with Pillow 10.4.0 (scripts/test_appstore_screenshots.py).
+            import PIL
+            record["pillow"] = PIL.__version__
+        publish_set(staging, out_dir, lang, record, frame)
         print(f"  [{lang}] published to {out_dir} with {shots.MANIFEST}")
         return problems
     except BaseException:
@@ -406,10 +473,14 @@ def main() -> int:
     ap.add_argument("--lang", "--locale", dest="lang",
                     help=f"one of {', '.join(shots.LANGS)} (default en)")
     ap.add_argument("--all", action="store_true", help="every language")
+    ap.add_argument("--set", dest="set_key", choices=sorted(FRAMES), default="iphone",
+                    help="iphone (default: ios-raw -> ios-composed, 1290x2796) or ipad "
+                         "(ipad-raw -> ipad-composed, 2064x2752); the same captions")
     ap.add_argument("--in", dest="in_dir", type=Path, default=None,
-                    help="captures (default screenshots/ios-raw/<lang>; with --all, DIR/<lang>)")
+                    help="captures (default screenshots/ios-raw/<lang>, or ipad-raw; with --all, DIR/<lang>)")
     ap.add_argument("--out", dest="out_dir", type=Path, default=None,
-                    help="panels (default screenshots/ios-composed/<lang>; with --all, DIR/<lang>)")
+                    help="panels (default screenshots/ios-composed/<lang>, or ipad-composed; "
+                         "with --all, DIR/<lang>)")
     ap.add_argument("--check-fonts", action="store_true",
                     help="only check that every caption can be drawn, in every language")
     args = ap.parse_args()
@@ -434,7 +505,7 @@ def main() -> int:
         lang = shots.canonical_lang(lang)
         in_dir = (args.in_dir / lang) if (args.all and args.in_dir) else args.in_dir
         out_dir = (args.out_dir / lang) if (args.all and args.out_dir) else args.out_dir
-        problems += compose_lang(lang, in_dir, out_dir)
+        problems += compose_lang(lang, in_dir, out_dir, FRAMES[args.set_key])
     if problems:
         print(f"\n{len(problems)} problem(s); these panels are not fit to upload.")
         return 1

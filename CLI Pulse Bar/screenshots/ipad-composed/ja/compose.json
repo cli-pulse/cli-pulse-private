@@ -1,0 +1,46 @@
+{
+ "captions": {
+  "01_overview": [
+   "すべてをひと目で",
+   "使用量、コスト、セッション、アラートを​ひとつの画面に"
+  ],
+  "02_providers": [
+   "クォータとコストを把握",
+   "上限に達する前に、​残りがわかる"
+  ],
+  "03_cost": [
+   "コストの内訳がわかる",
+   "今日の推定コストをプロバイダー別に、​直近30日間の推定額も"
+  ],
+  "04_sessions": [
+   "CLI の実行をすべて記録",
+   "アクティブなセッションの​使用量、コスト、リクエスト数"
+  ],
+  "05_alerts": [
+   "上限の接近を見逃さない",
+   "クォータ残量の低下、CPU の高負荷、​長時間実行中のセッションを通知"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "62fa7e8bb207f720c27ea4a5b762c535",
+  "02_providers.png": "042fd9845c9c04c3af2c39e932c38a0c",
+  "03_cost.png": "f4ff8c416f86b2e1933db172512cdaf5",
+  "04_sessions.png": "8bd6a6bf8328ac3eb1036941e5d42207",
+  "05_alerts.png": "dfdc378c18cd38ab28c39bd9e8d0c4d8"
+ },
+ "faces": {
+  "subtitle": "Hiragino Sans",
+  "title": "Hiragino Sans"
+ },
+ "lang": "ja",
+ "panels": {
+  "01_overview_2064x2752.png": "c209787f7a14a55129361e3ed08fc32f",
+  "02_providers_2064x2752.png": "d622be05afcf6e8056ed4a2516e6506e",
+  "03_cost_2064x2752.png": "19577d58f19a16f26ccf06dc14a26edd",
+  "04_sessions_2064x2752.png": "975a2403c8e9826949fd835c0abb0cf0",
+  "05_alerts_2064x2752.png": "919ec01b1795233cf133bf6a8a0d7fef"
+ },
+ "pillow": "10.4.0",
+ "subtitle_pt": 70,
+ "title_pt": 150
+}

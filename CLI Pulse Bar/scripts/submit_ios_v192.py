@@ -4,7 +4,8 @@
 Does:
   1. Binds build 30 to the iOS v1.9.2 App Store version.
   2. Updates the en-US "What's New" text.
-  3. Uploads the 5 composed iPad Pro 13" screenshots to APP_IPAD_PRO_3GEN_129.
+  3. (Retired for 1.55.0: uploaded the April 2026 iPad screenshots, whose
+     directory is gone. scripts/asc_push_screenshots.py pushes the iPad set.)
 
 Does NOT:
   - Submit for review (macOS v1.9.2 is already in review; per memory, IAP
@@ -14,11 +15,9 @@ Does NOT:
 """
 
 from __future__ import annotations
-import hashlib
 import os
 import sys
 import time
-from pathlib import Path
 
 import jwt
 import requests
@@ -39,8 +38,6 @@ WHATS_NEW = (
     "Richer iPad dashboard that scales to every screen size."
 )
 
-REPO = Path(__file__).resolve().parent.parent
-IPAD_DIR = REPO / "screenshots" / "ipad" / "composed"
 
 
 def token() -> str:
@@ -152,93 +149,18 @@ def update_whats_new():
     return en_id
 
 
-# --- Step 3: iPad screenshots -----------------------------------------------
+# --- Step 3: iPad screenshots (retired) -------------------------------------
 
 def upload_ipad_screenshots(en_loc_id: str):
-    files = sorted(IPAD_DIR.glob("*.png"))
-    if not files:
-        print(f"  No iPad screenshots in {IPAD_DIR}. Skipping.")
-        return
-    print(f"\n[3/3] Uploading {len(files)} iPad Pro 13\" screenshots …")
-    display_type = "APP_IPAD_PRO_3GEN_129"
-
-    # Locate or create the screenshot set
-    r = get(f"/appStoreVersionLocalizations/{en_loc_id}/appScreenshotSets")
-    sets = r.get("data", [])
-    set_id = None
-    for s in sets:
-        if s["attributes"]["screenshotDisplayType"] == display_type:
-            set_id = s["id"]
-            break
-    if set_id:
-        # Clear existing so we start clean
-        r = get(f"/appScreenshotSets/{set_id}/appScreenshots")
-        for ss in r.get("data", []):
-            code = delete(f"/appScreenshots/{ss['id']}")
-            if code >= 400:
-                print(f"  Could not delete existing screenshot {ss['id']} ({code})")
-        print(f"  Reusing existing set {set_id} (cleared).")
-    else:
-        r = post(
-            "/appScreenshotSets",
-            {
-                "data": {
-                    "type": "appScreenshotSets",
-                    "attributes": {"screenshotDisplayType": display_type},
-                    "relationships": {
-                        "appStoreVersionLocalization": {
-                            "data": {
-                                "type": "appStoreVersionLocalizations",
-                                "id": en_loc_id,
-                            }
-                        }
-                    },
-                }
-            },
-        )
-        set_id = r["data"]["id"]
-        print(f"  Created set {set_id}.")
-
-    for i, fp in enumerate(files, 1):
-        data = fp.read_bytes()
-        size = len(data)
-        checksum = hashlib.md5(data).hexdigest()
-        print(f"  [{i}/{len(files)}] Reserving {fp.name} ({size} bytes)…")
-        r = post(
-            "/appScreenshots",
-            {
-                "data": {
-                    "type": "appScreenshots",
-                    "attributes": {"fileName": fp.name, "fileSize": size},
-                    "relationships": {
-                        "appScreenshotSet": {
-                            "data": {"type": "appScreenshotSets", "id": set_id}
-                        }
-                    },
-                }
-            },
-        )
-        ss_id = r["data"]["id"]
-        ops = r["data"]["attributes"].get("uploadOperations", [])
-        for op in ops:
-            url = op["url"]
-            hdrs = {h["name"]: h["value"] for h in op["requestHeaders"]}
-            chunk = data[op["offset"] : op["offset"] + op["length"]]
-            up = requests.put(url, headers=hdrs, data=chunk)
-            if up.status_code >= 400:
-                print(f"    Chunk upload failed: {up.status_code} {up.text[:200]}")
-        patch(
-            f"/appScreenshots/{ss_id}",
-            {
-                "data": {
-                    "type": "appScreenshots",
-                    "id": ss_id,
-                    "attributes": {"uploaded": True, "sourceFileChecksum": checksum},
-                }
-            },
-        )
-        print(f"    Committed {fp.name}")
-    print(f"  {len(files)} iPad screenshots uploaded.")
+    """Retired for 1.55.0. It uploaded screenshots/ipad/composed/, the April
+    2026 set taken on a real iPad signed in to the owner's account, after
+    deleting the live set first. That directory is gone (git history keeps
+    it); the iPad set is now six languages of Demo-mode captures in
+    screenshots/ipad-composed/, pushed per locale, new panels before old ones
+    are deleted, by scripts/asc_push_screenshots.py --platform IOS
+    --display-type APP_IPAD_PRO_3GEN_129."""
+    print("\n[3/3] iPad screenshots: retired here; use scripts/asc_push_screenshots.py "
+          "--platform IOS --display-type APP_IPAD_PRO_3GEN_129 (dry run first).")
 
 
 def main():

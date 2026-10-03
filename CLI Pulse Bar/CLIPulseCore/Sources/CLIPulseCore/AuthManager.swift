@@ -717,7 +717,9 @@ extension AppState {
                 )
             )
             #else
-            selectedTab = .settings
+            // iOS shows its sign-in screen whatever the tab; this is the tab
+            // after signing in or Try Demo (`signedOutLandingTab`).
+            selectedTab = Self.signedOutLandingTab
             #endif
         case .failed:
             applySignedOutState()
@@ -817,6 +819,29 @@ extension AppState {
         )
     }
 
+    /// The tab a signed-out app selects (`applySignedOutState`, and a cold
+    /// launch with no session to restore).
+    ///
+    /// On the Mac the Sign-In form is in Settings, so a signed-out Mac lands
+    /// there (iter16, iter19). iOS draws its own sign-in screen over every tab
+    /// (`iOSMainView` shows `iOSLoginView` until signed in), so there the tab
+    /// is only what the user meets after signing in or tapping Try Demo, and
+    /// neither path sets it again: Settings was what every iPhone and, since
+    /// the iPad's split view follows `selectedTab` (1.55), every iPad opened
+    /// on after signing in. Before 1.55 the split view started on the Overview
+    /// of its own accord, which hid this on iPad.
+    static func signedOutLandingTab(onMacOS: Bool) -> Tab {
+        onMacOS ? .settings : .overview
+    }
+
+    static var signedOutLandingTab: Tab {
+        #if os(macOS)
+        signedOutLandingTab(onMacOS: true)
+        #else
+        signedOutLandingTab(onMacOS: false)
+        #endif
+    }
+
     func applySignedOutState() {
         isLoading = false
         isAuthenticated = false
@@ -874,7 +899,9 @@ extension AppState {
         // already gone through `applyAuthenticatedState`, which leaves
         // `selectedTab` alone (so they keep whatever tab they had,
         // typically the AppState init default of `.overview`).
-        selectedTab = .settings
+        //
+        // iOS has no Sign-In form in Settings: see `signedOutLandingTab`.
+        selectedTab = Self.signedOutLandingTab
         // Clear account-scoped auth/account UI state so a different account
         // signing in on the same device doesn't briefly inherit the previous
         // user's linked identities, pairing artifacts, or stale errors.
