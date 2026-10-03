@@ -12,8 +12,9 @@ import Foundation
 ///
 /// Why: per-event cost is computed inside `parseClaudeFile` and stored as
 /// `costNanos` in the per-day-model bucket. The `entriesFromClaudeCache`
-/// reconstruction has a fallback that re-runs `Pricing.claudeCostUSD` when the
-/// bucket's summed `costNanos` is exactly zero — but that fallback gives the
+/// reconstruction has a fallback that prices the bucket's token sum
+/// (`Pricing.claudeAggregateCostUSD`) when its summed `costNanos` is exactly
+/// zero — but that fallback gives the
 /// WRONG answer once even one new event lands in a previously-zero bucket: the
 /// bucket then has partial cost, the fallback is skipped, and only the new
 /// events' contribution is reported.
