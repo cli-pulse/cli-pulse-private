@@ -1570,7 +1570,29 @@ public enum CostUsageScanner {
     private struct ClaudeParseResult {
         let days: [String: [String: [Int]]]
         let parsedBytes: Int64
+        /// What the next incremental read of this log needs
+        /// (`CostUsageFileUsage.claude`); nil when it was not asked for.
+        let state: CostUsageClaudeLogState?
     }
+
+    /// How many of a log's newest responses keep their contribution between
+    /// scans. A response's lines are written one after another, so one would
+    /// do; the rest is headroom for logs that interleave a few responses. A
+    /// response continued after it dropped out of these is still counted once
+    /// (`CostUsageClaudeLogState.counted`), at the price of reading the log
+    /// again from the start.
+    static let claudeOpenRowLimit = 4
+
+    /// A log not written to for this long keeps no `CostUsageClaudeLogState`,
+    /// and is read again from the start if it grows.
+    ///
+    /// A response's lines all come from one streaming request: on real logs
+    /// the first and last line of a response are minutes apart at most, and
+    /// a request whose connection is gone (a Mac asleep mid-response) is not
+    /// continued under the same message id. A day is a wide margin over that,
+    /// and it bounds the cost: only logs written in the last day keep state,
+    /// 16 bytes per response plus the newest four rows.
+    static let claudeLogStateIdleSeconds: TimeInterval = 86_400
 
     private static func defaultClaudeProjectsRoots(options: Options) -> [URL] {
         if let override = options.claudeProjectsRoots { return override }
@@ -1588,10 +1610,32 @@ public enum CostUsageScanner {
     /// this key out of per-model breakdowns.
     static let claudeMsgBucketModel = "__claude_msg__"
 
-    private static func parseClaudeFile(fileURL: URL, range: DayRange, startOffset: Int64 = 0) -> ClaudeParseResult {
+    /// Reads a Claude log from `startOffset` and returns what it adds to the
+    /// day totals.
+    ///
+    /// Tokens are counted once per response (`claudeResponseKey`), from the
+    /// response's LAST line: Claude Code repeats the usage on every line of a
+    /// response and the output count grows from line to line, so the first
+    /// line undercounts output.
+    ///
+    /// `state` is what the previous read of this log left; nil for a read
+    /// from the start. With it, a line of a response an earlier read already
+    /// counted replaces that contribution instead of adding a second one, so
+    /// the totals come out as one read of the whole log would give. Returns
+    /// nil when that cannot be done exactly — a response that is no longer
+    /// open comes back with a different line, or the read fails part-way —
+    /// and the log has to be read from the start instead. `recordState` asks
+    /// for the state the next read will need.
+    private static func parseClaudeFile(
+        fileURL: URL,
+        range: DayRange,
+        startOffset: Int64 = 0,
+        state: CostUsageClaudeLogState? = nil,
+        recordState: Bool = false
+    ) -> ClaudeParseResult? {
         var days: [String: [String: [Int]]] = [:]
-        var seenKeys: Set<String> = []
         let costScale = 1_000_000_000.0
+        var normalizedModels: [String: String] = [:]
 
         // v1.9.4: packed slot 5 tracks message-event count. For per-model
         // token buckets it only counts the line that actually contributed
@@ -1600,7 +1644,15 @@ public enum CostUsageScanner {
         // streaming chunks) — this matches what Claude Code's UI displays.
         func add(dayKey: String, model: String, input: Int, cacheRead: Int, cacheCreate: Int, output: Int, costNanos: Int, msgDelta: Int = 0) {
             guard DayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) else { return }
-            let normModel = (model == Self.claudeMsgBucketModel) ? model : Pricing.normalizeClaudeModel(model)
+            let normModel: String
+            if model == Self.claudeMsgBucketModel {
+                normModel = model
+            } else if let known = normalizedModels[model] {
+                normModel = known
+            } else {
+                normModel = Pricing.normalizeClaudeModel(model)
+                normalizedModels[model] = normModel
+            }
             var dayModels = days[dayKey] ?? [:]
             var packed = dayModels[normModel] ?? [0, 0, 0, 0, 0, 0]
             // Old caches stored 5 slots. Pad to 6 so existing entries don't
@@ -1616,96 +1668,221 @@ public enum CostUsageScanner {
             days[dayKey] = dayModels
         }
 
+        /// Adds (or with `sign: -1` takes back) what one response contributes.
+        /// A preliminary estimate contributes nothing.
+        func apply(_ row: CostUsageClaudeOpenRow, sign: Int) {
+            guard !row.incomplete else { return }
+            let p = row.packed
+            add(dayKey: row.day, model: row.model,
+                input: sign * (p[safeIdx: 0] ?? 0), cacheRead: sign * (p[safeIdx: 1] ?? 0),
+                cacheCreate: sign * (p[safeIdx: 2] ?? 0), output: sign * (p[safeIdx: 3] ?? 0),
+                costNanos: sign * (p[safeIdx: 4] ?? 0))
+        }
+
+        /// The row with its cost in slot 4. A response is priced once, for
+        /// the line that counts, not once per line read.
+        func priced(_ row: CostUsageClaudeOpenRow) -> CostUsageClaudeOpenRow {
+            guard !row.incomplete else { return row }
+            var row = row
+            let p = row.packed
+            let cost = Pricing.claudeCostUSD(
+                model: row.model,
+                inputTokens: p[safeIdx: 0] ?? 0,
+                cacheReadInputTokens: p[safeIdx: 1] ?? 0,
+                cacheCreationInputTokens: p[safeIdx: 2] ?? 0,
+                outputTokens: p[safeIdx: 3] ?? 0
+            )
+            while row.packed.count < 5 { row.packed.append(0) }
+            row.packed[4] = cost.map { Int(($0 * costScale).rounded()) } ?? 0
+            return row
+        }
+
+        // Each response's line that counts so far, whether it is priced yet,
+        // and when a line of it was last read. The open rows of the previous
+        // read are already in the totals (`alreadyCounted`). They rank below
+        // everything read now, in their stored order: index 0, the newest,
+        // ranks highest.
+        struct Pending {
+            var row: CostUsageClaudeOpenRow
+            var priced: Bool
+            var touched: Int
+        }
+        var responses: [String: Pending] = [:]
+        var alreadyCounted: [String: CostUsageClaudeOpenRow] = [:]
+        for (index, row) in (state?.openRows ?? []).enumerated() {
+            responses[row.key] = Pending(row: row, priced: true, touched: -(index + 1))
+            alreadyCounted[row.key] = row
+        }
+        // Every response the log has counted, open or not.
+        var counted = state?.countedFingerprints() ?? [:]
+        var mustReadFromStart = false
+        var sequence = 0
+
         let maxLineBytes = 512 * 1024
         let prefixBytes = maxLineBytes
 
-        let parsedBytes = (try? scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
-            guard !line.bytes.isEmpty, !line.wasTruncated else { return }
-            // Widened from assistant-only to (assistant, user) so message
-            // counting matches Claude Code's UI (which counts every event).
-            let isAssistant = line.bytes.asciiContains(#""type":"assistant""#)
-            let isUser = line.bytes.asciiContains(#""type":"user""#)
-            guard isAssistant || isUser else { return }
+        let parsedBytes: Int64
+        do {
+            parsedBytes = try scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
+                guard !mustReadFromStart, !line.bytes.isEmpty, !line.wasTruncated else { return }
+                // Widened from assistant-only to (assistant, user) so message
+                // counting matches Claude Code's UI (which counts every event).
+                let isAssistant = line.bytes.asciiContains(#""type":"assistant""#)
+                let isUser = line.bytes.asciiContains(#""type":"user""#)
+                guard isAssistant || isUser else { return }
 
-            guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
-                  let type = obj["type"] as? String,
-                  let tsText = obj["timestamp"] as? String,
-                  let dayKey = dayKeyFromTimestamp(tsText) ?? dayKeyFromParsedISO(tsText) else { return }
+                guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
+                      let type = obj["type"] as? String,
+                      let tsText = obj["timestamp"] as? String,
+                      let dayKey = dayKeyFromTimestamp(tsText) ?? dayKeyFromParsedISO(tsText) else { return }
 
-            // Every user event contributes to the raw message count. No tokens.
-            if type == "user" {
+                // Every user event contributes to the raw message count. No tokens.
+                if type == "user" {
+                    add(dayKey: dayKey, model: Self.claudeMsgBucketModel,
+                        input: 0, cacheRead: 0, cacheCreate: 0, output: 0, costNanos: 0, msgDelta: 1)
+                    return
+                }
+
+                // type == "assistant". Count every raw event (incl. streaming
+                // chunks) once against the msg bucket — matches Claude UI 53K/wk
+                // target within ~3%. Tokens still use dedup to avoid double
+                // counting the same message's streaming pieces.
                 add(dayKey: dayKey, model: Self.claudeMsgBucketModel,
                     input: 0, cacheRead: 0, cacheCreate: 0, output: 0, costNanos: 0, msgDelta: 1)
-                return
+
+                // Require `usage` field for token accounting.
+                guard line.bytes.asciiContains(#""usage""#),
+                      let message = obj["message"] as? [String: Any],
+                      let model = message["model"] as? String,
+                      let usage = message["usage"] as? [String: Any] else { return }
+
+                func toInt(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+                let input = max(0, toInt(usage["input_tokens"]))
+                let cacheCreate = max(0, toInt(usage["cache_creation_input_tokens"]))
+                let cacheRead = max(0, toInt(usage["cache_read_input_tokens"]))
+                let output = max(0, toInt(usage["output_tokens"]))
+                if input == 0, cacheCreate == 0, cacheRead == 0, output == 0 { return }
+
+                let incomplete = CostUsageAccountingRules.isPreliminaryClaudeProxyUsage(
+                    message: message, usage: usage, input: input, output: output
+                )
+                // Priced later, once per response (`priced`).
+                var row = CostUsageClaudeOpenRow(
+                    key: "", day: dayKey, model: model,
+                    packed: incomplete ? [0, 0, 0, 0, 0] : [input, cacheRead, cacheCreate, output, 0],
+                    incomplete: incomplete
+                )
+
+                // Tokens (not messages) are counted once per response.
+                guard let key = CostUsageAccountingRules.claudeResponseKey(
+                    messageId: message["id"] as? String,
+                    requestId: obj["requestId"] as? String,
+                    sessionId: CostUsageAccountingRules.claudeSessionId(line: obj, message: message)
+                ) else {
+                    // No identity: the line counts by itself.
+                    apply(priced(row), sign: 1)
+                    return
+                }
+                row.key = key
+                sequence += 1
+                if let existing = responses[key] {
+                    if CostUsageAccountingRules.claudeLineReplaces(existingIsIncomplete: existing.row.incomplete, lineIsIncomplete: incomplete) {
+                        responses[key] = Pending(row: row, priced: false, touched: sequence)
+                    } else {
+                        responses[key]?.touched = sequence
+                    }
+                } else if let fingerprint = counted[CostUsageClaudeLogState.stableHash(key)] {
+                    // An earlier read of this log counted this response, and it
+                    // is no longer open.
+                    if fingerprint == row.fingerprint {
+                        // The same line again: Claude Code writes earlier lines
+                        // of a log again further down it. Already in the totals.
+                        let same = priced(row)
+                        responses[key] = Pending(row: same, priced: true, touched: sequence)
+                        alreadyCounted[key] = same
+                    } else if !incomplete {
+                        // A different line replaces what was counted for this
+                        // response, and that is not kept here.
+                        mustReadFromStart = true
+                    }
+                    // An estimate never replaces real usage, and replacing an
+                    // earlier estimate changes no total.
+                } else {
+                    responses[key] = Pending(row: row, priced: false, touched: sequence)
+                }
+            })
+        } catch {
+            // Lines before the failure were added, but the offset stays put:
+            // an incremental read would add them a second time next scan.
+            guard startOffset == 0 else { return nil }
+            parsedBytes = startOffset
+        }
+        if mustReadFromStart { return nil }
+
+        var newest: [(touched: Int, row: CostUsageClaudeOpenRow)] = []
+        for (key, pending) in responses {
+            let row = pending.priced ? pending.row : priced(pending.row)
+            let before = alreadyCounted[key]
+            if before != row {
+                if let before { apply(before, sign: -1) }
+                apply(row, sign: 1)
+                if recordState { counted[CostUsageClaudeLogState.stableHash(key)] = row.fingerprint }
             }
-
-            // type == "assistant". Count every raw event (incl. streaming
-            // chunks) once against the msg bucket — matches Claude UI 53K/wk
-            // target within ~3%. Tokens still use dedup to avoid double
-            // counting the same message's streaming pieces.
-            add(dayKey: dayKey, model: Self.claudeMsgBucketModel,
-                input: 0, cacheRead: 0, cacheCreate: 0, output: 0, costNanos: 0, msgDelta: 1)
-
-            // Require `usage` field for token accounting.
-            guard line.bytes.asciiContains(#""usage""#),
-                  let message = obj["message"] as? [String: Any],
-                  let model = message["model"] as? String,
-                  let usage = message["usage"] as? [String: Any] else { return }
-
-            // Dedup for TOKENS (not messages): streaming chunks re-report
-            // cumulative usage; counting each chunk would inflate tokens.
-            let messageId = message["id"] as? String
-            let requestId = obj["requestId"] as? String
-            if let messageId, let requestId {
-                let key = "\(messageId):\(requestId)"
-                if seenKeys.contains(key) { return }
-                seenKeys.insert(key)
+            // The newest few, without sorting every response in the log.
+            if recordState, newest.count < claudeOpenRowLimit || pending.touched > newest[newest.count - 1].touched {
+                let at = newest.firstIndex { $0.touched < pending.touched } ?? newest.count
+                newest.insert((pending.touched, row), at: at)
+                if newest.count > claudeOpenRowLimit { newest.removeLast() }
             }
+        }
 
-            func toInt(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
-            let input = max(0, toInt(usage["input_tokens"]))
-            let cacheCreate = max(0, toInt(usage["cache_creation_input_tokens"]))
-            let cacheRead = max(0, toInt(usage["cache_read_input_tokens"]))
-            let output = max(0, toInt(usage["output_tokens"]))
-            if input == 0, cacheCreate == 0, cacheRead == 0, output == 0 { return }
-
-            let cost = Pricing.claudeCostUSD(model: model, inputTokens: input, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreate, outputTokens: output)
-            let costNanos = cost.map { Int(($0 * costScale).rounded()) } ?? 0
-            add(dayKey: dayKey, model: model, input: input, cacheRead: cacheRead, cacheCreate: cacheCreate, output: output, costNanos: costNanos, msgDelta: 0)
-        })) ?? startOffset
-
-        return ClaudeParseResult(days: days, parsedBytes: parsedBytes)
+        let newState = recordState
+            ? CostUsageClaudeLogState(openRows: newest.map { $0.row }, counted: CostUsageClaudeLogState.packCounted(counted))
+            : nil
+        return ClaudeParseResult(days: days, parsedBytes: parsedBytes, state: newState)
     }
 
-    private static func processClaudeFile(url: URL, size: Int64, mtimeMs: Int64, cache: inout CostUsageCache, touched: inout Set<String>, range: DayRange) {
+    private static func processClaudeFile(url: URL, size: Int64, mtimeMs: Int64, cache: inout CostUsageCache, touched: inout Set<String>, range: DayRange, stateSinceMs: Int64) {
         let path = url.path
         touched.insert(path)
+        // Only a log written to recently can still receive more lines of a
+        // response it already holds.
+        let keepsState = mtimeMs >= stateSinceMs
 
-        if let cached = cache.files[path], cached.mtimeUnixMs == mtimeMs, cached.size == size { return }
+        if var cached = cache.files[path], cached.mtimeUnixMs == mtimeMs, cached.size == size {
+            if !keepsState, cached.claude != nil {
+                cached.claude = nil
+                cache.files[path] = cached
+            }
+            return
+        }
 
-        // Try incremental
+        // Try incremental. Only with the log's state: without it, a response
+        // the log already counted cannot be told from a new one. A log idle
+        // for longer than `claudeLogStateIdleSeconds` has none, and is read
+        // from the start when it grows, which is rare.
         if let cached = cache.files[path] {
             let startOffset = cached.parsedBytes ?? cached.size
-            let canIncremental = size > cached.size && startOffset > 0 && startOffset <= size
-            if canIncremental {
-                let delta = parseClaudeFile(fileURL: url, range: range, startOffset: startOffset)
+            if let state = cached.claude, size > cached.size, startOffset > 0, startOffset <= size,
+               let delta = parseClaudeFile(fileURL: url, range: range, startOffset: startOffset, state: state, recordState: keepsState) {
                 if !delta.days.isEmpty { applyFileDays(cache: &cache, fileDays: delta.days, sign: 1) }
                 var mergedDays = cached.days
                 mergeFileDays(existing: &mergedDays, delta: delta.days)
-                cache.files[path] = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: mergedDays, parsedBytes: delta.parsedBytes)
+                cache.files[path] = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: mergedDays, parsedBytes: delta.parsedBytes, claude: delta.state)
                 return
             }
             applyFileDays(cache: &cache, fileDays: cached.days, sign: -1)
         }
 
-        // Full parse
-        let parsed = parseClaudeFile(fileURL: url, range: range)
-        let usage = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes)
+        // Full parse. Without a `state` to check against it never returns nil.
+        let parsed = parseClaudeFile(fileURL: url, range: range, recordState: keepsState)
+            ?? ClaudeParseResult(days: [:], parsedBytes: 0, state: nil)
+        let usage = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes, claude: parsed.state)
         cache.files[path] = usage
         applyFileDays(cache: &cache, fileDays: usage.days, sign: 1)
     }
 
-    private static func scanClaudeRoot(root: URL, cache: inout CostUsageCache, touched: inout Set<String>, range: DayRange) {
+    private static func scanClaudeRoot(root: URL, cache: inout CostUsageCache, touched: inout Set<String>, range: DayRange, stateSinceMs: Int64) {
         let rootPath = root.path
         // Handle /var/ vs /private/var/ paths
         let rootCandidates = rootPath.hasPrefix("/var/") ? ["/private" + rootPath, rootPath]
@@ -1745,7 +1922,7 @@ public enum CostUsageScanner {
                 continue
             }
             let mtime = values.contentModificationDate?.timeIntervalSince1970 ?? 0
-            processClaudeFile(url: url, size: size, mtimeMs: Int64(mtime * 1000), cache: &cache, touched: &touched, range: range)
+            processClaudeFile(url: url, size: size, mtimeMs: Int64(mtime * 1000), cache: &cache, touched: &touched, range: range, stateSinceMs: stateSinceMs)
         }
     }
 
@@ -1760,7 +1937,8 @@ public enum CostUsageScanner {
 
         if shouldRefresh {
             if options.forceRescan { cache = CostUsageCache() }
-            for root in roots { scanClaudeRoot(root: root, cache: &cache, touched: &touched, range: range) }
+            let stateSinceMs = nowMs - Int64(claudeLogStateIdleSeconds * 1000)
+            for root in roots { scanClaudeRoot(root: root, cache: &cache, touched: &touched, range: range, stateSinceMs: stateSinceMs) }
             for key in cache.files.keys where !touched.contains(key) {
                 if let old = cache.files[key] { applyFileDays(cache: &cache, fileDays: old.days, sign: -1) }
                 cache.files.removeValue(forKey: key)
