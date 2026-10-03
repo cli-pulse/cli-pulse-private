@@ -85,6 +85,17 @@ internal enum DemoDataProvider {
         // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
         // which is when the alert says it was raised.
         //
+        // It runs on lab-server-01, a Linux server. Off a Mac a session comes
+        // from the desktop app's process scan (ported verbatim from the Python
+        // helper's, helper/system_collector.py): usage is runtime times
+        // max(1.5, CPU% + 1), and the cost is left out (`exact_cost` null,
+        // which helper_sync stores as 0). Seven hours of a quiet process is
+        // therefore 37.8K and $0.00. Demo showed 12.8K and $0.10, a Gemini
+        // dollar figure no producer writes: even the Mac helper's flat Gemini
+        // rate ($0.001 per 1K, LocalScanner) would have made 12.8K one cent.
+        // `testDemoSessionsKeepTheProcessScanFloor` and
+        // `testASessionOffAMacCarriesNoCost` hold it to that.
+        //
         // Two sessions sit in the Sessions tab's Recent tier (last written 5
         // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
         // last written shortly before build-box went offline, and a finished
@@ -105,7 +116,7 @@ internal enum DemoDataProvider {
             SessionRecord(id: "s2", name: "helper-heartbeat", provider: "Gemini",
                           project: "cli-pulse-helper", device_name: "lab-server-01",
                           started_at: timestamp(-7 * 3600), last_active_at: timestamp(),
-                          status: "syncing", total_usage: 12800, estimated_cost: 0.10,
+                          status: "syncing", total_usage: 37800, estimated_cost: 0,
                           cost_status: "Estimated", requests: 560, error_count: 0,
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
