@@ -322,20 +322,30 @@ actor LocalRuntimeRecorder {
 }
 
 /// What `recordLocalHistory` was handed, per call: whether the refresh let the
-/// read beyond the routine window through. A lock rather than an actor because
-/// the seam is synchronous — the live one only schedules work.
+/// read beyond the routine window through, and whether it handed over an
+/// authorization lease (v1.56: what lets the Codex history rebuild reach the
+/// cloud). A lock rather than an actor because the seam is synchronous — the
+/// live one only schedules work.
 final class LocalHistoryCallLog: @unchecked Sendable {
     private let lock = NSLock()
     private var calls: [Bool] = []
+    private var leaseCalls: [Bool] = []
 
-    func append(_ historyReadAllowed: Bool) {
+    func append(_ historyReadAllowed: Bool, withLease: Bool = false) {
         lock.lock(); defer { lock.unlock() }
         calls.append(historyReadAllowed)
+        leaseCalls.append(withLease)
     }
 
     var historyReadAllowed: [Bool] {
         lock.lock(); defer { lock.unlock() }
         return calls
+    }
+
+    /// Per call: whether an authorization lease came with it.
+    var leases: [Bool] {
+        lock.lock(); defer { lock.unlock() }
+        return leaseCalls
     }
 }
 
@@ -394,8 +404,8 @@ extension DataRefreshManager.LocalRefreshRuntime {
             syncLegacyQuotas: { _, _ in await recorder.record("syncLegacyQuotas") },
             syncDailyUsage: { _, _ in await recorder.record("syncDailyUsage") },
             syncAccountQuotas: { _, _ in await recorder.record("syncAccountQuotas") },
-            recordLocalHistory: { _, historyReadAllowed in
-                historyLog.append(historyReadAllowed)
+            recordLocalHistory: { _, historyReadAllowed, authorizationLease in
+                historyLog.append(historyReadAllowed, withLease: authorizationLease != nil)
             }
         )
     }
