@@ -16,12 +16,14 @@ import Foundation
 ///
 /// The history is a different matter. The Mac's archive keeps one total per
 /// day and provider, so a Codex day recorded before the change keeps its old
-/// figure until a scan records that day again. On most updated Macs that never
-/// happens for days older than the routine month: the year-long read ran
-/// before 1.55 for everyone whose scan worked, and does not run again. Those
-/// days can stay in the history for a year, and in its monthly totals for
-/// good. So the dashboard says so, for as long as any remain, whether or not
-/// the card is still up.
+/// figure until a scan records that day again. For days older than the routine
+/// month the only such scan is the Codex history rebuild (`CodexHistoryRebuild`,
+/// v1.56): it needs a yes to older history, and it finds only the days whose
+/// Codex logs are still on this Mac. The year-long read ran before 1.55 for
+/// everyone whose scan worked, and does not run again. So without that yes, or
+/// on a day whose log is gone, the old figure can stay in the history for a
+/// year, and in its monthly totals for good. The dashboard says so, for as
+/// long as any remain, whether or not the card is still up.
 ///
 /// TRUE BY CONSTRUCTION
 /// --------------------

@@ -136,7 +136,7 @@ struct LocalScanConsentView: View {
     /// "Not now" stays a full button, the same size as the other two.
     ///
     /// 1.50 gave "Start local scan" the Return key. It no longer has it: the
-    /// button now includes the one-time read of up to a year of logs, and
+    /// button now includes the read of up to a year of older logs, and
     /// Return should not be the way someone agrees to that — on either screen.
     private var firstAskButtons: some View {
         VStack(spacing: 6) {
