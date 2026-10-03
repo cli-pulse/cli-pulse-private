@@ -60,6 +60,7 @@ import Foundation
 ///       estimate is not billed. See `CostUsageAccountingRules` and
 ///       `CostUsageClaudeLogState`. A cache written under 4 holds responses
 ///       counted from their first line, some of them more than once.
+///   7 — not used for Claude. It is the Codex cache's (1.56, P0-1b).
 let costUsageCachePricingVersion: Int = 6
 
 /// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
@@ -90,7 +91,18 @@ let costUsageCachePricingVersion: Int = 6
 ///       at the `CodexPricingTable` rate in force at its own time, into slot 3
 ///       of the day × model row. A cache written under 4 holds token-only rows
 ///       counted by the old rules. (Changed before 1.56 shipped, so still 5.)
-let costUsageCodexCacheRulesVersion: Int = 5
+///   6 — not used for Codex. It is the Claude cache's (1.56); skipping it
+///       keeps every number naming one set of rules.
+///   7 — 1.56 (P0-1b): two of CodexBar's subagent and fork rules. A
+///       subagent rollout without a history ordinal is classified whole
+///       (`CodexSubagentRolloutShape`): its own history starts at a turn its
+///       parent's message triggers, after copied history or confirmed by its
+///       first own event, or at an opening total with no request of its own,
+///       and the events before it are not counted. Until a child with a
+///       history ordinal counts its first tokens, a repeat of the counter it
+///       started from or a copied snapshot adds nothing. A cache written under
+///       5 can hold copied history counted as usage.
+let costUsageCodexCacheRulesVersion: Int = 7
 
 enum CostUsageCacheRules {
     /// The rules version a cache for `provider` must carry to be trusted.
@@ -260,6 +272,23 @@ struct CostUsageCodexFileState: Codable, Equatable {
     var eventCount: Int = 0
     var firstEventUnixMs: Int64?
     var lastEventUnixMs: Int64?
+    /// session_meta says this is a subagent's rollout (`source`). nil for no.
+    var isSubagent: Bool?
+    /// session_meta (the first, or a repeat of it) names the thread this one
+    /// was forked from (`forked_from_id` or another spelling). nil for no.
+    var namesForkParent: Bool?
+    /// A child with a history ordinal, until it counts its first tokens: the
+    /// cumulative total it is known to start from — the last total of its
+    /// copied events, or of an opening event that reported no request of its
+    /// own (`CodexTokenAccountant` rule 4).
+    var inheritedReference: CostUsageCodexTotals?
+    /// Such a child has counted tokens. nil for not yet.
+    var openingSettled: Bool?
+
+    /// A subagent rollout without a history ordinal. Where its own history
+    /// starts is decided from the whole file (`CodexTokenAccountant` rule 5),
+    /// so it is always read from the first line, never resumed.
+    var classifiesWholeFile: Bool { isSubagent == true && historyStartOrdinal == nil }
 }
 
 /// What marks the copied part of a child rollout that names a history

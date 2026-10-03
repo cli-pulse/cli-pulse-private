@@ -226,16 +226,19 @@ final class CostUsageCacheIOTests: XCTestCase {
         try! JSONSerialization.data(withJSONObject: payload).write(to: url)
     }
 
-    func testCurrentCodexRulesVersionIsFive() {
+    func testCurrentCodexRulesVersionIsSeven() {
         // 5 — 1.56: Codex files count on their own (subagents included), a file
         // of one thread is a copy when its events lie within another's (nested
         // spans), the cumulative baseline only rises, a child's copied history
         // is not counted, and each request is priced as it is read. A Codex
-        // cache written under 4 holds none of that. Pinned for the same reason
-        // as the Claude version: a bump should be a visible diff.
-        XCTAssertEqual(costUsageCodexCacheRulesVersion, 5)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 5)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 5)
+        // cache written under 4 holds none of that.
+        // 7 — 1.56 (P0-1b): a subagent without a history ordinal is classified
+        // whole, and a child's opening repeats and copied snapshots are not
+        // usage. 6 is the Claude cache's. Pinned for the same reason as the
+        // Claude version: a bump should be a visible diff.
+        XCTAssertEqual(costUsageCodexCacheRulesVersion, 7)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 7)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 7)
         XCTAssertEqual(CostUsageCacheRules.version(forProvider: "claude"), costUsageCachePricingVersion)
     }
 

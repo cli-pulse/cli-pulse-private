@@ -26,12 +26,29 @@
 //     session_meta ahead of it, without upstream's turn-context and totals
 //     conditions.
 //
+//   * Rule 4 of `CodexTokenAccountant` (a child's opening repeats and copied
+//     snapshots) follows the replay checks on the first owned token in
+//     upstream's explicit history boundary (`parseCodexFileCancellable` in
+//     CostUsageScanner.swift: a total equal to the inherited one, or equal to
+//     its own `last` and at or above it, is inherited) and in
+//     `CodexSubagentRolloutShape.classify` (`copiedSnapshot`), taken at
+//     upstream commit 3bbf6bc4 (2026-10-03). NOT verbatim: here the
+//     inherited counter is tracked as the file is read, and the first own
+//     request still takes rule 3's baseline.
+//   * Rule 5 runs upstream's `CodexSubagentRolloutShape.classify`, ported in
+//     CodexSubagentRolloutShape.swift with its own notice, over a subagent
+//     rollout without a history ordinal read whole, as upstream does with its
+//     buffered subagent lines. What is done with the answer differs where the
+//     file names no owned suffix (see that file).
+//
 // Ours, not upstream's: `CodexCopyResolver` (upstream deduplicates rows across
 // files by session, turn and timestamp; this decides per file, by payload id
 // and nested event spans) and the rest of the copied-history rules for child
-// rollouts, which are a deliberately small subset of upstream's fork and
-// subagent accounting (`CodexSubagentRolloutShape.swift`,
-// `CostUsageScanner+ForkCoverage.swift`).
+// rollouts. Not ported: upstream's resolution of a fork's inherited counter
+// from its parent's file (`CodexInheritedTotalsResolver`,
+// `CostUsageScanner+ForkCoverage.swift`), which needs the parent's totals at
+// the fork time; and its reading of a history boundary with no marker ahead
+// of it, which differs from rule 2's on purpose.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -108,12 +125,40 @@ import Foundation
 ///    The difference is taken field by field and clamped at zero, so a total
 ///    below its own request in one field inherits nothing in that field.
 ///
-/// Rules 2 and 3 are a minimal subset of what upstream does for forks and
-/// subagents. Before 1.56 they were not needed, because every subagent file
+/// 4. **A child's opening repeats what it inherited.** Until a child with a
+///    history ordinal counts its first tokens, an event that repeats the
+///    counter it started from — the last total of its copied events, or of an
+///    opening event that reported no request of its own — adds nothing, and
+///    neither does a copied snapshot: a total equal to its own request, at or
+///    above that counter. The baseline moves up to the snapshot. A child's
+///    counter continues from what it inherited, so its own first request
+///    shows a total above its `last`; a total equal to its `last` and above
+///    the inherited one is a copy of a parent's snapshot. From CodexBar.
+/// 5. **A subagent without a history ordinal is read whole.** Older Codex
+///    versions write subagent rollouts with no `subagent_history_start_ordinal`
+///    and no line numbers; the copied part then shows only in the shape of the
+///    file. Such a file is read whole before any of it counts, and CodexBar's
+///    `CodexSubagentRolloutShape.classify` finds where the subagent's own
+///    history starts: at a turn_context immediately followed by an inter-agent
+///    message that triggers a turn (its parent's message to it), after the last
+///    ancestor session_meta copied in; or, in a rollout that names the thread
+///    it was forked from, at its first such turn once its first own event
+///    confirms it, or at an opening total with no request of its own. Events
+///    before it are copied, snapshots right after it are skipped, and counting
+///    starts from the counter it had there. Without such a start the other
+///    rules apply.
+///
+/// Rules 2 to 5 are a subset of what upstream does for forks and
+/// subagents. Not done: reading a fork's inherited counter from its parent's
+/// file. A conversation forked from another whose first event repeats the
+/// parent's last snapshot, or a copy of history with no turn marker, counts
+/// that snapshot's own request once more.
+///
+/// Before 1.56 none of rules 2 to 5 were needed, because every subagent file
 /// was dropped for sharing its parent's `session_id` — which dropped all of
-/// the subagents' own usage. Counting those files without these two rules
-/// would count copied history instead; and with files of one thread now all
-/// counted unless one's events lie within another's, rule 3 is also what stops a
+/// the subagents' own usage. Counting those files without them would count
+/// copied history instead; and with files of one thread now all counted
+/// unless one's events lie within another's, rule 3 is also what stops a
 /// continuation that carries its counter over from counting it twice.
 struct CodexTokenAccountant {
     /// One `token_count` event, with what the caller needs to file it once it
@@ -127,6 +172,9 @@ struct CodexTokenAccountant {
         let last: CostUsageCodexTotals?
         /// The model in effect when the event was written.
         let model: String
+        /// The line's position in the file, counting the first line as 0
+        /// (only a rollout read whole needs it).
+        var line: Int = 0
 
         var unixMs: Int64 { CostUsageScanner.unixMillis(instant) }
     }
@@ -138,6 +186,11 @@ struct CodexTokenAccountant {
     /// Events held until the copied part of the file is known (rule 2). Never
     /// persisted: every read ends with `finish()`.
     private(set) var pending: [Event] = []
+    /// A subagent rollout without a history ordinal (rule 5): every line the
+    /// classification needs and every token event, until `finish()`.
+    private(set) var observations: [CodexSubagentRolloutShape.Observation] = []
+    private(set) var heldWholeFile: [Event] = []
+    private var classified = false
 
     init(watermark: CostUsageCodexTotals? = nil, state: CostUsageCodexFileState = CostUsageCodexFileState()) {
         self.watermark = watermark
@@ -151,7 +204,9 @@ struct CodexTokenAccountant {
         rolloutId: String?,
         isChild: Bool,
         metaUnixMs: Int64?,
-        historyStartOrdinal: Int? = nil
+        historyStartOrdinal: Int? = nil,
+        isSubagent: Bool = false,
+        namesForkParent: Bool = false
     ) {
         guard !state.sawMeta else { return }
         state.sawMeta = true
@@ -159,7 +214,17 @@ struct CodexTokenAccountant {
         state.isChild = isChild
         state.metaUnixMs = metaUnixMs
         state.historyStartOrdinal = historyStartOrdinal
+        state.isSubagent = isSubagent ? true : nil
+        state.namesForkParent = namesForkParent ? true : nil
+        if classifiesWholeFile {
+            observations.append(.init(lineIndex: 0, kind: .sessionMetadata(id: rolloutId)))
+        }
     }
+
+    /// A subagent rollout without a history ordinal: where its own history
+    /// starts is decided from the whole file (rule 5), so every read of it
+    /// starts at the first line and nothing counts before `finish()`.
+    var classifiesWholeFile: Bool { state.classifiesWholeFile }
 
     /// The file's first line is not a readable session_meta (too long, or
     /// something else). The file's identity is unknown — and must stay
@@ -183,7 +248,29 @@ struct CodexTokenAccountant {
         guard awaitsCopiedPrefixMarker, let start = state.historyStartOrdinal else { return }
         if let ordinal, ordinal >= start { return }
         state.copiedPrefix = .ancestorMetadata
+        dropPending()
+    }
+
+    /// The held events were copied: they are not counted, and the last total
+    /// among them is the counter the child starts from (rule 4).
+    private mutating func dropPending() {
+        if let total = pending.last(where: { $0.total != nil })?.total {
+            state.inheritedReference = total
+        }
         pending.removeAll()
+    }
+
+    /// Rule 5's view of a line of a rollout read whole: a later session_meta
+    /// (`id` as the line names it; `namesForkParent` when it is the file's own,
+    /// repeated, and names the thread it was forked from), a turn_context, or
+    /// an inter-agent message and whether it triggers a turn.
+    mutating func observeWholeFileLine(_ kind: CodexSubagentRolloutShape.Observation.Kind, line: Int, namesForkParent: Bool = false) {
+        guard classifiesWholeFile, !classified else { return }
+        observations.append(.init(lineIndex: line, kind: kind))
+        if case let .sessionMetadata(id) = kind, namesForkParent,
+           CodexSubagentRolloutShape.sameConcreteSessionID(id, state.rolloutId) {
+            state.namesForkParent = true
+        }
     }
 
     /// An `inter_agent_communication_metadata` line: a message from another
@@ -194,13 +281,18 @@ struct CodexTokenAccountant {
         guard awaitsCopiedPrefixMarker, let start = state.historyStartOrdinal else { return }
         if let ordinal, ordinal >= start { return }
         state.copiedPrefix = .interAgentMessage
-        pending.removeAll()
+        dropPending()
     }
 
     /// The events a `token_count` event makes count now, in log order: none
     /// while it is held (rule 2), and the held ones first when it is the first
     /// past the boundary with no marker ahead of it.
     mutating func receive(_ event: Event) -> [Counted] {
+        if classifiesWholeFile, !classified {
+            observations.append(.init(lineIndex: event.line, kind: .tokenCount(total: event.total, last: event.last)))
+            heldWholeFile.append(event)
+            return []
+        }
         var counted: [Counted] = []
         if awaitsCopiedPrefixMarker, let start = state.historyStartOrdinal, let ordinal = event.ordinal {
             if ordinal < start {
@@ -219,12 +311,50 @@ struct CodexTokenAccountant {
     /// in order. Called at the end of every read, so a read never leaves
     /// events held.
     mutating func finish() -> [Counted] {
+        if classifiesWholeFile, !classified { return finishWholeFile() }
         guard !pending.isEmpty else { return [] }
         state.copiedPrefix = .noMarker
         let held = pending
         pending = []
         var counted: [Counted] = []
         for event in held {
+            if let delta = count(eventUnixMs: event.unixMs, ordinal: event.ordinal, total: event.total, last: event.last) {
+                counted.append((event: event, delta: delta))
+            }
+        }
+        return counted
+    }
+
+    /// Rule 5, at the end of a read of a whole subagent rollout without a
+    /// history ordinal. When `CodexSubagentRolloutShape` finds where the
+    /// subagent's own history starts — a turn its parent's message triggers,
+    /// after copied history or confirmed by its first own event, or an opening
+    /// total with no request of its own — the events before it are copied, and
+    /// counting starts from the counter it had there. Otherwise every held
+    /// event goes through the other rules, in order, as it would have.
+    private mutating func finishWholeFile() -> [Counted] {
+        classified = true
+        let held = heldWholeFile
+        heldWholeFile = []
+        let shape = CodexSubagentRolloutShape.classify(
+            leafSessionID: state.rolloutId,
+            observations: observations,
+            hasExplicitParent: state.namesForkParent == true)
+        observations = []
+        var owned = shape.ownedSuffix
+        if owned == nil, let candidate = shape.ownedSuffixCandidate, candidate.isLocallyConfirmed {
+            owned = candidate.ownedSuffix
+        }
+        var counted: [Counted] = []
+        guard let owned else {
+            for event in held { counted += receive(event) }
+            return counted
+        }
+        watermark = owned.rawTotalsBaseline
+        state.baselineChecked = true
+        for event in held {
+            if event.line < owned.startLineIndex { continue }
+            if let first = owned.firstTokenLineIndex, event.line < first { continue }
             if let delta = count(eventUnixMs: event.unixMs, ordinal: event.ordinal, total: event.total, last: event.last) {
                 counted.append((event: event, delta: delta))
             }
@@ -248,9 +378,13 @@ struct CodexTokenAccountant {
         if state.isChild {
             if state.copiedPrefix == .ancestorMetadata, let start = state.historyStartOrdinal,
                let ordinal, ordinal < start {
+                if let total { state.inheritedReference = total }
                 return nil
             }
-            if let metaUnixMs = state.metaUnixMs, eventUnixMs < metaUnixMs { return nil }
+            if let metaUnixMs = state.metaUnixMs, eventUnixMs < metaUnixMs {
+                if let total { state.inheritedReference = total }
+                return nil
+            }
         }
         state.eventCount += 1
         state.firstEventUnixMs = min(state.firstEventUnixMs ?? eventUnixMs, eventUnixMs)
@@ -259,8 +393,25 @@ struct CodexTokenAccountant {
         guard let total else {
             // Only the request's own usage: nothing cumulative to inherit.
             state.baselineChecked = true
-            guard let last, !last.isZero else { return nil }
-            return last
+            guard let last, !last.isZero else { return openingCounted(nil) }
+            return openingCounted(last)
+        }
+
+        // Rule 4: until a child with a history ordinal counts its first tokens,
+        // a repeat of the counter it started from, or a copied snapshot (a
+        // total equal to its own request, at or above that counter), adds
+        // nothing.
+        let opening = inOpening
+        if opening, let reference = state.inheritedReference {
+            if total == reference { return nil }
+            if CodexSubagentRolloutShape.totalsContainUsage(reference), let last, total == last,
+               total.isAtLeast(reference) {
+                state.inheritedReference = total
+                if state.baselineChecked {
+                    watermark = watermark.map { $0.componentwiseMax(total) } ?? total
+                }
+                return nil
+            }
         }
 
         // Rule 3: the file's first own event, continuing a counter from elsewhere.
@@ -274,8 +425,9 @@ struct CodexTokenAccountant {
                 // total is its own, so all of it is treated as the parent's:
                 // at worst one request is missed, never a parent's history
                 // counted. A root file without `last` (an older log format)
-                // counts its first total as before.
-                inherited = total
+                // counts its first total as before. A child that is known to
+                // start from a copied counter (rule 4) inherits only that.
+                inherited = (opening ? state.inheritedReference : nil) ?? total
             } else {
                 inherited = nil
             }
@@ -291,10 +443,29 @@ struct CodexTokenAccountant {
             }
             let delta = total.subtractingClamped(baseline)
             watermark = total
-            return delta.isZero ? nil : delta
+            return openingCounted(delta.isZero ? nil : delta)
         }
         watermark = total
-        return total.isZero ? nil : total
+        return openingCounted(total.isZero ? nil : total)
+    }
+
+    /// A child with a history ordinal that has not counted any tokens yet
+    /// (rule 4).
+    private var inOpening: Bool {
+        state.isChild && state.historyStartOrdinal != nil && state.openingSettled != true
+    }
+
+    /// Rule 4's bookkeeping after an event: the opening ends with the first
+    /// tokens counted; until then the counter the child starts from is the
+    /// baseline.
+    private mutating func openingCounted(_ delta: CostUsageCodexTotals?) -> CostUsageCodexTotals? {
+        guard inOpening else { return delta }
+        if delta == nil {
+            if let watermark { state.inheritedReference = watermark }
+        } else {
+            state.openingSettled = true
+        }
+        return delta
     }
 
     /// Whether a first `session_meta` payload names a parent: the file may
@@ -303,7 +474,31 @@ struct CodexTokenAccountant {
         if let parent = payload["parent_thread_id"] as? String, !parent.isEmpty { return true }
         if let fork = payload["forked_from_id"] as? String, !fork.isEmpty { return true }
         if let source = payload["source"] as? [String: Any], source["subagent"] != nil { return true }
+        return sessionMetaIsSubagent(payload) || sessionMetaForkParent(payload) != nil
+    }
+
+    /// Whether a session_meta payload is a subagent's: `source` is
+    /// "subagent", or an object with a `subagent` entry (CodexBar's
+    /// `codexIsSubagentThread`).
+    static func sessionMetaIsSubagent(_ payload: [String: Any]) -> Bool {
+        if let source = payload["source"] as? String {
+            return source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "subagent"
+        }
+        if let source = payload["source"] as? [String: Any] {
+            return source["subagent"] is String || source["subagent"] is [String: Any]
+        }
         return false
+    }
+
+    /// The thread a session_meta payload says it was forked from, in any of
+    /// the spellings CodexBar reads (`codexForkParentId`).
+    static func sessionMetaForkParent(_ payload: [String: Any]) -> String? {
+        for key in ["forked_from_id", "forkedFromId", "parent_session_id", "parentSessionId"] {
+            guard let value = payload[key] as? String else { continue }
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        return nil
     }
 }
 
@@ -316,6 +511,10 @@ extension CostUsageCodexTotals {
             cached: max(0, cached - other.cached),
             output: max(0, output - other.output)
         )
+    }
+
+    func isAtLeast(_ other: CostUsageCodexTotals) -> Bool {
+        input >= other.input && cached >= other.cached && output >= other.output
     }
 
     func componentwiseMax(_ other: CostUsageCodexTotals) -> CostUsageCodexTotals {
