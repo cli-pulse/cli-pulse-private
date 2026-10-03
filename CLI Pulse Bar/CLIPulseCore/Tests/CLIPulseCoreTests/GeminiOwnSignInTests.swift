@@ -141,13 +141,53 @@ final class GeminiOwnSignInTests: XCTestCase {
         .deletingLastPathComponent()   // CLI Pulse Bar
 
     /// Lines with `//` comments removed, so prose can name the calls freely.
+    /// A `//` inside a string literal (a URL) is code, not a comment: cutting
+    /// there would hide whatever follows it on the line.
     private static func codeLines(_ url: URL) throws -> [String] {
         try String(contentsOf: url, encoding: .utf8)
             .components(separatedBy: "\n")
-            .map { line in
-                guard let comment = line.range(of: "//") else { return line }
-                return String(line[..<comment.lowerBound])
+            .map(stripLineComment)
+    }
+
+    static func stripLineComment(_ line: String) -> String {
+        var inString = false
+        var escaped = false
+        var previous: Character?
+        var index = line.startIndex
+        while index < line.endIndex {
+            let ch = line[index]
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if ch == "\\" {
+                    escaped = true
+                } else if ch == "\"" {
+                    inString = false
+                }
+            } else if ch == "\"" {
+                inString = true
+            } else if ch == "/", previous == "/" {
+                return String(line[..<line.index(before: index)])
             }
+            previous = inString ? nil : ch
+            index = line.index(after: index)
+        }
+        return line
+    }
+
+    func test_comment_stripping_keeps_code_after_a_url() {
+        XCTAssertEqual(
+            Self.stripLineComment("let a = 1 // note"),
+            "let a = 1 "
+        )
+        XCTAssertEqual(
+            Self.stripLineComment(#"open("https://x.test"); L10n.providerConfig.connectGemini // c"#),
+            #"open("https://x.test"); L10n.providerConfig.connectGemini "#
+        )
+        XCTAssertEqual(
+            Self.stripLineComment(#"let s = "a \" // b"; x()"#),
+            #"let s = "a \" // b"; x()"#
+        )
     }
 
     /// The editor draws the sign-in rows only through the gate, and nothing

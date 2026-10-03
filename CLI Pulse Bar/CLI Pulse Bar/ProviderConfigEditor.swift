@@ -309,8 +309,8 @@ struct ProviderConfigEditor: View {
             // Gemini OAuth connection (macOS only)
             #if os(macOS)
             if allowsLiveProviderActions {
-                if kind == .gemini,
-                   showsGeminiOwnSignIn || !isAppSandboxed {
+                if kind == .gemini
+                    && (showsGeminiOwnSignIn || !isAppSandboxed) {
                     geminiOAuthSection
                 }
                 // Claude Code keychain bootstrap (macOS only). The sandbox can't
