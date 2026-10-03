@@ -119,10 +119,13 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// `claudeCleanupReach` (`DailyUsageArchive.claudeCleanupReach(now:)`, which
     /// `DailyUsageArchiveManager.record` passes) is merged by `mergedDay`, as
     /// the year-long read merges every day. Later days are replaced whole.
+    ///
+    /// Returns the days whose Codex share now comes from this read (`merge`).
+    @discardableResult
     public mutating func mergeScanEntries(
         _ entries: [ScanEntry],
         claudeCleanupReach: String? = nil,
-        retainDays: Int = DailyUsageArchive.retainDays)
+        retainDays: Int = DailyUsageArchive.retainDays) -> Set<String>
     {
         merge(entries, byProvider: { day in claudeCleanupReach.map { day <= $0 } ?? false }, retainDays: retainDays)
     }
@@ -149,23 +152,48 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// Keys: the read and the archive are matched by day key, so both must be
     /// Gregorian. The scanner writes `DayKey` keys, and `DailyUsageArchiveIO.load`
     /// converts keys an older version wrote in another calendar first.
-    public mutating func mergeScanEntriesByProvider(_ entries: [ScanEntry], retainDays: Int = DailyUsageArchive.retainDays) {
+    ///
+    /// Returns the days whose Codex share now comes from this read (`merge`).
+    @discardableResult
+    public mutating func mergeScanEntriesByProvider(_ entries: [ScanEntry], retainDays: Int = DailyUsageArchive.retainDays) -> Set<String> {
         merge(entries, byProvider: { _ in true }, retainDays: retainDays)
     }
 
     /// Writes each day of a read: through `mergedDay` where `byProvider` says
     /// so and the archive holds the day, replaced whole otherwise.
-    private mutating func merge(_ entries: [ScanEntry], byProvider: (String) -> Bool, retainDays: Int) {
+    ///
+    /// Returns the days whose Codex share now comes from the read, which is
+    /// how `CodexEstimateChangeNote` learns that a day no longer holds a Codex
+    /// figure counted by an earlier version:
+    ///
+    /// - every day replaced whole: whatever Codex share it held is gone, and
+    ///   the read's (possibly none) stands in its place;
+    /// - a day merged by `mergedDay` only where that took the read's Codex
+    ///   slice, which needs Codex entries in the read for that day. Where the
+    ///   read has none, the stored Codex slice stays, counted however it was
+    ///   counted when it was stored.
+    ///
+    /// Not a day skipped as folded. A day written and then folded into its
+    /// month by the same call is included.
+    private mutating func merge(_ entries: [ScanEntry], byProvider: (String) -> Bool, retainDays: Int) -> Set<String> {
+        let codex = ProviderKind.codex.rawValue
+        var codexFromRead: Set<String> = []
         let modelProviders = Self.modelProviders(of: entries)
         for (dayKey, read) in Self.dayRollups(of: entries) {
             if let folded = foldedThroughDay, dayKey <= folded { continue }  // already in months
             if byProvider(dayKey), let stored = days[dayKey] {
                 days[dayKey] = Self.mergedDay(read, over: stored, readModelProviders: modelProviders[dayKey] ?? [:])
+                if read.perProvider[codex] != nil,
+                   !Self.providersKeepingStoredSlice(read: read, stored: stored).contains(codex) {
+                    codexFromRead.insert(dayKey)
+                }
             } else {
                 days[dayKey] = read
+                codexFromRead.insert(dayKey)
             }
         }
         pruneAndFold(retainDays: retainDays)
+        return codexFromRead
     }
 
     // MARK: Merging one day provider by provider
@@ -231,17 +259,7 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// counted there, while its old day keeps a provider the read no longer
     /// finds on it, or the larger Claude slice.
     static func mergedDay(_ read: DayRollup, over stored: DayRollup, readModelProviders: [String: String]) -> DayRollup {
-        var kept: Set<String> = []   // providers whose stored slice stays
-        for (provider, storedSlice) in stored.perProvider {
-            guard let readSlice = read.perProvider[provider] else {
-                kept.insert(provider)
-                continue
-            }
-            if providersThatDeleteOldLogs.contains(provider),
-               (storedSlice.tokens, storedSlice.messages) > (readSlice.tokens, readSlice.messages) {
-                kept.insert(provider)
-            }
-        }
+        let kept = providersKeepingStoredSlice(read: read, stored: stored)
         guard !kept.isEmpty else { return read }
         if read.perProvider.keys.allSatisfy(kept.contains) { return stored }
 
@@ -271,6 +289,24 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
             }
         }
         return day
+    }
+
+    /// The providers whose stored slice `mergedDay` keeps: each one the read
+    /// did not find, and Claude where its stored slice is the larger. Every
+    /// other provider of the day takes the read's slice.
+    static func providersKeepingStoredSlice(read: DayRollup, stored: DayRollup) -> Set<String> {
+        var kept: Set<String> = []
+        for (provider, storedSlice) in stored.perProvider {
+            guard let readSlice = read.perProvider[provider] else {
+                kept.insert(provider)
+                continue
+            }
+            if providersThatDeleteOldLogs.contains(provider),
+               (storedSlice.tokens, storedSlice.messages) > (readSlice.tokens, readSlice.messages) {
+                kept.insert(provider)
+            }
+        }
+        return kept
     }
 
     /// Which of a stored day's providers each of its models belongs to, where
@@ -381,7 +417,10 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// day absent from `days` — a locally-known day is left untouched even if it
     /// has 0 tokens, because it may still carry local message counts (near a
     /// UTC boundary) that cloud rows lack. Folded days are never reintroduced.
-    public mutating func mergeCloudDays(_ rows: [CloudEntry], retainDays: Int = DailyUsageArchive.retainDays) {
+    ///
+    /// Returns the days it filled.
+    @discardableResult
+    public mutating func mergeCloudDays(_ rows: [CloudEntry], retainDays: Int = DailyUsageArchive.retainDays) -> Set<String> {
         var byDay: [String: DayRollup] = [:]
         for r in rows {
             let tokens = max(0, r.inputTokens) + max(0, r.cachedTokens) + max(0, r.outputTokens)
@@ -396,11 +435,16 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
             day.perModel[r.model] = model
             byDay[r.date] = day
         }
+        var filled: Set<String> = []
         for (dayKey, rollup) in byDay {
             if let folded = foldedThroughDay, dayKey <= folded { continue }
-            if days[dayKey] == nil { days[dayKey] = rollup }   // fill absent days only
+            if days[dayKey] == nil {   // fill absent days only
+                days[dayKey] = rollup
+                filled.insert(dayKey)
+            }
         }
         pruneAndFold(retainDays: retainDays)
+        return filled
     }
 
     // MARK: Keys written before day keys were pinned to Gregorian
@@ -465,8 +509,83 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
 
 // MARK: - Merge input adapters (decoupled from CostUsageScanResult / DailyUsage)
 
+/// How the archive counts tokens: every token once.
+///
+/// A day's tokens are `input + cached + output`, so `input` here has to be the
+/// input that was not served from cache. Claude reports it that way already:
+/// its `input` leaves cache reads and writes out, and they arrive as `cached`.
+/// Codex does not. OpenAI's `input_tokens` already includes the cached input,
+/// and `cached` is the cached share of that same input (the scanner and the
+/// desktop app both store it so, and clamp `cached` to `input`). Added as they
+/// came, Codex's cached input was counted twice, and cached input is usually
+/// most of what Codex sends, so the history's Codex totals were far too high.
+///
+/// The fix sits in the adapters below, the one place every row enters the
+/// archive: the Mac's scan, the Mac's cloud fill and the iPhone's cloud
+/// rebuild. The archive's own sum stays as it is. So does its stored version:
+/// `DailyUsageArchiveIO.load` returns an empty archive when the version
+/// differs, and a bump would silently drop a year of history.
+///
+/// Days already stored cannot be corrected where they are. The archive keeps
+/// one total per day and provider, without the split, so a Codex day recorded
+/// before this change keeps its count until a scan records that day again.
+/// The year-long read runs once per Mac, and before 1.55 it ran on every Mac
+/// whose first scan worked, so on those Macs no scan reaches past the routine
+/// month again and the older Codex days keep the old count.
+/// `CodexEstimateChangeNote` tracks which days those are, and the Usage
+/// Dashboard says so for as long as any remain.
+///
+/// The cost-coverage share (`CostCoverage.from`, and the scanner's log line
+/// that must agree with it) weighs tokens the same way, through `tokens`.
+public enum ArchiveTokenBasis {
+
+    /// A row's tokens, each counted once: `uncachedInput + cached + output`.
+    /// What the archive adds up for a day, as one number.
+    public static func tokens(provider: String, inputTokens: Int, cachedTokens: Int, outputTokens: Int) -> Int {
+        uncachedInput(provider: provider, inputTokens: inputTokens, cachedTokens: cachedTokens)
+            + Self.cachedTokens(provider: provider, inputTokens: inputTokens, cachedTokens: cachedTokens)
+            + max(0, outputTokens)
+    }
+
+    /// A scanned row's tokens, each counted once.
+    public static func tokens(of e: CostUsageScanResult.DailyEntry) -> Int {
+        tokens(provider: e.provider, inputTokens: e.inputTokens, cachedTokens: e.cachedTokens,
+               outputTokens: e.outputTokens)
+    }
+
+    /// `input` with the cached share taken out, for a provider whose `input`
+    /// includes it (Codex); unchanged for everyone else. Never negative, and
+    /// never more than `input`.
+    public static func uncachedInput(provider: String, inputTokens: Int, cachedTokens: Int) -> Int {
+        let input = max(0, inputTokens)
+        guard inputIncludesCached(provider) else { return input }
+        return input - cachedShare(inputTokens: input, cachedTokens: cachedTokens)
+    }
+
+    /// `cached` as the archive adds it. For Codex it is part of `input`, so it
+    /// can never be more than `input` (the writers clamp it; a row that did
+    /// not would otherwise add tokens nobody used).
+    public static func cachedTokens(provider: String, inputTokens: Int, cachedTokens: Int) -> Int {
+        guard inputIncludesCached(provider) else { return max(0, cachedTokens) }
+        return cachedShare(inputTokens: max(0, inputTokens), cachedTokens: cachedTokens)
+    }
+
+    /// Providers whose `input` already includes the cached input: OpenAI's
+    /// convention, so Codex. Claude's `input` excludes cache.
+    static func inputIncludesCached(_ provider: String) -> Bool {
+        provider == ProviderKind.codex.rawValue
+    }
+
+    private static func cachedShare(inputTokens: Int, cachedTokens: Int) -> Int {
+        min(max(0, cachedTokens), inputTokens)
+    }
+}
+
 /// A single scan entry, decoupled from `CostUsageScanResult.DailyEntry` so the
 /// archive core stays cross-platform + independently testable.
+///
+/// `inputTokens` is the input NOT served from cache (`ArchiveTokenBasis`):
+/// build one from a scanned row with `init(archiving:)`, never field by field.
 public struct ScanEntry: Sendable, Equatable {
     public let date: String
     public let provider: String
@@ -489,9 +608,24 @@ public struct ScanEntry: Sendable, Equatable {
         self.inputTokens = inputTokens; self.cachedTokens = cachedTokens
         self.outputTokens = outputTokens; self.cost = cost; self.messages = messages
     }
+
+    /// A scanned row in the archive's basis: each token once.
+    public init(archiving e: CostUsageScanResult.DailyEntry) {
+        self.init(
+            date: e.date, provider: e.provider, model: e.model,
+            inputTokens: ArchiveTokenBasis.uncachedInput(
+                provider: e.provider, inputTokens: e.inputTokens, cachedTokens: e.cachedTokens),
+            cachedTokens: ArchiveTokenBasis.cachedTokens(
+                provider: e.provider, inputTokens: e.inputTokens, cachedTokens: e.cachedTokens),
+            outputTokens: e.outputTokens, cost: e.costUSD ?? 0, messages: e.messageCount)
+    }
 }
 
 /// A cloud daily-usage row (get_daily_usage) — tokens + cost, no messages.
+///
+/// `inputTokens` is the input NOT served from cache, as in `ScanEntry`. The
+/// server keeps each row as its writer sent it (Codex input includes cached),
+/// so build one from a fetched row with `init(archiving:)`.
 public struct CloudEntry: Sendable, Equatable {
     public let date: String
     public let provider: String
@@ -507,6 +641,17 @@ public struct CloudEntry: Sendable, Equatable {
         self.date = date; self.provider = provider; self.model = model
         self.inputTokens = inputTokens; self.cachedTokens = cachedTokens
         self.outputTokens = outputTokens; self.cost = cost
+    }
+
+    /// A fetched row in the archive's basis: each token once.
+    public init(archiving u: DailyUsage) {
+        self.init(
+            date: u.date, provider: u.provider, model: u.model,
+            inputTokens: ArchiveTokenBasis.uncachedInput(
+                provider: u.provider, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens),
+            cachedTokens: ArchiveTokenBasis.cachedTokens(
+                provider: u.provider, inputTokens: u.inputTokens, cachedTokens: u.cachedTokens),
+            outputTokens: u.outputTokens, cost: u.cost)
     }
 }
 

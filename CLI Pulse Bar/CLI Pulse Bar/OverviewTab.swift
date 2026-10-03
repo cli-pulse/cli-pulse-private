@@ -61,6 +61,11 @@ struct OverviewTab: View {
                     launchAtLoginNotice
                 }
 
+                // Codex figures changed on this Mac, and why, with the date.
+                // Only for a Mac that had shown Codex figures counted the old
+                // way; gone after "Got it" or a month (CodexEstimateChangeNote).
+                CodexEstimateChangeNoteCard(hidden: state.isDemoMode)
+
                 // v1.28: a SIGNED-IN user whose local usage scan is blocked by
                 // the App Store sandbox (no folder-access bookmark) previously
                 // got no prompt at all — they just saw a near-zero cost. Surface

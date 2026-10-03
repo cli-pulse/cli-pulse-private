@@ -456,6 +456,26 @@ public enum L10n {
         public static var keep: String { tr("launch_at_login_notice.keep") }
     }
 
+    /// The dated card on the Overview that says Codex figures are counted
+    /// differently now, and why, and the Usage Dashboard's line about the days
+    /// still counted the old way. See `CodexEstimateChangeNote` for who sees
+    /// them and which lines are shown. Every %@ is a day, formatted by
+    /// `DisplayFormat.day`.
+    public enum codexEstimateNote {
+        public static func title(_ day: String) -> String { tr("codex_estimate_note.title", day) }
+        public static var reasonCachedInputOnce: String { tr("codex_estimate_note.reason_cached_input_once") }
+        public static var reasonSubagentSessions: String { tr("codex_estimate_note.reason_subagent_sessions") }
+        public static var reasonPublishedPrices: String { tr("codex_estimate_note.reason_published_prices") }
+        /// The card, when every Codex day up to `day` is still counted the old way.
+        public static func historyThrough(_ day: String) -> String { tr("codex_estimate_note.history_through", day) }
+        /// The card, when some Codex days up to `day` are counted the new way.
+        public static func historySomeThrough(_ day: String) -> String { tr("codex_estimate_note.history_some_through", day) }
+        /// The Usage Dashboard, under the heatmap: every Codex day up to `day`.
+        public static func dashboardThrough(_ day: String) -> String { tr("codex_estimate_note.dashboard_through", day) }
+        /// The Usage Dashboard, under the heatmap: some Codex days up to `day`.
+        public static func dashboardSomeThrough(_ day: String) -> String { tr("codex_estimate_note.dashboard_some_through", day) }
+    }
+
     /// v1.44 W3: per-provider collector outcome labels + one concrete next
     /// step each. Kept in its own namespace rather than folded into
     /// `providers` because these are status vocabulary, reused by the Overview

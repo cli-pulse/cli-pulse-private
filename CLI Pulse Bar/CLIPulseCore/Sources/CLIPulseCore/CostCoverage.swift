@@ -170,7 +170,12 @@ public struct CostCoverage: Sendable, Equatable {
     /// local Ollama model, say) reports `costUSD == 0` and counts as priced,
     /// which is correct: we knew its rate and the rate was zero.
     ///
-    /// Token basis is `input + cached + output`, matching
+    /// Each token is counted once. Codex's `input` already includes its cached
+    /// input, so `input + cached + output` counted that part twice and gave
+    /// Codex rows up to twice their weight in the share. `ArchiveTokenBasis`
+    /// is the same rule the usage history uses.
+    ///
+    /// Token basis is `ArchiveTokenBasis.tokens`, matching
     /// `CostUsageScanner.reportUnpricedModels` so the log line and the UI can
     /// never disagree about the same scan.
     ///
@@ -202,7 +207,7 @@ public struct CostCoverage: Sendable, Equatable {
             if entry.model == ScanEntry.messageBucketModel {
                 continue
             }
-            let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
+            let tokens = ArchiveTokenBasis.tokens(of: entry)
             if entry.costUSD == nil {
                 unpricedByModel[entry.model, default: 0] += tokens
             } else if entry.priceIsApproximate {

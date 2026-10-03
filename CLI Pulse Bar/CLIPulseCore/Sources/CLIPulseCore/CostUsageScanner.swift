@@ -252,7 +252,7 @@ public enum CostUsageScanner {
                 skippedMessageBucket = true
                 continue
             }
-            let tokens = entry.inputTokens + entry.cachedTokens + entry.outputTokens
+            let tokens = ArchiveTokenBasis.tokens(of: entry)   // each once, as `CostCoverage.from`
             unpriced[entry.model, default: 0] += tokens
         }
         guard !unpriced.isEmpty else {

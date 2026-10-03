@@ -965,6 +965,15 @@
 "usage_dashboard.total_tokens" = "総トークン";
 "usage_dashboard.total_cost_est" = "推定総コスト";
 "usage_dashboard.cost_disclaimer" = "コストは API の従量課金料金で算出した推定額で、請求額ではありません。";
+/* The dated note on the Overview: Codex figures are counted differently now, and why (CodexEstimateChangeNote). history_* close the card; dashboard_* sit under the Usage Dashboard heatmap while Codex days counted the old way remain. *_some_* when days counted the new way lie among them. Every %@ is a day. */
+"codex_estimate_note.title" = "Codex の数値は%@から変わりました";
+"codex_estimate_note.reason_cached_input_once" = "使用状況ダッシュボードで、Codex のキャッシュ入力を 1 回だけ数えるようになりました。キャッシュ入力はもともと Codex の入力に含まれているのに二重に加算されていたため、ダッシュボードの Codex のトークン合計は以前より少なくなります。";
+"codex_estimate_note.reason_subagent_sessions" = "Codex のサブエージェントのセッションも数えるようになりました。これまで含まれていなかったため、Codex の使用量とコストは以前より増えます。";
+"codex_estimate_note.reason_published_prices" = "Codex の推定コストを、OpenAI が公開している API 料金で計算するようになりました。";
+"codex_estimate_note.history_through" = "使用状況ダッシュボードの%@までの Codex の数値は、まだ以前の方法で数えたものです。";
+"codex_estimate_note.history_some_through" = "使用状況ダッシュボードの%@までの Codex の数値には、まだ以前の方法で数えたものが含まれます。";
+"codex_estimate_note.dashboard_through" = "%@までの Codex の数値は以前のバージョンで数えたもので、それ以降の日とは比較できません。";
+"codex_estimate_note.dashboard_some_through" = "%@までの Codex の数値の一部は以前のバージョンで数えたもので、それ以降の日とは比較できません。";
 "usage_dashboard.active_days" = "アクティブ日数";
 "usage_dashboard.current_streak" = "現在の連続日数";
 "usage_dashboard.longest_streak" = "最長連続日数";
