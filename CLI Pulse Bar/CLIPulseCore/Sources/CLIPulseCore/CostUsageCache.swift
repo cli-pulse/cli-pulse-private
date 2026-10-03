@@ -288,7 +288,7 @@ struct CostUsageCodexFileState: Codable, Equatable {
     /// A subagent rollout without a history ordinal. Where its own history
     /// starts is decided from the whole file (`CodexTokenAccountant` rule 5),
     /// so it is always read from the first line, never resumed.
-    var classifiesWholeFile: Bool { isSubagent == true && historyStartOrdinal == nil }
+    var classifiesWholeFile: Bool { false } // NEGATIVE CONTROL B1: rule 5 off
 }
 
 /// What marks the copied part of a child rollout that names a history

@@ -113,7 +113,7 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         /// line goes when the limit does.
         public var caveat: String? {
             switch self {
-            case .subagentSessionsCounted: return L10n.codexEstimateNote.subagentRulesSimplified
+            case .subagentSessionsCounted: return nil // NEGATIVE CONTROL B2: the line dropped
             case .cachedInputCountedOnce, .publishedPrices: return nil
             }
         }
