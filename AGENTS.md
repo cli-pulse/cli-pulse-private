@@ -409,7 +409,11 @@ cannot answer:
    same name, compared on decoded pixels because ASC re-encodes on ingest. In
    the iPhone, iPad and Mac sets, which this repo composes whole per locale, a
    live screenshot with no local panel of its name fails: that is a set nobody
-   replaced (the April 2026 iPad set would have reached 1.55.0 that way).
+   replaced (the April 2026 iPad set would have reached 1.55.0 that way). So
+   does a locale with its own panels (`SHOT_SOURCES`) and no set of one of its
+   platform's types: App Store Connect shows it another locale's panels (an
+   iPad push stopped part-way would have left ja, ko, es and zh-Hant on the
+   English ones).
 
 Check 5, **What's New** (with `--whatsnew-dir`), compares every localization of
 the version, per platform, with the text `asc_submit.py` would write; empty

@@ -337,5 +337,25 @@ check("the preflight treats exactly the iPhone, iPad and Mac display types as se
       set(shots.SETS) == {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_DESKTOP"}
       and "managed=dtype in per_locale" in (HERE / "asc_listing_preflight.py").read_text(), str(set(shots.SETS)))
 
+# 9. check 3: a locale with no set of a type this repo makes for it
+both_ios = {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"}
+check("positive control: a locale with its iPhone and iPad sets is missing none",
+      pf.missing_sets("IOS", "ja", both_ios) == [] and pf.missing_sets("MAC_OS", "ja", {"APP_DESKTOP"}) == [])
+check("an iOS locale with no iPad set (ja, ko, es and zh-Hant on 1.54.0) is missing it",
+      all(pf.missing_sets("IOS", loc, {"APP_IPHONE_67"}) == ["APP_IPAD_PRO_3GEN_129"]
+          for loc in ("ja", "ko", "es-ES", "es-MX", "zh-Hant")))
+check("... and with no set at all, both; the Mac needs its own",
+      pf.missing_sets("IOS", "en-US", set()) == sorted(both_ios)
+      and pf.missing_sets("MAC_OS", "ko", both_ios) == ["APP_DESKTOP"])
+check("a set of another type does not stand in for a missing one",
+      pf.missing_sets("IOS", "zh-Hans", {"APP_IPHONE_67", "APP_IPAD_PRO_129"}) == ["APP_IPAD_PRO_3GEN_129"])
+check("a locale SHOT_SOURCES maps to FALLBACK needs no set of its own",
+      pf.missing_sets("IOS", "fr-FR", set()) == [] and shots.SHOT_SOURCES.get("fr-FR", shots.FALLBACK) is None)
+src = (HERE / "asc_listing_preflight.py").read_text()
+check("the drift loop fails on every missing set of the version it checks",
+      "for dtype in missing_sets(plat, locale, present):" in src
+      and src.index("for dtype in missing_sets(plat, locale, present):")
+      < src.index("failed |= compare_set(asc, locale, st, dtype, local_dir"), "")
+
 print(f"test_asc_listing_preflight_store: {passed} passed, {failed} failed.")
 sys.exit(1 if failed else 0)

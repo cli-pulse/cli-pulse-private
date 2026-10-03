@@ -404,6 +404,24 @@ def check_repo_shots(root: Path | None = None) -> bool:
     return ok
 
 
+def missing_sets(plat: str, locale: str, present: set[str]) -> list[str]:
+    """The display types this repo composes for `locale` on the `plat` version
+    (scripts/appstore_screenshots.py SETS, by asc_platform) that the version's
+    localization has no set of. A locale whose SHOT_SOURCES entry is FALLBACK
+    is meant to show en-US's, so it needs none.
+
+    The drift check below only compares sets that exist. A locale with no set
+    at all is shown another locale's panels (en-US's English ones), and passed:
+    1.55 is the first version with iPad sets in ja, ko, es and zh-Hant, so an
+    iPad push stopped part-way (it stops at the first failure) or limited with
+    --locale would have left those four on the English panels under
+    PREFLIGHT OK."""
+    if shots.SHOT_SOURCES.get(locale, shots.FALLBACK) is shots.FALLBACK:
+        return []
+    return sorted(p.display_type for p in shots.SETS.values()
+                  if p.asc_platform == plat and p.display_type not in present)
+
+
 def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
                 local_dir: Path | None, managed: bool = False) -> bool:
     """Compare one live screenshot set with the local composed PNGs of the same
@@ -697,6 +715,11 @@ def main() -> int:
             shot_lang = shots.SHOT_SOURCES.get(locale, shots.FALLBACK)
             sets = asc.get(f"/appStoreVersionLocalizations/{loc_row['id']}/appScreenshotSets",
                            limit=20)
+            present = {st["attributes"].get("screenshotDisplayType") for st in sets["data"]}
+            for dtype in missing_sets(plat, locale, present):
+                print(f"  FAIL  [{locale}] no {dtype} set: App Store Connect shows this locale "
+                      "another locale's panels. Push the set (scripts/asc_push_screenshots.py)")
+                failed = True
             for st in sets["data"]:
                 dtype = st["attributes"].get("screenshotDisplayType")
                 if dtype in per_locale:
