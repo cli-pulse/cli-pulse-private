@@ -390,9 +390,13 @@ public enum CostUsageScanner {
                 // only has msg counts; per-model buckets have tokens +
                 // deduped-zero msgs.
                 guard input > 0 || cacheRead > 0 || cacheCreate > 0 || output > 0 || msgs > 0 else { continue }
+                // A row with no stored cost is a model that had no rate when
+                // it was read, or one whose cost rounds to nothing. Pricing
+                // the day's sum as one request would put a busy day on the
+                // long-context tier, so it is priced as a sum.
                 let cost: Double? = costNanos > 0
                     ? Double(costNanos) / costScale
-                    : Pricing.claudeCostUSD(model: model, inputTokens: input, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreate, outputTokens: output)
+                    : Pricing.claudeAggregateCostUSD(model: model, inputTokens: input, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreate, outputTokens: output)
                 result.append(.init(date: day, provider: "Claude", model: model,
                                     inputTokens: input, cachedTokens: cacheRead + cacheCreate,
                                     outputTokens: output, costUSD: cost,
@@ -659,18 +663,6 @@ public enum CostUsageScanner {
     // MARK: - Pricing
 
     enum Pricing {
-        struct ClaudeModel {
-            let inputCostPerToken: Double
-            let outputCostPerToken: Double
-            let cacheCreationCostPerToken: Double
-            let cacheReadCostPerToken: Double
-            let thresholdTokens: Int?
-            let inputAbove: Double?
-            let outputAbove: Double?
-            let cacheCreationAbove: Double?
-            let cacheReadAbove: Double?
-        }
-
         /// Which price row a model is charged at, and whether that row is the
         /// model's own.
         ///
@@ -703,79 +695,13 @@ public enum CostUsageScanner {
         /// an unpriced model's stored $0 reading as priced).
         private static var codexModels: [String: CodexPricingTable.Rates] { CodexPricingTable.current }
 
-        private static let claudeModels: [String: ClaudeModel] = [
-            "claude-haiku-4-5-20251001": .init(inputCostPerToken: 1e-6, outputCostPerToken: 5e-6, cacheCreationCostPerToken: 1.25e-6, cacheReadCostPerToken: 1e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-haiku-4-5": .init(inputCostPerToken: 1e-6, outputCostPerToken: 5e-6, cacheCreationCostPerToken: 1.25e-6, cacheReadCostPerToken: 1e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-opus-4-5-20251101": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-opus-4-5": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-opus-4-6-20260205": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-opus-4-6": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            // Opus 4.7 — official Anthropic pricing
-            // (https://platform.claude.com/docs/en/about-claude/pricing,
-            // checked May 2026): $5 / 1M input, $25 / 1M output, $0.50 /
-            // 1M cache_read (10% of input), $6.25 / 1M cache_create
-            // (1.25× input — Anthropic's standard 5-minute cache write
-            // multiplier). Headline rate is unchanged from Opus 4.6.
-            // Without this entry every Opus 4.7 assistant event was
-            // contributing $0 to the Today/Week cost totals — current
-            // Claude Code (Max 20x) traffic is ~100% opus-4-7, so the
-            // user's card showed `<$0.01` despite hundreds of M
-            // cache_read tokens flowing through the same scanner.
-            "claude-opus-4-7": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            // Opus 4.8 — same headline rate as the rest of the Opus 4.x line.
-            // A dedicated entry (vs. leaning on familyFallback) matters for the
-            // DISPLAY name, not just cost: `ScanEntry.model` stores the
-            // normalized key, so without this row current Claude Code (Max 20x)
-            // traffic — now ~100% opus-4-8 — was being relabeled `opus-4-7` in
-            // the By-Model breakdown. With the entry it keeps its real name and
-            // prices identically.
-            "claude-opus-4-8": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-sonnet-4-5": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: 200_000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheCreationAbove: 7.5e-6, cacheReadAbove: 6e-7),
-            "claude-sonnet-4-5-20250929": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: 200_000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheCreationAbove: 7.5e-6, cacheReadAbove: 6e-7),
-            "claude-sonnet-4-6": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: 200_000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheCreationAbove: 7.5e-6, cacheReadAbove: 6e-7),
-            "claude-opus-4-20250514": .init(inputCostPerToken: 1.5e-5, outputCostPerToken: 7.5e-5, cacheCreationCostPerToken: 1.875e-5, cacheReadCostPerToken: 1.5e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-opus-4-1": .init(inputCostPerToken: 1.5e-5, outputCostPerToken: 7.5e-5, cacheCreationCostPerToken: 1.875e-5, cacheReadCostPerToken: 1.5e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            "claude-sonnet-4-20250514": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: 200_000, inputAbove: 6e-6, outputAbove: 2.25e-5, cacheCreationAbove: 7.5e-6, cacheReadAbove: 6e-7),
-            // ---- Claude 5 generation (Aug 2026) --------------------------
-            // Every model below read $0 before this. The generation bump from
-            // `claude-opus-4-8` to `claude-opus-5` dropped the fourth
-            // component, and `familyFallback`'s regex required
-            // `claude-(opus|sonnet|haiku)-N-M` — four parts, three families. So
-            // the guard built to stop exactly this ("Without this, the next
-            // minor release silently regresses Today/Week cost to $0 the day it
-            // ships") did not fire, because the next release was not a minor.
-            // Measured on the owner's own archive: 15.47 BILLION tokens priced
-            // at zero, every day since 2026-07-30.
-            //
-            // Rates are Anthropic's published first-party API prices. Cache
-            // rates follow the same convention as every entry above and are
-            // documented on the Opus 4.7 row: cache_read = 10% of input,
-            // cache_write = 1.25x input (the standard 5-minute cache-write
-            // multiplier).
-            //
-            // Opus 5 — $5 / 1M input, $25 / 1M output. Unchanged headline rate
-            // from the whole Opus 4.x line, so this row's numbers are identical
-            // to `claude-opus-4-8`.
-            "claude-opus-5": .init(inputCostPerToken: 5e-6, outputCostPerToken: 2.5e-5, cacheCreationCostPerToken: 6.25e-6, cacheReadCostPerToken: 5e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            // Sonnet 5 — $3 / 1M input, $15 / 1M output standard.
-            // ⚠️ TWO deliberate omissions, both erring toward a wrong number we
-            // can explain rather than one we cannot:
-            //   * The $2 / $10 introductory rate running through 2026-08-31 is
-            //     NOT encoded. A date-windowed rate is a bigger change than a
-            //     pricing row, and this over-states cost by 33% for a few days
-            //     on a model that is 0.6% of this archive's tokens.
-            //   * `thresholdTokens` is nil. Sonnet 4.5 and 4.6 both carry a
-            //     200K long-context tier at 2x, and Sonnet 5 plausibly does
-            //     too — but "plausibly" is not a rate. Flat pricing under-
-            //     states >200K requests; inventing a tier would over-state
-            //     every one of them. Confirm against Anthropic's pricing page
-            //     and add the tier.
-            "claude-sonnet-5": .init(inputCostPerToken: 3e-6, outputCostPerToken: 1.5e-5, cacheCreationCostPerToken: 3.75e-6, cacheReadCostPerToken: 3e-7, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-            // Fable 5 — $10 / 1M input, $50 / 1M output. Above Opus-tier, so a
-            // family fallback to any Opus row would have under-priced it by 2x
-            // even if "fable" had parsed as a family. It needs its own row.
-            "claude-fable-5": .init(inputCostPerToken: 1e-5, outputCostPerToken: 5e-5, cacheCreationCostPerToken: 1.25e-5, cacheReadCostPerToken: 1e-6, thresholdTokens: nil, inputAbove: nil, outputAbove: nil, cacheCreationAbove: nil, cacheReadAbove: nil),
-        ]
+        /// Claude rates live in `ClaudePricingTable`, shared with iOS like
+        /// `CodexPricingTable`. Each response's cost is computed from it when
+        /// the response is read and stored in the cache, so a change to it
+        /// reaches days already scanned only through a bump of
+        /// `costUsageCachePricingVersion`; `claudeRatesFingerprint()` is
+        /// pinned by a test next to that version.
+        private static var claudeModels: [String: ClaudePricingTable.Rates] { ClaudePricingTable.current }
 
         static func normalizeCodexModel(_ raw: String) -> String {
             var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -955,7 +881,8 @@ public enum CostUsageScanner {
         /// sibling on release and would have read $0 regardless. There is no
         /// honest way to guess the rate of a tier that has never existed, and
         /// Fable's $10/$50 (2x Opus) is exactly why guessing would be wrong.
-        /// That case needs a row, which is why it has one above.
+        /// That case needs a row, which is why it has one in
+        /// `ClaudePricingTable`.
         static func familyFallback(_ model: String) -> String? {
             guard let (family, version) = claudeFamilyVersion(model) else { return nil }
             var best: (key: String, version: (Int, Int))?
@@ -1074,21 +1001,94 @@ public enum CostUsageScanner {
             return lines.joined(separator: "\n")
         }
 
-        static func claudeCostUSD(model: String, inputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, outputTokens: Int) -> Double? {
+        /// What one Claude response cost, at the rate in force at `date` (a
+        /// dated rate from `ClaudePricingTable.superseded`, or today's when
+        /// `date` is nil or later). nil when the model has no rate.
+        ///
+        /// The arguments are one response's usage: the long-context tier is
+        /// decided by its whole prompt (`ClaudePricingTable.requestCostUSD`).
+        /// `cacheCreation1hInputTokens` is the part of the cache writes that
+        /// went to the 1-hour cache, charged 2x input instead of 1.25x.
+        static func claudeCostUSD(
+            model: String,
+            inputTokens: Int,
+            cacheReadInputTokens: Int,
+            cacheCreationInputTokens: Int,
+            cacheCreation1hInputTokens: Int = 0,
+            outputTokens: Int,
+            at date: Date? = nil
+        ) -> Double? {
             guard let key = claudePricingKey(model),
-                  let p = claudeModels[key] else { return nil }
+                  let rates = ClaudePricingTable.rates(forKey: key, at: date) else { return nil }
+            return ClaudePricingTable.requestCostUSD(
+                rates: rates,
+                inputTokens: inputTokens,
+                cacheReadTokens: cacheReadInputTokens,
+                cacheWriteTokens: cacheCreationInputTokens,
+                cacheWrite1hTokens: cacheCreation1hInputTokens,
+                outputTokens: outputTokens
+            )
+        }
 
-            func tiered(_ tokens: Int, base: Double, above: Double?, threshold: Int?) -> Double {
-                guard let threshold, let above else { return Double(tokens) * base }
-                let below = min(tokens, threshold)
-                let over = max(tokens - threshold, 0)
-                return Double(below) * base + Double(over) * above
+        /// What a day's SUM of Claude responses would cost at today's
+        /// standard rates (`ClaudePricingTable.aggregateCostUSD`). Only for a
+        /// cached day row that holds no stored cost; never the long-context
+        /// tier, which a sum cannot be tested against.
+        static func claudeAggregateCostUSD(model: String, inputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, outputTokens: Int) -> Double? {
+            guard let key = claudePricingKey(model), let rates = claudeModels[key] else { return nil }
+            return ClaudePricingTable.aggregateCostUSD(
+                rates: rates,
+                inputTokens: inputTokens,
+                cacheReadTokens: cacheReadInputTokens,
+                cacheWriteTokens: cacheCreationInputTokens,
+                outputTokens: outputTokens
+            )
+        }
+
+        /// Model names whose resolution the Claude fingerprint records: rows,
+        /// prefixed and dated spellings, and names only the family fallback
+        /// prices (or none does). A change to how a name resolves
+        /// (`normalizeClaudeModel`, `claudePriceResolution`) moves which rate a
+        /// stored cost used without changing a single rate row.
+        static let claudeFingerprintModelNames = [
+            "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8", "claude-opus-4-6-20260205",
+            "anthropic.claude-opus-5-5", "us.anthropic.claude-sonnet-5-5-v1:0", "claude-opus-5-5-20260922",
+            "claude-fable-5-1", "claude-fable-5", "claude-mythos-5-1", "claude-sonnet-5-5", "claude-sonnet-5",
+            "claude-sonnet-4-6", "claude-sonnet-4-5-20250929", "claude-sonnet-4-20250514",
+            "claude-haiku-4-5-20251001", "claude-opus-4-1-20250805",
+            "claude-opus-6", "claude-opus-5-9", "claude-fable-6", "claude-sonnet-6", "claude-sonnet-4-9",
+            "claude-haiku-5", "claude-brandnew-1", "<synthetic>",
+        ]
+
+        /// Everything a stored Claude cost depends on, as text: every key and
+        /// rate of `ClaudePricingTable.current`, every dated entry in
+        /// `superseded` (in the order the lookup reads them), and how each of
+        /// `claudeFingerprintModelNames` resolves to a row. The tables are
+        /// parameters only so a test can show that a change to either changes
+        /// the fingerprint; the name lines always use the real resolution.
+        static func claudeRatesFingerprint(
+            current: [String: ClaudePricingTable.Rates] = ClaudePricingTable.current,
+            superseded: [String: [ClaudePricingTable.DatedRates]] = ClaudePricingTable.superseded
+        ) -> String {
+            func number(_ value: Double) -> String { String(format: "%.17g", value) }
+            func prices(_ r: ClaudePricingTable.TokenRates?) -> String {
+                guard let r else { return "nil" }
+                return [r.input, r.cacheWrite5m, r.cacheWrite1h, r.cacheRead, r.output].map(number).joined(separator: " ")
             }
-
-            return tiered(max(0, inputTokens), base: p.inputCostPerToken, above: p.inputAbove, threshold: p.thresholdTokens)
-                + tiered(max(0, cacheReadInputTokens), base: p.cacheReadCostPerToken, above: p.cacheReadAbove, threshold: p.thresholdTokens)
-                + tiered(max(0, cacheCreationInputTokens), base: p.cacheCreationCostPerToken, above: p.cacheCreationAbove, threshold: p.thresholdTokens)
-                + tiered(max(0, outputTokens), base: p.outputCostPerToken, above: p.outputAbove, threshold: p.thresholdTokens)
+            func row(_ r: ClaudePricingTable.Rates) -> String {
+                "\(prices(r.standard)) over \(r.longContextThreshold.map(String.init) ?? "nil") \(prices(r.longContext))"
+            }
+            var lines = current.keys.sorted().compactMap { key in current[key].map { "\(key) \(row($0))" } }
+            for key in superseded.keys.sorted() {
+                for period in superseded[key] ?? [] {
+                    lines.append("\(key) until \(Int(period.until.timeIntervalSince1970)) \(row(period.rates))")
+                }
+            }
+            for name in claudeFingerprintModelNames {
+                let resolution = claudePriceResolution(name)
+                lines.append("name \(name) -> \(normalizeClaudeModel(name)) -> \(resolution?.key ?? "nil") \(resolution?.isApproximate == true ? "approximate" : "exact")")
+            }
+            return lines.joined(separator: "\n")
         }
     }
 
@@ -1679,9 +1679,17 @@ public enum CostUsageScanner {
                 costNanos: sign * (p[safeIdx: 4] ?? 0))
         }
 
+        /// What pricing a line needs beyond its row: when it was written (a
+        /// response is charged the rate in force then) and how many of its
+        /// cache writes went to the 1-hour cache.
+        struct LinePricing {
+            var at: Date?
+            var cacheCreate1h: Int
+        }
+
         /// The row with its cost in slot 4. A response is priced once, for
         /// the line that counts, not once per line read.
-        func priced(_ row: CostUsageClaudeOpenRow) -> CostUsageClaudeOpenRow {
+        func priced(_ row: CostUsageClaudeOpenRow, _ line: LinePricing) -> CostUsageClaudeOpenRow {
             guard !row.incomplete else { return row }
             var row = row
             let p = row.packed
@@ -1690,7 +1698,9 @@ public enum CostUsageScanner {
                 inputTokens: p[safeIdx: 0] ?? 0,
                 cacheReadInputTokens: p[safeIdx: 1] ?? 0,
                 cacheCreationInputTokens: p[safeIdx: 2] ?? 0,
-                outputTokens: p[safeIdx: 3] ?? 0
+                cacheCreation1hInputTokens: line.cacheCreate1h,
+                outputTokens: p[safeIdx: 3] ?? 0,
+                at: line.at
             )
             while row.packed.count < 5 { row.packed.append(0) }
             row.packed[4] = cost.map { Int(($0 * costScale).rounded()) } ?? 0
@@ -1706,6 +1716,8 @@ public enum CostUsageScanner {
             var row: CostUsageClaudeOpenRow
             var priced: Bool
             var touched: Int
+            /// For a row not priced yet; a priced row needs none.
+            var line = LinePricing(at: nil, cacheCreate1h: 0)
         }
         var responses: [String: Pending] = [:]
         var alreadyCounted: [String: CostUsageClaudeOpenRow] = [:]
@@ -1734,7 +1746,8 @@ public enum CostUsageScanner {
                 guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
                       let type = obj["type"] as? String,
                       let tsText = obj["timestamp"] as? String,
-                      let dayKey = dayKeyFromTimestamp(tsText) ?? dayKeyFromParsedISO(tsText) else { return }
+                      let instant = instantFromTimestamp(tsText) ?? instantFromParsedISO(tsText) else { return }
+                let dayKey = DayRange.dayKey(from: instant)
 
                 // Every user event contributes to the raw message count. No tokens.
                 if type == "user" {
@@ -1762,6 +1775,13 @@ public enum CostUsageScanner {
                 let cacheRead = max(0, toInt(usage["cache_read_input_tokens"]))
                 let output = max(0, toInt(usage["output_tokens"]))
                 if input == 0, cacheCreate == 0, cacheRead == 0, output == 0 { return }
+                // Claude Code splits the writes by cache lifetime; a log
+                // without the split is charged at the 5-minute rate.
+                let cacheCreation = usage["cache_creation"] as? [String: Any]
+                let pricing = LinePricing(
+                    at: instant,
+                    cacheCreate1h: max(0, toInt(cacheCreation?["ephemeral_1h_input_tokens"]))
+                )
 
                 let incomplete = CostUsageAccountingRules.isPreliminaryClaudeProxyUsage(
                     message: message, usage: usage, input: input, output: output
@@ -1780,14 +1800,14 @@ public enum CostUsageScanner {
                     sessionId: CostUsageAccountingRules.claudeSessionId(line: obj, message: message)
                 ) else {
                     // No identity: the line counts by itself.
-                    apply(priced(row), sign: 1)
+                    apply(priced(row, pricing), sign: 1)
                     return
                 }
                 row.key = key
                 sequence += 1
                 if let existing = responses[key] {
                     if CostUsageAccountingRules.claudeLineReplaces(existingIsIncomplete: existing.row.incomplete, lineIsIncomplete: incomplete) {
-                        responses[key] = Pending(row: row, priced: false, touched: sequence)
+                        responses[key] = Pending(row: row, priced: false, touched: sequence, line: pricing)
                     } else {
                         responses[key]?.touched = sequence
                     }
@@ -1797,7 +1817,7 @@ public enum CostUsageScanner {
                     if fingerprint == row.fingerprint {
                         // The same line again: Claude Code writes earlier lines
                         // of a log again further down it. Already in the totals.
-                        let same = priced(row)
+                        let same = priced(row, pricing)
                         responses[key] = Pending(row: same, priced: true, touched: sequence)
                         alreadyCounted[key] = same
                     } else if !incomplete {
@@ -1808,7 +1828,7 @@ public enum CostUsageScanner {
                     // An estimate never replaces real usage, and replacing an
                     // earlier estimate changes no total.
                 } else {
-                    responses[key] = Pending(row: row, priced: false, touched: sequence)
+                    responses[key] = Pending(row: row, priced: false, touched: sequence, line: pricing)
                 }
             })
         } catch {
@@ -1821,7 +1841,7 @@ public enum CostUsageScanner {
 
         var newest: [(touched: Int, row: CostUsageClaudeOpenRow)] = []
         for (key, pending) in responses {
-            let row = pending.priced ? pending.row : priced(pending.row)
+            let row = pending.priced ? pending.row : priced(pending.row, pending.line)
             let before = alreadyCounted[key]
             if before != row {
                 if let before { apply(before, sign: -1) }
