@@ -47,7 +47,18 @@ Rules mirrored (Swift names in brackets):
     session_meta ahead of it (the shape Codex's migration of older subagent
     rollouts leaves), the events before its first inter-agent message: they
     are held until that message (then dropped) or the end of the read (then
-    counted).
+    counted). Until a child with a history ordinal counts its first tokens, a
+    repeat of the counter it started from (the last copied total, or an
+    opening total with no request of its own) and a copied snapshot (a total
+    equal to its own request, at or above that counter) add nothing.
+  * Subagents without a history ordinal [CodexSubagentRolloutShape, ported
+    from CodexBar]: the file is read whole first. Its own history starts at a
+    turn_context immediately followed by an inter-agent message that triggers
+    a turn — the first after the last copied ancestor session_meta, or, in a
+    rollout that names the thread it was forked from, its first turn once its
+    first own event confirms it — or at an opening total with no request of
+    its own. Events before it are copied; counting starts from the counter it
+    had there. Without one, the rules above apply.
   * Files [CodexCopyResolver]: files sharing `session_meta.payload.id` are
     copies only when one's event span lies within another's; files are taken
     with the most events first (then the larger final total, then the earlier
@@ -58,7 +69,7 @@ test — one rule replaced by what it replaced or left out — and is not the ap
 `legacy` (the scanner before 1.56), `first-payload-id`, `count-all-files`,
 `any-overlap`, `children-only-inherit`, `no-ordinal-rule`,
 `ordinal-without-ancestor-meta`, `no-interagent-hold`, `last-over-gap`,
-`sum-last`, `totals-only`.
+`sum-last`, `totals-only`, `no-snapshot-skip`, `no-turn-marker`.
 """
 
 from __future__ import annotations
@@ -87,6 +98,8 @@ POLICIES = (
     "last-over-gap",
     "sum-last",
     "totals-only",
+    "no-snapshot-skip",
+    "no-turn-marker",
 )
 
 # How a child's copied prefix was recognised [CodexCopiedPrefix]
@@ -294,7 +307,152 @@ def names_parent(payload: dict) -> bool:
         if isinstance(v, str) and v:
             return True
     src = payload.get("source")
-    return isinstance(src, dict) and "subagent" in src
+    return (isinstance(src, dict) and "subagent" in src) or is_subagent_source(payload) or explicit_parent_id(payload) is not None
+
+
+def is_subagent_source(payload: dict) -> bool:
+    """A subagent's rollout [CodexTokenAccountant.sessionMetaIsSubagent]:
+    `source` is "subagent", or an object with a `subagent` entry."""
+    src = payload.get("source")
+    if isinstance(src, str):
+        return src.strip().lower() == "subagent"
+    return isinstance(src, dict) and isinstance(src.get("subagent"), (str, dict))
+
+
+def explicit_parent_id(payload: dict) -> str | None:
+    """The thread a rollout says it was forked from
+    [CodexTokenAccountant.sessionMetaForkParent]."""
+    for key in ("forked_from_id", "forkedFromId", "parent_session_id", "parentSessionId"):
+        v = payload.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+# --------------------------------------------------------------------------
+# Where a subagent's own history starts, without a history ordinal
+# [CodexSubagentRolloutShape, ported from CodexBar]
+
+COPIED_PREFIX = "copied-prefix"
+INDEPENDENT = "independent"
+
+
+@dataclass
+class Observation:
+    """One line of a subagent rollout, as the classification sees it."""
+    line: int
+    kind: str  # "meta" | "turn" | "message" | "tokens"
+    id: str | None = None
+    trigger: bool = False
+    total: tuple[int, int, int] | None = None
+    last: tuple[int, int, int] | None = None
+
+
+@dataclass
+class OwnedSuffix:
+    start: int
+    baseline: tuple[int, int, int]
+    first_token: int | None = None
+
+
+@dataclass
+class RolloutShape:
+    semantics: str
+    owned: OwnedSuffix | None
+    # (suffix, parent totals at the boundary, locally confirmed)
+    candidate: tuple | None
+
+
+def _norm_id(v) -> str | None:
+    if not isinstance(v, str):
+        return None
+    v = v.strip()
+    return v or None
+
+
+def _usage(t) -> bool:
+    return t[0] > 0 or t[1] > 0 or t[2] > 0
+
+
+def _at_least(a, b) -> bool:
+    return a[0] >= b[0] and a[1] >= b[1] and a[2] >= b[2]
+
+
+def classify_ids(leaf: str | None, ids: list) -> str:
+    nleaf = _norm_id(leaf)
+    ancestors = [i for i in map(_norm_id, ids) if i != nleaf]
+    embedded = bool(ancestors) or (nleaf is None and len(ids) > 1)
+    return COPIED_PREFIX if embedded else INDEPENDENT
+
+
+def classify(leaf: str | None, obs: list, has_explicit_parent: bool = False) -> RolloutShape:
+    """[CodexSubagentRolloutShape.classify]: whether a subagent rollout starts
+    with copied history, and where its own history starts."""
+    semantics = classify_ids(leaf, [o.id for o in obs if o.kind == "meta"])
+    can_propose = semantics == INDEPENDENT and has_explicit_parent
+    if not (semantics == COPIED_PREFIX or can_propose):
+        return RolloutShape(semantics, None, None)
+    nleaf = _norm_id(leaf)
+    last_raw = None
+    pending = None  # (line, baseline)
+    owned = None
+    parent_at_boundary = None
+    confirmed = False
+    inspected = False
+    saw_leaf = False
+    saw_turn = False
+    inherited_opening = False
+    for o in obs:
+        if o.kind == "meta":
+            embedded = (_norm_id(o.id) != nleaf if nleaf is not None else True) if saw_leaf else False
+            saw_leaf = True
+            if embedded:
+                owned, parent_at_boundary, confirmed, inspected = None, None, False, False
+            pending = None
+        elif o.kind == "turn":
+            first_turn = not saw_turn
+            saw_turn = True
+            accepts = semantics == COPIED_PREFIX or (can_propose and first_turn)
+            pending = (o.line, last_raw) if accepts and last_raw is not None else None
+            if inherited_opening and first_turn and pending is not None:
+                owned = OwnedSuffix(pending[0], pending[1])
+                inspected = False
+        elif o.kind == "message":
+            if (owned is None and o.trigger and pending is not None and o.line == pending[0] + 1
+                    and (semantics == COPIED_PREFIX or _usage(pending[1]))):
+                owned = OwnedSuffix(pending[0], pending[1])
+                parent_at_boundary = pending[1]
+                confirmed = False
+                inspected = False
+            pending = None
+        else:
+            total, last = o.total, o.last
+            if (last_raw is None and can_propose and not saw_turn and total is not None and last is not None
+                    and _usage(total) and not _usage(last)):
+                # An opening total with no request of its own is inherited.
+                inherited_opening = True
+                owned = OwnedSuffix(o.line, total)
+                parent_at_boundary = total
+                confirmed = True
+            if (inherited_opening and not saw_turn and total is not None and last is not None and _usage(last)
+                    and total != last_raw):
+                inherited_opening = False
+                owned = OwnedSuffix(o.line, last_raw if last_raw is not None else total)
+                inspected = False
+            if not inspected and owned is not None and total is not None and total != owned.baseline:
+                inspected = True
+                if last is not None:
+                    snapshot = _usage(owned.baseline) and total == last and _at_least(total, owned.baseline)
+                    owned = OwnedSuffix(owned.start, total if snapshot else _sub(total, last), o.line)
+                    inspected = not snapshot
+                    confirmed = True
+            if total is not None:
+                last_raw = total
+            pending = None
+    if semantics == COPIED_PREFIX:
+        return RolloutShape(COPIED_PREFIX, owned, None)
+    candidate = (owned, parent_at_boundary, confirmed) if owned is not None and parent_at_boundary is not None else None
+    return RolloutShape(INDEPENDENT, None, candidate)
 
 
 @dataclass
@@ -324,6 +482,17 @@ class FileResult:
     history_start_ordinal: int | None = None
     # ANCESTOR_METADATA / INTER_AGENT_MESSAGE / NO_MARKER, or None while undecided
     copied_prefix: str | None = None
+    # a subagent's rollout (`source`), and whether it names the thread it was
+    # forked from (`forked_from_id` and its spellings)
+    is_subagent: bool = False
+    explicit_parent: bool = False
+    # A child with a history ordinal, until it counts its first tokens: the
+    # cumulative total it is known to start from [CodexTokenAccountant rule 4]
+    inherited_ref: tuple[int, int, int] | None = None
+    opening_settled: bool = False
+    # a subagent without a history ordinal whose own history was found to
+    # start at a turn followed by an inter-agent message (counts only)
+    turn_marker: bool = False
     saw_meta: bool = False
     baseline_checked: bool = False
     event_count: int = 0
@@ -375,7 +544,7 @@ class FileResult:
             return
         self.copied_prefix = ANCESTOR_METADATA
         self.skipped_copied += len(self.pending)
-        self.pending.clear()
+        self._drop_pending()
 
     def observe_inter_agent_message(self, ordinal) -> None:
         """An inter-agent message numbered before the boundary of a child with
@@ -387,6 +556,15 @@ class FileResult:
             return
         self.copied_prefix = INTER_AGENT_MESSAGE
         self.replayed_tail_skips += len(self.pending)
+        self._drop_pending()
+
+    def _drop_pending(self) -> None:
+        """The held events were copied: not counted; the last total among
+        them is the counter the child starts from (rule 4)."""
+        for ev in reversed(self.pending):
+            if ev.total is not None:
+                self.inherited_ref = ev.total
+                break
         self.pending.clear()
 
     def receive(self, ev: Event, policy: str) -> list:
@@ -441,6 +619,8 @@ class FileResult:
             )
             if by_ordinal or (self.meta_ms is not None and event_ms < self.meta_ms):
                 self.skipped_copied += 1
+                if total is not None:
+                    self.inherited_ref = total
                 return None
         self.event_count += 1
         self.first_ms = event_ms if self.first_ms is None else min(self.first_ms, event_ms)
@@ -455,13 +635,29 @@ class FileResult:
             self.baseline_checked = True
             if policy == "totals-only":
                 return None
-            return None if last is None or _is_zero(last) else last
+            return self._opening_counted(None if last is None or _is_zero(last) else last)
+        opening = self._in_opening(policy)
+        if opening and self.inherited_ref is not None:
+            # Rule 4: until a child counts its first tokens, a repeat of the
+            # counter it started from, or a copied snapshot (a total equal to
+            # its own request, at or above that counter), adds nothing.
+            ref = self.inherited_ref
+            if total == ref:
+                return None
+            if _usage(ref) and last is not None and total == last and _at_least(total, ref):
+                self.inherited_ref = total
+                if self.baseline_checked:
+                    self.watermark = total if self.watermark is None else tuple(
+                        max(a, b) for a, b in zip(self.watermark, total))
+                return None
         if not self.baseline_checked and (self.is_child or policy != "children-only-inherit"):
             self.baseline_checked = True
             if last is not None:
                 inherited = _sub(total, last)
             elif self.is_child:
-                inherited = total
+                # Without `last`, a child's first total is inherited: all of
+                # it, or what exceeds the counter it is known to start from.
+                inherited = self.inherited_ref if opening and self.inherited_ref is not None else total
             else:
                 inherited = (0, 0, 0)
             if not _is_zero(inherited):
@@ -491,7 +687,23 @@ class FileResult:
             # Negative control: CodexBar's choice, the request's own usage
             # where the total grew by more.
             delta = tuple(min(d, x) for d, x in zip(delta, last))
-        return None if _is_zero(delta) else delta
+        return self._opening_counted(None if _is_zero(delta) else delta)
+
+    def _in_opening(self, policy: str) -> bool:
+        return (self.is_child and self.history_start_ordinal is not None and not self.opening_settled
+                and policy != "no-snapshot-skip")
+
+    def _opening_counted(self, delta):
+        """Rule 4's bookkeeping after an event: the opening ends with the
+        first tokens counted; until then the baseline is the counter the
+        child starts from."""
+        if self.is_child and self.history_start_ordinal is not None and not self.opening_settled:
+            if delta is None:
+                if self.watermark is not None:
+                    self.inherited_ref = self.watermark
+            else:
+                self.opening_settled = True
+        return delta
 
 
 def _add_row(days: dict, day: str, model: str, t) -> None:
@@ -560,8 +772,49 @@ def _observe_first_line(res: FileResult, line: bytes) -> None:
             res.parent_id = p[key]
             break
     res.history_start_ordinal = _as_int(p.get("subagent_history_start_ordinal"))
+    res.is_subagent = is_subagent_source(p)
+    res.explicit_parent = explicit_parent_id(p) is not None
     meta_time = p.get("timestamp") if isinstance(p.get("timestamp"), str) else obj.get("timestamp")
     res.meta_ms = parse_instant_ms(meta_time) if isinstance(meta_time, str) else None
+
+
+_HEAD_ID = re.compile(rb'"id":"([^"\\]*)"')
+
+
+def _later_meta_id(raw: bytes) -> tuple[str | None, bool]:
+    """A later session_meta's thread id and whether it names a fork parent
+    [codexLaterSessionMeta]: decoded when the line is short enough to be read
+    whole, else the first `"id":"…"` in its head (no parent known)."""
+    if len(raw) <= PREFIX_BYTES:
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict):
+            p = obj.get("payload") if isinstance(obj.get("payload"), dict) else {}
+            ident = next((v for v in (p.get("id"), obj.get("id"), p.get("session_id"), p.get("sessionId"),
+                                      obj.get("session_id"), obj.get("sessionId")) if isinstance(v, str)), None)
+            return ident, explicit_parent_id(p) is not None
+    m = _HEAD_ID.search(raw[:TRUNCATED_HEAD_BYTES])
+    return (m.group(1).decode("utf-8", "replace") if m else None), False
+
+
+def _trigger_turn(raw: bytes) -> bool | None:
+    """An inter-agent message line: whether it triggers a turn; None when it
+    is not one, or has no valid timestamp [codexInterAgentTrigger]."""
+    if len(raw) > PREFIX_BYTES:
+        return None
+    try:
+        obj = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(obj, dict) or obj.get("type") != "inter_agent_communication_metadata":
+        return None
+    ts = obj.get("timestamp")
+    if not isinstance(ts, str) or parse_instant_ms(ts) is None:
+        return None
+    payload = obj.get("payload")
+    return isinstance(payload, dict) and payload.get("trigger_turn") is True
 
 
 TRUNCATED_HEAD_BYTES = 4096
@@ -600,17 +853,37 @@ def parse_file(path: str, scan_since: str, scan_until: str, policy: str, tz=None
     tail = segments.pop()
     if tail and (legacy or (len(tail) <= PREFIX_BYTES and _decodes(tail))):
         segments.append(tail)
+    # A subagent rollout without a history ordinal is read whole before any
+    # of it counts: where its own history starts is decided from all of it
+    # [CodexSubagentRolloutShape].
+    classify_mode = (not legacy and policy != "no-turn-marker" and res.is_subagent
+                     and res.history_start_ordinal is None)
+    observations: list = []
+    held_all: list = []  # (line, Event)
+    if classify_mode:
+        observations.append(Observation(line=0, kind="meta", id=res.rollout_id))
+    line_no = -1
     for idx, raw in enumerate(segments):
         if not raw:
             continue
+        line_no += 1
         if not legacy:
             if idx == 0:
                 continue  # the first line was read on its own
             head = raw[:TRUNCATED_HEAD_BYTES] if len(raw) > PREFIX_BYTES else raw
             if b'"type":"session_meta"' in head:
+                if classify_mode:
+                    ident, names_fork = _later_meta_id(raw)
+                    observations.append(Observation(line=line_no, kind="meta", id=ident))
+                    if names_fork and _norm_id(ident) is not None and _norm_id(ident) == _norm_id(res.rollout_id):
+                        res.explicit_parent = True
                 res.observe_copied_session_meta(line_ordinal(raw))
                 continue
             if b'"type":"inter_agent_communication_metadata"' in head:
+                if classify_mode:
+                    trigger = _trigger_turn(raw)
+                    if trigger is not None:
+                        observations.append(Observation(line=line_no, kind="message", trigger=trigger))
                 res.observe_inter_agent_message(line_ordinal(raw))
                 continue
         if len(raw) > PREFIX_BYTES:
@@ -650,6 +923,8 @@ def parse_file(path: str, scan_since: str, scan_until: str, policy: str, tz=None
         day = local_day_key(ms, tz)
         payload = obj.get("payload")
         if typ == "turn_context":
+            if classify_mode:
+                observations.append(Observation(line=line_no, kind="turn"))
             if isinstance(payload, dict):
                 if isinstance(payload.get("model"), str):
                     model = payload["model"]
@@ -675,11 +950,46 @@ def parse_file(path: str, scan_since: str, scan_until: str, policy: str, tz=None
                 break
         ev = Event(ms=ms, ordinal=_as_int(obj.get("ordinal")), total=total, last=last, day=day,
                    model=m or model or "gpt-5")
+        if classify_mode:
+            observations.append(Observation(line=line_no, kind="tokens", total=total, last=last))
+            held_all.append((line_no, ev))
+            continue
         for e, delta in res.receive(ev, policy):
             _file_counted(res, e, delta, scan_since, scan_until)
+    if classify_mode:
+        _count_classified(res, observations, held_all, policy, scan_since, scan_until)
     for e, delta in res.finish(policy):
         _file_counted(res, e, delta, scan_since, scan_until)
     return res
+
+
+def _count_classified(res: FileResult, observations: list, held: list, policy: str,
+                      scan_since: str, scan_until: str) -> None:
+    """A subagent rollout without a history ordinal, read whole
+    [CodexTokenAccountant.finishWholeFile]. When its own history is found to
+    start at a turn that an inter-agent message triggers (after copied
+    history, or confirmed by its first own event), the events before it are
+    copied and counting starts from the counter it had there. Otherwise the
+    file counts by the other rules."""
+    shape = classify(res.rollout_id, observations, res.explicit_parent)
+    owned = shape.owned
+    if owned is None and shape.candidate is not None and shape.candidate[2]:
+        owned = shape.candidate[0]
+    if owned is None:
+        for _line, ev in held:
+            for e, delta in res.receive(ev, policy):
+                _file_counted(res, e, delta, scan_since, scan_until)
+        return
+    res.turn_marker = True
+    res.watermark = owned.baseline
+    res.baseline_checked = True
+    for line, ev in held:
+        if line < owned.start or (owned.first_token is not None and line < owned.first_token):
+            res.skipped_copied += 1
+            continue
+        delta = res.count(ev.ms, ev.ordinal, ev.total, ev.last, policy)
+        if delta is not None:
+            _file_counted(res, ev, delta, scan_since, scan_until)
 
 
 # --------------------------------------------------------------------------
