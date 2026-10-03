@@ -100,6 +100,73 @@ final class CodexEstimateChangeTripwireTests: XCTestCase {
                        : "the note says subagent sessions are counted, and the scanner drops them")
     }
 
+    // MARK: - Subagents and forks counted by simplified rules
+
+    /// A conversation forked from another whose first event repeats the
+    /// parent's last snapshot (CodexBar's direct-fork shape). CLI Pulse does
+    /// not read the inherited counter from the parent's file, so it counts that
+    /// snapshot's own request again: the limit the "simplified rules" line
+    /// states. Once the scanner stops counting it, the line must go.
+    func testTheSimplifiedRulesLineMatchesTheScanner() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("codex-note-fork-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let sessions = tmp.appendingPathComponent("sessions", isDirectory: true)
+
+        let now = Date()
+        let dayFormatter = ISO8601DateFormatter()
+        dayFormatter.formatOptions = [.withFullDate]
+        dayFormatter.timeZone = .current
+        let dir = dayFormatter.string(from: now).split(separator: "-")
+            .reduce(sessions) { $0.appendingPathComponent(String($1)) }
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        func stamp(_ secondsAgo: TimeInterval) -> String {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f.string(from: now.addingTimeInterval(-secondsAgo))
+        }
+        func tokenCount(_ at: String, total: Int, last: Int) -> String {
+            func usage(_ n: Int) -> String { #"{"input_tokens":\#(n),"cached_input_tokens":0,"output_tokens":0}"# }
+            return #"{"type":"event_msg","timestamp":"\#(at)","payload":{"type":"token_count","info":{"total_token_usage":\#(usage(total)),"last_token_usage":\#(usage(last))}}}"#
+        }
+        let parent = [
+            #"{"type":"session_meta","timestamp":"\#(stamp(600))","payload":{"id":"note-root","timestamp":"\#(stamp(600))","source":"vscode"}}"#,
+            #"{"type":"turn_context","timestamp":"\#(stamp(590))","payload":{"model":"gpt-5"}}"#,
+            tokenCount(stamp(580), total: 3_000, last: 3_000),
+            tokenCount(stamp(570), total: 7_000, last: 4_000),
+        ]
+        let fork = [
+            #"{"type":"session_meta","timestamp":"\#(stamp(300))","payload":{"id":"note-fork","forked_from_id":"note-root","timestamp":"\#(stamp(300))","source":"vscode"}}"#,
+            #"{"type":"turn_context","timestamp":"\#(stamp(300))","payload":{"model":"gpt-5"}}"#,
+            tokenCount(stamp(290), total: 7_000, last: 4_000),
+            tokenCount(stamp(280), total: 7_800, last: 800),
+        ]
+        try (parent.joined(separator: "\n") + "\n")
+            .write(to: dir.appendingPathComponent("rollout-a-note-root.jsonl"), atomically: true, encoding: .utf8)
+        try (fork.joined(separator: "\n") + "\n")
+            .write(to: dir.appendingPathComponent("rollout-b-note-fork.jsonl"), atomically: true, encoding: .utf8)
+
+        var options = CostUsageScanner.Options(codexSessionsRoot: sessions, claudeProjectsRoots: [],
+                                               cacheRoot: tmp.appendingPathComponent("cache"), daysToScan: 7)
+        options.refreshMinIntervalSeconds = 0
+        let input = CostUsageScanner.scan(options: options).entries
+            .filter { $0.provider == "Codex" }
+            .reduce(0) { $0 + $1.inputTokens }
+
+        let replayCounted: Bool
+        switch input {
+        case 11_800: replayCounted = true    // 7,000 + the repeated 4,000 + 800
+        case 7_800: replayCounted = false    // the fork's inherited counter read from its parent
+        default:
+            return XCTFail("fixture no longer understood: Codex input \(input)")
+        }
+        XCTAssertEqual(Reason.subagentSessionsCounted.caveat != nil, replayCounted,
+                       replayCounted
+                       ? "forks are counted by simplified rules: the note must say so (Reason.caveat)"
+                       : "the scanner no longer counts a fork's repeated snapshot: drop the simplified-rules line")
+    }
+
     // MARK: - Published prices
 
     /// Before OpenAI published GPT-5.5's price, its row was a copy of GPT-5.4's

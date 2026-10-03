@@ -164,9 +164,21 @@ class FixtureCases(unittest.TestCase):
             "counter_restart_counts_only_above_the_old_high",
             "gap_over_last_counts_the_growth",
             "interleaved_lineages_count_the_higher_only",
+            "inherited_opening_then_a_copied_snapshot",
+            "copied_snapshot_after_the_history_boundary",
         },
         # events without a cumulative total ignored
         "totals-only": {"last_usage_only"},
+        # a child's opening not checked for repeats and copied snapshots: a
+        # snapshot after the history boundary is counted as usage
+        "no-snapshot-skip": {"copied_snapshot_after_the_history_boundary"},
+        # a subagent without a history ordinal counted by the file rules alone:
+        # copied history before its first triggered turn is counted
+        "no-turn-marker": {
+            "compact_subagent_counts_from_its_first_turn",
+            "copied_history_then_a_triggered_turn",
+            "inherited_opening_then_a_copied_snapshot",
+        },
     }
 
     def test_each_rule_changes_exactly_the_cases_it_governs(self):
@@ -271,6 +283,102 @@ class CopiedPrefixMarkers(unittest.TestCase):
         self.assertEqual(replica.line_ordinal(b'{"ordinal": 7}'), 7)
         self.assertIsNone(replica.line_ordinal(b'{"type":"session_meta"}'))
         self.assertIsNone(replica.line_ordinal(b"x" * 600 + b'"ordinal":3'))
+
+
+class SubagentRolloutShape(unittest.TestCase):
+    """CodexBar's CodexSubagentRolloutShapeTests (upstream 3bbf6bc4), against
+    the replica's port of `classify` [CodexSubagentRolloutShapeTests.swift
+    holds the Swift port to the same cases]."""
+
+    Obs = replica.Observation
+    B = (1000, 900, 100)
+
+    def meta(self, line, ident):
+        return self.Obs(line, "meta", id=ident)
+
+    def tokens(self, line, total, last):
+        return self.Obs(line, "tokens", total=total, last=last)
+
+    def turn(self, line):
+        return self.Obs(line, "turn")
+
+    def message(self, line, trigger=True):
+        return self.Obs(line, "message", trigger=trigger)
+
+    def test_single_leaf_metadata_means_an_independent_counter(self):
+        self.assertEqual(replica.classify_ids("leaf", ["leaf"]), replica.INDEPENDENT)
+
+    def test_single_leaf_first_turn_marker_proposes_a_parent_confirmed_suffix(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(1, self.B, self.B), self.turn(3),
+                                          self.message(4)], has_explicit_parent=True)
+        self.assertEqual(shape.semantics, replica.INDEPENDENT)
+        self.assertIsNone(shape.owned)
+        suffix, parent_totals, _confirmed = shape.candidate
+        self.assertEqual(suffix.start, 3)
+        self.assertEqual(parent_totals, self.B)
+
+    def test_single_leaf_marker_without_an_explicit_parent_stays_independent(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(1, self.B, self.B), self.turn(3),
+                                          self.message(4)])
+        self.assertEqual(shape.semantics, replica.INDEPENDENT)
+        self.assertIsNone(shape.candidate)
+
+    def test_later_marker_after_an_earlier_turn_does_not_propose_a_suffix(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.turn(1), self.tokens(2, self.B, self.B),
+                                          self.turn(3), self.message(4)], has_explicit_parent=True)
+        self.assertEqual(shape.semantics, replica.INDEPENDENT)
+        self.assertIsNone(shape.candidate)
+
+    def test_zero_pre_turn_totals_do_not_propose_a_suffix(self):
+        zero = (0, 0, 0)
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(1, zero, zero), self.turn(2),
+                                          self.message(3)], has_explicit_parent=True)
+        self.assertIsNone(shape.candidate)
+
+    def test_nonadjacent_first_turn_trigger_does_not_propose_a_suffix(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(1, self.B, self.B), self.turn(2),
+                                          self.message(4)], has_explicit_parent=True)
+        self.assertIsNone(shape.candidate)
+
+    def test_embedded_ancestor_metadata_means_a_copied_prefix(self):
+        self.assertEqual(replica.classify_ids("leaf", ["leaf", "parent"]), replica.COPIED_PREFIX)
+        self.assertEqual(replica.classify_ids("leaf", ["leaf", "parent", "grandparent"]), replica.COPIED_PREFIX)
+
+    def test_repeated_leaf_metadata_does_not_invent_an_ancestor(self):
+        self.assertEqual(replica.classify_ids("leaf", ["leaf", "leaf"]), replica.INDEPENDENT)
+
+    def test_unknown_or_idless_metadata_is_conservatively_copied(self):
+        self.assertEqual(replica.classify_ids(None, [None, "parent"]), replica.COPIED_PREFIX)
+        self.assertEqual(replica.classify_ids("leaf", ["leaf", None]), replica.COPIED_PREFIX)
+
+    def test_adjacent_trigger_after_the_final_ancestor_opens_an_owned_suffix(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(4, self.B, None), self.meta(5, "parent"),
+                                          self.turn(8), self.message(9)])
+        self.assertEqual(shape.semantics, replica.COPIED_PREFIX)
+        self.assertEqual((shape.owned.start, shape.owned.baseline), (8, self.B))
+
+    def test_nonadjacent_trigger_does_not_invent_an_owned_suffix(self):
+        shape = replica.classify("leaf", [self.tokens(0, self.B, None), self.meta(1, "parent"), self.turn(3),
+                                          self.message(5)])
+        self.assertEqual(shape.semantics, replica.COPIED_PREFIX)
+        self.assertIsNone(shape.owned)
+
+    def test_copied_prefix_can_restart_only_with_strong_reset_evidence(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.tokens(2, self.B, None), self.meta(3, "parent"),
+                                          self.turn(5), self.message(6), self.tokens(7, (50, 10, 5), (50, 10, 5))])
+        self.assertEqual(shape.owned.baseline, (0, 0, 0))
+
+    def test_first_valid_leaf_marker_owns_later_leaf_turns(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.meta(1, "parent"), self.tokens(2, self.B, None),
+                                          self.turn(4), self.message(5), self.tokens(6, (1050, 910, 105), None),
+                                          self.turn(8), self.message(9)])
+        self.assertEqual((shape.owned.start, shape.owned.baseline), (4, self.B))
+
+    def test_later_ancestor_invalidates_a_tentative_marker(self):
+        shape = replica.classify("leaf", [self.meta(0, "leaf"), self.meta(1, "parent"), self.tokens(2, self.B, None),
+                                          self.turn(3), self.message(4), self.meta(5, "grandparent"),
+                                          self.tokens(6, (2000, 1800, 200), None), self.turn(8), self.message(9)])
+        self.assertEqual((shape.owned.start, shape.owned.baseline[0]), (8, 2000))
 
 
 class LastLine(unittest.TestCase):

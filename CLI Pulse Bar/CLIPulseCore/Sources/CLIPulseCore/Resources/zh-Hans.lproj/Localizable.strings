@@ -956,6 +956,7 @@
 "codex_estimate_note.title" = "自%@起，Codex 的数字有所变化";
 "codex_estimate_note.reason_cached_input_once" = "用量仪表盘现在只计一次 Codex 的缓存输入。缓存输入本就包含在 Codex 的输入里，之前却被重复计入，所以仪表盘中 Codex 的 token 总数会变少。";
 "codex_estimate_note.reason_subagent_sessions" = "Codex 的子 Agent 会话现在也会计入。之前它们被漏掉了，所以 Codex 的用量和费用会变高。";
+"codex_estimate_note.subagent_rules_simplified" = "从另一个会话分叉出来的 Codex 会话，以及部分 Codex 版本写下的子 Agent 会话，按简化规则计算，所以从原会话复制过来的请求可能会被再计一次。";
 "codex_estimate_note.reason_published_prices" = "Codex 的费用预估现在按 OpenAI 公布的 API 价格计算。";
 "codex_estimate_note.history_through" = "用量仪表盘中，%@及之前各天的 Codex 数字仍按旧方式计算。";
 "codex_estimate_note.history_some_through" = "用量仪表盘中，%@及之前部分日子的 Codex 数字仍按旧方式计算。";

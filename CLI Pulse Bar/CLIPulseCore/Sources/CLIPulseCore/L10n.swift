@@ -465,6 +465,9 @@ public enum L10n {
         public static func title(_ day: String) -> String { tr("codex_estimate_note.title", day) }
         public static var reasonCachedInputOnce: String { tr("codex_estimate_note.reason_cached_input_once") }
         public static var reasonSubagentSessions: String { tr("codex_estimate_note.reason_subagent_sessions") }
+        /// Shown right after `reasonSubagentSessions`: what is still counted
+        /// by simplified rules (`CodexEstimateChangeNote.Reason.caveat`).
+        public static var subagentRulesSimplified: String { tr("codex_estimate_note.subagent_rules_simplified") }
         public static var reasonPublishedPrices: String { tr("codex_estimate_note.reason_published_prices") }
         /// The card, when every Codex day up to `day` is still counted the old way.
         public static func historyThrough(_ day: String) -> String { tr("codex_estimate_note.history_through", day) }

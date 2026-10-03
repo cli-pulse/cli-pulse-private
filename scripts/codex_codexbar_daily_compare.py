@@ -55,6 +55,31 @@ A difference `explain()` does not compute, flagged on the days it touches:
       on counters that interleave. An unexplained day with events counted
       after a fall says so.
 
+Differences `explain()` does not compute because neither shape is in the
+logs this was measured on (the fixtures pin the app's side of each):
+
+  parent-snapshot
+      A conversation forked from another (`forked_from_id`) can open by
+      repeating the parent's last snapshot, and so can a subagent written
+      without a history ordinal whose copy of the parent's history has no turn
+      the parent's message triggers. The app counts that snapshot's own
+      request once more (the rest of its counter is inherited); CodexBar reads
+      the parent's file and subtracts the parent's total at the fork time, or
+      counts nothing from a copy whose parent it cannot name. Fixtures
+      `direct_fork_counts_the_replayed_parent_request` and
+      `copied_history_without_a_turn_marker_counts_the_last_copied_request`.
+
+  unmarked-boundary
+      A child whose history boundary lies inside the file with no copied
+      session_meta and no inter-agent message before it: the app counts the
+      events numbered before the boundary (a migrated rollout resumed later
+      looks the same), CodexBar counts none of them.
+
+Ported from CodexBar in 1.56 and no longer different: a subagent without a
+history ordinal whose own history starts at a triggered turn (after copied
+history, or after a compacted parent's snapshot), and repeats or copied
+snapshots before a child's first own request.
+
 Found and corrected: the line-number rule once dropped every migrated
 subagent rollout, just as CodexBar does, and a day that differed because of
 those files was put down to copied parent history. Nothing in them is copied
