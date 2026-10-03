@@ -666,6 +666,16 @@ public enum CostFormatter {
         CurrencyConverter.shared.format(cost)
     }
 
+    /// v1.56: `format`, marked "≈" when part of the figure was charged at a
+    /// rate borrowed from a neighbouring model (`CostCoverage`). The mark is a
+    /// symbol, the same in every language, like "$".
+    public static func format(_ cost: Double, approximate: Bool) -> String {
+        approximate ? approximateMark + format(cost) : format(cost)
+    }
+
+    /// The prefix for a figure that includes an approximate price.
+    public static let approximateMark = "≈"
+
     /// A compact token count. Kept under this name for its many call sites;
     /// the one implementation is `TokenFormatter.format`.
     public static func formatUsage(_ usage: Int) -> String {

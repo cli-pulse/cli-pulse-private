@@ -174,7 +174,10 @@ struct ProvidersTab: View {
                 Text(L10n.dashboard.today)
                     .font(.system(size: 8))
                     .foregroundStyle(.tertiary)
-                Text(CostFormatter.format(providerState.costSummary.todayTotal))
+                Text(CostFormatter.format(
+                    providerState.costSummary.todayTotal,
+                    approximate: providerState.costSummary.todayCoverage.hasApproximatePrices
+                ))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
             }
@@ -183,7 +186,10 @@ struct ProvidersTab: View {
                 Text(L10n.dashboard.thirtyDayEst)
                     .font(.system(size: 8))
                     .foregroundStyle(.tertiary)
-                Text(CostFormatter.format(providerState.costSummary.thirtyDayTotal))
+                Text(CostFormatter.format(
+                    providerState.costSummary.thirtyDayTotal,
+                    approximate: providerState.costSummary.coverage.hasApproximatePrices
+                ))
                     .font(.system(size: 13, weight: .bold, design: .rounded))
                     .foregroundStyle(.green)
             }
@@ -496,7 +502,7 @@ struct EnhancedProviderCard: View {
     private var isQuotaProvider: Bool { provider.metadata?.supports_quota ?? false }
 
     @ViewBuilder
-    private func usageColumn(header: String, metric: CardMetric, cost: Double) -> some View {
+    private func usageColumn(header: String, metric: CardMetric, cost: Double, approximateCost: Bool) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(header)
                 .font(.system(size: 9))
@@ -511,7 +517,9 @@ struct EnhancedProviderCard: View {
                     .help(metric.breakdownTooltip)
             }
             if showCost {
-                Text(CostFormatter.format(cost))
+                // v1.56: "≈" when part of the cost was charged at a rate
+                // borrowed from a neighbouring model.
+                Text(CostFormatter.format(cost, approximate: approximateCost))
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.green)
             }
@@ -776,8 +784,10 @@ struct EnhancedProviderCard: View {
                 let today = metric(for: Date())
                 let week = metric(for: nil, weekRolling: true)
                 HStack(spacing: 12) {
-                    usageColumn(header: L10n.dashboard.today, metric: today, cost: provider.estimated_cost_today)
-                    usageColumn(header: L10n.providers.thisWeek, metric: week, cost: provider.estimated_cost_week)
+                    usageColumn(header: L10n.dashboard.today, metric: today, cost: provider.estimated_cost_today,
+                                approximateCost: state.scanPriceIsApproximate(for: provider.provider, onDate: Date()))
+                    usageColumn(header: L10n.providers.thisWeek, metric: week, cost: provider.estimated_cost_week,
+                                approximateCost: state.scanPriceIsApproximateThisWeek(for: provider.provider))
                     Spacer()
                 }
 

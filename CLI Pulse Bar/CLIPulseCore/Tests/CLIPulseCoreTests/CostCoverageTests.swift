@@ -260,11 +260,11 @@ final class CostCoverageTests: XCTestCase {
                        "an empty scan has nothing unpriced; Partial would be a false alarm")
     }
 
-    /// The three states must be distinguishable, or the badge collapses back
-    /// into the two-state one this replaced.
-    func testThreeFidelityStatesAreDistinct() {
-        let states: Set<CostCoverage.Fidelity> = [.exact, .partial, .estimated]
-        XCTAssertEqual(states.count, 3)
+    /// The four states must be distinguishable, or the badge collapses back
+    /// into the two-state one this replaced. (`approximate` since 1.56.)
+    func testFourFidelityStatesAreDistinct() {
+        let states: Set<CostCoverage.Fidelity> = [.exact, .approximate, .partial, .estimated]
+        XCTAssertEqual(states.count, 4)
     }
 
     // MARK: - Rounding

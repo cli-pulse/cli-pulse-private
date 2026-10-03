@@ -701,6 +701,11 @@
 "cost.by_model" = "按模型";
 "cost.coverage_summary" = "已计价 %1$d%% 的 token · %2$d 个模型没有单价";
 "cost.coverage_help" = "这些模型没有价格条目，其 token 在上面的合计里按 $0 计入：%@";
+
+/* v1.56 — approximate prices: a model with no price entry is priced at the rate of a related model (same Claude family, or for Codex the same -pro/-mini/-nano tier) of the same or an earlier version. The figures carry "≈" (a symbol, kept as is in every language). Do not reuse the words of the Partial or Estimated badge here. */
+"cost.approximate" = "近似";
+"cost.approximate_summary" = "≈ %d 个模型按同系列模型的单价计算";
+"cost.approximate_help" = "这些模型没有价格条目，因此按同系列中版本相同或更早的模型的单价计算。标有 ≈ 的金额含这些模型的费用：%@";
 "watch.unread_count" = "%d 条未读";
 "watch.snooze_15" = "15 分钟";
 "watch.snooze_30" = "30 分钟";

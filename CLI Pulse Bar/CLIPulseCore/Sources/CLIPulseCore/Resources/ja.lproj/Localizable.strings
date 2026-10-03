@@ -701,6 +701,11 @@
 "cost.by_model" = "モデル別";
 "cost.coverage_summary" = "トークンの %1$d%% を価格計算 · %2$d 個のモデルに単価がありません";
 "cost.coverage_help" = "これらのモデルには単価が登録されていないため、トークンは上の合計に $0 として計上されています: %@";
+
+/* v1.56 — approximate prices: a model with no price entry is priced at the rate of a related model (same Claude family, or for Codex the same -pro/-mini/-nano tier) of the same or an earlier version. The figures carry "≈" (a symbol, kept as is in every language). Do not reuse the words of the Partial or Estimated badge here. */
+"cost.approximate" = "近似";
+"cost.approximate_summary" = "≈ %d 個のモデルに同系列モデルの単価を適用";
+"cost.approximate_help" = "これらのモデルには単価が登録されていないため、同系列で同じバージョンかそれ以前のモデルの単価で計算しています。≈ の付いた金額にはこれらのモデルの分が含まれます: %@";
 "watch.unread_count" = "%d 件未読";
 "watch.snooze_15" = "15分";
 "watch.snooze_30" = "30分";

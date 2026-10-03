@@ -2753,7 +2753,8 @@ extension AppState {
                 // scanned the JSONL ourselves, so we know which entries had a
                 // rate. The cloud-estimate branch below deliberately leaves
                 // this `.unknown`; see `CostCoverage`.
-                coverage: CostCoverage.from(entries: scan.entries)
+                coverage: CostCoverage.from(entries: scan.entries),
+                todayCoverage: CostCoverage.from(entries: todayEntries)
             )
             return
         }

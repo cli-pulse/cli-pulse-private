@@ -1,0 +1,289 @@
+import XCTest
+@testable import CLIPulseCore
+
+/// v1.56 — a cost charged at a rate borrowed from a neighbouring model is
+/// approximate, and the card says so.
+///
+/// A model with no price entry has been priced at a related model's rate
+/// since August (Claude since May): better than the $0 it read before. But the scanner knew, at the moment it chose the rate, that the
+/// rate was borrowed, and threw that away. The figure reached the card looking
+/// exactly like a listed price, under a badge that said "Exact".
+///
+/// Text is asserted in zh-Hans: the English fallback of a missing key reads
+/// like a translation, so an English-only assertion passes with the lookup
+/// broken.
+final class ApproximatePriceCoverageTests: XCTestCase {
+
+    private var savedOverride: String?
+
+    override func setUp() {
+        super.setUp()
+        savedOverride = LocaleOverrideStore.shared.override
+    }
+
+    override func tearDown() {
+        LocaleOverrideStore.shared.set(savedOverride)
+        super.tearDown()
+    }
+
+    private func entry(
+        _ model: String,
+        provider: String = "Codex",
+        tokens: Int,
+        cost: Double?,
+        approximate: Bool = false
+    ) -> CostUsageScanResult.DailyEntry {
+        CostUsageScanResult.DailyEntry(
+            date: "2026-09-30", provider: provider, model: model,
+            inputTokens: tokens, cachedTokens: 0, outputTokens: 0,
+            costUSD: cost, priceIsApproximate: approximate
+        )
+    }
+
+    // MARK: - The class
+
+    /// A borrowed rate goes to `approximate`, not `priced`: the load-bearing
+    /// assertion. If it lands in `pricedTokens`, nothing downstream can tell a
+    /// borrowed rate from a listed one again.
+    func testABorrowedRateIsApproximateNotPriced() {
+        let coverage = CostCoverage.from(entries: [
+            entry("gpt-6-astra", tokens: 700, cost: 7),
+            entry("gpt-5.7", tokens: 300, cost: 1.2, approximate: true),
+        ])
+        XCTAssertEqual(coverage.pricedTokens, 700)
+        XCTAssertEqual(coverage.approximateTokens, 300)
+        XCTAssertEqual(coverage.unpricedTokens, 0)
+        XCTAssertEqual(coverage.approximateModels, ["gpt-5.7"])
+        XCTAssertTrue(coverage.hasApproximatePrices)
+    }
+
+    /// It still carried a rate, so it does not make the "Priced N% of tokens"
+    /// line appear: that line is about tokens counted as $0.
+    func testABorrowedRateStillCountsAsHavingARate() {
+        let coverage = CostCoverage.from(entries: [
+            entry("gpt-6-astra", tokens: 700, cost: 7),
+            entry("gpt-5.7", tokens: 300, cost: 1.2, approximate: true),
+        ])
+        XCTAssertEqual(coverage.pricedPercent, 100)
+        XCTAssertFalse(coverage.shouldDisclose)
+    }
+
+    func testApproximateModelsAreMostTokensFirstAndNamedOnce() {
+        let coverage = CostCoverage.from(entries: [
+            entry("small", tokens: 10, cost: 0.1, approximate: true),
+            entry("big", tokens: 500, cost: 1, approximate: true),
+            entry("big", provider: "Codex", tokens: 500, cost: 1, approximate: true),
+            entry("claude-opus-6", provider: "Claude", tokens: 50, cost: 0.5, approximate: true),
+        ])
+        XCTAssertEqual(coverage.approximateModels, ["big", "claude-opus-6", "small"])
+        XCTAssertEqual(coverage.approximateProviders, ["Codex", "Claude"])
+    }
+
+    /// A cost of nil is unpriced, whatever the flag says: an entry cannot be
+    /// both $0-by-omission and approximately priced.
+    func testAnUnpricedEntryIsNeverApproximate() {
+        let e = entry("mystery", tokens: 100, cost: nil, approximate: true)
+        XCTAssertFalse(e.priceIsApproximate)
+        let coverage = CostCoverage.from(entries: [e])
+        XCTAssertEqual(coverage.unpricedModels, ["mystery"])
+        XCTAssertFalse(coverage.hasApproximatePrices)
+    }
+
+    /// A server figure's composition is unknown: it never claims approximate
+    /// prices any more than it claims full coverage.
+    func testAServerEstimateSaysNothingAboutApproximatePrices() {
+        XCTAssertFalse(CostCoverage.unknown.hasApproximatePrices)
+        XCTAssertFalse(CostCoverage(basis: .serverEstimate, approximateTokens: 10).hasApproximatePrices)
+    }
+
+    // MARK: - The badge
+
+    func testAScanWithABorrowedRateIsNotBadgedExact() {
+        let summary = CostSummary(isPrecise: true, coverage: CostCoverage.from(entries: [
+            entry("gpt-6-astra", tokens: 700, cost: 7),
+            entry("gpt-5.7", tokens: 300, cost: 1.2, approximate: true),
+        ]))
+        XCTAssertEqual(summary.fidelity, .approximate)
+    }
+
+    /// $0-by-omission is the bigger error, so it wins the badge; the card still
+    /// shows both lines.
+    func testMissingPricesOutrankBorrowedOnes() {
+        let summary = CostSummary(isPrecise: true, coverage: CostCoverage.from(entries: [
+            entry("gpt-5.7", tokens: 300, cost: 1.2, approximate: true),
+            entry("mystery", tokens: 300, cost: nil),
+        ]))
+        XCTAssertEqual(summary.fidelity, .partial)
+        XCTAssertTrue(summary.coverage.hasApproximatePrices)
+    }
+
+    func testTodayHasItsOwnCoverage() {
+        let summary = CostSummary(
+            isPrecise: true,
+            coverage: CostCoverage.from(entries: [entry("gpt-5.7", tokens: 1, cost: 1, approximate: true)]),
+            todayCoverage: CostCoverage.from(entries: [entry("gpt-6-astra", tokens: 1, cost: 1)])
+        )
+        XCTAssertTrue(summary.coverage.hasApproximatePrices)
+        XCTAssertFalse(summary.todayCoverage.hasApproximatePrices,
+                       "a borrowed rate last week says nothing about today's figure")
+        XCTAssertFalse(CostSummary().todayCoverage.hasApproximatePrices)
+    }
+
+    // MARK: - What it looks like
+
+    func testAnApproximateFigureIsMarked() {
+        XCTAssertEqual(CostFormatter.format(12.5, approximate: true), "≈" + CostFormatter.format(12.5))
+        XCTAssertEqual(CostFormatter.format(12.5, approximate: false), CostFormatter.format(12.5))
+    }
+
+    func testTheTextInChinese() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(L10n.cost.fidelityLabel(.approximate), "近似")
+        XCTAssertEqual(L10n.cost.approximateSummary(2), "≈ 2 个模型按同系列模型的单价计算")
+        XCTAssertEqual(
+            L10n.cost.approximateHelp("gpt-5.7, claude-opus-6"),
+            "这些模型没有价格条目，因此按同系列中版本相同或更早的模型的单价计算。标有 ≈ 的金额含这些模型的费用：gpt-5.7, claude-opus-6"
+        )
+        // The other three badge states are unchanged.
+        XCTAssertEqual(L10n.cost.fidelityLabel(.exact), "精确")
+        XCTAssertEqual(L10n.cost.fidelityLabel(.partial), "部分")
+        XCTAssertEqual(L10n.cost.fidelityLabel(.estimated), "估算")
+    }
+
+    /// Every shipped language has the three strings, the "≈" the figures carry,
+    /// and the model list in the help.
+    func testEveryLanguageCarriesTheMarkAndTheModels() {
+        for language in ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"] {
+            LocaleOverrideStore.shared.set(language)
+            XCTAssertFalse(L10n.cost.approximate.isEmpty, language)
+            XCTAssertNotEqual(L10n.cost.approximate, "cost.approximate", language)
+            XCTAssertTrue(L10n.cost.approximateSummary(3).hasPrefix("≈"), language)
+            XCTAssertTrue(L10n.cost.approximateSummary(3).contains("3"), language)
+            XCTAssertTrue(L10n.cost.approximateHelp("gpt-5.7").contains("gpt-5.7"), language)
+            XCTAssertTrue(L10n.cost.approximateHelp("gpt-5.7").contains("≈"), language)
+        }
+    }
+
+    /// The summary line explains "≈". Built from the Partial or Estimated
+    /// badge's words it read as the explanation of a different badge, and
+    /// "partly estimated" implied the rest of the card was not an estimate,
+    /// when all of it is one at API prices.
+    func testTheSummaryDoesNotBorrowTheOtherBadgesWords() {
+        for language in ["en", "es", "ja", "ko", "zh-Hans", "zh-Hant"] {
+            LocaleOverrideStore.shared.set(language)
+            let summary = L10n.cost.approximateSummary(3).lowercased()
+            for badge in [L10n.cost.partial, L10n.cost.estimated] {
+                XCTAssertFalse(summary.contains(badge.lowercased()), "\(language): \(badge)")
+            }
+        }
+    }
+
+    /// The two tooltips name at most six models. A cut list ends in "…", so it
+    /// does not read as the whole of what the line above counted.
+    func testATooltipListSaysWhenItIsCut() {
+        let seven = (1...7).map { "m\($0)" }
+        XCTAssertEqual(CostCoverage.tooltipList(Array(seven.prefix(6))), "m1, m2, m3, m4, m5, m6")
+        XCTAssertEqual(CostCoverage.tooltipList(seven), "m1, m2, m3, m4, m5, m6, …")
+        XCTAssertEqual(CostCoverage.tooltipList([]), "")
+    }
+
+    // MARK: - Figures outside the cost card
+
+    /// A provider's 30-day figure (its row in the card, and the API-equivalent
+    /// half of its subscription line) is marked when that provider had a
+    /// borrowed rate, and only then.
+    func testAProvidersFigureIsMarkedOnlyForThatProvider() {
+        let coverage = CostCoverage.from(entries: [
+            entry("claude-opus-6", provider: "Claude", tokens: 1, cost: 1, approximate: true),
+            entry("gpt-6-astra", tokens: 1, cost: 1),
+        ])
+        let local = CostSummary(isPrecise: true, coverage: coverage)
+        XCTAssertTrue(local.providerFigureIsApproximate("Claude"))
+        XCTAssertFalse(local.providerFigureIsApproximate("Codex"))
+        XCTAssertFalse(CostSummary(isPrecise: false, coverage: coverage).providerFigureIsApproximate("Claude"),
+                       "a server figure never claims it")
+    }
+
+    /// The Overview's top "Cost Today" card shows the server's today total
+    /// unless the local one replaced it. Only the local figure is known to
+    /// include a borrowed rate, so only it is marked.
+    func testTheTopCardsTodayIsMarkedOnlyWhenItIsTheLocalFigure() {
+        let borrowedToday = CostSummary(
+            todayTotal: 12.5,
+            isPrecise: true,
+            todayCoverage: CostCoverage.from(entries: [entry("gpt-5.7", tokens: 1, cost: 12.5, approximate: true)])
+        )
+        XCTAssertTrue(borrowedToday.todayFigureIsApproximate(12.5))
+        XCTAssertFalse(borrowedToday.todayFigureIsApproximate(3), "the server's figure")
+        let listedToday = CostSummary(
+            todayTotal: 12.5,
+            isPrecise: true,
+            todayCoverage: CostCoverage.from(entries: [entry("gpt-6-astra", tokens: 1, cost: 12.5)])
+        )
+        XCTAssertFalse(listedToday.todayFigureIsApproximate(12.5))
+        XCTAssertFalse(CostSummary().todayFigureIsApproximate(0))
+    }
+}
+
+/// The wiring: a local scan reaches the cost card's coverage, today's coverage
+/// and the provider card's windows through `AppState`.
+@MainActor
+final class ApproximatePriceWiringTests: XCTestCase {
+
+    private func key(daysAgo: Int) -> String {
+        DayKey.string(from: Date().addingTimeInterval(-Double(daysAgo) * 86_400))
+    }
+
+    private func entry(_ day: String, _ model: String, provider: String = "Codex",
+                       approximate: Bool) -> CostUsageScanResult.DailyEntry {
+        CostUsageScanResult.DailyEntry(
+            date: day, provider: provider, model: model,
+            inputTokens: 1_000, cachedTokens: 0, outputTokens: 0,
+            costUSD: 0.01, priceIsApproximate: approximate
+        )
+    }
+
+    /// Today listed, three days ago borrowed: the 30-day figure is "≈", today's
+    /// is not, and the badge says Approximate.
+    func testTheScanReachesTheCardsCoverage() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 0), "gpt-6-astra", approximate: false),
+            entry(key(daysAgo: 3), "gpt-5.7", approximate: true),
+        ])
+        state.updateCostSummary()
+        XCTAssertTrue(state.costSummary.isPrecise)
+        XCTAssertTrue(state.costSummary.coverage.hasApproximatePrices)
+        XCTAssertEqual(state.costSummary.coverage.approximateModels, ["gpt-5.7"])
+        XCTAssertFalse(state.costSummary.todayCoverage.hasApproximatePrices,
+                       "today's figure has no borrowed rate in it")
+        XCTAssertEqual(state.costSummary.fidelity, .approximate)
+    }
+
+    func testTodaysBorrowedRateMarksToday() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 0), "gpt-5.7", approximate: true),
+        ])
+        state.updateCostSummary()
+        XCTAssertTrue(state.costSummary.todayCoverage.hasApproximatePrices)
+    }
+
+    /// The provider card's Today and This Week columns, per provider.
+    func testTheProviderCardsWindows() {
+        let state = AppState()
+        state.costUsageScanResult = CostUsageScanResult(entries: [
+            entry(key(daysAgo: 3), "gpt-5.7", approximate: true),
+            entry(key(daysAgo: 10), "claude-opus-6", provider: "Claude", approximate: true),
+            entry(key(daysAgo: 0), "claude-opus-5", provider: "Claude", approximate: false),
+        ])
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Codex", onDate: Date()))
+        XCTAssertTrue(state.scanPriceIsApproximateThisWeek(for: "Codex"))
+        XCTAssertTrue(state.scanPriceIsApproximate(for: "Codex"))
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Claude", onDate: Date()))
+        XCTAssertFalse(state.scanPriceIsApproximateThisWeek(for: "Claude"),
+                       "ten days ago is outside the rolling week")
+        state.costUsageScanResult = nil
+        XCTAssertFalse(state.scanPriceIsApproximate(for: "Codex"))
+    }
+}
