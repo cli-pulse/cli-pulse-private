@@ -2720,10 +2720,52 @@ public actor APIClient {
         let completedEntries = Self.dailyUsageRowsToUpload(scanResult.entries, now: now)
         guard !completedEntries.isEmpty else { return }
 
-        guard let request = dailyUsageUpsertRequest(
-            completedEntries,
-            deviceId: dailyUsageDeviceId(userId: userId)
-        ) else { return }
+        let metrics: [[String: Any]] = completedEntries.map { entry in
+            [
+                "metric_date": entry.date,
+                "provider": entry.provider,
+                "model": entry.model,
+                "input_tokens": entry.inputTokens,
+                "cached_tokens": entry.cachedTokens,
+                "output_tokens": entry.outputTokens,
+                "cost": entry.costUSD ?? 0.0,
+            ]
+        }
+
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage") else { return }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        // v0.3.1: send our paired device_id so the row lands under
+        // (user_id, device_id, ...) and doesn't race-clobber rows from
+        // a Win/Linux Tauri client running on the same account.
+        //
+        // 2026-05-08: switched `load()` → `loadIfMatches(authenticatedUserId:)`.
+        // Background: when the user signs into a different Supabase account
+        // while the app-group still holds a paired-helper config from the
+        // previous account, the stale `deviceId` was being sent to the
+        // server. The server's ownership check
+        // (`devices.user_id == auth.uid()` for the supplied id) fails →
+        // raises errcode 42501 → HTTP 403 → every syncDailyUsage upload
+        // bounces and the iPhone sees stale cloud data forever. The
+        // guarded loader returns nil on mismatch so we fall through to
+        // the no-`p_device_id` path (server sentinel UUID; no ownership
+        // check). Re-pairing the helper with the new account refreshes
+        // the config to the matching pair.
+        var body: [String: Any] = ["metrics": metrics]
+        if let deviceId = HelperConfig.loadIfMatches(
+            authenticatedUserId: userId,
+            runtimeEnvironment: runtimeEnvironment
+        )?.deviceId, !deviceId.isEmpty {
+            body["p_device_id"] = deviceId
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         do {
             let (_, response) = try await dataWithRetry(
@@ -2738,25 +2780,72 @@ public actor APIClient {
             apiLogger.warning("[syncDailyUsage] error: \(error.localizedDescription)")
         }
     }
+    #endif
 
-    /// The device id this Mac's daily usage rows are stored under, or nil for
-    /// the server's stand-in for an unpaired Mac
+    // MARK: - Daily Usage Fetch (cross-platform — iOS/Android pull history from Supabase)
+
+    /// Fetch daily usage data from Supabase (for iOS/Android display).
+    public func fetchDailyUsage(days: Int = 30) async -> [DailyUsage] {
+        guard userId != nil else { return [] }
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/get_daily_usage") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
+        if let token = accessToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["days": days])
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else { return [] }
+
+            guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+            return Self.dailyUsageRows(from: items)
+        } catch {
+            return []
+        }
+    }
+
+    /// Decodes `get_daily_usage` rows, skipping any whose `metric_date` names
+    /// no plausible Gregorian day.
+    ///
+    /// A Mac set to another calendar uploaded its rows dated in that
+    /// calendar's numbering until day keys were pinned to Gregorian
+    /// (0008-09-17 for 2026-09-17 under Japanese, 2569-09-17 under Buddhist).
+    /// Those rows stay on the server until someone deletes them. They name no
+    /// real day, and the Buddhist ones sort after every real day, so kept they
+    /// would fill the heatmap archive and the pet ledger with keys nothing
+    /// ever looks up.
+    static func dailyUsageRows(from items: [[String: Any]]) -> [DailyUsage] {
+        items.compactMap { item -> DailyUsage? in
+            guard let date = item["metric_date"] as? String,
+                  DayKey.isPlausible(date),
+                  let provider = item["provider"] as? String,
+                  let model = item["model"] as? String else { return nil }
+            return DailyUsage(
+                date: date,
+                provider: provider,
+                model: model,
+                inputTokens: (item["input_tokens"] as? Int) ?? 0,
+                cachedTokens: (item["cached_tokens"] as? Int) ?? 0,
+                outputTokens: (item["output_tokens"] as? Int) ?? 0,
+                cost: (item["cost"] as? Double) ?? 0
+            )
+        }
+    }
+
+    #if os(macOS)
+    // MARK: - v1.56: the Codex history rebuild's cloud side
+
+    /// The device id this Mac's daily usage rows are stored under, decided
+    /// as `syncDailyUsage` decides it (see the comment there): the paired
+    /// device's when the app group's helper config belongs to the signed-in
+    /// account, otherwise nil, the server's stand-in for an unpaired Mac
     /// (`unpairedDailyUsageDeviceId`).
-    ///
-    /// v0.3.1: the paired device_id, so the rows land under (user_id,
-    /// device_id, ...) and don't race-clobber rows from a Win/Linux Tauri
-    /// client running on the same account.
-    ///
-    /// 2026-05-08: `loadIfMatches(authenticatedUserId:)`, not `load()`. When
-    /// the user signs into a different Supabase account while the app group
-    /// still holds a paired-helper config from the previous account, the
-    /// stale `deviceId` was being sent to the server. The server's ownership
-    /// check (`devices.user_id == auth.uid()` for the supplied id) fails →
-    /// raises errcode 42501 → HTTP 403 → every syncDailyUsage upload bounces
-    /// and the iPhone sees stale cloud data forever. The guarded loader
-    /// returns nil on mismatch so we fall through to the no-`p_device_id`
-    /// path (server sentinel UUID; no ownership check). Re-pairing the helper
-    /// with the new account refreshes the config to the matching pair.
     private func dailyUsageDeviceId(userId: String) -> String? {
         guard let deviceId = HelperConfig.loadIfMatches(
             authenticatedUserId: userId,
@@ -2798,8 +2887,6 @@ public actor APIClient {
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         return request
     }
-
-    // MARK: - v1.56: the Codex history rebuild's cloud side
 
     /// The signed-in account's side of the Codex history rebuild
     /// (`CodexHistoryRebuild`), or nil when `authorizationLease` is no longer
@@ -2911,62 +2998,6 @@ public actor APIClient {
         return true
     }
     #endif
-
-    // MARK: - Daily Usage Fetch (cross-platform — iOS/Android pull history from Supabase)
-
-    /// Fetch daily usage data from Supabase (for iOS/Android display).
-    public func fetchDailyUsage(days: Int = 30) async -> [DailyUsage] {
-        guard userId != nil else { return [] }
-        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/get_daily_usage") else { return [] }
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue(supabaseAnonKey, forHTTPHeaderField: "apikey")
-        if let token = accessToken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        request.httpBody = try? JSONSerialization.data(withJSONObject: ["days": days])
-
-        do {
-            let (data, response) = try await session.data(for: request)
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200...299).contains(status) else { return [] }
-
-            guard let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
-            return Self.dailyUsageRows(from: items)
-        } catch {
-            return []
-        }
-    }
-
-    /// Decodes `get_daily_usage` rows, skipping any whose `metric_date` names
-    /// no plausible Gregorian day.
-    ///
-    /// A Mac set to another calendar uploaded its rows dated in that
-    /// calendar's numbering until day keys were pinned to Gregorian
-    /// (0008-09-17 for 2026-09-17 under Japanese, 2569-09-17 under Buddhist).
-    /// Those rows stay on the server until someone deletes them. They name no
-    /// real day, and the Buddhist ones sort after every real day, so kept they
-    /// would fill the heatmap archive and the pet ledger with keys nothing
-    /// ever looks up.
-    static func dailyUsageRows(from items: [[String: Any]]) -> [DailyUsage] {
-        items.compactMap { item -> DailyUsage? in
-            guard let date = item["metric_date"] as? String,
-                  DayKey.isPlausible(date),
-                  let provider = item["provider"] as? String,
-                  let model = item["model"] as? String else { return nil }
-            return DailyUsage(
-                date: date,
-                provider: provider,
-                model: model,
-                inputTokens: (item["input_tokens"] as? Int) ?? 0,
-                cachedTokens: (item["cached_tokens"] as? Int) ?? 0,
-                outputTokens: (item["output_tokens"] as? Int) ?? 0,
-                cost: (item["cost"] as? Double) ?? 0
-            )
-        }
-    }
 
     // MARK: - Yield Score
 
