@@ -192,9 +192,9 @@ public struct GeminiCollector: ProviderCollector, Sendable {
     /// the placeholder client ID never shows (`GeminiOAuthManager.offersOwnSignIn`).
     static func expiredTokenIssue(source: TokenSource) -> CredentialIssue {
         switch source {
-        case .keychain:
+        case .keychain, .file:
             return .tokenExpiredReconnectOAuth
-        case .file, .antigravity:
+        case .antigravity:
             return .sessionExpiredSignInAgain
         }
     }
