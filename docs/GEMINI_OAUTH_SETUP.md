@@ -93,7 +93,10 @@ drift.
 
 1. Build and run the app.
 2. Open provider settings for Gemini.
-3. Click **Connect Gemini**.
+3. Click **Connect Gemini**. The editor shows the **Google OAuth** section only
+   once `clientID` is a real client ID (`GeminiOAuthManager.offersOwnSignIn`);
+   a build with the placeholder offers no CLI Pulse sign-in at all and reads
+   Gemini from the Gemini CLI's or Antigravity's own login instead.
 4. A browser sheet should open asking you to sign in with Google.
 5. After authorization, you should see **Connected** status.
 6. Verify quota data loads in the main UI.
@@ -131,7 +134,8 @@ remove the old helper and snapshot before acceptance.
 
 ## Troubleshooting
 
-- **"OAuth client ID not configured"** — You forgot Step 5.
+- **No Google OAuth section in the Gemini editor**, or **"OAuth client ID not
+  configured"** — You forgot Step 5.
 - **Browser opens but callback fails** — The URL scheme in Step 4 does not
   match the reversed client ID, or the URL type is missing from Info.plist.
 - **Token refresh returns 401** — The refresh token may have been revoked. Click

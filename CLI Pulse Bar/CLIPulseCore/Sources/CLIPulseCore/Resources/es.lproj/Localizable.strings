@@ -898,7 +898,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "provider_config.connect_gemini" = "Conectar Gemini";
 "provider_config.gemini_uses_google" = "Usa tu cuenta de Google. No necesitas clave API.";
 "provider_config.gemini_cli_fallback" = "Respaldo de Gemini CLI";
-"provider_config.gemini_cli_fallback_note" = "Si no se puede renovar el inicio de sesión de Gemini en CLI Pulse, se usan como respaldo las credenciales propias de Gemini CLI. Solo en la versión de descarga directa.";
+"provider_config.gemini_cli_fallback_note" = "Si CLI Pulse no puede renovar tu inicio de sesión de Gemini, se usan como respaldo las credenciales propias de Gemini CLI. Solo en la versión de descarga directa.";
 "provider_config.claude_code" = "Claude Code";
 "provider_config.connect_claude_code" = "Conectar Claude Code";
 "provider_config.claude_keychain_hint" = "Lee tu inicio de sesión existente de Claude Code. macOS pedirá permiso una vez: haz clic en «Permitir siempre».";

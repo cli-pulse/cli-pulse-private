@@ -344,8 +344,8 @@ The Companion CLI (`helper/`, the `.pkg`) ships on its own line: the release
 `HelperInstaller` reads (at the `JasonYeYuhe/` URL compiled into it) to offer
 Install and Update. `scripts/build_helper_pkg.sh` takes the version from
 `helper/system_collector.py:HELPER_VERSION`, and
-`scripts/check_helper_version_sync.sh` keeps HelperSwift's `kHelperVersion` on
-the same number.
+`scripts/check_helper_version_sync.sh` keeps HelperSwift's `kHelperVersion` and
+the embedded Uninstaller's `helper-uninstaller/Info.plist` on the same number.
 
 **Gate for 1.55.** The 1.55 app says, in its Companion CLI install text and in
 the notes under the local-scan answer and the Claude keychain switches, that
