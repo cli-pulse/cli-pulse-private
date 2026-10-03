@@ -264,7 +264,7 @@ final class CodexPricingTableTests: XCTestCase {
         XCTAssertEqual(P.codexPriceResolution("gpt-6.2"),
                        P.PriceResolution(key: "gpt-6.1-sol", isApproximate: true))
         XCTAssertEqual(P.claudePriceResolution("claude-opus-6"),
-                       P.PriceResolution(key: "claude-opus-5", isApproximate: true))
+                       P.PriceResolution(key: "claude-opus-5-5", isApproximate: true))
         XCTAssertNil(P.codexPriceResolution("o3"), "no neighbour, no rate")
     }
 
@@ -423,7 +423,7 @@ final class CodexPricingTableTests: XCTestCase {
         let unknown = try XCTUnwrap(entries.first { $0.model == "claude-opus-6" }, "keeps the name Claude Code wrote")
         let known = try XCTUnwrap(entries.first { $0.model == "claude-opus-5" })
         XCTAssertTrue(unknown.priceIsApproximate)
-        XCTAssertEqual(unknown.costUSD ?? -1, 5, accuracy: 1e-9, "Opus 5's $5 per 1M input")
+        XCTAssertEqual(unknown.costUSD ?? -1, 4, accuracy: 1e-9, "Opus 5.5's $4 per 1M input")
         XCTAssertFalse(known.priceIsApproximate)
         XCTAssertEqual(known.costUSD ?? -1, 5, accuracy: 1e-9)
 
