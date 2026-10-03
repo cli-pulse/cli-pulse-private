@@ -260,13 +260,60 @@ final class LocalScanConsentCopyTests: XCTestCase {
         }
     }
 
+    /// v1.56: the year is read once, and the Codex logs again whenever an
+    /// update changes how Codex is counted (`DailyUsageArchiveManager.
+    /// rebuildCodexHistoryIfNeeded`). Until 1.56 these lines said "once" and
+    /// nothing more, which the rebuild would have made false. Every line that
+    /// describes the read of older logs says so, in every language; the
+    /// titles and captions that only name it no longer call it one-time.
+    func test_everyLineThatDescribesTheYearSaysCodexIsReadAgain() {
+        // How each catalogue used to call the read once and for all.
+        let oneTime: [String: [String]] = [
+            "en": ["one-time", "Once, and only"],
+            "zh-Hans": ["一次性", "读取一次最多", "读取一次旧日志"],
+            "zh-Hant": ["讀取一次最多", "讀取一次舊日誌"],
+            "ja": ["一度きり", "（一度だけ）", "一度だけ読み取ります"],
+            "ko": ["는 한 번만", "한 번만 읽습니다", "한 번 읽는 작업"],
+            "es": ["una sola vez", "lectura única"],
+        ]
+        for locale in Self.locales {
+            let texts = inLocale(locale) {
+                [
+                    "files_detail": L10n.localScanConsent.filesDetail,
+                    "v2_subtitle": L10n.localScanConsent.v2Subtitle,
+                    "history_toggle_detail": L10n.localScanConsent.historyToggleDetail,
+                ]
+            }
+            for (key, text) in texts {
+                XCTAssertTrue(text.contains("Codex"),
+                              "\(locale): \(key) does not say the Codex logs are read again: \(text)")
+            }
+            let named = inLocale(locale) {
+                [
+                    "files_title": L10n.localScanConsent.filesTitle,
+                    "first_ask_hint": L10n.localScanConsent.firstAskHint,
+                    "first_ask_hint_signed_in": L10n.localScanConsent.firstAskHintSignedIn,
+                ]
+            }
+            for (key, text) in named.merging(texts, uniquingKeysWith: { a, _ in a }) {
+                for phrase in oneTime[locale]! {
+                    XCTAssertFalse(text.contains(phrase),
+                                   "\(locale): \(key) still calls the read of older logs one-time (\"\(phrase)\"): \(text)")
+                }
+            }
+        }
+    }
+
     /// Spelled out once in Simplified Chinese, the locale these catalogues are
-    /// checked in: the screen says 30 days and a year, and the year is one read.
-    func test_zhHansSaysThirtyDaysAndOneYearOnce() {
+    /// checked in: the screen says 30 days and a year, that the year is read
+    /// once, and that the Codex logs are read again after a counting change.
+    func test_zhHansSaysThirtyDaysAYearAndWhenCodexIsReadAgain() {
         inLocale("zh-Hans") {
-            XCTAssertEqual(L10n.localScanConsent.filesTitle, "会话日志：最近 30 天，另可一次性读取最多一年")
-            XCTAssertTrue(L10n.localScanConsent.v2Subtitle.contains("最近 30 天"))
-            XCTAssertTrue(L10n.localScanConsent.v2Subtitle.contains("一次性读取最多一年"))
+            XCTAssertEqual(L10n.localScanConsent.filesTitle, "会话日志：最近 30 天，经你允许还可读取最多一年")
+            let subtitle = L10n.localScanConsent.v2Subtitle
+            XCTAssertTrue(subtitle.contains("最近 30 天"))
+            XCTAssertTrue(subtitle.contains("最多一年的旧会话日志：先读取一次"))
+            XCTAssertTrue(subtitle.contains("之后每当有更新改变 Codex 用量的计算方式，会再读取一次 Codex 的日志"))
             XCTAssertEqual(L10n.localScanConsent.lastThirtyDaysOnly, "仅最近 30 天")
             XCTAssertEqual(L10n.localScanConsent.includeHistory, "包括更早的历史")
         }
