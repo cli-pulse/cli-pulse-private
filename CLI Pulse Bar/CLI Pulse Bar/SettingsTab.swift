@@ -19,6 +19,10 @@ struct SettingsTab: View {
     @State private var launchAtLogin = false
     @State private var helperEnabled = false
     @State private var settingsSection: SettingsSection = .general
+    /// Settings › Advanced drawn without the section picker (no paired
+    /// account): whether it is open. Closed at first, as the picker opens on
+    /// General.
+    @State private var advancedExpanded = false
     #if CLIPULSE_QA_RENDER
     @Environment(\.qaRenderViewState) private var qaRenderViewState
     #endif
@@ -56,9 +60,7 @@ struct SettingsTab: View {
                     authenticatedSection
                 } else {
                     loginSection
-                    if state.isLocalMode {
-                        localModeSections
-                    }
+                    signedOutSections
                 }
             }
             .padding(12)
@@ -83,6 +85,7 @@ struct SettingsTab: View {
         if let raw = qaRenderViewState.settingsSection,
            let section = SettingsSection(rawValue: raw) {
             settingsSection = section
+            advancedExpanded = section == .advanced
         }
         usePasswordLogin = qaRenderViewState.usePasswordLogin
     }
@@ -267,32 +270,108 @@ struct SettingsTab: View {
             isLocalMode: state.isLocalMode,
             // The note that names Settings › Companion CLI needs the same
             // capability to appear at all (`HelperInstaller.externalActionsAllowed`).
-            runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh
+            runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh,
+            // Background sync is in Advanced, and is all a signed-out Mac's
+            // Advanced holds (`AdvancedSection`'s own gate).
+            runtimeOffersBackgroundSync: state.runtimeEnvironment.capabilities.allowsHelperRegistration
         )
     }
 
-    // MARK: - Local mode
+    // MARK: - Signed out, and local mode
 
+    /// Under the sign-in form, signed out and in local mode alike: neither
+    /// reaches `authenticatedSection`.
+    ///
     /// v1.55: Settings › Companion CLI and Settings › Privacy for a Mac in
-    /// local mode, which has no account and so never reaches
-    /// `authenticatedSection`. Both are named on screens a local-mode user
-    /// sees: the first ask and `telemetry.change_later` send them to Settings ›
-    /// Privacy ("you can change this any time"), where the scan switch is
+    /// local mode. Both are named on screens a local-mode user sees: the first
+    /// ask and `telemetry.change_later` send them to Settings › Privacy ("you
+    /// can change this any time"), where the scan switch is
     /// (`PrivacySettingsSection.showsScanSwitch`, local mode only), and the
     /// note under the answer (`CompanionNotCoveredNote`) sends them to
     /// Settings › Companion CLI to update or uninstall a Companion that
     /// ignores it. Before 1.55 neither section rendered here, so both
-    /// directions led nowhere.
-    private var localModeSections: some View {
+    /// directions led nowhere. Outside local mode neither is shown.
+    ///
+    /// v1.56: the Developer ID updater and Settings › Advanced, in local mode
+    /// and outside it. A signed-out Developer ID Mac was never offered an
+    /// update in the app, and "Paused: signed out", which 1.55's notes said
+    /// Settings › Advanced shows, could not be seen while it was true.
+    private var signedOutSections: some View {
         VStack(alignment: .leading, spacing: 12) {
             if accountSections.companionCLI {
                 Divider()
                 CompanionCLISection(installer: state.helperInstaller)
             }
 
+            #if DEVID_BUILD
+            Divider()
+            appUpdaterSection
+            #endif
+
             if accountSections.privacy {
                 Divider()
                 PrivacySettingsSection()
+            }
+
+            advancedWithoutPicker
+        }
+    }
+
+    // MARK: - Sections in both branches
+
+    #if DEVID_BUILD
+    /// v1.19: the Developer ID DMG channel's updater, only in DEVID builds:
+    /// App Store users get updates from the App Store. The section also shows
+    /// a banner reminding beta users to turn off App Store automatic updates,
+    /// so the App Store version does not silently overwrite the beta.
+    ///
+    /// v1.56: drawn in both branches with no account gate. It is the only
+    /// place this build checks for updates, and its manifest, download and
+    /// verification do not depend on the account (`SettingsAccountSections`).
+    private var appUpdaterSection: some View {
+        AppUpdaterSection(
+            updater: state.appUpdater,
+            permMigration: state.permissionMigrationChecker
+        )
+    }
+    #endif
+
+    /// v1.56: Settings › Advanced where there is no section picker, which
+    /// needs a paired account: signed in without one, in local mode, and
+    /// signed out. A disclosure named like the picker's segment, so "Settings
+    /// › Advanced" is something to click here too, holding what acts on this
+    /// Mac alone (`SettingsAccountSections.Advanced`). Nothing for a paired
+    /// account, whose Advanced is the picker's.
+    @ViewBuilder
+    private var advancedWithoutPicker: some View {
+        if let content = accountSections.advanced, content != .full {
+            Divider()
+            DisclosureGroup(isExpanded: $advancedExpanded) {
+                AdvancedSection(
+                    launchAtLogin: $launchAtLogin,
+                    helperEnabled: $helperEnabled,
+                    content: content
+                )
+                .padding(.top, 6)
+            } label: {
+                // The whole row opens it, not just the chevron.
+                Button {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        advancedExpanded.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 11))
+                            .foregroundStyle(PulseTheme.accent)
+                            .accessibilityHidden(true)
+                        Text(L10n.settings.advanced)
+                            .font(.system(size: 11, weight: .semibold))
+                        Spacer()
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -318,7 +397,8 @@ struct SettingsTab: View {
             // asked about older logs, and "Choose again…" and the older-logs
             // switch are in Privacy. Before 1.55 both were inside the paired
             // block. The paired account's own sections keep their order around
-            // them.
+            // them. v1.56: so do the Developer ID updater and, without the
+            // picker, Settings › Advanced.
             if accountSections.pairedAccountSettings {
                 Divider()
 
@@ -334,19 +414,11 @@ struct SettingsTab: View {
                 CompanionCLISection(installer: state.helperInstaller)
             }
 
-            // v1.19: Developer ID DMG channel updater. Only present
-            // in DEVID builds — MAS users get updates via the App
-            // Store. The section also surfaces a G5 banner reminding
-            // beta users to disable MAS automatic updates so the
-            // App Store version doesn't silently overwrite the beta.
+            // The Developer ID updater, whether or not the account is paired
+            // (`appUpdaterSection`).
             #if DEVID_BUILD
-            if accountSections.pairedAccountSettings {
-                Divider()
-                AppUpdaterSection(
-                    updater: state.appUpdater,
-                    permMigration: state.permissionMigrationChecker
-                )
-            }
+            Divider()
+            appUpdaterSection
             #endif
 
             if accountSections.privacy {
@@ -386,9 +458,16 @@ struct SettingsTab: View {
                 case .providers:
                     ProviderSettingsSection()
                 case .advanced:
-                    AdvancedSection(launchAtLogin: $launchAtLogin, helperEnabled: $helperEnabled)
+                    AdvancedSection(
+                        launchAtLogin: $launchAtLogin,
+                        helperEnabled: $helperEnabled,
+                        content: .full
+                    )
                 }
             }
+
+            // Without a paired account: Advanced without the picker.
+            advancedWithoutPicker
 
             Divider()
             DangerZoneSection()
