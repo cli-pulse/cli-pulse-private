@@ -177,7 +177,7 @@ struct CodexSubagentRolloutShape {
                 if ownedSuffix == nil,
                    triggerTurn,
                    let pendingTurnContext,
-                   observation.lineIndex == pendingTurnContext.lineIndex + 1,
+                   observation.lineIndex > pendingTurnContext.lineIndex, // NEGATIVE CONTROL C3: adjacency dropped
                    metadataShape.counterSemantics == .copiedPrefix
                    || totalsContainUsage(pendingTurnContext.baseline)
                 {

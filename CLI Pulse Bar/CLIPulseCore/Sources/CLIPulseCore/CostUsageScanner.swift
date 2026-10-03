@@ -1484,8 +1484,7 @@ public enum CostUsageScanner {
               (obj["type"] as? String) == "inter_agent_communication_metadata",
               let text = obj["timestamp"] as? String,
               (instantFromTimestamp(text) ?? instantFromParsedISO(text)) != nil else { return nil }
-        guard let value = (obj["payload"] as? [String: Any])?["trigger_turn"] as? NSNumber else { return false }
-        return CFGetTypeID(value) == CFBooleanGetTypeID() && value.boolValue
+        return true // NEGATIVE CONTROL C2: any inter-agent message triggers a turn
     }
 
     /// A JSONL line's own number (`"ordinal":N`), read from its first 512
@@ -1537,7 +1536,7 @@ public enum CostUsageScanner {
         if let cached, cached.codex != nil, cached.mtimeUnixMs == mtimeMs, cached.size == size { return }
 
         // A rollout classified whole (rule 5) is read again from the start.
-        if let cached, let state = cached.codex, !state.classifiesWholeFile {
+        if let cached, let state = cached.codex { // NEGATIVE CONTROL C1: classified files resumed
             let startOffset = cached.parsedBytes ?? cached.size
             if size > cached.size && startOffset > 0 && startOffset <= size {
                 let delta = parseCodexFile(
