@@ -6,8 +6,12 @@
 #     -CLIPulseScreenshotDemo YES -CLIPulseScreenshotScreen <screen>
 # which enters the app's own Demo mode (the Try Demo data), opens that screen
 # and cannot reach the network (see ScreenshotLaunch.swift). The language comes
-# from -AppleLanguages / -AppleLocale on the same launch, so nothing on the
-# simulator's own settings changes per language.
+# from -AppleLanguages / -AppleLocale on the same launch, so on the iPhone
+# nothing on the simulator's own settings changes per language. The iPad's
+# status bar also shows the date ("Sat Oct 3"), drawn by SpringBoard in the
+# simulator's own language, which a launch argument does not reach: for the
+# iPad set the simulator's language follows each capture language and is put
+# back at the end (follow_language, below).
 #
 # Output: <out>/<lang>/NN_<screen>.png, raw simulator captures. The App Store
 # panels are composed from them by compose_appstore_ios_screenshots.py (with
@@ -34,8 +38,8 @@
 #                rotated one a portrait panel. Portrait, because App Store
 #                Connect takes 2064x2752 for the 13" display and a simulator
 #                booted headless has no command to rotate it (simctl has none).
-#                Whether the split view's sidebar shows in portrait is for the
-#                first capture to show; landscape would need a rotation step.
+#                In portrait the split view keeps its sidebar beside the screen
+#                (measured on the 1.55 capture), so no rotation step is needed.
 #   --device     simulator to use, by name (default: the set's; the iPhone's is
 #                the 6.9" size App Store Connect's APP_IPHONE_67 set takes, the
 #                iPad's the 13" one APP_IPAD_PRO_3GEN_129 takes)
@@ -251,8 +255,15 @@ booted_here=0
 prev_appearance=unknown
 status_bar_set=0
 prev_status_bar=""
+language_set=0
+prev_languages=""
+prev_locale=""
 cleanup() {
   local rc=$?
+  if [ "$language_set" -eq 1 ]; then
+    # Before the status bar: restarting SpringBoard redraws it.
+    restore_language || echo "putting the simulator's language back failed; it was AppleLanguages ($prev_languages), AppleLocale $prev_locale" >&2
+  fi
   if [ "$status_bar_set" -eq 1 ]; then
     if [ -n "$prev_status_bar" ]; then
       # Someone had overridden it before this run; clearing would undo theirs
@@ -309,17 +320,73 @@ with_timeout "$BOOT_TIMEOUT" xcrun simctl bootstatus "$UDID" -b >/dev/null \
 prev_appearance="$(xcrun simctl ui "$UDID" appearance 2>/dev/null || echo unknown)"
 prev_status_bar="$(xcrun simctl status_bar "$UDID" list 2>/dev/null | sed '1,2d' | grep -v '^[[:space:]]*$' || true)"
 
+# The simulator's own language (global domain), read once so it can be put
+# back; empty means the key was not set.
+sim_default() {
+  xcrun simctl spawn "$UDID" defaults read -g "$1" 2>/dev/null | tr -d ' \n()"' || true
+}
+if [ "$SET" = ipad ]; then
+  prev_languages="$(sim_default AppleLanguages)"
+  prev_locale="$(sim_default AppleLocale)"
+fi
+
+override_status_bar() {
+  # A full battery, not charging: 'charged' draws the charging bolt on iOS 26.
+  with_timeout "$STEP_TIMEOUT" xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi \
+    --wifiBars 3 --cellularBars 4 --batteryState discharging --batteryLevel 100
+}
+
+# SpringBoard reads the language when it starts. launchd starts it again at
+# once; measured on the 13" iPad, its first frames are black for a few
+# seconds, hence the wait before the status bar is overridden again.
+restart_springboard() {
+  local old new waited=0
+  old="$(xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | awk '$3 == "com.apple.SpringBoard" { print $1 }')"
+  with_timeout 30 xcrun simctl spawn "$UDID" launchctl stop com.apple.SpringBoard >/dev/null 2>&1 || return 1
+  while :; do
+    new="$(xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | awk '$3 == "com.apple.SpringBoard" { print $1 }')"
+    if [ -n "$new" ] && [ "$new" != "-" ] && [ "$new" != "$old" ]; then break; fi
+    [ "$waited" -ge 120 ] && return 1
+    sleep 0.25; waited=$((waited + 1))
+  done
+  sleep 8
+}
+
+# follow_language LANG: the simulator's language and region become LANG's, so
+# the iPad status bar's date is in LANG ("10月3日 (土)", not "Sat Oct 3").
+follow_language() {
+  language_set=1
+  xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array "$1" || return 1
+  xcrun simctl spawn "$UDID" defaults write -g AppleLocale "$(locale_for "$1")" || return 1
+  restart_springboard || return 1
+  [ "$status_bar_set" -eq 1 ] && override_status_bar
+  return 0
+}
+
+restore_language() {
+  local -a langs_back=()
+  if [ -n "$prev_languages" ]; then
+    IFS=',' read -r -a langs_back <<< "$prev_languages"
+    xcrun simctl spawn "$UDID" defaults write -g AppleLanguages -array "${langs_back[@]}" || return 1
+  else
+    xcrun simctl spawn "$UDID" defaults delete -g AppleLanguages >/dev/null 2>&1 || true
+  fi
+  if [ -n "$prev_locale" ]; then
+    xcrun simctl spawn "$UDID" defaults write -g AppleLocale "$prev_locale" || return 1
+  else
+    xcrun simctl spawn "$UDID" defaults delete -g AppleLocale >/dev/null 2>&1 || true
+  fi
+  restart_springboard
+}
+
 if [ "$KEEP_DATA" -eq 0 ]; then
   xcrun simctl uninstall "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 fi
 with_timeout "$STEP_TIMEOUT" xcrun simctl install "$UDID" "$APP" || die "installing $APP failed"
 
 with_timeout "$STEP_TIMEOUT" xcrun simctl ui "$UDID" appearance light || die "setting light appearance failed"
-# A full battery, not charging: 'charged' draws the charging bolt on iOS 26.
 status_bar_set=1
-with_timeout "$STEP_TIMEOUT" xcrun simctl status_bar "$UDID" override --time 9:41 --dataNetwork wifi \
-  --wifiBars 3 --cellularBars 4 --batteryState discharging --batteryLevel 100 \
-  || die "overriding the status bar failed"
+override_status_bar || die "overriding the status bar failed"
 
 if [ -z "$LOG_DIR" ]; then
   mkdir -p "$HOME/Library/Logs"
@@ -375,6 +442,9 @@ capture_one() {
 
 for lang in "${langs[@]}"; do
   echo "[$lang] -AppleLanguages ($lang) -AppleLocale $(locale_for "$lang")"
+  if [ "$SET" = ipad ]; then
+    follow_language "$lang" || die "$lang: setting the simulator's language for the status bar failed"
+  fi
   for screen in "${screens[@]}"; do
     capture_one "$lang" "$screen"
   done

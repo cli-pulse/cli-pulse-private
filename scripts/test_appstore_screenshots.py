@@ -1012,6 +1012,11 @@ check("the iPad capture is the iPad panel's size, portrait, and keeps the whole 
 check("the capture script refuses a simulator of the other family, and a capture of another size",
       'SimDeviceType.iPad*) family=ipad' in script and '[ "$family" = "$SET" ] || die' in script
       and '[ "$size" != "$CAPTURE_SIZE" ]' in script)
+check("the iPad capture gives the simulator each capture language (its status bar shows the date) "
+      "and puts the language it had back",
+      'follow_language "$lang"' in script and 'prev_languages="$(sim_default AppleLanguages)"' in script
+      and 'prev_locale="$(sim_default AppleLocale)"' in script and "restore_language ||" in script
+      and script.index('if [ "$SET" = ipad ]; then\n    follow_language') > script.index('for lang in "${langs[@]}"'))
 
 good_ipad = tmp / "ipad-good.png"
 shots.write_png(good_ipad, 2064, 2752)

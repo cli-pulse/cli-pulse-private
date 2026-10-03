@@ -484,7 +484,13 @@ iPhone set's five screens and captions, captured by the same DEBUG launch on
 the existing `iPad Pro 13-inch (M5)` simulator, where the app shows its own
 regular-width layout (`iPadSplitView`), in portrait, 2064x2752, the size of the
 panel (App Store Connect takes it for the 13" display, and a headless
-simulator cannot be rotated). Never put iPhone captures on an iPad canvas: App Review rejects
+simulator cannot be rotated). In portrait the split view keeps its sidebar
+beside the screen (measured on the 1.55 capture), so the panels show the iPad
+layout without a rotation step. The iPad status bar also shows the date, drawn
+by SpringBoard in the simulator's own language, which `-AppleLanguages` on the
+launch does not reach: for the iPad set the capture script sets the simulator's
+language to each capture language (restarting SpringBoard) and puts the old one
+back at the end. Never put iPhone captures on an iPad canvas: App Review rejects
 iPhone screenshots dressed as iPad ones (guideline 2.3.3), and every step here
 refuses them (the capture script checks the simulator's family and each
 capture's size, the compositor each raw's size, the pusher and
@@ -506,7 +512,9 @@ reports itself showing (`ScreenshotLaunch.ShowsTab`), not only when
 of its own that started on the Overview and followed `selectedTab` only
 through `.onChange`, which does not fire for the value a view starts with. By
 that code, an iPad capture of any screen would have been the Overview under
-that screen's name, READY and all (found by reading it, not by a capture). The
+that screen's name, READY and all. Found by reading the code, then confirmed:
+a build with the old selection stops the capture with `ERROR alerts: showing
+the Overview screen, not Alerts`. The
 pusher treats the iPad set as it does the iPhone's (compose.json, upload
 before delete, rollback, read-back) and touches only the `APP_IPAD_PRO_3GEN_129`
 sets of the IOS version, creating the ones a locale lacks (1.54.0 had an iPad
