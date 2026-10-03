@@ -219,12 +219,10 @@ struct iPadSplitView: View {
         List {
             Section(L10n.dashboard.monitor) {
                 sidebarButton(.overview)
-                sidebarButton(
-                    .providers,
-                    badge: providerState.providerAccounts.isEmpty
-                        ? providerState.providers.count
-                        : providerState.providerAccounts.count
-                )
+                // No count badge, as on the iPhone's tab bar: a red badge asks
+                // for attention, and the number of providers asks for none.
+                // Beside the Alerts badge it read as three provider problems.
+                sidebarButton(.providers)
                 sidebarButton(.sessions)
             }
             Section(L10n.dashboard.manage) {

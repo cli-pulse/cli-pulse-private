@@ -343,6 +343,44 @@ final class ScreenshotLaunchTests: XCTestCase {
         XCTAssertFalse(iPad.contains("switch "), "a switch here would decide the screen apart from iOSTabScreen")
     }
 
+    /// The iPad's Sessions list draws what the iPhone's does: the Active and
+    /// Recent sections and each row's one badge (`SessionStatusBadge`), and so
+    /// does the detail beside it. It drew every session in one untitled
+    /// section with its raw status, so Demo's five read "Running" next to the
+    /// sidebar's "Active Sessions 3", and two of them sat under Recent on the
+    /// iPhone panel. The iPad sidebar, like the iPhone's tab bar, puts a count
+    /// on Alerts only: Providers had a red "3", the number of providers.
+    func test_theIPadSessionsListAndSidebarSayWhatTheIPhoneSays() throws {
+        let iOS = Self.appSourceRoot.appendingPathComponent("CLI Pulse Bar iOS")
+        let sessions = try String(contentsOf: iOS.appendingPathComponent("iOSSessionsTab.swift"), encoding: .utf8)
+        func between(_ start: String, _ end: String, in text: String) throws -> String {
+            let lower = try XCTUnwrap(text.range(of: start), "no \(start)").upperBound
+            let upper = try XCTUnwrap(text[lower...].range(of: end), "no \(end) after \(start)").lowerBound
+            return String(text[lower..<upper])
+        }
+        let list = try between("private var sessionList", "struct SessionStatusBadge", in: sessions)
+        XCTAssertTrue(list.contains("SessionFreshnessTierClassifier.partition(state.sessions"), "the iPad list is not partitioned")
+        XCTAssertTrue(list.contains("L10n.sessions.sectionActive") && list.contains("L10n.sessions.sectionRecent"),
+                      "the iPad list lost the iPhone's section headers")
+        XCTAssertTrue(list.contains("SessionStatusBadge("), "the iPad rows do not use the shared badge")
+        XCTAssertFalse(list.contains("L10n.status.localized"), "an iPad row draws a raw status of its own")
+        XCTAssertFalse(list.contains("ForEach(state.sessions)"), "the iPad list draws every session unsorted again")
+        let row = try between("struct iOSSessionRow", "private func metricItem", in: sessions)
+        XCTAssertTrue(row.contains("SessionStatusBadge(session: session, tier: freshnessTier)"), "the iPhone row's badge")
+        XCTAssertFalse(row.contains("L10n.status.localized"), "the iPhone row draws a status apart from the shared badge")
+        let detail = try between("struct SessionDetailView", "private func detailItem", in: sessions)
+        XCTAssertTrue(detail.contains("SessionStatusBadge("), "the detail beside the iPad list badges another way")
+        XCTAssertFalse(detail.contains("L10n.status.localized"), "the detail draws a raw status")
+
+        let main = try String(contentsOf: iOS.appendingPathComponent("iOSMainView.swift"), encoding: .utf8)
+        let iPad = String(main[try XCTUnwrap(main.range(of: "struct iPadSplitView")).lowerBound...])
+        let regex = try NSRegularExpression(pattern: #"sidebarButton\(\s*\.(\w+)\s*,\s*badge:"#)
+        let badged = regex.matches(in: iPad, range: NSRange(iPad.startIndex..., in: iPad)).compactMap {
+            Range($0.range(at: 1), in: iPad).map { String(iPad[$0]) }
+        }
+        XCTAssertEqual(badged, ["alerts"], "a sidebar count besides the unresolved alerts")
+    }
+
     /// The Recent tier on the Sessions screen and a named Gemini window on
     /// Providers are part of what the screenshots show; without them the
     /// Sessions panel was half empty and Gemini's bar said "Default".

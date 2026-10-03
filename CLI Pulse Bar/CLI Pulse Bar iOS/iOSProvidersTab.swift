@@ -116,10 +116,12 @@ struct iOSProvidersTab: View {
                         }
                         .padding(.vertical, 40)
                     } else if isIPad {
-                        // iPad: two-column grid
+                        // iPad: two-column grid. Cards of a row share a top
+                        // edge: centered, a shorter card (no Service Status
+                        // row) sat about 9 pt below its neighbour.
                         LazyVGrid(columns: [
-                            GridItem(.flexible(), spacing: 12),
-                            GridItem(.flexible(), spacing: 12),
+                            GridItem(.flexible(), spacing: 12, alignment: .top),
+                            GridItem(.flexible(), spacing: 12, alignment: .top),
                         ], spacing: 12) {
                             ForEach(filteredDetails) { detail in
                                 iOSEnhancedProviderCard(

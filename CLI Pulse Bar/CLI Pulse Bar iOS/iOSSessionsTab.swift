@@ -159,50 +159,33 @@ struct iOSSessionsTab: View {
         }
     }
 
-    // MARK: - iPad list (combined)
+    // MARK: - iPad list
 
+    /// The iPhone's Active and Recent sections (SessionFreshnessTierClassifier),
+    /// with the iPhone row's badge. Until 1.55 this list drew every session in
+    /// one untitled section with its raw status, so all of Demo's five read
+    /// "Running" beside the sidebar's "Active Sessions 3", while the iPhone
+    /// put two of them under Recent and keeps "Running" for process-confirmed
+    /// rows (the legend below says so).
     private var sessionList: some View {
-        List {
-            // Untitled: the sidebar's navigation title is "Sessions" already.
-            Section {
-                ForEach(state.sessions) { session in
-                    HStack(spacing: 10) {
-                        Image(systemName: session.providerKind?.iconName ?? "terminal")
-                            .foregroundStyle(PulseTheme.providerColor(session.provider))
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(session.name)
-                                .font(.subheadline.weight(.medium))
-                                .lineLimit(1)
-                            // One line: beside a long status badge ("En ejecución")
-                            // the project used to break into three hyphenated lines.
-                            HStack(spacing: 6) {
-                                Text(session.provider).font(.caption2)
-                                    .fixedSize()
-                                Text(session.project).font(.caption2)
-                                    .lineLimit(1)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        StatusBadge(
-                            text: L10n.status.localized(session.status),
-                            color: PulseTheme.statusColor(session.status)
-                        )
-                    }
-                    .padding(.vertical, 2)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        selectedSession = session
-                    }
-                    .listRowBackground(
-                        selectedSession?.id == session.id
-                            ? Color.accentColor.opacity(0.12)
-                            : Color.clear
-                    )
-                }
+        let now = Date()
+        let buckets = SessionFreshnessTierClassifier.partition(state.sessions, now: now)
+        return List {
+            // The legend the iPhone shows under its list, under the last section.
+            if !buckets.active.isEmpty {
+                iPadSessionSection(header: L10n.sessions.sectionActive, sessions: buckets.active, now: now,
+                                   legend: buckets.recent.isEmpty)
+            }
+            if !buckets.recent.isEmpty {
+                iPadSessionSection(header: L10n.sessions.sectionRecent, sessions: buckets.recent, now: now,
+                                   legend: true)
             }
         }
+        // Wide enough for a session's name and project beside its badge; at
+        // the default width every row was cut short ("helper-heart…"). The
+        // split view gives this column its minimum on the 13-inch iPad in
+        // portrait, so the minimum is the width that fits.
+        .navigationSplitViewColumnWidth(min: 360, ideal: 360, max: 420)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 // Same FreshnessTier source as the iPhone toolbar — only
@@ -219,9 +202,91 @@ struct iOSSessionsTab: View {
         }
     }
 
-    // MARK: - Helpers
+    private func iPadSessionSection(header: String, sessions: [SessionRecord], now: Date,
+                                    legend: Bool) -> some View {
+        Section {
+            ForEach(sessions) { session in
+                HStack(spacing: 10) {
+                    Image(systemName: session.providerKind?.iconName ?? "terminal")
+                        .foregroundStyle(PulseTheme.providerColor(session.provider))
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(session.name)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        // One line: beside a long badge ("En ejecución") the
+                        // project used to break into three hyphenated lines.
+                        HStack(spacing: 6) {
+                            Text(session.provider).font(.caption2)
+                                .fixedSize()
+                            Text(session.project).font(.caption2)
+                                .lineLimit(1)
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    SessionStatusBadge(
+                        session: session,
+                        tier: SessionFreshnessTierClassifier.classify(session, now: now)
+                    )
+                }
+                .padding(.vertical, 2)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    selectedSession = session
+                }
+                .listRowBackground(
+                    selectedSession?.id == session.id
+                        ? Color.accentColor.opacity(0.12)
+                        : Color.clear
+                )
+            }
+        } header: {
+            // The iPhone section header: the title and its count.
+            HStack(spacing: 4) {
+                Text(header)
+                Text("· \(sessions.count)")
+                    .foregroundStyle(.tertiary)
+            }
+        } footer: {
+            if legend {
+                Text(L10n.sessions.freshnessLegend)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
 
+/// A session's one badge, the same in the iPhone's rows, the iPad's list and
+/// the detail either opens. A process-confirmed row (or one outside both
+/// sections) shows its status, "Running"; a row known only from recent log
+/// writes shows its freshness tier ("Recent activity", "Recent") instead, so
+/// nothing claims a process is running when only a log was written.
+struct SessionStatusBadge: View {
+    let session: SessionRecord
+    let tier: FreshnessTier?
 
+    var body: some View {
+        if let tier, tier.isVisible, tier != .activeProcess {
+            StatusBadge(text: tier.badge, color: Self.color(tier))
+        } else {
+            StatusBadge(
+                text: L10n.status.localized(session.status),
+                color: PulseTheme.statusColor(session.status)
+            )
+        }
+    }
+
+    static func color(_ tier: FreshnessTier) -> Color {
+        switch tier {
+        case .activeProcess: return .green
+        case .activeJsonl:   return .blue
+        case .recentJsonl:   return .secondary
+        case .hidden:        return .clear
+        }
+    }
 }
 
 // MARK: - Managed session detail (iOS)
@@ -249,9 +314,11 @@ struct SessionDetailView: View {
                         Text(session.name)
                             .font(.title3.weight(.bold))
                         HStack(spacing: 6) {
-                            StatusBadge(
-                                text: L10n.status.localized(session.status),
-                                color: PulseTheme.statusColor(session.status)
+                            // The badge the session's row shows: on iPad the
+                            // row and this header sit side by side.
+                            SessionStatusBadge(
+                                session: session,
+                                tier: SessionFreshnessTierClassifier.classify(session, now: Date())
                             )
                             if let conf = session.collection_confidence {
                                 ConfidenceBadge(confidence: conf)
@@ -363,21 +430,7 @@ struct iOSSessionRow: View {
                 // (activeJsonl / recentJsonl) drop the status pill
                 // and show only the freshness chip so we don't
                 // over-claim "running" when we only know JSONL mtime.
-                if let tier = freshnessTier, tier.isVisible {
-                    if tier == .activeProcess {
-                        StatusBadge(
-                            text: L10n.status.localized(session.status),
-                            color: PulseTheme.statusColor(session.status)
-                        )
-                    } else {
-                        StatusBadge(text: tier.badge, color: tierColor(tier))
-                    }
-                } else {
-                    StatusBadge(
-                        text: L10n.status.localized(session.status),
-                        color: PulseTheme.statusColor(session.status)
-                    )
-                }
+                SessionStatusBadge(session: session, tier: freshnessTier)
             }
 
             HStack(spacing: 14) {
@@ -437,12 +490,4 @@ struct iOSSessionRow: View {
         }
     }
 
-    private func tierColor(_ tier: FreshnessTier) -> Color {
-        switch tier {
-        case .activeProcess: return .green
-        case .activeJsonl:   return .blue
-        case .recentJsonl:   return .secondary
-        case .hidden:        return .clear
-        }
-    }
 }
