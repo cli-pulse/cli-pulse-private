@@ -1,5 +1,6 @@
 #!/bin/bash
-# Fail the build if the two helper version lines drift.
+# Fail the build if the two helper version lines drift, or if the Uninstaller
+# app embedded in the Companion .pkg stops matching them (see below).
 #
 # WHY THIS EXISTS
 # ---------------
@@ -54,6 +55,29 @@ if [[ "$SWIFT_V" != "$PY_V" ]]; then
 fi
 
 echo "OK: helper version lines in sync ($SWIFT_V)"
+
+# The Companion .pkg embeds "CLI Pulse Helper Uninstaller.app", built from
+# helper-uninstaller/ by build_helper_uninstaller.sh, so it ships with every
+# Companion release and should say which one. Nothing kept it in step: it read
+# 1.16.0, the release that introduced it, inside the Companion 1.31.0 .pkg.
+# plistlib rather than plutil, which the Linux runners do not have; a parser
+# rather than a grep, so a plist that no longer loads fails here too.
+UNINSTALLER_PLIST="$ROOT/helper-uninstaller/Info.plist"
+[[ -f "$UNINSTALLER_PLIST" ]] || fail "missing $UNINSTALLER_PLIST"
+UNINSTALLER_V="$(python3 -c '
+import plistlib, sys
+with open(sys.argv[1], "rb") as f:
+    print(plistlib.load(f).get("CFBundleShortVersionString", ""))
+' "$UNINSTALLER_PLIST")" || fail "could not parse $UNINSTALLER_PLIST"
+[[ -n "$UNINSTALLER_V" ]] || fail "no CFBundleShortVersionString in $UNINSTALLER_PLIST"
+
+if [[ "$UNINSTALLER_V" != "$PY_V" ]]; then
+    fail "Uninstaller version drift: helper-uninstaller/Info.plist says $UNINSTALLER_V but HELPER_VERSION=$PY_V.
+      The Uninstaller ships inside the Companion .pkg; bump its
+      CFBundleShortVersionString with HELPER_VERSION and kHelperVersion."
+fi
+
+echo "OK: embedded Uninstaller version in sync ($UNINSTALLER_V)"
 
 # The Python helper accepts only the exact OAuth client ID compiled into the
 # Swift writer. A drift would make every otherwise-valid committed Gemini

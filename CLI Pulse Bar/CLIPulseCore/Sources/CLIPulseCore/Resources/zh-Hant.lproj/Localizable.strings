@@ -524,7 +524,7 @@
 "provider_config.connect_gemini" = "連線 Gemini";
 "provider_config.gemini_uses_google" = "使用你的 Google 帳戶，無需 API 金鑰。";
 "provider_config.gemini_cli_fallback" = "Gemini CLI 備援";
-"provider_config.gemini_cli_fallback_note" = "當 CLI Pulse 的 Gemini 登入無法重新整理時，改用 Gemini CLI 自身的憑證。僅限直接下載版。";
+"provider_config.gemini_cli_fallback_note" = "當 CLI Pulse 無法重新整理你的 Gemini 登入時，改用 Gemini CLI 自身的憑證。僅限直接下載版。";
 "provider_config.claude_code" = "Claude Code";
 "provider_config.connect_claude_code" = "連線 Claude Code";
 "provider_config.claude_keychain_hint" = "讀取你已有的 Claude Code 登入資訊。macOS 會請求一次授權——請點「永遠允許」。";

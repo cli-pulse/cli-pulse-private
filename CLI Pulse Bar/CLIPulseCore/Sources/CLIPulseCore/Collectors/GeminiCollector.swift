@@ -152,7 +152,9 @@ public struct GeminiCollector: ProviderCollector, Sendable {
                     source: primary,
                     accountID: config.accountID
                 )
-                throw CollectorError.missingCredentials(CredentialProblem("Gemini", .tokenExpiredReconnectOAuth))
+                throw CollectorError.missingCredentials(
+                    CredentialProblem("Gemini", Self.expiredTokenIssue(source: primary))
+                )
             } else {
                 throw CollectorError.silentBackoff(CredentialProblem("Gemini", .tokenExpiredSilenced("15")))
             }
@@ -178,6 +180,23 @@ public struct GeminiCollector: ProviderCollector, Sendable {
             load: Self.liveLoader
         )
         return buildResult(buckets: fetched.buckets, tierInfo: fetched.tierInfo)
+    }
+
+    /// What to tell the user when no source yields a live token, by the source
+    /// that was tried first.
+    ///
+    /// Only CLI Pulse's own sign-in (`.keychain`) can be reconnected from
+    /// CLI Pulse. The Gemini CLI's and Antigravity's logins are renewed by
+    /// signing in to those tools again; telling those users to "reconnect via
+    /// CLI Pulse OAuth" sent them looking for a button that a build shipping
+    /// the placeholder client ID never shows (`GeminiOAuthManager.offersOwnSignIn`).
+    static func expiredTokenIssue(source: TokenSource) -> CredentialIssue {
+        switch source {
+        case .keychain:
+            return .tokenExpiredReconnectOAuth
+        case .file, .antigravity:
+            return .sessionExpiredSignInAgain
+        }
     }
 
     /// Resolve creds whose access token is valid (refreshing in place if

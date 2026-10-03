@@ -885,7 +885,7 @@
 "provider_config.connect_gemini" = "Gemini 연결";
 "provider_config.gemini_uses_google" = "Google 계정을 사용합니다. API 키가 필요하지 않습니다.";
 "provider_config.gemini_cli_fallback" = "Gemini CLI 대체";
-"provider_config.gemini_cli_fallback_note" = "CLI Pulse의 Gemini 로그인을 갱신할 수 없으면 Gemini CLI 자체 자격 증명으로 대체합니다. 직접 다운로드 빌드 전용.";
+"provider_config.gemini_cli_fallback_note" = "CLI Pulse가 Gemini 로그인을 갱신할 수 없으면 Gemini CLI 자체 자격 증명으로 대체합니다. 직접 다운로드 빌드 전용.";
 "provider_config.claude_code" = "Claude Code";
 "provider_config.connect_claude_code" = "Claude Code 연결";
 "provider_config.claude_keychain_hint" = "기존 Claude Code 로그인 정보를 읽습니다. macOS가 권한을 한 번 요청하면 '항상 허용'을 클릭하세요.";

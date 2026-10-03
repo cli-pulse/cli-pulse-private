@@ -309,7 +309,8 @@ struct ProviderConfigEditor: View {
             // Gemini OAuth connection (macOS only)
             #if os(macOS)
             if allowsLiveProviderActions {
-                if kind == .gemini {
+                if kind == .gemini,
+                   showsGeminiOwnSignIn || !isAppSandboxed {
                     geminiOAuthSection
                 }
                 // Claude Code keychain bootstrap (macOS only). The sandbox can't
@@ -442,96 +443,21 @@ struct ProviderConfigEditor: View {
     // MARK: - Gemini OAuth
 
     #if os(macOS)
+    /// CLI Pulse's own Google sign-in, shown only where it can work or can
+    /// be undone (`GeminiOAuthManager.offersOwnSignIn`). A build that ships
+    /// the placeholder client ID offered "Connect Gemini" to everyone, and the
+    /// only thing it ever did was fail with "OAuth client ID not configured".
+    private var showsGeminiOwnSignIn: Bool {
+        GeminiOAuthManager.offersOwnSignIn(
+            isConnected: geminiCredentialDraft.isConnected
+        )
+    }
+
     @ViewBuilder
     private var geminiOAuthSection: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(L10n.providerConfig.googleOAuth)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            if geminiCredentialDraft.isConnected {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 12))
-                    Text(L10n.settings.connected)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.green)
-                    Spacer()
-                    Button(L10n.providerConfig.disconnect) {
-                        geminiCredentialDraft.stageDisconnect()
-                        sharedCredentialFallbackDisabled = true
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.red)
-                    .font(.system(size: 10))
-                }
-            } else {
-                Button {
-                    guard allowsLiveProviderActions else { return }
-                    isConnecting = true
-                    geminiError = nil
-                    Task { @MainActor in
-                        defer { isConnecting = false }
-                        do {
-                            let gatedAuthorization =
-                                try await RuntimeProtectedProviderAction.perform(
-                                    runtimeEnvironment:
-                                        state.runtimeEnvironment
-                                ) {
-                                    try await GeminiOAuthManager.shared
-                                    .authorizeForEditing(
-                                        accountID: accountID
-                                    )
-                                }
-                            guard let authorization = gatedAuthorization else {
-                                return
-                            }
-                            geminiCredentialDraft.stageAuthorization(
-                                authorization
-                            )
-                            sharedCredentialFallbackDisabled = true
-                        } catch is CancellationError {
-                            // User cancelled — ignore
-                        } catch let e as ASWebAuthenticationSessionError {
-                            // nil when the user dismissed the browser sheet;
-                            // otherwise our own line, not the system's domain
-                            // and code (those go to the log).
-                            geminiError = WebAuthSessionFailure.message(
-                                for: e,
-                                generic: L10n.providerConfig
-                                    .errorGeminiSessionStartFailed
-                            )
-                        } catch {
-                            geminiError = error.localizedDescription
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        if isConnecting {
-                            ProgressView()
-                                .controlSize(.mini)
-                        } else {
-                            Image(systemName: "link")
-                        }
-                        Text(L10n.providerConfig.connectGemini)
-                    }
-                    .font(.system(size: 10, weight: .medium))
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.blue)
-                .controlSize(.small)
-                .disabled(isConnecting)
-
-                if let err = geminiError {
-                    Text(err)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.red)
-                } else {
-                    Text(L10n.providerConfig.geminiUsesGoogle)
-                        .font(.system(size: 8))
-                        .foregroundStyle(.quaternary)
-                }
+            if showsGeminiOwnSignIn {
+                geminiOwnSignInRows
             }
 
             // v1.23.0 G3 follow-on: surface the CLI-probe fallback
@@ -541,7 +467,9 @@ struct ProviderConfigEditor: View {
             // direct-download (Developer ID) builds (Gemini G3-R1 Q4),
             // and a visible-but-dead switch on MAS would be misleading.
             if !isAppSandboxed {
-                Divider().padding(.vertical, 2)
+                if showsGeminiOwnSignIn {
+                    Divider().padding(.vertical, 2)
+                }
                 Toggle(isOn: $geminiCliProbeFallback) {
                     Text(L10n.providerConfig.geminiCliFallback)
                         .font(.system(size: 10))
@@ -552,6 +480,98 @@ struct ProviderConfigEditor: View {
                     .font(.system(size: 8))
                     .foregroundStyle(.quaternary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var geminiOwnSignInRows: some View {
+        Text(L10n.providerConfig.googleOAuth)
+            .font(.system(size: 10, weight: .medium))
+            .foregroundStyle(.secondary)
+
+        if geminiCredentialDraft.isConnected {
+            HStack {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 12))
+                Text(L10n.settings.connected)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.green)
+                Spacer()
+                Button(L10n.providerConfig.disconnect) {
+                    geminiCredentialDraft.stageDisconnect()
+                    sharedCredentialFallbackDisabled = true
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .font(.system(size: 10))
+            }
+        } else {
+            Button {
+                guard allowsLiveProviderActions else { return }
+                isConnecting = true
+                geminiError = nil
+                Task { @MainActor in
+                    defer { isConnecting = false }
+                    do {
+                        let gatedAuthorization =
+                            try await RuntimeProtectedProviderAction.perform(
+                                runtimeEnvironment:
+                                    state.runtimeEnvironment
+                            ) {
+                                try await GeminiOAuthManager.shared
+                                .authorizeForEditing(
+                                    accountID: accountID
+                                )
+                            }
+                        guard let authorization = gatedAuthorization else {
+                            return
+                        }
+                        geminiCredentialDraft.stageAuthorization(
+                            authorization
+                        )
+                        sharedCredentialFallbackDisabled = true
+                    } catch is CancellationError {
+                        // User cancelled — ignore
+                    } catch let e as ASWebAuthenticationSessionError {
+                        // nil when the user dismissed the browser sheet;
+                        // otherwise our own line, not the system's domain
+                        // and code (those go to the log).
+                        geminiError = WebAuthSessionFailure.message(
+                            for: e,
+                            generic: L10n.providerConfig
+                                .errorGeminiSessionStartFailed
+                        )
+                    } catch {
+                        geminiError = error.localizedDescription
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    if isConnecting {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Image(systemName: "link")
+                    }
+                    Text(L10n.providerConfig.connectGemini)
+                }
+                .font(.system(size: 10, weight: .medium))
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.blue)
+            .controlSize(.small)
+            .disabled(isConnecting)
+
+            if let err = geminiError {
+                Text(err)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.red)
+            } else {
+                Text(L10n.providerConfig.geminiUsesGoogle)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.quaternary)
             }
         }
     }
