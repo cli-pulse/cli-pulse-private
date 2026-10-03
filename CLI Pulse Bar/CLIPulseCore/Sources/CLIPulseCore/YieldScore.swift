@@ -124,8 +124,10 @@ public enum YieldScoreAggregator {
 ///
 /// Its rows come from `yield_score_daily`, which only the `.pkg` helper's git
 /// collector feeds (`helper/cli_pulse_helper.py`), and the prompt it shows with
-/// tracking off sends people to Settings › Advanced, which only a paired
-/// account has. So the prompt appears only on a paired Mac with a helper on it
+/// tracking off sends people to a switch in Settings › Advanced that only a
+/// paired account has (from 1.56 Advanced itself is shown without one, but
+/// that switch is not: `SettingsAccountSections.Advanced.showsAccountControls`).
+/// So the prompt appears only on a paired Mac with a helper on it
 /// (the owner's call for the Mac App Store build, 2026-09-30). Anywhere else it
 /// pointed at a switch that was not there, for a number that could not arrive:
 /// the Mac App Store build in local mode, and Demo mode, whose Overview is what
