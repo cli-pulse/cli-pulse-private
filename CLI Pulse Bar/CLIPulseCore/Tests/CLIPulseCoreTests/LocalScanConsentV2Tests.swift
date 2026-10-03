@@ -493,6 +493,14 @@ final class LocalScanConsentV2Tests: XCTestCase {
         consent: LocalScanConsent,
         consentV2: LocalScanConsent
     ) async -> [Bool] {
+        await historyCalls(consent: consent, consentV2: consentV2).historyReadAllowed
+    }
+
+    @MainActor
+    private func historyCalls(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent
+    ) async -> LocalHistoryCallLog {
         let log = LocalHistoryCallLog()
         let manager = DataRefreshManager(
             api: APIClient(
@@ -512,7 +520,7 @@ final class LocalScanConsentV2Tests: XCTestCase {
             ),
             callbacks: LocalScanConsentTests.inertCallbacks()
         )
-        return log.historyReadAllowed
+        return log
     }
 
     @MainActor
@@ -529,6 +537,17 @@ final class LocalScanConsentV2Tests: XCTestCase {
     func testRefreshWithAV2YesOpensTheYear() async {
         let granted = await historyReadDecisions(consent: .granted, consentV2: .granted)
         XCTAssertEqual(granted, [true])
+    }
+
+    /// v1.56: signed out, the refresh hands the history stores no
+    /// authorization lease, so the Codex history rebuild recounts this Mac's
+    /// archive and reaches no account's cloud. Its cloud route hands its own
+    /// lease (`testCloudRouteHandsTheHistoryItsLease`).
+    @MainActor
+    func testASignedOutRefreshHandsTheHistoryNoLease() async {
+        let log = await historyCalls(consent: .granted, consentV2: .granted)
+        XCTAssertEqual(log.historyReadAllowed, [true], "control: the history stores were reached")
+        XCTAssertEqual(log.leases, [false], "a signed-out refresh handed over a lease")
     }
 
     @MainActor

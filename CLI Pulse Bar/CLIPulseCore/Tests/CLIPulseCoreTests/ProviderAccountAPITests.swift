@@ -2134,6 +2134,13 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
         consent: LocalScanConsent,
         consentV2: LocalScanConsent
     ) async -> [Bool] {
+        await cloudHistoryCalls(consent: consent, consentV2: consentV2).historyReadAllowed
+    }
+
+    private func cloudHistoryCalls(
+        consent: LocalScanConsent,
+        consentV2: LocalScanConsent
+    ) async -> LocalHistoryCallLog {
         ProviderAccountAPIStubProtocol.reset()
         installCloudRefreshHandler(includeAlert: false)
         let api = await makeAPI()
@@ -2154,7 +2161,17 @@ final class DataRefreshManagerProviderAccountBoundaryTests: XCTestCase {
             ),
             callbacks: makeCallbacks(applyPayload: { _ in }, afterRefresh: {})
         )
-        return log.historyReadAllowed
+        return log
+    }
+
+    /// v1.56: the cloud route hands the history stores the refresh's own
+    /// lease, which is what lets the Codex history rebuild replace this Mac's
+    /// older Codex rows in that account, and nowhere else. A signed-out
+    /// refresh hands none (`testASignedOutRefreshHandsTheHistoryNoLease`).
+    func testCloudRouteHandsTheHistoryItsLease() async {
+        let log = await cloudHistoryCalls(consent: .granted, consentV2: .granted)
+        XCTAssertEqual(log.historyReadAllowed, [true], "control: the history stores were reached")
+        XCTAssertEqual(log.leases, [true], "the cloud route handed the history no lease")
     }
 
     func testCloudRouteKeepsTheYearClosedWithoutAV2Yes() async {
@@ -2525,7 +2542,7 @@ private extension DataRefreshManager.LocalRefreshRuntime {
                     await writeOrderRecorder.append("account")
                 }
             },
-            recordLocalHistory: { _, _ in }
+            recordLocalHistory: { _, _, _ in }
         )
     }
 }
