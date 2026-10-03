@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: October 1, 2026**
+**Last Updated: October 3, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -310,8 +310,8 @@ uploaded), and the Settings toggle turns it off.
   whether Claude's Remote Control can be offered to a phone. After "Not now"
   its hello reads neither. Starting a Claude session is separate: see the next
   list.
-* **The Companion CLI** follows the answer only from the release after 1.30.0.
-  See its section.
+* **The Companion CLI** follows the answer only from 1.31.0, the release after
+  1.30.0. See its section.
 * **The Sessions tab** follows it too. While the built-in agent or the
   Companion CLI is running, the direct-download build reads Claude Code's
   settings file, `~/.claude/settings.json`, to check whether CLI Pulse's
@@ -427,12 +427,12 @@ notes about it, such as an exit code. Our server accepts these only while
 "Mac control requests from your other devices" is on for the paired account,
 and no CLI Pulse app shows them any more.
 
-**Which versions follow your answer.** Companion CLI 1.30.0 (the latest release
-when this was written) and earlier versions do not read the app's answer, its
+**Which versions follow your answer.** Companion CLI 1.30.0 and earlier versions
+do not read the app's answer, its
 sign-in or its Privacy switches at all: while installed and paired they keep
 collecting and uploading, to the account they were paired with, whatever you
-choose in the app, including after you sign out. Releases after 1.30.0 follow
-them:
+choose in the app, including after you sign out. Companion CLI 1.31.0, released
+with CLI Pulse 1.55, and later releases follow them:
 
 * **Paused** — nothing read or sent in its cycle, nothing sent about the
   sessions it runs, and our server not asked for remote-control or
