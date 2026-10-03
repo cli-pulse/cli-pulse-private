@@ -350,6 +350,40 @@ final class ClaudePricingTableTests: XCTestCase {
         XCTAssertEqual(row.costUSD ?? -1, 0.9, accuracy: 1e-9)
     }
 
+    /// The same for a live session's total, which sums its log's day rows:
+    /// a log whose cached rows hold no stored cost is priced as a sum.
+    func test_aSessionWhoseRowsHoldNoStoredCostIsPricedAsASum() throws {
+        let (projects, project, cache) = try makeProjects()
+        let log = project.appendingPathComponent("live.jsonl")
+        try "{}\n".write(to: log, atomically: true, encoding: .utf8)
+        // The scanner keys a log by the path it enumerates, which is the real
+        // one (/private/var/… for a temporary file, not /var/…).
+        let path = try XCTUnwrap(log.path.withCString { pointer -> String? in
+            guard let resolved = realpath(pointer, nil) else { return nil }
+            defer { free(resolved) }
+            return String(cString: resolved)
+        })
+        let today = CostUsageScanner.DayRange.dayKey(from: Date())
+        var saved = CostUsageCache()
+        saved.lastScanUnixMs = Int64(Date().timeIntervalSince1970 * 1000)
+        saved.files[path] = CostUsageFileUsage(
+            mtimeUnixMs: saved.lastScanUnixMs, size: 3,
+            days: [today: ["claude-sonnet-4-5": [300_000, 0, 0, 0, 0, 0]]]
+        )
+        CostUsageCacheIO.save(provider: "claude", cache: saved, cacheRoot: cache)
+
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: cache.deletingLastPathComponent().appendingPathComponent("sessions", isDirectory: true),
+            claudeProjectsRoots: [projects], cacheRoot: cache, daysToScan: 30
+        )
+        options.refreshMinIntervalSeconds = 3_600   // read the saved cache as it is
+        let session = try XCTUnwrap(CostUsageScanner.scan(options: options).activeSessionCandidates.first {
+            $0.provider == "Claude" && $0.sessionId == "live"
+        }, "the fresh log must be a candidate, or this checks nothing")
+        XCTAssertEqual(session.filePath, path, "the saved rows are keyed by this path")
+        XCTAssertEqual(session.totalCost, 0.9, accuracy: 1e-9)
+    }
+
     // MARK: - Rate changes reach stored costs only through a rules bump
 
     /// Each response's cost is stored when it is read, so a change to

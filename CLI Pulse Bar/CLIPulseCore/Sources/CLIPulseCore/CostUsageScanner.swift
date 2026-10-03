@@ -2266,7 +2266,9 @@ public enum CostUsageScanner {
                     totals.output += output
                     if costNanos > 0 {
                         totals.cost += Double(costNanos) / costScale
-                    } else if let cost = Pricing.claudeCostUSD(
+                    } else if let cost = Pricing.claudeAggregateCostUSD(
+                        // A file's day row is many responses: priced as a
+                        // sum, never on the long-context tier.
                         model: model,
                         inputTokens: input,
                         cacheReadInputTokens: cacheRead,
