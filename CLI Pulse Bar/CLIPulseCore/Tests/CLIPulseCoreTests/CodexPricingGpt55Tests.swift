@@ -18,8 +18,12 @@ final class CodexPricingGpt55Tests: XCTestCase {
 
     private typealias P = CostUsageScanner.Pricing
 
+    /// USD for these tokens as ten equal requests. `codexCostUSD` prices one
+    /// request, and a 1M-token request is over the 272K long-context line;
+    /// these tests are about the standard rates.
     private func codexCost(_ model: String, input: Int = 1_000_000, cached: Int = 0, output: Int = 0) -> Double? {
-        P.codexCostUSD(model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output)
+        P.codexCostUSD(model: model, inputTokens: input / 10, cachedInputTokens: cached / 10, outputTokens: output / 10)
+            .map { $0 * 10 }
     }
 
     func testGpt55_isPricedNonZero_wasTheBug() {

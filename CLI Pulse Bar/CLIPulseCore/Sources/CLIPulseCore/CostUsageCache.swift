@@ -3,36 +3,27 @@ import Foundation
 
 // MARK: - Cache Types
 
-/// Bump this every time `CostUsageScanner.Pricing.claudeModels` changes
-/// (entries added / removed / repriced).
+/// Cache-rules version for the Claude cache (and for any provider without its
+/// own version below). Bump it when a change to `CostUsageScanner` would make
+/// numbers already stored in `claude-v2.json` wrong: a Claude pricing row
+/// added, removed or repriced, or a change to how Claude lines are counted.
 ///
-/// A change to `CodexPricingTable` needs no bump, as of 1.56: Codex day rows
-/// hold tokens only (`[input, cached, output]`), and `entriesFromCodexCache`
-/// prices them on every read, re-resolving the stored model name. A new row
-/// can change what `normalizeCodexModel` returns for a dated spelling
-/// (`gpt-5.6-sol-2026-08-01` → `gpt-5.6-sol`); files parsed before keep the
-/// old key, which splits that model's By-Model row until they are re-read but
-/// prices both halves the same. `CodexPricingTableTests.
-/// test_codexCacheRowsCarryNoCost` fails the day a Codex row starts storing a
-/// cost, which is when a Codex price change starts needing a bump.
+/// Why: per-event cost is computed inside `parseClaudeFile` and stored as
+/// `costNanos` in the per-day-model bucket. The `entriesFromClaudeCache`
+/// reconstruction has a fallback that re-runs `Pricing.claudeCostUSD` when the
+/// bucket's summed `costNanos` is exactly zero — but that fallback gives the
+/// WRONG answer once even one new event lands in a previously-zero bucket: the
+/// bucket then has partial cost, the fallback is skipped, and only the new
+/// events' contribution is reported.
 ///
-/// Why: per-event Claude cost is computed inside `parseClaudeFile` and
-/// stored as `costNanos` in the per-day-model bucket. The
-/// `entriesFromClaudeCache` reconstruction has a
-/// fallback that re-runs `Pricing.claudeCostUSD` when the bucket's
-/// summed `costNanos` is exactly zero — but that fallback gives the
-/// WRONG answer once even one new event lands in a previously-zero
-/// bucket: the bucket then has partial cost, the fallback is
-/// skipped, and only the new events' contribution is reported.
+/// A bump invalidates that provider's saved cache on the next `load()`
+/// (returns an empty cache), forcing the next scan to re-parse every JSONL file
+/// of THAT provider with the current rules. The versions are per provider
+/// because the costs are: the Claude logs on a busy machine are thousands of
+/// files and gigabytes, the Codex logs a hundred-odd files, and a Codex change
+/// has no reason to make anyone re-read their Claude history.
 ///
-/// Bumping this constant invalidates every saved cache file on
-/// next `load()` (returns an empty cache), forcing the next
-/// `scanClaudeProvider` / `scanCodexProvider` to re-parse every
-/// JSONL file with the current pricing rules. ~200 files take
-/// ~1-2 s on a paired developer machine — a fair price for
-/// guaranteed-correct cost on the first refresh after an upgrade.
-///
-/// History:
+/// History (one shared number until 1.56, so entries 1–4 apply to both caches):
 ///   1 — initial schema (no version field on disk; default Int = 0
 ///       on legacy files made them count as "stale" against this
 ///       constant, which is the desired behaviour).
@@ -60,19 +51,59 @@ import Foundation
 ///       and every historical day would keep reading $0.
 let costUsageCachePricingVersion: Int = 4
 
+/// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
+/// `CodexPricingTable` changes (a row added, removed or repriced, a dated rate,
+/// an alias), when `normalizeCodexModel` or `codexPriceResolution` changes what
+/// a model is stored under or which row it is billed at, or when the rules that
+/// decide which Codex tokens count change. Only the Codex logs are re-read.
+///
+/// Each Codex request is priced when it is read and its cost stored in slot 3
+/// of the day × model row, so cached days keep the price they were read at
+/// until this is bumped. `CodexTokenAccountingTests.
+/// test_codex_rate_changes_come_with_a_rules_version_bump` pins a fingerprint
+/// of the table and of how a fixed list of names resolves next to this number,
+/// so a pricing change without the bump fails the build.
+///
+/// History (1–4: see `costUsageCachePricingVersion`):
+///   5 — 1.56: Codex accounting rules. Every rollout file counts on its own
+///       (a subagent's file is no longer dropped for sharing its parent's
+///       `session_id`); files that share a `payload.id` are copies only when
+///       one's events lie within the other's time span; the cumulative
+///       counter's baseline only rises; a subagent or fork does not count
+///       history copied from its parent (lines before its
+///       `subagent_history_start_ordinal` once an ancestor's session_meta is
+///       copied in ahead of them, or, in a migrated rollout with no such
+///       session_meta, the parent's replayed tail before the first
+///       inter-agent message), and no file counts a counter carried over from
+///       before its first event; and each request is priced when it is read,
+///       at the `CodexPricingTable` rate in force at its own time, into slot 3
+///       of the day × model row. A cache written under 4 holds token-only rows
+///       counted by the old rules. (Changed before 1.56 shipped, so still 5.)
+let costUsageCodexCacheRulesVersion: Int = 5
+
+enum CostUsageCacheRules {
+    /// The rules version a cache for `provider` must carry to be trusted.
+    static func version(forProvider provider: String) -> Int {
+        provider.lowercased() == "codex" ? costUsageCodexCacheRulesVersion : costUsageCachePricingVersion
+    }
+}
+
 struct CostUsageCache: Codable {
     var version: Int = 1
-    /// Pricing-rules version this cache was computed against. Loaded
-    /// caches whose `pricingVersion` differs from
-    /// `costUsageCachePricingVersion` are treated as stale and
-    /// returned as empty by `CostUsageCacheIO.load`. Default `0` so
-    /// pre-version-bump on-disk files (no `pricingVersion` key) are
-    /// invalidated as soon as we ship the first version > 0.
+    /// Rules version this cache was computed against. Loaded caches whose
+    /// `pricingVersion` differs from `CostUsageCacheRules.version(forProvider:)`
+    /// are treated as stale and returned as empty by `CostUsageCacheIO.load`.
+    /// Default `0` so pre-version-bump on-disk files (no `pricingVersion` key)
+    /// are invalidated as soon as we ship the first version > 0. The key keeps
+    /// its old name so existing files still decode.
     var pricingVersion: Int = 0
     var lastScanUnixMs: Int64 = 0
     /// filePath -> file usage
     var files: [String: CostUsageFileUsage] = [:]
-    /// dayKey -> model -> packed usage [input, cached, output] for Codex, [input, cacheRead, cacheCreate, output, costNanos] for Claude
+    /// dayKey -> model -> packed usage [input, cached, output, costNanos] for
+    /// Codex, [input, cacheRead, cacheCreate, output, costNanos, messages] for
+    /// Claude. For Codex this is rebuilt from `files` on every refresh, from the
+    /// files that count (`CodexCopyResolver`).
     var days: [String: [String: [Int]]] = [:]
 }
 
@@ -82,14 +113,83 @@ struct CostUsageFileUsage: Codable {
     var days: [String: [String: [Int]]]
     var parsedBytes: Int64?
     var lastModel: String?
+    /// Codex: the cumulative counter's baseline — the highest total counted
+    /// so far, which never goes down (`CodexTokenAccountant`).
     var lastTotals: CostUsageCodexTotals?
+    /// Codex: `session_meta.payload.session_id`, the conversation this file
+    /// belongs to. A subagent's file carries its parent's, so this is a
+    /// display identity (which conversation), never a counting one.
     var sessionId: String?
+    /// Codex only: what the counting rules need to resume this file and to
+    /// decide whether it is a copy of another. nil in a cache written before
+    /// the 1.56 rules, and for Claude; a Codex entry without it is re-parsed
+    /// from the start.
+    var codex: CostUsageCodexFileState? = nil
 }
 
-struct CostUsageCodexTotals: Codable {
+struct CostUsageCodexTotals: Codable, Equatable {
     var input: Int
     var cached: Int
     var output: Int
+}
+
+/// Per-file state of the Codex counting rules, persisted so an incremental
+/// parse resumes with exactly the state a full parse would have reached.
+struct CostUsageCodexFileState: Codable, Equatable {
+    /// `session_meta.payload.id`: this rollout's own thread id. Two files that
+    /// carry the same one are the same thread — a copy, or a later file that
+    /// continues it — and `CodexCopyResolver` decides which.
+    var rolloutId: String?
+    /// session_meta names a parent (`parent_thread_id`, `forked_from_id`, or a
+    /// `subagent` source): the file may begin with history copied from it.
+    var isChild: Bool = false
+    /// The first session_meta's time (`payload.timestamp`, else the line's),
+    /// in Unix milliseconds. A child's events before it were copied in.
+    var metaUnixMs: Int64?
+    /// A child's `subagent_history_start_ordinal`: the number of the first
+    /// line of its own history, as Codex wrote it. Whether the lines numbered
+    /// before it were copied in is `copiedPrefix`.
+    var historyStartOrdinal: Int?
+    /// How the copied part of a child with a `historyStartOrdinal` was
+    /// recognised; nil until it has been (`CodexTokenAccountant`).
+    var copiedPrefix: CodexCopiedPrefix?
+    /// The first line has been read for the file's identity (whether or not
+    /// it held a readable session_meta). Later session_meta lines are the
+    /// copied metadata of ancestors and never replace it.
+    var sawMeta: Bool = false
+    /// The file's first own event has been checked for an inherited baseline.
+    var baselineChecked: Bool = false
+    /// Token events this file counts as its own (after the copied-history rule),
+    /// whether or not they added tokens.
+    var eventCount: Int = 0
+    var firstEventUnixMs: Int64?
+    var lastEventUnixMs: Int64?
+}
+
+/// What marks the copied part of a child rollout that names a history
+/// boundary (`subagent_history_start_ordinal`). Codex writes two shapes:
+///
+/// * A current child rollout copies its ancestor's history in *with* the
+///   ancestor's session_meta, just after its own, and numbers its own history
+///   from the boundary. The lines before the boundary are the ancestor's.
+/// * Codex's migration of older subagent rollouts rewrites them without the
+///   copied session_meta lines and moves the boundary to the end of the file,
+///   so every line is numbered before it. The boundary marks nothing there:
+///   the file holds the subagent's own work, which starts at the parent's
+///   first inter-agent message to it. What comes before that message is the
+///   parent's last requests, replayed.
+enum CodexCopiedPrefix: String, Codable, Equatable {
+    /// An ancestor's session_meta came before the boundary: the lines numbered
+    /// before the boundary are copied history.
+    case ancestorMetadata
+    /// No copied session_meta; an inter-agent message came before the
+    /// boundary: the token events before it were the parent's replayed tail,
+    /// and everything after it counts.
+    case interAgentMessage
+    /// Neither came before the held events had to be decided — at the end of
+    /// a read, or at a line numbered past the boundary: they counted, and so
+    /// does the rest.
+    case noMarker
 }
 
 // MARK: - Cache IO
@@ -113,7 +213,7 @@ enum CostUsageCacheIO {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(CostUsageCache.self, from: data),
               decoded.version == 1,
-              decoded.pricingVersion == costUsageCachePricingVersion,
+              decoded.pricingVersion == CostUsageCacheRules.version(forProvider: provider),
               hasOnlyGregorianDayKeys(decoded) else {
             // Either schema-version drift OR pricing-rules drift —
             // both invalidate the cached cost numbers, both heal
@@ -143,12 +243,12 @@ enum CostUsageCacheIO {
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
-        // Stamp the cache with the current pricing version on every
+        // Stamp the cache with the provider's current rules version on every
         // save. Otherwise a freshly-parsed cache could be saved with
         // pricingVersion=0 (the dataclass default) and look stale
         // immediately on the next load.
         var stamped = cache
-        stamped.pricingVersion = costUsageCachePricingVersion
+        stamped.pricingVersion = CostUsageCacheRules.version(forProvider: provider)
 
         let tmp = dir.appendingPathComponent(".tmp-\(UUID().uuidString).json")
         guard let data = try? JSONEncoder().encode(stamped) else { return }

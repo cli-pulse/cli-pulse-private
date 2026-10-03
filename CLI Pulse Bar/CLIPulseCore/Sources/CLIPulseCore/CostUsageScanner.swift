@@ -151,6 +151,9 @@ public enum CostUsageScanner {
         public var refreshMinIntervalSeconds: TimeInterval = 60
         public var forceRescan: Bool = false
         public var daysToScan: Int = 30
+        /// The moment the scan treats as now. nil (the default) is the clock;
+        /// tests set it so fixtures with fixed dates stay inside the window.
+        var now: Date?
 
         public init(
             codexSessionsRoot: URL? = nil,
@@ -172,7 +175,7 @@ public enum CostUsageScanner {
 
     /// Main entry point. Scans Codex and Claude JSONL logs for the last N days.
     public static func scan(options: Options = Options()) -> CostUsageScanResult {
-        let now = Date()
+        let now = options.now ?? Date()
         let since = DayKey.calendar().date(byAdding: .day, value: -options.daysToScan, to: now) ?? now
         let range = DayRange(since: since, until: now)
 
@@ -340,19 +343,30 @@ public enum CostUsageScanner {
                 let cached = packed[safeIdx: 1] ?? 0
                 let output = packed[safeIdx: 2] ?? 0
                 guard input > 0 || cached > 0 || output > 0 else { continue }
-                // Codex rows hold tokens only; the price is chosen here, on
-                // every read, at the rate in force on that day. So a change to
-                // `CodexPricingTable` reaches every cached day without a rescan
-                // (see `costUsageCachePricingVersion`).
-                let cost = Pricing.codexCostUSD(
-                    model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output,
-                    pricingDate: Pricing.codexPricingDate(forDayKey: day)
-                )
+                // The cost is the row's stored request costs (slot 3), priced
+                // when each request was read, at the rate in force at its own
+                // time. Whether that rate was borrowed is decided from the
+                // name here, on read; it agrees with the stored cost because
+                // the Codex fingerprint (`Pricing.codexRatesFingerprint`)
+                // covers every key and how each name resolves, so a change to
+                // either re-reads the Codex logs.
+                let cost = codexCost(model: model, packed: packed)
                 result.append(.init(date: day, provider: "Codex", model: model, inputTokens: input, cachedTokens: cached, outputTokens: output, costUSD: cost,
                                     priceIsApproximate: Pricing.codexPriceResolution(model)?.isApproximate ?? false))
             }
         }
         return result
+    }
+
+    /// A Codex day × model row's cost: the sum of its requests' costs, priced
+    /// one by one as they were read (slot 3, nanodollars). nil when the model
+    /// has no rate, which is how an unpriced model stays visible as unpriced
+    /// instead of reading $0. Every row the scanner writes has slot 3; a cache
+    /// written before it is rejected by `CostUsageCacheIO.load`, so a row
+    /// without it is treated as unpriced rather than guessed at.
+    static func codexCost(model: String, packed: [Int]) -> Double? {
+        guard Pricing.codexPricingKey(model) != nil, let costNanos = packed[safeIdx: 3] else { return nil }
+        return Double(costNanos) / 1_000_000_000.0
     }
 
     private static func entriesFromClaudeCache(_ cache: CostUsageCache, range: DayRange) -> [CostUsageScanResult.DailyEntry] {
@@ -424,10 +438,36 @@ public enum CostUsageScanner {
     // MARK: - JSONL Parser
 
     private struct JsonlLine {
+        /// The whole line; when `wasTruncated`, only its first
+        /// `jsonlTruncatedHeadBytes` bytes — enough to see what kind of line
+        /// it was, never enough to decode.
         let bytes: Data
         let wasTruncated: Bool
     }
 
+    /// How much of a line over the size limit `scanJsonl` keeps. A Codex
+    /// rollout's copied session_meta lines are often over the limit, and the
+    /// scanner has to know where one sits without decoding it
+    /// (`codexLineOrdinal`); the type and number come first on the line.
+    static let jsonlTruncatedHeadBytes = 4096
+
+    /// Reads the lines of a JSONL log from `offset`, and returns the offset
+    /// the next incremental read must start from.
+    ///
+    /// The returned offset is just past the last line that ended in a newline.
+    /// A last line without one is read only when it already parses: that is a
+    /// log's final line written without a trailing newline. Anything else is a
+    /// line the CLI is still writing. It is not read, and the returned offset
+    /// stays at its first byte, so the next scan reads the whole line once it
+    /// is complete. (Returning the end of the file here used to make the next
+    /// scan start in the middle of that line, which never parses, and its
+    /// usage was lost.)
+    ///
+    /// Same goal as CodexBar #2168, with a simpler rule. Upstream tracks the
+    /// JSON structure of the tail as it reads, so it also takes an oversized
+    /// tail (one it does not keep whole) once that tail looks complete, and it
+    /// can resume a tail part-way through. Here a tail is read only when it
+    /// decodes, and an oversized one waits for its newline.
     @discardableResult
     private static func scanJsonl(
         fileURL: URL,
@@ -449,6 +489,7 @@ public enum CostUsageScanner {
         var lineBytes = 0
         var truncated = false
         var bytesRead: Int64 = 0
+        var committedOffset = startOffset
 
         func appendSegment(_ segment: Data.SubSequence) {
             guard !segment.isEmpty else { return }
@@ -456,7 +497,13 @@ public enum CostUsageScanner {
             guard !truncated else { return }
             if lineBytes > maxLineBytes || lineBytes > prefixBytes {
                 truncated = true
-                current.removeAll(keepingCapacity: true)
+                // Keep only the line's head (see `JsonlLine.bytes`).
+                let room = jsonlTruncatedHeadBytes - current.count
+                if room > 0 {
+                    current.append(contentsOf: segment.prefix(room))
+                } else if room < 0 {
+                    current = Data(current.prefix(jsonlTruncatedHeadBytes))
+                }
                 return
             }
             current.append(contentsOf: segment)
@@ -473,27 +520,45 @@ public enum CostUsageScanner {
         while true {
             let chunk = try handle.read(upToCount: 256 * 1024) ?? Data()
             if chunk.isEmpty {
-                flushLine()
+                // An oversized tail was not kept in full (`truncated`), so it
+                // cannot be checked; it waits for its newline like a partial one.
+                if lineBytes > 0, !truncated,
+                   (try? JSONSerialization.jsonObject(with: current)) != nil {
+                    flushLine()
+                    committedOffset = startOffset + bytesRead
+                }
                 break
             }
+            let chunkStartOffset = startOffset + bytesRead
             bytesRead += Int64(chunk.count)
             var segmentStart = chunk.startIndex
             while let nl = chunk[segmentStart...].firstIndex(of: 0x0A) {
                 appendSegment(chunk[segmentStart..<nl])
                 flushLine()
                 segmentStart = chunk.index(after: nl)
+                committedOffset = chunkStartOffset + Int64(chunk.distance(from: chunk.startIndex, to: segmentStart))
             }
             if segmentStart < chunk.endIndex {
                 appendSegment(chunk[segmentStart..<chunk.endIndex])
             }
         }
 
-        return startOffset + bytesRead
+        return committedOffset
     }
 
     // MARK: - Timestamp Parsing
 
     static func dayKeyFromTimestamp(_ text: String) -> String? {
+        guard let date = instantFromTimestamp(text) else { return nil }
+        return DayRange.dayKey(from: date)
+    }
+
+    /// The instant an ISO-8601 log timestamp names, to the millisecond, by the
+    /// same fast byte parse `dayKeyFromTimestamp` has always used (nil exactly
+    /// where it returned nil). Fractional seconds are read here because the
+    /// Codex rules compare event times: whether an event is earlier than its
+    /// file's `session_meta`, and whether one file's events lie within another's.
+    static func instantFromTimestamp(_ text: String) -> Date? {
         let bytes = Array(text.utf8)
         guard bytes.count >= 20 else { return nil }
         guard bytes[safeUInt8: 4] == 45, bytes[safeUInt8: 7] == 45 else { return nil }
@@ -535,13 +600,30 @@ public enum CostUsageScanner {
             offsetSeconds = tzSign * (hours * 3600 + minutes * 60)
         }
 
+        // Milliseconds: the first three digits after "SS." (more are ignored).
+        var millis = 0
+        if bytes[safeUInt8: 19] == 46 {
+            var scale = 100
+            var idx = 20
+            while scale > 0, let digit = parseDigit(bytes[safeUInt8: idx]) {
+                millis += digit * scale
+                scale /= 10
+                idx += 1
+            }
+        }
+
         var comps = DateComponents()
         comps.calendar = Calendar(identifier: .gregorian)
         comps.timeZone = TimeZone(secondsFromGMT: offsetSeconds)
         comps.year = year; comps.month = month; comps.day = day
         comps.hour = hour; comps.minute = minute; comps.second = second
         guard let date = comps.date else { return nil }
-        return DayRange.dayKey(from: date)
+        return date.addingTimeInterval(Double(millis) / 1000)
+    }
+
+    /// An instant in Unix milliseconds, the unit the Codex file state stores.
+    static func unixMillis(_ date: Date) -> Int64 {
+        Int64((date.timeIntervalSince1970 * 1000).rounded())
     }
 
     private static let isoBox: ISOFormatterBox = ISOFormatterBox()
@@ -549,6 +631,10 @@ public enum CostUsageScanner {
     static func dayKeyFromParsedISO(_ text: String) -> String? {
         guard let date = isoBox.parse(text) else { return nil }
         return DayRange.dayKey(from: date)
+    }
+
+    static func instantFromParsedISO(_ text: String) -> Date? {
+        isoBox.parse(text)
     }
 
     private static func parse2(_ bytes: [UInt8], at index: Int) -> Int? {
@@ -606,6 +692,15 @@ public enum CostUsageScanner {
         /// Codex rates live in `CodexPricingTable` (ported from CodexBar, with
         /// its MIT notice), shared with iOS so the table can be read and tested
         /// on every platform.
+        ///
+        /// Each request's cost is computed from that table when the request is
+        /// read and stored in the cache, so a change to it — a row added,
+        /// removed or repriced, a long-context tier, a dated rate in
+        /// `superseded`, an alias — reaches days already scanned only through a
+        /// bump of `costUsageCodexCacheRulesVersion`. `codexRatesFingerprint()`
+        /// is pinned by a test next to that version, so a change without the
+        /// bump fails the build instead of leaving old days at old prices (or
+        /// an unpriced model's stored $0 reading as priced).
         private static var codexModels: [String: CodexPricingTable.Rates] { CodexPricingTable.current }
 
         private static let claudeModels: [String: ClaudeModel] = [
@@ -905,23 +1000,18 @@ public enum CostUsageScanner {
         }
 
 
-        /// Cost of a day's (or a file's) summed Codex usage of `model`.
+        /// What one Codex request cost, at the rate in force at `date` (a
+        /// dated rate from `CodexPricingTable.superseded`, or today's when
+        /// `date` is nil or later). nil when the model has no rate.
         ///
-        /// `pricingDate` chooses between a model's current rate and one it had
-        /// before (`CodexPricingTable.superseded`); nil means today's rate.
-        /// Standard rates only: the input is a sum of requests, so the 272K
-        /// long-context tier cannot be applied here
-        /// (`CodexPricingTable.aggregateCostUSD`).
-        static func codexCostUSD(
-            model: String,
-            inputTokens: Int,
-            cachedInputTokens: Int,
-            outputTokens: Int,
-            pricingDate: Date? = nil
-        ) -> Double? {
+        /// The arguments are one request's tokens: the 272K long-context tier
+        /// is decided by them (`CodexPricingTable.requestCostUSD`). The scanner
+        /// prices each `token_count` event as it reads it, at the event's own
+        /// time (`codexEventCostUSD`); a day's sum is not a request.
+        static func codexCostUSD(model: String, inputTokens: Int, cachedInputTokens: Int, outputTokens: Int, at date: Date? = nil) -> Double? {
             guard let key = codexPricingKey(model),
-                  let rates = CodexPricingTable.rates(forKey: key, at: pricingDate) else { return nil }
-            return CodexPricingTable.aggregateCostUSD(
+                  let rates = CodexPricingTable.rates(forKey: key, at: date) else { return nil }
+            return CodexPricingTable.requestCostUSD(
                 rates: rates,
                 inputTokens: inputTokens,
                 cachedInputTokens: cachedInputTokens,
@@ -929,19 +1019,59 @@ public enum CostUsageScanner {
             )
         }
 
-        /// The moment whose rate a whole day of Codex usage is charged at:
-        /// noon of that day in `timeZone`.
+        /// Model names whose resolution the fingerprint records: current
+        /// rows, the `openai/` and dated spellings, aliases and a dated alias,
+        /// and names only the version fallback prices (or none does). A change
+        /// to how a name resolves (`normalizeCodexModel`,
+        /// `codexPriceResolution`) moves which rate a stored cost used, or
+        /// whether a stored $0 means unpriced, without changing a single rate
+        /// row.
+        static let codexFingerprintModelNames = [
+            "gpt-5", "gpt-5-codex", "gpt-5-mini", "gpt-5.1-codex-max", "gpt-5.3-codex-spark",
+            "gpt-5.4", "gpt-5.4-pro", "gpt-5.5", "openai/gpt-5.5", "gpt-5.5-2026-04-23",
+            "gpt-5.5-codex", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6-mini",
+            "gpt-5.7", "gpt-5.7-pro", "gpt-6-astra", "gpt-4.1", "o3", "codex-mini-latest",
+            "gpt-5.6", "gpt-5.6-2026-08-01", "gpt-reserve", "gpt-daybreak-red-latest",
+            "gpt-6-sol", "gpt-6.2",
+        ]
+
+        /// Everything a stored Codex cost depends on, as text: every key and
+        /// every rate of `CodexPricingTable.current`, every dated entry in
+        /// `superseded` (in the order the lookup reads them), every alias, and
+        /// how each of `codexFingerprintModelNames` resolves to a row. An
+        /// alias changes which row a name is billed at without changing any
+        /// row, so it moves stored costs just the same.
         ///
-        /// Codex usage reaches the price table already summed per local day,
-        /// so a repricing that happens partway through a day cannot be split.
-        /// Noon is the middle of the day, so the rate chosen is the one in
-        /// force for most of it, whatever the time zone. A repricing at 00:00
-        /// UTC falls at 09:00 in Tokyo, and the Tokyo day goes to the new rate;
-        /// in Los Angeles it falls at 17:00 the day before, and that day keeps
-        /// the old one. Pricing each request at its own timestamp removes the
-        /// approximation once usage is priced per request.
-        static func codexPricingDate(forDayKey dayKey: String, in timeZone: TimeZone = .current) -> Date? {
-            DayKey.date(from: dayKey, hour: 12, in: timeZone)
+        /// The tables are parameters only so a test can show that a change to
+        /// any of them changes the fingerprint; the name lines always use the
+        /// real resolution.
+        static func codexRatesFingerprint(
+            current: [String: CodexPricingTable.Rates] = CodexPricingTable.current,
+            superseded: [String: [CodexPricingTable.DatedRates]] = CodexPricingTable.superseded,
+            aliases: [String: String] = CodexPricingTable.aliases
+        ) -> String {
+            func number(_ value: Double?) -> String { value.map { String(format: "%.17g", $0) } ?? "nil" }
+            func row(_ r: CodexPricingTable.Rates) -> String {
+                [
+                    number(r.input), number(r.output), number(r.cachedInput), number(r.cacheWrite),
+                    "over \(r.longContextThreshold.map(String.init) ?? "nil")",
+                    number(r.inputAboveThreshold), number(r.outputAboveThreshold),
+                    number(r.cachedInputAboveThreshold), number(r.cacheWriteAboveThreshold),
+                ].joined(separator: " ")
+            }
+            var lines = current.keys.sorted().compactMap { key in current[key].map { "\(key) \(row($0))" } }
+            for key in superseded.keys.sorted() {
+                for period in superseded[key] ?? [] {
+                    lines.append("\(key) until \(Int(period.until.timeIntervalSince1970)) \(row(period.rates))")
+                }
+            }
+            for alias in aliases.keys.sorted() {
+                lines.append("alias \(alias) -> \(aliases[alias] ?? "nil")")
+            }
+            for name in codexFingerprintModelNames {
+                lines.append("name \(name) -> \(normalizeCodexModel(name)) -> \(codexPricingKey(name) ?? "nil")")
+            }
+            return lines.joined(separator: "\n")
         }
 
         static func claudeCostUSD(model: String, inputTokens: Int, cacheReadInputTokens: Int, cacheCreationInputTokens: Int, outputTokens: Int) -> Double? {
@@ -970,11 +1100,11 @@ public enum CostUsageScanner {
         let lastModel: String?
         let lastTotals: CostUsageCodexTotals?
         let sessionId: String?
-    }
-
-    private struct CodexScanState {
-        var seenSessionIds: Set<String> = []
-        var seenFileIds: Set<String> = []
+        let state: CostUsageCodexFileState
+        /// false when the file could not be read to the end, or its first line
+        /// is not complete yet. Nothing from such a parse is kept: the file is
+        /// read again on the next refresh.
+        let complete: Bool
     }
 
     private static func defaultCodexSessionsRoot(options: Options) -> URL {
@@ -1054,149 +1184,345 @@ public enum CostUsageScanner {
         return String(describing: identifier)
     }
 
+    /// The longest first line (a rollout's own session_meta, which carries the
+    /// thread's base instructions) read to learn the file's identity. Every
+    /// other line keeps the 32 KB cap: token and turn lines are far smaller.
+    static let codexFirstLineMaxBytes = 1 << 20
+
+    enum CodexFirstLine: Equatable {
+        case line(Data)
+        /// Longer than `codexFirstLineMaxBytes`.
+        case tooLong
+        /// No newline yet: the line is still being written, or the file is empty.
+        case incomplete
+        case unreadable
+    }
+
+    /// The bytes of a file's first line, without reading the rest.
+    static func readCodexFirstLine(fileURL: URL, maxBytes: Int = codexFirstLineMaxBytes) -> CodexFirstLine {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return .unreadable }
+        defer { try? handle.close() }
+        var buffer = Data()
+        while buffer.count <= maxBytes {
+            let chunk: Data
+            do {
+                chunk = try handle.read(upToCount: min(256 * 1024, maxBytes + 1 - buffer.count)) ?? Data()
+            } catch {
+                return .unreadable
+            }
+            if chunk.isEmpty { return .incomplete }
+            if let newline = chunk.firstIndex(of: 0x0A) {
+                buffer.append(chunk[chunk.startIndex..<newline])
+                return buffer.count <= maxBytes ? .line(buffer) : .tooLong
+            }
+            buffer.append(chunk)
+        }
+        return .tooLong
+    }
+
+    /// Parse a Codex rollout from `startOffset`, resuming the counting state a
+    /// previous parse of the same file ended with. Each `token_count` event
+    /// adds what `CodexTokenAccountant` says it adds, priced at the rates of
+    /// its own time (`codexEventCostUSD`); the per-day-model rows are
+    /// `[input, cached, output, costNanos]`.
     private static func parseCodexFile(
         fileURL: URL, range: DayRange,
         startOffset: Int64 = 0,
         initialModel: String? = nil,
-        initialTotals: CostUsageCodexTotals? = nil
+        initialTotals: CostUsageCodexTotals? = nil,
+        initialState: CostUsageCodexFileState = CostUsageCodexFileState()
     ) -> CodexParseResult {
         var currentModel = initialModel
-        var previousTotals = initialTotals
+        var accountant = CodexTokenAccountant(watermark: initialTotals, state: initialState)
         var sessionId: String?
         var days: [String: [String: [Int]]] = [:]
+        let costScale = 1_000_000_000.0
 
-        func add(dayKey: String, model: String, input: Int, cached: Int, output: Int) {
+        func incomplete() -> CodexParseResult {
+            CodexParseResult(days: [:], parsedBytes: startOffset, lastModel: initialModel, lastTotals: initialTotals,
+                             sessionId: nil, state: initialState, complete: false)
+        }
+
+        // The file's identity comes from its first line and nowhere else. The
+        // line scan below starts at the same byte, so it skips that line.
+        var skipFirstLine = false
+        if startOffset == 0 {
+            switch readCodexFirstLine(fileURL: fileURL) {
+            case .incomplete, .unreadable:
+                return incomplete()
+            case .tooLong:
+                accountant.observeUnreadableFirstLine()
+                skipFirstLine = true
+            case .line(let bytes):
+                // An empty first line is never handed to `onLine`.
+                skipFirstLine = !bytes.isEmpty
+                if bytes.asciiContains(#""type":"session_meta""#),
+                   let obj = (try? JSONSerialization.jsonObject(with: bytes)) as? [String: Any],
+                   (obj["type"] as? String) == "session_meta" {
+                    let payload = obj["payload"] as? [String: Any]
+                    sessionId = payload?["session_id"] as? String ?? payload?["sessionId"] as? String ?? payload?["id"] as? String ?? obj["session_id"] as? String
+                    let metaTime = (payload?["timestamp"] as? String) ?? (obj["timestamp"] as? String)
+                    let metaInstant = metaTime.flatMap { instantFromTimestamp($0) ?? instantFromParsedISO($0) }
+                    accountant.observeSessionMeta(
+                        rolloutId: payload?["id"] as? String,
+                        isChild: payload.map(CodexTokenAccountant.sessionMetaNamesParent) ?? false,
+                        metaUnixMs: metaInstant.map(unixMillis),
+                        historyStartOrdinal: payload?["subagent_history_start_ordinal"] as? Int
+                    )
+                } else {
+                    accountant.observeUnreadableFirstLine()
+                }
+            }
+        }
+
+        // Token counts can be absurd in a corrupt log; a sum must not trap.
+        func plus(_ a: Int, _ b: Int) -> Int {
+            let (sum, overflow) = a.addingReportingOverflow(b)
+            return overflow ? Int.max : sum
+        }
+        var normalizedModels: [String: String] = [:]
+        var pricingKeys: [String: String?] = [:]
+
+        func add(dayKey: String, model: String, delta: CostUsageCodexTotals, costNanos: Int) {
             guard DayRange.isInRange(dayKey: dayKey, since: range.scanSinceKey, until: range.scanUntilKey) else { return }
-            let normModel = Pricing.normalizeCodexModel(model)
+            let normModel: String
+            if let known = normalizedModels[model] {
+                normModel = known
+            } else {
+                normModel = Pricing.normalizeCodexModel(model)
+                normalizedModels[model] = normModel
+            }
             var dayModels = days[dayKey] ?? [:]
-            var packed = dayModels[normModel] ?? [0, 0, 0]
-            packed[0] = (packed[safeIdx: 0] ?? 0) + input
-            packed[1] = (packed[safeIdx: 1] ?? 0) + cached
-            packed[2] = (packed[safeIdx: 2] ?? 0) + output
+            var packed = dayModels[normModel] ?? [0, 0, 0, 0]
+            while packed.count < 4 { packed.append(0) }
+            packed[0] = plus(packed[0], delta.input)
+            packed[1] = plus(packed[1], min(delta.cached, delta.input))
+            packed[2] = plus(packed[2], delta.output)
+            packed[3] = plus(packed[3], costNanos)
             dayModels[normModel] = packed
             days[dayKey] = dayModels
         }
 
+        /// A token count as an Int: 0 for anything that is not a positive
+        /// number, and capped at 10^15 so no conversion or sum can trap.
+        func toInt(_ v: Any?) -> Int {
+            guard let number = v as? NSNumber else { return 0 }
+            let value = number.doubleValue
+            guard value.isFinite, value > 0 else { return 0 }
+            return value >= 1e15 ? 1_000_000_000_000_000 : max(0, number.intValue)
+        }
+        func totals(_ usage: [String: Any]?) -> CostUsageCodexTotals? {
+            guard let usage else { return nil }
+            return CostUsageCodexTotals(
+                input: toInt(usage["input_tokens"]),
+                cached: toInt(usage["cached_input_tokens"] ?? usage["cache_read_input_tokens"]),
+                output: toInt(usage["output_tokens"])
+            )
+        }
+
+        /// File one counted event under its local day and model, priced at
+        /// the `CodexPricingTable` rates in force at its own time.
+        func file(_ counted: CodexTokenAccountant.Counted) {
+            let event = counted.event
+            let key: String?
+            if let known = pricingKeys[event.model] {
+                key = known
+            } else {
+                key = Pricing.codexPricingKey(event.model)
+                pricingKeys[event.model] = key
+            }
+            var costNanos = 0
+            if let key, let rates = CodexPricingTable.rates(forKey: key, at: event.instant) {
+                let nanos = Pricing.codexEventCostUSD(rates: rates, counted: counted.delta, request: event.last) * costScale
+                if nanos.isFinite { costNanos = Int(min(max(0, nanos), 1e18).rounded()) }
+            }
+            add(dayKey: DayRange.dayKey(from: event.instant), model: event.model, delta: counted.delta, costNanos: costNanos)
+        }
+
         let maxLineBytes = 256 * 1024
         let prefixBytes = 32 * 1024
+        var readError = false
 
-        let parsedBytes = (try? scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
-            guard !line.bytes.isEmpty, !line.wasTruncated else { return }
-            guard line.bytes.asciiContains(#""type":"event_msg""#)
-                || line.bytes.asciiContains(#""type":"turn_context""#)
-                || line.bytes.asciiContains(#""type":"session_meta""#) else { return }
-            if line.bytes.asciiContains(#""type":"event_msg""#), !line.bytes.asciiContains(#""token_count""#) { return }
-
-            guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
-                  let type = obj["type"] as? String else { return }
-
-            if type == "session_meta" {
-                if sessionId == nil {
-                    let payload = obj["payload"] as? [String: Any]
-                    sessionId = payload?["session_id"] as? String ?? payload?["sessionId"] as? String ?? payload?["id"] as? String ?? obj["session_id"] as? String
+        let parsedBytes: Int64
+        do {
+            parsedBytes = try scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
+                if skipFirstLine {
+                    skipFirstLine = false
+                    return
                 }
-                return
-            }
-
-            guard let tsText = obj["timestamp"] as? String,
-                  let dayKey = dayKeyFromTimestamp(tsText) ?? dayKeyFromParsedISO(tsText) else { return }
-
-            if type == "turn_context" {
-                if let payload = obj["payload"] as? [String: Any] {
-                    if let model = payload["model"] as? String { currentModel = model }
-                    else if let info = payload["info"] as? [String: Any], let model = info["model"] as? String { currentModel = model }
+                guard !line.bytes.isEmpty else { return }
+                // A later session_meta is an ancestor's, copied in with its
+                // history. It never gives the file its identity and is never
+                // decoded (it can be far over the line limit); its head says
+                // where it sits, which is what marks copied history (rule 2 of
+                // `CodexTokenAccountant`).
+                if line.bytes.asciiContains(#""type":"session_meta""#) {
+                    accountant.observeCopiedSessionMeta(ordinal: codexLineOrdinal(line.bytes))
+                    return
                 }
-                return
-            }
+                if accountant.awaitsCopiedPrefixMarker,
+                   line.bytes.asciiContains(#""type":"inter_agent_communication_metadata""#) {
+                    accountant.observeInterAgentMessage(ordinal: codexLineOrdinal(line.bytes))
+                    return
+                }
+                guard !line.wasTruncated else { return }
+                guard line.bytes.asciiContains(#""type":"event_msg""#)
+                    || line.bytes.asciiContains(#""type":"turn_context""#) else { return }
+                if line.bytes.asciiContains(#""type":"event_msg""#), !line.bytes.asciiContains(#""token_count""#) { return }
 
-            guard type == "event_msg",
-                  let payload = obj["payload"] as? [String: Any],
-                  (payload["type"] as? String) == "token_count" else { return }
+                guard let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
+                      let type = obj["type"] as? String else { return }
 
-            let info = payload["info"] as? [String: Any]
-            let modelFromInfo = info?["model"] as? String ?? info?["model_name"] as? String ?? payload["model"] as? String ?? obj["model"] as? String
-            let model = modelFromInfo ?? currentModel ?? "gpt-5"
+                guard let tsText = obj["timestamp"] as? String,
+                      let instant = instantFromTimestamp(tsText) ?? instantFromParsedISO(tsText) else { return }
 
-            func toInt(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+                if type == "turn_context" {
+                    if let payload = obj["payload"] as? [String: Any] {
+                        if let model = payload["model"] as? String { currentModel = model }
+                        else if let info = payload["info"] as? [String: Any], let model = info["model"] as? String { currentModel = model }
+                    }
+                    return
+                }
 
-            let total = info?["total_token_usage"] as? [String: Any]
-            let last = info?["last_token_usage"] as? [String: Any]
-            var deltaInput = 0, deltaCached = 0, deltaOutput = 0
+                guard type == "event_msg",
+                      let payload = obj["payload"] as? [String: Any],
+                      (payload["type"] as? String) == "token_count" else { return }
 
-            if let total {
-                let input = toInt(total["input_tokens"])
-                let cached = toInt(total["cached_input_tokens"] ?? total["cache_read_input_tokens"])
-                let output = toInt(total["output_tokens"])
-                deltaInput = max(0, input - (previousTotals?.input ?? 0))
-                deltaCached = max(0, cached - (previousTotals?.cached ?? 0))
-                deltaOutput = max(0, output - (previousTotals?.output ?? 0))
-                previousTotals = CostUsageCodexTotals(input: input, cached: cached, output: output)
-            } else if let last {
-                deltaInput = max(0, toInt(last["input_tokens"]))
-                deltaCached = max(0, toInt(last["cached_input_tokens"] ?? last["cache_read_input_tokens"]))
-                deltaOutput = max(0, toInt(last["output_tokens"]))
-            } else { return }
+                let info = payload["info"] as? [String: Any]
+                let total = totals(info?["total_token_usage"] as? [String: Any])
+                let last = totals(info?["last_token_usage"] as? [String: Any])
+                guard total != nil || last != nil else { return }
+                let modelFromInfo = info?["model"] as? String ?? info?["model_name"] as? String ?? payload["model"] as? String ?? obj["model"] as? String
+                let event = CodexTokenAccountant.Event(
+                    instant: instant,
+                    ordinal: obj["ordinal"] as? Int,
+                    total: total,
+                    last: last,
+                    model: modelFromInfo ?? currentModel ?? "gpt-5"
+                )
+                for counted in accountant.receive(event) { file(counted) }
+            })
+        } catch {
+            readError = true
+            parsedBytes = startOffset
+        }
+        if readError { return incomplete() }
+        // Events still held at the end of the read count (rule 2).
+        for counted in accountant.finish() { file(counted) }
 
-            if deltaInput == 0, deltaCached == 0, deltaOutput == 0 { return }
-            add(dayKey: dayKey, model: model, input: deltaInput, cached: min(deltaCached, deltaInput), output: deltaOutput)
-        })) ?? startOffset
-
-        return CodexParseResult(days: days, parsedBytes: parsedBytes, lastModel: currentModel, lastTotals: previousTotals, sessionId: sessionId)
+        return CodexParseResult(
+            days: days,
+            parsedBytes: parsedBytes,
+            lastModel: currentModel,
+            lastTotals: accountant.watermark,
+            sessionId: sessionId,
+            state: accountant.state,
+            complete: true
+        )
     }
 
-    private static func scanCodexFile(fileURL: URL, range: DayRange, cache: inout CostUsageCache, state: inout CodexScanState) {
+    /// A JSONL line's own number (`"ordinal":N`), read from its first 512
+    /// bytes without decoding the line: the lines it is needed for — an
+    /// ancestor's copied session_meta — can be far too long to decode, and
+    /// Codex writes the number near the start.
+    static func codexLineOrdinal(_ bytes: Data) -> Int? {
+        let head = bytes.prefix(512)
+        guard let found = head.range(of: Data(#""ordinal":"#.utf8)) else { return nil }
+        var index = found.upperBound
+        while index < head.endIndex, head[index] == 0x20 || head[index] == 0x09 || head[index] == 0x0D {
+            index = head.index(after: index)
+        }
+        var negative = false
+        if index < head.endIndex, head[index] == 0x2D {
+            negative = true
+            index = head.index(after: index)
+        }
+        var value = 0
+        var digits = 0
+        while index < head.endIndex, digits < 18, head[index] >= 0x30, head[index] <= 0x39 {
+            value = value * 10 + Int(head[index] - 0x30)
+            digits += 1
+            index = head.index(after: index)
+        }
+        guard digits > 0 else { return nil }
+        return negative ? -value : value
+    }
+
+    /// Bring one file's cache entry up to date. The entry records only what
+    /// the file itself holds; whether it counts is decided afterwards, across
+    /// all files, by `CodexCopyResolver`. A file is never dropped for sharing
+    /// a `session_id`: a subagent's file carries its parent's.
+    private static func scanCodexFile(fileURL: URL, range: DayRange, cache: inout CostUsageCache, seenFileIds: inout Set<String>) {
         let path = fileURL.path
         let attrs = (try? FileManager.default.attributesOfItem(atPath: path)) ?? [:]
         let mtime = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
         let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
         let mtimeMs = Int64(mtime * 1000)
-        let fileId = fileIdentityString(fileURL: fileURL)
 
-        func dropCachedFile(_ cached: CostUsageFileUsage?) {
-            if let cached { applyFileDays(cache: &cache, fileDays: cached.days, sign: -1) }
-            cache.files.removeValue(forKey: path)
+        // The same file reached by a second path (a hard link) is read once.
+        if let fileId = fileIdentityString(fileURL: fileURL) {
+            if seenFileIds.contains(fileId) { cache.files.removeValue(forKey: path); return }
+            seenFileIds.insert(fileId)
         }
-
-        if let fileId, state.seenFileIds.contains(fileId) { dropCachedFile(cache.files[path]); return }
 
         let cached = cache.files[path]
-        if let cachedSessionId = cached?.sessionId, state.seenSessionIds.contains(cachedSessionId) { dropCachedFile(cached); return }
+        // An entry without `codex` state predates these rules: re-parse it.
+        if let cached, cached.codex != nil, cached.mtimeUnixMs == mtimeMs, cached.size == size { return }
 
-        let needsSessionId = cached != nil && cached?.sessionId == nil
-        if let cached, cached.mtimeUnixMs == mtimeMs, cached.size == size, !needsSessionId {
-            if let sid = cached.sessionId { state.seenSessionIds.insert(sid) }
-            if let fid = fileId { state.seenFileIds.insert(fid) }
-            return
-        }
-
-        // Try incremental parse
-        if let cached, cached.sessionId != nil {
+        if let cached, let state = cached.codex {
             let startOffset = cached.parsedBytes ?? cached.size
-            let canIncremental = size > cached.size && startOffset > 0 && startOffset <= size && cached.lastTotals != nil
-            if canIncremental {
-                let delta = parseCodexFile(fileURL: fileURL, range: range, startOffset: startOffset, initialModel: cached.lastModel, initialTotals: cached.lastTotals)
-                let sid = delta.sessionId ?? cached.sessionId
-                if let sid, state.seenSessionIds.contains(sid) { dropCachedFile(cached); return }
-                if !delta.days.isEmpty { applyFileDays(cache: &cache, fileDays: delta.days, sign: 1) }
+            if size > cached.size && startOffset > 0 && startOffset <= size {
+                let delta = parseCodexFile(
+                    fileURL: fileURL, range: range, startOffset: startOffset,
+                    initialModel: cached.lastModel, initialTotals: cached.lastTotals, initialState: state
+                )
+                // A failed read keeps the entry as it was; its size no longer
+                // matches, so the next refresh tries again.
+                guard delta.complete else { return }
                 var mergedDays = cached.days
                 mergeFileDays(existing: &mergedDays, delta: delta.days)
-                cache.files[path] = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: mergedDays, parsedBytes: delta.parsedBytes, lastModel: delta.lastModel, lastTotals: delta.lastTotals, sessionId: sid)
-                if let sid { state.seenSessionIds.insert(sid) }
-                if let fid = fileId { state.seenFileIds.insert(fid) }
+                cache.files[path] = CostUsageFileUsage(
+                    mtimeUnixMs: mtimeMs, size: size, days: mergedDays, parsedBytes: delta.parsedBytes,
+                    lastModel: delta.lastModel, lastTotals: delta.lastTotals,
+                    sessionId: delta.sessionId ?? cached.sessionId, codex: delta.state
+                )
                 return
             }
         }
 
-        // Full re-parse
-        if let cached { applyFileDays(cache: &cache, fileDays: cached.days, sign: -1) }
         let parsed = parseCodexFile(fileURL: fileURL, range: range)
-        let sid = parsed.sessionId ?? cached?.sessionId
-        if let sid, state.seenSessionIds.contains(sid) { cache.files.removeValue(forKey: path); return }
-        let usage = CostUsageFileUsage(mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes, lastModel: parsed.lastModel, lastTotals: parsed.lastTotals, sessionId: sid)
-        cache.files[path] = usage
-        applyFileDays(cache: &cache, fileDays: usage.days, sign: 1)
-        if let sid { state.seenSessionIds.insert(sid) }
-        if let fid = fileId { state.seenFileIds.insert(fid) }
+        guard parsed.complete else {
+            // Not stored, so not counted this time and read again next time.
+            cache.files.removeValue(forKey: path)
+            return
+        }
+        cache.files[path] = CostUsageFileUsage(
+            mtimeUnixMs: mtimeMs, size: size, days: parsed.days, parsedBytes: parsed.parsedBytes,
+            lastModel: parsed.lastModel, lastTotals: parsed.lastTotals,
+            sessionId: parsed.sessionId, codex: parsed.state
+        )
+    }
+
+    /// Rebuild the Codex day rows from the files that count.
+    static func rebuildCodexDays(cache: inout CostUsageCache) -> (files: Int, counted: Int) {
+        let candidates = cache.files.map { path, usage in
+            CodexCopyResolver.File(
+                path: path,
+                rolloutId: usage.codex?.rolloutId,
+                eventCount: usage.codex?.eventCount ?? 0,
+                firstEventUnixMs: usage.codex?.firstEventUnixMs,
+                lastEventUnixMs: usage.codex?.lastEventUnixMs,
+                finalTokens: (usage.lastTotals?.input ?? 0) + (usage.lastTotals?.output ?? 0)
+            )
+        }
+        let counted = CodexCopyResolver.countedPaths(candidates)
+        var days: [String: [String: [Int]]] = [:]
+        for path in counted.sorted() {
+            guard let usage = cache.files[path] else { continue }
+            mergeFileDays(existing: &days, delta: usage.days)
+        }
+        cache.days = days
+        return (candidates.count, counted.count)
     }
 
     private static func scanCodexProvider(range: DayRange, now: Date, options: Options) -> CostUsageCache {
@@ -1224,12 +1550,14 @@ public enum CostUsageScanner {
 
         if shouldRefresh {
             if options.forceRescan { cache = CostUsageCache() }
-            var scanState = CodexScanState()
-            for fileURL in files { scanCodexFile(fileURL: fileURL, range: range, cache: &cache, state: &scanState) }
+            var seenFileIds: Set<String> = []
+            for fileURL in files { scanCodexFile(fileURL: fileURL, range: range, cache: &cache, seenFileIds: &seenFileIds) }
             for key in cache.files.keys where !filePathsInScan.contains(key) {
-                if let old = cache.files[key] { applyFileDays(cache: &cache, fileDays: old.days, sign: -1) }
                 cache.files.removeValue(forKey: key)
             }
+            let tally = rebuildCodexDays(cache: &cache)
+            let children = cache.files.values.filter { $0.codex?.isChild == true }.count
+            scanLogger.info("scanCodexProvider: files=\(tally.files) counted=\(tally.counted) copies_skipped=\(tally.files - tally.counted) subagent_or_fork=\(children)")
             pruneDays(cache: &cache, sinceKey: range.scanSinceKey, untilKey: range.scanUntilKey)
             cache.lastScanUnixMs = nowMs
             CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: options.cacheRoot)
@@ -1534,7 +1862,12 @@ public enum CostUsageScanner {
                 // read when the file is fresh — bounded I/O because
                 // only candidates within 5 minutes hit this path.
                 let metaFromFile = readCodexSessionMeta(fileURL: url)
-                let sessionId = usage?.sessionId ?? metaFromFile?.sessionId
+                // The rollout's own id first: a subagent's `sessionId` is its
+                // parent's, and sharing it would merge the two live sessions
+                // into one row (`synthesizeSessions` keys on it). A file not in
+                // the cache yet takes it from the file: `readCodexSessionMeta`
+                // returns the payload's own `id` before its `session_id`.
+                let sessionId = usage?.codex?.rolloutId ?? metaFromFile?.sessionId ?? usage?.sessionId
                 let projectName = projectLabelFromCodexMeta(metaFromFile?.cwd) ?? "Codex"
                 let projectRoot = metaFromFile?.cwd
                 candidates.append(.init(
@@ -1691,16 +2024,13 @@ public enum CostUsageScanner {
     private static func computeCodexCost(usage: CostUsageFileUsage?) -> Double {
         guard let usage else { return 0 }
         var total = 0.0
-        for (day, models) in usage.days {
+        for (_, models) in usage.days {
             for (model, packed) in models {
                 let input = packed[safeIdx: 0] ?? 0
                 let cached = packed[safeIdx: 1] ?? 0
                 let output = packed[safeIdx: 2] ?? 0
                 if input == 0 && cached == 0 && output == 0 { continue }
-                if let cost = Pricing.codexCostUSD(
-                    model: model, inputTokens: input, cachedInputTokens: cached, outputTokens: output,
-                    pricingDate: Pricing.codexPricingDate(forDayKey: day)
-                ) {
+                if let cost = codexCost(model: model, packed: packed) {
                     total += cost
                 }
             }

@@ -21,9 +21,10 @@
 //     is unchanged, so every cached day keeps the key it was stored under and
 //     a model is shown under the name Codex wrote.
 //   * Dated rates are a list per model (`superseded`), not one cutoff each.
-//   * `aggregateCostUSD` is ours. The scanner still sums Codex usage per day
-//     and model before pricing it, and a per-request tier cannot be applied to
-//     a sum; see that function.
+//   * `aggregateCostUSD` and the `tierInputTokens` argument of
+//     `requestCostUSD` are ours. The scanner prices each `token_count` event
+//     as it reads it, and an event's counted tokens are not always exactly one
+//     request; see those functions.
 //   * Not ported: models.dev lookups, the custom-pricing overlay, API Fast
 //     (priority) multipliers, and the pricing fingerprint. On Fast: the
 //     rollout JSONL this app reads does not carry a request's service tier.
@@ -335,14 +336,22 @@ public enum CodexPricingTable {
     /// of it, and cache writes a subset of the rest. Both are clamped so no
     /// token is invented or charged twice. A request over the threshold pays
     /// the long-context rates on every token, not only on the excess.
+    ///
+    /// `tierInputTokens` is the input of the whole request when the tokens
+    /// given are only part of it, and then it alone decides the tier: the
+    /// scanner counts the growth of a cumulative counter, which for a file's
+    /// first event can be less than the request the event reports. nil: the
+    /// tokens given are the whole request.
     public static func requestCostUSD(
         rates: Rates,
         inputTokens: Int,
         cachedInputTokens: Int,
         cacheWriteInputTokens: Int = 0,
-        outputTokens: Int
+        outputTokens: Int,
+        tierInputTokens: Int? = nil
     ) -> Double {
-        let longContext = rates.longContextThreshold.map { max(0, inputTokens) > $0 } ?? false
+        let requestInput = max(0, tierInputTokens ?? inputTokens)
+        let longContext = rates.longContextThreshold.map { requestInput > $0 } ?? false
         return cost(
             rates: rates, longContext: longContext,
             inputTokens: inputTokens, cachedInputTokens: cachedInputTokens,
@@ -352,11 +361,12 @@ public enum CodexPricingTable {
 
     /// Cost of a SUM of requests, at standard rates.
     ///
-    /// The scanner adds Codex usage up per day and model before pricing it, so
-    /// the size of each request is gone by the time a price is chosen. Testing
-    /// the threshold against a day's total would put every busy day on
-    /// long-context rates, so a sum never takes the tier. Requests over 272K
-    /// are therefore under-counted until usage is priced request by request.
+    /// The size of each request in a sum is unknown, and testing the threshold
+    /// against the total would put every busy day on long-context rates, so a
+    /// sum never takes the tier. The scanner uses it for the part of a
+    /// cumulative counter's growth beyond the request its event reports: the
+    /// counter also covers requests that wrote no event of their own, and
+    /// nothing shows how large those were.
     public static func aggregateCostUSD(
         rates: Rates,
         inputTokens: Int,
