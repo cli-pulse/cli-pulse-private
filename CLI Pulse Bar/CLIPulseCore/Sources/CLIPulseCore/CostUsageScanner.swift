@@ -1464,7 +1464,7 @@ public enum CostUsageScanner {
         var from = head.startIndex
         while let found = head.range(of: needle, in: from..<head.endIndex) {
             var index = found.upperBound
-            while index < head.endIndex, head[index] != 0x22, head[index] != 0x5C {
+            while index < head.endIndex, head[index] != 0x22 { // NEGATIVE CONTROL A2: escapes not skipped
                 index = head.index(after: index)
             }
             if index < head.endIndex, head[index] == 0x22 {

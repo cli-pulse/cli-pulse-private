@@ -452,7 +452,7 @@ struct CodexTokenAccountant {
     /// A child with a history ordinal that has not counted any tokens yet
     /// (rule 4).
     private var inOpening: Bool {
-        state.isChild && state.historyStartOrdinal != nil && state.openingSettled != true
+        false // NEGATIVE CONTROL A1: rule 4 off
     }
 
     /// Rule 4's bookkeeping after an event: the opening ends with the first
