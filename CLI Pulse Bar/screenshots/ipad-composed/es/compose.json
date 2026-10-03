@@ -1,0 +1,46 @@
+{
+ "captions": {
+  "01_overview": [
+   "Todo de un vistazo",
+   "Uso, costos, sesiones y alertas en una sola pantalla"
+  ],
+  "02_providers": [
+   "Cuotas y costos en vivo",
+   "Consulta cuánto te queda antes de llegar al límite"
+  ],
+  "03_cost": [
+   "En qué se va tu dinero",
+   "Costo estimado de hoy por proveedor, más el total de los últimos 30 días"
+  ],
+  "04_sessions": [
+   "Cada ejecución, registrada",
+   "Sesiones activas con su uso, costo y solicitudes"
+  ],
+  "05_alerts": [
+   "Sin sorpresas con la cuota",
+   "Alertas de cuota, picos de CPU y sesiones de larga duración"
+  ]
+ },
+ "captures": {
+  "01_overview.png": "c5fa13d17a8f827947c86b30c4ddbd76",
+  "02_providers.png": "79ac57b42a0cad49b590dccc0b338db5",
+  "03_cost.png": "be1fe2894743dc2da3f21aa441ab6936",
+  "04_sessions.png": "c864ea7c17e2a5b7201a1de7677d3f4f",
+  "05_alerts.png": "a369eb5295f68717715341eb032baa64"
+ },
+ "faces": {
+  "subtitle": "SFNS",
+  "title": "SFNS"
+ },
+ "lang": "es",
+ "panels": {
+  "01_overview_2064x2752.png": "7c81ccc8822e1c5b5c5f08c3c09bfc4d",
+  "02_providers_2064x2752.png": "d5e0cfa49e1414669b498de68972317b",
+  "03_cost_2064x2752.png": "af6dd4384e0448f50490af2f18ea4711",
+  "04_sessions_2064x2752.png": "54519a33e453341d74c4524dd06c67c9",
+  "05_alerts_2064x2752.png": "7bcb1ab69b9c70e4228cd17d81c21f8d"
+ },
+ "pillow": "10.4.0",
+ "subtitle_pt": 70,
+ "title_pt": 150
+}
