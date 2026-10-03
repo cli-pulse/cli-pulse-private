@@ -1149,8 +1149,8 @@
 /* v1.50 W-C — 在读取这台 Mac 之前的选择 */
 "local_scan_consent.title" = "在 CLI Pulse 读取这台 Mac 之前";
 "local_scan_consent.subtitle" = "在你同意之前，CLI Pulse 不会扫描这台 Mac。开始扫描后，将启用以下各项。";
-"local_scan_consent.files_title" = "会话日志：最近 30 天，另可一次性读取最多一年";
-"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新都会读取最近 30 天的日志。只有在你允许时，CLI Pulse 才会额外读取一次最多一年的旧日志，用来补全用量历史。它会解析其中的用量记录，并把结果缓存在这台 Mac 上。";
+"local_scan_consent.files_title" = "会话日志：最近 30 天，经你允许还可读取最多一年";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次刷新都会读取最近 30 天的日志。只有在你允许时，CLI Pulse 才会额外读取最多一年的旧日志，用来补全用量历史：先读取一次；之后每当有更新改变 Codex 用量的计算方式，会再读取一次 Codex 的日志。它会解析其中的用量记录，并把结果缓存在这台 Mac 上。";
 "local_scan_consent.derived_title" = "会提取哪些信息，以及哪些程序正在运行";
 "local_scan_consent.derived_detail" = "token 数、费用预估、模型名称和日期，以及每次会话的文件路径、项目文件夹和会话 ID——「会话」列表就是靠这些来命名的。它还会查看正在运行的程序，以发现 AI CLI 会话；登录且开启后台同步时，每个会话的程序名和项目文件夹名会同步到你的账户。";
 "local_scan_consent.network_title" = "用这台 Mac 上已有的凭据访问服务商";
@@ -1165,10 +1165,10 @@
 "local_scan_consent.declined_title" = "本地扫描已关闭";
 "local_scan_consent.declined_body" = "CLI Pulse 没有扫描这台 Mac，所以暂时没有可显示的数据。";
 "local_scan_consent.last_30_days_only" = "仅最近 30 天";
-"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。无论选哪个，之后都可以随时在「设置 › 隐私」中更改。";
-"local_scan_consent.first_ask_hint_signed_in" = "「开始本地扫描」还会读取一次旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。登录期间，之后可以在「设置 › 隐私」中更改是否读取旧日志；如果选了「暂时不要」，也可以在那里重新回答这个问题。退出登录会停止扫描。";
+"local_scan_consent.first_ask_hint" = "「开始本地扫描」还会读取旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。无论选哪个，之后都可以随时在「设置 › 隐私」中更改。";
+"local_scan_consent.first_ask_hint_signed_in" = "「开始本地扫描」还会读取旧日志；「仅最近 30 天」则不会，但已生成的用量历史仍会保留在这台 Mac 上。登录期间，之后可以在「设置 › 隐私」中更改是否读取旧日志；如果选了「暂时不要」，也可以在那里重新回答这个问题。退出登录会停止扫描。";
 "local_scan_consent.v2_title" = "在 CLI Pulse 读取旧日志之前";
-"local_scan_consent.v2_subtitle" = "每次刷新读取最近 30 天。为了补全用量历史，CLI Pulse 还可以一次性读取最多一年的旧会话日志。现在它会先征求你的同意；无论选哪个，最近 30 天的扫描都会照常进行，已生成的用量历史也会保留在这台 Mac 上。";
+"local_scan_consent.v2_subtitle" = "每次刷新读取最近 30 天。为了补全用量历史，CLI Pulse 还可以读取最多一年的旧会话日志：先读取一次；之后每当有更新改变 Codex 用量的计算方式，会再读取一次 Codex 的日志。现在它会先征求你的同意；无论选哪个，最近 30 天的扫描都会照常进行，已生成的用量历史也会保留在这台 Mac 上。";
 "local_scan_consent.include_history" = "包括更早的历史";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "本地使用（无需账户）";
@@ -1400,7 +1400,7 @@
 "local_scan_consent.settings_toggle" = "扫描这台 Mac 上的 CLI 使用情况";
 "local_scan_consent.settings_toggle_detail" = "每次刷新读取 ~/.codex 和 ~/.claude 下最近 30 天的会话日志，并向你使用的服务商查询实时配额。旧日志由单独的开关控制。关闭后，应用及其后台 helper 都不会扫描这台 Mac。";
 "local_scan_consent.history_toggle" = "包括更早的用量历史";
-"local_scan_consent.history_toggle_detail" = "读取一次最多一年的旧会话日志，用来补全用量历史。关闭后，CLI Pulse 只读取最近 30 天；已生成的用量历史仍保留在这台 Mac 上。";
+"local_scan_consent.history_toggle_detail" = "读取最多一年的旧会话日志，用来补全用量历史：先读取一次；之后每当有更新改变 Codex 用量的计算方式，会再读取一次 Codex 的日志。关闭后，CLI Pulse 只读取最近 30 天；已生成的用量历史仍保留在这台 Mac 上。";
 "local_scan_consent.settings_declined_detail" = "你选择了「暂时不要」。即使已登录，这个选择也不会改变。";
 "local_scan_consent.companion_not_covered" = "这台 Mac 上的 Companion CLI（%@）不遵循此选择，也不会因退出登录而停止：只要它已安装并配对，就会每 2 分钟读取这台 Mac，并把读到的内容同步到与它配对的账户。请在「设置 › Companion CLI」中更新或卸载它。";
 "local_scan_consent.choose_again" = "重新选择…";
