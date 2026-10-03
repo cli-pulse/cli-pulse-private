@@ -543,6 +543,49 @@ def test_gate_logs_a_change_once(home, caplog):
     assert "allowed" in messages[1]
 
 
+SOURCE_LOG = "cli_pulse.local_scan_consent.source"
+
+
+def _gate_reading(reads: list[MirrorRead]) -> LocalScanGate:
+    queue = iter(reads)
+    return LocalScanGate(path=lambda: Path("/x/group.yyh.CLI-Pulse.plist"), reader=lambda _path: next(queue))
+
+
+def test_gate_says_once_per_change_where_the_answer_came_from(caplog):
+    # cfprefsd is current; the file trails the app by up to ~10 s. Which one
+    # answered is what a real install has to tell (`app_group_prefs`).
+    caplog.set_level("INFO", logger=SOURCE_LOG)
+    reads = [
+        MirrorRead("ok", consent="granted", source="cfprefsd"),
+        MirrorRead("ok", consent="granted", source="cfprefsd"),
+        MirrorRead("ok", consent="declined", source="cfprefsd"),
+        MirrorRead("unreadable", detail="EPERM"),
+        MirrorRead("ok", consent="granted", source="file"),
+        MirrorRead("ok", consent="declined", source="file"),
+        MirrorRead("ok", consent="granted", source="cfprefsd"),
+    ]
+    gate = _gate_reading(reads)
+    for _ in reads:
+        gate.check()
+    lines = [r.getMessage() for r in caplog.records if r.name == SOURCE_LOG]
+    assert len(lines) == 3, lines
+    assert "through cfprefsd" in lines[0]
+    assert "from the plist file /x/group.yyh.CLI-Pulse.plist" in lines[1] and "10 s" in lines[1]
+    assert "through cfprefsd" in lines[2]
+
+
+def test_a_file_without_the_apps_answers_is_not_reported_as_a_source(caplog):
+    # A plist with none of the app's keys is an app older than 1.55: the
+    # decision's own line says that, and "read from the file" would suggest
+    # cfprefsd had failed.
+    caplog.set_level("INFO", logger=SOURCE_LOG)
+    reads = [MirrorRead("ok", source="file"), MirrorRead("absent"), MirrorRead("ok", source="file")]
+    gate = _gate_reading(reads)
+    for _ in reads:
+        gate.check()
+    assert [r.getMessage() for r in caplog.records if r.name == SOURCE_LOG] == []
+
+
 # ── heartbeat and sync ─────────────────────────────────────────
 
 
