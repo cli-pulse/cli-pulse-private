@@ -85,6 +85,16 @@ internal enum DemoDataProvider {
         // share left. `testDemoClaudeReportsTheWindowsItsCollectorBuilds`
         // holds it to the builder.
         //
+        // Codex and Gemini report percentages too: CodexCollector and
+        // GeminiCollector build every window, and the provider's own quota and
+        // remaining, as quota 100 and the share left, and the cloud keeps what
+        // the Mac uploads. Demo gave them token counts (500K with 38K left,
+        // 300K with 86K left). The bars and the alert read the same either
+        // way, but the Watch's provider screen prints the two numbers as its
+        // Quota and Remaining rows: "500K" and "38K", where a real Codex reads
+        // 100 and 8. `testDemoCodexAndGeminiReportTheWindowsTheirCollectorsBuild`
+        // holds them to the collectors.
+        //
         // Each provider with a cost carries the 30-day figure the server sends
         // (`provider_summary`: the last 30 days of `daily_usage_metrics`, a
         // window that holds the week's and today's). Without it the app fell
@@ -97,15 +107,15 @@ internal enum DemoDataProvider {
                           estimated_cost_today: 1.03, estimated_cost_week: 5.54,
                           estimated_cost_30_day: 23.83,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
-                          quota: 500000, remaining: 38000,
-                          tiers: [TierDTO(name: "Weekly", quota: 500000, remaining: 38000)],
+                          quota: 100, remaining: 8,
+                          tiers: [TierDTO(name: "Weekly", quota: 100, remaining: 8)],
                           status_text: "92% used",
                           trend: trend(base: 85000, salt: 201), recent_sessions: [], recent_errors: []),
             ProviderUsage(provider: "Gemini", today_usage: 0, week_usage: 0,
                           estimated_cost_today: 0, estimated_cost_week: 0,
                           cost_status_today: "Unavailable", cost_status_week: "Unavailable",
-                          quota: 300000, remaining: 86000,
-                          tiers: [TierDTO(name: "Pro", quota: 300000, remaining: 86000)],
+                          quota: 100, remaining: 29,
+                          tiers: [TierDTO(name: "Pro", quota: 100, remaining: 29)],
                           status_text: "71% used",
                           trend: [], recent_sessions: [], recent_errors: []),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
@@ -152,16 +162,16 @@ internal enum DemoDataProvider {
         //
         // Two sessions sit in the Sessions tab's Recent tier (last written 5
         // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
-        // last written just before build-box went offline, and a finished
-        // docs-refresh. Without them the Active section was the whole list and
-        // the lower half of the screen was empty. They were 20 and 12 minutes
-        // old, which no refresh keeps: the cloud route drops a row last active
-        // more than five minutes before it refreshes. Now they stopped about
-        // four and five minutes before Demo's refresh (`refreshAge`), so they
-        // are past five minutes only now, 90 seconds on, as a real Recent row
-        // can be. The running sessions were written at the refresh.
-        // `testDemoIsOneRefreshTheCloudRouteCouldHaveKept` holds every row to
-        // the filter.
+        // last written just before build-box's helper stopped syncing, and a
+        // finished docs-refresh. Without them the Active section was the
+        // whole list and the lower half of the screen was empty. They were 20
+        // and 12 minutes old, which no refresh keeps: the cloud route drops a
+        // row last active more than five minutes before it refreshes. Now they
+        // stopped about four and five minutes before Demo's refresh
+        // (`refreshAge`), so they are past five minutes only now, 90 seconds
+        // on, as a real Recent row can be. The running sessions were written
+        // at the refresh. `testDemoIsOneRefreshTheCloudRouteCouldHaveKept`
+        // holds every row to the filter.
         //
         // No session has errors or a "failed" status: every producer (both
         // helpers, the local scanners, the desktop app) writes error_count 0
@@ -211,16 +221,27 @@ internal enum DemoDataProvider {
         // 91% its device-CPU alert quotes, and the MacBook Pro's 58% is under
         // the 85% that would raise one. Each device last synced no earlier
         // than its sessions were written, since its sync wrote them: build-box
-        // with api-gateway, just before it went offline.
+        // with api-gateway, just before its helper stopped syncing.
+        //
+        // Every device reads "Online", the one status the cloud stores:
+        // register_helper, the desktop's sign-in and every heartbeat and sync
+        // write it, nothing writes another, and the app shows the stored
+        // value. So build-box, quiet for six minutes, still reads Online, and
+        // the Online Devices tile counts all three, as `dashboard_summary`
+        // does. Demo had build-box "offline", a status only the retired
+        // backend wrote, which took the tile to 2; and it wrote the others in
+        // lower case, which `DeviceStatus` does not read as online, so the
+        // Watch's machine cards, fed from the phone, drew their dots grey.
+        // `testDemoDevicesReadOnlineAsTheCloudStoresThem`.
         let devices = [
             DeviceRecord(id: "d1", name: "MacBook Pro", type: "laptop", system: "macOS 15.4",
-                         status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
+                         status: "Online", last_sync_at: timestamp(), helper_version: "0.2.0",
                          current_session_count: 2, cpu_usage: 58, memory_usage: 68),
             DeviceRecord(id: "d2", name: "lab-server-01", type: "server", system: "Ubuntu 24.04",
-                         status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
+                         status: "Online", last_sync_at: timestamp(), helper_version: "0.2.0",
                          current_session_count: 1, cpu_usage: 91, memory_usage: 45),
             DeviceRecord(id: "d3", name: "build-box", type: "server", system: "macOS 14.7",
-                         status: "offline", last_sync_at: timestamp(-290), helper_version: "0.1.9",
+                         status: "Online", last_sync_at: timestamp(-290), helper_version: "0.1.9",
                          current_session_count: 0, cpu_usage: nil, memory_usage: nil),
         ]
 
@@ -328,7 +349,8 @@ internal enum DemoDataProvider {
             // The Sessions tab's Active section, by freshness (every status is
             // Running); ScreenshotLaunchTests holds the two equal.
             active_sessions: SessionFreshnessTierClassifier.partition(sessions, now: now).active.count,
-            online_devices: devices.filter { $0.status == "online" }.count,
+            // `dashboard_summary` counts the rows whose status is 'Online'.
+            online_devices: devices.filter { $0.status == DeviceStatus.online.rawValue }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager),

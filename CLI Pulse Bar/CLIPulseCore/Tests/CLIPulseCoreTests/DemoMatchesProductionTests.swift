@@ -8,8 +8,10 @@ import XCTest
 /// errors, a provider card's recent-sessions line, a session's cost and
 /// usage that no process scan writes, Recent sessions no single refresh
 /// keeps, a CPU alert its session could not have raised, a Claude quota with
-/// no windows, and a 30-day figure production no longer computes. Each test
-/// pairs Demo with the production fact it follows, so the two change together.
+/// no windows, Codex and Gemini quotas counted in tokens, a device status the
+/// cloud never stores, and a 30-day figure production no longer computes.
+/// Each test pairs Demo with the production fact it follows, so the two
+/// change together.
 final class DemoMatchesProductionTests: XCTestCase {
 
     // MARK: - Gemini is quota-only
@@ -587,6 +589,107 @@ final class DemoMatchesProductionTests: XCTestCase {
             }
             XCTAssertTrue(code.contains("min(max(Double(remaining) / Double(quota), 0), 1)"),
                           "\(file): remainingFraction is no longer the share left")
+        }
+    }
+
+    /// CodexCollector and GeminiCollector, like ClaudeResultBuilder, report
+    /// every window and the provider's own quota and remaining as
+    /// percentages: quota 100, the share left. The cloud keeps what the Mac
+    /// uploads. Demo gave Codex and Gemini token counts (500K with 38K left,
+    /// 300K with 86K left), which the Watch's provider screen printed as its
+    /// Quota and Remaining rows, where a real Codex reads 100 and 8.
+    func testDemoCodexAndGeminiReportTheWindowsTheirCollectorsBuild() throws {
+        let providers = DemoDataProvider.generate().providers
+        for provider in providers {
+            XCTAssertEqual(provider.quota, 100, "\(provider.provider)'s quota is not a percentage")
+            XCTAssertFalse(provider.tiers.isEmpty, "\(provider.provider) has no window")
+            for tier in provider.tiers {
+                XCTAssertEqual(tier.quota, 100, "\(provider.provider) \(tier.name) is not a percentage")
+            }
+        }
+        #if os(macOS)
+        func assertBuilt(_ demo: ProviderUsage, _ built: ProviderUsage) {
+            XCTAssertEqual(demo.tiers.map(\.name), built.tiers.map(\.name), demo.provider)
+            XCTAssertEqual(demo.tiers.map(\.quota), built.tiers.map(\.quota), demo.provider)
+            XCTAssertEqual(demo.tiers.map(\.remaining), built.tiers.map(\.remaining), demo.provider)
+            XCTAssertEqual(demo.quota, built.quota, demo.provider)
+            XCTAssertEqual(demo.remaining, built.remaining, demo.provider)
+            XCTAssertEqual(demo.status_text, built.status_text, demo.provider)
+        }
+
+        // A weekly-only account: /wham/usage sends its one window in the
+        // primary slot, and the collector files it by its length.
+        let codex = try XCTUnwrap(providers.first { $0.provider == "Codex" })
+        let weekly = try XCTUnwrap(codex.tiers.first { $0.name == "Weekly" }, "Demo's Codex has no weekly window")
+        let usage = try CodexCollector.parseUsage(Data("""
+            {"plan_type": "plus", "rate_limit": {"primary_window":
+             {"used_percent": \(weekly.quota - weekly.remaining), "limit_window_seconds": 604800}}}
+            """.utf8))
+        assertBuilt(codex, CodexCollector().buildResult(usage: usage, accountHadCredits: false).usage)
+
+        // Google sends a fraction left, which the collector truncates to a
+        // whole percent; a Pro bucket 0.3 points above Demo's.
+        let gemini = try XCTUnwrap(providers.first { $0.provider == "Gemini" })
+        let pro = try XCTUnwrap(gemini.tiers.first { $0.name == "Pro" }, "Demo's Gemini has no Pro window")
+        let buckets = try GeminiCollector.parseQuota(Data("""
+            {"buckets": [{"modelId": "gemini-2.5-pro", "remainingFraction": \((Double(pro.remaining) + 0.3) / 100)}]}
+            """.utf8))
+        assertBuilt(gemini, GeminiCollector().buildResult(buckets: buckets, tierInfo: nil).usage)
+        #endif
+    }
+
+    // MARK: - Devices
+
+    /// The cloud stores one device status, "Online": register_helper and the
+    /// desktop's sign-in insert it, every heartbeat and sync sets it, and no
+    /// SQL writes another. So a device that has stopped syncing still reads
+    /// Online, and `dashboard_summary`'s Online Devices counts every device.
+    /// Demo had build-box "offline", a status only the retired backend wrote,
+    /// and the others in lower case, which `DeviceStatus` (the Watch's
+    /// machine card) does not read as online.
+    func testDemoDevicesReadOnlineAsTheCloudStoresThem() throws {
+        let demo = DemoDataProvider.generate()
+        for device in demo.devices {
+            XCTAssertEqual(device.status, "Online", "\(device.name) has a status the cloud never stores")
+            XCTAssertEqual(device.deviceStatus, .online, device.name)
+        }
+        XCTAssertEqual(demo.dashboard.online_devices, demo.devices.count,
+                       "the Online Devices tile leaves out a device dashboard_summary counts")
+        // Positive control: the case this is about. A device has stopped
+        // syncing well before the others, and still reads Online.
+        let syncs = try demo.devices.map {
+            try XCTUnwrap(sharedISO8601Parse($0.last_sync_at ?? ""), "\($0.name) never synced")
+        }
+        let spread = try XCTUnwrap(syncs.max()).timeIntervalSince(try XCTUnwrap(syncs.min()))
+        XCTAssertGreaterThanOrEqual(spread, 240, "no Demo device has stopped syncing; this test checks less than it says")
+
+        // The production half, from every SQL file the cloud is built from.
+        let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
+        let files = try FileManager.default.contentsOfDirectory(at: supabase, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sql" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        XCTAssertGreaterThan(files.count, 50, "found \(files.count) SQL files; is this still the cloud's schema?")
+        var otherStatuses: [String] = []
+        for file in files {
+            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n")
+            for line in lines {
+                let lowered = line.lowercased()
+                if lowered.contains("'offline'") || lowered.contains("'degraded'") || line.contains("'online'") {
+                    otherStatuses.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
+                }
+            }
+        }
+        XCTAssertEqual(otherStatuses, ["schema.sql: status text not null default 'Offline',"],
+                       "SQL writes a device status other than 'Online'; Demo may show one again")
+        let helper = try String(contentsOf: supabase.appendingPathComponent("helper_rpc.sql"), encoding: .utf8)
+        XCTAssertTrue(helper.contains("left(p_helper_version, 20), 'Online',"),
+                      "register_helper inserts its device with another status")
+        XCTAssertTrue(helper.contains("status = 'Online', cpu_usage = p_cpu_usage,"),
+                      "the helper's heartbeat no longer marks its device Online")
+        for name in ["app_rpc.sql", "migrate_v0.44_user_tz_today.sql"] {
+            let summary = try String(contentsOf: supabase.appendingPathComponent(name), encoding: .utf8)
+            XCTAssertTrue(summary.contains("from public.devices\n      where user_id = v_user_id and status = 'Online'"),
+                          "\(name): dashboard_summary counts Online Devices another way")
         }
     }
 
