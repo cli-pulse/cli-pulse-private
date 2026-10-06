@@ -970,6 +970,7 @@
 "advanced.launch_at_login" = "로그인 시 시작";
 "advanced.background_sync" = "백그라운드 동기화 켜기";
 "advanced.background_sync_hint" = "iPhone, Apple Watch, Android에서 볼 수 있도록 사용량 데이터를 클라우드에 동기화";
+"advanced.background_sync_hint_local_mode" = "이 Mac의 사용량을 백그라운드에서 읽습니다. 로컬 모드에서는 아무것도 업로드되지 않습니다.";
 "advanced.full_details" = "전체 세부 정보:";
 "advanced.hide_emails" = "UI에서 이메일 주소 숨기기";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */

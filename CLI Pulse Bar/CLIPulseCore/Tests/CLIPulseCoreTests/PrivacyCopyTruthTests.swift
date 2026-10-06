@@ -821,15 +821,17 @@ final class CompanionAnswerCoverageWiringTests: XCTestCase {
             text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
         }
         XCTAssertTrue(
-            squeezed(settings).contains("} else { loginSection if state.isLocalMode { localModeSections } }"),
+            squeezed(settings).contains("} else { loginSection signedOutSections }"),
             "local mode renders its sections under the sign-in form"
         )
         // One decision for both branches, from the account's own flags.
         let decision = try squeezed(body(of: "accountSections"))
         XCTAssertTrue(decision.contains("SettingsAccountSections( isAuthenticated: authState.isAuthenticated, isPaired: authState.isPaired, isLocalMode: state.isLocalMode,"), decision)
-        XCTAssertTrue(decision.contains("runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh )"), decision)
+        XCTAssertTrue(decision.contains("runtimeOffersCompanionCLI: state.runtimeEnvironment.capabilities.allowsHelperManifestRefresh,"), decision)
 
-        for name in ["localModeSections", "authenticatedSection"] {
+        // `signedOutSections` is under the sign-in form, local mode or not;
+        // outside local mode both flags are false (`SettingsAccountSections`).
+        for name in ["signedOutSections", "authenticatedSection"] {
             let section = try body(of: name)
             XCTAssertEqual(section.components(separatedBy: companion).count - 1, 1, name)
             XCTAssertEqual(section.components(separatedBy: privacy).count - 1, 1, name)

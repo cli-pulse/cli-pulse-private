@@ -532,6 +532,7 @@
 "advanced.launch_at_login" = "Launch at login";
 "advanced.background_sync" = "Enable background sync";
 "advanced.background_sync_hint" = "Syncs usage data to the cloud for iPhone, Apple Watch, and Android";
+"advanced.background_sync_hint_local_mode" = "Reads this Mac's usage in the background. In local mode, nothing is uploaded.";
 "advanced.full_details" = "Full details:";
 "advanced.hide_emails" = "Hide email addresses in the UI";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
