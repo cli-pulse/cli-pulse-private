@@ -43,7 +43,7 @@ public struct HelperStatusLine: Equatable, Sendable {
     ///   background sync had been off for weeks would read a green "Synced
     ///   36000m ago" under a switch that reads Off. With the helper gone the
     ///   status describes nothing that runs, and the switch already says Off.
-    /// - **"Not paired" on a Mac signed in to an account that is not paired**,
+    /// - **"Not Synced" (`settings.not_paired`) on a Mac signed in to an account that is not paired**,
     ///   first, as on a paired account this Mac is not part of
     ///   (`ThisMacPairing.State.notSetUp`): nothing this helper does syncs to
     ///   this account, whatever it last wrote. `ThisMacPairing` leaves this

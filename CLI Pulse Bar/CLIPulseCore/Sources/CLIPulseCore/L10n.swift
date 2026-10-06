@@ -2077,6 +2077,10 @@ public enum L10n {
         public static var launchAtLogin: String { tr("advanced.launch_at_login") }
         public static var backgroundSync: String { tr("advanced.background_sync") }
         public static var backgroundSyncHint: String { tr("advanced.background_sync_hint") }
+        /// v1.56: the hint in local mode, where the helper uploads nothing and
+        /// `backgroundSyncHint`'s cloud sync is false. Chosen by
+        /// `AdvancedUploadCopy`.
+        public static var backgroundSyncHintLocalMode: String { tr("advanced.background_sync_hint_local_mode") }
         public static var fullDetails: String { tr("advanced.full_details") }
         public static var hideEmails: String { tr("advanced.hide_emails") }
         public static var trackGit: String { tr("advanced.track_git") }

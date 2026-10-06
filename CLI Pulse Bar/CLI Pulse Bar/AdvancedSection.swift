@@ -26,6 +26,12 @@ struct AdvancedSection: View {
     @State private var showRemoteControlConsent = false
     @State private var rcDiagNotifAuthorized: Bool? = nil
 
+    /// What leaves this Mac, worded for the account the app is in: local mode
+    /// came to Advanced in 1.56, and uploads nothing.
+    private var uploadCopy: AdvancedUploadCopy {
+        AdvancedUploadCopy(appAccount: state.accountRecordForHelper)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if content.showsBackgroundSync,
@@ -57,7 +63,8 @@ struct AdvancedSection: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text(L10n.advanced.backgroundSync)
                             .font(.system(size: 11))
-                        Text(L10n.advanced.backgroundSyncHint)
+                        // In local mode it uploads nothing (`AdvancedUploadCopy`).
+                        Text(uploadCopy.backgroundSyncHint)
                             .font(.system(size: 9))
                             .foregroundStyle(.tertiary)
                     }
@@ -162,11 +169,13 @@ struct AdvancedSection: View {
                     title: L10n.advanced.privacyLogsTitle,
                     detail: L10n.advanced.privacyLogsDetail
                 )
+                // v1.56: in local mode the metrics stay on this Mac and
+                // there is no login email (`AdvancedUploadCopy`).
                 privacyRow(
-                    icon: "icloud.and.arrow.up.fill",
-                    color: .blue,
+                    icon: uploadCopy.usageMetricsLeaveThisMac ? "icloud.and.arrow.up.fill" : "internaldrive.fill",
+                    color: uploadCopy.usageMetricsLeaveThisMac ? .blue : .green,
                     title: L10n.advanced.privacyMetricsTitle,
-                    detail: L10n.advanced.privacyMetricsDetail
+                    detail: uploadCopy.usageMetricsDetail
                 )
                 // v1.55: what the background helper syncs besides the numbers.
                 privacyRow(
@@ -175,12 +184,14 @@ struct AdvancedSection: View {
                     title: L10n.advanced.privacySessionsTitle,
                     detail: L10n.advanced.privacySessionsDetail
                 )
-                privacyRow(
-                    icon: "person.crop.circle.fill",
-                    color: .blue,
-                    title: L10n.advanced.privacyEmailTitle,
-                    detail: L10n.advanced.privacyEmailDetail
-                )
+                if uploadCopy.showsLoginEmail {
+                    privacyRow(
+                        icon: "person.crop.circle.fill",
+                        color: .blue,
+                        title: L10n.advanced.privacyEmailTitle,
+                        detail: L10n.advanced.privacyEmailDetail
+                    )
+                }
                 HStack(spacing: 4) {
                     Text(L10n.advanced.fullDetails)
                         .font(.system(size: 9))

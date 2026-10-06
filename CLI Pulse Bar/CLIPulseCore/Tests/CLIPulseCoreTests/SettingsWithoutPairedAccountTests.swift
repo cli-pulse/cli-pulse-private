@@ -10,7 +10,9 @@ import XCTest
 /// and paired). So:
 ///
 /// - a signed-out Developer ID Mac was never offered an update in the app:
-///   `AppUpdaterSection` is the only place that build checks;
+///   `AppUpdaterSection` is the only place that build shows an available
+///   update and installs it (the popover's daily manifest check ran signed
+///   out too, with nowhere to show its result);
 /// - "Paused: signed out" could not be seen while it was true: the helper
 ///   writes it only while the app is signed out, and Advanced was not drawn
 ///   then. 1.55's notes said Settings › Advanced shows the pause after a
@@ -18,6 +20,12 @@ import XCTest
 /// - after background sync was turned off, the helper's last status stayed in
 ///   the app group and Advanced drew it: a green "Synced 36000m ago" under a
 ///   switch that read Off.
+///
+/// Drawing Advanced in local mode brought it lines written for an account:
+/// "Syncs usage data to the cloud" over a green "Running", usage metrics
+/// "Synced to your CLI Pulse account", and a login email "Sent to our sign-in
+/// service". Local mode uploads nothing and has no sign-in
+/// (`AdvancedUploadCopy`).
 ///
 /// Plain values first (`SettingsAccountSections.Advanced`,
 /// `HelperStatusLine.forSettings`), then the app's sources, which `swift test`
@@ -271,6 +279,55 @@ final class SettingsWithoutPairedAccountTests: XCTestCase {
         )
     }
 
+    // MARK: - What leaves this Mac, in local mode
+
+    /// Local mode reaches Advanced for the first time in 1.56, and uploads
+    /// nothing. The hint under the switch, Usage metrics and the login email
+    /// were written for an account; there they said the opposite of the
+    /// welcome screen's "no account, nothing uploaded". Asserted in zh-Hans.
+    func testLocalModeIsNotToldItsUsageLeavesThisMac() {
+        let local = AdvancedUploadCopy(appAccount: .localMode)
+        XCTAssertEqual(local.backgroundSyncHint, "在后台读取这台 Mac 的用量。本地模式下不上传任何数据。")
+        XCTAssertEqual(local.backgroundSyncHint, L10n.advanced.backgroundSyncHintLocalMode)
+        XCTAssertFalse(local.usageMetricsLeaveThisMac)
+        XCTAssertEqual(local.usageMetricsDetail, "在你选择登录之前，用量数据只会保留在这台 Mac 上。")
+        XCTAssertFalse(local.showsLoginEmail, "no sign-in, no login email")
+
+        // Controls: every other account keeps the account's wording, so the
+        // local-mode lines above are the account's doing and not the lookup.
+        // "Apple Watch" is one no-break space in the catalogue, and "CLI Pulse"
+        // one at lookup (`L10n.keepingBrandUnbroken`).
+        // Signed in but not paired, the app syncs daily usage itself; signed
+        // out, the hint sits above "Paused: signed out"; Demo is `.signedOut`.
+        for account: HelperAccountRecord in [.signedIn(userId: "u1"), .signedOut] {
+            let copy = AdvancedUploadCopy(appAccount: account)
+            XCTAssertEqual(copy.backgroundSyncHint, "将用量数据同步到云端，供 iPhone、Apple\u{00A0}Watch 和 Android 使用", "\(account)")
+            XCTAssertTrue(copy.usageMetricsLeaveThisMac, "\(account)")
+            XCTAssertEqual(copy.usageMetricsDetail, "同步到你的 CLI\u{00A0}Pulse 账户，供 iPhone 和 Apple\u{00A0}Watch 使用", "\(account)")
+            XCTAssertTrue(copy.showsLoginEmail, "\(account)")
+            XCTAssertNotEqual(copy, local, "\(account)")
+        }
+    }
+
+    /// The new hint in every language, word for word: each uses its own name
+    /// for local mode and its own "nothing uploaded". A missing key would
+    /// read as the raw key, and a fallback as English.
+    func testTheLocalModeHintInEveryLanguage() {
+        let expected = [
+            "en": "Reads this Mac's usage in the background. In local mode, nothing is uploaded.",
+            "zh-Hans": "在后台读取这台 Mac 的用量。本地模式下不上传任何数据。",
+            "zh-Hant": "在背景讀取這台 Mac 的用量。本機模式下不上傳任何資料。",
+            "ja": "この Mac の使用状況をバックグラウンドで読み取ります。ローカルモードでは何もアップロードしません。",
+            "ko": "이 Mac의 사용량을 백그라운드에서 읽습니다. 로컬 모드에서는 아무것도 업로드되지 않습니다.",
+            "es": "Lee el uso de este Mac en segundo plano. En modo local no se sube nada.",
+        ]
+        for (language, text) in expected {
+            LocaleOverrideStore.shared.set(language)
+            XCTAssertEqual(AdvancedUploadCopy(appAccount: .localMode).backgroundSyncHint, text, language)
+            XCTAssertNotEqual(L10n.advanced.backgroundSyncHint, text, "\(language): the cloud hint is a different string")
+        }
+    }
+
     // MARK: - The app's sources
 
     private var appDir: URL {
@@ -447,6 +504,46 @@ final class SettingsWithoutPairedAccountTests: XCTestCase {
         }
         // Control: what acts on this Mac alone is outside that gate.
         for marker in ["Toggle(isOn: $state.hidePersonalInfo)", "get: { state.machineControlsEnabled }"] {
+            XCTAssertTrue(outside.contains(marker), marker)
+        }
+    }
+
+    /// The hint, Usage metrics and the login email come from
+    /// `AdvancedUploadCopy`, built from the account the helper is told, so
+    /// local mode reads what it does.
+    func test_advancedWordsWhatLeavesThisMacForTheAccount() throws {
+        let advanced = try code("AdvancedSection.swift")
+        XCTAssertTrue(
+            squeezed(advanced).contains("AdvancedUploadCopy(appAccount: state.accountRecordForHelper)"),
+            "built from the account the status line is worded for"
+        )
+
+        // The hint, in the background sync block, only through the copy.
+        let backgroundSync = try XCTUnwrap(blocks("if content.showsBackgroundSync,", in: advanced).first)
+        XCTAssertTrue(backgroundSync.contains("Text(uploadCopy.backgroundSyncHint)"))
+        XCTAssertFalse(advanced.contains("L10n.advanced.backgroundSyncHint"), "the hint is chosen by the copy, not named here")
+
+        // Usage metrics: its detail and icon follow the copy.
+        let metrics = squeezed(advanced)
+        XCTAssertTrue(metrics.contains(
+            "privacyRow( icon: uploadCopy.usageMetricsLeaveThisMac ? \"icloud.and.arrow.up.fill\" : \"internaldrive.fill\", "
+            + "color: uploadCopy.usageMetricsLeaveThisMac ? .blue : .green, "
+            + "title: L10n.advanced.privacyMetricsTitle, detail: uploadCopy.usageMetricsDetail )"
+        ))
+        XCTAssertFalse(advanced.contains("L10n.advanced.privacyMetricsDetail"))
+
+        // The login email: only inside its flag.
+        let email = blocks("if uploadCopy.showsLoginEmail {", in: advanced)
+        XCTAssertEqual(email.count, 1)
+        XCTAssertTrue(email.first?.contains("title: L10n.advanced.privacyEmailTitle") == true)
+        XCTAssertEqual(advanced.components(separatedBy: "L10n.advanced.privacyEmailTitle").count - 1, 1)
+
+        // Control: the rows that are true in local mode are drawn whatever
+        // the copy says.
+        var outside = advanced
+        for block in email { outside = outside.replacingOccurrences(of: block, with: "") }
+        for marker in ["title: L10n.advanced.privacyKeysTitle", "title: L10n.advanced.privacyLogsTitle",
+                       "title: L10n.advanced.privacySessionsTitle"] {
             XCTAssertTrue(outside.contains(marker), marker)
         }
     }

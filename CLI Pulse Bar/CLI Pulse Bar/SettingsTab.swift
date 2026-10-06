@@ -326,8 +326,11 @@ struct SettingsTab: View {
     /// so the App Store version does not silently overwrite the beta.
     ///
     /// v1.56: drawn in both branches with no account gate. It is the only
-    /// place this build checks for updates, and its manifest, download and
-    /// verification do not depend on the account (`SettingsAccountSections`).
+    /// place this build shows an available update and installs it, and its
+    /// manifest, download and verification do not depend on the account
+    /// (`SettingsAccountSections`). The popover's focus hook already fetched
+    /// the manifest daily whatever the account (`MenuBarView`), so drawing
+    /// this signed out adds no request.
     private var appUpdaterSection: some View {
         AppUpdaterSection(
             updater: state.appUpdater,

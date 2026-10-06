@@ -612,6 +612,7 @@
 "advanced.launch_at_login" = "登入時自動啟動";
 "advanced.background_sync" = "啟用背景同步";
 "advanced.background_sync_hint" = "將用量資料同步到雲端，供 iPhone、Apple Watch 與 Android 使用";
+"advanced.background_sync_hint_local_mode" = "在背景讀取這台 Mac 的用量。本機模式下不上傳任何資料。";
 "advanced.full_details" = "詳細資訊請參閱";
 "advanced.hide_emails" = "在介面中隱藏電子郵件地址";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */

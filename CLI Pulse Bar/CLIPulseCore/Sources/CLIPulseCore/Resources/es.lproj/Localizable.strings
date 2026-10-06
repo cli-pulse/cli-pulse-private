@@ -983,6 +983,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "advanced.launch_at_login" = "Abrir al iniciar sesión";
 "advanced.background_sync" = "Activar sincronización en segundo plano";
 "advanced.background_sync_hint" = "Sincroniza los datos de uso con la nube para el iPhone, el Apple Watch y Android";
+"advanced.background_sync_hint_local_mode" = "Lee el uso de este Mac en segundo plano. En modo local no se sube nada.";
 "advanced.full_details" = "Detalles completos:";
 "advanced.hide_emails" = "Ocultar direcciones de correo en la interfaz";
 /* The switch the Yield Score card sends people to. "Yield Score" stays in English; yield.empty_enable_hint names this label whole. */
