@@ -254,10 +254,13 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// Limits. The archive cannot tell deleted transcripts from usage counted
     /// lower under newer rules, so a lower Claude recount does not reach a day
     /// this merges (the routine read's newer 30 days still take it). Codex logs
-    /// deleted by hand in part are found, and take the smaller figure. And
-    /// after a time-zone change, usage now counted on a neighbouring day is
-    /// counted there, while its old day keeps a provider the read no longer
-    /// finds on it, or the larger Claude slice.
+    /// deleted by hand in part are found, and take the smaller figure. So does
+    /// a day with Codex sessions the read cannot open: on the App Store build,
+    /// those in `~/.codex/archived_sessions/` while that folder has no grant of
+    /// its own (`CodexHistoryRebuild`, LIMITS). And after a time-zone change,
+    /// usage now counted on a neighbouring day is counted there, while its old
+    /// day keeps a provider the read no longer finds on it, or the larger
+    /// Claude slice.
     static func mergedDay(_ read: DayRollup, over stored: DayRollup, readModelProviders: [String: String]) -> DayRollup {
         let kept = providersKeepingStoredSlice(read: read, stored: stored)
         guard !kept.isEmpty else { return read }

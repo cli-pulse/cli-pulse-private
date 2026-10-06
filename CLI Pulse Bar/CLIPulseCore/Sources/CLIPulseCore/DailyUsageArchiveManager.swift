@@ -203,9 +203,11 @@ public actor DailyUsageArchiveManager {
     ///
     /// `historyReadAllowed` is the user's answer to disclosure v2, as for the
     /// backfill: without a yes nothing is read, and nothing is recorded, so a
-    /// later yes still finds the work to do. `cloud` is nil while signed out;
-    /// the archive's part runs either way, and the cloud's on a later refresh
-    /// that has an account.
+    /// later yes still finds the work to do. `cloud` is nil while signed out,
+    /// while the cloud's part is not due (`codexHistoryCloudIsDue`), and while
+    /// this Mac's pairing cannot be read (`APIClient.DailyUsageDevice`); the
+    /// archive's part runs either way, and the cloud's on a later refresh that
+    /// has one. A nil `cloud` records nothing for any account.
     ///
     /// Once per rules version for the archive, and once per rules version and
     /// account for the cloud. Every step is idempotent: running it again
@@ -233,6 +235,14 @@ public actor DailyUsageArchiveManager {
                 cloudRows = rows.filter { $0.date < firstRoutineDay }
                 if cloudRows.isEmpty { state.cloudRulesVersionByAccount[cloud.account] = version }
             } else {
+                incomplete = true
+            }
+            // And whether the server takes rows under this device id at all,
+            // before a year of logs is read to send it some. One it refuses
+            // every time (a paired device deleted on the server) would cost
+            // that read on every retry.
+            if !cloudRows.isEmpty, !(await cloud.acceptsUploads()) {
+                cloudRows = []
                 incomplete = true
             }
         }
@@ -287,6 +297,19 @@ public actor DailyUsageArchiveManager {
             ? Self.unixMs(started.addingTimeInterval(CodexHistoryRebuild.retryInterval))
             : nil
         state.save(to: defaults, key: codexHistoryRebuildKey)
+    }
+
+    /// Whether the history rebuild has cloud work to do for `account` now:
+    /// its cloud part is not done at the current Codex rules version, and no
+    /// retry is pending. A refresh asks this before it builds the cloud side
+    /// (`APIClient.codexHistoryCloud(authorizationLease:)`), which reads the
+    /// helper's pairing from the keychain; once the part is done, that read is
+    /// not made again on every refresh.
+    public func codexHistoryCloudIsDue(account: String) -> Bool {
+        let state = CodexHistoryRebuild.State.load(from: defaults, key: codexHistoryRebuildKey)
+        guard state.cloudIsDue(rulesVersion: codexRulesVersion, account: account) else { return false }
+        if let after = state.retryAfterUnixMs, Self.unixMs(now()) < after { return false }
+        return true
     }
 
     /// A year of Codex logs and nothing else, read into a throwaway cache, as

@@ -148,9 +148,9 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         }
         let (api, lease) = try await signedInAPI()
 
-        let pairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, deviceId: { user in
+        let pairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, device: { user in
             XCTAssertEqual(user, "user-a", "the device id is decided for the signed-in user")
-            return "dev-1"
+            return .paired("dev-1")
         })
         let paired = try XCTUnwrap(pairedBuilt)
         XCTAssertFalse(paired.isUnpairedStandIn)
@@ -159,7 +159,7 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         let pairedLanded = await paired.upload([Self.row("2026-06-01")])
         XCTAssertTrue(pairedLanded)
 
-        let unpairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, deviceId: { _ in nil })
+        let unpairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, device: { _ in .unpaired })
         let unpaired = try XCTUnwrap(unpairedBuilt)
         XCTAssertTrue(unpaired.isUnpairedStandIn)
         let unpairedRows = await unpaired.thisMacsCodexRows(367)
@@ -173,6 +173,96 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         XCTAssertEqual(uploads.count, 2)
         XCTAssertEqual(uploads.first?["p_device_id"] as? String, "dev-1")
         XCTAssertNil(uploads.last?["p_device_id"], "the unpaired stand-in is sent as no device id")
+    }
+
+    /// A paired Mac whose helper secret cannot be read right now (the login
+    /// keychain locks with the screen) is not taken for an unpaired one: no
+    /// cloud side is built, so nothing is read from the stand-in's rows as
+    /// this Mac's, nothing is written there, and nothing is recorded.
+    func test_an_undetermined_device_builds_no_cloud_side_and_sends_nothing() async throws {
+        RebuildStubProtocol.handler = { _ in (200, Data("[]".utf8)) }
+        let (api, lease) = try await signedInAPI()
+
+        let built = await api.codexHistoryCloud(authorizationLease: lease, device: { _ in .undetermined })
+
+        XCTAssertNil(built, "an unreadable pairing was treated as decided")
+        XCTAssertEqual(RebuildStubProtocol.recordedRequests().count, 0)
+    }
+
+    /// The three answers, from the helper config as the keychain and the app
+    /// group give it: the record and its secret (paired), the record without
+    /// its secret (undetermined), and no record for this account (unpaired).
+    func test_the_device_is_undetermined_when_the_pairing_is_there_but_its_secret_is_not() {
+        let runtime = CLIPulseRuntimeEnvironment.resolveForTesting(
+            infoDictionary: ["CFBundleIdentifier": "yyh.CLI-Pulse"], environment: [:])
+        func device(stored: (deviceId: String, userId: String)?, secret: String?, user: String) -> APIClient.DailyUsageDevice {
+            let persistence = Self.persistence(stored: stored, secret: secret)
+            return APIClient.dailyUsageDevice(
+                config: HelperConfig.loadIfMatches(
+                    authenticatedUserId: user, runtimeEnvironment: runtime, persistence: persistence),
+                pairedDeviceId: {
+                    HelperConfig.pairedDeviceId(
+                        authenticatedUserId: user, runtimeEnvironment: runtime, persistence: persistence)
+                })
+        }
+        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: "s", user: "user-a"), .paired("dev-1"))
+        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: nil, user: "user-a"), .undetermined,
+                       "a locked keychain made a paired Mac the unpaired stand-in")
+        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: "s", user: "user-b"), .unpaired)
+        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: nil, user: "user-b"), .unpaired)
+        XCTAssertEqual(device(stored: nil, secret: nil, user: "user-a"), .unpaired)
+
+        // The keychain is asked first; the app group only when it says nothing.
+        let asked = Counter()
+        XCTAssertEqual(
+            APIClient.dailyUsageDevice(
+                config: HelperConfig(deviceId: "dev-1", userId: "user-a", deviceName: "Mac",
+                                     helperVersion: "1", helperSecret: "s"),
+                pairedDeviceId: { _ = asked.increment(); return "dev-1" }),
+            .paired("dev-1"))
+        XCTAssertEqual(asked.increment(), 1, "the app group was read although the keychain answered")
+    }
+
+    private static func persistence(stored: (deviceId: String, userId: String)?, secret: String?) -> HelperConfig.PersistenceAccess {
+        struct Stored: Codable {
+            let deviceId: String, userId: String, deviceName: String, helperVersion: String
+        }
+        let data = stored.flatMap {
+            try? JSONEncoder().encode(Stored(deviceId: $0.deviceId, userId: $0.userId,
+                                             deviceName: "Mac", helperVersion: "1"))
+        }
+        return HelperConfig.PersistenceAccess(
+            loadStoredData: { data }, saveStoredData: { _ in }, removeStoredData: {},
+            loadSecret: { secret }, saveSecret: { _ in }, removeSecret: {},
+            loadLegacyFileData: { nil })
+    }
+
+    // MARK: - Whether the server takes rows at all
+
+    /// The question asked before a year of logs is read for the cloud: an
+    /// upload of no rows under the same device id. It writes nothing, and the
+    /// server refuses it exactly when it would refuse the rows for the device.
+    func test_asking_whether_uploads_are_taken_sends_no_rows_under_the_device_id() async throws {
+        let refuse = Counter()
+        RebuildStubProtocol.handler = { request in
+            XCTAssertEqual(request.url?.path, "/rest/v1/rpc/upsert_daily_usage")
+            return refuse.increment() == 1 ? (200, Data(#"{"upserted":0}"#.utf8)) : (403, Data("{}".utf8))
+        }
+        let (api, lease) = try await signedInAPI()
+        let built = await api.codexHistoryCloud(authorizationLease: lease, device: { _ in .paired("dev-1") })
+        let cloud = try XCTUnwrap(built)
+
+        let taken = await cloud.acceptsUploads()
+        let refused = await cloud.acceptsUploads()
+
+        XCTAssertTrue(taken)
+        XCTAssertFalse(refused, "a refused device id read as accepted")
+        let bodies = try RebuildStubProtocol.recordedRequests().map(Self.body)
+        XCTAssertEqual(bodies.count, 2)
+        for body in bodies {
+            XCTAssertEqual((body["metrics"] as? [Any])?.count, 0, "the question carried rows")
+            XCTAssertEqual(body["p_device_id"] as? String, "dev-1")
+        }
     }
 
     // MARK: - Bound to the lease
@@ -193,6 +283,8 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         XCTAssertNil(rows)
         let landed = await cloud.upload([Self.row("2026-06-01")])
         XCTAssertFalse(landed)
+        let accepted = await cloud.acceptsUploads()
+        XCTAssertFalse(accepted)
         XCTAssertEqual(RebuildStubProtocol.recordedRequests().count, 0, "a stale lease reached the server")
     }
 }

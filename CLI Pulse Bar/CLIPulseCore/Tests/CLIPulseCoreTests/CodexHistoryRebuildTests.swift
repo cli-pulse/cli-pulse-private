@@ -454,9 +454,9 @@ final class CodexHistoryRebuildTests: XCTestCase {
     /// A Mac that is not paired reads and writes under the server's stand-in
     /// id for an unpaired Mac, which every unpaired Mac of the account shares.
     /// A model there that its read does not report may be another Mac's
-    /// usage: it is replaced only where the read reports it, and no model is
+    /// usage: it is replaced only where the read reports it, and is not
     /// zeroed.
-    func test_an_unpaired_mac_replaces_the_models_it_reads_and_zeroes_none() async throws {
+    func test_an_unpaired_mac_replaces_the_models_it_reads_and_zeroes_no_other_model() async throws {
         previousVersionLeft([Self.oldDay])
         let log = ReadLog()
         let cloud = FakeCloud(rows: [
@@ -476,6 +476,137 @@ final class CodexHistoryRebuildTests: XCTestCase {
             "2026-06-01 Codex gpt-5.6-luna 2000/1500/40 0.1",
         ])
         XCTAssertEqual(state.cloudRulesVersionByAccount, ["user-a": 5])
+    }
+
+    /// Under the stand-in, a model the read reports may also be stored under
+    /// an older spelling: a dated name 1.55 kept (1.56 counts
+    /// `gpt-5-2025-08-07` as `gpt-5`), or an `openai/` prefix. That row is the
+    /// same model's usage, and `get_daily_usage` would add it to the new one,
+    /// so it is zeroed. A model the read does not report that day stays, even
+    /// a dated spelling of a priced model: it may be another Mac's.
+    func test_an_unpaired_mac_zeroes_an_older_spelling_of_a_model_it_reads() async throws {
+        previousVersionLeft([Self.oldDay])
+        let log = ReadLog()
+        let cloud = FakeCloud(rows: [
+            Row(date: Self.oldDay, model: "gpt-5"),
+            Row(date: Self.oldDay, model: "gpt-5-2025-08-07"),     // gpt-5, as 1.55 kept it
+            Row(date: Self.oldDay, model: "openai/gpt-5.6-luna"),  // gpt-5.6-luna, prefixed
+            Row(date: Self.oldDay, model: "o3"),                   // perhaps another unpaired Mac's
+            Row(date: Self.oldDay, model: "gpt-5.1-2025-11-13"),   // gpt-5.1: not read that day
+        ])
+        let m = manager(codexRead: [
+            Self.codexRow(Self.oldDay),
+            Self.codexRow(Self.oldDay, model: "gpt-5.6-luna", input: 2_000, cached: 1_500, output: 40, cost: 0.1),
+        ], log: log)
+
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud(unpaired: true))
+
+        XCTAssertEqual(cloud.uploads.count, 1)
+        XCTAssertEqual(cloud.uploads.first?.map(FakeCloud.describe), [
+            "2026-06-01 Codex gpt-5 9000/8000/100 1.7",
+            "2026-06-01 Codex gpt-5-2025-08-07 0/0/0 0.0",
+            "2026-06-01 Codex gpt-5.6-luna 2000/1500/40 0.1",
+            "2026-06-01 Codex openai/gpt-5.6-luna 0/0/0 0.0",
+        ])
+        XCTAssertEqual(state.cloudRulesVersionByAccount, ["user-a": 5])
+    }
+
+    /// The point of zeroing an older spelling, end to end: an unpaired Mac on
+    /// 1.55 synced gpt-5 under its dated name. After the rebuild, the iPhone's
+    /// day (every row added up, as `get_daily_usage` adds them) and the Mac's
+    /// agree; without the zero row the iPhone would count gpt-5 under both
+    /// names.
+    func test_under_the_stand_in_a_renamed_model_is_not_counted_twice_on_the_iphone() async throws {
+        let standIn = APIClient.unpairedDailyUsageDeviceId
+        let claude = DailyUsage(date: Self.oldDay, provider: "Claude", model: "claude-sonnet-4-5",
+                                inputTokens: 500, cachedTokens: 4_000, outputTokens: 300, cost: 2.5)
+        let dated = DailyUsage(date: Self.oldDay, provider: "Codex", model: "gpt-5-2025-08-07",
+                               inputTokens: 6_000, cachedTokens: 5_000, outputTokens: 80, cost: 0.6)
+        var stored = DailyUsageArchive()
+        stored.mergeScanEntries([claude, dated].map {
+            ScanEntry(date: $0.date, provider: $0.provider, model: $0.model, inputTokens: $0.inputTokens,
+                      cachedTokens: $0.cachedTokens, outputTokens: $0.outputTokens, cost: $0.cost, messages: 0)
+        })
+        XCTAssertTrue(DailyUsageArchiveIO.save(stored, root: root))
+        let table = CloudTable(device: standIn, rows: [claude, dated])
+
+        let log = ReadLog()
+        let m = manager(codexRead: [Self.codexRow(Self.oldDay)], log: log)
+        await m.rebuildCodexHistoryIfNeeded(
+            historyReadAllowed: true, cloud: table.cloud(device: standIn, unpaired: true))
+
+        let archive = await m.snapshot()
+        let mac = try XCTUnwrap(archive.days[Self.oldDay])
+        let iPhone = try XCTUnwrap(AppState.usageArchive(fromCloudRows: table.dailyUsage()).days[Self.oldDay])
+        XCTAssertEqual(mac.perProvider["Codex"]?.tokens, 9_100, "the Mac was not recounted")
+        XCTAssertEqual(iPhone.perProvider["Codex"]?.tokens, mac.perProvider["Codex"]?.tokens,
+                       "the iPhone counts the renamed model twice")
+        XCTAssertEqual(iPhone.tokens, mac.tokens)
+        XCTAssertEqual(Self.modelsWithUsage(iPhone), Self.modelsWithUsage(mac))
+        XCTAssertEqual(Set(Self.modelsWithUsage(iPhone).keys), ["claude-sonnet-4-5", "gpt-5"])
+    }
+
+    /// The server refuses rows under this Mac's device id (its device row was
+    /// deleted on the server while this Mac still holds its pairing): the
+    /// question asked first costs no read of a year of logs, every day it is
+    /// tried again. Once rows are taken, the read and the upload go ahead.
+    func test_a_server_that_refuses_this_device_costs_no_read_until_it_takes_rows() async throws {
+        previousVersionLeft([Self.oldDay])
+        let log = ReadLog()
+        let read = [Self.codexRow(Self.oldDay)]
+        let m = manager(codexRead: read, log: log)
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: nil)   // the archive's part
+        let archiveRead = await log.reads.count
+        XCTAssertEqual(archiveRead, 1)
+
+        let cloud = FakeCloud(rows: [Row(date: Self.oldDay, model: "gpt-5")], takesUploads: false)
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud())
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud())
+        let refusedReads = await log.reads.count
+        XCTAssertEqual(refusedReads, 1, "a year of logs was read for an upload the server refuses")
+        XCTAssertEqual(cloud.probes, 1, "asked again before the retry was due")
+        XCTAssertEqual(cloud.uploads.count, 0)
+        XCTAssertEqual(state.cloudRulesVersionByAccount, [:], "a refused device was recorded as done")
+        XCTAssertNotNil(state.retryAfterUnixMs)
+
+        cloud.takesUploads = true
+        let nextDay = manager(today: "2026-10-21", codexRead: read, log: log)
+        await nextDay.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud())
+        let reads = await log.reads.count
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(cloud.uploads.count, 1)
+        XCTAssertEqual(state.cloudRulesVersionByAccount, ["user-a": 5])
+        XCTAssertNil(state.retryAfterUnixMs)
+    }
+
+    /// A refresh builds the cloud side, which reads the helper's pairing from
+    /// the keychain, only while the cloud's part is due for the account: not
+    /// once it is done at these rules, nor while a retry is pending.
+    func test_the_cloud_side_is_asked_for_only_while_its_part_is_due() async throws {
+        previousVersionLeft([Self.oldDay])
+        let log = ReadLog()
+        let read = [Self.codexRow(Self.oldDay)]
+        let m = manager(codexRead: read, log: log)
+        var due = await m.codexHistoryCloudIsDue(account: "user-a")
+        XCTAssertTrue(due)
+
+        let cloud = FakeCloud(rows: [Row(date: Self.oldDay, model: "gpt-5")], accepts: false)
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud())
+        due = await m.codexHistoryCloudIsDue(account: "user-a")
+        XCTAssertFalse(due, "due while a retry is pending")
+
+        cloud.accepts = true
+        let nextDay = manager(today: "2026-10-21", codexRead: read, log: log)
+        due = await nextDay.codexHistoryCloudIsDue(account: "user-a")
+        XCTAssertTrue(due)
+        await nextDay.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud())
+        due = await nextDay.codexHistoryCloudIsDue(account: "user-a")
+        XCTAssertFalse(due, "due once done at these rules")
+        due = await nextDay.codexHistoryCloudIsDue(account: "user-b")
+        XCTAssertTrue(due, "another account")
+        due = await manager(today: "2026-10-21", rulesVersion: 6, codexRead: read, log: log)
+            .codexHistoryCloudIsDue(account: "user-a")
+        XCTAssertTrue(due, "newer Codex rules")
     }
 
     // MARK: - The plan's acceptance: the iPhone's year and this Mac's history
@@ -559,19 +690,28 @@ final class CodexHistoryRebuildTests: XCTestCase {
         ]
         let cloud = [
             Row(date: "2026-06-01", model: "gpt-5"),
+            Row(date: "2026-06-01", model: "gpt-5-2025-08-07"),
             Row(date: "2026-06-01", model: "o3"),
+            Row(date: "2026-06-02", model: "gpt-5-2025-08-07"),   // gpt-5 is not read that day
             Row(date: "2026-06-03", model: "gpt-5"),
         ]
         let plan = CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: cloud, zeroDroppedModels: true)
         XCTAssertEqual(plan.map(FakeCloud.describe), [
             "2026-06-01 Codex gpt-5 9000/8000/100 1.7",
+            "2026-06-01 Codex gpt-5-2025-08-07 0/0/0 0.0",
             "2026-06-01 Codex o3 0/0/0 0.0",
+            "2026-06-02 Codex gpt-5-2025-08-07 0/0/0 0.0",
+            "2026-06-02 Codex gpt-5.5 9000/8000/100 1.7",
         ])
         XCTAssertEqual(
             CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: cloud, zeroDroppedModels: false)
                 .map(FakeCloud.describe),
-            ["2026-06-01 Codex gpt-5 9000/8000/100 1.7"],
-            "zeroed a model under the shared stand-in")
+            [
+                "2026-06-01 Codex gpt-5 9000/8000/100 1.7",
+                "2026-06-01 Codex gpt-5-2025-08-07 0/0/0 0.0",
+                "2026-06-02 Codex gpt-5.5 9000/8000/100 1.7",
+            ],
+            "under the shared stand-in, zeroed a model that is not an older spelling of one read that day")
         for zero in [true, false] {
             XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: [], zeroDroppedModels: zero).count, 0)
             XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: [], thisMacsRows: cloud, zeroDroppedModels: zero).count, 0)
@@ -641,19 +781,29 @@ private final class FakeCloud: @unchecked Sendable {
     private let lock = NSLock()
     private let rows: [CodexHistoryCloud.Row]?
     private var _accepts: Bool
+    private var _takesUploads: Bool
     private var _fetches: [Int] = []
+    private var _probes = 0
     private var _uploads: [[CostUsageScanResult.DailyEntry]] = []
 
-    init(rows: [CodexHistoryCloud.Row]?, accepts: Bool = true) {
+    /// `accepts`: whether an upload of rows lands. `takesUploads`: the answer
+    /// to the question asked before any read (`acceptsUploads`).
+    init(rows: [CodexHistoryCloud.Row]?, accepts: Bool = true, takesUploads: Bool = true) {
         self.rows = rows
         self._accepts = accepts
+        self._takesUploads = takesUploads
     }
 
     var accepts: Bool {
         get { lock.lock(); defer { lock.unlock() }; return _accepts }
         set { lock.lock(); _accepts = newValue; lock.unlock() }
     }
+    var takesUploads: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _takesUploads }
+        set { lock.lock(); _takesUploads = newValue; lock.unlock() }
+    }
     var fetches: [Int] { lock.lock(); defer { lock.unlock() }; return _fetches }
+    var probes: Int { lock.lock(); defer { lock.unlock() }; return _probes }
     var uploads: [[CostUsageScanResult.DailyEntry]] { lock.lock(); defer { lock.unlock() }; return _uploads }
 
     func cloud(account: String = "user-a", unpaired: Bool = false) -> CodexHistoryCloud {
@@ -661,7 +811,14 @@ private final class FakeCloud: @unchecked Sendable {
             account: account,
             isUnpairedStandIn: unpaired,
             thisMacsCodexRows: { days in self.fetched(days) },
+            acceptsUploads: { self.probed() },
             upload: { rows in self.uploaded(rows) })
+    }
+
+    private func probed() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        _probes += 1
+        return _takesUploads
     }
 
     private func fetched(_ days: Int) -> [CodexHistoryCloud.Row]? {
@@ -698,12 +855,14 @@ private final class CloudTable: @unchecked Sendable {
         for row in rows { put(row, device: device) }
     }
 
-    /// The signed-in account's side, for the Mac that uploads as `device`.
-    func cloud(device: String, account: String = "user-a") -> CodexHistoryCloud {
+    /// The signed-in account's side, for the Mac that uploads as `device`;
+    /// `unpaired` when that is the stand-in every unpaired Mac shares.
+    func cloud(device: String, account: String = "user-a", unpaired: Bool = false) -> CodexHistoryCloud {
         CodexHistoryCloud(
             account: account,
-            isUnpairedStandIn: false,
+            isUnpairedStandIn: unpaired,
             thisMacsCodexRows: { _ in self.codexRows(of: device) },
+            acceptsUploads: { true },
             upload: { entries in self.upsert(entries, device: device) })
     }
 

@@ -2841,17 +2841,49 @@ public actor APIClient {
     #if os(macOS)
     // MARK: - v1.56: the Codex history rebuild's cloud side
 
-    /// The device id this Mac's daily usage rows are stored under, decided
-    /// as `syncDailyUsage` decides it (see the comment there): the paired
-    /// device's when the app group's helper config belongs to the signed-in
-    /// account, otherwise nil, the server's stand-in for an unpaired Mac
-    /// (`unpairedDailyUsageDeviceId`).
-    private func dailyUsageDeviceId(userId: String) -> String? {
-        guard let deviceId = HelperConfig.loadIfMatches(
-            authenticatedUserId: userId,
-            runtimeEnvironment: runtimeEnvironment
-        )?.deviceId, !deviceId.isEmpty else { return nil }
-        return deviceId
+    /// Which device this Mac's daily usage rows are stored under, for the
+    /// signed-in account.
+    enum DailyUsageDevice: Equatable, Sendable {
+        /// Paired with this account: the device id `syncDailyUsage` sends.
+        case paired(String)
+        /// Not paired with this account: the server's stand-in for an
+        /// unpaired Mac (`unpairedDailyUsageDeviceId`), by sending no id.
+        case unpaired
+        /// The app group says this Mac is paired with this account, but the
+        /// helper's secret cannot be read, so `HelperConfig.loadIfMatches`
+        /// says nothing. The login keychain is locked (it can be while the
+        /// screen is, and `refreshAll` keeps running then), or the secret is
+        /// gone; the two cannot be told apart (`HelperConfig.pairedDeviceId`).
+        /// Reading the stand-in's rows as this Mac's would be wrong for a
+        /// paired Mac, so the rebuild's cloud part waits for a refresh that
+        /// knows.
+        case undetermined
+    }
+
+    /// This Mac's `DailyUsageDevice` for `userId`. Where it is known, the
+    /// device id is decided as `syncDailyUsage` decides it (see the comment
+    /// there): the paired device's when the app group's helper config, secret
+    /// included, belongs to the signed-in account.
+    private func dailyUsageDevice(userId: String) -> DailyUsageDevice {
+        Self.dailyUsageDevice(
+            config: HelperConfig.loadIfMatches(
+                authenticatedUserId: userId,
+                runtimeEnvironment: runtimeEnvironment
+            ),
+            pairedDeviceId: {
+                HelperConfig.pairedDeviceId(
+                    authenticatedUserId: userId,
+                    runtimeEnvironment: runtimeEnvironment
+                )
+            })
+    }
+
+    /// The decision, from `HelperConfig.loadIfMatches` (which needs the
+    /// helper's secret from the keychain) and, only when that says nothing,
+    /// `HelperConfig.pairedDeviceId` (the app group's record alone).
+    static func dailyUsageDevice(config: HelperConfig?, pairedDeviceId: () -> String?) -> DailyUsageDevice {
+        if let deviceId = config?.deviceId, !deviceId.isEmpty { return .paired(deviceId) }
+        return pairedDeviceId() == nil ? .unpaired : .undetermined
     }
 
     /// The device id `upsert_daily_usage` stores a row under when it is sent
@@ -2897,25 +2929,36 @@ public actor APIClient {
     /// Mac is paired while the rebuild reads its logs. Both closures check the
     /// lease, so a sign-out or an account switch stops them.
     public func codexHistoryCloud(authorizationLease: APIAuthorizationLease) -> CodexHistoryCloud? {
-        codexHistoryCloud(authorizationLease: authorizationLease, deviceId: { self.dailyUsageDeviceId(userId: $0) })
+        codexHistoryCloud(authorizationLease: authorizationLease, device: { self.dailyUsageDevice(userId: $0) })
     }
 
-    /// `codexHistoryCloud(authorizationLease:)` with the device id decided by
-    /// `deviceId` (given the signed-in user's id): a seam for tests, which
-    /// cannot pair a helper.
+    /// `codexHistoryCloud(authorizationLease:)` with the device decided by
+    /// `device` (given the signed-in user's id): a seam for tests, which
+    /// cannot pair a helper. Nil while the device is `.undetermined`.
     func codexHistoryCloud(
         authorizationLease: APIAuthorizationLease,
-        deviceId resolveDeviceId: (String) -> String?
+        device resolveDevice: (String) -> DailyUsageDevice
     ) -> CodexHistoryCloud? {
         guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
               let userId else { return nil }
-        let deviceId = resolveDeviceId(userId)
+        let deviceId: String?
+        switch resolveDevice(userId) {
+        case .paired(let id): deviceId = id
+        case .unpaired: deviceId = nil
+        case .undetermined:
+            apiLogger.info("[codexHistoryRebuild] this Mac's pairing could not be read; the cloud part waits")
+            return nil
+        }
         return CodexHistoryCloud(
             account: userId,
             isUnpairedStandIn: deviceId == nil,
             thisMacsCodexRows: { [weak self] days in
                 await self?.codexDailyUsageRows(
                     days: days, deviceId: deviceId, authorizationLease: authorizationLease)
+            },
+            acceptsUploads: { [weak self] in
+                await self?.dailyUsageUpsertBatch(
+                    [], deviceId: deviceId, authorizationLease: authorizationLease) ?? false
             },
             upload: { [weak self] rows in
                 await self?.upsertDailyUsageRows(
@@ -2988,25 +3031,39 @@ public actor APIClient {
         while start < rows.count {
             let batch = Array(rows[start..<min(start + Self.dailyUsageUpsertBatchSize, rows.count)])
             start += batch.count
-            guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
-                  userId != nil,
-                  let request = dailyUsageUpsertRequest(batch, deviceId: deviceId) else { return false }
-            do {
-                let (_, response) = try await dataWithRetry(
-                    for: request,
-                    authorizationLease: authorizationLease
-                )
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                guard (200...299).contains(status) else {
-                    apiLogger.warning("[codexHistoryRebuild] upload failed: HTTP \(status)")
-                    return false
-                }
-            } catch {
-                apiLogger.warning("[codexHistoryRebuild] upload: \(error.localizedDescription)")
-                return false
-            }
+            guard await dailyUsageUpsertBatch(
+                batch, deviceId: deviceId, authorizationLease: authorizationLease) else { return false }
         }
         return true
+    }
+
+    /// One `upsert_daily_usage` call; true when the server accepted it. With
+    /// no rows it writes nothing, and it is still refused for a device id
+    /// that is not the caller's: the server checks the device before it looks
+    /// at a row (`migrate_v0.37`). That is `CodexHistoryCloud.acceptsUploads`.
+    func dailyUsageUpsertBatch(
+        _ batch: [CostUsageScanResult.DailyEntry],
+        deviceId: String?,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
+              userId != nil,
+              let request = dailyUsageUpsertRequest(batch, deviceId: deviceId) else { return false }
+        do {
+            let (_, response) = try await dataWithRetry(
+                for: request,
+                authorizationLease: authorizationLease
+            )
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else {
+                apiLogger.warning("[codexHistoryRebuild] upload failed: HTTP \(status)")
+                return false
+            }
+            return true
+        } catch {
+            apiLogger.warning("[codexHistoryRebuild] upload: \(error.localizedDescription)")
+            return false
+        }
     }
     #endif
 

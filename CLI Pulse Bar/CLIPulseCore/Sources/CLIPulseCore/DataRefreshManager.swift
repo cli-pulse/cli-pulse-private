@@ -217,9 +217,14 @@ internal final class DataRefreshManager {
                             historyReadAllowed: historyReadAllowed
                         )
                         // v1.56: the older Codex days, counted again by the
-                        // current rules; this Mac's cloud rows too while signed in.
+                        // current rules; this Mac's cloud rows too while signed
+                        // in. The cloud side is built only while its part is
+                        // due: building it reads the helper's pairing from the
+                        // keychain.
                         var cloud: CodexHistoryCloud?
-                        if historyReadAllowed, let authorizationLease {
+                        if historyReadAllowed, let authorizationLease,
+                           let account = await api.userId,
+                           await DailyUsageArchiveManager.shared.codexHistoryCloudIsDue(account: account) {
                             cloud = await api.codexHistoryCloud(
                                 authorizationLease: authorizationLease
                             )
