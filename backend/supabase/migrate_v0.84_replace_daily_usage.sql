@@ -46,7 +46,7 @@
 --   * The 1.56 Mac calls `replace_daily_usage` first. When the server answers
 --     404 (this file not applied yet, or rolled back), it sends the same body
 --     to `upsert_daily_usage` and asks again an hour later. So the app can
---     ship before or after this is applied, in either order.
+--     ship before this is applied, but only by days: see WHEN under APPLY.
 --
 -- ── WHY THE MAC'S SET FOR A DAY AND PROVIDER IS COMPLETE ──────
 -- The rule is only safe if a (day, provider) the Mac sends carries every
@@ -64,26 +64,50 @@
 --   * a Claude Code `cleanupPeriodDays` shorter than 30, from user, project,
 --     local or managed settings, deletes transcripts before the day the app
 --     leaves out (reading the effective setting is a separate 1.56 item);
---   * a log folder or file the app can no longer read.
+--   * a log folder or file the app can no longer read;
+--   * a Codex session that ran for days or was resumed later. The scan picks
+--     Codex rollout files by their start-date folder, from the day before the
+--     window's first day (`listCodexSessionFiles`, as CodexBar does). Such a
+--     session keeps writing to its original file, so once that folder leaves
+--     the window the file is no longer read, while the days it wrote to are
+--     still in the window and still uploaded. Measured on one Mac on
+--     2026-10-07: 18 of 1,093 rollout files were last written 2 or more days
+--     after their start folder, the longest 157 days.
 -- `upsert_daily_usage` already overwrote every model such a read still found
 -- with the lowered figure; this also removes a model it no longer found at
 -- all. That is the rule the Mac's own archive applies to the routine read
 -- (days after the cleanup reach are replaced whole, #632), so the iPhone
 -- shows what the Mac shows. Rows lost to an unreadable folder come back with
 -- the first upload after it is readable again, for days still in the window.
+-- The Codex case is the scanner's own limit, older than this file, which
+-- only widens it (from a lowered figure to a missing model). The fix belongs
+-- in the scanner: list Codex files by modification time on or after the
+-- window's first instant as well, as the Claude scan has since 1.55. That is
+-- a follow-up, and it needs a decision on parity with CodexBar.
 --
--- ── THE SHARED "NO DEVICE" ROWS ───────────────────────────────
+-- ── THE SHARED "NO DEVICE" ROWS: AN OWNER DECISION ────────────
 -- A Mac without a paired helper sends no `p_device_id`, and its rows land
 -- under the nil UUID, which every such Mac on the account shares (v0.37).
--- The rule applies there too. For one unpaired Mac per account, the common
--- case, that fixes the double count. For two unpaired Macs on one account
--- that used DIFFERENT models of the same provider on the same day, the last
--- one to upload now holds that day and provider whole, where before each
--- model kept the last writer's figure. Both are wrong (neither sums the
--- Macs; for a model both used, the last writer already won); pairing each Mac
--- is the fix for that case. If this trade is not wanted, the app can send
--- unpaired uploads to `upsert_daily_usage` instead: a client change, not a
--- schema one.
+-- Pairing is a manual code flow, so unpaired Macs are not rare. The rule
+-- applies under the nil UUID too:
+--   * One unpaired Mac on the account: the double count is fixed.
+--   * Two or more unpaired Macs on one account. BEFORE (upsert only): a model
+--     only one Mac used was written by that Mac alone, so its row was exact;
+--     only a model both Macs used was wrong (the last writer's figure won).
+--     When the Macs used different models, the day's total was right.
+--     AFTER (this function): every upload deletes, for each (day, provider)
+--     in its 31-day window, every model the other Mac sent and it did not.
+--     The Mac that uploaded last holds those days whole. Each Mac uploads on
+--     every refresh (every 2 minutes by default), so the iPhone's daily and
+--     30-day figures swing between the two Macs' totals. Two Macs using
+--     different models of one provider is common, for example haiku from
+--     Claude Code's background tasks on only one of them.
+-- Pairing each Mac avoids it (each gets its own device id). If the trade is
+-- not accepted, the Mac sends uploads without a `p_device_id` to
+-- `upsert_daily_usage` instead: one line in `APIClient.syncDailyUsage`, no
+-- schema change. Unpaired Macs then keep the double count after a rename,
+-- and paired ones get the fix. The choice is the owner's and must be made
+-- before 1.56 is released; it is not among the decisions delegated for 1.56.
 --
 -- ── WHAT THIS DOES NOT FIX ────────────────────────────────────
 --   * Days the Mac no longer uploads keep any duplicate an earlier rename
@@ -95,9 +119,26 @@
 --     carried (apps before 1.55 uploaded the oldest Claude day partly).
 --   * A provider that vanishes from a day entirely keeps its old rows: no
 --     row of that day and provider is sent, so there is no group to replace.
+--   * A Mac that pairs, unpairs or re-pairs inside its window. Its earlier
+--     rows stay under the device id they were sent under (the nil UUID, or
+--     the previous device). This function only touches the device id an
+--     upload is sent under, so it never removes them, and `get_daily_usage`
+--     counts those days twice on the iPhone, as it has since v0.37. The fix
+--     belongs in the pairing flow (for example, moving the nil-UUID rows when
+--     a Mac pairs).
 --   * The desktop app's rows (`helper_sync_daily_usage`).
 --
 -- ── APPLY (owner) ─────────────────────────────────────────────
+-- WHEN: before 1.56 is released, or within days of it. The order of app and
+-- migration does not matter only inside that time. While this is not
+-- applied, a 1.56 Mac falls back to `upsert_daily_usage`, so a model that
+-- 1.56 renames leaves its old row next to the new one on every day of the
+-- Mac's 31-day window. Each such day that leaves the window before this is
+-- applied keeps both rows for good, because nothing here cleans older days.
+-- 1.56 itself is the likely next rename: #647 adds Claude price rows, and a
+-- dated spelling of those models then loses its date suffix. Keep the
+-- fallback anyway, for a rollback and for an app that reaches users first.
+--
 -- 0. Preflight, read-only. Expect exactly one row, `metrics jsonb,
 --    p_device_id uuid`, prosecdef = true:
 --
@@ -183,6 +224,9 @@ begin
   v_written := public.upsert_daily_usage(metrics, p_device_id);
 
   -- The rule: within each (day, provider) sent, a model not sent is gone.
+  -- The date range only lets the delete use the (user, device, date) index
+  -- instead of reading all of the device's rows; the two `exists` clauses
+  -- decide what goes. An empty upload gives a null range, so nothing goes.
   with sent as (
     select distinct
       (e->>'metric_date')::date as metric_date,
@@ -193,6 +237,8 @@ begin
   delete from public.daily_usage_metrics d
    where d.user_id = v_user_id
      and d.device_id = v_device_id
+     and d.metric_date between (select min(s.metric_date) from sent s)
+                           and (select max(s.metric_date) from sent s)
      and exists (
        select 1 from sent s
         where s.metric_date = d.metric_date and s.provider = d.provider)

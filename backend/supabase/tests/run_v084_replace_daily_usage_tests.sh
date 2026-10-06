@@ -91,6 +91,7 @@ tokens() { # tokens <user> <device> <date> <provider> <model>: input_tokens or '
 D1="$(psql_q -c "select (current_date - 2)::text")"    # in the Mac's window
 D2="$(psql_q -c "select (current_date - 1)::text")"    # in the Mac's window
 D3="$(psql_q -c "select (current_date - 3)::text")"    # the race below
+D4="$(psql_q -c "select (current_date - 4)::text")"    # puts D3 inside an upload's range
 OLD="$(psql_q -c "select (current_date - 60)::text")"  # no longer uploaded
 OLDNAME=claude-haiku-4-5-20251001
 NEWNAME=claude-haiku-4-5
@@ -186,6 +187,16 @@ echo "what it must not touch:"
     || fail "another provider's row on the same day was deleted"
 [[ "$(tokens "$A" "$DEV_A1" "$OLD" Claude "$OLDNAME")" == 300 ]] \
     && pass "a day not in the upload is kept" || fail "a day not in the upload was touched"
+# A day between two days of an upload, which the upload does not carry: the
+# delete's date range lets it through, so only the (day, provider) match
+# keeps it. D4 and D1 are sent, D3 (claude-y) is not. Rolled back, so
+# nothing below sees this call.
+got="$(as_user "$A" rollback "select public.replace_daily_usage('[$(row "$D4" Claude claude-q 1),$(row "$D1" Claude "$NEWNAME" 100),$(row "$D1" Claude claude-opus-5 1000)]'::jsonb, '$DEV_A1'::uuid) \g /dev/null
+select coalesce((select input_tokens from public.daily_usage_metrics
+                  where user_id = '$A' and device_id = '$DEV_A1' and metric_date = '$D3'
+                    and provider = 'Claude' and model = 'claude-y'), -1) = 1;")"
+[[ "$got" == "t" ]] && pass "a day inside the upload's date range but not in it is kept" \
+                    || fail "a day inside the upload's date range but not in it was touched (got '$got')"
 [[ "$(tokens "$A" "$DEV_A2" "$D1" Claude claude-sonnet-5)" == 70 ]] \
     && pass "another device's rows are kept" || fail "another device's row was deleted"
 [[ "$(tokens "$A" "$NIL" "$D1" Claude "$OLDNAME")" == 40 ]] \

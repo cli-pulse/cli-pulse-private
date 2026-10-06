@@ -2775,6 +2775,15 @@ public actor APIClient {
             body["p_device_id"] = deviceId
         }
         // Both RPCs take the same two arguments.
+        //
+        // v1.56, open owner decision: without `p_device_id` the rows land
+        // under the nil UUID, which every unpaired Mac on the account shares,
+        // and `replace_daily_usage` makes them the set this Mac sent. With two
+        // unpaired Macs, each upload deletes the models only the other one
+        // used, across the whole window, and the iPhone's figures swing
+        // between the Macs' totals. If that is not accepted, send uploads
+        // without `p_device_id` to `upsert_daily_usage` here (see the
+        // migrate_v0.84 header).
         let httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         if replaceDailyUsageUnavailableUntil.map({ now >= $0 }) ?? true {
