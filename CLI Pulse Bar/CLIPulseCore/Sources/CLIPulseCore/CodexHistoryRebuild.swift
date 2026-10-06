@@ -30,8 +30,8 @@ import Foundation
 ///   was deleted, or another device's usage filled it in), and
 ///   `CodexEstimateChangeNote` keeps naming it as counted the old way.
 /// * The cloud, while signed in: this Mac's own Codex rows for those days are
-///   replaced from the read (`cloudUpload(rebuilt:thisMacsRows:)`), not from the
-///   archive, which has no split to send.
+///   replaced from the read (`cloudUpload(rebuilt:thisMacsRows:zeroDroppedModels:)`),
+///   not from the archive, which has no split to send.
 ///
 /// A backfill that runs under the current rules has already counted the
 /// archive's Codex days this way, so it marks the archive's part done
@@ -85,9 +85,19 @@ public enum CodexHistoryRebuild {
     ///
     /// * every rebuilt Codex row of a day on which this Mac already has a Codex
     ///   row in the cloud, under the device id it uploads with;
-    /// * a zero row for each Codex model this Mac has a row for on such a day
-    ///   that the read no longer reports, since `upsert_daily_usage` never
-    ///   deletes a row, and a leftover one would still be added to the day.
+    /// * with `zeroDroppedModels`, a zero row for each Codex model this Mac has
+    ///   a row for on such a day that the read no longer reports, since
+    ///   `upsert_daily_usage` never deletes a row, and a leftover one would
+    ///   still be added to the day.
+    ///
+    /// `zeroDroppedModels` is false for a Mac that is not paired
+    /// (`CodexHistoryCloud.isUnpairedStandIn`). Its rows sit under the server's
+    /// one stand-in id for an unpaired Mac, which every unpaired Mac of the
+    /// account uploads under, and under which `migrate_v0.37` put the rows of
+    /// every device from before it. A model there that this Mac's read does not
+    /// report may be another Mac's usage, so it is left alone; the models the
+    /// read reports are replaced, as the routine upload replaces them every
+    /// refresh.
     ///
     /// A rebuilt day on which this Mac has no Codex row in the cloud is not
     /// sent. Either this Mac never uploaded that day (the backfill's history
@@ -99,7 +109,8 @@ public enum CodexHistoryRebuild {
     /// them: there is nothing to replace them with.
     public static func cloudUpload(
         rebuilt: [CostUsageScanResult.DailyEntry],
-        thisMacsRows: [CodexHistoryCloud.Row]
+        thisMacsRows: [CodexHistoryCloud.Row],
+        zeroDroppedModels: Bool
     ) -> [CostUsageScanResult.DailyEntry] {
         let codexRows = rebuilt.filter { $0.provider == codex && $0.model != ScanEntry.messageBucketModel }
         let rebuiltDays = Set(codexRows.map(\.date))
@@ -107,6 +118,7 @@ public enum CodexHistoryRebuild {
         let days = rebuiltDays.intersection(cloudDays)
 
         var out = codexRows.filter { days.contains($0.date) }
+        guard zeroDroppedModels else { return out.sorted { ($0.date, $0.model) < ($1.date, $1.model) } }
         let reported = Set(out.map { CodexHistoryCloud.Row(date: $0.date, model: $0.model) })
         let stale = Set(thisMacsRows.filter { days.contains($0.date) && !reported.contains($0) })
         for row in stale.sorted(by: { ($0.date, $0.model) < ($1.date, $1.model) }) {
@@ -182,6 +194,11 @@ public struct CodexHistoryCloud: Sendable {
 
     /// The signed-in user's id. The rebuild is recorded per account.
     public let account: String
+    /// True when this Mac is not paired, so its rows are read and written
+    /// under the server's stand-in id for an unpaired Mac, which it shares
+    /// with every other unpaired Mac of the account. The rebuild then zeroes
+    /// no model (`CodexHistoryRebuild.cloudUpload`).
+    public let isUnpairedStandIn: Bool
     /// This Mac's Codex rows over the last `days` days, or nil when they could
     /// not be read.
     public let thisMacsCodexRows: @Sendable (_ days: Int) async -> [Row]?
@@ -191,10 +208,12 @@ public struct CodexHistoryCloud: Sendable {
 
     public init(
         account: String,
+        isUnpairedStandIn: Bool,
         thisMacsCodexRows: @escaping @Sendable (_ days: Int) async -> [Row]?,
         upload: @escaping @Sendable (_ rows: [CostUsageScanResult.DailyEntry]) async -> Bool)
     {
         self.account = account
+        self.isUnpairedStandIn = isUnpairedStandIn
         self.thisMacsCodexRows = thisMacsCodexRows
         self.upload = upload
     }

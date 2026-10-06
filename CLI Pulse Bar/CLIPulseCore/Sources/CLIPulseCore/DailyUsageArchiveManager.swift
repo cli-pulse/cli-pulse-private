@@ -269,7 +269,8 @@ public actor DailyUsageArchiveManager {
             }
 
             if !cloudRows.isEmpty, let cloud {
-                let rows = CodexHistoryRebuild.cloudUpload(rebuilt: older, thisMacsRows: cloudRows)
+                let rows = CodexHistoryRebuild.cloudUpload(
+                    rebuilt: older, thisMacsRows: cloudRows, zeroDroppedModels: !cloud.isUnpairedStandIn)
                 if !sawCodex {
                     incomplete = true   // nothing read to replace them with; not "done"
                 } else if rows.isEmpty {

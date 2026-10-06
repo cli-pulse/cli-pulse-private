@@ -451,6 +451,33 @@ final class CodexHistoryRebuildTests: XCTestCase {
         XCTAssertEqual(reads.count, 3, "one read for the archive, one per account")
     }
 
+    /// A Mac that is not paired reads and writes under the server's stand-in
+    /// id for an unpaired Mac, which every unpaired Mac of the account shares.
+    /// A model there that its read does not report may be another Mac's
+    /// usage: it is replaced only where the read reports it, and no model is
+    /// zeroed.
+    func test_an_unpaired_mac_replaces_the_models_it_reads_and_zeroes_none() async throws {
+        previousVersionLeft([Self.oldDay])
+        let log = ReadLog()
+        let cloud = FakeCloud(rows: [
+            Row(date: Self.oldDay, model: "gpt-5"),
+            Row(date: Self.oldDay, model: "o3"),        // perhaps another unpaired Mac's
+        ])
+        let m = manager(codexRead: [
+            Self.codexRow(Self.oldDay),
+            Self.codexRow(Self.oldDay, model: "gpt-5.6-luna", input: 2_000, cached: 1_500, output: 40, cost: 0.1),
+        ], log: log)
+
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: cloud.cloud(unpaired: true))
+
+        XCTAssertEqual(cloud.uploads.count, 1)
+        XCTAssertEqual(cloud.uploads.first?.map(FakeCloud.describe), [
+            "2026-06-01 Codex gpt-5 9000/8000/100 1.7",
+            "2026-06-01 Codex gpt-5.6-luna 2000/1500/40 0.1",
+        ])
+        XCTAssertEqual(state.cloudRulesVersionByAccount, ["user-a": 5])
+    }
+
     // MARK: - The plan's acceptance: the iPhone's year and this Mac's history
 
     /// P0-17's acceptance: on a day this Mac synced and still has the Codex
@@ -535,13 +562,20 @@ final class CodexHistoryRebuildTests: XCTestCase {
             Row(date: "2026-06-01", model: "o3"),
             Row(date: "2026-06-03", model: "gpt-5"),
         ]
-        let plan = CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: cloud)
+        let plan = CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: cloud, zeroDroppedModels: true)
         XCTAssertEqual(plan.map(FakeCloud.describe), [
             "2026-06-01 Codex gpt-5 9000/8000/100 1.7",
             "2026-06-01 Codex o3 0/0/0 0.0",
         ])
-        XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: []).count, 0)
-        XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: [], thisMacsRows: cloud).count, 0)
+        XCTAssertEqual(
+            CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: cloud, zeroDroppedModels: false)
+                .map(FakeCloud.describe),
+            ["2026-06-01 Codex gpt-5 9000/8000/100 1.7"],
+            "zeroed a model under the shared stand-in")
+        for zero in [true, false] {
+            XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: rebuilt, thisMacsRows: [], zeroDroppedModels: zero).count, 0)
+            XCTAssertEqual(CodexHistoryRebuild.cloudUpload(rebuilt: [], thisMacsRows: cloud, zeroDroppedModels: zero).count, 0)
+        }
     }
 
     // MARK: - The scanner reads only the providers it is asked for
@@ -622,9 +656,10 @@ private final class FakeCloud: @unchecked Sendable {
     var fetches: [Int] { lock.lock(); defer { lock.unlock() }; return _fetches }
     var uploads: [[CostUsageScanResult.DailyEntry]] { lock.lock(); defer { lock.unlock() }; return _uploads }
 
-    func cloud(account: String = "user-a") -> CodexHistoryCloud {
+    func cloud(account: String = "user-a", unpaired: Bool = false) -> CodexHistoryCloud {
         CodexHistoryCloud(
             account: account,
+            isUnpairedStandIn: unpaired,
             thisMacsCodexRows: { days in self.fetched(days) },
             upload: { rows in self.uploaded(rows) })
     }
@@ -667,6 +702,7 @@ private final class CloudTable: @unchecked Sendable {
     func cloud(device: String, account: String = "user-a") -> CodexHistoryCloud {
         CodexHistoryCloud(
             account: account,
+            isUnpairedStandIn: false,
             thisMacsCodexRows: { _ in self.codexRows(of: device) },
             upload: { entries in self.upsert(entries, device: device) })
     }

@@ -2897,11 +2897,22 @@ public actor APIClient {
     /// Mac is paired while the rebuild reads its logs. Both closures check the
     /// lease, so a sign-out or an account switch stops them.
     public func codexHistoryCloud(authorizationLease: APIAuthorizationLease) -> CodexHistoryCloud? {
+        codexHistoryCloud(authorizationLease: authorizationLease, deviceId: { self.dailyUsageDeviceId(userId: $0) })
+    }
+
+    /// `codexHistoryCloud(authorizationLease:)` with the device id decided by
+    /// `deviceId` (given the signed-in user's id): a seam for tests, which
+    /// cannot pair a helper.
+    func codexHistoryCloud(
+        authorizationLease: APIAuthorizationLease,
+        deviceId resolveDeviceId: (String) -> String?
+    ) -> CodexHistoryCloud? {
         guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
               let userId else { return nil }
-        let deviceId = dailyUsageDeviceId(userId: userId)
+        let deviceId = resolveDeviceId(userId)
         return CodexHistoryCloud(
             account: userId,
+            isUnpairedStandIn: deviceId == nil,
             thisMacsCodexRows: { [weak self] days in
                 await self?.codexDailyUsageRows(
                     days: days, deviceId: deviceId, authorizationLease: authorizationLease)

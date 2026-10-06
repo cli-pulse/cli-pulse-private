@@ -130,6 +130,51 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         XCTAssertEqual(RebuildStubProtocol.recordedRequests().count, 2, "kept sending after a batch failed")
     }
 
+    // MARK: - The device the rows are this Mac's under
+
+    /// A paired Mac reads and writes under its own device id; one that is not
+    /// paired, under the server's stand-in for an unpaired Mac, which it
+    /// shares with the account's other unpaired Macs, and says so.
+    func test_the_cloud_side_reads_and_writes_under_the_device_it_decides_once() async throws {
+        let standIn = APIClient.unpairedDailyUsageDeviceId
+        RebuildStubProtocol.handler = { request in
+            if request.url?.path == "/rest/v1/rpc/get_daily_usage_by_device" {
+                return (200, Data("""
+                [{"metric_date":"2026-06-01","device_id":"DEV-1","provider":"Codex","model":"gpt-5"},
+                 {"metric_date":"2026-06-02","device_id":"\(standIn)","provider":"Codex","model":"o3"}]
+                """.utf8))
+            }
+            return (200, Data("{}".utf8))
+        }
+        let (api, lease) = try await signedInAPI()
+
+        let pairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, deviceId: { user in
+            XCTAssertEqual(user, "user-a", "the device id is decided for the signed-in user")
+            return "dev-1"
+        })
+        let paired = try XCTUnwrap(pairedBuilt)
+        XCTAssertFalse(paired.isUnpairedStandIn)
+        let pairedRows = await paired.thisMacsCodexRows(367)
+        XCTAssertEqual(pairedRows, [CodexHistoryCloud.Row(date: "2026-06-01", model: "gpt-5")])
+        let pairedLanded = await paired.upload([Self.row("2026-06-01")])
+        XCTAssertTrue(pairedLanded)
+
+        let unpairedBuilt = await api.codexHistoryCloud(authorizationLease: lease, deviceId: { _ in nil })
+        let unpaired = try XCTUnwrap(unpairedBuilt)
+        XCTAssertTrue(unpaired.isUnpairedStandIn)
+        let unpairedRows = await unpaired.thisMacsCodexRows(367)
+        XCTAssertEqual(unpairedRows, [CodexHistoryCloud.Row(date: "2026-06-02", model: "o3")])
+        let unpairedLanded = await unpaired.upload([Self.row("2026-06-02")])
+        XCTAssertTrue(unpairedLanded)
+
+        let uploads = try RebuildStubProtocol.recordedRequests()
+            .filter { $0.url?.path == "/rest/v1/rpc/upsert_daily_usage" }
+            .map(Self.body)
+        XCTAssertEqual(uploads.count, 2)
+        XCTAssertEqual(uploads.first?["p_device_id"] as? String, "dev-1")
+        XCTAssertNil(uploads.last?["p_device_id"], "the unpaired stand-in is sent as no device id")
+    }
+
     // MARK: - Bound to the lease
 
     func test_the_cloud_side_stops_once_the_account_changes() async throws {
