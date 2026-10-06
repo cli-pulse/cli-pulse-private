@@ -1,6 +1,10 @@
 import Foundation
 
 internal struct DemoData {
+    /// The refresh the data came from, `DemoDataProvider.refreshAge` before
+    /// it was generated. Every timestamp below is at or before it, and
+    /// `enterDemoMode` shows it as the last refresh.
+    let refreshedAt: Date
     let dashboard: DashboardSummary
     let providers: [ProviderUsage]
     let sessions: [SessionRecord]
@@ -9,12 +13,30 @@ internal struct DemoData {
 }
 
 internal enum DemoDataProvider {
+    /// How long ago Demo's one refresh ran.
+    ///
+    /// Every route runs its sessions through `SessionFreshnessFilter
+    /// .filterCurrent` when it refreshes, which drops a row last active more
+    /// than five minutes earlier. So a row the Sessions tab files under Recent
+    /// (five to thirty minutes old) appears only between refreshes, once the
+    /// rows a refresh kept have aged past five minutes. Demo had Recent rows
+    /// 12 and 20 minutes old beside rows active "just now" and a last refresh
+    /// of "just now", which no refresh can leave. Now its data is one refresh
+    /// that ran 90 seconds earlier, inside the iPhone's default two-minute
+    /// interval: the active rows were written at that refresh, and the Recent
+    /// rows a little before it, so they are five to six minutes old now.
+    static let refreshAge: TimeInterval = 90
+
     static func generate() -> DemoData {
         let formatter = sharedISO8601Formatter
         let now = Date()
+        let refreshedAt = now.addingTimeInterval(-refreshAge)
 
+        /// A time relative to the refresh. Offsets are never positive: the
+        /// refresh read every row, so nothing it shows can be newer
+        /// (`testDemoIsOneRefreshTheCloudRouteCouldHaveKept`).
         func timestamp(_ offset: TimeInterval = 0) -> String {
-            formatter.string(from: now.addingTimeInterval(offset))
+            formatter.string(from: refreshedAt.addingTimeInterval(offset))
         }
 
         // Deterministic, like `dailyUsage`: with `Int.random` the hourly bars
@@ -53,25 +75,57 @@ internal enum DemoDataProvider {
         // No provider lists recent sessions: only OllamaCollector fills
         // `recent_sessions`, so a Codex, Gemini or Claude card never draws that
         // line for a real account.
+        //
+        // Claude reports its windows the way ClaudeResultBuilder does: each a
+        // percentage (quota 100), the 5-hour one first, and the provider's own
+        // quota and remaining taken from it. Demo gave Claude a token quota
+        // (250K, 118K left) and no window, a shape no producer sends. The Mac
+        // card drew no bar for it, and the iPhone and iPad drew their legacy
+        // "Quota" bar, filled to the share used beside bars filled to the
+        // share left. `testDemoClaudeReportsTheWindowsItsCollectorBuilds`
+        // holds it to the builder.
+        //
+        // Codex and Gemini report percentages too: CodexCollector and
+        // GeminiCollector build every window, and the provider's own quota and
+        // remaining, as quota 100 and the share left, and the cloud keeps what
+        // the Mac uploads. Demo gave them token counts (500K with 38K left,
+        // 300K with 86K left). The bars and the alert read the same either
+        // way, but the Watch's provider screen prints the two numbers as its
+        // Quota and Remaining rows: "500K" and "38K", where a real Codex reads
+        // 100 and 8. `testDemoCodexAndGeminiReportTheWindowsTheirCollectorsBuild`
+        // holds them to the collectors.
+        //
+        // Each provider with a cost carries the 30-day figure the server sends
+        // (`provider_summary`: the last 30 days of `daily_usage_metrics`, a
+        // window that holds the week's and today's). Without it the app fell
+        // back to week x 4.3, which production no longer takes, and the Cost
+        // Summary's rows ($23.82 and $8.51) came to a cent less than its
+        // 30-day total ($32.34). `testTheCostSummaryRowsAddUpToItsTotals`
+        // holds the rows to the total.
         let providers = [
             ProviderUsage(provider: "Codex", today_usage: 85900, week_usage: 462000,
                           estimated_cost_today: 1.03, estimated_cost_week: 5.54,
+                          estimated_cost_30_day: 23.83,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
-                          quota: 500000, remaining: 38000,
-                          tiers: [TierDTO(name: "Weekly", quota: 500000, remaining: 38000)],
+                          quota: 100, remaining: 8,
+                          tiers: [TierDTO(name: "Weekly", quota: 100, remaining: 8)],
                           status_text: "92% used",
                           trend: trend(base: 85000, salt: 201), recent_sessions: [], recent_errors: []),
             ProviderUsage(provider: "Gemini", today_usage: 0, week_usage: 0,
                           estimated_cost_today: 0, estimated_cost_week: 0,
                           cost_status_today: "Unavailable", cost_status_week: "Unavailable",
-                          quota: 300000, remaining: 86000,
-                          tiers: [TierDTO(name: "Pro", quota: 300000, remaining: 86000)],
+                          quota: 100, remaining: 29,
+                          tiers: [TierDTO(name: "Pro", quota: 100, remaining: 29)],
                           status_text: "71% used",
                           trend: [], recent_sessions: [], recent_errors: []),
             ProviderUsage(provider: "Claude", today_usage: 24800, week_usage: 132000,
                           estimated_cost_today: 0.37, estimated_cost_week: 1.98,
+                          estimated_cost_30_day: 8.51,
                           cost_status_today: "Estimated", cost_status_week: "Estimated",
-                          quota: 250000, remaining: 118000, status_text: "53% used",
+                          quota: 100, remaining: 47,
+                          tiers: [TierDTO(name: "5h Window", quota: 100, remaining: 47),
+                                  TierDTO(name: "Weekly", quota: 100, remaining: 69)],
+                          status_text: "53% used",
                           trend: trend(base: 24000, salt: 203), recent_sessions: [], recent_errors: []),
         ]
 
@@ -79,15 +133,11 @@ internal enum DemoDataProvider {
         // a project), not English sentences: they are data, shown as-is in
         // every language, and they reappear inside the alert titles below.
         //
-        // helper-heartbeat carries the long-running alert below, so it looks
-        // like a session that would trip it: the helpers only fire at 400 or
-        // more requests, and count a request per 45 s of runtime. Seven hours
-        // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
-        // which is when the alert says it was raised.
-        //
-        // It runs on lab-server-01, a Linux server. Off a Mac a session comes
-        // from the desktop app's process scan (ported verbatim from the Python
-        // helper's, helper/system_collector.py): usage is runtime times
+        // helper-heartbeat has run on lab-server-01, a Linux server, for
+        // seven hours. It used to carry a long-running alert, which no
+        // producer raises for it (see the alerts below). Off a Mac a session
+        // comes from the desktop app's process scan (ported verbatim from the
+        // Python helper's, helper/system_collector.py): usage is runtime times
         // max(1.5, CPU% + 1), and the cost is left out (`exact_cost` null,
         // which helper_sync stores as 0). Seven hours of a quiet process is
         // therefore 37.8K and $0.00. Demo showed 12.8K and $0.10, a Gemini
@@ -108,9 +158,16 @@ internal enum DemoDataProvider {
         //
         // Two sessions sit in the Sessions tab's Recent tier (last written 5
         // to 30 minutes ago, SessionFreshnessTierClassifier): api-gateway,
-        // last written shortly before build-box went offline, and a finished
-        // docs-refresh. Without them the Active section was the whole list and
-        // the lower half of the screen was empty.
+        // last written just before build-box's helper stopped syncing, and a
+        // finished docs-refresh. Without them the Active section was the
+        // whole list and the lower half of the screen was empty. They were 20
+        // and 12 minutes old, which no refresh keeps: the cloud route drops a
+        // row last active more than five minutes before it refreshes. Now they
+        // stopped about four and five minutes before Demo's refresh
+        // (`refreshAge`), so they are past five minutes only now, 90 seconds
+        // on, as a real Recent row can be. The running sessions were written
+        // at the refresh. `testDemoIsOneRefreshTheCloudRouteCouldHaveKept`
+        // holds every row to the filter.
         //
         // No session has errors or a "failed" status: every producer (both
         // helpers, the local scanners, the desktop app) writes error_count 0
@@ -122,10 +179,11 @@ internal enum DemoDataProvider {
         // time the app's freshness filter (five minutes) no longer lists it.
         // Demo had "running", "syncing" and "idle", and the iPad's session list
         // drew Syncing and Idle badges no account can get.
+        let busyStarted: TimeInterval = -7200  // ios-dashboard, which the CPU alert names
         let sessions = [
             SessionRecord(id: "s1", name: "ios-dashboard", provider: "Codex",
                           project: "cli-pulse-ios", device_name: "MacBook Pro",
-                          started_at: timestamp(-7200), last_active_at: timestamp(),
+                          started_at: timestamp(busyStarted), last_active_at: timestamp(),
                           status: "Running", total_usage: 24500, estimated_cost: 0.049,
                           cost_status: "Estimated", requests: 160, error_count: 0,
                           collection_confidence: "high"),
@@ -137,7 +195,7 @@ internal enum DemoDataProvider {
                           collection_confidence: "medium"),
             SessionRecord(id: "s3", name: "api-gateway", provider: "Codex",
                           project: "backend-api", device_name: "build-box",
-                          started_at: timestamp(-7200), last_active_at: timestamp(-1200),
+                          started_at: timestamp(-6290), last_active_at: timestamp(-290),
                           status: "Running", total_usage: 9600, estimated_cost: 0.0192,
                           cost_status: "Estimated", requests: 133, error_count: 0,
                           collection_confidence: "high"),
@@ -149,24 +207,40 @@ internal enum DemoDataProvider {
                           collection_confidence: "low"),
             SessionRecord(id: "s5", name: "docs-refresh", provider: "Claude",
                           project: "cli-pulse-docs", device_name: "MacBook Pro",
-                          started_at: timestamp(-2700), last_active_at: timestamp(-720),
+                          started_at: timestamp(-2210), last_active_at: timestamp(-230),
                           status: "Running", total_usage: 4100, estimated_cost: 0.0123,
                           cost_status: "Estimated", requests: 44, error_count: 0,
                           collection_confidence: "high"),
         ]
 
-        // CPU figures agree with the alerts below: the MacBook Pro's total sits
-        // above the ~46% its ios-dashboard session alone is using, and
-        // lab-server-01 reports the 91% its device-CPU alert quotes.
+        // CPU figures agree with the alerts below. The MacBook Pro's
+        // device-CPU alert is an hour old: its helper raised it at 91% and
+        // keeps the row after the spike, so the 58% it reads now is the
+        // present, not a contradiction. lab-server-01 reads 91% and has no
+        // alert, because the desktop app, which reports it, has no device-CPU
+        // rule. Each device last synced no earlier than its sessions were
+        // written, since its sync wrote them: build-box with api-gateway,
+        // just before its helper stopped syncing.
+        //
+        // Every device reads "Online", the one status the cloud stores:
+        // register_helper, the desktop's sign-in and every heartbeat and sync
+        // write it, nothing writes another, and the app shows the stored
+        // value. So build-box, quiet for six minutes, still reads Online, and
+        // the Online Devices tile counts all three, as `dashboard_summary`
+        // does. Demo had build-box "offline", a status only the retired
+        // backend wrote, which took the tile to 2; and it wrote the others in
+        // lower case, which `DeviceStatus` does not read as online, so the
+        // Watch's machine cards, fed from the phone, drew their dots grey.
+        // `testDemoDevicesReadOnlineAsTheCloudStoresThem`.
         let devices = [
             DeviceRecord(id: "d1", name: "MacBook Pro", type: "laptop", system: "macOS 15.4",
-                         status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
+                         status: "Online", last_sync_at: timestamp(), helper_version: "0.2.0",
                          current_session_count: 2, cpu_usage: 58, memory_usage: 68),
             DeviceRecord(id: "d2", name: "lab-server-01", type: "server", system: "Ubuntu 24.04",
-                         status: "online", last_sync_at: timestamp(), helper_version: "0.2.0",
+                         status: "Online", last_sync_at: timestamp(), helper_version: "0.2.0",
                          current_session_count: 1, cpu_usage: 91, memory_usage: 45),
             DeviceRecord(id: "d3", name: "build-box", type: "server", system: "macOS 14.7",
-                         status: "offline", last_sync_at: timestamp(-900), helper_version: "0.1.9",
+                         status: "Online", last_sync_at: timestamp(-290), helper_version: "0.1.9",
                          current_session_count: 0, cpu_usage: nil, memory_usage: nil),
         ]
 
@@ -185,21 +259,47 @@ internal enum DemoDataProvider {
         // this file to that map.
 
         // Quota: the cross-platform generator itself, with the default
-        // thresholds, so this row cannot drift from production.
+        // thresholds, so this row cannot drift from production. The app
+        // raises it as it refreshes, so it is dated at the refresh.
         let quotaAlerts = AlertGenerator.evaluateQuotaAlerts(
-            providers: providers, thresholds: AlertThresholds.defaults.asArray
+            providers: providers, thresholds: AlertThresholds.defaults.asArray, now: refreshedAt
         ).compactMap(AlertGenerator.makeAlertRecord(from:))
 
-        let busy = sessions[0]          // Codex on the MacBook Pro
-        let longRunning = sessions[1]   // Gemini on lab-server-01
+        let busy = sessions[0]      // Codex on the MacBook Pro
+        let busyMac = devices[0]    // the MacBook Pro
 
+        // No alert comes from the long-running rule ("Session Too Long"). It
+        // fires at 400 requests, and every session that reaches the cloud is
+        // a process-scan row, whose count is only its runtime / 45, so five
+        // hours of any open process trips it. v1.16.1 made the rule skip
+        // those rows (helper/system_collector.py, AlertGenerator), and the
+        // desktop app, which writes every session off a Mac, has no such
+        // rule. Demo had one on helper-heartbeat, on lab-server-01.
+        //
+        // On a Mac it still fires today: the LoginItem helper's skip tests
+        // for `proc-`, which its LocalScanner rows (`local-`) never carry,
+        // and the Companion CLI's rule has no skip. That is the false alarm
+        // v1.16.1 set out to remove, not something to put in a screenshot.
+        // `testDemoRaisesNoLongRunningAlert`.
         let alerts = quotaAlerts + [
             // Swift helper, AlertGenerator.generate session-CPU rule. It does
             // not set a device name.
+            //
+            // The rule compares LocalScanner's CPU figure, a session's average
+            // over its whole life, with 40% of the machine, and the same figure
+            // sets the session's usage: runtime x (CPU% + 1), so 100 per
+            // CPU-second plus one per second. helper_sync keeps an alert's
+            // first created_at and updates only its text. So a session caught
+            // at 46% of ten cores T seconds into its life had burned 4.6 x T
+            // CPU-seconds by then, and shows at least 460 x T usage on top of
+            // its runtime. Raised 30 minutes ago, 90 minutes in, that is 2.5M;
+            // ios-dashboard shows 24.5K. Raised at the helper's first scan, 30
+            // seconds in (a burst at launch, quiet since), 24.5K holds it.
+            // `testTheSessionCPUAlertComesFromASessionThatCouldRaiseIt`.
             AlertRecord(id: "session-spike-s1-3f9a2c1e", type: "Usage Spike", severity: "Warning",
                         title: "\(busy.name) is consuming high CPU",
                         message: "Using ~46% of total system CPU (10 cores) for \(busy.provider).",
-                        created_at: timestamp(-1800), is_read: false, is_resolved: false,
+                        created_at: timestamp(busyStarted + 30), is_read: false, is_resolved: false,
                         acknowledged_at: nil, snoozed_until: nil,
                         related_project_id: nil, related_project_name: busy.project,
                         related_session_id: busy.id, related_session_name: busy.name,
@@ -207,30 +307,24 @@ internal enum DemoDataProvider {
                         source_kind: "session", source_id: nil,
                         grouping_key: "Usage Spike:\(busy.provider)",
                         suppression_key: "Usage Spike:s1-3f9a2c1e"),
-            // Python helper (helper/system_collector.py), device-CPU rule; its
-            // uploader fills in the device name and the grouping keys.
-            AlertRecord(id: "cpu-spike-d2", type: "Usage Spike", severity: "Warning",
+            // Swift helper, AlertGenerator.generate device-CPU rule (85% of
+            // the Mac): keyed to the helper's device id, with no device name,
+            // which helper_sync stores as sent. It was lab-server-01's, with
+            // the Python helper's keys; but the Python helper is not shipped
+            // (docs/ARCHITECTURE.md), and the desktop app, which reports
+            // Linux machines, has no device-CPU rule.
+            // `testTheDeviceCPUAlertIsOneTheMacHelperRaises`.
+            AlertRecord(id: "cpu-spike-\(busyMac.id)", type: "Usage Spike", severity: "Warning",
                         title: "Device CPU usage is elevated",
                         message: "helper sampled CPU usage at 91%.",
                         created_at: timestamp(-3600), is_read: true, is_resolved: false,
                         acknowledged_at: nil, snoozed_until: nil,
                         related_project_id: nil, related_project_name: nil,
                         related_session_id: nil, related_session_name: nil,
-                        related_provider: nil, related_device_name: "lab-server-01",
+                        related_provider: nil, related_device_name: nil,
                         source_kind: "device", source_id: nil,
-                        grouping_key: "Usage Spike:system", suppression_key: "Usage Spike:global"),
-            // Python helper, long-running-session rule.
-            AlertRecord(id: "session-long-s2-8d41b7e0", type: "Session Too Long", severity: "Info",
-                        title: "\(longRunning.name) has been running for a long time",
-                        message: "Long-running local agent session detected by helper.",
-                        created_at: timestamp(-7200), is_read: true, is_resolved: false,
-                        acknowledged_at: nil, snoozed_until: nil,
-                        related_project_id: "p2", related_project_name: longRunning.project,
-                        related_session_id: longRunning.id, related_session_name: longRunning.name,
-                        related_provider: longRunning.provider, related_device_name: longRunning.device_name,
-                        source_kind: "session", source_id: longRunning.id,
-                        grouping_key: "Session Too Long:\(longRunning.provider)",
-                        suppression_key: "Session Too Long:\(longRunning.id)"),
+                        grouping_key: "Usage Spike:device:\(busyMac.id)",
+                        suppression_key: "cpu-spike-\(busyMac.id)"),
         ]
 
         // From the local refresh's own producer, with Demo's facts: it has
@@ -261,7 +355,8 @@ internal enum DemoDataProvider {
             // The Sessions tab's Active section, by freshness (every status is
             // Running); ScreenshotLaunchTests holds the two equal.
             active_sessions: SessionFreshnessTierClassifier.partition(sessions, now: now).active.count,
-            online_devices: devices.filter { $0.status == "online" }.count,
+            // `dashboard_summary` counts the rows whose status is 'Online'.
+            online_devices: devices.filter { $0.status == DeviceStatus.online.rawValue }.count,
             unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager),
@@ -289,6 +384,7 @@ internal enum DemoDataProvider {
         )
 
         return DemoData(
+            refreshedAt: refreshedAt,
             dashboard: dashboard,
             providers: providers,
             sessions: sessions,
@@ -385,12 +481,16 @@ extension AppState {
         userName = L10n.auth.demoUserName
         userEmail = "demo@clipulse.app"
         serverOnline = true
-        lastRefresh = Date()
+        let demo = DemoDataProvider.generate()
+        // The refresh Demo's data came from, a little before now, not the
+        // moment it was entered: its Recent sessions are older than a refresh
+        // keeps, so only an earlier refresh can have left them.
+        lastRefresh = demo.refreshedAt
         // Demo mode cannot pair, so Settings — and every screenshot of it —
         // shows the paired account without a repair line.
         refreshThisMacPairing()
 
-        applyDemoData(DemoDataProvider.generate())
+        applyDemoData(demo)
         buildProviderDetails()
         updateCostSummary()
         publishWidgetData()

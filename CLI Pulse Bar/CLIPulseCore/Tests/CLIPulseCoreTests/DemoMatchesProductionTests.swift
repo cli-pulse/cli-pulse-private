@@ -5,9 +5,15 @@ import XCTest
 /// real account can see. These are the figures the 1.55 screenshot review
 /// traced to their producers and found no producer for: Gemini tokens and
 /// cost, a Requests count on the signed-in dashboard, a failed session with
-/// errors, a provider card's recent-sessions line, and a session's cost and
-/// usage that no process scan writes. Each test pairs Demo
-/// with the production fact it follows, so the two change together.
+/// errors, a provider card's recent-sessions line, a session's cost and
+/// usage that no process scan writes, Recent sessions no single refresh
+/// keeps, a CPU alert its session could not have raised, a long-running
+/// alert and a device-CPU alert no producer raises where Demo put them, a
+/// Claude quota with no windows, Codex and Gemini quotas counted in tokens, a
+/// device status the cloud never stores, and a 30-day figure production no
+/// longer computes.
+/// Each test pairs Demo with the production fact it follows, so the two
+/// change together.
 final class DemoMatchesProductionTests: XCTestCase {
 
     // MARK: - Gemini is quota-only
@@ -346,6 +352,522 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
     }
 
+    // MARK: - One refresh
+
+    /// Every route runs its sessions through `SessionFreshnessFilter
+    /// .filterCurrent` as it refreshes, which keeps a row only if it was last
+    /// active within five minutes of the refresh. So the Sessions tab's Recent
+    /// rows (five to thirty minutes old) are rows a refresh kept that have
+    /// aged since. Demo's were 12 and 20 minutes old beside rows written "just
+    /// now", which no refresh leaves. Demo is now one refresh, a little in the
+    /// past: everything it shows is dated at or before it, each device synced
+    /// no earlier than the sessions its sync wrote, and the filter at that
+    /// moment keeps every session.
+    func testDemoIsOneRefreshTheCloudRouteCouldHaveKept() throws {
+        let demo = DemoDataProvider.generate()
+        let refreshed = demo.refreshedAt
+        XCTAssertLessThan(refreshed, Date(), "Demo's refresh has not happened yet")
+        XCTAssertEqual(SessionFreshnessFilter.filterCurrent(demo.sessions, now: refreshed).map(\.id),
+                       demo.sessions.map(\.id),
+                       "Demo lists a session its own refresh would have dropped")
+
+        func date(_ iso: String, _ what: String) throws -> Date {
+            try XCTUnwrap(sharedISO8601Parse(iso), "\(what) is not a date: \(iso)")
+        }
+        // Timestamps are written to the second.
+        let latest = refreshed.addingTimeInterval(1)
+        let lastSync = try Dictionary(uniqueKeysWithValues: demo.devices.map {
+            ($0.name, try date(try XCTUnwrap($0.last_sync_at, "\($0.name) never synced"), "\($0.name) last sync"))
+        })
+        for device in demo.devices {
+            XCTAssertLessThanOrEqual(try XCTUnwrap(lastSync[device.name]), latest,
+                                     "\(device.name) synced after the refresh that shows it")
+        }
+        for session in demo.sessions {
+            let started = try date(session.started_at, "\(session.name) started_at")
+            let lastActive = try date(session.last_active_at, "\(session.name) last_active_at")
+            XCTAssertLessThanOrEqual(started, lastActive, "\(session.name) was last active before it started")
+            XCTAssertLessThanOrEqual(lastActive, latest, "\(session.name) was written after the refresh that shows it")
+            let synced = try XCTUnwrap(lastSync[session.device_name], "\(session.name) is on no Demo device")
+            XCTAssertGreaterThanOrEqual(synced, lastActive,
+                                        "\(session.name) was written after \(session.device_name)'s last sync, which wrote it")
+        }
+        for alert in demo.alerts {
+            XCTAssertLessThanOrEqual(try date(alert.created_at, alert.id), latest,
+                                     "\(alert.id) was raised after the refresh that shows it")
+        }
+
+        // Positive control: the case this is about. Demo still has Recent rows
+        // now, so the Sessions screens keep their second section.
+        let recent = SessionFreshnessTierClassifier.partition(demo.sessions, now: Date()).recent
+        XCTAssertFalse(recent.isEmpty, "Demo has no Recent session; this test checks less than it says")
+    }
+
+    /// The refresh is recent enough that the rows written at it are still
+    /// Active, and no older than the iPhone's default refresh interval, so a
+    /// real iPhone is in this state between two automatic refreshes.
+    func testDemosRefreshIsOneARealIPhoneIsBetween() throws {
+        XCTAssertGreaterThan(DemoDataProvider.refreshAge, 0)
+        XCTAssertLessThan(DemoDataProvider.refreshAge, SessionFreshnessTierClassifier.jsonlActiveWindow,
+                          "the rows written at Demo's refresh are no longer Active")
+        let appState = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AppState.swift"), encoding: .utf8))
+        let declaration = try NSRegularExpression(
+            pattern: #"@AppStorage\("cli_pulse_refresh_interval"\) public var refreshInterval: Int = (\d+)"#)
+        let match = try XCTUnwrap(
+            declaration.firstMatch(in: appState, range: NSRange(appState.startIndex..., in: appState)),
+            "AppState's refresh interval is declared another way; recheck Demo's refresh against it")
+        let interval = try XCTUnwrap(Range(match.range(at: 1), in: appState).flatMap { Double(appState[$0]) })
+        XCTAssertLessThanOrEqual(DemoDataProvider.refreshAge, interval,
+                                 "Demo's refresh is older than a default refresh interval")
+    }
+
+    // MARK: - Alerts and the sessions they name
+
+    /// The Swift helper's session-CPU rule fires when a session reaches 40% of
+    /// the machine, by LocalScanner's figure: the session's CPU time over its
+    /// whole life. The same figure sets the session's usage, runtime x
+    /// (CPU% + 1), which is 100 per CPU-second plus one per second. And
+    /// helper_sync keeps an alert's first created_at, rewriting only its text.
+    /// So a session the rule caught at P% of N cores, T seconds into its life,
+    /// had burned P/100 x N x T CPU-seconds by then and shows at least
+    /// P x N x T usage on top of its runtime. Demo's alert, dated 30 minutes
+    /// before the refresh on ios-dashboard 90 minutes into its life, implied
+    /// 2.5M; the session showed 24.5K.
+    func testTheSessionCPUAlertComesFromASessionThatCouldRaiseIt() throws {
+        let demo = DemoDataProvider.generate()
+        let systems = Dictionary(uniqueKeysWithValues: demo.devices.map { ($0.name, $0.system) })
+        let template = try NSRegularExpression(
+            pattern: #"^Using ~(\d+)% of total system CPU \((\d+) cores\) for (.+)\.$"#)
+        let raised = demo.alerts.filter { $0.type == "Usage Spike" && $0.source_kind == "session" }
+        XCTAssertFalse(raised.isEmpty, "Demo has no session-CPU alert; this test checks nothing")
+        for alert in raised {
+            let session = try XCTUnwrap(demo.sessions.first { $0.id == alert.related_session_id },
+                                        "\(alert.id) names no Demo session")
+            let text = alert.message
+            let match = try XCTUnwrap(template.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                                      "\(alert.id): \"\(text)\" is not the Swift helper's template")
+            func group(_ index: Int) throws -> String {
+                try XCTUnwrap(Range(match.range(at: index), in: text).map { String(text[$0]) })
+            }
+            let percent = try XCTUnwrap(Double(try group(1)))
+            let cores = try XCTUnwrap(Double(try group(2)))
+            XCTAssertEqual(try group(3), session.provider, "\(alert.id) names another provider than its session's")
+            XCTAssertGreaterThanOrEqual(percent, 40, "\(alert.id) is under the rule's 40%")
+            // Only the LoginItem helper writes this template, and it runs on a Mac.
+            XCTAssertTrue(systems[session.device_name]?.hasPrefix("macOS") == true,
+                          "\(session.name) is on \(session.device_name), where no producer writes \"\(text)\"")
+
+            let started = try XCTUnwrap(sharedISO8601Parse(session.started_at))
+            let lastActive = try XCTUnwrap(sharedISO8601Parse(session.last_active_at))
+            let raisedAt = try XCTUnwrap(sharedISO8601Parse(alert.created_at))
+            let firstSeen = raisedAt.timeIntervalSince(started)
+            let runtime = lastActive.timeIntervalSince(started)
+            XCTAssertGreaterThan(firstSeen, 0, "\(alert.id) was raised before \(session.name) started")
+            XCTAssertLessThanOrEqual(raisedAt, lastActive, "\(alert.id) was raised after \(session.name) was last seen")
+            // The rounding the figures go through: the percentage to a whole
+            // number (so at least P - 0.5), and the CPU% that sets the usage
+            // to one decimal (up to 0.05 x runtime less).
+            let least = (percent - 0.5) * cores * firstSeen + 0.95 * runtime - 1
+            XCTAssertGreaterThanOrEqual(Double(session.total_usage), least, """
+                \(session.name): \(session.total_usage) usage, but the rule caught it at \(Int(percent))% of \
+                \(Int(cores)) cores \(Int(firstSeen)) s into its life, which leaves at least \(Int(least))
+                """)
+        }
+    }
+
+    /// No Demo alert comes from the long-running rule. It fires at 400
+    /// requests, and every session that reaches the cloud is a process-scan
+    /// row, whose count is only its runtime / 45, so any process open five
+    /// hours trips it. v1.16.1 made the rule skip those rows, and the desktop
+    /// app, which writes every session off a Mac, has no such rule. Demo had
+    /// one on helper-heartbeat, a process scan on a Linux server, which
+    /// nothing raises. (On a Mac the rule still fires, because the LoginItem
+    /// helper's skip tests for `proc-` and its LocalScanner rows are
+    /// `local-`; that is the false alarm v1.16.1 meant to remove.)
+    func testDemoRaisesNoLongRunningAlert() throws {
+        let demo = DemoDataProvider.generate()
+        let raised = demo.alerts.filter { $0.type == "Session Too Long" || $0.id.hasPrefix("session-long-") }
+        XCTAssertEqual(raised.map(\.id), [], """
+            Demo shows a long-running alert. The rule skips process-scan rows by design (v1.16.1), every \
+            session in the cloud is one, and the desktop app has no such rule; show one only on a session \
+            a producer raises it for, and check that here
+            """)
+        // Positive control: a Demo session has the count that would trip the
+        // rule, so the alert is left out by the rule's design, not because no
+        // session is long enough.
+        XCTAssertTrue(demo.sessions.contains { $0.requests >= 400 },
+                      "no Demo session reaches 400 requests; this test checks less than it says")
+
+        // The production half: the rule's count and its skip, in the Python
+        // helper (whose scan the desktop app ports, without this rule) and in
+        // the Swift helper.
+        let python = try String(
+            contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("helper/system_collector.py"),
+            encoding: .utf8)
+        XCTAssertTrue(python.contains("if not is_process_detected and session.requests >= 400:"),
+                      "the Python helper's long-running rule changed; recheck which sessions raise it")
+        XCTAssertTrue(python.contains(#"session.session_id.startswith("proc-")"#),
+                      "the Python helper's long-running rule no longer skips process-scan rows")
+        XCTAssertTrue(python.contains(#"session_id=f"proc-{row['pid']}","#),
+                      "the Python helper's scan no longer names its rows proc-")
+        let generator = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(generator.contains("if !isProcessDetected, session.requests >= 400 {"),
+                      "the Swift helper's long-running rule changed; recheck which sessions raise it")
+    }
+
+    /// The device-CPU alert that reaches the cloud is the LoginItem helper's
+    /// (AlertGenerator.generate): at 85% of the Mac, keyed to the helper's
+    /// device id (`cpu-spike-<id>`, which also groups and suppresses it),
+    /// with no device name, which helper_sync stores as sent. The desktop
+    /// app, which reports Linux and Windows machines, has no device-CPU rule,
+    /// and the Python helper whose keys Demo's alert carried is not shipped
+    /// (docs/ARCHITECTURE.md). Demo had the alert on lab-server-01, an Ubuntu
+    /// server.
+    func testTheDeviceCPUAlertIsOneTheMacHelperRaises() throws {
+        let demo = DemoDataProvider.generate()
+        let raised = demo.alerts.filter { $0.type == "Usage Spike" && $0.source_kind == "device" }
+        XCTAssertFalse(raised.isEmpty, "Demo has no device-CPU alert; this test checks nothing")
+        let template = try NSRegularExpression(pattern: #"^helper sampled CPU usage at (\d+)%\.$"#)
+        for alert in raised {
+            let device = try XCTUnwrap(demo.devices.first { alert.id == "cpu-spike-\($0.id)" },
+                                       "\(alert.id) is not keyed to a Demo device's id, as the helper keys it")
+            XCTAssertTrue(device.system.hasPrefix("macOS"),
+                          "\(alert.id) is on \(device.name) (\(device.system)), where nothing raises a device-CPU alert")
+            XCTAssertEqual(alert.grouping_key, "Usage Spike:device:\(device.id)", alert.id)
+            XCTAssertEqual(alert.suppression_key, alert.id)
+            XCTAssertNil(alert.related_device_name, "\(alert.id): the helper sends no device name, so the cloud has none")
+            let text = alert.message
+            let match = try XCTUnwrap(template.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                                      "\(alert.id): \"\(text)\" is not the helper's template")
+            let percent = try XCTUnwrap(Range(match.range(at: 1), in: text).flatMap { Int(text[$0]) })
+            XCTAssertGreaterThanOrEqual(percent, 85, "\(alert.id) is under the rule's 85%")
+            // The sync that sent it is no later than the device's last.
+            let raisedAt = try XCTUnwrap(sharedISO8601Parse(alert.created_at))
+            let synced = try XCTUnwrap(sharedISO8601Parse(device.last_sync_at ?? ""), "\(device.name) never synced")
+            XCTAssertLessThanOrEqual(raisedAt, synced, "\(alert.id) was raised after \(device.name) last synced")
+        }
+
+        let generator = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
+            encoding: .utf8))
+        let rule = try XCTUnwrap(generator.range(of: "if device.cpuUsage >= 85 {"),
+                                 "the Swift helper's device-CPU rule fires elsewhere")
+        let end = try XCTUnwrap(generator.range(of: "])", range: rule.upperBound..<generator.endIndex))
+        let row = generator[rule.upperBound..<end.lowerBound]
+        for line in [#"let stableID = "cpu-spike-\(deviceID)""#,
+                     #""message": "helper sampled CPU usage at \(device.cpuUsage)%.","#,
+                     #""source_kind": "device","#,
+                     #""grouping_key": "Usage Spike:device:\(deviceID)","#,
+                     #""suppression_key": stableID,"#] {
+            XCTAssertTrue(row.contains(line), "the Swift helper's device-CPU alert no longer has \(line)")
+        }
+        XCTAssertFalse(row.contains("related_device_name"),
+                       "the Swift helper's device-CPU alert now names its device; Demo's may too")
+        let daemon = Self.codeOnly(try String(
+            contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
+        XCTAssertTrue(daemon.contains("HelperConfig.load()?.deviceId") && daemon.contains("deviceID: alertDeviceID"),
+                      "the helper keys its device-CPU alert by something other than its device id")
+        let sync = try String(
+            contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase/helper_rpc.sql"),
+            encoding: .utf8)
+        XCTAssertTrue(sync.contains("v_alert->>'related_provider', v_alert->>'related_device_name',"),
+                      "helper_sync no longer stores an alert's device name as sent")
+    }
+
+    /// The production half of the session-CPU test above, read from the sources.
+    func testTheHelpersRaiseAndKeepSessionAlertsAsDemoAssumes() throws {
+        let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
+        let sources = Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore")
+        let generator = Self.codeOnly(try String(
+            contentsOf: sources.appendingPathComponent("AlertGenerator.swift"), encoding: .utf8))
+        XCTAssertTrue(generator.contains("let systemFractionThreshold = 0.4"), "the session-CPU rule fires elsewhere")
+        XCTAssertTrue(generator.contains("if let cpu = sessionCPU[session.id], cpu / systemCapacity >= systemFractionThreshold"),
+                      "the session-CPU rule reads another figure")
+        XCTAssertTrue(generator.contains(
+            #""message": "Using ~\(systemPct)% of total system CPU (\(cpuCount) cores) for \(session.provider).","#),
+                      "the session-CPU rule writes another message")
+
+        let daemon = Self.codeOnly(try String(
+            contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
+        XCTAssertTrue(daemon.contains("sessionCPU: scanResult.sessionCPU,"),
+                      "the helper's alerts read another CPU figure than its scan's")
+        let scanner = Self.codeOnly(try String(
+            contentsOf: sources.appendingPathComponent("LocalScanner.swift"), encoding: .utf8))
+        XCTAssertTrue(scanner.contains("pcpu = min(max(cpuNanos / elapsedNanos * 100.0, 0), 10_000)"),
+                      "LocalScanner's CPU figure is no longer the session's lifetime average")
+        XCTAssertTrue(scanner.contains("let usage = max(500, Int(Double(elapsed) * max(1.5, cpu + 1.0)))"),
+                      "LocalScanner's usage no longer follows its CPU figure")
+        XCTAssertTrue(scanner.contains("sessionCPU[session.id] = cpu"),
+                      "the alert and the usage read different CPU figures")
+
+        let sync = try String(
+            contentsOf: repoRoot.appendingPathComponent("backend/supabase/helper_rpc.sql"), encoding: .utf8)
+        let insert = try XCTUnwrap(sync.range(of: "insert into public.alerts"), "helper_sync stores no alerts")
+        let rest = sync[insert.upperBound...]
+        let upsert = try XCTUnwrap(rest.range(of: "on conflict (id, user_id) do update set"),
+                                   "helper_sync no longer updates an alert it has")
+        let end = try XCTUnwrap(rest.range(of: ";", range: upsert.upperBound..<rest.endIndex))
+        let update = rest[upsert.upperBound..<end.lowerBound]
+        XCTAssertTrue(update.contains("message = excluded.message"), "helper_sync no longer rewrites an alert's text")
+        XCTAssertFalse(update.contains("created_at"),
+                       "helper_sync now moves an alert's created_at; recheck Demo's alert dates")
+    }
+
+    // MARK: - Quota and cost
+
+    /// Claude's quota is the windows ClaudeResultBuilder reports: each a
+    /// percentage, and the provider's quota and remaining taken from the
+    /// 5-hour one. Demo gave Claude a token quota (250K, 118K left) and no
+    /// window, which no producer sends: the Mac card drew no bar for it, and
+    /// the iPhone and iPad their legacy bar, filled the other way from every
+    /// other bar.
+    func testDemoClaudeReportsTheWindowsItsCollectorBuilds() throws {
+        #if os(macOS)
+        let claude = try XCTUnwrap(DemoDataProvider.generate().providers.first { $0.provider == "Claude" })
+        let fiveHour = try XCTUnwrap(claude.tiers.first { $0.name == "5h Window" }, "Demo's Claude has no 5-hour window")
+        let weekly = try XCTUnwrap(claude.tiers.first { $0.name == "Weekly" }, "Demo's Claude has no weekly window")
+        let built = ClaudeResultBuilder.build(from: ClaudeSnapshot(
+            sessionUsed: fiveHour.quota - fiveHour.remaining,
+            weeklyUsed: weekly.quota - weekly.remaining,
+            sourceLabel: "Demo")).usage
+        XCTAssertEqual(claude.tiers.map(\.name), built.tiers.map(\.name))
+        XCTAssertEqual(claude.tiers.map(\.quota), built.tiers.map(\.quota))
+        XCTAssertEqual(claude.tiers.map(\.remaining), built.tiers.map(\.remaining))
+        XCTAssertEqual(claude.quota, built.quota)
+        XCTAssertEqual(claude.remaining, built.remaining)
+        XCTAssertEqual(claude.status_text, built.status_text)
+        #endif
+    }
+
+    /// Every quota bar on the Providers tabs fills to the share left: the
+    /// window bars (1 - used), the account bars (`remainingFraction`), and
+    /// the legacy bar a Claude without windows gets, which filled to the
+    /// share used beside its own "remaining" figure.
+    func testEveryQuotaBarOnTheProvidersTabsFillsTheShareLeft() throws {
+        for file in ["CLI Pulse Bar/ProvidersTab.swift", "CLI Pulse Bar iOS/iOSProvidersTab.swift"] {
+            let code = Self.codeOnly(try String(
+                contentsOf: Self.appSourceRoot.appendingPathComponent(file), encoding: .utf8))
+            var values: [String] = []
+            var from = code.startIndex
+            while let bar = code.range(of: "UsageBar(", range: from..<code.endIndex) {
+                let call = code[bar.upperBound...]
+                let label = try XCTUnwrap(call.range(of: "value:"), "\(file): a UsageBar without a value")
+                let line = call[label.upperBound...].prefix { $0 != "\n" }
+                values.append(line.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: ","))))
+                from = bar.upperBound
+            }
+            XCTAssertGreaterThanOrEqual(values.count, 4, "\(file): the scan found \(values)")
+            let shareLeft: Set = ["1.0 - tier.usagePercent", "1.0 - provider.usagePercent", "fraction"]
+            for value in values {
+                XCTAssertTrue(shareLeft.contains(value), "\(file): a quota bar filled to \(value)")
+            }
+            // Every `fraction` there is a share left.
+            for definition in code.components(separatedBy: "let fraction =").dropFirst() {
+                let source = definition.trimmingCharacters(in: .whitespacesAndNewlines)
+                XCTAssertTrue(source.hasPrefix("remainingFraction(") || source.hasPrefix("ProviderState.remainingFraction("),
+                              "\(file): a bar's fraction is \(source.prefix(60))")
+            }
+            XCTAssertTrue(code.contains("min(max(Double(remaining) / Double(quota), 0), 1)"),
+                          "\(file): remainingFraction is no longer the share left")
+        }
+    }
+
+    /// CodexCollector and GeminiCollector, like ClaudeResultBuilder, report
+    /// every window and the provider's own quota and remaining as
+    /// percentages: quota 100, the share left. The cloud keeps what the Mac
+    /// uploads. Demo gave Codex and Gemini token counts (500K with 38K left,
+    /// 300K with 86K left), which the Watch's provider screen printed as its
+    /// Quota and Remaining rows, where a real Codex reads 100 and 8.
+    func testDemoCodexAndGeminiReportTheWindowsTheirCollectorsBuild() throws {
+        let providers = DemoDataProvider.generate().providers
+        for provider in providers {
+            XCTAssertEqual(provider.quota, 100, "\(provider.provider)'s quota is not a percentage")
+            XCTAssertFalse(provider.tiers.isEmpty, "\(provider.provider) has no window")
+            for tier in provider.tiers {
+                XCTAssertEqual(tier.quota, 100, "\(provider.provider) \(tier.name) is not a percentage")
+            }
+        }
+        #if os(macOS)
+        func assertBuilt(_ demo: ProviderUsage, _ built: ProviderUsage) {
+            XCTAssertEqual(demo.tiers.map(\.name), built.tiers.map(\.name), demo.provider)
+            XCTAssertEqual(demo.tiers.map(\.quota), built.tiers.map(\.quota), demo.provider)
+            XCTAssertEqual(demo.tiers.map(\.remaining), built.tiers.map(\.remaining), demo.provider)
+            XCTAssertEqual(demo.quota, built.quota, demo.provider)
+            XCTAssertEqual(demo.remaining, built.remaining, demo.provider)
+            XCTAssertEqual(demo.status_text, built.status_text, demo.provider)
+        }
+
+        // A weekly-only account: /wham/usage sends its one window in the
+        // primary slot, and the collector files it by its length.
+        let codex = try XCTUnwrap(providers.first { $0.provider == "Codex" })
+        let weekly = try XCTUnwrap(codex.tiers.first { $0.name == "Weekly" }, "Demo's Codex has no weekly window")
+        let usage = try CodexCollector.parseUsage(Data("""
+            {"plan_type": "plus", "rate_limit": {"primary_window":
+             {"used_percent": \(weekly.quota - weekly.remaining), "limit_window_seconds": 604800}}}
+            """.utf8))
+        assertBuilt(codex, CodexCollector().buildResult(usage: usage, accountHadCredits: false).usage)
+
+        // Google sends a fraction left, which the collector truncates to a
+        // whole percent; a Pro bucket 0.3 points above Demo's.
+        let gemini = try XCTUnwrap(providers.first { $0.provider == "Gemini" })
+        let pro = try XCTUnwrap(gemini.tiers.first { $0.name == "Pro" }, "Demo's Gemini has no Pro window")
+        let buckets = try GeminiCollector.parseQuota(Data("""
+            {"buckets": [{"modelId": "gemini-2.5-pro", "remainingFraction": \((Double(pro.remaining) + 0.3) / 100)}]}
+            """.utf8))
+        assertBuilt(gemini, GeminiCollector().buildResult(buckets: buckets, tierInfo: nil).usage)
+        #endif
+    }
+
+    // MARK: - Devices
+
+    /// The cloud stores one device status, "Online": register_helper and the
+    /// desktop's sign-in insert it, every heartbeat and sync sets it, and no
+    /// SQL writes another. So a device that has stopped syncing still reads
+    /// Online, and `dashboard_summary`'s Online Devices counts every device.
+    /// Demo had build-box "offline", a status only the retired backend wrote,
+    /// and the others in lower case, which `DeviceStatus` (the Watch's
+    /// machine card) does not read as online.
+    func testDemoDevicesReadOnlineAsTheCloudStoresThem() throws {
+        let demo = DemoDataProvider.generate()
+        for device in demo.devices {
+            XCTAssertEqual(device.status, "Online", "\(device.name) has a status the cloud never stores")
+            XCTAssertEqual(device.deviceStatus, .online, device.name)
+        }
+        XCTAssertEqual(demo.dashboard.online_devices, demo.devices.count,
+                       "the Online Devices tile leaves out a device dashboard_summary counts")
+        // Positive control: the case this is about. A device has stopped
+        // syncing well before the others, and still reads Online.
+        let syncs = try demo.devices.map {
+            try XCTUnwrap(sharedISO8601Parse($0.last_sync_at ?? ""), "\($0.name) never synced")
+        }
+        let spread = try XCTUnwrap(syncs.max()).timeIntervalSince(try XCTUnwrap(syncs.min()))
+        XCTAssertGreaterThanOrEqual(spread, 240, "no Demo device has stopped syncing; this test checks less than it says")
+
+        // The production half, from every SQL file the cloud is built from:
+        // the statements that write a device row, each an insert into or an
+        // update of public.devices up to its semicolon (an insert's `on
+        // conflict ... do update` included). An insert gives the status a
+        // value, and that value is 'Online'; every `status =` is 'Online'.
+        // Any other mention of the status in such a statement (a row
+        // constructor, a quoted name, a comment before its value) is one this
+        // cannot read, and fails rather than passes. A status anywhere else in
+        // the SQL (a session's, a provider's, a word in a comment) is not a
+        // device's, and is not read.
+        let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
+        let files = try FileManager.default.contentsOfDirectory(at: supabase, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "sql" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        XCTAssertGreaterThan(files.count, 50, "found \(files.count) SQL files; is this still the cloud's schema?")
+        // Read with any line ending, so a CRLF checkout compares the same lines.
+        func sql(_ url: URL) throws -> String {
+            try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\r\n", with: "\n")
+        }
+        let deviceWrite = try NSRegularExpression(
+            pattern: #"\b(insert\s+into|update)\s+(public\.)?devices\b[^;]*"#, options: .caseInsensitive)
+        let statusSet = try NSRegularExpression(
+            pattern: #"\bstatus\s*=\s*('[^']*'|[^\s,]+)"#, options: .caseInsensitive)
+        let values = try NSRegularExpression(pattern: #"\bvalues\s*\("#, options: .caseInsensitive)
+        let statusWord = try NSRegularExpression(pattern: #""?\bstatus\b"?"#, options: .caseInsensitive)
+        func count<Text: StringProtocol>(_ pattern: NSRegularExpression, in text: Text) -> Int {
+            let string = String(text)
+            return pattern.numberOfMatches(in: string, range: NSRange(location: 0, length: NSString(string: string).length))
+        }
+        var writes: [String] = []
+        var problems: [String] = []
+        for file in files {
+            let text = NSString(string: try sql(file))
+            for statement in deviceWrite.matches(in: String(text), range: NSRange(location: 0, length: text.length)) {
+                let line = text.substring(to: statement.range.location).components(separatedBy: "\n").count
+                let place = "\(file.lastPathComponent):\(line)"
+                let body = text.substring(with: statement.range)
+                writes.append(place)
+                var understood = 0
+                if body.lowercased().hasPrefix("insert") {
+                    // The column default is 'Offline', so an insert must give
+                    // the status a value: the one at its column's position.
+                    let columns = body.firstIndex(of: "(").flatMap { Self.parenthesised(body, from: $0) }
+                    let tuple = values.firstMatch(in: body, range: NSRange(location: 0, length: NSString(string: body).length))
+                        .flatMap { Range($0.range, in: body) }
+                        .flatMap { Self.parenthesised(body, from: body.index(before: $0.upperBound)) }
+                    guard let columns, let tuple else {
+                        problems.append("\(place): an insert whose columns and values this cannot read"); continue
+                    }
+                    let names = Self.topLevelParts(columns).map { $0.lowercased() }
+                    let given = Self.topLevelParts(tuple)
+                    guard let index = names.firstIndex(of: "status") else {
+                        problems.append("\(place): inserts a device without a status, so it stores 'Offline'"); continue
+                    }
+                    let value = index < given.count ? given[index] : "(nothing)"
+                    if value != "'Online'" { problems.append("\(place): inserts status \(value)") }
+                    if body[body.index(after: tuple.endIndex)...].trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(",") {
+                        problems.append("\(place): inserts more than one row, and this reads only the first")
+                    }
+                    understood += count(statusWord, in: columns)
+                }
+                let bodyText = NSString(string: body)
+                for found in statusSet.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
+                    let value = bodyText.substring(with: found.range(at: 1))
+                    understood += 1
+                    if value != "'Online'" { problems.append("\(place): sets status = \(value)") }
+                }
+                if count(statusWord, in: body) > understood {
+                    problems.append("\(place): mentions the status in a form this cannot read")
+                }
+            }
+        }
+        XCTAssertEqual(problems, [], """
+            A statement that writes public.devices stores a status other than 'Online'. The app shows the \
+            stored status, and Demo reads 'Online' because that is all the cloud stores; if the cloud now \
+            stores another, give Demo one in the same change and update this test.
+            """)
+        // Positive control: the scan finds the writes this is about.
+        XCTAssertTrue(writes.contains { $0.hasPrefix("helper_rpc.sql:") }, "the scan finds no device write: \(writes)")
+        XCTAssertGreaterThanOrEqual(writes.count, 10, "the scan found \(writes)")
+        let helper = try sql(supabase.appendingPathComponent("helper_rpc.sql"))
+        XCTAssertTrue(helper.contains("left(p_helper_version, 20), 'Online',"),
+                      "register_helper inserts its device with another status")
+        XCTAssertTrue(helper.contains("status = 'Online', cpu_usage = p_cpu_usage,"),
+                      "the helper's heartbeat no longer marks its device Online")
+        for name in ["app_rpc.sql", "migrate_v0.44_user_tz_today.sql"] {
+            let summary = try sql(supabase.appendingPathComponent(name))
+            XCTAssertTrue(summary.contains("from public.devices\n      where user_id = v_user_id and status = 'Online'"),
+                          "\(name): dashboard_summary counts Online Devices another way")
+        }
+    }
+
+    /// The server's 30-day figure (`provider_summary`,
+    /// `provider_account_summary`) sums the last 30 days of
+    /// `daily_usage_metrics`, a window that holds the week's and today's, so
+    /// a provider's 30-day figure is at least its week's, which is at least
+    /// today's; and a provider with a cost this week has one. Demo had none,
+    /// so the app took week x 4.3, a fallback for servers that predate it.
+    func testDemoCarriesTheServers30DayFigure() throws {
+        for provider in DemoDataProvider.generate().providers {
+            XCTAssertGreaterThanOrEqual(provider.estimated_cost_week, provider.estimated_cost_today, provider.provider)
+            XCTAssertGreaterThanOrEqual(provider.estimated_cost_30_day, provider.estimated_cost_week, provider.provider)
+            if provider.estimated_cost_week > 0 {
+                XCTAssertGreaterThan(provider.estimated_cost_30_day, 0,
+                                     "\(provider.provider) has no 30-day figure, so the app falls back to week x 4.3")
+            }
+        }
+        let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
+        let accounts = try String(
+            contentsOf: supabase.appendingPathComponent("migrate_v0.72_provider_accounts.sql"), encoding: .utf8)
+        XCTAssertTrue(accounts.contains("v_week_start date := v_today - 6;")
+                      && accounts.contains("v_month_start date := v_today - 29;"),
+                      "provider_account_summary's windows changed")
+        XCTAssertTrue(accounts.contains("'estimated_cost_30_day', coalesce(u.month_cost, 0)"),
+                      "provider_account_summary sends another 30-day figure")
+        let legacy = try String(
+            contentsOf: supabase.appendingPathComponent("migrate_v0.44_user_tz_today.sql"), encoding: .utf8)
+        XCTAssertTrue(legacy.contains("v_week_start date := v_today - interval '6 days';")
+                      && legacy.contains("v_month_start date := v_today - interval '29 days';"),
+                      "provider_summary's windows changed")
+    }
+
     // MARK: - Source helpers
 
     /// The `CLIPulseCore` package root.
@@ -359,6 +881,51 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// `CLI Pulse Bar/`, which holds the app targets and `CLIPulseCore`.
     private static var appSourceRoot: URL {
         coreRoot.deletingLastPathComponent()
+    }
+
+    /// What is inside the parentheses that open at `open`, quotes skipped,
+    /// or nil when they never close.
+    private static func parenthesised(_ text: String, from open: String.Index) -> Substring? {
+        var depth = 0
+        var quoted = false
+        var index = open
+        while index < text.endIndex {
+            let character = text[index]
+            if character == "'" { quoted.toggle() }
+            if !quoted {
+                if character == "(" { depth += 1 }
+                if character == ")" {
+                    depth -= 1
+                    if depth == 0 { return text[text.index(after: open)..<index] }
+                }
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+
+    /// A SQL list split at its top-level commas (not those inside a call or
+    /// a quoted string), each part trimmed.
+    private static func topLevelParts(_ list: Substring) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        var depth = 0
+        var quoted = false
+        for character in list {
+            if character == "'" { quoted.toggle() }
+            if !quoted {
+                if character == "(" { depth += 1 }
+                if character == ")" { depth -= 1 }
+                if character == ",", depth == 0 {
+                    parts.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                    current = ""
+                    continue
+                }
+            }
+            current.append(character)
+        }
+        parts.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+        return parts
     }
 
     /// Whole-line comments dropped: comments name the very symbols the scans
@@ -411,6 +978,50 @@ final class DemoCostSummaryRowsTests: XCTestCase {
         // Positive control: the totals still add up to the rows.
         XCTAssertEqual(summary.todayTotal, summary.todayByProvider.reduce(0) { $0 + $1.cost }, accuracy: 0.0001)
         XCTAssertGreaterThan(summary.todayTotal, 0)
+    }
+
+    /// The card prints each row and the total to the cent, so the rows as
+    /// printed must add up to the total as printed. Demo's providers had no
+    /// 30-day figure, the app took week x 4.3, and $23.82 + $8.51 sat under
+    /// a total of $32.34.
+    func testTheCostSummaryRowsAddUpToItsTotals() throws {
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        state.enterDemoMode()
+        let summary = state.providerState.costSummary
+        func printed(_ usd: Double) throws -> Decimal {
+            let text = CurrencyConverter.shared.format(usd, as: .usd, locale: Locale(identifier: "en_US"))
+            let digits = text.filter { $0.isNumber || $0 == "." }
+            return try XCTUnwrap(Decimal(string: digits), "\(text) is not an amount")
+        }
+        let thirtyDayRows = try summary.thirtyDayByProvider.map { try printed($0.cost) }
+        XCTAssertEqual(thirtyDayRows.reduce(0, +), try printed(summary.thirtyDayTotal),
+                       "30-day rows \(thirtyDayRows) do not add up to the total printed above them")
+        let todayRows = try summary.todayByProvider.map { try printed($0.cost) }
+        XCTAssertEqual(todayRows.reduce(0, +), try printed(summary.todayTotal),
+                       "today's rows \(todayRows) do not add up to the total printed above them")
+        // Positive control: there are rows to add.
+        XCTAssertEqual(thirtyDayRows.count, 2, "\(summary.thirtyDayByProvider)")
+    }
+
+    /// Demo shows its own refresh as the last one ("Updated 1 min ago"), not
+    /// the moment it was entered: its Recent sessions are older than a
+    /// refresh keeps, so only an earlier refresh can have left them.
+    func testDemoShowsItsRefreshAsTheLastOne() throws {
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false)
+        state.enterDemoMode()
+        let lastRefresh = try XCTUnwrap(state.lastRefresh, "Demo shows no refresh")
+        XCTAssertEqual(Date().timeIntervalSince(lastRefresh), DemoDataProvider.refreshAge, accuracy: 30,
+                       "Demo's last refresh is not the refresh its data came from")
+        XCTAssertEqual(SessionFreshnessFilter.filterCurrent(state.sessions, now: lastRefresh).count,
+                       state.sessions.count, "a session the refresh shown would have dropped")
+        // Positive control: there are Recent rows for it to explain.
+        XCTAssertFalse(SessionFreshnessTierClassifier.partition(state.sessions, now: Date()).recent.isEmpty)
     }
 }
 

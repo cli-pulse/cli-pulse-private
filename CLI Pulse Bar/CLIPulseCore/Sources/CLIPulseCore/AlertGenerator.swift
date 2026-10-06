@@ -229,15 +229,18 @@ public enum AlertGenerator {
     /// keep duplicates from re-firing every refresh.
     ///
     /// - thresholds: percentage points at which to fire (default 50/80/95).
+    /// - now: the alerts' `created_at`, the refresh that raised them. Demo
+    ///   passes its own refresh, which is a little before the present.
     /// - Returns dictionaries shaped like the other alert generators (compatible
     ///   with `AlertRecord` decoding upstream).
     public static func evaluateQuotaAlerts(
         providers: [ProviderUsage],
-        thresholds: [Int] = [80, 95]
+        thresholds: [Int] = [80, 95],
+        now date: Date = Date()
     ) -> [[String: Any]] {
         guard !thresholds.isEmpty else { return [] }
         var alerts: [[String: Any]] = []
-        let now = sharedISO8601Formatter.string(from: Date())
+        let now = sharedISO8601Formatter.string(from: date)
         let sortedThresholds = thresholds.sorted(by: >) // highest first
 
         // Claude launch-window quotas (Designs, Daily Routines) intentionally
