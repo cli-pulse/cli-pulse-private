@@ -9,7 +9,10 @@ copies both into its app group, and these tests check that:
     both off, and a copy that cannot be read;
   * the plist reader carries the two keys, and asks cfprefsd before the file
     (on a Mac: written through CFPreferences as the app writes them, read back
-    straight after each write);
+    straight after each write); a helper entitled to the app group asks
+    cfprefsd only under the user's own HOME (however HOME spells that
+    folder), as cfprefsd would otherwise answer for the user's real container
+    rather than HOME's copy, and asks it as before whenever it cannot tell;
   * Claude's quota read (`system_collector._fetch_claude_usage`) and a managed
     session's token (`claude_oauth.read_claude_oauth`) skip the item when a
     switch is on, and read it when both are off (the negative control for
@@ -28,6 +31,7 @@ copies both into its app group, and these tests check that:
 from __future__ import annotations
 
 import argparse
+import os
 import plistlib
 import subprocess
 import sys
@@ -517,6 +521,224 @@ def test_a_failing_cfprefsd_read_falls_back_to_the_file(home, monkeypatch):
     write_mirror(home, switches(True, False))
     read = lsc.read_mirror()
     assert (read.source, read.skip_claude_keychain) == ("file", True)
+
+
+# ── which domain cfprefsd is asked for ─────────────────────────
+#
+# In a process entitled to the app group (the frozen Companion), a path whose
+# file is named `group.yyh.CLI-Pulse.plist` names the user's REAL container
+# domain, whatever folder it is in (measured, see `app_group_prefs`). Under
+# a HOME that is not the user's, as a test rig runs the helper, cfprefsd would
+# answer with the user's real answer while the file fallback reads HOME's copy.
+
+
+class _FakeCF:
+    """CoreFoundation for `copy_values`: holds `values` for whichever domain is
+    asked, and records the domains asked for."""
+
+    def __init__(self) -> None:
+        self.values: dict = {}
+        self.asked: list[str] = []
+        self.held: dict[int, object] = {}
+        self._strings: dict[int, str] = {}
+
+    def CFStringCreateWithCString(self, _allocator, raw, _encoding):
+        ref = len(self._strings) + 1
+        self._strings[ref] = raw.decode("utf-8")
+        return ref
+
+    def CFPreferencesCopyAppValue(self, key_ref, app_ref):
+        self.asked.append(self._strings[app_ref])
+        key = self._strings[key_ref]
+        if key not in self.values:
+            return None
+        ref = 100_000 + len(self.held)
+        self.held[ref] = self.values[key]
+        return ref
+
+    def CFRelease(self, _ref) -> None:
+        pass
+
+
+@pytest.fixture
+def fake_cf(monkeypatch):
+    cf = _FakeCF()
+    monkeypatch.setattr(app_group_prefs, "ENABLED", True)
+    monkeypatch.setattr(app_group_prefs, "_load", lambda: cf)
+    monkeypatch.setattr(app_group_prefs, "_to_python", lambda _cf, ref: cf.held[ref])
+    monkeypatch.setattr(app_group_prefs, "_not_asked", set())
+    return cf
+
+
+def _entitled(monkeypatch, *groups: str) -> None:
+    monkeypatch.setattr(app_group_prefs, "entitled_app_groups", lambda: frozenset(groups))
+
+
+def test_an_entitled_helper_under_another_home_reads_the_file(home, tmp_path_factory, monkeypatch, fake_cf, caplog):
+    # A rig's HOME: cfprefsd would answer with the user's real "Not now", the
+    # file with HOME's "granted". Only HOME's copy is read, and the user's
+    # real container is never asked about.
+    caplog.set_level("INFO", logger="cli_pulse.app_group_prefs")
+    _entitled(monkeypatch, "group.yyh.CLI-Pulse")
+    real_home = tmp_path_factory.mktemp("real-home")
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: real_home)
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined", SKIP: False, STRICT: False}
+    write_mirror(home, switches(True, False))
+    for _ in range(3):
+        read = lsc.read_mirror()
+        assert (read.source, read.consent, read.skip_claude_keychain) == ("file", "granted", True)
+    assert fake_cf.asked == []
+    lines = [r.getMessage() for r in caplog.records if r.name == "cli_pulse.app_group_prefs"]
+    assert len(lines) == 1, lines
+    assert "not asking cfprefsd" in lines[0] and str(real_home / MIRROR) in lines[0]
+
+
+def test_an_entitled_helper_under_the_users_own_home_asks_cfprefsd(home, monkeypatch, fake_cf):
+    # Production: the Companion's LaunchAgent sets HOME to the user's home.
+    # cfprefsd answers at once; the file still holds the previous answer.
+    _entitled(monkeypatch, "group.yyh.CLI-Pulse")
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: home)
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    write_mirror(home, switches(True, False))
+    read = lsc.read_mirror()
+    assert (read.source, read.consent) == ("cfprefsd", "declined")
+    assert fake_cf.asked and set(fake_cf.asked) == {str(home / MIRROR)}
+
+
+def test_the_users_own_home_under_another_spelling_still_asks_cfprefsd(tmp_path, monkeypatch, fake_cf):
+    # HOME naming the user's home through a symlink is still the user's home:
+    # the same container, so cfprefsd answers for the file asked.
+    real_home = tmp_path / "users-home"
+    real_home.mkdir()
+    (tmp_path / "home-link").symlink_to(real_home)
+    monkeypatch.setenv("HOME", str(tmp_path / "home-link"))
+    _entitled(monkeypatch, "group.yyh.CLI-Pulse")
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: real_home)
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    read = lsc.read_mirror()
+    assert (read.source, read.consent) == ("cfprefsd", "declined")
+
+
+def _spelled_differently(folder: Path, how: str) -> Path | None:
+    """`folder` under a spelling that `realpath` does not map back to it, if
+    this file system has one: another letter case (APFS usually ignores case),
+    or the firmlinked `/System/Volumes/Data/…` (macOS)."""
+    if how == "letter case":
+        other = folder.with_name(folder.name.upper())
+    else:
+        other = Path("/System/Volumes/Data" + os.path.realpath(folder))
+    return other if other.is_dir() and os.path.realpath(other) != os.path.realpath(folder) else None
+
+
+@pytest.mark.parametrize("how", ["letter case", "firmlink"])
+def test_the_users_own_home_spelled_so_realpath_differs_still_asks_cfprefsd(tmp_path, monkeypatch, fake_cf, how):
+    # The same folder, which `realpath` does not resolve to the same string.
+    # Compared as strings, the user's own HOME would count as a rig's, and a
+    # real install would stop asking cfprefsd and read the file, up to ~10 s
+    # behind the app. Linux has neither spelling, so this skips there; the
+    # macOS job, which fails on a skip, runs both.
+    real_home = tmp_path / "users-home"
+    real_home.mkdir()
+    spelled = _spelled_differently(real_home, how)
+    if spelled is None:
+        pytest.skip(f"no {how} spelling of a folder on this file system")
+    monkeypatch.setenv("HOME", str(spelled))
+    _entitled(monkeypatch, "group.yyh.CLI-Pulse")
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: real_home)
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    read = lsc.read_mirror()
+    assert (read.source, read.consent) == ("cfprefsd", "declined")
+    assert set(fake_cf.asked) == {str(spelled / MIRROR)}
+
+
+def test_a_home_folder_that_is_not_there_is_not_the_users_own(tmp_path):
+    real_home = tmp_path / "users-home"
+    real_home.mkdir()
+    assert app_group_prefs._is_under_home(real_home / MIRROR, MIRROR, real_home) is True
+    assert app_group_prefs._is_under_home(tmp_path / "no-such-home" / MIRROR, MIRROR, real_home) is False
+    # The plist's name alone, outside a container's layout, is not the user's copy.
+    assert app_group_prefs._is_under_home(real_home / MIRROR.name, MIRROR, real_home) is False
+
+
+def test_a_users_home_that_cannot_be_looked_at_cannot_decide(tmp_path):
+    # Raises, so `copy_values` asks cfprefsd as before rather than guessing.
+    with pytest.raises(OSError):
+        app_group_prefs._is_under_home(tmp_path / "rig-home" / MIRROR, MIRROR, tmp_path / "gone")
+
+
+@pytest.mark.parametrize("cannot", ["no user record", "the user's home cannot be looked at"])
+def test_a_domain_check_that_cannot_decide_leaves_cfprefsd_asked(home, tmp_path_factory, monkeypatch, fake_cf, cannot):
+    # Whenever the check fails, `copy_values` asks cfprefsd, as 1.55 does. If
+    # the error escaped instead, `read_mirror` would raise, the gate would
+    # count the copy as unreadable and pause the Companion: no heartbeat, sync
+    # or upload. The file still holds the previous answer ("Not now"), and
+    # cfprefsd the app's newest, so a check that fell back to the file would
+    # pause it too.
+    _entitled(monkeypatch, "group.yyh.CLI-Pulse")
+    if cannot == "no user record":
+        def no_such_user(uid: int):
+            raise KeyError(f"getpwuid(): uid not found: {uid}")
+
+        monkeypatch.setattr(app_group_prefs, "_real_home_cache", None)
+        monkeypatch.setattr(app_group_prefs, "pwd", types.SimpleNamespace(getpwuid=no_such_user))
+    else:
+        gone = tmp_path_factory.mktemp("real-home") / "gone"
+        monkeypatch.setattr(app_group_prefs, "_real_home", lambda: gone)
+    write_mirror(home, {"cli_pulse_local_scan_consent": "declined"})
+    fake_cf.values = {"cli_pulse_local_scan_consent": "granted"}
+    read = lsc.read_mirror()
+    assert (read.source, read.consent) == ("cfprefsd", "granted")
+    assert set(fake_cf.asked) == {str(home / MIRROR)}
+    decision = LocalScanGate(paired_user_id=lambda: None).check()
+    assert (decision.cycle, decision.reason) == (lsc.Cycle.COLLECT, "granted")
+    assert decision.allows_upload
+
+
+def test_a_helper_without_the_entitlement_asks_cfprefsd_for_any_path(home, tmp_path_factory, monkeypatch, fake_cf):
+    # A plain python3, as in every test here: the path names that file's own
+    # domain, so cfprefsd is the right one to ask under any HOME.
+    _entitled(monkeypatch)
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: tmp_path_factory.mktemp("real-home"))
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    assert lsc.read_mirror().source == "cfprefsd"
+    assert fake_cf.asked
+
+
+def test_an_entitlement_to_another_group_changes_nothing(home, tmp_path_factory, monkeypatch, fake_cf):
+    _entitled(monkeypatch, "group.example.other")
+    monkeypatch.setattr(app_group_prefs, "_real_home", lambda: tmp_path_factory.mktemp("real-home"))
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    assert lsc.read_mirror().source == "cfprefsd"
+
+
+def test_an_entitlement_that_cannot_be_read_leaves_cfprefsd_asked(home, monkeypatch, fake_cf):
+    # Cannot tell: as before this check existed. Not remembered either, so a
+    # later read tries again.
+    calls: list[int] = []
+
+    def broken() -> frozenset:
+        calls.append(1)
+        raise OSError("Security.framework not loadable")
+
+    monkeypatch.setattr(app_group_prefs, "_entitled_groups", None)
+    monkeypatch.setattr(app_group_prefs, "_read_entitled_app_groups", broken)
+    assert app_group_prefs.entitled_app_groups() == frozenset()
+    assert app_group_prefs.entitled_app_groups() == frozenset()
+    assert len(calls) == 2
+    fake_cf.values = {"cli_pulse_local_scan_consent": "declined"}
+    assert lsc.read_mirror().source == "cfprefsd"
+
+
+@darwin_only
+def test_this_python_claims_no_app_group(monkeypatch):
+    # The real Security.framework calls, in a process whose signature claims no
+    # app group (the test runner's python). A Developer ID signed copy with the
+    # entitlement reads its groups (measured by hand on 2026-10-03); CI has no
+    # identity to sign one with, and an ad-hoc signature's entitlement is not
+    # reported (nor honoured).
+    monkeypatch.setattr(app_group_prefs, "_entitled_groups", None)
+    assert app_group_prefs._read_entitled_app_groups() == frozenset()
+    assert app_group_prefs.entitled_app_groups() == frozenset()
 
 
 # ── Strict privacy mode and the browsers' cookie stores ────────

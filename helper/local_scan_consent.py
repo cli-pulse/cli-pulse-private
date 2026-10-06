@@ -27,9 +27,14 @@ app's and is never read here.)
 This helper asks cfprefsd for the values first (`app_group_prefs`), because
 the file on disk lags the app's writes by up to ten seconds (measured; see that
 module), and reads the plist file directly with `plistlib` only when cfprefsd
-has no value for any key it asks (an app older than 1.55, or a process macOS
-does not let ask). It already lives in that container: its UDS socket and auth
-token are there, and it writes the Claude snapshot there every cycle. So
+has no value for any key it asks: an app older than 1.55; a helper that macOS
+does not let read the container, which then cannot open the file either; or a
+HOME that is not the user's, where the file is the only copy asked (see that
+module). Which of the two answered is logged once per change
+(`LocalScanGate`), so a real install says whether cfprefsd answers it.
+
+The helper already lives in that container: its UDS socket and auth token are
+there, and it writes the Claude snapshot there every cycle. So
 reading one more file costs no new access: the TCC `SystemPolicyAppData` consult that a launchd process pays on
 its first container access (see `_CONTAINER_ACCESS_WAIT_S` in
 `cli_pulse_helper`) has already been paid at startup, and it is per process.
@@ -159,6 +164,9 @@ import app_group_prefs
 from local_auth_token import APP_GROUP_ID, container_path
 
 logger = logging.getLogger("cli_pulse.local_scan_consent")
+# Where the app's answers were read from (`LocalScanGate`): its own name, as it
+# is about the reader, not about what the answer allows.
+source_logger = logging.getLogger("cli_pulse.local_scan_consent.source")
 
 CONSENT_KEY = "cli_pulse_local_scan_consent"
 # `HelperIPC.appAccountKey`: "signed_in:<uid>" | "local_mode" | "signed_out".
@@ -490,6 +498,7 @@ class LocalScanGate:
         self._lock = threading.Lock()
         self._pending: tuple[threading.Thread, dict] | None = None
         self._last: tuple[Cycle, str] | None = None
+        self._last_source: str | None = None
 
     def check(
         self, *, wait_s: float | None = None, sending: object = None, log: bool = True
@@ -570,7 +579,35 @@ class LocalScanGate:
         with self._lock:
             if self._pending is not None and self._pending[0] is worker:
                 self._pending = None
-        return box.get("read") or MirrorRead("unreadable", detail="no result")
+        read = box.get("read") or MirrorRead("unreadable", detail="no result")
+        self._log_source_if_changed(read)
+        return read
+
+    def _log_source_if_changed(self, read: MirrorRead) -> None:
+        """Say once per change where the app's answers came from: cfprefsd
+        (current) or the plist file (up to ~10 s behind the app). A file that
+        holds none of the app's answers is an app older than 1.55, which the
+        decision's own line covers, so it is not counted."""
+        if read.status != "ok":
+            return
+        if read.source == "file" and all(
+            value is None
+            for value in (read.consent, read.account, read.skip_claude_keychain, read.local_only_mode)
+        ):
+            return
+        with self._lock:
+            if read.source == self._last_source:
+                return
+            self._last_source = read.source
+        if read.source == "cfprefsd":
+            source_logger.info("reading the app's answers through cfprefsd: a change is seen at the next check")
+        else:
+            source_logger.info(
+                "reading the app's answers from the plist file %s, not through cfprefsd: a "
+                "change the app makes reaches the file only when cfprefsd writes it, up to "
+                "about 10 s later",
+                self._path(),
+            )
 
     def _log_if_changed(self, decision: Decision) -> None:
         # The daemon's cycle and the UDS `hello` handler both ask this gate, on
