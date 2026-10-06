@@ -810,7 +810,8 @@ final class DemoMatchesProductionTests: XCTestCase {
                 let bodyText = NSString(string: body)
                 for found in statusSet.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
                     let value = bodyText.substring(with: found.range(at: 1))
-                    if value == "'Online'" { understood += 1 } else { problems.append("\(place): sets status = \(value)") }
+                    understood += 1
+                    if value != "'Online'" { problems.append("\(place): sets status = \(value)") }
                 }
                 if count(statusWord, in: body) > understood {
                     problems.append("\(place): mentions the status in a form this cannot read")
