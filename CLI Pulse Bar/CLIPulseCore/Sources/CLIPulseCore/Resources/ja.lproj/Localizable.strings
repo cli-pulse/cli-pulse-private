@@ -1162,8 +1162,8 @@
 /* v1.50 W-C — この Mac を読み取る前の選択 */
 "local_scan_consent.title" = "CLI Pulse がこの Mac を読み取る前に";
 "local_scan_consent.subtitle" = "許可するまで、CLI Pulse はこの Mac をスキャンしません。スキャンを始めると、以下が有効になります。";
-"local_scan_consent.files_title" = "セッションログ：直近 30 日分と、最大 1 年分（一度だけ）";
-"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。更新のたびに直近 30 日分を読み取ります。許可した場合に限り、使用履歴を補完するため、最大 1 年分の古いログも一度だけ読み取ります。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
+"local_scan_consent.files_title" = "セッションログ：直近 30 日分と、許可した場合は最大 1 年分";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/、~/.config/claude/projects/。更新のたびに直近 30 日分を読み取ります。許可した場合に限り、使用履歴を補完するため、最大 1 年分の古いログも読み取ります。読み取りは一度だけですが、CLI Pulse のアップデートで Codex の使用量の数え方が変わったときや、サインイン中のアカウントで、この Mac が以前同期した Codex の数値を修正する必要があるときは、Codex のログをもう一度読み取ります。CLI Pulse はこれらから使用量の記録を読み取り、結果をこの Mac にキャッシュします。";
 "local_scan_consent.derived_title" = "割り出すものと、実行中のプログラム";
 "local_scan_consent.derived_detail" = "トークン数、推定コスト、モデル名、日付。さらに、セッション一覧に名前を表示するため、各会話のファイルパス、プロジェクトフォルダ、セッション ID も使います。また、AI CLI セッションを見つけるために実行中のプログラムを確認します。サインイン中でバックグラウンド同期がオンのときは、各セッションのプログラム名とプロジェクトフォルダ名がアカウントに同期されます。";
 "local_scan_consent.network_title" = "この Mac にすでにある認証情報でのプロバイダーへの接続";
@@ -1178,10 +1178,10 @@
 "local_scan_consent.declined_title" = "ローカルスキャンはオフです";
 "local_scan_consent.declined_body" = "CLI Pulse はこの Mac をスキャンしていないため、表示できるものはまだありません。";
 "local_scan_consent.last_30_days_only" = "直近 30 日のみ";
-"local_scan_consent.first_ask_hint" = "「ローカルスキャンを開始」には古いログの一度きりの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。どれを選んでも、「設定 › プライバシー」でいつでも変更できます。";
-"local_scan_consent.first_ask_hint_signed_in" = "「ローカルスキャンを開始」には古いログの一度きりの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。サインイン中は、あとから「設定 › プライバシー」で古いログの設定を変えたり、「今はしない」を選んだ後にこの質問をもう一度表示したりできます。サインアウトするとスキャンは止まります。";
+"local_scan_consent.first_ask_hint" = "「ローカルスキャンを開始」には古いログの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。どれを選んでも、「設定 › プライバシー」でいつでも変更できます。";
+"local_scan_consent.first_ask_hint_signed_in" = "「ローカルスキャンを開始」には古いログの読み取りが含まれ、「直近 30 日のみ」には含まれませんが、作成済みの履歴はこの Mac に残ります。サインイン中は、あとから「設定 › プライバシー」で古いログの設定を変えたり、「今はしない」を選んだ後にこの質問をもう一度表示したりできます。サインアウトするとスキャンは止まります。";
 "local_scan_consent.v2_title" = "CLI Pulse が古いログを読み取る前に";
-"local_scan_consent.v2_subtitle" = "更新のたびに直近 30 日分を読み取ります。使用履歴を補完するため、CLI Pulse は最大 1 年分の古いセッションログを一度だけ読み取ることもできます。読み取る前に確認するようになりました。どちらを選んでも直近 30 日のスキャンは続き、作成済みの履歴はこの Mac に残ります。";
+"local_scan_consent.v2_subtitle" = "更新のたびに直近 30 日分を読み取ります。使用履歴を補完するため、CLI Pulse は最大 1 年分の古いセッションログも読み取ることができます。読み取りは一度だけですが、CLI Pulse のアップデートで Codex の使用量の数え方が変わったときや、サインイン中のアカウントで、この Mac が以前同期した Codex の数値を修正する必要があるときは、Codex のログをもう一度読み取ります。読み取る前に確認するようになりました。どちらを選んでも直近 30 日のスキャンは続き、作成済みの履歴はこの Mac に残ります。";
 "local_scan_consent.include_history" = "古い履歴も含める";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "アカウントなしで使う";
@@ -1413,7 +1413,7 @@
 "local_scan_consent.settings_toggle" = "この Mac の CLI 使用状況をスキャン";
 "local_scan_consent.settings_toggle_detail" = "更新のたびに ~/.codex と ~/.claude にある直近 30 日のセッションログを読み取り、利用中のプロバイダーにリアルタイムの残量を問い合わせます。古いログは別のスイッチで設定します。オフにすると、アプリもバックグラウンドヘルパーもこの Mac をスキャンしません。";
 "local_scan_consent.history_toggle" = "古い使用履歴も含める";
-"local_scan_consent.history_toggle_detail" = "使用履歴を補完するため、最大 1 年分の古いセッションログを一度だけ読み取ります。オフにすると、CLI Pulse は直近 30 日分だけを読み取ります。作成済みの履歴はこの Mac に残ります。";
+"local_scan_consent.history_toggle_detail" = "使用履歴を補完するため、最大 1 年分の古いセッションログを読み取ります。読み取りは一度だけですが、CLI Pulse のアップデートで Codex の使用量の数え方が変わったときや、サインイン中のアカウントで、この Mac が以前同期した Codex の数値を修正する必要があるときは、Codex のログをもう一度読み取ります。オフにすると、CLI Pulse は直近 30 日分だけを読み取ります。作成済みの履歴はこの Mac に残ります。";
 "local_scan_consent.settings_declined_detail" = "「今はしない」が選択されています。サインインしていても、この選択は変わりません。";
 "local_scan_consent.companion_not_covered" = "この Mac の Companion CLI（%@）は、この選択に従わず、サインアウトしても停止しません。インストールされていてペアリング済みの間は、2 分ごとにこの Mac を読み取り、読み取った内容をペアリングしたアカウントに同期します。「設定 › Companion CLI」でアップデートするか、アンインストールしてください。";
 "local_scan_consent.choose_again" = "選び直す…";

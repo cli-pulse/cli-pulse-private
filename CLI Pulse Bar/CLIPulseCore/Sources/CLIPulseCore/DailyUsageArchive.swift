@@ -254,10 +254,13 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
     /// Limits. The archive cannot tell deleted transcripts from usage counted
     /// lower under newer rules, so a lower Claude recount does not reach a day
     /// this merges (the routine read's newer 30 days still take it). Codex logs
-    /// deleted by hand in part are found, and take the smaller figure. And
-    /// after a time-zone change, usage now counted on a neighbouring day is
-    /// counted there, while its old day keeps a provider the read no longer
-    /// finds on it, or the larger Claude slice.
+    /// deleted by hand in part are found, and take the smaller figure. So does
+    /// a day with Codex sessions the read cannot open: on the App Store build,
+    /// those in `~/.codex/archived_sessions/` while that folder has no grant of
+    /// its own (`CodexHistoryRebuild`, LIMITS). And after a time-zone change,
+    /// usage now counted on a neighbouring day is counted there, while its old
+    /// day keeps a provider the read no longer finds on it, or the larger
+    /// Claude slice.
     static func mergedDay(_ read: DayRollup, over stored: DayRollup, readModelProviders: [String: String]) -> DayRollup {
         let kept = providersKeepingStoredSlice(read: read, stored: stored)
         guard !kept.isEmpty else { return read }
@@ -530,8 +533,11 @@ public struct DailyUsageArchive: Codable, Sendable, Equatable {
 /// one total per day and provider, without the split, so a Codex day recorded
 /// before this change keeps its count until a scan records that day again.
 /// The year-long read runs once per Mac, and before 1.55 it ran on every Mac
-/// whose first scan worked, so on those Macs no scan reaches past the routine
-/// month again and the older Codex days keep the old count.
+/// whose first scan worked. Since 1.56 the Codex history rebuild
+/// (`CodexHistoryRebuild`) reads that year's Codex logs again, once per Codex
+/// rules version and only with a yes to older history, and records the older
+/// Codex days anew. A day whose Codex log is gone, and every older Codex day
+/// on a Mac without that yes, keeps the old count.
 /// `CodexEstimateChangeNote` tracks which days those are, and the Usage
 /// Dashboard says so for as long as any remain.
 ///

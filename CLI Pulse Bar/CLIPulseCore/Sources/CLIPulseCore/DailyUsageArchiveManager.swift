@@ -32,18 +32,23 @@ public actor DailyUsageArchiveManager {
     private let now: @Sendable () -> Date
     /// The reasons the Codex note tells about: `Reason.shipped`, or a test's.
     private let codexNoteReasons: [CodexEstimateChangeNote.Reason]
+    /// The Codex rules version the history rebuild works to:
+    /// `costUsageCodexCacheRulesVersion`, or a test's.
+    private let codexRulesVersion: Int
+    private let codexHistoryRebuildKey: String
     private var backfillRunning = false
+    private var rebuildRunning = false
 
-    /// Not reset when Codex starts being counted differently, so the older
-    /// Codex days the year-long read counted the old way stay as they are;
-    /// `CodexEstimateChangeNote` tracks them and the Usage Dashboard says so.
-    /// A second run would no longer harm the Claude share (it merges provider
-    /// by provider, `mergeScanEntriesByProvider`, keeping every stored Claude
-    /// slice and every provider it does not find), but recounting older Codex
-    /// days is a change of its own, not a side effect of this flag.
+    /// Not reset when Codex starts being counted differently. Recounting the
+    /// older Codex days is the history rebuild's job
+    /// (`rebuildCodexHistoryIfNeeded`), which reads the Codex logs only; a
+    /// second backfill would read a year of Claude transcripts for nothing.
     public static let defaultBackfillKey = "cli_pulse_daily_archive_backfilled_v1"
-    /// The only read in the app that goes further back than the routine 30
-    /// days. v1.55: what the disclosure says it may do, and nothing more.
+    /// What the Codex history rebuild has finished (`CodexHistoryRebuild.State`).
+    public static let defaultCodexHistoryRebuildKey = "cli_pulse_codex_history_rebuild_v1"
+    /// The reads in the app that go further back than the routine 30 days: the
+    /// backfill and the Codex history rebuild. v1.55: what the disclosure says
+    /// may be read, and nothing more.
     static let backfillDays = LocalScanDisclosure.historyWindowDays
 
     /// `backfillScan` is a seam for tests, which must never walk the real
@@ -52,15 +57,19 @@ public actor DailyUsageArchiveManager {
         root: URL? = nil,
         defaults: UserDefaults = .standard,
         backfillKey: String = DailyUsageArchiveManager.defaultBackfillKey,
+        codexHistoryRebuildKey: String = DailyUsageArchiveManager.defaultCodexHistoryRebuildKey,
         now: @escaping @Sendable () -> Date = { Date() },
         codexNoteReasons: [CodexEstimateChangeNote.Reason] = CodexEstimateChangeNote.Reason.shipped,
+        codexRulesVersion: Int = costUsageCodexCacheRulesVersion,
         backfillScan: @escaping @Sendable (CostUsageScanner.Options) async -> CostUsageScanResult)
     {
         self.root = root
         self.defaults = defaults
         self.backfillKey = backfillKey
+        self.codexHistoryRebuildKey = codexHistoryRebuildKey
         self.now = now
         self.codexNoteReasons = codexNoteReasons
+        self.codexRulesVersion = codexRulesVersion
         self.backfillScan = backfillScan
         self.archive = nil   // deferred to first actor-isolated access (off-main)
     }
@@ -152,7 +161,7 @@ public actor DailyUsageArchiveManager {
     /// never lowered.
     public func runBackfillIfNeeded(historyReadAllowed: Bool) async {
         guard historyReadAllowed else { return }
-        guard !defaults.bool(forKey: backfillKey), !backfillRunning else { return }
+        guard !defaults.bool(forKey: backfillKey), !backfillRunning, !rebuildRunning else { return }
         backfillRunning = true
         defer { backfillRunning = false }
 
@@ -174,6 +183,156 @@ public actor DailyUsageArchiveManager {
         }
         try? FileManager.default.removeItem(at: tmp)   // discard the throwaway cache
         defaults.set(true, forKey: backfillKey)        // access was confirmed by caller — done
+
+        // It read the Codex logs under the current rules, as the history
+        // rebuild would: the archive's part of that is done, unless it found
+        // no Codex log at all while the history holds older Codex days.
+        var state = CodexHistoryRebuild.State.load(from: defaults, key: codexHistoryRebuildKey)
+        if state.archiveIsDue(rulesVersion: codexRulesVersion),
+           archiveRecountWorked(read: result.entries, before: CodexHistoryRebuild.routineWindowFirstDay(now: now())) {
+            state.archiveRulesVersion = codexRulesVersion
+            state.save(to: defaults, key: codexHistoryRebuildKey)
+        }
+    }
+
+    // MARK: - v1.56: the Codex history rebuild
+
+    /// Counts the archive's Codex days older than the routine read again under
+    /// the current Codex rules, and replaces this Mac's Codex rows for those
+    /// days in the signed-in account's cloud. See `CodexHistoryRebuild`.
+    ///
+    /// `historyReadAllowed` is the user's answer to disclosure v2, as for the
+    /// backfill: without a yes nothing is read, and nothing is recorded, so a
+    /// later yes still finds the work to do. `cloud` is nil while signed out,
+    /// while the cloud's part is not due (`codexHistoryCloudIsDue`), and while
+    /// this Mac's pairing cannot be read (`APIClient.DailyUsageDevice`); the
+    /// archive's part runs either way, and the cloud's on a later refresh that
+    /// has one. A nil `cloud` records nothing for any account.
+    ///
+    /// Once per rules version for the archive, and once per rules version and
+    /// account for the cloud. Every step is idempotent: running it again
+    /// rewrites the same figures and sends the same rows.
+    public func rebuildCodexHistoryIfNeeded(historyReadAllowed: Bool, cloud: CodexHistoryCloud?) async {
+        guard historyReadAllowed, !rebuildRunning, !backfillRunning else { return }
+        let version = codexRulesVersion
+        var state = CodexHistoryRebuild.State.load(from: defaults, key: codexHistoryRebuildKey)
+        let archiveDue = state.archiveIsDue(rulesVersion: version)
+        let cloudDue = state.cloudIsDue(rulesVersion: version, account: cloud?.account)
+        guard archiveDue || cloudDue else { return }
+        let started = now()
+        if let after = state.retryAfterUnixMs, Self.unixMs(started) < after { return }
+        rebuildRunning = true
+        defer { rebuildRunning = false }
+
+        let firstRoutineDay = CodexHistoryRebuild.routineWindowFirstDay(now: started)
+        var incomplete = false
+
+        // The cloud first: one request tells whether this Mac has older Codex
+        // rows there at all. A year of logs is read only for a part that needs it.
+        var cloudRows: [CodexHistoryCloud.Row] = []
+        if cloudDue, let cloud {
+            if let rows = await cloud.thisMacsCodexRows(Self.backfillDays + 2) {
+                cloudRows = rows.filter { $0.date < firstRoutineDay }
+                if cloudRows.isEmpty { state.cloudRulesVersionByAccount[cloud.account] = version }
+            } else {
+                incomplete = true
+            }
+            // And whether the server takes rows under this device id at all,
+            // before a year of logs is read to send it some. One it refuses
+            // every time (a paired device deleted on the server) would cost
+            // that read on every retry.
+            if !cloudRows.isEmpty, !(await cloud.acceptsUploads()) {
+                cloudRows = []
+                incomplete = true
+            }
+        }
+        var archiveNeedsRead = false
+        if archiveDue {
+            if CodexHistoryRebuild.hasCodexDay(in: loaded(), before: firstRoutineDay) {
+                archiveNeedsRead = true
+            } else {
+                state.archiveRulesVersion = version   // no older Codex day to recount
+            }
+        }
+
+        if archiveNeedsRead || !cloudRows.isEmpty {
+            let read = await readCodexYear()
+            let older = CodexHistoryRebuild.olderCodexEntries(read.entries, before: firstRoutineDay)
+            let sawCodex = read.entries.contains { $0.provider == CodexHistoryRebuild.codex }
+
+            if archiveNeedsRead {
+                if !older.isEmpty {
+                    var a = loaded()
+                    codexNoteWillWrite(a)
+                    let codexFromRead = a.mergeScanEntriesByProvider(older.map(Self.scanEntry))
+                    a.lastUpdatedUnixMs = Self.nowMs()
+                    archive = a
+                    DailyUsageArchiveIO.save(a, root: root)
+                    codexNoteDidWrite(codexFromRead, in: a)
+                    NotificationCenter.default.post(name: .dailyUsageArchiveDidChange, object: nil)
+                }
+                if archiveRecountWorked(read: read.entries, before: firstRoutineDay) {
+                    state.archiveRulesVersion = version
+                } else {
+                    incomplete = true
+                }
+            }
+
+            if !cloudRows.isEmpty, let cloud {
+                let rows = CodexHistoryRebuild.cloudUpload(
+                    rebuilt: older, thisMacsRows: cloudRows, zeroDroppedModels: !cloud.isUnpairedStandIn)
+                if !sawCodex {
+                    incomplete = true   // nothing read to replace them with; not "done"
+                } else if rows.isEmpty {
+                    state.cloudRulesVersionByAccount[cloud.account] = version
+                } else if await cloud.upload(rows) {
+                    state.cloudRulesVersionByAccount[cloud.account] = version
+                } else {
+                    incomplete = true
+                }
+            }
+        }
+
+        state.retryAfterUnixMs = incomplete
+            ? Self.unixMs(started.addingTimeInterval(CodexHistoryRebuild.retryInterval))
+            : nil
+        state.save(to: defaults, key: codexHistoryRebuildKey)
+    }
+
+    /// Whether the history rebuild has cloud work to do for `account` now:
+    /// its cloud part is not done at the current Codex rules version, and no
+    /// retry is pending. A refresh asks this before it builds the cloud side
+    /// (`APIClient.codexHistoryCloud(authorizationLease:)`), which reads the
+    /// helper's pairing from the keychain; once the part is done, that read is
+    /// not made again on every refresh.
+    public func codexHistoryCloudIsDue(account: String) -> Bool {
+        let state = CodexHistoryRebuild.State.load(from: defaults, key: codexHistoryRebuildKey)
+        guard state.cloudIsDue(rulesVersion: codexRulesVersion, account: account) else { return false }
+        if let after = state.retryAfterUnixMs, Self.unixMs(now()) < after { return false }
+        return true
+    }
+
+    /// A year of Codex logs and nothing else, read into a throwaway cache, as
+    /// the backfill reads both.
+    private func readCodexYear() async -> CostUsageScanResult {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cli-pulse-codex-rebuild-\(UUID().uuidString)", isDirectory: true)
+        var options = CostUsageScanner.Options(cacheRoot: tmp, daysToScan: Self.backfillDays)
+        options.forceRescan = true
+        options.providers = [.codex]
+        let result = await backfillScan(options)
+        try? FileManager.default.removeItem(at: tmp)
+        return result
+    }
+
+    /// Whether a read that went through the Codex logs counts as the archive's
+    /// recount: it found Codex usage (so the logs could be read), or the
+    /// archive holds no Codex day before `firstRoutineDay` for it to recount.
+    /// A read that found none while there are such days may only have been
+    /// unable to read the Codex folder.
+    private func archiveRecountWorked(read entries: [CostUsageScanResult.DailyEntry], before firstRoutineDay: String) -> Bool {
+        entries.contains { $0.provider == CodexHistoryRebuild.codex }
+            || !CodexHistoryRebuild.hasCodexDay(in: loaded(), before: firstRoutineDay)
     }
 
     // MARK: - The Codex estimate note's bookkeeping
@@ -217,6 +376,8 @@ public actor DailyUsageArchiveManager {
         CloudEntry(archiving: u)
     }
 
-    static func nowMs() -> Int64 { Int64((Date().timeIntervalSince1970 * 1000).rounded()) }
+    static func nowMs() -> Int64 { unixMs(Date()) }
+
+    static func unixMs(_ date: Date) -> Int64 { Int64((date.timeIntervalSince1970 * 1000).rounded()) }
 }
 #endif

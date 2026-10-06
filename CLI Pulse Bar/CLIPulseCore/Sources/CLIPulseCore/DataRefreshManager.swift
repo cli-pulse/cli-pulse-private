@@ -140,8 +140,13 @@ internal final class DataRefreshManager {
         /// Folds a successful scan into the two durable local stores — the
         /// usage archive and the Pulse Cat ledger — and, when
         /// `historyReadAllowed`, kicks the one-time backfill over up to a year
-        /// of older logs. Fire-and-forget: the live one hands the work to tasks
-        /// so a refresh never waits on a year-long read.
+        /// of older logs and the Codex history rebuild (v1.56). Fire-and-forget:
+        /// the live one hands the work to tasks so a refresh never waits on a
+        /// year-long read.
+        ///
+        /// `authorizationLease` is the refresh's own, nil while signed out. The
+        /// rebuild replaces this Mac's older Codex rows in the cloud only with
+        /// one, and only in the account it belongs to.
         ///
         /// A seam (v1.55) because the flag it carries is the consent decision,
         /// and a test has to be able to see which answer the refresh acted on
@@ -150,7 +155,8 @@ internal final class DataRefreshManager {
         let recordLocalHistory:
             @Sendable (
                 _ scanResult: CostUsageScanResult,
-                _ historyReadAllowed: Bool
+                _ historyReadAllowed: Bool,
+                _ authorizationLease: APIAuthorizationLease?
             ) -> Void
 
         static func live(api: APIClient) -> LocalRefreshRuntime {
@@ -204,11 +210,28 @@ internal final class DataRefreshManager {
                         authorizationLease: lease
                     )
                 },
-                recordLocalHistory: { scanResult, historyReadAllowed in
+                recordLocalHistory: { scanResult, historyReadAllowed, authorizationLease in
                     Task {
                         await DailyUsageArchiveManager.shared.record(scanResult)
                         await DailyUsageArchiveManager.shared.runBackfillIfNeeded(
                             historyReadAllowed: historyReadAllowed
+                        )
+                        // v1.56: the older Codex days, counted again by the
+                        // current rules; this Mac's cloud rows too while signed
+                        // in. The cloud side is built only while its part is
+                        // due: building it reads the helper's pairing from the
+                        // keychain.
+                        var cloud: CodexHistoryCloud?
+                        if historyReadAllowed, let authorizationLease,
+                           let account = await api.userId,
+                           await DailyUsageArchiveManager.shared.codexHistoryCloudIsDue(account: account) {
+                            cloud = await api.codexHistoryCloud(
+                                authorizationLease: authorizationLease
+                            )
+                        }
+                        await DailyUsageArchiveManager.shared.rebuildCodexHistoryIfNeeded(
+                            historyReadAllowed: historyReadAllowed,
+                            cloud: cloud
                         )
                     }
                     // v1.42 Pulse Cat M0: the same scan feeds the pet ledger.
@@ -510,7 +533,8 @@ internal final class DataRefreshManager {
                         isAuthenticated: context.isAuthenticated,
                         consent: context.localScanConsent,
                         consentV2: context.localScanConsentV2
-                    )
+                    ),
+                    authorizationLease
                 )
             }
             #endif
@@ -995,7 +1019,8 @@ internal final class DataRefreshManager {
                     isAuthenticated: context.isAuthenticated,
                     consent: context.localScanConsent,
                     consentV2: context.localScanConsentV2
-                )
+                ),
+                authorizationLease
             )
         }
         #endif

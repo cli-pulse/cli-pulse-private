@@ -236,13 +236,16 @@ was to sign out.
 
 Starting the scan turns on:
 
-* **Session logs: the last 30 days, and a one-time read of up to a year** —
+* **Session logs: the last 30 days, and up to a year if you allow it** —
   `~/.codex/sessions/`, `~/.codex/archived_sessions/`, `~/.claude/projects/` and
   `~/.config/claude/projects/`. Every refresh uses the last 30 days: a log last
   written before then is not opened, and older lines in a log that is still in
-  use are skipped, not kept. Once, and only if you allow it, CLI Pulse also reads
-  up to a year of older logs to fill in your usage history. Parsed on your Mac
-  for usage records; the results are cached on your Mac.
+  use are skipped, not kept. Only if you allow it, CLI Pulse also reads up to a
+  year of older logs to fill in your usage history: once, and the Codex logs
+  again whenever a CLI Pulse update changes how it counts Codex usage, or when
+  the account you're signed in to has older Codex figures from this Mac to
+  correct (see *Reading more than 30 days back*). Parsed on your Mac for usage
+  records; the results are cached on your Mac.
 * **What is derived from them** — token counts, cost estimates, model names and
   dates, plus each conversation's file path, project folder and session id. Those
   last three are how the Sessions list can name your conversations. They stay on
@@ -346,8 +349,8 @@ on the Mac: the one-time read was not uploaded.
 Since v1.55 that read is its own question:
 
 * **New users** choose on the same screen. "Start local scan" includes the
-  one-time read of older logs; "Last 30 days only" leaves it out; "Not now"
-  turns the scan off.
+  read of older logs; "Last 30 days only" leaves it out; "Not now" turns the
+  scan off.
 * **People who agreed to the 30-day scan before v1.55**, and **signed-in users
   who were never shown the question**, are shown it once, with both answers
   keeping the 30-day scan running: **"Include older history"** or **"Last 30 days
@@ -364,6 +367,25 @@ Since v1.55 that read is its own question:
 * **Settings → Privacy → "Include older usage history"** changes the answer at
   any time. Turning it off stops further reads of older logs; it does not
   delete history that was already built, which stays on your Mac.
+* **Since v1.56, a CLI Pulse update that changes how it counts Codex usage reads
+  up to a year of Codex logs again** — only with this yes, once for each such
+  change, and once more if a later sign-in finds older Codex numbers from this
+  Mac in that account. A read that could not finish is tried again a day later.
+  (1.56 is the first: it counts Codex's cached input once, counts subagent
+  sessions, and prices requests at OpenAI's published rates.) No Claude log is
+  read for it. The older Codex days of your usage history are counted anew from
+  what is read; a day whose Codex log is no longer on the Mac keeps the figure
+  it had. While you are signed in, the daily Codex numbers this Mac had already
+  synced for those days are replaced with the new ones (the fields of the
+  *Daily usage* row above), so on those days your iPhone and Apple Watch show
+  the same figures as the Mac. A paired Mac uploads nothing for a day that has no Codex
+  numbers from it in the cloud, and numbers it synced before it was paired keep
+  their old figures. A Mac that is not paired keeps its numbers in one place it
+  shares with the account's other unpaired Macs, so it replaces figures on any
+  day where that shared place has Codex numbers, whichever unpaired Mac they
+  came from. There, only the models this Mac's logs report are replaced, and a
+  row under an older spelling of one of those model names (a dated one, say) is
+  set to zero.
 
 The routine scan had a smaller gap of the same kind. On its first run, and
 whenever its cache was reset, it opened Claude Code logs of any age and

@@ -151,6 +151,13 @@ public enum CostUsageScanner {
         public var refreshMinIntervalSeconds: TimeInterval = 60
         public var forceRescan: Bool = false
         public var daysToScan: Int = 30
+        /// v1.56: whose logs the scan reads. Both by default. The Codex
+        /// history rebuild (`DailyUsageArchiveManager.rebuildCodexHistoryIfNeeded`)
+        /// reads Codex only: what changed is how Codex is counted, and a year of
+        /// Claude transcripts is thousands of files and gigabytes that would be
+        /// read for nothing. A provider left out is not read at all: no file of
+        /// it is listed or opened, and its cache is neither loaded nor written.
+        public var providers: Set<ProviderKind> = CostUsageScanner.logProviders
         /// The moment the scan treats as now. nil (the default) is the clock;
         /// tests set it so fixtures with fixed dates stay inside the window.
         var now: Date?
@@ -173,7 +180,11 @@ public enum CostUsageScanner {
     /// Codex/Claude tab doesn't keep showing a green "Running" status.
     public static let activeSessionFreshnessWindow: TimeInterval = 300
 
-    /// Main entry point. Scans Codex and Claude JSONL logs for the last N days.
+    /// The providers whose session logs the scanner can read.
+    public static let logProviders: Set<ProviderKind> = [.codex, .claude]
+
+    /// Main entry point. Scans Codex and Claude JSONL logs for the last N days
+    /// (`options.providers` says which of the two).
     public static func scan(options: Options = Options()) -> CostUsageScanResult {
         let now = options.now ?? Date()
         let since = DayKey.calendar().date(byAdding: .day, value: -options.daysToScan, to: now) ?? now
@@ -183,18 +194,22 @@ public enum CostUsageScanner {
         var allCandidates: [CostUsageScanResult.ActiveSessionCandidate] = []
 
         // Scan Codex
-        let codexCache = scanCodexProvider(range: range, now: now, options: options)
-        allEntries.append(contentsOf: entriesFromCodexCache(codexCache, range: range))
-        allCandidates.append(contentsOf: buildCodexCandidates(
-            options: options, range: range, cache: codexCache, now: now
-        ))
+        if options.providers.contains(.codex) {
+            let codexCache = scanCodexProvider(range: range, now: now, options: options)
+            allEntries.append(contentsOf: entriesFromCodexCache(codexCache, range: range))
+            allCandidates.append(contentsOf: buildCodexCandidates(
+                options: options, range: range, cache: codexCache, now: now
+            ))
+        }
 
         // Scan Claude
-        let claudeCache = scanClaudeProvider(range: range, now: now, options: options)
-        allEntries.append(contentsOf: entriesFromClaudeCache(claudeCache, range: range))
-        allCandidates.append(contentsOf: buildClaudeCandidates(
-            options: options, cache: claudeCache, now: now
-        ))
+        if options.providers.contains(.claude) {
+            let claudeCache = scanClaudeProvider(range: range, now: now, options: options)
+            allEntries.append(contentsOf: entriesFromClaudeCache(claudeCache, range: range))
+            allCandidates.append(contentsOf: buildClaudeCandidates(
+                options: options, cache: claudeCache, now: now
+            ))
+        }
 
         reportUnpricedModels(allEntries)
         return CostUsageScanResult(entries: allEntries, activeSessionCandidates: allCandidates)

@@ -1149,8 +1149,8 @@
 /* v1.50 W-C — 在讀取這台 Mac 之前的選擇 */
 "local_scan_consent.title" = "在 CLI Pulse 讀取這台 Mac 之前";
 "local_scan_consent.subtitle" = "在你同意之前，CLI Pulse 不會掃描這台 Mac。開始掃描後，會啟用以下項目。";
-"local_scan_consent.files_title" = "工作階段日誌：最近 30 天，另可讀取一次最多一年份";
-"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次重新整理會讀取最近 30 天。只有在你允許時，CLI Pulse 才會另外讀取一次最多一年份的舊日誌，用來補齊用量歷史。它會解析其中的用量紀錄，並把結果快取在這台 Mac 上。";
+"local_scan_consent.files_title" = "工作階段日誌：最近 30 天，經你允許還可讀取最多一年份";
+"local_scan_consent.files_detail" = "~/.codex/sessions/、~/.codex/archived_sessions/、~/.claude/projects/ 和 ~/.config/claude/projects/。每次重新整理會讀取最近 30 天。只有在你允許時，CLI Pulse 才會另外讀取最多一年份的舊日誌，用來補齊用量歷史：先讀取一次；之後每當 CLI Pulse 的更新改變 Codex 用量的計算方式，或你登入的帳號裡有這台 Mac 先前同步、需要更正的 Codex 數字時，會再讀取一次 Codex 的日誌。它會解析其中的用量紀錄，並把結果快取在這台 Mac 上。";
 "local_scan_consent.derived_title" = "會得出什麼，以及正在執行的程式";
 "local_scan_consent.derived_detail" = "token 數、費用預估、模型名稱和日期，以及每段對話的檔案路徑、專案資料夾和工作階段 ID——「工作階段」清單就是靠這些來命名的。它也會查看正在執行的程式，以找出 AI CLI 工作階段；登入且開啟背景同步時，每個工作階段的程式名稱與專案資料夾名稱會同步到你的帳號。";
 "local_scan_consent.network_title" = "用這台 Mac 上既有的憑證存取服務商網站";
@@ -1165,10 +1165,10 @@
 "local_scan_consent.declined_title" = "本機掃描已關閉";
 "local_scan_consent.declined_body" = "CLI Pulse 目前沒有掃描這台 Mac，所以暫時沒有可顯示的資料。";
 "local_scan_consent.last_30_days_only" = "僅限最近 30 天";
-"local_scan_consent.first_ask_hint" = "「開始本機掃描」也會讀取一次舊日誌；「僅限最近 30 天」則不會，但已建立的用量歷史仍會留在這台 Mac 上。無論選哪個，「設定 › 隱私」裡隨時可以改。";
-"local_scan_consent.first_ask_hint_signed_in" = "「開始本機掃描」也會讀取一次舊日誌；「僅限最近 30 天」則不會，但已建立的用量歷史仍會留在這台 Mac 上。登入期間，你之後可以在「設定 › 隱私」裡更改對舊日誌的選擇；若選了「暫時不要」，也可以從那裡讓這個問題再次出現。登出會停止掃描。";
+"local_scan_consent.first_ask_hint" = "「開始本機掃描」也會讀取舊日誌；「僅限最近 30 天」則不會，但已建立的用量歷史仍會留在這台 Mac 上。無論選哪個，「設定 › 隱私」裡隨時可以改。";
+"local_scan_consent.first_ask_hint_signed_in" = "「開始本機掃描」也會讀取舊日誌；「僅限最近 30 天」則不會，但已建立的用量歷史仍會留在這台 Mac 上。登入期間，你之後可以在「設定 › 隱私」裡更改對舊日誌的選擇；若選了「暫時不要」，也可以從那裡讓這個問題再次出現。登出會停止掃描。";
 "local_scan_consent.v2_title" = "在 CLI Pulse 讀取更早的日誌之前";
-"local_scan_consent.v2_subtitle" = "每次重新整理會讀取最近 30 天。為了補齊用量歷史，CLI Pulse 也可以讀取一次最多一年份的舊工作階段日誌。現在它會先徵求你的同意；無論選哪個，最近 30 天的掃描都會照常進行，已建立的用量歷史也會留在這台 Mac 上。";
+"local_scan_consent.v2_subtitle" = "每次重新整理會讀取最近 30 天。為了補齊用量歷史，CLI Pulse 也可以讀取最多一年份的舊工作階段日誌：先讀取一次；之後每當 CLI Pulse 的更新改變 Codex 用量的計算方式，或你登入的帳號裡有這台 Mac 先前同步、需要更正的 Codex 數字時，會再讀取一次 Codex 的日誌。現在它會先徵求你的同意；無論選哪個，最近 30 天的掃描都會照常進行，已建立的用量歷史也會留在這台 Mac 上。";
 "local_scan_consent.include_history" = "包含更早的歷史";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "本機使用（不需要帳號）";
@@ -1400,7 +1400,7 @@
 "local_scan_consent.settings_toggle" = "掃描這台 Mac 上的 CLI 使用情況";
 "local_scan_consent.settings_toggle_detail" = "每次重新整理會讀取 ~/.codex 與 ~/.claude 下最近 30 天的工作階段日誌，並向你使用的服務商查詢即時配額。更早的日誌由另一個開關控制。關閉後，本 App 及其背景 helper 都不會掃描這台 Mac。";
 "local_scan_consent.history_toggle" = "包含更早的用量歷史";
-"local_scan_consent.history_toggle_detail" = "讀取一次最多一年份的舊工作階段日誌，用來補齊用量歷史。關閉後，CLI Pulse 只讀取最近 30 天；已建立的用量歷史仍會留在這台 Mac 上。";
+"local_scan_consent.history_toggle_detail" = "讀取最多一年份的舊工作階段日誌，用來補齊用量歷史：先讀取一次；之後每當 CLI Pulse 的更新改變 Codex 用量的計算方式，或你登入的帳號裡有這台 Mac 先前同步、需要更正的 Codex 數字時，會再讀取一次 Codex 的日誌。關閉後，CLI Pulse 只讀取最近 30 天；已建立的用量歷史仍會留在這台 Mac 上。";
 "local_scan_consent.settings_declined_detail" = "你選擇了「暫時不要」。即使已登入，這個選擇也不會改變。";
 "local_scan_consent.companion_not_covered" = "這台 Mac 上的 Companion CLI（%@）不遵循此選擇，也不會因登出而停止：只要它已安裝並配對，就會每 2 分鐘讀取這台 Mac，並把讀到的內容同步到它配對的帳號。請在「設定 › Companion CLI」中更新或解除安裝。";
 "local_scan_consent.choose_again" = "重新選擇…";

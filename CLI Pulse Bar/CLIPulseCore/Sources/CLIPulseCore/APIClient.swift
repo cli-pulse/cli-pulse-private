@@ -2838,6 +2838,235 @@ public actor APIClient {
         }
     }
 
+    #if os(macOS)
+    // MARK: - v1.56: the Codex history rebuild's cloud side
+
+    /// Which device this Mac's daily usage rows are stored under, for the
+    /// signed-in account.
+    enum DailyUsageDevice: Equatable, Sendable {
+        /// Paired with this account: the device id `syncDailyUsage` sends.
+        case paired(String)
+        /// Not paired with this account: the server's stand-in for an
+        /// unpaired Mac (`unpairedDailyUsageDeviceId`), by sending no id.
+        case unpaired
+        /// The app group says this Mac is paired with this account, but the
+        /// helper's secret cannot be read, so `HelperConfig.loadIfMatches`
+        /// says nothing. The login keychain is locked (it can be while the
+        /// screen is, and `refreshAll` keeps running then), or the secret is
+        /// gone; the two cannot be told apart (`HelperConfig.pairedDeviceId`).
+        /// Reading the stand-in's rows as this Mac's would be wrong for a
+        /// paired Mac, so the rebuild's cloud part waits for a refresh that
+        /// knows.
+        case undetermined
+    }
+
+    /// This Mac's `DailyUsageDevice` for `userId`. Where it is known, the
+    /// device id is decided as `syncDailyUsage` decides it (see the comment
+    /// there): the paired device's when the app group's helper config, secret
+    /// included, belongs to the signed-in account.
+    private func dailyUsageDevice(userId: String) -> DailyUsageDevice {
+        Self.dailyUsageDevice(
+            config: HelperConfig.loadIfMatches(
+                authenticatedUserId: userId,
+                runtimeEnvironment: runtimeEnvironment
+            ),
+            pairedDeviceId: {
+                HelperConfig.pairedDeviceId(
+                    authenticatedUserId: userId,
+                    runtimeEnvironment: runtimeEnvironment
+                )
+            })
+    }
+
+    /// The decision, from `HelperConfig.loadIfMatches` (which needs the
+    /// helper's secret from the keychain) and, only when that says nothing,
+    /// `HelperConfig.pairedDeviceId` (the app group's record alone).
+    static func dailyUsageDevice(config: HelperConfig?, pairedDeviceId: () -> String?) -> DailyUsageDevice {
+        if let deviceId = config?.deviceId, !deviceId.isEmpty { return .paired(deviceId) }
+        return pairedDeviceId() == nil ? .unpaired : .undetermined
+    }
+
+    /// The device id `upsert_daily_usage` stores a row under when it is sent
+    /// none (`migrate_v0.37_daily_usage_device_id.sql`).
+    static let unpairedDailyUsageDeviceId = "00000000-0000-0000-0000-000000000000"
+
+    /// One `upsert_daily_usage` call for `entries`, under `deviceId` (nil:
+    /// the unpaired stand-in, by sending none).
+    private func dailyUsageUpsertRequest(
+        _ entries: [CostUsageScanResult.DailyEntry],
+        deviceId: String?
+    ) -> URLRequest? {
+        // The rows first, then the URL: `ci_check_rpc_contract.py` reads the
+        // quoted keys in the lines after an RPC's URL as that RPC's
+        // parameters, and these are fields of each row, not parameters.
+        let metrics: [[String: Any]] = entries.map { entry in
+            [
+                "metric_date": entry.date,
+                "provider": entry.provider,
+                "model": entry.model,
+                "input_tokens": entry.inputTokens,
+                "cached_tokens": entry.cachedTokens,
+                "output_tokens": entry.outputTokens,
+                "cost": entry.costUSD ?? 0.0,
+            ]
+        }
+        guard let url = URL(string: "\(supabaseURL)/rest/v1/rpc/upsert_daily_usage") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(&request)
+        var body: [String: Any] = ["metrics": metrics]
+        if let deviceId { body["p_device_id"] = deviceId }
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        return request
+    }
+
+    /// The signed-in account's side of the Codex history rebuild
+    /// (`CodexHistoryRebuild`), or nil when `authorizationLease` is no longer
+    /// current or nobody is signed in.
+    ///
+    /// The device id is decided here, once: the rows the rebuild reads as this
+    /// Mac's and the rows it writes are then the same device's, even if this
+    /// Mac is paired while the rebuild reads its logs. Both closures check the
+    /// lease, so a sign-out or an account switch stops them.
+    public func codexHistoryCloud(authorizationLease: APIAuthorizationLease) -> CodexHistoryCloud? {
+        codexHistoryCloud(authorizationLease: authorizationLease, device: { self.dailyUsageDevice(userId: $0) })
+    }
+
+    /// `codexHistoryCloud(authorizationLease:)` with the device decided by
+    /// `device` (given the signed-in user's id): a seam for tests, which
+    /// cannot pair a helper. Nil while the device is `.undetermined`.
+    func codexHistoryCloud(
+        authorizationLease: APIAuthorizationLease,
+        device resolveDevice: (String) -> DailyUsageDevice
+    ) -> CodexHistoryCloud? {
+        guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
+              let userId else { return nil }
+        let deviceId: String?
+        switch resolveDevice(userId) {
+        case .paired(let id): deviceId = id
+        case .unpaired: deviceId = nil
+        case .undetermined:
+            apiLogger.info("[codexHistoryRebuild] this Mac's pairing could not be read; the cloud part waits")
+            return nil
+        }
+        return CodexHistoryCloud(
+            account: userId,
+            isUnpairedStandIn: deviceId == nil,
+            thisMacsCodexRows: { [weak self] days in
+                await self?.codexDailyUsageRows(
+                    days: days, deviceId: deviceId, authorizationLease: authorizationLease)
+            },
+            acceptsUploads: { [weak self] in
+                await self?.dailyUsageUpsertBatch(
+                    [], deviceId: deviceId, authorizationLease: authorizationLease) ?? false
+            },
+            upload: { [weak self] rows in
+                await self?.upsertDailyUsageRows(
+                    rows, deviceId: deviceId, authorizationLease: authorizationLease) ?? false
+            })
+    }
+
+    /// This Mac's Codex rows (day and model) over the last `days` days, read
+    /// from `get_daily_usage_by_device`; nil when they could not be read.
+    /// `deviceId` nil is the unpaired stand-in.
+    func codexDailyUsageRows(
+        days: Int,
+        deviceId: String?,
+        authorizationLease: APIAuthorizationLease
+    ) async -> [CodexHistoryCloud.Row]? {
+        guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
+              userId != nil,
+              let url = URL(string: "\(supabaseURL)/rest/v1/rpc/get_daily_usage_by_device") else { return nil }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        applyHeaders(&request)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: ["days": days])
+        do {
+            let (data, response) = try await dataWithRetry(
+                for: request,
+                authorizationLease: authorizationLease
+            )
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status),
+                  let items = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                apiLogger.warning("[codexHistoryRebuild] reading this Mac's rows failed: HTTP \(status)")
+                return nil
+            }
+            return Self.codexRows(from: items, deviceId: deviceId ?? Self.unpairedDailyUsageDeviceId)
+        } catch {
+            apiLogger.warning("[codexHistoryRebuild] reading this Mac's rows: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    /// The Codex rows of `get_daily_usage_by_device` stored under `deviceId`.
+    /// A row whose date names no plausible Gregorian day is skipped, as in
+    /// `dailyUsageRows(from:)`.
+    static func codexRows(from items: [[String: Any]], deviceId: String) -> [CodexHistoryCloud.Row] {
+        let device = deviceId.lowercased()
+        return items.compactMap { item -> CodexHistoryCloud.Row? in
+            guard (item["device_id"] as? String)?.lowercased() == device,
+                  item["provider"] as? String == ProviderKind.codex.rawValue,
+                  let date = item["metric_date"] as? String, DayKey.isPlausible(date),
+                  let model = item["model"] as? String else { return nil }
+            return CodexHistoryCloud.Row(date: date, model: model)
+        }
+    }
+
+    /// The most rows one `upsert_daily_usage` call carries. A year of Codex
+    /// history is a few hundred rows a model; the server upserts them one by
+    /// one, so a call stays short.
+    static let dailyUsageUpsertBatchSize = 200
+
+    /// Upserts `rows` under `deviceId`, in batches; true when every batch was
+    /// accepted. Unlike the routine `syncDailyUsage`, the caller needs to know:
+    /// the rebuild is recorded as done only when it was.
+    func upsertDailyUsageRows(
+        _ rows: [CostUsageScanResult.DailyEntry],
+        deviceId: String?,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        let rows = rows.filter { $0.model != ScanEntry.messageBucketModel }
+        var start = 0
+        while start < rows.count {
+            let batch = Array(rows[start..<min(start + Self.dailyUsageUpsertBatchSize, rows.count)])
+            start += batch.count
+            guard await dailyUsageUpsertBatch(
+                batch, deviceId: deviceId, authorizationLease: authorizationLease) else { return false }
+        }
+        return true
+    }
+
+    /// One `upsert_daily_usage` call; true when the server accepted it. With
+    /// no rows it writes nothing, and it is still refused for a device id
+    /// that is not the caller's: the server checks the device before it looks
+    /// at a row (`migrate_v0.37`). That is `CodexHistoryCloud.acceptsUploads`.
+    func dailyUsageUpsertBatch(
+        _ batch: [CostUsageScanResult.DailyEntry],
+        deviceId: String?,
+        authorizationLease: APIAuthorizationLease
+    ) async -> Bool {
+        guard (try? ensureAuthorizationLeaseIsCurrent(authorizationLease)) != nil,
+              userId != nil,
+              let request = dailyUsageUpsertRequest(batch, deviceId: deviceId) else { return false }
+        do {
+            let (_, response) = try await dataWithRetry(
+                for: request,
+                authorizationLease: authorizationLease
+            )
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(status) else {
+                apiLogger.warning("[codexHistoryRebuild] upload failed: HTTP \(status)")
+                return false
+            }
+            return true
+        } catch {
+            apiLogger.warning("[codexHistoryRebuild] upload: \(error.localizedDescription)")
+            return false
+        }
+    }
+    #endif
+
     // MARK: - Yield Score
 
     /// Fetch raw daily yield rows from Supabase (rollup table `yield_score_daily`).

@@ -260,13 +260,90 @@ final class LocalScanConsentCopyTests: XCTestCase {
         }
     }
 
+    /// v1.56: the year is read once, and the Codex logs again whenever a CLI
+    /// Pulse update changes how it counts Codex, or when the signed-in account
+    /// holds older Codex figures from this Mac to correct
+    /// (`DailyUsageArchiveManager.rebuildCodexHistoryIfNeeded`: the archive's
+    /// part is due once per Codex rules version, the cloud's once per rules
+    /// version and account). Until 1.56 these lines said "once" and nothing
+    /// more, which the rebuild would have made false. Every line that
+    /// describes the read of older logs gives both reasons, in every language,
+    /// and names CLI Pulse as the one whose update it is, not Codex; the
+    /// titles and captions that only name it no longer call it one-time.
+    func test_everyLineThatDescribesTheYearSaysCodexIsReadAgain() {
+        // Whose update: CLI Pulse's, not Codex's.
+        let cliPulseUpdate: [String: String] = [
+            "en": "a CLI Pulse update changes how it counts Codex usage",
+            "zh-Hans": "CLI Pulse 的更新改变 Codex 用量的计算方式",
+            "zh-Hant": "CLI Pulse 的更新改變 Codex 用量的計算方式",
+            "ja": "CLI Pulse のアップデートで Codex の使用量の数え方が変わったとき",
+            "ko": "CLI Pulse 업데이트로 Codex 사용량을 세는 방식이 바뀌거나",
+            "es": "una nueva versión de CLI Pulse cambie cómo cuenta el uso de Codex",
+        ]
+        // The second reason: the signed-in account has this Mac's older
+        // Codex figures to correct (`CodexHistoryRebuild.State.cloudIsDue`).
+        let signedInAccount: [String: String] = [
+            "en": "or when the account you're signed in to has older Codex figures from this Mac to correct",
+            "zh-Hans": "或你登录的账户里有这台 Mac 以前同步、需要更正的 Codex 数字时",
+            "zh-Hant": "或你登入的帳號裡有這台 Mac 先前同步、需要更正的 Codex 數字時",
+            "ja": "サインイン中のアカウントで、この Mac が以前同期した Codex の数値を修正する必要があるとき",
+            "ko": "로그인한 계정에서 이 Mac이 전에 동기화한 Codex 수치를 바로잡아야 할 때",
+            "es": "o cuando haya que corregir cifras antiguas de Codex de este Mac en la cuenta con la que tienes la sesión iniciada",
+        ]
+        // How each catalogue used to call the read once and for all.
+        let oneTime: [String: [String]] = [
+            "en": ["one-time", "Once, and only"],
+            "zh-Hans": ["一次性", "读取一次最多", "读取一次旧日志"],
+            "zh-Hant": ["讀取一次最多", "讀取一次舊日誌"],
+            "ja": ["一度きり", "（一度だけ）", "一度だけ読み取ります"],
+            "ko": ["는 한 번만", "한 번만 읽습니다", "한 번 읽는 작업"],
+            "es": ["una sola vez", "lectura única"],
+        ]
+        for locale in Self.locales {
+            let texts = inLocale(locale) {
+                [
+                    "files_detail": L10n.localScanConsent.filesDetail,
+                    "v2_subtitle": L10n.localScanConsent.v2Subtitle,
+                    "history_toggle_detail": L10n.localScanConsent.historyToggleDetail,
+                ]
+            }
+            for (key, shown) in texts {
+                // The brand is laid out with a no-break space (`L10n.displayFormat`).
+                let text = shown.replacingOccurrences(of: "\u{00A0}", with: " ")
+                XCTAssertTrue(text.contains("Codex"),
+                              "\(locale): \(key) does not say the Codex logs are read again: \(text)")
+                XCTAssertTrue(text.contains(cliPulseUpdate[locale]!),
+                              "\(locale): \(key) does not say it is a CLI Pulse update that changes the counting: \(text)")
+                XCTAssertTrue(text.contains(signedInAccount[locale]!),
+                              "\(locale): \(key) leaves out the read for a signed-in account's older Codex figures: \(text)")
+            }
+            let named = inLocale(locale) {
+                [
+                    "files_title": L10n.localScanConsent.filesTitle,
+                    "first_ask_hint": L10n.localScanConsent.firstAskHint,
+                    "first_ask_hint_signed_in": L10n.localScanConsent.firstAskHintSignedIn,
+                ]
+            }
+            for (key, text) in named.merging(texts, uniquingKeysWith: { a, _ in a }) {
+                for phrase in oneTime[locale]! {
+                    XCTAssertFalse(text.contains(phrase),
+                                   "\(locale): \(key) still calls the read of older logs one-time (\"\(phrase)\"): \(text)")
+                }
+            }
+        }
+    }
+
     /// Spelled out once in Simplified Chinese, the locale these catalogues are
-    /// checked in: the screen says 30 days and a year, and the year is one read.
-    func test_zhHansSaysThirtyDaysAndOneYearOnce() {
+    /// checked in: the screen says 30 days and a year, that the year is read
+    /// once, and that the Codex logs are read again after a counting change.
+    func test_zhHansSaysThirtyDaysAYearAndWhenCodexIsReadAgain() {
         inLocale("zh-Hans") {
-            XCTAssertEqual(L10n.localScanConsent.filesTitle, "会话日志：最近 30 天，另可一次性读取最多一年")
-            XCTAssertTrue(L10n.localScanConsent.v2Subtitle.contains("最近 30 天"))
-            XCTAssertTrue(L10n.localScanConsent.v2Subtitle.contains("一次性读取最多一年"))
+            XCTAssertEqual(L10n.localScanConsent.filesTitle, "会话日志：最近 30 天，经你允许还可读取最多一年")
+            let subtitle = L10n.localScanConsent.v2Subtitle.replacingOccurrences(of: "\u{00A0}", with: " ")
+            XCTAssertTrue(subtitle.contains("最近 30 天"))
+            XCTAssertTrue(subtitle.contains("最多一年的旧会话日志：先读取一次"))
+            XCTAssertTrue(subtitle.contains(
+                "之后每当 CLI Pulse 的更新改变 Codex 用量的计算方式，或你登录的账户里有这台 Mac 以前同步、需要更正的 Codex 数字时，会再读取一次 Codex 的日志"))
             XCTAssertEqual(L10n.localScanConsent.lastThirtyDaysOnly, "仅最近 30 天")
             XCTAssertEqual(L10n.localScanConsent.includeHistory, "包括更早的历史")
         }
