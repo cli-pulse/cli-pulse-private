@@ -572,6 +572,39 @@ final class CodexSubagentForkRulesTests: XCTestCase {
         XCTAssertEqual(total(scan(home, force: true)), [100, 30, 15])
     }
 
+    // MARK: - A resumed read (ours)
+
+    /// A child with a history ordinal, read while only its copied history is
+    /// written (an ancestor's session_meta and the parent's events). Those are
+    /// dropped and leave the counter the child starts from (rule 4), and
+    /// nothing counts yet. Codex writes the copied history when the subagent
+    /// starts and the child's own lines later, so a refresh in between is
+    /// likely. When they come — the parent's snapshot replayed past the
+    /// boundary, then the child's own request — the resumed read has only the
+    /// saved state to know that counter by (`inheritedReference`; no event
+    /// has set a baseline yet): without it, the snapshot counts as usage.
+    func test_a_resumed_child_keeps_the_counter_its_copied_events_left() throws {
+        let snapshot: Usage = (5000, 4000, 500)
+        let head = [
+            meta("child", ordinal: 0, ["subagent_history_start_ordinal": 10, "source": subagent("parent")]),
+            meta("parent", ordinal: 1),
+            tokens(total: prefix, last: request, ordinal: 2),
+        ]
+        let rest = [
+            turn(at: 1, ordinal: 10),
+            message(at: 1, ordinal: 11),
+            tokens(at: 1, total: snapshot, last: snapshot, ordinal: 12),
+            tokens(at: 2, total: (5050, 4010, 505), last: request, ordinal: 13),
+        ]
+        XCTAssertEqual(try scanned(["child": head + rest]), [50, 10, 5], "read in one go")
+
+        let home = try tempHome()
+        try write(["child": head], to: home)
+        XCTAssertEqual(total(scan(home, force: true)), [0, 0, 0], "only copied history so far")
+        try write(["child": rest], to: home, appending: true)
+        XCTAssertEqual(total(scan(home)), [50, 10, 5], "resumed: the replayed snapshot is not usage")
+    }
+
     // MARK: - Rule 4, on its own
 
     private func t(_ input: Int, _ cached: Int, _ output: Int) -> Totals {

@@ -106,8 +106,8 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         /// (`CodexTokenAccountant` rules 2 to 5). Reading a fork's inherited
         /// counter from its parent's file is not among them, so a fork whose
         /// first event repeats its parent's last snapshot, or a subagent
-        /// written without a history ordinal whose copied history has no turn
-        /// marker, counts a copied request again.
+        /// rollout without a history ordinal whose copied history has no turn
+        /// marker, counts the last copied request (the parent's last) twice.
         /// `CodexEstimateChangeTripwireTests` holds this line to that: it
         /// fails once the scanner stops counting the copied request, so the
         /// line goes when the limit does.
@@ -264,6 +264,12 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         return newDaysAmongOld
             ? L10n.codexEstimateNote.dashboardSomeThrough(day)
             : L10n.codexEstimateNote.dashboardThrough(day)
+    }
+
+    /// The tooltip on that line: what changed, with what each change still
+    /// leaves out, as the card says it.
+    public func dashboardHelp(shipped: [Reason] = Reason.shipped) -> String {
+        shownReasons(shipped).flatMap(\.lines).joined(separator: "\n")
     }
 
     /// Up from the day of the change until `visibleDays` later, unless

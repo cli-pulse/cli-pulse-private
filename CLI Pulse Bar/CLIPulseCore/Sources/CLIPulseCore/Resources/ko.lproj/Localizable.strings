@@ -630,7 +630,7 @@
 "codex_estimate_note.title" = "%@부터 Codex 수치가 달라졌습니다";
 "codex_estimate_note.reason_cached_input_once" = "사용량 대시보드는 이제 Codex의 캐시 입력을 한 번만 집계합니다. 캐시 입력은 원래 Codex 입력에 포함되는데 그동안 한 번 더 더해졌습니다. 그래서 대시보드의 Codex 토큰 합계가 이전보다 줄어듭니다.";
 "codex_estimate_note.reason_subagent_sessions" = "이제 Codex 하위 에이전트 세션도 집계합니다. 이전에는 빠져 있었기 때문에 Codex 사용량과 비용이 늘어납니다.";
-"codex_estimate_note.subagent_rules_simplified" = "다른 세션에서 포크한 Codex 세션과 일부 Codex 버전이 기록한 하위 에이전트 세션은 간소화한 규칙으로 집계하므로, 원래 세션에서 복사된 요청이 한 번 더 집계될 수 있습니다.";
+"codex_estimate_note.subagent_rules_simplified" = "다른 세션에서 포크한 Codex 세션과 일부 Codex 하위 에이전트 세션은 간소화한 규칙으로 집계하므로, 원래 세션에서 복사된 마지막 요청이 한 번 더 집계될 수 있습니다.";
 "codex_estimate_note.reason_published_prices" = "이제 Codex 추정 비용을 OpenAI가 공개한 API 요금으로 계산합니다.";
 "codex_estimate_note.history_through" = "사용량 대시보드에서 %@까지의 Codex 수치는 아직 이전 방식으로 집계되어 있습니다.";
 "codex_estimate_note.history_some_through" = "사용량 대시보드에서 %@까지의 Codex 수치 중 일부는 아직 이전 방식으로 집계되어 있습니다.";

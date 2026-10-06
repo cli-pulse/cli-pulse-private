@@ -39,7 +39,13 @@
 //     CodexSubagentRolloutShape.swift with its own notice, over a subagent
 //     rollout without a history ordinal read whole, as upstream does with its
 //     buffered subagent lines. What is done with the answer differs where the
-//     file names no owned suffix (see that file).
+//     file names no owned suffix (see that file). NOT verbatim either: upstream
+//     also takes `subagent_history_start_ordinal` from a later session_meta of
+//     the same thread (a repeat of the file's own); here the ordinal comes
+//     from the first line only, and a repeat can only name the fork parent. A
+//     file whose first session_meta has no ordinal and a later repeat does is
+//     read whole (rule 5) instead of at that boundary, and without a turn
+//     marker it counts by the other rules.
 //
 // Ours, not upstream's: `CodexCopyResolver` (upstream deduplicates rows across
 // files by session, turn and timestamp; this decides per file, by payload id
@@ -134,19 +140,21 @@ import Foundation
 ///    counter continues from what it inherited, so its own first request
 ///    shows a total above its `last`; a total equal to its `last` and above
 ///    the inherited one is a copy of a parent's snapshot. From CodexBar.
-/// 5. **A subagent without a history ordinal is read whole.** Older Codex
-///    versions write subagent rollouts with no `subagent_history_start_ordinal`
-///    and no line numbers; the copied part then shows only in the shape of the
-///    file. Such a file is read whole before any of it counts, and CodexBar's
-///    `CodexSubagentRolloutShape.classify` finds where the subagent's own
-///    history starts: at a turn_context immediately followed by an inter-agent
-///    message that triggers a turn (its parent's message to it), after the last
-///    ancestor session_meta copied in; or, in a rollout that names the thread
-///    it was forked from, at its first such turn once its first own event
-///    confirms it, or at an opening total with no request of its own. Events
-///    before it are copied, snapshots right after it are skipped, and counting
-///    starts from the counter it had there. Without such a start the other
-///    rules apply.
+/// 5. **A subagent without a history ordinal is read whole.** Some subagent
+///    rollouts have no `subagent_history_start_ordinal` (CodexBar's "legacy"
+///    shape). The Codex version alone does not decide it: on the machine this
+///    was measured on, the one such rollout among 176 was written by Codex
+///    0.153.4, which gave its other 57 an ordinal. The copied part then shows
+///    only in the shape of the file. Such a file is read whole before any of
+///    it counts, and CodexBar's `CodexSubagentRolloutShape.classify` finds
+///    where the subagent's own history starts: at a turn_context immediately
+///    followed by an inter-agent message that triggers a turn (its parent's
+///    message to it), after the last ancestor session_meta copied in; or, in
+///    a rollout that names the thread it was forked from, at its first such
+///    turn once its first own event confirms it, or at an opening total with
+///    no request of its own. Events before it are copied, snapshots right
+///    after it are skipped, and counting starts from the counter it had
+///    there. Without such a start the other rules apply.
 ///
 /// Rules 2 to 5 are a subset of what upstream does for forks and
 /// subagents. Not done: reading a fork's inherited counter from its parent's

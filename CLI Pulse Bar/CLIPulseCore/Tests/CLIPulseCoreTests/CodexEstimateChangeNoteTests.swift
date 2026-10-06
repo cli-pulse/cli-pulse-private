@@ -270,6 +270,21 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         XCTAssertNil(note.dashboardLine(shipped: []), "no reason shipped: nothing changed")
     }
 
+    /// The line's tooltip says what the card says about each change, the
+    /// subagent line's caveat included: the line outlasts the card, so the
+    /// tooltip may be the only place left that says it.
+    func testTheDashboardTooltipCarriesTheCaveatsInChinese() throws {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let note = Note(changedOn: "2026-10-20", hadCodexHistory: true,
+                        reasons: [.subagentSessionsCounted, .publishedPrices], oldCodexDays: ["2026-09-19"])
+        let caveat = try XCTUnwrap(Reason.subagentSessionsCounted.caveat)
+        XCTAssertEqual(note.dashboardHelp(),
+                       [Reason.subagentSessionsCounted.text, caveat, Reason.publishedPrices.text].joined(separator: "\n"))
+        XCTAssertTrue(note.dashboardHelp().contains("最后一个请求"), note.dashboardHelp())
+        XCTAssertEqual(note.dashboardHelp(shipped: [.publishedPrices]), Reason.publishedPrices.text,
+                       "only what the build ships")
+    }
+
     // MARK: - What the card says (zh-Hans: a broken lookup cannot pass here)
 
     func testTheNoteReadsInChineseWithTheDateAndTheReasonsThisBuildShips() throws {
@@ -297,7 +312,7 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         LocaleOverrideStore.shared.set("zh-Hans")
         XCTAssertEqual(Reason.subagentSessionsCounted.lines, [
             "Codex 的子 Agent 会话现在也会计入。之前它们被漏掉了，所以 Codex 的用量和费用会变高。",
-            "从另一个会话分叉出来的 Codex 会话，以及部分 Codex 版本写下的子 Agent 会话，按简化规则计算，所以从原会话复制过来的请求可能会被再计一次。",
+            "从另一个会话分叉出来的 Codex 会话，以及部分 Codex 子 Agent 会话，按简化规则计算，所以从原会话复制过来的最后一个请求可能会被重复计入。",
         ])
         XCTAssertNil(Reason.cachedInputCountedOnce.caveat)
         XCTAssertNil(Reason.publishedPrices.caveat)
