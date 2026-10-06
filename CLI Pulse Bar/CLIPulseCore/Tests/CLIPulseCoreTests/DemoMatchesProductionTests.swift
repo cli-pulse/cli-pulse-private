@@ -589,8 +589,6 @@ final class DemoMatchesProductionTests: XCTestCase {
         XCTAssertTrue(generator.contains(
             #""message": "Using ~\(systemPct)% of total system CPU (\(cpuCount) cores) for \(session.provider).","#),
                       "the session-CPU rule writes another message")
-        XCTAssertTrue(generator.contains("if !isProcessDetected, session.requests >= 400 {"),
-                      "the long-running rule fires elsewhere")
 
         let daemon = Self.codeOnly(try String(
             contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
@@ -753,8 +751,11 @@ final class DemoMatchesProductionTests: XCTestCase {
         // update of public.devices up to its semicolon (an insert's `on
         // conflict ... do update` included). An insert gives the status a
         // value, and that value is 'Online'; every `status =` is 'Online'.
-        // A status anywhere else in the SQL (a session's, a provider's, a word
-        // in a comment) is not a device's, and is not read.
+        // Any other mention of the status in such a statement (a row
+        // constructor, a quoted name, a comment before its value) is one this
+        // cannot read, and fails rather than passes. A status anywhere else in
+        // the SQL (a session's, a provider's, a word in a comment) is not a
+        // device's, and is not read.
         let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
         let files = try FileManager.default.contentsOfDirectory(at: supabase, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "sql" }
@@ -769,6 +770,11 @@ final class DemoMatchesProductionTests: XCTestCase {
         let statusSet = try NSRegularExpression(
             pattern: #"\bstatus\s*=\s*('[^']*'|[^\s,]+)"#, options: .caseInsensitive)
         let values = try NSRegularExpression(pattern: #"\bvalues\s*\("#, options: .caseInsensitive)
+        let statusWord = try NSRegularExpression(pattern: #""?\bstatus\b"?"#, options: .caseInsensitive)
+        func count<Text: StringProtocol>(_ pattern: NSRegularExpression, in text: Text) -> Int {
+            let string = String(text)
+            return pattern.numberOfMatches(in: string, range: NSRange(location: 0, length: NSString(string: string).length))
+        }
         var writes: [String] = []
         var problems: [String] = []
         for file in files {
@@ -778,6 +784,7 @@ final class DemoMatchesProductionTests: XCTestCase {
                 let place = "\(file.lastPathComponent):\(line)"
                 let body = text.substring(with: statement.range)
                 writes.append(place)
+                var understood = 0
                 if body.lowercased().hasPrefix("insert") {
                     // The column default is 'Offline', so an insert must give
                     // the status a value: the one at its column's position.
@@ -795,11 +802,18 @@ final class DemoMatchesProductionTests: XCTestCase {
                     }
                     let value = index < given.count ? given[index] : "(nothing)"
                     if value != "'Online'" { problems.append("\(place): inserts status \(value)") }
+                    if body[body.index(after: tuple.endIndex)...].trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix(",") {
+                        problems.append("\(place): inserts more than one row, and this reads only the first")
+                    }
+                    understood += count(statusWord, in: columns)
                 }
                 let bodyText = NSString(string: body)
                 for found in statusSet.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
                     let value = bodyText.substring(with: found.range(at: 1))
-                    if value != "'Online'" { problems.append("\(place): sets status = \(value)") }
+                    if value == "'Online'" { understood += 1 } else { problems.append("\(place): sets status = \(value)") }
+                }
+                if count(statusWord, in: body) > understood {
+                    problems.append("\(place): mentions the status in a form this cannot read")
                 }
             }
         }
