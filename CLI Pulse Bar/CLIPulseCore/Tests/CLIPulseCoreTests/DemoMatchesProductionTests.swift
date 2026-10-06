@@ -669,10 +669,13 @@ final class DemoMatchesProductionTests: XCTestCase {
             .filter { $0.pathExtension == "sql" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
         XCTAssertGreaterThan(files.count, 50, "found \(files.count) SQL files; is this still the cloud's schema?")
+        // Read with any line ending, so a CRLF checkout compares the same lines.
+        func sql(_ url: URL) throws -> String {
+            try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\r\n", with: "\n")
+        }
         var otherStatuses: [String] = []
         for file in files {
-            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: "\n")
-            for line in lines {
+            for line in try sql(file).components(separatedBy: "\n") {
                 let lowered = line.lowercased()
                 if lowered.contains("'offline'") || lowered.contains("'degraded'") || line.contains("'online'") {
                     otherStatuses.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
@@ -681,13 +684,13 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
         XCTAssertEqual(otherStatuses, ["schema.sql: status text not null default 'Offline',"],
                        "SQL writes a device status other than 'Online'; Demo may show one again")
-        let helper = try String(contentsOf: supabase.appendingPathComponent("helper_rpc.sql"), encoding: .utf8)
+        let helper = try sql(supabase.appendingPathComponent("helper_rpc.sql"))
         XCTAssertTrue(helper.contains("left(p_helper_version, 20), 'Online',"),
                       "register_helper inserts its device with another status")
         XCTAssertTrue(helper.contains("status = 'Online', cpu_usage = p_cpu_usage,"),
                       "the helper's heartbeat no longer marks its device Online")
         for name in ["app_rpc.sql", "migrate_v0.44_user_tz_today.sql"] {
-            let summary = try String(contentsOf: supabase.appendingPathComponent(name), encoding: .utf8)
+            let summary = try sql(supabase.appendingPathComponent(name))
             XCTAssertTrue(summary.contains("from public.devices\n      where user_id = v_user_id and status = 'Online'"),
                           "\(name): dashboard_summary counts Online Devices another way")
         }
