@@ -301,9 +301,12 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         ])
         XCTAssertNil(Reason.cachedInputCountedOnce.caveat)
         XCTAssertNil(Reason.publishedPrices.caveat)
+        // XCTUnwrap, not `!`: without the line this test must fail, not stop the
+        // whole test run (a trap there hid every later suite's result).
+        let caveat = try XCTUnwrap(Reason.subagentSessionsCounted.caveat, "the subagent line has a follow-up")
         let note = Note(changedOn: "2026-10-20", hadCodexHistory: true, reasons: [.subagentSessionsCounted, .publishedPrices])
         let p = try XCTUnwrap(note.presentation(todayKey: "2026-10-20", dismissed: false))
-        XCTAssertEqual(p.lines, [Reason.subagentSessionsCounted.text, Reason.subagentSessionsCounted.caveat!,
+        XCTAssertEqual(p.lines, [Reason.subagentSessionsCounted.text, caveat,
                                  Reason.publishedPrices.text], "the caveat sits right after its own reason")
     }
 

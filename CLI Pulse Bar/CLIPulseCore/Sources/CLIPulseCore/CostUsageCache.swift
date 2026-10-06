@@ -105,9 +105,10 @@ let costUsageCachePricingVersion: Int = 7
 ///       at the `CodexPricingTable` rate in force at its own time, into slot 3
 ///       of the day × model row. A cache written under 4 holds token-only rows
 ///       counted by the old rules. (Changed before 1.56 shipped, so still 5.)
-///   6 — not used for Codex. It is the Claude cache's (1.56); skipping it
-///       keeps every number naming one set of rules.
-///   7 — 1.56 (P0-1b): two of CodexBar's subagent and fork rules. A
+///   6, 7 — not used for Codex. They are the Claude cache's (1.56: #624's
+///       counting, and the price table of #647); skipping them keeps every
+///       number naming one set of rules.
+///   8 — 1.56 (P0-1b): two of CodexBar's subagent and fork rules. A
 ///       subagent rollout without a history ordinal is classified whole
 ///       (`CodexSubagentRolloutShape`): its own history starts at a turn its
 ///       parent's message triggers, after copied history or confirmed by its
@@ -116,7 +117,7 @@ let costUsageCachePricingVersion: Int = 7
 ///       history ordinal counts its first tokens, a repeat of the counter it
 ///       started from or a copied snapshot adds nothing. A cache written under
 ///       5 can hold copied history counted as usage.
-let costUsageCodexCacheRulesVersion: Int = 7
+let costUsageCodexCacheRulesVersion: Int = 8
 
 enum CostUsageCacheRules {
     /// The rules version a cache for `provider` must carry to be trusted.
