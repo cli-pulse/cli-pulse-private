@@ -80,6 +80,8 @@ outside any protected container, so the fallback could read it. `copy_values`
 does not ask cfprefsd for such a path (`_real_container_plist`): the file
 answers, as it does for the rest of that HOME. With the user's own HOME, as
 under the helper's LaunchAgent, the path is the real one and nothing changes.
+"The user's own" is decided by the home folder itself, not by how HOME spells
+it (`_is_under_home`), and a check that cannot decide asks cfprefsd as before.
 
 It is ctypes onto CoreFoundation and Security, which every Mac has, so the
 frozen helper needs no PyObjC. It returns None whenever it cannot answer: not
@@ -276,24 +278,45 @@ def _real_container_plist(plist_path: Path) -> Path | None:
     for `plist_path` itself.
 
     In a process entitled to group G, CoreFoundation reads any path whose file
-    is named `G.plist` as G's container domain (see the module doc). The home
-    is compared as spelled and as resolved (`realpath` of the home folder only,
-    never of anything inside a container, which would be a container access),
-    so a HOME that is the user's home under another spelling still counts as
-    the user's own."""
+    is named `G.plist` as G's container domain (see the module doc). Raises
+    when it cannot tell (`copy_values` then asks cfprefsd, as before this
+    check existed)."""
     name = plist_path.name
     for group in sorted(entitled_app_groups()):
         if name != f"{group}.plist":
             continue
         inside = Path("Library") / "Group Containers" / group / "Library" / "Preferences" / name
         real_home = _real_home()
-        homes = {real_home, Path(os.path.realpath(real_home))}
-        home = Path.home()
-        if os.path.realpath(home) == os.path.realpath(real_home):
-            homes |= {home, Path(os.path.realpath(home))}
-        if os.path.normpath(str(plist_path)) not in {os.path.normpath(str(h / inside)) for h in homes}:
+        if not _is_under_home(plist_path, inside, real_home):
             return real_home / inside
     return None
+
+
+def _is_under_home(plist_path: Path, inside: Path, real_home: Path) -> bool:
+    """Whether `plist_path` is `inside` under the folder `real_home`, however
+    that folder is spelled: through a symlink, in another letter case (APFS
+    usually ignores case, `realpath` does not), or through a firmlink such as
+    `/System/Volumes/Data/Users/…` (which `realpath` does not resolve either).
+    So the two home folders are compared as folders, by device and inode.
+
+    Only the two home folders are looked at, never anything inside a
+    container: opening the container from a launchd process that has no
+    approval for it is what hung in the kernel in v1.30.2. Raises when the
+    user's own home cannot be looked at (cannot tell). A home folder in the
+    path that does not exist, or cannot be looked at, is not the user's."""
+    path = Path(os.path.normpath(plist_path))
+    tail = len(inside.parts)
+    if len(path.parts) <= tail or path.parts[-tail:] != inside.parts:
+        return False
+    home = Path(*path.parts[:-tail])
+    if home == Path(os.path.normpath(real_home)):
+        return True
+    real = os.stat(real_home)
+    try:
+        other = os.stat(home)
+    except OSError:
+        return False
+    return (other.st_dev, other.st_ino) == (real.st_dev, real.st_ino)
 
 
 def copy_values(plist_path: Path, keys: Iterable[str]) -> dict | None:
