@@ -329,8 +329,9 @@ struct SettingsTab: View {
     /// place this build shows an available update and installs it, and its
     /// manifest, download and verification do not depend on the account
     /// (`SettingsAccountSections`). The popover's focus hook already fetched
-    /// the manifest daily whatever the account (`MenuBarView`), so drawing
-    /// this signed out adds no request.
+    /// the manifest daily whatever the account (`MenuBarView`); drawing this
+    /// signed out adds no new kind of request, only this section's own
+    /// refresh of the same public manifest when Settings opens.
     private var appUpdaterSection: some View {
         AppUpdaterSection(
             updater: state.appUpdater,

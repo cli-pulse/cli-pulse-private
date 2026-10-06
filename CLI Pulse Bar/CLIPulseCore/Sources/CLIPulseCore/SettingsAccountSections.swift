@@ -34,8 +34,10 @@ import Foundation
 ///   an update in the app, and needed Homebrew or a download by hand. It did
 ///   fetch the manifest: the popover's focus hook (`MenuBarView`,
 ///   `AppUpdater.refreshIfStale`) checks at most once a day whatever the
-///   account, so showing the result signed out adds no request. Not a flag
-///   here: there is nothing to decide.
+///   account. So showing the result signed out adds no new kind of request:
+///   the section's own refresh when Settings opens is the same public GET,
+///   as it already was for a paired account. Not a flag here: there is
+///   nothing to decide.
 /// - **Settings › Advanced**, without the picker where the account is not
 ///   paired, holding what works on this Mac alone (`advanced`). Background
 ///   sync's status line is there, so "Paused: signed out" can be seen while it
