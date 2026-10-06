@@ -4,14 +4,17 @@ import Foundation
 // MARK: - Cache Types
 
 /// Cache-rules version for the Claude cache (and for any provider without its
-/// own version below). Bump it when a change to `CostUsageScanner` would make
-/// numbers already stored in `claude-v2.json` wrong: a Claude pricing row
-/// added, removed or repriced, or a change to how Claude lines are counted.
+/// own version below). Bump it when a change to `CostUsageScanner` or
+/// `ClaudePricingTable` would make numbers already stored in `claude-v2.json`
+/// wrong: a Claude pricing row added, removed or repriced, a dated rate, a
+/// change to which row a model name resolves to, or a change to how Claude
+/// lines are counted.
 ///
 /// Why: per-event cost is computed inside `parseClaudeFile` and stored as
 /// `costNanos` in the per-day-model bucket. The `entriesFromClaudeCache`
-/// reconstruction has a fallback that re-runs `Pricing.claudeCostUSD` when the
-/// bucket's summed `costNanos` is exactly zero — but that fallback gives the
+/// reconstruction has a fallback that prices the bucket's token sum
+/// (`Pricing.claudeAggregateCostUSD`) when its summed `costNanos` is exactly
+/// zero — but that fallback gives the
 /// WRONG answer once even one new event lands in a previously-zero bucket: the
 /// bucket then has partial cost, the fallback is skipped, and only the new
 /// events' contribution is reported.
@@ -60,7 +63,18 @@ import Foundation
 ///       estimate is not billed. See `CostUsageAccountingRules` and
 ///       `CostUsageClaudeLogState`. A cache written under 4 holds responses
 ///       counted from their first line, some of them more than once.
-let costUsageCachePricingVersion: Int = 6
+///   7 — 1.56: Claude prices from `ClaudePricingTable`, Anthropic's page on
+///       2026-10-03. Rows for Opus 5.5, Fable 5.1, Sonnet 5.5 and Mythos 5 /
+///       5.1 (Opus 5.5 and Fable 5.1 had borrowed Opus 5's and Fable 5's
+///       cache-hit rates, 2.5x and 4x theirs); Sonnet 5 at $2 / $10, not
+///       $3 / $15; 1-hour cache writes at 2x input instead of 1.25x; the
+///       200K tier charged on the whole request when its prompt is over 200K
+///       (it was split per token kind at 200K each), and for Opus 4.6 and
+///       Sonnet 4.6 only before 2026-03-13. A cache written under 6 holds
+///       costs at the old table. `ClaudePricingTableTests.
+///       test_claude_rate_changes_come_with_a_rules_version_bump` pins a
+///       fingerprint of the table next to this number.
+let costUsageCachePricingVersion: Int = 7
 
 /// Cache-rules version for the Codex cache (`codex-v2.json`). Bump it when
 /// `CodexPricingTable` changes (a row added, removed or repriced, a dated rate,
@@ -155,7 +169,9 @@ struct CostUsageClaudeOpenRow: Codable, Equatable {
     var incomplete: Bool
 
     /// A stable 64-bit hash of what the row adds, cost aside: the cost follows
-    /// from the model and the tokens under the cache's rules version.
+    /// from the model and the tokens under the cache's rules version (and
+    /// from the line's time and 1-hour cache writes, which a repeat of the
+    /// same line shares).
     var fingerprint: UInt64 {
         let p = packed
         let text = "\(day)\u{1F}\(model)\u{1F}\(p[safeIdx: 0] ?? 0),\(p[safeIdx: 1] ?? 0),\(p[safeIdx: 2] ?? 0),\(p[safeIdx: 3] ?? 0)\u{1F}\(incomplete ? 1 : 0)"

@@ -56,11 +56,14 @@ final class Claude5PricingTests: XCTestCase {
     // MARK: - The published rates
 
     /// Anthropic's first-party API prices, per 1M tokens. If a rate is ever
-    /// edited by accident, this is the test that notices.
+    /// edited by accident, this is the test that notices. Sonnet 5 is $2 /
+    /// $10: the $3 / $15 this table used to hold was a scheduled increase
+    /// that Anthropic cancelled before it happened (pricing page, footnote 3,
+    /// read 2026-10-03). The full table is pinned in `ClaudePricingTableTests`.
     func testPublishedRatesPerMillionTokens() {
         let expected: [(model: String, input: Double, output: Double)] = [
             ("claude-opus-5", 5, 25),
-            ("claude-sonnet-5", 3, 15),
+            ("claude-sonnet-5", 2, 10),
             ("claude-fable-5", 10, 50),
             ("claude-opus-4-8", 5, 25),
             ("claude-haiku-4-5", 1, 5),
@@ -106,7 +109,7 @@ final class Claude5PricingTests: XCTestCase {
             "display name must survive an unpriced model"
         )
         XCTAssertEqual(
-            P.claudePricingKey("claude-opus-6"), "claude-opus-5",
+            P.claudePricingKey("claude-opus-6"), "claude-opus-5-5",
             "…while still being charged at the newest priced sibling's rate"
         )
         // `gpt-5.6-sol` has its own row since 1.56; `gpt-5.7` is the unknown
@@ -126,9 +129,12 @@ final class Claude5PricingTests: XCTestCase {
 
     /// A generation bump must outrank any minor: `claude-opus-5` (5, 0) beats
     /// `claude-opus-4-8` (4, 8). Getting this backwards is subtle and cheap to
-    /// pin.
+    /// pin. With `claude-opus-5-5` (5, 5) priced, an unknown `claude-opus-6`
+    /// borrows it, and an unknown `claude-opus-5-1` (5, 1) still takes
+    /// `claude-opus-5` (5, 0) over `claude-opus-4-8` (4, 8).
     func testGenerationOutranksMinor() {
-        XCTAssertEqual(P.claudePricingKey("claude-opus-6"), "claude-opus-5")
+        XCTAssertEqual(P.claudePricingKey("claude-opus-6"), "claude-opus-5-5")
+        XCTAssertEqual(P.claudePricingKey("claude-opus-5-1"), "claude-opus-5")
     }
 
     /// Never charge an old model at a newer model's rate. `claude-opus-4-9`
@@ -141,7 +147,7 @@ final class Claude5PricingTests: XCTestCase {
     /// the comparison against real minors. This trap is called out in the
     /// original code and is preserved.
     func testDatedLegacyKeyCannotWinTheFallback() {
-        XCTAssertEqual(P.claudePricingKey("claude-sonnet-9"), "claude-sonnet-5")
+        XCTAssertEqual(P.claudePricingKey("claude-sonnet-9"), "claude-sonnet-5-5")
     }
 
     /// A family that has never been priced gets nothing, and that is correct.
@@ -194,7 +200,7 @@ final class Claude5PricingTests: XCTestCase {
     func testFallbackTieBreakIsDeterministic() {
         for _ in 0..<50 {
             XCTAssertEqual(P.codexPricingKey("gpt-5.7"), "gpt-5.6-sol")
-            XCTAssertEqual(P.claudePricingKey("claude-opus-6"), "claude-opus-5")
+            XCTAssertEqual(P.claudePricingKey("claude-opus-6"), "claude-opus-5-5")
         }
     }
 

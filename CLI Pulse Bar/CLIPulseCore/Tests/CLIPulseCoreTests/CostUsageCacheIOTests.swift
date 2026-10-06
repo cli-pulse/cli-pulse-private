@@ -195,7 +195,7 @@ final class CostUsageCacheIOTests: XCTestCase {
         XCTAssertEqual(loaded.lastScanUnixMs, 42, "save→load roundtrip should not be invalidated by the stamping policy")
     }
 
-    func testCurrentPricingVersionIsSix() {
+    func testCurrentPricingVersionIsSeven() {
         // Pin the constant so future bumps land in this test as a
         // grep-able diff. When you change pricing, bump the constant
         // AND this expectation in the same commit so the diff makes
@@ -209,7 +209,11 @@ final class CostUsageCacheIOTests: XCTestCase {
         // 6 — 1.56, Claude responses counted once from their last line (5 is
         // the Codex cache's own). A Claude cache written under 4 counted each
         // response from its first line, some of them twice.
-        XCTAssertEqual(costUsageCachePricingVersion, 6)
+        // 7 — 1.56, Claude prices from `ClaudePricingTable` (Opus 5.5, Fable
+        // 5.1 and Sonnet 5.5 rows, Sonnet 5 at $2 / $10, 1-hour cache writes,
+        // the long-context tier per request and dated). A cache written under
+        // 6 holds each response's cost at the old table.
+        XCTAssertEqual(costUsageCachePricingVersion, 7)
     }
 
     // MARK: - rules version per provider (1.56)
