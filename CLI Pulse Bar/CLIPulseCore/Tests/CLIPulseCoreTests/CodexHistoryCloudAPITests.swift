@@ -183,7 +183,7 @@ final class CodexHistoryCloudAPITests: XCTestCase {
         RebuildStubProtocol.handler = { _ in (200, Data("[]".utf8)) }
         let (api, lease) = try await signedInAPI()
 
-        let built = await api.codexHistoryCloud(authorizationLease: lease, device: { _ in .undetermined })
+        let built = await api.codexHistoryCloud(authorizationLease: lease, device: { _ in .undetermined("dev-1") })
 
         XCTAssertNil(built, "an unreadable pairing was treated as decided")
         XCTAssertEqual(RebuildStubProtocol.recordedRequests().count, 0)
@@ -206,7 +206,7 @@ final class CodexHistoryCloudAPITests: XCTestCase {
                 })
         }
         XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: "s", user: "user-a"), .paired("dev-1"))
-        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: nil, user: "user-a"), .undetermined,
+        XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: nil, user: "user-a"), .undetermined("dev-1"),
                        "a locked keychain made a paired Mac the unpaired stand-in")
         XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: "s", user: "user-b"), .unpaired)
         XCTAssertEqual(device(stored: ("dev-1", "user-a"), secret: nil, user: "user-b"), .unpaired)
