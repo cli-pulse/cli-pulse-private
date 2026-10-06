@@ -230,16 +230,19 @@ final class CostUsageCacheIOTests: XCTestCase {
         try! JSONSerialization.data(withJSONObject: payload).write(to: url)
     }
 
-    func testCurrentCodexRulesVersionIsFive() {
+    func testCurrentCodexRulesVersionIsEight() {
         // 5 — 1.56: Codex files count on their own (subagents included), a file
         // of one thread is a copy when its events lie within another's (nested
         // spans), the cumulative baseline only rises, a child's copied history
         // is not counted, and each request is priced as it is read. A Codex
-        // cache written under 4 holds none of that. Pinned for the same reason
-        // as the Claude version: a bump should be a visible diff.
-        XCTAssertEqual(costUsageCodexCacheRulesVersion, 5)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 5)
-        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 5)
+        // cache written under 4 holds none of that.
+        // 8 — 1.56 (P0-1b): a subagent without a history ordinal is classified
+        // whole, and a child's opening repeats and copied snapshots are not
+        // usage. 6 and 7 are the Claude cache's. Pinned for the same reason as
+        // the Claude version: a bump should be a visible diff.
+        XCTAssertEqual(costUsageCodexCacheRulesVersion, 8)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "codex"), 8)
+        XCTAssertEqual(CostUsageCacheRules.version(forProvider: "Codex"), 8)
         XCTAssertEqual(CostUsageCacheRules.version(forProvider: "claude"), costUsageCachePricingVersion)
     }
 
@@ -272,6 +275,13 @@ final class CostUsageCacheIOTests: XCTestCase {
         state.eventCount = 3
         state.firstEventUnixMs = 6
         state.lastEventUnixMs = 9
+        // Rules 4 and 5 of `CodexTokenAccountant`: a resumed read needs them
+        // back exactly (see CodexSubagentForkRulesTests'
+        // test_a_resumed_child_keeps_the_counter_its_copied_events_left).
+        state.isSubagent = true
+        state.namesForkParent = true
+        state.inheritedReference = CostUsageCodexTotals(input: 5000, cached: 4000, output: 300)
+        state.openingSettled = true
         cache.files["/a"] = CostUsageFileUsage(
             mtimeUnixMs: 1, size: 1, days: [:], parsedBytes: 1, lastModel: nil,
             lastTotals: nil, sessionId: "s", codex: state
@@ -282,6 +292,11 @@ final class CostUsageCacheIOTests: XCTestCase {
         CostUsageCacheIO.save(provider: "codex", cache: cache, cacheRoot: tempDir)
         let loaded = CostUsageCacheIO.load(provider: "codex", cacheRoot: tempDir)
         XCTAssertEqual(loaded.files["/a"]?.codex, state)
+        XCTAssertEqual(loaded.files["/a"]?.codex?.isSubagent, true)
+        XCTAssertEqual(loaded.files["/a"]?.codex?.namesForkParent, true)
+        XCTAssertEqual(loaded.files["/a"]?.codex?.inheritedReference,
+                       CostUsageCodexTotals(input: 5000, cached: 4000, output: 300))
+        XCTAssertEqual(loaded.files["/a"]?.codex?.openingSettled, true)
         XCTAssertNil(loaded.files["/b"]?.codex)
 
         // An entry written before the field existed decodes with nil.
@@ -297,6 +312,11 @@ final class CostUsageCacheIOTests: XCTestCase {
         }
         let undecided = try JSONDecoder().decode(CostUsageCodexFileState.self, from: Data(#"{"isChild":true,"historyStartOrdinal":3,"sawMeta":true,"baselineChecked":false,"eventCount":0}"#.utf8))
         XCTAssertNil(undecided.copiedPrefix)
+        // A state written before rules 4 and 5 decodes with none of their fields.
+        XCTAssertNil(undecided.isSubagent)
+        XCTAssertNil(undecided.namesForkParent)
+        XCTAssertNil(undecided.inheritedReference)
+        XCTAssertNil(undecided.openingSettled)
     }
 
     // MARK: - wipeAll

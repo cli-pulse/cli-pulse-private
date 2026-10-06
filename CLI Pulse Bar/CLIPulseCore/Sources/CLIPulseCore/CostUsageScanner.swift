@@ -1267,7 +1267,9 @@ public enum CostUsageScanner {
                         rolloutId: payload?["id"] as? String,
                         isChild: payload.map(CodexTokenAccountant.sessionMetaNamesParent) ?? false,
                         metaUnixMs: metaInstant.map(unixMillis),
-                        historyStartOrdinal: payload?["subagent_history_start_ordinal"] as? Int
+                        historyStartOrdinal: payload?["subagent_history_start_ordinal"] as? Int,
+                        isSubagent: payload.map(CodexTokenAccountant.sessionMetaIsSubagent) ?? false,
+                        namesForkParent: payload.flatMap(CodexTokenAccountant.sessionMetaForkParent) != nil
                     )
                 } else {
                     accountant.observeUnreadableFirstLine()
@@ -1343,28 +1345,46 @@ public enum CostUsageScanner {
         let prefixBytes = 32 * 1024
         var readError = false
 
+        // The line's position in the file, the first line being 0. Only a
+        // rollout read whole needs it (rule 5), and that one is always read
+        // from the first line.
+        var lineIndex = -1
+
         let parsedBytes: Int64
         do {
             parsedBytes = try scanJsonl(fileURL: fileURL, offset: startOffset, maxLineBytes: maxLineBytes, prefixBytes: prefixBytes, onLine: { line in
+                lineIndex += 1
                 if skipFirstLine {
                     skipFirstLine = false
                     return
                 }
                 guard !line.bytes.isEmpty else { return }
                 // A later session_meta is an ancestor's, copied in with its
-                // history. It never gives the file its identity and is never
-                // decoded (it can be far over the line limit); its head says
+                // history. It never gives the file its identity; its head says
                 // where it sits, which is what marks copied history (rule 2 of
-                // `CodexTokenAccountant`).
+                // `CodexTokenAccountant`), and a rollout read whole also notes
+                // whose it is (rule 5).
                 if line.bytes.asciiContains(#""type":"session_meta""#) {
+                    if accountant.classifiesWholeFile {
+                        let later = codexLaterSessionMeta(line)
+                        accountant.observeWholeFileLine(.sessionMetadata(id: later.id), line: lineIndex,
+                                                        namesForkParent: later.namesForkParent)
+                    }
                     accountant.observeCopiedSessionMeta(ordinal: codexLineOrdinal(line.bytes))
                     return
                 }
-                if accountant.awaitsCopiedPrefixMarker,
-                   line.bytes.asciiContains(#""type":"inter_agent_communication_metadata""#) {
-                    accountant.observeInterAgentMessage(ordinal: codexLineOrdinal(line.bytes))
+                if line.bytes.asciiContains(#""type":"inter_agent_communication_metadata""#) {
+                    if accountant.classifiesWholeFile, let trigger = codexInterAgentTrigger(line) {
+                        accountant.observeWholeFileLine(.interAgentCommunication(triggerTurn: trigger), line: lineIndex)
+                    }
+                    if accountant.awaitsCopiedPrefixMarker {
+                        accountant.observeInterAgentMessage(ordinal: codexLineOrdinal(line.bytes))
+                    }
                     return
                 }
+                // A turn_context over the line limit is not seen as a turn (its
+                // head cannot show that "turn_context" is the line's own type),
+                // so a rollout read whole that needs it counts by the other rules.
                 guard !line.wasTruncated else { return }
                 guard line.bytes.asciiContains(#""type":"event_msg""#)
                     || line.bytes.asciiContains(#""type":"turn_context""#) else { return }
@@ -1377,6 +1397,7 @@ public enum CostUsageScanner {
                       let instant = instantFromTimestamp(tsText) ?? instantFromParsedISO(tsText) else { return }
 
                 if type == "turn_context" {
+                    accountant.observeWholeFileLine(.turnContext, line: lineIndex)
                     if let payload = obj["payload"] as? [String: Any] {
                         if let model = payload["model"] as? String { currentModel = model }
                         else if let info = payload["info"] as? [String: Any], let model = info["model"] as? String { currentModel = model }
@@ -1398,7 +1419,8 @@ public enum CostUsageScanner {
                     ordinal: obj["ordinal"] as? Int,
                     total: total,
                     last: last,
-                    model: modelFromInfo ?? currentModel ?? "gpt-5"
+                    model: modelFromInfo ?? currentModel ?? "gpt-5",
+                    line: lineIndex
                 )
                 for counted in accountant.receive(event) { file(counted) }
             })
@@ -1419,6 +1441,51 @@ public enum CostUsageScanner {
             state: accountant.state,
             complete: true
         )
+    }
+
+    /// A later session_meta line's thread id, and whether it names the thread
+    /// it was forked from (rule 5 of `CodexTokenAccountant`): read from the
+    /// decoded line, or, for a line over the limit (an ancestor's carries its
+    /// base instructions), from the first `"id":"…"` in its head.
+    private static func codexLaterSessionMeta(_ line: JsonlLine) -> (id: String?, namesForkParent: Bool) {
+        if !line.wasTruncated,
+           let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any] {
+            let payload = obj["payload"] as? [String: Any] ?? [:]
+            let id = payload["id"] as? String ?? obj["id"] as? String ?? payload["session_id"] as? String
+                ?? payload["sessionId"] as? String ?? obj["session_id"] as? String ?? obj["sessionId"] as? String
+            return (id, CodexTokenAccountant.sessionMetaForkParent(payload) != nil)
+        }
+        return (codexHeadId(line.bytes.prefix(jsonlTruncatedHeadBytes)), false)
+    }
+
+    /// The first `"id":"…"` in `head` whose value has no escape in it.
+    static func codexHeadId(_ head: Data) -> String? {
+        let needle = Data(#""id":""#.utf8)
+        var from = head.startIndex
+        while let found = head.range(of: needle, in: from..<head.endIndex) {
+            var index = found.upperBound
+            while index < head.endIndex, head[index] != 0x22, head[index] != 0x5C {
+                index = head.index(after: index)
+            }
+            if index < head.endIndex, head[index] == 0x22 {
+                return String(decoding: head[found.upperBound..<index], as: UTF8.self)
+            }
+            from = head.index(after: found.lowerBound)
+        }
+        return nil
+    }
+
+    /// Whether an `inter_agent_communication_metadata` line triggers a turn
+    /// (`payload.trigger_turn` is `true`); nil when the line is not one or has
+    /// no readable timestamp (rule 5 of `CodexTokenAccountant`).
+    private static func codexInterAgentTrigger(_ line: JsonlLine) -> Bool? {
+        guard !line.wasTruncated,
+              let obj = (try? JSONSerialization.jsonObject(with: line.bytes)) as? [String: Any],
+              (obj["type"] as? String) == "inter_agent_communication_metadata",
+              let text = obj["timestamp"] as? String,
+              (instantFromTimestamp(text) ?? instantFromParsedISO(text)) != nil else { return nil }
+        guard let value = (obj["payload"] as? [String: Any])?["trigger_turn"] as? NSNumber else { return false }
+        return CFGetTypeID(value) == CFBooleanGetTypeID() && value.boolValue
     }
 
     /// A JSONL line's own number (`"ordinal":N`), read from its first 512
@@ -1469,7 +1536,8 @@ public enum CostUsageScanner {
         // An entry without `codex` state predates these rules: re-parse it.
         if let cached, cached.codex != nil, cached.mtimeUnixMs == mtimeMs, cached.size == size { return }
 
-        if let cached, let state = cached.codex {
+        // A rollout classified whole (rule 5) is read again from the start.
+        if let cached, let state = cached.codex, !state.classifiesWholeFile {
             let startOffset = cached.parsedBytes ?? cached.size
             if size > cached.size && startOffset > 0 && startOffset <= size {
                 let delta = parseCodexFile(

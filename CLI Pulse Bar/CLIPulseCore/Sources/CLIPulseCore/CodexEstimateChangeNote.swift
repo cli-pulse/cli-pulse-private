@@ -99,6 +99,28 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
             case .publishedPrices: return L10n.codexEstimateNote.reasonPublishedPrices
             }
         }
+
+        /// What this change still leaves out, said right after it, or nil.
+        ///
+        /// Subagents and forks are counted by a subset of CodexBar's rules
+        /// (`CodexTokenAccountant` rules 2 to 5). Reading a fork's inherited
+        /// counter from its parent's file is not among them, so a fork whose
+        /// first event repeats its parent's last snapshot, or a subagent
+        /// rollout without a history ordinal whose copied history has no turn
+        /// marker, counts the last copied request (the parent's last) twice.
+        /// `CodexEstimateChangeTripwireTests` holds this line to that: it
+        /// fails once the scanner stops counting the copied request, so the
+        /// line goes when the limit does.
+        public var caveat: String? {
+            switch self {
+            case .subagentSessionsCounted: return L10n.codexEstimateNote.subagentRulesSimplified
+            case .cachedInputCountedOnce, .publishedPrices: return nil
+            }
+        }
+
+        /// The card's lines for this reason: what changed, then what it
+        /// still leaves out.
+        public var lines: [String] { [text] + (caveat.map { [$0] } ?? []) }
     }
 
     /// The day ("yyyy-MM-dd") this Mac first wrote the archive counting this
@@ -218,7 +240,7 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         shipped: [Reason] = Reason.shipped
     ) -> Presentation? {
         guard isVisible(todayKey: todayKey, dismissed: dismissed) else { return nil }
-        var lines = shownReasons(shipped).map(\.text)
+        var lines = shownReasons(shipped).flatMap(\.lines)
         guard !lines.isEmpty else { return nil }
         if let last = oldCodexDays.last {
             let day = Self.displayDay(last)
@@ -242,6 +264,12 @@ public struct CodexEstimateChangeNote: Codable, Equatable, Sendable {
         return newDaysAmongOld
             ? L10n.codexEstimateNote.dashboardSomeThrough(day)
             : L10n.codexEstimateNote.dashboardThrough(day)
+    }
+
+    /// The tooltip on that line: what changed, with what each change still
+    /// leaves out, as the card says it.
+    public func dashboardHelp(shipped: [Reason] = Reason.shipped) -> String {
+        shownReasons(shipped).flatMap(\.lines).joined(separator: "\n")
     }
 
     /// Up from the day of the change until `visibleDays` later, unless

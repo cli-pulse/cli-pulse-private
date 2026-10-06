@@ -445,7 +445,7 @@ public struct UsageDashboardView: View {
 
     /// Under the heatmap, for as long as any Codex day in this Mac's history
     /// is still counted the old way, card or no card. The tooltip says what
-    /// changed.
+    /// changed and what that still leaves out, as the card does.
     @ViewBuilder
     private var codexHistoryLine: some View {
         if showsCodexHistoryLine,
@@ -455,7 +455,7 @@ public struct UsageDashboardView: View {
                 .font(.system(size: 9.5))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
-                .help(note.shownReasons().map(\.text).joined(separator: "\n"))
+                .help(note.dashboardHelp())
         }
     }
 

@@ -270,6 +270,21 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         XCTAssertNil(note.dashboardLine(shipped: []), "no reason shipped: nothing changed")
     }
 
+    /// The line's tooltip says what the card says about each change, the
+    /// subagent line's caveat included: the line outlasts the card, so the
+    /// tooltip may be the only place left that says it.
+    func testTheDashboardTooltipCarriesTheCaveatsInChinese() throws {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let note = Note(changedOn: "2026-10-20", hadCodexHistory: true,
+                        reasons: [.subagentSessionsCounted, .publishedPrices], oldCodexDays: ["2026-09-19"])
+        let caveat = try XCTUnwrap(Reason.subagentSessionsCounted.caveat)
+        XCTAssertEqual(note.dashboardHelp(),
+                       [Reason.subagentSessionsCounted.text, caveat, Reason.publishedPrices.text].joined(separator: "\n"))
+        XCTAssertTrue(note.dashboardHelp().contains("最后一个请求"), note.dashboardHelp())
+        XCTAssertEqual(note.dashboardHelp(shipped: [.publishedPrices]), Reason.publishedPrices.text,
+                       "only what the build ships")
+    }
+
     // MARK: - What the card says (zh-Hans: a broken lookup cannot pass here)
 
     func testTheNoteReadsInChineseWithTheDateAndTheReasonsThisBuildShips() throws {
@@ -278,8 +293,9 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         let p = try XCTUnwrap(note.presentation(todayKey: "2026-10-21", dismissed: false))
 
         XCTAssertEqual(p.title, "自2026年10月20日起，Codex 的数字有所变化")
-        XCTAssertEqual(p.lines.count, Reason.shipped.count + 1)
-        XCTAssertEqual(Array(p.lines.prefix(Reason.shipped.count)), Reason.shipped.map(\.text))
+        let reasonLines = Reason.shipped.flatMap(\.lines)
+        XCTAssertEqual(p.lines.count, reasonLines.count + 1)
+        XCTAssertEqual(Array(p.lines.prefix(reasonLines.count)), reasonLines)
         XCTAssertEqual(p.lines.last, "用量仪表盘中，2026年9月19日及之前各天的 Codex 数字仍按旧方式计算。")
         XCTAssertEqual(p.footer, "费用是以 API 按量付费价格算出的预估值，不是真实账单。")
         XCTAssertEqual(p.dismiss, "知道了")
@@ -288,6 +304,25 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
         some.newDaysAmongOld = true
         XCTAssertEqual(some.presentation(todayKey: "2026-10-21", dismissed: false)?.lines.last,
                        "用量仪表盘中，2026年9月19日及之前部分日子的 Codex 数字仍按旧方式计算。")
+    }
+
+    /// The subagent line is followed by what is still counted by simplified
+    /// rules, and only that line has such a follow-up.
+    func testTheSubagentLineIsFollowedByWhatItLeavesOutInChinese() throws {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        XCTAssertEqual(Reason.subagentSessionsCounted.lines, [
+            "Codex 的子 Agent 会话现在也会计入。之前它们被漏掉了，所以 Codex 的用量和费用会变高。",
+            "从另一个会话分叉出来的 Codex 会话，以及部分 Codex 子 Agent 会话，按简化规则计算，所以从原会话复制过来的最后一个请求可能会被重复计入。",
+        ])
+        XCTAssertNil(Reason.cachedInputCountedOnce.caveat)
+        XCTAssertNil(Reason.publishedPrices.caveat)
+        // XCTUnwrap, not `!`: without the line this test must fail, not stop the
+        // whole test run (a trap there hid every later suite's result).
+        let caveat = try XCTUnwrap(Reason.subagentSessionsCounted.caveat, "the subagent line has a follow-up")
+        let note = Note(changedOn: "2026-10-20", hadCodexHistory: true, reasons: [.subagentSessionsCounted, .publishedPrices])
+        let p = try XCTUnwrap(note.presentation(todayKey: "2026-10-20", dismissed: false))
+        XCTAssertEqual(p.lines, [Reason.subagentSessionsCounted.text, caveat,
+                                 Reason.publishedPrices.text], "the caveat sits right after its own reason")
     }
 
     func testTheCachedInputLineSaysOnceAndLowerInChinese() {
@@ -301,14 +336,14 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
     func testNoHistoryLineWithoutOldDays() throws {
         let recountedEverything = Note(changedOn: "2026-10-20", hadCodexHistory: true, oldCodexDays: [])
         let p = try XCTUnwrap(recountedEverything.presentation(todayKey: "2026-10-20", dismissed: false))
-        XCTAssertEqual(p.lines, Reason.shipped.map(\.text))
+        XCTAssertEqual(p.lines, Reason.shipped.flatMap(\.lines))
     }
 
     func testEveryReasonShowsInItsOwnOrder() throws {
         let all = Reason.allCases
         let note = Note(changedOn: "2026-10-20", hadCodexHistory: true, reasons: all)
         let p = try XCTUnwrap(note.presentation(todayKey: "2026-10-20", dismissed: false, shipped: all))
-        XCTAssertEqual(p.lines, all.map(\.text))
+        XCTAssertEqual(p.lines, all.flatMap(\.lines))
         XCTAssertNil(note.presentation(todayKey: "2026-10-20", dismissed: false, shipped: []),
                      "a card with no reason would say something changed without saying what")
 
@@ -332,7 +367,7 @@ final class CodexEstimateChangeNoteTests: XCTestCase {
     func testEveryLineIsTranslatedInEveryLanguage() throws {
         let english = try catalogue("en")
         let keys = english.keys.filter { $0.hasPrefix("codex_estimate_note.") }.sorted()
-        XCTAssertEqual(keys.count, 8)
+        XCTAssertEqual(keys.count, 9)
         for localization in LocaleOverrideStore.shippedLocalizations where localization != "en" {
             let values = try catalogue(localization)
             for key in keys {

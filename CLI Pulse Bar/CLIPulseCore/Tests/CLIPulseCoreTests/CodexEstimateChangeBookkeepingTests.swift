@@ -198,7 +198,7 @@ final class CodexEstimateChangeBookkeepingTests: XCTestCase {
         XCTAssertEqual(n.oldCodexDays, [])
         XCTAssertNil(n.dashboardLine())
         XCTAssertEqual(n.presentation(todayKey: "2026-10-20", dismissed: false)?.lines,
-                       n.shownReasons().map(\.text), "no line about old days")
+                       n.shownReasons().flatMap(\.lines), "no line about old days")
     }
 
     /// The App Store build reads each folder through its own bookmark. With the
