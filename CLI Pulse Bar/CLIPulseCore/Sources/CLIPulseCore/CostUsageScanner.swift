@@ -2094,11 +2094,24 @@ public enum CostUsageScanner {
         }
     }
 
+    /// `a + sign × b`, slot by slot, never below 0.
+    ///
+    /// Saturating: a file's sums stop at `Int.max` when a corrupt log holds
+    /// absurd counts (each Codex request's cost is capped at 10^18
+    /// nanodollars, so about ten such requests fill a day's cost slot), and
+    /// adding any other file's row for the same day and model to it would
+    /// otherwise trap, on every scan. A sum that overflows stays at `Int.max`;
+    /// one that underflows is 0, like any other negative result.
     static func addPacked(a: [Int], b: [Int], sign: Int) -> [Int] {
         let len = max(a.count, b.count)
         var out = Array(repeating: 0, count: len)
         for idx in 0..<len {
-            out[idx] = max(0, (a[safeIdx: idx] ?? 0) + sign * (b[safeIdx: idx] ?? 0))
+            let lhs = a[safeIdx: idx] ?? 0
+            let rhs = b[safeIdx: idx] ?? 0
+            let (term, termOverflow) = rhs.multipliedReportingOverflow(by: sign)
+            let addend = termOverflow ? ((rhs < 0) == (sign < 0) ? Int.max : Int.min) : term
+            let (sum, sumOverflow) = lhs.addingReportingOverflow(addend)
+            out[idx] = max(0, sumOverflow ? (lhs > 0 ? Int.max : Int.min) : sum)
         }
         return out
     }
