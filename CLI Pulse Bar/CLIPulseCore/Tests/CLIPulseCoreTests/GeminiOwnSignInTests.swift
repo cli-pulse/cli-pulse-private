@@ -55,6 +55,41 @@ final class GeminiOwnSignInTests: XCTestCase {
         )
     }
 
+    /// GEMINI_OAUTH_SETUP.md Step 5 swaps the placeholder for the real ID.
+    /// Done as a find-and-replace over GeminiOAuthManager.swift, that must
+    /// change `clientID` and leave the sentinel the gate compares against:
+    /// otherwise `clientID == placeholderClientID` with a real client, and
+    /// "Connect Gemini" stays hidden and refused.
+    func test_replacing_the_placeholder_in_the_source_leaves_the_sentinel_alone() throws {
+        // Pinned in pieces, like the source, so this file survives the same
+        // find-and-replace.
+        XCTAssertEqual(
+            GeminiOAuthManager.placeholderClientID,
+            "REPLACE_WITH_" + "YOUR_CLIENT_ID" + ".apps.googleusercontent.com"
+        )
+
+        let lines = try Self.codeLines(Self.oauthManagerURL)
+        let placeholder = "REPLACE_WITH_" + "YOUR_CLIENT_ID"
+        let hits = lines.indices.filter { lines[$0].contains(placeholder) }
+        // A build with a real client has no hit; one with the placeholder has
+        // exactly the `clientID` declaration.
+        XCTAssertEqual(
+            hits.count,
+            GeminiOAuthManager.isClientConfigured ? 0 : 1,
+            "lines \(hits.map { $0 + 1 })"
+        )
+        for hit in hits {
+            XCTAssertTrue(
+                lines[hit].contains("public static let clientID = \""),
+                "line \(hit + 1) would be rewritten with clientID: \(lines[hit])"
+            )
+        }
+        let sentinel = lines.indices.filter {
+            lines[$0].contains("static let placeholderClientID")
+        }
+        XCTAssertEqual(sentinel.count, 1)
+    }
+
     func test_the_default_argument_reads_the_shipped_client_id() {
         XCTAssertEqual(
             GeminiOAuthManager.offersOwnSignIn(isConnected: false),
@@ -134,6 +169,14 @@ final class GeminiOwnSignInTests: XCTestCase {
         .deletingLastPathComponent()   // CLI Pulse Bar
         .appendingPathComponent("CLI Pulse Bar/ProviderConfigEditor.swift")
 
+    private static let oauthManagerURL = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()   // CLIPulseCoreTests
+        .deletingLastPathComponent()   // Tests
+        .deletingLastPathComponent()   // CLIPulseCore
+        .appendingPathComponent(
+            "Sources/CLIPulseCore/Collectors/GeminiOAuthManager.swift"
+        )
+
     private static let appProjectSources = URL(fileURLWithPath: #filePath)
         .deletingLastPathComponent()
         .deletingLastPathComponent()
@@ -175,6 +218,59 @@ final class GeminiOwnSignInTests: XCTestCase {
         return line
     }
 
+    /// The line holding the `}` that closes the first `{` at or after
+    /// `start`, counting braces outside string literals; nil if it never
+    /// closes. Expects comment-stripped lines.
+    static func closingLine(ofDeclarationAt start: Int, in lines: [String]) -> Int? {
+        var depth = 0
+        var opened = false
+        for index in start..<lines.count {
+            var inString = false
+            var escaped = false
+            for ch in lines[index] {
+                if inString {
+                    if escaped {
+                        escaped = false
+                    } else if ch == "\\" {
+                        escaped = true
+                    } else if ch == "\"" {
+                        inString = false
+                    }
+                } else if ch == "\"" {
+                    inString = true
+                } else if ch == "{" {
+                    depth += 1
+                    opened = true
+                } else if ch == "}" {
+                    depth -= 1
+                    if opened && depth == 0 { return index }
+                }
+            }
+        }
+        return nil
+    }
+
+    func test_closing_line_counts_braces_not_indentation() {
+        let lines = [
+            "    private var rows: some View {",
+            "        if a { Text(\"} not a brace {\") }",
+            "        if b {",
+            "    }",                      // closes `if b`, dedented by a reformat
+            "        Text(\"x\")",
+            "  }",                        // the real end, not four spaces
+            "    var later: Int {",
+            "    }",
+        ]
+        XCTAssertEqual(Self.closingLine(ofDeclarationAt: 0, in: lines), 5)
+        XCTAssertEqual(
+            Self.closingLine(ofDeclarationAt: 0, in: [
+                "    private var rows: some View {",
+                "        Text(\"x\")",
+            ]),
+            nil
+        )
+    }
+
     func test_comment_stripping_keeps_code_after_a_url() {
         XCTAssertEqual(
             Self.stripLineComment("let a = 1 // note"),
@@ -213,11 +309,15 @@ final class GeminiOwnSignInTests: XCTestCase {
         let rowsDecl = indices("private var geminiOwnSignInRows: some View")
         XCTAssertEqual(rowsDecl.count, 1)
         guard let start = rowsDecl.first,
-              let end = lines[(start + 1)...].firstIndex(where: { $0 == "    }" })
+              let end = Self.closingLine(ofDeclarationAt: start, in: lines)
         else {
-            return XCTFail("geminiOwnSignInRows not found")
+            return XCTFail("geminiOwnSignInRows not found, or never closes")
         }
         let rows = start...end
+        // The rows are about 90 lines. A much longer range means the end was
+        // found in the wrong place, and code after the rows would count as
+        // gated.
+        XCTAssertLessThan(rows.count, 120, "rows span lines \(start + 1)...\(end + 1)")
         for needle in [
             "L10n.providerConfig.googleOAuth",
             "L10n.providerConfig.connectGemini",

@@ -1154,8 +1154,14 @@ public final class GeminiOAuthManager: NSObject, @unchecked Sendable {
 
     /// The value `clientID` holds until a real Google OAuth client is
     /// created. Every build through 1.55 shipped it.
+    ///
+    /// Spelled in pieces on purpose. GEMINI_OAUTH_SETUP.md Step 5 has the
+    /// developer swap the placeholder for the real ID, and a find-and-replace
+    /// over this file would otherwise rewrite this copy as well: `clientID`
+    /// would then equal its own sentinel, and a build with a real client would
+    /// still hide "Connect Gemini" and refuse the sign-in.
     static let placeholderClientID =
-        "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
+        "REPLACE_WITH_" + "YOUR_CLIENT_ID" + ".apps.googleusercontent.com"
 
     /// Whether `clientID` names a real Google OAuth client.
     ///
