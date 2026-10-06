@@ -1079,7 +1079,7 @@
 "local_scan_consent.title" = "CLI Pulse가 이 Mac을 읽기 전에";
 "local_scan_consent.subtitle" = "허용하기 전까지 CLI Pulse는 이 Mac을 스캔하지 않습니다. 스캔을 시작하면 아래 항목이 켜집니다.";
 "local_scan_consent.files_title" = "세션 로그: 최근 30일, 그리고 허용하면 최대 1년 치";
-"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. 새로고침할 때마다 최근 30일 치를 읽습니다. 허용한 경우에만, 사용 기록을 채우기 위해 최대 1년 치의 이전 로그도 읽습니다. 한 번만 읽지만, 업데이트로 Codex 사용량을 세는 방식이 바뀌면 Codex 로그를 다시 읽습니다. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
+"local_scan_consent.files_detail" = "~/.codex/sessions/, ~/.codex/archived_sessions/, ~/.claude/projects/, ~/.config/claude/projects/. 새로고침할 때마다 최근 30일 치를 읽습니다. 허용한 경우에만, 사용 기록을 채우기 위해 최대 1년 치의 이전 로그도 읽습니다. 한 번만 읽지만, CLI Pulse 업데이트로 Codex 사용량을 세는 방식이 바뀌거나 로그인한 계정에서 이 Mac이 전에 동기화한 Codex 수치를 바로잡아야 할 때는 Codex 로그를 다시 읽습니다. CLI Pulse는 여기서 사용량 기록을 읽고 결과를 이 Mac에 캐시합니다.";
 "local_scan_consent.derived_title" = "알아내는 정보와 실행 중인 프로그램";
 "local_scan_consent.derived_detail" = "토큰 수, 비용 추정치, 모델 이름, 날짜. 그리고 각 대화의 파일 경로, 프로젝트 폴더, 세션 ID — 세션 목록에 이름이 붙는 건 이것 덕분입니다. 또한 AI CLI 세션을 찾기 위해 실행 중인 프로그램을 확인하며, 로그인되어 있고 백그라운드 동기화가 켜져 있으면 각 세션의 프로그램 이름과 프로젝트 폴더 이름이 계정에 동기화됩니다.";
 "local_scan_consent.network_title" = "이 Mac에 이미 있는 자격 증명으로 공급자에 연결";
@@ -1097,7 +1097,7 @@
 "local_scan_consent.first_ask_hint" = "'로컬 스캔 시작'에는 이전 로그 읽기가 포함되고, '최근 30일만'에는 포함되지 않지만 이미 만들어진 기록은 이 Mac에 남습니다. 무엇을 고르든 설정 › 개인정보 보호에서 언제든 바꿀 수 있습니다.";
 "local_scan_consent.first_ask_hint_signed_in" = "'로컬 스캔 시작'에는 이전 로그 읽기가 포함되고, '최근 30일만'에는 포함되지 않지만 이미 만들어진 기록은 이 Mac에 남습니다. 로그인되어 있는 동안에는 나중에 설정 › 개인정보 보호에서 이전 로그에 대한 선택을 바꾸거나, '지금은 안 함'을 골랐다면 이 질문을 다시 불러올 수 있습니다. 로그아웃하면 스캔이 멈춥니다.";
 "local_scan_consent.v2_title" = "CLI Pulse가 이전 로그를 읽기 전에";
-"local_scan_consent.v2_subtitle" = "새로고침할 때마다 최근 30일 치를 읽습니다. 사용 기록을 채우기 위해 CLI Pulse는 최대 1년 치의 이전 세션 로그도 읽을 수 있습니다. 한 번만 읽지만, 업데이트로 Codex 사용량을 세는 방식이 바뀌면 Codex 로그를 다시 읽습니다. 이제는 읽기 전에 먼저 묻습니다. 어느 쪽을 고르든 최근 30일 스캔은 계속되며, 이미 만들어진 기록은 이 Mac에 남습니다.";
+"local_scan_consent.v2_subtitle" = "새로고침할 때마다 최근 30일 치를 읽습니다. 사용 기록을 채우기 위해 CLI Pulse는 최대 1년 치의 이전 세션 로그도 읽을 수 있습니다. 한 번만 읽지만, CLI Pulse 업데이트로 Codex 사용량을 세는 방식이 바뀌거나 로그인한 계정에서 이 Mac이 전에 동기화한 Codex 수치를 바로잡아야 할 때는 Codex 로그를 다시 읽습니다. 이제는 읽기 전에 먼저 묻습니다. 어느 쪽을 고르든 최근 30일 스캔은 계속되며, 이미 만들어진 기록은 이 Mac에 남습니다.";
 "local_scan_consent.include_history" = "이전 기록 포함";
 /* v1.50 W-B — the local-mode exit, named instead of hidden behind an X */
 "onboarding_wizard.use_locally" = "계정 없이 사용하기";
@@ -1354,7 +1354,7 @@
 "local_scan_consent.settings_toggle" = "이 Mac의 CLI 사용량 스캔";
 "local_scan_consent.settings_toggle_detail" = "새로고침할 때마다 ~/.codex와 ~/.claude 아래의 최근 30일간 세션 로그를 읽고, 사용 중인 공급자에게 실시간 할당량을 조회합니다. 이전 로그는 별도 스위치에서 설정합니다. 끄면 앱도 백그라운드 헬퍼도 이 Mac을 스캔하지 않습니다.";
 "local_scan_consent.history_toggle" = "이전 사용 기록 포함";
-"local_scan_consent.history_toggle_detail" = "사용 기록을 채우기 위해 최대 1년 치의 이전 세션 로그를 읽습니다. 한 번만 읽지만, 업데이트로 Codex 사용량을 세는 방식이 바뀌면 Codex 로그를 다시 읽습니다. 끄면 CLI Pulse는 최근 30일 치만 읽습니다. 이미 만들어진 기록은 이 Mac에 남습니다.";
+"local_scan_consent.history_toggle_detail" = "사용 기록을 채우기 위해 최대 1년 치의 이전 세션 로그를 읽습니다. 한 번만 읽지만, CLI Pulse 업데이트로 Codex 사용량을 세는 방식이 바뀌거나 로그인한 계정에서 이 Mac이 전에 동기화한 Codex 수치를 바로잡아야 할 때는 Codex 로그를 다시 읽습니다. 끄면 CLI Pulse는 최근 30일 치만 읽습니다. 이미 만들어진 기록은 이 Mac에 남습니다.";
 "local_scan_consent.settings_declined_detail" = "'지금은 안 함'을 골랐습니다. 로그인되어 있어도 이 선택은 바뀌지 않습니다.";
 "local_scan_consent.companion_not_covered" = "이 Mac에 설치된 Companion CLI는 이 선택을 따르지 않으며, 로그아웃해도 멈추지 않습니다(설치된 버전: %@). 설치되어 페어링되어 있는 동안에는 2분마다 이 Mac을 읽고, 읽은 내용을 페어링한 계정에 동기화합니다. 설정 › Companion CLI에서 업데이트하거나 제거하세요.";
 "local_scan_consent.choose_again" = "다시 선택…";
