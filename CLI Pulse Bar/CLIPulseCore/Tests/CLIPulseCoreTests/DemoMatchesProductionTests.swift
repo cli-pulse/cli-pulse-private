@@ -751,9 +751,10 @@ final class DemoMatchesProductionTests: XCTestCase {
         // The production half, from every SQL file the cloud is built from:
         // the statements that write a device row, each an insert into or an
         // update of public.devices up to its semicolon (an insert's `on
-        // conflict ... do update` included). Each sets the status, and only
-        // to 'Online'. A status anywhere else in the SQL (a session's, a
-        // provider's, a word in a comment) is not a device's, and is not read.
+        // conflict ... do update` included). An insert gives the status a
+        // value, and that value is 'Online'; every `status =` is 'Online'.
+        // A status anywhere else in the SQL (a session's, a provider's, a word
+        // in a comment) is not a device's, and is not read.
         let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
         let files = try FileManager.default.contentsOfDirectory(at: supabase, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "sql" }
@@ -765,43 +766,47 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
         let deviceWrite = try NSRegularExpression(
             pattern: #"\b(insert\s+into|update)\s+(public\.)?devices\b[^;]*"#, options: .caseInsensitive)
-        // A device status literal, in any case, or a status set from anything
-        // but a literal (a variable, a CASE, `excluded.status`).
-        let statusWrite = try NSRegularExpression(
-            pattern: #"'(online|offline|degraded)'|\bstatus\s*=\s*(?!')\S+"#, options: .caseInsensitive)
+        let statusSet = try NSRegularExpression(
+            pattern: #"\bstatus\s*=\s*('[^']*'|[^\s,]+)"#, options: .caseInsensitive)
+        let values = try NSRegularExpression(pattern: #"\bvalues\s*\("#, options: .caseInsensitive)
         var writes: [String] = []
         var problems: [String] = []
         for file in files {
             let text = NSString(string: try sql(file))
             for statement in deviceWrite.matches(in: String(text), range: NSRange(location: 0, length: text.length)) {
-                func place(_ location: Int) -> String {
-                    let line = text.substring(to: location).components(separatedBy: "\n").count
-                    return "\(file.lastPathComponent):\(line)"
-                }
+                let line = text.substring(to: statement.range.location).components(separatedBy: "\n").count
+                let place = "\(file.lastPathComponent):\(line)"
                 let body = text.substring(with: statement.range)
-                writes.append(place(statement.range.location))
+                writes.append(place)
                 if body.lowercased().hasPrefix("insert") {
-                    // The column default is 'Offline': an insert that leaves
-                    // the status out stores that.
-                    let columns = body.prefix { $0 != ")" }
-                    if columns.range(of: #"\bstatus\b"#, options: [.regularExpression, .caseInsensitive]) == nil {
-                        problems.append("\(place(statement.range.location)): inserts a device without a status, "
-                                        + "so it reads the column default, 'Offline'")
+                    // The column default is 'Offline', so an insert must give
+                    // the status a value: the one at its column's position.
+                    let columns = body.firstIndex(of: "(").flatMap { Self.parenthesised(body, from: $0) }
+                    let tuple = values.firstMatch(in: body, range: NSRange(location: 0, length: NSString(string: body).length))
+                        .flatMap { Range($0.range, in: body) }
+                        .flatMap { Self.parenthesised(body, from: body.index(before: $0.upperBound)) }
+                    guard let columns, let tuple else {
+                        problems.append("\(place): an insert whose columns and values this cannot read"); continue
                     }
+                    let names = Self.topLevelParts(columns).map { $0.lowercased() }
+                    let given = Self.topLevelParts(tuple)
+                    guard let index = names.firstIndex(of: "status") else {
+                        problems.append("\(place): inserts a device without a status, so it stores 'Offline'"); continue
+                    }
+                    let value = index < given.count ? given[index] : "(nothing)"
+                    if value != "'Online'" { problems.append("\(place): inserts status \(value)") }
                 }
                 let bodyText = NSString(string: body)
-                for found in statusWrite.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
-                    let value = bodyText.substring(with: found.range)
-                    guard value != "'Online'" else { continue }
-                    problems.append("\(place(statement.range.location + found.range.location)): \(value)")
+                for found in statusSet.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
+                    let value = bodyText.substring(with: found.range(at: 1))
+                    if value != "'Online'" { problems.append("\(place): sets status = \(value)") }
                 }
             }
         }
         XCTAssertEqual(problems, [], """
-            A statement that writes public.devices sets a status other than 'Online', or from something \
-            other than a literal. The app shows the stored status, and Demo reads 'Online' because that is \
-            all the cloud stores; if the cloud now stores another, give Demo one in the same change and \
-            update this test.
+            A statement that writes public.devices stores a status other than 'Online'. The app shows the \
+            stored status, and Demo reads 'Online' because that is all the cloud stores; if the cloud now \
+            stores another, give Demo one in the same change and update this test.
             """)
         // Positive control: the scan finds the writes this is about.
         XCTAssertTrue(writes.contains { $0.hasPrefix("helper_rpc.sql:") }, "the scan finds no device write: \(writes)")
@@ -861,6 +866,51 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// `CLI Pulse Bar/`, which holds the app targets and `CLIPulseCore`.
     private static var appSourceRoot: URL {
         coreRoot.deletingLastPathComponent()
+    }
+
+    /// What is inside the parentheses that open at `open`, quotes skipped,
+    /// or nil when they never close.
+    private static func parenthesised(_ text: String, from open: String.Index) -> Substring? {
+        var depth = 0
+        var quoted = false
+        var index = open
+        while index < text.endIndex {
+            let character = text[index]
+            if character == "'" { quoted.toggle() }
+            if !quoted {
+                if character == "(" { depth += 1 }
+                if character == ")" {
+                    depth -= 1
+                    if depth == 0 { return text[text.index(after: open)..<index] }
+                }
+            }
+            index = text.index(after: index)
+        }
+        return nil
+    }
+
+    /// A SQL list split at its top-level commas (not those inside a call or
+    /// a quoted string), each part trimmed.
+    private static func topLevelParts(_ list: Substring) -> [String] {
+        var parts: [String] = []
+        var current = ""
+        var depth = 0
+        var quoted = false
+        for character in list {
+            if character == "'" { quoted.toggle() }
+            if !quoted {
+                if character == "(" { depth += 1 }
+                if character == ")" { depth -= 1 }
+                if character == ",", depth == 0 {
+                    parts.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+                    current = ""
+                    continue
+                }
+            }
+            current.append(character)
+        }
+        parts.append(current.trimmingCharacters(in: .whitespacesAndNewlines))
+        return parts
     }
 
     /// Whole-line comments dropped: comments name the very symbols the scans
