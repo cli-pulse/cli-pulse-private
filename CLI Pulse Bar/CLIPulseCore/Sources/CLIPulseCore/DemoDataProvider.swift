@@ -133,15 +133,11 @@ internal enum DemoDataProvider {
         // a project), not English sentences: they are data, shown as-is in
         // every language, and they reappear inside the alert titles below.
         //
-        // helper-heartbeat carries the long-running alert below, so it looks
-        // like a session that would trip it: the helpers only fire at 400 or
-        // more requests, and count a request per 45 s of runtime. Seven hours
-        // gives 560, and it crossed 400 at the five-hour mark, two hours ago,
-        // which is when the alert says it was raised.
-        //
-        // It runs on lab-server-01, a Linux server. Off a Mac a session comes
-        // from the desktop app's process scan (ported verbatim from the Python
-        // helper's, helper/system_collector.py): usage is runtime times
+        // helper-heartbeat has run on lab-server-01, a Linux server, for
+        // seven hours. It used to carry a long-running alert, which no
+        // producer raises for it (see the alerts below). Off a Mac a session
+        // comes from the desktop app's process scan (ported verbatim from the
+        // Python helper's, helper/system_collector.py): usage is runtime times
         // max(1.5, CPU% + 1), and the cost is left out (`exact_cost` null,
         // which helper_sync stores as 0). Seven hours of a quiet process is
         // therefore 37.8K and $0.00. Demo showed 12.8K and $0.10, a Gemini
@@ -217,11 +213,14 @@ internal enum DemoDataProvider {
                           collection_confidence: "high"),
         ]
 
-        // CPU figures agree with the alerts below: lab-server-01 reports the
-        // 91% its device-CPU alert quotes, and the MacBook Pro's 58% is under
-        // the 85% that would raise one. Each device last synced no earlier
-        // than its sessions were written, since its sync wrote them: build-box
-        // with api-gateway, just before its helper stopped syncing.
+        // CPU figures agree with the alerts below. The MacBook Pro's
+        // device-CPU alert is an hour old: its helper raised it at 91% and
+        // keeps the row after the spike, so the 58% it reads now is the
+        // present, not a contradiction. lab-server-01 reads 91% and has no
+        // alert, because the desktop app, which reports it, has no device-CPU
+        // rule. Each device last synced no earlier than its sessions were
+        // written, since its sync wrote them: build-box with api-gateway,
+        // just before its helper stopped syncing.
         //
         // Every device reads "Online", the one status the cloud stores:
         // register_helper, the desktop's sign-in and every heartbeat and sync
@@ -266,9 +265,22 @@ internal enum DemoDataProvider {
             providers: providers, thresholds: AlertThresholds.defaults.asArray, now: refreshedAt
         ).compactMap(AlertGenerator.makeAlertRecord(from:))
 
-        let busy = sessions[0]          // Codex on the MacBook Pro
-        let longRunning = sessions[1]   // Gemini on lab-server-01
+        let busy = sessions[0]      // Codex on the MacBook Pro
+        let busyMac = devices[0]    // the MacBook Pro
 
+        // No alert comes from the long-running rule ("Session Too Long"). It
+        // fires at 400 requests, and every session that reaches the cloud is
+        // a process-scan row, whose count is only its runtime / 45, so five
+        // hours of any open process trips it. v1.16.1 made the rule skip
+        // those rows (helper/system_collector.py, AlertGenerator), and the
+        // desktop app, which writes every session off a Mac, has no such
+        // rule. Demo had one on helper-heartbeat, on lab-server-01.
+        //
+        // On a Mac it still fires today: the LoginItem helper's skip tests
+        // for `proc-`, which its LocalScanner rows (`local-`) never carry,
+        // and the Companion CLI's rule has no skip. That is the false alarm
+        // v1.16.1 set out to remove, not something to put in a screenshot.
+        // `testDemoRaisesNoLongRunningAlert`.
         let alerts = quotaAlerts + [
             // Swift helper, AlertGenerator.generate session-CPU rule. It does
             // not set a device name.
@@ -295,30 +307,24 @@ internal enum DemoDataProvider {
                         source_kind: "session", source_id: nil,
                         grouping_key: "Usage Spike:\(busy.provider)",
                         suppression_key: "Usage Spike:s1-3f9a2c1e"),
-            // Python helper (helper/system_collector.py), device-CPU rule; its
-            // uploader fills in the device name and the grouping keys.
-            AlertRecord(id: "cpu-spike-d2", type: "Usage Spike", severity: "Warning",
+            // Swift helper, AlertGenerator.generate device-CPU rule (85% of
+            // the Mac): keyed to the helper's device id, with no device name,
+            // which helper_sync stores as sent. It was lab-server-01's, with
+            // the Python helper's keys; but the Python helper is not shipped
+            // (docs/ARCHITECTURE.md), and the desktop app, which reports
+            // Linux machines, has no device-CPU rule.
+            // `testTheDeviceCPUAlertIsOneTheMacHelperRaises`.
+            AlertRecord(id: "cpu-spike-\(busyMac.id)", type: "Usage Spike", severity: "Warning",
                         title: "Device CPU usage is elevated",
                         message: "helper sampled CPU usage at 91%.",
                         created_at: timestamp(-3600), is_read: true, is_resolved: false,
                         acknowledged_at: nil, snoozed_until: nil,
                         related_project_id: nil, related_project_name: nil,
                         related_session_id: nil, related_session_name: nil,
-                        related_provider: nil, related_device_name: "lab-server-01",
+                        related_provider: nil, related_device_name: nil,
                         source_kind: "device", source_id: nil,
-                        grouping_key: "Usage Spike:system", suppression_key: "Usage Spike:global"),
-            // Python helper, long-running-session rule.
-            AlertRecord(id: "session-long-s2-8d41b7e0", type: "Session Too Long", severity: "Info",
-                        title: "\(longRunning.name) has been running for a long time",
-                        message: "Long-running local agent session detected by helper.",
-                        created_at: timestamp(-7200), is_read: true, is_resolved: false,
-                        acknowledged_at: nil, snoozed_until: nil,
-                        related_project_id: "p2", related_project_name: longRunning.project,
-                        related_session_id: longRunning.id, related_session_name: longRunning.name,
-                        related_provider: longRunning.provider, related_device_name: longRunning.device_name,
-                        source_kind: "session", source_id: longRunning.id,
-                        grouping_key: "Session Too Long:\(longRunning.provider)",
-                        suppression_key: "Session Too Long:\(longRunning.id)"),
+                        grouping_key: "Usage Spike:device:\(busyMac.id)",
+                        suppression_key: "cpu-spike-\(busyMac.id)"),
         ]
 
         // From the local refresh's own producer, with Demo's facts: it has

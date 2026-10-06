@@ -7,9 +7,11 @@ import XCTest
 /// cost, a Requests count on the signed-in dashboard, a failed session with
 /// errors, a provider card's recent-sessions line, a session's cost and
 /// usage that no process scan writes, Recent sessions no single refresh
-/// keeps, a CPU alert its session could not have raised, a Claude quota with
-/// no windows, Codex and Gemini quotas counted in tokens, a device status the
-/// cloud never stores, and a 30-day figure production no longer computes.
+/// keeps, a CPU alert its session could not have raised, a long-running
+/// alert and a device-CPU alert no producer raises where Demo put them, a
+/// Claude quota with no windows, Codex and Gemini quotas counted in tokens, a
+/// device status the cloud never stores, and a 30-day figure production no
+/// longer computes.
 /// Each test pairs Demo with the production fact it follows, so the two
 /// change together.
 final class DemoMatchesProductionTests: XCTestCase {
@@ -474,25 +476,108 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
     }
 
-    /// The long-running rule fires once a session has 400 requests, a
-    /// request per 45 s of runtime, so it is dated no earlier than five hours
-    /// into its session's life (helper_sync keeps that first date).
-    func testTheLongRunningAlertComesFromASessionThatCrossed400Requests() throws {
+    /// No Demo alert comes from the long-running rule. It fires at 400
+    /// requests, and every session that reaches the cloud is a process-scan
+    /// row, whose count is only its runtime / 45, so any process open five
+    /// hours trips it. v1.16.1 made the rule skip those rows, and the desktop
+    /// app, which writes every session off a Mac, has no such rule. Demo had
+    /// one on helper-heartbeat, a process scan on a Linux server, which
+    /// nothing raises. (On a Mac the rule still fires, because the LoginItem
+    /// helper's skip tests for `proc-` and its LocalScanner rows are
+    /// `local-`; that is the false alarm v1.16.1 meant to remove.)
+    func testDemoRaisesNoLongRunningAlert() throws {
         let demo = DemoDataProvider.generate()
-        let raised = demo.alerts.filter { $0.type == "Session Too Long" }
-        XCTAssertFalse(raised.isEmpty, "Demo has no long-running alert; this test checks nothing")
-        for alert in raised {
-            let session = try XCTUnwrap(demo.sessions.first { $0.id == alert.related_session_id },
-                                        "\(alert.id) names no Demo session")
-            XCTAssertGreaterThanOrEqual(session.requests, 400, "\(session.name) never reached the rule's 400 requests")
-            let started = try XCTUnwrap(sharedISO8601Parse(session.started_at))
-            let raisedAt = try XCTUnwrap(sharedISO8601Parse(alert.created_at))
-            XCTAssertGreaterThanOrEqual(raisedAt.timeIntervalSince(started), 400 * 45,
-                                        "\(alert.id) was raised before \(session.name) had 400 requests")
-        }
+        let raised = demo.alerts.filter { $0.type == "Session Too Long" || $0.id.hasPrefix("session-long-") }
+        XCTAssertEqual(raised.map(\.id), [], """
+            Demo shows a long-running alert. The rule skips process-scan rows by design (v1.16.1), every \
+            session in the cloud is one, and the desktop app has no such rule; show one only on a session \
+            a producer raises it for, and check that here
+            """)
+        // Positive control: a Demo session has the count that would trip the
+        // rule, so the alert is left out by the rule's design, not because no
+        // session is long enough.
+        XCTAssertTrue(demo.sessions.contains { $0.requests >= 400 },
+                      "no Demo session reaches 400 requests; this test checks less than it says")
+
+        // The production half: the rule's count and its skip, in the Python
+        // helper (whose scan the desktop app ports, without this rule) and in
+        // the Swift helper.
+        let python = try String(
+            contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("helper/system_collector.py"),
+            encoding: .utf8)
+        XCTAssertTrue(python.contains("if not is_process_detected and session.requests >= 400:"),
+                      "the Python helper's long-running rule changed; recheck which sessions raise it")
+        XCTAssertTrue(python.contains(#"session.session_id.startswith("proc-")"#),
+                      "the Python helper's long-running rule no longer skips process-scan rows")
+        XCTAssertTrue(python.contains(#"session_id=f"proc-{row['pid']}","#),
+                      "the Python helper's scan no longer names its rows proc-")
+        let generator = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(generator.contains("if !isProcessDetected, session.requests >= 400 {"),
+                      "the Swift helper's long-running rule changed; recheck which sessions raise it")
     }
 
-    /// The production half of the two tests above, read from the sources.
+    /// The device-CPU alert that reaches the cloud is the LoginItem helper's
+    /// (AlertGenerator.generate): at 85% of the Mac, keyed to the helper's
+    /// device id (`cpu-spike-<id>`, which also groups and suppresses it),
+    /// with no device name, which helper_sync stores as sent. The desktop
+    /// app, which reports Linux and Windows machines, has no device-CPU rule,
+    /// and the Python helper whose keys Demo's alert carried is not shipped
+    /// (docs/ARCHITECTURE.md). Demo had the alert on lab-server-01, an Ubuntu
+    /// server.
+    func testTheDeviceCPUAlertIsOneTheMacHelperRaises() throws {
+        let demo = DemoDataProvider.generate()
+        let raised = demo.alerts.filter { $0.type == "Usage Spike" && $0.source_kind == "device" }
+        XCTAssertFalse(raised.isEmpty, "Demo has no device-CPU alert; this test checks nothing")
+        let template = try NSRegularExpression(pattern: #"^helper sampled CPU usage at (\d+)%\.$"#)
+        for alert in raised {
+            let device = try XCTUnwrap(demo.devices.first { alert.id == "cpu-spike-\($0.id)" },
+                                       "\(alert.id) is not keyed to a Demo device's id, as the helper keys it")
+            XCTAssertTrue(device.system.hasPrefix("macOS"),
+                          "\(alert.id) is on \(device.name) (\(device.system)), where nothing raises a device-CPU alert")
+            XCTAssertEqual(alert.grouping_key, "Usage Spike:device:\(device.id)", alert.id)
+            XCTAssertEqual(alert.suppression_key, alert.id)
+            XCTAssertNil(alert.related_device_name, "\(alert.id): the helper sends no device name, so the cloud has none")
+            let text = alert.message
+            let match = try XCTUnwrap(template.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                                      "\(alert.id): \"\(text)\" is not the helper's template")
+            let percent = try XCTUnwrap(Range(match.range(at: 1), in: text).flatMap { Int(text[$0]) })
+            XCTAssertGreaterThanOrEqual(percent, 85, "\(alert.id) is under the rule's 85%")
+            // The sync that sent it is no later than the device's last.
+            let raisedAt = try XCTUnwrap(sharedISO8601Parse(alert.created_at))
+            let synced = try XCTUnwrap(sharedISO8601Parse(device.last_sync_at ?? ""), "\(device.name) never synced")
+            XCTAssertLessThanOrEqual(raisedAt, synced, "\(alert.id) was raised after \(device.name) last synced")
+        }
+
+        let generator = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
+            encoding: .utf8))
+        let rule = try XCTUnwrap(generator.range(of: "if device.cpuUsage >= 85 {"),
+                                 "the Swift helper's device-CPU rule fires elsewhere")
+        let end = try XCTUnwrap(generator.range(of: "])", range: rule.upperBound..<generator.endIndex))
+        let row = generator[rule.upperBound..<end.lowerBound]
+        for line in [#"let stableID = "cpu-spike-\(deviceID)""#,
+                     #""message": "helper sampled CPU usage at \(device.cpuUsage)%.","#,
+                     #""source_kind": "device","#,
+                     #""grouping_key": "Usage Spike:device:\(deviceID)","#,
+                     #""suppression_key": stableID,"#] {
+            XCTAssertTrue(row.contains(line), "the Swift helper's device-CPU alert no longer has \(line)")
+        }
+        XCTAssertFalse(row.contains("related_device_name"),
+                       "the Swift helper's device-CPU alert now names its device; Demo's may too")
+        let daemon = Self.codeOnly(try String(
+            contentsOf: Self.appSourceRoot.appendingPathComponent("CLIPulseHelper/HelperDaemon.swift"), encoding: .utf8))
+        XCTAssertTrue(daemon.contains("HelperConfig.load()?.deviceId") && daemon.contains("deviceID: alertDeviceID"),
+                      "the helper keys its device-CPU alert by something other than its device id")
+        let sync = try String(
+            contentsOf: Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase/helper_rpc.sql"),
+            encoding: .utf8)
+        XCTAssertTrue(sync.contains("v_alert->>'related_provider', v_alert->>'related_device_name',"),
+                      "helper_sync no longer stores an alert's device name as sent")
+    }
+
+    /// The production half of the session-CPU test above, read from the sources.
     func testTheHelpersRaiseAndKeepSessionAlertsAsDemoAssumes() throws {
         let repoRoot = Self.appSourceRoot.deletingLastPathComponent()
         let sources = Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore")
@@ -663,7 +748,12 @@ final class DemoMatchesProductionTests: XCTestCase {
         let spread = try XCTUnwrap(syncs.max()).timeIntervalSince(try XCTUnwrap(syncs.min()))
         XCTAssertGreaterThanOrEqual(spread, 240, "no Demo device has stopped syncing; this test checks less than it says")
 
-        // The production half, from every SQL file the cloud is built from.
+        // The production half, from every SQL file the cloud is built from:
+        // the statements that write a device row, each an insert into or an
+        // update of public.devices up to its semicolon (an insert's `on
+        // conflict ... do update` included). Each sets the status, and only
+        // to 'Online'. A status anywhere else in the SQL (a session's, a
+        // provider's, a word in a comment) is not a device's, and is not read.
         let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
         let files = try FileManager.default.contentsOfDirectory(at: supabase, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "sql" }
@@ -673,17 +763,49 @@ final class DemoMatchesProductionTests: XCTestCase {
         func sql(_ url: URL) throws -> String {
             try String(contentsOf: url, encoding: .utf8).replacingOccurrences(of: "\r\n", with: "\n")
         }
-        var otherStatuses: [String] = []
+        let deviceWrite = try NSRegularExpression(
+            pattern: #"\b(insert\s+into|update)\s+(public\.)?devices\b[^;]*"#, options: .caseInsensitive)
+        // A device status literal, in any case, or a status set from anything
+        // but a literal (a variable, a CASE, `excluded.status`).
+        let statusWrite = try NSRegularExpression(
+            pattern: #"'(online|offline|degraded)'|\bstatus\s*=\s*(?!')\S+"#, options: .caseInsensitive)
+        var writes: [String] = []
+        var problems: [String] = []
         for file in files {
-            for line in try sql(file).components(separatedBy: "\n") {
-                let lowered = line.lowercased()
-                if lowered.contains("'offline'") || lowered.contains("'degraded'") || line.contains("'online'") {
-                    otherStatuses.append("\(file.lastPathComponent): \(line.trimmingCharacters(in: .whitespaces))")
+            let text = NSString(string: try sql(file))
+            for statement in deviceWrite.matches(in: String(text), range: NSRange(location: 0, length: text.length)) {
+                func place(_ location: Int) -> String {
+                    let line = text.substring(to: location).components(separatedBy: "\n").count
+                    return "\(file.lastPathComponent):\(line)"
+                }
+                let body = text.substring(with: statement.range)
+                writes.append(place(statement.range.location))
+                if body.lowercased().hasPrefix("insert") {
+                    // The column default is 'Offline': an insert that leaves
+                    // the status out stores that.
+                    let columns = body.prefix { $0 != ")" }
+                    if columns.range(of: #"\bstatus\b"#, options: [.regularExpression, .caseInsensitive]) == nil {
+                        problems.append("\(place(statement.range.location)): inserts a device without a status, "
+                                        + "so it reads the column default, 'Offline'")
+                    }
+                }
+                let bodyText = NSString(string: body)
+                for found in statusWrite.matches(in: body, range: NSRange(location: 0, length: bodyText.length)) {
+                    let value = bodyText.substring(with: found.range)
+                    guard value != "'Online'" else { continue }
+                    problems.append("\(place(statement.range.location + found.range.location)): \(value)")
                 }
             }
         }
-        XCTAssertEqual(otherStatuses, ["schema.sql: status text not null default 'Offline',"],
-                       "SQL writes a device status other than 'Online'; Demo may show one again")
+        XCTAssertEqual(problems, [], """
+            A statement that writes public.devices sets a status other than 'Online', or from something \
+            other than a literal. The app shows the stored status, and Demo reads 'Online' because that is \
+            all the cloud stores; if the cloud now stores another, give Demo one in the same change and \
+            update this test.
+            """)
+        // Positive control: the scan finds the writes this is about.
+        XCTAssertTrue(writes.contains { $0.hasPrefix("helper_rpc.sql:") }, "the scan finds no device write: \(writes)")
+        XCTAssertGreaterThanOrEqual(writes.count, 10, "the scan found \(writes)")
         let helper = try sql(supabase.appendingPathComponent("helper_rpc.sql"))
         XCTAssertTrue(helper.contains("left(p_helper_version, 20), 'Online',"),
                       "register_helper inserts its device with another status")

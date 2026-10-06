@@ -527,13 +527,7 @@
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
    "literal": "\"Device CPU usage is elevated\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert title, byte-identical to helper/system_collector.py (and AlertGenerator.swift's device rule). Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"Long-running local agent session detected by helper.\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo long-session alert message, the fixed template helper/system_collector.py and AlertGenerator.swift both write. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
+   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert title, byte-identical to AlertGenerator.swift's device rule (the LoginItem helper on a Mac; also helper/system_collector.py). Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
@@ -549,15 +543,9 @@
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
-   "literal": "\"\\(longRunning.name) has been running for a long time\"",
-   "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo long-session alert title, the template helper/system_collector.py and AlertGenerator.swift both write. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
-  },
-  {
-   "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/DemoDataProvider.swift",
    "literal": "\"helper sampled CPU usage at 91%.\"",
    "count": 1,
-   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert message, the helper/system_collector.py template with the sample filled in. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
+   "reason": "KEEP_DEMO_CONTENT: Demo device-CPU alert message, the AlertGenerator.swift device rule's template (the LoginItem helper on a Mac) with the sample filled in. Stored English, like every producer's: title and message are the synced row, and only the rendering is translated. The Alerts tab shows AlertPresentation.text(for:), which recognizes this template and renders it localized; DemoDataLocalizationTests fails in ja if it stops matching."
   },
   {
    "path": "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/HelperAgentHealth.swift",

@@ -434,12 +434,14 @@ struct iOSEnhancedProviderCard: View {
                           let quota = provider.quota,
                           quota > 0 {
                     // Filled to the share left, like the tier bars above and
-                    // the "remaining" figure beside it. Only a Claude without
-                    // windows gets here (computedProviderDetails gives every
-                    // other provider a Default window). It was filled to the
-                    // share used: Demo's Claude, which had no windows, read
-                    // 53% full beside "118K remaining", under Codex's and
-                    // Gemini's bars filled to what was left.
+                    // the "remaining" figure beside it. Reached when the
+                    // provider has no usable tiers: in practice a Claude
+                    // without windows, since computedProviderDetails gives any
+                    // other provider with a quota and a remaining a Default
+                    // window. It was filled to the share used: Demo's Claude,
+                    // which had no windows, read 53% full beside "118K
+                    // remaining", under Codex's and Gemini's bars filled to
+                    // what was left.
                     UsageBar(
                         label: L10n.providers.quota,
                         value: 1.0 - provider.usagePercent,
