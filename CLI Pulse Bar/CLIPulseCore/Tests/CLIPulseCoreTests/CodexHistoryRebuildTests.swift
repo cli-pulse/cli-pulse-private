@@ -451,6 +451,75 @@ final class CodexHistoryRebuildTests: XCTestCase {
         XCTAssertEqual(reads.count, 3, "one read for the archive, one per account")
     }
 
+    // MARK: - The plan's acceptance: the iPhone's year and this Mac's history
+
+    /// P0-17's acceptance: on a day this Mac synced and still has the Codex
+    /// logs of, the iPhone's year and the Mac's usage history say the same.
+    ///
+    /// The iPhone builds its year from `get_daily_usage`, every device's rows
+    /// added up per day, provider and model, through
+    /// `AppState.usageArchive(fromCloudRows:)`; the Mac shows its own archive.
+    /// The test goes through both ends: the rows the rebuild upserts land in a
+    /// table that replaces a row and never deletes one, as the server does,
+    /// and the iPhone's day is built from that table. Before the rebuild the
+    /// two disagree: the Mac counted Codex's cached input twice, and both hold
+    /// the old rules' figures, one of them under a model name the new rules
+    /// no longer report. After it they agree, on the day, on each provider and
+    /// on each model with usage.
+    func test_on_a_rebuilt_day_the_iphones_year_and_this_macs_history_agree() async throws {
+        // What an earlier version read on that day. The Mac stored it with
+        // Codex's cached input counted twice; the routine upload sent it to
+        // the cloud as read, `input` including `cached`.
+        let claude = DailyUsage(date: Self.oldDay, provider: "Claude", model: "claude-sonnet-4-5",
+                                inputTokens: 500, cachedTokens: 4_000, outputTokens: 300, cost: 2.5)
+        let oldCodex = [
+            DailyUsage(date: Self.oldDay, provider: "Codex", model: "gpt-5",
+                       inputTokens: 6_000, cachedTokens: 5_000, outputTokens: 80, cost: 0.6),
+            DailyUsage(date: Self.oldDay, provider: "Codex", model: "gpt-5-codex",
+                       inputTokens: 1_000, cachedTokens: 800, outputTokens: 20, cost: 0.2),
+        ]
+        var stored = DailyUsageArchive()
+        stored.mergeScanEntries(([claude] + oldCodex).map {
+            ScanEntry(date: $0.date, provider: $0.provider, model: $0.model, inputTokens: $0.inputTokens,
+                      cachedTokens: $0.cachedTokens, outputTokens: $0.outputTokens, cost: $0.cost, messages: 0)
+        } + [ScanEntry(date: Self.oldDay, provider: "Claude", model: ScanEntry.messageBucketModel,
+                       inputTokens: 0, cachedTokens: 0, outputTokens: 0, cost: 0, messages: 12)])
+        XCTAssertTrue(DailyUsageArchiveIO.save(stored, root: root))
+        let table = CloudTable(device: "mac-1", rows: [claude] + oldCodex)
+
+        let log = ReadLog()
+        let m = manager(codexRead: [
+            Self.codexRow(Self.oldDay),
+            Self.codexRow(Self.oldDay, model: "gpt-5.6-luna", input: 2_000, cached: 1_500, output: 40, cost: 0.1),
+        ], log: log)
+
+        let archiveBefore = await m.snapshot()
+        let macBefore = try XCTUnwrap(archiveBefore.days[Self.oldDay])
+        let iPhoneBefore = try XCTUnwrap(AppState.usageArchive(fromCloudRows: table.dailyUsage()).days[Self.oldDay])
+        XCTAssertEqual(macBefore.perProvider["Codex"]?.tokens, 11_080 + 1_820, "control: the Mac's old figure")
+        XCTAssertEqual(iPhoneBefore.perProvider["Codex"]?.tokens, 6_080 + 1_020, "control: the cloud's old figure")
+
+        await m.rebuildCodexHistoryIfNeeded(historyReadAllowed: true, cloud: table.cloud(device: "mac-1"))
+
+        let archiveAfter = await m.snapshot()
+        let mac = try XCTUnwrap(archiveAfter.days[Self.oldDay])
+        let iPhone = try XCTUnwrap(AppState.usageArchive(fromCloudRows: table.dailyUsage()).days[Self.oldDay])
+        XCTAssertEqual(mac.perProvider["Codex"]?.tokens, 9_100 + 2_040, "the Mac was not recounted")
+        XCTAssertEqual(iPhone.tokens, mac.tokens, "the iPhone's day and the Mac's differ in tokens")
+        XCTAssertEqual(iPhone.cost, mac.cost, accuracy: 1e-9, "the iPhone's day and the Mac's differ in cost")
+        for provider in ["Claude", "Codex"] {
+            XCTAssertEqual(iPhone.perProvider[provider]?.tokens, mac.perProvider[provider]?.tokens, provider)
+            XCTAssertEqual(iPhone.perProvider[provider]?.cost ?? -1, mac.perProvider[provider]?.cost ?? -2,
+                           accuracy: 1e-9, provider)
+        }
+        XCTAssertEqual(Self.modelsWithUsage(iPhone), Self.modelsWithUsage(mac))
+        XCTAssertEqual(Set(Self.modelsWithUsage(mac).keys), ["claude-sonnet-4-5", "gpt-5", "gpt-5.6-luna"])
+    }
+
+    private static func modelsWithUsage(_ day: DayRollup) -> [String: Int] {
+        day.perModel.filter { $0.value.tokens > 0 || $0.value.cost > 0 }.mapValues(\.tokens)
+    }
+
     // MARK: - The cloud plan, on its own
 
     func test_the_plan_sends_only_days_both_sides_have_and_zeroes_rows_the_read_dropped() {
@@ -574,6 +643,71 @@ private final class FakeCloud: @unchecked Sendable {
 
     static func describe(_ e: CostUsageScanResult.DailyEntry) -> String {
         "\(e.date) \(e.provider) \(e.model) \(e.inputTokens)/\(e.cachedTokens)/\(e.outputTokens) \(e.costUSD ?? -1)"
+    }
+}
+
+/// `daily_usage_metrics` as the server keeps it, for the acceptance test: one
+/// row per device, day, provider and model. `upsert_daily_usage` replaces a
+/// row and never deletes one; `get_daily_usage` adds every device's rows up
+/// per day, provider and model; `get_daily_usage_by_device` lists them with
+/// their device.
+private final class CloudTable: @unchecked Sendable {
+    private struct Key: Hashable {
+        let device: String, date: String, provider: String, model: String
+    }
+
+    private let lock = NSLock()
+    private var rows: [Key: DailyUsage] = [:]
+
+    init(device: String, rows: [DailyUsage]) {
+        for row in rows { put(row, device: device) }
+    }
+
+    /// The signed-in account's side, for the Mac that uploads as `device`.
+    func cloud(device: String, account: String = "user-a") -> CodexHistoryCloud {
+        CodexHistoryCloud(
+            account: account,
+            thisMacsCodexRows: { _ in self.codexRows(of: device) },
+            upload: { entries in self.upsert(entries, device: device) })
+    }
+
+    /// What the iPhone fetches.
+    func dailyUsage() -> [DailyUsage] {
+        lock.lock(); defer { lock.unlock() }
+        var sums: [String: DailyUsage] = [:]
+        for row in rows.values {
+            let key = "\(row.date)|\(row.provider)|\(row.model)"
+            let sum = sums[key]
+            sums[key] = DailyUsage(
+                date: row.date, provider: row.provider, model: row.model,
+                inputTokens: (sum?.inputTokens ?? 0) + row.inputTokens,
+                cachedTokens: (sum?.cachedTokens ?? 0) + row.cachedTokens,
+                outputTokens: (sum?.outputTokens ?? 0) + row.outputTokens,
+                cost: (sum?.cost ?? 0) + row.cost)
+        }
+        return sums.keys.sorted().compactMap { sums[$0] }
+    }
+
+    private func codexRows(of device: String) -> [CodexHistoryCloud.Row]? {
+        lock.lock(); defer { lock.unlock() }
+        return rows.keys
+            .filter { $0.device == device && $0.provider == "Codex" }
+            .map { CodexHistoryCloud.Row(date: $0.date, model: $0.model) }
+    }
+
+    private func upsert(_ entries: [CostUsageScanResult.DailyEntry], device: String) -> Bool {
+        for e in entries {
+            put(DailyUsage(date: e.date, provider: e.provider, model: e.model,
+                           inputTokens: e.inputTokens, cachedTokens: e.cachedTokens,
+                           outputTokens: e.outputTokens, cost: e.costUSD ?? 0),
+                device: device)
+        }
+        return true
+    }
+
+    private func put(_ row: DailyUsage, device: String) {
+        lock.lock(); defer { lock.unlock() }
+        rows[Key(device: device, date: row.date, provider: row.provider, model: row.model)] = row
     }
 }
 #endif
