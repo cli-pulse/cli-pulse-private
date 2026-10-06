@@ -367,15 +367,21 @@ Since v1.55 that read is its own question:
   any time. Turning it off stops further reads of older logs; it does not
   delete history that was already built, which stays on your Mac.
 * **Since v1.56, an update that changes how Codex usage is counted reads the
-  Codex logs of that year again** — once for each such change, and only with
-  this yes. (1.56 is the first: it counts Codex's cached input once, counts
-  subagent sessions, and prices requests at OpenAI's published rates.) No Claude
-  log is read for it. The older Codex days of your usage history are counted
-  anew from what is read; a day whose Codex log is no longer on the Mac keeps
-  the figure it had. While you are signed in, the daily Codex numbers this Mac
-  had already synced for those days are replaced with the new ones (the fields
-  of the *Daily usage* row above), so your iPhone and Apple Watch show the same
-  figures as the Mac. A day this Mac never synced is not uploaded.
+  Codex logs of that year again** — only with this yes, once for each such
+  change, and once more if a later sign-in finds older Codex numbers from this
+  Mac in that account. A read that could not finish is tried again a day later.
+  (1.56 is the first: it counts Codex's cached input once, counts subagent
+  sessions, and prices requests at OpenAI's published rates.) No Claude log is
+  read for it. The older Codex days of your usage history are counted anew from
+  what is read; a day whose Codex log is no longer on the Mac keeps the figure
+  it had. While you are signed in, the daily Codex numbers this Mac had already
+  synced for those days are replaced with the new ones (the fields of the
+  *Daily usage* row above), so on those days your iPhone and Apple Watch show
+  the same figures as the Mac. Nothing is uploaded for a day that has no Codex
+  numbers from this Mac in the cloud, and numbers this Mac synced before it was
+  paired keep their old figures. A Mac that is not paired keeps its numbers in
+  one place it shares with the account's other unpaired Macs; there, only the
+  models this Mac's logs report are replaced.
 
 The routine scan had a smaller gap of the same kind. On its first run, and
 whenever its cache was reset, it opened Claude Code logs of any age and
