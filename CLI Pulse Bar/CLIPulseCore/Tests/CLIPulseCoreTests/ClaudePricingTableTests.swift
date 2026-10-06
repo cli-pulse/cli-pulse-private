@@ -247,14 +247,16 @@ final class ClaudePricingTableTests: XCTestCase {
         return #"{"type":"assistant","timestamp":"\#(ts)","requestId":"req-\#(id)","message":{"id":"msg-\#(id)","model":"\#(model)","usage":{"input_tokens":\#(input),"cache_read_input_tokens":\#(cacheRead),"cache_creation_input_tokens":\#(cacheCreate)\#(split),"output_tokens":\#(output)}}}"#
     }
 
-    /// Scans `projects` with a window reaching back past February 2026.
-    private func scan(_ projects: URL, cache: URL) -> [CostUsageScanResult.DailyEntry] {
+    /// Scans `projects` with a window reaching back past February 2026: a
+    /// full read, or with `force` false an incremental read of logs that grew
+    /// since the last scan.
+    private func scan(_ projects: URL, cache: URL, force: Bool = true) -> [CostUsageScanResult.DailyEntry] {
         let days = Int(Date().timeIntervalSince(iso("2026-02-01T00:00:00Z")) / 86_400) + 3
         var options = CostUsageScanner.Options(
             codexSessionsRoot: cache.deletingLastPathComponent().appendingPathComponent("sessions", isDirectory: true),
             claudeProjectsRoots: [projects], cacheRoot: cache, daysToScan: max(days, 30)
         )
-        options.forceRescan = true
+        options.forceRescan = force
         options.refreshMinIntervalSeconds = 0
         return CostUsageScanner.scan(options: options).entries
             .filter { $0.provider == "Claude" && $0.model != CostUsageScanner.claudeMsgBucketModel }
@@ -307,6 +309,73 @@ final class ClaudePricingTableTests: XCTestCase {
         guard costs.count == 2 else { return }
         XCTAssertEqual(costs[0], 0.186, accuracy: 1e-9, "before 03-13: 1K × $6 + 300K × $0.60 per 1M")
         XCTAssertEqual(costs[1], 0.093, accuracy: 1e-9, "from 03-13: 1K × $3 + 300K × $0.30 per 1M")
+    }
+
+    /// The Opus 5.5 response above as Claude Code writes it: three lines with
+    /// the same ids and rising output, only the last carrying the
+    /// `cache_creation` split (60K of the 100K writes for an hour).
+    private func opus55Lines(_ id: String, at start: Date) -> [String] {
+        let steps: [(output: Int, oneHour: Int?)] = [(1, nil), (4_000, nil), (10_000, 60_000)]
+        return steps.enumerated().map { index, step in
+            line(id, model: "claude-opus-5-5", at: start.addingTimeInterval(Double(index)), input: 1_000,
+                 cacheRead: million, cacheCreate: 100_000, oneHour: step.oneHour, output: step.output)
+        }
+    }
+
+    /// Claude Code writes a response over several lines with the same message
+    /// and request ids, each repeating the usage so far, and the last line
+    /// counts. So nearly every real response is priced from a line that
+    /// replaced an earlier one, and that line's 1-hour writes and time are
+    /// the ones charged.
+    ///
+    /// The Opus 5.5 response above over three lines, only the last carrying
+    /// the `cache_creation` split, still costs $1.084 (with the first line's
+    /// pricing, every write at the 5-minute rate, $0.904). A two-line Sonnet
+    /// 4.6 response with a 301K prompt, two days before 2026-03-13, pays the
+    /// long-context rates: 1K × $6 + 300K × $0.60 + 2K × $22.50 per 1M =
+    /// $0.231 (at today's rates $0.123).
+    func test_aResponseWrittenOverSeveralLinesIsPricedFromItsLastLine() throws {
+        let (projects, project, cache) = try makeProjects()
+        try (opus55Lines("multi", at: Date().addingTimeInterval(-3_600)).joined(separator: "\n") + "\n")
+            .write(to: project.appendingPathComponent("opus.jsonl"), atomically: true, encoding: .utf8)
+        let before = T.longContextAtStandardPricing - 2 * 86_400
+        let sonnet = [1, 2_000].map {
+            line("multi46", model: "claude-sonnet-4-6", at: before, input: 1_000, cacheRead: 300_000,
+                 cacheCreate: 0, oneHour: 0, output: $0)
+        }
+        try (sonnet.joined(separator: "\n") + "\n")
+            .write(to: project.appendingPathComponent("sonnet46.jsonl"), atomically: true, encoding: .utf8)
+
+        let entries = scan(projects, cache: cache)
+        func total(_ model: String) -> Double {
+            entries.filter { $0.model == model }.reduce(0) { $0 + ($1.costUSD ?? 0) }
+        }
+        XCTAssertEqual(entries.filter { $0.model == "claude-opus-5-5" }.reduce(0) { $0 + $1.outputTokens }, 10_000,
+                       "the response counts once, from its last line")
+        XCTAssertEqual(total("claude-opus-5-5"), 1.084, accuracy: 1e-9, "the last line's 1-hour writes")
+        XCTAssertEqual(total("claude-sonnet-4-6"), 0.231, accuracy: 1e-9, "the last line's time, before 03-13")
+    }
+
+    /// The same when the last lines arrive in a later read: the response is
+    /// then one of the log's open rows, priced from its first line ($0.704,
+    /// every write at the 5-minute rate), and the line that replaces it is
+    /// priced again from its own split ($1.084).
+    func test_aResponseWhoseLastLinesArriveInALaterReadIsRepricedFromThem() throws {
+        let (projects, project, cache) = try makeProjects()
+        let lines = opus55Lines("later", at: Date().addingTimeInterval(-3_600))
+        let log = project.appendingPathComponent("later.jsonl")
+        func cost(_ entries: [CostUsageScanResult.DailyEntry]) -> Double {
+            entries.filter { $0.model == "claude-opus-5-5" }.reduce(0) { $0 + ($1.costUSD ?? 0) }
+        }
+
+        try (lines[0] + "\n").write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(cost(scan(projects, cache: cache)), 0.70402, accuracy: 1e-9,
+                       "the first line alone: 1K × $4 + 1M × $0.20 + 100K × $5 + 1 × $20 per 1M")
+        let openRows = CostUsageCacheIO.load(provider: "claude", cacheRoot: cache).files.values.compactMap { $0.claude?.openRows }
+        XCTAssertEqual(openRows.map(\.count), [1], "the first read must leave the response open, or the second is a full read")
+
+        try (lines.joined(separator: "\n") + "\n").write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(cost(scan(projects, cache: cache, force: false)), 1.084, accuracy: 1e-9)
     }
 
     /// Claude day rows carry each response's cost, priced when it was read

@@ -1685,6 +1685,8 @@ public enum CostUsageScanner {
         struct LinePricing {
             var at: Date?
             var cacheCreate1h: Int
+            /// For a row whose cost is already in it; `priced` is not called on it.
+            static var alreadyPriced: LinePricing { LinePricing(at: nil, cacheCreate1h: 0) }
         }
 
         /// The row with its cost in slot 4. A response is priced once, for
@@ -1716,13 +1718,17 @@ public enum CostUsageScanner {
             var row: CostUsageClaudeOpenRow
             var priced: Bool
             var touched: Int
-            /// For a row not priced yet; a priced row needs none.
-            var line = LinePricing(at: nil, cacheCreate1h: 0)
+            /// The line a row not priced yet is priced for. No default: Claude
+            /// Code writes a response over several lines and the last one
+            /// counts, so nearly every response is priced from a line that
+            /// replaced an earlier one. Each place that makes a `Pending` says
+            /// which line that is, or `.alreadyPriced`.
+            var line: LinePricing
         }
         var responses: [String: Pending] = [:]
         var alreadyCounted: [String: CostUsageClaudeOpenRow] = [:]
         for (index, row) in (state?.openRows ?? []).enumerated() {
-            responses[row.key] = Pending(row: row, priced: true, touched: -(index + 1))
+            responses[row.key] = Pending(row: row, priced: true, touched: -(index + 1), line: .alreadyPriced)
             alreadyCounted[row.key] = row
         }
         // Every response the log has counted, open or not.
@@ -1818,7 +1824,7 @@ public enum CostUsageScanner {
                         // The same line again: Claude Code writes earlier lines
                         // of a log again further down it. Already in the totals.
                         let same = priced(row, pricing)
-                        responses[key] = Pending(row: same, priced: true, touched: sequence)
+                        responses[key] = Pending(row: same, priced: true, touched: sequence, line: .alreadyPriced)
                         alreadyCounted[key] = same
                     } else if !incomplete {
                         // A different line replaces what was counted for this
