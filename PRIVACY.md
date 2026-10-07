@@ -696,5 +696,6 @@ guess.
 
 ## Contact
 
-- Email: yyyyy.yeyuhe@gmail.com
+- Email: clipulse.support@gmail.com
+- Security disclosures: yyyyy.yeyuhe@gmail.com (subject `[CLI Pulse Security]`)
 - GitHub issues: <https://github.com/cli-pulse/cli-pulse/issues>
