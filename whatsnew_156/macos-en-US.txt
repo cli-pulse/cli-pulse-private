@@ -1,0 +1,21 @@
+Codex cost estimates are higher, Claude estimates change, and Settings › Advanced no longer needs a Mac synced to your account.
+
+• Codex cost estimates are higher. Subagent sessions are now counted; they used to be left out. A Codex thread split across two files no longer loses one of them, and history a subagent copies from its parent is not counted again. Forked sessions and some subagent sessions still use simplified rules, so a copied last request can be counted twice. In Sessions, a running Codex subagent is now its own session.
+
+• Each Codex request is priced at the API price OpenAI lists for its model on the day it was made, including the long-context price for a request over 272K input tokens where OpenAI lists one. A price change applies from its date, and newer models such as gpt-5.5 and gpt-5.6-sol have their own prices instead of gpt-5.4's.
+
+• Figures that include a model priced at a related model's rate, because it has no price of its own yet, now read "≈$…", and the cost card shows an "Approximate" badge.
+
+• Older Codex days are counted again. If you allowed CLI Pulse to read older logs, it reads up to a year of Codex logs again to recount older days in your usage history under the new rules, and while you're signed in it updates this Mac's older Codex figures in your account, so your iPhone shows them too. It does this again whenever an update changes how Codex usage is counted, as the consent screen and Settings › Privacy now say. Days whose logs are gone keep their earlier figures.
+
+• The Usage Dashboard now counts Codex's cached input once. It is already part of Codex's input but was added a second time, which made Codex token totals there too high. If this Mac already had Codex usage, a card on the Overview lists what changed, and the dashboard says up to which day figures were counted the old way.
+
+• Claude cost estimates change as well: CLI Pulse now prices Claude at Anthropic's list prices for the day, with their own prices for Claude Opus 5.5, Claude Fable 5.1 and Claude Sonnet 5.5, the 1-hour cache write price and Sonnet 5's current price, and counts each response once from its last line, so estimates go down for some models and up for others.
+
+• After the update, the first refresh reads the last 30 days of Claude and Codex logs again, once, to count them the new way.
+
+• Settings › Advanced now appears in local mode and before this Mac is synced to your account, with background sync and its status, CLI Tool Access and Hide personal information; in local mode it says that nothing is uploaded. While you're signed out, it shows Launch at login and background sync, whose status then reads "Paused: signed out". With background sync off, it no longer shows an old status.
+
+• Gemini: the provider settings no longer offer a Google sign-in that could not work, and an expired Gemini CLI login now says "session expired (sign in again)" instead of asking you to reconnect in CLI Pulse.
+
+• Fixes: on a Mac synced to your account, a refresh while the keychain is locked no longer sends a second copy of this Mac's usage, which the iPhone counted twice; a provider's overall Quota bar fills to the share left; Try Demo looks like one real refresh, with alerts, quotas, devices and Cost Summary rows a real account can show.

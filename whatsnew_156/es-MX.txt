@@ -1,0 +1,13 @@
+En esta versión, las estimaciones de costo de Codex son más altas y las de Claude cambian. CLI Pulse en tu Mac es el que cuenta tu uso y calcula su costo, así que la mayoría de estas cifras cambian en el iPhone cuando tu Mac tiene esta versión y sincroniza.
+
+• Las estimaciones de costo de Codex son más altas. Ahora se cuentan las sesiones de subagentes, que antes quedaban fuera. Además, cada solicitud se calcula con el precio de la API que OpenAI publica para su modelo el día en que se hizo: un cambio de precio se aplica desde su fecha, y los modelos más nuevos, como gpt-5.5 y gpt-5.6-sol, tienen sus propios precios en lugar de los de gpt-5.4.
+
+• Los días anteriores de Codex se vuelven a contar con las nuevas reglas. Si permitiste que CLI Pulse lea registros anteriores en tu Mac, vuelve a contar el uso de Codex de los días anteriores que ya sincronizó, y esos días del Panel de uso también muestran las nuevas cifras. Algunos días conservan sus cifras anteriores, por ejemplo si se borraron sus registros.
+
+• El Panel de uso cuenta ahora una sola vez la entrada en caché de Codex: ya forma parte de la entrada de Codex, pero antes se sumaba otra vez, por lo que los totales de tokens de Codex del panel salían más altos de lo debido, en todos los días. Los costos no cambian por esto.
+
+• Las estimaciones de costo de Claude de los últimos 30 días también cambian: CLI Pulse en tu Mac calcula ahora Claude con los precios de lista que Anthropic publica para cada día, con precios propios para Claude Opus 5.5, Claude Fable 5.1 y Claude Sonnet 5.5, y cuenta toda la salida de cada respuesta, así que las estimaciones bajan para algunos modelos y suben para otros.
+
+• «Probar demo» parece ahora una única actualización de datos real: sus alertas, cuotas, dispositivos y Resumen de costos son los que puede mostrar una cuenta real, y las filas del Resumen de costos suman su total.
+
+• La barra de Cuota general de un proveedor muestra ahora la parte restante, como las demás barras.

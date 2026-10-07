@@ -1,0 +1,21 @@
+Las estimaciones de costo de Codex son más altas, las de Claude cambian y Ajustes › Avanzado ya no necesita un Mac sincronizado con tu cuenta.
+
+• Las estimaciones de costo de Codex son más altas. Ahora se cuentan las sesiones de subagentes, que antes quedaban fuera. Un hilo de Codex dividido en dos archivos ya no pierde uno de ellos, y el historial que un subagente copia de su sesión principal no se vuelve a contar. Las sesiones bifurcadas y algunas de subagentes aún usan reglas simplificadas, así que la última solicitud copiada puede contarse dos veces. En Sesiones, un subagente de Codex en ejecución es ahora una sesión propia.
+
+• Cada solicitud de Codex se calcula con el precio de la API que OpenAI publica para su modelo el día en que se hizo, incluido el precio de contexto largo (más de 272K tokens de entrada) cuando OpenAI lo publica. Un cambio de precio se aplica desde su fecha, y los modelos más nuevos, como gpt-5.5 y gpt-5.6-sol, tienen sus propios precios en lugar de los de gpt-5.4.
+
+• Las cifras que incluyen un modelo calculado con la tarifa de un modelo afín, por no tener aún precio propio, se muestran ahora como «≈$…», y la tarjeta de costos muestra la insignia «Aproximado».
+
+• Los días anteriores de Codex se vuelven a contar. Si permitiste leer registros anteriores, CLI Pulse vuelve a leer hasta un año de registros de Codex para contar de nuevo los días anteriores de tu historial con las nuevas reglas y, con la sesión iniciada, actualiza las cifras anteriores de Codex de este Mac en tu cuenta para que el iPhone también las muestre. Lo repite cada vez que una nueva versión de CLI Pulse cambia cómo se cuenta Codex, como indican ahora la pantalla de consentimiento y Ajustes › Privacidad. Los días sin registros conservan sus cifras anteriores.
+
+• El Panel de uso cuenta ahora una sola vez la entrada en caché de Codex: ya forma parte de la entrada de Codex, pero antes se sumaba otra vez, por lo que los totales de tokens de Codex del panel salían más altos de lo debido. Si este Mac ya tenía uso de Codex, una tarjeta en el Resumen explica qué cambió, y el panel indica hasta qué día se contó de la forma anterior.
+
+• Las estimaciones de costo de Claude también cambian: CLI Pulse calcula ahora Claude con los precios de lista que Anthropic publica para cada día, con precios propios para Claude Opus 5.5, Claude Fable 5.1 y Claude Sonnet 5.5, el de la escritura en caché de 1 hora y el actual de Sonnet 5, y cuenta cada respuesta una vez, por su última línea, así que las estimaciones bajan para algunos modelos y suben para otros.
+
+• Tras instalar esta versión, la primera actualización de datos relee una vez los registros de Claude y Codex de los últimos 30 días para contarlos de la nueva forma.
+
+• Ajustes › Avanzado aparece ahora en modo local y antes de sincronizar este Mac con tu cuenta, con la sincronización en segundo plano y su estado, «Acceso a herramientas CLI» y «Ocultar información personal»; en modo local indica que no se sube nada. Con la sesión cerrada muestra «Abrir al iniciar sesión» y la sincronización en segundo plano, que, si está activada, indica «En pausa: sesión cerrada». Con la sincronización desactivada ya no muestra un estado antiguo.
+
+• Gemini: los ajustes del proveedor ya no ofrecen un inicio de sesión de Google que no podía funcionar, y un inicio de sesión de Gemini CLI caducado indica ahora «sesión caducada (vuelve a iniciar sesión)» en vez de pedirte que te reconectes en CLI Pulse.
+
+• Correcciones: en un Mac sincronizado con tu cuenta, una actualización de datos con el Llavero bloqueado ya no envía una segunda copia del uso de este Mac, que el iPhone contaba dos veces; la barra de Cuota general de un proveedor muestra la parte restante; «Probar demo» parece una única actualización de datos real, con alertas, cuotas, dispositivos y filas del Resumen de costos que puede mostrar una cuenta real.
