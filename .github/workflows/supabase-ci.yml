@@ -428,6 +428,49 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/v084_replace
         run: bash backend/supabase/tests/run_v084_replace_daily_usage_tests.sh
 
+  replace-daily-usage-unpaired-v085:
+    # v0.85 narrows v0.84's delete under the nil UUID, which every unpaired Mac
+    # of an account shares: there an upload removes only a `-YYYYMMDD`
+    # spelling of a model it sends for the same day and provider, so two
+    # unpaired Macs keep each other's models (v0.84 alone is the control).
+    # Paired devices must keep v0.84's full replace and apps up to 1.55 their
+    # upsert_daily_usage: both are compared call for call against the state
+    # before v0.85. Built schema.sql -> v0.37 -> v0.84 -> v0.85.
+    name: Daily usage replace, unpaired Macs (v0.85)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+
+      - name: Ensure psql client
+        run: psql --version || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      - name: Create isolated database
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -c 'create database v085_unpaired;'
+
+      - name: Verify the targeted rule, paired replace and the old path unchanged
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/v085_unpaired
+        run: bash backend/supabase/tests/run_v085_replace_daily_usage_unpaired_tests.sh
+
   # v1.21 F9 (still DEFERRED): a FULL `schema.sql → migrate_v0.X.sql` replay
   # against a fresh `supabase start` Postgres double-applies anything already in
   # the schema.sql snapshot (first surfaced at migrate_v0.9.sql CREATE POLICY →

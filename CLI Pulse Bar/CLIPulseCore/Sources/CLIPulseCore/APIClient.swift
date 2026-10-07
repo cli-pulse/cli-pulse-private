@@ -2710,7 +2710,9 @@ public actor APIClient {
     ///
     /// v1.56: the rows go to `replace_daily_usage` (migrate_v0.84), which also
     /// deletes this device's rows of each (day, provider) sent whose model is
-    /// not in the upload. A model renamed between versions of the app
+    /// not in the upload (for an unpaired Mac, migrate_v0.85: only a dated
+    /// spelling of a model sent; see the comment below). A model renamed
+    /// between versions of the app
     /// (`normalizeClaudeModel` drops a date suffix once the model has a price
     /// row) otherwise kept its old row next to the new one, and the iPhone
     /// counted the day's usage of it twice. While the server answers 404 for
@@ -2805,14 +2807,12 @@ public actor APIClient {
         }
         // Both RPCs take the same two arguments.
         //
-        // v1.56, open owner decision: without `p_device_id` the rows land
-        // under the nil UUID, which every unpaired Mac on the account shares,
-        // and `replace_daily_usage` makes them the set this Mac sent. With two
-        // unpaired Macs, each upload deletes the models only the other one
-        // used, across the whole window, and the iPhone's figures swing
-        // between the Macs' totals. If that is not accepted, send uploads
-        // without `p_device_id` to `upsert_daily_usage` here (see the
-        // migrate_v0.84 header).
+        // v1.56: without `p_device_id` the rows land under the nil UUID, which
+        // every unpaired Mac on the account shares. There `replace_daily_usage`
+        // (migrate_v0.85, the owner's "targeted cleanup only") deletes only a
+        // `-YYYYMMDD` spelling of a model this upload sends for the same day
+        // and provider, never another unpaired Mac's different model. A paired
+        // device's rows are replaced whole (migrate_v0.84).
         let httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         if replaceDailyUsageUnavailableUntil.map({ now >= $0 }) ?? true {
