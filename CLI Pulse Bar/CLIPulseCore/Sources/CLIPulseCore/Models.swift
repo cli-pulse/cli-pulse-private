@@ -71,6 +71,8 @@ public enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable 
     case minimax = "MiniMax"
     case augment = "Augment"
     case jetbrainsAI = "JetBrains AI"
+    // Retired in 1.57 (`ProviderRetirement.unconfirmedOperator`): kept so saved
+    // configs and synced rows that name it still decode. Not offered or read.
     case kimiK2 = "Kimi K2"
     case amp = "Amp"
     case synthetic = "Synthetic"
@@ -85,7 +87,9 @@ public enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable 
     case perplexity = "Perplexity"
     case volcanoEngine = "Volcano Engine"
     case glm = "GLM"
-    // v1.23.0 Phase C-1 (CodexBar parity): api-key collector.
+    // v1.23.0 Phase C-1 (CodexBar parity): api-key collector. Retired in 1.57
+    // (`ProviderRetirement.serviceShutDown`): kept so saved configs and synced
+    // rows that name it still decode. Not offered or read.
     case crof = "Crof"
     // v1.23.0 Phase C-2: api-key credits-only collector.
     case deepseek = "DeepSeek"
@@ -134,6 +138,8 @@ public enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable 
     // v1.40.0: Poe developer-API points balance (.credits; Bearer POE_API_KEY).
     case poe = "Poe"
     // v1.40.0: CrossModel wallet balance + best-effort spend windows (.credits; Bearer CROSSMODEL_API_KEY, micro units).
+    // Retired in 1.57 (`ProviderRetirement.unconfirmedOperator`): kept so saved
+    // configs and synced rows that name it still decode. Not offered or read.
     case crossModel = "CrossModel"
     // v1.40.0: Chutes subscription_usage rolling-4h + monthly quota windows (.quota; Bearer CHUTES_API_KEY).
     case chutes = "Chutes"

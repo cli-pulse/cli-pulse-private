@@ -1962,3 +1962,5 @@
 "pairing.this_mac_removed_hint" = "동기화가 중단되었습니다. 다시 시작하려면 클라우드 동기화를 다시 설정하세요.";
 "pairing.this_mac_not_set_up" = "이 Mac은 아직 계정과 페어링되지 않았습니다";
 "pairing.this_mac_not_set_up_hint" = "계정은 다른 기기에서 페어링되어 있습니다. 클라우드 동기화를 설정해 이 Mac도 추가하면 이 Mac의 세션과 알림도 다른 기기에 표시됩니다.";
+"menu_bar.retired_providers_notice" = "CLI Pulse는 이제 Kimi K2와 CrossModel을 지원하지 않습니다. 운영 주체를 확인할 수 없어 더 이상 읽어 오지 않으며 키도 보내지 않습니다. Kimi와 Moonshot은 계속 지원됩니다.";
+"a11y.dismiss_retired_providers_notice" = "Kimi K2 및 CrossModel 알림 닫기";

@@ -136,6 +136,7 @@ activated cannot have active controls. Read a switch's state from its knob.
 | `demo-settings-general` … `-advanced` | Demo data, Settings, each of the four sections |
 | `demo-setup-v2-upgrade-prompt` | Setup v2's prompt to existing users (QA flags) |
 | `demo-settings-setup-v2-rerun` | Settings with setup v2's rerun card (QA flags) |
+| `demo-retired-provider-notice` | The Overview with the one-time notice that Kimi K2 and CrossModel are no longer supported, switched on for the picture (the QA seed has no key for either) |
 | `window-about` | About |
 | `window-subscription` | Subscription (the QA build loads no StoreKit products); drawn at 460×700 |
 | `window-provider-codex`, `-claude`, `-gemini` | Provider account editor |

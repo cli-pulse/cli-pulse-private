@@ -3,7 +3,8 @@
 // DeepSeekSettingsReader}.swift (https://github.com/steipete/CodexBar).
 // The Codable response model and the multi-balance selection logic
 // are vendored verbatim; fetch + mapping reimplemented on CLI Pulse's
-// api-key collector idiom (`ZaiCollector`/`CrofCollector` precedent).
+// api-key collector idiom (`ZaiCollector` precedent; the Crof one it
+// also followed was removed in 1.57).
 //
 // CodexBar-parity Phase C-2 — promote the (absent) DeepSeek provider
 // to a real `.credits` collector (api-key Bearer, single balance

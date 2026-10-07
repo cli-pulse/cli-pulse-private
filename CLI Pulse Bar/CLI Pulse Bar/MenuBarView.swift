@@ -522,6 +522,32 @@ struct MenuBarView: View {
                 .background(Color.blue.opacity(0.08))
             }
 
+            // 1.57, one time: Kimi K2 and CrossModel are no longer supported,
+            // for someone who had either set up (`ProviderRoster`). Shown
+            // until dismissed; nothing to act on, so no button but the close.
+            if state.showsRetiredProviderNotice {
+                HStack(alignment: .top, spacing: 4) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 9))
+                    Text(L10n.menuBar.retiredProvidersNotice)
+                        .font(.system(size: 9))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button {
+                        state.dismissRetiredProviderNotice()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.a11y.dismissRetiredProvidersNotice)
+                }
+                .foregroundStyle(.blue)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.blue.opacity(0.08))
+            }
+
             // Tier limit warning banner
             if let warning = state.tierLimitWarning {
                 HStack(spacing: 4) {

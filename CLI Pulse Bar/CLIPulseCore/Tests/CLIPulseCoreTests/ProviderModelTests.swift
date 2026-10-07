@@ -57,7 +57,7 @@ final class ProviderModelTests: XCTestCase {
 
     func testProviderConfigDefaults() {
         let configs = ProviderConfig.defaults()
-        XCTAssertEqual(configs.count, ProviderKind.allCases.count)
+        XCTAssertEqual(configs.count, ProviderKind.offered.count)
         for config in configs {
             XCTAssertTrue(config.isEnabled)
             XCTAssertEqual(config.sourceMode, .auto)

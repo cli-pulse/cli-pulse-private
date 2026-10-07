@@ -2178,6 +2178,9 @@ public enum L10n {
     // MARK: - Menu Bar
 
     public enum menuBar {
+        /// 1.57: the one-time notice to someone who had Kimi K2 or CrossModel
+        /// set up (`AppState.showsRetiredProviderNotice`).
+        public static var retiredProvidersNotice: String { tr("menu_bar.retired_providers_notice") }
         public static func tierMigration(kept: Int, disabled: Int) -> String {
             // `kept` is the free plan's limit (3), so only `disabled` can be 1 —
             // and es must then say "Se desactivó 1: edítalo".
@@ -2286,6 +2289,7 @@ public enum L10n {
     public enum a11y {
         public static var dismissError: String { tr("a11y.dismiss_error") }
         public static var dismissTierWarning: String { tr("a11y.dismiss_tier_warning") }
+        public static var dismissRetiredProvidersNotice: String { tr("a11y.dismiss_retired_providers_notice") }
         public static func configureProvider(_ name: String) -> String {
             tr("a11y.configure_provider", name)
         }

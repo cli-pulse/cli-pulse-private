@@ -1975,3 +1975,5 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pairing.this_mac_removed_hint" = "Ha dejado de sincronizarse. Vuelve a configurar la sincronización en la nube para reanudarla.";
 "pairing.this_mac_not_set_up" = "Este Mac aún no está vinculado a tu cuenta";
 "pairing.this_mac_not_set_up_hint" = "Tu cuenta ya tiene otro dispositivo vinculado. Configura la sincronización en la nube para añadir también este Mac y que sus sesiones y alertas aparezcan en tus otros dispositivos.";
+"menu_bar.retired_providers_notice" = "CLI Pulse ya no admite Kimi K2 ni CrossModel: no pudo confirmar quién los opera, así que ya no los lee ni les envía tu clave. Kimi y Moonshot siguen disponibles.";
+"a11y.dismiss_retired_providers_notice" = "Descartar el aviso sobre Kimi K2 y CrossModel";

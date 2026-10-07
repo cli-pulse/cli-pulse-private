@@ -126,6 +126,10 @@ public final class AppState: ObservableObject {
     /// When > 0, the Overview shows a dismissible one-time banner with an
     /// "Edit in Settings" deep-link. Reset to 0 by dismissProviderLimitMigrationBanner().
     @Published public var providerLimitMigrationCount: Int = 0
+    /// 1.57: Kimi K2 and CrossModel are no longer supported, and this Mac had
+    /// one of them set up. The popover shows a one-time notice until it is
+    /// dismissed (`dismissRetiredProviderNotice()`; `RetiredProviderNotice`).
+    @Published public var showsRetiredProviderNotice = false
     @Published public var lastRefresh: Date?
     @Published public var serverOnline = false
     @Published public var isLocalMode = false
@@ -1195,6 +1199,10 @@ public final class AppState: ObservableObject {
 
         subscriptionManager.apiClient = api
         loadProviderConfigs(defaults: defaults)
+        if runtime.capabilities.allowsUnsandboxedMigration {
+            showsRetiredProviderNotice =
+                RetiredProviderNotice(defaults: defaults).isPending
+        }
         #if os(macOS)
         if runtime.capabilities.allowsHelperRegistration {
             UserDefaults(suiteName: HelperIPC.suiteName)?.set(
@@ -2253,6 +2261,13 @@ public final class AppState: ObservableObject {
         providerLimitMigrationCount = 0
     }
 
+    /// Dismiss the notice that Kimi K2 and CrossModel are no longer
+    /// supported, for good.
+    public func dismissRetiredProviderNotice() {
+        RetiredProviderNotice(defaults: providerConfigDefaults).dismiss()
+        showsRetiredProviderNotice = false
+    }
+
     /// Returns the set of provider kinds that were auto-disabled by the tier
     /// migration (not by user choice). Used by Settings → Providers to show
     /// a "Limited by free plan — upgrade" badge instead of a plain-off switch.
@@ -2428,7 +2443,7 @@ public final class AppState: ObservableObject {
             else {
                 return
             }
-            providerConfigs = configs
+            providerConfigs = ProviderRoster.activeConfigs(configs)
             return
         }
 
@@ -2479,6 +2494,16 @@ public final class AppState: ObservableObject {
         for index in providerConfigs.indices {
             providerConfigs[index].loadSecrets()
         }
+        // 1.57: retired providers' accounts are left out from here on, and the
+        // next save drops them (the write above kept them, as read). Whether
+        // one of them was set up is asked first, while their keys are loaded.
+        RetiredProviderNotice(defaults: defaults).record(
+            owed: ProviderRoster.hadUnconfirmedOperatorSetUp(
+                configs: providerConfigs,
+                environment: ProcessInfo.processInfo.environment
+            )
+        )
+        providerConfigs = ProviderRoster.activeConfigs(providerConfigs)
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }
 

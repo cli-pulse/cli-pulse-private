@@ -1992,3 +1992,5 @@
 "pairing.this_mac_removed_hint" = "它已停止同步。重新设置云同步即可恢复。";
 "pairing.this_mac_not_set_up" = "这台 Mac 尚未与你的账户配对";
 "pairing.this_mac_not_set_up_hint" = "你的账户已在另一台设备上配对。设置云同步即可添加这台 Mac，让它的会话和告警也显示在你的其他设备上。";
+"menu_bar.retired_providers_notice" = "CLI Pulse 已停止支持 Kimi K2 和 CrossModel：无法确认它们由谁运营，因此不再读取它们，也不再向它们发送你的密钥。Kimi 和 Moonshot 仍受支持。";
+"a11y.dismiss_retired_providers_notice" = "关闭 Kimi K2 和 CrossModel 的通知";

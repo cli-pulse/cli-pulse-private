@@ -861,6 +861,17 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             state.selectedTab = .settings
             await capturePopover(surface, index: index)
 
+        case .demoRetiredProviderNotice:
+            // Shown only to someone whose saved Kimi K2 or CrossModel key a
+            // launch found; the QA seed has none, so it is switched on here
+            // and off again, never recorded as owed or dismissed.
+            enterDemoIfNeeded()
+            shapeExistingUser(onboardingV2: false)
+            state.selectedTab = .overview
+            state.showsRetiredProviderNotice = true
+            await capturePopover(surface, index: index)
+            state.showsRetiredProviderNotice = false
+
         case .about:
             await captureWindow(
                 AboutView(), surface: surface, index: index,

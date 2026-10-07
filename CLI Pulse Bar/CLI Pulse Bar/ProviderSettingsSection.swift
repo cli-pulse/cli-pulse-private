@@ -78,14 +78,16 @@ struct ProviderSettingsSection: View {
         }
     }
 
+    /// Every provider CLI Pulse offers (`ProviderKind.offered`: retired ones
+    /// are left out), ordered as the user ordered their accounts.
     private var orderedProviderKinds: [ProviderKind] {
         let caseOrder = Dictionary(
             uniqueKeysWithValues:
-                ProviderKind.allCases.enumerated().map {
+                ProviderKind.offered.enumerated().map {
                     ($0.element, $0.offset)
                 }
         )
-        return ProviderKind.allCases.sorted { lhs, rhs in
+        return ProviderKind.offered.sorted { lhs, rhs in
             let lhsSort =
                 providerState.configs(for: lhs)
                     .map(\.sortOrder).min()

@@ -2263,8 +2263,10 @@ internal final class DataRefreshManager {
                 || usage.estimated_cost_week > 0
             guard hasUsage else { continue }
             // Map raw provider string → canonical ProviderKind via Codable
-            // raw-value lookup. Unknown strings drop out.
-            if let kind = ProviderKind(rawValue: usage.provider) {
+            // raw-value lookup. Unknown strings drop out, and so do retired
+            // providers' rows (an older build on another device can upload
+            // them): a provider this build does not offer takes no plan slot.
+            if let kind = ProviderKind(rawValue: usage.provider), !kind.isRetired {
                 active.insert(kind)
             }
         }
@@ -2973,12 +2975,14 @@ extension AppState {
         // Everything upstream of here — uploads, quota alerts — used the raw
         // values, and keeps using them.
         let displayNow = Date()
+        // Retired providers' rows are left out (`ProviderRoster.shown`): a
+        // device still on an older build may upload some.
         providers = QuotaBindingCap.projectedForDisplay(
-            payload.providers,
+            ProviderRoster.shown(payload.providers),
             now: displayNow
         )
         providerAccounts = QuotaBindingCap.projectedForDisplay(
-            payload.providerAccounts,
+            ProviderRoster.shown(payload.providerAccounts),
             now: displayNow
         )
         sessions = payload.sessions

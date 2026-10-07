@@ -272,7 +272,7 @@ public enum QARenderSnapshot {
             .filter { $0 != .settings }
             .map { .demo($0) }
         surfaces += QARenderSettingsSection.allCases.map { .demoSettings($0) }
-        surfaces += [.demoUpgradePrompt, .demoAgentSetupRerun]
+        surfaces += [.demoUpgradePrompt, .demoAgentSetupRerun, .demoRetiredProviderNotice]
         surfaces += [.about, .subscription]
         surfaces += providerEditorKinds.map { .providerEditor($0) }
         surfaces += [.usageDashboardPanel, .firstRunWelcome]
@@ -676,6 +676,9 @@ public enum QARenderSurface: Hashable {
     case demoUpgradePrompt
     /// Settings with setup v2's "run agent setup again" card (QA flags only).
     case demoAgentSetupRerun
+    /// 1.57: the Overview with the one-time notice that Kimi K2 and CrossModel
+    /// are no longer supported (`AppState.showsRetiredProviderNotice`).
+    case demoRetiredProviderNotice
     case about
     case subscription
     case providerEditor(ProviderKind)
@@ -725,6 +728,7 @@ public enum QARenderSurface: Hashable {
         case .demoSettings(let section): return "demo-settings-\(Self.slug(section.rawValue))"
         case .demoUpgradePrompt: return "demo-setup-v2-upgrade-prompt"
         case .demoAgentSetupRerun: return "demo-settings-setup-v2-rerun"
+        case .demoRetiredProviderNotice: return "demo-retired-provider-notice"
         case .about: return "window-about"
         case .subscription: return "window-subscription"
         case .providerEditor(let kind): return "window-provider-\(Self.slug(kind.rawValue))"

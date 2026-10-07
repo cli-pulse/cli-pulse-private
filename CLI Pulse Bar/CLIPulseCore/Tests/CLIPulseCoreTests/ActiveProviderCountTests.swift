@@ -81,9 +81,10 @@ final class ActiveProviderCountTests: XCTestCase {
     func test_allTogglesEnabledNoUsageNoCredentials_countsAsZero() {
         // The user-reported bug, exact reproduction.
         // ProviderConfig.defaults() enables every ProviderKind, 0 credentials, 0 server usage.
-        // Asserted against allCases.count so new providers (Phase B/C) don't re-break this.
+        // Asserted against offered.count so new providers (Phase B/C) don't re-break this
+        // (retired providers get no default account since 1.57).
         let configs = freshDefaults()
-        XCTAssertEqual(configs.filter(\.isEnabled).count, ProviderKind.allCases.count,
+        XCTAssertEqual(configs.filter(\.isEnabled).count, ProviderKind.offered.count,
                        "sanity check: defaults() enables every ProviderKind")
         let count = DataRefreshManager.activeProviderCount(
             providers: [],

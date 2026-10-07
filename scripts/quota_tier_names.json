@@ -294,7 +294,7 @@
    "display": "TRANSLATE",
    "l10n_key": "quota_tier.requests",
    "reason": "A generic metric, emitted by three unrelated collectors (Crof, Vertex AI, Warp) — which is itself evidence it is this app's vocabulary rather than any one vendor's.",
-   "producers": "Swift CrofCollector, VertexAICollector, WarpCollector; Tauri crof.rs/warp.rs"
+   "producers": "Swift VertexAICollector, WarpCollector (CrofCollector until 1.57); Tauri crof.rs/warp.rs"
   },
   {
    "name": "Rolling",

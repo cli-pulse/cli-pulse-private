@@ -2004,3 +2004,5 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "pairing.this_mac_removed_hint" = "It has stopped syncing. Set up cloud sync again to resume.";
 "pairing.this_mac_not_set_up" = "This Mac isn't paired with your account yet";
 "pairing.this_mac_not_set_up_hint" = "Your account is paired on another device. Set up cloud sync to add this Mac too, so its sessions and alerts show on your other devices.";
+"menu_bar.retired_providers_notice" = "CLI Pulse no longer supports Kimi K2 or CrossModel: it couldn't confirm who runs them, so it no longer reads them or sends them your key. Kimi and Moonshot are still supported.";
+"a11y.dismiss_retired_providers_notice" = "Dismiss the Kimi K2 and CrossModel notice";
