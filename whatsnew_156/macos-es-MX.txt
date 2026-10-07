@@ -18,4 +18,4 @@ Las estimaciones de costo de Codex son más altas, las de Claude cambian y Ajust
 
 • Gemini: los ajustes del proveedor ya no ofrecen un inicio de sesión de Google que no funcionaba, y, cuando caduca el inicio de sesión de Gemini CLI, ahora se indica «sesión caducada (vuelve a iniciar sesión)» en vez de pedirte que te reconectes en CLI Pulse.
 
-• Correcciones: en un Mac sincronizado con tu cuenta, una actualización de datos con el Llavero bloqueado ya no envía una segunda copia del uso de este Mac, que el iPhone contaba dos veces; la barra de Cuota general de un proveedor muestra la parte restante; «Probar demo» muestra lo mismo que una única actualización de datos real, con alertas, cuotas, dispositivos y filas del Resumen de costos que puede mostrar una cuenta real.
+• Correcciones: en un Mac sincronizado con tu cuenta, una actualización de datos con el Llavero bloqueado ya no envía una segunda copia del uso de este Mac, que el iPhone contaba dos veces; la barra de Cuota general de un proveedor muestra la parte restante.

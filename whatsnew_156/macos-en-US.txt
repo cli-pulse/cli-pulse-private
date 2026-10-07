@@ -18,4 +18,4 @@ Codex cost estimates are higher, Claude estimates change, and Settings › Advan
 
 • Gemini: the provider settings no longer offer a Google sign-in that could not work, and an expired Gemini CLI login now says "session expired (sign in again)" instead of asking you to reconnect in CLI Pulse.
 
-• Fixes: on a Mac synced to your account, a refresh while the keychain is locked no longer sends a second copy of this Mac's usage, which your iPhone counted twice; a provider's overall Quota bar fills to the share left; Try Demo looks like the result of one real refresh, with alerts, quotas, devices and Cost Summary rows a real account can show.
+• Fixes: on a Mac synced to your account, a refresh while the keychain is locked no longer sends a second copy of this Mac's usage, which your iPhone counted twice; a provider's overall Quota bar fills to the share left.
