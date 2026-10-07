@@ -8,25 +8,20 @@
    "即時查看配額與費用",
    "用完之前，就知道還剩多少"
   ],
-  "03_cost": [
-   "錢花在哪裡",
-   "今日預估費用依服務商細分，另有近 30 天總額"
-  ],
   "04_sessions": [
    "每次 CLI 執行都有紀錄",
    "活躍工作階段的用量、費用與請求數"
   ],
   "05_alerts": [
    "配額不再突然見底",
-   "配額將盡、CPU 使用率過高、工作階段執行過久，都會發出警示"
+   "配額將盡、工作階段或裝置的 CPU 使用率過高，都會發出警示"
   ]
  },
  "captures": {
-  "01_overview.png": "17515ad8d3ce00ceeaff334df951dce0",
-  "02_providers.png": "c867eb4793a8151ca84d3c75b6689df2",
-  "03_cost.png": "b94ac0b1662b6642972a3e30ee977c1e",
-  "04_sessions.png": "da00399e22b5753d64cb2919876d3654",
-  "05_alerts.png": "18f15a477864c2b2458c2f1c715529bd"
+  "01_overview.png": "247bd115ec10f600cf3389b589c70486",
+  "02_providers.png": "8c9e33cd2de8831b86cda09a83268295",
+  "04_sessions.png": "d9cc5144e7aab7277ff4ae19529091a1",
+  "05_alerts.png": "8d0978ec832a51558a02cf9181343112"
  },
  "faces": {
   "subtitle": "PingFang TC",
@@ -34,11 +29,10 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_2064x2752.png": "fbebc6856c1b75cbc966d704829e3933",
-  "02_providers_2064x2752.png": "c8f9245c549c2b502e872beaaba003f8",
-  "03_cost_2064x2752.png": "5e43c87156768f946edb1ba64ca1da0a",
-  "04_sessions_2064x2752.png": "ed2f7f655d4564d92102c7b8fe745267",
-  "05_alerts_2064x2752.png": "c7c245388e6af5a6674011e9c448f8fd"
+  "01_overview_2064x2752.png": "36175030788212b33633b4b249528ae7",
+  "02_providers_2064x2752.png": "3f754867de42326bcd2056c29be92041",
+  "04_sessions_2064x2752.png": "d04563860aba8d13d82841888b870843",
+  "05_alerts_2064x2752.png": "b2060195b9e8cbe92a48961f7913ecec"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

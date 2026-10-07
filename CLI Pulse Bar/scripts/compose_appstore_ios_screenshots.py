@@ -5,11 +5,14 @@ Dark navy gradient background, white title + grey subtitle at the top, the
 device screenshot centred below with rounded corners (the capture has no device
 chrome, so it gets a corner radius instead of looking like a bare bitmap).
 
-Two sets, the same five screens and the same captions (COPY):
+Two sets, sharing one table of captions (COPY):
   iphone (default)  ios-raw/<lang>, 1320x2868 captures  -> ios-composed/<lang>,
-                    1290x2796 panels (APP_IPHONE_67)
+                    1290x2796 panels (APP_IPHONE_67), five screens
   ipad (--set ipad) ipad-raw/<lang>, 2064x2752 captures -> ipad-composed/<lang>,
-                    2064x2752 panels (APP_IPAD_PRO_3GEN_129)
+                    2064x2752 panels (APP_IPAD_PRO_3GEN_129), four of them: not
+                    03_cost, which on the 13" iPad repeated the overview. The
+                    others keep their iPhone numbers and captions (01, 02, 04,
+                    05; appstore_screenshots.IPAD_SCREENS)
 Each capture must be its set's device's size, so an iPhone capture can never
 be drawn on an iPad panel: App Review rejects iPhone screenshots dressed up as
 iPad ones (guideline 2.3.3), and the iPad set exists to show the iPad layout.
@@ -188,8 +191,9 @@ FRAMES: dict[str, SetFrame] = {f.key: f for f in (IPHONE, IPAD)}
 # ── captions ─────────────────────────────────────────────────────────────────
 # (title, subtitle) per screen. Written against the screen each sits on (the
 # Demo data: Codex/Gemini/Claude, estimated costs for Codex and Claude (Gemini
-# is quota-only, as it is in production), a weekly quota at 92%, CPU
-# and long-running-session alerts) and the app's own words for things: the
+# is quota-only, as it is in production), a weekly quota at 92%, a session's
+# and a device's CPU alerts; since 1.56 (#650) no long-running-session alert,
+# which no producer raises where Demo had it) and the app's own words for things: the
 # tab names, 配额/配額/クォータ/할당량/cuota, 告警/警示/アラート/알림/alertas,
 # 会话/工作階段/セッション/세션/sesiones, "costo" in Spanish.
 COPY: dict[str, dict[str, tuple[str, str]]] = {
@@ -203,35 +207,35 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "04_sessions": ("Every CLI run tracked",
                         "Active sessions with usage, cost and requests"),
         "05_alerts": ("Never miss a limit",
-                      "Quota, CPU spike and long-running session alerts"),
+                      "Quota, session CPU and device CPU alerts"),
     },
     "zh-Hans": {
         "01_overview": ("关键数据，一屏总览", "用量、费用、会话和告警，打开就能看到"),
         "02_providers": ("实时掌握配额与费用", "离上限还有多远，一眼就知道"),
         "03_cost": ("钱都花在了哪里", "今日估算费用按服务商细分，另有近 30 天总额"),
         "04_sessions": ("每个会话都有账可查", "活跃会话的用量、费用和请求数"),
-        "05_alerts": ("配额不再突然见底", "配额将尽、CPU 过高、会话过久，都会告警"),
+        "05_alerts": ("配额不再突然见底", "配额将尽、会话或设备 CPU 过高，都会告警"),
     },
     "zh-Hant": {
         "01_overview": ("一眼掌握全局", "用量、費用、工作階段與警示，一頁看完"),
         "02_providers": ("即時查看配額與費用", "用完之前，就知道還剩多少"),
         "03_cost": ("錢花在哪裡", "今日預估費用依服務商細分，另有近 30 天總額"),
         "04_sessions": ("每次 CLI 執行都有紀錄", "活躍工作階段的用量、費用與請求數"),
-        "05_alerts": ("配額不再突然見底", "配額將盡、CPU 使用率過高、工作階段執行過久，都會發出警示"),
+        "05_alerts": ("配額不再突然見底", "配額將盡、工作階段或裝置的 CPU 使用率過高，都會發出警示"),
     },
     "ja": {
         "01_overview": ("すべてをひと目で", "使用量、コスト、セッション、アラートを\u200bひとつの画面に"),
         "02_providers": ("クォータとコストを把握", "上限に達する前に、\u200b残りがわかる"),
         "03_cost": ("コストの内訳がわかる", "今日の推定コストをプロバイダー別に、\u200b直近30日間の推定額も"),
         "04_sessions": ("CLI の実行をすべて記録", "アクティブなセッションの\u200b使用量、コスト、リクエスト数"),
-        "05_alerts": ("上限の接近を見逃さない", "クォータ残量の低下、CPU の高負荷、\u200b長時間実行中のセッションを通知"),
+        "05_alerts": ("上限の接近を見逃さない", "クォータ残量の低下、\u200bセッションやデバイスの CPU 高負荷を通知"),
     },
     "ko": {
         "01_overview": ("모든 것을 한눈에", "사용량, 비용, 세션, 알림을 한 화면에서"),
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 합계"),
         "04_sessions": ("모든 CLI 실행을 기록", "활성 세션의 사용량, 비용, 요청 수"),
-        "05_alerts": ("할당량이 바닥나기 전에", "CPU 사용률 급증과 오래 실행 중인 세션도 알려 드려요"),
+        "05_alerts": ("할당량이 바닥나기 전에", "세션과 기기의 CPU 사용률이 높을 때도 알려 드려요"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
@@ -243,7 +247,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "04_sessions": ("Cada ejecución, registrada",
                         "Sesiones activas con su uso, costo y solicitudes"),
         "05_alerts": ("Sin sorpresas con la cuota",
-                      "Alertas de cuota, picos de CPU y sesiones de larga duración"),
+                      "Alertas de cuota y de picos de CPU, por sesión y por dispositivo"),
     },
 }
 

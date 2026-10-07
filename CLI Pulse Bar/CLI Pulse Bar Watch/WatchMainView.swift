@@ -28,7 +28,15 @@ enum WatchTab: Hashable {
 
 struct WatchMainView: View {
     @EnvironmentObject var state: WatchAppState
-    @State private var selectedTab: WatchTab = .pulse
+    @State private var selectedTab: WatchTab = WatchMainView.initialTab
+
+    /// The Pulse page, or in an App Store screenshot capture the requested one.
+    private static var initialTab: WatchTab {
+        #if DEBUG
+        if let screen = WatchScreenshotLaunch.activeScreen { return WatchTab(screen) }
+        #endif
+        return .pulse
+    }
 
     var body: some View {
         if !state.isAuthenticated {
@@ -40,32 +48,87 @@ struct WatchMainView: View {
                     PulseHomeView(selectedTab: $selectedTab)
                         .environmentObject(state)
                 }
+                .screenshotPage(.pulse)
                 .tag(WatchTab.pulse)
 
                 NavigationStack {
                     QuotaRingsView()
                         .environmentObject(state)
                 }
+                .screenshotPage(.quota)
                 .tag(WatchTab.quota)
 
                 NavigationStack {
                     WatchSessionsView()
                         .environmentObject(state)
                 }
+                .screenshotPage(.live)
                 .tag(WatchTab.live)
 
                 NavigationStack {
                     WatchAlertsView()
                         .environmentObject(state)
                 }
+                .screenshotPage(.alerts)
                 .tag(WatchTab.alerts)
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .containerBackground(WatchTheme.canvas, for: .tabView)
             .task {
+                #if DEBUG
+                if let screen = WatchScreenshotLaunch.activeScreen {
+                    // A capture: no refresh, and READY once the page shows.
+                    try? await Task.sleep(nanoseconds: UInt64(WatchScreenshotLaunch.readyDelay * 1_000_000_000))
+                    WatchScreenshotLaunch.emit(WatchScreenshotLaunch.readinessLine(
+                        for: screen, selected: selectedTab.screenshotScreen,
+                        appeared: WatchScreenshotPages.appeared))
+                    return
+                }
+                #endif
                 await state.refreshAll()
                 state.startRefreshLoop()
             }
         }
     }
 }
+
+extension View {
+    /// Marks a pager page for the screenshot capture's READY check
+    /// (`WatchScreenshotPages`). Nothing outside a DEBUG build.
+    @ViewBuilder
+    func screenshotPage(_ tab: WatchTab) -> some View {
+        #if DEBUG
+        onAppear { WatchScreenshotPages.appeared.insert(tab.screenshotScreen) }
+        #else
+        self
+        #endif
+    }
+}
+
+#if DEBUG
+/// The pager pages that have appeared, for `WatchScreenshotLaunch.readinessLine`.
+@MainActor
+enum WatchScreenshotPages {
+    static var appeared: Set<WatchScreenshotLaunch.Screen> = []
+}
+
+extension WatchTab {
+    init(_ screen: WatchScreenshotLaunch.Screen) {
+        switch screen {
+        case .pulse: self = .pulse
+        case .quota: self = .quota
+        case .live: self = .live
+        case .alerts: self = .alerts
+        }
+    }
+
+    var screenshotScreen: WatchScreenshotLaunch.Screen {
+        switch self {
+        case .pulse: return .pulse
+        case .quota: return .quota
+        case .live: return .live
+        case .alerts: return .alerts
+        }
+    }
+}
+#endif

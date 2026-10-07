@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "108",
-  "version": "1.55.0"
+  "build": "109",
+  "version": "1.56.0"
  },
  "captions": {
   "01_overview": [
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "d4bbbc5104c6060cf475aad2ec20e78d",
-  "02_providers.png": "5847d5af8d638f1d6c3da7f00ac4f28b",
-  "03_usage_history.panel.png": "eaf5de0a9391839e6932acf9dcd44e34",
-  "03_usage_history.png": "d4bbbc5104c6060cf475aad2ec20e78d",
-  "04_cost.png": "d08f1f2e6c600337ec496ce0255d8dfe",
-  "05_alerts.png": "ae579ef776bda7d7e81ca1b3d07a300c",
-  "06_pulse_cat.png": "ae0c96a5000b581241c7cb5657a523aa"
+  "01_overview.png": "0f8c11f892949db8f701215623764584",
+  "02_providers.png": "e88f42e72aab32d28fdb9967dbd1e891",
+  "03_usage_history.panel.png": "fa6c70e3db5784368fffc40870f08604",
+  "03_usage_history.png": "0f8c11f892949db8f701215623764584",
+  "04_cost.png": "2399e4256b9e1cae7fc573090fd4742a",
+  "05_alerts.png": "505561305e4d740b23b64c590f60f636",
+  "06_pulse_cat.png": "fdfc5094fe71502cf0c8977cc4d2a4dc"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -44,16 +44,16 @@
  },
  "lang": "en",
  "panels": {
-  "01_overview_2880x1800.png": "53cb2766a94e39dc9a016a6957f87f72",
-  "02_providers_2880x1800.png": "afd7bb5e8380953f94caf70e1fbe67de",
-  "03_usage_history_2880x1800.png": "fdbb983f0eda87ea9883a299bf9eed31",
-  "04_cost_2880x1800.png": "08c18b9d25ae7c97da9a9487d9d6016d",
-  "05_alerts_2880x1800.png": "79426e018dce7c94a649d55004d29ff9",
-  "06_pulse_cat_2880x1800.png": "49343f5b12a7615c86070a06e6c03697"
+  "01_overview_2880x1800.png": "68476544b0f89b3f297d10d8e1b205d7",
+  "02_providers_2880x1800.png": "070047b86b5a63b8f3b4bc38c8cc9450",
+  "03_usage_history_2880x1800.png": "a2c44ee4804130489ba1a009d83c674c",
+  "04_cost_2880x1800.png": "943e5d596d8bbc29486bc840fab507ba",
+  "05_alerts_2880x1800.png": "189245a612558057bec6c36cc3c053b7",
+  "06_pulse_cat_2880x1800.png": "2685f61b368246e57014f70a0221ce6b"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "c6cebf57bddee4499151321cb7fa2131",
+ "render": "432c8426a58564c4a645c73dc17ec7f3",
  "subtitle_pt": 46,
  "title_pt": 100
 }

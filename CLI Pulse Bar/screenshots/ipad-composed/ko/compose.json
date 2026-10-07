@@ -8,25 +8,20 @@
    "실시간 할당량과 비용",
    "한도까지 얼마나 남았는지 바로 확인하세요"
   ],
-  "03_cost": [
-   "비용, 어디에 쓰이나요?",
-   "공급자별 오늘 추정 비용과 최근 30일 합계"
-  ],
   "04_sessions": [
    "모든 CLI 실행을 기록",
    "활성 세션의 사용량, 비용, 요청 수"
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
-   "CPU 사용률 급증과 오래 실행 중인 세션도 알려 드려요"
+   "세션과 기기의 CPU 사용률이 높을 때도 알려 드려요"
   ]
  },
  "captures": {
-  "01_overview.png": "2046b0c4dec782bfc6acd99148d418ed",
-  "02_providers.png": "aed232794d669a2702e745e85901db4b",
-  "03_cost.png": "d316caf5267bc0517e0b23f3044cd310",
-  "04_sessions.png": "e60bfda3a8264d4a4001ff1d64ffb646",
-  "05_alerts.png": "6bb2f41fbd61bee9123ac0f74830db6f"
+  "01_overview.png": "ff046900cc105f64b480c0ef19029d12",
+  "02_providers.png": "2b64a2411f3c6b68ec2675ad8948054a",
+  "04_sessions.png": "eca5f9bf2bde024380a88bcc3c69d0a9",
+  "05_alerts.png": "b64a255014f15b4195960519498032d5"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -34,11 +29,10 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2064x2752.png": "1cf4137c3c8e6de4794e1cab18a0f57a",
-  "02_providers_2064x2752.png": "d8459eb15a4f6881f805db71f1304a60",
-  "03_cost_2064x2752.png": "3c6771ba7ff2089698c8c73c2324d06d",
-  "04_sessions_2064x2752.png": "c216cbe76756ab9d8cdc517fc4516029",
-  "05_alerts_2064x2752.png": "428b6f5031e5c5b9fdfa1d4cb20e1436"
+  "01_overview_2064x2752.png": "7a7108bcc4df55d0fbd5792652d06a9b",
+  "02_providers_2064x2752.png": "875d29183a84199d47543cbf1e6c98a0",
+  "04_sessions_2064x2752.png": "4d9f3c22102fa92d6d6638c57309a938",
+  "05_alerts_2064x2752.png": "f44ebb952623c83ff14ab3220089d632"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

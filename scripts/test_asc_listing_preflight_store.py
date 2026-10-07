@@ -27,7 +27,7 @@ the real main():
     platform and in the OK line, so its OK cannot be read as covering it.
 
 And one part of check 3 (screenshot drift), called directly: in a set this
-repo composes whole (iPhone, iPad, Mac), a live screenshot that is none of the
+repo composes whole (iPhone, iPad, Apple Watch, Mac), a live screenshot that is none of the
 local panels fails. App Store Connect copies the previous version's
 screenshots onto a new one, which is how the April 2026 iPad set would have
 reached 1.55.0 under a PREFLIGHT OK: its file names are no local panel's, and
@@ -328,27 +328,33 @@ failed_, out = compare(april, ipad_dir, "APP_IPAD_PRO_3GEN_129", managed=True)
 check("the April iPad set left on a version whose iPad panels are the 1.55 ones fails, once per panel",
       failed_ and out.count("FAIL  [en-US] APP_IPAD_PRO_3GEN_129") == 5
       and "a set this repo no longer makes" in out and "05_settings_2752x2064.png" in out, out)
-check("... and the local panels it never received are named too",
-      out.count("in the repo, not on the store") == 5, out)
+check("... and the local panels it never received are named too (the iPad set's four)",
+      out.count("in the repo, not on the store") == len(shots.stems(shots.IPAD)) == 4, out)
 failed_, out = compare(april, ipad_dir, "APP_IPAD_PRO_129", managed=False)
 check("negative control: the same names in a set this repo does not make are a note, not a failure",
       not failed_ and "FAIL" not in out and out.count("note  [en-US] APP_IPAD_PRO_129") >= 5, out)
-check("the preflight treats exactly the iPhone, iPad and Mac display types as sets it makes whole",
-      set(shots.SETS) == {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_DESKTOP"}
+check("the preflight treats exactly the iPhone, iPad, Apple Watch and Mac display types as sets it makes whole",
+      set(shots.SETS) == {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_WATCH_ULTRA", "APP_DESKTOP"}
       and "managed=dtype in per_locale" in (HERE / "asc_listing_preflight.py").read_text(), str(set(shots.SETS)))
 
 # 9. check 3: a locale with no set of a type this repo makes for it
-both_ios = {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"}
-check("positive control: a locale with its iPhone and iPad sets is missing none",
-      pf.missing_sets("IOS", "ja", both_ios) == [] and pf.missing_sets("MAC_OS", "ja", {"APP_DESKTOP"}) == [])
+all_ios = {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_WATCH_ULTRA"}
+check("positive control: a locale with its iPhone, iPad and Apple Watch sets is missing none",
+      pf.missing_sets("IOS", "ja", all_ios) == [] and pf.missing_sets("MAC_OS", "ja", {"APP_DESKTOP"}) == [])
 check("an iOS locale with no iPad set (ja, ko, es and zh-Hant on 1.54.0) is missing it",
-      all(pf.missing_sets("IOS", loc, {"APP_IPHONE_67"}) == ["APP_IPAD_PRO_3GEN_129"]
+      all(pf.missing_sets("IOS", loc, {"APP_IPHONE_67", "APP_WATCH_ULTRA"}) == ["APP_IPAD_PRO_3GEN_129"]
           for loc in ("ja", "ko", "es-ES", "es-MX", "zh-Hant")))
-check("... and with no set at all, both; the Mac needs its own",
-      pf.missing_sets("IOS", "en-US", set()) == sorted(both_ios)
-      and pf.missing_sets("MAC_OS", "ko", both_ios) == ["APP_DESKTOP"])
+check("an iOS locale with no Apple Watch set (every one but en-US and zh-Hans on 1.55.0) is missing it",
+      all(pf.missing_sets("IOS", loc, {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129"}) == ["APP_WATCH_ULTRA"]
+          for loc in ("ja", "ko", "es-ES", "es-MX", "zh-Hant")))
+check("... and with no set at all, all three; the Mac needs its own",
+      pf.missing_sets("IOS", "en-US", set()) == sorted(all_ios)
+      and pf.missing_sets("MAC_OS", "ko", all_ios) == ["APP_DESKTOP"])
 check("a set of another type does not stand in for a missing one",
-      pf.missing_sets("IOS", "zh-Hans", {"APP_IPHONE_67", "APP_IPAD_PRO_129"}) == ["APP_IPAD_PRO_3GEN_129"])
+      pf.missing_sets("IOS", "zh-Hans", {"APP_IPHONE_67", "APP_IPAD_PRO_129", "APP_WATCH_ULTRA"})
+      == ["APP_IPAD_PRO_3GEN_129"]
+      and pf.missing_sets("IOS", "zh-Hans", {"APP_IPHONE_67", "APP_IPAD_PRO_3GEN_129", "APP_WATCH_SERIES_10"})
+      == ["APP_WATCH_ULTRA"])
 check("a locale SHOT_SOURCES maps to FALLBACK needs no set of its own",
       pf.missing_sets("IOS", "fr-FR", set()) == [] and shots.SHOT_SOURCES.get("fr-FR", shots.FALLBACK) is None)
 src = (HERE / "asc_listing_preflight.py").read_text()

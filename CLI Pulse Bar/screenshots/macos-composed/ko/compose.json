@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "108",
-  "version": "1.55.0"
+  "build": "109",
+  "version": "1.56.0"
  },
  "captions": {
   "01_overview": [
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "6bfccdd1b1e245839f1ce0ee7d88c596",
-  "02_providers.png": "5cf7ca3826dce1ca27e50d4482b5127a",
-  "03_usage_history.panel.png": "27ebb91f519b44c569bc9d25d9654f81",
-  "03_usage_history.png": "6bfccdd1b1e245839f1ce0ee7d88c596",
-  "04_cost.png": "d2151ec89ce61cad31e7f8efcf407e4e",
-  "05_alerts.png": "c131db9ed4e2424588d663dced11da7b",
-  "06_pulse_cat.png": "f9eb2787f035f4bce18d21358c846a21"
+  "01_overview.png": "a3f2c5c312310e0c0b29985c07f16f86",
+  "02_providers.png": "2057c239e7731445fc966b0a7b9f43a5",
+  "03_usage_history.panel.png": "4dd98bf882cf8a6a3071271372c8db3d",
+  "03_usage_history.png": "a3f2c5c312310e0c0b29985c07f16f86",
+  "04_cost.png": "a9de1d9376402fe23baa20f028121867",
+  "05_alerts.png": "c53f4d7448993f2566ac52a11024c182",
+  "06_pulse_cat.png": "60cdb3b39e8fc97d9770cf914a7c790e"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -44,16 +44,16 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_2880x1800.png": "3fe167407ed579c8ec930b4e752f9a2b",
-  "02_providers_2880x1800.png": "21a8666c7c4b2c25e06823fb8678ba34",
-  "03_usage_history_2880x1800.png": "0b35afff0269608c1a5f310aceef8cad",
-  "04_cost_2880x1800.png": "5d8f6cb4e2ac023f03f39cf82c17abe1",
-  "05_alerts_2880x1800.png": "f85c547c3740305a3072c57cd8995dc2",
-  "06_pulse_cat_2880x1800.png": "2ac3c53fe0871d1acdc63205d6c03729"
+  "01_overview_2880x1800.png": "787fa3ca78979a96a4122c774520c27b",
+  "02_providers_2880x1800.png": "149eb383507629346fc0b57885c3593d",
+  "03_usage_history_2880x1800.png": "9e6e3e0d23641d0d214825dad431592d",
+  "04_cost_2880x1800.png": "e696cf940a4bf3e9f57af83173fdc015",
+  "05_alerts_2880x1800.png": "008c119ce27f2d37d39b82d15e529fcd",
+  "06_pulse_cat_2880x1800.png": "d1f5e37d453269fc1946188cfac74177"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "eb02d475f2f434d36dfddc9f88e64337",
+ "render": "434b45f9bae7f67d41dfcc137b58c7be",
  "subtitle_pt": 46,
  "title_pt": 100
 }

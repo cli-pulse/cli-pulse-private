@@ -167,13 +167,15 @@ python3 scripts/asc_submit.py --create-version ios --version 1.54.0 \
 python3 scripts/asc_push_listing.py --version 1.54.0 --platform IOS
 python3 scripts/asc_push_listing.py --apply --version 1.54.0 --platform IOS
 
-# 3. Screenshots, per locale (scripts/asc_push_screenshots.py): iPhone and the
-#    13" iPad on IOS, the six-language Mac set on MAC_OS. App Store Connect
-#    copies the previous version's screenshots onto a new version, so a set
-#    not pushed is the old one, not none (step 4 fails on it)
+# 3. Screenshots, per locale (scripts/asc_push_screenshots.py): iPhone, the
+#    13" iPad and the Apple Watch on IOS, the six-language Mac set on MAC_OS.
+#    App Store Connect copies the previous version's screenshots onto a new
+#    version, so a set not pushed is the old one, not none (step 4 fails on it)
 python3 scripts/asc_push_screenshots.py --platform IOS --version 1.54.0      # then --apply
 python3 scripts/asc_push_screenshots.py --platform IOS --display-type APP_IPAD_PRO_3GEN_129 \
     --version 1.54.0                                                         # then --apply
+python3 scripts/asc_push_screenshots.py --platform IOS --display-type APP_WATCH_ULTRA \
+    --version 1.56.0                                                         # then --apply
 
 # 4. The store against the repo, for the version being prepared. What's New is
 #    still empty here (step 5 writes it): --whatsnew-unwritten-ok reports that
@@ -407,7 +409,7 @@ cannot answer:
    locale present on the store.
 3. **Screenshot drift** — every live screenshot vs the local composed PNG of the
    same name, compared on decoded pixels because ASC re-encodes on ingest. In
-   the iPhone, iPad and Mac sets, which this repo composes whole per locale, a
+   the iPhone, iPad, Apple Watch and Mac sets, which this repo composes whole per locale, a
    live screenshot with no local panel of its name fails: that is a set nobody
    replaced (the April 2026 iPad set would have reached 1.55.0 that way). So
    does a locale with its own panels (`SHOT_SOURCES`) and no set of one of its
@@ -430,8 +432,8 @@ release-time step on the owner's machine. Exit 2 means it could not check, which
 is not a pass. The repo-text half (`--texts-only`: limits, keyword format,
 Guideline 2.3.10 platform names in six languages, untranslated English, inline
 copies in pushers) runs in `repo-hygiene.yml`, with `--require-shots` (every
-listing locale's five composed iPhone panels, five composed iPad panels and six
-composed Mac panels, their `compose.json`, the committed raws they were drawn
+listing locale's five composed iPhone panels, four composed iPad panels, four
+Apple Watch panels and six composed Mac panels, their `compose.json`, the committed raws they were drawn
 from, and for the Mac a `render.json` that says a clean store render drew them).
 
 ### iPhone screenshots (six languages)
@@ -483,8 +485,8 @@ capture in this layout.
 ### iPad screenshots (six languages)
 
 The iOS app runs on iPad (`TARGETED_DEVICE_FAMILY = 1,2`), so App Store Connect
-requires a 13" iPad set (`APP_IPAD_PRO_3GEN_129`) to submit it. It is the
-iPhone set's five screens and captions, captured by the same DEBUG launch on
+requires a 13" iPad set (`APP_IPAD_PRO_3GEN_129`) to submit it. It is four
+of the iPhone set's five screens, with their captions, captured by the same DEBUG launch on
 the existing `iPad Pro 13-inch (M5)` simulator, where the app shows its own
 regular-width layout (`iPadSplitView`), in portrait, 2064x2752, the size of the
 panel (App Store Connect takes it for the 13" display, and a headless
@@ -499,6 +501,16 @@ iPhone screenshots dressed as iPad ones (guideline 2.3.3), and every step here
 refuses them (the capture script checks the simulator's family and each
 capture's size, the compositor each raw's size, the pusher and
 `--require-shots` each panel's).
+
+**Four panels, not five (1.56, owner's decision).** On the 13" iPad the
+Overview fits without scrolling, so the `cost` capture repeated the overview
+panel's Cost Summary and Provider Usage under a faded strip of its tiles. The
+iPad set is `IPAD_SCREENS` (overview, providers, sessions, alerts), and each
+panel keeps its iPhone number (`01`, `02`, `04`, `05`; `Platform.numbering`
+in `scripts/appstore_screenshots.py`), so it shares the iPhone's file names and
+captions. The capture script refuses `--set ipad --screens cost`, and the
+compositor and `--require-shots` refuse a `03_cost` left in `ipad-raw/` or
+`ipad-composed/`.
 
 ```bash
 "CLI Pulse Bar/scripts/capture_ios_screenshots.sh" --set ipad --app <Debug iphonesimulator .app>
@@ -531,6 +543,49 @@ signed in to the owner's account, with real project names, paths, alerts and
 subscriptions, and cards and settings the app no longer has), its compositor
 `compose_appstore_ipad_screenshots.py` and `generate_ipad_screenshots.swift`
 were retired for 1.55.0. Git history keeps them; nothing reads them.
+
+### Apple Watch screenshots (six languages)
+
+The iOS version also carries an Apple Watch set (`APP_WATCH_ULTRA`, 422x514,
+the size App Store Connect takes for the Apple Watch Ultra 3): the Watch app's
+four pages (Pulse, Quota, Live, Alerts), captured from the Watch app itself on
+the existing `Apple Watch Ultra 3 (49mm)` simulator by the same capture script.
+The Watch app has a capture launch of its own (`WatchScreenshotLaunch.swift`,
+DEBUG only, the same two arguments): it opens the requested page and holds
+Demo's data as a Watch holds it just after a signed-in iPhone relays its
+refresh, since a Watch never sees the phone's Demo (the phone relays nothing
+without a signed-in identity). The relay is the only way the app's own quota
+alert reaches a Watch; the Watch's own refresh reads the cloud's alert rows,
+which never hold it. That is the dashboard through the cloud mapping
+(`APIClient.dashboardSummary(from:)`), the legacy provider summary projected as
+the Watch projects it, machine cards only for devices that report machine
+health (`WatchDeviceTrim`), the sessions in their REST query's order, and the
+alerts in the iPhone's order (the cloud's rows newest first, then the quota
+alert). It never restores a session, activates WatchConnectivity or refreshes. watchOS has no status-bar override and no
+light appearance, so the Watch's clock reads the time of the capture.
+
+A Watch panel is the capture itself, without a caption (a caption at 422x514
+would be unreadable). simctl writes Watch screenshots with an alpha channel,
+which App Store Connect refuses, so the compositor writes each one as opaque
+8-bit RGB (any transparent pixel on black) and records `compose.json` like the
+other sets, without captions.
+
+```bash
+# the "CLI Pulse iOS" Debug simulator build also builds the Watch app:
+"CLI Pulse Bar/scripts/capture_ios_screenshots.sh" --set watch \
+    --app <DerivedData>/Build/Products/Debug-watchsimulator/"CLI Pulse Watch.app"
+                                                   # -> screenshots/watch-raw/<lang>/
+python3 "CLI Pulse Bar/scripts/compose_appstore_watch_screenshots.py" --all   # -> watch-composed/<lang>/
+python3 scripts/asc_push_screenshots.py --display-type APP_WATCH_ULTRA --version 1.56.0   # dry run
+python3 scripts/asc_push_screenshots.py --apply --platform IOS --display-type APP_WATCH_ULTRA \
+    --version 1.56.0
+python3 scripts/asc_listing_preflight.py --texts-only --require-shots
+```
+
+Until 1.56 the store's Watch sets (en-US and zh-Hans only; every other locale
+showed en-US's) were older captures, and `screenshots/watch/` held images
+an AppKit script (`generate_watch_screenshots.swift`) drew with figures of its
+own; that script and those images were retired for 1.56.0.
 
 ### Mac screenshots (six languages)
 

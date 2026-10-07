@@ -342,7 +342,7 @@ else
     fail=$((fail + 1))
 fi
 
-# ── --require-shots: every listing locale's iPhone, iPad and Mac panels ──────
+# ── --require-shots: every listing locale's iPhone, iPad, Watch and Mac panels ─
 # A flag (CI passes it; the fixtures above carry listing texts only), so the
 # run without it must stay green without panels, and the flag must turn a
 # missing, stray or unuploadable panel into a failure, in any of the sets.
@@ -350,14 +350,14 @@ run_check() {
     python3 "$PREFLIGHT" --texts-only --root "$CASE" $EXTRA >"$TMP/out" 2>&1
 }
 panels() {   # panels <lang...>: the valid panels of a clean compose run, per language:
-             # five iPhone ones, five iPad ones and six Mac ones
+             # five iPhone ones, four iPad ones, four Apple Watch ones and six Mac ones
     python3 - "$ROOT" "$CASE" "$@" <<'PY'
 import sys, pathlib
 sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
 import appstore_screenshots as s
 root = pathlib.Path(sys.argv[2])
 for lang in sys.argv[3:]:
-    for plat in (s.IPHONE, s.IPAD, s.MAC):
+    for plat in (s.IPHONE, s.IPAD, s.WATCH, s.MAC):
         for p in s.expected_composed(lang, root, plat):
             s.write_png(p, *plat.canvas)
         s.write_manifest(s.composed_dir(lang, root, plat), lang, platform=plat)
@@ -365,7 +365,7 @@ PY
 }
 
 EXTRA=""; build_fixture
-expect_pass "no iPhone, iPad or Mac panels, --require-shots not given"
+expect_pass "no iPhone, iPad, Watch or Mac panels, --require-shots not given"
 
 EXTRA="--require-shots"; build_fixture
 expect_fail "--require-shots with no panels at all" "[en-US] en: screenshots/ios-composed/en/ does not exist"
@@ -422,17 +422,18 @@ python3 - "$CASE/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" <<'P
 import sys, pathlib
 p = pathlib.Path(sys.argv[1])
 s = p.read_text(encoding="utf-8")
-old = '"03_cost": ("Where the money goes",'
+old = '"04_sessions": ("Every CLI run tracked",'
 assert s.count(old) == 1, "the mutation target moved; update this case"
-p.write_text(s.replace(old, '"03_cost": ("Where your money goes",'), encoding="utf-8")
+p.write_text(s.replace(old, '"04_sessions": ("Every CLI run, tracked",'), encoding="utf-8")
 PY
-expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 03_cost: the caption drawn is not the compositor's COPY"
+expect_fail "--require-shots with a caption edited after the compose run" "[en-US] en: 04_sessions: the caption drawn is not the compositor's COPY"
 grep -qF "run compose_appstore_ios_screenshots.py --set ipad --lang en" "$TMP/out" \
     && { echo "ok:   [... and the iPad set, which shares the captions, fails too, naming its own recompose]"; pass=$((pass + 1)); } \
     || { echo "FAIL: [the iPad set did not fail on the shared caption edit]"; sed 's/^/        /' "$TMP/out"; fail=$((fail + 1)); }
 
-# The iPad sets: five 2064x2752 panels per language, their own set, never the
-# iPhone's (App Review rejects iPhone screenshots dressed as iPad ones).
+# The iPad sets: four 2064x2752 panels per language (01, 02, 04, 05: no cost),
+# their own set, never the iPhone's (App Review rejects iPhone screenshots
+# dressed as iPad ones).
 build_fixture; panels en zh-Hans zh-Hant ja ko es
 rm -r "$CASE/CLI Pulse Bar/screenshots/ipad-composed/ko"
 expect_fail "--require-shots without the Korean iPad set" "[ko] ko: screenshots/ipad-composed/ko/ does not exist"
@@ -456,7 +457,30 @@ expect_fail "--require-shots with an iPad set a clean compose run did not write"
 
 build_fixture; panels en zh-Hans zh-Hant ja ko es
 cp "$CASE/CLI Pulse Bar/screenshots/ios-composed/en/04_sessions_1290x2796.png" "$CASE/CLI Pulse Bar/screenshots/ipad-composed/en/"
-expect_fail "--require-shots with an iPhone panel left in an iPad set" "[en-US] en: 04_sessions_1290x2796.png: not one of the 5 panels"
+expect_fail "--require-shots with an iPhone panel left in an iPad set" "[en-US] en: 04_sessions_1290x2796.png: not one of the 4 panels"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+s.write_png(s.composed_dir("ko", pathlib.Path(sys.argv[2]), s.IPAD) / s.composed_name("03_cost", s.IPAD), 2064, 2752)
+PY
+expect_fail "--require-shots with a cost panel back in an iPad set" "[ko] ko: 03_cost_2064x2752.png: not one of the 4 panels"
+
+# The Apple Watch sets: four 422x514 panels per language, opaque, in their own set.
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+rm -r "$CASE/CLI Pulse Bar/screenshots/watch-composed/zh-Hans"
+expect_fail "--require-shots without the Simplified Chinese Watch set" "[zh-Hans] zh-Hans: screenshots/watch-composed/zh-Hans/ does not exist"
+
+build_fixture; panels en zh-Hans zh-Hant ja ko es
+python3 - "$ROOT" "$CASE" <<'PY'
+import sys, pathlib
+sys.path.insert(0, str(pathlib.Path(sys.argv[1]) / "scripts"))
+import appstore_screenshots as s
+s.write_png(s.expected_composed("en", pathlib.Path(sys.argv[2]), s.WATCH)[1], 422, 514, color_type=6)
+PY
+expect_fail "--require-shots with a Watch panel that keeps simctl's alpha" "[en-US] en: 02_quota_422x514.png: RGBA"
 
 # The Mac sets, the same way: every locale needs its six 2880x1800 panels too.
 build_fixture; panels en zh-Hans zh-Hant ja ko es
@@ -490,6 +514,7 @@ real_shots() {
     mkdir -p "$CASE/CLI Pulse Bar/screenshots" "$CASE/CLI Pulse Bar/scripts"
     cp -R "$ROOT/CLI Pulse Bar/screenshots/ios-raw" "$ROOT/CLI Pulse Bar/screenshots/ios-composed" \
         "$ROOT/CLI Pulse Bar/screenshots/ipad-raw" "$ROOT/CLI Pulse Bar/screenshots/ipad-composed" \
+        "$ROOT/CLI Pulse Bar/screenshots/watch-raw" "$ROOT/CLI Pulse Bar/screenshots/watch-composed" \
         "$ROOT/CLI Pulse Bar/screenshots/macos-raw" "$ROOT/CLI Pulse Bar/screenshots/macos-composed" \
         "$CASE/CLI Pulse Bar/screenshots/"
     cp "$ROOT/CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py" \
@@ -497,6 +522,7 @@ real_shots() {
 }
 RAW="$CASE/CLI Pulse Bar/screenshots/ios-raw"
 IRAW="$CASE/CLI Pulse Bar/screenshots/ipad-raw"
+WRAW="$CASE/CLI Pulse Bar/screenshots/watch-raw"
 MRAW="$CASE/CLI Pulse Bar/screenshots/macos-raw"
 
 real_shots
@@ -520,8 +546,18 @@ expect_fail "--require-shots with a stray raw capture the compositor would refus
 
 # The iPad raws the same way, and the swap that matters most for them: an
 # iPhone capture of the same screen where an iPad one was.
+real_shots; cp "$RAW/ja/04_sessions.png" "$IRAW/ja/04_sessions.png"
+expect_fail "--require-shots with an iPhone capture in place of an iPad one" "[ja] ja: screenshots/ipad-raw/ja/04_sessions.png: not the capture compose.json records"
+
 real_shots; cp "$RAW/ja/03_cost.png" "$IRAW/ja/03_cost.png"
-expect_fail "--require-shots with an iPhone capture in place of an iPad one" "[ja] ja: screenshots/ipad-raw/ja/03_cost.png: not the capture compose.json records"
+expect_fail "--require-shots with a cost capture back in ipad-raw" "[ja] ja: screenshots/ipad-raw/ja/03_cost.png: not a capture of the set"
+
+# The Watch raws: a page from another language, and a page missing.
+real_shots; cp "$WRAW/en/02_quota.png" "$WRAW/ko/02_quota.png"
+expect_fail "--require-shots with another language's Watch capture" "[ko] ko: screenshots/watch-raw/ko/02_quota.png: not the capture compose.json records"
+
+real_shots; rm "$WRAW/es/04_alerts.png"
+expect_fail "--require-shots with a Watch capture missing" "[es-MX] es: screenshots/watch-raw/es/04_alerts.png: missing"
 
 real_shots; cp "$IRAW/zh-Hans/04_sessions.png" "$IRAW/zh-Hant/04_sessions.png"
 expect_fail "--require-shots with another language's iPad capture" "[zh-Hant] zh-Hant: screenshots/ipad-raw/zh-Hant/04_sessions.png: not the capture compose.json records"

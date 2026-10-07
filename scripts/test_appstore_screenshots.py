@@ -47,8 +47,9 @@ The Mac set (scripts/appstore_screenshots.py MAC, compose_appstore_macos_screens
 The iPad set (scripts/appstore_screenshots.py IPAD; the iPhone compositor with
 --set ipad; the capture script with --set ipad):
 
-  * the same five screens and the same captions as the iPhone set (one COPY),
-    a 2064x2752 panel in APP_IPAD_PRO_3GEN_129 on the IOS version, and the
+  * four of the iPhone set's five screens (not cost), with their iPhone numbers
+    and the same captions (one COPY), the capture script's IPAD_SCREENS the
+    module's, a 2064x2752 panel in APP_IPAD_PRO_3GEN_129 on the IOS version, and the
     capture script, the module and the compositor agree on where its raws
     live, what size a capture is (2064x2752 portrait), and which simulator
     takes it; an iPhone-sized or landscape panel is refused;
@@ -60,6 +61,17 @@ The iPad set (scripts/appstore_screenshots.py IPAD; the iPhone compositor with
     itself refuses an iPhone capture in the iPad set (and withdraws the set);
     the committed iPad sets recompose byte-identically with the Pillow they
     record.
+
+The Apple Watch set (scripts/appstore_screenshots.py WATCH;
+compose_appstore_watch_screenshots.py; the capture script with --set watch):
+
+  * the Watch app's four pages, 422x514 panels with no caption in
+    APP_WATCH_ULTRA on the IOS version; the capture script names the same
+    pages, device and size; --require-shots holds every language to its Watch
+    set and the committed ones are uploadable and drawn from the committed raws;
+  * with Pillow: a capture with transparency becomes an opaque RGB panel, an
+    iPhone capture is refused (and the set withdrawn), and the committed sets
+    recompose byte-identically with the Pillow they record.
 
 Bare python3 for everything else; CI runs it in repo-hygiene.yml.
 """
@@ -982,19 +994,27 @@ else:
 IPAD = shots.IPAD
 IPAD_STEMS = shots.stems(IPAD)
 
-check("the iPad set is the iPhone's five screens, 2064x2752, in APP_IPAD_PRO_3GEN_129 on the IOS version",
-      IPAD_STEMS == shots.stems() and IPAD.canvas == (2064, 2752)
+check("the iPad set is four of the iPhone's screens, not cost, under their iPhone numbers, 2064x2752, "
+      "in APP_IPAD_PRO_3GEN_129 on the IOS version",
+      IPAD_STEMS == ["01_overview", "02_providers", "04_sessions", "05_alerts"]
+      and set(IPAD_STEMS) < set(shots.stems()) and IPAD.canvas == (2064, 2752)
       and IPAD.display_type == "APP_IPAD_PRO_3GEN_129" and IPAD.asc_platform == "IOS"
       and shots.composed_name("01_overview", IPAD) == "01_overview_2064x2752.png"
       and IPAD.compositor_rel == shots.COMPOSITOR_REL, str(IPAD))
 check("every set by its display type, and IOS alone still means the iPhone set",
-      shots.SETS == {"APP_IPHONE_67": shots.IPHONE, "APP_IPAD_PRO_3GEN_129": IPAD, "APP_DESKTOP": MAC}
+      shots.SETS == {"APP_IPHONE_67": shots.IPHONE, "APP_IPAD_PRO_3GEN_129": IPAD,
+                     "APP_WATCH_ULTRA": shots.WATCH, "APP_DESKTOP": MAC}
       and shots.PLATFORMS == {"IOS": shots.IPHONE, "MAC_OS": MAC}, str(shots.SETS))
 check("the iPad set recomposes with the iPhone compositor's --set ipad, and says so",
       IPAD.compose_cmd == "compose_appstore_ios_screenshots.py --set ipad"
       and shots.IPHONE.compose_cmd == "compose_appstore_ios_screenshots.py", IPAD.compose_cmd)
 check("the iPad captions are the iPhone's: one COPY, read for either set",
       shots.caption_copy(platform=IPAD) == shots.caption_copy() == compose.COPY)
+check("the capture script's iPad screens are the module's, and leave out cost",
+      bash_array("IPAD_SCREENS") == list(shots.IPAD_SCREENS) and "cost" not in shots.IPAD_SCREENS,
+      str(bash_array("IPAD_SCREENS")))
+check("the capture script refuses a screen outside the set (a cost capture in ipad-raw)",
+      'in_set "$want" || die' in script and 'ipad) set_screens=("${IPAD_SCREENS[@]}")' in script)
 
 sets_in_script = {m.group(1): m.groups()[1:] for m in re.finditer(
     r'^\s+(iphone|ipad)\) echo "([^|"]+)\|([^|"]+)\|(\d+)x(\d+)\|(\w+)" ;;', script, re.M)}
@@ -1074,18 +1094,18 @@ if fonts_here:
     ipad_out = tmp / "ipad-compose-out" / "ja"
     with contextlib.redirect_stdout(io.StringIO()) as log:
         ok_run = compose.compose_lang("ja", ipad_raw, ipad_out, ipad_frame)
-    check("a clean iPad compose run publishes five 2064x2752 panels with compose.json",
+    check("a clean iPad compose run publishes four 2064x2752 panels with compose.json",
           ok_run == [] and sorted(p_.name for p_ in ipad_out.glob("*.png"))
           == [shots.composed_name(st_, IPAD) for st_ in IPAD_STEMS]
           and all(shots.panel_problems(p_, IPAD) == [] for p_ in ipad_out.glob("*.png"))
           and (ipad_out / shots.MANIFEST).is_file(), log.getvalue())
     mixed_raw = tmp / "ipad-compose-iphone-raw"
     shutil.copytree(ipad_raw, mixed_raw)
-    _Image.new("RGB", compose.IPHONE.capture_size, (240, 242, 246)).save(mixed_raw / "03_cost.png")
+    _Image.new("RGB", compose.IPHONE.capture_size, (240, 242, 246)).save(mixed_raw / "04_sessions.png")
     with contextlib.redirect_stdout(io.StringIO()) as log:
         refused = compose.compose_lang("ja", mixed_raw, ipad_out, ipad_frame)
     check("negative control: an iPhone capture in the iPad set is refused by the compositor, and the set withdrawn",
-          any("03_cost.png is 1320x2868, not the 2064x2752 of a iPad Pro 13-inch (M5) capture" in p_
+          any("04_sessions.png is 1320x2868, not the 2064x2752 of a iPad Pro 13-inch (M5) capture" in p_
               for p_ in refused) and not (ipad_out / shots.MANIFEST).exists(), log.getvalue())
 
     # The headline rule on iPad panels: subtitles alternating one and two lines.
@@ -1115,7 +1135,7 @@ if fonts_here:
         measured[st_] = (title, sub[0] if sub else None, top)
     check("iPad: with subtitles mixing one and two lines, every headline, subtitle and screenshot starts on "
           "the same row",
-          es_run == [] and n_lines == [1, 2, 1, 2, 1]
+          es_run == [] and n_lines == [1, 2, 1, 2]
           and None not in {v for m_ in measured.values() for v in m_}
           and len(set(measured.values())) == 1, f"{n_lines} {measured}\n{log.getvalue()}")
 
@@ -1147,6 +1167,112 @@ if fonts_here:
 else:
     not_run += 1
     print("NOT RUN: iPad caption fit, headline rows and recompose (need macOS system fonts and Pillow)")
+
+# ══ the Apple Watch set ═══════════════════════════════════════════════════════
+import compose_appstore_watch_screenshots as compose_watch  # noqa: E402
+WATCH = shots.WATCH
+WATCH_STEMS = shots.stems(WATCH)
+
+check("the Watch set is the Watch app's four pages, 422x514, uncaptioned, in APP_WATCH_ULTRA on the IOS version",
+      WATCH_STEMS == ["01_pulse", "02_quota", "03_live", "04_alerts"] and WATCH.canvas == (422, 514)
+      and WATCH.display_type == "APP_WATCH_ULTRA" and WATCH.asc_platform == "IOS" and not WATCH.captioned
+      and shots.composed_name("01_pulse", WATCH) == "01_pulse_422x514.png"
+      and WATCH.compose_cmd == "compose_appstore_watch_screenshots.py"
+      and shots.PLATFORMS["IOS"] is shots.IPHONE, str(WATCH))
+check("the capture script's Watch pages, device, raws and size are the module's",
+      bash_array("WATCH_SCREENS") == list(shots.WATCH_SCREENS)
+      and re.search(r'^\s+watch\) echo "Apple Watch Ultra 3 \(49mm\)\|watch-raw\|422x514\|ignored" ;;',
+                    script, re.M) is not None
+      and '*SimDeviceType.Apple-Watch*) family=watch' in script
+      and 'watch) numbering=("${WATCH_SCREENS[@]}")' in script, str(bash_array("WATCH_SCREENS")))
+_watch_swift = (HERE.parent / "CLI Pulse Bar" / "CLIPulseCore" / "Sources" / "CLIPulseCore"
+                / "WatchScreenshotLaunch.swift").read_text()
+_enum = _watch_swift.split("public enum Screen: String, CaseIterable, Sendable {", 1)[-1].split("}", 1)[0]
+check("the Watch pages are the Swift capture launch's (WatchScreenshotLaunch.Screen), in order",
+      re.findall(r"case (\w+)", _enum) == list(shots.WATCH_SCREENS), str(re.findall(r"case (\w+)", _enum)))
+check("a Watch panel is 422x514; an iPhone panel is refused as one",
+      any("1290x2796, expected 422x514" in x for x in shots.panel_problems(good, WATCH)))
+watch_rgba = tmp / "watch-rgba.png"
+shots.write_png(watch_rgba, 422, 514, color_type=6)
+check("a Watch screenshot as simctl writes it (with alpha) is not uploadable as it is",
+      any("RGBA" in x for x in shots.panel_problems(watch_rgba, WATCH)), str(shots.panel_problems(watch_rgba, WATCH)))
+
+watch_root = tmp / "watch-repo"
+for lang in shots.LANGS:
+    for p_ in shots.expected_composed(lang, watch_root, WATCH):
+        shots.write_png(p_, 422, 514)
+    shots.write_manifest(shots.composed_dir(lang, watch_root, WATCH), lang, platform=WATCH)
+check("a complete Watch tree satisfies --require-shots for every listing locale (no captions to check)",
+      shots.require_shots_problems(listing.LOCALE_SOURCES, watch_root, platform=WATCH) == [],
+      str(shots.require_shots_problems(listing.LOCALE_SOURCES, watch_root, platform=WATCH)))
+shutil.rmtree(shots.composed_dir("ja", watch_root, WATCH))
+check("a language without its Watch set fails",
+      [why for loc, why in shots.require_shots_problems(["ja"], watch_root, platform=WATCH)]
+      == ["ja: screenshots/watch-composed/ja/ does not exist"])
+check("on the real repo every Watch set is uploadable, recorded and drawn from the committed raws",
+      all(shots.set_problems(lang, platform=WATCH) == [] and shots.capture_problems(lang, platform=WATCH) == []
+          for lang in shots.LANGS),
+      str({lang: shots.set_problems(lang, platform=WATCH) + shots.capture_problems(lang, platform=WATCH)
+           for lang in shots.LANGS}))
+check("the AppKit Watch mock and its images are gone from the tree",
+      not (shots.screenshots_dir() / "watch").exists()
+      and not (HERE.parent / "CLI Pulse Bar" / "scripts" / "generate_watch_screenshots.swift").exists())
+
+if compose.Image is not None:
+    import contextlib
+    import hashlib
+    import io
+    from PIL import Image as _Image
+    w_raw = tmp / "watch-compose-raw"
+    w_raw.mkdir(parents=True, exist_ok=True)
+    for st in WATCH_STEMS:
+        im = _Image.new("RGBA", WATCH.canvas, (20, 30, 40, 255))
+        im.putpixel((0, 0), (255, 255, 255, 0))   # one transparent corner pixel
+        im.save(w_raw / f"{st}.png")
+    w_out = tmp / "watch-compose-out" / "ko"
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        w_run = compose_watch.compose_lang("ko", w_raw, w_out)
+    panels = sorted(w_out.glob("*.png"))
+    check("a clean Watch compose run publishes four opaque 422x514 RGB panels with compose.json, "
+          "a transparent pixel laid on black",
+          w_run == [] and [p_.name for p_ in panels] == [shots.composed_name(st_, WATCH) for st_ in WATCH_STEMS]
+          and all(shots.panel_problems(p_, WATCH) == [] for p_ in panels)
+          and _Image.open(panels[0]).getpixel((0, 0)) == (0, 0, 0)
+          and (w_out / shots.MANIFEST).is_file(), log.getvalue())
+    w_mixed = tmp / "watch-compose-iphone-raw"
+    shutil.copytree(w_raw, w_mixed)
+    _Image.new("RGB", (1320, 2868), (240, 242, 246)).save(w_mixed / "03_live.png")
+    with contextlib.redirect_stdout(io.StringIO()) as log:
+        w_refused = compose_watch.compose_lang("ko", w_mixed, w_out)
+    check("negative control: an iPhone capture in the Watch set is refused, and the set withdrawn",
+          any("03_live.png is 1320x2868, not the 422x514" in p_ for p_ in w_refused)
+          and not (w_out / shots.MANIFEST).exists(), log.getvalue())
+
+    def _watch_pillow(lang: str) -> str | None:
+        f = shots.composed_dir(lang, platform=WATCH) / shots.MANIFEST
+        return json.loads(f.read_text()).get("pillow") if f.is_file() else None
+    watch_pillow = {_watch_pillow(lang) for lang in shots.LANGS}
+    import PIL
+    if watch_pillow == {PIL.__version__}:
+        def recompose_watch(lang: str, out: Path) -> list[str]:
+            committed = shots.composed_dir(lang, platform=WATCH) / shots.MANIFEST
+            with contextlib.redirect_stdout(io.StringIO()):
+                problems = compose_watch.compose_lang(lang, None, out)
+            want = json.loads(committed.read_text())
+            got = json.loads((out / shots.MANIFEST).read_text()) if (out / shots.MANIFEST).exists() else {}
+            diff = [n for n, m_ in want.get("panels", {}).items()
+                    if not (out / n).exists() or hashlib.md5((out / n).read_bytes()).hexdigest() != m_]
+            return problems + diff + ([] if got == want else ["compose.json differs"])
+        watch_diff = {lang: recompose_watch(lang, tmp / "re-watch" / lang) for lang in shots.LANGS}
+        check("the committed Watch sets recompose byte-identically from the committed raws",
+              not any(watch_diff.values()), str(watch_diff))
+    else:
+        not_run += 1
+        print(f"NOT RUN: the Watch byte-identical recompose (composed with Pillow {watch_pillow}, "
+              f"this is {PIL.__version__})")
+else:
+    not_run += 1
+    print("NOT RUN: the Watch compose run and recompose (need Pillow)")
 
 print(f"test_appstore_screenshots: {passed} passed, {failed} failed"
       + (f", {not_run} group(s) NOT RUN" if not_run else "") + ".")

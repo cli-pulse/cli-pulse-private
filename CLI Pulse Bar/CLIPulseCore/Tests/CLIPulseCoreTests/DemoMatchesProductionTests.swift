@@ -838,6 +838,106 @@ final class DemoMatchesProductionTests: XCTestCase {
         }
     }
 
+    // MARK: - The Overview's tiles and the alert list
+
+    /// `dashboard_summary` counts every session whose status is 'Running',
+    /// with no time window, and every unresolved row of public.alerts. The
+    /// cloud route passes both through: it raises the sessions figure only to
+    /// the rows it lists, never lowers it, and leaves the alerts figure as the
+    /// server sent it. helper_sync turns a session 'Ended' only ten minutes
+    /// after its process is gone, so the Sessions tab's Recent rows still
+    /// count; and the quota alert is the app's own, raised as it refreshes
+    /// and never uploaded (the app only reads and updates alert rows), so it
+    /// is not counted. Demo's tiles read 3 and 3, the Active section and the
+    /// merged list, where this account's dashboard reads 5 and 2; a Watch
+    /// then said 3 sessions on its Pulse chip and "5 Running" on its Live page.
+    func testTheOverviewTilesCountWhatDashboardSummaryCounts() throws {
+        let demo = DemoDataProvider.generate()
+        XCTAssertEqual(demo.dashboard.active_sessions, demo.sessions.filter { $0.status == "Running" }.count,
+                       "the Sessions tile leaves out a row dashboard_summary counts")
+        XCTAssertGreaterThanOrEqual(
+            demo.dashboard.active_sessions,
+            SessionFreshnessFilter.filterCurrent(demo.sessions, now: demo.refreshedAt).count,
+            "the cloud route would raise the Sessions tile to the rows it lists")
+        let cloudRows = demo.alerts.filter { !$0.id.hasPrefix("quota-") }
+        XCTAssertEqual(demo.dashboard.unresolved_alerts, cloudRows.filter { !$0.is_resolved }.count,
+                       "the Alerts tile counts an alert the cloud does not hold")
+        // Positive controls: the cases this is about, where a tile and a list differ.
+        XCTAssertFalse(SessionFreshnessTierClassifier.partition(demo.sessions, now: Date()).recent.isEmpty,
+                       "Demo has no Recent session; this test checks less than it says")
+        XCTAssertTrue(demo.alerts.contains { $0.id.hasPrefix("quota-") && !$0.is_resolved },
+                      "Demo has no quota alert; this test checks less than it says")
+
+        // The production half: the server's counts...
+        let supabase = Self.appSourceRoot.deletingLastPathComponent().appendingPathComponent("backend/supabase")
+        for name in ["app_rpc.sql", "migrate_v0.44_user_tz_today.sql"] {
+            let summary = try String(contentsOf: supabase.appendingPathComponent(name), encoding: .utf8)
+                .replacingOccurrences(of: "\r\n", with: "\n")
+            XCTAssertTrue(summary.contains(
+                "from public.sessions\n      where user_id = v_user_id and status = 'Running'\n    ),"),
+                "\(name): dashboard_summary counts sessions another way")
+            XCTAssertTrue(summary.contains(
+                "from public.alerts\n      where user_id = v_user_id and is_resolved = false\n    ),"),
+                "\(name): dashboard_summary counts alerts another way")
+        }
+        // ...the cloud route's use of them...
+        let refresh = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/DataRefreshManager.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(refresh.contains("guard mergedSessions.count > dashboardData.active_sessions else { return dashboardData }"),
+                      "the cloud route changes the Sessions tile another way")
+        XCTAssertTrue(refresh.contains("unresolved_alerts: dashboardData.unresolved_alerts,"),
+                      "the cloud route changes the Alerts tile")
+        // ...and no alert row written by the app: every alerts request is the
+        // list's read or an update of one row by id.
+        let api = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/APIClient.swift"), encoding: .utf8))
+        let requests = api.components(separatedBy: "\"/rest/v1/alerts").dropFirst().map { $0.prefix(80) }
+        XCTAssertFalse(requests.isEmpty, "APIClient no longer reads alerts this way; recheck the quota alert")
+        for request in requests {
+            XCTAssertTrue(request.hasPrefix("?user_id=eq.\\(safeUserId)&select=*&order=created_at.desc")
+                          || request.hasPrefix("?id=eq.\\(safeId)&user_id=eq.\\(safeUserId)\""),
+                          "an alerts request this does not know: \(request)")
+        }
+    }
+
+    /// The cloud route lists the cloud's alert rows in the order its query
+    /// asks for, `created_at.desc`, and appends the alerts the app raises
+    /// itself, the quota alert, after them; no alert list sorts them again.
+    /// Demo had the quota alert first and the two-hour-old session-CPU alert
+    /// above the hour-old device-CPU one, so the iPhone, iPad and Mac panels
+    /// read 1m, 2h, 1h, an order no refresh gives.
+    func testDemoListsTheAlertsInTheOrderTheCloudRouteGives() throws {
+        let demo = DemoDataProvider.generate()
+        let isQuota: (AlertRecord) -> Bool = { $0.id.hasPrefix("quota-") }
+        let firstQuota = demo.alerts.firstIndex(where: isQuota) ?? demo.alerts.endIndex
+        XCTAssertFalse(demo.alerts[firstQuota...].contains { !isQuota($0) },
+                       "a cloud row is listed after the quota alert the app appends")
+        let cloudTimes = try demo.alerts[..<firstQuota].map {
+            try XCTUnwrap(sharedISO8601Parse($0.created_at), $0.id)
+        }
+        XCTAssertEqual(cloudTimes, cloudTimes.sorted(by: >), "the cloud rows are not newest first")
+        // Positive control: there are cloud rows to order and a quota alert after them.
+        XCTAssertGreaterThanOrEqual(cloudTimes.count, 2, "fewer than two cloud rows; this checks less than it says")
+        XCTAssertLessThan(firstQuota, demo.alerts.endIndex, "Demo has no quota alert; this checks less than it says")
+
+        // The production half.
+        let api = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/APIClient.swift"), encoding: .utf8))
+        XCTAssertTrue(api.contains("/rest/v1/alerts?user_id=eq.\\(safeUserId)&select=*&order=created_at.desc"),
+                      "the alerts query asks for another order")
+        let refresh = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/DataRefreshManager.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(refresh.contains("var augmentedAlerts = alertData"), "the cloud route starts its list another way")
+        XCTAssertTrue(refresh.contains("augmentedAlerts.append(rec)"), "the cloud route adds its own alerts another way")
+        XCTAssertTrue(refresh.contains("alerts: augmentedAlerts,"), "the cloud route publishes another list")
+        for file in ["CLI Pulse Bar iOS/iOSAlertsTab.swift", "CLI Pulse Bar/AlertsTab.swift"] {
+            let tab = Self.codeOnly(try String(contentsOf: Self.appSourceRoot.appendingPathComponent(file), encoding: .utf8))
+            XCTAssertFalse(tab.contains("sorted"), "\(file) sorts the alerts; Demo's order may no longer be what it shows")
+        }
+    }
+
     /// The server's 30-day figure (`provider_summary`,
     /// `provider_account_summary`) sums the last 30 days of
     /// `daily_usage_metrics`, a window that holds the week's and today's, so

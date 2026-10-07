@@ -390,8 +390,11 @@ final class ScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(buckets.active.count, 3, "the Active section")
         XCTAssertEqual(buckets.recent.map(\.name), ["docs-refresh", "api-gateway"],
                        "the Recent section, most recent first")
-        XCTAssertEqual(demo.dashboard.active_sessions, buckets.active.count,
-                       "the Sessions tile counts what the Active section lists")
+        // The Sessions tile counts every Running row, Recent ones too, as
+        // `dashboard_summary` does; it held the Active section's count, which
+        // no account shows (DemoMatchesProductionTests).
+        XCTAssertEqual(demo.dashboard.active_sessions, demo.sessions.count,
+                       "the Sessions tile counts what dashboard_summary counts")
 
         let gemini = try XCTUnwrap(demo.providers.first { $0.provider == "Gemini" })
         XCTAssertEqual(gemini.tiers.map(\.name), ["Pro"], "the window GeminiCollector reports, by model family")

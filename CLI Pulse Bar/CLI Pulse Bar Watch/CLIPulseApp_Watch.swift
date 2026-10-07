@@ -7,6 +7,12 @@ struct CLIPulseWatchApp: App {
     @StateObject private var sessionManager = WatchSessionManager.shared
 
     init() {
+        #if DEBUG
+        // An App Store screenshot launch (WatchScreenshotLaunch): wrong
+        // arguments stop here with a marked error rather than photograph a
+        // normal launch under a page's name.
+        _ = WatchScreenshotLaunch.screenOrExit()
+        #endif
         SentryLogger.start(platform: .watchOS)
         // The iPhone's display currency as the last context delivered it, so
         // the costs this Watch persisted do not show in dollars until
@@ -26,6 +32,11 @@ struct CLIPulseWatchApp: App {
                 // on-device if needed.
                 .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .onAppear {
+                    #if DEBUG
+                    // A screenshot capture shows Demo and talks to no one:
+                    // no WatchConnectivity, so no phone's data either.
+                    if WatchScreenshotLaunch.activeScreen != nil { return }
+                    #endif
                     sessionManager.activate()
                     appState.applyFallbackData(from: sessionManager)
                 }

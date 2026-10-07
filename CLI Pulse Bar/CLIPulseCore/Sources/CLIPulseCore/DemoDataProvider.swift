@@ -281,7 +281,29 @@ internal enum DemoDataProvider {
         // and the Companion CLI's rule has no skip. That is the false alarm
         // v1.16.1 set out to remove, not something to put in a screenshot.
         // `testDemoRaisesNoLongRunningAlert`.
-        let alerts = quotaAlerts + [
+        //
+        // The cloud's rows, in the order `APIClient.alerts` asks for them
+        // (`created_at.desc`): the device-CPU alert an hour old, then the
+        // session-CPU alert two hours old.
+        let cloudAlerts = [
+            // Swift helper, AlertGenerator.generate device-CPU rule (85% of
+            // the Mac): keyed to the helper's device id, with no device name,
+            // which helper_sync stores as sent. It was lab-server-01's, with
+            // the Python helper's keys; but the Python helper is not shipped
+            // (docs/ARCHITECTURE.md), and the desktop app, which reports
+            // Linux machines, has no device-CPU rule.
+            // `testTheDeviceCPUAlertIsOneTheMacHelperRaises`.
+            AlertRecord(id: "cpu-spike-\(busyMac.id)", type: "Usage Spike", severity: "Warning",
+                        title: "Device CPU usage is elevated",
+                        message: "helper sampled CPU usage at 91%.",
+                        created_at: timestamp(-3600), is_read: true, is_resolved: false,
+                        acknowledged_at: nil, snoozed_until: nil,
+                        related_project_id: nil, related_project_name: nil,
+                        related_session_id: nil, related_session_name: nil,
+                        related_provider: nil, related_device_name: nil,
+                        source_kind: "device", source_id: nil,
+                        grouping_key: "Usage Spike:device:\(busyMac.id)",
+                        suppression_key: "cpu-spike-\(busyMac.id)"),
             // Swift helper, AlertGenerator.generate session-CPU rule. It does
             // not set a device name.
             //
@@ -307,25 +329,16 @@ internal enum DemoDataProvider {
                         source_kind: "session", source_id: nil,
                         grouping_key: "Usage Spike:\(busy.provider)",
                         suppression_key: "Usage Spike:s1-3f9a2c1e"),
-            // Swift helper, AlertGenerator.generate device-CPU rule (85% of
-            // the Mac): keyed to the helper's device id, with no device name,
-            // which helper_sync stores as sent. It was lab-server-01's, with
-            // the Python helper's keys; but the Python helper is not shipped
-            // (docs/ARCHITECTURE.md), and the desktop app, which reports
-            // Linux machines, has no device-CPU rule.
-            // `testTheDeviceCPUAlertIsOneTheMacHelperRaises`.
-            AlertRecord(id: "cpu-spike-\(busyMac.id)", type: "Usage Spike", severity: "Warning",
-                        title: "Device CPU usage is elevated",
-                        message: "helper sampled CPU usage at 91%.",
-                        created_at: timestamp(-3600), is_read: true, is_resolved: false,
-                        acknowledged_at: nil, snoozed_until: nil,
-                        related_project_id: nil, related_project_name: nil,
-                        related_session_id: nil, related_session_name: nil,
-                        related_provider: nil, related_device_name: nil,
-                        source_kind: "device", source_id: nil,
-                        grouping_key: "Usage Spike:device:\(busyMac.id)",
-                        suppression_key: "cpu-spike-\(busyMac.id)"),
         ]
+        // Then the quota alert, last: the cloud route appends the alerts it
+        // raises itself after the cloud's rows (DataRefreshManager,
+        // `augmentedAlerts.append`), and no list sorts them again. So a real
+        // iPhone, iPad or Mac lists this account's alerts 1h, 2h, 1m, and so
+        // does a Watch the iPhone has relayed them to (WatchAlertSort keeps
+        // the order of alerts of one severity). Demo had the quota alert
+        // first and the session-CPU alert above the device-CPU one, an order
+        // no refresh gives. `testDemoListsTheAlertsInTheOrderTheCloudRouteGives`.
+        let alerts = cloudAlerts + quotaAlerts
 
         // From the local refresh's own producer, with Demo's facts: it has
         // sessions and provider data, so it raises nothing and the Risk Signals
@@ -352,12 +365,26 @@ internal enum DemoDataProvider {
             // shows there alone (OverviewFormatters.showsRequestsMetric); Demo
             // takes the `.noOp` route.
             total_requests_today: 0,
-            // The Sessions tab's Active section, by freshness (every status is
-            // Running); ScreenshotLaunchTests holds the two equal.
-            active_sessions: SessionFreshnessTierClassifier.partition(sessions, now: now).active.count,
+            // `dashboard_summary` counts every session whose status is
+            // 'Running', with no time window, and helper_sync turns a row
+            // 'Ended' only ten minutes after its process is gone. So all five
+            // rows count, the two in the Sessions tab's Recent section too, and
+            // the cloud route never bumps the tile down (DataRefreshManager
+            // raises it to the rows it lists, five here). The tile reads 5 while
+            // the Sessions tab's Active section lists 3, as on a real phone.
+            // It read 3, the Active section, which no account shows: a Watch
+            // then said 3 on its Pulse chip and "5 Running" on its Live page.
+            // `testTheOverviewTilesCountWhatDashboardSummaryCounts`.
+            active_sessions: sessions.filter { $0.status == "Running" }.count,
             // `dashboard_summary` counts the rows whose status is 'Online'.
             online_devices: devices.filter { $0.status == DeviceStatus.online.rawValue }.count,
-            unresolved_alerts: alerts.filter { !$0.is_resolved }.count,
+            // `dashboard_summary` counts the unresolved rows of public.alerts,
+            // and the cloud route passes that count through. The quota alert
+            // is the app's own, raised as it refreshes and never uploaded, so
+            // the Alerts tile reads 2 while the alert list and the tab badge,
+            // which count the merged list, read 3. Demo counted the quota
+            // alert in the tile too, which no account sees.
+            unresolved_alerts: cloudAlerts.filter { !$0.is_resolved }.count,
             provider_breakdown: breakdowns,
             // Empty, as every real producer leaves it (APIClient, DataRefreshManager),
             // so the Top Projects card hides here too. Sample rows put it in every

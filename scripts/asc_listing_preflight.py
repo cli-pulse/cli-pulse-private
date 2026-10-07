@@ -48,8 +48,9 @@ CHECKS
                     case that keeps recurring.
 
 4. Panels           with --require-shots only: every locale with listing texts
-                    has its five composed iPhone screenshots, its five iPad
-                    ones and its six Mac ones, each one App Store Connect
+                    has its five composed iPhone screenshots, its four iPad
+                    ones, its four Apple Watch ones and its six Mac ones,
+                    each one App Store Connect
                     would accept, drawn from the committed raws (and, for the
                     Mac, from a clean store render: scripts/appstore_screenshots.py
                     render_problems), or deliberately falls back to en-US's.
@@ -94,7 +95,7 @@ pushing is scripts/asc_push_listing.py, and a deliberate, owner-driven action.
 
 Usage:
     python3 scripts/asc_listing_preflight.py --texts-only    # repo texts only, no key
-    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone, iPad and Mac panels (CI)
+    python3 scripts/asc_listing_preflight.py --texts-only --require-shots   # + iPhone, iPad, Watch and Mac panels (CI)
     python3 scripts/asc_listing_preflight.py                 # all platforms, live versions
     python3 scripts/asc_listing_preflight.py --platform MAC_OS
     python3 scripts/asc_listing_preflight.py --version 1.54.0  # the version being prepared
@@ -374,8 +375,8 @@ def check_repo_texts(root: Path | None = None) -> bool:
 
 def check_repo_shots(root: Path | None = None) -> bool:
     """Check 4 (--require-shots): every locale with listing texts has its
-    composed iPhone panels (five, 1290x2796), iPad panels (five, 2064x2752) and
-    Mac panels (six, 2880x1800), each uploadable (RGB, no alpha, <=10 MB), or is
+    composed iPhone panels (five, 1290x2796), iPad panels (four, 2064x2752),
+    Apple Watch panels (four, 422x514) and Mac panels (six, 2880x1800), each uploadable (RGB, no alpha, <=10 MB), or is
     mapped to FALLBACK and
     shows en-US's; and the committed raws are the ones each set's compose.json
     records it was drawn from (md5), so it can be recomposed without a
@@ -428,7 +429,7 @@ def compare_set(asc: ASC, locale: str, screenshot_set: dict, dtype: str,
     names. True if anything failed.
 
     `managed`: the set is one this repo composes whole for the locale (the
-    iPhone, iPad and Mac sets, scripts/appstore_screenshots.py SETS), which the
+    iPhone, iPad, Apple Watch and Mac sets, scripts/appstore_screenshots.py SETS), which the
     pusher replaces whole. There a live screenshot with no local panel of its
     name is a set nobody replaced, and fails: App Store Connect copies the
     previous version's screenshots onto a new version, so the April 2026 iPad
@@ -539,7 +540,7 @@ def main() -> int:
     ap.add_argument("--root", type=Path,
                     help="repo root to validate (with --texts-only; for the self-test)")
     ap.add_argument("--require-shots", action="store_true",
-                    help="also require every listing locale's composed iPhone, iPad and Mac panels "
+                    help="also require every listing locale's composed iPhone, iPad, Apple Watch and Mac panels "
                          "(check 4; repo-only, works with --texts-only)")
     ap.add_argument("--whatsnew-unwritten-ok", action="store_true",
                     help="with --whatsnew-dir, before asc_submit.py --submit has run: an EMPTY "
@@ -560,7 +561,7 @@ def main() -> int:
     if args.require_shots:
         shots_ok = check_repo_shots(args.root)
     else:
-        print("repo iPhone, iPad and Mac screenshots: not checked (--require-shots)")
+        print("repo iPhone, iPad, Apple Watch and Mac screenshots: not checked (--require-shots)")
     if args.texts_only:
         print("TEXTS OK" if texts_ok else "TEXTS INVALID — fix the files above.")
         if args.require_shots:
@@ -700,7 +701,7 @@ def main() -> int:
             print("  note  What's New not compared: pass --whatsnew-dir <the release's notes>")
 
         # ── 3. screenshot drift ───────────────────────────────────────────
-        # The iPhone, iPad and Mac sets are per locale (scripts/appstore_screenshots.py
+        # The iPhone, iPad, Apple Watch and Mac sets are per locale (scripts/appstore_screenshots.py
         # maps each locale to its language's panels; a locale with no set of
         # its own is shown en-US's). Until 1.55 the iPad set existed on en-US
         # only (and zh-Hans held the same English images) and was compared

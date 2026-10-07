@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "配额不再突然见底",
-   "配额将尽、CPU 过高、会话过久，都会告警"
+   "配额将尽、会话或设备 CPU 过高，都会告警"
   ]
  },
  "captures": {
-  "01_overview.png": "e3065b4854989bbca5dbc5914fdab86e",
-  "02_providers.png": "6c229b73e661715d53620bfbe89cc26f",
-  "03_cost.png": "ce36f23d443712fd653b147b77bea30f",
-  "04_sessions.png": "555aa5e58fe58c1d4ab237358509115e",
-  "05_alerts.png": "af946bd937bf2b992aba3ef061ff83fe"
+  "01_overview.png": "ea8166ff7daf97e7834f21c4c798fa3d",
+  "02_providers.png": "5d6151ede1df99dd066610dced0ce609",
+  "03_cost.png": "bebac70e0b920270fcfa63ab1e6a9ed7",
+  "04_sessions.png": "2a76018fcf5e15007b342a852fc70fc1",
+  "05_alerts.png": "9c822d809b63e612264ba5b198f98fc0"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -34,11 +34,11 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_1290x2796.png": "baefe7fb799c232807d4f64a04e99ca1",
-  "02_providers_1290x2796.png": "9cdbda758a83475f79f578f3557ccdb7",
-  "03_cost_1290x2796.png": "f8cc5d0be70366e60f2b6d2ef1528a2c",
-  "04_sessions_1290x2796.png": "70f92f64fdb6b0b57ddcd8d30e5639ae",
-  "05_alerts_1290x2796.png": "d0c3a63891ff81caf67904f7b1179697"
+  "01_overview_1290x2796.png": "8b0b47034fcd005161ec47a3ee6b321a",
+  "02_providers_1290x2796.png": "dd8480b3df24cd55f79e73aa9a3766d1",
+  "03_cost_1290x2796.png": "a2bf4eadb86059e55d489e8fe4a67e9c",
+  "04_sessions_1290x2796.png": "04c420e9b15883eff98bad2c729182c8",
+  "05_alerts_1290x2796.png": "d183b2f091bfe3802d6ea0c5f6996991"
  },
  "subtitle_pt": 46,
  "title_pt": 100

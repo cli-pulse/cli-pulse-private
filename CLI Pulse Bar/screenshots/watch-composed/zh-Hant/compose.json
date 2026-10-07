@@ -1,0 +1,16 @@
+{
+ "captures": {
+  "01_pulse.png": "0eb9a70bf1e44f4d5e94efefe41477d0",
+  "02_quota.png": "ad51d0d90a38263cd052912c18bd27b0",
+  "03_live.png": "0a98198e5a964cf3102c45d70985250f",
+  "04_alerts.png": "f7b7863d633bac72139805fa37beb0ec"
+ },
+ "lang": "zh-Hant",
+ "panels": {
+  "01_pulse_422x514.png": "bce321e1b282a60a698445bbeb7c88ce",
+  "02_quota_422x514.png": "0778818cf9414d2c91abc8fcc6a37c52",
+  "03_live_422x514.png": "df810fab137e6008d9ffb50c8beaa0ab",
+  "04_alerts_422x514.png": "50a4635c3f8f294a27eece9867510662"
+ },
+ "pillow": "10.4.0"
+}

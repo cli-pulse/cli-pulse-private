@@ -118,8 +118,9 @@ jobs:
       # was self-hosted.
       #
       # --require-shots: every listing locale also has its five composed iPhone
-      # panels in CLI Pulse Bar/screenshots/ios-composed/<lang>/ and its six
-      # Mac panels in macos-composed/<lang>/, each one App Store Connect would
+      # panels in CLI Pulse Bar/screenshots/ios-composed/<lang>/, its four iPad
+      # panels (ipad-composed/), its four Apple Watch panels (watch-composed/)
+      # and its six Mac panels in macos-composed/<lang>/, each one App Store Connect would
       # accept and the one a clean compose run recorded in compose.json. A
       # missing or stray panel, a set a failed compose run withdrew, or a panel
       # edited after the run fails here instead of at the release push. So does
