@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **CLI Pulse**
-**Last Updated: October 3, 2026**
+**Last Updated: October 7, 2026**
 
 CLI Pulse is a developer tool for monitoring usage, quotas, and cost across AI
 coding providers (Claude, Codex, Gemini, OpenRouter, and others). Our privacy
@@ -17,7 +17,7 @@ This document is the single source of truth for what we collect. If you find
 anything in the app, App Store listing, or GitHub README that contradicts this
 file, **the file wins** — please open an issue.
 
-It describes CLI Pulse 1.55.
+It describes CLI Pulse 1.56.
 
 ---
 
@@ -33,7 +33,9 @@ It describes CLI Pulse 1.55.
 * **The app's background helper**, which runs the same collectors as the app
   on its own schedule (every 2 minutes by default) and uploads what it finds
   for your iPhone and Apple Watch. It is switched on when you pair this Mac with
-  your account, and off with Settings › Advanced › "Enable background sync".
+  your account, and on or off with Settings › Advanced › "Enable background sync",
+  which since v1.56 is there whether or not you are signed in or this Mac is
+  paired. It uploads only with that pairing (see *When uploads happen*).
   It is sandboxed in the App Store build and not in the direct-download build.
 * In the direct-download build only, **a local agent built into the app**
   (shown as "Built-in" under Settings › Companion CLI). It runs the sessions you
