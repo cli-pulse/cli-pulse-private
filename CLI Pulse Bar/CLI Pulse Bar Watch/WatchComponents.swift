@@ -52,7 +52,17 @@ struct PulseWaveform: View {
                         let gap = geo.size.width * 1.30
                         let period = 2.2 / (0.6 + 0.8 * activityLevel.clamped(to: 0...1))
                         let frac = (context.date.timeIntervalSinceReferenceDate / period).truncatingRemainder(dividingBy: 1)
-                        let phase = CGFloat(frac) * (dashOn + gap)
+                        var phase = CGFloat(frac) * (dashOn + gap)
+                        #if DEBUG
+                        // An App Store capture is one frame of this animation.
+                        // Held just before the beat (which starts 0.2446 of
+                        // the width in), so the bright segment lights the beat
+                        // in every language's Pulse page rather than wherever
+                        // the clock left it, a stray dash on the flat line.
+                        if WatchScreenshotLaunch.activeScreen != nil {
+                            phase = geo.size.width * 0.235
+                        }
+                        #endif
                         ctx.stroke(
                             path,
                             with: .color(WatchTheme.waveformGlow),

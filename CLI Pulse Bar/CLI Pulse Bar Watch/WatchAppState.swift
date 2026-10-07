@@ -608,8 +608,9 @@ public final class WatchAppState: ObservableObject {
 
     #if DEBUG
     /// The screenshot capture's state (`WatchScreenshotLaunch.demoSnapshot`):
-    /// what `refreshAll` stores after a refresh of the account Demo describes,
-    /// with the legacy provider summary every build reads.
+    /// what `applyFallbackData(preferLive: false)` stores when the iPhone
+    /// relays its refresh of the account Demo describes, with the legacy
+    /// provider summary every build reads.
     private func applyScreenshotDemo(_ demo: WatchScreenshotLaunch.Snapshot) {
         currentUserID = "demo"
         isAuthenticated = true

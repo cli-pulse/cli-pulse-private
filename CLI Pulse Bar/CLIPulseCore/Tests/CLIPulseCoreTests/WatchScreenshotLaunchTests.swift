@@ -86,21 +86,24 @@ final class WatchScreenshotLaunchTests: XCTestCase {
         XCTAssertGreaterThan(dash.unresolved_alerts, 0)
     }
 
-    func test_theListsAreDemosInTheOrderTheWatchsQueriesAsk() throws {
+    func test_theListsAreInTheOrderTheWatchGetsThem() throws {
         let demo = DemoDataProvider.generate()
         let snap = Launch.watchSnapshot(of: demo)
         let encoder = JSONEncoder()
         encoder.outputFormatting = .sortedKeys
         XCTAssertEqual(try encoder.encode(snap.providers),
                        try encoder.encode(QuotaBindingCap.projectedForDisplay(demo.providers)),
-                       "the providers as refreshAll projects them")
+                       "the providers as the Watch projects them")
         XCTAssertEqual(Set(snap.sessions.map(\.id)), Set(demo.sessions.map(\.id)))
-        XCTAssertEqual(Set(snap.alerts.map(\.id)), Set(demo.alerts.map(\.id)))
         func times(_ values: [String]) throws -> [Date] { try values.map { try XCTUnwrap(sharedISO8601Parse($0)) } }
         let sessionTimes = try times(snap.sessions.map(\.last_active_at))
         XCTAssertEqual(sessionTimes, sessionTimes.sorted(by: >), "sessions: last_active_at.desc")
-        let alertTimes = try times(snap.alerts.map(\.created_at))
-        XCTAssertEqual(alertTimes, alertTimes.sorted(by: >), "alerts: created_at.desc")
+        // The alerts as the iPhone relays them: its own list, the cloud's rows
+        // newest first and then the quota alert it raised, which only the relay
+        // brings to a Watch (DemoMatchesProductionTests holds Demo to that order).
+        XCTAssertEqual(snap.alerts.map(\.id), demo.alerts.map(\.id), "alerts: the iPhone's order")
+        XCTAssertTrue(snap.alerts.last?.id.hasPrefix("quota-") == true,
+                      "the quota alert the iPhone appends is not last")
         XCTAssertEqual(snap.refreshedAt, demo.refreshedAt)
     }
 

@@ -552,13 +552,16 @@ four pages (Pulse, Quota, Live, Alerts), captured from the Watch app itself on
 the existing `Apple Watch Ultra 3 (49mm)` simulator by the same capture script.
 The Watch app has a capture launch of its own (`WatchScreenshotLaunch.swift`,
 DEBUG only, the same two arguments): it opens the requested page and holds
-Demo's data as the Watch's own refresh would, since a Watch never sees the
-phone's Demo (the phone relays nothing without a signed-in identity). That is
-the dashboard through the cloud mapping (`APIClient.dashboardSummary(from:)`),
-the legacy provider summary projected as `refreshAll` projects it, machine
-cards only for devices that report machine health (`WatchDeviceTrim`), and each
-list in its REST query's order. It never restores a session, activates
-WatchConnectivity or refreshes. watchOS has no status-bar override and no
+Demo's data as a Watch holds it just after a signed-in iPhone relays its
+refresh, since a Watch never sees the phone's Demo (the phone relays nothing
+without a signed-in identity). The relay is the only way the app's own quota
+alert reaches a Watch; the Watch's own refresh reads the cloud's alert rows,
+which never hold it. That is the dashboard through the cloud mapping
+(`APIClient.dashboardSummary(from:)`), the legacy provider summary projected as
+the Watch projects it, machine cards only for devices that report machine
+health (`WatchDeviceTrim`), the sessions in their REST query's order, and the
+alerts in the iPhone's order (the cloud's rows newest first, then the quota
+alert). It never restores a session, activates WatchConnectivity or refreshes. watchOS has no status-bar override and no
 light appearance, so the Watch's clock reads the time of the capture.
 
 A Watch panel is the capture itself, without a caption (a caption at 422x514

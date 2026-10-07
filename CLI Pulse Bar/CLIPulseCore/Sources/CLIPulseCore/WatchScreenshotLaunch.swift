@@ -22,18 +22,27 @@ import Foundation
 ///
 /// What a capture launch does:
 ///
-/// - **Demo's data, as this Watch's own refresh would hold it.** A Watch never
-///   sees the phone's Demo: the phone relays nothing until a real sign-in
-///   (`PhoneSessionManager` needs an identity), and the Watch's Demo flag
-///   fetches from the cloud like any account. So `demoSnapshot` takes the
+/// - **Demo's data, as a Watch holds it just after the iPhone relays it.** A
+///   Watch never sees the phone's Demo: the phone relays nothing until a real
+///   sign-in (`PhoneSessionManager` needs an identity), and the Watch's Demo
+///   flag fetches from the cloud like any account. So `demoSnapshot` takes the
 ///   account Demo describes (`DemoDataProvider`, which follows production,
-///   #650) and maps it the way `WatchAppState.refreshAll` maps the cloud's
-///   rows: the dashboard through `APIClient.dashboardSummary(from:)` (no
-///   requests, no hourly trend, no recent activity, no top projects), the
-///   providers through `QuotaBindingCap.projectedForDisplay` from the legacy
-///   provider summary (the v2 read flag is off in every build), the device
-///   health cards through `WatchDeviceTrim`, and each list in the order its
-///   REST query asks for.
+///   #650) as a signed-in iPhone holds it after a refresh, and relays it: the
+///   iPhone sends its dashboard, providers, sessions, alerts and trimmed
+///   devices (`PhoneSessionManager.forwardSnapshot`), and the Watch takes
+///   them as they come (`WatchAppState.applyFallbackData(preferLive: false)`)
+///   until its own next refresh replaces them. That relay is the only way the
+///   quota alert reaches a Watch: the app raises it as it refreshes and never
+///   uploads it, so the Watch's own refresh, which reads the cloud's alert
+///   rows, never has it. So the dashboard goes through
+///   `APIClient.dashboardSummary(from:)` (the iPhone's is the cloud's
+///   `dashboard_summary` row: no requests, no hourly trend, no recent
+///   activity, no top projects), the providers through
+///   `QuotaBindingCap.projectedForDisplay` from the legacy provider summary
+///   (the v2 read flag is off in every build), the device health cards
+///   through `WatchDeviceTrim`, the sessions in their REST query's order, and
+///   the alerts in the iPhone's order: the cloud's rows newest first, then
+///   the quota alert the iPhone appends.
 /// - **Opens the requested page** of the Watch's pager.
 /// - **No network.** The capture never restores a session, never activates
 ///   WatchConnectivity and never refreshes (`WatchAppState`).
@@ -146,8 +155,8 @@ public enum WatchScreenshotLaunch {
 
     // MARK: - Demo, as the Watch holds it
 
-    /// What `WatchAppState.refreshAll` stores after a refresh of the account
-    /// Demo describes.
+    /// What a Watch holds just after the iPhone relays its refresh of the
+    /// account Demo describes.
     public struct Snapshot {
         public let dashboard: DashboardSummary
         public let providers: [ProviderUsage]
@@ -177,9 +186,10 @@ public enum WatchScreenshotLaunch {
             unresolved_alerts: d.unresolved_alerts,
             today_sessions: nil
         ))
-        // The REST queries' orders (APIClient.sessions/alerts/devices):
-        // last_active_at, created_at and last_seen_at, newest first. Stable,
-        // so rows with one timestamp keep Demo's order.
+        // The REST queries' orders (APIClient.sessions/devices):
+        // last_active_at and last_seen_at, newest first. Stable, so rows with
+        // one timestamp keep Demo's order. The alerts stay in Demo's order,
+        // which is the iPhone's (DemoMatchesProductionTests).
         func newestFirst<T>(_ rows: [T], _ key: (T) -> String) -> [T] {
             rows.enumerated().sorted { lhs, rhs in
                 let l = sharedISO8601Parse(key(lhs.element)) ?? .distantPast
@@ -191,7 +201,7 @@ public enum WatchScreenshotLaunch {
             dashboard: dashboard,
             providers: QuotaBindingCap.projectedForDisplay(demo.providers),
             sessions: newestFirst(demo.sessions) { $0.last_active_at },
-            alerts: newestFirst(demo.alerts) { $0.created_at },
+            alerts: demo.alerts,
             devices: WatchDeviceTrim.summaries(from: newestFirst(demo.devices) { $0.last_sync_at ?? "" }),
             refreshedAt: demo.refreshedAt
         )

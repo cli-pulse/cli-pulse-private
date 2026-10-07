@@ -228,9 +228,15 @@ struct ProviderRingCluster: View {
     @ViewBuilder
     private var centerLabel: some View {
         if let top = snapshots.first {
-            // Constrained to the innermost ring's ~72pt opening so a long or
-            // localized provider name shrinks/truncates instead of spilling
-            // over the rings.
+            // Constrained so a long or localized provider name shrinks
+            // instead of spilling over the rings. The innermost ring's
+            // opening is 72 pt across at the centre (a 142 pt cluster, three
+            // 9 pt rings 4 pt apart), but the name sits on the second line,
+            // where the opening is only about 62 pt; at 76 pt the limit never
+            // bit, and Spanish "Codex restante" (about 68 pt at 10 pt) was drawn
+            // over the inner ring. At 58 pt it scales to about 0.85, inside
+            // `minimumScaleFactor(0.7)`; the other languages' names (about
+            // 50 pt) and "100%" are unchanged.
             VStack(spacing: 0) {
                 Text("\(top.remainingPercent)%")
                     .font(WatchTheme.monoNumber(size: 22))
@@ -246,7 +252,7 @@ struct ProviderRingCluster: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            .frame(maxWidth: 76)
+            .frame(maxWidth: 58)
             .padding(.horizontal, 2)
         }
     }

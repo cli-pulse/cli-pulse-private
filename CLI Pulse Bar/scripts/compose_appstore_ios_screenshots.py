@@ -235,7 +235,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "02_providers": ("실시간 할당량과 비용", "한도까지 얼마나 남았는지 바로 확인하세요"),
         "03_cost": ("비용, 어디에 쓰이나요?", "공급자별 오늘 추정 비용과 최근 30일 합계"),
         "04_sessions": ("모든 CLI 실행을 기록", "활성 세션의 사용량, 비용, 요청 수"),
-        "05_alerts": ("할당량이 바닥나기 전에", "세션과 기기의 CPU 사용률 급증도 알려 드려요"),
+        "05_alerts": ("할당량이 바닥나기 전에", "세션과 기기의 CPU 사용률이 높을 때도 알려 드려요"),
     },
     "es": {
         "01_overview": ("Todo de un vistazo",
@@ -247,7 +247,7 @@ COPY: dict[str, dict[str, tuple[str, str]]] = {
         "04_sessions": ("Cada ejecución, registrada",
                         "Sesiones activas con su uso, costo y solicitudes"),
         "05_alerts": ("Sin sorpresas con la cuota",
-                      "Alertas de cuota y picos de CPU, por sesión y por dispositivo"),
+                      "Alertas de cuota y de picos de CPU, por sesión y por dispositivo"),
     },
 }
 

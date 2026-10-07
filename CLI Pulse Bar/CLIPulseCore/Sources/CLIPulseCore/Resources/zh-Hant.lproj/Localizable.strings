@@ -694,10 +694,10 @@
 "cost.exact" = "精確";
 "cost.estimated" = "預估";
 "cost.partial" = "部分";
-"cost.tokens_suffix" = "· %@ I/O tokens";
+"cost.tokens_suffix" = "· %@ I/O token";
 "cost.tokens_short_suffix" = "· %@";
 "cost.thirty_day_precise" = "30 天";
-"cost.tokens_value" = "%@ I/O tokens";
+"cost.tokens_value" = "%@ I/O token";
 "cost.day_progress" = "%d/%d 天";
 "cost.by_model" = "依模型";
 "cost.coverage_summary" = "已計價 %1$d%% 的 token · %2$d 個模型沒有單價";
@@ -712,7 +712,7 @@
 "watch.snooze_30" = "30 分鐘";
 "watch.snooze_60" = "1 小時";
 "watch.pulse_label" = "用量脈搏";
-"watch.today_tokens" = "今日 · %@ tokens";
+"watch.today_tokens" = "今日 · %@ token";
 "watch.toggle_cost_hint" = "切換費用顯示";
 "watch.sessions_count" = "%d 個工作階段";
 "watch.devices_count" = "%d 部裝置";
@@ -723,7 +723,7 @@
 "watch.errors" = "錯誤";
 "watch.live" = "即時";
 "watch.percent_left" = "剩餘 %d%%";
-"watch.tokens_used" = "%@ tokens";
+"watch.tokens_used" = "%@ token";
 "watch.connect_agents_on_mac" = "請先在 Mac 上連接 AI 程式設計工具。";
 "watch.stale_updated" = "資料已過期 · 上次更新 %@";
 "watch.tightest_account" = "配額最緊張：%@";
