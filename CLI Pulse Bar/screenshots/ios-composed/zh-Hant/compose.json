@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "配額不再突然見底",
-   "配額將盡、CPU 使用率過高、工作階段執行過久，都會發出警示"
+   "配額將盡、工作階段或裝置的 CPU 使用率過高，都會發出警示"
   ]
  },
  "captures": {
-  "01_overview.png": "fff4cbd8e650f84478c3196fe57d4ae1",
-  "02_providers.png": "52c3cb6519dd3954dc5ca8325b8baf49",
-  "03_cost.png": "6541b3f49583ff7d735ba4693cad3c8e",
-  "04_sessions.png": "df6a19a86fa60fd59239a318ccb18fdb",
-  "05_alerts.png": "564ff554238b9f50e6cc0937380f054a"
+  "01_overview.png": "5f2f9850820d18a2889e8842be853a13",
+  "02_providers.png": "d52dd2c2d180ecd6fb6bd5ff20e2b976",
+  "03_cost.png": "8975031ab45ddb41b551f2171c6caa75",
+  "04_sessions.png": "2489618132284650be64bff319fe8da6",
+  "05_alerts.png": "90b50df14a1f03ef9e5df8434fcc0ef0"
  },
  "faces": {
   "subtitle": "PingFang TC",
@@ -34,11 +34,11 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_1290x2796.png": "2e8fdde2e64bd8212b6a8a74ccd42f12",
-  "02_providers_1290x2796.png": "a7c4fa4f57383e8ded9a5e99aeda84aa",
-  "03_cost_1290x2796.png": "ca5dedbb2fc020b2b5bc5f03ed650e8b",
-  "04_sessions_1290x2796.png": "7d71dc7055bb42a205093095b7803704",
-  "05_alerts_1290x2796.png": "8186d431ae781bf0650981af4c3684d8"
+  "01_overview_1290x2796.png": "c72645600d1f931039ecbab7fb50d73f",
+  "02_providers_1290x2796.png": "0b0dc8c5776e8b6d6552184d97393ed2",
+  "03_cost_1290x2796.png": "4081d26f99434639d0b9f0356cd5c4e1",
+  "04_sessions_1290x2796.png": "cf78975242d7ace0530b196ee88d0ce2",
+  "05_alerts_1290x2796.png": "bfe944260b0d6adf0c89f2ee0c3965c9"
  },
  "subtitle_pt": 46,
  "title_pt": 100

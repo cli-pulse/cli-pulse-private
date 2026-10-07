@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "108",
-  "version": "1.55.0"
+  "build": "109",
+  "version": "1.56.0"
  },
  "captions": {
   "01_overview": [
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "38e9cfd618d6956a740738e690331ed5",
-  "02_providers.png": "daaeb0e04e092d6d735894e667e04484",
-  "03_usage_history.panel.png": "72dda4aa692918064a22bdcfcfc1f173",
-  "03_usage_history.png": "38e9cfd618d6956a740738e690331ed5",
-  "04_cost.png": "6d6019378a6248006d21b1cd3ebf24d1",
-  "05_alerts.png": "0525fd6ba937e62d1ff4ebe7c52472ea",
-  "06_pulse_cat.png": "3123f50a4aafa651a27465fcc26779f5"
+  "01_overview.png": "c34946a888e6f92e66575c5d8211dfc4",
+  "02_providers.png": "554532428ec56183decc7b73b2e4e756",
+  "03_usage_history.panel.png": "6f8f7069055c88dbd5f9f965fec2cb59",
+  "03_usage_history.png": "c34946a888e6f92e66575c5d8211dfc4",
+  "04_cost.png": "fad118a706fe10de9f89d89c19d54de9",
+  "05_alerts.png": "62801a542ed01e19807b8467bdffb4c2",
+  "06_pulse_cat.png": "e3bbe8a63961671debd1750ea718f9e7"
  },
  "faces": {
   "subtitle": "PingFang TC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hant",
  "panels": {
-  "01_overview_2880x1800.png": "dc7e5dc3c8840bc7ce32767175b8e901",
-  "02_providers_2880x1800.png": "70ce09723eb1a5d1f4149a433a10d8a6",
-  "03_usage_history_2880x1800.png": "618a734e511112fe188b8b29fb58f2a7",
-  "04_cost_2880x1800.png": "34a38eac728116df2a89368a57af27cb",
-  "05_alerts_2880x1800.png": "c681aa10e76caa3bfb3da3c174280174",
-  "06_pulse_cat_2880x1800.png": "1bf04c9b276829607b92d3e91bb62e82"
+  "01_overview_2880x1800.png": "036f8e62d6c81d22b7434bc0ed446aed",
+  "02_providers_2880x1800.png": "d428877cd18d5b57d79083ba9b7996be",
+  "03_usage_history_2880x1800.png": "b52faa7ebf19d084eefaf769a375dbe9",
+  "04_cost_2880x1800.png": "4fdca522844077e09e2aa3a8c386d3cc",
+  "05_alerts_2880x1800.png": "fef77dbc9f8d97ae1351fb1caeff03ce",
+  "06_pulse_cat_2880x1800.png": "053f5345b71ba6ebe4ca68970717f9cc"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "010904b55c12b1dbff6def4aa9549ca6",
+ "render": "965d5e5b1d20b90e96665d4e8d9f01f7",
  "subtitle_pt": 46,
  "title_pt": 100
 }

@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "할당량이 바닥나기 전에",
-   "CPU 사용률 급증과 오래 실행 중인 세션도 알려 드려요"
+   "세션과 기기의 CPU 사용률 급증도 알려 드려요"
   ]
  },
  "captures": {
-  "01_overview.png": "010ae6c3623b219e370b649a09ba3bce",
-  "02_providers.png": "76de2775d91c42e68edb5a5c70061fec",
-  "03_cost.png": "99156bf7fe9ab9a80a9dfa0c065598f4",
-  "04_sessions.png": "8acfdcb6fee70efc30a16127f6e1d243",
-  "05_alerts.png": "3b18adf29faab4fffecedd2f3aa414f0"
+  "01_overview.png": "ec6fcf92e1b573aafb332ce4b17dff42",
+  "02_providers.png": "c826e2e97d21033d218db7d85c5e009d",
+  "03_cost.png": "11049f6d71310454ddf1a0d9106fbe07",
+  "04_sessions.png": "238c79fb301048d25f3dc32407dedd7a",
+  "05_alerts.png": "6f7395488283fde0b93b6600343a4a6b"
  },
  "faces": {
   "subtitle": "Apple SD Gothic Neo",
@@ -34,11 +34,11 @@
  },
  "lang": "ko",
  "panels": {
-  "01_overview_1290x2796.png": "1d1cb85831d49469d41ea33cbedbedbc",
-  "02_providers_1290x2796.png": "dae7a5f678ff585a83288ddac70fe4c4",
-  "03_cost_1290x2796.png": "35628f963523bdc073e83fd778007510",
-  "04_sessions_1290x2796.png": "e4409a051ca7e9b1eeaaaf905b854e03",
-  "05_alerts_1290x2796.png": "db534c080a1d1bc76adc22a7349048cd"
+  "01_overview_1290x2796.png": "8e758988f226d30ab1c0c2858568dbfd",
+  "02_providers_1290x2796.png": "2724c6c6260d6b8903bf0a9974a67bff",
+  "03_cost_1290x2796.png": "49b3f9b2aedbb667d03bda57d09b0477",
+  "04_sessions_1290x2796.png": "0f41eed5d9c11519fea6a60408dd6522",
+  "05_alerts_1290x2796.png": "6aaed7747c3675d97d338c2ab82d0963"
  },
  "subtitle_pt": 46,
  "title_pt": 100

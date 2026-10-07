@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "Never miss a limit",
-   "Quota, CPU spike and long-running session alerts"
+   "Quota, session CPU and device CPU alerts"
   ]
  },
  "captures": {
-  "01_overview.png": "52bc1f4136ea0a1ed9394a78c2a67388",
-  "02_providers.png": "69a730e7745d7be08e46e5173545cb4b",
-  "03_cost.png": "de09046d37013fc42e13b7bb9a826ace",
-  "04_sessions.png": "6c7674a3c63cad582dbb0745e70758a4",
-  "05_alerts.png": "69dcee1b96aa79bb923e282cc12be017"
+  "01_overview.png": "c42e9a3254a969a5722289c45b5218b0",
+  "02_providers.png": "82c25b7b07815441d3ff447707055494",
+  "03_cost.png": "884956512cb04767b1b1bfb34dc0cb9b",
+  "04_sessions.png": "6660f8b752c176510cbe070d131ad573",
+  "05_alerts.png": "1ed41ba05630775f7decb7c87bba95dd"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -34,11 +34,11 @@
  },
  "lang": "en",
  "panels": {
-  "01_overview_1290x2796.png": "7d328afe0c709ef0121e8ef44d58540b",
-  "02_providers_1290x2796.png": "d29d1a49382b5a6b8ae61d975b4e3be8",
-  "03_cost_1290x2796.png": "fb49b1d3bfc2094964007d9db45bb127",
-  "04_sessions_1290x2796.png": "6f17e81ecdc843c41805a1df3953e07e",
-  "05_alerts_1290x2796.png": "95f6ed8ed84ca43ea1957b597abe6442"
+  "01_overview_1290x2796.png": "a37553efc7606e81ce84512c6fdb7582",
+  "02_providers_1290x2796.png": "918a6efd969deda8a6e24eeed5332308",
+  "03_cost_1290x2796.png": "e4f2f4dcf39805592978338e7c770e66",
+  "04_sessions_1290x2796.png": "3cb7224c7f37542171f14b18f02e265d",
+  "05_alerts_1290x2796.png": "77671e7ee28f085d842c2856cd9852b5"
  },
  "subtitle_pt": 46,
  "title_pt": 100

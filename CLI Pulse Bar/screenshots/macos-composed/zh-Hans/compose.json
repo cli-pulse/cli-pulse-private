@@ -1,7 +1,7 @@
 {
  "app": {
-  "build": "108",
-  "version": "1.55.0"
+  "build": "109",
+  "version": "1.56.0"
  },
  "captions": {
   "01_overview": [
@@ -30,13 +30,13 @@
   ]
  },
  "captures": {
-  "01_overview.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
-  "02_providers.png": "a3050c765681ef88127b3417575cae19",
-  "03_usage_history.panel.png": "a2399bdb50bfe8b9e0416446415a5925",
-  "03_usage_history.png": "feb9975bc7ab51c635e5fa0c3cab2ff9",
-  "04_cost.png": "b1461f28a3af5f7b3f8e53cd61193736",
-  "05_alerts.png": "06e73ada410d90cb775a696b26df0e5f",
-  "06_pulse_cat.png": "ac7ad330f1975f9f9f287da0a4ae3490"
+  "01_overview.png": "69243e1011920aa7ac975e3408138a87",
+  "02_providers.png": "a277cb093857f30f1f983ab44c7f90f9",
+  "03_usage_history.panel.png": "c226b3d966ce815e0da190ae3412aeef",
+  "03_usage_history.png": "69243e1011920aa7ac975e3408138a87",
+  "04_cost.png": "ed63e18138bb66ed9f12f4a43006b0dc",
+  "05_alerts.png": "d438c3be42af418ebaee4460774eb754",
+  "06_pulse_cat.png": "5b29aef460f349c40c1588ab9c1e93ce"
  },
  "faces": {
   "subtitle": "PingFang SC",
@@ -44,16 +44,16 @@
  },
  "lang": "zh-Hans",
  "panels": {
-  "01_overview_2880x1800.png": "9dda776dcae85b2e0958c40d434008bb",
-  "02_providers_2880x1800.png": "63a2fa96f041d5e123f617cfaeba381d",
-  "03_usage_history_2880x1800.png": "41b18b373a6bf7e3f5943e84b38b7083",
-  "04_cost_2880x1800.png": "4b7076c2034aaeb5de60de606e3a45cd",
-  "05_alerts_2880x1800.png": "34674ee28e17326a745280c1b3228770",
-  "06_pulse_cat_2880x1800.png": "710db517d489750554967a2484ca68ff"
+  "01_overview_2880x1800.png": "38d457de01d82e8ada9b54558ff8fd91",
+  "02_providers_2880x1800.png": "043d8e64f1db671916e6f055bc46437d",
+  "03_usage_history_2880x1800.png": "bfc9f4fd8f5837234b0bb35f0c947412",
+  "04_cost_2880x1800.png": "801874a760f9117a0a8e4c7c34127540",
+  "05_alerts_2880x1800.png": "3847f08c1ea8f6252dfe7d26ef729126",
+  "06_pulse_cat_2880x1800.png": "16b07ebbd92abab75bcd114d8f548bcf"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "e72bec16dc8cb652c4ce558e6948015e",
+ "render": "caee4a268adde7386ff83de57682679b",
  "subtitle_pt": 46,
  "title_pt": 100
 }

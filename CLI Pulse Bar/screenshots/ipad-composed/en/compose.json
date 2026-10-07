@@ -8,25 +8,20 @@
    "Live quotas and costs",
    "See what’s left before you hit the wall"
   ],
-  "03_cost": [
-   "Where the money goes",
-   "Today’s estimated cost by provider, plus the total for the last 30 days"
-  ],
   "04_sessions": [
    "Every CLI run tracked",
    "Active sessions with usage, cost and requests"
   ],
   "05_alerts": [
    "Never miss a limit",
-   "Quota, CPU spike and long-running session alerts"
+   "Quota, session CPU and device CPU alerts"
   ]
  },
  "captures": {
-  "01_overview.png": "fa2a6059253329fc99c4459efd483473",
-  "02_providers.png": "0eea65fdbac4748d2d9d2dc94ed82dd1",
-  "03_cost.png": "73b98ffc6295f615bca520f6130b5a83",
-  "04_sessions.png": "c29dee6550b753a19be2698691688638",
-  "05_alerts.png": "8022f0856a772658aebc7b6e925884b2"
+  "01_overview.png": "96910ffbf420e910804f2015e8184344",
+  "02_providers.png": "83ec6460efde099ce2f0471d6cc275d2",
+  "04_sessions.png": "29a6d70514f010208e36f7e448721d4e",
+  "05_alerts.png": "8240810d46fa406cb008ee534c1dae07"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -34,11 +29,10 @@
  },
  "lang": "en",
  "panels": {
-  "01_overview_2064x2752.png": "a7604098bb631d89dfda5fa6596f018e",
-  "02_providers_2064x2752.png": "819db3e168a38283fab66bbda35976e6",
-  "03_cost_2064x2752.png": "507c1d3aa1b729fb366e226a6704ab74",
-  "04_sessions_2064x2752.png": "f8539ac18245ee7eba3f349d75afcbc6",
-  "05_alerts_2064x2752.png": "43b08204355851554524dd13337ad6bd"
+  "01_overview_2064x2752.png": "6f5115f5946945adc30cb2681ef0f31e",
+  "02_providers_2064x2752.png": "1c310c7f244fe0924fb8686d0cb01995",
+  "04_sessions_2064x2752.png": "d4ae1ce553056616064154bce96c97b7",
+  "05_alerts_2064x2752.png": "3c3d1a956f06799e6cd650e19128fa52"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

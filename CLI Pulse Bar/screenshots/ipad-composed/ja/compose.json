@@ -8,25 +8,20 @@
    "クォータとコストを把握",
    "上限に達する前に、​残りがわかる"
   ],
-  "03_cost": [
-   "コストの内訳がわかる",
-   "今日の推定コストをプロバイダー別に、​直近30日間の推定額も"
-  ],
   "04_sessions": [
    "CLI の実行をすべて記録",
    "アクティブなセッションの​使用量、コスト、リクエスト数"
   ],
   "05_alerts": [
    "上限の接近を見逃さない",
-   "クォータ残量の低下、CPU の高負荷、​長時間実行中のセッションを通知"
+   "クォータ残量の低下、​セッションやデバイスの CPU 高負荷を通知"
   ]
  },
  "captures": {
-  "01_overview.png": "62fa7e8bb207f720c27ea4a5b762c535",
-  "02_providers.png": "042fd9845c9c04c3af2c39e932c38a0c",
-  "03_cost.png": "f4ff8c416f86b2e1933db172512cdaf5",
-  "04_sessions.png": "8bd6a6bf8328ac3eb1036941e5d42207",
-  "05_alerts.png": "dfdc378c18cd38ab28c39bd9e8d0c4d8"
+  "01_overview.png": "5b760d151de8b215fb26640ff68b19ef",
+  "02_providers.png": "b2e735e39fae212f465efef8cae8db67",
+  "04_sessions.png": "91dda0ecb4eac20a70b16353b94ce31c",
+  "05_alerts.png": "b89827e136b52f64be344c96e5c1db74"
  },
  "faces": {
   "subtitle": "Hiragino Sans",
@@ -34,11 +29,10 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_2064x2752.png": "c209787f7a14a55129361e3ed08fc32f",
-  "02_providers_2064x2752.png": "d622be05afcf6e8056ed4a2516e6506e",
-  "03_cost_2064x2752.png": "19577d58f19a16f26ccf06dc14a26edd",
-  "04_sessions_2064x2752.png": "975a2403c8e9826949fd835c0abb0cf0",
-  "05_alerts_2064x2752.png": "919ec01b1795233cf133bf6a8a0d7fef"
+  "01_overview_2064x2752.png": "833e38c87c9e0476636e4d6af6dc470e",
+  "02_providers_2064x2752.png": "a20cf5f74689b3dfc0859b68772b7f29",
+  "04_sessions_2064x2752.png": "6e45f6ecf9a777b1b56bcf7a780d29d6",
+  "05_alerts_2064x2752.png": "c167fa01dba29c570a7b19579c245cad"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

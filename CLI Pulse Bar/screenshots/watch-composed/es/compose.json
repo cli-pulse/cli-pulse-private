@@ -1,0 +1,16 @@
+{
+ "captures": {
+  "01_pulse.png": "66adef6808b74e415817ccb55d8da47e",
+  "02_quota.png": "3bd9f85a19a93fd59bccb4e2595c2219",
+  "03_live.png": "1da07ed29ddda4c7a5f1eb75992a2537",
+  "04_alerts.png": "836a470d6ad19fef3a456b35a36001c1"
+ },
+ "lang": "es",
+ "panels": {
+  "01_pulse_422x514.png": "076d612f190e25f5a3ab6192ab6bc219",
+  "02_quota_422x514.png": "a712f9e22e89c6b1fa6787220e559b07",
+  "03_live_422x514.png": "40d63b21c5851078c9acd33650c94496",
+  "04_alerts_422x514.png": "c8d3a9fc717cc7db3c42a67fc2fc02c4"
+ },
+ "pillow": "10.4.0"
+}

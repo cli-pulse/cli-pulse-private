@@ -1,8 +1,8 @@
 {
   "app" : {
-    "build" : "108",
+    "build" : "109",
     "bundleIdentifier" : "app.clipulse.qa.local",
-    "version" : "1.55.0"
+    "version" : "1.56.0"
   },
   "appKitLocalization" : "es",
   "appearance" : "light",
@@ -20,7 +20,7 @@
     "cli_pulse_menubar_height (04_cost)" : "406: this shot's popover, shortened from 580 so the page scrolled to the end opens just above a card (the first one the first page did not show whole, or the one above it when that would need a popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. Users can drag the popover between 400 and 900.",
     "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
   },
-  "generatedAt" : "2026-09-30T17:09:38Z",
+  "generatedAt" : "2026-10-07T02:37:40Z",
   "language" : "es",
   "localeOverride" : "es",
   "localizationActive" : true,
@@ -145,7 +145,7 @@
     {
       "file" : "01_overview.png",
       "id" : "01_overview",
-      "md5" : "27d1fda96aba3f32ed824537558593c9",
+      "md5" : "c2f9f23c8f51b40c4db89acc394f38ca",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -154,7 +154,7 @@
     {
       "file" : "02_providers.png",
       "id" : "02_providers",
-      "md5" : "c5ca984bf28a6a104bcad72e857f47b1",
+      "md5" : "ddfdb27156436b3d99f4aab3037be73f",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -163,18 +163,18 @@
     {
       "file" : "03_usage_history.png",
       "id" : "03_usage_history",
-      "md5" : "27d1fda96aba3f32ed824537558593c9",
+      "md5" : "c2f9f23c8f51b40c4db89acc394f38ca",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
       "panelFile" : "03_usage_history.panel.png",
-      "panelMD5" : "96e03a0afd9e27c2e832efb92774acb9",
+      "panelMD5" : "1cc02ecf4d7a2aafd5fec51b95a79c3a",
       "surface" : "demo-overview"
     },
     {
       "file" : "04_cost.png",
       "id" : "04_cost",
-      "md5" : "62362f397d1afca9a20bfa6d39ef8269",
+      "md5" : "4dd1438ceb41d710d33797afd6a75b07",
       "page" : "lastAligned",
       "pageCount" : 3,
       "pageIndex" : 3,
@@ -184,7 +184,7 @@
     {
       "file" : "05_alerts.png",
       "id" : "05_alerts",
-      "md5" : "13d47f8301539b4c120121dc0aaae9be",
+      "md5" : "6a8f5068a9c009c58ecdaf4c29cd5b18",
       "page" : "first",
       "pageCount" : 1,
       "pageIndex" : 1,
@@ -193,7 +193,7 @@
     {
       "file" : "06_pulse_cat.png",
       "id" : "06_pulse_cat",
-      "md5" : "66e2a124c56e68a5699effc2bbb8e82d",
+      "md5" : "81fb88e810ee9d1cb6f25d1397d1d25b",
       "page" : "first",
       "pageCount" : 7,
       "pageIndex" : 1,
@@ -208,7 +208,7 @@
     "debugBuild" : true,
     "devidBuild" : false,
     "localScanDays" : 250,
-    "localScanMessages" : 15280,
+    "localScanMessages" : 15319,
     "localScanProviders" : [
       "Claude",
       "Codex"

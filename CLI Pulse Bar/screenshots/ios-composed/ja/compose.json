@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "上限の接近を見逃さない",
-   "クォータ残量の低下、CPU の高負荷、​長時間実行中のセッションを通知"
+   "クォータ残量の低下、​セッションやデバイスの CPU 高負荷を通知"
   ]
  },
  "captures": {
-  "01_overview.png": "691441a25fe946d82e1b3fecf52c4974",
-  "02_providers.png": "e80785e415639013346d6d08405fa9b5",
-  "03_cost.png": "7582733b4dae8554a1e53e479c17d4f1",
-  "04_sessions.png": "a6499f88a3725e2172cccc33af3bc535",
-  "05_alerts.png": "3b5ffb13c622159e54023e814fcb97e2"
+  "01_overview.png": "52c4a3a6df7f0b3d21d0ca8d3471dcfb",
+  "02_providers.png": "55ffa9c1207a79df6c83b70da4c8fb44",
+  "03_cost.png": "37524e8cd31c53fbde583cde7f09c9af",
+  "04_sessions.png": "50e97f8cf5d7805b2aeaef85830cc992",
+  "05_alerts.png": "1d309d023bc84d75ddf83140046031de"
  },
  "faces": {
   "subtitle": "Hiragino Sans",
@@ -34,11 +34,11 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_1290x2796.png": "ab992e328d81cd217229a228a186c0eb",
-  "02_providers_1290x2796.png": "2a43e13246fd2168c90f6bb2955a2594",
-  "03_cost_1290x2796.png": "d2cfd97924314e214a54e6b176a2569c",
-  "04_sessions_1290x2796.png": "91d783ecf626994e9b5396628a5720f1",
-  "05_alerts_1290x2796.png": "84f589201cdeab19fe33d764f9346712"
+  "01_overview_1290x2796.png": "916e5b4e27dfd46eb4f62b24f47c21ef",
+  "02_providers_1290x2796.png": "5e99572fdb6318a9929033803675ef0e",
+  "03_cost_1290x2796.png": "cb39f70c9138db5ac0087fcb5ac33320",
+  "04_sessions_1290x2796.png": "46db5308d0ac6a6c4b80dc526dcb7e54",
+  "05_alerts_1290x2796.png": "d2d9c855af165e3dd010e3fe733357be"
  },
  "subtitle_pt": 46,
  "title_pt": 100
