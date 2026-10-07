@@ -114,13 +114,20 @@ public enum AlertGenerator {
             }
 
             // Rule 3: Session requests >= 400 (long-running)
-            // v1.16.1 parity with helper/system_collector.py: skip
-            // process-detected (`proc-*`) rows entirely. They're GUI
-            // desktop apps the user keeps open all day, not "agentic CLI
-            // sessions". The synthetic `requests` proxy makes them trip
-            // the threshold within hours of being open. See full analysis
-            // in helper/system_collector.py.
-            let isProcessDetected = session.id.hasPrefix("proc-")
+            // Skips every process-scan row: LocalScanner's `local-<pid>` and
+            // the Python helper's `proc-<pid>`. A scan row's `requests` is
+            // only its runtime / 45, so any process open five hours reaches
+            // 400, Claude.app and other GUI apps included. v1.16.1 meant to
+            // skip these rows (helper/system_collector.py) but tested for
+            // `proc-` alone, which LocalScanner never writes, so on a Mac the
+            // alert kept firing.
+            //
+            // This rule therefore never fires in the shipped app. Its one
+            // caller, HelperDaemon.collect, passes LocalScanner.scan().sessions,
+            // and every one of those is a scan row. Only a session with a real
+            // id would raise it, and no caller passes one.
+            let isProcessDetected = session.id.hasPrefix(LocalScanner.sessionIDPrefix)
+                || session.id.hasPrefix("proc-")
             if !isProcessDetected, session.requests >= 400 {
                 alerts.append([
                     "id": "session-long-\(sid)",

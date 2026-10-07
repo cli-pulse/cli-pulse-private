@@ -276,10 +276,11 @@ internal enum DemoDataProvider {
         // desktop app, which writes every session off a Mac, has no such
         // rule. Demo had one on helper-heartbeat, on lab-server-01.
         //
-        // On a Mac it still fires today: the LoginItem helper's skip tests
-        // for `proc-`, which its LocalScanner rows (`local-`) never carry,
-        // and the Companion CLI's rule has no skip. That is the false alarm
-        // v1.16.1 set out to remove, not something to put in a screenshot.
+        // On a Mac the LoginItem helper's skip used to test for `proc-`
+        // alone, which its LocalScanner rows (`local-`) never carry, so it
+        // raised the alert for every process open five hours: the false alarm
+        // v1.16.1 set out to remove. It skips both prefixes now, so no
+        // producer raises it for any session Demo shows.
         // `testDemoRaisesNoLongRunningAlert`.
         let alerts = quotaAlerts + [
             // Swift helper, AlertGenerator.generate session-CPU rule. It does

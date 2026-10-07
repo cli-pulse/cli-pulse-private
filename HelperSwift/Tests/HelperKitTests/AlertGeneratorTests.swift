@@ -94,15 +94,39 @@ final class AlertGeneratorTests: XCTestCase {
         XCTAssertEqual(alerts.count, 0)
     }
 
+    // `s1` is not a process-scan id; SessionDetector never writes one, so
+    // this is the rule's only firing path.
     func testSessionTooLongAtThreshold() {
         let alerts = AlertGenerator().generate(
-            sessions: [session(requests: 400)],
+            sessions: [session(id: "s1", requests: 400)],
             device: DeviceSnapshot(cpuUsage: 10, memoryUsage: 30),
             now: fixedNow
         )
         XCTAssertEqual(alerts.count, 1)
         XCTAssertEqual(alerts[0].type, "Session Too Long")
         XCTAssertEqual(alerts[0].severity, "Info")
+    }
+
+    /// The rule had no skip, so every SessionDetector row open five hours
+    /// raised it. helper/system_collector.py skips `proc-` since v1.16.1.
+    func testSessionTooLongSkipsAProcessScanRow() {
+        let alerts = AlertGenerator().generate(
+            sessions: [session(id: "proc-4242", requests: 400)],
+            device: DeviceSnapshot(cpuUsage: 10, memoryUsage: 30),
+            now: fixedNow
+        )
+        XCTAssertEqual(alerts.map(\.alertId), [])
+    }
+
+    /// The skip is the too-long rule's alone: a busy scan row still raises
+    /// its CPU alert.
+    func testAProcessScanRowStillRaisesItsCPUAlert() {
+        let alerts = AlertGenerator().generate(
+            sessions: [session(id: "proc-4242", cpu: 90.0, requests: 400)],
+            device: DeviceSnapshot(cpuUsage: 10, memoryUsage: 30),
+            now: fixedNow
+        )
+        XCTAssertEqual(alerts.map(\.type), ["Usage Spike"])
     }
 
     func testSessionWithNilFieldsDoesntFire() {
