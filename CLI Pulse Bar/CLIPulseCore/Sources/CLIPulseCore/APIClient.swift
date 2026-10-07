@@ -2725,6 +2725,23 @@ public actor APIClient {
         authorizationLease: APIAuthorizationLease,
         now: Date = Date()
     ) async {
+        await syncDailyUsage(
+            scanResult,
+            authorizationLease: authorizationLease,
+            now: now,
+            device: { self.dailyUsageDevice(userId: $0) }
+        )
+    }
+
+    /// `syncDailyUsage(_:authorizationLease:now:)` with the device decided by
+    /// `device` (given the signed-in user's id): a seam for tests, which
+    /// cannot pair a helper.
+    func syncDailyUsage(
+        _ scanResult: CostUsageScanResult,
+        authorizationLease: APIAuthorizationLease,
+        now: Date,
+        device resolveDevice: (String) -> DailyUsageDevice
+    ) async {
         do {
             try ensureAuthorizationLeaseIsCurrent(authorizationLease)
         } catch {
@@ -2767,12 +2784,24 @@ public actor APIClient {
         // the no-`p_device_id` path (server sentinel UUID; no ownership
         // check). Re-pairing the helper with the new account refreshes
         // the config to the matching pair.
+        //
+        // v1.56: a Mac paired with this account sends its device id even
+        // while the helper's secret cannot be read (`.undetermined`). The
+        // upload never sends the secret, and the server checks only that the
+        // device is the caller's. Before, `loadIfMatches` said nothing then,
+        // because it reads the secret too, so a paired Mac whose login
+        // keychain was locked (it can be while the screen is, and
+        // `refreshAll` keeps running) sent its whole window under the
+        // unpaired stand-in as well, and `get_daily_usage` added that copy to
+        // the paired one on the iPhone for good. Skipping the upload instead
+        // would have stopped it for good on a Mac whose secret is really
+        // gone, which looks the same (`HelperConfig.pairedDeviceId`).
         var body: [String: Any] = ["metrics": metrics]
-        if let deviceId = HelperConfig.loadIfMatches(
-            authenticatedUserId: userId,
-            runtimeEnvironment: runtimeEnvironment
-        )?.deviceId, !deviceId.isEmpty {
+        switch resolveDevice(userId) {
+        case .paired(let deviceId), .undetermined(let deviceId):
             body["p_device_id"] = deviceId
+        case .unpaired:
+            break
         }
         // Both RPCs take the same two arguments.
         //
@@ -2918,21 +2947,21 @@ public actor APIClient {
         /// Not paired with this account: the server's stand-in for an
         /// unpaired Mac (`unpairedDailyUsageDeviceId`), by sending no id.
         case unpaired
-        /// The app group says this Mac is paired with this account, but the
-        /// helper's secret cannot be read, so `HelperConfig.loadIfMatches`
-        /// says nothing. The login keychain is locked (it can be while the
-        /// screen is, and `refreshAll` keeps running then), or the secret is
-        /// gone; the two cannot be told apart (`HelperConfig.pairedDeviceId`).
-        /// Reading the stand-in's rows as this Mac's would be wrong for a
-        /// paired Mac, so the rebuild's cloud part waits for a refresh that
-        /// knows.
-        case undetermined
+        /// The app group says this Mac is paired with this account as the
+        /// device given, but the helper's secret cannot be read, so
+        /// `HelperConfig.loadIfMatches` says nothing. The login keychain is
+        /// locked (it can be while the screen is, and `refreshAll` keeps
+        /// running then), or the secret is gone; the two cannot be told apart
+        /// (`HelperConfig.pairedDeviceId`). `syncDailyUsage` sends this
+        /// device id, as for `.paired`: the upload needs no secret. The
+        /// rebuild's cloud part still waits for a refresh that can read it.
+        case undetermined(String)
     }
 
-    /// This Mac's `DailyUsageDevice` for `userId`. Where it is known, the
-    /// device id is decided as `syncDailyUsage` decides it (see the comment
-    /// there): the paired device's when the app group's helper config, secret
-    /// included, belongs to the signed-in account.
+    /// This Mac's `DailyUsageDevice` for `userId`, which also decides the
+    /// device id `syncDailyUsage` sends (see the comment there): the paired
+    /// device's when the app group's pairing record belongs to the signed-in
+    /// account, whether or not the helper's secret can be read.
     private func dailyUsageDevice(userId: String) -> DailyUsageDevice {
         Self.dailyUsageDevice(
             config: HelperConfig.loadIfMatches(
@@ -2952,7 +2981,8 @@ public actor APIClient {
     /// `HelperConfig.pairedDeviceId` (the app group's record alone).
     static func dailyUsageDevice(config: HelperConfig?, pairedDeviceId: () -> String?) -> DailyUsageDevice {
         if let deviceId = config?.deviceId, !deviceId.isEmpty { return .paired(deviceId) }
-        return pairedDeviceId() == nil ? .unpaired : .undetermined
+        guard let recorded = pairedDeviceId(), !recorded.isEmpty else { return .unpaired }
+        return .undetermined(recorded)
     }
 
     /// The device id `upsert_daily_usage` stores a row under when it is sent

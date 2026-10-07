@@ -362,6 +362,64 @@ final class CodexTokenAccountingTests: XCTestCase {
         XCTAssertEqual(input, 1_000_000_000_000_000, "capped at 10^15 and counted once")
     }
 
+    /// A corrupt log can fill its file's cost slot: each request's cost is
+    /// capped at 10^18 nanodollars, so ten absurd requests pass `Int.max`, and
+    /// the file's own sum stops there. Adding another file's row for the same
+    /// day and model to it trapped, on every scan. The sum now stays at
+    /// `Int.max`, and the other file's tokens still count.
+    func test_a_file_with_a_saturated_cost_adds_to_another_without_trapping() throws {
+        let context = #"{"timestamp":"2026-09-10T12:00:01.000Z","type":"turn_context","ordinal":1,"payload":{"model":"gpt-5.5"}}"#
+        func absurd(_ k: Int) -> String {
+            let total = #"{"input_tokens":\#(k * 1_000),"cached_input_tokens":0,"output_tokens":\#(k * 100_000_000_000_000)}"#
+            let last = #"{"input_tokens":1000,"cached_input_tokens":0,"output_tokens":100000000000000}"#
+            let second = k < 10 ? "0\(k)" : "\(k)"
+            return #"{"timestamp":"2026-09-10T12:01:\#(second).000Z","type":"event_msg","ordinal":\#(k + 1),"payload":{"type":"token_count","info":{"total_token_usage":\#(total),"last_token_usage":\#(last)}}}"#
+        }
+        let home = try tempDir("codex-saturated")
+        let dir = home.appendingPathComponent("sessions/2026/09/10", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let files = [
+            "rollout-big.jsonl": ([meta("big", "12:00:00"), context] + (1...10).map(absurd)).joined(separator: "\n") + "\n",
+            "rollout-small.jsonl": [meta("small", "12:00:00"), context, event("12:02:00", 1_000, ordinal: 2)]
+                .joined(separator: "\n") + "\n",
+        ]
+        for (name, content) in files {
+            try Data(content.utf8).write(to: dir.appendingPathComponent(name))
+        }
+        var options = CostUsageScanner.Options(
+            codexSessionsRoot: home.appendingPathComponent("sessions", isDirectory: true),
+            claudeProjectsRoots: [],
+            cacheRoot: home.appendingPathComponent("cache", isDirectory: true),
+            daysToScan: 30
+        )
+        options.forceRescan = true
+        options.refreshMinIntervalSeconds = 0
+        options.now = ISO8601DateFormatter().date(from: "2026-09-30T12:00:00Z")
+
+        let rows = CostUsageScanner.scan(options: options).entries.filter { $0.provider == "Codex" }
+
+        XCTAssertEqual(rows.map(\.model), ["gpt-5.5"])
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(row.inputTokens, 11_000)
+        XCTAssertEqual(row.outputTokens, 1_000_000_000_000_001)
+        XCTAssertEqual(try XCTUnwrap(row.costUSD), Double(Int.max) / 1_000_000_000, accuracy: 1)
+    }
+
+    /// The packed-row sum every file's days go through, into the cache's days
+    /// (`applyFileDays`) and into a file's own (`mergeFileDays`).
+    func test_packed_rows_add_and_subtract_without_trapping() {
+        typealias Scanner = CostUsageScanner
+        XCTAssertEqual(Scanner.addPacked(a: [1, 2, 3], b: [10, 20], sign: 1), [11, 22, 3])
+        XCTAssertEqual(Scanner.addPacked(a: [5, 5], b: [3, 9], sign: -1), [2, 0])
+        XCTAssertEqual(Scanner.addPacked(a: [0, 0, 0, .max], b: [1, 0, 0, 5_030_000], sign: 1), [1, 0, 0, .max])
+        XCTAssertEqual(Scanner.addPacked(a: [.max], b: [.max], sign: 1), [.max])
+        XCTAssertEqual(Scanner.addPacked(a: [.max], b: [.max], sign: -1), [0])
+        // Rows decoded from a damaged cache file can hold anything.
+        XCTAssertEqual(Scanner.addPacked(a: [0], b: [.min], sign: -1), [.max])
+        XCTAssertEqual(Scanner.addPacked(a: [-1], b: [.min], sign: 1), [0])
+        XCTAssertEqual(Scanner.addPacked(a: [-1], b: [.min], sign: -1), [.max], "exactly Int.max, not saturated early")
+    }
+
     /// An ancestor's session_meta is often over the 32 KB line limit: the
     /// scanner reads its head, so it still marks the copied history after it.
     func test_a_long_copied_session_meta_still_marks_the_copied_history() throws {

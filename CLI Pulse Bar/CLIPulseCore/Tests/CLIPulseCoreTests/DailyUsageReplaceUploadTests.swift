@@ -121,6 +121,60 @@ final class DailyUsageReplaceUploadTests: XCTestCase {
         XCTAssertEqual(DailyUsageReplaceStubProtocol.paths(), [Self.replacePath])
     }
 
+    // MARK: - Under which device
+
+    /// A paired Mac sends its device id, and so does one whose helper secret
+    /// cannot be read right now: the login keychain locks with the screen,
+    /// and the refresh keeps running. That Mac used to send its whole window
+    /// under the unpaired stand-in as well, and `get_daily_usage` added that
+    /// copy to the paired one on the iPhone, for good. Only a Mac with no
+    /// pairing record for the signed-in account sends no device id.
+    func test_a_mac_paired_with_the_account_sends_its_device_id_even_when_the_secret_cannot_be_read() async throws {
+        DailyUsageReplaceStubProtocol.respond { _ in (200, "{}") }
+        let (api, lease) = try await signedInAPI()
+
+        func sentDeviceId(_ device: APIClient.DailyUsageDevice) async throws -> String? {
+            DailyUsageReplaceStubProtocol.clearRequests()
+            var askedFor: [String] = []
+            await api.syncDailyUsage(
+                Self.scan(), authorizationLease: lease, now: Self.now,
+                device: { user in askedFor.append(user); return device })
+            XCTAssertEqual(askedFor, ["user-a"], "the device must be decided for the signed-in account, once")
+            XCTAssertEqual(DailyUsageReplaceStubProtocol.paths(), [Self.replacePath])
+            let body = try XCTUnwrap(DailyUsageReplaceStubProtocol.requests().first?.httpBody)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return root["p_device_id"] as? String
+        }
+
+        let paired = try await sentDeviceId(.paired("dev-1"))
+        XCTAssertEqual(paired, "dev-1")
+        let secretUnreadable = try await sentDeviceId(.undetermined("dev-1"))
+        XCTAssertEqual(
+            secretUnreadable, "dev-1",
+            "a locked keychain sent a paired Mac's rows under the unpaired stand-in")
+        let unpaired = try await sentDeviceId(.unpaired)
+        XCTAssertNil(unpaired, "a Mac without a pairing for this account is the stand-in")
+    }
+
+    /// The 404 fallback sends the same device id: it sends the same body.
+    func test_the_fallback_keeps_the_device_id_of_a_mac_whose_secret_cannot_be_read() async throws {
+        DailyUsageReplaceStubProtocol.respond { request in
+            request.url?.path == Self.replacePath ? (404, "{}") : (200, "{}")
+        }
+        let (api, lease) = try await signedInAPI()
+
+        await api.syncDailyUsage(
+            Self.scan(), authorizationLease: lease, now: Self.now, device: { _ in .undetermined("dev-1") })
+
+        XCTAssertEqual(DailyUsageReplaceStubProtocol.paths(), [Self.replacePath, Self.upsertPath])
+        let ids = try DailyUsageReplaceStubProtocol.requests().map { request -> String? in
+            let body = try XCTUnwrap(request.httpBody)
+            let root = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return root["p_device_id"] as? String
+        }
+        XCTAssertEqual(ids, ["dev-1", "dev-1"])
+    }
+
     // MARK: - What is sent for a (day, provider) is all of it
 
     /// `replace_daily_usage` deletes this device's rows of a (day, provider)
