@@ -1,0 +1,13 @@
+Codex cost estimates are higher in this version, and Claude estimates change. CLI Pulse on your Mac counts and prices your usage, so most of these figures change on iPhone once your Mac runs this version and syncs.
+
+• Codex cost estimates are higher. Subagent sessions are now counted; they used to be left out. And each request is priced at the API price OpenAI listed for its model on the day the request was made. Price changes apply from the day they take effect, and newer models have their own prices instead of gpt-5.4's: higher for some, such as gpt-5.5 and gpt-5.6-sol, and lower for others, such as gpt-5.6-luna.
+
+• Older Codex days are counted again under the new rules. If you allowed CLI Pulse on your Mac to read older logs, it recounts the older Codex days it has already synced, so those days in the Usage Dashboard show the new figures too. Some days keep their earlier figures, for example when their logs have been deleted.
+
+• The Usage Dashboard now counts Codex's cached input once. Cached input is already part of Codex's input but was added a second time, which made the Codex token totals there too high on every day. Costs were not affected.
+
+• Claude cost estimates for the last 30 days change as well: CLI Pulse on your Mac now prices Claude at Anthropic's list prices for each day, gives Claude Opus 5.5, Claude Fable 5.1 and Claude Sonnet 5.5 their own prices, and counts the full output of each response, so estimates go down for some models and up for others.
+
+• Try Demo now looks like the result of a single real refresh: its alerts, quotas, devices and Cost Summary are ones a real account can show, and the Cost Summary rows add up to its total.
+
+• A provider's overall Quota bar now fills to the share left, like the other bars.
