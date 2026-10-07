@@ -396,7 +396,7 @@ got="$(psql_q -c "select string_agg(model, ',' order by model) from public.daily
                   where user_id = '$A' and device_id = '$NIL' and metric_date = '$D3'")"
 want="$OLDNAME,claude-opus-5,claude-w,claude-x"
 [[ "$got" == "$want" ]] && pass "from two unpaired Macs: both models stay ($got)" \
-                        || fail "overlapping unpaired uploads left '$got', not $want"
+                        || fail "overlapping unpaired uploads left '$got', not '$want'"
 
 echo
 if (( fails > 0 )); then

@@ -80,11 +80,12 @@
 -- ── HOW ───────────────────────────────────────────────────────
 -- `create or replace` of v0.84's function with the same arguments and return
 -- type, so no second overload is created and the grants carry over (they are
--- re-stated below anyway). The body is v0.84's, line for line, plus one
--- clause on the delete that applies only to the nil UUID. Same per-device
--- advisory lock (same key), same delegation to `upsert_daily_usage`, same
--- return value. `upsert_daily_usage`, which apps up to 1.55 call, is not
--- touched; nor is anything else.
+-- re-stated below anyway). The body is v0.84's with the nil UUID named as a
+-- constant and one clause added to the delete, which applies only to the nil
+-- UUID; the rest differs in comments only. Same per-device advisory lock
+-- (same key), same delegation to `upsert_daily_usage`, same return value.
+-- `upsert_daily_usage`, which apps up to 1.55 call, is not touched; nor is
+-- anything else.
 --
 -- ── APPLY (owner; release step) ───────────────────────────────
 -- ORDER: v0.84 first, then this file, in the same sitting. This file refuses
