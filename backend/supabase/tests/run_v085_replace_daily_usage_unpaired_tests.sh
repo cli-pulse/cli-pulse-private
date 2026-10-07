@@ -387,13 +387,16 @@ begin;
 select set_config('request.jwt.claims', '{"sub":"$A","role":"authenticated"}', true) \g /dev/null
 set local role authenticated;
 select public.replace_daily_usage('[$(row "$D3" Claude "$2" 10)]'::jsonb, $dev) \g /dev/null
-select pg_sleep(4) \g /dev/null
+select pg_sleep(6) \g /dev/null
 commit;
 SQL
     first=$!
-    # Start the second only once the first holds the per-device lock.
+    # Start the second only once the first holds an advisory lock with a
+    # bigint key (objsubid 1) in this database: the per-device lock.
     local waited=0
-    until [[ "$(psql_q -c "select count(*) from pg_locks where locktype = 'advisory' and granted")" -gt 0 ]]; do
+    until [[ "$(psql_q -c "select count(*) from pg_locks
+                            where locktype = 'advisory' and granted and objsubid = 1
+                              and database = (select oid from pg_database where datname = current_database())")" -gt 0 ]]; do
         (( waited++ < 100 )) || { fail "the first overlapping upload never took the lock"; break; }
         sleep 0.1
     done
