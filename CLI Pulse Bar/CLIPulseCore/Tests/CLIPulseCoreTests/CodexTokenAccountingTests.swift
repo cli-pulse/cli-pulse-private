@@ -417,6 +417,7 @@ final class CodexTokenAccountingTests: XCTestCase {
         // Rows decoded from a damaged cache file can hold anything.
         XCTAssertEqual(Scanner.addPacked(a: [0], b: [.min], sign: -1), [.max])
         XCTAssertEqual(Scanner.addPacked(a: [-1], b: [.min], sign: 1), [0])
+        XCTAssertEqual(Scanner.addPacked(a: [-1], b: [.min], sign: -1), [.max], "exactly Int.max, not saturated early")
     }
 
     /// An ancestor's session_meta is often over the 32 KB line limit: the

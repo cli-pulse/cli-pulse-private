@@ -169,14 +169,15 @@ public struct HelperConfig: Codable, Sendable {
     /// touches the Keychain, so it cannot be told "no" by a keychain that is
     /// merely locked.
     ///
-    /// For deciding WHETHER this Mac is paired (`ThisMacPairing`), not for
-    /// syncing: a caller that sends `p_device_id` must use `loadIfMatches`,
-    /// which also needs the secret. The two differ only when the record is here
-    /// and its secret cannot be read. A failed read looks the same whether the
-    /// secret is gone or the login keychain is locked (it can be while the
-    /// screen is, and `refreshAll` keeps running then), and treating the second
-    /// as "not paired" would offer to pair this Mac again and leave a second
-    /// device row behind.
+    /// For deciding WHETHER this Mac is paired (`ThisMacPairing`), and which
+    /// device the app's own daily-usage upload names (`APIClient.dailyUsageDevice`;
+    /// that upload sends no secret). Anything that authenticates AS the device
+    /// needs `loadIfMatches`, which also reads the secret. The two differ only
+    /// when the record is here and its secret cannot be read. A failed read
+    /// looks the same whether the secret is gone or the login keychain is
+    /// locked (it can be while the screen is, and `refreshAll` keeps running
+    /// then), and treating the second as "not paired" would offer to pair this
+    /// Mac again and leave a second device row behind.
     public static func pairedDeviceId(
         authenticatedUserId: String?,
         runtimeEnvironment: CLIPulseRuntimeEnvironment = .current
