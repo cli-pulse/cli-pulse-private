@@ -64,7 +64,7 @@ public let kProtocolVersion: Int = 1
 /// app's OAuth-injection floor gate reads `helper_version` for WHICHEVER helper
 /// owns the socket — so keeping this in lock-step with the Python
 /// `HELPER_VERSION` remains required (one version line across both channels).
-public let kHelperVersion: String = "1.31.0"
+public let kHelperVersion: String = "1.32.0"
 
 /// Methods this revision of the helper advertises in `hello`. Must
 /// match `helper/local_session_server.py:SUPPORTED_METHODS`
