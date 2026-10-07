@@ -30,12 +30,12 @@
   ]
  },
  "captures": {
-  "01_overview.png": "ab774a264c716544a5bcb67e39c861f3",
+  "01_overview.png": "a07b6d3da6038fc897c0fe99116b1209",
   "02_providers.png": "52fc3e413db27f52bdede44a5d45cf1d",
   "03_usage_history.panel.png": "b88e6020161e1dd17d627e765b336ab2",
-  "03_usage_history.png": "ab774a264c716544a5bcb67e39c861f3",
+  "03_usage_history.png": "a07b6d3da6038fc897c0fe99116b1209",
   "04_cost.png": "fb1493f579f97cf22d2c056928eb8579",
-  "05_alerts.png": "e5dc6bf143f3f13b31dadd737390dac9",
+  "05_alerts.png": "0715672d9830c00214f912bff29c042a",
   "06_pulse_cat.png": "909eb2756684c2b53348ea9e73781204"
  },
  "faces": {
@@ -44,16 +44,16 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_2880x1800.png": "927933628f661904fa4bb4a560b84f86",
+  "01_overview_2880x1800.png": "e0ff3094fc4d05e1e3e971bdadfc8a3f",
   "02_providers_2880x1800.png": "59b9885766ece40c27d70c387b6a63ef",
-  "03_usage_history_2880x1800.png": "244b5f380b90fe862e8af8976b139318",
+  "03_usage_history_2880x1800.png": "ee6a6d5876b3a8c2706f67ac8eac9a20",
   "04_cost_2880x1800.png": "84e17aa3aefaa89d4eb78500af343196",
-  "05_alerts_2880x1800.png": "63672ca728d8587ff1fc68be17606bfe",
+  "05_alerts_2880x1800.png": "1746c522abc3244259be5b705c7254db",
   "06_pulse_cat_2880x1800.png": "5faee125b88975ba5e66b38771cce4f9"
  },
  "pillow": "10.4.0",
  "px_per_pt": 2.2707,
- "render": "21609c15e6800598ac046626cbbb3f24",
+ "render": "e740dd2df734ef5128a74d02f45d2fd7",
  "subtitle_pt": 46,
  "title_pt": 100
 }

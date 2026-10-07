@@ -18,15 +18,15 @@
   ],
   "05_alerts": [
    "Sin sorpresas con la cuota",
-   "Alertas de cuota y picos de CPU, por sesión y por dispositivo"
+   "Alertas de cuota y de picos de CPU, por sesión y por dispositivo"
   ]
  },
  "captures": {
-  "01_overview.png": "436cc3a72ff07976155d2091cae2a78a",
+  "01_overview.png": "bfca195b492dc39127f4f448bd763cb6",
   "02_providers.png": "9e51ceb0630929de81f499e1d8c099b3",
-  "03_cost.png": "3e5a02437747f26c8143fcd52bedb722",
+  "03_cost.png": "6ae78891da8d0aa13ff80271eca646c3",
   "04_sessions.png": "8f73b2f4cc4791379ccd4996ce336f83",
-  "05_alerts.png": "5c0caf9568ad1f61b4b1acb8af116bd4"
+  "05_alerts.png": "bdeaa96d205cfd975e4e278b8649d265"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -34,11 +34,11 @@
  },
  "lang": "es",
  "panels": {
-  "01_overview_1290x2796.png": "e3aa7bb7cadbb8095cd24168d23f2084",
+  "01_overview_1290x2796.png": "2c0e97ffd9ee0d169b65984480c34e7c",
   "02_providers_1290x2796.png": "589147487abc89b5c86193715c17edd8",
-  "03_cost_1290x2796.png": "e59e895168095bfea157eb6fc51e8b24",
+  "03_cost_1290x2796.png": "a90187c8c24306cd6a34dc41f80f57ac",
   "04_sessions_1290x2796.png": "ffc01a2ead39a0890d6c64ae9b1a5afa",
-  "05_alerts_1290x2796.png": "4feeb4ae819b26eadb752c40235e61d4"
+  "05_alerts_1290x2796.png": "6fc522d79bbf1c76dd3b11843052bdff"
  },
  "subtitle_pt": 46,
  "title_pt": 96

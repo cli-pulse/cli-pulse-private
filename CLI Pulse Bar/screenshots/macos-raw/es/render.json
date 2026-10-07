@@ -20,7 +20,7 @@
     "cli_pulse_menubar_height (04_cost)" : "406: this shot's popover, shortened from 580 so the page scrolled to the end opens just above a card (the first one the first page did not show whole, or the one above it when that would need a popover under 400: QARenderSnapshot.alignedCard) and cuts through nothing. Users can drag the popover between 400 and 900.",
     "cli_pulse_notifications" : "false: the Alerts tab would otherwise ask macOS for notification permission, a prompt on the screen of whoever is using the Mac. Settings > General shows the switch off."
   },
-  "generatedAt" : "2026-10-07T02:37:40Z",
+  "generatedAt" : "2026-10-07T04:12:03Z",
   "language" : "es",
   "localeOverride" : "es",
   "localizationActive" : true,
@@ -145,7 +145,7 @@
     {
       "file" : "01_overview.png",
       "id" : "01_overview",
-      "md5" : "c2f9f23c8f51b40c4db89acc394f38ca",
+      "md5" : "03964bfe1b56c241da92696fab847b8e",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -163,7 +163,7 @@
     {
       "file" : "03_usage_history.png",
       "id" : "03_usage_history",
-      "md5" : "c2f9f23c8f51b40c4db89acc394f38ca",
+      "md5" : "03964bfe1b56c241da92696fab847b8e",
       "page" : "first",
       "pageCount" : 2,
       "pageIndex" : 1,
@@ -184,7 +184,7 @@
     {
       "file" : "05_alerts.png",
       "id" : "05_alerts",
-      "md5" : "6a8f5068a9c009c58ecdaf4c29cd5b18",
+      "md5" : "5f11f9641edf44dbdbe9cdc13be2a5e5",
       "page" : "first",
       "pageCount" : 1,
       "pageIndex" : 1,

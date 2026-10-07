@@ -18,10 +18,10 @@
   ]
  },
  "captures": {
-  "01_overview.png": "5b760d151de8b215fb26640ff68b19ef",
-  "02_providers.png": "b2e735e39fae212f465efef8cae8db67",
-  "04_sessions.png": "91dda0ecb4eac20a70b16353b94ce31c",
-  "05_alerts.png": "b89827e136b52f64be344c96e5c1db74"
+  "01_overview.png": "763c54419f22972582b5233a172b5cbd",
+  "02_providers.png": "0cc6f19541bd03c9d3fd11d565288e73",
+  "04_sessions.png": "940bd21e6b68c7bc6c3a143bd0a594be",
+  "05_alerts.png": "49963443c94a63a21082f953e3685a52"
  },
  "faces": {
   "subtitle": "Hiragino Sans",
@@ -29,10 +29,10 @@
  },
  "lang": "ja",
  "panels": {
-  "01_overview_2064x2752.png": "833e38c87c9e0476636e4d6af6dc470e",
-  "02_providers_2064x2752.png": "a20cf5f74689b3dfc0859b68772b7f29",
-  "04_sessions_2064x2752.png": "6e45f6ecf9a777b1b56bcf7a780d29d6",
-  "05_alerts_2064x2752.png": "c167fa01dba29c570a7b19579c245cad"
+  "01_overview_2064x2752.png": "ec4c58ab958a04a5e07de709c3d7ccb2",
+  "02_providers_2064x2752.png": "2e5476a39c58c826be1261a5d50005f8",
+  "04_sessions_2064x2752.png": "73f715da5c9ee418125d544d596e2aab",
+  "05_alerts_2064x2752.png": "5079d9cc5b1ee6623c3ed8affaae6281"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,

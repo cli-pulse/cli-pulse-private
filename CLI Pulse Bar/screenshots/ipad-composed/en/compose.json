@@ -18,10 +18,10 @@
   ]
  },
  "captures": {
-  "01_overview.png": "96910ffbf420e910804f2015e8184344",
-  "02_providers.png": "83ec6460efde099ce2f0471d6cc275d2",
-  "04_sessions.png": "29a6d70514f010208e36f7e448721d4e",
-  "05_alerts.png": "8240810d46fa406cb008ee534c1dae07"
+  "01_overview.png": "c4783015e3cd962fa52218ce83638f09",
+  "02_providers.png": "492d1029f079e1f894d298fc124c6a00",
+  "04_sessions.png": "8a36f6ea533fc8ac0a114f9453c2dfc9",
+  "05_alerts.png": "4f3427cdec370281623377ecf7254444"
  },
  "faces": {
   "subtitle": "SFNS",
@@ -29,10 +29,10 @@
  },
  "lang": "en",
  "panels": {
-  "01_overview_2064x2752.png": "6f5115f5946945adc30cb2681ef0f31e",
-  "02_providers_2064x2752.png": "1c310c7f244fe0924fb8686d0cb01995",
-  "04_sessions_2064x2752.png": "d4ae1ce553056616064154bce96c97b7",
-  "05_alerts_2064x2752.png": "3c3d1a956f06799e6cd650e19128fa52"
+  "01_overview_2064x2752.png": "d41d8a25aeb896ba30776a4f9abe2e75",
+  "02_providers_2064x2752.png": "965e7b8a52970bfb7594a33ce5622000",
+  "04_sessions_2064x2752.png": "a87bc45cf690bb1608b8f6ea5d4d3bc0",
+  "05_alerts_2064x2752.png": "2c54f2d967a016779421e8d6d6246bbe"
  },
  "pillow": "10.4.0",
  "subtitle_pt": 70,
