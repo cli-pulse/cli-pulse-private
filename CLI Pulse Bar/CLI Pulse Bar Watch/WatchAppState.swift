@@ -92,6 +92,15 @@ public final class WatchAppState: ObservableObject {
             }
         })
 
+        #if DEBUG
+        // An App Store screenshot capture: Demo's data as this Watch's own
+        // refresh would hold it, no session restore, no observers, no network.
+        if WatchScreenshotLaunch.activeScreen != nil {
+            applyScreenshotDemo(WatchScreenshotLaunch.demoSnapshot())
+            return
+        }
+        #endif
+
         Task { await restoreSession() }
 
         // Listen for iPhone auth
@@ -510,6 +519,9 @@ public final class WatchAppState: ObservableObject {
     // MARK: - Refresh
 
     func refreshAll() async {
+        #if DEBUG
+        if WatchScreenshotLaunch.activeScreen != nil { return }   // a capture never refreshes
+        #endif
         guard let lease = refreshGate.beginRefresh(
             isAuthenticated: isAuthenticated
         ) else {
@@ -577,6 +589,9 @@ public final class WatchAppState: ObservableObject {
     }
 
     func startRefreshLoop() {
+        #if DEBUG
+        if WatchScreenshotLaunch.activeScreen != nil { return }   // a capture never refreshes
+        #endif
         stopRefreshLoop()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -590,6 +605,31 @@ public final class WatchAppState: ObservableObject {
         refreshTimer?.invalidate()
         refreshTimer = nil
     }
+
+    #if DEBUG
+    /// The screenshot capture's state (`WatchScreenshotLaunch.demoSnapshot`):
+    /// what `refreshAll` stores after a refresh of the account Demo describes,
+    /// with the legacy provider summary every build reads.
+    private func applyScreenshotDemo(_ demo: WatchScreenshotLaunch.Snapshot) {
+        currentUserID = "demo"
+        isAuthenticated = true
+        isPaired = true
+        userName = L10n.auth.demoUserName
+        userEmail = "demo@clipulse.app"
+        dashboard = demo.dashboard
+        providers = demo.providers
+        providerAccounts = []
+        usesLegacyProviderSummary = true
+        providerDataLoaded = true
+        sessions = demo.sessions
+        alerts = demo.alerts
+        devices = demo.devices
+        serverOnline = true
+        lastRefresh = demo.refreshedAt
+        isLoading = false
+        lastError = nil
+    }
+    #endif
 
     // MARK: - Session Restore
 

@@ -904,7 +904,7 @@ try:
     code, out = run("--apply", *IPAD_ARGS, "--version", "1.54.0")
     check("iPad apply exits 0 and verifies", code == 0 and "APPLY OK" in out, out)
     bad = [loc for loc in ALL if ipad_files(loc) != ipad_want(shots.SHOT_SOURCES[loc])]
-    check("every locale's iPad set holds exactly the five new iPad panels, in order, with their md5",
+    check("every locale's iPad set holds exactly the four new iPad panels, in order, with their md5",
           not bad, str({loc: ipad_files(loc) for loc in bad})[:1500])
     check("es-ES and es-MX got the same Spanish iPad files", ipad_files("es-ES") == ipad_files("es-MX"))
     created = [p for m, p in FakeASC.log if (m, p) == ("POST", "/appScreenshotSets")]
@@ -978,6 +978,77 @@ try:
     check("--locale zh-Hans replaces only zh-Hans's iPad set",
           code == 0 and ipad_files("zh-Hans") == ipad_want("zh-Hans")
           and touched == {f"/appScreenshots/ipad-zh-Hans-{n}" for n in range(5)}, str(FakeASC.log)[:600])
+finally:
+    shots.REPO = REAL_REPO
+    pusher.ShotsASC = RealShotsASC
+
+# ── the Apple Watch set: --platform IOS --display-type APP_WATCH_ULTRA ───────
+# Four 422x514 panels per locale, beside the iPhone and iPad sets on the same
+# IOS version. The store starts with no Watch set in this fixture: the pusher
+# creates each, and touches nothing else.
+WATCH = shots.WATCH
+WATCH_TYPE = "APP_WATCH_ULTRA"
+WATCH_ARGS = ("--platform", "IOS", "--display-type", WATCH_TYPE)
+
+
+def make_watch_panels(lang: str, *, color_type: int = 2) -> None:
+    for i, p in enumerate(shots.expected_composed(lang, TMP, platform=WATCH)):
+        shots.write_png(p, *WATCH.canvas, color_type=color_type)
+        p.write_bytes(p.read_bytes() + b"watch" + lang.encode() + bytes([i]))
+    shots.write_manifest(shots.composed_dir(lang, TMP, platform=WATCH), lang, platform=WATCH)
+
+
+def fresh_watch_repo(**kw) -> None:
+    fresh_ipad_repo()
+    for lang in shots.LANGS:
+        make_watch_panels(lang, **(kw if lang == "ko" else {}))
+
+
+def watch_files(loc: str) -> list[tuple[str, str]]:
+    s_ = FakeASC.store
+    sid = next((k for k, v in s_["sets"].items()
+                if v["type"] == WATCH_TYPE and s_["vlocs"]["v-new"][v["loc"]]["locale"] == loc), None)
+    return [] if sid is None else [(s_["shots"][i]["fileName"], s_["shots"][i].get("sourceFileChecksum"))
+                                   for i in s_["sets"][sid]["shots"]]
+
+
+def other_sets() -> dict:
+    s_ = FakeASC.store
+    return {k: [(i, dict(s_["shots"][i])) for i in v["shots"]] for k, v in s_["sets"].items()
+            if v["type"] != WATCH_TYPE}
+
+
+shots.REPO = TMP
+pusher.ShotsASC = FakeASC
+try:
+    # W1. a dry run names the Watch set and would create one per locale
+    fresh_watch_repo()
+    fresh_ipad()
+    code, out = run("--display-type", WATCH_TYPE, "--version", "1.54.0")
+    check("Watch dry run: exits 0, writes nothing, lists the 422x514 panels, and would create seven sets",
+          code == 0 and not writes() and "local panels (Apple Watch, APP_WATCH_ULTRA, 422x514)" in out
+          and "01_pulse_422x514.png" in out
+          and out.count(f"no {WATCH_TYPE} set yet: --apply creates one") == len(ALL), out)
+
+    # W2. the real apply: only Watch sets are created and filled
+    fresh_watch_repo()
+    fresh_ipad()
+    before = other_sets()
+    code, out = run("--apply", *WATCH_ARGS, "--version", "1.54.0")
+    want = {loc: [(p_.name, hashlib.md5(p_.read_bytes()).hexdigest())
+                  for p_ in shots.expected_composed(shots.SHOT_SOURCES[loc], TMP, platform=WATCH)] for loc in ALL}
+    check("Watch apply exits 0, and every locale's Watch set holds exactly its four panels, in order",
+          code == 0 and "APPLY OK" in out and all(watch_files(loc) == want[loc] for loc in ALL),
+          out + str({loc: watch_files(loc) for loc in ALL})[:800])
+    check("the iPhone and iPad sets beside them are exactly as they were",
+          other_sets() == before, str(FakeASC.log)[:800])
+
+    # W3. simctl's alpha left in a Watch panel: refused before contact
+    fresh_watch_repo(color_type=6)
+    fresh_ipad()
+    code, out = run("--apply", *WATCH_ARGS, "--version", "1.54.0")
+    check("a Watch panel with an alpha channel is refused, store never contacted",
+          code == 1 and FakeASC.constructed == 0 and "RGBA" in out, out)
 finally:
     shots.REPO = REAL_REPO
     pusher.ShotsASC = RealShotsASC

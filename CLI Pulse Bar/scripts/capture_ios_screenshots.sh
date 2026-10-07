@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Capture the iPhone (or, with --set ipad, the iPad) App Store screenshots in
-# every language, without a tap.
+# Capture the iPhone (or, with --set ipad, the iPad; with --set watch, the
+# Apple Watch) App Store screenshots in every language, without a tap.
 #
 # Each screen is one launch of a DEBUG build with
 #     -CLIPulseScreenshotDemo YES -CLIPulseScreenshotScreen <screen>
@@ -18,7 +18,7 @@
 # --set ipad for the iPad set).
 #
 # Usage:
-#   capture_ios_screenshots.sh [--set iphone|ipad] [--device NAME | --udid UDID]
+#   capture_ios_screenshots.sh [--set iphone|ipad|watch] [--device NAME | --udid UDID]
 #                              [--app PATH.app] [--out DIR]
 #                              [--langs en,ja] [--screens overview,cost]
 #                              [--derived-data DIR] [--log-dir DIR]
@@ -32,6 +32,17 @@
 #                  ipad    "iPad Pro 13-inch (M5)" -> screenshots/ipad-raw,
 #                          2064x2752 portrait, no mask (square corners, as an
 #                          iPad's own screenshot has them)
+#                  watch   "Apple Watch Ultra 3 (49mm)" -> screenshots/watch-raw,
+#                          422x514, no mask: the Watch app's four pages
+#                          (WATCH_SCREENS), from the Watch app's own capture
+#                          launch (WatchScreenshotLaunch.swift); --app is the
+#                          CLI Pulse Watch.app the "CLI Pulse iOS" Debug build
+#                          puts in Debug-watchsimulator. watchOS has no status
+#                          bar override and no light appearance, so the
+#                          Watch's clock reads the time of the capture
+#                The iPad set is four of the five screens (IPAD_SCREENS: no
+#                cost, which on the 13" iPad repeated the overview), each
+#                keeping its iPhone number (01, 02, 04, 05).
 #                The simulator must be of the set's family, and a capture of
 #                any other size stops the run: an iPhone capture must never
 #                become an iPad panel (App Review guideline 2.3.3), nor a
@@ -68,6 +79,15 @@ APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"          # CLI Pulse Bar/
 # scripts/test_appstore_screenshots.py hold these to the app and to the
 # compositor; keep the one-line form.
 SCREENS=(overview providers cost sessions alerts)
+# The iPad set's screens: SCREENS without cost. NN stays the screen's place in
+# SCREENS (index_of_screen), so the iPad files are 01, 02, 04 and 05 and share
+# the iPhone's captions. scripts/appstore_screenshots.py IPAD_SCREENS, held to
+# this line by scripts/test_appstore_screenshots.py; keep the one-line form.
+IPAD_SCREENS=(overview providers sessions alerts)
+# The Apple Watch set's pages, numbered in their own order (01..04).
+# WatchScreenshotLaunch.Screen (Swift) and scripts/appstore_screenshots.py
+# WATCH_SCREENS name the same four; keep the one-line form.
+WATCH_SCREENS=(pulse quota live alerts)
 LANGS=(en zh-Hans zh-Hant ja ko es)
 
 # -AppleLocale per language. Spanish serves es-ES and es-MX with one set of
@@ -92,6 +112,7 @@ set_for() {
   case "$1" in
     iphone) echo "iPhone 17 Pro Max|ios-raw|1320x2868|black" ;;
     ipad) echo "iPad Pro 13-inch (M5)|ipad-raw|2064x2752|ignored" ;;
+    watch) echo "Apple Watch Ultra 3 (49mm)|watch-raw|422x514|ignored" ;;
     *) return 1 ;;
   esac
 }
@@ -148,21 +169,29 @@ while [ $# -gt 0 ]; do
     --settle) SETTLE="$2"; shift 2 ;;
     --keep-data) KEEP_DATA=1; shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,55p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,72p' "$0"; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
 
 # ── the set ─────────────────────────────────────────────────────────────────
-set_line="$(set_for "$SET")" || die "unknown --set '$SET' (iphone or ipad)"
+set_line="$(set_for "$SET")" || die "unknown --set '$SET' (iphone, ipad or watch)"
 IFS='|' read -r SET_DEVICE SET_RAW CAPTURE_SIZE MASK <<< "$set_line"
 [ -n "$DEVICE" ] || DEVICE="$SET_DEVICE"
 [ -n "$OUT" ] || OUT="$APP_ROOT/screenshots/$SET_RAW"
 
 # ── what to capture ─────────────────────────────────────────────────────────
+# numbering: the list whose order gives a capture its NN (the iPad keeps the
+# iPhone's numbers); set_screens: what the set captures by default.
+numbering=("${SCREENS[@]}")
+set_screens=("${SCREENS[@]}")
+case "$SET" in
+  ipad) set_screens=("${IPAD_SCREENS[@]}") ;;
+  watch) numbering=("${WATCH_SCREENS[@]}"); set_screens=("${WATCH_SCREENS[@]}") ;;
+esac
 index_of_screen() {
   local i=0 known
-  for known in "${SCREENS[@]}"; do
+  for known in "${numbering[@]}"; do
     i=$((i + 1))
     if [ "$known" = "$1" ]; then printf '%02d' "$i"; return 0; fi
   done
@@ -174,10 +203,20 @@ if [ -n "$want_langs" ]; then
   IFS=',' read -r -a langs <<< "$want_langs"
   for want in "${langs[@]}"; do locale_for "$want" >/dev/null || die "unknown language '$want' (known: ${LANGS[*]})"; done
 fi
-screens=("${SCREENS[@]}")
+in_set() {
+  local known
+  for known in "${set_screens[@]}"; do [ "$known" = "$1" ] && return 0; done
+  return 1
+}
+screens=("${set_screens[@]}")
 if [ -n "$want_screens" ]; then
   IFS=',' read -r -a screens <<< "$want_screens"
-  for want in "${screens[@]}"; do index_of_screen "$want" >/dev/null || die "unknown screen '$want' (known: ${SCREENS[*]})"; done
+  for want in "${screens[@]}"; do
+    index_of_screen "$want" >/dev/null || die "unknown screen '$want' (known: ${numbering[*]})"
+    # A capture the compositor would refuse (a cost capture in ipad-raw) is
+    # not taken at all.
+    in_set "$want" || die "screen '$want' is not in the $SET set (${set_screens[*]})"
+  done
 fi
 
 # ── launch logs ─────────────────────────────────────────────────────────────
@@ -219,6 +258,7 @@ for rows in json.load(sys.stdin)["devices"].values():
 case "$device_type" in
   *SimDeviceType.iPad*) family=ipad ;;
   *SimDeviceType.iPhone*) family=iphone ;;
+  *SimDeviceType.Apple-Watch*) family=watch ;;
   *) family="unknown ($device_type)" ;;
 esac
 [ "$family" = "$SET" ] || die "$UDID is an $family simulator, not an $SET one; --set $SET captures on an $SET"
@@ -226,6 +266,9 @@ echo "set: $SET -> $OUT ($CAPTURE_SIZE, display mask $MASK)"
 
 # ── the app (checked before anything boots) ─────────────────────────────────────────────────────────────────
 built_here=""
+if [ -z "$APP" ] && [ "$SET" = watch ]; then
+  die "--set watch needs --app: the CLI Pulse Watch.app a Debug \"CLI Pulse iOS\" simulator build puts in Debug-watchsimulator"
+fi
 if [ -z "$APP" ]; then
   if [ -z "$DERIVED" ]; then
     DERIVED="${TMPDIR:-/tmp}/clipulse-ios-screenshots-build"
@@ -384,9 +427,12 @@ if [ "$KEEP_DATA" -eq 0 ]; then
 fi
 with_timeout "$STEP_TIMEOUT" xcrun simctl install "$UDID" "$APP" || die "installing $APP failed"
 
-with_timeout "$STEP_TIMEOUT" xcrun simctl ui "$UDID" appearance light || die "setting light appearance failed"
-status_bar_set=1
-override_status_bar || die "overriding the status bar failed"
+if [ "$SET" != watch ]; then
+  # watchOS has neither (simctl: "unsupported", "Operation not supported").
+  with_timeout "$STEP_TIMEOUT" xcrun simctl ui "$UDID" appearance light || die "setting light appearance failed"
+  status_bar_set=1
+  override_status_bar || die "overriding the status bar failed"
+fi
 
 if [ -z "$LOG_DIR" ]; then
   mkdir -p "$HOME/Library/Logs"

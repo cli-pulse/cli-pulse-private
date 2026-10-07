@@ -1,24 +1,26 @@
 #!/usr/bin/env python3
-"""The App Store screenshots, iPhone, iPad and Mac: which exist, where they live, what makes one uploadable.
+"""The App Store screenshots, iPhone, iPad, Apple Watch and Mac: which exist, where they live, what makes one uploadable.
 
 One module, imported by everything that makes, checks or pushes them, so the
 layout is written down exactly once:
 
   - CLI Pulse Bar/scripts/capture_ios_screenshots.sh     captures the raw iPhone PNGs,
-    and with --set ipad the raw iPad ones
+    with --set ipad the raw iPad ones, and with --set watch the Apple Watch's
     (bash; scripts/test_appstore_screenshots.py holds its lists to this one)
   - scripts/render_macos_qa_views.sh --set store         renders the raw Mac PNGs
   - CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py     composes the iPhone panels,
     and with --set ipad the iPad ones, from the same captions (COPY)
   - CLI Pulse Bar/scripts/compose_appstore_macos_screenshots.py   composes the Mac panels
+  - CLI Pulse Bar/scripts/compose_appstore_watch_screenshots.py   makes the Apple Watch panels
   - scripts/asc_push_screenshots.py --platform IOS|MAC_OS   uploads the panels
-    (--platform IOS --display-type APP_IPAD_PRO_3GEN_129 the iPad ones)
+    (--platform IOS --display-type APP_IPAD_PRO_3GEN_129 the iPad ones,
+    --display-type APP_WATCH_ULTRA the Apple Watch's)
   - scripts/asc_listing_preflight.py --require-shots     checks every locale has them
 
-Three sets (Platform), one per App Store Connect display type (SETS): IPHONE,
-the default of every function below, IPAD and MAC. The iPhone and iPad sets
-both belong to the IOS platform's version; PLATFORMS names the set an ASC
-platform means when no display type is given (IOS: the iPhone's). The
+Four sets (Platform), one per App Store Connect display type (SETS): IPHONE,
+the default of every function below, IPAD, WATCH and MAC. The iPhone, iPad and
+Apple Watch sets all belong to the IOS platform's version; PLATFORMS names the
+set an ASC platform means when no display type is given (IOS: the iPhone's). The
 module-level names SCREENS, CANVAS, DISPLAY_TYPE, SUFFIX and COMPOSITOR_REL are
 the iPhone's, as they were before the Mac set existed.
 
@@ -42,14 +44,28 @@ LAYOUT
         can be recomposed without a simulator.
 
     CLI Pulse Bar/screenshots/ipad-raw/<lang>/NN_<screen>.png
-        simulator captures of the same five screens, 2064x2752 portrait on the
-        13" iPad Pro (M5): the iPad's own regular-width layout (iPadSplitView),
-        captured by the same DEBUG launch on an iPad simulator. Never iPhone
-        captures on an iPad canvas, which App Review rejects (guideline 2.3.3)
+        simulator captures of four of the same screens (IPAD_SCREENS: not
+        cost), 2064x2752 portrait on the 13" iPad Pro (M5): the iPad's own
+        regular-width layout (iPadSplitView), captured by the same DEBUG launch
+        on an iPad simulator. Never iPhone captures on an iPad canvas, which
+        App Review rejects (guideline 2.3.3). NN is the screen's place in the
+        iPhone set (01, 02, 04, 05), so a screen has one file name and one
+        caption in both sets
     CLI Pulse Bar/screenshots/ipad-composed/<lang>/NN_<screen>_2064x2752.png
         the iPad panels, in the APP_IPAD_PRO_3GEN_129 set (the 13" display,
         which App Store Connect requires for an app that runs on iPad), with
         compose.json as above; the captions are the iPhone set's
+
+    CLI Pulse Bar/screenshots/watch-raw/<lang>/NN_<page>.png
+        simulator captures of the Watch app's four pages (WATCH_SCREENS),
+        422x514 on the Apple Watch Ultra 3 (49mm), from the Watch app's own
+        DEBUG capture launch (WatchScreenshotLaunch.swift: Demo's data as the
+        Watch's own refresh would hold it)
+    CLI Pulse Bar/screenshots/watch-composed/<lang>/NN_<page>_422x514.png
+        the Apple Watch panels, in the APP_WATCH_ULTRA set: the captures
+        themselves, opaque (a Watch panel is the Watch's screen, at the size
+        App Store Connect takes for the Ultra, with no caption), with
+        compose.json as above
 
     CLI Pulse Bar/screenshots/macos-raw/<lang>/NN_<screen>.png, render.json
         the QA build's offscreen renders of the real Mac views (the store set,
@@ -80,9 +96,13 @@ signed in to the owner's own account, composed by a script of its own) was
 retired for 1.55.0, when ipad-raw/ and ipad-composed/ replaced it. Git
 history keeps it; nothing reads that path any more.
 
+The Apple Watch images before 1.56 (screenshots/watch/, drawn by an AppKit
+script, generate_watch_screenshots.swift, with figures of its own) were
+retired for 1.56.0, when watch-raw/ and watch-composed/ replaced them.
+
 WHAT MAKES A PANEL UPLOADABLE
 -----------------------------
-Exactly its set's canvas (1290x2796 iPhone, 2064x2752 iPad, 2880x1800 Mac) in pixels, 8-bit RGB with no alpha channel and no transparency
+Exactly its set's canvas (1290x2796 iPhone, 2064x2752 iPad, 422x514 Apple Watch, 2880x1800 Mac) in pixels, 8-bit RGB with no alpha channel and no transparency
 chunk, a real PNG, at most 10 MB, and the file compose.json says the last clean
 compose run wrote. App Store Connect refuses an image with an
 alpha channel for screenshots, and it refuses it after the old set may already
@@ -110,6 +130,20 @@ COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_ios_screenshots.py"
 # The App Store set, in listing order: NN is the 1-based position. The Swift
 # enum ScreenshotLaunch.Screen and the capture script name the same five.
 SCREENS: tuple[str, ...] = ("overview", "providers", "cost", "sessions", "alerts")
+
+# The iPad set: the same screens without cost (owner decision, 1.56). On the
+# 13" iPad the Overview fits without scrolling, so the cost capture repeated
+# the overview panel's Cost Summary and Provider Usage under a faded strip of
+# its tiles. Each panel keeps its iPhone number (Platform.numbering), so the
+# iPad files are 01, 02, 04 and 05 and share the iPhone's captions (COPY is
+# keyed by the iPhone stems). The capture script names the same four.
+IPAD_SCREENS: tuple[str, ...] = ("overview", "providers", "sessions", "alerts")
+
+# The Apple Watch set: the Watch app's four pages, in its pager's order
+# (WatchScreenshotLaunch.Screen in Swift and the capture script's
+# WATCH_SCREENS name the same four).
+WATCH_SCREENS: tuple[str, ...] = ("pulse", "quota", "live", "alerts")
+WATCH_COMPOSITOR_REL = "CLI Pulse Bar/scripts/compose_appstore_watch_screenshots.py"
 
 # The app's languages, as its .lproj directories are named.
 LANGS: tuple[str, ...] = ("en", "zh-Hans", "zh-Hant", "ja", "ko", "es")
@@ -180,10 +214,21 @@ class Platform:
     panel_screens: tuple[str, ...] = ()
     render_manifest: str | None = None
     compose_args: str = ""     # what selects this set in its compositor, if it shares one
+    # The module-level tuple whose order numbers the panels (NN), when it is
+    # not the set's own screens: a set showing some of another set's screens
+    # keeps that set's numbers, file names and captions (the iPad's: SCREENS).
+    numbering_var: str | None = None
+    # Whether the panels carry the compositor's captions (COPY). The Apple
+    # Watch's are the Watch's screen alone.
+    captioned: bool = True
 
     @property
     def screens(self) -> tuple[str, ...]:
         return globals()[self.screens_var]
+
+    @property
+    def numbering(self) -> tuple[str, ...]:
+        return globals()[self.numbering_var] if self.numbering_var else self.screens
 
     @property
     def compositor_rel(self) -> str:
@@ -205,16 +250,22 @@ class Platform:
 
 IPHONE = Platform("iPhone", "IOS", DISPLAY_TYPE, CANVAS, "SCREENS", "COMPOSITOR_REL",
                   "ios-raw", "ios-composed")
-# The iPad set: the iPhone's five screens and captions (the same compositor,
-# --set ipad), captured on the 13" iPad Pro simulator in portrait. It goes to
-# the IOS version like the iPhone's, in its own display type.
-IPAD = Platform("iPad", "IOS", "APP_IPAD_PRO_3GEN_129", (2064, 2752), "SCREENS", "COMPOSITOR_REL",
-                "ipad-raw", "ipad-composed", compose_args="--set ipad")
+# The iPad set: four of the iPhone's five screens (IPAD_SCREENS), with their
+# iPhone numbers and captions (the same compositor, --set ipad), captured on
+# the 13" iPad Pro simulator in portrait. It goes to the IOS version like the
+# iPhone's, in its own display type.
+IPAD = Platform("iPad", "IOS", "APP_IPAD_PRO_3GEN_129", (2064, 2752), "IPAD_SCREENS", "COMPOSITOR_REL",
+                "ipad-raw", "ipad-composed", compose_args="--set ipad", numbering_var="SCREENS")
+# The Apple Watch set: the Watch app's own pages captured on the Apple Watch
+# Ultra 3 simulator, 422x514, the size App Store Connect's APP_WATCH_ULTRA
+# set takes for the Ultra 3. It goes to the IOS version, in its own display type.
+WATCH = Platform("Apple Watch", "IOS", "APP_WATCH_ULTRA", (422, 514), "WATCH_SCREENS",
+                 "WATCH_COMPOSITOR_REL", "watch-raw", "watch-composed", captioned=False)
 MAC = Platform("Mac", "MAC_OS", "APP_DESKTOP", (2880, 1800), "MAC_SCREENS", "MAC_COMPOSITOR_REL",
                "macos-raw", "macos-composed", panel_screens=MAC_PANEL_SCREENS,
                render_manifest=RENDER_MANIFEST)
 # Every set, by the App Store Connect display type it is uploaded to.
-SETS: dict[str, Platform] = {p.display_type: p for p in (IPHONE, IPAD, MAC)}
+SETS: dict[str, Platform] = {p.display_type: p for p in (IPHONE, IPAD, WATCH, MAC)}
 # The set an App Store Connect platform means when no display type is named.
 PLATFORMS: dict[str, Platform] = {p.asc_platform: p for p in (IPHONE, MAC)}
 
@@ -232,7 +283,9 @@ def stem(index: int, screen: str) -> str:
 
 
 def stems(platform: Platform = IPHONE) -> list[str]:
-    return [stem(i, s) for i, s in enumerate(platform.screens, start=1)]
+    """The set's panels in listing order, each numbered by its place in
+    platform.numbering (its own screens, or for the iPad the iPhone's)."""
+    return [stem(platform.numbering.index(s) + 1, s) for s in platform.screens]
 
 
 def composed_name(stem_: str, platform: Platform = IPHONE) -> str:
@@ -379,8 +432,10 @@ def manifest_problems(lang: str, root: Path | None = None, platform: Platform = 
     except (ValueError, KeyError, TypeError) as exc:
         return [f"{MANIFEST} is unreadable ({type(exc).__name__})"]
     out = [] if lang_ok else [f"{MANIFEST} was written for {data.get('lang')!r}, not {lang!r}"]
-    copy = caption_copy(root, platform)
-    if copy is None or canonical_lang(lang) not in copy:
+    copy = caption_copy(root, platform) if platform.captioned else None
+    if not platform.captioned:
+        pass   # the panels are the captures; nothing is written on them
+    elif copy is None or canonical_lang(lang) not in copy:
         # A fixture tree may have no compositor. This checkout always has one,
         # so here a missing file, a missing COPY or a missing language fails
         # instead of quietly switching the caption check off.
@@ -388,7 +443,9 @@ def manifest_problems(lang: str, root: Path | None = None, platform: Platform = 
             out.append(f"the captions cannot be checked: {platform.compositor_rel} is missing, "
                        f"unparsable, or has no COPY for {canonical_lang(lang)!r}")
     else:
-        want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()}
+        # The set's own panels: the iPad set draws four of the five captions.
+        want = {st: list(pair) for st, pair in copy[canonical_lang(lang)].items()
+                if st in stems(platform)}
         drawn = data.get("captions")
         stale = sorted(st for st in want if not isinstance(drawn, dict) or drawn.get(st) != want[st])
         if stale:

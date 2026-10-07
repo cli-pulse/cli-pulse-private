@@ -1,164 +1,148 @@
 #!/usr/bin/env python3
-"""Composite real Apple Watch Ultra screenshots into ASC-compliant marketing
-panels in the same dark-navy style as the macOS/iPad composites.
+"""The Apple Watch App Store panels, from the Watch app's own captures.
 
-Input:  screenshots/watch/NN_*.png       (422x514 native Apple Watch Ultra)
-Output: screenshots/watch/composed/NN_*_410x502.png  (APP_WATCH_ULTRA)
+    watch-raw/<lang>/NN_<page>.png        422x514 captures (capture_ios_screenshots.sh --set watch)
+ -> watch-composed/<lang>/NN_<page>_422x514.png + compose.json   (APP_WATCH_ULTRA)
 
-Layout:
-  - dark navy vertical gradient background
-  - short title + subtitle stacked at top
-  - watch screenshot centered below with rounded corners
+A Watch panel is the Watch's screen and nothing else: 422x514 pixels is the
+size App Store Connect's APP_WATCH_ULTRA set takes for the Apple Watch Ultra 3,
+and a caption at that size would be unreadable. So this "composes" by checking
+each capture and writing it opaque: simctl writes Watch screenshots with an
+alpha channel (measured on the Ultra 3 simulator, 1.56), which App Store
+Connect refuses for a screenshot, so any transparent pixel is laid on black,
+the Watch's own canvas, and the panel is saved as 8-bit RGB.
 
-Canvas is 410x502 (logical) = 820x1004 pixels at 2x. We emit 2x PNG, which
-is the size ASC accepts for `APP_WATCH_ULTRA`.
+As with the iPhone, iPad and Mac compositors, a set is published only whole:
+every page present, every capture exactly 422x514 (an iPhone or iPad capture
+is refused, App Review guideline 2.3.3), every panel uploadable
+(scripts/appstore_screenshots.py panel_problems). Then compose.json records
+each panel's md5, each capture's md5 and the Pillow it was written with. A
+failing run leaves its panels in watch-composed/<lang>.rejected/ and withdraws
+the earlier compose.json, so nothing pushes a set it did not write.
+
+Usage:
+    compose_appstore_watch_screenshots.py --lang ja
+    compose_appstore_watch_screenshots.py --all
+    compose_appstore_watch_screenshots.py --lang en --in DIR --out DIR
+
+Until 1.56 this file composed 820x1004 captioned panels (a size App Store
+Connect does not take for a Watch) from screenshots/watch/, which an AppKit
+script drew with figures of its own; both were retired with this layout.
 """
-
 from __future__ import annotations
+
+import argparse
+import shutil
+import sys
+import tempfile
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
-
-# 2x of Apple Watch Ultra point size (410x502)
-CANVAS_W, CANVAS_H = 820, 1004
-
-BG_TOP    = (16, 20, 42)   # #10142A
-BG_BOTTOM = (8, 10, 22)    # #080A16
-
-TITLE_COLOR    = (255, 255, 255)
-SUBTITLE_COLOR = (175, 182, 200)
-
-FONT_TITLE_PATH = "/System/Library/Fonts/SFNS.ttf"
-FONT_TITLE_SIZE = 56     # smaller than macOS/iPad because canvas is smaller
-FONT_SUBTITLE_SIZE = 28
-
-TEXT_TOP_MARGIN = 46
-TITLE_TO_SUB_GAP = 12
-TEXT_TO_SHOT_GAP = 34
-SIDE_MARGIN = 30
-BOTTOM_MARGIN = 34
-CORNER_RADIUS = 56  # Watch screens are visibly rounded; stronger radius reads better at small size
-
-COPY = {
-    "01_home":     ("Your CLI usage, on your wrist", "A glanceable dashboard for every AI coding tool"),
-    "02_overview": ("Live usage, cost, quotas",     "Today's activity — everywhere you code"),
-    "03_sessions": ("Every session, in real time",  "See what's running across your devices"),
-    "04_alerts":   ("Warnings before you hit the wall", "Smart quota alerts, right on your wrist"),
-    "05_providers":("Quota for every provider",     "Codex, Claude, Gemini — at a glance"),
-}
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO = SCRIPT_DIR.parent
-IN_DIR = REPO / "screenshots" / "watch"
-OUT_DIR = IN_DIR / "composed"
+sys.path.insert(0, str(SCRIPT_DIR))
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "scripts"))
+import appstore_compose_common as common  # noqa: E402
+import appstore_screenshots as shots  # noqa: E402
+
+PLATFORM = shots.WATCH
+CAPTURE_SIZE = PLATFORM.canvas      # the capture is the panel
+BACKDROP = (0, 0, 0)                # the Watch's canvas, under any transparent pixel
 
 
-def make_vertical_gradient(w: int, h: int, top, bot) -> Image.Image:
-    small = Image.new("RGB", (1, 2))
-    small.putpixel((0, 0), top)
-    small.putpixel((0, 1), bot)
-    return small.resize((w, h), Image.BICUBIC)
+def compose_one(src: Path, dst: Path) -> list[str]:
+    """Write one panel; return why it is not fit to upload (empty = fine)."""
+    from PIL import Image
+    problems = []
+    shot = Image.open(src)
+    if shot.size != CAPTURE_SIZE:
+        problems.append(f"{src.name} is {shot.width}x{shot.height}, not the "
+                        f"{CAPTURE_SIZE[0]}x{CAPTURE_SIZE[1]} of an Apple Watch Ultra 3 capture, "
+                        f"which the {PLATFORM.name} set is made of")
+    rgba = shot.convert("RGBA")
+    flat = Image.new("RGBA", rgba.size, BACKDROP + (255,))
+    flat.alpha_composite(rgba)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    flat.convert("RGB").save(dst, "PNG", optimize=True)
+    problems += shots.panel_problems(dst, PLATFORM)
+    see_through = sum(1 for a in rgba.getchannel("A").getdata() if a < 255)
+    print(f"  {src.name} -> {dst.name}"
+          + (f" ({see_through} transparent pixel(s) laid on black)" if see_through else ""))
+    for p in problems:
+        print(f"    FAIL {p}")
+    return problems
 
 
-def load_font(size: int) -> ImageFont.FreeTypeFont:
+def compose_lang(lang: str, in_dir: Path | None = None, out_dir: Path | None = None) -> list[str]:
+    common.require_pillow()
+    import PIL
+    lang = shots.canonical_lang(lang)
+    in_dir = in_dir or shots.raw_dir(lang, platform=PLATFORM)
+    out_dir = out_dir or shots.composed_dir(lang, platform=PLATFORM)
+    srcs = sorted(in_dir.glob("[0-9][0-9]_*.png"))
+    names = {p.stem for p in srcs}
+    expected = shots.stems(PLATFORM)
+    problems = []
+    missing = [s for s in expected if s not in names]
+    unknown = sorted(names - set(expected))
+    if missing:
+        problems.append(f"{lang}: no capture for {', '.join(missing)} in {in_dir}")
+    if unknown:
+        problems.append(f"{lang}: {', '.join(unknown)} in {in_dir} is not a page of the set")
+    for p in problems:
+        print(f"FAIL {p}")
+    if problems:
+        common.withdraw_set(out_dir, shots.MANIFEST)
+        return problems
+
+    print(f"[{PLATFORM.name} {lang}] {len(srcs)} capture(s) from {in_dir}")
+    out_dir.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(prefix=f".{out_dir.name}.staging-", dir=out_dir.parent))
     try:
-        return ImageFont.truetype(FONT_TITLE_PATH, size)
-    except OSError:
-        return ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size)
+        for src in srcs:
+            problems += compose_one(src, staging / shots.composed_name(src.stem, PLATFORM))
+        if problems:
+            rejected = common.rejected_dir(out_dir)
+            shutil.rmtree(rejected, ignore_errors=True)
+            staging.rename(rejected)
+            print(f"  [{lang}] NOT PUBLISHED: this run's panels are in {rejected} for a look; "
+                  f"{out_dir} was not updated")
+            common.withdraw_set(out_dir, shots.MANIFEST)
+            return problems
+        record = {
+            "captures": {p.name: shots.md5_of(p) for p in srcs},
+            "pillow": PIL.__version__,
+        }
+        common.publish_set(staging, out_dir,
+                           lambda d: shots.write_manifest(d, lang, record, platform=PLATFORM))
+        print(f"  [{lang}] published to {out_dir} with {shots.MANIFEST}")
+        return problems
+    except BaseException:
+        common.withdraw_set(out_dir, shots.MANIFEST)
+        raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
 
 
-def wrap(text: str, font: ImageFont.FreeTypeFont, max_w: int, draw: ImageDraw.ImageDraw) -> list[str]:
-    """Simple greedy word-wrap used when a title/subtitle would overflow
-    the narrow Watch canvas."""
-    words = text.split()
-    lines, cur = [], ""
-    for w in words:
-        trial = (cur + " " + w).strip()
-        tw = draw.textbbox((0, 0), trial, font=font, anchor="lt")[2]
-        if tw <= max_w or not cur:
-            cur = trial
-        else:
-            lines.append(cur)
-            cur = w
-    if cur:
-        lines.append(cur)
-    return lines
-
-
-def draw_centered_lines(draw: ImageDraw.ImageDraw, y: int, lines: list[str],
-                        font: ImageFont.FreeTypeFont, color, line_gap: int = 4) -> int:
-    for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font, anchor="lt")
-        tw = bbox[2] - bbox[0]
-        th = bbox[3] - bbox[1]
-        x = (CANVAS_W - tw) // 2
-        draw.text((x, y), line, font=font, fill=color, anchor="lt")
-        y += th + line_gap
-    return y
-
-
-def round_corners(img: Image.Image, radius: int) -> Image.Image:
-    if img.mode != "RGBA":
-        img = img.convert("RGBA")
-    mask = Image.new("L", img.size, 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, img.size[0], img.size[1]), radius=radius, fill=255)
-    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
-    out.paste(img, (0, 0), mask)
-    return out
-
-
-def compose_one(src_path: Path, dst_path: Path):
-    print(f"  {src_path.name}", end=" ")
-    key = src_path.stem
-    title, subtitle = COPY.get(key, ("CLI Pulse", "Monitor your AI coding tools"))
-
-    canvas = make_vertical_gradient(CANVAS_W, CANVAS_H, BG_TOP, BG_BOTTOM).convert("RGBA")
-    draw = ImageDraw.Draw(canvas)
-
-    title_font = load_font(FONT_TITLE_SIZE)
-    sub_font = load_font(FONT_SUBTITLE_SIZE)
-
-    max_text_w = CANVAS_W - SIDE_MARGIN * 2
-    title_lines = wrap(title, title_font, max_text_w, draw)
-    sub_lines = wrap(subtitle, sub_font, max_text_w, draw)
-
-    y = TEXT_TOP_MARGIN
-    y = draw_centered_lines(draw, y, title_lines, title_font, TITLE_COLOR, line_gap=6)
-    y += TITLE_TO_SUB_GAP
-    y = draw_centered_lines(draw, y, sub_lines, sub_font, SUBTITLE_COLOR, line_gap=4)
-    text_bottom = y
-
-    shot = Image.open(src_path).convert("RGB")
-
-    available_top = text_bottom + TEXT_TO_SHOT_GAP
-    available_h = CANVAS_H - available_top - BOTTOM_MARGIN
-    available_w = CANVAS_W - SIDE_MARGIN * 2
-
-    scale = min(available_w / shot.width, available_h / shot.height)
-    new_size = (int(shot.width * scale), int(shot.height * scale))
-    shot = shot.resize(new_size, Image.LANCZOS)
-    shot = round_corners(shot, CORNER_RADIUS)
-
-    px = (CANVAS_W - shot.size[0]) // 2
-    py = available_top + (available_h - shot.size[1]) // 2
-
-    canvas.alpha_composite(shot, (px, py))
-
-    canvas.convert("RGB").save(dst_path, "PNG", optimize=True)
-    print(f"→ {dst_path.name}")
-
-
-def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    srcs = sorted(p for p in IN_DIR.glob("[0-9][0-9]_*.png") if p.parent.name != "composed")
-    if not srcs:
-        print(f"No source screenshots in {IN_DIR}")
-        return
-    print(f"Composing {len(srcs)} Apple Watch screenshot(s) at {CANVAS_W}x{CANVAS_H}")
-    for src in srcs:
-        dst = OUT_DIR / f"{src.stem}_{CANVAS_W}x{CANVAS_H}.png"
-        compose_one(src, dst)
-    print(f"\nDone. Output: {OUT_DIR}")
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    which = ap.add_mutually_exclusive_group(required=True)
+    which.add_argument("--lang", help="one language (" + ", ".join(shots.LANGS) + ")")
+    which.add_argument("--all", action="store_true", help="every language")
+    ap.add_argument("--in", dest="in_dir", type=Path, help="captures (default screenshots/watch-raw/<lang>)")
+    ap.add_argument("--out", dest="out_dir", type=Path, help="panels (default screenshots/watch-composed/<lang>)")
+    args = ap.parse_args()
+    if args.all and (args.in_dir or args.out_dir):
+        ap.error("--in/--out go with --lang")
+    langs = shots.LANGS if args.all else (args.lang,)
+    failed = []
+    for lang in langs:
+        if compose_lang(lang, args.in_dir, args.out_dir):
+            failed.append(lang)
+    if failed:
+        print(f"FAILED: {', '.join(failed)}")
+        return 1
+    print("done")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
