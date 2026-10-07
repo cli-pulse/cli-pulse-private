@@ -5,9 +5,10 @@
 // it landed), the cloud kept both rows and the iPhone counted the day's usage
 // of that model twice. The upload now goes to `replace_daily_usage`
 // (migrate_v0.84), which also deletes this device's rows of each (day,
-// provider) sent whose model is not in the upload. The SQL half is tested by
-// backend/supabase/tests/run_v084_replace_daily_usage_tests.sh; this is the
-// app's half:
+// provider) sent whose model is not in the upload (for the nil UUID that
+// unpaired Macs share, migrate_v0.85: only a dated spelling of a model sent).
+// The SQL half is tested by backend/supabase/tests/run_v084_* and run_v085_*;
+// this is the app's half:
 //
 //   * the upload goes to the new RPC;
 //   * while the server answers 404 for it (the migration is applied by the
