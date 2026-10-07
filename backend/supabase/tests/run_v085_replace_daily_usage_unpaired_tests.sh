@@ -158,6 +158,8 @@ insert into public.daily_usage_metrics
   ('$A', '$NIL',    '$D1',  'Claude', 'claude-opus-5-2025100',        15, now() - interval '1 day'),
   ('$A', '$NIL',    '$D1',  'Claude', 'claude-opus-5-2025-10-01',     16, now() - interval '1 day'),
   ('$A', '$NIL',    '$D1',  'Codex',  'gpt-5-2025-08-07',             17, now() - interval '1 day'),
+  ('$A', '$NIL',    '$D1',  'Claude', 'claude-opus-5-202510011',      19, now() - interval '1 day'),
+  ('$A', '$NIL',    '$D1',  'Claude', 'claude-opus-20251001-5',       21, now() - interval '1 day'),
   -- a dated spelling of what X sends: under another provider X also sends
   -- that day (its base only under Claude), on another day of the upload
   -- that lacks the base, and on a day the upload does not carry:
@@ -280,6 +282,11 @@ echo "what X's upload must not touch:"
     && pass "a dated name whose base X did not send is kept" || fail "a dated name whose base was not sent was deleted"
 [[ "$(tokens "$A" "$NIL" "$D1" Claude claude-opus-5-2025100)" == 15 ]] \
     && pass "a 7-digit suffix is not a date: kept" || fail "a 7-digit suffix was taken for a date"
+[[ "$(tokens "$A" "$NIL" "$D1" Claude claude-opus-5-202510011)" == 19 ]] \
+    && pass "a 9-digit suffix is not the rule's form: kept" || fail "a 9-digit suffix was taken for a date"
+[[ "$(tokens "$A" "$NIL" "$D1" Claude claude-opus-20251001-5)" == 21 ]] \
+    && pass "8 digits that do not end the name are not a suffix: kept" \
+    || fail "8 digits in the middle of a name were taken for a date suffix"
 [[ "$(tokens "$A" "$NIL" "$D1" Claude claude-opus-5-2025-10-01)" == 16 ]] \
     && pass "a -YYYY-MM-DD suffix is not the rule's form: kept" || fail "a -YYYY-MM-DD spelling was deleted"
 [[ "$(tokens "$A" "$NIL" "$D1" Codex gpt-5-2025-08-07)" == 17 ]] \
@@ -309,11 +316,11 @@ check "Mac X's next upload removes nothing  ($result)" "('$result'::jsonb ->> 'r
     && pass "Mac Y's models stay after Mac X's next upload" || fail "Mac X's upload deleted Mac Y's models"
 after_x="$(as_user "$A" rollback "$(day_total_sql "$D1")")"
 # Paired A1: 100 + 1000 + 5 + 500; A2: 70; no device: haiku 45, opus 20,
-# sonnet-5 71, sonnet-4-5 dated 12, 15, 16, gpt-5.5 13, gpt-5 3, 17,
+# sonnet-5 71, sonnet-4-5 dated 12, 15, 16, gpt-5.5 13, gpt-5 3, 17, 19, 21,
 # Cursor 18 + 2.
-[[ "$after_y" == 1907 && "$after_x" == 1907 ]] \
-    && pass "the iPhone's day total holds at 1907 whichever Mac uploaded last" \
-    || fail "the iPhone's day total moved: $after_y after Y, $after_x after X (want 1907)"
+[[ "$after_y" == 1947 && "$after_x" == 1947 ]] \
+    && pass "the iPhone's day total holds at 1947 whichever Mac uploaded last" \
+    || fail "the iPhone's day total moved: $after_y after Y, $after_x after X (want 1947)"
 
 echo "a dated spelling the app writes and later renames:"
 result="$(replace_as "$A" "[$(row "$D2" Claude claude-z 1),$(row "$D2" Claude claude-z-20250101 2)]" null)"
@@ -332,11 +339,15 @@ else
     [[ "$out" == *"Device not owned by caller"* ]] && pass "an explicit nil UUID as p_device_id is refused (42501)" \
                                                    || fail "the explicit nil UUID failed for another reason: $out"
 fi
+result="$(replace_as "$A" "[]" null)"
+check "an empty unpaired upload writes and removes nothing  ($result)" \
+      "'$result'::jsonb = '{\"upserted\": 0, \"removed\": 0}'::jsonb"
 BAD="[$(row "$D1" Claude claude-sonnet-5 99),{\"metric_date\":\"$D1\",\"provider\":\"Claude\",\"model\":null}]"
-if replace_as "$A" "$BAD" null >/dev/null 2>&1; then
+if out="$(replace_as "$A" "$BAD" null 2>&1)"; then
     fail "a row without a model was accepted"
 else
-    pass "a row without a model fails the unpaired call"
+    [[ "$out" == *"not-null constraint"* ]] && pass "a row without a model fails the unpaired call" \
+                                            || fail "the row without a model failed for another reason: $out"
 fi
 [[ "$(tokens "$A" "$NIL" "$D1" Claude claude-sonnet-5)" == 71 && "$(tokens "$A" "$NIL" "$D1" Claude "$NEWNAME")" == 45 ]] \
     && pass "and leaves the day exactly as it was" || fail "a failed unpaired call changed the day"
@@ -364,7 +375,7 @@ check "it reports 3 written and 3 removed  ($result)" \
 [[ "$(tokens "$A" "$NIL" "$D1" Claude claude-sonnet-5)" == 71 && "$(tokens "$B" "$DEV_B" "$D1" Claude "$OLDNAME")" == 999 ]] \
     && pass "the no-device rows and another user's rows are kept" || fail "the paired replace touched no-device or foreign rows"
 
-# ── overlapping uploads: the per-device lock is still there ────────────────
+# ── overlapping uploads ────────────────────────────────────────────────────
 # overlap <device|null> <first model> <second model>: the first upload holds
 # its transaction open; the second starts meanwhile.
 overlap() {
@@ -380,19 +391,24 @@ select pg_sleep(4) \g /dev/null
 commit;
 SQL
     first=$!
-    sleep 1.5
+    # Start the second only once the first holds the per-device lock.
+    local waited=0
+    until [[ "$(psql_q -c "select count(*) from pg_locks where locktype = 'advisory' and granted")" -gt 0 ]]; do
+        (( waited++ < 100 )) || { fail "the first overlapping upload never took the lock"; break; }
+        sleep 0.1
+    done
     replace_as "$A" "[$(row "$D3" Claude "$3" 30)]" "$1" >/dev/null
     wait "$first" || { cat "$first_log" >&2; fail "the first overlapping upload failed"; }
     rm -f "$first_log"
 }
-echo "two overlapping uploads:"
+echo "two overlapping uploads (the paired case is the one that needs the lock):"
 overlap "$DEV_A1" claude-x claude-z
-got="$(psql_q -c "select string_agg(model, ',' order by model) from public.daily_usage_metrics
+got="$(psql_q -c "select string_agg(model, ',' order by model collate \"C\") from public.daily_usage_metrics
                   where user_id = '$A' and device_id = '$DEV_A1' and metric_date = '$D3'")"
 [[ "$got" == claude-z ]] && pass "from one paired Mac: the later upload holds the day whole ($got)" \
                          || fail "overlapping paired uploads left '$got', not claude-z"
 overlap null claude-x claude-w
-got="$(psql_q -c "select string_agg(model, ',' order by model) from public.daily_usage_metrics
+got="$(psql_q -c "select string_agg(model, ',' order by model collate \"C\") from public.daily_usage_metrics
                   where user_id = '$A' and device_id = '$NIL' and metric_date = '$D3'")"
 want="$OLDNAME,claude-opus-5,claude-w,claude-x"
 [[ "$got" == "$want" ]] && pass "from two unpaired Macs: both models stay ($got)" \

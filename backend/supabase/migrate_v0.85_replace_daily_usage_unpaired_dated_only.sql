@@ -19,7 +19,9 @@
 -- UUID an upload deletes only a row whose model is a date-suffixed spelling
 -- of a model it sends (`claude-x-YYYYMMDD` when `claude-x` is sent). It never
 -- deletes another unpaired Mac's different model. Paired devices keep v0.84's
--- full replace.
+-- full replace. v0.84's file is left as it was merged and reviewed (#648):
+-- its section on the shared "no device" rows, an owner decision, describes v0.84
+-- on its own, and this file is the answer to it.
 --
 -- ── THE RULE, EXACTLY ─────────────────────────────────────────
 -- Paired device (`p_device_id` sent, owned by the caller): unchanged from
@@ -32,12 +34,16 @@
 -- hold:
 --   1. the upload carries a row with the same metric_date and provider;
 --   2. no row of the upload has the same metric_date, provider and model;
---   3. its model matches `-[0-9]{8}$` (a `-YYYYMMDD` suffix: the one
---      `normalizeClaudeModel` drops once the rest of the name has a price
---      row, which is how a Mac update renames a Claude model);
+--   3. its model ends in a hyphen and exactly 8 digits, `-[0-9]{8}$` (the
+--      `-YYYYMMDD` suffix `normalizeClaudeModel` drops, with the same
+--      pattern, once the rest of the name has a price row: that is how a Mac
+--      update renames a Claude model). The digits are not checked as a
+--      calendar date, as the app does not check them either;
 --   4. `regexp_replace(model, '-[0-9]{8}$', '')`, the name without that
 --      suffix, IS a model the upload carries for the same metric_date and
 --      provider.
+-- (3 follows from 2 and 4: without the suffix the name is unchanged, and 2
+-- excludes it. The code states 3 anyway, for whoever reads it.)
 -- So sending `claude-haiku-4-5` on day D removes `claude-haiku-4-5-20251001`
 -- on D, and nothing else: not `claude-sonnet-5`, not
 -- `claude-sonnet-4-5-20250929` (its base is not sent), not the dated row on
@@ -195,6 +201,8 @@ begin
      -- v0.85 targeted rule: under the stand-in every unpaired Mac shares,
      -- only a `-YYYYMMDD` spelling of a model sent for the same day and
      -- provider goes. Another unpaired Mac's different model stays.
+     -- (The words "v0.85 targeted rule" are what the apply checks look for
+     -- in the function's source; keep them.)
      and (
        v_device_id <> v_unpaired
        or (
