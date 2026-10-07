@@ -67,8 +67,14 @@ public struct CollectedAlert: Codable, Sendable, Equatable {
 ///
 ///   - Device CPU spike: `device.cpu_usage >= 85` → "Usage Spike" warn
 ///   - Per-session CPU spike: `session.cpu_usage >= 80` → "Usage Spike" warn
-///   - Per-session too-long: `session.requests >= 400` → "Session Too Long" info
+///   - Per-session too-long: `session.requests >= 400` → "Session Too Long"
+///     info, except on a process-scan row (`proc-<pid>`)
 ///   - Cap at 6 alerts total
+///
+/// The too-long rule never fires on `SystemCollector.collectAll`, its only
+/// caller: every row SessionDetector returns is a `proc-` scan row, merged
+/// groups included. (Nothing outside the tests constructs this generator
+/// either; the app uploads CLIPulseCore's.)
 ///
 /// Thresholds are pinned in unit tests so future tweaks can't silently
 /// reintroduce alert flapping (per `feedback_gemini_review_patterns.md`
@@ -128,7 +134,13 @@ public struct AlertGenerator: Sendable {
                     message: String(format: "Process CPU is %.1f%% for %@.", cpu, session.provider as NSString)
                 ))
             }
-            if let requests = session.requests, requests >= Self.sessionTooLongRequestsThreshold {
+            // A scan row's `requests` is only its runtime / 45 (and a merged
+            // group's is the sum), so any process open five hours reaches 400.
+            // helper/system_collector.py has skipped these rows since v1.16.1;
+            // this rule had no skip.
+            let isProcessDetected = session.sessionId.hasPrefix("proc-")
+            if !isProcessDetected, let requests = session.requests,
+               requests >= Self.sessionTooLongRequestsThreshold {
                 alerts.append(makeSessionAlert(
                     session: session,
                     nowISO: nowISO,

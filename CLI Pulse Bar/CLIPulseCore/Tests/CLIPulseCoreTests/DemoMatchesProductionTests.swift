@@ -482,9 +482,11 @@ final class DemoMatchesProductionTests: XCTestCase {
     /// hours trips it. v1.16.1 made the rule skip those rows, and the desktop
     /// app, which writes every session off a Mac, has no such rule. Demo had
     /// one on helper-heartbeat, a process scan on a Linux server, which
-    /// nothing raises. (On a Mac the rule still fires, because the LoginItem
-    /// helper's skip tests for `proc-` and its LocalScanner rows are
-    /// `local-`; that is the false alarm v1.16.1 meant to remove.)
+    /// nothing raises. On a Mac the LoginItem helper's skip used to test for
+    /// `proc-` alone, while its LocalScanner rows are `local-`, so the rule
+    /// fired there for every process open five hours. It skips both now, and
+    /// `AlertGeneratorTests.testLongRunAlertSkipsALocalScannerSession` runs it
+    /// on such a row.
     func testDemoRaisesNoLongRunningAlert() throws {
         let demo = DemoDataProvider.generate()
         let raised = demo.alerts.filter { $0.type == "Session Too Long" || $0.id.hasPrefix("session-long-") }
@@ -516,6 +518,13 @@ final class DemoMatchesProductionTests: XCTestCase {
             encoding: .utf8))
         XCTAssertTrue(generator.contains("if !isProcessDetected, session.requests >= 400 {"),
                       "the Swift helper's long-running rule changed; recheck which sessions raise it")
+        XCTAssertTrue(generator.contains("let isProcessDetected = session.id.hasPrefix(LocalScanner.sessionIDPrefix)"),
+                      "the Swift helper's long-running rule no longer skips LocalScanner's rows, the only ones it is passed")
+        let scanner = Self.codeOnly(try String(
+            contentsOf: Self.coreRoot.appendingPathComponent("Sources/CLIPulseCore/LocalScanner.swift"),
+            encoding: .utf8))
+        XCTAssertTrue(scanner.contains(#"id: "\(Self.sessionIDPrefix)\(pid)","#),
+                      "LocalScanner no longer names its rows with the prefix the long-running rule skips")
     }
 
     /// The device-CPU alert that reaches the cloud is the LoginItem helper's

@@ -179,6 +179,27 @@ final class AlertGeneratorTests: XCTestCase {
 
     // MARK: - generate(): long-run session rule
 
+    /// A session the way `LocalScanner.scan()` writes it, the only kind the
+    /// LoginItem helper passes: `local-<pid>`, a request per 45 s of runtime,
+    /// so five hours is 400.
+    private func makeLocalScannerSession(
+        id: String = "\(LocalScanner.sessionIDPrefix)4242", hours: Int = 5
+    ) -> SessionRecord {
+        let runtime = hours * 3600
+        return SessionRecord(
+            id: id, name: "Claude", provider: "Claude",
+            project: "Claude.app", device_name: "Mac",
+            started_at: "2026-04-20T05:00:00Z",
+            last_active_at: "2026-04-20T10:00:00Z",
+            status: "Running", total_usage: max(500, runtime * 2),
+            estimated_cost: 0, cost_status: "normal",
+            requests: max(1, runtime / 45), error_count: 0,
+            collection_confidence: "high"
+        )
+    }
+
+    // `s1` is not a process-scan id. No production caller passes such a
+    // session (see the rule), so this is the rule's only firing path.
     func testLongRunAlertFires() {
         let snap = DeviceMetrics.Snapshot(cpuUsage: 10, memoryUsage: 40)
         let session = makeSession(id: "s1", requests: 400)
@@ -193,6 +214,44 @@ final class AlertGeneratorTests: XCTestCase {
         let session = makeSession(id: "s1", requests: 399)
         let alerts = AlertGenerator.generate(device: snap, sessions: [session])
         XCTAssertTrue(alerts.isEmpty)
+    }
+
+    /// v1.16.1 skipped `proc-` rows only, and LocalScanner's are `local-`, so
+    /// on a Mac every process open five hours (Claude.app included) raised
+    /// "Session Too Long".
+    func testLongRunAlertSkipsALocalScannerSession() {
+        let snap = DeviceMetrics.Snapshot(cpuUsage: 10, memoryUsage: 40)
+        let scanned = makeLocalScannerSession()
+        XCTAssertEqual(scanned.id, "local-4242", "LocalScanner's ids changed; recheck the rule's skip")
+        XCTAssertEqual(scanned.requests, 400, "the session is not at the threshold; this test checks less than it says")
+
+        let alerts = AlertGenerator.generate(device: snap, sessions: [scanned])
+        XCTAssertEqual(alerts.compactMap { $0["id"] as? String }, [],
+                       "a LocalScanner row raised an alert; its request count is only runtime / 45")
+
+        // Positive control: the same session under a non-scan id does fire, so
+        // nothing but the id keeps the scan row out.
+        let real = makeLocalScannerSession(id: "s1")
+        XCTAssertEqual(AlertGenerator.generate(device: snap, sessions: [real]).compactMap { $0["type"] as? String },
+                       ["Session Too Long"])
+    }
+
+    func testLongRunAlertSkipsAProcRow() {
+        let snap = DeviceMetrics.Snapshot(cpuUsage: 10, memoryUsage: 40)
+        let alerts = AlertGenerator.generate(device: snap, sessions: [makeSession(id: "proc-4242", requests: 400)])
+        XCTAssertEqual(alerts.compactMap { $0["id"] as? String }, [])
+    }
+
+    /// The skip is the long-running rule's alone: a scan row busy enough still
+    /// raises its CPU alert.
+    func testALocalScannerSessionStillRaisesItsCPUAlert() {
+        let cores = ProcessInfo.processInfo.processorCount
+        let snap = DeviceMetrics.Snapshot(cpuUsage: 10, memoryUsage: 40)
+        let scanned = makeLocalScannerSession()
+        let alerts = AlertGenerator.generate(
+            device: snap, sessions: [scanned],
+            sessionCPU: [scanned.id: Double(cores) * 100.0 * 0.6])
+        XCTAssertEqual(alerts.compactMap { $0["type"] as? String }, ["Usage Spike"])
     }
 
     func testResultsCappedAtSix() {
