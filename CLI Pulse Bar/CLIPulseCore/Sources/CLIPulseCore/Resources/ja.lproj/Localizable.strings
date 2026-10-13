@@ -645,7 +645,7 @@
 
 /* ── メニューバー ── */
 "menu_bar.tier_migration" = "無料プランに収まるよう、最も使用頻度の高い %d 個のプロバイダーを残しました。%d 個を無効にしました — 「設定 › プロバイダー」で編集できます。";
-"menu_bar.retired_providers_notice" = "CLI Pulse は Kimi K2 と CrossModel のサポートを終了しました。運営元を確認できなかったため、これらを読み取らず、キーも送信しなくなりました。Kimi と Moonshot は引き続きサポートしています。";
+"menu_bar.retired_providers_notice" = "CLI Pulse は Kimi K2 と CrossModel のサポートを終了しました。運営元を確認できなかったため、これらへの接続もキーの送信も行わなくなりました。Kimi と Moonshot は引き続きサポートしています。";
 "menu_bar.over_plan_limits" = "CLI Pulse %1$@ プランの上限を超えています — プロバイダー: %2$d/%3$d。アップグレードするか使用を減らしてください。";
 "menu_bar.provider_limit_reached" = "CLI Pulse %1$@ プランで使えるプロバイダーは %2$d 個までです。さらに有効にするにはアップグレードしてください。";
 "menu_bar.edit" = "編集";

@@ -383,7 +383,7 @@
 // v1.10 P3-2: accessibility labels
 "a11y.dismiss_error" = "關閉錯誤";
 "a11y.dismiss_tier_warning" = "關閉方案限制警告";
-"a11y.dismiss_retired_providers_notice" = "關閉 Kimi K2 與 CrossModel 的通知";
+"a11y.dismiss_retired_providers_notice" = "關閉有關 Kimi K2 與 CrossModel 的提示";
 "a11y.configure_provider" = "設定 %@";
 "a11y.configuration_error_title" = "設定錯誤";
 "a11y.configuration_error_body" = "缺少 SUPABASE_ANON_KEY — API 呼叫將失敗。";
@@ -645,7 +645,7 @@
 
 /* ── 選單列 ── */
 "menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";
-"menu_bar.retired_providers_notice" = "CLI Pulse 已停止支援 Kimi K2 與 CrossModel：無法確認它們由誰營運，因此不再讀取它們，也不再將你的金鑰傳送給它們。Kimi 與 Moonshot 仍受支援。";
+"menu_bar.retired_providers_notice" = "CLI Pulse 已停止支援 Kimi K2 與 CrossModel：無法確認它們由誰營運，因此不再連線到它們，也不再將你的金鑰傳送給它們。Kimi 與 Moonshot 仍受支援。";
 "menu_bar.over_plan_limits" = "已超出 CLI Pulse %1$@ 方案限制——服務商：%2$d/%3$d。請升級或減少使用。";
 "menu_bar.provider_limit_reached" = "你的 CLI Pulse %1$@ 方案最多支援 %2$d 個服務商。升級後可啟用更多。";
 "menu_bar.edit" = "編輯";

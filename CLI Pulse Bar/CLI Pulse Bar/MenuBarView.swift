@@ -527,17 +527,26 @@ struct MenuBarView: View {
             // until dismissed; nothing to act on, so no button but the close.
             if state.showsRetiredProviderNotice {
                 HStack(alignment: .top, spacing: 4) {
+                    // Decoration: VoiceOver reads the message, then the close.
                     Image(systemName: "info.circle")
                         .font(.system(size: 9))
+                        .accessibilityHidden(true)
+                    // A paragraph to read once: primary text on the blue fill
+                    // (system blue there is about 3:1 in light mode). The icon
+                    // and the close stay blue, so it still reads as a notice.
                     Text(L10n.menuBar.retiredProvidersNotice)
                         .font(.system(size: 9))
                         .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(.primary)
                     Spacer(minLength: 0)
                     Button {
                         state.dismissRetiredProviderNotice()
                     } label: {
+                        // The glyph stays 8 pt; the target is 16 pt square.
                         Image(systemName: "xmark")
                             .font(.system(size: 8))
+                            .frame(width: 16, height: 16, alignment: .top)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.a11y.dismissRetiredProvidersNotice)

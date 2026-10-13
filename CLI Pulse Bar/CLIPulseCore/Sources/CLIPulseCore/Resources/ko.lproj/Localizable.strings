@@ -391,7 +391,7 @@
 // v1.10 P3-2: accessibility labels
 "a11y.dismiss_error" = "오류 닫기";
 "a11y.dismiss_tier_warning" = "플랜 한도 경고 닫기";
-"a11y.dismiss_retired_providers_notice" = "Kimi K2 및 CrossModel 알림 닫기";
+"a11y.dismiss_retired_providers_notice" = "Kimi K2 및 CrossModel 안내 닫기";
 "a11y.configure_provider" = "%@ 구성";
 "a11y.configuration_error_title" = "구성 오류";
 "a11y.configuration_error_body" = "SUPABASE_ANON_KEY 누락 — API 호출이 실패합니다.";
@@ -811,7 +811,7 @@
 "providers.grant_access_body" = "CLI Pulse가 ~/.codex/sessions/ 및 ~/.claude/projects/에 대한 읽기 권한이 필요합니다.";
 "providers.open_settings" = "설정 열기";
 "menu_bar.tier_migration" = "무료 플랜에 맞추기 위해 가장 많이 사용하는 공급자 %d개를 유지했습니다. %d개는 비활성화되었습니다 — 설정 › 공급자에서 편집하세요.";
-"menu_bar.retired_providers_notice" = "CLI Pulse는 이제 Kimi K2와 CrossModel을 지원하지 않습니다. 운영 주체를 확인할 수 없어 더 이상 읽어 오지 않으며 키도 보내지 않습니다. Kimi와 Moonshot은 계속 지원됩니다.";
+"menu_bar.retired_providers_notice" = "CLI Pulse는 이제 Kimi K2와 CrossModel을 지원하지 않습니다. 운영 주체를 확인할 수 없어 더 이상 두 서비스에 연결하지 않으며 키도 보내지 않습니다. Kimi와 Moonshot은 계속 지원됩니다.";
 "providers.quota_data_unavailable" = "할당량 데이터 없음";
 "advanced.sync_just_now" = "방금 동기화됨";
 "advanced.sync_minutes_ago" = "%d분 전 동기화됨";
