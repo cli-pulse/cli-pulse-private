@@ -37,7 +37,7 @@ final class UsagePanelModelTests: XCTestCase {
         let center = NotificationCenter()
         let source = ArchiveSource(Self.archive(tokens: 1))
         let model = UsagePanelModel(notificationCenter: center, loadArchive: { await source.read() })
-        model.seed(archive: Self.archive(tokens: 1))
+        model.seed(archive: Self.archive(tokens: 1), readStartedAt: model.reloadGeneration)
 
         await source.set(Self.archive(tokens: 2))
         center.post(name: .dailyUsageArchiveDidChange, object: nil)
@@ -115,11 +115,60 @@ final class UsagePanelModelTests: XCTestCase {
         model.reloadArchive()
         let older = model.currentReloadTask
         await gate.waitUntilEntered(1)
-        model.seed(archive: Self.archive(tokens: 5))
+        // The seed's read began after that reload started.
+        model.seed(archive: Self.archive(tokens: 5), readStartedAt: model.reloadGeneration)
 
         await gate.open()
         await older?.value
         XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 5, "the seed stands")
+    }
+
+    /// The archive is written while the seed's read is under way, so a
+    /// reload starts after it began. That reload is newer: the seed stands
+    /// in for an older archive while it runs, and does not cancel it.
+    func testAReloadStartedDuringTheSeedsReadIsNotCancelled() async {
+        let gate = Gate()
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), loadArchive: {
+            _ = await gate.read()
+            return Self.archive(tokens: 7)
+        })
+        // What an earlier opening of the panel left.
+        model.seed(archive: Self.archive(tokens: 1), readStartedAt: model.reloadGeneration)
+
+        let readStartedAt = model.reloadGeneration
+        model.reloadArchive()   // the write's notification, during the read
+        let newer = model.currentReloadTask
+        await gate.waitUntilEntered(1)
+        model.seed(archive: Self.archive(tokens: 5), readStartedAt: readStartedAt)
+        XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 5, "the seed replaces the older archive")
+
+        await gate.open()
+        await newer?.value
+        XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 7, "the newer reload lands")
+    }
+
+    /// The same, with the newer reload already finished when the seed's read
+    /// returns: the seed is the older of the two and is dropped.
+    func testASeedOlderThanAFinishedReloadIsDropped() async {
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), loadArchive: {
+            Self.archive(tokens: 7)
+        })
+        let readStartedAt = model.reloadGeneration
+        model.reloadArchive()
+        await model.settle()
+        model.seed(archive: Self.archive(tokens: 5), readStartedAt: readStartedAt)
+        XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 7, "the newer reload stands")
+    }
+
+    /// The grant-access state names the Codex and Claude log folders, so it
+    /// is only for those two: a provider the scan never reads (Gemini) gets
+    /// "no usage", whatever macOS blocks.
+    func testOnlyTheScannedProvidersAskForTheLogFolders() {
+        XCTAssertTrue(ProviderUsagePanelView.asksForFolderAccess(provider: "Codex", scope: .thisMac, needsFolderAccess: true))
+        XCTAssertTrue(ProviderUsagePanelView.asksForFolderAccess(provider: "Claude", scope: .thisMac, needsFolderAccess: true))
+        XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Gemini", scope: .thisMac, needsFolderAccess: true))
+        XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Codex", scope: .allDevices, needsFolderAccess: true))
+        XCTAssertFalse(ProviderUsagePanelView.asksForFolderAccess(provider: "Codex", scope: .thisMac, needsFolderAccess: false))
     }
 
     func testTheProviderModeFollowsTheScan() {

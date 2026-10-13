@@ -48,8 +48,12 @@ public final class UsagePanelModel: ObservableObject {
     private var sourceObservers: Set<AnyCancellable> = []
     private var reloadTask: Task<Void, Never>?
     /// Bumped by every reload, so an older read that finishes last cannot
-    /// replace a newer one.
-    private var reloadGeneration = 0
+    /// replace a newer one. A seed's caller reads it before its own read
+    /// (`seed(archive:readStartedAt:)`).
+    private(set) var reloadGeneration = 0
+    /// The generation the shown archive was read at: a reload started after
+    /// it is newer.
+    private var shownGeneration = -1
 
     public init(
         mode: Mode = .allProviders,
@@ -73,14 +77,25 @@ public final class UsagePanelModel: ObservableObject {
     }
 
     /// The archive the panel opens with, read before it is shown so it is
-    /// sized to the loaded dashboard rather than to a spinner. A reload
-    /// still in flight (the archive is written while the panel is hidden
-    /// too) read before this and is discarded.
-    public func seed(archive: DailyUsageArchive) {
-        reloadGeneration += 1
-        reloadTask?.cancel()
-        reloadTask = nil
-        self.archive = archive
+    /// sized to the loaded dashboard rather than to a spinner. `startedAt` is
+    /// `reloadGeneration` as it was before that read began.
+    ///
+    /// A reload started before the read (the archive is written while the
+    /// panel is hidden too) is no newer than it, and is discarded. One
+    /// started during the read, because the archive was written meanwhile,
+    /// is newer: it is left to finish and replace this, and when it already
+    /// has, this is dropped.
+    public func seed(archive: DailyUsageArchive, readStartedAt startedAt: Int) {
+        if startedAt == reloadGeneration {
+            reloadGeneration += 1
+            reloadTask?.cancel()
+            reloadTask = nil
+            show(archive, readAt: reloadGeneration)
+        } else if shownGeneration <= startedAt {
+            // What is shown is older than this read (an earlier opening's):
+            // this stands in until the newer reload lands.
+            show(archive, readAt: startedAt)
+        }
     }
 
     /// Reads the archive again. Runs on every `dailyUsageArchiveDidChange`.
@@ -90,8 +105,13 @@ public final class UsagePanelModel: ObservableObject {
         reloadTask = Task { [weak self, loadArchive] in
             let fresh = await loadArchive()
             guard let self, generation == self.reloadGeneration else { return }
-            self.archive = fresh
+            self.show(fresh, readAt: generation)
         }
+    }
+
+    private func show(_ archive: DailyUsageArchive, readAt generation: Int) {
+        self.archive = archive
+        shownGeneration = generation
     }
 
     /// Waits for the last reload to finish (tests).
@@ -456,11 +476,19 @@ public struct ProviderUsagePanelView: View {
         .glassCard(elevated: false)
     }
 
+    /// Whether the empty panel asks for the log folders: macOS blocks them,
+    /// the scope is this Mac's, and `provider` is one the scan reads (Codex,
+    /// Claude). For any other, granting access would show nothing more.
+    static func asksForFolderAccess(provider: String, scope: UsageDataScope, needsFolderAccess: Bool) -> Bool {
+        needsFolderAccess && scope == .thisMac
+            && CostUsageScanner.logProviders.contains { $0.rawValue == provider }
+    }
+
     /// Nothing to draw. When macOS blocks this Mac's log folders, whether
     /// there was usage is not known, so it says that, not "no usage".
     private var emptyState: some View {
         VStack(spacing: 6) {
-            if needsFolderAccess && scope == .thisMac {
+            if Self.asksForFolderAccess(provider: data.provider, scope: scope, needsFolderAccess: needsFolderAccess) {
                 Image(systemName: "folder.badge.questionmark")
                     .font(.system(size: 22))
                     .foregroundStyle(.orange)

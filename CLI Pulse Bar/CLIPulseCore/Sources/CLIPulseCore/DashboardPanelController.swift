@@ -90,7 +90,10 @@ public final class DashboardPanelController {
         // Read the archive up front so the size probe (and the panel itself)
         // render the LOADED dashboard, not the async loading spinner —
         // otherwise the panel would open at the ~400pt ProgressView's height.
-        model.seed(archive: await DailyUsageArchiveManager.shared.snapshot())
+        // A reload started during the read is newer than it (the archive
+        // was written meanwhile), and the seed leaves it to win.
+        let readStartedAt = model.reloadGeneration
+        model.seed(archive: await DailyUsageArchiveManager.shared.snapshot(), readStartedAt: readStartedAt)
         // Honor a hide()/re-toggle that raced during the await.
         guard panel == nil, !wantsHide else { wantsHide = false; return }
         present()
