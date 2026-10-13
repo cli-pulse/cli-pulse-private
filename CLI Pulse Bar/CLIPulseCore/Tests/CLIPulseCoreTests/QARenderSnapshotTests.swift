@@ -535,7 +535,8 @@ final class QARenderSnapshotTests: XCTestCase {
 
     func testEveryWindowTheAppDeclaresIsDrawnOrKnowinglyLeftOut() {
         let catalog = QARenderSnapshot.catalog
-        for surface: QARenderSurface in [.about, .subscription, .usageDashboardPanel, .firstRunWelcome] {
+        for surface: QARenderSurface in [.about, .subscription, .usageDashboardPanel, .firstRunWelcome,
+                                         .codexResetCreditsStates] {
             XCTAssertTrue(catalog.contains(surface), "\(surface.id) is not rendered")
         }
         for kind in QARenderSnapshot.providerEditorKinds {
