@@ -5,8 +5,16 @@ import Foundation
 ///
 /// Endpoint: `GET https://kimi-k2.ai/api/user/credits`
 /// Auth: Bearer token from `KIMI_K2_API_KEY`, `KIMI_API_KEY`, `KIMI_KEY` env vars, or `config.apiKey`.
+///
+/// Not registered since 1.57 (`CollectorRegistry`): Kimi K2 is retired as a
+/// relay whose operator CLI Pulse could not confirm
+/// (`ProviderRetirement.unconfirmedOperator`). Kept, with its tests, so the
+/// provider can come back if that changes; nothing calls `collect` today.
 public struct KimiK2Collector: ProviderCollector, Sendable {
     public let kind = ProviderKind.kimiK2
+
+    /// Where `resolveToken` looks for a key after `config.apiKey`, in order.
+    static let environmentKeys = ["KIMI_K2_API_KEY", "KIMI_API_KEY", "KIMI_KEY"]
 
     public func isAvailable(config: ProviderConfig) -> Bool {
         resolveToken(config: config) != nil
@@ -23,7 +31,7 @@ public struct KimiK2Collector: ProviderCollector, Sendable {
 
     private func resolveToken(config: ProviderConfig) -> String? {
         if let k = config.apiKey, !k.isEmpty { return k }
-        for env in ["KIMI_K2_API_KEY", "KIMI_API_KEY", "KIMI_KEY"] {
+        for env in Self.environmentKeys {
             if let k = ProcessInfo.processInfo.environment[env], !k.isEmpty { return k }
         }
         return nil

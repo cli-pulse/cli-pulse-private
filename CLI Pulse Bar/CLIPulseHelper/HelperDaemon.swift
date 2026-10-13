@@ -387,7 +387,10 @@ final class HelperDaemon {
               let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
               let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
         else { return nil }
-        return saved
+        // 1.57: retired providers' accounts are left out, as the app does
+        // (`ProviderRoster`). The app's first 1.57 launch writes the list
+        // back without them; the helper can run before that launch.
+        return ProviderRoster.activeConfigs(saved)
     }
 
     private func sendHeartbeat(
@@ -586,7 +589,9 @@ final class HelperDaemon {
         if let defaults = UserDefaults(suiteName: HelperIPC.suiteName),
            let data = defaults.data(forKey: HelperIPC.providerConfigsKey),
            let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data) {
-            configs = saved
+            // 1.57: retired providers' accounts are left out, so their saved
+            // keys are not even read from the Keychain (`ProviderRoster`).
+            configs = ProviderRoster.activeConfigs(saved)
             hasPersistentAccountIDs = true
             // Hydrate secrets from Keychain
             for i in configs.indices {

@@ -1,13 +1,16 @@
 """Tests for provider quota parsing and collection in system_collector.py."""
 from __future__ import annotations
+import re
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
+from cli_pulse_helper import SUPPORTED_PROVIDERS
 from system_collector import (
     _parse_claude_api_response, _parse_claude_usage_output, _infer_claude_plan,
     _parse_gemini_quota_response, _load_gemini_project_id,
     _parse_codex_usage_response, collect_device_snapshot, collect_all,
     _detect_provider, _should_ignore_command, _deduplicate_sessions,
-    CollectedSession,
+    CollectedSession, PROCESS_PATTERNS,
 )
 
 
@@ -651,6 +654,89 @@ class TestSessionDedupClaudeCode2x(unittest.TestCase):
         # Different providers → both survive even with same project.
         providers = sorted(s.provider for s in merged)
         self.assertEqual(providers, ["Claude", "Codex"])
+
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+SESSION_DETECTOR_SOURCE = (
+    REPO_ROOT / "HelperSwift" / "Sources" / "HelperKit" / "SystemCollection"
+    / "SessionDetector.swift"
+)
+LOCAL_SCANNER_SOURCE = (
+    REPO_ROOT / "CLI Pulse Bar" / "CLIPulseCore" / "Sources" / "CLIPulseCore"
+    / "LocalScanner.swift"
+)
+# Providers the app retired in 1.57 (ProviderRoster.swift). No process may be
+# labelled with one: the app no longer shows them.
+RETIRED_PROVIDERS = {"Kimi K2", "Crof", "CrossModel"}
+KIMI_K2_PATTERN = r"\bkimi[\s_-]*k2\b"
+KIMI_PATTERN = r"\bkimi\b"
+
+
+def _swift_pattern_table(source: Path, name: str) -> list[tuple[str, str, str]]:
+    """The rows of the Swift array `name` in `source`, as (provider, pattern,
+    confidence). Rows are written `("Provider", #"regex"#, "confidence"),`;
+    commented-out rows are skipped."""
+    text = source.read_text(encoding="utf-8")
+    start = text.index(f"static let {name}")
+    body = text[start:text.index("\n    ]", start)]
+    rows = []
+    for line in body.splitlines():
+        if line.strip().startswith("//"):
+            continue
+        match = re.search(r'\("([^"]+)",\s*#"(.*?)"#,\s*"(high|medium|low)"\)', line)
+        if match:
+            rows.append((match.group(1), match.group(2), match.group(3)))
+    return rows
+
+
+class TestKimiK2ProcessIsKimi(unittest.TestCase):
+    """1.57: Kimi K2 is Moonshot's model, so a process that names it is Kimi,
+    in every spelling (the app's retired "Kimi K2" provider was a relay)."""
+
+    def test_every_spelling_of_kimi_k2_is_kimi(self):
+        for name in ("kimi k2", "kimi-k2", "kimi_k2", "kimik2", "Kimi-K2"):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    _detect_provider(f"/opt/homebrew/bin/{name} --model x"),
+                    ("Kimi", "high"),
+                )
+
+    def test_bare_kimi_is_still_kimi(self):
+        self.assertEqual(_detect_provider("/usr/local/bin/kimi"), ("Kimi", "medium"))
+
+    def test_every_provider_a_process_can_be_is_uploaded(self):
+        # cli_pulse_helper drops a session whose provider is not supported.
+        named = {provider for provider, _, _ in PROCESS_PATTERNS}
+        self.assertEqual(named - SUPPORTED_PROVIDERS, set())
+        self.assertEqual(SUPPORTED_PROVIDERS & RETIRED_PROVIDERS, set())
+
+
+class TestProcessPatternTables(unittest.TestCase):
+    """The same `ps` row must get the same provider from the Companion, the
+    Swift helper port and the app's own scan."""
+
+    def test_matches_session_detector_row_for_row(self):
+        swift = _swift_pattern_table(SESSION_DETECTOR_SOURCE, "providerPatterns")
+        self.assertGreater(len(swift), 20, f"read {len(swift)} rows from {SESSION_DETECTOR_SOURCE}")
+        self.assertEqual(swift, list(PROCESS_PATTERNS))
+
+    def test_no_table_labels_a_process_with_a_retired_provider(self):
+        tables = {
+            "system_collector.py": list(PROCESS_PATTERNS),
+            "SessionDetector.swift": _swift_pattern_table(SESSION_DETECTOR_SOURCE, "providerPatterns"),
+            "LocalScanner.swift": _swift_pattern_table(LOCAL_SCANNER_SOURCE, "processPatterns"),
+        }
+        for table, rows in tables.items():
+            with self.subTest(table=table):
+                self.assertGreater(len(rows), 20, f"read {len(rows)} rows")
+                self.assertEqual({p for p, _, _ in rows} & RETIRED_PROVIDERS, set())
+                patterns = [pattern for _, pattern, _ in rows]
+                self.assertIn(KIMI_K2_PATTERN, patterns)
+                k2 = patterns.index(KIMI_K2_PATTERN)
+                self.assertEqual(rows[k2][0], "Kimi")
+                # First match wins: the Kimi K2 row must come before bare kimi.
+                self.assertLess(k2, patterns.index(KIMI_PATTERN))
 
 
 if __name__ == "__main__":

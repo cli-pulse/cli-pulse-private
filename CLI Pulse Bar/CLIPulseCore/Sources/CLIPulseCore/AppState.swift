@@ -126,6 +126,10 @@ public final class AppState: ObservableObject {
     /// When > 0, the Overview shows a dismissible one-time banner with an
     /// "Edit in Settings" deep-link. Reset to 0 by dismissProviderLimitMigrationBanner().
     @Published public var providerLimitMigrationCount: Int = 0
+    /// 1.57: Kimi K2 and CrossModel are no longer supported, and this Mac had
+    /// one of them set up. The popover shows a one-time notice until it is
+    /// dismissed (`dismissRetiredProviderNotice()`; `RetiredProviderNotice`).
+    @Published public var showsRetiredProviderNotice = false
     @Published public var lastRefresh: Date?
     @Published public var serverOnline = false
     @Published public var isLocalMode = false
@@ -1196,6 +1200,11 @@ public final class AppState: ObservableObject {
         subscriptionManager.apiClient = api
         loadProviderConfigs(defaults: defaults)
         #if os(macOS)
+        // Only a Mac ever ran collectors, so only a Mac can owe the notice.
+        if runtime.capabilities.allowsUnsandboxedMigration {
+            showsRetiredProviderNotice =
+                RetiredProviderNotice(defaults: defaults).isPending
+        }
         if runtime.capabilities.allowsHelperRegistration {
             UserDefaults(suiteName: HelperIPC.suiteName)?.set(
                 defaults.bool(
@@ -2253,6 +2262,13 @@ public final class AppState: ObservableObject {
         providerLimitMigrationCount = 0
     }
 
+    /// Dismiss the notice that Kimi K2 and CrossModel are no longer
+    /// supported, for good.
+    public func dismissRetiredProviderNotice() {
+        RetiredProviderNotice(defaults: providerConfigDefaults).dismiss()
+        showsRetiredProviderNotice = false
+    }
+
     /// Returns the set of provider kinds that were auto-disabled by the tier
     /// migration (not by user choice). Used by Settings → Providers to show
     /// a "Limited by free plan — upgrade" badge instead of a plain-off switch.
@@ -2428,7 +2444,7 @@ public final class AppState: ObservableObject {
             else {
                 return
             }
-            providerConfigs = configs
+            providerConfigs = ProviderRoster.activeConfigs(configs)
             return
         }
 
@@ -2463,6 +2479,30 @@ public final class AppState: ObservableObject {
 
         recoverPendingLocalProviderAccountDeletions()
 
+        for index in providerConfigs.indices {
+            providerConfigs[index].loadSecrets()
+        }
+        // 1.57: retired providers' accounts are left out from here on
+        // (`ProviderRoster.configsKeptAtLaunch`). Whether a Kimi K2 or
+        // CrossModel collector had a key to send is asked of the accounts as
+        // read, keys loaded, before they are left out. Collectors ran on a Mac
+        // only, so only a Mac can owe the notice.
+        #if os(macOS)
+        let retiredProviderNotice: RetiredProviderNotice? =
+            RetiredProviderNotice(defaults: defaults)
+        #else
+        let retiredProviderNotice: RetiredProviderNotice? = nil
+        #endif
+        providerConfigs = ProviderRoster.configsKeptAtLaunch(
+            providerConfigs,
+            environment: ProcessInfo.processInfo.environment,
+            notice: retiredProviderNotice
+        )
+
+        // The kept list is what is written back (secrets are never encoded),
+        // so a retired account leaves the saved list and the helper's copy at
+        // this launch, not at whichever save the person makes next, and its
+        // Keychain items are not read again.
         if let migratedData = try? JSONEncoder().encode(providerConfigs) {
             defaults.set(
                 migratedData,
@@ -2474,10 +2514,6 @@ public final class AppState: ObservableObject {
                     forKey: HelperIPC.providerConfigsKey
                 )
             }
-        }
-
-        for index in providerConfigs.indices {
-            providerConfigs[index].loadSecrets()
         }
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }

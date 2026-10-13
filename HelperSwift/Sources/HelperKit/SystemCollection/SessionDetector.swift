@@ -42,7 +42,11 @@ public struct SessionDetector: Sendable {
         ("MiniMax", #"\bminimax\b"#, "high"),
         ("Augment", #"\baugment\b"#, "medium"),
         ("JetBrains AI", #"\bjetbrains[\s-]?ai\b|\bjbai\b"#, "high"),
-        ("Kimi K2", #"\bkimi[\s_-]*k2\b"#, "high"),
+        // Kimi K2 is Moonshot's model, so a process that names it counts as
+        // Kimi (this also catches "kimik2"/"kimi_k2", which the bare pattern
+        // misses). The app retired its "Kimi K2" provider in 1.57: it was a
+        // relay's credit balance. 1:1 with helper/system_collector.py.
+        ("Kimi", #"\bkimi[\s_-]*k2\b"#, "high"),
         ("Kimi", #"\bkimi\b"#, "medium"),
         ("Amp", #"\bamp\b"#, "low"),
         ("Synthetic", #"\bsynthetic\b"#, "medium"),

@@ -57,6 +57,12 @@ import Foundation
 /// Base defaults to `https://api.crossmodel.ai/v1`; override via env
 /// `CROSSMODEL_API_URL` (HTTPS anywhere, or HTTP loopback only). Key:
 /// `config.apiKey` or env `CROSSMODEL_API_KEY`.
+///
+/// Not registered since 1.57 (`CollectorRegistry`): CrossModel is retired as
+/// a relay whose operator CLI Pulse could not confirm
+/// (`ProviderRetirement.unconfirmedOperator`; CodexBar removed it for the same
+/// reason). Kept, with its tests, so the provider can come back if that
+/// changes; nothing calls `collect` today.
 public struct CrossModelCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.crossModel
 

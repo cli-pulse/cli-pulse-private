@@ -91,11 +91,13 @@ final class LocalScannerTests: XCTestCase {
         XCTAssertEqual(result?.1, "high")
     }
 
-    // MARK: - Kimi K2 vs Kimi priority
+    // MARK: - Kimi K2 is Kimi (1.57)
 
-    func testKimiK2TakesPriorityOverKimi() {
+    func testAKimiK2ProcessCountsAsKimi() {
+        // The "Kimi K2" provider is retired (`ProviderRoster`); the model is
+        // Moonshot's, and its process is Kimi's.
         let result = scanner.detectProvider("/usr/local/bin/kimi-k2 serve")
-        XCTAssertEqual(result?.0, "Kimi K2")
+        XCTAssertEqual(result?.0, "Kimi")
         XCTAssertEqual(result?.1, "high")
     }
 

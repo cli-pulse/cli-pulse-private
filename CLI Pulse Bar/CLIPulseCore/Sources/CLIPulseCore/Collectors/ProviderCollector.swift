@@ -137,6 +137,12 @@ public protocol ProviderCollector: Sendable {
 }
 
 /// Registry of all available local collectors.
+///
+/// Retired providers have none (`ProviderKind.retirement`): Crof's service
+/// shut down, and Kimi K2 and CrossModel are relays whose operator CLI Pulse
+/// could not confirm, so no request goes to them, from the app or the helper,
+/// whatever an older build saved. `KimiK2Collector` and `CrossModelCollector`
+/// stay in the source, unregistered.
 public enum CollectorRegistry {
     public static let collectors: [ProviderCollector] = [
         OpenRouterCollector(),
@@ -147,7 +153,6 @@ public enum CollectorRegistry {
         OllamaCollector(),
         WarpCollector(),
         ZaiCollector(),
-        KimiK2Collector(),
         KiloCollector(),
         CopilotCollector(),
         CursorCollector(),
@@ -159,7 +164,6 @@ public enum CollectorRegistry {
         GLMCollector(),
         PerplexityCollector(),
         VertexAICollector(),
-        CrofCollector(),
         DeepSeekCollector(),
         ElevenLabsCollector(),
         VeniceCollector(),
@@ -183,7 +187,6 @@ public enum CollectorRegistry {
         OpenCodeGoCollector(),
         GrokCollector(),
         PoeCollector(),
-        CrossModelCollector(),
         ChutesCollector(),
         QoderCollector(),
         SakanaCollector(),

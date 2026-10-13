@@ -19,7 +19,7 @@ Codex, Claude, and Gemini collectors target **subscription-linked usage/quota en
 
 These do **not** use developer API key billing.
 
-## Implemented Local Collectors (17 providers)
+## Implemented Local Collectors (16 providers)
 
 | Provider | Collector | Strategy | Data Kind | isAvailable Condition | Confidence |
 |---|---|---|---|---|---|
@@ -31,7 +31,6 @@ These do **not** use developer API key billing.
 | **Ollama** | `OllamaCollector` | local HTTP (no auth) | `.statusOnly` | always (server may be down) | high |
 | **Warp** | `WarpCollector` | API token → GraphQL | `.quota` | `config.apiKey` or `WARP_API_KEY`/`WARP_TOKEN` | high |
 | **z.ai** | `ZaiCollector` | API token → REST | `.quota` | `config.apiKey` or `Z_AI_API_KEY` | high |
-| **Kimi K2** | `KimiK2Collector` | API token → REST | `.credits` | `config.apiKey` or `KIMI_K2_API_KEY`/`KIMI_API_KEY`/`KIMI_KEY` | high |
 | **Kilo** | `KiloCollector` | API token → tRPC batch | `.credits` | `config.apiKey` or `KILO_API_KEY` or `~/.local/share/kilo/auth.json` | high |
 | **Copilot** | `CopilotCollector` | API token → REST | `.quota` | `config.apiKey` or `COPILOT_API_TOKEN` | high |
 | **Cursor** | `CursorCollector` | cookie → REST | `.quota` | `config.manualCookieHeader` or `CURSOR_COOKIE` | medium (cookie-based) |
@@ -40,6 +39,25 @@ These do **not** use developer API key billing.
 | **MiniMax** | `MiniMaxCollector` | API token → REST; cookie fallback | `.quota` | `config.apiKey` or `MINIMAX_API_KEY` or cookie | medium (API token: high; cookie: fragile) |
 | **Augment** | `AugmentCollector` | cookie → REST | `.quota` | `config.manualCookieHeader` or `AUGMENT_COOKIE` | medium (cookie-based) |
 | **Volcano Engine** | `VolcanoEngineCollector` | API token → REST (Ark) | `.quota` | `config.apiKey` or `ARK_API_KEY`/`VOLC_ACCESSKEY`/`VOLCANO_ENGINE_API_KEY` | medium (quota endpoint TBD) |
+
+## Retired providers (1.57)
+
+Not offered, not collected and not shown (`ProviderRoster.swift`). Their
+`ProviderKind` cases stay so configs an older build saved and rows another
+device uploaded still decode; saved accounts are left out when read, and the
+app's first 1.57 launch writes the saved list back without them.
+
+| Provider | Why | Code |
+|---|---|---|
+| **Crof** | The service shut down. | `CrofCollector` removed. |
+| **Kimi K2** | Its collector read `kimi-k2.ai`, a relay whose operator CLI Pulse could not confirm (not Moonshot's API; the Kimi and Moonshot providers stay). | `KimiK2Collector` kept, unregistered. |
+| **CrossModel** | A hosted relay whose operator CLI Pulse could not confirm. | `CrossModelCollector` kept, unregistered. |
+
+Anyone whose saved key (or, with the account switched on, a key in an
+environment variable the collector read) went to Kimi K2 or CrossModel sees a
+one-time notice in the menu-bar popover. A running process that names Kimi K2
+(Moonshot's model) counts as Kimi in the process scan (`LocalScanner`, and the
+helpers' `SessionDetector` and `system_collector.py`).
 
 ## Providers Not Implemented Locally (8 providers)
 

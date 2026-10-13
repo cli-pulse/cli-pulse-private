@@ -32,9 +32,12 @@ INGEST_RETRY_BACKOFFS = (1.0, 3.0, 9.0)
 
 
 CONFIG_PATH = Path.home() / ".cli-pulse-helper.json"
+# Sessions are uploaded only for these providers, so every provider
+# system_collector.PROCESS_PATTERNS can name must be here. "Kimi K2" left in
+# 1.57: the app retired that provider, and a kimi-k2 process is now Kimi.
 SUPPORTED_PROVIDERS = {
     "Codex", "Gemini", "Claude", "Cursor", "OpenCode", "Droid", "Antigravity",
-    "Copilot", "z.ai", "MiniMax", "Augment", "JetBrains AI", "Kimi K2",
+    "Copilot", "z.ai", "MiniMax", "Augment", "JetBrains AI",
     "Kimi", "Amp", "Synthetic", "Warp", "Kilo", "Ollama", "OpenRouter",
     "Alibaba", "Kiro", "Vertex AI", "Perplexity", "Volcano Engine",
 }

@@ -106,8 +106,10 @@ public struct ProviderConfig: Codable, Identifiable, Sendable {
         planOverrideUpdatedAt = changedAt
     }
 
+    /// One enabled account per offered provider. Retired providers get none
+    /// (`ProviderKind.offered`).
     public static func defaults() -> [ProviderConfig] {
-        ProviderKind.allCases.enumerated().map { index, kind in
+        ProviderKind.offered.enumerated().map { index, kind in
             ProviderConfig(kind: kind, isEnabled: true, sortOrder: index)
         }
     }
