@@ -255,38 +255,73 @@ final class ProviderRosterTests: XCTestCase {
         XCTAssertTrue(L10n.menuBar.retiredProvidersNotice.contains("密钥"),
                       "zh-Hans says the key is no longer sent")
     }
+}
 
-    // MARK: - Fixtures
-
-    private func usage(provider: String) -> ProviderUsage {
-        ProviderUsage(
-            provider: provider,
-            today_usage: 5, week_usage: 5,
-            estimated_cost_today: 0, estimated_cost_week: 0,
-            estimated_cost_30_day: 0,
-            cost_status_today: "Estimated", cost_status_week: "Estimated",
-            quota: nil, remaining: nil,
-            tiers: [], status_text: "",
-            trend: [], recent_sessions: [], recent_errors: []
-        )
-    }
-
-    private func accountUsage(_ provider: ProviderKind) -> ProviderAccountUsage {
-        ProviderAccountUsage(
-            id: UUID(),
-            provider: provider,
-            accountLabel: nil,
-            planEvidence: ProviderPlanEvidence(
-                rawValue: nil, displayValue: nil, source: .providerAPI,
-                confidence: .high, observedAt: Date(timeIntervalSince1970: 1_800_000_000)
+/// The behaviour behind `ProviderRosterReferenceTests`' display check:
+/// rows a refresh brings back for a retired provider never reach the state
+/// every Mac and iPhone surface reads (cards, menu bar, widgets, the Watch
+/// relay).
+@MainActor
+final class ProviderRosterStateTests: XCTestCase {
+    func testRefreshedRowsForRetiredProvidersNeverReachTheState() {
+        let state = AppState()
+        state.providerConfigs = [ProviderConfig(kind: .codex, isEnabled: true)]
+        state.applyRefreshPayload(DataRefreshManager.RefreshPayload(
+            dashboard: DashboardSummary(
+                total_usage_today: 0, total_estimated_cost_today: 0, cost_status: "Estimated",
+                total_requests_today: 0, active_sessions: 0, online_devices: 0,
+                unresolved_alerts: 0, provider_breakdown: [], top_projects: [], trend: [],
+                recent_activity: [], risk_signals: [],
+                alert_summary: AlertSummaryDTO(critical: 0, warning: 0, info: 0)
             ),
-            quota: nil,
-            remaining: nil,
-            tiers: [],
-            resetTime: nil,
-            observedAt: nil,
-            sourceDeviceID: nil,
-            statusText: ""
-        )
+            providers: ["Kimi K2", "Codex", "Crof", "CrossModel"].map(usage(provider:)),
+            providerAccounts: [accountUsage(.crossModel), accountUsage(.codex), accountUsage(.kimiK2)],
+            sessions: [],
+            devices: [],
+            alerts: [],
+            locallySupplementedProviders: [],
+            tierLimitWarning: nil,
+            lastRefresh: Date(),
+            isLocalMode: false,
+            costUsageScanResult: nil
+        ))
+        XCTAssertEqual(state.providers.map(\.provider), ["Codex"],
+                       "provider rows: a device on an older build may upload retired ones")
+        XCTAssertEqual(state.providerAccounts.map(\.provider), [.codex],
+                       "account rows: a device on an older build may upload retired ones")
     }
+}
+
+// MARK: - Fixtures
+
+private func usage(provider: String) -> ProviderUsage {
+    ProviderUsage(
+        provider: provider,
+        today_usage: 5, week_usage: 5,
+        estimated_cost_today: 0, estimated_cost_week: 0,
+        estimated_cost_30_day: 0,
+        cost_status_today: "Estimated", cost_status_week: "Estimated",
+        quota: nil, remaining: nil,
+        tiers: [], status_text: "",
+        trend: [], recent_sessions: [], recent_errors: []
+    )
+}
+
+private func accountUsage(_ provider: ProviderKind) -> ProviderAccountUsage {
+    ProviderAccountUsage(
+        id: UUID(),
+        provider: provider,
+        accountLabel: nil,
+        planEvidence: ProviderPlanEvidence(
+            rawValue: nil, displayValue: nil, source: .providerAPI,
+            confidence: .high, observedAt: Date(timeIntervalSince1970: 1_800_000_000)
+        ),
+        quota: nil,
+        remaining: nil,
+        tiers: [],
+        resetTime: nil,
+        observedAt: nil,
+        sourceDeviceID: nil,
+        statusText: ""
+    )
 }
