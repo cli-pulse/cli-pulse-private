@@ -1841,6 +1841,25 @@
 "usage_pace.eta_hours_minutes" = "%1$d 小时 %2$d 分钟";
 "usage_pace.eta_hours" = "%d 小时";
 "usage_pace.eta_minutes" = "%d 分钟";
+
+/* ── codex-reset-credits (v1.57) ── */
+"reset_credits.title" = "限额重置券";
+"reset_credits.available_one" = "可用 1 张";
+"reset_credits.available" = "可用 %d 张";
+"reset_credits.no_expiry" = "永不过期";
+"reset_credits.expires_in" = "%@后过期";
+"reset_credits.expires_now" = "即将过期";
+"reset_credits.left_now" = "即将过期";
+"reset_credits.left_days_hours" = "%1$d 天 %2$d 小时";
+"reset_credits.left_days_minutes" = "%1$d 天 %2$d 分钟";
+"reset_credits.left_days" = "%d 天";
+"reset_credits.left_hours_minutes" = "%1$d 小时 %2$d 分钟";
+"reset_credits.left_hours" = "%d 小时";
+"reset_credits.left_minutes" = "%d 分钟";
+"reset_credits.read_only_note" = "可重置 Codex 用量限额的重置券，属于这台 Mac 上 Codex 所登录的 ChatGPT 账户。CLI Pulse 只显示，从不使用。";
+"reset_credits.allow_codex_folder" = "授权访问 ~/.codex";
+"reset_credits.allow_codex_folder_help" = "如果 Codex 所登录的 ChatGPT 账户有限额重置券，CLI Pulse 获得 Codex CLI 文件夹（~/.codex，Codex 的登录信息保存在其中）的访问权限后即可显示。";
+
 "usage_dashboard.day_tooltip" = "%1$@：%2$@ token · %3$@";
 "intents.less_than_amount" = "不到 %@";
 

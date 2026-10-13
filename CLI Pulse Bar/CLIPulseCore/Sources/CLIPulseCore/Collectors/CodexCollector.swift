@@ -16,6 +16,32 @@ import Foundation
 public struct CodexCollector: ProviderCollector, Sendable {
     public let kind = ProviderKind.codex
 
+    /// Reads the account's limit reset credits after each quota read
+    /// (`CodexResetCreditsReporter`). nil for the registry's instance, which
+    /// the helper login item runs: only the main app's pass, which builds its
+    /// collector with `mainApp`, reads them, and only it has a card to show
+    /// them on.
+    let resetCredits: CodexResetCreditsReporter?
+
+    /// The `/wham/usage` request. nil, as everywhere outside tests, runs the
+    /// live one (`fetchUsage`); a test gives a stub so that what each read is
+    /// given, and in what order, can be pinned without the network.
+    typealias UsageFetch = @Sendable (_ accessToken: String, _ accountId: String?) async throws -> UsageResponse
+    let usageFetch: UsageFetch?
+
+    public init() {
+        self.resetCredits = nil
+        self.usageFetch = nil
+    }
+
+    init(resetCredits: CodexResetCreditsReporter?, usageFetch: UsageFetch? = nil) {
+        self.resetCredits = resetCredits
+        self.usageFetch = usageFetch
+    }
+
+    /// The collector the main app's refresh runs (`LocalRefreshRuntime.live`).
+    static let mainApp = CodexCollector(resetCredits: .live)
+
     /// Available when `~/.codex/auth.json` contains an access token.
     public func isAvailable(config: ProviderConfig) -> Bool {
         let auth = readAuthFile()
@@ -33,6 +59,7 @@ public struct CodexCollector: ProviderCollector, Sendable {
 
     public func collect(config: ProviderConfig) async throws -> CollectorResult {
         guard var auth = readAuthFile(), let accessToken = auth.accessToken else {
+            resetCredits?.clear(account: config.accountID)
             throw CollectorError.missingCredentials(CredentialProblem(nil, .authFileMissingAccessToken("Codex")))
         }
 
@@ -46,13 +73,34 @@ public struct CodexCollector: ProviderCollector, Sendable {
         }
 
         guard let currentToken = auth.accessToken else {
+            resetCredits?.clear(account: config.accountID)
             throw CollectorError.missingCredentials(CredentialProblem(nil, .accessTokenNilAfterRefresh("Codex")))
         }
-        let usageData = try await fetchUsage(accessToken: currentToken, accountId: auth.accountId)
+        let usageData: UsageResponse
+        do {
+            if let usageFetch {
+                usageData = try await usageFetch(currentToken, auth.accountId)
+            } else {
+                usageData = try await fetchUsage(accessToken: currentToken, accountId: auth.accountId)
+            }
+        } catch {
+            resetCredits?.clear(account: config.accountID)
+            throw error
+        }
+        // Limit reset credits, with the credential that just read the quota:
+        // never a second read of auth.json, where a `codex login` in between
+        // could put another account's credits beside this one's quota. Started
+        // here and not awaited, so the quota below is returned without waiting
+        // for an undocumented endpoint, whatever it does.
+        resetCredits?.refresh(
+            account: config.accountID,
+            accessToken: currentToken,
+            chatGPTAccountID: auth.accountId
+        )
         // The pass goes through the memory, or a spent balance loses its row.
-        // Nothing calls `collect()` in a test (it needs the network); the
-        // overload below is covered by CodexCreditsBalanceTests'
-        // `testTheRowOutlivesTheLastCreditAcrossPasses`.
+        // Only the reset-credits tests call `collect()`, with a stubbed usage
+        // read and a response without credits; the overload below is covered
+        // by CodexCreditsBalanceTests' `testTheRowOutlivesTheLastCreditAcrossPasses`.
         return buildResult(
             usage: usageData,
             accountId: auth.accountId,

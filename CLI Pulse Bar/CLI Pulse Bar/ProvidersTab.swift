@@ -468,6 +468,42 @@ struct ProviderAccountQuotaSummaryView: View {
 
 // MARK: - Enhanced Provider Card
 
+/// v1.57 P1-3: the Codex card's limit-reset-credits line, read on this Mac's
+/// latest pass with the same credential as the quota
+/// (`CodexResetCreditsCardState`). The only view that observes the reading,
+/// so a new one redraws this line, not every provider card.
+private struct CodexResetCreditsCardRow: View {
+    /// The card's CLI Pulse accounts; the first with a reading is shown.
+    let accountIDs: [UUID]
+
+    @EnvironmentObject private var state: AppState
+    @ObservedObject private var store = CodexResetCreditsStore.shared
+
+    var body: some View {
+        let rowState = CodexResetCreditsCardState.resolve(
+            snapshot: store.snapshot(forAnyOf: accountIDs),
+            latestOutcome: state.collectorOutcomes[.codex],
+            isSandboxed: MASSandboxGate.isSandboxed,
+            hasCodexFolderAccess: { CodexResetCreditsFolder.hasAccess },
+            isDemoMode: state.isDemoMode,
+            now: Date()
+        )
+        // Nothing at all when hidden, not even the spacing, so the card of an
+        // account without credits (most of them) does not grow.
+        if rowState != .hidden {
+            // A little apart from the tier bars, so it does not read as a
+            // third tier.
+            CodexResetCreditsRow(state: rowState, onAllowCodexFolder: allowCodexFolder)
+                .padding(.top, 2)
+        }
+    }
+
+    private func allowCodexFolder() {
+        guard CodexResetCreditsFolder.requestAccess() else { return }
+        Task { await state.refreshAll() }
+    }
+}
+
 struct EnhancedProviderCard: View {
     let detail: ProviderDetail
     let showCost: Bool
@@ -809,6 +845,11 @@ struct EnhancedProviderCard: View {
                                     markers: paceMarkers(for: tier)
                                 )
                             }
+                        }
+                        if config.kind == .codex {
+                            CodexResetCreditsCardRow(
+                                accountIDs: accountConfigs.map(\.accountID) + [config.accountID]
+                            )
                         }
                     }
                 } else if let quota = provider.quota,

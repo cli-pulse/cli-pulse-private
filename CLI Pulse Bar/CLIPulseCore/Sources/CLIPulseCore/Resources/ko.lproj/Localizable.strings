@@ -1811,6 +1811,25 @@
 "usage_pace.eta_hours_minutes" = "%1$d시간 %2$d분";
 "usage_pace.eta_hours" = "%d시간";
 "usage_pace.eta_minutes" = "%d분";
+
+/* ── codex-reset-credits (v1.57) ── */
+"reset_credits.title" = "한도 리셋권";
+"reset_credits.available_one" = "1개 사용 가능";
+"reset_credits.available" = "%d개 사용 가능";
+"reset_credits.no_expiry" = "만료 없음";
+"reset_credits.expires_in" = "%@ 후 만료";
+"reset_credits.expires_now" = "곧 만료";
+"reset_credits.left_now" = "곧";
+"reset_credits.left_days_hours" = "%1$d일 %2$d시간";
+"reset_credits.left_days_minutes" = "%1$d일 %2$d분";
+"reset_credits.left_days" = "%d일";
+"reset_credits.left_hours_minutes" = "%1$d시간 %2$d분";
+"reset_credits.left_hours" = "%d시간";
+"reset_credits.left_minutes" = "%d분";
+"reset_credits.read_only_note" = "이 Mac의 Codex에 로그인된 ChatGPT 계정에 주어진, Codex 사용 한도를 리셋할 수 있는 이용권입니다. CLI Pulse는 표시만 하며 사용하지 않습니다.";
+"reset_credits.allow_codex_folder" = "~/.codex 접근 허용";
+"reset_credits.allow_codex_folder_help" = "Codex에 로그인된 ChatGPT 계정에 한도 리셋권이 있으면, Codex 로그인 정보가 저장된 Codex CLI 폴더(~/.codex)에 대한 접근을 허용할 때 CLI Pulse에 표시됩니다.";
+
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ 토큰 · %3$@";
 "intents.less_than_amount" = "%@ 미만";
 

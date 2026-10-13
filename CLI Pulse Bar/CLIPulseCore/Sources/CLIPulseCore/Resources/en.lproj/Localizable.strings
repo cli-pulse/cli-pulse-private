@@ -1853,6 +1853,25 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "usage_pace.eta_hours_minutes" = "%1$dh %2$dm";
 "usage_pace.eta_hours" = "%dh";
 "usage_pace.eta_minutes" = "%dm";
+
+/* ── codex-reset-credits (v1.57) ── */
+"reset_credits.title" = "Limit reset credits";
+"reset_credits.available_one" = "1 available";
+"reset_credits.available" = "%d available";
+"reset_credits.no_expiry" = "No expiry";
+"reset_credits.expires_in" = "Expires in %@";
+"reset_credits.expires_now" = "Expires now";
+"reset_credits.left_now" = "now";
+"reset_credits.left_days_hours" = "%1$dd %2$dh";
+"reset_credits.left_days_minutes" = "%1$dd %2$dm";
+"reset_credits.left_days" = "%dd";
+"reset_credits.left_hours_minutes" = "%1$dh %2$dm";
+"reset_credits.left_hours" = "%dh";
+"reset_credits.left_minutes" = "%dm";
+"reset_credits.read_only_note" = "Credits that reset your Codex usage limit, for the ChatGPT account Codex is signed in to on this Mac. CLI Pulse only shows them and never uses one.";
+"reset_credits.allow_codex_folder" = "Allow access to ~/.codex";
+"reset_credits.allow_codex_folder_help" = "If the ChatGPT account Codex is signed in to has limit reset credits, CLI Pulse can show them once it can read the Codex CLI folder (~/.codex), where Codex keeps your sign-in.";
+
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
 "intents.less_than_amount" = "less than %@";
 

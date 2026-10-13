@@ -276,6 +276,7 @@ public enum QARenderSnapshot {
         surfaces += [.about, .subscription]
         surfaces += providerEditorKinds.map { .providerEditor($0) }
         surfaces += [.usageDashboardPanel, .firstRunWelcome]
+        surfaces.append(.codexResetCreditsStates)
         return surfaces
     }
 
@@ -680,6 +681,11 @@ public enum QARenderSurface: Hashable {
     case providerEditor(ProviderKind)
     case usageDashboardPanel
     case firstRunWelcome
+    /// v1.57: the Codex card's limit-reset-credits line in each state it
+    /// draws (`CodexResetCreditsRow`), at the card's width. Demo mode shows
+    /// only one of them, and the App Store build's folder-access state never
+    /// appears in the QA build, which is not sandboxed.
+    case codexResetCreditsStates
 
     public enum Kind: String, Codable, Sendable {
         /// The menu-bar popover (`MenuBarView`), 380 points wide.
@@ -695,7 +701,7 @@ public enum QARenderSurface: Hashable {
 
     public var kind: Kind {
         switch self {
-        case .about, .subscription, .providerEditor, .firstRunWelcome:
+        case .about, .subscription, .providerEditor, .firstRunWelcome, .codexResetCreditsStates:
             return .window
         case .usageDashboardPanel:
             return .panel
@@ -724,6 +730,7 @@ public enum QARenderSurface: Hashable {
         case .providerEditor(let kind): return "window-provider-\(Self.slug(kind.rawValue))"
         case .usageDashboardPanel: return "panel-usage-dashboard"
         case .firstRunWelcome: return "window-first-run-welcome"
+        case .codexResetCreditsStates: return "card-codex-reset-credits"
         }
     }
 

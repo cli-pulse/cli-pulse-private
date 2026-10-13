@@ -103,12 +103,19 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         /// needed an id, and the app must not send one a user declined.
         public let remoteControlEnabled: Bool?
 
+        /// Off switch for reading Codex's limit reset credits, an undocumented
+        /// OpenAI endpoint. OPTIONAL, and here its absence means ON, the
+        /// opposite of `remoteControlEnabled`: only `false` stops the read. See
+        /// `CodexResetCreditsFeature` for why.
+        public let resetCreditsEnabled: Bool?
+
         enum CodingKeys: String, CodingKey {
             case version, build, channel, arch, url, sha256
             case sizeBytes = "size_bytes"
             case minOsVersion = "min_os_version"
             case releaseNotesUrl = "release_notes_url"
             case remoteControlEnabled = "remote_control_enabled"
+            case resetCreditsEnabled = "reset_credits_enabled"
         }
     }
 
@@ -209,6 +216,9 @@ public final class AppUpdater: ObservableObject, @unchecked Sendable {
         // already-tuned poll, and adding a second one was a defect in the
         // first draft of the design.
         RemoteControlFeature.recordRemoteAllowance(m.remoteControlEnabled, at: Date())
+        // Same place, same reason: only a manifest that passed every check
+        // above may switch the reset-credits read off or back on.
+        CodexResetCreditsFeature.recordRemoteSwitch(m.resetCreditsEnabled)
 
         if Self.compareVersions(installed, m.version) < 0 {
             state = .updateAvailable(installed: installed, latest: m.version)

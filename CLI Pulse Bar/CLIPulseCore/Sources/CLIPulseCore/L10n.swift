@@ -2391,6 +2391,38 @@ public enum L10n {
         public static func etaMinutes(_ minutes: Int) -> String { tr("usage_pace.eta_minutes", minutes) }
     }
 
+    // MARK: - Codex limit reset credits (v1.57)
+
+    /// The Codex card's reset-credits row (`CodexResetCreditsPresentation`,
+    /// `CodexResetCreditsRow`). Countdown keys of their own, like
+    /// `usagePace.eta*`, so rewording one cannot change the other.
+    public enum resetCredits {
+        public static var title: String { tr("reset_credits.title") }
+        public static var availableOne: String { tr("reset_credits.available_one") }
+        public static func available(_ count: Int) -> String { tr("reset_credits.available", count) }
+        public static var noExpiry: String { tr("reset_credits.no_expiry") }
+        public static func expiresIn(_ countdown: String) -> String { tr("reset_credits.expires_in", countdown) }
+        public static var expiresNow: String { tr("reset_credits.expires_now") }
+        public static var leftNow: String { tr("reset_credits.left_now") }
+        public static func leftDaysHours(_ days: Int, _ hours: Int) -> String {
+            tr("reset_credits.left_days_hours", days, hours)
+        }
+        public static func leftDaysMinutes(_ days: Int, _ minutes: Int) -> String {
+            tr("reset_credits.left_days_minutes", days, minutes)
+        }
+        public static func leftDays(_ days: Int) -> String { tr("reset_credits.left_days", days) }
+        public static func leftHoursMinutes(_ hours: Int, _ minutes: Int) -> String {
+            tr("reset_credits.left_hours_minutes", hours, minutes)
+        }
+        public static func leftHours(_ hours: Int) -> String { tr("reset_credits.left_hours", hours) }
+        public static func leftMinutes(_ minutes: Int) -> String { tr("reset_credits.left_minutes", minutes) }
+        /// The tooltip's last line: what CLI Pulse does with them.
+        public static var readOnlyNote: String { tr("reset_credits.read_only_note") }
+        /// The App Store build's button when the Codex CLI folder is not granted.
+        public static var allowCodexFolder: String { tr("reset_credits.allow_codex_folder") }
+        public static var allowCodexFolderHelp: String { tr("reset_credits.allow_codex_folder_help") }
+    }
+
     // MARK: - Local scan consent (v1.50 W-C)
 
     /// Localized in all six bundles rather than left as inline English like the

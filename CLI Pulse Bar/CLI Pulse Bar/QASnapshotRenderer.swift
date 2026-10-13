@@ -909,6 +909,18 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 FirstRunWelcomeView(onDismiss: {}), surface: surface, index: index,
                 note: windowNote(L10n.firstRun.title) + " The title is hidden."
             )
+
+        case .codexResetCreditsStates:
+            await captureWindow(
+                QAResetCreditsStates(now: Date()), surface: surface, index: index,
+                note: "The Codex card's limit-reset-credits line, each state on a card-wide strip"
+                    + " (356 points, as in the 380-point popover): Demo mode's two credits; six"
+                    + " credits, of which four countdowns are shown and \"+2\"; five day-and-hour"
+                    + " countdowns, as many as fit and \"+N\"; a credit without an expiry; the"
+                    + " App Store build without the Codex CLI folder grant; and, last, the line in"
+                    + " its production place, under 5-hour and Weekly bars whose detail says when"
+                    + " each resets (Demo's Weekly bar has no reset time)."
+            )
         }
     }
 
@@ -1670,4 +1682,105 @@ final class QARenderRefusingURLProtocol: URLProtocol {
 
     override func stopLoading() {}
 }
+/// The rows `QARenderSurface.codexResetCreditsStates` draws, built the way the
+/// card builds them (`CodexResetCreditsCardState.resolve`), from fixed
+/// readings relative to `now`.
+private struct QAResetCreditsStates: View {
+    let now: Date
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(Array(states.enumerated()), id: \.offset) { _, state in
+                strip { CodexResetCreditsRow(state: state, onAllowCodexFolder: {}) }
+            }
+            // As the card stacks it (`EnhancedProviderCard`): the tier bars at
+            // 4 points, then the line 2 points further down. Production's
+            // bars say when each resets, which Demo's Weekly bar does not, so
+            // this is where the line must not read as a reset time.
+            strip {
+                VStack(alignment: .leading, spacing: 4) {
+                    UsageBar(label: L10n.quotaTier.localized("5h Window"), value: 0.92, color: .green,
+                             detail: tierDetail(left: 92, resetsIn: 2 * 3_600 + 10 * 60))
+                    UsageBar(label: L10n.quotaTier.localized("Weekly"), value: 0.08, color: .red,
+                             detail: tierDetail(left: 8, resetsIn: 3 * 86_400 + 4 * 3_600))
+                    CodexResetCreditsRow(state: resolve(nil, demo: true), onAllowCodexFolder: {})
+                        .padding(.top, 2)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 380, alignment: .leading)
+    }
+
+    private func strip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(10)
+            .frame(width: 356, alignment: .leading)
+            .background(PulseTheme.cardBackground.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The card's tier detail (`EnhancedProviderCard.tierDetail`): "92% left ·
+    /// Resets in 2h 10m".
+    private func tierDetail(left: Int, resetsIn: TimeInterval) -> String {
+        let iso = ISO8601DateFormatter().string(from: now.addingTimeInterval(resetsIn))
+        let reset = RelativeTime.formatReset(iso).map { " · " + L10n.providers.resetsIn($0) } ?? ""
+        return L10n.watch.percentLeft(left) + reset
+    }
+
+    private var states: [CodexResetCreditsCardState] {
+        let day: TimeInterval = 86_400
+        let hour: TimeInterval = 3_600
+        return [
+            resolve(nil, demo: true),
+            resolve(snapshot((1...6).map { Double($0) * day })),
+            // Day-and-hour countdowns: four of them do not fit the card in
+            // every language, so the row shows as many as fit and "+N".
+            resolve(snapshot([
+                6 * day + 4 * hour, 13 * day + 2 * hour, 21 * day + 9 * hour,
+                29 * day + 16 * hour, 30 * day + hour,
+            ])),
+            resolve(snapshot([30 * hour, nil])),
+            resolve(nil, sandboxedWithoutGrant: true),
+        ]
+    }
+
+    private func resolve(
+        _ snapshot: CodexRateLimitResetCreditsSnapshot?,
+        demo: Bool = false,
+        sandboxedWithoutGrant: Bool = false
+    ) -> CodexResetCreditsCardState {
+        CodexResetCreditsCardState.resolve(
+            snapshot: snapshot,
+            // Without the grant the Codex collector cannot read the sign-in
+            // and declines to run; with it, the pass produced data.
+            latestOutcome: sandboxedWithoutGrant ? .notReady(.unknown) : .producedData,
+            isSandboxed: sandboxedWithoutGrant,
+            hasCodexFolderAccess: { !sandboxedWithoutGrant },
+            isDemoMode: demo,
+            now: now
+        )
+    }
+
+    private func snapshot(_ expiries: [TimeInterval?]) -> CodexRateLimitResetCreditsSnapshot {
+        CodexRateLimitResetCreditsSnapshot(
+            credits: expiries.enumerated().map { index, expiresIn in
+                CodexRateLimitResetCredit(
+                    id: "qa-reset-credit-\(index)",
+                    resetType: "codex_rate_limits",
+                    status: .available,
+                    grantedAt: now,
+                    expiresAt: expiresIn.map { now.addingTimeInterval($0) },
+                    redeemStartedAt: nil,
+                    redeemedAt: nil,
+                    title: nil,
+                    description: nil
+                )
+            },
+            availableCount: expiries.count,
+            updatedAt: now
+        )
+    }
+}
+
 #endif

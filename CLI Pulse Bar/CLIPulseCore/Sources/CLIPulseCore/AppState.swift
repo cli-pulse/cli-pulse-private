@@ -145,6 +145,13 @@ public final class AppState: ObservableObject {
             guard localScanConsent != oldValue else { return }
             LocalScanConsentStore.save(localScanConsent)
             mirrorLocalScanConsentForHelper()
+            #if os(macOS)
+            // "Not now" stops the passes, so nothing would replace the Codex
+            // card's reset-credits reading: it goes now, not at the next launch.
+            if localScanConsent == .declined {
+                CodexResetCreditsStore.shared.clearAll()
+            }
+            #endif
         }
     }
     /// v1.55: the answer to disclosure v2 — may CLI Pulse read session logs

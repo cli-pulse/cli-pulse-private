@@ -105,7 +105,8 @@ final class AppUpdaterTests: XCTestCase {
             sizeBytes: 1,
             minOsVersion: "13.0",
             releaseNotesUrl: nil,
-            remoteControlEnabled: nil
+            remoteControlEnabled: nil,
+            resetCreditsEnabled: nil
         )
         let intelManifest = AppUpdater.Manifest(
             version: "1.19.0",
@@ -117,7 +118,8 @@ final class AppUpdaterTests: XCTestCase {
             sizeBytes: 1,
             minOsVersion: "13.0",
             releaseNotesUrl: nil,
-            remoteControlEnabled: nil
+            remoteControlEnabled: nil,
+            resetCreditsEnabled: nil
         )
         let armPasses = (try? AppUpdater.assertArchitectureMatches(armManifest)) != nil
         let intelPasses = (try? AppUpdater.assertArchitectureMatches(intelManifest)) != nil
