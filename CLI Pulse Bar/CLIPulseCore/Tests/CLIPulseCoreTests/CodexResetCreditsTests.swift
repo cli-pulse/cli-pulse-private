@@ -250,7 +250,11 @@ final class CodexResetCreditsTests: XCTestCase {
             "1. Expires in 1d\n2. Expires in 2d\n3. No expiry"
         )
         XCTAssertTrue(presentation.helpText.hasSuffix(L10n.resetCredits.readOnlyNote))
-        XCTAssertTrue(presentation.accessibilityLabel.contains("3 available"))
+        // VoiceOver reads words, not the compact "1d".
+        XCTAssertEqual(
+            presentation.accessibilityLabel,
+            "Limit reset credits, 3 available, Expires in 1 day, Expires in 2 days, No expiry"
+        )
     }
 
     func testOneAvailableIsSingular() throws {
@@ -321,12 +325,38 @@ final class CodexResetCreditsTests: XCTestCase {
             Self.credit("b", expiresIn: 30 * 3_600),
             Self.credit("c", expiresIn: nil),
         ])
-        XCTAssertEqual(presentation.text, "可用 3 次")
+        XCTAssertEqual(presentation.text, "可用 3 张")
         XCTAssertEqual(presentation.expirySummaryText, "1 天 · 1 天 6 小时 · 永不过期")
         XCTAssertEqual(presentation.items.first?.expiryText, "1 天后过期")
-        XCTAssertEqual(L10n.resetCredits.title, "限额重置")
+        XCTAssertEqual(L10n.resetCredits.title, "限额重置券")
         XCTAssertTrue(presentation.helpText.hasSuffix(L10n.resetCredits.readOnlyNote))
         XCTAssertTrue(L10n.resetCredits.readOnlyNote.hasSuffix("只显示，从不使用。"))
+        // VoiceOver's countdown is in words, in Chinese too.
+        XCTAssertTrue(presentation.accessibilityLabel.hasPrefix("限额重置券, 可用 3 张, 1天后过期, "),
+                      presentation.accessibilityLabel)
+        XCTAssertTrue(presentation.accessibilityLabel.contains("小时后过期"), presentation.accessibilityLabel)
+        XCTAssertFalse(presentation.accessibilityLabel.contains("1 天 6 小时"), "the compact form is not spoken")
+    }
+
+    /// The title names the credits in every language. Under the 5-hour and
+    /// Weekly bars, whose detail says "resets in 3d 4h", a bare "limit reset"
+    /// reads as when the quota resets, and the countdowns beside it as that
+    /// time. A ticket noun, not the word for credits: that word is already the
+    /// Codex card's purchased-credits row.
+    func testTheTitleNamesTheCreditsInEveryLanguage() {
+        let expected = [
+            "en": ("Limit reset credits", "2 available"),
+            "ja": ("上限リセット券", "2 枚利用可能"),
+            "ko": ("한도 리셋권", "2개 사용 가능"),
+            "zh-Hans": ("限额重置券", "可用 2 张"),
+            "zh-Hant": ("限額重置券", "可用 2 張"),
+            "es": ("Créditos de reinicio", "2 disponibles"),
+        ]
+        for (language, (title, count)) in expected {
+            LocaleOverrideStore.shared.set(language)
+            XCTAssertEqual(L10n.resetCredits.title, title, language)
+            XCTAssertEqual(L10n.resetCredits.available(2), count, language)
+        }
     }
 
     func testTextInSpanish() throws {
@@ -344,7 +374,7 @@ final class CodexResetCreditsTests: XCTestCase {
 
     private func resolve(
         _ snapshot: CodexRateLimitResetCreditsSnapshot?,
-        producedData: Bool = true,
+        outcome: CollectorOutcome? = .producedData,
         sandboxed: Bool = false,
         hasAccess: Bool = true,
         demo: Bool = false,
@@ -352,7 +382,7 @@ final class CodexResetCreditsTests: XCTestCase {
     ) -> CodexResetCreditsCardState {
         CodexResetCreditsCardState.resolve(
             snapshot: snapshot,
-            latestPassProducedData: producedData,
+            latestOutcome: outcome,
             isSandboxed: sandboxed,
             hasCodexFolderAccess: {
                 accessAsked?.pointee = true
@@ -377,7 +407,9 @@ final class CodexResetCreditsTests: XCTestCase {
     /// A reading outlives a later pass that failed, or that never ran (Codex
     /// signed out, the provider switched off). It must not be shown then.
     func testAReadingIsNotShownAfterAPassThatProducedNoData() {
-        XCTAssertEqual(resolve(twoCredits, producedData: false), .hidden)
+        for outcome: CollectorOutcome? in [nil, .disabled, .ranButEmpty, .failed(.network), .notReady(.unknown)] {
+            XCTAssertEqual(resolve(twoCredits, outcome: outcome), .hidden, "\(String(describing: outcome))")
+        }
     }
 
     func testNoCreditsDrawsNothing() {
@@ -388,10 +420,38 @@ final class CodexResetCreditsTests: XCTestCase {
     /// The App Store build without the Codex CLI folder grant cannot read the
     /// sign-in the request needs, so it says what to grant.
     func testTheSandboxedBuildWithoutTheCodexFolderGrantAsksForIt() {
-        XCTAssertEqual(resolve(nil, sandboxed: true, hasAccess: false), .needsCodexFolderAccess)
-        XCTAssertEqual(resolve(nil, producedData: false, sandboxed: true, hasAccess: false), .needsCodexFolderAccess)
-        // With the grant there is nothing to ask for: no credits is no row.
-        XCTAssertEqual(resolve(nil, sandboxed: true, hasAccess: true), .hidden)
+        for declined: CollectorOutcome in [.notReady(.unknown), .notReady(.missingCredentials), .failed(.permission)] {
+            XCTAssertEqual(resolve(nil, outcome: declined, sandboxed: true, hasAccess: false),
+                           .needsCodexFolderAccess, "\(declined)")
+            // With the grant there is nothing to ask for: no credits is no row.
+            XCTAssertEqual(resolve(nil, outcome: declined, sandboxed: true, hasAccess: true), .hidden)
+        }
+    }
+
+    /// A pass that produced data read the Codex sign-in (a credential bridged
+    /// into the app group, say), and the credits with it. No usable credit,
+    /// or a read that failed, is then no row: the folder is not what is
+    /// missing, and asking for it would say so. The bookmark store is not
+    /// even read.
+    func testAPassThatProducedDataNeverAsksForTheFolder() {
+        let nothingUsable = Self.snapshot([Self.credit("gone", status: .redeemed, expiresIn: 86_400)])
+        for snapshot in [nil, nothingUsable] {
+            var asked = false
+            XCTAssertEqual(resolve(snapshot, sandboxed: true, hasAccess: false, accessAsked: &asked), .hidden)
+            XCTAssertFalse(asked)
+        }
+    }
+
+    /// The link is for a Codex this Mac could not read, not for a provider the
+    /// user switched off, a pass that has not run yet, or a request that
+    /// failed, none of which a folder grant fixes.
+    func testTheFolderIsAskedForOnlyWhenTheCollectorDeclinedToRun() {
+        for outcome: CollectorOutcome? in [nil, .disabled, .ranButEmpty, .failed(.network), .failed(.auth)] {
+            var asked = false
+            XCTAssertEqual(resolve(nil, outcome: outcome, sandboxed: true, hasAccess: false, accessAsked: &asked),
+                           .hidden, "\(String(describing: outcome))")
+            XCTAssertFalse(asked, "\(String(describing: outcome))")
+        }
     }
 
     /// A credential bridged into the app group can read the credits without
@@ -406,7 +466,8 @@ final class CodexResetCreditsTests: XCTestCase {
     /// a grant, and never shows the request.
     func testTheUnsandboxedBuildNeverAsksForTheFolder() {
         var asked = false
-        XCTAssertEqual(resolve(nil, sandboxed: false, hasAccess: false, accessAsked: &asked), .hidden)
+        XCTAssertEqual(resolve(nil, outcome: .notReady(.unknown), sandboxed: false, hasAccess: false,
+                               accessAsked: &asked), .hidden)
         XCTAssertFalse(asked, "the bookmark store is read only in a sandboxed build")
     }
 
@@ -416,7 +477,7 @@ final class CodexResetCreditsTests: XCTestCase {
         for offset: TimeInterval in [0, 3_599, 86_400 * 3 + 17] {
             let now = Self.now.addingTimeInterval(offset)
             let state = CodexResetCreditsCardState.resolve(
-                snapshot: nil, latestPassProducedData: false, isSandboxed: true,
+                snapshot: nil, latestOutcome: nil, isSandboxed: true,
                 hasCodexFolderAccess: { false }, isDemoMode: true, now: now
             )
             guard case .inventory(let presentation) = state else {

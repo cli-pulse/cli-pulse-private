@@ -37,6 +37,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 #if os(macOS)
+import Combine
 import XCTest
 @testable import CLIPulseCore
 
@@ -103,12 +104,35 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertNil(request.httpBody)
         XCTAssertEqual(request.timeoutInterval, 4)
+        // Never answered from a cache. This says nothing about storing the
+        // answer: `testTheReadKeepsNothingOnDisk` is about that.
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
         XCTAssertEqual(request.value(forHTTPHeaderField: "ChatGPT-Account-ID"), "account-123")
         XCTAssertEqual(request.value(forHTTPHeaderField: "OpenAI-Beta"), "codex-1")
         XCTAssertEqual(request.value(forHTTPHeaderField: "originator"), "Codex Desktop")
         XCTAssertEqual(request.value(forHTTPHeaderField: "User-Agent"), "CLIPulseBar")
+    }
+
+    /// `URLSession.shared` writes the request, bearer token included, and the
+    /// raw body, with the provider's credit IDs, to the app's on-disk
+    /// Cache.db: chatgpt.com sends no Cache-Control, and a request's cache
+    /// policy does not stop a response being stored. The read has a session
+    /// of its own that keeps nothing, and the live read goes through it.
+    func testTheReadKeepsNothingOnDisk() throws {
+        let configuration = CodexResetCreditsFetcher.session.configuration
+        XCTAssertNil(configuration.urlCache, "a URL cache stores the token and the body")
+        XCTAssertNil(configuration.httpCookieStorage)
+        XCTAssertFalse(configuration.httpShouldSetCookies)
+        XCTAssertNil(configuration.urlCredentialStorage)
+        XCTAssertEqual(configuration.requestCachePolicy, .reloadIgnoringLocalCacheData)
+
+        // Which session the live read uses is a property of the source.
+        let code = try Self.shippingCode(of: "Collectors/CodexResetCreditsReader.swift")
+        XCTAssertFalse(code.contains("URLSession.shared"), "the read must not go through the shared session")
+        let live = try XCTUnwrap(code.range(of: "public static let liveTransport: Transport = {"))
+        let body = code[live.upperBound...].prefix(120)
+        XCTAssertTrue(body.contains("try await session.data(for:"), "the live read must use `session`")
     }
 
     func testNoAccountHeaderWithoutAnAccountID() {
@@ -201,8 +225,8 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let account = UUID()
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
 
-        let older = store.begin(account)
-        let newer = store.begin(account)
+        let older = store.begin(account, chatGPTAccountID: nil)
+        let newer = store.begin(account, chatGPTAccountID: nil)
         store.finish(account, generation: newer, snapshot: snapshot)
         store.finish(account, generation: older, snapshot: nil)
         XCTAssertEqual(store.snapshots[account], snapshot, "the older read's failure must not erase the newer reading")
@@ -213,9 +237,9 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = CodexResetCreditsStore()
         let account = UUID()
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
-        store.finish(account, generation: store.begin(account), snapshot: snapshot)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: nil), snapshot: snapshot)
         XCTAssertNotNil(store.snapshots[account])
-        store.finish(account, generation: store.begin(account), snapshot: nil)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: nil), snapshot: nil)
         XCTAssertNil(store.snapshots[account], "a pass that could not confirm the credits must not keep the old ones")
     }
 
@@ -224,10 +248,74 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = CodexResetCreditsStore()
         let account = UUID()
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
-        let inFlight = store.begin(account)
+        let inFlight = store.begin(account, chatGPTAccountID: nil)
         store.clear(account)
         store.finish(account, generation: inFlight, snapshot: snapshot)
         XCTAssertNil(store.snapshots[account], "a read begun before the quota failed must not come back")
+    }
+
+    /// A `codex login` to another ChatGPT account: the next pass's read is for
+    /// that account, and the old account's credits go when it begins, not
+    /// when it ends. The new quota can be on the card first, and must not sit
+    /// beside the old account's credits, even for the 4 s the read may take.
+    @MainActor
+    func testAReadForAnotherChatGPTAccountDropsTheReadingAtOnce() throws {
+        let store = CodexResetCreditsStore()
+        let account = UUID()
+        let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: "chatgpt-a"), snapshot: snapshot)
+
+        _ = store.begin(account, chatGPTAccountID: "chatgpt-a")
+        XCTAssertEqual(store.snapshots[account], snapshot, "the same account keeps its reading while it is re-read")
+
+        _ = store.begin(account, chatGPTAccountID: "chatgpt-b")
+        XCTAssertNil(store.snapshots[account], "another account's read must not start beside the old credits")
+    }
+
+    /// The account is kept as a digest, never the ID itself.
+    func testTheChatGPTAccountIsKeptOnlyAsADigest() {
+        let digest = CodexResetCreditsStore.chatGPTAccountDigest("chatgpt-account-123")
+        XCTAssertFalse(digest.contains("chatgpt-account-123"))
+        XCTAssertEqual(digest.count, 64)
+        XCTAssertEqual(digest, CodexResetCreditsStore.chatGPTAccountDigest("chatgpt-account-123"))
+        XCTAssertNotEqual(digest, CodexResetCreditsStore.chatGPTAccountDigest("chatgpt-account-456"))
+        XCTAssertEqual(CodexResetCreditsStore.chatGPTAccountDigest(nil), CodexResetCreditsStore.chatGPTAccountDigest(""))
+    }
+
+    /// The same credits read again do not publish: every provider card would
+    /// redraw once more per pass for nothing.
+    @MainActor
+    func testTheSameCreditsReadAgainDoNotPublish() throws {
+        let store = CodexResetCreditsStore()
+        let account = UUID()
+        var publications = 0
+        let subscription = store.$snapshots.dropFirst().sink { _ in publications += 1 }
+        defer { subscription.cancel() }
+
+        let first = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: "a"), snapshot: first)
+        XCTAssertEqual(publications, 1)
+        let again = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now.addingTimeInterval(60))
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: "a"), snapshot: again)
+        XCTAssertEqual(publications, 1, "the same credits, a minute later, changed nothing on the card")
+
+        let other = CodexRateLimitResetCreditsSnapshot(credits: [], availableCount: 0, updatedAt: Self.now)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: "a"), snapshot: other)
+        XCTAssertEqual(publications, 2, "different credits do publish")
+        XCTAssertEqual(store.snapshots[account], other)
+    }
+
+    @MainActor
+    func testClearAllDropsEveryReadingAndEveryReadInFlight() throws {
+        let store = CodexResetCreditsStore()
+        let (a, b) = (UUID(), UUID())
+        let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
+        store.finish(a, generation: store.begin(a, chatGPTAccountID: nil), snapshot: snapshot)
+        let inFlight = store.begin(b, chatGPTAccountID: nil)
+        store.clearAll()
+        XCTAssertTrue(store.snapshots.isEmpty)
+        store.finish(b, generation: inFlight, snapshot: snapshot)
+        XCTAssertNil(store.snapshots[b], "a read begun before the clear must not come back")
     }
 
     @MainActor
@@ -235,7 +323,7 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = CodexResetCreditsStore()
         let (a, b) = (UUID(), UUID())
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
-        store.finish(b, generation: store.begin(b), snapshot: snapshot)
+        store.finish(b, generation: store.begin(b, chatGPTAccountID: nil), snapshot: snapshot)
         XCTAssertNil(store.snapshots[a])
         XCTAssertEqual(store.snapshot(forAnyOf: [a, b]), snapshot)
         XCTAssertNil(store.snapshot(forAnyOf: [a]))
@@ -268,7 +356,9 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = await MainActor.run { CodexResetCreditsStore() }
         let account = UUID()
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
-        await MainActor.run { store.finish(account, generation: store.begin(account), snapshot: snapshot) }
+        await MainActor.run {
+            store.finish(account, generation: store.begin(account, chatGPTAccountID: nil), snapshot: snapshot)
+        }
         let reporter = CodexResetCreditsReporter(
             isEnabled: { true },
             fetch: { _, _ in .failed(.timedOut) },
@@ -283,7 +373,9 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = await MainActor.run { CodexResetCreditsStore() }
         let account = UUID()
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
-        await MainActor.run { store.finish(account, generation: store.begin(account), snapshot: snapshot) }
+        await MainActor.run {
+            store.finish(account, generation: store.begin(account, chatGPTAccountID: nil), snapshot: snapshot)
+        }
         let recorder = Recorder()
         let reporter = CodexResetCreditsReporter(
             isEnabled: { false },
@@ -416,7 +508,8 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         let store = await MainActor.run { CodexResetCreditsStore() }
         let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
         await MainActor.run {
-            store.finish(config.accountID, generation: store.begin(config.accountID), snapshot: snapshot)
+            let generation = store.begin(config.accountID, chatGPTAccountID: "account-only")
+            store.finish(config.accountID, generation: generation, snapshot: snapshot)
         }
         let seen = Recorder()
         let reporter = CodexResetCreditsReporter(
@@ -468,7 +561,93 @@ final class CodexResetCreditsReaderTests: XCTestCase {
         XCTAssertEqual(other.kind, .claude)
     }
 
+    // MARK: - "Not now"
+
+    /// "Not now" to reading this Mac stops the passes, so nothing would ever
+    /// replace a reading made before it: it goes at once.
+    @MainActor
+    func testNotNowClearsTheCardsReading() throws {
+        let keys = [LocalScanConsentStore.key, LocalScanConsentStore.v2Key]
+        let saved = keys.map { UserDefaults.standard.object(forKey: $0) }
+        let suite = "CodexResetCreditsReaderTests.consent.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let account = UUID()
+        defer {
+            for (key, value) in zip(keys, saved) {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            defaults.removePersistentDomain(forName: suite)
+            CodexResetCreditsStore.shared.clear(account)
+        }
+        LocalScanConsentStore.save(.granted)
+        let state = AppState(
+            runtimeEnvironment: .resolveForTesting(infoDictionary: [:], environment: [:]),
+            defaults: defaults,
+            performLaunchSetup: false
+        )
+        let store = CodexResetCreditsStore.shared
+        let snapshot = try CodexRateLimitResetCreditsSnapshot.decode(Self.body, now: Self.now)
+        store.finish(account, generation: store.begin(account, chatGPTAccountID: nil), snapshot: snapshot)
+        XCTAssertNotNil(store.snapshots[account])
+
+        state.localScanConsent = .declined
+        XCTAssertNil(store.snapshots[account], "the reading must not outlive a \"Not now\"")
+    }
+
     // MARK: - The remote switch
+
+    /// What the main app actually runs follows the switch: not only the
+    /// feature flag, which the tests above read with defaults of their own.
+    /// `.live` answering a fixed `true` would leave the Developer ID build's
+    /// only stop doing nothing.
+    func testTheMainAppsReaderFollowsTheSwitch() throws {
+        let key = CodexResetCreditsFeature.remoteDisabledKey
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved { UserDefaults.standard.set(saved, forKey: key) } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+        let reporter = try XCTUnwrap(CodexCollector.mainApp.resetCredits)
+        CodexResetCreditsFeature.recordRemoteSwitch(nil)
+        XCTAssertTrue(reporter.isEnabled())
+        CodexResetCreditsFeature.recordRemoteSwitch(false)
+        XCTAssertFalse(reporter.isEnabled(), "the main app's reader ignores the manifest's false")
+        CodexResetCreditsFeature.recordRemoteSwitch(true)
+        XCTAssertTrue(reporter.isEnabled())
+    }
+
+    /// The source with comments taken out: a call in a doc comment is not a
+    /// call.
+    private static func shippingCode(of relativePath: String) throws -> String {
+        let here = URL(fileURLWithPath: #filePath)
+        let root = here.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        return try String(
+            contentsOf: root.appendingPathComponent("Sources/CLIPulseCore").appendingPathComponent(relativePath),
+            encoding: .utf8
+        )
+        .split(separator: "\n", omittingEmptySubsequences: false)
+        .filter { !$0.trimmingCharacters(in: .whitespaces).hasPrefix("//") }
+        .joined(separator: "\n")
+    }
+
+    /// The updater records the switch, and only from a manifest that passed
+    /// its checks. A property of the source, as for the remote-control
+    /// switch (`RemoteControlKillSwitchTests`): the updater is Developer ID
+    /// only, and this runs in every pass.
+    func testTheSwitchIsRecordedOnlyAfterTheManifestPassesValidation() throws {
+        let code = try Self.shippingCode(of: "AppUpdater.swift")
+        let recordAt = try XCTUnwrap(
+            code.range(of: "CodexResetCreditsFeature.recordRemoteSwitch(m."),
+            "nothing records the manifest's switch: the Developer ID build's only stop does nothing"
+        )
+        let archAt = try XCTUnwrap(code.range(of: "try Self.assertArchitectureMatches(m)"))
+        XCTAssertTrue(archAt.lowerBound < recordAt.lowerBound,
+                      "the switch is recorded before the manifest is validated: a manifest the updater "
+                      + "rejects could still switch the read off or back on")
+    }
 
     private func isolatedDefaults() -> UserDefaults {
         let name = "CodexResetCreditsReaderTests.\(UUID().uuidString)"

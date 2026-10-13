@@ -10,9 +10,9 @@
 // Not verbatim: the base URL is fixed to chatgpt.com, as CLI Pulse's own
 // `/wham/usage` request is (upstream reads `chatgpt_base_url` from Codex's
 // config.toml); the User-Agent is CLI Pulse's; the 4 s is a budget for the
-// whole read, not only URLSession's idle timeout; a failure is an outcome,
-// never a thrown error; and the read runs after the quota is returned, not
-// before it.
+// whole read, not only URLSession's idle timeout; the read goes through an
+// ephemeral session that stores nothing; a failure is an outcome, never a
+// thrown error; and the read runs after the quota is returned, not before it.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -41,6 +41,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 
 #if os(macOS)
+import CryptoKit
 import Foundation
 import os
 
@@ -85,8 +86,24 @@ public enum CodexResetCreditsFetcher {
 
     public typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
+    /// The read's own session, which keeps nothing: no URL cache, no cookies,
+    /// no stored credentials. `URLSession.shared` would write the request,
+    /// bearer token included, and the raw body, with the provider's credit
+    /// IDs, to the app's on-disk `Cache.db`: chatgpt.com's backend sends no
+    /// `Cache-Control`, and a request's cache policy only governs reading from
+    /// a cache, never storing to it.
+    static let session: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCredentialStorage = nil
+        return URLSession(configuration: configuration)
+    }()
+
     public static let liveTransport: Transport = { request in
-        try await URLSession.shared.data(for: request)
+        try await session.data(for: request)
     }
 
     /// The GET. `chatGPTAccountID` is the `account_id` from the same auth.json
@@ -96,6 +113,8 @@ public enum CodexResetCreditsFetcher {
         chatGPTAccountID: String?,
         timeout: TimeInterval = budget
     ) -> URLRequest {
+        // Never answered from a cache. Not storing the answer is `session`'s
+        // job: a cache policy cannot do that.
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = "GET"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -171,6 +190,11 @@ public enum CodexResetCreditsFetcher {
 /// the read returned, or with nothing when it failed, timed out, was skipped
 /// or is switched off. A pass whose quota read failed clears it too. So the
 /// card never shows credits a later pass could not confirm.
+///
+/// A pass signed in to another ChatGPT account than the reading's (a
+/// `codex login` in between) drops the reading as soon as its read begins,
+/// not when it ends: the new account's quota can be on the card before its
+/// credits are read, and must never sit beside the old account's credits.
 @MainActor
 public final class CodexResetCreditsStore: ObservableObject {
     public static let shared = CodexResetCreditsStore()
@@ -182,18 +206,34 @@ public final class CodexResetCreditsStore: ObservableObject {
     /// older answer.
     private var generations: [UUID: Int] = [:]
 
+    /// Which ChatGPT account each account's latest read was for, as a digest
+    /// (`chatGPTAccountDigest`): the ID itself is not kept.
+    private var chatGPTAccounts: [UUID: String] = [:]
+
     public init() {}
 
-    func begin(_ account: UUID) -> Int {
+    /// A read for `account`, signed in to `chatGPTAccountID`, is starting.
+    func begin(_ account: UUID, chatGPTAccountID: String?) -> Int {
         let next = (generations[account] ?? 0) + 1
         generations[account] = next
+        let digest = Self.chatGPTAccountDigest(chatGPTAccountID)
+        if chatGPTAccounts[account] != digest {
+            chatGPTAccounts[account] = digest
+            if snapshots[account] != nil {
+                snapshots[account] = nil
+            }
+        }
         return next
     }
 
     func finish(_ account: UUID, generation: Int, snapshot: CodexRateLimitResetCreditsSnapshot?) {
         guard generations[account] == generation else { return }
         if let snapshot {
-            snapshots[account] = snapshot
+            // The same credits read again change nothing on the card, so they
+            // do not publish: every provider card would redraw for nothing.
+            if snapshots[account]?.hasTheSameCredits(as: snapshot) != true {
+                snapshots[account] = snapshot
+            }
         } else if snapshots[account] != nil {
             snapshots[account] = nil
         }
@@ -204,6 +244,25 @@ public final class CodexResetCreditsStore: ObservableObject {
         if snapshots[account] != nil {
             snapshots[account] = nil
         }
+    }
+
+    /// Every account's reading goes, and every read still in flight is
+    /// dropped when it finishes. For a "Not now" to reading this Mac: the
+    /// passes stop, so nothing would replace a reading made before it.
+    public func clearAll() {
+        for account in Set(generations.keys).union(snapshots.keys) {
+            generations[account] = (generations[account] ?? 0) + 1
+        }
+        if !snapshots.isEmpty {
+            snapshots = [:]
+        }
+    }
+
+    /// Domain-separated SHA-256 of the ChatGPT account ID; nil and "" are one
+    /// value, "no account header".
+    nonisolated static func chatGPTAccountDigest(_ chatGPTAccountID: String?) -> String {
+        let separated = "yyh.CLI-Pulse.codex-reset-credits-account.v1\0\(chatGPTAccountID ?? "")"
+        return SHA256.hash(data: Data(separated.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
     /// The reading of the first of `accounts` that has one.
@@ -236,7 +295,7 @@ struct CodexResetCreditsReporter: Sendable {
     func refresh(account: UUID, accessToken: String, chatGPTAccountID: String?) -> Task<Void, Never> {
         Task {
             let store = await store()
-            let generation = await store.begin(account)
+            let generation = await store.begin(account, chatGPTAccountID: chatGPTAccountID)
             guard isEnabled() else {
                 await store.finish(account, generation: generation, snapshot: nil)
                 return

@@ -1870,7 +1870,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "reset_credits.left_minutes" = "%dm";
 "reset_credits.read_only_note" = "Credits that reset your Codex usage limit, for the ChatGPT account Codex is signed in to on this Mac. CLI Pulse only shows them and never uses one.";
 "reset_credits.allow_codex_folder" = "Allow access to ~/.codex";
-"reset_credits.allow_codex_folder_help" = "To read these, CLI Pulse needs access to the Codex CLI folder (~/.codex), where Codex keeps your sign-in.";
+"reset_credits.allow_codex_folder_help" = "If the ChatGPT account Codex is signed in to has limit reset credits, CLI Pulse can show them once it can read the Codex CLI folder (~/.codex), where Codex keeps your sign-in.";
 
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
 "intents.less_than_amount" = "less than %@";

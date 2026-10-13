@@ -916,8 +916,10 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 note: "The Codex card's limit-reset-credits line, each state on a card-wide strip"
                     + " (356 points, as in the 380-point popover): Demo mode's two credits; six"
                     + " credits, of which four countdowns are shown and \"+2\"; five day-and-hour"
-                    + " countdowns, as many as fit and \"+N\"; a credit without an expiry; and the"
-                    + " App Store build without the Codex CLI folder grant."
+                    + " countdowns, as many as fit and \"+N\"; a credit without an expiry; the"
+                    + " App Store build without the Codex CLI folder grant; and, last, the line in"
+                    + " its production place, under 5-hour and Weekly bars whose detail says when"
+                    + " each resets (Demo's Weekly bar has no reset time)."
             )
         }
     }
@@ -1689,15 +1691,41 @@ private struct QAResetCreditsStates: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(states.enumerated()), id: \.offset) { _, state in
-                CodexResetCreditsRow(state: state, onAllowCodexFolder: {})
-                    .padding(10)
-                    .frame(width: 356, alignment: .leading)
-                    .background(PulseTheme.cardBackground.opacity(0.5))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                strip { CodexResetCreditsRow(state: state, onAllowCodexFolder: {}) }
+            }
+            // As the card stacks it (`EnhancedProviderCard`): the tier bars at
+            // 4 points, then the line 2 points further down. Production's
+            // bars say when each resets, which Demo's Weekly bar does not, so
+            // this is where the line must not read as a reset time.
+            strip {
+                VStack(alignment: .leading, spacing: 4) {
+                    UsageBar(label: L10n.quotaTier.localized("5h Window"), value: 0.92, color: .green,
+                             detail: tierDetail(left: 92, resetsIn: 2 * 3_600 + 10 * 60))
+                    UsageBar(label: L10n.quotaTier.localized("Weekly"), value: 0.08, color: .red,
+                             detail: tierDetail(left: 8, resetsIn: 3 * 86_400 + 4 * 3_600))
+                    CodexResetCreditsRow(state: resolve(nil, demo: true), onAllowCodexFolder: {})
+                        .padding(.top, 2)
+                }
             }
         }
         .padding(12)
         .frame(width: 380, alignment: .leading)
+    }
+
+    private func strip<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        content()
+            .padding(10)
+            .frame(width: 356, alignment: .leading)
+            .background(PulseTheme.cardBackground.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    /// The card's tier detail (`EnhancedProviderCard.tierDetail`): "92% left ·
+    /// Resets in 2h 10m".
+    private func tierDetail(left: Int, resetsIn: TimeInterval) -> String {
+        let iso = ISO8601DateFormatter().string(from: now.addingTimeInterval(resetsIn))
+        let reset = RelativeTime.formatReset(iso).map { " · " + L10n.providers.resetsIn($0) } ?? ""
+        return L10n.watch.percentLeft(left) + reset
     }
 
     private var states: [CodexResetCreditsCardState] {
@@ -1724,7 +1752,9 @@ private struct QAResetCreditsStates: View {
     ) -> CodexResetCreditsCardState {
         CodexResetCreditsCardState.resolve(
             snapshot: snapshot,
-            latestPassProducedData: true,
+            // Without the grant the Codex collector cannot read the sign-in
+            // and declines to run; with it, the pass produced data.
+            latestOutcome: sandboxedWithoutGrant ? .notReady(.unknown) : .producedData,
             isSandboxed: sandboxedWithoutGrant,
             hasCodexFolderAccess: { !sandboxedWithoutGrant },
             isDemoMode: demo,

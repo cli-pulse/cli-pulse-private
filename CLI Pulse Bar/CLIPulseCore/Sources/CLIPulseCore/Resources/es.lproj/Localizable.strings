@@ -1826,13 +1826,13 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "usage_pace.eta_minutes" = "%d min";
 
 /* ── codex-reset-credits (v1.57) ── */
-"reset_credits.title" = "Reinicios de límite";
+"reset_credits.title" = "Créditos de reinicio";
 "reset_credits.available_one" = "1 disponible";
 "reset_credits.available" = "%d disponibles";
 "reset_credits.no_expiry" = "Sin caducidad";
 "reset_credits.expires_in" = "Caduca en %@";
-"reset_credits.expires_now" = "Caduca ya";
-"reset_credits.left_now" = "ya";
+"reset_credits.expires_now" = "Caduca ahora";
+"reset_credits.left_now" = "ahora";
 "reset_credits.left_days_hours" = "%1$d d %2$d h";
 "reset_credits.left_days_minutes" = "%1$d d %2$d min";
 "reset_credits.left_days" = "%d d";
@@ -1841,7 +1841,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "reset_credits.left_minutes" = "%d min";
 "reset_credits.read_only_note" = "Créditos que reinician tu límite de uso de Codex, de la cuenta de ChatGPT con la que Codex tiene la sesión iniciada en este Mac. CLI Pulse solo los muestra y nunca usa ninguno.";
 "reset_credits.allow_codex_folder" = "Permitir acceso a ~/.codex";
-"reset_credits.allow_codex_folder_help" = "Para leerlos, CLI Pulse necesita acceso a la carpeta de Codex CLI (~/.codex), donde Codex guarda tu inicio de sesión.";
+"reset_credits.allow_codex_folder_help" = "Si la cuenta de ChatGPT con la que Codex tiene la sesión iniciada tiene créditos de reinicio, CLI Pulse puede mostrarlos cuando tenga acceso a la carpeta de Codex CLI (~/.codex), donde Codex guarda tus datos de inicio de sesión.";
 
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ tokens · %3$@";
 "intents.less_than_amount" = "menos de %@";

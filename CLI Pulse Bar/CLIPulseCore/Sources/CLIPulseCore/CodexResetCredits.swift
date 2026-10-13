@@ -85,6 +85,11 @@ public struct CodexRateLimitResetCreditsSnapshot: Equatable, Sendable {
         CodexRateLimitResetCreditInventory(credits: credits, at: date)
     }
 
+    /// The same credits and count, whenever each was read.
+    public func hasTheSameCredits(as other: CodexRateLimitResetCreditsSnapshot) -> Bool {
+        credits == other.credits && availableCount == other.availableCount
+    }
+
     // MARK: - Decoding
 
     public enum DecodingFailure: Error, Equatable {
@@ -307,6 +312,9 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
         public let expiryText: String
         /// "6d 4h", or "No expiry".
         public let compactExpiryText: String
+        /// "Expires in 6 days, 4 hours", or "No expiry": what VoiceOver reads,
+        /// which would read the compact countdown as "6 d 4 h".
+        public let spokenExpiryText: String
     }
 
     /// Countdowns shown before the rest collapse into "+N".
@@ -340,7 +348,7 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
     }
 
     public var accessibilityLabel: String {
-        ([L10n.resetCredits.title, text] + items.map(\.expiryText)).joined(separator: ", ")
+        ([L10n.resetCredits.title, text] + items.map(\.spokenExpiryText)).joined(separator: ", ")
     }
 
     /// nil when nothing can be used at `now`: an empty inventory draws no row.
@@ -360,24 +368,52 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
 
     private static func item(expiresAt: Date?, now: Date) -> Item {
         guard let expiresAt else {
-            return Item(expiryText: L10n.resetCredits.noExpiry, compactExpiryText: L10n.resetCredits.noExpiry)
+            let text = L10n.resetCredits.noExpiry
+            return Item(expiryText: text, compactExpiryText: text, spokenExpiryText: text)
         }
-        guard expiresAt.timeIntervalSince(now) >= 1 else {
-            return Item(expiryText: L10n.resetCredits.expiresNow, compactExpiryText: L10n.resetCredits.leftNow)
+        guard let minutes = countdownMinutes(until: expiresAt, now: now) else {
+            return Item(
+                expiryText: L10n.resetCredits.expiresNow,
+                compactExpiryText: L10n.resetCredits.leftNow,
+                spokenExpiryText: L10n.resetCredits.expiresNow
+            )
         }
         let countdown = countdownText(until: expiresAt, now: now)
-        return Item(expiryText: L10n.resetCredits.expiresIn(countdown), compactExpiryText: countdown)
+        return Item(
+            expiryText: L10n.resetCredits.expiresIn(countdown),
+            compactExpiryText: countdown,
+            spokenExpiryText: L10n.resetCredits.expiresIn(spokenCountdownText(minutes: minutes) ?? countdown)
+        )
+    }
+
+    /// Whole minutes left, rounded up; nil under a second.
+    private static func countdownMinutes(until date: Date, now: Date) -> Int? {
+        let seconds = date.timeIntervalSince(now)
+        guard seconds >= 1, let rounded = Int(exactly: ceil(seconds / 60)) else { return nil }
+        return max(1, rounded)
+    }
+
+    /// The countdown in words, in the app's language ("6 days, 4 hours",
+    /// "6天4小时"), with the same two units as the compact one. Gregorian on
+    /// purpose: days and hours, whatever calendar the Mac uses.
+    static func spokenCountdownText(minutes: Int) -> String? {
+        let formatter = DateComponentsFormatter()
+        formatter.unitsStyle = .full
+        formatter.allowedUnits = [.day, .hour, .minute]
+        formatter.maximumUnitCount = 2
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = LocaleOverrideStore.resolvedLocalization.map { Locale(identifier: $0) } ?? .current
+        formatter.calendar = calendar
+        return formatter.string(from: TimeInterval(minutes) * 60)
     }
 
     /// Upstream's countdown: whole minutes rounded up, then days and hours,
     /// days and minutes when the hours are 0, and so down to minutes; "now"
     /// under a second.
     static func countdownText(until date: Date, now: Date) -> String {
-        let seconds = date.timeIntervalSince(now)
-        guard seconds >= 1, let rounded = Int(exactly: ceil(seconds / 60)) else {
+        guard let totalMinutes = countdownMinutes(until: date, now: now) else {
             return L10n.resetCredits.leftNow
         }
-        let totalMinutes = max(1, rounded)
         let days = totalMinutes / (24 * 60)
         let hours = (totalMinutes / 60) % 24
         let minutes = totalMinutes % 60
@@ -402,7 +438,9 @@ public struct CodexResetCreditsPresentation: Equatable, Sendable {
 /// - `.needsCodexFolderAccess`: the App Store build cannot read the Codex
 ///   sign-in (`~/.codex`) without a folder grant, and has none, so it cannot
 ///   ask OpenAI. Only the Codex CLI grant matters: the session-log grants feed
-///   the cost figures, not this.
+///   the cost figures, not this. Only when this Mac's Codex collector declined
+///   to run: a pass that produced data read the sign-in somehow (a credential
+///   bridged into the app group), so the folder is not what is missing.
 /// - `.hidden`: everything else, on purpose. No credits (most accounts), a
 ///   failed or timed-out read, a pass that did not produce data, the remote
 ///   switch off, a Codex sign-in that is not a ChatGPT one: each says nothing
@@ -414,13 +452,14 @@ public enum CodexResetCreditsCardState: Equatable, Sendable {
     case needsCodexFolderAccess
 
     /// `snapshot` is the latest pass's reading for this card's accounts.
-    /// `latestPassProducedData`: the Codex collector's outcome on the latest
-    /// pass; a reading outlives a later pass that failed or never ran (signed
-    /// out of Codex, provider switched off), and must not be shown then.
-    /// `hasCodexFolderAccess` is only asked in a sandboxed build.
+    /// `latestOutcome`: the Codex collector's outcome on this Mac's latest
+    /// pass. A reading outlives a later pass that failed or never ran (signed
+    /// out of Codex, provider switched off), and is shown only after a pass
+    /// that produced data. `hasCodexFolderAccess` is asked only in a sandboxed
+    /// build whose Codex collector declined to run, never on the common path.
     public static func resolve(
         snapshot: CodexRateLimitResetCreditsSnapshot?,
-        latestPassProducedData: Bool,
+        latestOutcome: CollectorOutcome?,
         isSandboxed: Bool,
         hasCodexFolderAccess: () -> Bool,
         isDemoMode: Bool,
@@ -430,15 +469,30 @@ public enum CodexResetCreditsCardState: Equatable, Sendable {
             return CodexResetCreditsPresentation.make(snapshot: CodexResetCreditsDemo.snapshot(now: now), now: now)
                 .map(CodexResetCreditsCardState.inventory) ?? .hidden
         }
-        if latestPassProducedData,
-           let snapshot,
-           let presentation = CodexResetCreditsPresentation.make(snapshot: snapshot, now: now) {
-            return .inventory(presentation)
+        if latestOutcome == .producedData {
+            // The sign-in was read, and the credits with it: there are none to
+            // show, or the read failed. Either way, not a folder to grant.
+            return snapshot
+                .flatMap { CodexResetCreditsPresentation.make(snapshot: $0, now: now) }
+                .map(CodexResetCreditsCardState.inventory) ?? .hidden
         }
-        if isSandboxed, !hasCodexFolderAccess() {
+        if isSandboxed, latestOutcome?.declinedForWantOfAccess == true, !hasCodexFolderAccess() {
             return .needsCodexFolderAccess
         }
         return .hidden
+    }
+}
+
+private extension CollectorOutcome {
+    /// The collector did not get as far as a request: it declined to run, or
+    /// the sandbox refused it a file. Not "switched off", which the card's
+    /// badge already says, and not a request that failed, which a folder grant
+    /// would not fix.
+    var declinedForWantOfAccess: Bool {
+        switch self {
+        case .notReady, .failed(.permission): return true
+        default: return false
+        }
     }
 }
 

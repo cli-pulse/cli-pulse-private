@@ -23,6 +23,14 @@ import Foundation
 ///   `remote_control_enabled`, whose absence means off because that feature
 ///   acts on the Mac and ships dark (`RemoteControlFeature`).
 ///
+/// **It is not an instant stop.** The key is read only when the updater
+/// fetches the manifest: when the popover gains focus, at most once every 24 h
+/// (`AppUpdaterDiscovery.refreshIfStale`), or from Settings. Until then the
+/// main app's passes keep reading; from the next pass after it, they send
+/// nothing and the card's row goes. A Mac whose popover is never opened may
+/// not see a `false` for a long time. If OpenAI asks CLI Pulse to stop calling
+/// the endpoint, ship a release without the read as well.
+///
 /// **A `false` sticks.** It is kept until a manifest that passed the updater's
 /// checks no longer says false, and never decays with age: off is the safe
 /// direction here, so a Mac that cannot reach the manifest keeps the last

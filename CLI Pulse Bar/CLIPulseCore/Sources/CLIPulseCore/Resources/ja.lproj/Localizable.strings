@@ -1856,11 +1856,11 @@
 "usage_pace.eta_minutes" = "%d 分";
 
 /* ── codex-reset-credits (v1.57) ── */
-"reset_credits.title" = "上限リセット";
-"reset_credits.available_one" = "1 回利用可能";
-"reset_credits.available" = "%d 回利用可能";
+"reset_credits.title" = "上限リセット券";
+"reset_credits.available_one" = "1 枚利用可能";
+"reset_credits.available" = "%d 枚利用可能";
 "reset_credits.no_expiry" = "有効期限なし";
-"reset_credits.expires_in" = "%@後に期限切れ";
+"reset_credits.expires_in" = "あと %@で期限切れ";
 "reset_credits.expires_now" = "まもなく期限切れ";
 "reset_credits.left_now" = "まもなく";
 "reset_credits.left_days_hours" = "%1$d 日 %2$d 時間";
@@ -1869,9 +1869,9 @@
 "reset_credits.left_hours_minutes" = "%1$d 時間 %2$d 分";
 "reset_credits.left_hours" = "%d 時間";
 "reset_credits.left_minutes" = "%d 分";
-"reset_credits.read_only_note" = "Codex の使用量の上限をリセットできるクレジットです（この Mac で Codex にサインインしている ChatGPT アカウントのもの）。CLI Pulse は表示するだけで、使うことはありません。";
+"reset_credits.read_only_note" = "Codex の使用量の上限をリセットできる券です（この Mac で Codex にサインインしている ChatGPT アカウントのもの）。CLI Pulse は表示するだけで、使うことはありません。";
 "reset_credits.allow_codex_folder" = "~/.codex へのアクセスを許可";
-"reset_credits.allow_codex_folder_help" = "これを読み取るには、Codex のサインイン情報がある Codex CLI フォルダ（~/.codex）へのアクセスを CLI Pulse に許可してください。";
+"reset_credits.allow_codex_folder_help" = "Codex にサインインしている ChatGPT アカウントに上限リセット券があれば、Codex のサインイン情報がある Codex CLI フォルダ（~/.codex）へのアクセスを許可すると CLI Pulse に表示されます。";
 
 "usage_dashboard.day_tooltip" = "%1$@: %2$@ トークン · %3$@";
 "intents.less_than_amount" = "%@ 未満";

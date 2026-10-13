@@ -1843,22 +1843,22 @@
 "usage_pace.eta_minutes" = "%d 分鐘";
 
 /* ── codex-reset-credits (v1.57) ── */
-"reset_credits.title" = "限額重置";
-"reset_credits.available_one" = "可用 1 次";
-"reset_credits.available" = "可用 %d 次";
+"reset_credits.title" = "限額重置券";
+"reset_credits.available_one" = "可用 1 張";
+"reset_credits.available" = "可用 %d 張";
 "reset_credits.no_expiry" = "永不過期";
-"reset_credits.expires_in" = "%@後到期";
-"reset_credits.expires_now" = "即將到期";
-"reset_credits.left_now" = "即將";
+"reset_credits.expires_in" = "%@後過期";
+"reset_credits.expires_now" = "即將過期";
+"reset_credits.left_now" = "即將過期";
 "reset_credits.left_days_hours" = "%1$d 天 %2$d 小時";
 "reset_credits.left_days_minutes" = "%1$d 天 %2$d 分鐘";
 "reset_credits.left_days" = "%d 天";
 "reset_credits.left_hours_minutes" = "%1$d 小時 %2$d 分鐘";
 "reset_credits.left_hours" = "%d 小時";
 "reset_credits.left_minutes" = "%d 分鐘";
-"reset_credits.read_only_note" = "用於重置 Codex 用量限額，屬於這台 Mac 上 Codex 所登入的 ChatGPT 帳號。CLI Pulse 只會顯示，從不使用。";
+"reset_credits.read_only_note" = "可重置 Codex 用量限額的重置券，屬於這台 Mac 上 Codex 所登入的 ChatGPT 帳號。CLI Pulse 只會顯示，從不使用。";
 "reset_credits.allow_codex_folder" = "授權存取 ~/.codex";
-"reset_credits.allow_codex_folder_help" = "CLI Pulse 需要存取 Codex CLI 資料夾（~/.codex）才能讀取這些資訊，Codex 的登入資訊儲存在其中。";
+"reset_credits.allow_codex_folder_help" = "如果 Codex 所登入的 ChatGPT 帳號有限額重置券，CLI Pulse 取得 Codex CLI 資料夾（~/.codex，Codex 的登入資訊儲存在其中）的存取權限後即可顯示。";
 
 "usage_dashboard.day_tooltip" = "%1$@：%2$@ token · %3$@";
 "intents.less_than_amount" = "不到 %@";

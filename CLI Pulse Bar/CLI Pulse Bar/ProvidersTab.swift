@@ -468,6 +468,42 @@ struct ProviderAccountQuotaSummaryView: View {
 
 // MARK: - Enhanced Provider Card
 
+/// v1.57 P1-3: the Codex card's limit-reset-credits line, read on this Mac's
+/// latest pass with the same credential as the quota
+/// (`CodexResetCreditsCardState`). The only view that observes the reading,
+/// so a new one redraws this line, not every provider card.
+private struct CodexResetCreditsCardRow: View {
+    /// The card's CLI Pulse accounts; the first with a reading is shown.
+    let accountIDs: [UUID]
+
+    @EnvironmentObject private var state: AppState
+    @ObservedObject private var store = CodexResetCreditsStore.shared
+
+    var body: some View {
+        let rowState = CodexResetCreditsCardState.resolve(
+            snapshot: store.snapshot(forAnyOf: accountIDs),
+            latestOutcome: state.collectorOutcomes[.codex],
+            isSandboxed: MASSandboxGate.isSandboxed,
+            hasCodexFolderAccess: { CodexResetCreditsFolder.hasAccess },
+            isDemoMode: state.isDemoMode,
+            now: Date()
+        )
+        // Nothing at all when hidden, not even the spacing, so the card of an
+        // account without credits (most of them) does not grow.
+        if rowState != .hidden {
+            // A little apart from the tier bars, so it does not read as a
+            // third tier.
+            CodexResetCreditsRow(state: rowState, onAllowCodexFolder: allowCodexFolder)
+                .padding(.top, 2)
+        }
+    }
+
+    private func allowCodexFolder() {
+        guard CodexResetCreditsFolder.requestAccess() else { return }
+        Task { await state.refreshAll() }
+    }
+}
+
 struct EnhancedProviderCard: View {
     let detail: ProviderDetail
     let showCost: Bool
@@ -477,7 +513,6 @@ struct EnhancedProviderCard: View {
 
     @EnvironmentObject var state: AppState
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
-    @ObservedObject private var resetCredits = CodexResetCreditsStore.shared
 
     private var provider: ProviderUsage { detail.provider }
     private var config: ProviderConfig { detail.config }
@@ -812,9 +847,8 @@ struct EnhancedProviderCard: View {
                             }
                         }
                         if config.kind == .codex {
-                            CodexResetCreditsRow(
-                                state: codexResetCreditsState,
-                                onAllowCodexFolder: allowCodexFolder
+                            CodexResetCreditsCardRow(
+                                accountIDs: accountConfigs.map(\.accountID) + [config.accountID]
                             )
                         }
                     }
@@ -996,26 +1030,6 @@ struct EnhancedProviderCard: View {
             BarMarker(position: QuotaBarMarkers.place($0, onRemainingBar: true), kind: .threshold)
         }
         return markers
-    }
-
-    /// v1.57 P1-3: Codex's limit reset credits, read on this Mac's latest pass
-    /// with the same credential as the quota (`CodexResetCreditsCardState`).
-    private var codexResetCreditsState: CodexResetCreditsCardState {
-        CodexResetCreditsCardState.resolve(
-            snapshot: resetCredits.snapshot(
-                forAnyOf: accountConfigs.map(\.accountID) + [config.accountID]
-            ),
-            latestPassProducedData: state.collectorOutcomes[.codex] == .producedData,
-            isSandboxed: MASSandboxGate.isSandboxed,
-            hasCodexFolderAccess: { CodexResetCreditsFolder.hasAccess },
-            isDemoMode: state.isDemoMode,
-            now: Date()
-        )
-    }
-
-    private func allowCodexFolder() {
-        guard CodexResetCreditsFolder.requestAccess() else { return }
-        Task { await state.refreshAll() }
     }
 
     private func tierColor(_ tier: UsageTier) -> Color {

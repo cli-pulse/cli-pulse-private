@@ -5,8 +5,9 @@
 // (https://github.com/steipete/CodexBar).
 //
 // Not verbatim: one line instead of two, to keep the card's growth to one row;
-// the tier rows' type sizes; countdowns folded into "+N" to fit the width; and
-// the App Store build's folder-access state, which upstream does not have.
+// the tier rows' type sizes; an hourglass instead of upstream's clock;
+// countdowns folded into "+N" to fit the width; and the App Store build's
+// folder-access state, which upstream does not have.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
@@ -40,7 +41,7 @@ import SwiftUI
 /// The Codex card's limit-reset-credits line (v1.57), one line high in every
 /// state that draws anything, so the card grows by one row at most:
 ///
-///     Limit reset credits          2 available  🕒 6d 4h · 21d 9h
+///     Limit reset credits          2 available  ⌛ 6d 4h · 21d 9h
 ///     Limit reset credits                  Allow access to ~/.codex
 ///
 /// The tier rows' type sizes (`UsageBar`, `BalanceRow`): the title at 11 pt,
@@ -100,11 +101,13 @@ public struct CodexResetCreditsRow: View {
         .accessibilityLabel(presentation.accessibilityLabel)
     }
 
+    /// An hourglass, not a clock: these are expiries, and a clock is the
+    /// "Resets in" language of the tier rows right above.
     private func countdowns(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
-            Image(systemName: "clock")
-                .font(.system(size: 8))
-                .foregroundStyle(.tertiary)
+            Image(systemName: "hourglass")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
             Text(text)
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
