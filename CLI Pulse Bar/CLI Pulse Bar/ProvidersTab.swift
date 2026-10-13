@@ -477,6 +477,7 @@ struct EnhancedProviderCard: View {
 
     @EnvironmentObject var state: AppState
     @AppStorage(PersonalInfoMask.defaultsKey) private var hidePersonalInfo = false
+    @ObservedObject private var resetCredits = CodexResetCreditsStore.shared
 
     private var provider: ProviderUsage { detail.provider }
     private var config: ProviderConfig { detail.config }
@@ -810,6 +811,12 @@ struct EnhancedProviderCard: View {
                                 )
                             }
                         }
+                        if config.kind == .codex {
+                            CodexResetCreditsRow(
+                                state: codexResetCreditsState,
+                                onAllowCodexFolder: allowCodexFolder
+                            )
+                        }
                     }
                 } else if let quota = provider.quota,
                           quota > 0,
@@ -989,6 +996,26 @@ struct EnhancedProviderCard: View {
             BarMarker(position: QuotaBarMarkers.place($0, onRemainingBar: true), kind: .threshold)
         }
         return markers
+    }
+
+    /// v1.57 P1-3: Codex's limit reset credits, read on this Mac's latest pass
+    /// with the same credential as the quota (`CodexResetCreditsCardState`).
+    private var codexResetCreditsState: CodexResetCreditsCardState {
+        CodexResetCreditsCardState.resolve(
+            snapshot: resetCredits.snapshot(
+                forAnyOf: accountConfigs.map(\.accountID) + [config.accountID]
+            ),
+            latestPassProducedData: state.collectorOutcomes[.codex] == .producedData,
+            isSandboxed: MASSandboxGate.isSandboxed,
+            hasCodexFolderAccess: { CodexResetCreditsFolder.hasAccess },
+            isDemoMode: state.isDemoMode,
+            now: Date()
+        )
+    }
+
+    private func allowCodexFolder() {
+        guard CodexResetCreditsFolder.requestAccess() else { return }
+        Task { await state.refreshAll() }
     }
 
     private func tierColor(_ tier: UsageTier) -> Color {

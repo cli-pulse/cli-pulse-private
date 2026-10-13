@@ -159,6 +159,15 @@ internal final class DataRefreshManager {
                 _ authorizationLease: APIAuthorizationLease?
             ) -> Void
 
+        /// The collector the main app runs for `config`: the registry's, except
+        /// Codex, whose main-app collector also reads the account's limit reset
+        /// credits for the card (`CodexCollector.mainApp`). The helper login
+        /// item resolves through the registry and never reads them.
+        static func mainAppCollector(for config: ProviderConfig) -> (any ProviderCollector)? {
+            if config.kind == .codex { return CodexCollector.mainApp }
+            return CollectorRegistry.collectors.first { $0.kind == config.kind }
+        }
+
         static func live(api: APIClient) -> LocalRefreshRuntime {
             LocalRefreshRuntime(
                 prepareCredentials: {
@@ -167,11 +176,7 @@ internal final class DataRefreshManager {
                 collectAccountPass: { configs in
                     await DataRefreshManager.runCollectorPass(
                         providerConfigs: configs,
-                        collectorResolver: { config in
-                            CollectorRegistry.collectors.first {
-                                $0.kind == config.kind
-                            }
-                        }
+                        collectorResolver: mainAppCollector(for:)
                     )
                 },
                 readHelperSnapshot: { configs in
