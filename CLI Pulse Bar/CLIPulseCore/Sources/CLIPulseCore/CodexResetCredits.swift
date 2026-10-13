@@ -20,6 +20,9 @@
 //   countdowns only: CLI Pulse has no "absolute reset time" display setting.
 // - The countdown rule is upstream's, with its English "in " prefix left out of
 //   the compact form instead of stripped from it afterwards.
+// - `expirySummaryText(showing:)`, which folds countdowns into "+N" when four
+//   do not fit the card's width, and the card states
+//   (`CodexResetCreditsCardState`, `CodexResetCreditsDemo`) are CLI Pulse's.
 //
 // ─── MIT License (full notice required by upstream) ───────────────
 //
