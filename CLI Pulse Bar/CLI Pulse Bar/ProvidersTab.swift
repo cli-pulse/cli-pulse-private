@@ -723,6 +723,26 @@ struct EnhancedProviderCard: View {
                 }
                 Spacer()
 
+                // v1.57 (P1-2): this provider's last 30 days by day and
+                // model, in the panel that slides out of the popover. Only
+                // where there is usage to show; adds no height to the card.
+                if UsagePanelModel.hasHistory(provider: provider.provider,
+                                              scan: state.costUsageScanResult,
+                                              cloud: state.dailyUsage) {
+                    Button {
+                        DashboardPanelController.shared.toggle(provider: provider.provider, state: state)
+                    } label: {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 20, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.providerPanel.open)
+                    .accessibilityLabel(L10n.providerPanel.open)
+                }
+
                 if accountConfigs.count == 1,
                    let accountID = accountConfigs.first?.accountID {
                     Toggle(

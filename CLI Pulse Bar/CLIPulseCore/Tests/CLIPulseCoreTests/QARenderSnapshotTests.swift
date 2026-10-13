@@ -541,6 +541,37 @@ final class QARenderSnapshotTests: XCTestCase {
         for kind in QARenderSnapshot.providerEditorKinds {
             XCTAssertTrue(catalog.contains(.providerEditor(kind)))
         }
+        // v1.57: the usage panel's provider mode, in both metrics, and the
+        // iPhone card's history section.
+        for kind in [ProviderKind.codex, .claude] {
+            XCTAssertTrue(catalog.contains(.providerUsagePanel(kind)), "\(kind) provider panel is not rendered")
+        }
+        XCTAssertEqual(Set(QARenderSnapshot.providerPanelKinds.map(QARenderSnapshot.providerPanelMetric)),
+                       Set(UsageChartMetric.allCases), "the review set shows the chart in tokens and in cost")
+        XCTAssertTrue(catalog.contains(.providerUsageCardHistory))
+        XCTAssertEqual(QARenderSurface.providerUsagePanel(.codex).id, "panel-provider-usage-codex")
+        XCTAssertEqual(QARenderSurface.providerUsagePanel(.codex).kind, .panel)
+    }
+
+    /// The provider-panel renders draw from sample rows that are the same on
+    /// every run and show what the panel marks: a borrowed rate, a model with
+    /// no rate, idle days. No Demo surface reads them.
+    func testTheProviderPanelSampleIsDeterministicAndShowsTheMarks() {
+        let today = DayKey.date(from: "2026-10-07", hour: 12) ?? Date()
+        let utc = TimeZone(identifier: "UTC")!
+        let codex = QARenderSnapshot.providerPanelSample(.codex, today: today, timeZone: utc)
+        let again = QARenderSnapshot.providerPanelSample(.codex, today: today, timeZone: utc)
+        XCTAssertEqual(codex.map(\.date), again.map(\.date))
+        XCTAssertEqual(codex.map(\.inputTokens), again.map(\.inputTokens))
+        XCTAssertTrue(codex.allSatisfy { $0.provider == "Codex" && $0.cachedTokens <= $0.inputTokens })
+        XCTAssertTrue(codex.contains { $0.priceIsApproximate })
+
+        let claude = QARenderSnapshot.providerPanelSample(.claude, today: today, timeZone: utc)
+        XCTAssertTrue(claude.contains { $0.costUSD == nil }, "a model with no rate, for the coverage line")
+        let days = ProviderUsageDays.fromScan(claude, provider: "Claude", todayKey: "2026-10-07", timeZone: utc)
+        XCTAssertTrue(days.coverage.shouldDisclose)
+        XCTAssertGreaterThan(days.days.filter(\.hasUsage).count, 15)
+        XCTAssertLessThan(days.days.filter(\.hasUsage).count, 30, "some idle days")
     }
 
     func testSignedOutSurfacesComeBeforeDemoMode() {

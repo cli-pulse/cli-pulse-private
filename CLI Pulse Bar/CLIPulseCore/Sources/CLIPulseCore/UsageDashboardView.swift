@@ -23,7 +23,7 @@ import Charts
 /// light mode — so the backdrop, the `.glassCard()` tint (which reads the same
 /// colorScheme), and the system title bar all agree (no light-mode seam). No
 /// macOS 26 APIs.
-private struct HUDWindowBackground: NSViewRepresentable {
+struct HUDWindowBackground: NSViewRepresentable {
     var isDark: Bool
 
     func makeNSView(context: Context) -> NSVisualEffectView {
@@ -107,6 +107,9 @@ struct DashboardBreakdown: View {
     let title: String
     let rows: [DailyUsageStats.Breakdown]
     let useProviderColor: Bool
+    /// v1.57: the By Provider rows in the slide-out panel open that
+    /// provider's usage history. nil leaves every row inert.
+    var onSelect: ((String) -> Void)? = nil
 
     private var grandTotal: Int { max(1, rows.reduce(0) { $0 + $1.tokens }) }
     private var maxTokens: Int { max(1, rows.map(\.tokens).max() ?? 1) }
@@ -120,29 +123,36 @@ struct DashboardBreakdown: View {
                 Text("—").foregroundStyle(.tertiary).font(.caption)
             } else {
                 ForEach(Array(rows.prefix(5).enumerated()), id: \.offset) { _, row in
-                    HStack(spacing: 8) {
-                        Text(row.key)
-                            .font(.system(size: 11))
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .frame(width: 110, alignment: .leading)
-                        GeometryReader { geo in
-                            let frac = min(1.0, Double(row.tokens) / Double(maxTokens))
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Color.white.opacity(0.06)).frame(height: 4)
-                                Capsule().fill(barColor(row.key))
-                                    .frame(width: max(2, geo.size.width * frac), height: 4)
+                    selectable(row.key) {
+                        HStack(spacing: 8) {
+                            Text(row.key)
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                                .frame(width: 110, alignment: .leading)
+                            GeometryReader { geo in
+                                let frac = min(1.0, Double(row.tokens) / Double(maxTokens))
+                                ZStack(alignment: .leading) {
+                                    Capsule().fill(Color.white.opacity(0.06)).frame(height: 4)
+                                    Capsule().fill(barColor(row.key))
+                                        .frame(width: max(2, geo.size.width * frac), height: 4)
+                                }
+                            }
+                            .frame(height: 4)
+                            Text(CostFormatter.formatUsage(row.tokens))
+                                .font(.system(size: 10)).monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .frame(width: 52, alignment: .trailing)
+                            Text("\(Int((Double(row.tokens) / Double(grandTotal) * 100).rounded()))%")
+                                .font(.system(size: 10)).monospacedDigit()
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 34, alignment: .trailing)
+                            if onSelect != nil {
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.tertiary)
                             }
                         }
-                        .frame(height: 4)
-                        Text(CostFormatter.formatUsage(row.tokens))
-                            .font(.system(size: 10)).monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .frame(width: 52, alignment: .trailing)
-                        Text("\(Int((Double(row.tokens) / Double(grandTotal) * 100).rounded()))%")
-                            .font(.system(size: 10)).monospacedDigit()
-                            .foregroundStyle(.tertiary)
-                            .frame(width: 34, alignment: .trailing)
                     }
                 }
             }
@@ -152,6 +162,17 @@ struct DashboardBreakdown: View {
     private func barColor(_ key: String) -> Color {
         useProviderColor ? PulseTheme.providerColor(key) : PulseTheme.accent
     }
+
+    @ViewBuilder
+    private func selectable<Row: View>(_ key: String, @ViewBuilder row: () -> Row) -> some View {
+        if let onSelect {
+            Button { onSelect(key) } label: { row().contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .help(L10n.providerPanel.open)
+        } else {
+            row()
+        }
+    }
 }
 
 // MARK: - Trends (stacked daily tokens)
@@ -159,6 +180,17 @@ struct DashboardBreakdown: View {
 struct DashboardTrends: View {
     let archive: DailyUsageArchive
     @State private var rangeDays: Int = 30   // -1 ⇒ all
+    /// v1.57: tokens or cost, the choice the provider mode keeps too.
+    @AppStorage(UsageChartMetric.defaultsKey) private var metricRaw = UsageChartMetric.tokens.rawValue
+    @AppStorage("cli_pulse_show_cost") private var showCost = true
+
+    private var metric: UsageChartMetric {
+        showCost ? UsageChartMetric.stored(metricRaw) : .tokens
+    }
+
+    private var metricBinding: Binding<UsageChartMetric> {
+        Binding(get: { metric }, set: { metricRaw = $0.rawValue })
+    }
 
     private let ranges: [(label: String, days: Int)] = [
         (L10n.usageDashboard.range7d, 7), (L10n.usageDashboard.range30d, 30), (L10n.usageDashboard.range90d, 90), (L10n.usageDashboard.range1y, 365),
@@ -166,23 +198,44 @@ struct DashboardTrends: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(L10n.usageDashboard.trends)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                // Titled with the heading beside it so VoiceOver names the
-                // control; `.labelsHidden()` keeps the title off screen.
-                Picker(L10n.usageDashboard.trends, selection: $rangeDays) {
-                    ForEach(ranges, id: \.days) { Text($0.label).tag($0.days) }
-                    Text(L10n.usageDashboard.all).tag(-1)
+            // One row when both pickers fit beside the heading, otherwise
+            // the Token / Cost picker drops to a row of its own.
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    heading
+                    Spacer()
+                    if showCost { UsageMetricPicker(metric: metricBinding) }
+                    rangePicker
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .fixedSize()
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        heading
+                        Spacer()
+                        rangePicker
+                    }
+                    if showCost { UsageMetricPicker(metric: metricBinding) }
+                }
             }
             chart
         }
+    }
+
+    private var heading: some View {
+        Text(L10n.usageDashboard.trends)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    private var rangePicker: some View {
+        // Titled with the heading beside it so VoiceOver names the
+        // control; `.labelsHidden()` keeps the title off screen.
+        Picker(L10n.usageDashboard.trends, selection: $rangeDays) {
+            ForEach(ranges, id: \.days) { Text($0.label).tag($0.days) }
+            Text(L10n.usageDashboard.all).tag(-1)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
     }
 
     @ViewBuilder
@@ -200,8 +253,11 @@ struct DashboardTrends: View {
             // changed from launch to launch (Codex blue in one run, green in the
             // next) and never matched the rest of the app.
             let providers = Self.providers(in: points)
+            // The axis runs to the tallest day's stack, not its tallest slice.
+            let top = Dictionary(grouping: points, by: \.day)
+                .values.map { $0.reduce(0) { $0 + $1.value } }.max() ?? 0
             Chart(points) { p in
-                BarMark(x: .value(L10n.usageDashboard.chartDay, p.day), y: .value(L10n.usageDashboard.chartTokens, p.tokens))
+                BarMark(x: .value(L10n.usageDashboard.chartDay, p.day), y: .value(metric.label, p.value))
                     .foregroundStyle(by: .value(L10n.usageDashboard.chartProvider, p.provider))
             }
             .chartForegroundStyleScale(domain: providers, range: providers.map { PulseTheme.providerColor($0) })
@@ -209,9 +265,9 @@ struct DashboardTrends: View {
             .chartYAxis {
                 AxisMarks(position: .leading, values: .automatic(desiredCount: 3)) { value in
                     AxisGridLine()
-                    if let tokens = value.as(Double.self) {
+                    if let number = value.as(Double.self) {
                         AxisValueLabel {
-                            Text(CostFormatter.formatUsage(Int(tokens)))
+                            Text(axisText(number, top: top))
                                 .font(.system(size: 9)).foregroundStyle(.secondary)
                         }
                     }
@@ -225,10 +281,15 @@ struct DashboardTrends: View {
         #endif
     }
 
+    private func axisText(_ value: Double, top: Double) -> String {
+        metric.axisText(value, top: top)
+    }
+
     private struct TrendPoint: Identifiable {
         let day: String
         let provider: String
-        let tokens: Int
+        /// Tokens or cost, as `metric` says.
+        let value: Double
         // Deterministic id (one bar per day×provider) so Charts diffs stably
         // across re-renders instead of treating every bar as removed+inserted.
         var id: String { "\(day)|\(provider)" }
@@ -246,8 +307,10 @@ struct DashboardTrends: View {
         var points: [TrendPoint] = []
         for dayKey in window {
             guard let day = archive.days[dayKey] else { continue }
-            for (provider, slice) in day.perProvider.sorted(by: { $0.key < $1.key }) where slice.tokens > 0 {
-                points.append(TrendPoint(day: dayKey, provider: provider, tokens: slice.tokens))
+            for (provider, slice) in day.perProvider.sorted(by: { $0.key < $1.key }) {
+                let value = metric == .cost ? max(0, slice.cost) : Double(max(0, slice.tokens))
+                guard value > 0 else { continue }
+                points.append(TrendPoint(day: dayKey, provider: provider, value: value))
             }
         }
         return points
@@ -281,16 +344,27 @@ public struct UsageDashboardView: View {
     /// Whether the archive shown is this Mac's own, the one the note tracks.
     /// A sample archive (QA renders, previews) is not.
     private let showsCodexHistoryLine: Bool
+    /// v1.57: set by the slide-out panel, whose By Provider rows open that
+    /// provider's usage history. nil in the standalone window.
+    private let onSelectProvider: ((String) -> Void)?
 
     /// Live window (loads the archive snapshot on appear).
     public init(scrollable: Bool = true) {
         self.providedArchive = nil; self.scrollable = scrollable; self.showsCodexHistoryLine = true
+        self.onSelectProvider = nil
     }
     /// An explicit archive: the slide-out panel's snapshot of this Mac's own
     /// (`showsCodexHistoryLine: true`), or a sample for previews and QA.
-    public init(archive: DailyUsageArchive, scrollable: Bool = true, showsCodexHistoryLine: Bool = false) {
+    ///
+    /// v1.57 (D11): the panel's archive is live (`UsagePanelModel`) and
+    /// arrives here again whenever it is written; the headline follows it.
+    public init(
+        archive: DailyUsageArchive, scrollable: Bool = true, showsCodexHistoryLine: Bool = false,
+        onSelectProvider: ((String) -> Void)? = nil)
+    {
         self.providedArchive = archive; self.scrollable = scrollable
         self.showsCodexHistoryLine = showsCodexHistoryLine
+        self.onSelectProvider = onSelectProvider
     }
 
     public var body: some View {
@@ -309,6 +383,11 @@ public struct UsageDashboardView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .displayCurrencyDidChange)) { _ in
             Task { await reload() }   // re-render cost figures in the new currency
+        }
+        // A provided archive that changes (the panel's, re-read after a
+        // refresh) moves the headline as well as the cards below it.
+        .onChange(of: providedArchive) { _ in
+            Task { await reload() }
         }
     }
 
@@ -413,7 +492,8 @@ public struct UsageDashboardView: View {
             .padding(14)
             .glassCard(elevated: false)
         let byProvider = DashboardBreakdown(title: L10n.usageDashboard.byProvider,
-                                            rows: DailyUsageStats.byProvider(a), useProviderColor: true)
+                                            rows: DailyUsageStats.byProvider(a), useProviderColor: true,
+                                            onSelect: onSelectProvider)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .glassCard(elevated: false)

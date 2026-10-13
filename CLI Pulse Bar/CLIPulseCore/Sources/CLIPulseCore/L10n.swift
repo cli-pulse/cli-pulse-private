@@ -444,6 +444,65 @@ public enum L10n {
         public static var chartProvider: String { tr("usage_dashboard.chart_provider") }
     }
 
+    /// v1.57 (P1-2): the usage panel's provider mode, one provider's last 30
+    /// days by day and model (`ProviderUsageDays`), and the day detail under
+    /// the iPhone card's chart. "≥" and "≈" are symbols and stay as they are.
+    public enum providerPanel {
+        public static var title: String { tr("provider_panel.title") }
+        /// The provider card's button that opens the panel: its tooltip and
+        /// its VoiceOver name.
+        public static var open: String { tr("provider_panel.open") }
+        public static func lastDays(_ days: Int) -> String { tr("provider_panel.last_days", days) }
+        public static var metricTokens: String { tr("provider_panel.metric_tokens") }
+        public static var metricCost: String { tr("provider_panel.metric_cost") }
+        /// The Token / Cost picker's name for VoiceOver.
+        public static var metricPicker: String { tr("provider_panel.metric_picker") }
+        public static var scopeThisMac: String { tr("provider_panel.scope_this_mac") }
+        public static var scopeAllDevices: String { tr("provider_panel.scope_all_devices") }
+        /// The This Mac / All devices picker's name for VoiceOver.
+        public static var scopePicker: String { tr("provider_panel.scope_picker") }
+        public static var scopeThisMacHelp: String { tr("provider_panel.scope_this_mac_help") }
+        public static var scopeAllDevicesHelp: String { tr("provider_panel.scope_all_devices_help") }
+        /// The selected day: date, cost, tokens.
+        public static func daySummary(_ day: String, _ cost: String, _ tokens: String) -> String {
+            tr("provider_panel.day_summary", day, cost, tokens)
+        }
+        /// The selected day when costs are hidden: date, tokens.
+        public static func dayTokens(_ day: String, _ tokens: String) -> String {
+            tr("provider_panel.day_tokens", day, tokens)
+        }
+        /// The iPhone card's selected day, counted in I/O tokens like the card.
+        public static func dayIOSummary(_ day: String, _ cost: String, _ tokens: String) -> String {
+            tr("provider_panel.day_io_summary", day, cost, tokens)
+        }
+        public static func dayIOTokens(_ day: String, _ tokens: String) -> String {
+            tr("provider_panel.day_io_tokens", day, tokens)
+        }
+        public static func noUsageDay(_ day: String) -> String { tr("provider_panel.no_usage_day", day) }
+        public static func estTotal(_ days: Int) -> String { tr("provider_panel.est_total", days) }
+        /// The window's total when costs are hidden: tokens are counted, not
+        /// estimated.
+        public static func total(_ days: Int) -> String { tr("provider_panel.total", days) }
+        /// The window's total: cost, tokens.
+        public static func totalValue(_ cost: String, _ tokens: String) -> String {
+            tr("provider_panel.total_value", cost, tokens)
+        }
+        public static func topModel(_ model: String) -> String { tr("provider_panel.top_model", model) }
+        public static func modelTokens(_ tokens: String) -> String { tr("provider_panel.model_tokens", tokens) }
+        public static func modelIOTokens(_ tokens: String) -> String { tr("provider_panel.model_io_tokens", tokens) }
+        public static var noRate: String { tr("provider_panel.no_rate") }
+        public static var noRateHelp: String { tr("provider_panel.no_rate_help") }
+        public static var atLeastHelp: String { tr("provider_panel.at_least_help") }
+        public static var tokenBasis: String { tr("provider_panel.token_basis") }
+        public static func empty(_ days: Int) -> String { tr("provider_panel.empty", days) }
+        public static var allProviders: String { tr("provider_panel.all_providers") }
+        /// The chart's name for VoiceOver: metric, days.
+        public static func chartLabel(_ metric: String, _ days: Int) -> String {
+            tr("provider_panel.chart_label", metric, days)
+        }
+        public static var closeDay: String { tr("provider_panel.close_day") }
+    }
+
     // MARK: - Providers
 
     /// v1.44 W5: the notice shown once, after the app enables its own login

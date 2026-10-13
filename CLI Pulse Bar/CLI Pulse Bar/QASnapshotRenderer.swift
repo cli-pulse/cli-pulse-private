@@ -915,6 +915,12 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             await state.refreshUsageArchive(force: true)
             await captureUsageDashboardPanel(surface, index: index)
 
+        case .providerUsagePanel(let kind):
+            await captureProviderUsagePanel(kind, surface: surface, index: index)
+
+        case .providerUsageCardHistory:
+            await captureProviderCardHistory(surface, index: index)
+
         case .firstRunWelcome:
             await captureWindow(
                 FirstRunWelcomeView(onDismiss: {}), surface: surface, index: index,
@@ -1186,6 +1192,64 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
                 + " The Demo archive is cloud-shaped and includes Gemini; the real panel reads this Mac's"
                 + " local-scan archive, which holds only what the scanner records (Claude and Codex),"
                 + " so the \"Claude + Codex\" caption is true there. The headline counts up over 2.2 s."
+        )
+    }
+
+    /// v1.57: the usage panel's provider mode as `DashboardPanelController`
+    /// shows it, 480 points wide and always dark, from the deterministic
+    /// sample rows (`QARenderSnapshot.providerPanelSample`): Demo mode has no
+    /// local scan. Codex is drawn with its chart in tokens, Claude in cost.
+    private func captureProviderUsagePanel(_ kind: ProviderKind, surface: QARenderSurface, index: Int) async {
+        let metric = QARenderSnapshot.providerPanelMetric(kind)
+        let defaults = UserDefaults.standard
+        let previous = defaults.string(forKey: UsageChartMetric.defaultsKey)
+        defaults.set(metric.rawValue, forKey: UsageChartMetric.defaultsKey)
+        defer { defaults.set(previous, forKey: UsageChartMetric.defaultsKey) }
+
+        let data = ProviderUsageDays.fromScan(
+            QARenderSnapshot.providerPanelSample(kind), provider: kind.rawValue,
+            todayKey: DayKey.string(from: Date()))
+        let panel = ProviderUsagePanelView(
+            data: data, availableScopes: [.thisMac], scope: .constant(.thisMac),
+            needsFolderAccess: false, onShowAllProviders: {})
+            .frame(width: 480)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17))
+                    .foregroundStyle(.secondary)
+                    .padding(8)
+            }
+            .environment(\.colorScheme, .dark)
+            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+        await capture(
+            panel, surface: surface, index: index,
+            prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
+            note: "The usage panel's provider mode, 480 points wide, from sample scan rows"
+                + " (QARenderSnapshot.providerPanelSample), chart in \(metric.rawValue); the latest day"
+                + " with usage is selected. The real panel reads this Mac's scan."
+        )
+    }
+
+    /// v1.57: the iPhone provider card's history section with its latest day
+    /// tapped, drawn here at an iPhone card's width from the same sample rows
+    /// counted in I/O tokens, as the card counts them. A component on the Mac,
+    /// not the iPhone screen.
+    private func captureProviderCardHistory(_ surface: QARenderSurface, index: Int) async {
+        let data = ProviderUsageDays.fromScan(
+            QARenderSnapshot.providerPanelSample(.codex), provider: ProviderKind.codex.rawValue,
+            basis: .inputOutput, todayKey: DayKey.string(from: Date()))
+        let section = ProviderUsageHistorySection(
+            days: data, accent: PulseTheme.providerColor(ProviderKind.codex.rawValue),
+            showCost: true, initialSelection: data.latestActiveDayKey)
+            .padding()
+            .background(PulseTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(16)
+            .frame(width: 375)
+        await captureWindow(
+            section, surface: surface, index: index,
+            note: "The iPhone card's usage-history section (ProviderUsageHistorySection), 375 points wide,"
+                + " from sample rows in I/O tokens, the latest day tapped. Drawn on the Mac."
         )
     }
 
