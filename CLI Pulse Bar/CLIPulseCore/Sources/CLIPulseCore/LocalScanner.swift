@@ -15,6 +15,13 @@ import os
 public final class LocalScanner: @unchecked Sendable {
     public static let shared = LocalScanner()
 
+    /// Every session `scan()` returns has this prefix and its pid as its id
+    /// (`local-<pid>`). `AlertGenerator.generate` reads it to tell a scan row
+    /// from a session with a real id. v1.16.1's skip there tested for `proc-`,
+    /// the Python helper's prefix, which no row here carries, so the
+    /// long-running alert went on firing for every app open five hours.
+    static let sessionIDPrefix = "local-"
+
     private static let scanLogger = Logger(subsystem: "com.clipulse", category: "LocalScanner")
 
     // Patterns for process-based detection of running AI coding tools.
@@ -211,7 +218,7 @@ public final class LocalScanner: @unchecked Sendable {
             }()
 
             let session = SessionRecord(
-                id: "local-\(pid)",
+                id: "\(Self.sessionIDPrefix)\(pid)",
                 name: prettyName(row.command),
                 provider: match.provider,
                 project: project,

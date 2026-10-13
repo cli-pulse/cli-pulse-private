@@ -233,6 +233,18 @@ final class SystemCollectorFacadeTests: XCTestCase {
         }
     }
 
+    /// A CLI open five hours, through the real SessionDetector: its row is
+    /// `proc-` with 400 requests, and collectAll raises no long-running alert.
+    func testCollectAll_raisesNoLongRunningAlertForAProcessOpenFiveHours() async {
+        let ps = "4242  0.5  1.2 05:00:00 /usr/local/bin/codex --model gpt-5"
+        let result = await makeFacade(sessionsPS: ps).collectAll()
+
+        XCTAssertEqual(result.sessions.map(\.sessionId), ["proc-4242"])
+        XCTAssertEqual(result.sessions.first?.requests, 400,
+                       "the row is not at the threshold; this test checks less than it says")
+        XCTAssertEqual(result.alerts.map(\.alertId), [])
+    }
+
     func testCollectAll_returnsResultEvenWithNoSessions() async {
         let facade = makeFacade(sessionsPS: "")
         let result = await facade.collectAll()
