@@ -73,8 +73,13 @@ public final class UsagePanelModel: ObservableObject {
     }
 
     /// The archive the panel opens with, read before it is shown so it is
-    /// sized to the loaded dashboard rather than to a spinner.
+    /// sized to the loaded dashboard rather than to a spinner. A reload
+    /// still in flight (the archive is written while the panel is hidden
+    /// too) read before this and is discarded.
     public func seed(archive: DailyUsageArchive) {
+        reloadGeneration += 1
+        reloadTask?.cancel()
+        reloadTask = nil
         self.archive = archive
     }
 
@@ -93,6 +98,10 @@ public final class UsagePanelModel: ObservableObject {
     func settle() async {
         await reloadTask?.value
     }
+
+    /// The reload started last, so a test can wait for an older one after a
+    /// newer one has started.
+    var currentReloadTask: Task<Void, Never>? { reloadTask }
 
     /// Follows a refresh's scan, the synced rows and the folder-access flag.
     public func follow(
@@ -180,6 +189,9 @@ public struct ProviderUsagePanelView: View {
     public let needsFolderAccess: Bool
     /// Back to the Usage Dashboard; nil hides the button.
     public let onShowAllProviders: (() -> Void)?
+    /// Opens the popover's Settings, where the log folders are granted; nil
+    /// hides the button.
+    public let onOpenSettings: (() -> Void)?
 
     @AppStorage(UsageChartMetric.defaultsKey) private var metricRaw = UsageChartMetric.tokens.rawValue
     @AppStorage("cli_pulse_show_cost") private var showCost = true
@@ -198,6 +210,7 @@ public struct ProviderUsagePanelView: View {
         scope: Binding<UsageDataScope>,
         needsFolderAccess: Bool,
         onShowAllProviders: (() -> Void)?,
+        onOpenSettings: (() -> Void)? = nil,
         initialSelection: String? = nil)
     {
         self.data = data
@@ -205,6 +218,7 @@ public struct ProviderUsagePanelView: View {
         self._scope = scope
         self.needsFolderAccess = needsFolderAccess
         self.onShowAllProviders = onShowAllProviders
+        self.onOpenSettings = onOpenSettings
         self._selection = State(initialValue: initialSelection)
     }
 
@@ -256,26 +270,50 @@ public struct ProviderUsagePanelView: View {
                 }
                 .buttonStyle(.plain)
             }
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: ProviderKind(rawValue: data.provider)?.iconName ?? "chart.bar.xaxis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(accent)
-                    .frame(width: 30, height: 30)
-                    .background(accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 7))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(data.provider)
-                        .font(.system(size: 15, weight: .semibold))
-                    Text(L10n.providerPanel.title + " · " + L10n.providerPanel.lastDays(Self.windowDays))
-                        .font(.system(size: 10.5))
-                        .foregroundStyle(.secondary)
+            // The scope beside the title when both fit on one row, else on a
+            // row of its own under it: "Este Mac | Todos los dispositivos"
+            // does not fit beside the Spanish title at any width the panel
+            // takes, and the title must not wrap into a narrow column.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    providerIcon
+                    titles
+                    Spacer(minLength: 8)
+                    scopeControl
                 }
-                Spacer(minLength: 8)
-                scopeControl
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .center, spacing: 10) {
+                        providerIcon
+                        titles
+                        Spacer(minLength: 0)
+                    }
+                    scopeControl
+                }
             }
         }
         // Clear of the close button the panel lays over its top-right corner.
         .padding(.trailing, 18)
+    }
+
+    private var providerIcon: some View {
+        Image(systemName: ProviderKind(rawValue: data.provider)?.iconName ?? "chart.bar.xaxis")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(accent)
+            .frame(width: 30, height: 30)
+            .background(accent.opacity(0.15))
+            .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private var titles: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(data.provider)
+                .font(.system(size: 15, weight: .semibold))
+                .lineLimit(1)
+            Text(L10n.providerPanel.title + " · " + L10n.providerPanel.lastDays(Self.windowDays))
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
     }
 
     @ViewBuilder
@@ -290,13 +328,12 @@ public struct ProviderUsagePanelView: View {
             .controlSize(.small)
             .help(scopeHelp)
         } else {
-            Text(scope.label)
-                .font(.system(size: 9.5, weight: .medium))
+            // Where the figures come from; not a control, so not drawn as one.
+            Label(scope.label, systemImage: scope == .thisMac ? "laptopcomputer" : "icloud")
+                .font(.system(size: 10))
                 .foregroundStyle(.secondary)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
-                .background(Color.primary.opacity(0.08))
-                .clipShape(Capsule())
+                .lineLimit(1)
+                .fixedSize()
                 .help(scopeHelp)
         }
     }
@@ -319,7 +356,10 @@ public struct ProviderUsagePanelView: View {
             UsageDayBarsChart(
                 days: data.days, metric: metric, accent: accent,
                 selection: selectionBinding, height: 130,
-                selectsOnHover: true, tapTogglesSelection: false)
+                selectsOnHover: true, tapTogglesSelection: false,
+                accessibilityValueText: { [basis = data.basis, showsCost = showCost] day in
+                    day.summary(basis: basis, showsCost: showsCost)
+                })
             Divider().opacity(0.5)
             dayDetail
         }
@@ -342,7 +382,7 @@ public struct ProviderUsagePanelView: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .help(day.hasUnpriced && showCost ? L10n.providerPanel.atLeastHelp : "")
+                    .help(showCost ? day.costHelp : "")
                 let height = CGFloat(modelViewportRows) * UsageDayModelRows.panelRowHeight
                 let rows = UsageDayModelRows(
                     rows: day.models, basis: data.basis, accent: accent,
@@ -373,7 +413,7 @@ public struct ProviderUsagePanelView: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .help(data.hasUnpriced && showCost ? L10n.providerPanel.atLeastHelp : "")
+                .help(showCost ? data.totalCostHelp : "")
             if showCost, let top = data.topModelByCost {
                 Text(L10n.providerPanel.topModel(top))
                     .font(.system(size: 10.5))
@@ -393,35 +433,57 @@ public struct ProviderUsagePanelView: View {
                     .foregroundStyle(.secondary)
                     .help(L10n.cost.approximateHelp(CostCoverage.tooltipList(data.coverage.approximateModels)))
             }
+            // The estimate's own line, as legible as the figures it qualifies.
+            if showCost {
+                Text(L10n.usageDashboard.costDisclaimer)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 3)
+            }
             VStack(alignment: .leading, spacing: 2) {
-                if showCost {
-                    Text(L10n.usageDashboard.costDisclaimer)
-                }
                 Text(L10n.providerPanel.tokenBasis)
-                Text(scope.label + " · " + scopeHelp)
+                // The header names the scope; this says what it means.
+                Text(scopeHelp)
             }
             .font(.system(size: 9.5))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, 3)
+            .padding(.top, showCost ? 0 : 3)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .glassCard(elevated: false)
     }
 
+    /// Nothing to draw. When macOS blocks this Mac's log folders, whether
+    /// there was usage is not known, so it says that, not "no usage".
     private var emptyState: some View {
         VStack(spacing: 6) {
-            Image(systemName: "chart.bar.xaxis")
-                .font(.system(size: 22))
-                .foregroundStyle(.secondary)
-            Text(L10n.providerPanel.empty(Self.windowDays))
-                .font(.system(size: 12, weight: .medium))
-            if needsFolderAccess {
+            if needsFolderAccess && scope == .thisMac {
+                Image(systemName: "folder.badge.questionmark")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.orange)
                 Text(L10n.providers.grantAccessTitle)
+                    .font(.system(size: 12, weight: .medium))
+                    .multilineTextAlignment(.center)
+                Text(L10n.providers.grantAccessBody)
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let onOpenSettings {
+                    Button(L10n.providers.openSettings, action: onOpenSettings)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .padding(.top, 4)
+                }
+            } else {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.secondary)
+                Text(L10n.providerPanel.empty(Self.windowDays))
+                    .font(.system(size: 12, weight: .medium))
             }
         }
         .frame(maxWidth: .infinity, minHeight: 160)
@@ -439,12 +501,13 @@ struct UsagePanelRootView: View {
     let maxHeight: CGFloat
     let onHeightChange: (CGFloat) -> Void
     let onClose: () -> Void
+    var onOpenSettings: (() -> Void)? = nil
     @State private var naturalHeight: CGFloat = 0
 
     var body: some View {
         let fits = naturalHeight <= maxHeight
         ScrollView(.vertical) {
-            UsagePanelContent(model: model)
+            UsagePanelContent(model: model, onOpenSettings: onOpenSettings)
                 .frame(width: width)
                 .background(GeometryReader { geo in
                     Color.clear.preference(key: UsagePanelHeightKey.self, value: geo.size.height)
@@ -479,6 +542,7 @@ struct UsagePanelRootView: View {
 /// The panel's content in its current mode, at its natural height.
 struct UsagePanelContent: View {
     @ObservedObject var model: UsagePanelModel
+    var onOpenSettings: (() -> Void)? = nil
 
     var body: some View {
         switch model.mode {
@@ -499,7 +563,8 @@ struct UsagePanelContent: View {
                     get: { model.scope(for: provider) },
                     set: { model.scopeChoice[provider] = $0 }),
                 needsFolderAccess: model.needsFolderAccess,
-                onShowAllProviders: { model.mode = .allProviders })
+                onShowAllProviders: { model.mode = .allProviders },
+                onOpenSettings: onOpenSettings)
                 // A new provider starts on its own latest day.
                 .id(provider)
         }

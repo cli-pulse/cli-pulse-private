@@ -110,6 +110,9 @@ struct DashboardBreakdown: View {
     /// v1.57: the By Provider rows in the slide-out panel open that
     /// provider's usage history. nil leaves every row inert.
     var onSelect: ((String) -> Void)? = nil
+    /// Keeps the chevron's slot empty in a card stacked with one whose rows
+    /// carry it (By Model over By Provider), so the two cards' columns line up.
+    var reservesChevron = false
 
     private var grandTotal: Int { max(1, rows.reduce(0) { $0 + $1.tokens }) }
     private var maxTokens: Int { max(1, rows.map(\.tokens).max() ?? 1) }
@@ -147,10 +150,12 @@ struct DashboardBreakdown: View {
                                 .font(.system(size: 10)).monospacedDigit()
                                 .foregroundStyle(.tertiary)
                                 .frame(width: 34, alignment: .trailing)
-                            if onSelect != nil {
+                            if onSelect != nil || reservesChevron {
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 8, weight: .semibold))
                                     .foregroundStyle(.tertiary)
+                                    .opacity(onSelect == nil ? 0 : 1)
+                                    .accessibilityHidden(true)
                             }
                         }
                     }
@@ -213,10 +218,23 @@ struct DashboardTrends: View {
                         Spacer()
                         rangePicker
                     }
-                    if showCost { UsageMetricPicker(metric: metricBinding) }
+                    // Right-aligned, where the provider mode has it too.
+                    if showCost {
+                        HStack {
+                            Spacer()
+                            UsageMetricPicker(metric: metricBinding)
+                        }
+                    }
                 }
             }
             chart
+            // Dollars on the axis are estimates; say so where they are drawn.
+            if metric == .cost {
+                Text(L10n.usageDashboard.costDisclaimer)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -385,8 +403,10 @@ public struct UsageDashboardView: View {
             Task { await reload() }   // re-render cost figures in the new currency
         }
         // A provided archive that changes (the panel's, re-read after a
-        // refresh) moves the headline as well as the cards below it.
-        .onChange(of: providedArchive) { _ in
+        // refresh) moves the headline as well as the cards below it. Every
+        // write stamps `lastUpdatedUnixMs`, so that is compared, not up to a
+        // year of days on every update.
+        .onChange(of: providedArchive?.lastUpdatedUnixMs) { _ in
             Task { await reload() }
         }
     }
@@ -487,7 +507,8 @@ public struct UsageDashboardView: View {
     @ViewBuilder
     private func breakdowns(_ a: DailyUsageArchive) -> some View {
         let byModel = DashboardBreakdown(title: L10n.usageDashboard.byModel,
-                                         rows: DailyUsageStats.byModel(a), useProviderColor: false)
+                                         rows: DailyUsageStats.byModel(a), useProviderColor: false,
+                                         reservesChevron: onSelectProvider != nil)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
             .glassCard(elevated: false)

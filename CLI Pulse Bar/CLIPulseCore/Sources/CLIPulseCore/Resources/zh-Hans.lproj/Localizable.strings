@@ -1629,6 +1629,7 @@
 /* v1.57 — the usage panel's provider mode (ProviderUsageDays): one provider's last 30 days by day and model, and the day detail under the iPhone card's chart. "≥" and "≈" are symbols, kept as they are. "This Mac" / "All devices" say whose usage a figure counts. token_basis says how tokens are added up: Codex's cached input is part of its input and is counted once. */
 "provider_panel.title" = "用量历史";
 "provider_panel.open" = "用量历史：最近 30 天，按天和模型";
+"provider_panel.open_for" = "%@ 用量历史";
 "provider_panel.last_days" = "最近 %d 天";
 "provider_panel.metric_tokens" = "token";
 "provider_panel.metric_cost" = "费用";
@@ -1637,7 +1638,7 @@
 "provider_panel.scope_all_devices" = "所有设备";
 "provider_panel.scope_picker" = "用量来源";
 "provider_panel.scope_this_mac_help" = "根据这台 Mac 上的日志统计。";
-"provider_panel.scope_all_devices_help" = "来自登录你账户的所有设备的同步数据。哪些 token 没有单价不会同步，因此这里的费用可能少算。";
+"provider_panel.scope_all_devices_help" = "同步自登录了你账户的所有设备。同步数据不记录哪些 token 没有单价，因此这里的费用可能少算。";
 "provider_panel.day_summary" = "%1$@：%2$@ · %3$@ token";
 "provider_panel.day_tokens" = "%1$@：%2$@ token";
 "provider_panel.day_io_summary" = "%1$@：%2$@ · %3$@ I/O token";
@@ -1651,12 +1652,13 @@
 "provider_panel.model_io_tokens" = "%@ I/O";
 "provider_panel.no_rate" = "无单价";
 "provider_panel.no_rate_help" = "此模型没有价格条目，它的 token 不计入费用。";
-"provider_panel.at_least_help" = "部分 token 没有单价，所以费用至少是这个数。";
-"provider_panel.token_basis" = "token：输入、缓存输入和输出，每个只计一次。";
+"provider_panel.at_least_help" = "部分 token 没有单价，所以费用至少是这个金额。";
+"provider_panel.token_basis" = "token：输入、缓存输入和输出各只计一次。";
 "provider_panel.empty" = "最近 %d 天没有用量";
 "provider_panel.all_providers" = "所有服务商";
-"provider_panel.chart_label" = "%1$@ · 每日，最近 %2$d 天";
+"provider_panel.chart_label" = "最近 %2$d 天的每日%1$@";
 "provider_panel.close_day" = "隐藏当天明细";
+"provider_panel.chart_hint" = "上下轻扫以选择日期，当天的模型会列在图表下方。";
 "folder_access.dir_clipulse_config" = "CLI Pulse 配置";
 "folder_access.dir_clipulse_data" = "CLI Pulse 数据";
 "folder_access.dir_codex_session_logs" = "Codex 会话日志";

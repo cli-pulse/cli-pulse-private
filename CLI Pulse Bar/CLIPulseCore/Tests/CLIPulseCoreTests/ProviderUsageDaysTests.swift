@@ -32,19 +32,19 @@ final class ProviderUsageDaysTests: XCTestCase {
 
     // MARK: - The acceptance: a day's figure is the sum of its model rows
 
-    /// Selecting Sep 29 lists that day's models, and the day's total is
+    /// Selecting Sep 24 lists that day's models, and the day's total is
     /// exactly the sum of the rows it lists, for tokens and for cost.
     func testSelectedDayTotalIsTheSumOfItsModelRows() {
         let entries = [
-            entry("2026-09-29", "Codex", "gpt-5.1-codex", input: 9_000_000, cached: 8_100_000, output: 52_000, cost: 21.37),
-            entry("2026-09-29", "Codex", "gpt-5-codex", input: 3_400_000, cached: 3_000_000, output: 18_000, cost: 6.81),
-            entry("2026-09-29", "Codex", "gpt-5.1-codex-mini", input: 900_000, cached: 700_000, output: 9_000, cost: 0.43,
+            entry("2026-09-24", "Codex", "gpt-5.1-codex", input: 9_000_000, cached: 8_100_000, output: 52_000, cost: 21.37),
+            entry("2026-09-24", "Codex", "gpt-5-codex", input: 3_400_000, cached: 3_000_000, output: 18_000, cost: 6.81),
+            entry("2026-09-24", "Codex", "gpt-5.1-codex-mini", input: 900_000, cached: 700_000, output: 9_000, cost: 0.43,
                   approximate: true),
             entry("2026-09-28", "Codex", "gpt-5.1-codex", input: 1_000_000, cached: 900_000, output: 1_000, cost: 2.0),
-            entry("2026-09-29", "Claude", "claude-sonnet-4-5", input: 5_000, cached: 90_000, output: 4_000, cost: 1.0),
+            entry("2026-09-24", "Claude", "claude-sonnet-4-5", input: 5_000, cached: 90_000, output: 4_000, cost: 1.0),
         ]
         let days = ProviderUsageDays.fromScan(entries, provider: "Codex", todayKey: today, timeZone: utc)
-        guard let day = days.day("2026-09-29") else { return XCTFail("Sep 29 is in the window") }
+        guard let day = days.day("2026-09-24") else { return XCTFail("Sep 24 is in the window") }
 
         XCTAssertEqual(day.models.map(\.model), ["gpt-5.1-codex", "gpt-5-codex", "gpt-5.1-codex-mini"])
         XCTAssertEqual(day.tokens, day.models.reduce(0) { $0 + $1.tokens })
@@ -60,16 +60,16 @@ final class ProviderUsageDaysTests: XCTestCase {
     /// The same for the synced rows the iPhone card reads.
     func testCloudDayTotalIsTheSumOfItsModelRows() {
         let rows = [
-            DailyUsage(date: "2026-09-29", provider: "Codex", model: "gpt-5.1-codex",
+            DailyUsage(date: "2026-09-24", provider: "Codex", model: "gpt-5.1-codex",
                        inputTokens: 2_000, cachedTokens: 1_500, outputTokens: 100, cost: 0.75),
-            DailyUsage(date: "2026-09-29", provider: "Codex", model: "gpt-5-codex",
+            DailyUsage(date: "2026-09-24", provider: "Codex", model: "gpt-5-codex",
                        inputTokens: 800, cachedTokens: 0, outputTokens: 40, cost: 0.25),
-            DailyUsage(date: "2026-09-29", provider: "Gemini", model: "gemini-2.5-pro",
+            DailyUsage(date: "2026-09-24", provider: "Gemini", model: "gemini-2.5-pro",
                        inputTokens: 9_999, cachedTokens: 0, outputTokens: 1, cost: 9.0),
         ]
         let days = ProviderUsageDays.fromCloud(rows, provider: "Codex", basis: .inputOutput,
                                                todayKey: today, timeZone: utc)
-        let day = days.day("2026-09-29")
+        let day = days.day("2026-09-24")
         XCTAssertEqual(day?.tokens, 2_100 + 840)
         XCTAssertEqual(day?.tokens, day?.models.reduce(0) { $0 + $1.tokens })
         XCTAssertEqual(day?.cost ?? 0, 1.0, accuracy: 1e-12)
@@ -246,6 +246,110 @@ final class ProviderUsageDaysTests: XCTestCase {
         XCTAssertTrue(days.coverage.hasApproximatePrices)
     }
 
+    /// A synced row arrives with a cost of 0 both when the device that
+    /// uploaded it had no rate (`APIClient.syncDailyUsage` sends a missing
+    /// cost as 0) and when the model is priced at 0. Which one is not in the
+    /// row, so its cost is shown as unknown, never as "$0.00", and the day
+    /// and the window are marked as lower bounds. Asserted in zh-Hans.
+    func testASyncedRowWithTokensAndNoCostIsNotShownAsAPrice() {
+        LocaleOverrideStore.shared.set("zh-Hans")
+        let rows = [
+            DailyUsage(date: "2026-10-05", provider: "Claude", model: "claude-sonnet-4-5",
+                       inputTokens: 400, cachedTokens: 0, outputTokens: 100, cost: 2.5),
+            DailyUsage(date: "2026-10-05", provider: "Claude", model: "glm-4.6",
+                       inputTokens: 300, cachedTokens: 0, outputTokens: 50, cost: 0),
+            // The same model on two devices: one priced it, one sent 0.
+            DailyUsage(date: "2026-10-06", provider: "Claude", model: "claude-opus-4-1",
+                       inputTokens: 100, cachedTokens: 0, outputTokens: 10, cost: 1.25),
+            DailyUsage(date: "2026-10-06", provider: "Claude", model: "claude-opus-4-1",
+                       inputTokens: 60, cachedTokens: 0, outputTokens: 5, cost: 0),
+            // A day with nothing but an unknown cost.
+            DailyUsage(date: "2026-10-07", provider: "Claude", model: "glm-4.6",
+                       inputTokens: 70, cachedTokens: 0, outputTokens: 7, cost: 0),
+        ]
+        let days = ProviderUsageDays.fromCloud(rows, provider: "Claude", basis: .inputOutput,
+                                               todayKey: today, timeZone: utc)
+        guard let mixed = days.day("2026-10-05"), let split = days.day("2026-10-06"),
+              let unknown = days.day("2026-10-07") else { return XCTFail("days in the window") }
+
+        let glm = mixed.models.first { $0.model == "glm-4.6" }
+        XCTAssertEqual(glm?.costIsUnknown, true)
+        XCTAssertEqual(glm?.costText, ProviderUsageDays.unknownCostText)
+        XCTAssertNotEqual(glm?.costText, CostFormatter.format(0), "never a confident $0.00")
+        XCTAssertEqual(glm?.hasNoRate, false, "no rate is not known either: the model may be priced at 0")
+        XCTAssertEqual(glm?.costHelp, "同步自登录了你账户的所有设备。同步数据不记录哪些 token 没有单价，因此这里的费用可能少算。")
+        XCTAssertEqual(glm?.tokens, 350, "its tokens still count")
+        XCTAssertEqual(mixed.costText, CostFormatter.atLeastMark + CostFormatter.format(2.5))
+        XCTAssertEqual(mixed.costHelp, L10n.providerPanel.scopeAllDevicesHelp)
+        XCTAssertEqual(mixed.summary(basis: .inputOutput, showsCost: true),
+                       mixed.dateText + "：" + CostFormatter.atLeastMark + CostFormatter.format(2.5) + " · 850 I/O token")
+
+        let opus = split.models.first
+        XCTAssertEqual(opus?.tokens, 175)
+        XCTAssertEqual(opus?.costIsUnknown, false)
+        XCTAssertEqual(opus?.costText, CostFormatter.atLeastMark + CostFormatter.format(1.25),
+                       "one device's share is unknown: the row is a lower bound")
+
+        XCTAssertEqual(unknown.costText, ProviderUsageDays.unknownCostText)
+        XCTAssertEqual(days.totalCostText, CostFormatter.atLeastMark + CostFormatter.format(3.75))
+        XCTAssertEqual(days.totalCostHelp, L10n.providerPanel.scopeAllDevicesHelp)
+        XCTAssertNil(days.topModelByCost)
+
+        // This Mac's scan knows a price of 0 from a missing one: $0.00 there
+        // is a price.
+        let free = ProviderUsageDays.fromScan(
+            [entry("2026-10-05", "Codex", "gpt-5.3-codex-spark", input: 900, output: 100, cost: 0)],
+            provider: "Codex", todayKey: today, timeZone: utc)
+        XCTAssertEqual(free.day("2026-10-05")?.models.first?.costText, CostFormatter.format(0))
+        XCTAssertEqual(free.day("2026-10-05")?.costText, CostFormatter.format(0))
+    }
+
+    /// The synced rows' each-once basis counts Codex's cached input once,
+    /// as the scan's does: it is already part of Codex's input.
+    func testEachOnceCountsCodexCachedInputOnceInSyncedRows() {
+        let rows = [
+            DailyUsage(date: "2026-10-06", provider: "Codex", model: "gpt-5-codex",
+                       inputTokens: 1_000, cachedTokens: 900, outputTokens: 10, cost: 1),
+            DailyUsage(date: "2026-10-06", provider: "Claude", model: "claude-sonnet-4-5",
+                       inputTokens: 100, cachedTokens: 900, outputTokens: 10, cost: 1),
+        ]
+        let codex = ProviderUsageDays.fromCloud(rows, provider: "Codex", todayKey: today, timeZone: utc)
+        let claude = ProviderUsageDays.fromCloud(rows, provider: "Claude", todayKey: today, timeZone: utc)
+        XCTAssertEqual(codex.totalTokens, 1_010, "Codex's cached input is part of its input")
+        XCTAssertEqual(claude.totalTokens, 1_010, "Claude's cache reads and writes are tokens too")
+    }
+
+    /// With costs hidden, a day's models are listed by tokens: the order of
+    /// a cost the reader chose not to see is neither followed nor shown.
+    func testWithCostsHiddenTheRowsAreInTokenOrder() {
+        let day = ProviderUsageDays.Day(dateKey: today, models: [
+            .init(model: "opus", tokens: 4_800_000, cost: 13.04),
+            .init(model: "sonnet", tokens: 17_600_000, cost: 9.67),
+            .init(model: "haiku", tokens: 1_600_000, cost: 0.28),
+            .init(model: "glm", tokens: 2_300_000, cost: 0, unpricedTokens: 2_300_000),
+            .init(model: "aaa", tokens: 1_600_000, cost: 0.5),
+        ])
+        XCTAssertEqual(ProviderUsageDays.displayOrder(day.models, showsCost: true).map(\.model),
+                       ["opus", "sonnet", "aaa", "haiku", "glm"], "by cost while costs are shown")
+        XCTAssertEqual(ProviderUsageDays.displayOrder(day.models, showsCost: false).map(\.model),
+                       ["sonnet", "opus", "glm", "aaa", "haiku"], "by tokens, then name, while hidden")
+    }
+
+    /// The window moves with today: built once per day and reused, never
+    /// reused for another day.
+    func testTheWindowMovesWithToday() {
+        let entries = [entry("2026-09-08", "Codex", "gpt-5-codex", input: 10, output: 1, cost: 1)]
+        XCTAssertTrue(ProviderUsageDays.hasUsage(provider: "Codex", scan: entries, cloud: [],
+                                                 todayKey: "2026-10-07", timeZone: utc))
+        XCTAssertFalse(ProviderUsageDays.hasUsage(provider: "Codex", scan: entries, cloud: [],
+                                                  todayKey: "2026-10-08", timeZone: utc),
+                       "a day later, Sep 8 is out of the window")
+        XCTAssertEqual(ProviderUsageDays.dayKeys(count: 30, endingAt: "2026-10-08", timeZone: utc).first, "2026-09-09")
+        XCTAssertEqual(ProviderUsageDays.dayKeys(count: 30, endingAt: "2026-10-07", timeZone: utc).first, "2026-09-08")
+        XCTAssertEqual(ProviderUsageDays.dayKeys(count: 2, endingAt: "2026-10-07", timeZone: utc),
+                       ["2026-10-06", "2026-10-07"])
+    }
+
     func testSyncedRowsHaveUnknownCoverageAndNoTopModel() {
         let rows = [
             DailyUsage(date: "2026-10-06", provider: "Codex", model: "gpt-5-codex",
@@ -261,19 +365,21 @@ final class ProviderUsageDaysTests: XCTestCase {
 
     func testDaySummaryInZhHans() {
         LocaleOverrideStore.shared.set("zh-Hans")
-        let entries = [entry("2026-09-29", "Codex", "gpt-5-codex", input: 17_000_000, output: 0, cost: 30.27)]
+        let entries = [entry("2026-10-03", "Codex", "gpt-5-codex", input: 6_500_000, output: 0, cost: 11.42)]
         let days = ProviderUsageDays.fromScan(entries, provider: "Codex", todayKey: today, timeZone: utc)
-        guard let day = days.day("2026-09-29") else { return XCTFail("no day") }
+        guard let day = days.day("2026-10-03") else { return XCTFail("no day") }
         let summary = day.summary(basis: .eachOnce, showsCost: true)
-        XCTAssertEqual(summary, day.dateText + "：" + CostFormatter.format(30.27) + " · 17M token")
-        XCTAssertEqual(day.dateText, "9月29日")
-        XCTAssertEqual(day.summary(basis: .inputOutput, showsCost: false), day.dateText + "：17M I/O token")
-        XCTAssertEqual(days.day("2026-09-30")?.summary(basis: .eachOnce, showsCost: true),
-                       (days.day("2026-09-30")?.dateText ?? "") + "：无用量")
+        XCTAssertEqual(summary, day.dateText + "：" + CostFormatter.format(11.42) + " · 6.5M token")
+        XCTAssertEqual(day.dateText, "10月3日")
+        XCTAssertEqual(day.summary(basis: .inputOutput, showsCost: false), day.dateText + "：6.5M I/O token")
+        XCTAssertEqual(days.day("2026-10-04")?.summary(basis: .eachOnce, showsCost: true),
+                       (days.day("2026-10-04")?.dateText ?? "") + "：无用量")
         XCTAssertEqual(L10n.providerPanel.estTotal(30), "预估合计 · 最近 30 天")
         XCTAssertEqual(L10n.providerPanel.total(30), "合计 · 最近 30 天")
         XCTAssertEqual(UsageChartMetric.cost.label, "费用")
         XCTAssertEqual(UsageDataScope.thisMac.label, "这台 Mac")
+        // The provider card's chart button, as VoiceOver names it.
+        XCTAssertEqual(L10n.providerPanel.openFor("Codex"), "Codex 用量历史")
     }
 
     func testMetricIsReadFromItsStoredValue() {

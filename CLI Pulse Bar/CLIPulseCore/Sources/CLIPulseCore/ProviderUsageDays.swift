@@ -37,7 +37,7 @@ public enum UsageChartMetric: String, CaseIterable, Sendable, Identifiable {
     }
 
     /// A value on a chart's y axis whose highest value is `top`. Costs are
-    /// whole units ("$33") once the axis reaches 10 of them, and keep the
+    /// whole units ("$50") once the axis reaches 10 of them, and keep the
     /// currency's cents below that, where whole units would label every
     /// line "$0".
     public func axisText(_ value: Double, top: Double) -> String {
@@ -94,6 +94,12 @@ public struct ProviderUsageDays: Sendable, Equatable {
         public let cost: Double
         /// Tokens that had no rate, so they added nothing to `cost`.
         public let unpricedTokens: Int
+        /// Synced tokens whose row arrived with a cost of 0. The device that
+        /// uploaded them sends a missing cost as 0 (`APIClient.syncDailyUsage`),
+        /// and a model priced at 0 sends 0 too, so the row cannot say which:
+        /// what they cost is not known here. Always 0 for this Mac's scan,
+        /// which knows (`unpricedTokens`).
+        public let unknownCostTokens: Int
         /// Part of `cost` was charged at a rate borrowed from a neighbouring
         /// model (`CostUsageScanResult.DailyEntry.priceIsApproximate`).
         public let isApproximate: Bool
@@ -103,12 +109,22 @@ public struct ProviderUsageDays: Sendable, Equatable {
         public var isPartlyUnpriced: Bool { unpricedTokens > 0 }
         /// None of its tokens had a rate: it has no cost to show at all.
         public var hasNoRate: Bool { unpricedTokens > 0 && unpricedTokens >= tokens && cost == 0 }
+        /// What none of its tokens cost is known (synced rows, all at 0): it
+        /// shows no price, not "$0.00".
+        public var costIsUnknown: Bool { unknownCostTokens > 0 && unknownCostTokens >= tokens && cost == 0 }
+        /// Its cost leaves out tokens that had no rate, or whose cost is not
+        /// known: the figure is a lower bound.
+        public var isLowerBound: Bool { unpricedTokens > 0 || unknownCostTokens > 0 }
 
-        public init(model: String, tokens: Int, cost: Double, unpricedTokens: Int = 0, isApproximate: Bool = false) {
+        public init(
+            model: String, tokens: Int, cost: Double, unpricedTokens: Int = 0, unknownCostTokens: Int = 0,
+            isApproximate: Bool = false)
+        {
             self.model = model
             self.tokens = tokens
             self.cost = cost
             self.unpricedTokens = unpricedTokens
+            self.unknownCostTokens = unknownCostTokens
             self.isApproximate = isApproximate
         }
     }
@@ -136,6 +152,9 @@ public struct ProviderUsageDays: Sendable, Equatable {
         public var hasUsage: Bool { tokens > 0 || cost > 0 }
         /// Some of the day's tokens had no rate: its cost is a lower bound.
         public var hasUnpriced: Bool { models.contains { $0.isPartlyUnpriced } }
+        /// Some of the day's synced tokens arrived with no cost: its cost is
+        /// a lower bound.
+        public var hasUnknownCost: Bool { models.contains { $0.unknownCostTokens > 0 } }
         public var isApproximate: Bool { models.contains { $0.isApproximate } }
 
         public func value(_ metric: UsageChartMetric) -> Double {
@@ -171,6 +190,9 @@ public struct ProviderUsageDays: Sendable, Equatable {
     public var hasUsage: Bool { days.contains { $0.hasUsage } }
     /// Some tokens in the window had no rate: the total cost is a lower bound.
     public var hasUnpriced: Bool { days.contains { $0.hasUnpriced } }
+    /// Some synced tokens in the window arrived with no cost: the total cost
+    /// is a lower bound.
+    public var hasUnknownCost: Bool { days.contains { $0.hasUnknownCost } }
     public var isApproximate: Bool { days.contains { $0.isApproximate } }
 
     public func day(_ dateKey: String?) -> Day? {
@@ -218,6 +240,17 @@ public struct ProviderUsageDays: Sendable, Equatable {
         }
     }
 
+    /// A day's rows in the order a list shows them: by cost while costs are
+    /// shown (`Day.models`), by tokens, then name, while they are hidden, so
+    /// the list does not follow, or give away, a ranking the reader chose
+    /// not to see.
+    public static func displayOrder(_ rows: [ModelRow], showsCost: Bool) -> [ModelRow] {
+        guard !showsCost else { return rows }
+        return rows.sorted { lhs, rhs in
+            lhs.tokens != rhs.tokens ? lhs.tokens > rhs.tokens : lhs.model < rhs.model
+        }
+    }
+
     // MARK: - Building
 
     /// One provider's days from this Mac's scan (`CostUsageScanResult.entries`):
@@ -230,8 +263,7 @@ public struct ProviderUsageDays: Sendable, Equatable {
         todayKey: String,
         timeZone: TimeZone = .current) -> ProviderUsageDays
     {
-        let keys = dayKeys(count: count, endingAt: todayKey, timeZone: timeZone)
-        let window = Set(keys)
+        let (keys, window) = windowCache.window(count: count, endingAt: todayKey, timeZone: timeZone)
         let rows = entries.filter {
             $0.provider == provider && window.contains($0.date) && $0.model != ScanEntry.messageBucketModel
         }
@@ -259,7 +291,9 @@ public struct ProviderUsageDays: Sendable, Equatable {
     ///
     /// Each row's cost is taken as it was uploaded: which of it had a rate is
     /// not in the row, so nothing is marked unpriced and the coverage is
-    /// unknown.
+    /// unknown. A row with tokens and a cost of 0 may be a model with no rate
+    /// on the device that uploaded it, so its tokens are `unknownCostTokens`
+    /// and are never shown as "$0.00".
     public static func fromCloud(
         _ rows: [DailyUsage],
         provider: String,
@@ -268,14 +302,15 @@ public struct ProviderUsageDays: Sendable, Equatable {
         todayKey: String,
         timeZone: TimeZone = .current) -> ProviderUsageDays
     {
-        let keys = dayKeys(count: count, endingAt: todayKey, timeZone: timeZone)
-        let window = Set(keys)
+        let (keys, window) = windowCache.window(count: count, endingAt: todayKey, timeZone: timeZone)
         var byDay: [String: [String: Acc]] = [:]
         for r in rows where r.provider == provider && window.contains(r.date) && r.model != ScanEntry.messageBucketModel {
             let tokens = Self.tokens(of: r, basis: basis)
+            let cost = max(0, r.cost)
             var acc = byDay[r.date, default: [:]][r.model] ?? Acc()
             acc.tokens += tokens
-            acc.cost += max(0, r.cost)
+            acc.cost += cost
+            if tokens > 0, cost == 0 { acc.unknownCost += tokens }
             byDay[r.date, default: [:]][r.model] = acc
         }
         return ProviderUsageDays(
@@ -296,7 +331,7 @@ public struct ProviderUsageDays: Sendable, Equatable {
         todayKey: String,
         timeZone: TimeZone = .current) -> Bool
     {
-        let window = Set(dayKeys(count: count, endingAt: todayKey, timeZone: timeZone))
+        let window = windowCache.window(count: count, endingAt: todayKey, timeZone: timeZone).set
         let bucket = ScanEntry.messageBucketModel
         return scan.contains {
             $0.provider == provider && $0.model != bucket && window.contains($0.date)
@@ -329,6 +364,7 @@ public struct ProviderUsageDays: Sendable, Equatable {
         var tokens = 0
         var cost = 0.0
         var unpriced = 0
+        var unknownCost = 0
         var approximate = false
     }
 
@@ -337,7 +373,8 @@ public struct ProviderUsageDays: Sendable, Equatable {
             // A model with neither tokens nor cost that day says nothing.
             guard acc.tokens > 0 || acc.cost > 0 else { return nil }
             return ModelRow(model: model, tokens: acc.tokens, cost: acc.cost,
-                            unpricedTokens: acc.unpriced, isApproximate: acc.approximate)
+                            unpricedTokens: acc.unpriced, unknownCostTokens: acc.unknownCost,
+                            isApproximate: acc.approximate)
         }
         return Day(dateKey: key, models: rows)
     }
@@ -346,18 +383,53 @@ public struct ProviderUsageDays: Sendable, Equatable {
     /// numbering in `timeZone`, as the scanner and the server write them.
     /// An unreadable `todayKey` gives none.
     static func dayKeys(count: Int, endingAt todayKey: String, timeZone: TimeZone) -> [String] {
+        windowCache.window(count: count, endingAt: todayKey, timeZone: timeZone).keys
+    }
+
+    static func buildDayKeys(count: Int, endingAt todayKey: String, timeZone: TimeZone) -> [String] {
         guard count > 0, let today = DayKey.formatter(in: timeZone).date(from: todayKey) else { return [] }
         let calendar = DayKey.calendar(in: timeZone)
         return (0..<count).reversed().compactMap { offset in
             calendar.date(byAdding: .day, value: -offset, to: today).map { DayKey.string(from: $0, in: timeZone) }
         }
     }
+
+    /// The last window built: the provider cards ask `hasUsage` on every
+    /// redraw, and the iPhone card builds its days on every body, so the
+    /// formatter and calendars behind a window are made once per day, not
+    /// each time.
+    static let windowCache = WindowCache()
+
+    final class WindowCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var id: String?
+        private var keys: [String] = []
+        private var set: Set<String> = []
+
+        func window(count: Int, endingAt todayKey: String, timeZone: TimeZone) -> (keys: [String], set: Set<String>) {
+            let id = "\(count)|\(todayKey)|\(timeZone.identifier)|\(timeZone.secondsFromGMT())"
+            lock.lock()
+            defer { lock.unlock() }
+            if id == self.id { return (keys, set) }
+            let built = ProviderUsageDays.buildDayKeys(count: count, endingAt: todayKey, timeZone: timeZone)
+            self.id = id
+            keys = built
+            set = Set(built)
+            return (built, set)
+        }
+    }
 }
 
 // MARK: - Text
 
+public extension ProviderUsageDays {
+    /// The cost of a row, a day or the window when none of it is known: a
+    /// dash, never "$0.00".
+    static let unknownCostText = "—"
+}
+
 public extension ProviderUsageDays.TokenBasis {
-    /// A token count as this basis labels it: "17M tokens" or "17M I/O".
+    /// A token count as this basis labels it: "6.5M tokens" or "6.5M I/O".
     func tokensText(_ tokens: Int) -> String {
         let count = CostFormatter.formatUsage(tokens)
         switch self {
@@ -368,16 +440,26 @@ public extension ProviderUsageDays.TokenBasis {
 }
 
 public extension ProviderUsageDays.Day {
-    /// The day as a date to read: "Sep 29", "9月29日".
+    /// The day as a date to read: "Oct 3", "10月3日".
     var dateText: String { DisplayFormat.day(dateKey, style: .monthDay) ?? dateKey }
 
-    /// The day's cost, "≥" when some of its tokens had no rate, "≈" when part
-    /// of it was charged at a borrowed rate.
+    /// The day's cost, "≥" when some of its tokens had no rate or arrived
+    /// with no cost, "≈" when part of it was charged at a borrowed rate, and
+    /// a dash when none of it is known.
     var costText: String {
-        CostFormatter.format(cost, approximate: isApproximate, atLeast: hasUnpriced)
+        if cost == 0, hasUnknownCost, !hasUnpriced { return ProviderUsageDays.unknownCostText }
+        return CostFormatter.format(cost, approximate: isApproximate, atLeast: hasUnpriced || hasUnknownCost)
     }
 
-    /// The selected day's line: "Sep 29: $30.27 · 17M tokens", in the
+    /// Why the day's cost is a lower bound, for its tooltip; empty when it
+    /// is not one.
+    var costHelp: String {
+        if hasUnpriced { return L10n.providerPanel.atLeastHelp }
+        if hasUnknownCost { return L10n.providerPanel.scopeAllDevicesHelp }
+        return ""
+    }
+
+    /// The selected day's line: "Oct 3: $11.42 · 6.5M tokens", in the
     /// counting `basis` names, without the cost when costs are hidden.
     func summary(basis: ProviderUsageDays.TokenBasis, showsCost: Bool) -> String {
         guard hasUsage else { return L10n.providerPanel.noUsageDay(dateText) }
@@ -392,18 +474,35 @@ public extension ProviderUsageDays.Day {
 }
 
 public extension ProviderUsageDays.ModelRow {
-    /// "No rate" for a model none of whose tokens had a rate, otherwise its
-    /// cost, marked "≥" or "≈" as a day's is.
+    /// "No rate" for a model none of whose tokens had a rate, a dash for one
+    /// whose synced cost is not known, otherwise its cost, marked "≥" or "≈"
+    /// as a day's is.
     var costText: String {
-        hasNoRate
-            ? L10n.providerPanel.noRate
-            : CostFormatter.format(cost, approximate: isApproximate, atLeast: isPartlyUnpriced)
+        if hasNoRate { return L10n.providerPanel.noRate }
+        if costIsUnknown { return ProviderUsageDays.unknownCostText }
+        return CostFormatter.format(cost, approximate: isApproximate, atLeast: isLowerBound)
+    }
+
+    /// The tooltip of its cost; empty when there is nothing to explain.
+    var costHelp: String {
+        if hasNoRate { return L10n.providerPanel.noRateHelp }
+        if isPartlyUnpriced { return L10n.providerPanel.atLeastHelp }
+        if unknownCostTokens > 0 { return L10n.providerPanel.scopeAllDevicesHelp }
+        return ""
     }
 }
 
 public extension ProviderUsageDays {
     /// The window's total cost, marked as a day's is.
     var totalCostText: String {
-        CostFormatter.format(totalCost, approximate: isApproximate, atLeast: hasUnpriced)
+        if totalCost == 0, hasUnknownCost, !hasUnpriced { return Self.unknownCostText }
+        return CostFormatter.format(totalCost, approximate: isApproximate, atLeast: hasUnpriced || hasUnknownCost)
+    }
+
+    /// Why the total is a lower bound, for its tooltip; empty when it is not.
+    var totalCostHelp: String {
+        if hasUnpriced { return L10n.providerPanel.atLeastHelp }
+        if hasUnknownCost { return L10n.providerPanel.scopeAllDevicesHelp }
+        return ""
     }
 }

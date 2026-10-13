@@ -740,7 +740,8 @@ struct EnhancedProviderCard: View {
                     }
                     .buttonStyle(.plain)
                     .help(L10n.providerPanel.open)
-                    .accessibilityLabel(L10n.providerPanel.open)
+                    // Every card has one: VoiceOver names whose it is.
+                    .accessibilityLabel(L10n.providerPanel.openFor(provider.provider))
                 }
 
                 if accountConfigs.count == 1,

@@ -452,6 +452,9 @@ public enum L10n {
         /// The provider card's button that opens the panel: its tooltip and
         /// its VoiceOver name.
         public static var open: String { tr("provider_panel.open") }
+        /// The provider card's chart button for VoiceOver, naming the
+        /// provider: "Codex usage history".
+        public static func openFor(_ provider: String) -> String { tr("provider_panel.open_for", provider) }
         public static func lastDays(_ days: Int) -> String { tr("provider_panel.last_days", days) }
         public static var metricTokens: String { tr("provider_panel.metric_tokens") }
         public static var metricCost: String { tr("provider_panel.metric_cost") }
@@ -501,6 +504,8 @@ public enum L10n {
             tr("provider_panel.chart_label", metric, days)
         }
         public static var closeDay: String { tr("provider_panel.close_day") }
+        /// The iPhone chart's VoiceOver hint: how to move the selected day.
+        public static var chartHint: String { tr("provider_panel.chart_hint") }
     }
 
     // MARK: - Providers

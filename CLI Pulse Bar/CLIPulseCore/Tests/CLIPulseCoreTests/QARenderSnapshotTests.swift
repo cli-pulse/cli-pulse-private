@@ -572,6 +572,15 @@ final class QARenderSnapshotTests: XCTestCase {
         XCTAssertTrue(days.coverage.shouldDisclose)
         XCTAssertGreaterThan(days.days.filter(\.hasUsage).count, 15)
         XCTAssertLessThan(days.days.filter(\.hasUsage).count, 30, "some idle days")
+        // As synced rows (the iPhone component), its model with no rate
+        // arrives with a cost of 0 and is drawn as unknown.
+        let synced = claude.map {
+            DailyUsage(date: $0.date, provider: $0.provider, model: $0.model, inputTokens: $0.inputTokens,
+                       cachedTokens: $0.cachedTokens, outputTokens: $0.outputTokens, cost: $0.costUSD ?? 0)
+        }
+        let cloud = ProviderUsageDays.fromCloud(synced, provider: "Claude", basis: .inputOutput,
+                                                todayKey: "2026-10-07", timeZone: utc)
+        XCTAssertTrue(cloud.days.contains { $0.models.contains(where: \.costIsUnknown) })
     }
 
     func testSignedOutSurfacesComeBeforeDemoMode() {

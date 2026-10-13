@@ -26,6 +26,10 @@ public struct UsageDayBarsChart: View {
     /// The iPhone card: tapping the selected bar again clears the selection.
     public let tapTogglesSelection: Bool
     public let axisFontSize: CGFloat
+    /// What VoiceOver reads for the selected day: its line as the view below
+    /// the chart writes it ("Oct 13: ≈$3.10 · 11.2M tokens"), so moving a
+    /// day reads its figures, not only its date.
+    public let accessibilityValueText: (ProviderUsageDays.Day) -> String
 
     public init(
         days: [ProviderUsageDays.Day],
@@ -35,7 +39,8 @@ public struct UsageDayBarsChart: View {
         height: CGFloat,
         selectsOnHover: Bool,
         tapTogglesSelection: Bool,
-        axisFontSize: CGFloat = 9)
+        axisFontSize: CGFloat = 9,
+        accessibilityValueText: @escaping (ProviderUsageDays.Day) -> String = { $0.dateText })
     {
         self.days = days
         self.metric = metric
@@ -45,6 +50,7 @@ public struct UsageDayBarsChart: View {
         self.selectsOnHover = selectsOnHover
         self.tapTogglesSelection = tapTogglesSelection
         self.axisFontSize = axisFontSize
+        self.accessibilityValueText = accessibilityValueText
     }
 
     public var body: some View {
@@ -79,7 +85,10 @@ public struct UsageDayBarsChart: View {
             .accessibilityLabel(L10n.providerPanel.chartLabel(metric.label, days.count))
             // VoiceOver moves the selection a day at a time with a swipe up
             // or down; the selected day's models are read below the chart.
-            .accessibilityValue(days.first { $0.dateKey == selection }?.dateText ?? "")
+            .accessibilityValue(days.first { $0.dateKey == selection }.map(accessibilityValueText) ?? "")
+            #if os(iOS)
+            .accessibilityHint(L10n.providerPanel.chartHint)
+            #endif
             .accessibilityAdjustableAction { direction in
                 guard let index = Self.adjustedIndex(
                     from: days.firstIndex { $0.dateKey == selection }, count: days.count,
@@ -178,8 +187,11 @@ public struct UsageMetricPicker: View {
     }
 }
 
-/// A day's models, most expensive first, each with a short bar in the
-/// provider's colour that fades with its rank.
+/// A day's models, most expensive first (most tokens first while costs are
+/// hidden), each with a short bar in the provider's colour that fades with
+/// its rank. A grid, so the cost and token columns line up whatever their
+/// widths in each language. The unit is left out of the rows: the day's
+/// line above them names it ("tokens", "I/O tokens"), and VoiceOver reads it.
 @available(iOS 17.0, macOS 13.0, *)
 public struct UsageDayModelRows: View {
     public enum Style: Sendable {
@@ -214,34 +226,49 @@ public struct UsageDayModelRows: View {
     public static let panelRowHeight: CGFloat = 20
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: style == .panel ? 0 : 6) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                HStack(spacing: 8) {
+        Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: style == .panel ? 0 : 6) {
+            ForEach(Array(ProviderUsageDays.displayOrder(rows, showsCost: showsCost).enumerated()),
+                    id: \.element.id) { index, row in
+                GridRow {
                     RoundedRectangle(cornerRadius: 1)
                         .fill(accent.opacity(Self.rankOpacity(index)))
                         .frame(width: 3, height: style == .panel ? 12 : 14)
+                        // The panel's rows keep one height, so its list does
+                        // not change height from day to day.
+                        .frame(height: style == .panel ? Self.panelRowHeight : nil)
+                        .accessibilityHidden(true)
+                    // One VoiceOver element per row, read with its unit.
                     Text(row.model)
                         .font(nameFont)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel(accessibilityText(row))
                     if showsCost {
                         Text(row.costText)
                             .font(valueFont)
                             .monospacedDigit()
-                            .foregroundStyle(row.hasNoRate ? Color.secondary : Color.primary)
-                            .help(costHelp(row))
+                            .foregroundStyle(row.hasNoRate || row.costIsUnknown ? Color.secondary : Color.primary)
+                            .fixedSize()
+                            .gridColumnAlignment(.trailing)
+                            .help(row.costHelp)
+                            .accessibilityHidden(true)
                     }
-                    Text(basis.tokensText(row.tokens))
+                    Text(CostFormatter.formatUsage(row.tokens))
                         .font(valueFont)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
-                        .frame(minWidth: style == .panel ? 74 : 64, alignment: .trailing)
+                        .fixedSize()
+                        .gridColumnAlignment(.trailing)
+                        .accessibilityHidden(true)
                 }
-                .frame(height: style == .panel ? Self.panelRowHeight : nil)
-                .accessibilityElement(children: .combine)
             }
         }
+    }
+
+    private func accessibilityText(_ row: ProviderUsageDays.ModelRow) -> String {
+        ([row.model] + (showsCost ? [row.costText] : []) + [basis.tokensText(row.tokens)])
+            .joined(separator: ", ")
     }
 
     private var nameFont: Font {
@@ -250,12 +277,6 @@ public struct UsageDayModelRows: View {
 
     private var valueFont: Font {
         style == .panel ? .system(size: 11) : .caption
-    }
-
-    private func costHelp(_ row: ProviderUsageDays.ModelRow) -> String {
-        if row.hasNoRate { return L10n.providerPanel.noRateHelp }
-        if row.isPartlyUnpriced { return L10n.providerPanel.atLeastHelp }
-        return ""
     }
 
     /// 0.9 for the first row, fading by 0.15 a rank to no less than 0.3.
@@ -306,7 +327,10 @@ public struct ProviderUsageHistorySection: View {
             UsageDayBarsChart(
                 days: days.days, metric: metric, accent: accent,
                 selection: $selection, height: 90,
-                selectsOnHover: false, tapTogglesSelection: true)
+                selectsOnHover: false, tapTogglesSelection: true,
+                accessibilityValueText: { [basis = days.basis, showsCost = showCost] day in
+                    day.summary(basis: basis, showsCost: showsCost)
+                })
             if let day = days.day(selection) {
                 dayDetail(day)
                     .transition(.opacity)
@@ -333,12 +357,20 @@ public struct ProviderUsageHistorySection: View {
             }
             UsageDayModelRows(rows: day.models, basis: days.basis, accent: accent,
                               showsCost: showCost, style: .card)
-            // The costs are estimates, as everywhere else they are shown.
+            // The costs are estimates, as everywhere else they are shown, and
+            // synced costs can leave out tokens the uploading device had no
+            // rate for. The section's only truth labels, so not its faintest
+            // text.
             if showCost {
-                Text(L10n.usageDashboard.costDisclaimer)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(L10n.usageDashboard.costDisclaimer)
+                    if days.scope == .allDevices {
+                        Text(L10n.providerPanel.scopeAllDevicesHelp)
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(10)

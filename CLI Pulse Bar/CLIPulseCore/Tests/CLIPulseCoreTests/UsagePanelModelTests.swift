@@ -51,27 +51,75 @@ final class UsagePanelModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(reads, 1)
     }
 
-    private actor Calls {
-        var count = 0
-        func next() -> Int { count += 1; return count }
+    /// A loader whose first read waits until `open()`, so a test decides
+    /// when the older read finishes instead of racing a timer. Later reads
+    /// return at once.
+    private actor Gate {
+        private var entered = 0
+        private var isOpen = false
+        private var release: CheckedContinuation<Void, Never>?
+        private var entryWaiters: [(count: Int, continuation: CheckedContinuation<Void, Never>)] = []
+
+        /// The read's number: 1 for the first.
+        func read() async -> Int {
+            entered += 1
+            let number = entered
+            let ready = entryWaiters.filter { $0.count <= entered }
+            entryWaiters.removeAll { $0.count <= entered }
+            ready.forEach { $0.continuation.resume() }
+            if number == 1, !isOpen {
+                await withCheckedContinuation { release = $0 }
+            }
+            return number
+        }
+
+        func waitUntilEntered(_ count: Int) async {
+            guard entered < count else { return }
+            await withCheckedContinuation { entryWaiters.append((count, $0)) }
+        }
+
+        func open() {
+            isOpen = true
+            release?.resume()
+            release = nil
+        }
     }
 
+    /// The first read sees the old archive and finishes last; the second,
+    /// started after the archive changed, finishes first. The newer stands.
     func testAnOlderReadThatFinishesLastDoesNotWin() async {
-        let calls = Calls()
+        let gate = Gate()
         let model = UsagePanelModel(notificationCenter: NotificationCenter(), loadArchive: {
-            // The first read is slow and sees the old archive; the second,
-            // started after the archive changed, is quick.
-            if await calls.next() == 1 {
-                try? await Task.sleep(nanoseconds: 300_000_000)
-                return Self.archive(tokens: 1)
-            }
-            return Self.archive(tokens: 3)
+            Self.archive(tokens: await gate.read() == 1 ? 1 : 3)
         })
         model.reloadArchive()
-        try? await Task.sleep(nanoseconds: 20_000_000)
+        let older = model.currentReloadTask
+        await gate.waitUntilEntered(1)
         model.reloadArchive()
-        try? await Task.sleep(nanoseconds: 600_000_000)
+        await model.settle()
+        XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 3)
+
+        await gate.open()
+        await older?.value
         XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 3, "the newer read stands")
+    }
+
+    /// The archive the panel opens with is read after any reload still in
+    /// flight from before it was shown; that reload must not replace it.
+    func testAReloadFromBeforeTheSeedDoesNotReplaceIt() async {
+        let gate = Gate()
+        let model = UsagePanelModel(notificationCenter: NotificationCenter(), loadArchive: {
+            _ = await gate.read()
+            return Self.archive(tokens: 1)
+        })
+        model.reloadArchive()
+        let older = model.currentReloadTask
+        await gate.waitUntilEntered(1)
+        model.seed(archive: Self.archive(tokens: 5))
+
+        await gate.open()
+        await older?.value
+        XCTAssertEqual(model.archive?.days["2026-10-06"]?.tokens, 5, "the seed stands")
     }
 
     func testTheProviderModeFollowsTheScan() {

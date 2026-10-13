@@ -8,7 +8,7 @@ import XCTest
 /// Off unless asked for. It reads this Mac's own `~/.codex` and `~/.claude`
 /// logs, which no test may do for whoever happens to run the suite:
 ///
-///     CLIPULSE_LOCAL_PANEL_CHECK=2026-09-29 swift test --filter ProviderUsageLocalCheckTests
+///     CLIPULSE_LOCAL_PANEL_CHECK=<yyyy-MM-dd> swift test --filter ProviderUsageLocalCheckTests
 ///
 /// The scan writes its cache to a throwaway directory, never the app's. The
 /// output is totals only: no model name, path or project leaves the test.

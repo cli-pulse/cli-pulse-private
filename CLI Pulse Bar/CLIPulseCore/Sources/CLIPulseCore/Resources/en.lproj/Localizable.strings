@@ -1641,6 +1641,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 /* v1.57 — the usage panel's provider mode (ProviderUsageDays): one provider's last 30 days by day and model, and the day detail under the iPhone card's chart. "≥" and "≈" are symbols, kept as they are. "This Mac" / "All devices" say whose usage a figure counts. token_basis says how tokens are added up: Codex's cached input is part of its input and is counted once. */
 "provider_panel.title" = "Usage history";
 "provider_panel.open" = "Usage history: the last 30 days by day and model";
+"provider_panel.open_for" = "%@ usage history";
 "provider_panel.last_days" = "Last %d days";
 "provider_panel.metric_tokens" = "Tokens";
 "provider_panel.metric_cost" = "Cost";
@@ -1669,6 +1670,7 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "provider_panel.all_providers" = "All providers";
 "provider_panel.chart_label" = "Daily %1$@, last %2$d days";
 "provider_panel.close_day" = "Hide this day's details";
+"provider_panel.chart_hint" = "Swipe up or down to choose a day. Its models are listed below the chart.";
 "folder_access.dir_clipulse_config" = "CLI Pulse Config";
 "folder_access.dir_clipulse_data" = "CLI Pulse Data";
 "folder_access.dir_codex_session_logs" = "Codex Session Logs";

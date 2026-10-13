@@ -133,7 +133,10 @@ public final class DashboardPanelController {
                     // AppKit's, not SwiftUI state.
                     DispatchQueue.main.async { self?.fit(height: height) }
                 },
-                onClose: { [weak self] in self?.hide() })
+                onClose: { [weak self] in self?.hide() },
+                // The provider mode's folder-access state: the popover's
+                // Settings is where the log folders are granted.
+                onOpenSettings: { [weak self] in self?.state?.selectedTab = .settings })
                 .displayLocaleRoot())
         // The panel's size is set here, from the measured content; the
         // hosting view must not size the window itself.
@@ -174,7 +177,12 @@ public final class DashboardPanelController {
             p.animator().setFrame(NSRect(x: targetX, y: targetY, width: width, height: height), display: true)
             p.animator().alphaValue = 1
         }, completionHandler: { [weak self] in
-            MainActor.assumeIsolated { self?.slidingToX = nil }
+            // Only this slide's target: the panel may have been hidden and
+            // shown again, with a slide of its own, before this one ended.
+            MainActor.assumeIsolated {
+                guard let self, self.panel === p else { return }
+                self.slidingToX = nil
+            }
         })
         panel = p
 
