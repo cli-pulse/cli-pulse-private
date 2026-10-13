@@ -35,13 +35,14 @@ final class ProviderUsageLocalCheckTests: XCTestCase {
             let rowTokens = day.models.reduce(0) { $0 + $1.tokens }
             let rowCost = day.models.reduce(0) { $0 + $1.cost }
             // The same day straight from the scan rows, outside the model.
+            // %ld below: counts are 64-bit, and cache reads can take a day past 2^31.
             let raw = scan.entries.filter {
                 $0.provider == provider && $0.date == dayKey && $0.model != ScanEntry.messageBucketModel
             }
             let rawTokens = raw.reduce(0) { $0 + ArchiveTokenBasis.tokens(of: $1) }
             let rawCost = raw.reduce(0) { $0 + ($1.costUSD ?? 0) }
             print(String(
-                format: "LOCAL_PANEL_CHECK %@ %@: day %d tokens, rows sum %d, scan %d; day $%.6f, rows sum $%.6f, scan $%.6f; %d rows%@",
+                format: "LOCAL_PANEL_CHECK %@ %@: day %ld tokens, rows sum %ld, scan %ld; day $%.6f, rows sum $%.6f, scan $%.6f; %ld rows%@",
                 provider, dayKey, day.tokens, rowTokens, rawTokens, day.cost, rowCost, rawCost,
                 day.models.count, day.hasUnpriced ? ", some without a rate" : ""))
             XCTAssertEqual(day.tokens, rowTokens, provider)

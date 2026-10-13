@@ -1175,7 +1175,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// 440 and 520 points, always dark, with a close button. Its see-through
     /// HUD backdrop is drawn over an opaque dark fill here.
     private func captureUsageDashboardPanel(_ surface: QARenderSurface, index: Int) async {
-        let panel = UsageDashboardView(archive: state.usageArchive, scrollable: false)
+        // `onSelectProvider` as the panel passes it: its By Provider rows open
+        // that provider's history and carry a chevron saying so.
+        let panel = UsageDashboardView(archive: state.usageArchive, scrollable: false, onSelectProvider: { _ in })
             .frame(width: 480)
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "xmark.circle.fill")
@@ -1209,9 +1211,14 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         let data = ProviderUsageDays.fromScan(
             QARenderSnapshot.providerPanelSample(kind), provider: kind.rawValue,
             todayKey: DayKey.string(from: Date()))
+        // Claude's render selects the latest day with a model that has no
+        // rate, so its "No rate" row and the day's "≥" are reviewed too.
+        let day = kind == .claude
+            ? data.days.last { day in day.models.contains { $0.hasNoRate } }?.dateKey
+            : nil
         let panel = ProviderUsagePanelView(
             data: data, availableScopes: [.thisMac], scope: .constant(.thisMac),
-            needsFolderAccess: false, onShowAllProviders: {})
+            needsFolderAccess: false, onShowAllProviders: {}, initialSelection: day)
             .frame(width: 480)
             .overlay(alignment: .topTrailing) {
                 Image(systemName: "xmark.circle.fill")
@@ -1225,8 +1232,9 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
             panel, surface: surface, index: index,
             prepare: { [weak self] in self?.blendHUDWithinWindow($0, id: surface.id) },
             note: "The usage panel's provider mode, 480 points wide, from sample scan rows"
-                + " (QARenderSnapshot.providerPanelSample), chart in \(metric.rawValue); the latest day"
-                + " with usage is selected. The real panel reads this Mac's scan."
+                + " (QARenderSnapshot.providerPanelSample), chart in \(metric.rawValue); "
+                + (day == nil ? "the latest day with usage" : "the latest day with a model that has no rate")
+                + " is selected. The real panel reads this Mac's scan."
         )
     }
 
@@ -1235,8 +1243,15 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
     /// counted in I/O tokens, as the card counts them. A component on the Mac,
     /// not the iPhone screen.
     private func captureProviderCardHistory(_ surface: QARenderSurface, index: Int) async {
-        let data = ProviderUsageDays.fromScan(
-            QARenderSnapshot.providerPanelSample(.codex), provider: ProviderKind.codex.rawValue,
+        // As the iPhone gets them: synced rows (`get_daily_usage`), the cost
+        // each device uploaded, every device's ("All devices").
+        let synced = QARenderSnapshot.providerPanelSample(.codex).map {
+            DailyUsage(date: $0.date, provider: $0.provider, model: $0.model,
+                       inputTokens: $0.inputTokens, cachedTokens: $0.cachedTokens,
+                       outputTokens: $0.outputTokens, cost: $0.costUSD ?? 0)
+        }
+        let data = ProviderUsageDays.fromCloud(
+            synced, provider: ProviderKind.codex.rawValue,
             basis: .inputOutput, todayKey: DayKey.string(from: Date()))
         let section = ProviderUsageHistorySection(
             days: data, accent: PulseTheme.providerColor(ProviderKind.codex.rawValue),
@@ -1249,7 +1264,7 @@ final class QASnapshotRenderer: NSObject, NSApplicationDelegate {
         await captureWindow(
             section, surface: surface, index: index,
             note: "The iPhone card's usage-history section (ProviderUsageHistorySection), 375 points wide,"
-                + " from sample rows in I/O tokens, the latest day tapped. Drawn on the Mac."
+                + " from the sample rows as synced rows, in I/O tokens, the latest day tapped. Drawn on the Mac."
         )
     }
 

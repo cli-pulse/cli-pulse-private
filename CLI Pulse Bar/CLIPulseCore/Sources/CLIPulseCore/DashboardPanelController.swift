@@ -133,7 +133,8 @@ public final class DashboardPanelController {
                     // AppKit's, not SwiftUI state.
                     DispatchQueue.main.async { self?.fit(height: height) }
                 },
-                onClose: { [weak self] in self?.hide() }))
+                onClose: { [weak self] in self?.hide() })
+                .displayLocaleRoot())
         // The panel's size is set here, from the measured content; the
         // hosting view must not size the window itself.
         hosting.sizingOptions = []

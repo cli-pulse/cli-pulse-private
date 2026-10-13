@@ -470,9 +470,9 @@ struct UsagePanelRootView: View {
         }
         .background(HUDWindowBackground(isDark: true).ignoresSafeArea())
         // token-monitor look: the slide-out panel is always dark frosted
-        // glass, regardless of the system theme.
+        // glass, regardless of the system theme. The hosting view applies
+        // `displayLocaleRoot()` (`DisplayLocaleRootTests` reads it there).
         .environment(\.colorScheme, .dark)
-        .displayLocaleRoot()
     }
 }
 
