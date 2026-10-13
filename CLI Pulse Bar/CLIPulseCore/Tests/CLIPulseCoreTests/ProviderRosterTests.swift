@@ -120,10 +120,10 @@ final class ProviderRosterTests: XCTestCase {
     }
 
     func testTheEnvironmentKeysAreTheOnesTheCollectorsRead() {
-        XCTAssertEqual(
-            ProviderRoster.unconfirmedOperatorEnvironmentKeys,
-            KimiK2Collector.environmentKeys + [CrossModelCollector.apiKeyEnv]
-        )
+        let keys = ProviderRoster.unconfirmedOperatorEnvironmentKeys
+        XCTAssertEqual(Set(keys.keys), [.kimiK2, .crossModel])
+        XCTAssertEqual(keys[.kimiK2], KimiK2Collector.environmentKeys)
+        XCTAssertEqual(keys[.crossModel], [CrossModelCollector.apiKeyEnv])
     }
     #endif
 
@@ -152,8 +152,13 @@ final class ProviderRosterTests: XCTestCase {
 
     // MARK: - Who is owed the notice
 
-    private func config(_ kind: ProviderKind, key: String? = nil, label: String? = nil) -> ProviderConfig {
-        ProviderConfig(kind: kind, apiKey: key, accountLabel: label)
+    private func config(
+        _ kind: ProviderKind,
+        key: String? = nil,
+        label: String? = nil,
+        enabled: Bool = true
+    ) -> ProviderConfig {
+        ProviderConfig(kind: kind, isEnabled: enabled, apiKey: key, accountLabel: label)
     }
 
     private func owed(_ configs: [ProviderConfig], environment: [String: String] = [:]) -> Bool {
@@ -163,9 +168,8 @@ final class ProviderRosterTests: XCTestCase {
     func testTheNoticeIsOwedForASavedKeyToKimiK2OrCrossModel() {
         XCTAssertTrue(owed([config(.kimiK2, key: "k")]))
         XCTAssertTrue(owed([config(.crossModel, key: "k")]))
-        var cookie = config(.kimiK2)
-        cookie.manualCookieHeader = "session=1"
-        XCTAssertTrue(owed([cookie]))
+        // Switched off now, but the person saved a key to it.
+        XCTAssertTrue(owed([config(.crossModel, key: "k", enabled: false)]))
     }
 
     func testTheNoticeIsNotOwedWithoutAKeyToThem() {
@@ -173,18 +177,35 @@ final class ProviderRosterTests: XCTestCase {
         XCTAssertFalse(owed(ProviderKind.allCases.map { config($0) }))
         // A name alone sent nothing; the notice is about a key.
         XCTAssertFalse(owed([config(.kimiK2, label: "Work")]))
+        XCTAssertFalse(owed([config(.kimiK2, key: "  \n")]))
+        // Neither collector read a cookie.
+        var cookie = config(.kimiK2)
+        cookie.manualCookieHeader = "session=1"
+        cookie.cookieSource = .manual
+        XCTAssertFalse(owed([cookie]))
         // Crof shut down: removed without a notice.
         XCTAssertFalse(owed([config(.crof, key: "k")]))
         // The official providers are not retired.
         XCTAssertFalse(owed([config(.moonshot, key: "k"), config(.kimi, key: "k")]))
     }
 
-    func testAKeyInTheEnvironmentTheCollectorsReadCountsToo() {
-        for key in ["KIMI_K2_API_KEY", "KIMI_API_KEY", "KIMI_KEY", "CROSSMODEL_API_KEY"] {
-            XCTAssertTrue(owed([], environment: [key: "sk-1"]), key)
+    func testAKeyInTheEnvironmentCountsWhereItsCollectorRan() {
+        let readBy: [(ProviderKind, String)] = [
+            (.kimiK2, "KIMI_K2_API_KEY"), (.kimiK2, "KIMI_API_KEY"),
+            (.kimiK2, "KIMI_KEY"), (.crossModel, "CROSSMODEL_API_KEY"),
+        ]
+        for (kind, key) in readBy {
+            XCTAssertTrue(owed([config(kind)], environment: [key: "sk-1"]), key)
+            // A fresh 1.57 install has no such account: nothing ever ran.
+            XCTAssertFalse(owed(ProviderConfig.defaults(), environment: [key: "sk-1"]), key)
+            // Collectors ran for enabled accounts only.
+            XCTAssertFalse(owed([config(kind, enabled: false)], environment: [key: "sk-1"]), key)
         }
-        XCTAssertFalse(owed([], environment: ["KIMI_K2_API_KEY": "  "]))
-        XCTAssertFalse(owed([], environment: ["MOONSHOT_API_KEY": "sk-1"]))
+        // Each collector read its own variables, not the other's.
+        XCTAssertFalse(owed([config(.crossModel)], environment: ["KIMI_API_KEY": "sk-1"]))
+        XCTAssertFalse(owed([config(.kimiK2)], environment: ["CROSSMODEL_API_KEY": "sk-1"]))
+        XCTAssertFalse(owed([config(.kimiK2)], environment: ["KIMI_K2_API_KEY": "  "]))
+        XCTAssertFalse(owed([config(.kimiK2)], environment: ["MOONSHOT_API_KEY": "sk-1"]))
     }
 
     // MARK: - The notice is shown once

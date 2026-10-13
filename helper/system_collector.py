@@ -179,7 +179,12 @@ PROCESS_PATTERNS: list[tuple[str, str, str]] = [
     ("MiniMax", r"\bminimax\b", "high"),
     ("Augment", r"\baugment\b", "medium"),
     ("JetBrains AI", r"\bjetbrains[\s-]?ai\b|\bjbai\b", "high"),
-    ("Kimi K2", r"\bkimi[\s_-]*k2\b", "high"),
+    # Kimi K2 is Moonshot's model, so a process that names it counts as Kimi
+    # (this also catches "kimik2"/"kimi_k2", which the bare pattern misses).
+    # The app retired its "Kimi K2" provider in 1.57: it was a relay's credit
+    # balance, and the app no longer shows that name. 1:1 with
+    # SessionDetector.swift and the app's LocalScanner.swift.
+    ("Kimi", r"\bkimi[\s_-]*k2\b", "high"),
     ("Kimi", r"\bkimi\b", "medium"),
     ("Amp", r"\bamp\b", "low"),
     ("Synthetic", r"\bsynthetic\b", "medium"),

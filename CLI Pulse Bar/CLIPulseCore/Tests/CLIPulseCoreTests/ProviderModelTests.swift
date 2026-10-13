@@ -274,28 +274,27 @@ final class ProviderModelTests: XCTestCase {
     // MARK: - LocalScanner detection (macOS only)
 
     #if os(macOS)
-    func testDetectKimiVsKimiK2() {
+    func testDetectKimiAndKimiK2AsKimi() {
         let scanner = LocalScanner.shared
 
-        // Plain "kimi" must resolve to Kimi, not Kimi K2
+        // Plain "kimi" resolves to Kimi
         let kimiResult = scanner.detectProvider("/usr/local/bin/kimi --project foo")
         XCTAssertNotNil(kimiResult)
         XCTAssertEqual(kimiResult?.0, "Kimi")
 
-        // "kimi k2" must resolve to Kimi K2
-        let k2Result = scanner.detectProvider("/usr/local/bin/kimi k2 --project bar")
-        XCTAssertNotNil(k2Result)
-        XCTAssertEqual(k2Result?.0, "Kimi K2")
-
-        // "kimi-k2" must resolve to Kimi K2
-        let k2DashResult = scanner.detectProvider("kimi-k2 serve")
-        XCTAssertNotNil(k2DashResult)
-        XCTAssertEqual(k2DashResult?.0, "Kimi K2")
-
-        // "kimi_k2" must resolve to Kimi K2
-        let k2UnderResult = scanner.detectProvider("kimi_k2 --help")
-        XCTAssertNotNil(k2UnderResult)
-        XCTAssertEqual(k2UnderResult?.0, "Kimi K2")
+        // Every spelling of Kimi K2 (Moonshot's model) resolves to Kimi too:
+        // the "Kimi K2" provider is retired in 1.57 (`ProviderRoster`), and
+        // "kimik2" / "kimi_k2" only match the K2 pattern, not the bare one.
+        for command in [
+            "/usr/local/bin/kimi k2 --project bar",
+            "kimi-k2 serve",
+            "kimi_k2 --help",
+            "/opt/bin/kimik2 run",
+        ] {
+            let result = scanner.detectProvider(command)
+            XCTAssertEqual(result?.0, "Kimi", command)
+            XCTAssertEqual(result?.1, "high", command)
+        }
     }
 
     func testDetectBasicProviders() {

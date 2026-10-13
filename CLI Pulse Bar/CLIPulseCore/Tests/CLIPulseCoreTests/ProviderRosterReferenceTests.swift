@@ -98,6 +98,14 @@ final class ProviderRosterReferenceTests: XCTestCase {
         XCTAssertEqual(occurrences(of: "ProviderRoster.hadUnconfirmedOperatorSetUp(", in: text), 1)
     }
 
+    func testTheHelperLeavesRetiredAccountsOut() throws {
+        // The LoginItem helper reads the saved accounts the app last wrote,
+        // which keep retired ones until the app's next save: both of its reads
+        // leave them out, so their keys are not even loaded.
+        let text = try source("CLIPulseHelper/HelperDaemon.swift")
+        XCTAssertEqual(occurrences(of: "ProviderRoster.activeConfigs(saved)", in: text), 2)
+    }
+
     func testEveryPlaceRowsAreCommittedForDisplayLeavesRetiredOnesOut() throws {
         let mac = try source("CLIPulseCore/Sources/CLIPulseCore/DataRefreshManager.swift")
         XCTAssertEqual(occurrences(of: "ProviderRoster.shown(payload.providers)", in: mac), 1)

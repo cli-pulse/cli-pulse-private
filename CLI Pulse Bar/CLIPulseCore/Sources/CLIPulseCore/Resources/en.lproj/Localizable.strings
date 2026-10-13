@@ -381,6 +381,7 @@
 // v1.10 P3-2: accessibility labels (added alongside P3-3 a11y pass)
 "a11y.dismiss_error" = "Dismiss error";
 "a11y.dismiss_tier_warning" = "Dismiss tier limit warning";
+"a11y.dismiss_retired_providers_notice" = "Dismiss the Kimi K2 and CrossModel notice";
 "a11y.configure_provider" = "Configure %@";
 "a11y.configuration_error_title" = "Configuration error";
 "a11y.configuration_error_body" = "SUPABASE_ANON_KEY missing — API calls will fail.";
@@ -642,6 +643,7 @@
 
 /* ── Menu bar additions ── */
 "menu_bar.tier_migration" = "Kept your %d most-used providers to fit the free plan. Disabled %d — edit in Settings › Providers.";
+"menu_bar.retired_providers_notice" = "CLI Pulse no longer supports Kimi K2 or CrossModel: it couldn't confirm who runs them, so it no longer reads them or sends them your key. Kimi and Moonshot are still supported.";
 "menu_bar.over_plan_limits" = "Over CLI Pulse %1$@ plan limits — Providers: %2$d/%3$d. Upgrade or reduce usage.";
 "menu_bar.provider_limit_reached" = "Your CLI Pulse %1$@ plan allows up to %2$d providers. Upgrade to enable more.";
 "menu_bar.edit" = "Edit";
@@ -2004,5 +2006,3 @@ This switch used to also enable remote CLI sessions and remote permission approv
 "pairing.this_mac_removed_hint" = "It has stopped syncing. Set up cloud sync again to resume.";
 "pairing.this_mac_not_set_up" = "This Mac isn't paired with your account yet";
 "pairing.this_mac_not_set_up_hint" = "Your account is paired on another device. Set up cloud sync to add this Mac too, so its sessions and alerts show on your other devices.";
-"menu_bar.retired_providers_notice" = "CLI Pulse no longer supports Kimi K2 or CrossModel: it couldn't confirm who runs them, so it no longer reads them or sends them your key. Kimi and Moonshot are still supported.";
-"a11y.dismiss_retired_providers_notice" = "Dismiss the Kimi K2 and CrossModel notice";

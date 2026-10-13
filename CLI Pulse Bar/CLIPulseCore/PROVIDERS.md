@@ -53,8 +53,11 @@ by the next save.
 | **Kimi K2** | Its collector read `kimi-k2.ai`, a relay whose operator CLI Pulse could not confirm (not Moonshot's API; the Kimi and Moonshot providers stay). | `KimiK2Collector` kept, unregistered. |
 | **CrossModel** | A hosted relay whose operator CLI Pulse could not confirm. | `CrossModelCollector` kept, unregistered. |
 
-Anyone whose saved key (or a key in an environment variable the collector read)
-went to Kimi K2 or CrossModel sees a one-time notice in the menu-bar popover.
+Anyone whose saved key (or, with the account switched on, a key in an
+environment variable the collector read) went to Kimi K2 or CrossModel sees a
+one-time notice in the menu-bar popover. A running process that names Kimi K2
+(Moonshot's model) counts as Kimi in the process scan (`LocalScanner`, and the
+helpers' `SessionDetector` and `system_collector.py`).
 
 ## Providers Not Implemented Locally (8 providers)
 

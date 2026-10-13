@@ -1199,11 +1199,12 @@ public final class AppState: ObservableObject {
 
         subscriptionManager.apiClient = api
         loadProviderConfigs(defaults: defaults)
+        #if os(macOS)
+        // Only a Mac ever ran collectors, so only a Mac can owe the notice.
         if runtime.capabilities.allowsUnsandboxedMigration {
             showsRetiredProviderNotice =
                 RetiredProviderNotice(defaults: defaults).isPending
         }
-        #if os(macOS)
         if runtime.capabilities.allowsHelperRegistration {
             UserDefaults(suiteName: HelperIPC.suiteName)?.set(
                 defaults.bool(
@@ -2496,13 +2497,16 @@ public final class AppState: ObservableObject {
         }
         // 1.57: retired providers' accounts are left out from here on, and the
         // next save drops them (the write above kept them, as read). Whether
-        // one of them was set up is asked first, while their keys are loaded.
+        // a Kimi K2 or CrossModel collector had a key to send is asked first,
+        // while their keys are loaded; collectors ran on a Mac only.
+        #if os(macOS)
         RetiredProviderNotice(defaults: defaults).record(
             owed: ProviderRoster.hadUnconfirmedOperatorSetUp(
                 configs: providerConfigs,
                 environment: ProcessInfo.processInfo.environment
             )
         )
+        #endif
         providerConfigs = ProviderRoster.activeConfigs(providerConfigs)
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }

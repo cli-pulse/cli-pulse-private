@@ -29,7 +29,7 @@ public final class LocalScanner: @unchecked Sendable {
     // provider-native quota/usage data. All results have quota=nil, remaining=nil.
     //
     // Order matters: more-specific patterns must come before less-specific ones
-    // for the same keyword (e.g. "Kimi K2" before "Kimi").
+    // for the same keyword.
     private static let processPatterns: [(provider: String, pattern: String, confidence: String)] = [
         ("Codex", #"\bcodex\b"#, "high"),
         ("Codex", #"\bopenai\b"#, "medium"),
@@ -44,7 +44,13 @@ public final class LocalScanner: @unchecked Sendable {
         ("Warp", #"\bwarp\b"#, "medium"),
         ("Augment", #"\baugment\b"#, "medium"),
         ("JetBrains AI", #"\bjetbrains[\s-]?ai\b|\bjbai\b"#, "high"),
-        ("Kimi K2", #"\bkimi[\s_-]*k2\b"#, "high"),
+        // Kimi K2 is Moonshot's model, so a process that names it counts as
+        // Kimi (this pattern also catches "kimik2" and "kimi_k2", which the
+        // bare one misses). The "Kimi K2" provider, retired in 1.57
+        // (`ProviderRoster`), was a relay's credit balance, not this, and a
+        // session must not be labelled with a provider CLI Pulse no longer
+        // shows.
+        ("Kimi", #"\bkimi[\s_-]*k2\b"#, "high"),
         ("Kimi", #"\bkimi\b"#, "high"),
         ("Amp", #"\bamp\b"#, "low"),
         ("MiniMax", #"\bminimax\b"#, "high"),

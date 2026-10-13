@@ -391,6 +391,7 @@
 // v1.10 P3-2: accessibility labels
 "a11y.dismiss_error" = "Descartar error";
 "a11y.dismiss_tier_warning" = "Descartar advertencia de límite de plan";
+"a11y.dismiss_retired_providers_notice" = "Descartar el aviso sobre Kimi K2 y CrossModel";
 "a11y.configure_provider" = "Configurar %@";
 "a11y.configuration_error_title" = "Error de configuración";
 "a11y.configuration_error_body" = "Falta SUPABASE_ANON_KEY — las llamadas a la API fallarán.";
@@ -823,6 +824,7 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "providers.grant_access_body" = "CLI Pulse necesita acceso de lectura a ~/.codex/sessions/ y ~/.claude/projects/";
 "providers.open_settings" = "Abrir Ajustes";
 "menu_bar.tier_migration" = "Se conservaron tus %d proveedores más usados para ajustarse al plan gratuito. Se desactivaron %d: edítalos en Ajustes › Proveedores.";
+"menu_bar.retired_providers_notice" = "CLI Pulse ya no admite Kimi K2 ni CrossModel: no pudo confirmar quién los opera, así que ya no los lee ni les envía tu clave. Kimi y Moonshot siguen disponibles.";
 "providers.quota_data_unavailable" = "Datos de cuota no disponibles";
 "advanced.sync_just_now" = "Sincronizado ahora mismo";
 "advanced.sync_minutes_ago" = "Sincronizado hace %d min";
@@ -1975,5 +1977,3 @@ Este ajuste también activaba antes las sesiones de CLI remotas y las aprobacion
 "pairing.this_mac_removed_hint" = "Ha dejado de sincronizarse. Vuelve a configurar la sincronización en la nube para reanudarla.";
 "pairing.this_mac_not_set_up" = "Este Mac aún no está vinculado a tu cuenta";
 "pairing.this_mac_not_set_up_hint" = "Tu cuenta ya tiene otro dispositivo vinculado. Configura la sincronización en la nube para añadir también este Mac y que sus sesiones y alertas aparezcan en tus otros dispositivos.";
-"menu_bar.retired_providers_notice" = "CLI Pulse ya no admite Kimi K2 ni CrossModel: no pudo confirmar quién los opera, así que ya no los lee ni les envía tu clave. Kimi y Moonshot siguen disponibles.";
-"a11y.dismiss_retired_providers_notice" = "Descartar el aviso sobre Kimi K2 y CrossModel";

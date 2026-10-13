@@ -76,35 +76,42 @@ public enum ProviderRoster {
     }
 
     /// The environment variables the Kimi K2 and CrossModel collectors read a
-    /// key from before 1.57 (`KimiK2Collector.environmentKeys`,
-    /// `CrossModelCollector.apiKeyEnv`). A key set there was sent to the relay
-    /// as surely as one saved in CLI Pulse.
-    static let unconfirmedOperatorEnvironmentKeys = [
-        "KIMI_K2_API_KEY", "KIMI_API_KEY", "KIMI_KEY", "CROSSMODEL_API_KEY",
+    /// key from before 1.57, after the account's saved key
+    /// (`KimiK2Collector.environmentKeys`, `CrossModelCollector.apiKeyEnv`).
+    static let unconfirmedOperatorEnvironmentKeys: [ProviderKind: [String]] = [
+        .kimiK2: ["KIMI_K2_API_KEY", "KIMI_API_KEY", "KIMI_KEY"],
+        .crossModel: ["CROSSMODEL_API_KEY"],
     ]
 
-    /// Whether someone had a provider retired for `.unconfirmedOperator` set
-    /// up, meaning its collector had a key to send: an account of one with a
-    /// saved key or cookie, or a key in an environment variable the collector
-    /// read. The account every install gets by default, untouched, is not
-    /// "set up", and neither is one that only has a name: the notice is about
-    /// a key, and they had none.
+    /// Whether a Kimi K2 or CrossModel collector had a key of this person's to
+    /// send before 1.57, which is who the notice is for. Either:
     ///
-    /// `configs` must have their secrets loaded (`loadSecrets()`); without
-    /// them a saved key does not count.
+    /// * an account of one has a saved API key (the only secret those
+    ///   collectors read; enabled or not, the person set it up), or
+    /// * an enabled account of one existed and an environment variable its
+    ///   collector read holds a key. Collectors ran for enabled accounts only
+    ///   (`CollectorRunner`), so a key in the environment reached nobody when
+    ///   the account was off, or missing (a fresh 1.57 install has none).
+    ///
+    /// The account every install had by default, untouched, had no key of its
+    /// own, and neither does one that only has a name. `configs` are the saved
+    /// ones, retired accounts still in, with their secrets loaded
+    /// (`loadSecrets()`); without them a saved key does not count.
     public static func hadUnconfirmedOperatorSetUp(
         configs: [ProviderConfig],
         environment: [String: String]
     ) -> Bool {
-        let configured = configs.contains { config in
-            config.kind.retirement == .unconfirmedOperator
-                && config.hasCredentials
+        func hasValue(_ value: String?) -> Bool {
+            !(value ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
-        if configured { return true }
-        return unconfirmedOperatorEnvironmentKeys.contains { key in
-            let value = environment[key]?
-                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return !value.isEmpty
+        let accounts = configs.filter {
+            $0.kind.retirement == .unconfirmedOperator
+        }
+        if accounts.contains(where: { hasValue($0.apiKey) }) { return true }
+        return accounts.contains { account in
+            account.isEnabled
+                && (unconfirmedOperatorEnvironmentKeys[account.kind] ?? [])
+                    .contains { hasValue(environment[$0]) }
         }
     }
 }
