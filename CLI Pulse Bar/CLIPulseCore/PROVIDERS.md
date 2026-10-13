@@ -44,8 +44,8 @@ These do **not** use developer API key billing.
 
 Not offered, not collected and not shown (`ProviderRoster.swift`). Their
 `ProviderKind` cases stay so configs an older build saved and rows another
-device uploaded still decode; saved accounts are left out when read and dropped
-by the next save.
+device uploaded still decode; saved accounts are left out when read, and the
+app's first 1.57 launch writes the saved list back without them.
 
 | Provider | Why | Code |
 |---|---|---|

@@ -2479,6 +2479,30 @@ public final class AppState: ObservableObject {
 
         recoverPendingLocalProviderAccountDeletions()
 
+        for index in providerConfigs.indices {
+            providerConfigs[index].loadSecrets()
+        }
+        // 1.57: retired providers' accounts are left out from here on
+        // (`ProviderRoster.configsKeptAtLaunch`). Whether a Kimi K2 or
+        // CrossModel collector had a key to send is asked of the accounts as
+        // read, keys loaded, before they are left out. Collectors ran on a Mac
+        // only, so only a Mac can owe the notice.
+        #if os(macOS)
+        let retiredProviderNotice: RetiredProviderNotice? =
+            RetiredProviderNotice(defaults: defaults)
+        #else
+        let retiredProviderNotice: RetiredProviderNotice? = nil
+        #endif
+        providerConfigs = ProviderRoster.configsKeptAtLaunch(
+            providerConfigs,
+            environment: ProcessInfo.processInfo.environment,
+            notice: retiredProviderNotice
+        )
+
+        // The kept list is what is written back (secrets are never encoded),
+        // so a retired account leaves the saved list and the helper's copy at
+        // this launch, not at whichever save the person makes next, and its
+        // Keychain items are not read again.
         if let migratedData = try? JSONEncoder().encode(providerConfigs) {
             defaults.set(
                 migratedData,
@@ -2491,23 +2515,6 @@ public final class AppState: ObservableObject {
                 )
             }
         }
-
-        for index in providerConfigs.indices {
-            providerConfigs[index].loadSecrets()
-        }
-        // 1.57: retired providers' accounts are left out from here on, and the
-        // next save drops them (the write above kept them, as read). Whether
-        // a Kimi K2 or CrossModel collector had a key to send is asked first,
-        // while their keys are loaded; collectors ran on a Mac only.
-        #if os(macOS)
-        RetiredProviderNotice(defaults: defaults).record(
-            owed: ProviderRoster.hadUnconfirmedOperatorSetUp(
-                configs: providerConfigs,
-                environment: ProcessInfo.processInfo.environment
-            )
-        )
-        #endif
-        providerConfigs = ProviderRoster.activeConfigs(providerConfigs)
         ProviderSharedCredentialOwner.reconcile(configs: providerConfigs)
     }
 

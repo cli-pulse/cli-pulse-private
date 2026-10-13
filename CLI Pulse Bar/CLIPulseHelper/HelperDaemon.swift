@@ -388,7 +388,8 @@ final class HelperDaemon {
               let saved = try? JSONDecoder().decode([ProviderConfig].self, from: data)
         else { return nil }
         // 1.57: retired providers' accounts are left out, as the app does
-        // (`ProviderRoster`), until the app's next save drops them.
+        // (`ProviderRoster`). The app's first 1.57 launch writes the list
+        // back without them; the helper can run before that launch.
         return ProviderRoster.activeConfigs(saved)
     }
 

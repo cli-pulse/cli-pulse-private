@@ -64,6 +64,26 @@ final class ProviderRosterReferenceTests: XCTestCase {
         return try XCTUnwrap(matches.first?.text)
     }
 
+    /// `text` with every run of whitespace, line breaks included, as one space,
+    /// so a pin does not depend on where a line was wrapped.
+    private func squeezed(_ text: String) -> String {
+        text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+    }
+
+    private static let appState = "CLIPulseCore/Sources/CLIPulseCore/AppState.swift"
+
+    /// The body of `AppState.loadProviderConfigs`, up to the next function.
+    private func loadProviderConfigsBody() throws -> String {
+        let text = try source(Self.appState)
+        let start = try XCTUnwrap(
+            text.range(of: "private func loadProviderConfigs("),
+            "AppState.loadProviderConfigs moved or was renamed"
+        )
+        let rest = text[start.upperBound...]
+        let end = rest.range(of: " func ")?.lowerBound ?? rest.endIndex
+        return String(rest[..<end])
+    }
+
     func testAllCasesAppearsOnlyWhereItIsNotARosterAPersonReads() throws {
         let files = try sources()
         // Positive control: a moved folder must fail, not scan nothing.
@@ -92,16 +112,54 @@ final class ProviderRosterReferenceTests: XCTestCase {
     }
 
     func testBothWaysOfReadingSavedAccountsLeaveRetiredOnesOut() throws {
-        let text = try source("CLIPulseCore/Sources/CLIPulseCore/AppState.swift")
-        // The production read (after the keys load) and the QA/passive read.
-        XCTAssertEqual(occurrences(of: "ProviderRoster.activeConfigs(", in: text), 2)
-        XCTAssertEqual(occurrences(of: "ProviderRoster.hadUnconfirmedOperatorSetUp(", in: text), 1)
+        let text = try source(Self.appState)
+        // The QA/passive read, and the production read at launch, which
+        // records the notice first (`ProviderRoster.configsKeptAtLaunch`;
+        // the order inside it is in `ProviderRosterTests`).
+        XCTAssertEqual(occurrences(of: "ProviderRoster.activeConfigs(", in: text), 1)
+        XCTAssertEqual(occurrences(of: "ProviderRoster.configsKeptAtLaunch(", in: text), 1)
+        // Who is owed the notice is asked only through it.
+        XCTAssertEqual(occurrences(of: "hadUnconfirmedOperatorSetUp(", in: text), 0)
+        XCTAssertEqual(occurrences(of: ".record(owed:", in: text), 0)
+    }
+
+    func testTheLaunchAsksWhoIsOwedWithTheKeysLoaded() throws {
+        let body = try loadProviderConfigsBody()
+        let loads = try XCTUnwrap(body.range(of: "providerConfigs[index].loadSecrets()"))
+        let kept = try XCTUnwrap(body.range(of: "ProviderRoster.configsKeptAtLaunch("))
+        XCTAssertLessThan(loads.lowerBound, kept.lowerBound,
+                          "asked before the keys load, a saved Kimi K2 or CrossModel key never owes the notice")
+        // The Mac passes a notice; only the iPhone passes none.
+        let text = squeezed(body)
+        XCTAssertEqual(occurrences(
+            of: "let retiredProviderNotice: RetiredProviderNotice? = RetiredProviderNotice(defaults: defaults)",
+            in: text), 1)
+        XCTAssertEqual(occurrences(of: "notice: retiredProviderNotice", in: text), 1)
+    }
+
+    func testTheLaunchWritesBackTheKeptList() throws {
+        let body = try loadProviderConfigsBody()
+        let kept = try XCTUnwrap(body.range(of: "ProviderRoster.configsKeptAtLaunch("))
+        let writes = try XCTUnwrap(body.range(of: "JSONEncoder().encode(providerConfigs)"))
+        XCTAssertEqual(occurrences(of: "JSONEncoder().encode(providerConfigs)", in: body), 1)
+        XCTAssertLessThan(kept.lowerBound, writes.lowerBound,
+                          "written before the retired accounts are left out, every launch writes them back for the helper")
+    }
+
+    func testTheLaunchShowsANoticeStillPending() throws {
+        // The notice is recorded while configs load; a launch shows it while
+        // it is pending, which survives restarts until it is dismissed.
+        let text = squeezed(try source(Self.appState))
+        XCTAssertEqual(occurrences(
+            of: "showsRetiredProviderNotice = RetiredProviderNotice(defaults: defaults).isPending",
+            in: text), 1)
     }
 
     func testTheHelperLeavesRetiredAccountsOut() throws {
         // The LoginItem helper reads the saved accounts the app last wrote,
-        // which keep retired ones until the app's next save: both of its reads
-        // leave them out, so their keys are not even loaded.
+        // which keep retired ones until the app's first 1.57 launch writes
+        // them back without: both of its reads leave them out, so their keys
+        // are not even loaded.
         let text = try source("CLIPulseHelper/HelperDaemon.swift")
         XCTAssertEqual(occurrences(of: "ProviderRoster.activeConfigs(saved)", in: text), 2)
     }

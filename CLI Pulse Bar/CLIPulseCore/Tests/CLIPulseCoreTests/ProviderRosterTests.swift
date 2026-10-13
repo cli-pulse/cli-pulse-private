@@ -234,6 +234,73 @@ final class ProviderRosterTests: XCTestCase {
         XCTAssertFalse(notice.isPending)
     }
 
+    // MARK: - What a launch keeps, and when it records the notice
+
+    private func noticeDefaults() throws -> UserDefaults {
+        let suite = "ProviderRosterTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        return defaults
+    }
+
+    func testTheLaunchRecordsTheNoticeFromTheAccountsItThenLeavesOut() throws {
+        let defaults = try noticeDefaults()
+        let notice = RetiredProviderNotice(defaults: defaults)
+        // As read at launch: retired accounts still in, keys loaded.
+        let read = [config(.codex), config(.kimiK2, key: "k"),
+                    config(.crof), config(.moonshot, key: "m")]
+
+        let kept = ProviderRoster.configsKeptAtLaunch(read, environment: [:], notice: notice)
+        XCTAssertEqual(kept.map(\.kind), [.codex, .moonshot], "order kept, retired left out")
+        XCTAssertEqual(kept.map(\.accountID), [read[0].accountID, read[3].accountID])
+        XCTAssertTrue(notice.isPending,
+                      "the Kimi K2 key must be asked about before its account is left out, or the notice is never owed")
+
+        // The next launch reads the list the launch wrote back, without the
+        // Kimi K2 account: the notice is still owed until it is dismissed.
+        let next = ProviderRoster.configsKeptAtLaunch(kept, environment: [:], notice: notice)
+        XCTAssertEqual(next.map(\.kind), [.codex, .moonshot])
+        XCTAssertTrue(RetiredProviderNotice(defaults: defaults).isPending)
+    }
+
+    func testTheLaunchRecordsNothingWhereNoKeyWasSent() throws {
+        let defaults = try noticeDefaults()
+        // Every install's untouched default accounts, retired ones included.
+        let read = ProviderKind.allCases.map { config($0) }
+
+        let kept = ProviderRoster.configsKeptAtLaunch(
+            read, environment: [:], notice: RetiredProviderNotice(defaults: defaults)
+        )
+        XCTAssertEqual(kept.map(\.kind), ProviderKind.offered)
+        XCTAssertNil(defaults.string(forKey: RetiredProviderNotice.stateKey))
+    }
+
+    func testWithoutANoticeTheLaunchOnlyLeavesRetiredAccountsOut() {
+        // The iPhone: collectors never ran there, so nothing is recorded.
+        let kept = ProviderRoster.configsKeptAtLaunch(
+            [config(.kimiK2, key: "k"), config(.codex), config(.crossModel, key: "k")],
+            environment: ["KIMI_API_KEY": "sk-1"],
+            notice: nil
+        )
+        XCTAssertEqual(kept.map(\.kind), [.codex])
+    }
+
+    func testOnceRecordedWhoIsOwedIsNotAskedAgain() throws {
+        let notice = RetiredProviderNotice(defaults: try noticeDefaults())
+        var asked = 0
+        func owed() -> Bool {
+            asked += 1
+            return true
+        }
+        XCTAssertTrue(notice.record(owed: owed()))
+        XCTAssertEqual(asked, 1, "nothing recorded yet: asked")
+        XCTAssertTrue(notice.record(owed: owed()))
+        notice.dismiss()
+        XCTAssertFalse(notice.record(owed: owed()))
+        XCTAssertEqual(asked, 1,
+                       "pending or dismissed, no answer changes the notice, so a launch does not ask")
+    }
+
     // MARK: - The notice's words
 
     func testTheNoticeIsTranslatedAndKeepsTheNamesInEnglish() {

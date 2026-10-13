@@ -11,7 +11,9 @@ import Foundation
 //   (`ProviderRosterReferenceTests` keeps it that way);
 // * `CollectorRegistry` has no collector for them, so no request is sent;
 // * their saved accounts are left out when configs are read
-//   (`ProviderRoster.activeConfigs`) and dropped by the next save;
+//   (`ProviderRoster.activeConfigs`; at a launch, `configsKeptAtLaunch`, which
+//   records the notice first), and the launch writes back the list without
+//   them;
 // * rows for them are left out where the apps commit rows for display
 //   (`ProviderRoster.shown`): a device still on an older build may upload some.
 
@@ -55,6 +57,31 @@ public enum ProviderRoster {
         _ configs: [ProviderConfig]
     ) -> [ProviderConfig] {
         configs.filter { !$0.kind.isRetired }
+    }
+
+    /// What a launch keeps of the saved accounts: `activeConfigs(configs)`.
+    ///
+    /// Where collectors ran (a Mac), the launch is also where the notice is
+    /// recorded, and the order is the point: whether a Kimi K2 or CrossModel
+    /// collector had a key to send (`hadUnconfirmedOperatorSetUp`) is asked
+    /// of `configs` as read, retired accounts still in and keys loaded,
+    /// before they are left out. Asked of the kept list, it is never owed.
+    /// It is asked only while the notice was never recorded: once it is
+    /// pending or dismissed, no answer changes it (`RetiredProviderNotice`).
+    ///
+    /// `notice` is nil where collectors never ran (the iPhone).
+    public static func configsKeptAtLaunch(
+        _ configs: [ProviderConfig],
+        environment: [String: String],
+        notice: RetiredProviderNotice?
+    ) -> [ProviderConfig] {
+        notice?.record(
+            owed: hadUnconfirmedOperatorSetUp(
+                configs: configs,
+                environment: environment
+            )
+        )
+        return activeConfigs(configs)
     }
 
     /// Provider rows for display, without retired providers' rows.
@@ -132,11 +159,13 @@ public struct RetiredProviderNotice {
     }
 
     /// Records that the notice is owed when `owed` is true and it never was
-    /// before. Returns whether it should be shown now.
+    /// before. Returns whether it should be shown now. `owed` is evaluated
+    /// only while nothing is recorded: once the notice is pending or
+    /// dismissed, the answer cannot change it.
     @discardableResult
-    public func record(owed: Bool) -> Bool {
+    public func record(owed: @autoclosure () -> Bool) -> Bool {
         let state = defaults.string(forKey: Self.stateKey)
-        if owed, state == nil {
+        if state == nil, owed() {
             defaults.set("pending", forKey: Self.stateKey)
             return true
         }
