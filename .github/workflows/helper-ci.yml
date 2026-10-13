@@ -12,6 +12,11 @@ on:
       # helper/test_claude_usage_probe.py compares the helper's Claude /usage
       # probe settings against this file; an app-side change must run it.
       - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
+      # helper/test_system_collector.py compares PROCESS_PATTERNS with the
+      # Swift helper's table row for row, and checks the app's scan table;
+      # a change to either must run it.
+      - 'HelperSwift/Sources/HelperKit/SystemCollection/SessionDetector.swift'
+      - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LocalScanner.swift'
       - '.github/workflows/helper-ci.yml'
   pull_request:
     paths:
@@ -24,6 +29,11 @@ on:
       # helper/test_claude_usage_probe.py compares the helper's Claude /usage
       # probe settings against this file; an app-side change must run it.
       - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Collectors/Claude/ClaudeCLIPTYStrategy.swift'
+      # helper/test_system_collector.py compares PROCESS_PATTERNS with the
+      # Swift helper's table row for row, and checks the app's scan table;
+      # a change to either must run it.
+      - 'HelperSwift/Sources/HelperKit/SystemCollection/SessionDetector.swift'
+      - 'CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/LocalScanner.swift'
       - '.github/workflows/helper-ci.yml'
   # v1.26 C2: manual retrigger trigger so a future Actions outage
   # can be unstuck without an empty-commit push.

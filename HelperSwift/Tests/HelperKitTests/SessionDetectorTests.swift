@@ -123,6 +123,19 @@ final class SessionDetectorTests: XCTestCase {
             "Antigravity")
     }
 
+    func testDetectProvider_kimiK2InEverySpellingClassifiesAsKimi() {
+        // 1.57: Kimi K2 is Moonshot's model, so a process that names it is
+        // Kimi; the app retired its "Kimi K2" provider (a relay) and no
+        // longer shows that name. Same table row as system_collector.py
+        // (helper/test_system_collector.py compares the two tables).
+        for name in ["kimi k2", "kimi-k2", "kimi_k2", "kimik2", "Kimi-K2"] {
+            let match = SessionDetector.detectProvider("/opt/homebrew/bin/\(name) --model x")
+            XCTAssertEqual(match?.provider, "Kimi", name)
+            XCTAssertEqual(match?.confidence, "high", name)
+        }
+        XCTAssertEqual(SessionDetector.detectProvider("/usr/local/bin/kimi")?.provider, "Kimi")
+    }
+
     // MARK: - shouldIgnoreCommand
 
     func testShouldIgnoreCommand_codexHelper() {
