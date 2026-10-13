@@ -534,10 +534,12 @@ struct MenuBarView: View {
                     // A paragraph to read once: primary text on the blue fill
                     // (system blue there is about 3:1 in light mode). The icon
                     // and the close stay blue, so it still reads as a notice.
+                    // `Color.primary`, the label colour: the hierarchical
+                    // `.primary` would resolve to the HStack's blue.
                     Text(L10n.menuBar.retiredProvidersNotice)
                         .font(.system(size: 9))
                         .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary)
                     Spacer(minLength: 0)
                     Button {
                         state.dismissRetiredProviderNotice()

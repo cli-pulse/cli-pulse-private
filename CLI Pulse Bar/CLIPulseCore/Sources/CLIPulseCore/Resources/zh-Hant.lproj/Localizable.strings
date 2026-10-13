@@ -645,7 +645,7 @@
 
 /* ── 選單列 ── */
 "menu_bar.tier_migration" = "已保留你最常用的 %d 個服務商以符合免費方案限制，並停用了其餘 %d 個——可在「設定 › 服務商」中編輯。";
-"menu_bar.retired_providers_notice" = "CLI Pulse 已停止支援 Kimi K2 與 CrossModel：無法確認它們由誰營運，因此不再連線到它們，也不再將你的金鑰傳送給它們。Kimi 與 Moonshot 仍受支援。";
+"menu_bar.retired_providers_notice" = "CLI Pulse 已停止支援 Kimi K2 與 CrossModel：無法確認它們由誰營運，因此不再連線到它們，也不再向它們傳送你的金鑰。Kimi 與 Moonshot 仍受支援。";
 "menu_bar.over_plan_limits" = "已超出 CLI Pulse %1$@ 方案限制——服務商：%2$d/%3$d。請升級或減少使用。";
 "menu_bar.provider_limit_reached" = "你的 CLI Pulse %1$@ 方案最多支援 %2$d 個服務商。升級後可啟用更多。";
 "menu_bar.edit" = "編輯";
