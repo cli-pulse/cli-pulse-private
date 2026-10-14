@@ -72,6 +72,12 @@ final class CostWordingCopyTests: XCTestCase {
 
         let claudeCard = L10n.providers.claudeMetricHelp
         XCTAssertTrue(claudeCard.contains("不含缓存读取和缓存写入"), claudeCard)
+        // Not included, but priced: the contrast is said, as in the other
+        // languages, so the second half does not read as a separate point.
+        // The card's tooltip and the panel's footnote say it alike.
+        for help in [claudeCard, L10n.providers.claudeIOTokensHelp] {
+            XCTAssertTrue(help.contains("不含缓存读取和缓存写入，但费用预估会按它们各自的单价计入。"), help)
+        }
         XCTAssertFalse(claudeCard.contains("10%"), "cache reads are billed at 10% of the rate, not a 10% discount")
 
         // The estimate goes by the feature's own name, as in onboarding and
@@ -122,7 +128,7 @@ final class CostWordingCopyTests: XCTestCase {
         XCTAssertEqual(days("Claude", .eachOnce).tokenBasisHelp, "token：输入、缓存输入和输出各只计一次。")
         // Opened from a card: that provider's input + output.
         XCTAssertEqual(days("Claude", .inputOutput).tokenBasisHelp,
-                       "输入 + 输出 token。不含缓存读取和缓存写入；费用预估按它们各自的单价计入。")
+                       "输入 + 输出 token。不含缓存读取和缓存写入，但费用预估会按它们各自的单价计入。")
         XCTAssertTrue(days("Codex", .inputOutput).tokenBasisHelp.contains("输入已包含缓存输入"))
         XCTAssertEqual(days("Gemini", .inputOutput).tokenBasisHelp,
                        "输入 + 输出 token。输入是否包含缓存输入，取决于服务商的统计口径。")

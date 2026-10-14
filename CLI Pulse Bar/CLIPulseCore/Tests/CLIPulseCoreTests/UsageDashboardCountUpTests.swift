@@ -31,7 +31,7 @@ final class UsageDashboardCountUpTests: XCTestCase {
         // The app: part of the way up at the renderer's moment, then settled.
         let app = PanelWindow(archive, countsUp: true)
         defer { app.close() }
-        let early = app.drawAsTheRendererDoes()
+        let early: Data? = app.drawAsTheRendererDoes()
         // The count-up ends 2.2 s after the panel appears. Settled: two
         // drawings 0.4 s apart agree, past that point.
         app.pump(for: 1.4)
@@ -47,8 +47,19 @@ final class UsageDashboardCountUpTests: XCTestCase {
         app.pump(for: 0.4)
         XCTAssertEqual(app.pixels(in: RendererTiming.header), settled,
                        "the app's headline never stopped moving, so there is no settled figure to compare with")
-        XCTAssertNotEqual(early, settled,
-                          "the app's headline has already settled when a render is taken, so this test cannot see a count-up")
+        // A busy shared runner that stalls the run loop for about a second
+        // can let the 2.2 s count-up end before the renderer's moment. One
+        // fresh panel, drawn at that moment again, tells such a stall from an
+        // app that no longer counts up: both settled is no count-up.
+        var earlyFrames: [Data?] = [early]
+        if early == nil || early == settled {
+            let again = PanelWindow(archive, countsUp: true)
+            earlyFrames.append(again.drawAsTheRendererDoes())
+            again.close()
+        }
+        XCTAssertTrue(earlyFrames.contains { $0 != nil }, "the app's panel drew no header at the renderer's moment")
+        XCTAssertTrue(earlyFrames.contains { $0 != nil && $0 != settled },
+                      "the app's headline has already settled when a render is taken (\(earlyFrames.count) tries), so this test cannot see a count-up")
 
         // The renderer's environment: the settled figure when it draws.
         let render = PanelWindow(archive, countsUp: false)
