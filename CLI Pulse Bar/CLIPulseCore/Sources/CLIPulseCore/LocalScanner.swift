@@ -16,11 +16,15 @@ public final class LocalScanner: @unchecked Sendable {
     public static let shared = LocalScanner()
 
     /// Every session `scan()` returns has this prefix and its pid as its id
-    /// (`local-<pid>`). `AlertGenerator.generate` reads it to tell a scan row
-    /// from a session with a real id. v1.16.1's skip there tested for `proc-`,
-    /// the Python helper's prefix, which no row here carries, so the
-    /// long-running alert went on firing for every app open five hours.
-    static let sessionIDPrefix = "local-"
+    /// (`local-<pid>`). It is `SessionRecord.localScanIDPrefix`, which the
+    /// iPhone and iPad need as well (they read these rows from the cloud), so
+    /// it lives there; `SessionRecord.isProcessScanRow` is how the alert rule,
+    /// the Sessions tab's tier and its hidden figures tell a scan row from
+    /// another. Each of them used to test for `proc-`, the Companion CLI's
+    /// prefix, which no row here carries: the long-running alert went on
+    /// firing for every detected AI tool (Claude.app included) open five
+    /// hours, and these rows read "Recent activity" with heuristic figures.
+    static let sessionIDPrefix = SessionRecord.localScanIDPrefix
 
     private static let scanLogger = Logger(subsystem: "com.clipulse", category: "LocalScanner")
 
@@ -611,7 +615,7 @@ public final class LocalScanner: @unchecked Sendable {
                 }
             }
         }
-        return "unknown"
+        return SessionRecord.scanRowUnknownProject
     }
 
     /// Allow rule for a project label. Returns true only when the name is

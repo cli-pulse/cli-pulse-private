@@ -677,22 +677,88 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
         return !(id.hasPrefix("jsonl-codex-") && requests <= 1)
     }
 
+    // MARK: Process-scan rows
+
+    /// The id prefix of a row `LocalScanner` writes (`local-<pid>`): the
+    /// Developer ID app's own scan, and the LoginItem helper's, which uploads
+    /// its rows with these ids unchanged.
+    public static let localScanIDPrefix = "local-"
+
+    /// The id prefix of a row the Companion CLI (helper/system_collector.py)
+    /// and the desktop app write (`proc-<pid>`). HelperSwift's
+    /// SessionDetector writes it too.
+    public static let companionScanIDPrefix = "proc-"
+
+    /// Whether `id` names a row a process scan wrote. Every place that tells
+    /// a scan row from another asks this, never one prefix: v1.16.1's alert
+    /// skip, `hasProcessHeuristicMetrics` and the Sessions tab's tier all
+    /// tested `proc-` alone, so on a Developer ID or Homebrew Mac, whose rows
+    /// are `local-`, none of them applied.
+    public static func isProcessScanID(_ id: String) -> Bool {
+        id.hasPrefix(localScanIDPrefix) || id.hasPrefix(companionScanIDPrefix)
+    }
+
+    /// Whether this row is one a process scan wrote: a running process, seen
+    /// at `last_active_at`, with no parsed usage behind its figures.
+    public var isProcessScanRow: Bool {
+        Self.isProcessScanID(id)
+    }
+
+    /// The project `LocalScanner.guessProject` writes when a command line
+    /// names none. Stored as written; `displayName` does not show it.
+    static let scanRowUnknownProject = "unknown"
+
+    /// The project the Companion CLI (`_guess_project`, helper/system_collector.py)
+    /// and the desktop app (`guess_project`) write when they find none: their
+    /// last fallback (the Companion's when its working directory has no name,
+    /// as "/" has none).
+    static let scanRowWorkspaceProject = "local-workspace"
+
+    /// The projects a scan producer writes for "no project": English
+    /// placeholders, not names. Neither the title nor the line under it shows
+    /// one (`displayName`, `displayProject`).
+    static let scanRowPlaceholderProjects: Set<String> = [scanRowUnknownProject, scanRowWorkspaceProject]
+
+    /// The project to show for this row, or nil when there is none to show:
+    /// an empty project, or a scan producer's placeholder on a scan row. A
+    /// row that showed `project` as stored put the English "unknown" under a
+    /// title that reads "Claude 进程" in Chinese.
+    public var displayProject: String? {
+        let clean = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return nil }
+        if isProcessScanRow, Self.scanRowPlaceholderProjects.contains(clean) { return nil }
+        return clean
+    }
+
+    /// The project as a session detail's Project field shows it: the project,
+    /// or "Unknown" in the reader's language when there is none to show.
+    public var detailProject: String {
+        displayProject ?? L10n.status.unknown
+    }
+
+    /// Whether the row's title (`displayName`) already names its provider and
+    /// project, so the line under it should not name them again: every scan
+    /// row ("Codex · cli-pulse-ios", or "Claude process" when there is no
+    /// project to show).
+    public var titleNamesProviderAndProject: Bool {
+        isProcessScanRow
+    }
+
     /// Whether the row's `total_usage` / `estimated_cost` / `requests`
     /// fields are derived from heuristics rather than parsed usage.
-    /// True for helper-emitted `proc-{pid}` rows, where:
+    /// True for every process-scan row (`isProcessScanRow`), where:
     ///   total_usage = max(500, elapsed_seconds * (1.5 + cpu))
     ///   requests    = max(1, elapsed_seconds // 45)
-    /// Both grow monotonically with how long the process has been
-    /// alive, with no relationship to actual API/token usage. Showing
-    /// "86038 requests" next to a Claude Code session that's been
-    /// running 8+ hours is technically what the formula produces, but
-    /// it's noise to the user.
+    /// and the cost, where there is one, is that usage at a flat rate.
+    /// All grow with how long the process has been alive, with no
+    /// relationship to actual API/token usage: Claude.app open 8 h reads
+    /// "Requests 640". They are not even labelled as estimates.
     ///
     /// The UI uses this flag to suppress the `usage / cost / requests`
-    /// trio for proc-* rows; the green "running" status pill plus the
+    /// trio for these rows; the green "Running" status pill plus the
     /// row's provider/project label is enough to convey "this is alive."
     public var hasProcessHeuristicMetrics: Bool {
-        id.hasPrefix("proc-")
+        isProcessScanRow
     }
 
     /// The `name` `CostUsageScanner` gives a session it rebuilt from JSONL logs.
@@ -701,12 +767,14 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
         "\(provider) session"
     }
 
-    /// Display name for the Sessions panel row. Helper-emitted proc-*
-    /// rows have `name = command line truncated to 48 chars`, which
-    /// surfaces unfriendly strings like `/Users/jason/Library/Application Support/C...`
+    /// Display name for the Sessions panel row. Process-scan rows have
+    /// `name` = the command line truncated (the Companion CLI, 48 chars) or
+    /// its executable's name (LocalScanner), which surfaces unfriendly
+    /// strings like `/Users/<you>/Library/Application Support/C...`
     /// or `./Codex Computer Use.app/Contents/Shar...`. Replace with
     /// "{provider} · {project}" when we have provider info, falling
-    /// back to "{provider} process" if project is empty/generic.
+    /// back to "{provider} process" if the project is empty or a
+    /// producer's placeholder (`displayProject`).
     /// JSONL-synthesized rows carry the English name "Claude session", which
     /// is rendered through the same fallback label managed rows use. Keyed on
     /// the `jsonl-` id as well as the exact name, so a real process or cloud
@@ -715,10 +783,9 @@ public struct SessionRecord: Codable, Identifiable, Sendable, Hashable {
         if id.hasPrefix("jsonl-"), name == Self.jsonlSessionName(provider: provider) {
             return L10n.sessions.rowFallbackLabel(provider)
         }
-        guard hasProcessHeuristicMetrics else { return name }
-        let cleanProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !cleanProject.isEmpty {
-            return "\(provider) · \(cleanProject)"
+        guard isProcessScanRow else { return name }
+        if let project = displayProject {
+            return "\(provider) · \(project)"
         }
         return L10n.sessions.rowProcessLabel(provider)
     }
@@ -1191,7 +1258,27 @@ public struct WebhookEventFilter: Codable, Sendable, Equatable {
     /// `pushSettingsToServer` and matched by the webhook sender, so they stay raw;
     /// `severityLabel` and `typeLabel` are what the chips show.
     public static let selectableSeverities = ["Critical", "Warning", "Info"]
-    public static let selectableTypes = ["cost_spike", "quota_exceeded", "session_long", "device_offline"]
+    public static let selectableTypes = ["cost_spike", "quota_exceeded", "device_offline"]
+
+    /// Types a filter may still hold that the chips no longer offer.
+    ///
+    /// `session_long` matched "Session Too Long", which nothing raises from
+    /// 1.57 on: every session the helpers see is a process-scan row, and the
+    /// rule skips those (`AlertGenerator`, #656). A chip for it promised a
+    /// webhook that never comes.
+    ///
+    /// A saved filter that holds it is left as it is, neither rewritten on
+    /// the server nor migrated here. The Mac never reads the saved filter back
+    /// (`webhookEventFilter` starts empty at launch), and every save writes
+    /// only the chips on screen, so the type leaves a filter the next time it
+    /// is saved from a Mac and cannot come back. Dropping it from a filter
+    /// that holds nothing else would widen that filter to every type, sending
+    /// alerts its owner never chose, while keeping it delivers what the
+    /// owner asked for, Session Too Long, from a Mac that has not updated
+    /// yet. send-webhook keeps matching it, and
+    /// backend/supabase/ci_check_alert_types.py holds both lists to this one.
+    /// The value still decodes, like any string, and `typeLabel` still names it.
+    public static let retiredTypes = ["session_long"]
 
     public static func severityLabel(_ raw: String) -> String {
         AlertPresentation.severityLabel(raw)

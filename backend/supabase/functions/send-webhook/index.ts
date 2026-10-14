@@ -72,7 +72,11 @@ interface WebhookEventFilter {
   providers?: string[];    // e.g. ["Claude", "OpenRouter"]
 }
 
-// UI offers four slugs (cost_spike|quota_exceeded|session_long|device_offline).
+// The Apple app offers three slugs (cost_spike|quota_exceeded|device_offline,
+// `WebhookEventFilter.selectableTypes`). A fourth, session_long, is retired
+// there (`retiredTypes`): from 1.57 nothing raises "Session Too Long". It stays
+// mapped so a filter saved with it, and Android, which still offers it, keep
+// matching the alert from Macs that have not updated.
 // Real alert.type strings emitted by AlertGenerator.swift, app_rpc.sql, and
 // Models.swift are human-readable (e.g. "Cost Spike", "Helper Offline"). Direct
 // `includes` comparison silently dropped every alert when any filter was set.
@@ -80,7 +84,9 @@ interface WebhookEventFilter {
 // because the UI has no dedicated chip for device-CPU spikes.
 //
 // Drift guard: backend/supabase/ci_check_alert_types.py asserts every emitted
-// type appears here; CI fails if a new generator type slips in unmapped.
+// type appears here; CI fails if a new generator type slips in unmapped. It
+// also fails unless these keys are exactly the slugs the Apple app offers or
+// lists as retired.
 const TYPE_ALIASES: Record<string, string[]> = {
   cost_spike: ["Cost Spike", "Project Budget Exceeded", "Usage Spike"],
   quota_exceeded: ["Quota Warning"],

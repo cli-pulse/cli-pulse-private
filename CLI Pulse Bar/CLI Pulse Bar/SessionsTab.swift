@@ -2098,40 +2098,54 @@ struct SessionRow: View {
                 }
             }
 
-            // Details
+            // A row with no figures to show (a scan row's are its runtime)
+            // keeps its time on the details line, not on a line of its own.
+            let showsFigures = !session.hasProcessHeuristicMetrics || session.error_count > 0
+
+            // Details. A scan row's title already names its provider and
+            // project ("Codex · cli-pulse-ios"), so the line keeps only the
+            // device; no row shows a producer's placeholder project.
             HStack(spacing: 12) {
-                Label(session.provider, systemImage: "cpu")
-                Label(session.project, systemImage: "folder")
+                if !session.titleNamesProviderAndProject {
+                    Label(session.provider, systemImage: "cpu")
+                    if let project = session.displayProject {
+                        Label(project, systemImage: "folder")
+                    }
+                }
                 Label(session.device_name, systemImage: "desktopcomputer")
+                if !showsFigures {
+                    Spacer(minLength: 8)
+                    lastActive
+                }
             }
             .font(.system(size: 9))
             .foregroundStyle(.secondary)
             .lineLimit(1)
 
-            // Metrics. Proc-* rows have heuristic-derived metrics
-            // (total_usage / cost / requests are all functions of
-            // elapsed_seconds and CPU), so showing "86038 requests"
-            // next to an 8-hour Claude Code process is misleading.
+            // Metrics. Process-scan rows (`local-` and `proc-`) have
+            // heuristic-derived metrics (total_usage / cost / requests
+            // are all functions of elapsed_seconds and CPU), so showing
+            // "640 requests" next to an 8-hour Claude.app is misleading.
             // Hide the entire trio for those rows; the row label and
             // green "running" badge already convey "this is alive."
             // JSONL-synthesized + cloud rows show metrics as before.
-            HStack(spacing: 16) {
-                if !session.hasProcessHeuristicMetrics {
-                    metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
-                    if showCost {
-                        metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+            if showsFigures {
+                HStack(spacing: 16) {
+                    if !session.hasProcessHeuristicMetrics {
+                        metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
+                        if showCost {
+                            metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+                        }
+                        if session.hasMeaningfulRequestCount {
+                            metricItem(label: L10n.detail.requests, value: "\(session.requests)")
+                        }
                     }
-                    if session.hasMeaningfulRequestCount {
-                        metricItem(label: L10n.detail.requests, value: "\(session.requests)")
+                    if session.error_count > 0 {
+                        metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
                     }
+                    Spacer()
+                    lastActive
                 }
-                if session.error_count > 0 {
-                    metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
-                }
-                Spacer()
-                Text(RelativeTime.format(session.last_active_at))
-                    .font(.system(size: 9))
-                    .foregroundStyle(.tertiary)
             }
         }
         .padding(8)
@@ -2145,6 +2159,12 @@ struct SessionRow: View {
                     lineWidth: 1
                 )
         )
+    }
+
+    private var lastActive: some View {
+        Text(RelativeTime.format(session.last_active_at))
+            .font(.system(size: 9))
+            .foregroundStyle(.tertiary)
     }
 
     private func metricItem(label: String, value: String, color: Color = .primary) -> some View {

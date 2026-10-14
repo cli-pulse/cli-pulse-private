@@ -92,10 +92,16 @@ final class ScreenshotLaunchTests: XCTestCase {
         }
     }
 
-    /// On iPad the Sessions tab is a list and a detail pane, and its rows show
-    /// no usage, cost or requests, which the set's caption promises. A capture
-    /// opens the first Active session beside the list; that session has all
-    /// three, and nothing red.
+    /// On iPad the Sessions tab is a list and a detail pane. A capture opens
+    /// the first Active session beside the list, with nothing red.
+    ///
+    /// The pane once showed that session's usage, cost and requests, which the
+    /// set's 04_sessions caption promises ("Active sessions with usage, cost
+    /// and requests"). Every Demo session is now a process-scan row, as every
+    /// cloud session is, and the pane, like the row, hides those figures for
+    /// one: they are runtime run through a formula. No account sees them on an
+    /// iPhone or iPad any more, so the caption needs new words before the
+    /// next reshoot; the shots in the store were captured before this.
     func test_theIPadSessionsScreenOpensTheFirstActiveSession() throws {
         XCTAssertEqual(Launch.Screen.allCases.filter(\.opensSessionDetail), [.sessions])
 
@@ -108,9 +114,7 @@ final class ScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(opened.name, "ios-dashboard", "of Demo's three newest, the first listed, in every run")
         XCTAssertEqual(Launch.sessionToOpen(in: Array(demo.sessions.reversed()), now: now)?.name, "provider-adapters",
                        "the tie is broken by list order, not by whatever order a sort leaves equals in")
-        XCTAssertGreaterThan(opened.total_usage, 0, "usage")
-        XCTAssertGreaterThan(opened.estimated_cost, 0, "cost")
-        XCTAssertGreaterThan(opened.requests, 0, "requests")
+        XCTAssertTrue(opened.hasProcessHeuristicMetrics, "a process-scan row, whose figures the pane hides")
         XCTAssertEqual(opened.error_count, 0, "no production session writes errors")
 
         XCTAssertNil(Launch.sessionToOpen(in: [], now: now), "nothing to open: the pane stays as it is")
@@ -381,18 +385,20 @@ final class ScreenshotLaunchTests: XCTestCase {
         XCTAssertEqual(badged, ["alerts"], "a sidebar count besides the unresolved alerts")
     }
 
-    /// The Recent tier on the Sessions screen and a named Gemini window on
-    /// Providers are part of what the screenshots show; without them the
-    /// Sessions panel was half empty and Gemini's bar said "Default".
+    /// The Sessions screen and a named Gemini window on Providers are part of
+    /// what the screenshots show; without the window Gemini's bar said
+    /// "Default". The Sessions screen has no Recent section any more: Demo's
+    /// two Recent rows were ones no cloud session can be, a process-scan row
+    /// being hidden once it is no longer rewritten
+    /// (DemoMatchesProductionTests), so the next reshoot shows three running
+    /// sessions and no second section.
     func test_demoDataFillsTheScreensItIsPhotographedOn() throws {
         let demo = DemoDataProvider.generate()
         let buckets = SessionFreshnessTierClassifier.partition(demo.sessions, now: Date())
         XCTAssertEqual(buckets.active.count, 3, "the Active section")
-        XCTAssertEqual(buckets.recent.map(\.name), ["docs-refresh", "api-gateway"],
-                       "the Recent section, most recent first")
-        // The Sessions tile counts every Running row, Recent ones too, as
-        // `dashboard_summary` does; it held the Active section's count, which
-        // no account shows (DemoMatchesProductionTests).
+        XCTAssertEqual(buckets.recent.map(\.name), [], "a Recent section no account has")
+        // The Sessions tile counts every Running row, as `dashboard_summary`
+        // does (DemoMatchesProductionTests).
         XCTAssertEqual(demo.dashboard.active_sessions, demo.sessions.count,
                        "the Sessions tile counts what dashboard_summary counts")
 

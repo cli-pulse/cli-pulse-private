@@ -9,11 +9,18 @@ Asserts each value is reachable through the `TYPE_ALIASES` map in the
 `send-webhook` edge function — OR is explicitly listed in
 WEBHOOK_INELIGIBLE here with a written reason.
 
+It also holds the slugs to the Apple app's lists: every slug the Settings
+chips offer (`WebhookEventFilter.selectableTypes`, Models.swift) and every
+slug a saved filter may still hold that they no longer offer
+(`WebhookEventFilter.retiredTypes`) is a TYPE_ALIASES key, no slug is both,
+and TYPE_ALIASES has no key that is neither.
+
 Why this exists
 ---------------
 The webhook edge function filters alerts by user-selected slugs
-(`cost_spike|quota_exceeded|session_long|device_offline`), which the UI
-stores. Real `alert.type` strings are human-readable ("Cost Spike",
+(`cost_spike|quota_exceeded|device_offline` offered, `session_long`
+retired in 1.57 because nothing raises "Session Too Long" any more), which
+the UI stores. Real `alert.type` strings are human-readable ("Cost Spike",
 "Helper Offline", ...). For ~6 months the edge function did exact-string
 `includes` of the slug list against the human type, silently dropping
 every alert when any user enabled a type filter (Plan v2 Change 1).
@@ -30,8 +37,10 @@ Iter2 follow-up (Codex + Gemini both flagged):
 
 Exit codes
 ----------
-0 — every emitted alert.type appears in TYPE_ALIASES (or WEBHOOK_INELIGIBLE)
-1 — unknown emitted alert.type detected, fix TYPE_ALIASES (or opt out)
+0 — every emitted alert.type appears in TYPE_ALIASES (or WEBHOOK_INELIGIBLE),
+    and the app's offered and retired slugs agree with its keys
+1 — unknown emitted alert.type detected, fix TYPE_ALIASES (or opt out); or
+    the slug lists disagree
 """
 
 from __future__ import annotations
@@ -128,18 +137,75 @@ def collect_emitted_types() -> set[str]:
     return {t for t in found if t not in bad_lower and "_" not in t}
 
 
-def collect_alias_values() -> set[str]:
-    """Parse TYPE_ALIASES from send-webhook/index.ts and return all values."""
+def _alias_block() -> str:
     path = REPO / "backend/supabase/functions/send-webhook/index.ts"
     text = path.read_text()
     block = re.search(r"TYPE_ALIASES[^=]*=\s*\{(.+?)\};", text, re.S)
     if not block:
         print(f"FAIL: TYPE_ALIASES map not found in {path}", file=sys.stderr)
         sys.exit(1)
-    return set(re.findall(r'"([^"]+)"', block.group(1)))
+    return block.group(1)
+
+
+def collect_alias_values() -> set[str]:
+    """Parse TYPE_ALIASES from send-webhook/index.ts and return all values."""
+    return set(re.findall(r'"([^"]+)"', _alias_block()))
+
+
+def collect_alias_keys() -> set[str]:
+    """The slugs TYPE_ALIASES maps: the keys before each `: [`."""
+    return set(re.findall(r"^\s*(\w+)\s*:\s*\[", _alias_block(), re.M))
+
+
+def collect_app_slugs(name: str) -> list[str]:
+    """`WebhookEventFilter.<name>` (selectableTypes or retiredTypes) in
+    Models.swift: the slugs the Settings chips offer, or the ones they no
+    longer offer that a saved filter may still hold."""
+    path = REPO / "CLI Pulse Bar/CLIPulseCore/Sources/CLIPulseCore/Models.swift"
+    text = path.read_text()
+    m = re.search(rf"static\s+let\s+{name}\s*=\s*\[([^\]]*)\]", text)
+    if not m:
+        print(f"FAIL: WebhookEventFilter.{name} not found in {path}", file=sys.stderr)
+        sys.exit(1)
+    return re.findall(r'"([^"]+)"', m.group(1))
+
+
+def check_slugs() -> list[str]:
+    """Problems between the app's slug lists and TYPE_ALIASES' keys."""
+    offered = collect_app_slugs("selectableTypes")
+    retired = collect_app_slugs("retiredTypes")
+    keys = collect_alias_keys()
+    problems: list[str] = []
+    if not offered:
+        problems.append("the app offers no type slug; is this still the chips' list?")
+    for slug in sorted(set(offered) & set(retired)):
+        problems.append(f"{slug!r} is both offered and retired")
+    for slug in offered:
+        if slug not in keys:
+            problems.append(f"the chips offer {slug!r}, which TYPE_ALIASES does not map: "
+                            "a filter holding it matches nothing")
+    for slug in retired:
+        if slug not in keys:
+            problems.append(f"{slug!r} is retired but TYPE_ALIASES no longer maps it: "
+                            "filters saved with it stop matching")
+    for slug in sorted(keys - set(offered) - set(retired)):
+        problems.append(f"TYPE_ALIASES maps {slug!r}, which the app neither offers "
+                        "nor lists as retired")
+    return problems
 
 
 def main() -> int:
+    slug_problems = check_slugs()
+    if slug_problems:
+        print(
+            "FAIL: the webhook type slugs in Models.swift (WebhookEventFilter."
+            "selectableTypes / retiredTypes) and TYPE_ALIASES disagree:",
+            file=sys.stderr,
+        )
+        for problem in slug_problems:
+            print(f"  - {problem}", file=sys.stderr)
+        return 1
+
     emitted = collect_emitted_types()
     aliased = collect_alias_values()
 

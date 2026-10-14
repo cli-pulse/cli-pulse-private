@@ -528,9 +528,16 @@ def collect_alerts(
         # process-detected rows (session_id starts with `proc-`) are
         # GUI desktop apps the user keeps open all day, not "agentic
         # CLI sessions" that should be wrapped up. Skip the alert
-        # entirely for `proc-*` rows; helper-spawned managed sessions
-        # get a real session_id (UUID) and still trip when
-        # intentionally long.
+        # entirely for `proc-*` rows.
+        #
+        # So this rule never fires: `collect_alerts` is only ever passed
+        # `collect_sessions()` rows (cli_pulse_helper.py's sync and
+        # `inspect`, and `collect_all` here), and every one of those is a
+        # `proc-<pid>` scan row, merged worker groups included. Managed
+        # (remote-control) sessions are not in that list. The Mac app's
+        # LoginItem helper skips its own scan rows (`local-<pid>`) the same
+        # way (CLIPulseCore AlertGenerator), and the app no longer offers
+        # "Session Too Long" as a webhook event.
         is_process_detected = isinstance(session.session_id, str) and session.session_id.startswith("proc-")
         if not is_process_detected and session.requests >= 400:
             alerts.append(

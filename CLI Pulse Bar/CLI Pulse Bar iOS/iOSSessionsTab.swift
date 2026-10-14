@@ -62,10 +62,10 @@ struct iOSSessionsTab: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     // Source of truth = FreshnessTier classifier so the
-                    // running pill matches the row badges (only proc-
-                    // confirmed rows count as "running"; JSONL-synthesized
-                    // rows are "recent activity" / "recent" and don't
-                    // contribute).
+                    // running pill matches the row badges (only process-
+                    // confirmed rows, `local-` and `proc-`, count as
+                    // "running"; JSONL-synthesized rows are "recent
+                    // activity" / "recent" and don't contribute).
                     let now = Date()
                     let runningCount = state.sessions.reduce(0) { acc, s in
                         acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
@@ -189,7 +189,8 @@ struct iOSSessionsTab: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 // Same FreshnessTier source as the iPhone toolbar — only
-                // proc-confirmed rows count as "running" in the pill.
+                // process-confirmed rows (`local-` and `proc-`) count as
+                // "running" in the pill.
                 let now = Date()
                 let runningTierCount = state.sessions.reduce(0) { acc, s in
                     acc + (SessionFreshnessTierClassifier.classify(s, now: now) == .activeProcess ? 1 : 0)
@@ -211,16 +212,29 @@ struct iOSSessionsTab: View {
                         .foregroundStyle(PulseTheme.providerColor(session.provider))
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(session.name)
+                        // The iPhone row's title: a process-scan row's
+                        // provider and project, not its command line. Two
+                        // lines: beside "En ejecución" one line cut
+                        // "Gemini · cli-pulse-helper" short.
+                        Text(session.displayName)
                             .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
+                            .lineLimit(2)
                         // One line: beside a long badge ("En ejecución") the
                         // project used to break into three hyphenated lines.
+                        // A scan row's title already names its provider and
+                        // project, so its line names the device instead.
                         HStack(spacing: 6) {
-                            Text(session.provider).font(.caption2)
-                                .fixedSize()
-                            Text(session.project).font(.caption2)
-                                .lineLimit(1)
+                            if session.titleNamesProviderAndProject {
+                                Text(session.device_name).font(.caption2)
+                                    .lineLimit(1)
+                            } else {
+                                Text(session.provider).font(.caption2)
+                                    .fixedSize()
+                                if let project = session.displayProject {
+                                    Text(project).font(.caption2)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                         .foregroundStyle(.secondary)
                     }
@@ -292,8 +306,13 @@ struct SessionStatusBadge: View {
 // MARK: - Managed session detail (iOS)
 
 
-// MARK: - Session Detail View (existing analytics view, unchanged)
+// MARK: - Session Detail View
 
+/// A session's detail: the iPhone pushes it, the iPad shows it beside the list.
+/// It follows the row: the row's title (`displayName`), its badge, and for a
+/// process-scan row none of the usage, cost or requests the row hides
+/// (`SessionRecord.hasProcessHeuristicMetrics`), nor the cost badge that
+/// describes them. Those figures are runtime x a formula, not usage.
 struct SessionDetailView: View {
     let session: SessionRecord
     let showCost: Bool
@@ -311,7 +330,7 @@ struct SessionDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10))
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(session.name)
+                        Text(session.displayName)
                             .font(.title3.weight(.bold))
                         HStack(spacing: 6) {
                             // The badge the session's row shows: on iPad the
@@ -323,7 +342,9 @@ struct SessionDetailView: View {
                             if let conf = session.collection_confidence {
                                 ConfidenceBadge(confidence: conf)
                             }
-                            CostStatusBadge(status: session.cost_status)
+                            if !session.hasProcessHeuristicMetrics {
+                                CostStatusBadge(status: session.cost_status)
+                            }
                         }
                     }
                     Spacer()
@@ -335,32 +356,39 @@ struct SessionDetailView: View {
                     GridItem(.flexible()),
                 ], spacing: 16) {
                     detailItem(label: L10n.detail.provider, value: session.provider, icon: "cpu")
-                    detailItem(label: L10n.detail.project, value: session.project, icon: "folder")
+                    detailItem(label: L10n.detail.project, value: session.detailProject, icon: "folder")
                     detailItem(label: L10n.detail.device, value: session.device_name, icon: "desktopcomputer")
                     detailItem(label: L10n.detail.started, value: RelativeTime.format(session.started_at), icon: "clock")
                 }
 
-                Divider()
+                // Metrics, as the row shows them: a process-scan row's are
+                // left out, and so is the request count the row leaves out.
+                if !session.hasProcessHeuristicMetrics || session.error_count > 0 {
+                    Divider()
 
-                // Metrics
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                    GridItem(.flexible()),
-                ], spacing: 16) {
-                    metricBox(title: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
-                    if showCost {
-                        metricBox(title: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
-                    }
-                    metricBox(title: L10n.detail.requests, value: "\(session.requests)")
-                    if session.error_count > 0 {
-                        metricBox(title: L10n.detail.errors, value: "\(session.error_count)", color: .red)
+                    LazyVGrid(columns: [
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                        GridItem(.flexible()),
+                    ], spacing: 16) {
+                        if !session.hasProcessHeuristicMetrics {
+                            metricBox(title: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
+                            if showCost {
+                                metricBox(title: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+                            }
+                            if session.hasMeaningfulRequestCount {
+                                metricBox(title: L10n.detail.requests, value: "\(session.requests)")
+                            }
+                        }
+                        if session.error_count > 0 {
+                            metricBox(title: L10n.detail.errors, value: "\(session.error_count)", color: .red)
+                        }
                     }
                 }
             }
             .padding(24)
         }
-        .navigationTitle(session.name)
+        .navigationTitle(session.displayName)
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -433,37 +461,53 @@ struct iOSSessionRow: View {
                 SessionStatusBadge(session: session, tier: freshnessTier)
             }
 
+            // A row with no figures to show (a scan row's are its runtime)
+            // keeps its time on the line above, not on a line of its own.
+            let showsFigures = !session.hasProcessHeuristicMetrics || session.error_count > 0
+
+            // A scan row's title already names its provider and project
+            // ("Codex · cli-pulse-ios"), so its line keeps only the
+            // confidence; no row shows a producer's placeholder project.
             HStack(spacing: 14) {
-                Label(session.provider, systemImage: "cpu")
-                Label(session.project, systemImage: "folder")
+                if !session.titleNamesProviderAndProject {
+                    Label(session.provider, systemImage: "cpu")
+                    if let project = session.displayProject {
+                        Label(project, systemImage: "folder")
+                    }
+                }
                 if let conf = session.collection_confidence {
                     ConfidenceBadge(confidence: conf)
+                }
+                if !showsFigures {
+                    Spacer(minLength: 8)
+                    lastActive
                 }
             }
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
 
-            HStack(spacing: 18) {
-                // Same gate as macOS: proc-* rows have heuristic
-                // metrics that mislead at long uptimes. Hide the
-                // trio for those rows; tier badge tells the story.
-                if !session.hasProcessHeuristicMetrics {
-                    metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
-                    if showCost {
-                        metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+            if showsFigures {
+                HStack(spacing: 18) {
+                    // Same gate as macOS: process-scan rows (`local-` and
+                    // `proc-`) have heuristic metrics that mislead at long
+                    // uptimes. Hide the trio for those rows; the badge tells
+                    // the story.
+                    if !session.hasProcessHeuristicMetrics {
+                        metricItem(label: L10n.detail.usage, value: CostFormatter.formatUsage(session.total_usage))
+                        if showCost {
+                            metricItem(label: L10n.detail.cost, value: CostFormatter.format(session.estimated_cost), color: .green)
+                        }
+                        if session.hasMeaningfulRequestCount {
+                            metricItem(label: L10n.detail.requests, value: "\(session.requests)")
+                        }
                     }
-                    if session.hasMeaningfulRequestCount {
-                        metricItem(label: L10n.detail.requests, value: "\(session.requests)")
+                    if session.error_count > 0 {
+                        metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
                     }
+                    Spacer()
+                    lastActive
                 }
-                if session.error_count > 0 {
-                    metricItem(label: L10n.detail.errors, value: "\(session.error_count)", color: .red)
-                }
-                Spacer()
-                Text(RelativeTime.format(session.last_active_at))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
             }
         }
         .padding(12)
@@ -477,6 +521,12 @@ struct iOSSessionRow: View {
                     lineWidth: 1
                 )
         )
+    }
+
+    private var lastActive: some View {
+        Text(RelativeTime.format(session.last_active_at))
+            .font(.caption2)
+            .foregroundStyle(.tertiary)
     }
 
     private func metricItem(label: String, value: String, color: Color = .primary) -> some View {

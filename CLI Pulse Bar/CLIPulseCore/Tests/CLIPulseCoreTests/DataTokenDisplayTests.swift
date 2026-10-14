@@ -222,9 +222,10 @@ final class DataTokenDisplayTests: XCTestCase {
     func testWebhookFilterChipsShowWordsAndKeepRawValues() {
         XCTAssertEqual(WebhookEventFilter.selectableSeverities, ["Critical", "Warning", "Info"])
         XCTAssertEqual(WebhookEventFilter.selectableTypes,
-                       ["cost_spike", "quota_exceeded", "session_long", "device_offline"])
+                       ["cost_spike", "quota_exceeded", "device_offline"])
         withLocale("zh-Hans") {
-            for raw in WebhookEventFilter.selectableTypes + WebhookEventFilter.selectableSeverities {
+            for raw in WebhookEventFilter.selectableTypes + WebhookEventFilter.retiredTypes
+                + WebhookEventFilter.selectableSeverities {
                 let label = raw.contains("_") ? WebhookEventFilter.typeLabel(raw) : WebhookEventFilter.severityLabel(raw)
                 XCTAssertNil(label.range(of: "[A-Za-z]", options: .regularExpression),
                              "\(raw) -> \(label) is still English")
@@ -232,6 +233,31 @@ final class DataTokenDisplayTests: XCTestCase {
             XCTAssertEqual(WebhookEventFilter.typeLabel("device_offline"), "设备离线")
             XCTAssertEqual(WebhookEventFilter.typeLabel("some_new_type"), "some_new_type")
         }
+    }
+
+    /// Nothing raises "Session Too Long" from 1.57 on (process-scan rows are
+    /// skipped and every session is one), so its chip promised a webhook that
+    /// never comes. It is no longer offered. A filter saved with it still
+    /// decodes and still names it, and the edge function still maps it
+    /// (backend/supabase/ci_check_alert_types.py holds the lists together).
+    func testTheRetiredLongSessionTypeIsNotOfferedButStillReads() throws {
+        XCTAssertEqual(WebhookEventFilter.retiredTypes, ["session_long"])
+        XCTAssertTrue(Set(WebhookEventFilter.selectableTypes).isDisjoint(with: WebhookEventFilter.retiredTypes),
+                      "a retired type is offered again")
+        let saved = try JSONDecoder().decode(
+            WebhookEventFilter.self,
+            from: Data(#"{"severities":[],"types":["session_long","cost_spike"],"providers":[]}"#.utf8))
+        XCTAssertEqual(saved.types, ["session_long", "cost_spike"], "a saved filter loses a type on decode")
+        withLocale("zh-Hans") {
+            XCTAssertEqual(WebhookEventFilter.typeLabel("session_long"), "会话时间过长")
+        }
+        // The production half: the only thing that raised it now skips every row.
+        let generator = try String(
+            contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+                .deletingLastPathComponent().appendingPathComponent("Sources/CLIPulseCore/AlertGenerator.swift"),
+            encoding: .utf8)
+        XCTAssertTrue(generator.contains("let isProcessDetected = session.isProcessScanRow"),
+                      "the long-running rule skips rows another way; can it fire again? Then offer its chip again")
     }
 
     // MARK: - The views that render these tokens

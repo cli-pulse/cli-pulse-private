@@ -123,9 +123,12 @@ For any helper invoked by pg_cron or the HTTP RPC path:
 
 ---
 
-## 7. Glossary — two "helpers"
+## 7. Glossary — three "helpers"
 
-- **CLIPulseHelper** (Swift, production): login-item target bundled in `CLI Pulse Bar.app/Contents/Library/LoginItems/`. Auto-starts after the user toggles Settings → Background Helper. Sync runs via `DispatchSourceTimer` in `HelperDaemon.swift`. **Zero terminal required.**
-- **helper/cli_pulse_helper.py** (Python, legacy): standalone script predating the Swift helper. Still tested by CI but not shipped to users.
+- **CLIPulseHelper** (Swift, production): login-item target bundled in `CLI Pulse Bar.app/Contents/Library/LoginItems/`. Auto-starts after the user toggles Settings → Background Helper. Sync runs via `DispatchSourceTimer` in `HelperDaemon.swift`, on CLIPulseCore's `LocalScanner` and `AlertGenerator`; its session rows are `local-<pid>`. Sandboxed in the Mac App Store build (it sees no processes there), not in Developer ID. **Zero terminal required.**
+- **helper/cli_pulse_helper.py** (Python, production): the **Companion CLI**. Shipped to users since v1.16 as a signed `.pkg` (`scripts/build_helper_pkg.sh`, PyInstaller), published on cli-pulse-helper-releases with `latest.json`, installed as a LaunchAgent (`daemon`, 120 s cycle). It uploads sessions (`proc-<pid>`) and alerts through `helper_sync`. Its version is `HELPER_VERSION`.
+- **HelperSwift** (`HelperSwift/`, `cli_pulse_helper` Swift binary): embedded in the Developer ID app at `Contents/Helpers/`. It does not drive `helper_heartbeat` or `helper_sync` (`main.swift`); its `SystemCollector` / `AlertGenerator` have no production caller. `kHelperVersion` is kept equal to the Companion's `HELPER_VERSION` (`scripts/check_helper_version_sync.sh`), which does not make it the Companion.
+
+Every session row in the cloud comes from a process scan: `local-<pid>` from CLIPulseHelper, `proc-<pid>` from the Companion CLI and the desktop app (cli-pulse-desktop). `SessionRecord.isProcessScanRow` recognises both.
 
 If someone asks "do I need to run the helper in terminal," the answer is no.

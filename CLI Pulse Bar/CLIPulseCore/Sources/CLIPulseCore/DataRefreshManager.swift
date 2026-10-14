@@ -641,7 +641,8 @@ internal final class DataRefreshManager {
             // PR #14 / sessions-active-recent-split: when only JSONL
             // rows are surviving despite the helper running, this
             // breakdown makes it obvious which leg is dropping the
-            // proc-* rows. Logs id-prefix × tier counts plus the
+            // process-scan rows (`local-` and `proc-`, "scan" here).
+            // Logs id-prefix × tier counts plus the
             // (id, provider, tier) tuple per row. No names, no
             // payloads — names from the helper's _pretty_name include
             // process paths that could leak project / username info.
@@ -650,7 +651,7 @@ internal final class DataRefreshManager {
             for s in mergedSessions {
                 let tier = SessionFreshnessTierClassifier.classify(s, now: now)
                 let evidence: String
-                if s.id.hasPrefix("proc-") { evidence = "proc" }
+                if s.isProcessScanRow { evidence = "scan" }
                 else if s.id.hasPrefix("jsonl-") { evidence = "jsonl" }
                 else { evidence = "cloud" }
                 tierByEvidence["\(evidence)/\(tier.rawValue)", default: 0] += 1
@@ -1049,7 +1050,8 @@ internal final class DataRefreshManager {
         // unsandboxed. Belt + suspenders.
         let synthesizedSessions = SessionFreshnessFilter.filterCurrent(resolvedSessions, now: Date())
         let activeSessionCount = synthesizedSessions.count
-        let totalRequestsToday = synthesizedSessions.reduce(0) { $0 + $1.requests }
+        // Only the counts the rows show: a scan row's is its runtime / 45.
+        let totalRequestsToday = OverviewFormatters.requestCount(in: synthesizedSessions) ?? 0
         // iter22: one-line telemetry that explains why the Sessions
         // tab is empty or populated — printed every refresh tick so
         // manual reproduction is debuggable without code changes.
