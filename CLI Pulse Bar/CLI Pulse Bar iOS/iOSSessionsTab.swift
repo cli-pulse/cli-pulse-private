@@ -213,10 +213,12 @@ struct iOSSessionsTab: View {
                         .frame(width: 24)
                     VStack(alignment: .leading, spacing: 2) {
                         // The iPhone row's title: a process-scan row's
-                        // provider and project, not its command line.
+                        // provider and project, not its command line. Two
+                        // lines: beside "En ejecución" one line cut
+                        // "Gemini · cli-pulse-helper" short.
                         Text(session.displayName)
                             .font(.subheadline.weight(.medium))
-                            .lineLimit(1)
+                            .lineLimit(2)
                         // One line: beside a long badge ("En ejecución") the
                         // project used to break into three hyphenated lines.
                         // A scan row's title already names its provider and
