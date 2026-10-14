@@ -368,37 +368,18 @@ struct iOSEnhancedProviderCard: View {
             }
 
             if config.isEnabled {
+                // v1.57: Today and This Week are the chart's rows added up
+                // (I/O tokens, cost with the summary as a floor), the Mac
+                // card's rule, wherever the account has rows for this
+                // provider; the summary's figures otherwise. The chart below
+                // draws the same days (`ProviderCardAccountFigures`).
+                let figures = ProviderCardAccountFigures(provider: provider, cloudRows: dailyUsage)
                 // Usage stats
                 HStack(spacing: 20) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.dashboard.today)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Text(CostFormatter.formatUsage(provider.today_usage))
-                            .font(.title3.weight(.bold).monospacedDigit())
-                        if showCost {
-                            // The cost's status sits with the cost. Next to the
-                            // quota line it read as if "92% used" were the estimate.
-                            HStack(spacing: 4) {
-                                Text(CostFormatter.format(provider.estimated_cost_today))
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.green)
-                                CostStatusBadge(status: provider.cost_status_today)
-                            }
-                        }
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(L10n.providers.thisWeek)
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                        Text(CostFormatter.formatUsage(provider.week_usage))
-                            .font(.title3.weight(.bold).monospacedDigit())
-                        if showCost {
-                            Text(CostFormatter.format(provider.estimated_cost_week))
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.green)
-                        }
-                    }
+                    // The cost's status sits with Today's cost. Next to the
+                    // quota line it read as if "92% used" were the estimate.
+                    usageFigure(L10n.dashboard.today, figures.today, costStatus: provider.cost_status_today)
+                    usageFigure(L10n.providers.thisWeek, figures.week, costStatus: nil)
                     Spacer()
                     if accountUsages.isEmpty {
                         // Legacy provider-only snapshots still need their
@@ -473,11 +454,9 @@ struct iOSEnhancedProviderCard: View {
                 // shown only when there's history. `dailyUsage` is passed in
                 // from AppState (this card has no environment object).
                 // v1.57 (P1-2): tokens or cost, and a tapped day lists its
-                // models (`get_daily_usage` is day × model already).
-                let usageDays = ProviderUsageDays.fromCloud(
-                    dailyUsage, provider: provider.provider, basis: .inputOutput,
-                    todayKey: DayKey.string(from: Date()))
-                if usageDays.hasUsage {
+                // models (`get_daily_usage` is day × model already). The
+                // days Today and This Week above add up, in I/O tokens.
+                if let usageDays = figures.chartDays {
                     ProviderUsageHistorySection(days: usageDays, accent: providerColor, showCost: showCost)
                         .padding(.top, 2)
                 }
@@ -514,6 +493,51 @@ struct iOSEnhancedProviderCard: View {
             parts.append(L10n.providers.percentUsed(pct))
         }
         return parts.joined(separator: ", ")
+    }
+
+    /// Today or This Week: tokens over cost. Counted from the account's rows
+    /// the tokens carry the Mac card's unit ("85.9K I/O"), the number in the
+    /// headline size and the unit smaller, and VoiceOver's hint says what
+    /// I/O counts for this provider (the Mac card's hover text).
+    private func usageFigure(
+        _ header: String,
+        _ figure: ProviderCardAccountFigures.Figure,
+        costStatus: String?
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(header)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+            Text(Self.tokensHeadline(figure))
+                .accessibilityHint(figure.tokensHelp)
+            if showCost {
+                HStack(spacing: 4) {
+                    Text(figure.cost.map { CostFormatter.format($0) } ?? ProviderUsageDays.unknownCostText)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(figure.cost == nil ? Color.secondary : Color.green)
+                    if let costStatus {
+                        CostStatusBadge(status: costStatus)
+                    }
+                }
+            }
+        }
+    }
+
+    /// `tokensText` with its number (`tokensValue`) in the headline size and
+    /// the unit around it, in whichever order the language puts them,
+    /// smaller: three characters of "I/O" at the number's size widened the
+    /// row more than the unit is worth.
+    private static func tokensHeadline(_ figure: ProviderCardAccountFigures.Figure) -> AttributedString {
+        let headline = Font.title3.weight(.bold).monospacedDigit()
+        var text = AttributedString(figure.tokensText)
+        text.font = headline
+        guard let value = figure.tokensValue, value != figure.tokensText,
+              let range = text.range(of: value) else { return text }
+        text.font = .subheadline.weight(.semibold)
+        text.foregroundColor = .secondary
+        text[range].font = headline
+        text[range].foregroundColor = .primary
+        return text
     }
 
     private var providerColor: Color { PulseTheme.providerColor(provider.provider) }

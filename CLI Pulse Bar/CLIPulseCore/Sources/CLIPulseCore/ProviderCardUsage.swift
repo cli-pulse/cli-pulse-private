@@ -390,3 +390,96 @@ public enum ProviderCardUsageBuilder {
         return !silent.contains(usage.cost_status_today) || !silent.contains(usage.cost_status_week)
     }
 }
+
+// MARK: - The iPhone and iPad card
+
+/// v1.57: what the iPhone and iPad provider card's Today and This Week say
+/// (`iOSEnhancedProviderCard`), and the days its chart draws.
+///
+/// The card's chart, and the day a tap lists by model, count the account's
+/// synced rows (`get_daily_usage`) in I/O tokens. The two figures beside it
+/// were `provider_summary`'s, whose tokens are input + cached + output:
+/// Codex's input already holds its cached input, so Codex's cache was counted
+/// twice, and Claude's cache reads, most of a Claude user's tokens, were in
+/// it. A real account's Today read several times the chart's day.
+///
+/// So wherever the account has rows for the provider in the 30 days (the
+/// chart is drawn), both figures are the chart's rows added up, under the Mac
+/// card's rule (`ProviderCardUsageBuilder.build`, with no scan: an iPhone has
+/// none): input + output tokens, labelled as the Mac card labels them
+/// ("85.9K I/O"), and a cost whose floor is the summary's. The summary's
+/// tokens never join them: on an iPhone they are not a collector's own count,
+/// only the same rows summed on another basis. Without rows (a provider no
+/// device uploads rows for, or before the rows have arrived) the card keeps
+/// the summary's figures, as it always has.
+public struct ProviderCardAccountFigures: Sendable, Equatable {
+
+    public struct Figure: Sendable, Equatable {
+        /// "85.9K I/O" from the rows; the summary's own count ("131.3K")
+        /// without rows; "—" when there are rows and none in the window.
+        public let tokensText: String
+        /// The number inside `tokensText`, which the card draws larger than
+        /// its unit. nil for "—".
+        public let tokensValue: String?
+        /// What the tokens count, for VoiceOver's hint (the Mac card's hover
+        /// text): this provider's I/O when they are the rows', nothing for
+        /// the summary's count.
+        public let tokensHelp: String
+        /// Estimated cost in USD. nil when there are rows and nothing reports
+        /// a cost for the provider: "—", as on the Mac card.
+        public let cost: Double?
+        /// The figure is the rows' I/O, not the summary's count.
+        public let countsRows: Bool
+    }
+
+    /// The card's figures from the account's rows. nil when the account has
+    /// none for the provider in the 30 days.
+    public let rows: ProviderCardUsage?
+    public let today: Figure
+    public let week: Figure
+
+    public init(
+        provider: ProviderUsage,
+        cloudRows: [DailyUsage],
+        windows: ProviderUsageWindows = ProviderUsageWindows()
+    ) {
+        let card = ProviderCardUsageBuilder.build(
+            provider: provider.provider, usage: provider,
+            scanEntries: [], cloudRows: cloudRows, readsCloud: true,
+            // `today_usage` / `week_usage` are the summary's input + cached +
+            // output here, the count these figures replace.
+            usesProviderTokenCounts: false,
+            windows: windows)
+        guard card.account?.hasUsage == true else {
+            rows = nil
+            today = Self.summaryFigure(tokens: provider.today_usage, cost: provider.estimated_cost_today)
+            week = Self.summaryFigure(tokens: provider.week_usage, cost: provider.estimated_cost_week)
+            return
+        }
+        rows = card
+        today = Self.rowsFigure(card.today, provider: provider.provider)
+        week = Self.rowsFigure(card.week, provider: provider.provider)
+    }
+
+    /// The days the card's chart draws, the ones the figures add up: the
+    /// account's 30, in I/O tokens. nil without rows, and the card draws no
+    /// chart.
+    public var chartDays: ProviderUsageDays? { rows?.account }
+
+    static func rowsFigure(_ cell: ProviderCardUsage.Cell, provider: String) -> Figure {
+        let help = ProviderUsageDays.ioTokensHelp(provider: provider)
+        guard let tokens = cell.ioTokens else {
+            // The Mac card's dash for a window nothing counted.
+            return Figure(tokensText: "—", tokensValue: nil, tokensHelp: help, cost: cell.cost, countsRows: true)
+        }
+        return Figure(
+            tokensText: ProviderCardUsage.tokenBasis.tokensText(tokens),
+            tokensValue: CostFormatter.formatUsage(tokens),
+            tokensHelp: help, cost: cell.cost, countsRows: true)
+    }
+
+    static func summaryFigure(tokens: Int, cost: Double) -> Figure {
+        let text = CostFormatter.formatUsage(tokens)
+        return Figure(tokensText: text, tokensValue: text, tokensHelp: "", cost: cost, countsRows: false)
+    }
+}
